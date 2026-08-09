@@ -9,71 +9,31 @@ const projectB = v.parse(projectIdSchema, 'project-b')
 const threadB = v.parse(threadIdSchema, 'thread-b')
 
 function reset() {
-  useSessionSelectionStore.setState({
-    pendingWorkspaceRoot: null,
-    selection: { kind: 'auto' },
-    switchToken: 0,
-  })
+  useSessionSelectionStore.setState({ selection: { kind: 'auto' } })
 
   return useSessionSelectionStore.getState()
 }
 
-test('a later switch supersedes an earlier one still in flight', () => {
+test('a session pick records both the project and the thread', () => {
   const store = reset()
 
-  const first = store.beginProjectSwitch('/repo/b')
-  const second = useSessionSelectionStore.getState().beginProjectSwitch('/repo/c')
-
-  expect(useSessionSelectionStore.getState().isCurrentSwitch(first)).toBe(false)
-  expect(useSessionSelectionStore.getState().isCurrentSwitch(second)).toBe(true)
-  expect(useSessionSelectionStore.getState().pendingWorkspaceRoot).toBe('/repo/c')
-})
-
-test('a failed switch keeps a new-session request as a new session in the open project', () => {
-  const store = reset()
-  store.startDraft(projectB)
-  store.beginProjectSwitch('/repo/b')
-
-  useSessionSelectionStore.getState().abandonProjectSwitch(projectB, projectA)
-
-  const { pendingWorkspaceRoot, selection } = useSessionSelectionStore.getState()
-  expect(pendingWorkspaceRoot).toBeNull()
-  // Never decays into "show the open project's newest thread" — that would hand the
-  // user a live composer over an unrelated conversation.
-  expect(selection).toEqual({ kind: 'draft', projectId: projectA })
-})
-
-test('a failed session pick goes neutral rather than retargeting another conversation', () => {
-  const store = reset()
   store.selectSession(projectB, threadB)
-  store.beginProjectSwitch('/repo/b')
-
-  useSessionSelectionStore.getState().abandonProjectSwitch(projectB, projectA)
-
-  expect(useSessionSelectionStore.getState().selection).toEqual({ kind: 'auto' })
-})
-
-test('a failure for some other project leaves the current pick alone', () => {
-  const store = reset()
-  store.selectSession(projectA, threadB)
-
-  useSessionSelectionStore.getState().abandonProjectSwitch(projectB, projectA)
 
   expect(useSessionSelectionStore.getState().selection).toEqual({
     kind: 'session',
-    projectId: projectA,
+    projectId: projectB,
     threadId: threadB,
   })
 })
 
-test('settling clears the pending root without touching the pick', () => {
+test('a new-session request stays a request for that project alone', () => {
   const store = reset()
-  store.selectSession(projectB, threadB)
-  store.beginProjectSwitch('/repo/b')
+  store.selectSession(projectA, threadB)
 
-  useSessionSelectionStore.getState().settleProjectSwitch()
+  store.startDraft(projectB)
 
-  const { pendingWorkspaceRoot, selection } = useSessionSelectionStore.getState()
-  expect(pendingWorkspaceRoot).toBeNull()
-  expect(selection).toEqual({ kind: 'session', projectId: projectB, threadId: threadB })
+  expect(useSessionSelectionStore.getState().selection).toEqual({
+    kind: 'draft',
+    projectId: projectB,
+  })
 })

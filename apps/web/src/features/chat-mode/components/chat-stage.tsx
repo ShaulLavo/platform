@@ -2,6 +2,10 @@ import type { ThreadId } from '@workspace/contracts'
 
 import { ChatDraftView } from '@/features/chat/components/chat-draft-view'
 import { ChatView } from '@/features/chat/components/chat-view'
+import { contextUsageForActivities } from '@/features/chat/lib/context-usage'
+import { threadStatus } from '@/features/chat/lib/thread-status'
+import { selectChatThreadById } from '@/features/chat/state/chat-projection-selectors'
+import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { StageHeader } from '@/features/chat-mode/components/stage-header'
 import {
   useChatModeSession,
@@ -10,10 +14,17 @@ import {
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
 import { activeSessionShowsComposer, isDraftFor } from '@/features/chat-mode/utils/active-session'
 
-export function ChatStage({ rootPath }: { readonly rootPath: string }) {
-  const { activeSession, environment, error, project, ready, selectSession, threads } =
+const EMPTY_ACTIVITIES: readonly [] = []
+
+export function ChatStage() {
+  const { activeSession, environment, error, project, ready, rootPath, selectSession, threads } =
     useChatModeSession()
-  const thread = threads.find((candidate) => candidate.id === activeSession.threadId) ?? null
+  const summary = threads.find((candidate) => candidate.id === activeSession.threadId) ?? null
+  // Activities carry the provider's context-window snapshots, and only the detail
+  // projection has them — the sidebar summary stops at the turn state.
+  const activities = useChatProjectionStore(
+    (state) => selectChatThreadById(state, activeSession.threadId)?.activities ?? EMPTY_ACTIVITIES,
+  )
 
   function handleThreadCreated(threadId: ThreadId) {
     if (!project) return
@@ -27,9 +38,11 @@ export function ChatStage({ rootPath }: { readonly rootPath: string }) {
   return (
     <section className='bg-background backdrop-material flex h-full min-h-0 min-w-0 flex-col overflow-hidden'>
       <StageHeader
-        branch={thread?.branch ?? null}
+        branch={summary?.branch ?? null}
+        contextUsage={contextUsageForActivities(activities)}
         projectTitle={project?.title ?? null}
-        title={thread?.title ?? 'New session'}
+        status={summary ? threadStatus(summary) : null}
+        title={summary?.title ?? 'New session'}
       />
       <div className='mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col overflow-hidden'>
         {stageBody({

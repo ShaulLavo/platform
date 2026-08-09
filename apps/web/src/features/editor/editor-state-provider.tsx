@@ -22,7 +22,12 @@ export function EditorStateProvider({ children }: { children: ReactNode }) {
   const [workspaceCache] = useState(readWorkspaceCache)
   const [conflictStore] = useState(createEditorConflictStore)
   const [documentStore] = useState(createEditorDocumentStore)
-  const [searchBufferStore] = useState(() => createSearchBufferStore(workspaceCache.searchBuffer))
+  const [searchBufferStore] = useState(() =>
+    createSearchBufferStore({
+      cachedByRootPath: workspaceCache.searchBuffers,
+      rootPath: workspaceCache.rootFolder?.path ?? null,
+    }),
+  )
   const [uiStore] = useState(createEditorUiStore)
   const [workspaceStore] = useState(() => createEditorWorkspaceStore(workspaceCache))
 

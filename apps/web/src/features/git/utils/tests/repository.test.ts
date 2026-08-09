@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import type { RepositoryInfo } from '../types'
-import { canSyncChanges, syncChangesLabel } from '../utils'
+import type { RepositoryInfo } from '../../types'
+import { canSyncChanges, syncChangesLabel } from '../repository'
 
-describe('git utils', () => {
+describe('git repository labels', () => {
   it('shows sync changes only when the working tree is clean and ahead', () => {
     expect(canSyncChanges(repositoryInfo({ ahead: 4 }), false)).toBe(true)
     expect(canSyncChanges(repositoryInfo({ ahead: 4 }), true)).toBe(false)

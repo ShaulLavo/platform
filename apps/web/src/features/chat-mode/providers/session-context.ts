@@ -15,6 +15,8 @@ export type ChatModeSession = {
   readonly openProject: (workspaceRoot: string) => void
   readonly project: OrchestrationProjectShell | null
   readonly ready: boolean
+  /** The active project's workspace root — what chat sends, not where the editor is. */
+  readonly rootPath: string
   readonly selectSession: (projectId: ProjectId, threadId: ThreadId) => void
   readonly startDraft: (projectId: ProjectId) => void
   readonly threads: readonly ChatSidebarThreadSummary[]

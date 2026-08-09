@@ -8,22 +8,23 @@ import {
 } from '@/features/editor/state/editor-workspace-state'
 import {
   cachedSearchBufferState,
+  type SearchBufferSnapshot,
   type SearchBufferStore,
   type SearchBufferStoreApi,
   useSearchBufferStoreApi,
 } from '@/features/search/search-buffer-state'
 import {
   type CachedSearchBufferState,
-  type CachedWorkspaceState,
+  type CachedWorkspaceSlice,
   writeChatModePanelsCache,
   writeDiffViewModeCache,
-  writeEditorHistoryCache,
-  writeRecentlyClosedEditorPathsCache,
   writeRootFolderCache,
   writeSearchBufferCache,
   writeUiModeCache,
+  writeWallpaperHiddenCache,
   writeWorkbenchLayoutCache,
-  writeWorkbenchPanelsCache,
+  writeWorkspaceIndexCache,
+  writeWorkspaceSliceCache,
 } from '@/lib/workspace-cache'
 
 const WORKSPACE_CACHE_WRITE_DEBOUNCE_MS = 350
@@ -31,13 +32,13 @@ const WORKSPACE_CACHE_WRITE_DEBOUNCE_MS = 350
 export type WorkspaceCacheWriters = {
   chatModePanels: typeof writeChatModePanelsCache
   diffViewMode: typeof writeDiffViewModeCache
-  editorHistory: typeof writeEditorHistoryCache
-  recentlyClosedEditorPaths: typeof writeRecentlyClosedEditorPathsCache
   rootFolder: typeof writeRootFolderCache
   searchBuffer: typeof writeSearchBufferCache
   uiMode: typeof writeUiModeCache
+  wallpaperHidden: typeof writeWallpaperHiddenCache
   workbenchLayout: typeof writeWorkbenchLayoutCache
-  workbenchPanels: typeof writeWorkbenchPanelsCache
+  workspaceIndex: typeof writeWorkspaceIndexCache
+  workspaceSlice: typeof writeWorkspaceSliceCache
 }
 
 type WorkspaceCachePersistenceOptions = {
@@ -50,13 +51,13 @@ type WorkspaceCachePersistenceOptions = {
 const WORKSPACE_CACHE_WRITERS = {
   chatModePanels: writeChatModePanelsCache,
   diffViewMode: writeDiffViewModeCache,
-  editorHistory: writeEditorHistoryCache,
-  recentlyClosedEditorPaths: writeRecentlyClosedEditorPathsCache,
   rootFolder: writeRootFolderCache,
   searchBuffer: writeSearchBufferCache,
   uiMode: writeUiModeCache,
+  wallpaperHidden: writeWallpaperHiddenCache,
   workbenchLayout: writeWorkbenchLayoutCache,
-  workbenchPanels: writeWorkbenchPanelsCache,
+  workspaceIndex: writeWorkspaceIndexCache,
+  workspaceSlice: writeWorkspaceSliceCache,
 } satisfies WorkspaceCacheWriters
 
 export function useWorkspaceCachePersistence() {
@@ -123,19 +124,17 @@ type CacheEntrySubscriptionOptions<TState, TValue> = {
   write: (value: TValue) => void
 }
 
-type WorkspacePathsCacheValue = {
-  paths: readonly string[]
-  rootFolder: CachedWorkspaceState['rootFolder']
+/** Every remembered project's slice plus the order the cache index should record. */
+type WorkspaceSlicesCacheValue = {
+  order: readonly string[]
+  slices: ReadonlyMap<string, CachedWorkspaceSlice>
 }
 
-type WorkbenchPanelsCacheValue = {
-  rootFolder: CachedWorkspaceState['rootFolder']
-  workbenchPanels: CachedWorkspaceState['workbenchPanels']
-}
-
-type SearchBufferCacheValue = {
-  rootFolder: CachedWorkspaceState['rootFolder']
-  searchBuffer: CachedSearchBufferState | null
+type SearchBuffersCacheValue = {
+  /** The open project's results, already in cache shape — see the equality note. */
+  active: CachedSearchBufferState | null
+  activeSnapshot: SearchBufferSnapshot | null
+  parked: ReadonlyMap<string, SearchBufferSnapshot>
 }
 
 type WorkspaceCacheSubscriptionOptions = {
@@ -172,23 +171,15 @@ function workspaceCacheSubscriptions({
     }),
     subscribeCacheEntry({
       debounceMs,
+      select: (state) => state.wallpaperHidden,
+      store: workspaceStore,
+      write: cacheWriters.wallpaperHidden,
+    }),
+    subscribeCacheEntry({
+      debounceMs,
       select: (state) => state.workbenchLayout,
       store: workspaceStore,
       write: cacheWriters.workbenchLayout,
-    }),
-    subscribeCacheEntry({
-      debounceMs,
-      equalityFn: workspacePathsCacheValuesEqual,
-      select: editorHistoryCacheValue,
-      store: workspaceStore,
-      write: (value) => cacheWriters.editorHistory(value.rootFolder, value.paths),
-    }),
-    subscribeCacheEntry({
-      debounceMs,
-      equalityFn: workspacePathsCacheValuesEqual,
-      select: recentlyClosedEditorPathsCacheValue,
-      store: workspaceStore,
-      write: (value) => cacheWriters.recentlyClosedEditorPaths(value.rootFolder, value.paths),
     }),
     subscribeCacheEntry({
       debounceMs,
@@ -196,19 +187,8 @@ function workspaceCacheSubscriptions({
       store: workspaceStore,
       write: cacheWriters.rootFolder,
     }),
-    subscribeCacheEntry({
-      debounceMs,
-      equalityFn: workbenchPanelsCacheValuesEqual,
-      select: workbenchPanelsCacheValue,
-      store: workspaceStore,
-      write: (value) => cacheWriters.workbenchPanels(value.rootFolder, value.workbenchPanels),
-    }),
-    subscribeSearchBufferCacheEntry({
-      cacheWriters,
-      debounceMs,
-      searchStore,
-      workspaceStore,
-    }),
+    subscribeWorkspaceSlices({ cacheWriters, debounceMs, workspaceStore }),
+    subscribeSearchBuffers({ cacheWriters, debounceMs, searchStore }),
   ]
 }
 
@@ -236,87 +216,123 @@ function subscribeCacheEntry<TState, TValue>({
   }
 }
 
-function subscribeSearchBufferCacheEntry({
+/**
+ * One writer for active and parked slices alike. Parking hands the same field objects
+ * to a new owner, so a switch writes nothing that was not already written — the only
+ * cost of changing projects is the index entry that records the new order.
+ */
+function subscribeWorkspaceSlices({
+  cacheWriters,
+  debounceMs,
+  workspaceStore,
+}: Omit<WorkspaceCacheSubscriptionOptions, 'searchStore'>): CacheSubscription {
+  // Seeded from what was restored: nothing has drifted yet, so a session that only
+  // reads its cache back never rewrites it.
+  const restored = workspaceSlicesCacheValue(workspaceStore.getState())
+  const written = new Map(restored.slices)
+  let writtenOrder = restored.order
+
+  return subscribeCacheEntry({
+    debounceMs,
+    equalityFn: workspaceSlicesCacheValuesEqual,
+    select: workspaceSlicesCacheValue,
+    store: workspaceStore,
+    write: (value) => {
+      for (const [rootPath, slice] of value.slices) {
+        if (sameWorkspaceSlice(written.get(rootPath), slice)) continue
+
+        written.set(rootPath, slice)
+        cacheWriters.workspaceSlice(rootPath, slice)
+      }
+      if (readonlyArraysEqual(writtenOrder, value.order)) return
+
+      writtenOrder = value.order
+      cacheWriters.workspaceIndex(value.order)
+    },
+  })
+}
+
+function subscribeSearchBuffers({
   cacheWriters,
   debounceMs,
   searchStore,
-  workspaceStore,
-}: WorkspaceCacheSubscriptionOptions): CacheSubscription {
-  let value = searchBufferCacheValue(workspaceStore.getState(), searchStore.getState())
-  const pendingWrite = new Debouncer(
-    () => cacheWriters.searchBuffer(value.rootFolder, value.searchBuffer),
-    { wait: debounceMs },
-  )
-  const unsubscribeRootFolder = workspaceStore.subscribe(
-    (state) => state.rootFolder,
-    (rootFolder) => {
-      value = { ...value, rootFolder }
-      pendingWrite.maybeExecute()
+}: Omit<WorkspaceCacheSubscriptionOptions, 'workspaceStore'>): CacheSubscription {
+  const written = new Map<string, SearchBufferSnapshot>(searchStore.getState().parked)
+
+  return subscribeCacheEntry({
+    debounceMs,
+    equalityFn: searchBuffersCacheValuesEqual,
+    select: searchBuffersCacheValue,
+    store: searchStore,
+    write: (value) => {
+      for (const [rootPath, snapshot] of value.parked) {
+        if (written.get(rootPath) === snapshot) continue
+
+        written.set(rootPath, snapshot)
+        cacheWriters.searchBuffer(rootPath, cachedSearchBufferState(snapshot))
+      }
+      if (!value.activeSnapshot || !value.active) return
+      if (written.get(value.activeSnapshot.rootPath) === value.activeSnapshot) return
+
+      written.set(value.activeSnapshot.rootPath, value.activeSnapshot)
+      cacheWriters.searchBuffer(value.activeSnapshot.rootPath, value.active)
     },
+  })
+}
+
+function workspaceSlicesCacheValue(state: EditorWorkspaceStore): WorkspaceSlicesCacheValue {
+  const activeRootPath = state.rootFolder?.path ?? null
+  const parked = Array.from(state.parkedWorkspaces.entries()).toSorted(
+    (left, right) => right[1].lastActiveAt - left[1].lastActiveAt,
   )
-  const unsubscribeSearchBuffer = searchStore.subscribe(
-    (state) => cachedSearchBufferState(state.active),
-    (searchBuffer) => {
-      value = { rootFolder: workspaceStore.getState().rootFolder, searchBuffer }
-      pendingWrite.maybeExecute()
-    },
-    { equalityFn: cachedSearchBufferStatesEqual },
-  )
+  const slices = new Map<string, CachedWorkspaceSlice>(parked)
+  if (activeRootPath) {
+    slices.set(activeRootPath, {
+      editorHistory: state.editorHistory,
+      recentlyClosedEditorPaths: state.recentlyClosedEditorPaths,
+      workbenchPanels: state.workbenchPanels,
+    })
+  }
 
   return {
-    flush: () => pendingWrite.flush(),
-    unsubscribe: () => {
-      unsubscribeRootFolder()
-      unsubscribeSearchBuffer()
-    },
+    order: activeRootPath
+      ? [activeRootPath, ...parked.map((entry) => entry[0])]
+      : parked.map((entry) => entry[0]),
+    slices,
   }
 }
 
-function editorHistoryCacheValue(state: EditorWorkspaceStore): WorkspacePathsCacheValue {
+/**
+ * Only the open project's results move, so parked ones are compared by identity and
+ * never converted. The active one is converted up front on purpose: a streaming search
+ * changes the snapshot on every batch while the cache shape stays put, and comparing
+ * the cache shape is what keeps a long search from writing localStorage hundreds of
+ * times.
+ */
+function searchBuffersCacheValue(state: SearchBufferStore): SearchBuffersCacheValue {
   return {
-    paths: state.editorHistory,
-    rootFolder: state.rootFolder,
+    active: cachedSearchBufferState(state.active),
+    activeSnapshot: state.active,
+    parked: state.parked,
   }
 }
 
-function recentlyClosedEditorPathsCacheValue(
-  state: EditorWorkspaceStore,
-): WorkspacePathsCacheValue {
-  return {
-    paths: state.recentlyClosedEditorPaths,
-    rootFolder: state.rootFolder,
-  }
-}
-
-function workbenchPanelsCacheValue(state: EditorWorkspaceStore): WorkbenchPanelsCacheValue {
-  return {
-    rootFolder: state.rootFolder,
-    workbenchPanels: state.workbenchPanels,
-  }
-}
-
-function searchBufferCacheValue(
-  workspaceState: EditorWorkspaceStore,
-  searchState: SearchBufferStore,
-): SearchBufferCacheValue {
-  return {
-    rootFolder: workspaceState.rootFolder,
-    searchBuffer: cachedSearchBufferState(searchState.active),
-  }
-}
-
-function workspacePathsCacheValuesEqual(
-  left: WorkspacePathsCacheValue,
-  right: WorkspacePathsCacheValue,
+function workspaceSlicesCacheValuesEqual(
+  left: WorkspaceSlicesCacheValue,
+  right: WorkspaceSlicesCacheValue,
 ) {
-  return left.rootFolder === right.rootFolder && readonlyArraysEqual(left.paths, right.paths)
+  if (!readonlyArraysEqual(left.order, right.order)) return false
+
+  return mapsEqual(left.slices, right.slices, sameWorkspaceSlice)
 }
 
-function workbenchPanelsCacheValuesEqual(
-  left: WorkbenchPanelsCacheValue,
-  right: WorkbenchPanelsCacheValue,
+function searchBuffersCacheValuesEqual(
+  left: SearchBuffersCacheValue,
+  right: SearchBuffersCacheValue,
 ) {
-  return left.rootFolder === right.rootFolder && left.workbenchPanels === right.workbenchPanels
+  if (!cachedSearchBufferStatesEqual(left.active, right.active)) return false
+
+  return mapsEqual(left.parked, right.parked, Object.is)
 }
 
 function cachedSearchBufferStatesEqual(
@@ -346,6 +362,37 @@ function cachedSearchBufferStatesEqual(
     readonlyArraysEqual(left.queryHistory, right.queryHistory) &&
     readonlyArraysEqual(left.replaceHistory, right.replaceHistory)
   )
+}
+
+function sameWorkspaceSlice(
+  left: CachedWorkspaceSlice | undefined,
+  right: CachedWorkspaceSlice | undefined,
+) {
+  if (left === right) return true
+  if (!left || !right) return false
+  if (left.workbenchPanels !== right.workbenchPanels) return false
+  if (!readonlyArraysEqual(left.editorHistory, right.editorHistory)) return false
+
+  return readonlyArraysEqual(left.recentlyClosedEditorPaths, right.recentlyClosedEditorPaths)
+}
+
+function mapsEqual<TValue>(
+  left: ReadonlyMap<string, TValue>,
+  right: ReadonlyMap<string, TValue>,
+  valuesEqual: (leftValue: TValue, rightValue: TValue) => boolean,
+) {
+  if (left === right) return true
+  if (left.size !== right.size) return false
+
+  for (const [key, value] of left) {
+    if (!right.has(key)) return false
+
+    const rightValue = right.get(key)
+    if (rightValue === undefined) return false
+    if (!valuesEqual(value, rightValue)) return false
+  }
+
+  return true
 }
 
 function readonlyArraysEqual<T>(left: readonly T[], right: readonly T[]) {

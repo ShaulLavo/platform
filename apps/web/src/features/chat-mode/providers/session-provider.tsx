@@ -7,7 +7,6 @@ import { compareChatSidebarThreads } from '@/features/chat/lib/chat-formatters'
 import { selectChatSidebarThreadsForProject } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { prewarmSidebarThreadDetails } from '@/features/chat/state/thread-detail-subscriptions'
-import { useOpenProject } from '@/features/chat-mode/hooks/use-open-project'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import {
   ChatModeSessionContext,
@@ -15,17 +14,22 @@ import {
 } from '@/features/chat-mode/providers/session-context'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
 import { activeSession } from '@/features/chat-mode/utils/active-session'
+import { useOpenWorkspaceRoot } from '@/hooks/use-open-workspace-root'
+import { useActiveProjectStore } from '@/state/active-project-store'
 
 export function ChatModeSessionProvider({
   children,
-  rootPath,
+  editorRootPath,
 }: {
   readonly children: ReactNode
-  readonly rootPath: string
+  /** Where the editor currently is. Chat follows it only until a project is activated. */
+  readonly editorRootPath: string
 }) {
   // One environment per surface: a new instance would restart the shell subscription.
   const environment = useMemo(() => createLocalChatEnvironment(), [])
   const shell = useChatShellSubscription(environment)
+  const activeWorkspaceRoot = useActiveProjectStore((state) => state.workspaceRoot)
+  const rootPath = activeWorkspaceRoot ?? editorRootPath
   const projectState = useWorkspaceChatProject({ environment, rootPath })
   const projectId = projectState.project?.id ?? null
   const projectThreads = useChatProjectionStore((state) =>
@@ -36,25 +40,21 @@ export function ChatModeSessionProvider({
   const selection = useSessionSelectionStore((state) => state.selection)
   const selectSession = useSessionSelectionStore((state) => state.selectSession)
   const startDraft = useSessionSelectionStore((state) => state.startDraft)
-  const pendingWorkspaceRoot = useSessionSelectionStore((state) => state.pendingWorkspaceRoot)
-  const settleProjectSwitch = useSessionSelectionStore((state) => state.settleProjectSwitch)
-  const openProject = useOpenProject()
+  const openWorkspaceRoot = useOpenWorkspaceRoot()
   // Reuses the workspace picker already mounted by AppWorkspace: picking a folder
-  // swaps the root, and useWorkspaceChatProject creates the project for it.
+  // opens it, and useWorkspaceChatProject creates the project for it.
   const addProject = useEditorWorkspaceState((state) => state.openPicker)
   const value: ChatModeSession = {
-    activeSession: activeSession({
-      projectId,
-      selection,
-      switchingProject: pendingWorkspaceRoot !== null,
-      threadIds,
-    }),
+    activeSession: activeSession({ projectId, selection, threadIds }),
     addProject,
     environment,
     error: projectState.error ?? shell.error,
-    openProject,
+    openProject: (workspaceRoot) => void openWorkspaceRoot(workspaceRoot),
     project: projectState.project,
     ready: projectState.status === 'ready',
+    // The project's own root, never the editor's: a draft dispatched here stamps this
+    // path into the event log as the thread's worktree, and that stamp is permanent.
+    rootPath: projectState.project?.workspaceRoot ?? rootPath,
     selectSession,
     startDraft,
     threads,
@@ -63,12 +63,6 @@ export function ChatModeSessionProvider({
   useEffect(() => {
     prewarmSidebarThreadDetails(threadIds)
   }, [threadIds])
-
-  useEffect(() => {
-    if (pendingWorkspaceRoot !== rootPath) return
-
-    settleProjectSwitch()
-  }, [pendingWorkspaceRoot, rootPath, settleProjectSwitch])
 
   return <ChatModeSessionContext value={value}>{children}</ChatModeSessionContext>
 }

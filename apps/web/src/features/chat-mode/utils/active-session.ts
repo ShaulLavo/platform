@@ -10,30 +10,25 @@ export type ActiveSession =
   | { readonly status: 'auto'; readonly threadId: ThreadId | null }
   /** Explicit "new session": always the composer, even when sessions exist. */
   | { readonly status: 'draft'; readonly threadId: null }
-  /** The pick belongs to a project that is not open yet, or to a session the projection has not caught up to. */
+  /** The pick names a session the projection has not caught up to yet. */
   | { readonly status: 'resolving'; readonly threadId: null }
   | { readonly status: 'ready'; readonly threadId: ThreadId }
 
 export function activeSession({
   projectId,
   selection,
-  switchingProject,
   threadIds,
 }: {
   readonly projectId: ProjectId | null
   readonly selection: SessionSelection
-  /** True while a workspace root swap is in flight, so a foreign pick is pending not stale. */
-  readonly switchingProject: boolean
   readonly threadIds: readonly ThreadId[]
 }): ActiveSession {
   const newest: ActiveSession = { status: 'auto', threadId: threadIds[0] ?? null }
   if (selection.kind === 'auto') return newest
-  // Both remaining picks name a project. If it is not the open one and nothing is
-  // being opened, the user went somewhere else and the pick is dead — fall back
-  // rather than stranding the stage on a spinner forever.
-  if (selection.projectId !== projectId) {
-    return switchingProject ? { status: 'resolving', threadId: null } : newest
-  }
+  // Both remaining picks name a project. Activation is synchronous, so a pick aimed
+  // somewhere other than the active project means the user has since gone elsewhere —
+  // show that project's newest session rather than stranding the stage on a spinner.
+  if (selection.projectId !== projectId) return newest
   if (selection.kind === 'draft') return { status: 'draft', threadId: null }
   if (!threadIds.includes(selection.threadId)) return { status: 'resolving', threadId: null }
 

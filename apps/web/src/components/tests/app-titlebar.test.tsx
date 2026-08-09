@@ -54,9 +54,6 @@ function createTitlebarStore() {
   return createEditorWorkspaceStore({
     chatModePanels: createDefaultChatModePanels(),
     diffViewMode: DEFAULT_DIFF_VIEW_MODE,
-    editorHistory: [],
-    openFilePaths: ['/repo/src/app.tsx'],
-    recentlyClosedEditorPaths: [],
     rootFolder: {
       birthtimeMs: 0,
       mtimeMs: 0,
@@ -66,9 +63,17 @@ function createTitlebarStore() {
       type: 'directory',
       version: '',
     },
-    selectedFilePath: '/repo/src/app.tsx',
+    searchBuffers: {},
     uiMode: 'workbench',
+    wallpaperHidden: false,
     workbenchLayout: createDefaultWorkbenchLayout(),
-    workbenchPanels: panels,
+    workspaceOrder: ['/repo'],
+    workspaces: {
+      '/repo': {
+        editorHistory: [],
+        recentlyClosedEditorPaths: [],
+        workbenchPanels: panels,
+      },
+    },
   })
 }

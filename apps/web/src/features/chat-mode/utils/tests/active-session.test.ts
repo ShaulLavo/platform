@@ -52,24 +52,7 @@ test('waits while a freshly created session has not landed in the projection', (
   expect(session.status).toBe('resolving')
 })
 
-test('waits on a pick from another project while its root is being opened', () => {
-  const pending = resolve({
-    selection: { kind: 'session', projectId: otherProjectId, threadId: threadA },
-    switchingProject: true,
-    threadIds: [threadA],
-  })
-  const pendingDraft = resolve({
-    selection: { kind: 'draft', projectId: otherProjectId },
-    switchingProject: true,
-    threadIds: [threadA],
-  })
-
-  expect(pending.status).toBe('resolving')
-  expect(pendingDraft.status).toBe('resolving')
-  expect(activeSessionShowsComposer(pendingDraft)).toBe(false)
-})
-
-test('abandons a pick from another project once no root swap is in flight', () => {
+test('falls back to the active project when the pick names another one', () => {
   const session = resolve({
     selection: { kind: 'session', projectId: otherProjectId, threadId: threadB },
     threadIds: [threadA],
@@ -90,12 +73,10 @@ test('abandons a stale foreign draft instead of stranding the stage', () => {
 
 function resolve({
   selection,
-  switchingProject = false,
   threadIds,
 }: {
   selection: SessionSelection
-  switchingProject?: boolean
   threadIds: readonly ReturnType<typeof v.parse<typeof threadIdSchema>>[]
 }) {
-  return activeSession({ projectId, selection, switchingProject, threadIds })
+  return activeSession({ projectId, selection, threadIds })
 }

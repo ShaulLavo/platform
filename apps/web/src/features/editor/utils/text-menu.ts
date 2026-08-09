@@ -1,0 +1,84 @@
+import {
+  ArrowSquareOutIcon,
+  BracketsCurlyIcon,
+  CodeBlockIcon,
+  CodeIcon,
+  ColumnsPlusRightIcon,
+  CommandIcon,
+  CursorTextIcon,
+  EyeIcon,
+  GitForkIcon,
+  ListMagnifyingGlassIcon,
+} from '@phosphor-icons/react'
+
+import { commandItem, section, type Menu } from '@/features/menus/utils/model'
+
+/**
+ * The menu for a right-click inside editor text.
+ *
+ * Every item is a registered editor command, so availability comes from the
+ * same rule the command palette uses: `editor.*` commands are disabled unless a
+ * file-backed surface is active, which drops the whole menu to disabled on
+ * search-result buffers and other synthetic documents.
+ *
+ * These commands act on the caret and selection, not on the point that was
+ * right-clicked — the editor ignores non-primary mouse buttons when it maps a
+ * click to a text offset (`inputSelectionController.handleMouseDown` guards on
+ * `event.button !== 0`), so a right-click never moves the caret. That makes the
+ * menu a mirror of the keyboard shortcuts at that moment, which is why it
+ * carries no item that names a specific line or token.
+ */
+export function editorTextMenu(): Menu {
+  return [
+    section('navigate', [
+      commandItem('editor.goToDefinition', {
+        icon: ArrowSquareOutIcon,
+        label: 'Go to Definition',
+      }),
+      // Not in the platform command registry, so the label is spelled out here.
+      // The editor's language-server plugin registers the handler, and the
+      // `editor.` prefix is what drives the disabled rule, not registry
+      // membership — see `commandDisabledReason`.
+      commandItem('editor.editor.action.goToTypeDefinition', {
+        icon: BracketsCurlyIcon,
+        label: 'Go to Type Definition',
+      }),
+      commandItem('editor.editor.action.goToImplementation', {
+        icon: GitForkIcon,
+        label: 'Go to Implementations',
+      }),
+      commandItem('editor.editor.action.goToReferences', {
+        icon: ListMagnifyingGlassIcon,
+        label: 'Find All References',
+      }),
+      commandItem('editor.editor.action.peekDefinition', {
+        icon: EyeIcon,
+        label: 'Peek Definition',
+      }),
+      commandItem('editor.editor.action.revealDefinitionAside', {
+        icon: ColumnsPlusRightIcon,
+        label: 'Open Definition to the Side',
+      }),
+    ]),
+    section('edit', [
+      commandItem('editor.editor.action.changeAll', {
+        icon: CursorTextIcon,
+        label: 'Change All Occurrences',
+      }),
+      commandItem('editor.editor.action.commentLine', {
+        icon: CodeIcon,
+        label: 'Toggle Line Comment',
+      }),
+      commandItem('editor.editor.action.blockComment', {
+        icon: CodeBlockIcon,
+        label: 'Toggle Block Comment',
+      }),
+    ]),
+    section('palette', [
+      commandItem('workspace.showCommandPalette', {
+        icon: CommandIcon,
+        label: 'Command Palette…',
+      }),
+    ]),
+  ]
+}

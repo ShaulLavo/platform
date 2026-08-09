@@ -147,6 +147,11 @@ const workspaceCommandSpecs = [
     'System color mode',
     'Follow the system color mode.',
   ),
+  appearanceCommand(
+    'workspace.toggleWallpaper',
+    'Toggle wallpaper',
+    'Show or hide the background image or video.',
+  ),
 ] satisfies readonly CommandSpec<WorkspaceCommandId>[]
 
 const editorCommandSpecs = [

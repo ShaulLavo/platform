@@ -14,7 +14,7 @@ import {
 } from '../hooks'
 import { useGitState } from '../state'
 import type { RepositoryInfo } from '../types'
-import { aheadBehindLabel } from '../utils'
+import { aheadBehindLabel } from '../utils/repository'
 import { ToolbarButton } from './toolbar-button'
 
 export function Header({ repository, rootPath }: { repository: RepositoryInfo; rootPath: string }) {

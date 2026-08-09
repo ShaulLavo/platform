@@ -393,7 +393,7 @@ function addedDirectoryPathSet(paths: readonly string[]) {
   return directoryPaths
 }
 
-function expandTreeDirectory(tree: FileTreeModel, treePath: string) {
+export function expandTreeDirectory(tree: FileTreeModel, treePath: string) {
   const item = tree.getItem(`${treePath}/`) ?? tree.getItem(treePath)
   if (!isTreeDirectoryHandle(item)) return
   if (item.isExpanded()) return

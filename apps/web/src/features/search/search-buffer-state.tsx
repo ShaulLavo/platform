@@ -88,8 +88,13 @@ export type SearchBufferSnapshot = {
   wholeWord: boolean
 }
 
-type SearchBufferStoreState = {
+type SearchBufferActiveState = {
   active: SearchBufferSnapshot | null
+}
+
+type SearchBufferStoreState = SearchBufferActiveState & {
+  /** Results for every project except the open one, by root path. */
+  parked: ReadonlyMap<string, SearchBufferSnapshot>
 }
 
 type SearchBufferStoreActions = {
@@ -116,6 +121,8 @@ type SearchBufferStoreActions = {
   selectResult: (id: SearchResultId | null) => void
   startReplace: (rootPath: string) => void
   startSearch: (query: WorkspaceSearchQuery) => number
+  /** Parks the open project's results and restores the target's. */
+  switchWorkspace: (rootPath: string | null) => void
   toggleGroup: (path: string) => void
 }
 
@@ -145,12 +152,21 @@ export function useSearchBufferState<T>(selector: (state: SearchBufferStore) => 
   return useStore(useSearchBufferStoreApi(), selector)
 }
 
-export function createSearchBufferStore(cachedActive: CachedSearchBufferState | null = null) {
-  const active = searchBufferSnapshotFromCache(cachedActive)
+export function createSearchBufferStore({
+  cachedByRootPath = {},
+  rootPath = null,
+}: {
+  cachedByRootPath?: Readonly<Record<string, CachedSearchBufferState>>
+  rootPath?: string | null
+} = {}) {
+  const restored = restoredSearchBuffers(cachedByRootPath)
+  const active = rootPath ? (restored.get(rootPath) ?? null) : null
+  if (rootPath) restored.delete(rootPath)
 
   return createStore<SearchBufferStore>()(
     subscribeWithSelector((set, get) => ({
       active,
+      parked: restored,
       appendEvent: (runId, event) => set((state) => appendSearchEvent(state, runId, event)),
       appendEvents: (runId, events) => set((state) => appendSearchEvents(state, runId, events)),
       collapseAllGroups: () => set((state) => ({ active: collapseSearchGroups(state.active) })),
@@ -232,12 +248,43 @@ export function createSearchBufferStore(cachedActive: CachedSearchBufferState | 
         set({ active: loadingSearchBuffer(query, runId, current) })
         return runId
       },
+      switchWorkspace: (rootPath) => set((state) => switchedSearchWorkspace(state, rootPath)),
       toggleGroup: (path) =>
         set((state) => ({
           active: toggleSearchGroup(state.active, path),
         })),
     })),
   )
+}
+
+function switchedSearchWorkspace(
+  state: SearchBufferStoreState,
+  rootPath: string | null,
+): SearchBufferStoreState {
+  if (state.active?.rootPath === rootPath) return state
+
+  const parked = new Map(state.parked)
+  if (state.active) parked.set(state.active.rootPath, state.active)
+
+  const restored = rootPath ? (parked.get(rootPath) ?? null) : null
+  if (rootPath) parked.delete(rootPath)
+
+  return { active: restored, parked }
+}
+
+function restoredSearchBuffers(
+  cachedByRootPath: Readonly<Record<string, CachedSearchBufferState>>,
+) {
+  const restored = new Map<string, SearchBufferSnapshot>()
+
+  for (const [rootPath, cached] of Object.entries(cachedByRootPath)) {
+    const snapshot = searchBufferSnapshotFromCache(cached)
+    if (!snapshot) continue
+
+    restored.set(rootPath, snapshot)
+  }
+
+  return restored
 }
 
 export function cachedSearchBufferState(
@@ -441,10 +488,10 @@ export function searchGroupsForSnapshot(snapshot: Pick<SearchBufferSnapshot, 'gr
 }
 
 function appendSearchEvents(
-  state: SearchBufferStoreState,
+  state: SearchBufferActiveState,
   runId: number,
   events: readonly WorkspaceSearchEvent[],
-): SearchBufferStoreState {
+): SearchBufferActiveState {
   let next = state
   let matches: WorkspaceSearchMatch[] = []
 
@@ -463,10 +510,10 @@ function appendSearchEvents(
 }
 
 function appendSearchEvent(
-  state: SearchBufferStoreState,
+  state: SearchBufferActiveState,
   runId: number,
   event: WorkspaceSearchEvent,
-): SearchBufferStoreState {
+): SearchBufferActiveState {
   if (event.type === 'match') {
     return appendSearchMatches(state, runId, [event.match])
   }
@@ -503,10 +550,10 @@ function appendSearchEvent(
 }
 
 function appendSearchMatches(
-  state: SearchBufferStoreState,
+  state: SearchBufferActiveState,
   runId: number,
   incomingMatches: readonly WorkspaceSearchMatch[],
-): SearchBufferStoreState {
+): SearchBufferActiveState {
   if (incomingMatches.length === 0) return state
 
   const active = activeRun(state.active, runId)
@@ -553,10 +600,10 @@ function appendSearchMatches(
 }
 
 function failSearchBuffer(
-  state: SearchBufferStoreState,
+  state: SearchBufferActiveState,
   runId: number,
   error: string,
-): SearchBufferStoreState {
+): SearchBufferActiveState {
   const active = activeRun(state.active, runId)
   if (!active) return state
 

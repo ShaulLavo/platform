@@ -25,7 +25,7 @@ export function ChatModeSurfaceView({
   useRevealOpenedEditors()
 
   return (
-    <ChatModeSessionProvider rootPath={rootPath}>
+    <ChatModeSessionProvider editorRootPath={rootPath}>
       <ChatModeLayout
         conflicts={conflicts}
         editorKeymapLayers={editorKeymapLayers}

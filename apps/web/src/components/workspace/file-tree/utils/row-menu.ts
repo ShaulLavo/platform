@@ -1,52 +1,84 @@
 import {
-  ArrowCounterClockwiseIcon,
+  ArrowBendUpLeftIcon,
   CopyIcon,
-  FileArrowUpIcon,
-  FileArrowDownIcon,
+  CopySimpleIcon,
+  FilePlusIcon,
   FolderOpenIcon,
+  FolderPlusIcon,
+  MinusIcon,
+  PencilSimpleIcon,
+  PlusIcon,
+  TrashIcon,
 } from '@phosphor-icons/react'
 
-import type { GitStatusEntry } from '@workspace/tree/utils/publicTypes'
+import type { GitFileStatus } from '@workspace/contracts'
 
+import { isStagedStatus, isWorktreeStatus } from '@/features/git/utils/change-rows'
 import { actionItem, section, type Menu } from '@/features/menus/utils/model'
 
+export type RowGitActions = {
+  readonly canStage: boolean
+  readonly canUnstage: boolean
+}
+
 /**
- * A directory counts as changed when anything beneath it is, matching what the
- * row's own git decoration already shows. Ignored files never count — git
- * actions on them are noise.
+ * Reads the real per-file status rather than the tree's own git decoration.
+ * The tree's `GitStatusEntry` collapses index and worktree into one status, so
+ * it cannot say which direction is available — offering Unstage on a file with
+ * nothing staged runs a `git restore --staged` that does nothing.
+ *
+ * A directory offers whatever any file beneath it offers.
  */
-export function rowHasGitChanges(
-  gitStatus: readonly GitStatusEntry[] | undefined,
-  treePath: string,
+export function rowGitActions(
+  files: readonly GitFileStatus[] | undefined,
+  path: string | null,
   isDirectory: boolean,
-) {
-  if (!gitStatus?.length) return false
+): RowGitActions {
+  if (!files?.length || !path) return { canStage: false, canUnstage: false }
 
-  const prefix = `${treePath}/`
+  const prefix = `${path}/`
+  let canStage = false
+  let canUnstage = false
 
-  return gitStatus.some((entry) => {
-    if (entry.status === 'ignored') return false
-    if (entry.path === treePath) return true
+  for (const file of files) {
+    if (!fileBelongsToRow(file.path, path, prefix, isDirectory)) continue
+    if (isWorktreeStatus(file.worktree)) canStage = true
+    if (isStagedStatus(file.index)) canUnstage = true
+  }
 
-    return isDirectory && entry.path.startsWith(prefix)
-  })
+  return { canStage, canUnstage }
+}
+
+function fileBelongsToRow(filePath: string, path: string, prefix: string, isDirectory: boolean) {
+  if (filePath === path) return true
+
+  return isDirectory && filePath.startsWith(prefix)
 }
 
 export type TreeRowMenuContext = {
   readonly copyPath: (path: string, label: string) => void
+  readonly createFile: () => void
+  readonly createFolder: () => void
   readonly discard: () => void
-  /** False when the row has nothing to stage, so the git section is omitted. */
-  readonly hasGitChanges: boolean
+  readonly duplicate: () => void
+  /** Which git directions this row actually has; both false omits the section. */
+  readonly git: RowGitActions
   readonly isDirectory: boolean
   /** Absolute path on disk. Null when the row is not backed by a loaded entry. */
   readonly path: string | null
   readonly openFile: () => void
   readonly relativePath: string
+  readonly rename: () => void
+  readonly requestDelete: () => void
   readonly stage: () => void
   readonly unstage: () => void
 }
 
 export function treeRowMenu(context: TreeRowMenuContext): Menu {
+  // Every filesystem action resolves a real path on the server, so a row the
+  // tree model has not loaded yet can only be read from, not mutated.
+  const unresolved = context.path === null
+
   return [
     section('open', [
       !context.isDirectory &&
@@ -57,9 +89,56 @@ export function treeRowMenu(context: TreeRowMenuContext): Menu {
           run: context.openFile,
         }),
     ]),
+    section('new', [
+      actionItem({
+        disabled: unresolved,
+        icon: FilePlusIcon,
+        id: 'newFile',
+        label: 'New File',
+        run: context.createFile,
+      }),
+      actionItem({
+        disabled: unresolved,
+        icon: FolderPlusIcon,
+        id: 'newFolder',
+        label: 'New Folder',
+        run: context.createFolder,
+      }),
+    ]),
+    // Omitted entirely for unchanged rows: staging a file with nothing to
+    // stage is not a disabled action, it is a meaningless one. Placed above the
+    // copy section so it lands in the same slot as the `git.file` menu's, and
+    // carries the same glyphs the git panel's own row buttons use.
+    section('git', [
+      context.git.canStage &&
+        actionItem({
+          disabled: unresolved,
+          icon: PlusIcon,
+          id: 'stage',
+          label: 'Stage Changes',
+          run: context.stage,
+        }),
+      context.git.canUnstage &&
+        actionItem({
+          disabled: unresolved,
+          icon: MinusIcon,
+          id: 'unstage',
+          label: 'Unstage Changes',
+          run: context.unstage,
+        }),
+      (context.git.canStage || context.git.canUnstage) &&
+        actionItem({
+          destructive: true,
+          disabled: unresolved,
+          icon: ArrowBendUpLeftIcon,
+          id: 'discard',
+          label: 'Discard Changes',
+          run: context.discard,
+        }),
+    ]),
     section('copy', [
       actionItem({
-        disabled: context.path === null,
+        disabled: unresolved,
         icon: CopyIcon,
         id: 'copyPath',
         label: 'Copy Path',
@@ -72,34 +151,32 @@ export function treeRowMenu(context: TreeRowMenuContext): Menu {
         run: () => context.copyPath(context.relativePath, 'relative path'),
       }),
     ]),
-    // Omitted entirely for unchanged rows: staging a file with nothing to
-    // stage is not a disabled action, it is a meaningless one.
-    section('git', [
-      context.hasGitChanges &&
-        actionItem({
-          disabled: context.path === null,
-          icon: FileArrowUpIcon,
-          id: 'stage',
-          label: 'Stage Changes',
-          run: context.stage,
-        }),
-      context.hasGitChanges &&
-        actionItem({
-          disabled: context.path === null,
-          icon: FileArrowDownIcon,
-          id: 'unstage',
-          label: 'Unstage Changes',
-          run: context.unstage,
-        }),
-      context.hasGitChanges &&
-        actionItem({
-          destructive: true,
-          disabled: context.path === null,
-          icon: ArrowCounterClockwiseIcon,
-          id: 'discard',
-          label: 'Discard Changes',
-          run: context.discard,
-        }),
+    section('edit', [
+      actionItem({
+        disabled: unresolved,
+        icon: PencilSimpleIcon,
+        id: 'rename',
+        label: 'Rename',
+        run: context.rename,
+        shortcut: 'F2',
+      }),
+      actionItem({
+        disabled: unresolved,
+        icon: CopySimpleIcon,
+        id: 'duplicate',
+        label: 'Duplicate',
+        run: context.duplicate,
+      }),
+    ]),
+    section('danger', [
+      actionItem({
+        destructive: true,
+        disabled: unresolved,
+        icon: TrashIcon,
+        id: 'delete',
+        label: 'Delete',
+        run: context.requestDelete,
+      }),
     ]),
   ]
 }

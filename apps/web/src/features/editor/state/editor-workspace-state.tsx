@@ -5,36 +5,52 @@ import type { WorkbenchLayout } from '@/features/workbench/utils/workbench-layou
 import type { WorkspaceUiMode } from '@/lib/ui-mode'
 import {
   activeEditorPathForWorkbenchPanels,
-  createDefaultWorkbenchPanels,
   editorOpenPathsForWorkbenchPanels,
   normalizeWorkbenchPanels,
   type WorkbenchPanels,
 } from '@/features/workbench/utils/workbench-panels'
-import type { CachedWorkspaceState } from '@/lib/workspace-cache'
-import { readWorkspaceCache } from '@/lib/workspace-cache'
+import type { CachedWorkspaceSlice, CachedWorkspaceState } from '@/lib/workspace-cache'
+import { emptyWorkspaceSlice, readWorkspaceCache } from '@/lib/workspace-cache'
 import { clientErrors } from '@/lib/structured-errors'
 import { createContext, use } from 'react'
 import { useStore } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { createStore, type Mutate, type StoreApi } from 'zustand/vanilla'
 
-type EditorWorkspaceStoreState = CachedWorkspaceState & {
+/** What a project remembers while it is not the open one. */
+type ParkedWorkspace = CachedWorkspaceSlice & {
+  /** Drives both cache ordering and which parked documents survive eviction. */
+  readonly lastActiveAt: number
+}
+
+type EditorWorkspaceStoreState = CachedWorkspaceSlice & {
+  chatModePanels: ChatModePanels
+  diffViewMode: EditorDiffViewMode
+  openFilePaths: string[]
+  /** Every project except the open one, by root path. */
+  parkedWorkspaces: ReadonlyMap<string, ParkedWorkspace>
   pickerOpen: boolean
-  workbenchPanels: WorkbenchPanels
+  rootFolder: PickedFsEntry | null
+  selectedFilePath: string | null
+  uiMode: WorkspaceUiMode
+  wallpaperHidden: boolean
+  workbenchLayout: WorkbenchLayout
 }
 
 type EditorWorkspaceStoreActions = {
   clearRootFolder: () => void
   openPicker: () => void
-  resetForRootFolder: (rootFolder: PickedFsEntry) => void
   setChatModePanels: (panels: ChatModePanels) => void
   setDiffViewMode: (mode: EditorDiffViewMode) => void
   setEditorHistory: (paths: string[]) => void
   setPickerOpen: (open: boolean) => void
   setRecentlyClosedEditorPaths: (paths: string[]) => void
   setUiMode: (mode: WorkspaceUiMode) => void
+  setWallpaperHidden: (hidden: boolean) => void
   setWorkbenchLayout: (layout: WorkbenchLayout) => void
   setWorkbenchPanels: (panels: WorkbenchPanels) => void
+  /** Parks the open project's tabs and restores the target's. Nothing is discarded. */
+  switchWorkspace: (rootFolder: PickedFsEntry | null) => void
 }
 
 export type EditorWorkspaceStore = EditorWorkspaceStoreState & EditorWorkspaceStoreActions
@@ -64,24 +80,21 @@ export function useEditorWorkspaceState<T>(selector: (state: EditorWorkspaceStor
 export function createEditorWorkspaceStore(
   initialState: CachedWorkspaceState = readWorkspaceCache(),
 ) {
+  const activeRootPath = initialState.rootFolder?.path ?? null
+
   return createStore<EditorWorkspaceStore>()(
-    subscribeWithSelector((set) => ({
+    subscribeWithSelector((set, get) => ({
+      ...activeWorkspaceState(sliceForRootPath(initialState, activeRootPath)),
       chatModePanels: initialState.chatModePanels,
       diffViewMode: initialState.diffViewMode,
-      editorHistory: initialState.editorHistory,
-      openFilePaths: initialState.openFilePaths,
+      parkedWorkspaces: parkedWorkspacesFromCache(initialState, activeRootPath),
       pickerOpen: false,
-      recentlyClosedEditorPaths: initialState.recentlyClosedEditorPaths,
       rootFolder: initialState.rootFolder,
-      selectedFilePath: initialState.selectedFilePath,
       uiMode: initialState.uiMode,
+      wallpaperHidden: initialState.wallpaperHidden,
       workbenchLayout: initialState.workbenchLayout,
-      workbenchPanels: initialState.workbenchPanels,
-      clearRootFolder: () =>
-        set((state) => workspaceStateForRootFolderReset(null, state.diffViewMode)),
+      clearRootFolder: () => set(switchedWorkspaceState(get(), null)),
       openPicker: () => set({ pickerOpen: true }),
-      resetForRootFolder: (rootFolder) =>
-        set((state) => workspaceStateForRootFolderReset(rootFolder, state.diffViewMode)),
       setChatModePanels: (chatModePanels) => set({ chatModePanels }),
       setDiffViewMode: (diffViewMode) => set({ diffViewMode }),
       setEditorHistory: (editorHistory) => set({ editorHistory }),
@@ -89,6 +102,7 @@ export function createEditorWorkspaceStore(
       setRecentlyClosedEditorPaths: (recentlyClosedEditorPaths) =>
         set({ recentlyClosedEditorPaths }),
       setUiMode: (uiMode) => set({ uiMode }),
+      setWallpaperHidden: (wallpaperHidden) => set({ wallpaperHidden }),
       setWorkbenchLayout: (workbenchLayout) => set({ workbenchLayout }),
       setWorkbenchPanels: (workbenchPanels) =>
         set((state) =>
@@ -96,24 +110,83 @@ export function createEditorWorkspaceStore(
             currentOpenFilePaths: state.openFilePaths,
           }),
         ),
+      switchWorkspace: (rootFolder) => set(switchedWorkspaceState(get(), rootFolder)),
     })),
   )
 }
 
-function workspaceStateForRootFolderReset(
+/**
+ * Switching is a swap, not a reset: the outgoing project's tabs and history move into
+ * `parkedWorkspaces` and the incoming project's come back out. A project the user has
+ * never opened restores as an empty slice, which is what a first visit should look like.
+ */
+function switchedWorkspaceState(
+  state: EditorWorkspaceStore,
   rootFolder: PickedFsEntry | null,
-  diffViewMode: EditorDiffViewMode,
-) {
-  const workbenchPanels = createDefaultWorkbenchPanels()
+): Partial<EditorWorkspaceStore> {
+  const nextRootPath = rootFolder?.path ?? null
+  const currentRootPath = state.rootFolder?.path ?? null
+  if (nextRootPath === currentRootPath) return { pickerOpen: false, rootFolder }
+
+  const parkedWorkspaces = new Map(state.parkedWorkspaces)
+  if (currentRootPath) {
+    parkedWorkspaces.set(currentRootPath, {
+      ...currentWorkspaceSlice(state),
+      lastActiveAt: Date.now(),
+    })
+  }
+
+  const restored = nextRootPath ? parkedWorkspaces.get(nextRootPath) : undefined
+  if (nextRootPath) parkedWorkspaces.delete(nextRootPath)
 
   return {
-    ...editorWorkspaceSelectionForWorkbenchPanels(workbenchPanels),
-    diffViewMode,
-    editorHistory: [],
+    ...activeWorkspaceState(restored ?? emptyWorkspaceSlice()),
+    parkedWorkspaces,
     pickerOpen: false,
-    recentlyClosedEditorPaths: [],
     rootFolder,
   }
+}
+
+function currentWorkspaceSlice(state: EditorWorkspaceStore): CachedWorkspaceSlice {
+  return {
+    editorHistory: state.editorHistory,
+    recentlyClosedEditorPaths: state.recentlyClosedEditorPaths,
+    workbenchPanels: state.workbenchPanels,
+  }
+}
+
+function activeWorkspaceState(slice: CachedWorkspaceSlice) {
+  return {
+    ...editorWorkspaceSelectionForWorkbenchPanels(slice.workbenchPanels),
+    editorHistory: slice.editorHistory,
+    recentlyClosedEditorPaths: slice.recentlyClosedEditorPaths,
+  }
+}
+
+function sliceForRootPath(state: CachedWorkspaceState, rootPath: string | null) {
+  if (!rootPath) return emptyWorkspaceSlice()
+
+  return state.workspaces[rootPath] ?? emptyWorkspaceSlice()
+}
+
+/**
+ * Restored slices share one timestamp base: the cache records order, not wall-clock
+ * recency, so the index position is the only ranking signal that survives a restart.
+ */
+function parkedWorkspacesFromCache(state: CachedWorkspaceState, activeRootPath: string | null) {
+  const parked = new Map<string, ParkedWorkspace>()
+  const restoredAt = Date.now()
+
+  state.workspaceOrder.forEach((rootPath, index) => {
+    if (rootPath === activeRootPath) return
+
+    const slice = state.workspaces[rootPath]
+    if (!slice) return
+
+    parked.set(rootPath, { ...slice, lastActiveAt: restoredAt - index })
+  })
+
+  return parked
 }
 
 export function editorWorkspaceSelectionForWorkbenchPanels(

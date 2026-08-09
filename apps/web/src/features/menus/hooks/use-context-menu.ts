@@ -1,11 +1,6 @@
 import { useState } from 'react'
 
-import {
-  pointAnchor,
-  rectAnchor,
-  type MenuAnchor,
-  type MenuAnchorRect,
-} from '@/features/menus/utils/virtual-anchor'
+import { pointAnchor, rectAnchor, type MenuAnchor } from '@/features/menus/utils/virtual-anchor'
 
 type ContextMenuPointerEvent = {
   readonly clientX: number
@@ -28,10 +23,6 @@ type ContextMenuKeyEvent = {
 export function useContextMenu() {
   const [anchor, setAnchor] = useState<MenuAnchor | null>(null)
 
-  function close() {
-    setAnchor(null)
-  }
-
   function onOpenChange(next: boolean) {
     if (next) return
 
@@ -43,11 +34,6 @@ export function useContextMenu() {
     event.preventDefault()
     swallowTerminatingMouseUp()
     setAnchor(pointAnchor(event.clientX, event.clientY, contextElement))
-  }
-
-  /** For surfaces that hand back a rect instead of an element — the file tree. */
-  function openAtRect(rect: MenuAnchorRect, contextElement?: Element) {
-    setAnchor(rectAnchor(rect, contextElement))
   }
 
   function openAtElement(element: Element) {
@@ -71,12 +57,9 @@ export function useContextMenu() {
 
   return {
     anchor,
-    close,
     onOpenChange,
     open: anchor !== null,
-    openAtElement,
     openAtEvent,
-    openAtRect,
     openOnMenuKey,
   }
 }

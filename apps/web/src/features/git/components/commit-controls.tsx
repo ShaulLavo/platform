@@ -5,7 +5,7 @@ import type { KeyboardEvent } from 'react'
 
 import { useCommitAction, useSyncChangesMutation } from '../hooks'
 import type { RepositoryInfo } from '../types'
-import { canSyncChanges, syncChangesLabel } from '../utils'
+import { canSyncChanges, syncChangesLabel } from '../utils/repository'
 
 export function CommitControls({
   hasLocalChanges,

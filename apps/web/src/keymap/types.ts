@@ -34,6 +34,7 @@ export type WorkspaceCommandId =
   | 'workspace.setLightTheme'
   | 'workspace.setDarkTheme'
   | 'workspace.setSystemTheme'
+  | 'workspace.toggleWallpaper'
 
 export type EditorPlatformCommandId = `editor.${EditorCommandId}`
 

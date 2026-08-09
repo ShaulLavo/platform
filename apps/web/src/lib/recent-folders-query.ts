@@ -7,7 +7,7 @@ import type { FsEntry } from '@/lib/file-system-types'
 const RECENT_FOLDER_LIMIT = 40
 const RECENT_FOLDERS_STALE_TIME_MS = 30_000
 
-const recentFolderKeys = {
+export const recentFolderKeys = {
   all: ['recent-folders'] as const,
   list: (limit: number) => [...recentFolderKeys.all, limit] as const,
 }

@@ -17,7 +17,7 @@ export function MenuItemRow({
   onInvoke,
 }: {
   readonly item: ResolvedMenuItem
-  readonly onInvoke: (item: ResolvedMenuItem) => void
+  readonly onInvoke: (item: ResolvedMenuItem, value?: string) => void
 }) {
   if (item.kind === 'submenu') {
     return (
@@ -40,7 +40,10 @@ export function MenuItemRow({
       <ContextMenuCheckboxItem
         checked={item.checked}
         disabled={item.disabled}
-        onCheckedChange={item.toggle}
+        onCheckedChange={(checked) => {
+          onInvoke(item, String(checked))
+          item.toggle(checked)
+        }}
       >
         {item.icon ? <item.icon /> : null}
         <span>{item.label}</span>
@@ -50,7 +53,13 @@ export function MenuItemRow({
 
   if (item.kind === 'radio-group') {
     return (
-      <ContextMenuRadioGroup onValueChange={item.select} value={item.value}>
+      <ContextMenuRadioGroup
+        onValueChange={(value) => {
+          onInvoke(item, value)
+          item.select(value)
+        }}
+        value={item.value}
+      >
         {item.options.map((option) => (
           <ContextMenuRadioItem disabled={option.disabled} key={option.value} value={option.value}>
             {option.icon ? <option.icon /> : null}
@@ -64,7 +73,10 @@ export function MenuItemRow({
   return (
     <ContextMenuItem
       disabled={item.disabled}
-      onClick={() => onInvoke(item)}
+      onClick={() => {
+        onInvoke(item)
+        item.run()
+      }}
       variant={item.destructive ? 'destructive' : 'default'}
     >
       {item.icon ? <item.icon /> : null}

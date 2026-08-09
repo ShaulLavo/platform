@@ -18,9 +18,6 @@ function storeWithRoot(path: string | null) {
   return createEditorWorkspaceStore({
     chatModePanels: createDefaultChatModePanels(),
     diffViewMode: DEFAULT_DIFF_VIEW_MODE,
-    editorHistory: [],
-    openFilePaths: [],
-    recentlyClosedEditorPaths: [],
     rootFolder: path
       ? {
           birthtimeMs: 0,
@@ -32,10 +29,20 @@ function storeWithRoot(path: string | null) {
           version: '',
         }
       : null,
-    selectedFilePath: null,
+    searchBuffers: {},
     uiMode: 'workbench',
+    wallpaperHidden: false,
     workbenchLayout: createDefaultWorkbenchLayout(),
-    workbenchPanels: createDefaultWorkbenchPanels(),
+    workspaceOrder: path ? [path] : [],
+    workspaces: path
+      ? {
+          [path]: {
+            editorHistory: [],
+            recentlyClosedEditorPaths: [],
+            workbenchPanels: createDefaultWorkbenchPanels(),
+          },
+        }
+      : {},
   })
 }
 

@@ -17,10 +17,15 @@ import {
   type ProjectId,
   type ProjectMetaUpdateCommand,
   type RuntimeMode,
+  type ThreadArchiveCommand,
   type ThreadCheckpointRevertCommand,
+  type ThreadDeleteCommand,
   type ThreadId,
+  type ThreadMetaUpdateCommand,
+  type ThreadSessionStopCommand,
   type ThreadTurnInterruptCommand,
   type ThreadTurnStartCommand,
+  type ThreadUnarchiveCommand,
   type TurnId,
 } from '@workspace/contracts'
 import * as v from 'valibot'
@@ -194,6 +199,89 @@ export function createThreadInterruptCommand({
     threadId,
     turnId,
     type: 'thread.turn.interrupt',
+  }
+}
+
+export function createThreadSessionStopCommand({
+  createdAt,
+  threadId,
+}: {
+  createdAt: string
+  threadId: ThreadId
+}): ThreadSessionStopCommand {
+  return {
+    commandId: createCommandId(),
+    createdAt,
+    threadId,
+    type: 'thread.session.stop',
+  }
+}
+
+/**
+ * Sets only the title. Every other field is deliberately omitted so the
+ * projection's compact patch leaves the model, branch, and worktree alone.
+ * The title must already be trimmed and non-empty — the server rejects blanks.
+ */
+export function createThreadRenameCommand({
+  threadId,
+  title,
+  updatedAt,
+}: {
+  threadId: ThreadId
+  title: string
+  updatedAt: string
+}): ThreadMetaUpdateCommand {
+  return {
+    commandId: createCommandId(),
+    threadId,
+    title,
+    type: 'thread.meta.update',
+    updatedAt,
+  }
+}
+
+export function createThreadArchiveCommand({
+  archivedAt,
+  threadId,
+}: {
+  archivedAt: string
+  threadId: ThreadId
+}): ThreadArchiveCommand {
+  return {
+    archivedAt,
+    commandId: createCommandId(),
+    threadId,
+    type: 'thread.archive',
+  }
+}
+
+export function createThreadUnarchiveCommand({
+  threadId,
+  updatedAt,
+}: {
+  threadId: ThreadId
+  updatedAt: string
+}): ThreadUnarchiveCommand {
+  return {
+    commandId: createCommandId(),
+    threadId,
+    type: 'thread.unarchive',
+    updatedAt,
+  }
+}
+
+export function createThreadDeleteCommand({
+  deletedAt,
+  threadId,
+}: {
+  deletedAt: string
+  threadId: ThreadId
+}): ThreadDeleteCommand {
+  return {
+    commandId: createCommandId(),
+    deletedAt,
+    threadId,
+    type: 'thread.delete',
   }
 }
 

@@ -52,10 +52,12 @@ type WorkspaceCommandContext = {
   readonly setFocusArea: (area: FocusArea) => void
   readonly setTheme: (theme: Theme) => void
   readonly setUiMode: (mode: WorkspaceUiMode) => void
+  readonly setWallpaperHidden: (hidden: boolean) => void
   readonly setWorkbenchPanels: (panels: WorkbenchPanels) => void
   readonly showCommandPalette: (initialSearch?: string) => void
   readonly selectPreviousEditor: () => boolean
   readonly uiMode: WorkspaceUiMode
+  readonly wallpaperHidden: boolean
   readonly workbenchPanels: WorkbenchPanels
 }
 
@@ -110,10 +112,12 @@ export function usePlatformCommandDispatch({
         setFocusArea,
         setTheme,
         setUiMode: workspace.setUiMode,
+        setWallpaperHidden: workspace.setWallpaperHidden,
         setWorkbenchPanels: workspace.setWorkbenchPanels,
         showCommandPalette,
         selectPreviousEditor,
         uiMode: workspace.uiMode,
+        wallpaperHidden: workspace.wallpaperHidden,
         workbenchPanels: workspace.workbenchPanels,
       })
     },
@@ -263,6 +267,10 @@ const workspaceCommandHandlers: Partial<Record<WorkspaceCommandId, WorkspaceComm
   },
   'workspace.toggleUiMode': ({ setUiMode, uiMode }) => {
     setUiMode(toggledWorkspaceUiMode(uiMode))
+    return true
+  },
+  'workspace.toggleWallpaper': ({ setWallpaperHidden, wallpaperHidden }) => {
+    setWallpaperHidden(!wallpaperHidden)
     return true
   },
   'workspace.showChatMode': ({ setUiMode }) => {

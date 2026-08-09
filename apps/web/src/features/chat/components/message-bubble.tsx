@@ -1,17 +1,21 @@
 import type { OrchestrationMessage } from '@workspace/contracts'
 import { ArrowCounterClockwiseIcon } from '@phosphor-icons/react'
 import { cn } from '@workspace/ui/lib/utils'
-import type { ReactNode } from 'react'
+import type { MouseEvent, ReactNode } from 'react'
+
+import { useContextMenu } from '@/features/menus/hooks/use-context-menu'
 
 import { formatChatTimestamp } from '../lib/chat-formatters'
 import { resolveAssistantMessageCopyState } from '../lib/chat-message-metadata'
 import type { OptimisticChatMessage } from '../state/chat-optimistic-store'
 import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
+import { allowsMessageContextMenu } from '../utils/message-menu'
 import { useChatTimelineActions } from '../hooks/use-chat-timeline-actions'
 import { AssistantChangedFilesSection } from './assistant-changed-files-section'
 import { AssistantMessageMeta } from './assistant-message-meta'
 import { AssistantMarkdown } from './assistant-markdown'
 import { MessageCompletionDivider } from './message-completion-divider'
+import { MessageMenu } from './message-menu'
 
 export function MessageBubble({
   assistantStreaming,
@@ -41,6 +45,7 @@ export function MessageBubble({
   turnDiffSummary?: ChatTurnDiffSummary | null
 }) {
   const { revertToCheckpoint } = useChatTimelineActions()
+  const contextMenu = useContextMenu()
   const user = message.role === 'user'
   const assistant = message.role === 'assistant'
   const effectiveAssistantStreaming = assistantStreaming ?? (assistant ? message.streaming : false)
@@ -85,6 +90,14 @@ export function MessageBubble({
     revertToCheckpoint(revertTurnCount)
   }
 
+  // Opened by hand rather than through MenuSurface's trigger: the trigger
+  // applies `select-none`, which would make message text unselectable.
+  function handleContextMenu(event: MouseEvent<HTMLElement>) {
+    if (!allowsMessageContextMenu(event.target)) return
+
+    contextMenu.openAtEvent(event, event.currentTarget)
+  }
+
   return (
     <>
       {assistant && showCompletionDivider ? (
@@ -105,6 +118,7 @@ export function MessageBubble({
               ? 'max-w-[80%] rounded-2xl rounded-br-sm border border-border bg-secondary px-4 py-3 text-secondary-foreground'
               : 'w-full max-w-full px-1 py-0.5 text-foreground',
           )}
+          onContextMenu={handleContextMenu}
         >
           {user ? (
             <>
@@ -155,6 +169,16 @@ export function MessageBubble({
             </div>
           )}
         </article>
+        {contextMenu.open ? (
+          <MessageMenu
+            anchor={contextMenu.anchor}
+            checkpointRevertPending={checkpointRevertPending}
+            message={message}
+            onOpenChange={contextMenu.onOpenChange}
+            revertTurnCount={revertTurnCount}
+            turnDiffSummary={turnDiffSummary}
+          />
+        ) : null}
       </div>
     </>
   )

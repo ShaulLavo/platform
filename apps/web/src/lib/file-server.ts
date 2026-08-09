@@ -29,6 +29,11 @@ const readLogs = createCoalescedLogQueue({
   emit: (event) => log.info(event),
 })
 
+type DeleteResult = {
+  deleted: boolean
+  path: string
+}
+
 export type WriteFileContentOptions = {
   baseVersion?: string | null
   expectedMtimeMs?: number | null
@@ -222,6 +227,36 @@ export async function renamePath(from: string, to: string) {
       return response.data as TreeEntry
     },
     (entry) => ({ entryType: entry.type, size: entry.size }),
+  )
+}
+
+export async function copyPath(from: string, to: string) {
+  return observeClientOperation(
+    { action: 'fs.copy', area: 'fs', from, path: to, recursive: true },
+    async () => {
+      // Directories are the common case for a tree duplicate, and copying a
+      // file with `recursive` set is a no-op flag on the server's `cp`.
+      const response = await getClient().fs.copy.post({ from, recursive: true, to })
+
+      if (response.error) throw createRpcError(response.error)
+
+      return response.data as TreeEntry
+    },
+    (entry) => ({ entryType: entry.type, size: entry.size }),
+  )
+}
+
+export async function deletePath(path: string, recursive: boolean) {
+  return observeClientOperation(
+    { action: 'fs.delete', area: 'fs', path, recursive },
+    async () => {
+      const response = await getClient().fs.delete.post({ path, recursive })
+
+      if (response.error) throw createRpcError(response.error)
+
+      return response.data as DeleteResult
+    },
+    (result) => ({ deleted: result.deleted }),
   )
 }
 

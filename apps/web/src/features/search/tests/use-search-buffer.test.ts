@@ -170,25 +170,30 @@ describe('workspace search run state', () => {
   it('starts when ready results only came from cache', () => {
     const query = workspaceSearchQuery('repo', 'needle')
     const store = createSearchBufferStore({
-      activeResultId: null,
-      caseSensitive: false,
-      collapsedPaths: [],
-      excludeGlobText: '',
-      filtersVisible: false,
-      includeGlobText: '',
-      matchMode: 'literal',
-      matches: [],
-      query: 'needle',
-      queryHistory: [],
-      replaceHistory: [],
-      replaceText: '',
-      replaceVisible: false,
-      resultsQuery: 'needle',
-      resultsSearchQuery: query,
+      cachedByRootPath: {
+        repo: {
+          activeResultId: null,
+          caseSensitive: false,
+          collapsedPaths: [],
+          excludeGlobText: '',
+          filtersVisible: false,
+          includeGlobText: '',
+          matchMode: 'literal',
+          matches: [],
+          query: 'needle',
+          queryHistory: [],
+          replaceHistory: [],
+          replaceText: '',
+          replaceVisible: false,
+          resultsQuery: 'needle',
+          resultsSearchQuery: query,
+          rootPath: 'repo',
+          totalCount: 0,
+          truncated: false,
+          wholeWord: false,
+        },
+      },
       rootPath: 'repo',
-      totalCount: 0,
-      truncated: false,
-      wholeWord: false,
     })
 
     expect(store.getState().active?.status).toBe('ready')

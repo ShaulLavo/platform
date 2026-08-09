@@ -1295,6 +1295,7 @@ class ClaudeAgentSession {
       { usage: claudeTokenUsage(message.usage) },
       message,
     )
+    void this.emitContextUsage(message)
 
     const turn = this.activeTurn
     if (!turn) {
@@ -1620,6 +1621,38 @@ class ClaudeAgentSession {
    * event union actually declares — an untyped `payload: unknown` would let a
    * 28-subtype mapping table drift silently.
    */
+  /**
+   * A result message reports the tokens that turn cost, not how full the window is —
+   * it carries no window size at all, so the context gauge has nothing to divide by.
+   * `getContextUsage` is the only source of that number, and it is a control request:
+   * asynchronous, streaming-input only, and unavailable once the session is gone.
+   * So the per-turn usage goes out immediately and this follows when it can.
+   */
+  private async emitContextUsage(message: SDKMessage) {
+    const query = this.query
+    if (!query) return
+
+    try {
+      const context = await query.getContextUsage()
+      this.emitRuntimeNotification(
+        'thread.token-usage.updated',
+        {
+          usage: {
+            compactsAutomatically: true,
+            maxTokens: context.maxTokens,
+            usedTokens: context.totalTokens,
+          },
+        },
+        message,
+      )
+    } catch (error) {
+      recordChatPipelineWarning('chat.pipeline.claude_session.context_usage.failed', {
+        error,
+        threadId: this.threadId,
+      })
+    }
+  }
+
   private emitRuntimeNotification<Type extends ProviderRuntimeEvent['type']>(
     type: Type,
     payload: ClaudeRuntimeEventPayload<Type>,

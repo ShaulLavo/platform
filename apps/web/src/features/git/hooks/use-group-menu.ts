@@ -1,0 +1,34 @@
+import type { ChangeRow, PanelSection } from '../types'
+import { groupMenu } from '../utils/group-menu'
+import { useDiscardPathsMutation } from './use-discard-paths-mutation'
+import { useDiscardStagedPathsMutation } from './use-discard-staged-paths-mutation'
+import { useOpenDiffDocument } from './use-open-diff-document'
+import { useStagePathsMutation } from './use-stage-paths-mutation'
+import { useUnstagePathsMutation } from './use-unstage-paths-mutation'
+
+export function useGroupMenu(rows: readonly ChangeRow[], section: PanelSection) {
+  const paths = rows.map((row) => row.file.path)
+  const staged = section === 'staged'
+  const discard = useDiscardPathsMutation(paths)
+  const discardStaged = useDiscardStagedPathsMutation(paths)
+  const stage = useStagePathsMutation(paths)
+  const unstage = useUnstagePathsMutation(paths)
+  const { openDiffs } = useOpenDiffDocument()
+
+  function runDiscardAll() {
+    if (staged) {
+      discardStaged.mutate()
+      return
+    }
+
+    discard.mutate()
+  }
+
+  return groupMenu({
+    discardAll: runDiscardAll,
+    openAllDiffs: () => void openDiffs(rows),
+    section,
+    stageAll: () => stage.mutate(),
+    unstageAll: () => unstage.mutate(),
+  })
+}

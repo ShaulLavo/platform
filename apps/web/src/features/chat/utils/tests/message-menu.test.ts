@@ -1,0 +1,105 @@
+import { chatMessageMenu, type ChatMessageMenuContext } from '@/features/chat/utils/message-menu'
+import { expect, test } from '../../../../../test/fixtures'
+
+test('a user message offers Copy without the markdown twin', () => {
+  expect(itemLabels(menuContext(), 'copy')).toEqual(['Copy'])
+})
+
+test('an assistant message offers both copy flavours in order', () => {
+  expect(itemLabels(menuContext({ isAssistant: true }), 'copy')).toEqual([
+    'Copy',
+    'Copy as Markdown',
+  ])
+})
+
+test('an empty message disables both copy items rather than hiding them', () => {
+  const items = sectionItems(menuContext({ hasText: false, isAssistant: true }), 'copy')
+
+  expect(items.map((item) => item.disabled)).toEqual([true, true])
+})
+
+test('Copy runs the plain-text copy and Copy as Markdown runs the source copy', () => {
+  const ran: string[] = []
+  const items = sectionItems(
+    menuContext({
+      copyMarkdown: () => ran.push('markdown'),
+      copyText: () => ran.push('text'),
+      isAssistant: true,
+    }),
+    'copy',
+  )
+
+  for (const item of items) item.run()
+
+  expect(ran).toEqual(['text', 'markdown'])
+})
+
+test('omits the checkpoint section when the message anchors neither action', () => {
+  expect(chatMessageMenu(menuContext()).map((entry) => entry.id)).toEqual(['copy', 'checkpoint'])
+  expect(itemLabels(menuContext(), 'checkpoint')).toEqual([])
+})
+
+test('a user message with a checkpoint after it offers the revert', () => {
+  expect(itemLabels(menuContext({ canRevertCheckpoint: true }), 'checkpoint')).toEqual([
+    'Revert to Checkpoint Before This',
+  ])
+})
+
+test('the revert is destructive and disables itself while one is in flight', () => {
+  const [idle] = sectionItems(menuContext({ canRevertCheckpoint: true }), 'checkpoint')
+  const [pending] = sectionItems(
+    menuContext({ canRevertCheckpoint: true, revertPending: true }),
+    'checkpoint',
+  )
+
+  expect(idle).toMatchObject({ destructive: true, disabled: false })
+  expect(pending).toMatchObject({ destructive: true, disabled: true })
+})
+
+test('an assistant message with a readable turn diff offers the changed files', () => {
+  expect(
+    itemLabels(menuContext({ canViewChangedFiles: true, isAssistant: true }), 'checkpoint'),
+  ).toEqual(['View Changed Files'])
+})
+
+test('the changed-files item is unavailable while nothing renders a diff document', () => {
+  const [changedFiles] = sectionItems(
+    menuContext({ canViewChangedFiles: true, isAssistant: true }),
+    'checkpoint',
+  )
+
+  expect(changedFiles?.unavailable).toBe('No diff viewer')
+})
+
+function sectionItems(context: ChatMessageMenuContext, sectionId: string) {
+  const entry = chatMessageMenu(context).find((candidate) => candidate.id === sectionId)
+
+  return (entry?.items ?? []).filter(Boolean) as {
+    destructive?: boolean
+    disabled?: boolean
+    label: string
+    run: () => void
+    unavailable?: string
+  }[]
+}
+
+function itemLabels(context: ChatMessageMenuContext, sectionId: string) {
+  return sectionItems(context, sectionId).map((item) => item.label)
+}
+
+function menuContext(overrides: Partial<ChatMessageMenuContext> = {}): ChatMessageMenuContext {
+  return {
+    canRevertCheckpoint: false,
+    canViewChangedFiles: false,
+    copyMarkdown: noop,
+    copyText: noop,
+    hasText: true,
+    isAssistant: false,
+    revertPending: false,
+    revertToCheckpoint: noop,
+    viewChangedFiles: noop,
+    ...overrides,
+  }
+}
+
+function noop() {}

@@ -4,6 +4,7 @@ import {
   ResizableHandle,
   ResizablePanel,
 } from '@workspace/ui/components/resizable'
+import { cn } from '@workspace/ui/lib/utils'
 
 import type { EditorTabConflictMap } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 import { ChatStage } from '@/features/chat-mode/components/chat-stage'
@@ -74,13 +75,19 @@ export function ChatModeLayout({
           </>
         ) : null}
         <ResizablePanel className='min-h-0 min-w-0 overflow-hidden' id='stage' minSize={360}>
-          <ChatStage rootPath={rootPath} />
+          <ChatStage />
         </ResizablePanel>
         {panels.toolPaneOpen ? (
           <>
             <ResizableHandle id='tools-handle' withHandle />
             <ResizablePanel
-              className='bg-card backdrop-material border-border min-h-0 min-w-0 overflow-hidden border-l'
+              className={cn(
+                'border-border min-h-0 min-w-0 overflow-hidden border-l',
+                // The editor tab paints its own content well; every other tool
+                // pane needs the pane material. Painting both stacks two card
+                // layers and the well loses its wallpaper ghost.
+                panels.activeToolTab !== 'editor' && 'bg-card backdrop-material',
+              )}
               defaultSize={TOOL_PANE_DEFAULT_SIZE}
               id='tools'
               maxSize={TOOL_PANE_MAX_SIZE}

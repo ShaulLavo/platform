@@ -48,17 +48,19 @@ export function MenuSurface({
 }) {
   const sections = useResolvedMenu(menu)
 
-  function handleInvoke(item: ResolvedMenuItem) {
-    if (item.kind !== 'run') return
-
+  /**
+   * Logging only — the row itself runs the item. Every kind reports, so a menu
+   * whose only affordance is a radio group is not invisible in the logs.
+   */
+  function handleInvoke(item: ResolvedMenuItem, value?: string) {
     log.info({
       action: 'menu.invoke',
       area: 'command',
-      command: item.command,
+      command: item.kind === 'run' ? item.command : null,
       item: item.key,
       menu: surface,
+      value,
     })
-    item.run()
   }
 
   return (

@@ -5,17 +5,22 @@ import {
   useEffect,
   useEffectEvent,
   useRef,
+  useState,
   type ComponentPropsWithoutRef,
   type FocusEvent,
+  type MouseEvent as ReactMouseEvent,
 } from 'react'
 
 import { useTheme } from '@/components/theme-context'
 import { useFocus } from '@/components/workspace/focus/providers/focus-state'
+import { useContextMenu } from '@/features/menus/hooks/use-context-menu'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { DEFAULT_MONO_FONT_STACK } from '@/lib/default-nerd-font'
 import { connectTerminalSocket, type EdenServerSocket } from '@/lib/server-sockets'
 
+import { TerminalMenu } from './components/menu'
 import { sendTerminalClientMessage } from './terminal-socket'
+import { readTerminalMenuTarget, type TerminalMenuTarget } from './utils/commands'
 import { readTerminalTheme } from './terminal-theme'
 import { isFocusOutsideElement } from './utils/focus-target'
 
@@ -55,6 +60,8 @@ export function TerminalPanel({
   const hostRef = useRef<HTMLDivElement | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const { resolvedTheme } = useTheme()
+  const contextMenu = useContextMenu()
+  const [menuTarget, setMenuTarget] = useState<TerminalMenuTarget | null>(null)
   const terminalHasFocusArea = useFocus((state) => state.activeArea === 'terminal')
   const setFocusArea = useFocus((state) => state.setFocusArea)
   const activateTerminalAfterFrame = useEffectEvent(() => {
@@ -84,6 +91,29 @@ export function TerminalPanel({
     setFocusArea('terminal')
     applyTerminalCursorOptions(terminalRef.current, FOCUSED_TERMINAL_CURSOR)
   }
+  // ghostty registers its own `contextmenu` listener on the canvas and never
+  // calls preventDefault — it parks a hidden textarea under the cursor so the
+  // native menu can copy and paste. That listener runs in the target phase, so
+  // only a capture-phase handler above the canvas can take the event first.
+  const handleTerminalContextMenu = (event: ReactMouseEvent<HTMLElement>) => {
+    const terminal = terminalRef.current
+    if (!terminal) return
+
+    event.stopPropagation()
+    // Snapshotted here because ghostty drops the selection from a document
+    // `click` handler the moment a portalled menu item is pressed.
+    setMenuTarget(readTerminalMenuTarget(terminal))
+    contextMenu.openAtEvent(event)
+  }
+  // Nothing owns focus for us: the anchor path has no trigger element for Base
+  // UI to restore focus to, so the terminal would go dead after every menu.
+  const handleTerminalMenuOpenChange = (open: boolean) => {
+    contextMenu.onOpenChange(open)
+    if (open) return
+
+    setMenuTarget(null)
+    terminalRef.current?.focus()
+  }
 
   // ghostty-web bakes the theme into its WASM terminal at construction and has
   // no runtime theme API, so a live theme switch is applied by rebuilding the
@@ -112,6 +142,9 @@ export function TerminalPanel({
 
       terminalRef.current = null
       fitAddonRef.current = null
+      // The open menu holds the terminal it was opened against. Dropping it
+      // here keeps a theme switch from leaving items pointed at a disposed one.
+      setMenuTarget(null)
       unmountTerminal()
     }
   }, [resolvedTheme, rootPath, sessionId])
@@ -143,10 +176,18 @@ export function TerminalPanel({
       className={cn('flex min-h-0 min-w-0 flex-col overflow-hidden', className)}
       style={{ background: 'var(--terminal-background)' }}
       onBlurCapture={handleTerminalBlur}
+      onContextMenuCapture={handleTerminalContextMenu}
       onFocusCapture={handleTerminalFocus}
       onPointerDownCapture={handleTerminalPointerDown}
     >
       <div className='min-h-0 min-w-0 flex-1 overflow-hidden px-3 py-2 font-mono' ref={hostRef} />
+      {contextMenu.anchor && menuTarget ? (
+        <TerminalMenu
+          anchor={contextMenu.anchor}
+          onOpenChange={handleTerminalMenuOpenChange}
+          target={menuTarget}
+        />
+      ) : null}
     </section>
   )
 }

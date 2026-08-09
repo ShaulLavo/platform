@@ -18,7 +18,7 @@ export function MenuSection({
   section,
 }: {
   readonly index: number
-  readonly onInvoke: (item: ResolvedMenuItem) => void
+  readonly onInvoke: (item: ResolvedMenuItem, value?: string) => void
   readonly section: ResolvedMenuSection
 }) {
   return (

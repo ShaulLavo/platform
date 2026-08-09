@@ -8,12 +8,13 @@ import { createEditorUiStore } from '@/features/editor/state/editor-ui-state'
 import { createEditorWorkspaceStore } from '@/features/editor/state/editor-workspace-state'
 import { DEFAULT_DIFF_VIEW_MODE } from '@/features/editor/utils/diff-view-mode'
 import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { createSearchBufferStore } from '@/features/search/search-buffer-state'
 import {
   createDefaultWorkbenchPanels,
   openEditorPathInWorkbenchPanels,
 } from '@/features/workbench/utils/workbench-panels'
 import type { PickedFsEntry } from '@/lib/file-system-types'
-import type { CachedWorkspaceState } from '@/lib/workspace-cache'
+import type { CachedWorkspaceSlice, CachedWorkspaceState } from '@/lib/workspace-cache'
 
 describe('editor workspace state', () => {
   it('opens files as flat editor tabs and records history', () => {
@@ -127,6 +128,65 @@ describe('editor workspace state', () => {
     expect(commands.moveTabToSplit(activeTabId!, 'main', 'right')).toBe(false)
   })
 
+  it('parks the open project on a switch and restores it on the way back', () => {
+    const { commands, workspaceStore } = editorHarness({
+      editorHistory: ['/repo/src/a.ts'],
+      workbenchPanels: workbenchPanelsForPaths(['/repo/src/a.ts'], '/repo/src/a.ts'),
+    })
+
+    commands.switchRootFolder(pickedDirectory('/other'))
+
+    expect(workspaceStore.getState()).toMatchObject({
+      editorHistory: [],
+      openFilePaths: [],
+      selectedFilePath: null,
+    })
+    expect(workspaceStore.getState().parkedWorkspaces.get('/repo')).toMatchObject({
+      editorHistory: ['/repo/src/a.ts'],
+    })
+
+    commands.openFileSurface('/other/src/b.ts')
+    commands.switchRootFolder(pickedDirectory('/repo'))
+
+    expect(workspaceStore.getState()).toMatchObject({
+      editorHistory: ['/repo/src/a.ts'],
+      openFilePaths: ['/repo/src/a.ts'],
+      selectedFilePath: '/repo/src/a.ts',
+    })
+    expect(workspaceStore.getState().parkedWorkspaces.get('/other')?.editorHistory).toEqual([
+      '/other/src/b.ts',
+    ])
+  })
+
+  it('keeps a parked project’s documents and views alive across a switch', () => {
+    const { commands, documentStore, workspaceStore } = editorHarness({
+      workbenchPanels: workbenchPanelsForPaths(['/repo/src/a.ts'], '/repo/src/a.ts'),
+    })
+    const tabId = workspaceStore.getState().workbenchPanels.activeEditorTabId
+    expect(tabId).toBeTruthy()
+    documentStore.getState().ensureEditorView(tabId!, fileResult('/repo/src/a.ts'))
+
+    commands.switchRootFolder(pickedDirectory('/other'))
+
+    // Under the old wipe this document and its view were both gone, taking any
+    // unsaved edit with them.
+    expect(documentStore.getState().hasLiveEditorDocument('/repo/src/a.ts')).toBe(true)
+    expect(documentStore.getState().getEditorView(tabId!)).not.toBeNull()
+  })
+
+  it('carries search results across a switch and hands them back', () => {
+    const { commands, searchStore } = editorHarness()
+    searchStore
+      .getState()
+      .startSearch({ includeContent: true, limit: 20, path: '/repo', query: 'needle' })
+
+    commands.switchRootFolder(pickedDirectory('/other'))
+    expect(searchStore.getState().active).toBeNull()
+
+    commands.switchRootFolder(pickedDirectory('/repo'))
+    expect(searchStore.getState().active).toMatchObject({ query: 'needle', rootPath: '/repo' })
+  })
+
   it('reorders editor tabs without changing the selected path', () => {
     const panels = workbenchPanelsForPaths(
       ['/repo/src/a.ts', '/repo/src/b.ts', '/repo/src/c.ts'],
@@ -147,32 +207,36 @@ describe('editor workspace state', () => {
   })
 })
 
-function editorHarness(overrides: Partial<CachedWorkspaceState> = {}) {
+function editorHarness(slice: Partial<CachedWorkspaceSlice> = {}) {
   const documentStore = createEditorDocumentStore()
+  const searchStore = createSearchBufferStore()
   const uiStore = createEditorUiStore()
-  const workspaceStore = createEditorWorkspaceStore(cachedWorkspace(overrides))
-  const commands = createEditorCommands({ documentStore, uiStore, workspaceStore })
+  const workspaceStore = createEditorWorkspaceStore(cachedWorkspace(slice))
+  const commands = createEditorCommands({ documentStore, searchStore, uiStore, workspaceStore })
 
-  return { commands, documentStore, uiStore, workspaceStore }
+  return { commands, documentStore, searchStore, uiStore, workspaceStore }
 }
 
-function cachedWorkspace(overrides: Partial<CachedWorkspaceState>): CachedWorkspaceState {
-  const workbenchPanels = overrides.workbenchPanels ?? createDefaultWorkbenchPanels()
+function cachedWorkspace(slice: Partial<CachedWorkspaceSlice>): CachedWorkspaceState {
+  const rootFolder = pickedDirectory('/repo')
 
   return {
     chatModePanels: createDefaultChatModePanels(),
     diffViewMode: DEFAULT_DIFF_VIEW_MODE,
-    editorHistory: [],
-    openFilePaths: workbenchPanels.editorTabs.map((tab) => tab.path),
-    recentlyClosedEditorPaths: [],
-    rootFolder: pickedDirectory('/repo'),
-    selectedFilePath:
-      workbenchPanels.editorTabs.find((tab) => tab.id === workbenchPanels.activeEditorTabId)
-        ?.path ?? null,
+    rootFolder,
+    searchBuffers: {},
     uiMode: 'workbench',
+    wallpaperHidden: false,
     workbenchLayout: createDefaultWorkbenchLayout(),
-    workbenchPanels,
-    ...overrides,
+    workspaceOrder: [rootFolder.path],
+    workspaces: {
+      [rootFolder.path]: {
+        editorHistory: [],
+        recentlyClosedEditorPaths: [],
+        workbenchPanels: createDefaultWorkbenchPanels(),
+        ...slice,
+      },
+    },
   }
 }
 
@@ -184,11 +248,23 @@ function workbenchPanelsForPaths(paths: readonly string[], activePath: string | 
   return openEditorPathInWorkbenchPanels(panels, activePath)
 }
 
+function fileResult(path: string, content = 'const a = 1') {
+  return {
+    birthtimeMs: 0,
+    content,
+    mtimeMs: 0,
+    path,
+    size: content.length,
+    type: 'file' as const,
+    version: 'v1',
+  }
+}
+
 function pickedDirectory(path: string): PickedFsEntry {
   return {
     birthtimeMs: 1,
     mtimeMs: 1,
-    name: 'repo',
+    name: path.split('/').filter(Boolean).at(-1) ?? path,
     path,
     size: 1,
     type: 'directory',

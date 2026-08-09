@@ -18,6 +18,12 @@ export function RenameInput({
   onBlur,
   onInput,
 }: RenameInputProps): JSX.Element {
+  // Preact renders this, but the app's Vite pipeline runs the React Compiler
+  // over every file it serves. Compiled output calls React's `useMemoCache`,
+  // which throws "Invalid hook call" under Preact's dispatcher — same opt-out
+  // as Icon, OverflowText, and FileTreeView.
+  'use no memo'
+
   return (
     <input
       ref={ref}

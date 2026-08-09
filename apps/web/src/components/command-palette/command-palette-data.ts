@@ -32,6 +32,7 @@ export const workspaceOptionalCommands: ReadonlySet<PlatformCommandId> = new Set
   'workspace.setLightTheme',
   'workspace.setSystemTheme',
   'workspace.showCommandPalette',
+  'workspace.toggleWallpaper',
 ])
 
 export const viewPaletteItems: readonly ViewPaletteItem[] = [

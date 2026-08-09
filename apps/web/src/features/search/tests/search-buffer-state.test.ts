@@ -86,7 +86,10 @@ describe('search buffer store', () => {
     const collapsedResultId = store.getState().active?.activeResultId ?? null
 
     const cached = cachedSearchBufferState(store.getState().active)
-    const restored = createSearchBufferStore(cached)
+    const restored = createSearchBufferStore({
+      cachedByRootPath: cached ? { [cached.rootPath]: cached } : {},
+      rootPath: 'repo',
+    })
 
     expect(selectedResultId).not.toBeNull()
     expect(collapsedResultId).not.toBe(selectedResultId)

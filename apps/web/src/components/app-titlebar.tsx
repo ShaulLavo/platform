@@ -3,6 +3,7 @@ import { FileIcon } from '@phosphor-icons/react'
 import { UiModeToggle } from '@/components/ui-mode-toggle'
 import { WorkspaceProjectMenu } from '@/components/workspace-project-menu'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { TitlebarMenu } from '@/features/workbench/components/titlebar-menu'
 import { titlebarModel } from '@/features/workbench/utils/titlebar-model'
 import { isDesktop } from '@/lib/platform/bridge'
 import { NATIVE_WINDOW_DRAG_CLASS } from '@/lib/platform/window-drag'
@@ -15,7 +16,9 @@ export function AppTitlebar() {
   const uiMode = useEditorWorkspaceState((state) => state.uiMode)
   const model = titlebarModel(rootFolder, panels, layout, uiMode)
 
-  return (
+  // Built as an element rather than returned so the whole bar — including the
+  // gaps between its controls — is the context menu's trigger.
+  const titlebar = (
     <header
       aria-label='Window toolbar'
       className={cn(
@@ -40,4 +43,6 @@ export function AppTitlebar() {
       </div>
     </header>
   )
+
+  return <TitlebarMenu trigger={titlebar} />
 }

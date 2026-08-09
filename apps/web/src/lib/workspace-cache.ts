@@ -20,9 +20,7 @@ import {
 } from '@/features/workbench/utils/workbench-layout'
 import { DEFAULT_WORKSPACE_UI_MODE, isWorkspaceUiMode, type WorkspaceUiMode } from '@/lib/ui-mode'
 import {
-  activeEditorPathForWorkbenchPanels,
   createDefaultWorkbenchPanels,
-  editorOpenPathsForWorkbenchPanels,
   normalizeWorkbenchPanels,
   type WorkbenchPanels,
 } from '@/features/workbench/utils/workbench-panels'
@@ -36,20 +34,40 @@ import * as v from 'valibot'
 
 // Local-only UI state uses an explicit schema version plus a clear mismatch policy:
 // update deliberately or drop intentionally. Server-backed caches may reset/refetch.
-const CACHE_VERSION = 14
+const CACHE_VERSION = 15
 const CACHE_KEY_PREFIX = `platform.workspace-state.v${CACHE_VERSION}`
+const WORKSPACE_SLICE_KEY_PREFIX = `${CACHE_KEY_PREFIX}.workspace:`
+const SEARCH_BUFFER_KEY_PREFIX = `${CACHE_KEY_PREFIX}.search:`
+
+/**
+ * How many projects keep their tabs across restarts. Slices are small (paths and
+ * ids), so the ceiling exists to bound localStorage growth over months of use,
+ * not to protect any one write.
+ */
+export const WORKSPACE_SLICE_LIMIT = 8
 
 export const WORKSPACE_CACHE_STORAGE_KEYS = {
   chatModePanels: `${CACHE_KEY_PREFIX}.chatModePanels`,
   diffViewMode: `${CACHE_KEY_PREFIX}.diffViewMode`,
-  editorHistory: `${CACHE_KEY_PREFIX}.editorHistory`,
-  recentlyClosedEditorPaths: `${CACHE_KEY_PREFIX}.recentlyClosedEditorPaths`,
   rootFolder: `${CACHE_KEY_PREFIX}.rootFolder`,
-  searchBuffer: `${CACHE_KEY_PREFIX}.searchBuffer`,
   uiMode: `${CACHE_KEY_PREFIX}.uiMode`,
+  wallpaperHidden: `${CACHE_KEY_PREFIX}.wallpaperHidden`,
   workbenchLayout: `${CACHE_KEY_PREFIX}.workbenchLayout`,
-  workbenchPanels: `${CACHE_KEY_PREFIX}.workbenchPanels`,
+  workspaceIndex: `${CACHE_KEY_PREFIX}.workspaces`,
 } as const
+
+/** Per-project state lives under its own key so switching never rewrites another project's. */
+export function workspaceSliceStorageKey(rootPath: string) {
+  return `${WORKSPACE_SLICE_KEY_PREFIX}${rootPath}`
+}
+
+/**
+ * Search results are the one bulky entry — a full match list. Splitting them from the
+ * slice keeps a quota failure on search from taking the project's open tabs with it.
+ */
+export function searchBufferStorageKey(rootPath: string) {
+  return `${SEARCH_BUFFER_KEY_PREFIX}${rootPath}`
+}
 
 export type CachedSearchBufferState = {
   activeResultId: string | null
@@ -188,6 +206,11 @@ const workbenchLayoutSchema = v.strictObject({
   mainLayout: mainLayoutSchema,
   outerLayout: outerLayoutSchema,
 })
+const workspaceSliceSchema = v.strictObject({
+  editorHistory: stringArraySchema,
+  recentlyClosedEditorPaths: stringArraySchema,
+  workbenchPanels: workbenchPanelsSchema,
+})
 const uiModeSchema = v.custom<WorkspaceUiMode>(isWorkspaceUiMode)
 const chatModePanelsSchema = v.strictObject({
   activeToolTab: v.custom<ChatModeToolTab>(isChatModeToolTab),
@@ -195,24 +218,29 @@ const chatModePanelsSchema = v.strictObject({
   toolPaneOpen: v.boolean(),
 })
 
-export type CachedWorkspaceState = {
-  chatModePanels: ChatModePanels
-  diffViewMode: EditorDiffViewMode
+/** Everything a single project remembers. Keyed by its root path, never merged. */
+export type CachedWorkspaceSlice = {
   editorHistory: string[]
-  openFilePaths: string[]
   recentlyClosedEditorPaths: string[]
-  rootFolder: PickedFsEntry | null
-  selectedFilePath: string | null
-  uiMode: WorkspaceUiMode
-  workbenchLayout: WorkbenchLayout
   workbenchPanels: WorkbenchPanels
 }
 
-export type WorkspaceCacheState = CachedWorkspaceState & {
-  searchBuffer: CachedSearchBufferState | null
+export type CachedWorkspaceState = {
+  chatModePanels: ChatModePanels
+  diffViewMode: EditorDiffViewMode
+  rootFolder: PickedFsEntry | null
+  /** Restored search results, by the root path they belong to. */
+  searchBuffers: Record<string, CachedSearchBufferState>
+  uiMode: WorkspaceUiMode
+  /** Suppresses the wallpaper image and video everywhere they are drawn. */
+  wallpaperHidden: boolean
+  workbenchLayout: WorkbenchLayout
+  /** Every remembered project, active one included. Most-recent-first is `workspaceOrder`. */
+  workspaces: Record<string, CachedWorkspaceSlice>
+  workspaceOrder: string[]
 }
 
-export function readWorkspaceCache(): WorkspaceCacheState {
+export function readWorkspaceCache(): CachedWorkspaceState {
   if (!canUseLocalStorage()) return emptyWorkspaceState()
 
   return workspaceStateFromCache()
@@ -226,6 +254,10 @@ export function writeUiModeCache(uiMode: WorkspaceUiMode) {
   writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.uiMode, uiMode)
 }
 
+export function writeWallpaperHiddenCache(wallpaperHidden: boolean) {
+  writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.wallpaperHidden, wallpaperHidden)
+}
+
 export function writeWorkbenchLayoutCache(workbenchLayout: WorkbenchLayout) {
   writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.workbenchLayout, workbenchLayout)
 }
@@ -234,64 +266,62 @@ export function writeChatModePanelsCache(chatModePanels: ChatModePanels) {
   writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.chatModePanels, chatModePanels)
 }
 
-export function writeEditorHistoryCache(
-  rootFolder: PickedFsEntry | null,
-  editorHistory: readonly string[],
-) {
-  writeCacheEntry(
-    WORKSPACE_CACHE_STORAGE_KEYS.editorHistory,
-    workspacePathsForCache(rootFolder, editorHistory),
-  )
-}
-
-export function writeRecentlyClosedEditorPathsCache(
-  rootFolder: PickedFsEntry | null,
-  recentlyClosedEditorPaths: readonly string[],
-) {
-  writeCacheEntry(
-    WORKSPACE_CACHE_STORAGE_KEYS.recentlyClosedEditorPaths,
-    workspacePathsForCache(rootFolder, recentlyClosedEditorPaths),
-  )
-}
-
 export function writeRootFolderCache(rootFolder: PickedFsEntry | null) {
   writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.rootFolder, rootFolder)
 }
 
-export function writeWorkbenchPanelsCache(
-  rootFolder: PickedFsEntry | null,
-  workbenchPanels: WorkbenchPanels,
-) {
-  writeCacheEntry(
-    WORKSPACE_CACHE_STORAGE_KEYS.workbenchPanels,
-    workbenchPanelsForCache(rootFolder, workbenchPanels),
-  )
+export function writeWorkspaceSliceCache(rootPath: string, slice: CachedWorkspaceSlice) {
+  writeCacheEntry(workspaceSliceStorageKey(rootPath), sliceForWorkspace(rootPath, slice))
 }
 
 export function writeSearchBufferCache(
-  rootFolder: PickedFsEntry | null,
+  rootPath: string,
   searchBuffer: CachedSearchBufferState | null,
 ) {
-  writeCacheEntry(
-    WORKSPACE_CACHE_STORAGE_KEYS.searchBuffer,
-    searchBufferForWorkspace(rootFolder, searchBuffer),
-  )
+  if (!searchBuffer || searchBuffer.rootPath !== rootPath) {
+    removeCacheEntry(searchBufferStorageKey(rootPath))
+    return
+  }
+
+  writeCacheEntry(searchBufferStorageKey(rootPath), searchBuffer)
 }
 
-function workspaceStateFromCache(): WorkspaceCacheState {
+/**
+ * Records which projects are remembered, newest first, and deletes the storage of any
+ * that fell off. Written after the slices themselves so a crash mid-write leaves an
+ * orphan slice — harmless — rather than an index pointing at nothing.
+ */
+export function writeWorkspaceIndexCache(rootPaths: readonly string[]) {
+  const kept = rootPaths.slice(0, WORKSPACE_SLICE_LIMIT)
+  const keptSet = new Set(kept)
+
+  // Both sources matter: the stored index knows about projects this caller has
+  // forgotten, and `rootPaths` knows about the ones it just trimmed off the end.
+  for (const rootPath of new Set([...readWorkspaceIndex(), ...rootPaths])) {
+    if (keptSet.has(rootPath)) continue
+
+    removeCacheEntry(workspaceSliceStorageKey(rootPath))
+    removeCacheEntry(searchBufferStorageKey(rootPath))
+  }
+
+  writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.workspaceIndex, kept)
+}
+
+function workspaceStateFromCache(): CachedWorkspaceState {
   const rootFolder = readCacheEntry<PickedFsEntry | null>(
     WORKSPACE_CACHE_STORAGE_KEYS.rootFolder,
     rootFolderSchema,
     null,
   )
-  const workbenchPanels = workbenchPanelsForWorkspace(
-    rootFolder,
-    readCacheEntry<WorkbenchPanels>(
-      WORKSPACE_CACHE_STORAGE_KEYS.workbenchPanels,
-      workbenchPanelsSchema,
-      createDefaultWorkbenchPanels(),
-    ),
-  )
+  const workspaceOrder = workspaceOrderFromCache(rootFolder)
+  const workspaces: Record<string, CachedWorkspaceSlice> = {}
+  const searchBuffers: Record<string, CachedSearchBufferState> = {}
+
+  for (const rootPath of workspaceOrder) {
+    workspaces[rootPath] = readWorkspaceSlice(rootPath)
+    const searchBuffer = readSearchBuffer(rootPath)
+    if (searchBuffer) searchBuffers[rootPath] = searchBuffer
+  }
 
   return {
     chatModePanels: readCacheEntry(
@@ -304,33 +334,17 @@ function workspaceStateFromCache(): WorkspaceCacheState {
       diffViewModeSchema,
       DEFAULT_DIFF_VIEW_MODE,
     ),
-    editorHistory: workspacePathsForCache(
-      rootFolder,
-      readCacheEntry<string[]>(WORKSPACE_CACHE_STORAGE_KEYS.editorHistory, stringArraySchema, []),
-    ),
-    openFilePaths: editorOpenPathsForWorkbenchPanels(workbenchPanels),
-    recentlyClosedEditorPaths: workspacePathsForCache(
-      rootFolder,
-      readCacheEntry<string[]>(
-        WORKSPACE_CACHE_STORAGE_KEYS.recentlyClosedEditorPaths,
-        stringArraySchema,
-        [],
-      ),
-    ),
     rootFolder,
-    searchBuffer: searchBufferForWorkspace(
-      rootFolder,
-      readCacheEntry<CachedSearchBufferState | null>(
-        WORKSPACE_CACHE_STORAGE_KEYS.searchBuffer,
-        v.nullable(cachedSearchBufferStateSchema),
-        null,
-      ),
-    ),
-    selectedFilePath: activeEditorPathForWorkbenchPanels(workbenchPanels),
+    searchBuffers,
     uiMode: readCacheEntry(
       WORKSPACE_CACHE_STORAGE_KEYS.uiMode,
       uiModeSchema,
       DEFAULT_WORKSPACE_UI_MODE,
+    ),
+    wallpaperHidden: readCacheEntry(
+      WORKSPACE_CACHE_STORAGE_KEYS.wallpaperHidden,
+      v.boolean(),
+      false,
     ),
     workbenchLayout: normalizeWorkbenchLayout(
       readCacheEntry(
@@ -339,8 +353,52 @@ function workspaceStateFromCache(): WorkspaceCacheState {
         createDefaultWorkbenchLayout(),
       ),
     ),
-    workbenchPanels,
+    workspaceOrder,
+    workspaces,
   }
+}
+
+/** The open root always leads, even when the index predates it or was dropped. */
+function workspaceOrderFromCache(rootFolder: PickedFsEntry | null) {
+  const stored = readWorkspaceIndex()
+  const activePath = rootFolder?.path
+  if (!activePath) return stored.slice(0, WORKSPACE_SLICE_LIMIT)
+
+  return [activePath, ...stored.filter((rootPath) => rootPath !== activePath)].slice(
+    0,
+    WORKSPACE_SLICE_LIMIT,
+  )
+}
+
+function readWorkspaceIndex() {
+  return readCacheEntry<string[]>(
+    WORKSPACE_CACHE_STORAGE_KEYS.workspaceIndex,
+    stringArraySchema,
+    [],
+  )
+}
+
+function readWorkspaceSlice(rootPath: string): CachedWorkspaceSlice {
+  return sliceForWorkspace(
+    rootPath,
+    readCacheEntry<CachedWorkspaceSlice>(
+      workspaceSliceStorageKey(rootPath),
+      workspaceSliceSchema,
+      emptyWorkspaceSlice(),
+    ),
+  )
+}
+
+function readSearchBuffer(rootPath: string) {
+  const searchBuffer = readCacheEntry<CachedSearchBufferState | null>(
+    searchBufferStorageKey(rootPath),
+    v.nullable(cachedSearchBufferStateSchema),
+    null,
+  )
+  if (!searchBuffer) return null
+  if (searchBuffer.rootPath !== rootPath) return null
+
+  return searchBuffer
 }
 
 function readCacheEntry<T>(key: string, schema: v.GenericSchema, fallback: T): T {
@@ -372,6 +430,8 @@ function writeCacheEntry(key: string, value: unknown) {
 }
 
 function removeCacheEntry(key: string) {
+  if (!canUseLocalStorage()) return
+
   try {
     localStorage.removeItem(key)
   } catch {
@@ -379,18 +439,38 @@ function removeCacheEntry(key: string) {
   }
 }
 
-function workspacePathsForCache(rootFolder: PickedFsEntry | null, paths: readonly string[]) {
-  return Array.from(new Set(paths.filter((path) => pathForWorkspace(rootFolder, path))))
+function sliceForWorkspace(rootPath: string, slice: CachedWorkspaceSlice): CachedWorkspaceSlice {
+  const editorTabs = slice.workbenchPanels.editorTabs.filter((tab) =>
+    pathForWorkspace(rootPath, tab.path),
+  )
+
+  return {
+    editorHistory: workspacePathsForCache(rootPath, slice.editorHistory),
+    recentlyClosedEditorPaths: workspacePathsForCache(rootPath, slice.recentlyClosedEditorPaths),
+    workbenchPanels: normalizeWorkbenchPanels({
+      activeBottomTab: slice.workbenchPanels.activeBottomTab,
+      activeEditorTabId: activeEditorTabIdForTabs(
+        editorTabs,
+        slice.workbenchPanels.activeEditorTabId,
+      ),
+      activeSidebarTab: slice.workbenchPanels.activeSidebarTab,
+      editorTabs,
+    }),
+  }
 }
 
-function pathForWorkspace(rootFolder: PickedFsEntry | null, path: string) {
-  if (!rootFolder) return false
+function workspacePathsForCache(rootPath: string, paths: readonly string[]) {
+  return Array.from(new Set(paths.filter((path) => pathForWorkspace(rootPath, path))))
+}
+
+function pathForWorkspace(rootPath: string, path: string) {
+  if (!rootPath) return false
   if (parseConflictDiffDocumentId(path)) return false
 
   const searchBuffer = parseSearchBufferDocumentId(path)
-  if (searchBuffer) return searchBuffer.rootPath === rootFolder.path
+  if (searchBuffer) return searchBuffer.rootPath === rootPath
 
-  return isPathInWorkspace(backingPathForWorkspace(path), rootFolder.path)
+  return isPathInWorkspace(backingPathForWorkspace(path), rootPath)
 }
 
 function backingPathForWorkspace(path: string) {
@@ -402,64 +482,32 @@ function backingPathForWorkspace(path: string) {
   return path
 }
 
-function searchBufferForWorkspace(
-  rootFolder: PickedFsEntry | null,
-  searchBuffer: CachedSearchBufferState | null,
-) {
-  if (!rootFolder) return null
-  if (!searchBuffer) return null
-  if (searchBuffer.rootPath !== rootFolder.path) return null
-
-  return searchBuffer
-}
-
 function isPathInWorkspace(path: string, rootPath: string) {
-  if (!rootPath) return true
   if (path === rootPath) return true
 
   return path.startsWith(`${rootPath}/`)
 }
 
-function emptyWorkspaceState(): WorkspaceCacheState {
-  const workbenchPanels = createDefaultWorkbenchPanels()
-
+export function emptyWorkspaceSlice(): CachedWorkspaceSlice {
   return {
-    chatModePanels: createDefaultChatModePanels(),
-    diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     editorHistory: [],
-    openFilePaths: [],
     recentlyClosedEditorPaths: [],
-    rootFolder: null,
-    searchBuffer: null,
-    selectedFilePath: null,
-    uiMode: DEFAULT_WORKSPACE_UI_MODE,
-    workbenchLayout: createDefaultWorkbenchLayout(),
-    workbenchPanels,
+    workbenchPanels: createDefaultWorkbenchPanels(),
   }
 }
 
-function workbenchPanelsForWorkspace(
-  rootFolder: PickedFsEntry | null,
-  workbenchPanels: WorkbenchPanels,
-) {
-  const editorTabs = workbenchPanels.editorTabs.filter((tab) =>
-    pathForWorkspace(rootFolder, tab.path),
-  )
-  const activeEditorTabId = activeEditorTabIdForTabs(editorTabs, workbenchPanels.activeEditorTabId)
-
-  return normalizeWorkbenchPanels({
-    activeBottomTab: workbenchPanels.activeBottomTab,
-    activeEditorTabId,
-    activeSidebarTab: workbenchPanels.activeSidebarTab,
-    editorTabs,
-  })
-}
-
-function workbenchPanelsForCache(
-  rootFolder: PickedFsEntry | null,
-  workbenchPanels: WorkbenchPanels,
-) {
-  return workbenchPanelsForWorkspace(rootFolder, workbenchPanels)
+function emptyWorkspaceState(): CachedWorkspaceState {
+  return {
+    chatModePanels: createDefaultChatModePanels(),
+    diffViewMode: DEFAULT_DIFF_VIEW_MODE,
+    rootFolder: null,
+    searchBuffers: {},
+    uiMode: DEFAULT_WORKSPACE_UI_MODE,
+    wallpaperHidden: false,
+    workbenchLayout: createDefaultWorkbenchLayout(),
+    workspaceOrder: [],
+    workspaces: {},
+  }
 }
 
 function activeEditorTabIdForTabs(

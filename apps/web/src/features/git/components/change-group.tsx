@@ -5,11 +5,15 @@ import {
   CollapsibleTrigger,
 } from '@workspace/ui/components/collapsible'
 import { cn } from '@workspace/ui/lib/utils'
+import type { KeyboardEvent, MouseEvent } from 'react'
+
+import { useContextMenu } from '@/features/menus/hooks/use-context-menu'
 
 import { useGitState } from '../state'
 import type { ChangeRow, PanelSection } from '../types'
 import { FileRow } from './file-row'
 import { GroupActions } from './group-actions'
+import { GroupMenu } from './group-menu'
 
 export function ChangeGroup({
   label,
@@ -24,6 +28,16 @@ export function ChangeGroup({
 }) {
   const open = useGitState((state) => state.sectionOpen[section])
   const setSectionOpen = useGitState((state) => state.setSectionOpen)
+  const contextMenu = useContextMenu()
+
+  function handleContextMenu(event: MouseEvent<HTMLDivElement>) {
+    contextMenu.openAtEvent(event, event.currentTarget)
+  }
+
+  function handleHeaderKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    contextMenu.openOnMenuKey(event)
+  }
+
   if (rows.length === 0) return null
 
   return (
@@ -32,7 +46,11 @@ export function ChangeGroup({
       open={open}
       onOpenChange={(nextOpen) => setSectionOpen(section, nextOpen)}
     >
-      <div className='group/group hover:bg-muted/70 flex h-7 w-full items-center px-2 text-xs font-medium transition-colors'>
+      <div
+        className='group/group hover:bg-muted/70 flex h-7 w-full items-center px-2 text-xs font-medium transition-colors'
+        onContextMenu={handleContextMenu}
+        onKeyDown={handleHeaderKeyDown}
+      >
         <CollapsibleTrigger className='focus-visible:ring-ring/50 flex min-w-0 flex-1 items-center gap-2 text-left outline-none focus-visible:ring-1'>
           <CaretDownIcon
             className={cn(
@@ -56,6 +74,14 @@ export function ChangeGroup({
           />
         ))}
       </CollapsibleContent>
+      {contextMenu.anchor && (
+        <GroupMenu
+          anchor={contextMenu.anchor}
+          onOpenChange={contextMenu.onOpenChange}
+          rows={rows}
+          section={section}
+        />
+      )}
     </Collapsible>
   )
 }

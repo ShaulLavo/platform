@@ -1,25 +1,26 @@
 import type { OrchestrationProjectShell, ProjectId, ThreadId } from '@workspace/contracts'
 
 import { projectQualifiers } from '@/features/chat/lib/project-qualifiers'
+import { threadStatus, type ThreadStatus } from '@/features/chat/lib/thread-status'
 import type { ChatSidebarThreadSummary } from '@/features/chat/state/chat-projection-store'
 
-export const RECENT_SESSION_LIMIT = 6
+/** Which projects the list is showing. `null` means every project. */
+export type SessionRailScope = ProjectId | null
 
 export type SessionRailItem = {
-  readonly attention: boolean
   readonly branch: string | null
   readonly id: ThreadId
   readonly projectId: ProjectId
   readonly projectTitle: string
-  readonly running: boolean
   readonly sortedAt: string
+  readonly status: ThreadStatus
   readonly title: string
 }
 
 export type SessionRailProject = {
   readonly active: boolean
   readonly id: ProjectId
-  readonly sessions: readonly SessionRailItem[]
+  readonly sessionCount: number
   readonly title: string
   /** Parent-path hint, set only when another project shares this title. */
   readonly qualifier: string | null
@@ -28,18 +29,24 @@ export type SessionRailProject = {
 
 export type SessionRailModel = {
   readonly projects: readonly SessionRailProject[]
-  readonly recent: readonly SessionRailItem[]
+  /** One ordered list, newest first — scope and search have already been applied. */
+  readonly sessions: readonly SessionRailItem[]
+  /** How many sessions the current scope holds before the search text narrows it. */
+  readonly scopedCount: number
+  readonly scopeTitle: string
 }
 
 export function sessionRailModel({
   activeProjectId,
   projects,
-  recentLimit = RECENT_SESSION_LIMIT,
+  query = '',
+  scope = null,
   threads,
 }: {
   readonly activeProjectId: ProjectId | null
   readonly projects: readonly OrchestrationProjectShell[]
-  readonly recentLimit?: number
+  readonly query?: string
+  readonly scope?: SessionRailScope
   readonly threads: readonly ChatSidebarThreadSummary[]
 }): SessionRailModel {
   const titleByProjectId = new Map(projects.map((project) => [project.id, project.title]))
@@ -48,72 +55,75 @@ export function sessionRailModel({
     .filter((thread) => !thread.archivedAt)
     .map((thread) => sessionRailItem(thread, titleByProjectId.get(thread.projectId) ?? 'Workspace'))
     .toSorted(compareSessionRailItems)
-  const sessionsByProjectId = groupSessionsByProjectId(items)
+  const scoped = scope ? items.filter((item) => item.projectId === scope) : items
+  const countByProjectId = sessionCountByProjectId(items)
 
   return {
     projects: projects
       .map((project) => ({
         active: project.id === activeProjectId,
         id: project.id,
-        sessions: sessionsByProjectId.get(project.id) ?? [],
         qualifier: qualifiers.get(project.id) ?? null,
+        sessionCount: countByProjectId.get(project.id) ?? 0,
         title: project.title,
         workspaceRoot: project.workspaceRoot,
       }))
       .toSorted(compareSessionRailProjects),
-    recent: items.slice(0, recentLimit),
+    scopedCount: scoped.length,
+    scopeTitle: scope ? (titleByProjectId.get(scope) ?? 'Project') : 'All projects',
+    sessions: matchingSessions(scoped, query),
   }
+}
+
+/**
+ * Substring match over the fields the row actually shows. Deliberately not fuzzy: the
+ * rail is a short recall list, and fuzzy ranking here surfaces sessions whose titles
+ * share nothing visible with what was typed.
+ */
+function matchingSessions(items: readonly SessionRailItem[], query: string) {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return items
+
+  return items.filter((item) => sessionSearchText(item).includes(needle))
+}
+
+function sessionSearchText(item: SessionRailItem) {
+  return `${item.title}\n${item.projectTitle}\n${item.branch ?? ''}`.toLowerCase()
 }
 
 function sessionRailItem(thread: ChatSidebarThreadSummary, projectTitle: string): SessionRailItem {
   return {
-    attention: sessionNeedsAttention(thread),
     branch: thread.branch ?? null,
     id: thread.id,
     projectId: thread.projectId,
     projectTitle,
-    running: thread.latestTurn?.state === 'running',
     sortedAt: sessionSortTimestamp(thread),
+    status: threadStatus(thread),
     title: thread.title,
   }
-}
-
-function sessionNeedsAttention(thread: ChatSidebarThreadSummary) {
-  if (thread.pendingApprovalCount > 0) return true
-  if (thread.pendingUserInputCount > 0) return true
-
-  return thread.hasActionableProposedPlan
 }
 
 function sessionSortTimestamp(thread: ChatSidebarThreadSummary) {
   return thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt
 }
 
-function groupSessionsByProjectId(items: readonly SessionRailItem[]) {
-  const grouped = new Map<ProjectId, SessionRailItem[]>()
+function sessionCountByProjectId(items: readonly SessionRailItem[]) {
+  const counts = new Map<ProjectId, number>()
   for (const item of items) {
-    const sessions = grouped.get(item.projectId)
-    if (!sessions) {
-      grouped.set(item.projectId, [item])
-      continue
-    }
-
-    sessions.push(item)
+    counts.set(item.projectId, (counts.get(item.projectId) ?? 0) + 1)
   }
 
-  return grouped
+  return counts
 }
 
 function compareSessionRailItems(left: SessionRailItem, right: SessionRailItem) {
   return right.sortedAt.localeCompare(left.sortedAt) || left.id.localeCompare(right.id)
 }
 
-/** Active project first, then the project whose newest session is most recent. */
+/** Active project first, then most sessions, then alphabetical. */
 function compareSessionRailProjects(left: SessionRailProject, right: SessionRailProject) {
   if (left.active !== right.active) return left.active ? -1 : 1
+  if (left.sessionCount !== right.sessionCount) return right.sessionCount - left.sessionCount
 
-  const leftAt = left.sessions[0]?.sortedAt ?? ''
-  const rightAt = right.sessions[0]?.sortedAt ?? ''
-
-  return rightAt.localeCompare(leftAt) || left.title.localeCompare(right.title)
+  return left.title.localeCompare(right.title)
 }

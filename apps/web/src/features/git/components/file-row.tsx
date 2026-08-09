@@ -1,16 +1,19 @@
+import { useContextMenu } from '@/features/menus/hooks/use-context-menu'
 import { colorForFileIcon, iconForEntry, type ResolvedFileIcon } from '@/lib/file-icons'
 import { basename, toTreePath } from '@/lib/path-formatters'
 import { cn } from '@workspace/ui/lib/utils'
-import type { CSSProperties, KeyboardEvent } from 'react'
+import type { CSSProperties, KeyboardEvent, MouseEvent } from 'react'
 
 import { useOpenDiffDocument } from '../hooks'
 import { gitStatusSymbol } from '../status-symbols'
 import type { ChangeRow } from '../types'
-import { parentPath } from '../utils'
+import { parentPath } from '../utils/paths'
 import { FileActions } from './file-actions'
+import { FileMenu } from './file-menu'
 
 export function FileRow({ rootPath, row }: { rootPath: string; row: ChangeRow }) {
   const { openDiff } = useOpenDiffDocument()
+  const contextMenu = useContextMenu()
   const relativePath = toTreePath(row.file.path, rootPath)
   const name = basename(relativePath)
   const directory = parentPath(relativePath)
@@ -22,40 +25,56 @@ export function FileRow({ rootPath, row }: { rootPath: string; row: ChangeRow })
   }
 
   function handleRowKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (contextMenu.openOnMenuKey(event)) return
     if (event.key !== 'Enter' && event.key !== ' ') return
 
     event.preventDefault()
     handleOpen()
   }
 
+  function handleContextMenu(event: MouseEvent<HTMLDivElement>) {
+    contextMenu.openAtEvent(event, event.currentTarget)
+  }
+
   return (
-    <div
-      className='group/row hover:bg-muted/70 focus-visible:ring-ring/50 grid h-6 cursor-pointer grid-cols-[22px_minmax(0,1fr)_auto_28px] items-center px-2 text-xs leading-4 outline-none focus-visible:ring-1'
-      role='button'
-      tabIndex={0}
-      onClick={handleOpen}
-      onKeyDown={handleRowKeyDown}
-    >
-      <span
-        aria-hidden='true'
-        className='size-4 shrink-0 justify-self-center'
-        style={fileIconStyle(icon)}
-      />
-      <div className='min-w-0 truncate text-left' title={relativePath}>
-        <span className='text-foreground font-medium'>{name}</span>
-        {directory && <span className='text-muted-foreground ml-2 font-normal'>{directory}</span>}
-      </div>
-      <FileActions path={row.file.path} section={row.section} />
-      <span
-        className={cn(
-          'flex h-6 items-center justify-self-end pb-px text-xs font-semibold leading-none',
-          status.className,
-        )}
-        title={status.title}
+    <>
+      <div
+        className='group/row hover:bg-muted/70 focus-visible:ring-ring/50 grid h-6 cursor-pointer grid-cols-[22px_minmax(0,1fr)_auto_28px] items-center px-2 text-xs leading-4 outline-none focus-visible:ring-1'
+        role='button'
+        tabIndex={0}
+        onClick={handleOpen}
+        onContextMenu={handleContextMenu}
+        onKeyDown={handleRowKeyDown}
       >
-        {status.label}
-      </span>
-    </div>
+        <span
+          aria-hidden='true'
+          className='size-4 shrink-0 justify-self-center'
+          style={fileIconStyle(icon)}
+        />
+        <div className='min-w-0 truncate text-left' title={relativePath}>
+          <span className='text-foreground font-medium'>{name}</span>
+          {directory && <span className='text-muted-foreground ml-2 font-normal'>{directory}</span>}
+        </div>
+        <FileActions path={row.file.path} section={row.section} />
+        <span
+          className={cn(
+            'flex h-6 items-center justify-self-end pb-px text-xs font-semibold leading-none',
+            status.className,
+          )}
+          title={status.title}
+        >
+          {status.label}
+        </span>
+      </div>
+      {contextMenu.anchor && (
+        <FileMenu
+          anchor={contextMenu.anchor}
+          onOpenChange={contextMenu.onOpenChange}
+          rootPath={rootPath}
+          row={row}
+        />
+      )}
+    </>
   )
 }
 

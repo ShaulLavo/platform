@@ -18,6 +18,10 @@ import {
 } from '@/features/editor/state/editor-tab-paths'
 import { useEditorUiStoreApi, type EditorUiStoreApi } from '@/features/editor/state/editor-ui-state'
 import {
+  retentionForProjects,
+  type RetainedWorkspaceSlice,
+} from '@/features/editor/utils/document-retention'
+import {
   editorWorkspaceSelectionForWorkbenchPanels,
   useEditorWorkspaceStoreApi,
   type EditorWorkspaceStore,
@@ -35,6 +39,10 @@ import {
   type WorkbenchPanels,
 } from '@/features/workbench/utils/workbench-panels'
 import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
+import {
+  useSearchBufferStoreApi,
+  type SearchBufferStoreApi,
+} from '@/features/search/search-buffer-state'
 import { log } from '@/lib/client-logging'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { LanguageServerDefinitionTarget } from '@singapor/lsp-plugin'
@@ -54,7 +62,6 @@ export type EditorCommands = {
   openDefinition: (target: LanguageServerDefinitionTarget) => boolean
   openFileSurface: (path: string) => void
   openSearchEditor: (rootPath: string) => void
-  pickRootFolder: (rootFolder: PickedFsEntry) => void
   reopenClosedEditor: () => boolean
   renameLiveEditorDocument: (from: string, to: string) => { wasDirty: boolean }
   reorderTab: (paneId: string, tabId: string, targetIndex: number) => boolean
@@ -63,25 +70,30 @@ export type EditorCommands = {
   selectTab: (paneId: string, tabId: string) => void
   setActivePane: (paneId: string) => void
   splitTab: (tabId: string, direction: EditorSplitDirection) => boolean
+  /** Parks the open project and restores the target's tabs, history and search results. */
+  switchRootFolder: (rootFolder: PickedFsEntry) => void
 }
 
 export function useEditorCommands() {
   const documentStore = useEditorDocumentStoreApi()
+  const searchStore = useSearchBufferStoreApi()
   const uiStore = useEditorUiStoreApi()
   const workspaceStore = useEditorWorkspaceStoreApi()
 
   return useMemo(
-    () => createEditorCommands({ documentStore, uiStore, workspaceStore }),
-    [documentStore, uiStore, workspaceStore],
+    () => createEditorCommands({ documentStore, searchStore, uiStore, workspaceStore }),
+    [documentStore, searchStore, uiStore, workspaceStore],
   )
 }
 
 export function createEditorCommands({
   documentStore,
+  searchStore,
   uiStore,
   workspaceStore,
 }: {
   documentStore: EditorDocumentStoreApi
+  searchStore: SearchBufferStoreApi
   uiStore: EditorUiStoreApi
   workspaceStore: EditorWorkspaceStoreApi
 }): EditorCommands {
@@ -99,8 +111,6 @@ export function createEditorCommands({
     openFileSurface: (path) => openEditorPathSurface(path, workspaceStore, documentStore),
     openSearchEditor: (rootPath) =>
       openEditorPathSurface(searchBufferDocumentId(rootPath), workspaceStore, documentStore),
-    pickRootFolder: (rootFolder) =>
-      pickRootFolder(rootFolder, workspaceStore, documentStore, uiStore),
     reopenClosedEditor: () => reopenClosedEditor(workspaceStore, documentStore),
     renameLiveEditorDocument: (from, to) =>
       renameLiveEditorDocument(from, to, workspaceStore, documentStore, uiStore),
@@ -110,6 +120,8 @@ export function createEditorCommands({
     selectTab: (_paneId, tabId) => selectTab(tabId, workspaceStore, documentStore),
     setActivePane: () => undefined,
     splitTab: () => false,
+    switchRootFolder: (rootFolder) =>
+      switchRootFolder(rootFolder, { documentStore, searchStore, uiStore, workspaceStore }),
   }
 }
 
@@ -204,23 +216,69 @@ function openDefinition(
   return true
 }
 
-function pickRootFolder(
+/**
+ * A project switch used to be a wipe: every tab closed, every live document dropped,
+ * search results gone. Now the outgoing project is parked whole and the incoming one
+ * is restored, and only documents outside the retention ceiling are evicted — so
+ * switching back is instant and unsaved edits survive the round trip.
+ */
+function switchRootFolder(
   rootFolder: PickedFsEntry,
-  workspaceStore: EditorWorkspaceStoreApi,
-  documentStore: EditorDocumentStoreApi,
-  uiStore: EditorUiStoreApi,
+  {
+    documentStore,
+    searchStore,
+    uiStore,
+    workspaceStore,
+  }: {
+    documentStore: EditorDocumentStoreApi
+    searchStore: SearchBufferStoreApi
+    uiStore: EditorUiStoreApi
+    workspaceStore: EditorWorkspaceStoreApi
+  },
 ) {
-  // Behaviourally the old clear(), except dirty and unsynced documents now survive.
-  // Harmless while the confirm dialog still gates the switch, and the foundation for
-  // per-project retention once slices land.
-  documentStore.getState().retainEditorDocuments(EMPTY_RETENTION)
+  const previousRootPath = workspaceStore.getState().rootFolder?.path ?? null
+  if (previousRootPath === rootFolder.path) return
+
   uiStore.getState().resetEditorUiState()
-  workspaceStore.getState().resetForRootFolder(rootFolder)
+  workspaceStore.getState().switchWorkspace(rootFolder)
+  searchStore.getState().switchWorkspace(rootFolder.path)
+  documentStore.getState().retainEditorDocuments(retentionForWorkspaces(workspaceStore.getState()))
+
+  log.info({
+    action: 'workspace.root_switched',
+    area: 'workspace',
+    parkedCount: workspaceStore.getState().parkedWorkspaces.size,
+    path: rootFolder.path,
+    previousPath: previousRootPath,
+    restoredTabCount: workspaceStore.getState().workbenchPanels.editorTabs.length,
+  })
 }
 
-const EMPTY_RETENTION = {
-  documentIds: new Set<string>(),
-  tabIds: new Set<string>(),
+function retentionForWorkspaces(workspace: EditorWorkspaceStore) {
+  const activeRootPath = workspace.rootFolder?.path ?? null
+  const parked = Array.from(workspace.parkedWorkspaces, ([rootPath, entry]) =>
+    retainedSlice(rootPath, entry.workbenchPanels, entry.lastActiveAt),
+  )
+
+  return retentionForProjects({
+    activeRootPath,
+    slices: activeRootPath
+      ? [...parked, retainedSlice(activeRootPath, workspace.workbenchPanels, Date.now())]
+      : parked,
+  })
+}
+
+function retainedSlice(
+  rootPath: string,
+  panels: WorkbenchPanels,
+  lastActiveAt: number,
+): RetainedWorkspaceSlice {
+  return {
+    documentIds: editorOpenPathsForWorkbenchPanels(panels),
+    lastActiveAt,
+    rootPath,
+    tabIds: panels.editorTabs.map((tab) => tab.id),
+  }
 }
 
 function retentionForPanels(panels: WorkbenchPanels) {

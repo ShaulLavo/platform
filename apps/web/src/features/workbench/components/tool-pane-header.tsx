@@ -13,6 +13,7 @@ import {
 
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
+import { PaneHeaderMenu } from '@/features/workbench/components/pane-header-menu'
 import type { LoadState } from '@/lib/load-state'
 import type { TreeModel } from '@/lib/tree-model'
 import type { PointerEvent } from 'react'
@@ -52,7 +53,7 @@ export function ToolPaneHeader({
   const rowLabel = rowActive ? `Expand ${title}` : `Collapse ${title} to row`
   const actionsVisible = Boolean(onClose || onToggleCollapse || onCollapseToRow)
 
-  return (
+  const header = (
     <div
       className={cn(
         'border-border flex shrink-0 text-foreground',
@@ -138,6 +139,8 @@ export function ToolPaneHeader({
       ) : null}
     </div>
   )
+
+  return <PaneHeaderMenu title={title} trigger={header} />
 }
 
 function stopToolPaneHeaderPointerDown(event: PointerEvent<HTMLButtonElement>) {

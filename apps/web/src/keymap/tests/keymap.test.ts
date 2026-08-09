@@ -168,6 +168,11 @@ describe('command registry', () => {
       description: 'Follow the system color mode.',
       title: 'System color mode',
     })
+    expect(platformCommandSpec('workspace.toggleWallpaper')).toMatchObject({
+      category: 'Appearance',
+      description: 'Show or hide the background image or video.',
+      title: 'Toggle wallpaper',
+    })
   })
 
   it('exposes requested VS Code workspace command aliases', () => {

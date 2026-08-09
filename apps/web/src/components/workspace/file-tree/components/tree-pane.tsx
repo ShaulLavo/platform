@@ -1,6 +1,7 @@
 import type {
   FileTreeDropContext,
   FileTreeDropResult,
+  FileTreeRenameEvent,
   FileTreeRowDecorationContext,
 } from '@workspace/tree/utils/model/publicTypes'
 import { FileTree } from '@workspace/tree/components/FileTree'
@@ -9,14 +10,18 @@ import type { GitStatusEntry } from '@workspace/tree/utils/publicTypes'
 import type { FileTree as FileTreeModel } from '@workspace/tree/utils/render/FileTree'
 import { CircleNotchIcon, WarningCircleIcon } from '@phosphor-icons/react'
 
+import { workspacePathForTreePath } from '@/components/workspace/file-tree/utils/entry-paths'
+import { invalidateTreeQueries } from '@/components/workspace/file-tree/utils/invalidate-queries'
 import {
   loadExpandedDirectories,
   syncTreePaneState,
   visibleTreeItemCount,
 } from '@/components/workspace/file-tree/utils/tree-pane-state'
 import { selectedFileEntryForTreeSelection } from '@/components/workspace/file-tree/utils/tree-selection'
+import { DeleteEntryDialog } from '@/components/workspace/file-tree/components/delete-entry-dialog'
 import { useFileTreeActions } from '@/components/workspace/file-tree/hooks/use-file-tree-actions'
 import { useFileTreeIntentPrefetch } from '@/components/workspace/file-tree/hooks/use-file-tree-intent-prefetch'
+import { useFsActions } from '@/components/workspace/file-tree/hooks/use-fs-actions'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { useFocus } from '@/components/workspace/focus/providers/focus-state'
@@ -26,14 +31,14 @@ import { TreeRowMenu } from '@/components/workspace/file-tree/components/row-men
 import { renamePath } from '@/lib/file-server'
 import type { LoadState } from '@/lib/load-state'
 import { canonicalTreePath } from '@/lib/path-formatters'
-import { fileSystemKeys, gitKeys } from '@/lib/query-keys'
+import { fileSystemKeys } from '@/lib/query-keys'
 import {
   moveTreeModelPaths,
   treePathForSelectedPath,
   type TreePathMove,
   type TreeModel,
 } from '@/lib/tree-model'
-import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   useEffectEvent,
   useEffect,
@@ -115,9 +120,11 @@ function ReadyTreePane({
     },
     onSettled: () => {
       movePendingRef.current = false
-      invalidateMoveQueries(queryClient)
+      invalidateTreeQueries(queryClient)
     },
   })
+  const fsActions = useFsActions({ modelRef, rootPath, treeRef })
+  const completeRenameRef = useRef(fsActions.completeRename)
   const loadExpandedDirectoriesForCurrentModel = useEffectEvent((currentTree: FileTreeModel) => {
     expandedDirectoryPathsRef.current = loadExpandedDirectories(
       currentTree,
@@ -129,6 +136,7 @@ function ReadyTreePane({
   const publishVisibleTreeItemCount = useEffectEvent((currentTree: FileTreeModel) => {
     publishVisibleItemCountAction(visibleTreeItemCount(currentTree, modelRef.current))
   })
+  const resumeDeferredCreate = useEffectEvent(() => fsActions.resumeDeferredCreate())
 
   const initialSelectedPaths = selectedFilePath
     ? [treePathForSelectedPath(rootPath, selectedFilePath)]
@@ -163,6 +171,10 @@ function ReadyTreePane({
         selectedPaths,
         selectFile: selectFileRef.current,
       }),
+    renaming: {
+      onError: (error) => reportError(toClientError({ code: 'INVALID_PATH', error })),
+      onRename: (event: FileTreeRenameEvent) => completeRenameRef.current(event),
+    },
     renderRowDecoration: (context) => treeRowDecoration(modelRef.current, context),
     unsafeCSS: treeUnsafeCss,
   })
@@ -172,12 +184,16 @@ function ReadyTreePane({
     tree,
   })
 
+  // No dependency list: every value here is a fresh identity per render, and
+  // the body only mirrors the latest render into refs that captured-once tree
+  // callbacks read at call time.
   useLayoutEffect(() => {
+    completeRenameRef.current = fsActions.completeRename
     modelRef.current = model
     selectedFilePathRef.current = selectedFilePath
     selectFileRef.current = selectFile
     treeRef.current = tree
-  }, [model, selectFile, selectedFilePath, tree])
+  })
 
   useEffect(() => {
     const selectionSync = selectionSyncPlan({
@@ -197,6 +213,9 @@ function ReadyTreePane({
     })
     updateSelectionSyncState(selectionSyncRef.current, selectionSync, rootPath, selectedFilePath)
     publishVisibleTreeItemCount(tree)
+    // Strictly after the path sync: a create deferred on a loading directory
+    // must plant its placeholder into an already-settled tree.
+    resumeDeferredCreate()
   }, [model, rootPath, selectedFilePath, tree])
 
   useEffect(() => {
@@ -217,10 +236,18 @@ function ReadyTreePane({
         className='block h-full'
         model={tree}
         renderContextMenu={(item, menuContext) => (
-          <TreeRowMenu gitStatus={gitStatus} item={item} menuContext={menuContext} model={model} />
+          <TreeRowMenu
+            actions={fsActions.actions}
+            item={item}
+            menuContext={menuContext}
+            model={model}
+            rootPath={rootPath}
+          />
         )}
         style={treeStyle}
       />
+      {/* Owned here, not by the menu: the menu unmounts the instant it closes. */}
+      <DeleteEntryDialog {...fsActions.deleteDialog} />
     </div>
   )
 }
@@ -343,11 +370,6 @@ async function moveDroppedTreePaths(request: TreeDropMoveRequest) {
   }
 }
 
-function invalidateMoveQueries(queryClient: QueryClient) {
-  void queryClient.invalidateQueries({ queryKey: gitKeys.all })
-  void queryClient.invalidateQueries({ queryKey: fileSystemKeys.trees() })
-}
-
 function canDragTreePaths(model: TreeModel, paths: readonly string[], movePending: boolean) {
   if (movePending) return false
   if (paths.length === 0) return false
@@ -418,15 +440,6 @@ function treePathBasename(treePath: string) {
   const segments = canonicalTreePath(treePath).split('/').filter(Boolean)
 
   return segments.at(-1) ?? ''
-}
-
-function workspacePathForTreePath(rootPath: string, treePath: string) {
-  const canonicalRootPath = canonicalTreePath(rootPath)
-  const canonicalPath = canonicalTreePath(treePath)
-  if (!canonicalRootPath) return canonicalPath
-  if (!canonicalPath) return canonicalRootPath
-
-  return `${canonicalRootPath}/${canonicalPath}`
 }
 
 const treeStyle = {

@@ -8,6 +8,7 @@ import { useValidateRootFolder } from '@/hooks/use-validate-root-folder'
 import { useWorkspaceEvents } from '@/hooks/use-workspace-events'
 import { useResetWorkspaceTreeLoad } from '@/hooks/use-workspace-tree'
 import { log } from '@/lib/client-logging'
+import { activateWorkspaceRoot } from '@/state/active-project-store'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { PlatformKeyBinding } from '@/keymap/types'
 import type { EditorKeymapLayer } from '@singapor/core'
@@ -23,7 +24,7 @@ export function AppWorkspace({ editorKeymapLayers, keymapBindings }: AppWorkspac
   const rootFolder = useEditorWorkspaceState((state) => state.rootFolder)
   const openPicker = useEditorWorkspaceState((state) => state.openPicker)
   const setPickerOpen = useEditorWorkspaceState((state) => state.setPickerOpen)
-  const { pickRootFolder } = useEditorCommands()
+  const { switchRootFolder } = useEditorCommands()
   const resetTreeLoad = useResetWorkspaceTreeLoad()
 
   useValidateRootFolder()
@@ -32,7 +33,8 @@ export function AppWorkspace({ editorKeymapLayers, keymapBindings }: AppWorkspac
   const handlePick = useCallback(
     (entry: PickedFsEntry) => {
       resetTreeLoad()
-      pickRootFolder(entry)
+      activateWorkspaceRoot(entry.path)
+      switchRootFolder(entry)
       log.info({
         action: 'workspace.root_selected',
         area: 'workspace',
@@ -40,7 +42,7 @@ export function AppWorkspace({ editorKeymapLayers, keymapBindings }: AppWorkspac
         path: entry.path,
       })
     },
-    [pickRootFolder, resetTreeLoad],
+    [resetTreeLoad, switchRootFolder],
   )
   const picker = usePickEntry({
     mode: 'folder',
