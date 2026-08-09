@@ -8,6 +8,7 @@ import type { PlatformCommandId } from '@/keymap/types'
  * from outside the app bundle. Nothing dispatches on it at render time.
  */
 export type MenuSurfaceId =
+  | 'chat.composer'
   | 'chat.message'
   | 'chat.session'
   | 'editor.gutter'
@@ -16,7 +17,9 @@ export type MenuSurfaceId =
   | 'files.empty'
   | 'files.row'
   | 'git.file'
+  | 'git.group'
   | 'pane.header'
+  | 'sidebar.rail'
   | 'terminal'
   | 'titlebar'
 
