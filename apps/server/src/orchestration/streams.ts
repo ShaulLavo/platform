@@ -245,12 +245,20 @@ export class OrchestrationStreams {
   private readonly coalesceWindowMs: number
   private readonly hub: OrchestrationStreamHub
   private readonly rowReader: OrchestrationShellRowReader
+  /**
+   * Reported on every shell-stream event because the two readers differ by
+   * orders of magnitude — point reads versus a full workspace query per window —
+   * and the choice is made by whether a caller happened to pass a database. A
+   * construction site that forgets one degrades silently otherwise.
+   */
+  private readonly rowReaderKind: 'projection-row' | 'snapshot-fallback'
   private readonly snapshots: OrchestrationSnapshotQuery
 
   constructor(snapshots: OrchestrationSnapshotQuery, options: OrchestrationStreamsOptions = {}) {
     this.coalesceWindowMs = options.coalesceWindowMs ?? SHELL_COALESCE_WINDOW_MS
     this.hub = options.hub ?? new OrchestrationStreamHub()
     this.rowReader = createShellRowReader(snapshots, options.database)
+    this.rowReaderKind = options.database ? 'projection-row' : 'snapshot-fallback'
     this.snapshots = snapshots
   }
 
@@ -282,6 +290,7 @@ export class OrchestrationStreams {
       recordChatPipelineInfo('chat.pipeline.shell_stream.batch', {
         coalescedEventCount: result.coalescedFrom,
         emittedItemCount: result.items.length,
+        rowReaderKind: this.rowReaderKind,
         sequence,
         ...orchestrationEventBatchSummary(events),
       })
@@ -323,6 +332,7 @@ export class OrchestrationStreams {
         mode: 'replay',
         replayEventCount: plan.events.length,
         resumeGap: plan.gap,
+        rowReaderKind: this.rowReaderKind,
         sequence: result.sequence,
       })
 
@@ -337,6 +347,7 @@ export class OrchestrationStreams {
       projectCount: snapshot.projects.length,
       resumeGap: plan.gap,
       resumeSkipReason: plan.reason,
+      rowReaderKind: this.rowReaderKind,
       snapshotSequence: snapshot.snapshotSequence,
       threadCount: snapshot.threads.length,
     })

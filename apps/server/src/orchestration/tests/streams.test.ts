@@ -68,6 +68,17 @@ describe('shell stream deltas', () => {
     workspace.close()
   })
 
+  it('costs the same per window however large the workspace is', async () => {
+    const small = await windowedDeltaQueries(4)
+    const large = await windowedDeltaQueries(150)
+
+    // Two windows, one changed thread each: its row plus its session. The
+    // pre-coalescing path read every thread in the workspace per event, so this
+    // count growing with `threadCount` is the regression to catch.
+    expect(small).toBe(4)
+    expect(large).toBe(4)
+  })
+
   it('emits a removal when the coalesced aggregate no longer has a live row', async () => {
     const workspace = createShellWorkspace(4)
     const reader = await openShellStream(workspace, { targeted: true })
@@ -145,6 +156,27 @@ describe('shell stream resume', () => {
 })
 
 describe('resume plan', () => {
+  it('serves the cursor just before the retained tail and refuses the one below it', () => {
+    const workspace = createShellWorkspace(4)
+    const hub = new OrchestrationStreamHub()
+    const streams = shellStreams(workspace, hub, true)
+
+    // Committed but never published: the hub's tail starts after these, which is
+    // what an eviction looks like from `resumePlan`'s side.
+    const unpublished = workspace.commit([assistantDeltaEvent('thread-1', 'before the tail')])
+    const retained = workspace.commit([assistantDeltaEvent('thread-2', 'in the tail')])
+    streams.publish(retained)
+
+    const oldest = retained[0]?.sequence ?? 0
+    expect(unpublished.at(-1)?.sequence).toBe(oldest - 1)
+    expect(hub.resumePlan(oldest - 1)).toMatchObject({ kind: 'replay' })
+    expect(hub.resumePlan(oldest - 2)).toMatchObject({
+      kind: 'snapshot',
+      reason: 'history-evicted',
+    })
+    workspace.close()
+  })
+
   it('classifies every cursor a snapshot has to answer', () => {
     const hub = new OrchestrationStreamHub()
     hub.observeSequence(50)
@@ -228,6 +260,24 @@ function shellReader(streams: OrchestrationStreams, options: { afterSequence?: n
       return await Promise.race([next, idle])
     },
   }
+}
+
+/** Reads a delta in each of two separate coalescing windows and counts the queries. */
+async function windowedDeltaQueries(threadCount: number) {
+  const workspace = createShellWorkspace(threadCount)
+  const reader = await openShellStream(workspace, { targeted: true })
+
+  workspace.resetQueryCount()
+  for (const text of ['first', 'second']) {
+    reader.streams.publish(workspace.commit([assistantDeltaEvent('thread-1', text)]))
+    await reader.next()
+  }
+  const queries = workspace.queryCount()
+
+  await reader.close()
+  workspace.close()
+
+  return queries
 }
 
 async function openShellStream(workspace: ShellWorkspace, options: { targeted: boolean }) {

@@ -16,6 +16,7 @@ import { expect, test } from '../../../../../test/fixtures'
 import { shellSnapshot, threadShell } from '../../../../../test/factories/chat'
 import type { ChatEnvironment } from '../../environment/chat-environment'
 import { useChatProjectionStore } from '../chat-projection-store'
+import { selectThreadDetailSync, useThreadDetailSyncStore } from '../thread-detail-sync-store'
 import { createThreadDetailSubscriptionCache } from '../thread-detail-subscriptions'
 
 type ScriptedAttempt = {
@@ -27,6 +28,7 @@ type ScriptedAttempt = {
 describe('thread detail subscription cache', () => {
   beforeEach(() => {
     useChatProjectionStore.getState().resetChatProjection()
+    useThreadDetailSyncStore.setState({ syncByThreadId: {} })
   })
 
   test('retains one active stream per thread and evicts after final release', async () => {
@@ -237,6 +239,45 @@ describe('thread detail subscription cache', () => {
     expect(cache.size()).toBe(0)
 
     cache.disposeAll()
+  })
+
+  test('publishes per-thread sync status for the UI and clears it on dispose', async () => {
+    const threadId = parseThreadId('thread-1')
+    const fake = createFakeEnvironment([
+      { fail: streamFailure() },
+      { items: [{ kind: 'snapshot', snapshot: detailSnapshot(threadId, 4) }] },
+    ])
+    const timers = createManualTimers()
+    const cache = createThreadDetailSubscriptionCache({
+      environment: fake.environment,
+      scheduleTimeout: timers.schedule,
+      clearScheduledTimeout: timers.clear,
+    })
+
+    cache.retain(threadId)
+    await tick()
+
+    expect(selectThreadDetailSync(useThreadDetailSyncStore.getState(), threadId)).toEqual({
+      attempt: 1,
+      error: 'Stream closed.',
+      status: 'reconnecting',
+    })
+
+    timers.runAll()
+    await tick()
+
+    expect(selectThreadDetailSync(useThreadDetailSyncStore.getState(), threadId)).toEqual({
+      attempt: 0,
+      error: null,
+      status: 'live',
+    })
+
+    cache.disposeAll()
+    await tick()
+
+    expect(selectThreadDetailSync(useThreadDetailSyncStore.getState(), threadId).status).toBe(
+      'idle',
+    )
   })
 
   test('treats stream traffic as access so the LRU keeps the busiest thread', async () => {
