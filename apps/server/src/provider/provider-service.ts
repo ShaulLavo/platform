@@ -10,6 +10,7 @@ import type {
   TurnId,
 } from '@workspace/contracts'
 import { DEFAULT_RUNTIME_MODE } from '@workspace/contracts'
+import { providerContinuationKey } from './driver'
 import type {
   ProviderAdapterRegistry,
   ProviderInstanceRoutingInfo,
@@ -83,11 +84,28 @@ export class ProviderService {
   private readonly runtimeEventListeners = new Set<ProviderRuntimeEventListener>()
   private readonly sessionDirectory: ProviderSessionDirectory
   private readonly streamedProviderInstances = new Set<ProviderInstanceId>()
+  private shuttingDown = false
+  private unsubscribeRegistry: (() => void) | null = null
 
   constructor(options: ProviderServiceOptions = {}) {
     this.adapterRegistry = options.adapterRegistry ?? createDefaultProviderAdapterRegistry()
     this.sessionDirectory = options.sessionDirectory ?? new ProviderSessionDirectory()
     this.startAdapterEventStreams()
+  }
+
+  /**
+   * Releases the whole provider runtime: stops consuming adapter streams and
+   * disposes every live instance, which is what kills the CLI children. Without
+   * this the app exits and leaves `codex app-server` processes behind.
+   */
+  async shutdown() {
+    this.shuttingDown = true
+    this.unsubscribeRegistry?.()
+    this.unsubscribeRegistry = null
+    this.runtimeEventListeners.clear()
+    this.streamedProviderInstances.clear()
+    await this.adapterRegistry.dispose()
+    recordChatPipelineInfo('chat.pipeline.provider_service.shutdown.complete', {})
   }
 
   async startSession(input: ProviderStartSessionInput) {
@@ -150,15 +168,21 @@ export class ProviderService {
     }
 
     await this.stopReplacedBinding(existing, input.providerInstanceId)
+    // A parameter change (model, runtime mode, cwd) restarts the session but
+    // must not restart the *conversation*: the cursor of the account we are
+    // still talking to travels into the new session.
+    const continuation = continuableBinding(existing, adapter, input.providerInstanceId, {
+      modelChanged: bindingModelChanged(existing, input.runtimePayload.modelSelection),
+    })
     const session = await adapter.startSession(
-      providerSessionStartInput(input, runtimePayloadRecord(input.runtimePayload), reusableBinding),
+      providerSessionStartInput(input, runtimePayloadRecord(input.runtimePayload), continuation),
     )
     const binding = this.sessionDirectory.upsert({
       adapterKey: adapter.adapterKey,
       providerDriverKind: adapter.driverKind,
       providerInstanceId: input.providerInstanceId,
       providerSessionId: session.providerSessionId,
-      resumeCursor: session.resumeCursor ?? reusableBinding?.resumeCursor ?? null,
+      resumeCursor: session.resumeCursor ?? continuation?.resumeCursor ?? null,
       runtimeMode: input.runtimeMode,
       runtimePayload: {
         ...input.runtimePayload,
@@ -183,10 +207,14 @@ export class ProviderService {
       providerTurnSummary(input),
     )
     const adapter = this.adapterRegistry.getByInstance(input.providerInstanceId)
+    // The adapter may have to (re)open a session for this turn — after a server
+    // restart, or because the model changed. It can only continue the existing
+    // conversation if the cursor rides along with the turn.
+    const turn = this.turnWithResumeCursor(input, adapter)
 
     try {
       this.sessionDirectory.markStatus(input.thread.id, 'running')
-      await adapter.sendTurn(input)
+      await adapter.sendTurn(turn)
       await settleAdapterRuntimeEvents()
       recordChatPipelineInfo('chat.pipeline.provider_service.send_turn.complete', {
         ...providerTurnSummary(input),
@@ -327,6 +355,19 @@ export class ProviderService {
     return this.sessionDirectory.getBinding(threadId)
   }
 
+  private turnWithResumeCursor(
+    input: ProviderTurnInput,
+    adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>,
+  ): ProviderTurnInput {
+    if (input.resumeCursor !== undefined && input.resumeCursor !== null) return input
+
+    const binding = this.sessionDirectory.getBinding(input.thread.id)
+    const continuation = continuableBinding(binding, adapter, input.providerInstanceId)
+    if (!continuation) return input
+
+    return { ...input, resumeCursor: continuation.resumeCursor }
+  }
+
   private routeThread(threadId: ThreadId) {
     const binding = this.sessionDirectory.getBinding(threadId)
     if (!binding) return null
@@ -340,19 +381,36 @@ export class ProviderService {
     for (const providerInstanceId of this.adapterRegistry.listInstances()) {
       this.startAdapterEventStream(providerInstanceId)
     }
-    this.adapterRegistry.subscribeChanges((change) => {
+    this.unsubscribeRegistry = this.adapterRegistry.subscribeChanges((change) => {
+      this.forgetRemovedStreams(change.providerInstanceIds)
       for (const providerInstanceId of change.providerInstanceIds) {
         this.startAdapterEventStream(providerInstanceId)
       }
     })
   }
 
+  /**
+   * A reconciled-away instance may come back under the same id with a different
+   * account, and its replacement needs its own stream — so the id stops counting
+   * as streamed the moment it leaves the registry.
+   */
+  private forgetRemovedStreams(liveProviderInstanceIds: readonly ProviderInstanceId[]) {
+    const live = new Set(liveProviderInstanceIds)
+    for (const providerInstanceId of this.streamedProviderInstances) {
+      if (live.has(providerInstanceId)) continue
+
+      this.streamedProviderInstances.delete(providerInstanceId)
+    }
+  }
+
   private startAdapterEventStream(providerInstanceId: ProviderInstanceId) {
     if (this.streamedProviderInstances.has(providerInstanceId)) return
 
-    const adapter = this.adapterRegistry.getByInstance(providerInstanceId)
+    const adapter = this.adapterRegistry.adapter(providerInstanceId)
+    if (!adapter) return
+
     this.streamedProviderInstances.add(providerInstanceId)
-    void this.consumeAdapterEvents(adapter).catch((error) => {
+    void this.consumeAdapterEvents(adapter, providerInstanceId).catch((error) => {
       this.streamedProviderInstances.delete(providerInstanceId)
       recordChatPipelineWarning('chat.pipeline.provider_service.runtime_stream.failed', {
         adapterKey: adapter.adapterKey,
@@ -362,10 +420,21 @@ export class ProviderService {
     })
   }
 
+  /**
+   * Ends on shutdown or when the instance leaves the registry. Both are checked
+   * on arrival rather than raced against the pending `next()`: racing inserts an
+   * extra microtask between an adapter event and the binding write, which is
+   * enough to let a later write (a session stop) be overwritten by an earlier
+   * event.
+   */
   private async consumeAdapterEvents(
     adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>,
+    providerInstanceId: ProviderInstanceId,
   ) {
     for await (const event of adapter.streamEvents()) {
+      if (this.shuttingDown) return
+      if (!this.streamedProviderInstances.has(providerInstanceId)) return
+
       this.recordRuntimeEvent(event, adapter)
       await this.emitRuntimeEvent(event)
     }
@@ -466,6 +535,46 @@ async function activeProviderBinding(
   if (await adapter.hasSession({ threadId: binding.threadId })) return binding
 
   return null
+}
+
+/**
+ * The binding whose resume cursor the next session may adopt. A cursor is
+ * minted by one account inside one driver, so it only travels within the same
+ * continuation identity — repointing a thread at another provider or another
+ * account correctly starts a fresh conversation.
+ */
+function continuableBinding(
+  binding: ProviderRuntimeBindingWithMetadata | null,
+  adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>,
+  providerInstanceId: ProviderInstanceId,
+  options: { modelChanged: boolean } = { modelChanged: false },
+) {
+  if (!binding) return null
+  if (binding.resumeCursor === null || binding.resumeCursor === undefined) return null
+
+  const bindingKey = providerContinuationKey({
+    driverKind: binding.providerDriverKind,
+    providerInstanceId: binding.providerInstanceId,
+  })
+  const nextKey = providerContinuationKey({ driverKind: adapter.driverKind, providerInstanceId })
+  if (bindingKey !== nextKey) return null
+  // The one read site `sessionModelSwitch` ever needed: a driver that cannot
+  // change model inside a conversation must not be handed a cursor that would
+  // ask it to. Drivers that can keep the history.
+  if (options.modelChanged && adapter.capabilities.sessionModelSwitch === 'unsupported') return null
+
+  return binding
+}
+
+function bindingModelChanged(
+  binding: ProviderRuntimeBindingWithMetadata | null,
+  modelSelection: ModelSelection | undefined,
+) {
+  if (!binding) return false
+
+  const payload = runtimePayloadRecord(binding.runtimePayload)
+
+  return !modelSelectionsEqual(payload.modelSelection, modelSelection)
 }
 
 function providerSessionStartInput(

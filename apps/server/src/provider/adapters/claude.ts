@@ -17,6 +17,8 @@ import {
   type ApprovalRequestId,
   type InteractionMode,
   type ProviderApprovalDecision,
+  type ProviderInstanceId,
+  type ProviderInstanceSettings,
   type ProviderSnapshot,
   type RuntimeMode,
   type ThreadId,
@@ -85,7 +87,7 @@ const CLAUDE_INIT_TIMEOUT_MS = 25_000
 /** Placeholder payload for an attachment that is guaranteed to be dropped. */
 const EMPTY_ATTACHMENT_BYTES = new Uint8Array(0)
 
-const CLAUDE_ADAPTER_CAPABILITIES = {
+export const CLAUDE_ADAPTER_CAPABILITIES = {
   readThread: false,
   rollbackThread: false,
   // Honest: `Query.setModel()` exists, and our prompt is a streaming
@@ -107,6 +109,14 @@ export type ClaudeAdapterOptions = {
   attachmentsDir?: string
   auth?: ClaudeAuthRunner
   createQuery?: ClaudeCreateQuery
+  displayLabel?: string
+  enabled?: boolean
+  /**
+   * Per-instance spawn env. Isolation rides on `CLAUDE_CONFIG_DIR`, never on
+   * `HOME` — see `claudeQueryOptions` for why.
+   */
+  env?: NodeJS.ProcessEnv
+  providerInstanceId?: ProviderInstanceId
 }
 
 type PendingClaudeApproval = {
@@ -141,14 +151,16 @@ type ClaudeRuntimeEventPayload<Type extends ProviderRuntimeEvent['type']> = Extr
 >['payload']
 
 export class ClaudeProviderAdapter implements ProviderAdapter {
-  readonly adapterKey = DEFAULT_CLAUDE_PROVIDER_SETTINGS.providerInstanceId
+  readonly adapterKey: ProviderInstanceId
   readonly capabilities = CLAUDE_ADAPTER_CAPABILITIES
   readonly driverKind = DEFAULT_CLAUDE_PROVIDER_SETTINGS.driverKind
   private readonly attachmentsDir: string
   private readonly auth: ClaudeAuthRunner
   private readonly createQuery: ClaudeCreateQuery
+  private readonly env: NodeJS.ProcessEnv
   private readonly events = new ProviderRuntimeEventStream()
   private readonly sessions = new Map<ThreadId, ClaudeAgentSession>()
+  private readonly settings: ProviderInstanceSettings
 
   /**
    * `createQuery` is the seam every test depends on: without it each test spawns
@@ -159,9 +171,18 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
    * un-injected `signIn` would open a real browser window.
    */
   constructor(options: ClaudeAdapterOptions = {}) {
+    this.adapterKey =
+      options.providerInstanceId ?? DEFAULT_CLAUDE_PROVIDER_SETTINGS.providerInstanceId
     this.attachmentsDir = options.attachmentsDir ?? defaultAttachmentsDir()
-    this.auth = options.auth ?? new ClaudeAuthRunner()
+    this.env = options.env ?? process.env
+    this.auth = options.auth ?? new ClaudeAuthRunner({ env: this.env })
     this.createQuery = options.createQuery ?? defaultClaudeCreateQuery
+    this.settings = {
+      ...DEFAULT_CLAUDE_PROVIDER_SETTINGS,
+      displayLabel: options.displayLabel ?? DEFAULT_CLAUDE_PROVIDER_SETTINGS.displayLabel,
+      enabled: options.enabled ?? DEFAULT_CLAUDE_PROVIDER_SETTINGS.enabled,
+      providerInstanceId: this.adapterKey,
+    }
   }
 
   async snapshot(): Promise<ProviderSnapshot> {
@@ -179,7 +200,7 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
       })
 
       return {
-        ...DEFAULT_CLAUDE_PROVIDER_SETTINGS,
+        ...this.settings,
         auth: state.auth,
         checkedAt,
         installed: true,
@@ -190,11 +211,15 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
         ...(state.message ? { message: state.message } : {}),
       }
     } catch (error) {
-      if (isMissingClaudeBinaryError(error)) return unavailableClaudeSnapshot(checkedAt)
+      if (isMissingClaudeBinaryError(error))
+        return unavailableClaudeSnapshot(checkedAt, this.settings)
 
-      recordChatPipelineWarning('chat.pipeline.claude_adapter.snapshot.failed', { error })
+      recordChatPipelineWarning('chat.pipeline.claude_adapter.snapshot.failed', {
+        error,
+        providerInstanceId: this.adapterKey,
+      })
       return {
-        ...DEFAULT_CLAUDE_PROVIDER_SETTINGS,
+        ...this.settings,
         auth: { status: 'unknown' },
         checkedAt,
         installed: true,
@@ -250,7 +275,7 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
   private async readAuthState() {
     const [cli, account] = await Promise.all([
       this.auth.status(),
-      probeClaudeAccount(this.createQuery),
+      probeClaudeAccount(this.createQuery, this.env),
     ])
 
     return claudeAuthState(cli, account)
@@ -398,6 +423,7 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
       createQuery: this.createQuery,
       cwd,
       emit: (event) => this.events.publish(event),
+      env: this.env,
       interactionMode,
       model,
       providerInstanceId: input.providerInstanceId,
@@ -493,6 +519,7 @@ class ClaudeAgentSession {
     createQuery: ClaudeCreateQuery
     cwd: string
     emit: (event: ProviderRuntimeEvent) => void
+    env: NodeJS.ProcessEnv
     interactionMode: InteractionMode
     model: string
     providerInstanceId: ProviderTurnInput['providerInstanceId']
@@ -517,6 +544,7 @@ class ClaudeAgentSession {
       abortController: session.abortController,
       canUseTool: session.canUseTool(),
       cwd: input.cwd,
+      env: input.env,
       interactionMode: input.interactionMode,
       model: input.model,
       reasoning: input.reasoning,
@@ -1932,10 +1960,13 @@ function defaultClaudeCreateQuery(input: {
  * local initialization IPC — returning account and auth state — without ever
  * sending a request to Anthropic or burning a turn. We read init, then abort.
  */
-async function probeClaudeAccount(createQuery: ClaudeCreateQuery): Promise<unknown> {
+async function probeClaudeAccount(
+  createQuery: ClaudeCreateQuery,
+  env: NodeJS.ProcessEnv,
+): Promise<unknown> {
   const abortController = new AbortController()
   const query = createQuery({
-    options: claudeProbeOptions(abortController),
+    options: claudeProbeOptions(abortController, env),
     prompt: neverYieldingPrompt(abortController.signal),
   })
 
@@ -1952,14 +1983,14 @@ async function probeClaudeAccount(createQuery: ClaudeCreateQuery): Promise<unkno
   }
 }
 
-function claudeProbeOptions(abortController: AbortController): Options {
+function claudeProbeOptions(abortController: AbortController, env: NodeJS.ProcessEnv): Options {
   return {
     abortController,
     // MCP must be neutralized or the health check becomes heavyweight and flaky.
     // The first three cover filesystem-configured servers; claude.ai connectors
     // are discovered outside filesystem config and need the env flag as well.
     allowedTools: [],
-    env: { ...process.env, ENABLE_CLAUDEAI_MCP_SERVERS: 'false' },
+    env: { ...env, ENABLE_CLAUDEAI_MCP_SERVERS: 'false' },
     mcpServers: {},
     persistSession: false,
     settingSources: ['user', 'project', 'local'],
@@ -2064,9 +2095,12 @@ function signedOutClaudeAuthState(): ClaudeProviderAuthState {
 }
 
 /** A missing binary is "unavailable", not "error" — mirrors `unavailableCodexSnapshot`. */
-function unavailableClaudeSnapshot(checkedAt: string): ProviderSnapshot {
+function unavailableClaudeSnapshot(
+  checkedAt: string,
+  settings: ProviderInstanceSettings,
+): ProviderSnapshot {
   return {
-    ...DEFAULT_CLAUDE_PROVIDER_SETTINGS,
+    ...settings,
     auth: { status: 'unknown' },
     availability: 'unavailable',
     checkedAt,

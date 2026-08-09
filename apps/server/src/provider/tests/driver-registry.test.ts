@@ -1,0 +1,234 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import {
+  DEFAULT_RUNTIME_MODE,
+  providerDriverKindSchema,
+  providerInstanceIdSchema,
+  threadIdSchema,
+  type ProviderInstanceId,
+} from '@workspace/contracts'
+import * as v from 'valibot'
+import { afterEach, describe, expect, it } from 'vitest'
+import { createInternalError } from '../../observability/structured-errors'
+import type { MockProviderAdapter } from '../adapters/mock'
+import type { ProviderInstanceConfig } from '../driver'
+import type { ProviderSessionStartInput } from '../types'
+import { MOCK_DRIVER_KIND, mockDriver } from '../drivers/mock'
+import { ProviderAdapterRegistry } from '../provider-adapter-registry'
+import { ProviderStatusCache } from '../status-cache'
+
+const WORK = v.parse(providerInstanceIdSchema, 'mock-work')
+const PERSONAL = v.parse(providerInstanceIdSchema, 'mock-personal')
+const roots: string[] = []
+const registries: ProviderAdapterRegistry[] = []
+
+afterEach(async () => {
+  await Promise.all(registries.splice(0).map((registry) => registry.dispose()))
+  await Promise.all(roots.splice(0).map((root) => rm(root, { force: true, recursive: true })))
+})
+
+describe('provider driver registry', () => {
+  it('keeps two instances of one driver isolated', async () => {
+    const home = await fixtureRoot()
+    const registry = createRegistry()
+    await registry.reconcile([
+      instance(WORK, { credentialsPath: path.join(home, 'work.json') }),
+      instance(PERSONAL, { credentialsPath: path.join(home, 'personal.json') }),
+    ])
+
+    const work = adapterFor(registry, WORK)
+    const personal = adapterFor(registry, PERSONAL)
+    await writeFile(path.join(home, 'work.json'), 'work@example.com')
+    await work.startSession(sessionInput(WORK))
+
+    expect(work).not.toBe(personal)
+    expect(work.env.PLATFORM_MOCK_CREDENTIALS).toBe(path.join(home, 'work.json'))
+    expect(personal.env.PLATFORM_MOCK_CREDENTIALS).toBe(path.join(home, 'personal.json'))
+    // The session started on one account is invisible to the other.
+    expect(await work.hasSession({ threadId: threadId() })).toBe(true)
+    expect(await personal.hasSession({ threadId: threadId() })).toBe(false)
+    expect(await registry.refreshSnapshot(WORK)).toMatchObject({
+      auth: { label: 'work@example.com', status: 'authenticated' },
+      displayLabel: 'mock-work',
+      providerInstanceId: WORK,
+    })
+    expect(await registry.refreshSnapshot(PERSONAL)).toMatchObject({
+      auth: { status: 'unauthenticated' },
+      providerInstanceId: PERSONAL,
+    })
+  })
+
+  it('reconciles a settings change into live instances without a restart', async () => {
+    const home = await fixtureRoot()
+    const registry = createRegistry()
+    await registry.reconcile([instance(WORK, { credentialsPath: path.join(home, 'work.json') })])
+    const work = adapterFor(registry, WORK)
+    await work.startSession(sessionInput(WORK))
+
+    await registry.reconcile([
+      instance(WORK, { credentialsPath: path.join(home, 'work.json') }),
+      instance(PERSONAL, { credentialsPath: path.join(home, 'personal.json') }),
+    ])
+
+    // An untouched entry keeps its adapter, so its running sessions survive.
+    expect(adapterFor(registry, WORK)).toBe(work)
+    expect(await work.hasSession({ threadId: threadId() })).toBe(true)
+    expect(registry.listInstances()).toEqual([WORK, PERSONAL])
+
+    await registry.reconcile([instance(PERSONAL, { credentialsPath: path.join(home, 'p.json') })])
+
+    expect(registry.listInstances()).toEqual([PERSONAL])
+    expect(registry.adapter(WORK)).toBeNull()
+    // Removal disposes the instance, which stops everything it was running.
+    expect(await work.hasSession({ threadId: threadId() })).toBe(false)
+  })
+
+  it('rebuilds an instance whose config changed', async () => {
+    const home = await fixtureRoot()
+    const registry = createRegistry()
+    await registry.reconcile([instance(WORK, { credentialsPath: path.join(home, 'a.json') })])
+    const before = adapterFor(registry, WORK)
+
+    await registry.reconcile([instance(WORK, { credentialsPath: path.join(home, 'b.json') })])
+    const after = adapterFor(registry, WORK)
+
+    expect(after).not.toBe(before)
+    expect(after.env.PLATFORM_MOCK_CREDENTIALS).toBe(path.join(home, 'b.json'))
+  })
+
+  it('reflects an out-of-band credential change within seconds', async () => {
+    const home = await fixtureRoot()
+    const credentialsPath = path.join(home, 'work.json')
+    const registry = createRegistry()
+    await registry.reconcile([instance(WORK, { credentialsPath })])
+    const changes: ProviderInstanceId[][] = []
+    registry.subscribeChanges((change) => {
+      changes.push(change.providerInstanceIds)
+    })
+
+    expect(await registry.snapshot(WORK)).toMatchObject({ auth: { status: 'unauthenticated' } })
+    await writeFile(credentialsPath, 'signed-in@example.com')
+    await waitFor(async () => {
+      const snapshot = await registry.snapshot(WORK)
+      return snapshot.auth.status === 'authenticated'
+    })
+
+    expect(await registry.snapshot(WORK)).toMatchObject({
+      auth: { label: 'signed-in@example.com', status: 'authenticated' },
+    })
+    expect(changes).toContainEqual([WORK])
+  })
+
+  it('surfaces an entry whose driver this build does not ship as unavailable', async () => {
+    const registry = createRegistry()
+    await registry.reconcile([
+      instance(WORK, {}),
+      {
+        driverKind: v.parse(providerDriverKindSchema, 'opencode'),
+        providerInstanceId: v.parse(providerInstanceIdSchema, 'opencode'),
+      },
+    ])
+
+    const { providers } = await registry.listProviders()
+
+    expect(registry.listInstances()).toEqual([WORK])
+    expect(providers).toContainEqual(
+      expect.objectContaining({
+        availability: 'unavailable',
+        message: "Driver 'opencode' is not registered.",
+        providerInstanceId: 'opencode',
+      }),
+    )
+  })
+
+  it('keeps the last known model list when a probe comes back empty', async () => {
+    const registry = createRegistry()
+    await registry.reconcile([instance(WORK, {})])
+    const good = await registry.refreshSnapshot(WORK)
+    adapterFor(registry, WORK).probeError = 'codex model list failed'
+
+    expect(await registry.refreshSnapshot(WORK)).toMatchObject({
+      message: 'codex model list failed',
+      models: good.models,
+      status: 'error',
+    })
+  })
+})
+
+describe('provider status cache', () => {
+  it('hydrates a cold process from disk and refuses a mismatched identity', async () => {
+    const directory = await fixtureRoot()
+    const registry = createRegistry(new ProviderStatusCache({ directory }))
+    await registry.reconcile([instance(WORK, {})])
+    const written = await registry.refreshSnapshot(WORK)
+
+    const cold = new ProviderStatusCache({ directory })
+
+    expect(cold.hydrate(WORK, MOCK_DRIVER_KIND)).toMatchObject({
+      providerInstanceId: WORK,
+      version: written.version,
+    })
+    expect(cold.hydrate(WORK, v.parse(providerDriverKindSchema, 'codex'))).toBeNull()
+    expect(cold.hydrate(PERSONAL, MOCK_DRIVER_KIND)).toBeNull()
+  })
+})
+
+function createRegistry(statusCache?: ProviderStatusCache) {
+  const registry = new ProviderAdapterRegistry({
+    drivers: [mockDriver],
+    ...(statusCache ? { statusCache } : {}),
+  })
+  registries.push(registry)
+
+  return registry
+}
+
+function adapterFor(registry: ProviderAdapterRegistry, providerInstanceId: ProviderInstanceId) {
+  return registry.getByInstance(providerInstanceId) as MockProviderAdapter
+}
+
+function instance(
+  providerInstanceId: ProviderInstanceId,
+  config: Record<string, unknown>,
+): ProviderInstanceConfig {
+  return {
+    config,
+    displayLabel: providerInstanceId,
+    driverKind: MOCK_DRIVER_KIND,
+    providerInstanceId,
+  }
+}
+
+function sessionInput(providerInstanceId: ProviderInstanceId): ProviderSessionStartInput {
+  return {
+    cwd: '/workspace',
+    modelSelection: { model: 'gpt-5.5', providerInstanceId },
+    providerInstanceId,
+    runtimeMode: DEFAULT_RUNTIME_MODE,
+    threadId: threadId(),
+  }
+}
+
+function threadId() {
+  return v.parse(threadIdSchema, 'thread-1')
+}
+
+async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 5_000) {
+  const deadline = Date.now() + timeoutMs
+  for (;;) {
+    if (await predicate()) return
+    if (Date.now() > deadline) {
+      throw createInternalError('Timed out waiting for provider availability.')
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 25))
+  }
+}
+
+async function fixtureRoot() {
+  const root = await mkdtemp(path.join(tmpdir(), 'provider-registry-'))
+  roots.push(root)
+
+  return root
+}

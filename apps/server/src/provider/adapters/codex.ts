@@ -10,6 +10,8 @@ import {
   type InteractionMode,
   type ModelReasoningEffortOption,
   type ProviderModel,
+  type ProviderInstanceId,
+  type ProviderInstanceSettings,
   type ProviderModelCapabilities,
   type ProviderSnapshot,
   type RuntimeMode,
@@ -66,7 +68,7 @@ const BENIGN_CODEX_STDERR_ERROR_SNIPPETS = [
   'state db missing rollout path for thread',
   'state db record_discrepancy: find_thread_path_by_id_str_in_subdir, falling_back',
 ]
-const CODEX_ADAPTER_CAPABILITIES = {
+export const CODEX_ADAPTER_CAPABILITIES = {
   readThread: true,
   rollbackThread: true,
   sessionModelSwitch: 'in-session',
@@ -141,28 +143,57 @@ type CodexTurnInputItem =
   | { text: string; text_elements: unknown[]; type: 'text' }
   | { type: 'image'; url: string }
 
+/**
+ * Per-instance identity and spawn env. Defaults reproduce the single built-in
+ * `codex` instance; the driver passes a distinct id and a `CODEX_HOME`-carrying
+ * env for every configured account.
+ */
+export type CodexAdapterOptions = {
+  displayLabel?: string
+  enabled?: boolean
+  env?: NodeJS.ProcessEnv
+  providerInstanceId?: ProviderInstanceId
+}
+
 export class CodexProviderAdapter implements ProviderAdapter {
-  readonly adapterKey = DEFAULT_CODEX_PROVIDER_SETTINGS.providerInstanceId
+  readonly adapterKey: ProviderInstanceId
   readonly capabilities = CODEX_ADAPTER_CAPABILITIES
   readonly driverKind = DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind
+  private readonly env: NodeJS.ProcessEnv
   private readonly events = new ProviderRuntimeEventStream()
   private readonly sessions = new Map<ThreadId, CodexAppServerSession>()
+  private readonly settings: ProviderInstanceSettings
+
+  constructor(options: CodexAdapterOptions = {}) {
+    this.adapterKey =
+      options.providerInstanceId ?? DEFAULT_CODEX_PROVIDER_SETTINGS.providerInstanceId
+    this.env = options.env ?? process.env
+    this.settings = {
+      ...DEFAULT_CODEX_PROVIDER_SETTINGS,
+      displayLabel: options.displayLabel ?? DEFAULT_CODEX_PROVIDER_SETTINGS.displayLabel,
+      enabled: options.enabled ?? DEFAULT_CODEX_PROVIDER_SETTINGS.enabled,
+      providerInstanceId: this.adapterKey,
+    }
+  }
 
   async snapshot(): Promise<ProviderSnapshot> {
     const checkedAt = new Date().toISOString()
-    recordChatPipelineInfo('chat.pipeline.codex_adapter.snapshot.start')
+    recordChatPipelineInfo('chat.pipeline.codex_adapter.snapshot.start', {
+      providerInstanceId: this.adapterKey,
+    })
 
     try {
-      const probe = await probeCodexProvider()
+      const probe = await probeCodexProvider(this.env)
       recordChatPipelineInfo('chat.pipeline.codex_adapter.snapshot.complete', {
         installed: true,
         modelCount: probe.models.length,
+        providerInstanceId: this.adapterKey,
         status: probe.status,
         version: probe.version,
       })
 
       return {
-        ...DEFAULT_CODEX_PROVIDER_SETTINGS,
+        ...this.settings,
         auth: probe.auth,
         checkedAt,
         installed: true,
@@ -172,11 +203,15 @@ export class CodexProviderAdapter implements ProviderAdapter {
         ...(probe.message ? { message: probe.message } : {}),
       }
     } catch (error) {
-      if (isMissingCodexBinaryError(error)) return unavailableCodexSnapshot(checkedAt)
+      if (isMissingCodexBinaryError(error))
+        return unavailableCodexSnapshot(checkedAt, this.settings)
 
-      recordChatPipelineWarning('chat.pipeline.codex_adapter.snapshot.failed', { error })
+      recordChatPipelineWarning('chat.pipeline.codex_adapter.snapshot.failed', {
+        error,
+        providerInstanceId: this.adapterKey,
+      })
       return {
-        ...DEFAULT_CODEX_PROVIDER_SETTINGS,
+        ...this.settings,
         auth: { status: 'unknown' },
         checkedAt,
         installed: true,
@@ -304,6 +339,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
     const session = await CodexAppServerSession.start({
       cwd,
       emit: (event) => this.events.publish(event),
+      env: this.env,
       interactionMode,
       model,
       modelOptions,
@@ -383,6 +419,7 @@ class CodexAppServerSession {
   static async start(input: {
     cwd: string
     emit: (event: ProviderRuntimeEvent) => void
+    env: NodeJS.ProcessEnv
     interactionMode: InteractionMode
     model: string
     modelOptions: CodexModelOptions
@@ -398,7 +435,7 @@ class CodexAppServerSession {
       runtimeMode: input.runtimeMode,
       threadId: input.threadId,
     })
-    const client = CodexAppServerRpcClient.start()
+    const client = CodexAppServerRpcClient.start(input.env)
     try {
       await initializeCodexClient(client)
       const response = await openCodexThread(client, input)
@@ -1879,9 +1916,9 @@ class CodexAppServerRpcClient {
     })
   }
 
-  static start() {
+  static start(env: NodeJS.ProcessEnv = process.env) {
     return new CodexAppServerRpcClient(
-      spawn(codexBinary(), ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'] }),
+      spawn(codexBinary(env), ['app-server'], { env, stdio: ['pipe', 'pipe', 'pipe'] }),
     )
   }
 
@@ -2067,8 +2104,8 @@ class CodexAppServerRpcClient {
   }
 }
 
-async function probeCodexProvider() {
-  const client = CodexAppServerRpcClient.start()
+async function probeCodexProvider(env: NodeJS.ProcessEnv) {
+  const client = CodexAppServerRpcClient.start(env)
   try {
     const initialize = await initializeCodexClient(client, PROVIDER_PROBE_TIMEOUT_MS)
     const [account, models] = await Promise.all([
@@ -2486,8 +2523,8 @@ function jsonRpcErrorMessage(error: unknown) {
   return stringField(errorRecord, 'message') ?? JSON.stringify(error)
 }
 
-function codexBinary() {
-  return process.env.PLATFORM_CODEX_BINARY ?? DEFAULT_CODEX_BINARY
+function codexBinary(env: NodeJS.ProcessEnv) {
+  return env.PLATFORM_CODEX_BINARY ?? DEFAULT_CODEX_BINARY
 }
 
 function codexVersionFromInitialize(response: CodexClientRequestResultByMethod['initialize']) {
@@ -2503,9 +2540,12 @@ function isMissingCodexBinaryError(error: unknown) {
   return 'code' in error && error.code === 'ENOENT'
 }
 
-function unavailableCodexSnapshot(checkedAt: string): ProviderSnapshot {
+function unavailableCodexSnapshot(
+  checkedAt: string,
+  settings: ProviderInstanceSettings,
+): ProviderSnapshot {
   return {
-    ...DEFAULT_CODEX_PROVIDER_SETTINGS,
+    ...settings,
     auth: { status: 'unknown' },
     availability: 'unavailable',
     checkedAt,

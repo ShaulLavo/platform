@@ -29,6 +29,7 @@ export const platformMigrations: readonly Migration[] = [
     name: 'thread_proposed_plan_and_checkpoint_projections',
     up: applyThreadProposedPlanAndCheckpointProjections,
   },
+  { version: 3, name: 'app_settings', up: applyAppSettings },
 ]
 
 /**
@@ -434,6 +435,22 @@ function applyThreadProposedPlanAndCheckpointProjections(database: PlatformDatab
   database.run(sql`
 		CREATE INDEX projection_thread_checkpoints_thread_turn_count_idx
 		ON projection_thread_checkpoints (thread_id, checkpoint_turn_count)
+	`)
+}
+
+/**
+ * Durable user settings. One row per top-level section rather than a single
+ * settings blob: a write only touches the sections it changes, and a section
+ * the user never touched simply has no row, so its default comes from the
+ * contract instead of a stale copy frozen at install time.
+ */
+function applyAppSettings(database: PlatformDatabase) {
+  database.run(sql`
+		CREATE TABLE app_settings (
+			section TEXT PRIMARY KEY NOT NULL,
+			value_json TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		)
 	`)
 }
 

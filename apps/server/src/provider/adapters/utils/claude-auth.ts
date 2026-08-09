@@ -67,6 +67,8 @@ export type ClaudeLoginInput = {
 }
 
 export type ClaudeAuthRunnerOptions = {
+  /** Per-instance env; carries CLAUDE_CONFIG_DIR so each account reads its own credentials. */
+  env?: NodeJS.ProcessEnv
   spawn?: ClaudeAuthSpawn
   timeoutMs?: number
 }
@@ -118,7 +120,8 @@ export class ClaudeAuthRunner {
   private latest: MutableLoginAttempt | null = null
 
   constructor(options: ClaudeAuthRunnerOptions = {}) {
-    this.spawn = options.spawn ?? defaultClaudeAuthSpawn
+    const env = options.env ?? process.env
+    this.spawn = options.spawn ?? ((args) => defaultClaudeAuthSpawn(args, env))
     this.timeoutMs = options.timeoutMs ?? LOGIN_TIMEOUT_MS
   }
 
@@ -295,8 +298,12 @@ function unknownAuthState(): ClaudeAuthState {
   return { apiProvider: null, authMethod: null, status: 'unknown' }
 }
 
-function defaultClaudeAuthSpawn(args: readonly string[]): ClaudeAuthProcess {
+function defaultClaudeAuthSpawn(
+  args: readonly string[],
+  env: NodeJS.ProcessEnv = process.env,
+): ClaudeAuthProcess {
   const child = Bun.spawn([claudeBinaryPath(), ...args], {
+    env,
     stderr: 'pipe',
     stdin: 'ignore',
     stdout: 'pipe',

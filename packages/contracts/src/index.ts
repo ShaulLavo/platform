@@ -379,3 +379,23 @@ export {
   type LogEventSummary,
   type LogLiveStreamItem,
 } from './log-dashboard'
+export {
+  DEFAULT_SETTINGS,
+  keybindingCommandIdSchema,
+  keybindingOverridesSchema,
+  modelPreferencesSchema,
+  modelRefKey,
+  modelRefSchema,
+  providerEnvironmentVariableSchema,
+  providerInstanceConfigSchema,
+  providerInstanceConfigsSchema,
+  settingsPatchSchema,
+  settingsSchema,
+  type KeybindingOverrides,
+  type ModelPreferences,
+  type ModelRef,
+  type ProviderEnvironmentVariable,
+  type ProviderInstanceConfig,
+  type Settings,
+  type SettingsPatch,
+} from './settings'

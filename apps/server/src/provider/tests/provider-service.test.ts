@@ -7,6 +7,7 @@ import {
   DEFAULT_PROVIDER_INSTANCE_ID,
   DEFAULT_RUNTIME_MODE,
   projectIdSchema,
+  providerInstanceIdSchema,
   threadIdSchema,
   turnIdSchema,
 } from '@workspace/contracts'
@@ -55,6 +56,105 @@ describe('ProviderService', () => {
       binding: { runtimePayload: expect.objectContaining({ cwd: '/other-workspace' }) },
       reused: false,
     })
+    fixture.close()
+  })
+
+  it('carries the resume cursor across a mid-conversation model switch', async () => {
+    const fixture = createFixture()
+    const adapter = new MockProviderAdapter()
+    const service = new ProviderService({
+      adapterRegistry: new ProviderAdapterRegistry([adapter]),
+      sessionDirectory: new ProviderSessionDirectory(fixture.database),
+    })
+    const input = providerTurnInput()
+    const started = await service.ensureSession({
+      providerInstanceId: input.providerInstanceId,
+      runtimeMode: input.runtimeMode,
+      runtimePayload: providerSessionPayload(input),
+      threadId: input.thread.id,
+    })
+    const switched = await service.ensureSession({
+      providerInstanceId: input.providerInstanceId,
+      runtimeMode: input.runtimeMode,
+      runtimePayload: {
+        ...providerSessionPayload(input),
+        modelSelection: { ...input.modelSelection, model: 'gpt-5.5' },
+      },
+      threadId: input.thread.id,
+    })
+
+    expect(started.binding.resumeCursor).toBe('mock-thread:thread-1')
+    expect(switched).toMatchObject({ reused: false })
+    // The session restarts, the conversation does not.
+    expect(adapter.startedSessions.map((session) => session.resumeCursor)).toEqual([
+      null,
+      'mock-thread:thread-1',
+    ])
+    expect(switched.binding.resumeCursor).toBe('mock-thread:thread-1')
+    fixture.close()
+  })
+
+  it('hands a turn the cursor of the conversation it continues', async () => {
+    const fixture = createFixture()
+    const adapter = new MockProviderAdapter()
+    const directory = new ProviderSessionDirectory(fixture.database)
+    const service = new ProviderService({
+      adapterRegistry: new ProviderAdapterRegistry([adapter]),
+      sessionDirectory: directory,
+    })
+    const input = providerTurnInput()
+    // A binding that outlived the process that created it: no adapter session
+    // exists any more, so the turn itself has to carry the cursor.
+    directory.upsert({
+      adapterKey: adapter.adapterKey,
+      providerDriverKind: adapter.driverKind,
+      providerInstanceId: input.providerInstanceId,
+      providerSessionId: 'mock:thread-1',
+      resumeCursor: 'mock-thread:thread-1',
+      runtimeMode: input.runtimeMode,
+      runtimePayload: providerSessionPayload(input),
+      status: 'ready',
+      threadId: input.thread.id,
+    })
+
+    await service.sendTurn(input)
+
+    expect(adapter.startedTurns[0]?.resumeCursor).toBe('mock-thread:thread-1')
+    expect(adapter.startedSessions[0]?.resumeCursor).toBe('mock-thread:thread-1')
+    fixture.close()
+  })
+
+  it('drops the cursor when a thread is repointed at another provider instance', async () => {
+    const fixture = createFixture()
+    const codex = new MockProviderAdapter()
+    const other = new MockProviderAdapter({
+      providerInstanceId: v.parse(providerInstanceIdSchema, 'codex-personal'),
+    })
+    const directory = new ProviderSessionDirectory(fixture.database)
+    const service = new ProviderService({
+      adapterRegistry: new ProviderAdapterRegistry([codex, other]),
+      sessionDirectory: directory,
+    })
+    const input = providerTurnInput()
+    await service.ensureSession({
+      providerInstanceId: input.providerInstanceId,
+      runtimeMode: input.runtimeMode,
+      runtimePayload: providerSessionPayload(input),
+      threadId: input.thread.id,
+    })
+
+    await service.ensureSession({
+      providerInstanceId: other.adapterKey,
+      runtimeMode: input.runtimeMode,
+      runtimePayload: {
+        ...providerSessionPayload(input),
+        modelSelection: { ...input.modelSelection, providerInstanceId: other.adapterKey },
+      },
+      threadId: input.thread.id,
+    })
+
+    // Another account cannot resume this one's conversation.
+    expect(other.startedSessions.map((session) => session.resumeCursor)).toEqual([null])
     fixture.close()
   })
 

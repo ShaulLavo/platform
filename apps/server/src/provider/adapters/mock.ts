@@ -1,9 +1,13 @@
 import { createInternalError } from '../../observability/structured-errors'
 
+import { existsSync, readFileSync } from 'node:fs'
+
 import {
   DEFAULT_CODEX_PROVIDER_SETTINGS,
   type ProviderApprovalDecision,
+  type ProviderDriverKind,
   type ProviderInstanceId,
+  type ProviderInstanceSettings,
   type ProviderSnapshot,
   type ProviderUserInputAnswers,
   type ApprovalRequestId,
@@ -13,25 +17,35 @@ import { ProviderRuntimeEventStream } from '../provider-runtime-event-stream'
 import type { ProviderAdapter, ProviderSessionStartInput, ProviderTurnInput } from '../types'
 import { sessionInputFromTurn } from './utils/session-input'
 
-type MockProviderAdapterOptions = {
+export type MockProviderAdapterOptions = {
   approvalError?: string
   beforeComplete?: () => Promise<void> | void
+  displayLabel?: string
+  driverKind?: ProviderDriverKind
+  enabled?: boolean
+  /** Resolved per-instance env, so multi-instance isolation is observable in tests. */
+  env?: NodeJS.ProcessEnv
   interruptError?: string
+  /** Makes `snapshot()` report a failed probe, the way a flaky CLI read does. */
+  probeError?: string
+  providerInstanceId?: ProviderInstanceId
   responseText?: string
   shouldFail?: boolean
   stopError?: string
   userInputError?: string
 }
 
+export const MOCK_ADAPTER_CAPABILITIES = {
+  readThread: true,
+  rollbackThread: true,
+  sessionModelSwitch: 'in-session',
+  stopAll: true,
+} satisfies ProviderAdapter['capabilities']
+
 export class MockProviderAdapter implements ProviderAdapter {
-  readonly adapterKey = DEFAULT_CODEX_PROVIDER_SETTINGS.providerInstanceId
-  readonly capabilities = {
-    readThread: true,
-    rollbackThread: true,
-    sessionModelSwitch: 'in-session',
-    stopAll: true,
-  } satisfies ProviderAdapter['capabilities']
-  readonly driverKind = DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind
+  readonly adapterKey: ProviderInstanceId
+  readonly capabilities = MOCK_ADAPTER_CAPABILITIES
+  readonly driverKind: ProviderDriverKind
   readonly approvalResponses: Array<{
     decision: ProviderApprovalDecision
     requestId: ApprovalRequestId
@@ -39,14 +53,19 @@ export class MockProviderAdapter implements ProviderAdapter {
   }> = []
   readonly interruptedThreads: ThreadId[] = []
   readonly rollbacks: Array<{ numTurns: number; threadId: ThreadId }> = []
+  readonly startedSessions: ProviderSessionStartInput[] = []
   readonly startedTurns: ProviderTurnInput[] = []
   readonly userInputResponses: Array<{
     answers: ProviderUserInputAnswers
     requestId: ApprovalRequestId
     threadId: ThreadId
   }> = []
+  readonly env: NodeJS.ProcessEnv
+  /** Mutable so a harness can make a healthy provider start failing mid-run. */
+  probeError: string | null
   private readonly events = new ProviderRuntimeEventStream()
   private readonly sessions = new Map<ThreadId, ProviderSessionStartInput>()
+  private readonly settings: ProviderInstanceSettings
   private readonly approvalError: string | null
   private readonly beforeComplete: (() => Promise<void> | void) | null
   private readonly interruptError: string | null
@@ -56,9 +75,21 @@ export class MockProviderAdapter implements ProviderAdapter {
   private readonly userInputError: string | null
 
   constructor(options: MockProviderAdapterOptions = {}) {
+    this.adapterKey =
+      options.providerInstanceId ?? DEFAULT_CODEX_PROVIDER_SETTINGS.providerInstanceId
+    this.driverKind = options.driverKind ?? DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind
+    this.env = options.env ?? {}
+    this.settings = {
+      ...DEFAULT_CODEX_PROVIDER_SETTINGS,
+      displayLabel: options.displayLabel ?? DEFAULT_CODEX_PROVIDER_SETTINGS.displayLabel,
+      driverKind: this.driverKind,
+      enabled: options.enabled ?? DEFAULT_CODEX_PROVIDER_SETTINGS.enabled,
+      providerInstanceId: this.adapterKey,
+    }
     this.approvalError = options.approvalError ?? null
     this.beforeComplete = options.beforeComplete ?? null
     this.interruptError = options.interruptError ?? null
+    this.probeError = options.probeError ?? null
     this.responseText = options.responseText ?? 'Mock response'
     this.shouldFail = options.shouldFail ?? false
     this.stopError = options.stopError ?? null
@@ -66,9 +97,22 @@ export class MockProviderAdapter implements ProviderAdapter {
   }
 
   async snapshot(): Promise<ProviderSnapshot> {
+    if (this.probeError) {
+      return {
+        ...this.settings,
+        auth: { status: 'unknown' },
+        checkedAt: new Date().toISOString(),
+        installed: true,
+        message: this.probeError,
+        models: [],
+        status: 'error',
+        version: null,
+      }
+    }
+
     return {
-      ...DEFAULT_CODEX_PROVIDER_SETTINGS,
-      auth: { status: 'unknown' },
+      ...this.settings,
+      auth: mockAuth(this.env),
       checkedAt: new Date().toISOString(),
       installed: true,
       models: [
@@ -90,11 +134,15 @@ export class MockProviderAdapter implements ProviderAdapter {
   }
 
   async startSession(input: ProviderSessionStartInput) {
-    this.sessions.set(input.threadId, input)
+    // Mirrors the real adapters: a session that was not resumed mints the
+    // cursor its own conversation can later be resumed from.
+    const resumeCursor = input.resumeCursor ?? `mock-thread:${input.threadId}`
+    this.startedSessions.push(input)
+    this.sessions.set(input.threadId, { ...input, resumeCursor })
     this.events.publish({
       createdAt: new Date().toISOString(),
       eventId: `mock-session-started:${input.threadId}`,
-      payload: { resume: input.resumeCursor ?? null },
+      payload: { resume: resumeCursor },
       provider: this.driverKind,
       providerInstanceId: input.providerInstanceId,
       providerSessionId: `mock:${input.threadId}`,
@@ -124,7 +172,7 @@ export class MockProviderAdapter implements ProviderAdapter {
       providerInstanceId: input.providerInstanceId as ProviderInstanceId,
       providerSessionId: `mock:${input.threadId}`,
       providerThreadId: `mock-thread:${input.threadId}`,
-      resumeCursor: input.resumeCursor ?? null,
+      resumeCursor,
       runtimeMode: input.runtimeMode,
       status: 'ready' as const,
       threadId: input.threadId,
@@ -251,4 +299,17 @@ export class MockProviderAdapter implements ProviderAdapter {
 
     this.userInputResponses.push(input)
   }
+}
+
+/**
+ * Reads the credentials file named by the instance env, so a mock instance
+ * reports the same authenticated/unauthenticated transition a real CLI does
+ * when someone signs in out of band.
+ */
+function mockAuth(env: NodeJS.ProcessEnv): ProviderSnapshot['auth'] {
+  const credentialsPath = env.PLATFORM_MOCK_CREDENTIALS
+  if (!credentialsPath) return { status: 'unknown' }
+  if (!existsSync(credentialsPath)) return { status: 'unauthenticated' }
+
+  return { status: 'authenticated', label: readFileSync(credentialsPath, 'utf8').trim() }
 }

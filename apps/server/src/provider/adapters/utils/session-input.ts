@@ -6,6 +6,7 @@ export function sessionInputFromTurn(input: ProviderTurnInput): ProviderSessionS
     interactionMode: input.interactionMode,
     modelSelection: input.modelSelection,
     providerInstanceId: input.providerInstanceId,
+    resumeCursor: input.resumeCursor ?? null,
     runtimeMode: input.runtimeMode,
     threadId: input.thread.id,
   }

@@ -29,6 +29,8 @@ import {
   type ProviderAdapterRegistry,
 } from './provider/provider-adapter-registry'
 import { providerRoutes } from './provider/routes'
+import { settingsRoutes } from './settings/routes'
+import { SettingsService } from './settings/service'
 import { TerminalService, type TerminalPtyFactory } from './terminal/service'
 import { wallpaperRoutes } from './wallpaper/routes'
 
@@ -69,6 +71,10 @@ export function createApp(options: AppOptions) {
     options.orchestration?.database ?? getDefaultPlatformDatabase(),
     git,
   )
+  // One SQLite file backs the whole platform, so settings ride on whichever
+  // handle this app was given — in tests that is the in-memory database, which
+  // is what keeps a test run from writing into the developer's real settings.
+  const settings = new SettingsService(options.orchestration?.database)
   const auth = createAuthConfig(options.auth)
   const cleanup = appCleanup(terminal, fs)
 
@@ -111,6 +117,7 @@ export function createApp(options: AppOptions) {
     .use(orchestrationRoutes(orchestration, checkpointDiff))
     .use(fontRoutes(fonts))
     .use(wallpaperRoutes())
+    .use(settingsRoutes(settings))
     .use(gitRoutes(git))
     .use(fsRoutes(fs))
     .onStop(cleanup)

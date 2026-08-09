@@ -27,6 +27,13 @@ export type ProviderTurnInput = {
   modelSelection: ModelSelection
   project: OrchestrationProject
   providerInstanceId: ProviderInstanceId
+  /**
+   * Cursor of the conversation this turn continues, filled in by
+   * `ProviderService` from the persisted binding. Without it a turn that has to
+   * (re)start a session — after a restart, or after a model switch — would open
+   * a brand-new provider conversation and lose the history.
+   */
+  resumeCursor?: unknown | null
   runtimeMode: RuntimeMode
   thread: OrchestrationThread
   turnId: TurnId

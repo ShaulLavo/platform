@@ -29,6 +29,8 @@ export type ClaudeQueryOptionsInput = ClaudeRuntimeSelection & {
   abortController: AbortController
   canUseTool?: CanUseTool
   cwd: string
+  /** Per-instance spawn env. Absent means "inherit the server's env untouched". */
+  env?: NodeJS.ProcessEnv
   model: string
   /** Effort/thinking for this thread; absent means "send neither". */
   reasoning?: ClaudeReasoning
@@ -118,11 +120,12 @@ export function claudeQueryOptions(input: ClaudeQueryOptionsInput): Options {
     ...claudePermissionOptions(input),
     ...claudeSessionOptions({ resume, ...(input.sessionId ? { sessionId: input.sessionId } : {}) }),
     ...(input.canUseTool ? { canUseTool: input.canUseTool } : {}),
-    // `env` is deliberately absent so the CLI inherits process.env untouched.
-    // NEVER isolate a Claude instance by overriding HOME: that relocates the
-    // macOS login-keychain lookup ($HOME/Library/Keychains), the CLI cannot find
-    // its stored OAuth credentials, and it reports "Not logged in".
-    // CLAUDE_CONFIG_DIR is the correct knob if we ever ship more than one instance.
+    // Absent `env` makes the CLI inherit process.env untouched, which is what a
+    // single-instance install wants. When it is present it carries
+    // CLAUDE_CONFIG_DIR for the instance — NEVER an overridden HOME: that
+    // relocates the macOS login-keychain lookup ($HOME/Library/Keychains), the
+    // CLI cannot find its stored OAuth credentials, and it reports "Not logged in".
+    ...(input.env ? { env: input.env } : {}),
   }
 }
 
