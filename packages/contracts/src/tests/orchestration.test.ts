@@ -109,6 +109,33 @@ describe('orchestration contracts', () => {
     expect(command.bootstrap?.createThread?.interactionMode).toBe('default')
   })
 
+  it('leaves project creation unasked about making the workspace root', () => {
+    const command = v.parse(clientOrchestrationCommandSchema, {
+      commandId: 'cmd-1',
+      type: 'project.create',
+      projectId: 'project-1',
+      title: 'Platform',
+      workspaceRoot: '/workspace/platform',
+    })
+
+    expect(
+      command.type === 'project.create' ? command.createWorkspaceRootIfMissing : 'wrong command',
+    ).toBeUndefined()
+  })
+
+  it('lets project creation opt in to making the workspace root', () => {
+    const command = v.parse(clientOrchestrationCommandSchema, {
+      commandId: 'cmd-1',
+      type: 'project.create',
+      projectId: 'project-1',
+      title: 'Platform',
+      workspaceRoot: '/workspace/platform',
+      createWorkspaceRootIfMissing: true,
+    })
+
+    expect(command.type === 'project.create' && command.createWorkspaceRootIfMissing).toBe(true)
+  })
+
   it('rejects proposed-plan client commands deferred beyond Phase 1', () => {
     expect(() =>
       v.parse(clientOrchestrationCommandSchema, {

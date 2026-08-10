@@ -1,5 +1,6 @@
 import {
   modelRefKey,
+  type KeybindingOverrides,
   type ModelPreferences,
   type ModelRef,
   type ProviderInstanceConfig,
@@ -34,4 +35,23 @@ export function withModelHidden(
     hidden: hidden ? [...without, ref] : without,
     order: preferences.order,
   }
+}
+
+export function withKeybindingOverride(
+  overrides: KeybindingOverrides,
+  command: string,
+  keys: string | null,
+): KeybindingOverrides {
+  return { ...overrides, [command]: keys }
+}
+
+/**
+ * Dropping the key, not writing `null` over it: `null` is an explicit unbind,
+ * so only an absent key hands the command back to its default.
+ */
+export function withoutKeybindingOverride(
+  overrides: KeybindingOverrides,
+  command: string,
+): KeybindingOverrides {
+  return Object.fromEntries(Object.entries(overrides).filter(([key]) => key !== command))
 }

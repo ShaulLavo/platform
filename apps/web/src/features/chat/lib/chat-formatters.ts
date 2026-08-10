@@ -2,6 +2,23 @@ import type { ModelSelection, ProviderSnapshot } from '@workspace/contracts'
 
 import type { ChatSidebarThreadSummary } from '../state/chat-projection-store'
 
+// Building an `Intl.DateTimeFormat` costs orders of magnitude more than formatting with
+// one, and these run once per row inside virtualized lists. One formatter per option set,
+// built once at module load — a single shared formatter would hand every caller whichever
+// shape happened to be requested first.
+const timeOfDayFormat = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' })
+const dayMonthFormat = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' })
+const dayMonthYearFormat = new Intl.DateTimeFormat(undefined, {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+})
+
+const MINUTE_MS = 60_000
+const HOUR_MS = 60 * MINUTE_MS
+const DAY_MS = 24 * HOUR_MS
+const WEEK_MS = 7 * DAY_MS
+
 export function compareChatSidebarThreads(
   left: ChatSidebarThreadSummary,
   right: ChatSidebarThreadSummary,
@@ -47,17 +64,9 @@ export function formatChatTimestamp(value: string) {
   if (Number.isNaN(date.getTime())) return ''
 
   const today = new Date()
-  if (sameLocalDate(date, today)) {
-    return new Intl.DateTimeFormat(undefined, {
-      hour: 'numeric',
-      minute: '2-digit',
-    }).format(date)
-  }
+  if (sameLocalDate(date, today)) return timeOfDayFormat.format(date)
 
-  return new Intl.DateTimeFormat(undefined, {
-    day: 'numeric',
-    month: 'short',
-  }).format(date)
+  return dayMonthFormat.format(date)
 }
 
 export function formatChatDateLabel(value: string) {
@@ -67,10 +76,32 @@ export function formatChatDateLabel(value: string) {
   const today = new Date()
   if (sameLocalDate(date, today)) return 'Today'
 
-  return new Intl.DateTimeFormat(undefined, {
-    day: 'numeric',
-    month: 'short',
-  }).format(date)
+  return dayMonthFormat.format(date)
+}
+
+/**
+ * Compact "how long ago" for list rows, where the question is recency, not the moment.
+ *
+ * A week is the crossover: up to it, elapsed time is the shorter answer and needs no
+ * arithmetic — "6d ago" is last week. Past it, "23d ago" is a subtraction the reader has
+ * to perform, and people already think about older work by date, so hand them the date.
+ *
+ * `nowMs` is a parameter rather than a `Date.now()` read so this stays pure — the caller
+ * owns how often the label refreshes, and tests need no fake clock.
+ */
+export function formatChatRelativeTime(value: string, nowMs: number) {
+  const atMs = Date.parse(value)
+  if (Number.isNaN(atMs)) return ''
+
+  // A stamp ahead of `nowMs` is skew between the server's clock and the browser's, not a
+  // countdown, so it collapses into the same "just happened" bucket.
+  const elapsedMs = nowMs - atMs
+  if (elapsedMs < MINUTE_MS) return 'now'
+  if (elapsedMs < HOUR_MS) return `${Math.floor(elapsedMs / MINUTE_MS)}m ago`
+  if (elapsedMs < DAY_MS) return `${Math.floor(elapsedMs / HOUR_MS)}h ago`
+  if (elapsedMs < WEEK_MS) return `${Math.floor(elapsedMs / DAY_MS)}d ago`
+
+  return calendarDateLabel(new Date(atMs), new Date(nowMs))
 }
 
 function formatChatDuration(durationMs: number) {
@@ -126,6 +157,13 @@ export function formatWorkingTimer(startIso: string, endIso: string) {
 
 function threadSortTimestamp(thread: ChatSidebarThreadSummary) {
   return thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt
+}
+
+function calendarDateLabel(date: Date, now: Date) {
+  // Bare "12 Jun" on something from last year reads as this June.
+  if (date.getFullYear() !== now.getFullYear()) return dayMonthYearFormat.format(date)
+
+  return dayMonthFormat.format(date)
 }
 
 function sameLocalDate(left: Date, right: Date) {

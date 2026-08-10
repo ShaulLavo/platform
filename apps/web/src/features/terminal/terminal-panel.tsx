@@ -19,6 +19,7 @@ import { DEFAULT_MONO_FONT_STACK } from '@/lib/default-nerd-font'
 import { connectTerminalSocket, type EdenServerSocket } from '@/lib/server-sockets'
 
 import { TerminalMenu } from './components/menu'
+import { useTerminalLinks } from './hooks/use-terminal-links'
 import { sendTerminalClientMessage } from './terminal-socket'
 import { readTerminalMenuTarget, type TerminalMenuTarget } from './utils/commands'
 import { readTerminalTheme } from './terminal-theme'
@@ -64,6 +65,7 @@ export function TerminalPanel({
   const [menuTarget, setMenuTarget] = useState<TerminalMenuTarget | null>(null)
   const terminalHasFocusArea = useFocus((state) => state.activeArea === 'terminal')
   const setFocusArea = useFocus((state) => state.setFocusArea)
+  const registerTerminalLinks = useTerminalLinks(rootPath)
   const activateTerminalAfterFrame = useEffectEvent(() => {
     if (activationFrameRef.current !== null) {
       window.cancelAnimationFrame(activationFrameRef.current)
@@ -77,6 +79,15 @@ export function TerminalPanel({
   })
   const activateTerminalIfActive = useEffectEvent(() => {
     if (active) activateTerminalAfterFrame()
+  })
+  // ghostty resolves long after the effect that asked for it, so the handover
+  // runs as an effect event and sees the current render rather than the one
+  // that started the mount.
+  const handleTerminalReady = useEffectEvent((terminal: Terminal, fitAddon: FitAddon) => {
+    fitAddonRef.current = fitAddon
+    terminalRef.current = terminal
+    registerTerminalLinks(terminal)
+    activateTerminalIfActive()
   })
   const handleTerminalFocus = () => {
     setFocusArea('terminal')
@@ -127,11 +138,7 @@ export function TerminalPanel({
       host,
       rootPath,
       sessionId,
-      onReady: (terminal, fitAddon) => {
-        fitAddonRef.current = fitAddon
-        terminalRef.current = terminal
-        activateTerminalIfActive()
-      },
+      onReady: handleTerminalReady,
     })
 
     return () => {

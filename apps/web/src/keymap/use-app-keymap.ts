@@ -1,20 +1,22 @@
-import { useMemo } from 'react'
-import {
-  useHotkeys,
-  type UseHotkeyDefinition,
-  type UseHotkeyOptions,
-} from '@tanstack/react-hotkeys'
+import { useEffect, useMemo } from 'react'
+import { detectPlatform } from '@tanstack/react-hotkeys'
+import { DEFAULT_SETTINGS, type KeybindingOverrides } from '@workspace/contracts'
 
 import type { FocusArea } from '@/components/workspace/focus/providers/focus-state'
+import { useSettings } from '@/features/settings/hooks/use-settings'
 
-import { activePlatformKeyBindings } from './active-bindings'
+import {
+  activePlatformKeyBindings,
+  parsedPlatformKeyBindings,
+  platformKeyBindingForKeyboardEvent,
+  resolvedPlatformKeyBindings,
+} from './active-bindings'
 import { isEditorPlatformCommandId } from './editor-keymap'
-import type { PlatformCommandId, PlatformKeyBinding } from './types'
+import type { ParsedPlatformKeyBinding, PlatformCommandId, PlatformKeyBinding } from './types'
 
-const APP_HOTKEY_OPTIONS = {
-  conflictBehavior: 'replace',
-  eventType: 'keydown',
-} satisfies UseHotkeyOptions
+type PlatformName = ReturnType<typeof detectPlatform>
+
+const NON_TEXT_INPUT_TYPES = new Set(['button', 'reset', 'submit'])
 
 export type PlatformCommandDispatch = (
   command: PlatformCommandId,
@@ -30,16 +32,22 @@ export function useAppKeymap({
   readonly dispatch: PlatformCommandDispatch
   readonly focusedPane: FocusArea
 }) {
+  const platform = detectPlatform()
+  // The keymap is the settings document's always-mounted reader: overrides
+  // arrive on the same query the settings panel writes through, so a save lands
+  // on the key table without a reload.
+  const overrides = useSettings().data?.keybindings ?? DEFAULT_SETTINGS.keybindings
   const activeBindings = useMemo(
-    () => appKeyBindingsForPane(bindings, focusedPane),
-    [bindings, focusedPane],
-  )
-  const definitions = useMemo(
-    () => appHotkeyDefinitions(activeBindings, dispatch),
-    [activeBindings, dispatch],
+    () => appHotkeyBindings(bindings, overrides, focusedPane, platform),
+    [bindings, focusedPane, overrides, platform],
   )
 
-  useHotkeys(definitions, APP_HOTKEY_OPTIONS)
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => runAppKeymap(activeBindings, dispatch, event)
+    document.addEventListener('keydown', onKeyDown)
+
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [activeBindings, dispatch])
 }
 
 export function appKeyBindingsForPane(
@@ -49,34 +57,56 @@ export function appKeyBindingsForPane(
   return activePlatformKeyBindings(bindings, focusedPane).filter(isAppKeyBinding)
 }
 
+function appHotkeyBindings(
+  bindings: readonly PlatformKeyBinding[],
+  overrides: KeybindingOverrides,
+  focusedPane: FocusArea,
+  platform: PlatformName,
+) {
+  const resolved = resolvedPlatformKeyBindings(bindings, overrides, platform)
+
+  return parsedPlatformKeyBindings(appKeyBindingsForPane(resolved, focusedPane), platform)
+}
+
 function isAppKeyBinding(binding: PlatformKeyBinding) {
   return !isEditorPlatformCommandId(binding.command)
 }
 
-function appHotkeyDefinitions(
-  bindings: readonly PlatformKeyBinding[],
+function runAppKeymap(
+  bindings: readonly ParsedPlatformKeyBinding[],
   dispatch: PlatformCommandDispatch,
-): UseHotkeyDefinition[] {
-  return bindings.map((binding) => ({
-    callback: (event) => {
-      if (!binding.command) return
+  event: KeyboardEvent,
+) {
+  const match = platformKeyBindingForKeyboardEvent(bindings, event)
+  if (!match) return
+  if (!match.firesWhileTyping && eventTargetsTextEntry(event)) return
 
-      dispatch(binding.command, event)
-    },
-    hotkey: binding.hotkey,
-    options: hotkeyOptions(binding),
-  }))
+  const { binding } = match
+  if (binding.preventDefault !== false) event.preventDefault()
+  if (binding.stopPropagation !== false) event.stopPropagation()
+  // A no-op binding exists to keep the browser off a key we do not implement
+  // yet, so it swallows the event and dispatches nothing.
+  if (!binding.command) return
+
+  dispatch(binding.command, event)
 }
 
-function hotkeyOptions(binding: PlatformKeyBinding): UseHotkeyOptions {
-  const options: UseHotkeyOptions = {}
-  if (binding.meta) options.meta = binding.meta
-  if (binding.preventDefault !== undefined) {
-    options.preventDefault = binding.preventDefault
-  }
-  if (binding.stopPropagation !== undefined) {
-    options.stopPropagation = binding.stopPropagation
-  }
+/**
+ * `document.activeElement` is checked alongside the event target because a key
+ * pressed while a scroll container has the event still belongs to whichever
+ * field holds the caret.
+ */
+function eventTargetsTextEntry(event: KeyboardEvent) {
+  if (isTextEntryElement(document.activeElement)) return true
 
-  return options
+  return isTextEntryElement(event.target)
+}
+
+function isTextEntryElement(target: EventTarget | null) {
+  if (target instanceof HTMLInputElement)
+    return !NON_TEXT_INPUT_TYPES.has(target.type.toLowerCase())
+  if (target instanceof HTMLTextAreaElement) return true
+  if (target instanceof HTMLSelectElement) return true
+
+  return target instanceof HTMLElement && target.isContentEditable
 }

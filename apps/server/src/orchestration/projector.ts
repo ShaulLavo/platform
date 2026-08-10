@@ -75,7 +75,7 @@ function applyEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
       return
     case 'thread.activity-appended':
       updateThread(model, event.payload.threadId, (thread) => {
-        appendActivity(thread.activities, event)
+        upsertActivity(thread.activities, event)
         // The counters are a fold over the retained activities, recomputed
         // rather than incremented: a replayed batch or a reverted turn can
         // never leave them drifted from the request state they describe.
@@ -472,21 +472,43 @@ function mergedMessage(
   }
 }
 
-/** Mirrors the SQL projection's conflict-do-nothing: a replayed id is not a second activity. */
-function appendActivity(
+/**
+ * Mirrors the SQL projection's upsert: a re-emitted activity corrects the entry
+ * it already has rather than being dropped. The two read models fold the same
+ * events and must agree — while this returned early on a duplicate id, a
+ * streaming activity that was later revised stayed frozen at its first frame in
+ * memory while the persisted row moved on.
+ *
+ * Position and `sequence` are the original's: a content revision must not shove
+ * the entry to the end of the thread, and `sequence` is what orders it.
+ */
+function upsertActivity(
   activities: OrchestrationProjectedThread['activities'],
   event: Extract<OrchestrationEvent, { type: 'thread.activity-appended' }>,
 ) {
-  const duplicate = activities.findLastIndex(
-    (activity) => activity.id === event.payload.activity.id,
-  )
-  if (duplicate >= 0) return
+  const index = activities.findLastIndex((activity) => activity.id === event.payload.activity.id)
+  if (index < 0) {
+    appendBounded(
+      activities,
+      { ...event.payload.activity, sequence: event.sequence },
+      MAX_THREAD_ACTIVITIES,
+    )
+    return
+  }
 
-  appendBounded(
-    activities,
-    { ...event.payload.activity, sequence: event.sequence },
-    MAX_THREAD_ACTIVITIES,
-  )
+  const held = activities[index]!
+  activities[index] = {
+    ...event.payload.activity,
+    // Identity and stream position stay the first frame's, exactly as the SQL
+    // projection leaves them out of its SET: `createdAt` and `sequence` are what
+    // order the thread, and a content revision must not restamp the entry to the
+    // moment it was corrected.
+    createdAt: held.createdAt,
+    sequence: held.sequence,
+    // Backfilled, never erased — the same rule the message upsert follows, so a
+    // bare later frame cannot drop the entry out of its turn's fold.
+    turnId: event.payload.activity.turnId ?? held.turnId,
+  }
 }
 
 function messageFromEvent(event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>) {

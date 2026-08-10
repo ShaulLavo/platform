@@ -1,4 +1,4 @@
-import { ArrowRightIcon, PencilSimpleIcon } from '@phosphor-icons/react'
+import { ArrowRightIcon, ArrowSquareOutIcon, PencilSimpleIcon } from '@phosphor-icons/react'
 import { Badge } from '@workspace/ui/components/badge'
 import { Button } from '@workspace/ui/components/button'
 
@@ -18,13 +18,17 @@ import {
  * action refines the plan instead. The draft is read straight from its store —
  * routing it through props would make this banner a second owner of composer
  * state that the composer would then have to keep in sync.
+ *
+ * Splitting the build into its own thread is offered only alongside Implement.
+ * Typed feedback is a request for a better plan, and there is nothing to build
+ * elsewhere until that plan comes back.
  */
 export function PlanFollowUpBanner({
   draftTarget,
 }: {
   readonly draftTarget: ChatInputDraftTarget
 }) {
-  const { plan, submitFollowUp, submitting } = usePlanFollowUp()
+  const { implementInNewThread, plan, submitFollowUp, submitting } = usePlanFollowUp()
   const draftText = useChatInputDraftStore((state) => state.getDraft(draftTarget).prompt)
   if (!plan) return null
 
@@ -44,6 +48,19 @@ export function PlanFollowUpBanner({
         <p className='text-foreground min-w-0 flex-1 truncate text-sm font-medium'>
           {proposedPlanTitle(plan.planMarkdown)}
         </p>
+        {refining ? null : (
+          <Button
+            aria-label='Implement in a new thread'
+            disabled={submitting}
+            size='sm'
+            type='button'
+            variant='outline'
+            onClick={() => void implementInNewThread()}
+          >
+            <ArrowSquareOutIcon className='size-3.5' />
+            New thread
+          </Button>
+        )}
         <Button disabled={submitting} size='sm' type='button' onClick={() => void submitFollowUp()}>
           <ActionIcon className='size-3.5' />
           {refining ? 'Refine' : 'Implement'}

@@ -47,6 +47,12 @@ export const projectCreateCommandSchema = v.object({
   projectId: projectIdSchema,
   title: trimmedNonEmptyStringSchema,
   workspaceRoot: trimmedNonEmptyStringSchema,
+  // "New project in a folder that does not exist yet" is a deliberate act, not
+  // a typo the server should silently paper over: the caller opts in, so a
+  // mistyped path still fails loudly instead of minting an empty directory.
+  // Undefined rather than defaulted-false, so internal dispatch can build the
+  // command without restating a flag only the wire ever sets.
+  createWorkspaceRootIfMissing: v.optional(v.boolean()),
   defaultModelSelection: v.optional(v.nullable(modelSelectionSchema), null),
 })
 

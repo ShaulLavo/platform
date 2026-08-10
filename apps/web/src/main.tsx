@@ -8,6 +8,7 @@ import { LoggingErrorBoundary } from '@/components/logging-error-boundary.tsx'
 import { ThemeAwareToaster } from '@/components/theme-aware-toaster.tsx'
 import { ThemeProvider } from '@/components/theme-provider.tsx'
 import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-color-theme.ts'
+import { installServerRestartInvalidation } from '@/features/chat/state/server-restart-invalidation.ts'
 import { initializeClientLogging, log } from '@/lib/client-logging.ts'
 import { loadDefaultNerdFont } from '@/lib/default-nerd-font.ts'
 import { isDesktop } from '@/lib/platform/bridge.ts'
@@ -19,6 +20,7 @@ import { TooltipProvider } from '@workspace/ui/components/tooltip'
 
 installEditorPerformanceTraceFromUrl()
 initializeClientLogging()
+installServerRestartInvalidation(queryClient)
 applyNativeVibrancy(isDesktop())
 const visualViewport = window.visualViewport
 log.info({

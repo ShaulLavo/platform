@@ -41,10 +41,16 @@ import type { ChatInputDraftTarget } from '../state/chat-input-draft-store'
 export function ChatView({
   activeThreadId,
   environment,
+  onThreadCreated,
   rootPath,
 }: {
   activeThreadId: ThreadId | null
   environment: ChatEnvironment
+  /**
+   * Puts a thread this view created — splitting a plan off to build it — on
+   * screen. Each host keeps its own selection, so only it can honour this.
+   */
+  onThreadCreated: (threadId: ThreadId) => void
   rootPath: string
 }) {
   const threadSelector = useMemo(() => createChatThreadSelector(activeThreadId), [activeThreadId])
@@ -180,6 +186,7 @@ export function ChatView({
           <ChatPlanFollowUpProvider
             draftTarget={draftTarget}
             environment={environment}
+            onThreadCreated={onThreadCreated}
             threadId={thread.id}
           >
             <PlanFollowUpBanner draftTarget={draftTarget} />

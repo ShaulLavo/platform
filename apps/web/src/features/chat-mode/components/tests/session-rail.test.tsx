@@ -5,7 +5,7 @@ import {
   type ClientOrchestrationCommand,
   type OrchestrationThreadShell,
 } from '@workspace/contracts'
-import { screen, within } from '@testing-library/react'
+import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import * as v from 'valibot'
 
@@ -21,6 +21,7 @@ import {
 import { setSessionProjectOpener } from '@/features/chat-mode/state/session-commands'
 import { useSessionMultiSelectStore } from '@/features/chat-mode/state/session-multi-select-store'
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
+import { setCoarseClockNow } from '@/features/chat/state/coarse-clock-store'
 import { resetSessionReadStore } from '@/features/chat-mode/state/session-read-store'
 import { resetSessionSearchStore } from '@/features/chat-mode/state/session-search-store'
 import {
@@ -195,6 +196,24 @@ test('a message arriving in another session does not move the row under the curs
   )
 
   expect(sessionTitles()).toEqual(['Ship the rail', 'Fix the footer'])
+})
+
+test('a row\u2019s recency label ages instead of freezing at what it said on mount', () => {
+  seedProjection()
+  renderSessionRail()
+  // Set after mount: retaining the clock re-stamps it, which is what stops a
+  // resumed clock from handing out the time it went idle at.
+  act(() => setCoarseClockNow(Date.parse('2026-05-28T00:30:02.000Z')))
+
+  expect(screen.getAllByText('30m ago').length).toBeGreaterThan(0)
+
+  // Not just a formatter test: an in-render `Date.now()` would be hoisted into
+  // the React Compiler's memo scope and never recompute, so what is asserted is
+  // that the label follows the shared clock rather than the mount.
+  act(() => setCoarseClockNow(Date.parse('2026-05-28T03:00:02.000Z')))
+
+  expect(screen.getAllByText('3h ago').length).toBeGreaterThan(0)
+  expect(screen.queryByText('30m ago')).toBeNull()
 })
 
 test('narrows the list to sessions matching the search text', async () => {

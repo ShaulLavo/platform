@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, gt, inArray, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm'
 import type { OrchestrationSessionStatus } from '@workspace/contracts'
 import type { OrchestrationEvent } from './schemas'
 import { getDefaultPlatformDatabase } from '../db/client'
@@ -137,7 +137,7 @@ export class OrchestrationProjectionPipeline {
         )
         return
       case 'thread.activity-appended':
-        this.insertActivity(event)
+        this.upsertActivity(event)
         this.updateTurnForActivity(event)
         this.refreshPendingRequestCountsForActivity(event)
         return
@@ -635,21 +635,42 @@ export class OrchestrationProjectionPipeline {
       .run()
   }
 
-  private insertActivity(event: Extract<OrchestrationEvent, { type: 'thread.activity-appended' }>) {
+  /**
+   * A streaming activity is revised in place: the provider re-emits the same id
+   * as a tool's title, status and payload fill in. Conflict-do-nothing froze the
+   * first frame forever, so the row disagreed with the event log. `createdAt`
+   * and `sequence` are where the activity sits in the stream, not content — a
+   * revision must correct the entry, never reorder the timeline around it.
+   */
+  private upsertActivity(event: Extract<OrchestrationEvent, { type: 'thread.activity-appended' }>) {
+    const payloadJson = JSON.stringify(event.payload.activity.payload)
+
     this.database
       .insert(projectionThreadActivities)
       .values({
         activityId: event.payload.activity.id,
         createdAt: event.payload.activity.createdAt,
         kind: event.payload.activity.kind,
-        payloadJson: JSON.stringify(event.payload.activity.payload),
+        payloadJson,
         sequence: event.payload.activity.sequence ?? event.sequence,
         summary: event.payload.activity.summary,
         threadId: event.payload.threadId,
         tone: event.payload.activity.tone,
         turnId: event.payload.activity.turnId,
       })
-      .onConflictDoNothing()
+      .onConflictDoUpdate({
+        target: projectionThreadActivities.activityId,
+        set: {
+          kind: event.payload.activity.kind,
+          payloadJson,
+          summary: event.payload.activity.summary,
+          tone: event.payload.activity.tone,
+          // turnId is backfilled, never erased — same rule as messages: a later
+          // frame that carries no turn must keep the one the first frame bound,
+          // or the activity drops out of its turn's fold.
+          turnId: sql`coalesce(excluded.turn_id, ${projectionThreadActivities.turnId})`,
+        },
+      })
       .run()
   }
 
@@ -681,10 +702,10 @@ export class OrchestrationProjectionPipeline {
 
   /**
    * The counters are a fold over the thread's whole activity history, recomputed
-   * rather than incremented: a replayed event (`onConflictDoNothing` above) or a
-   * revert then can never leave them drifted from the request state they
-   * describe. This is the same fold the settle guard runs against the read
-   * model (`pending-requests.ts`).
+   * rather than incremented: a replayed event (the upsert above), a revised
+   * activity or a revert then can never leave them drifted from the request
+   * state they describe. This is the same fold the settle guard runs against the
+   * read model (`pending-requests.ts`).
    */
   private refreshPendingRequestCounts(threadId: string) {
     const counts = pendingRequestCounts(this.requestActivities(threadId))

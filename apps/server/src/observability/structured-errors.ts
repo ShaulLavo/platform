@@ -33,6 +33,20 @@ export const orchestrationErrors = defineErrorCatalog('orchestration', {
     why: 'A persisted orchestration event row contains malformed JSON.',
     fix: 'Inspect the stored orchestration event row and repair or remove the malformed JSON field.',
   },
+  WORKSPACE_ROOT_NOT_DIRECTORY: {
+    status: 409,
+    message: ({ workspaceRoot }: { workspaceRoot: string }) =>
+      `Workspace root is not a directory: ${workspaceRoot}`,
+    why: 'A file already occupies the path the project would be rooted at.',
+    fix: 'Point the project at a directory, or move the file that is in the way.',
+  },
+  WORKSPACE_ROOT_CREATE_FAILED: {
+    status: 500,
+    message: ({ workspaceRoot }: { workspaceRoot: string }) =>
+      `Workspace root could not be created: ${workspaceRoot}`,
+    why: 'The project asked for its workspace root to be created and the filesystem refused.',
+    fix: 'Check the parent directory exists and is writable, then dispatch the command again.',
+  },
   PROJECT_ALREADY_EXISTS: {
     status: 409,
     message: ({ projectId }: { projectId: string }) => `Project already exists: ${projectId}`,

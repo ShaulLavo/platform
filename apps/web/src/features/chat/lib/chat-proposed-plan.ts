@@ -1,9 +1,12 @@
 import type { InteractionMode, OrchestrationProposedPlan } from '@workspace/contracts'
 
+import { threadTitleFromPrompt } from '@/features/chat/lib/chat-command-builders'
+
 const PROPOSED_PLAN_COLLAPSE_LENGTH = 900
 const PROPOSED_PLAN_COLLAPSE_LINES = 20
 const PROPOSED_PLAN_PREVIEW_LINES = 10
 const PROPOSED_PLAN_IMPLEMENTATION_HEADER = 'PLEASE IMPLEMENT THIS PLAN:'
+const PLAN_IMPLEMENTATION_THREAD_TITLE = 'Implement plan'
 
 /**
  * What the composer does next once a plan is on screen. An empty composer means
@@ -22,10 +25,7 @@ export type PlanFollowUpSubmission = {
 }
 
 export function proposedPlanTitle(planMarkdown: string) {
-  const heading = planMarkdown.match(/^\s{0,3}#{1,6}\s+(.+)$/m)?.[1]?.trim()
-  if (heading) return heading
-
-  return 'Proposed plan'
+  return planHeading(planMarkdown) ?? 'Proposed plan'
 }
 
 export function stripDisplayedPlanMarkdown(planMarkdown: string) {
@@ -100,6 +100,27 @@ export function planImplementationPrompt(planMarkdown: string) {
   return `${PROPOSED_PLAN_IMPLEMENTATION_HEADER}\n${planMarkdown.trim()}`
 }
 
+/**
+ * What the rail calls a thread that was split off to build a plan. Naming it
+ * after the prompt's first line — which every thread does — would name all of
+ * them after the implementation header, so the plan's own heading stands in. It
+ * still goes through the shared cleaner, so a heading cannot name a thread
+ * anything a typed prompt could not.
+ */
+export function planImplementationThreadTitle(planMarkdown: string) {
+  const heading = planHeading(planMarkdown)
+  if (!heading) return PLAN_IMPLEMENTATION_THREAD_TITLE
+
+  return threadTitleFromPrompt(`Implement ${heading}`) ?? PLAN_IMPLEMENTATION_THREAD_TITLE
+}
+
+/**
+ * The bootstrap turn that builds a plan somewhere other than where it was
+ * written. The draft builder knows nothing about plans — it names the thread
+ * after the prompt and leaves the correlation empty — so the title and the
+ * pointer back to the plan are stamped on here. Thread and turn ride one
+ * command, so a rejected dispatch leaves no half-created thread behind.
+ */
 export function resolvePlanFollowUpSubmission({
   draftText,
   planMarkdown,
@@ -136,6 +157,11 @@ export function proposedPlanExportFilename(planMarkdown: string) {
     .replaceAll(/^-+|-+$/g, '')
 
   return `${slug || 'plan'}.md`
+}
+
+/** A heading of nothing but whitespace is no heading, so callers see one fallback. */
+function planHeading(planMarkdown: string) {
+  return planMarkdown.match(/^\s{0,3}#{1,6}\s+(.+)$/m)?.[1]?.trim() || undefined
 }
 
 function removeBlankPrefix(lines: string[]) {

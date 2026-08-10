@@ -8,6 +8,11 @@ import { createContext } from 'react'
  * plan, is decided from the live draft at dispatch time.
  */
 export type ChatPlanFollowUp = {
+  /**
+   * Builds the plan in a thread of its own, in the same project, and hands the
+   * stage over to it. True once the bootstrap turn is accepted.
+   */
+  readonly implementInNewThread: () => Promise<boolean>
   /** The plan still waiting to be acted on, or null when there is nothing to follow up. */
   readonly plan: OrchestrationProposedPlan | null
   /** True once the turn command is accepted. */

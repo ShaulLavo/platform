@@ -17,7 +17,10 @@ test('renders empty sections for an untouched server', async ({ client }) => {
 
   expect(await screen.findByText('No provider instances configured yet.')).toBeDefined()
   expect(screen.getByText('No model preferences yet.')).toBeDefined()
-  expect(screen.getByText('No shortcut overrides.')).toBeDefined()
+  // Shortcuts have no empty state: every command ships with its default in the
+  // list so there is something to edit before any override exists.
+  expect(shortcutField('Save')).toHaveProperty('value', 'Mod+S')
+  expect(screen.queryByRole('button', { name: 'Reset' })).toBeNull()
 })
 
 test('lists stored providers, models and shortcut overrides', async ({ client }) => {
@@ -29,6 +32,7 @@ test('lists stored providers, models and shortcut overrides', async ({ client })
   expect(await screen.findByText('Codex (work)')).toBeDefined()
   expect(screen.getByText('gpt-5-codex')).toBeDefined()
   expect(screen.getByText('workspace.saveFile')).toBeDefined()
+  expect(screen.getByText('Custom')).toBeDefined()
   expect(screen.getByRole('switch', { name: 'Enable Codex (work)' })).toBeDefined()
 })
 
@@ -45,6 +49,69 @@ test('disabling a provider persists through the real server', async ({ client })
     expect(settings.providerInstances[0]?.enabled).toBe(false)
   })
 })
+
+test('rebinding a shortcut persists through the real server', async ({ client }) => {
+  expect(client).toBeDefined()
+  renderWithProviders(<SettingsPanel />)
+
+  await waitFor(() => expect(shortcutField('Save')).toBeDefined())
+  await userEvent.clear(shortcutField('Save'))
+  await userEvent.type(shortcutField('Save'), 'mod+alt+s')
+  await userEvent.tab()
+
+  await waitFor(async () => {
+    const settings = await fetchSettings()
+    expect(settings.keybindings['workspace.saveFile']).toBe('Mod+Alt+S')
+  })
+})
+
+test('emptying a shortcut unbinds the command instead of restoring its default', async ({
+  client,
+}) => {
+  expect(client).toBeDefined()
+  renderWithProviders(<SettingsPanel />)
+
+  await waitFor(() => expect(shortcutField('Save')).toBeDefined())
+  await userEvent.clear(shortcutField('Save'))
+  await userEvent.tab()
+
+  await waitFor(async () => {
+    const settings = await fetchSettings()
+    expect(settings.keybindings['workspace.saveFile']).toBeNull()
+  })
+})
+
+test('resetting a shortcut drops the override so the default applies again', async ({ client }) => {
+  expect(client).toBeDefined()
+  await seedSettings()
+  renderWithProviders(<SettingsPanel />)
+
+  await userEvent.click(await screen.findByRole('button', { name: 'Reset' }))
+
+  await waitFor(async () => {
+    const settings = await fetchSettings()
+    expect('workspace.saveFile' in settings.keybindings).toBe(false)
+  })
+  expect(shortcutField('Save')).toHaveProperty('value', 'Mod+S')
+})
+
+test('refuses a shortcut no keyboard can produce', async ({ client }) => {
+  expect(client).toBeDefined()
+  renderWithProviders(<SettingsPanel />)
+
+  await waitFor(() => expect(shortcutField('Save')).toBeDefined())
+  await userEvent.clear(shortcutField('Save'))
+  await userEvent.type(shortcutField('Save'), 'Mod+Nonsense')
+  await userEvent.tab()
+
+  expect(await screen.findByText('Not a shortcut')).toBeDefined()
+  const settings = await fetchSettings()
+  expect('workspace.saveFile' in settings.keybindings).toBe(false)
+})
+
+function shortcutField(command: string) {
+  return screen.getByLabelText(`Shortcut for ${command}`)
+}
 
 function seedSettings() {
   return saveSettings(

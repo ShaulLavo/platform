@@ -13,6 +13,7 @@ import {
   type ProviderInstanceId,
   type ProviderInstanceSettings,
   type ProviderModelCapabilities,
+  type ProviderSkill,
   type ProviderSnapshot,
   type RuntimeMode,
   type ThreadId,
@@ -23,6 +24,8 @@ import type {
   ProviderAdapter,
   ProviderAdapterSession,
   ProviderApprovalResponseInput,
+  ProviderCommandCatalogInput,
+  ProviderCommandCatalogResult,
   ProviderRuntimeEvent,
   ProviderThreadSnapshot,
   ProviderSessionStartInput,
@@ -69,6 +72,7 @@ const BENIGN_CODEX_STDERR_ERROR_SNIPPETS = [
   'state db record_discrepancy: find_thread_path_by_id_str_in_subdir, falling_back',
 ]
 export const CODEX_ADAPTER_CAPABILITIES = {
+  listCommands: true,
   readThread: true,
   rollbackThread: true,
   sessionModelSwitch: 'in-session',
@@ -221,6 +225,19 @@ export class CodexProviderAdapter implements ProviderAdapter {
         version: null,
       }
     }
+  }
+
+  /**
+   * Skills only. `skills/list` is the app-server's own catalog and covers
+   * user, repo, and system scopes in one answer.
+   *
+   * `commands` is empty because Codex has nothing to list, not because this
+   * skipped the read: the app-server exposes no prompt or command listing
+   * method, and the CLI's `/` menu is a fixed table of TUI actions (`/vim`,
+   * `/pets`, `/quit`) that mean nothing outside its own terminal.
+   */
+  async listCommands({ cwd }: ProviderCommandCatalogInput): Promise<ProviderCommandCatalogResult> {
+    return probeCodexCommandCatalog(this.env, cwd)
   }
 
   async listSessions() {
@@ -1916,9 +1933,19 @@ class CodexAppServerRpcClient {
     })
   }
 
-  static start(env: NodeJS.ProcessEnv = process.env) {
+  /**
+   * `cwd` is the process working directory, not a thread setting: `skills/list`
+   * answers for the directory the app-server itself runs in, so repo-scoped
+   * skills under `<cwd>/.codex/skills` are invisible without it. Sessions leave
+   * it unset — they carry their directory in `thread/start`.
+   */
+  static start(env: NodeJS.ProcessEnv = process.env, cwd?: string) {
     return new CodexAppServerRpcClient(
-      spawn(codexBinary(env), ['app-server'], { env, stdio: ['pipe', 'pipe', 'pipe'] }),
+      spawn(codexBinary(env), ['app-server'], {
+        env,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        ...(cwd ? { cwd } : {}),
+      }),
     )
   }
 
@@ -2120,6 +2147,76 @@ async function probeCodexProvider(env: NodeJS.ProcessEnv) {
     }
   } finally {
     client.close()
+  }
+}
+
+/**
+ * A dedicated app-server process, deliberately not the snapshot probe: a skill
+ * read that fails must not take the model list and auth state down with it.
+ *
+ * `skills/list` is absent from the pinned protocol schema, so it goes out as a
+ * raw request — and a failure is relayed rather than degraded to an empty list.
+ * Skills are the whole catalog for Codex, so "could not list" and "this project
+ * has no skills" are different answers and the caller has to be able to tell
+ * them apart.
+ */
+async function probeCodexCommandCatalog(
+  env: NodeJS.ProcessEnv,
+  cwd: string | undefined,
+): Promise<ProviderCommandCatalogResult> {
+  const client = CodexAppServerRpcClient.start(env, cwd ? normalizeWorkspaceCwd(cwd) : undefined)
+  try {
+    await initializeCodexClient(client, PROVIDER_PROBE_TIMEOUT_MS)
+    const response = await client.requestRaw('skills/list', {}, PROVIDER_PROBE_TIMEOUT_MS)
+
+    return { commands: [], skills: codexSkills(response) }
+  } finally {
+    client.close()
+  }
+}
+
+/** One entry per working directory the app-server knows; a probe process has one. */
+function codexSkills(response: unknown): ProviderSkill[] {
+  const byName = new Map<string, ProviderSkill>()
+  const entries = asRecord(response).data
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    collectCodexSkills(asRecord(entry).skills, byName)
+  }
+
+  return Array.from(byName.values())
+}
+
+/** Name is the composer's `$token` and its row key, so the first entry wins. */
+function collectCodexSkills(value: unknown, byName: Map<string, ProviderSkill>) {
+  for (const entry of Array.isArray(value) ? value : []) {
+    const skill = codexSkill(entry)
+    if (!skill) continue
+    if (byName.has(skill.name)) continue
+
+    byName.set(skill.name, skill)
+  }
+}
+
+/**
+ * Codex reports disabled skills alongside enabled ones, so `enabled` is carried
+ * through instead of being used as a filter. Only an explicit `false` disables:
+ * a listed skill Codex said nothing about is one it loaded.
+ */
+function codexSkill(value: unknown): ProviderSkill | null {
+  const record = asRecord(value)
+  const name = stringField(record, 'name')?.trim()
+  if (!name) return null
+
+  const description = stringField(record, 'description')?.trim()
+  const skillPath = stringField(record, 'path')?.trim()
+  const scope = stringField(record, 'scope')?.trim()
+
+  return {
+    enabled: record.enabled !== false,
+    name,
+    ...(description ? { description } : {}),
+    ...(skillPath ? { path: skillPath } : {}),
+    ...(scope ? { scope } : {}),
   }
 }
 

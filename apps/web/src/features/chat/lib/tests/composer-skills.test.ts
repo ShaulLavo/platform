@@ -17,22 +17,21 @@ import {
 /**
  * Driven through the real client against the real server. The point is the
  * route itself: a client that builds a URL the server does not expose comes back
- * as a plain 404, never as the catalog asserted here. Codex is the subject
- * because it has no listing path, so the read answers before any adapter work
- * happens — no CLI is spawned by these tests.
+ * as a plain 404, never as the catalog asserted here. The test server registers
+ * the mock adapter, so the catalog is a fixture rather than whatever CLIs happen
+ * to be installed — and no binary is spawned.
  */
 const codex = v.parse(providerInstanceIdSchema, 'codex')
 const missing = v.parse(providerInstanceIdSchema, 'not-a-provider')
 
-test('a provider with no listing path answers with an empty catalog', async ({ client }) => {
+test('a provider that lists commands answers with its catalog', async ({ client }) => {
   void client
 
-  expect(await fetchProviderCommandCatalog(codex, null)).toEqual({
-    commands: [],
-    providerInstanceId: 'codex',
-    skills: [],
-    supported: false,
-  })
+  const catalog = await fetchProviderCommandCatalog(codex, null)
+
+  expect(catalog.providerInstanceId).toBe('codex')
+  expect(catalog.supported).toBe(true)
+  expect(catalog.commands.map((command) => command.name)).toContain('summarize')
 })
 
 test('an unavailable provider answers with an empty catalog instead of an error', async ({

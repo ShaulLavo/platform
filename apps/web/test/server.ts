@@ -5,6 +5,8 @@ import {
   closeApp,
   createApp,
   createMetadataDatabase,
+  MockProviderAdapter,
+  ProviderAdapterRegistry,
   type MetadataDatabaseHandle,
 } from 'server/testing'
 
@@ -30,7 +32,13 @@ export async function makeTestServer(): Promise<TestServer> {
   const app = createApp({
     auth: { allowedOrigins: [TEST_ORIGIN] },
     metadataDatabase: database,
-    orchestration: { database: database.db },
+    orchestration: {
+      database: database.db,
+      // Never the default registry: its Codex and Claude adapters shell out to
+      // real CLIs, so any route that touches a provider would spawn a binary,
+      // read the developer's own machine, and answer differently per checkout.
+      providerAdapterRegistry: new ProviderAdapterRegistry([new MockProviderAdapter()]),
+    },
     watch: false,
     workspaceRoot: root,
   })

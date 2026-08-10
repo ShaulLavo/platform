@@ -1,11 +1,19 @@
-import type { OrchestrationWsClientMessage } from '@workspace/contracts'
+import {
+  ORCHESTRATION_WS_PROTOCOL_VERSION,
+  type OrchestrationWsClientMessage,
+} from '@workspace/contracts'
 import { describe } from 'vitest'
 
 import { OrchestrationRpcClient } from '@/features/chat/transport/orchestration-rpc-client'
+import {
+  resetServerConnectionStore,
+  useServerConnectionStore,
+} from '@/features/chat/state/server-connection-store'
 import { expect, test } from '../../../../../test/fixtures'
 
 const HEARTBEAT_MS = 10
 const HEARTBEAT_TIMEOUT_MS = 20
+const SLOW_REQUEST_MS = 15
 
 describe('orchestration rpc client liveness', () => {
   test('an unanswered heartbeat tears the socket down so subscriptions can reconnect', async () => {
@@ -61,12 +69,109 @@ describe('orchestration rpc client liveness', () => {
   })
 })
 
-function createClient(socket: FakeSocket) {
+describe('orchestration rpc client connection identity', () => {
+  test('the handshake tells the client which server process it reached', async () => {
+    resetServerConnectionStore()
+    const socket = new FakeSocket()
+    const client = createClient(socket)
+    void captureOutcome(client.shellStream()[Symbol.asyncIterator]().next())
+
+    await tick()
+    socket.open()
+    socket.deliver({ config: serverConfig('server-1'), kind: 'connected' })
+
+    expect(useServerConnectionStore.getState().serverInstanceId).toBe('server-1')
+    expect(useServerConnectionStore.getState().generation).toBe(1)
+
+    // A restart under the same client is the case every server-derived cache
+    // has to be told about; nothing else in the client can see it happen.
+    socket.deliver({ config: serverConfig('server-2'), kind: 'connected' })
+
+    expect(useServerConnectionStore.getState().generation).toBe(2)
+  })
+
+  test('a request that overruns says so, and stops saying so when it answers', async () => {
+    resetServerConnectionStore()
+    const socket = new FakeSocket()
+    const client = createClient(socket, latencyOnly())
+    const snapshot = captureOutcome(client.shellSnapshot())
+
+    await tick()
+    socket.open()
+    // The slow timer is armed as the request is written, so waiting on the
+    // frame is what makes the timing assertion below deterministic under load.
+    await waitForRequest(socket)
+    expect(useServerConnectionStore.getState().slowRequestCount).toBe(0)
+
+    await sleep(SLOW_REQUEST_MS * 2)
+    expect(useServerConnectionStore.getState().slowRequestCount).toBe(1)
+
+    const requestId = sentMessages(socket).find((message) => message.kind === 'request')?.requestId
+    socket.deliver({ data: {}, kind: 'response', ok: true, requestId })
+    await snapshot
+
+    expect(useServerConnectionStore.getState().slowRequestCount).toBe(0)
+  })
+
+  test('a dropped socket clears the overdue requests it stranded', async () => {
+    resetServerConnectionStore()
+    const socket = new FakeSocket()
+    const client = createClient(socket, latencyOnly())
+    const failure = captureOutcome(client.shellSnapshot())
+
+    await tick()
+    socket.open()
+    await waitForRequest(socket)
+    await sleep(SLOW_REQUEST_MS * 2)
+    expect(useServerConnectionStore.getState().slowRequestCount).toBe(1)
+
+    socket.serverClose({ code: 1006, wasClean: false })
+    await failure
+
+    // Otherwise the panel keeps counting a request that can never answer.
+    expect(useServerConnectionStore.getState().slowRequestCount).toBe(0)
+  })
+})
+
+function serverConfig(serverInstanceId: string) {
+  return {
+    capabilities: { resume: true, synchronizedMarker: true },
+    limits: { replayMaxEvents: 1_000, resumeMaxGap: 1_000 },
+    protocolVersion: ORCHESTRATION_WS_PROTOCOL_VERSION,
+    serverInstanceId,
+    serverVersion: '0.0.1',
+    startedAt: '2026-08-10T00:00:00.000Z',
+  }
+}
+
+/**
+ * Liveness pushed out of the way so a latency test measures only latency. With
+ * the default test heartbeat, an unanswered ping tears the socket down at 30ms
+ * — the same moment a 15ms slow timer is being asserted on, and the teardown
+ * clears exactly the state under test.
+ */
+function latencyOnly() {
+  return {
+    heartbeatIntervalMs: 10_000,
+    heartbeatTimeoutMs: 10_000,
+    slowRequestMs: SLOW_REQUEST_MS,
+  }
+}
+
+function createClient(
+  socket: FakeSocket,
+  overrides: {
+    heartbeatIntervalMs?: number
+    heartbeatTimeoutMs?: number
+    slowRequestMs?: number
+  } = {},
+) {
   return new OrchestrationRpcClient({
     createSocket: () => socket as unknown as WebSocket,
     heartbeatIntervalMs: HEARTBEAT_MS,
     heartbeatTimeoutMs: HEARTBEAT_TIMEOUT_MS,
     url: () => 'ws://orchestration.test/orchestration/rpc',
+    ...overrides,
   })
 }
 
@@ -119,6 +224,17 @@ class FakeSocket {
       listener(event)
     }
   }
+}
+
+/** Sending goes through `await connect()`, so it lands some microtasks after `open()`. */
+async function waitForRequest(socket: FakeSocket) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    if (sentKinds(socket).includes('request')) return
+
+    await tick()
+  }
+
+  expect.unreachable('the client never sent the request')
 }
 
 function sentMessages(socket: FakeSocket) {

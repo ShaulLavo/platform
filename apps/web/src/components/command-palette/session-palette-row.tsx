@@ -7,12 +7,16 @@ import {
   sessionItemValue,
   sessionPaletteKeywords,
 } from '@/components/command-palette/command-palette-utils'
-import { formatChatDateLabel } from '@/features/chat/lib/chat-formatters'
+import { formatChatRelativeTime } from '@/features/chat/lib/chat-formatters'
+import { useCoarseNow } from '@/features/chat/hooks/use-coarse-now'
 import { threadStatusDotClass, threadStatusLabel } from '@/features/chat/lib/thread-status'
 import type { SessionRailItem } from '@/features/chat-mode/utils/session-rail-model'
 
 export function SessionPaletteRow({ session }: { readonly session: SessionRailItem }) {
   const { selectSession } = useCommandPaletteActions()
+  // The same recency story the rail tells: one session must not read "2h ago"
+  // in one surface and "12 Jun" in the other.
+  const nowMs = useCoarseNow()
 
   return (
     <CommandItem
@@ -30,7 +34,9 @@ export function SessionPaletteRow({ session }: { readonly session: SessionRailIt
         {session.branch ? <GitBranchIcon className='size-3 shrink-0' /> : null}
         {session.branch ? <span className='truncate'>{session.branch}</span> : null}
       </span>
-      <CommandShortcut>{formatChatDateLabel(session.activityAt)}</CommandShortcut>
+      <CommandShortcut className='tabular-nums'>
+        {formatChatRelativeTime(session.activityAt, nowMs)}
+      </CommandShortcut>
     </CommandItem>
   )
 }

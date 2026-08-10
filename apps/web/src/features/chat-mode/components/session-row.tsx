@@ -2,7 +2,8 @@ import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GitBranchIcon } from '@phosphor-icons/react'
 
-import { formatChatDateLabel } from '@/features/chat/lib/chat-formatters'
+import { formatChatRelativeTime } from '@/features/chat/lib/chat-formatters'
+import { useCoarseNow } from '@/features/chat/hooks/use-coarse-now'
 import { threadStatusDotClass, threadStatusLabel } from '@/features/chat/lib/thread-status'
 import { SessionMenu } from '@/features/chat-mode/components/session-menu'
 import { SessionRename } from '@/features/chat-mode/components/session-rename'
@@ -21,6 +22,10 @@ export function SessionRow({
   readonly active: boolean
   readonly session: SessionRailItem
 }) {
+  // Subscribed rather than read in render: an in-render `Date.now()` is frozen
+  // by the React Compiler's memo scope, which would leave every idle row's
+  // label stuck at whatever it said when the row mounted.
+  const nowMs = useCoarseNow()
   const renaming = useSessionRailStore((state) => state.renaming)
   const marked = useSessionMultiSelectStore((state) => state.threadIds.includes(session.id))
   const { attributes, isDragging, listeners, setNodeRef, transform, transition } = useSortable({
@@ -92,7 +97,7 @@ export function SessionRow({
               />
             ) : null}
             <span className='shrink-0 text-[10px] tabular-nums opacity-50'>
-              {formatChatDateLabel(session.activityAt)}
+              {formatChatRelativeTime(session.activityAt, nowMs)}
             </span>
           </span>
           {sessionBranch(session)}

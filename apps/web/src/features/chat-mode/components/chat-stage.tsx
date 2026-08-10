@@ -120,6 +120,7 @@ function stageBody({
       environment={environment}
       key={activeSession.threadId}
       rootPath={rootPath}
+      onThreadCreated={onThreadCreated}
     />
   )
 }

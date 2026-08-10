@@ -1,8 +1,9 @@
 import type { FocusArea } from '@/components/workspace/focus/providers/focus-state'
 import type { EditorCommandId } from '@singapor/core'
-import type { HotkeyMeta, RegisterableHotkey } from '@tanstack/react-hotkeys'
+import type { HotkeyMeta, ParsedHotkey, RegisterableHotkey } from '@tanstack/react-hotkeys'
 
-type KeyBindingSource = 'default'
+/** `user` bindings come from the settings document and stand in for a default. */
+export type KeyBindingSource = 'default' | 'user'
 
 /**
  * Jump-to-Nth-session slots, matching the digits they are bound to. Nine of them
@@ -72,4 +73,34 @@ export type PlatformKeyBinding = {
   readonly preventDefault?: boolean
   readonly stopPropagation?: boolean
   readonly meta?: HotkeyMeta
+}
+
+/**
+ * The parts of a `KeyboardEvent` a binding is matched against, narrowed so the
+ * matcher can be exercised without a DOM.
+ */
+export type KeyBindingKeyboardEvent = {
+  readonly altKey: boolean
+  readonly code?: string
+  readonly ctrlKey: boolean
+  readonly key: string
+  readonly metaKey: boolean
+  readonly shiftKey: boolean
+}
+
+/** A binding with its hotkey parsed once, so matching never re-parses. */
+export type ParsedPlatformKeyBinding = {
+  readonly binding: PlatformKeyBinding
+  /** Mod chords and Escape stay live in a text field; a bare key is a character. */
+  readonly firesWhileTyping: boolean
+  readonly hotkey: ParsedHotkey
+}
+
+/** One command's effective binding, as the settings editor lists it. */
+export type CommandKeyBinding = {
+  readonly command: PlatformCommandId
+  readonly defaultKeys: readonly string[]
+  /** The binding in force. `null` is an explicit unbind. */
+  readonly keys: string | null
+  readonly source: KeyBindingSource
 }

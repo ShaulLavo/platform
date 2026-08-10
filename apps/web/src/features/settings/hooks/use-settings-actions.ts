@@ -6,10 +6,17 @@ import {
 } from '@workspace/contracts'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
+import type { PlatformCommandId } from '@/keymap/types'
+
 import { saveSettings } from '../api'
 import { notifySaveError } from '../notify-save-error'
 import { settingsKeys } from '../query-keys'
-import { withModelHidden, withProviderEnabled } from '../utils/patch'
+import {
+  withKeybindingOverride,
+  withModelHidden,
+  withoutKeybindingOverride,
+  withProviderEnabled,
+} from '../utils/patch'
 
 /**
  * Domain actions over the settings document. Rows call this directly instead of
@@ -31,6 +38,13 @@ export function useSettingsActions() {
 
   return {
     isSaving: mutation.isPending,
+    resetKeybinding: (command: PlatformCommandId) => {
+      mutation.mutate({ keybindings: withoutKeybindingOverride(current().keybindings, command) })
+    },
+    /** `null` unbinds the command; resetting is what restores its default. */
+    setKeybinding: (command: PlatformCommandId, keys: string | null) => {
+      mutation.mutate({ keybindings: withKeybindingOverride(current().keybindings, command, keys) })
+    },
     setModelHidden: (ref: ModelRef, hidden: boolean) => {
       mutation.mutate({ models: withModelHidden(current().models, ref, hidden) })
     },

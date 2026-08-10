@@ -1,28 +1,30 @@
 import type { KeybindingOverrides } from '@workspace/contracts'
 
-import { EmptyRow } from './empty-row'
+import { commandKeyBindings } from '@/keymap/active-bindings'
+import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
+import { isEditorPlatformCommandId } from '@/keymap/editor-keymap'
+
 import { KeybindingRow } from './keybinding-row'
 import { Section } from './section'
 
 /**
- * Read-only on purpose: the store and its contract land first so the keybinding
- * editor has somewhere to write. This shows what is already overridden.
+ * Editor commands are left out: the editor builds its keymap from the defaults
+ * when the workbench mounts, so an override listed here would look like it took
+ * effect without doing anything.
  */
 export function KeybindingSection({ overrides }: { overrides: KeybindingOverrides }) {
-  const entries = Object.entries(overrides)
+  const rows = commandKeyBindings(defaultPlatformKeyBindings(), overrides).filter(
+    (row) => !isEditorPlatformCommandId(row.command),
+  )
 
   return (
     <Section
       title='Keyboard shortcuts'
-      description='Overrides that replace the built-in bindings. Editing them lands with the keybinding editor.'
+      description='Type a shortcut such as Mod+Alt+S to replace a default. Mod is Command on macOS and Control everywhere else.'
     >
-      {entries.length === 0 ? (
-        <EmptyRow>No shortcut overrides.</EmptyRow>
-      ) : (
-        entries.map(([command, keys]) => (
-          <KeybindingRow key={command} command={command} keys={keys} />
-        ))
-      )}
+      {rows.map((row) => (
+        <KeybindingRow key={row.command} binding={row} />
+      ))}
     </Section>
   )
 }

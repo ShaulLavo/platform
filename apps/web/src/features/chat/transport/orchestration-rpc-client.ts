@@ -24,6 +24,7 @@ import { serverUrl } from '@/lib/client'
 import { clientErrors, createClientError } from '@/lib/structured-errors'
 import { createWideEventScope, type WideEventScope } from '@/lib/wide-event-scope'
 import { chatCommandSummary, chatReplaySummary } from '../lib/chat-pipeline-logging'
+import { useServerConnectionStore } from '../state/server-connection-store'
 import { guardOrchestrationStreamSequence } from './orchestration-sequence'
 import type { OrchestrationStreamInput } from './orchestration-streams'
 
@@ -31,6 +32,8 @@ const ORCHESTRATION_RPC_CONNECT_TIMEOUT_MS = 10_000
 const ORCHESTRATION_RPC_REQUEST_TIMEOUT_MS = 60_000
 const ORCHESTRATION_RPC_HEARTBEAT_MS = 30_000
 const ORCHESTRATION_RPC_HEARTBEAT_TIMEOUT_MS = 10_000
+/** Past this, an answer is late enough that the UI should stop pretending it is instant. */
+const ORCHESTRATION_RPC_SLOW_REQUEST_MS = 4_000
 /** Codes a server uses to say "you may not connect"; retrying them never helps. */
 const ORCHESTRATION_RPC_UNAUTHORIZED_CLOSE_CODES = new Set([1008, 4401, 4403])
 
@@ -38,6 +41,7 @@ type PendingRequest = {
   method: OrchestrationWsRequest['method']
   reject: (error: unknown) => void
   resolve: (value: unknown) => void
+  slowTimeoutId: ReturnType<typeof setTimeout>
   startedAt: number
   timeoutId: ReturnType<typeof setTimeout>
 }
@@ -53,6 +57,7 @@ export type OrchestrationRpcClientOptions = {
   createSocket?: (url: string) => WebSocket
   heartbeatIntervalMs?: number
   heartbeatTimeoutMs?: number
+  slowRequestMs?: number
   url?: () => string
 }
 
@@ -233,25 +238,44 @@ export class OrchestrationRpcClient {
 
     return new Promise<T>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
-        this.pendingRequests.delete(message.requestId)
+        this.settlePendingRequest(message.requestId)
         reject(createOrchestrationRpcTimeoutError(message.method))
       }, ORCHESTRATION_RPC_REQUEST_TIMEOUT_MS)
+      // One flat timeout cannot tell a slow answer from a stuck one, so a
+      // request that overruns says so long before it is allowed to fail.
+      const slowTimeoutId = setTimeout(() => {
+        useServerConnectionStore.getState().markSlowRequest(message.requestId)
+        this.socketScope?.increment('request.slowCount')
+      }, this.options.slowRequestMs ?? ORCHESTRATION_RPC_SLOW_REQUEST_MS)
 
       this.pendingRequests.set(message.requestId, {
         method: message.method,
         reject,
         resolve: (value) => resolve(value as T),
+        slowTimeoutId,
         startedAt: performance.now(),
         timeoutId,
       })
       try {
         this.sendSocketMessage(socket, message)
       } catch (error) {
-        this.pendingRequests.delete(message.requestId)
-        clearTimeout(timeoutId)
+        this.settlePendingRequest(message.requestId)
         reject(error)
       }
     })
+  }
+
+  /** Single exit for a request's bookkeeping, however it ends. */
+  private settlePendingRequest(requestId: string) {
+    const pending = this.pendingRequests.get(requestId)
+    this.pendingRequests.delete(requestId)
+    if (pending) {
+      clearTimeout(pending.timeoutId)
+      clearTimeout(pending.slowTimeoutId)
+    }
+    useServerConnectionStore.getState().clearSlowRequest(requestId)
+
+    return pending
   }
 
   private async *subscribe<T>(message: OrchestrationWsSubscribe, signal?: AbortSignal) {
@@ -391,6 +415,16 @@ export class OrchestrationRpcClient {
     this.socketDeliveredMessage = true
     const message = this.parseSocketMessage(event.data)
     if (!message) return
+    if (message.kind === 'connected') {
+      // The first frame on an authenticated connection, and the only place the
+      // client learns which server process it is talking to.
+      useServerConnectionStore.getState().reportConnected(message.config)
+      this.socketScope?.set({
+        protocolVersion: message.config.protocolVersion,
+        serverInstanceId: message.config.serverInstanceId,
+      })
+      return
+    }
     if (message.kind === 'response') {
       this.handleResponseMessage(message)
       return
@@ -419,11 +453,9 @@ export class OrchestrationRpcClient {
   private handleResponseMessage(
     message: Extract<OrchestrationWsServerMessage, { kind: 'response' }>,
   ) {
-    const pending = this.pendingRequests.get(message.requestId)
+    const pending = this.settlePendingRequest(message.requestId)
     if (!pending) return
 
-    this.pendingRequests.delete(message.requestId)
-    clearTimeout(pending.timeoutId)
     this.socketScope?.increment('response.count')
     this.socketScope?.increment(message.ok ? 'response.okCount' : 'response.errorCount')
     this.socketScope?.set({
@@ -496,12 +528,10 @@ export class OrchestrationRpcClient {
   }
 
   private rejectPendingRequests(error: unknown) {
-    const pending = [...this.pendingRequests.values()]
-    this.pendingRequests.clear()
+    const requestIds = [...this.pendingRequests.keys()]
 
-    for (const request of pending) {
-      clearTimeout(request.timeoutId)
-      request.reject(error)
+    for (const requestId of requestIds) {
+      this.settlePendingRequest(requestId)?.reject(error)
     }
   }
 

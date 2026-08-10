@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest'
 
 import { commandDisabledReason } from '@/components/command-palette/command-palette-utils'
 
-import { activePlatformKeyBindings } from '../active-bindings'
+import {
+  activePlatformKeyBindings,
+  commandKeyBindings,
+  parsedPlatformKeyBindings,
+  platformKeyBindingForKeyboardEvent,
+  resolvedPlatformKeyBindings,
+} from '../active-bindings'
 import { commandHotkeyMeta, platformCommandSpec } from '../command-registry'
 import { defaultPlatformKeyBindings } from '../default-bindings'
 import {
@@ -11,7 +17,7 @@ import {
   readonlyEditorKeymapLayers,
 } from '../editor-keymap'
 import { appKeyBindingsForPane } from '../use-app-keymap'
-import type { PlatformCommandId, PlatformKeyBinding } from '../types'
+import type { KeyBindingKeyboardEvent, PlatformCommandId, PlatformKeyBinding } from '../types'
 
 describe('activePlatformKeyBindings', () => {
   it('filters bindings by focused pane', () => {
@@ -49,6 +55,168 @@ describe('appKeyBindingsForPane', () => {
     expect(commands(appKeyBindingsForPane(bindings, 'editor'))).toEqual([
       'workspace.openFilePicker',
     ])
+  })
+})
+
+describe('resolvedPlatformKeyBindings', () => {
+  it('replaces every default a command had with the one hotkey the user chose', () => {
+    const resolved = resolvedPlatformKeyBindings(
+      defaultPlatformKeyBindings('linux'),
+      { 'workspace.showCommandPalette': 'Mod+Alt+K' },
+      'linux',
+    )
+
+    expect(keysFor(resolved, 'workspace.showCommandPalette')).toEqual(['Mod+Alt+K'])
+    expect(resolved).toContainEqual(
+      expect.objectContaining({
+        command: 'workspace.showCommandPalette',
+        keys: 'Mod+Alt+K',
+        source: 'user',
+      }),
+    )
+  })
+
+  it('keeps the pane and event handling the default was written with', () => {
+    const resolved = resolvedPlatformKeyBindings(
+      defaultPlatformKeyBindings('linux'),
+      { 'workspace.gotoSymbol': 'Mod+Alt+Y' },
+      'linux',
+    )
+
+    expect(resolved).toContainEqual(
+      expect.objectContaining({
+        command: 'workspace.gotoSymbol',
+        pane: 'any',
+        preventDefault: true,
+        vscodeCommandId: 'workbench.action.gotoSymbol',
+      }),
+    )
+  })
+
+  it('leaves a command unbound when the override is an explicit null', () => {
+    const resolved = resolvedPlatformKeyBindings(
+      defaultPlatformKeyBindings('linux'),
+      { 'workspace.saveFile': null },
+      'linux',
+    )
+
+    expect(keysFor(resolved, 'workspace.saveFile')).toEqual([])
+  })
+
+  it('applies an override for a command only the default table names', () => {
+    // The session commands ship a binding without a command-palette spec, so a
+    // registry lookup alone would silently drop their overrides.
+    const resolved = resolvedPlatformKeyBindings(
+      defaultPlatformKeyBindings('linux'),
+      { 'workspace.newSession': 'Mod+Alt+Q' },
+      'linux',
+    )
+
+    expect(keysFor(resolved, 'workspace.newSession')).toEqual(['Mod+Alt+Q'])
+  })
+
+  it('ignores an override for a command this build does not have', () => {
+    const resolved = resolvedPlatformKeyBindings(
+      defaultPlatformKeyBindings('linux'),
+      { 'workspace.notACommand': 'Mod+Alt+K' },
+      'linux',
+    )
+
+    expect(resolved).toEqual(defaultPlatformKeyBindings('linux'))
+  })
+
+  it('leaves the default in place when the override is not a hotkey', () => {
+    const resolved = resolvedPlatformKeyBindings(
+      defaultPlatformKeyBindings('linux'),
+      { 'workspace.saveFile': 'Mod+Nonsense' },
+      'linux',
+    )
+
+    expect(keysFor(resolved, 'workspace.saveFile')).toEqual(['Mod+S'])
+  })
+})
+
+describe('platformKeyBindingForKeyboardEvent', () => {
+  it('matches a chord typed on the layout the bindings were written for', () => {
+    expect(matchedCommand(linuxAppKeymap(), keyEvent('b', 'KeyB', { ctrlKey: true }))).toBe(
+      'workspace.toggleSidebarVisibility',
+    )
+  })
+
+  it('matches the physical key when the layout prints a non-Latin letter', () => {
+    // Russian and Hebrew layouts report 'и' and 'ד' for the keys engraved B and
+    // S, so the printed character can never be what the binding names.
+    expect(matchedCommand(linuxAppKeymap(), keyEvent('и', 'KeyB', { ctrlKey: true }))).toBe(
+      'workspace.toggleSidebarVisibility',
+    )
+    expect(matchedCommand(linuxAppKeymap(), keyEvent('ד', 'KeyS', { ctrlKey: true }))).toBe(
+      'workspace.saveFile',
+    )
+  })
+
+  it('matches the physical digit when the number row prints punctuation', () => {
+    expect(
+      matchedCommand(linuxAppKeymap(), keyEvent('&', 'Digit1', { altKey: true, ctrlKey: true })),
+    ).toBe('workspace.jumpToSession1')
+  })
+
+  it('lets a Latin layout keep its printed letter instead of its physical key', () => {
+    // AZERTY prints 'z' on the key US layouts call W. Reading the code anyway
+    // would hand Mod+Z to whatever Mod+W is reserved for.
+    expect(matchedCommand(linuxAppKeymap(), keyEvent('z', 'KeyW', { ctrlKey: true }))).toBeNull()
+  })
+
+  it('dispatches the override instead of the default once a command is rebound', () => {
+    const keymap = linuxAppKeymap({ 'workspace.saveFile': 'Mod+Alt+S' })
+
+    expect(matchedCommand(keymap, keyEvent('s', 'KeyS', { ctrlKey: true }))).toBeNull()
+    expect(matchedCommand(keymap, keyEvent('s', 'KeyS', { altKey: true, ctrlKey: true }))).toBe(
+      'workspace.saveFile',
+    )
+  })
+
+  it('keeps bare-key bindings out of text fields and Mod chords in them', () => {
+    const keymap = linuxAppKeymap()
+
+    expect(matchFor(keymap, keyEvent('F1', 'F1'))?.firesWhileTyping).toBe(false)
+    expect(matchFor(keymap, keyEvent('s', 'KeyS', { ctrlKey: true }))?.firesWhileTyping).toBe(true)
+  })
+})
+
+describe('commandKeyBindings', () => {
+  it('reports the default binding until the user overrides it', () => {
+    expect(commandKeyBindings(defaultPlatformKeyBindings('linux'), {})).toContainEqual({
+      command: 'workspace.saveFile',
+      defaultKeys: ['Mod+S'],
+      keys: 'Mod+S',
+      source: 'default',
+    })
+  })
+
+  it('shows the override in force beside the defaults it replaced', () => {
+    const rows = commandKeyBindings(defaultPlatformKeyBindings('linux'), {
+      'workspace.showCommandPalette': 'Mod+Alt+K',
+    })
+
+    expect(rows).toContainEqual({
+      command: 'workspace.showCommandPalette',
+      defaultKeys: ['Mod+Shift+P', 'F1'],
+      keys: 'Mod+Alt+K',
+      source: 'user',
+    })
+  })
+
+  it('lists a command that only the user has bound', () => {
+    const rows = commandKeyBindings(defaultPlatformKeyBindings('linux'), {
+      'workspace.focusEditor': 'Mod+Alt+E',
+    })
+
+    expect(rows).toContainEqual({
+      command: 'workspace.focusEditor',
+      defaultKeys: [],
+      keys: 'Mod+Alt+E',
+      source: 'user',
+    })
   })
 })
 
@@ -449,6 +617,47 @@ function binding(
 
 function commands(bindings: readonly PlatformKeyBinding[]) {
   return bindings.map((keyBinding) => keyBinding.command)
+}
+
+function keysFor(bindings: readonly PlatformKeyBinding[], command: PlatformCommandId) {
+  return bindings.filter((binding) => binding.command === command).map((binding) => binding.keys)
+}
+
+function linuxAppKeymap(overrides: Record<string, string | null> = {}) {
+  const resolved = resolvedPlatformKeyBindings(
+    defaultPlatformKeyBindings('linux'),
+    overrides,
+    'linux',
+  )
+
+  return parsedPlatformKeyBindings(appKeyBindingsForPane(resolved, 'global'), 'linux')
+}
+
+function keyEvent(
+  key: string,
+  code: string,
+  modifiers: Partial<Omit<KeyBindingKeyboardEvent, 'code' | 'key'>> = {},
+): KeyBindingKeyboardEvent {
+  return {
+    altKey: false,
+    code,
+    ctrlKey: false,
+    key,
+    metaKey: false,
+    shiftKey: false,
+    ...modifiers,
+  }
+}
+
+function matchFor(bindings: ReturnType<typeof linuxAppKeymap>, event: KeyBindingKeyboardEvent) {
+  return platformKeyBindingForKeyboardEvent(bindings, event)
+}
+
+function matchedCommand(
+  bindings: ReturnType<typeof linuxAppKeymap>,
+  event: KeyBindingKeyboardEvent,
+) {
+  return matchFor(bindings, event)?.binding.command ?? null
 }
 
 function duplicateBindingSlots(bindings: readonly PlatformKeyBinding[]) {

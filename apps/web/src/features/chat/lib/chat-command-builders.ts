@@ -166,8 +166,10 @@ export function createDraftThreadSubmission({
   projectId,
   rootPath,
   runtimeMode = DEFAULT_RUNTIME_MODE,
+  sourceProposedPlan,
   terminalContexts = NO_TERMINAL_CONTEXTS,
   text,
+  title: titleOverride,
 }: {
   attachments?: ChatAttachmentUpload[]
   createdAt: string
@@ -176,17 +178,25 @@ export function createDraftThreadSubmission({
   projectId: ProjectId
   rootPath: string
   runtimeMode?: RuntimeMode
+  sourceProposedPlan?: SourceProposedPlanReference
   terminalContexts?: readonly TerminalContextSelection[]
   text: string
+  /**
+   * Overrides the title derived from the prompt. A turn the user did not type —
+   * a plan handed to a new thread — would otherwise be named after the
+   * instruction that carries it.
+   */
+  title?: string
 }): DraftThreadSubmission {
   const threadId = createThreadId()
-  const title = threadTitleFromPrompt(text) ?? 'New chat'
+  const title = titleOverride ?? threadTitleFromPrompt(text) ?? 'New chat'
   const submission = createTurnSubmission({
     attachments,
     createdAt,
     interactionMode,
     modelSelection,
     runtimeMode,
+    sourceProposedPlan,
     terminalContexts,
     text,
     threadId,

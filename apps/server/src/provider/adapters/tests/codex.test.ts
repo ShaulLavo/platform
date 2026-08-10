@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -408,6 +408,48 @@ function handle(message) {
     send({ id: message.id, result: {} });
     return;
   }
+  if (message.method === 'skills/list') {
+    if (mode === 'skills-unavailable') {
+      fail(message.id, 'unsupported method: skills/list');
+      return;
+    }
+    send({
+      id: message.id,
+      result: {
+        data: [
+          {
+            cwd: process.cwd(),
+            errors: [],
+            skills: [
+              {
+                description: 'Project scoped skill',
+                enabled: true,
+                name: 'proj-skill',
+                path: process.cwd() + '/.codex/skills/proj-skill/SKILL.md',
+                scope: 'repo',
+              },
+              {
+                description: 'Turned off in the skills config',
+                enabled: false,
+                name: 'retired',
+                path: '/home/skills/retired/SKILL.md',
+                scope: 'user',
+              },
+              { description: 'No usable name', enabled: true, name: '   ' },
+            ],
+          },
+          {
+            cwd: '/another/project',
+            errors: [],
+            skills: [
+              { description: 'Same skill, second directory', enabled: true, name: 'proj-skill' },
+            ],
+          },
+        ],
+      },
+    });
+    return;
+  }
   if (message.method === 'thread/read') {
     send({
       id: message.id,
@@ -447,7 +489,7 @@ let fakeCodexLock: Promise<void> = Promise.resolve()
 
 const RUNTIME_MODES = ['approval-required', 'auto-accept-edits', 'full-access'] as const
 
-type FakeCodexContext = { readonly spawnLogPath: string }
+type FakeCodexContext = { readonly projectPath: string; readonly spawnLogPath: string }
 
 type EchoedModeParams = {
   approvalsReviewer: string | null
@@ -477,6 +519,7 @@ describe('CodexProviderAdapter', () => {
       const hasSessionAfterStop = await adapter.hasSession({ threadId: input.thread.id })
 
       expect(adapter.capabilities).toEqual({
+        listCommands: true,
         readThread: true,
         rollbackThread: true,
         sessionModelSwitch: 'in-session',
@@ -690,6 +733,55 @@ describe('CodexProviderAdapter', () => {
         expect(echoes.map((echo) => echo.threadApprovalsReviewer)).toEqual(['user', 'user', 'user'])
       },
       { mode: 'echo-mode-params' },
+    )
+  })
+
+  it('discovers skills in the project directory and offers no slash commands', async () => {
+    await withFakeCodex(async ({ projectPath }) => {
+      const adapter = new CodexProviderAdapter()
+
+      const catalog = await adapter.listCommands({ cwd: projectPath })
+
+      // Codex has no prompt or command listing at all, so the empty half of the
+      // catalog is the honest answer rather than a read this skipped.
+      expect(catalog.commands).toEqual([])
+      // The app-server ran inside the project, which is the only way
+      // `<cwd>/.codex/skills` is reachable. A disabled skill stays in the list
+      // as unavailable, a nameless one is dropped, and the same name listed for
+      // a second directory collapses into the first.
+      expect(catalog.skills).toEqual([
+        {
+          description: 'Project scoped skill',
+          enabled: true,
+          name: 'proj-skill',
+          path: `${projectPath}/.codex/skills/proj-skill/SKILL.md`,
+          scope: 'repo',
+        },
+        {
+          description: 'Turned off in the skills config',
+          enabled: false,
+          name: 'retired',
+          path: '/home/skills/retired/SKILL.md',
+          scope: 'user',
+        },
+      ])
+    })
+  })
+
+  it('fails the skill read loudly and leaves the provider snapshot intact', async () => {
+    await withFakeCodex(
+      async ({ projectPath }) => {
+        const adapter = new CodexProviderAdapter()
+
+        await expect(adapter.listCommands({ cwd: projectPath })).rejects.toThrow('skills/list')
+        const snapshot = await adapter.snapshot()
+
+        // Discovery runs in its own app-server process precisely so a Codex
+        // that cannot list skills still reports its account and models.
+        expect(snapshot).toMatchObject({ installed: true, status: 'ready' })
+        expect(snapshot.models[0]).toMatchObject({ slug: 'gpt-5.5' })
+      },
+      { mode: 'skills-unavailable' },
     )
   })
 
@@ -911,20 +1003,24 @@ async function withFakeCodex(
   })
   await previousLock
 
-  const directory = await mkdtemp(path.join(tmpdir(), 'platform-fake-codex-'))
+  // Resolved through symlinks (`/var` -> `/private/var` on macOS) so a test can
+  // compare `projectPath` against the working directory the child reports.
+  const directory = await realpath(await mkdtemp(path.join(tmpdir(), 'platform-fake-codex-')))
   const binaryPath = path.join(directory, 'codex')
+  const projectPath = path.join(directory, 'project')
   const spawnLogPath = path.join(directory, 'spawns.log')
   const previousBinary = process.env.PLATFORM_CODEX_BINARY
   const previousMode = process.env.PLATFORM_FAKE_CODEX_MODE
   await writeFile(binaryPath, fakeCodexScript)
   await writeFile(spawnLogPath, '')
+  await mkdir(projectPath)
   await chmod(binaryPath, 0o755)
   process.env.PLATFORM_CODEX_BINARY = binaryPath
   process.env.PLATFORM_FAKE_CODEX_SPAWN_LOG = spawnLogPath
   if (options.mode) process.env.PLATFORM_FAKE_CODEX_MODE = options.mode
 
   try {
-    await run({ spawnLogPath })
+    await run({ projectPath, spawnLogPath })
   } finally {
     restoreCodexBinary(previousBinary)
     restoreFakeCodexMode(previousMode)

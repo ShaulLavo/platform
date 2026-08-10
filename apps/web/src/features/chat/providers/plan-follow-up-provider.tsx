@@ -1,22 +1,33 @@
-import type { ThreadId } from '@workspace/contracts'
+import type {
+  OrchestrationMessage,
+  OrchestrationProposedPlan,
+  ThreadId,
+  ThreadTurnStartCommand,
+} from '@workspace/contracts'
 import { useMemo, useState, type ReactNode } from 'react'
 
 import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
 import {
+  createDraftThreadSubmission,
   createTurnSubmission,
   type SourceProposedPlanReference,
 } from '@/features/chat/lib/chat-command-builders'
 import {
+  replayAfterDraftTurnDispatch,
   replayAfterTurnDispatch,
   scheduleThreadProjectionSyncAfterDispatch,
+  type ThreadCommandDispatchResult,
 } from '@/features/chat/lib/chat-command-sync'
 import { chatInputUploadAttachments } from '@/features/chat/lib/chat-input-attachments'
 import {
   chatCommandSummary,
   createChatPipelineScope,
+  type ChatPipelineScope,
 } from '@/features/chat/lib/chat-pipeline-logging'
 import {
   actionableProposedPlan,
+  planImplementationPrompt,
+  planImplementationThreadTitle,
   resolvePlanFollowUpSubmission,
 } from '@/features/chat/lib/chat-proposed-plan'
 import { isChatThreadBusy } from '@/features/chat/lib/chat-thread-status'
@@ -37,10 +48,19 @@ import {
 
 const NO_PLANS: ChatThread['proposedPlans'] = []
 
+type PlanDispatchContext = {
+  draftTarget: ChatInputDraftTarget
+  environment: ChatEnvironment
+  onThreadCreated: (threadId: ThreadId) => void
+  plan: OrchestrationProposedPlan
+  thread: ChatThread
+}
+
 /**
  * Turns a finished plan into the next turn. Plan mode only pays off if the plan
- * can be acted on without retyping "go ahead", so this owns the single action
- * that closes that loop and stamps the turn with the plan it came from.
+ * can be acted on without retyping "go ahead", so this owns the two actions that
+ * close that loop — build it here, or build it in a thread of its own — and
+ * stamps whichever turn results with the plan it came from.
  *
  * It reads the composer draft rather than being handed it: the empty-draft rule
  * has to see the text as it stands at click time, and the banner must not become
@@ -54,15 +74,21 @@ export function ChatPlanFollowUpProvider({
   children,
   draftTarget,
   environment,
+  onThreadCreated,
   threadId,
 }: {
   readonly children: ReactNode
   readonly draftTarget: ChatInputDraftTarget
   readonly environment: ChatEnvironment
+  /**
+   * Puts a newly split-off implementation thread on screen. A callback rather
+   * than a reach into the session store: the two chat surfaces keep their
+   * selection in different places, and only the host knows which it is.
+   */
+  readonly onThreadCreated: (threadId: ThreadId) => void
   readonly threadId: ThreadId
 }) {
   const thread = useChatProjectionStore((state) => selectChatThreadById(state, threadId))
-  const clearDraft = useChatInputDraftStore((state) => state.clearDraft)
   const [submitting, setSubmitting] = useState(false)
   // A running turn already owns the composer: the plan has been answered, and a
   // second Implement would start a duplicate build.
@@ -71,49 +97,41 @@ export function ChatPlanFollowUpProvider({
     : actionableProposedPlan(thread?.proposedPlans ?? NO_PLANS)
   // Context value identity: this wraps the composer, so a fresh object on every
   // keystroke would repaint the panels beside it for nothing.
-  const value = useMemo<ChatPlanFollowUp>(
-    () => ({
-      plan,
-      submitFollowUp: async () => {
-        if (!plan || !thread || submitting) return false
+  const value = useMemo<ChatPlanFollowUp>(() => {
+    // One follow-up in flight at a time whichever button started it: both end in
+    // a turn against the same plan, and only one of them can be its implementation.
+    const once = (dispatch: (context: PlanDispatchContext) => Promise<boolean>) => async () => {
+      if (!plan || !thread || submitting) return false
 
-        setSubmitting(true)
-        try {
-          return await dispatchPlanFollowUpTurn({
-            clearDraft: () => clearDraft(draftTarget),
-            draftTarget,
-            environment,
-            plan,
-            thread,
-          })
-        } finally {
-          setSubmitting(false)
-        }
-      },
+      setSubmitting(true)
+      try {
+        return await dispatch({ draftTarget, environment, onThreadCreated, plan, thread })
+      } finally {
+        setSubmitting(false)
+      }
+    }
+
+    return {
+      implementInNewThread: once(dispatchPlanImplementationThread),
+      plan,
+      submitFollowUp: once(dispatchPlanFollowUpTurn),
       submitting,
-    }),
-    [clearDraft, draftTarget, environment, plan, submitting, thread],
-  )
+    }
+  }, [draftTarget, environment, onThreadCreated, plan, submitting, thread])
 
   return <ChatPlanFollowUpContext value={value}>{children}</ChatPlanFollowUpContext>
 }
 
 async function dispatchPlanFollowUpTurn({
-  clearDraft,
   draftTarget,
   environment,
   plan,
   thread,
-}: {
-  clearDraft: () => void
-  draftTarget: ChatInputDraftTarget
-  environment: ChatEnvironment
-  plan: NonNullable<ChatPlanFollowUp['plan']>
-  thread: ChatThread
-}): Promise<boolean> {
+}: PlanDispatchContext): Promise<boolean> {
+  const drafts = useChatInputDraftStore.getState()
   // Read live: the draft as it stands at click time is what decides implement
   // versus refine, and a render-time copy would be one keystroke stale.
-  const draft = useChatInputDraftStore.getState().getDraft(draftTarget)
+  const draft = drafts.getDraft(draftTarget)
   const followUp = resolvePlanFollowUpSubmission({
     draftText: draft.prompt,
     planMarkdown: plan.planMarkdown,
@@ -132,35 +150,108 @@ async function dispatchPlanFollowUpTurn({
     text: followUp.text,
     threadId: thread.id,
   })
-  const startedAt = performance.now()
-  const scope = createChatPipelineScope('chat.plan_follow_up.dispatch.summary', {
-    ...chatCommandSummary(submission.command),
-    implementsPlan: followUp.implementsPlan,
-    planId: plan.id,
-    planThreadId: plan.threadId,
-    sourcePlanId: sourceProposedPlan?.planId ?? null,
-    terminalContextCount: draft.terminalContexts.length,
-  })
 
-  useChatOptimisticStore
-    .getState()
-    .addOptimisticMessage(submission.command.commandId, submission.optimisticMessage)
+  return dispatchPlanTurn({
+    command: submission.command,
+    environment,
+    onAccepted: () => drafts.clearDraft(draftTarget),
+    optimisticMessage: submission.optimisticMessage,
+    replayAfterSequence: replayAfterTurnDispatch,
+    scope: createChatPipelineScope('chat.plan_follow_up.dispatch.summary', {
+      ...chatCommandSummary(submission.command),
+      implementsPlan: followUp.implementsPlan,
+      planId: plan.id,
+      planThreadId: plan.threadId,
+      sourcePlanId: sourceProposedPlan?.planId ?? null,
+      terminalContextCount: draft.terminalContexts.length,
+    }),
+  })
+}
+
+/**
+ * Splits the build off into its own conversation. The plan is the whole first
+ * turn, so nothing staged in the composer travels with it — that draft belongs
+ * to the thread the user is leaving open, and destroying it to send a plan the
+ * user never typed would be a trade they did not ask for.
+ */
+async function dispatchPlanImplementationThread({
+  draftTarget,
+  environment,
+  onThreadCreated,
+  plan,
+  thread,
+}: PlanDispatchContext): Promise<boolean> {
+  const draft = useChatInputDraftStore.getState().getDraft(draftTarget)
+  const submission = createDraftThreadSubmission({
+    createdAt: new Date().toISOString(),
+    // The composer's live pick, same as the in-thread path: switching model and
+    // then splitting the build off should still run on the model that was picked.
+    modelSelection: draft.modelSelection ?? thread.modelSelection,
+    projectId: thread.projectId,
+    // The plan was written against this checkout, so a worktree session hands
+    // its implementation to the same worktree rather than back to the project root.
+    rootPath: thread.worktreePath ?? draftTarget.rootPath,
+    runtimeMode: draft.runtimeMode ?? thread.runtimeMode,
+    // Stamped on the command the server sees, so the plan is marked implemented
+    // by the turn that implements it rather than by a second round trip.
+    sourceProposedPlan: { planId: plan.id, threadId: plan.threadId },
+    text: planImplementationPrompt(plan.planMarkdown),
+    // The prompt's first line is the instruction carrying the plan, not the
+    // plan, so the thread would otherwise be named "Please implement this plan".
+    title: planImplementationThreadTitle(plan.planMarkdown),
+  })
+  const command = submission.command
+
+  return dispatchPlanTurn({
+    command,
+    environment,
+    // Only once the command is accepted: a rejected dispatch created no thread,
+    // and the stage would sit on one that never arrives.
+    onAccepted: () => onThreadCreated(command.threadId),
+    optimisticMessage: submission.optimisticMessage,
+    replayAfterSequence: replayAfterDraftTurnDispatch,
+    scope: createChatPipelineScope('chat.plan_implementation_thread.dispatch.summary', {
+      ...chatCommandSummary(command),
+      planId: plan.id,
+      planThreadId: plan.threadId,
+      sourceThreadId: thread.id,
+    }),
+  })
+}
+
+async function dispatchPlanTurn({
+  command,
+  environment,
+  onAccepted,
+  optimisticMessage,
+  replayAfterSequence,
+  scope,
+}: {
+  command: ThreadTurnStartCommand
+  environment: ChatEnvironment
+  onAccepted: () => void
+  optimisticMessage: OrchestrationMessage
+  replayAfterSequence: (result: ThreadCommandDispatchResult) => number
+  scope: ChatPipelineScope
+}): Promise<boolean> {
+  const startedAt = performance.now()
+  useChatOptimisticStore.getState().addOptimisticMessage(command.commandId, optimisticMessage)
   try {
     scope.increment('command.dispatchStartCount')
-    const result = await environment.dispatchCommand(submission.command)
+    const result = await environment.dispatchCommand(command)
     scope.increment('command.dispatchAcceptedCount')
     scope.set({ deduped: result.deduped, outcome: 'ok', sequence: result.sequence })
-    clearDraft()
+    onAccepted()
     scheduleThreadProjectionSyncAfterDispatch({
       environment,
-      replayAfterSequence: replayAfterTurnDispatch(result),
-      threadId: thread.id,
+      replayAfterSequence: replayAfterSequence(result),
+      threadId: command.threadId,
     })
     return true
   } catch (error) {
     useChatOptimisticStore
       .getState()
-      .removeOptimisticMessage(thread.id, submission.optimisticMessage.id)
+      .removeOptimisticMessage(optimisticMessage.threadId, optimisticMessage.id)
     scope.increment('command.dispatchFailedCount')
     scope.warn('Plan follow-up dispatch failed.', { error })
     scope.set({ outcome: 'error' })
@@ -170,6 +261,6 @@ async function dispatchPlanFollowUpTurn({
   }
 }
 
-function planReference(plan: NonNullable<ChatPlanFollowUp['plan']>): SourceProposedPlanReference {
+function planReference(plan: OrchestrationProposedPlan): SourceProposedPlanReference {
   return { planId: plan.id, threadId: plan.threadId }
 }

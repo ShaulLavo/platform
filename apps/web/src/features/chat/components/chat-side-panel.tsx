@@ -48,6 +48,7 @@ export const ChatSidePanel = memo(({ rootPath }: { rootPath: string }) => {
           activeThreadId={activeThreadId}
           environment={environment}
           rootPath={rootPath}
+          onThreadCreated={setActiveThreadId}
         />
       ) : (
         <ChatDraftView

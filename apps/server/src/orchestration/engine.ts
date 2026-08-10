@@ -14,6 +14,7 @@ import { isDurableCommandRejection, OrchestrationCommandReceipts } from './comma
 import { decideOrchestrationCommand } from './decider'
 import { OrchestrationEventStore, type OrchestrationDatabase } from './event-store'
 import { OrchestrationProjectionPipeline } from './projection-pipeline'
+import { ensureCommandWorkspaceRoot } from './workspace-root'
 import { ProviderCommandReactor } from './provider-command-reactor'
 import { ProviderRuntimeIngestion } from './provider-runtime-ingestion'
 import { ThreadDeletionReactor } from './thread-deletion-reactor'
@@ -107,6 +108,10 @@ export class OrchestrationEngine {
    */
   async dispatchClientCommand(command: unknown) {
     const parsed = v.parse(clientOrchestrationCommandSchema, command)
+    // Before the decider, which is pure and runs inside the command
+    // transaction: a project that opted into making its workspace root needs
+    // that directory to exist by the time anything is written about it.
+    await ensureCommandWorkspaceRoot(parsed)
     const ingested = await ingestCommandAttachments(parsed, this.attachmentsDir)
 
     return this.dispatch(ingested.command, ingested.attachmentIngest)

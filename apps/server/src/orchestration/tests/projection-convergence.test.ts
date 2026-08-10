@@ -15,6 +15,7 @@ import {
 } from './factories/projection'
 
 const requestedAt = '2026-05-24T00:01:00.000Z'
+const revisedAt = '2026-05-24T00:01:50.000Z'
 const startedAt = '2026-05-24T00:02:00.000Z'
 const settledAt = '2026-05-24T00:03:00.000Z'
 const fixtures: Array<{ close: () => void }> = []
@@ -176,6 +177,83 @@ describe('orchestration projection convergence', () => {
 
     expect(projected.memory.activities).toHaveLength(1)
     expect(projected.sqlThread.activities).toHaveLength(1)
+  })
+
+  it('corrects the persisted activity when a revised frame re-emits the same id', () => {
+    const projected = project([
+      ...threadBootstrapEvents(),
+      activityAppendedEvent({
+        id: 'event-activity-1',
+        kind: 'tool.started',
+        payload: { itemType: 'file-read', status: 'running' },
+        summary: 'Read started',
+        tone: 'tool',
+      }),
+      activityAppendedEvent({
+        createdAt: revisedAt,
+        id: 'event-activity-1',
+        kind: 'tool.completed',
+        payload: { itemType: 'file-read', status: 'completed' },
+        summary: 'Read 40 lines',
+        tone: 'info',
+      }),
+    ])
+
+    // Both read models fold the same events, so a revision that only one of
+    // them applies is a divergence that surfaces as the timeline and the rail
+    // disagreeing about what a tool call did.
+    for (const activities of [projected.sqlThread.activities, projected.memory.activities]) {
+      expect(activities).toHaveLength(1)
+      expect(activities[0]).toMatchObject({
+        kind: 'tool.completed',
+        payload: { itemType: 'file-read', status: 'completed' },
+        summary: 'Read 40 lines',
+        tone: 'info',
+      })
+    }
+  })
+
+  it('leaves a revised activity where the first frame put it, in both read models', () => {
+    const projected = project([
+      ...threadBootstrapEvents(),
+      activityAppendedEvent({ id: 'event-activity-1', summary: 'Read started' }),
+      activityAppendedEvent({
+        createdAt: '2026-05-24T00:01:40.000Z',
+        id: 'event-activity-2',
+        summary: 'Grep started',
+      }),
+      activityAppendedEvent({
+        createdAt: revisedAt,
+        id: 'event-activity-1',
+        summary: 'Read 40 lines',
+      }),
+    ])
+
+    for (const activities of [projected.sqlThread.activities, projected.memory.activities]) {
+      expect(activities.map((activity) => activity.id)).toEqual([
+        'event-activity-1',
+        'event-activity-2',
+      ])
+      expect(activities[0]).toMatchObject({
+        createdAt: '2026-05-24T00:01:30.000Z',
+        summary: 'Read 40 lines',
+      })
+    }
+  })
+
+  it('backfills a revised activity onto its turn and never erases the turn again', () => {
+    const projected = project([
+      ...threadBootstrapEvents(),
+      turnStartEvent('turn-1', requestedAt),
+      activityAppendedEvent({ id: 'event-activity-1', turnId: 'turn-1' }),
+      activityAppendedEvent({ id: 'event-activity-2', turnId: null }),
+      activityAppendedEvent({ createdAt: revisedAt, id: 'event-activity-1', turnId: null }),
+      activityAppendedEvent({ createdAt: revisedAt, id: 'event-activity-2', turnId: 'turn-1' }),
+    ])
+
+    for (const activities of [projected.sqlThread.activities, projected.memory.activities]) {
+      expect(activities.map((activity) => activity.turnId)).toEqual(['turn-1', 'turn-1'])
+    }
   })
 
   it('does not duplicate assistant text when a catch-up dies before its cursor advances', () => {

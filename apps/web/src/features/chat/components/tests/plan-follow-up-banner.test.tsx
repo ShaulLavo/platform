@@ -6,6 +6,7 @@ import {
   type ClientOrchestrationCommand,
   type OrchestrationProposedPlan,
   type OrchestrationThreadDetailSnapshot,
+  type ThreadId,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
@@ -108,6 +109,58 @@ test('a thread already running a turn hides the action so no duplicate build sta
   expect(screen.queryByRole('button', { name: 'Implement' })).not.toBeInTheDocument()
 })
 
+test('a plan can be built in a thread of its own, seeded with the plan itself', async () => {
+  const { dispatched } = renderBanner()
+
+  await userEvent.click(screen.getByRole('button', { name: 'Implement in a new thread' }))
+
+  const command = dispatched[0]
+  expect(command).toMatchObject({
+    bootstrap: {
+      createThread: { projectId: 'project-1', title: 'Implement Ship the retry queue' },
+    },
+    interactionMode: 'default',
+    sourceProposedPlan: { planId: 'plan-1', threadId: 'thread-1' },
+    type: 'thread.turn.start',
+  })
+  expect(command?.type === 'thread.turn.start' && command.message.text).toContain(
+    'Drain it on boot',
+  )
+  expect(command?.type === 'thread.turn.start' && command.threadId).not.toBe(THREAD_ID)
+})
+
+test('the thread a plan was split into is handed to the host to show', async () => {
+  const { created, dispatched } = renderBanner()
+
+  await userEvent.click(screen.getByRole('button', { name: 'Implement in a new thread' }))
+
+  // Reported rather than selected here: the sidebar panel and the chat stage
+  // keep their selection in different places, and only the host knows which.
+  const command = dispatched[0]
+  expect(created).toEqual([command?.type === 'thread.turn.start' ? command.threadId : null])
+})
+
+test('a rejected split leaves the stage on the thread that has the plan', async () => {
+  const { created } = renderBanner({ dispatch: () => Promise.reject(new Error('offline')) })
+
+  await userEvent.click(screen.getByRole('button', { name: 'Implement in a new thread' }))
+
+  // No thread was created, so nothing should be handed over to show.
+  expect(created).toEqual([])
+  expect(await screen.findByRole('button', { name: 'Implement in a new thread' })).toBeEnabled()
+})
+
+test('typed feedback withdraws the new-thread action — there is no plan to build yet', async () => {
+  renderBanner()
+
+  useChatInputDraftStore.getState().setPrompt(draftTarget, 'drop step 2')
+
+  expect(await screen.findByRole('button', { name: 'Refine' })).toBeEnabled()
+  expect(
+    screen.queryByRole('button', { name: 'Implement in a new thread' }),
+  ).not.toBeInTheDocument()
+})
+
 test('a rejected dispatch drops the optimistic message so the timeline stays honest', async () => {
   renderBanner({ dispatch: () => Promise.reject(new Error('offline')) })
 
@@ -143,6 +196,7 @@ function renderBanner({
   }
   useChatProjectionStore.getState().syncThreadDetailSnapshot(snapshot)
 
+  const created: ThreadId[] = []
   const dispatched: ClientOrchestrationCommand[] = []
   const environment = unsupportedChatEnvironment({
     dispatchCommand: async (command) => {
@@ -162,12 +216,13 @@ function renderBanner({
       draftTarget={draftTarget}
       environment={environment}
       threadId={seeded.id}
+      onThreadCreated={(threadId) => created.push(threadId)}
     >
       <PlanFollowUpBanner draftTarget={draftTarget} />
     </ChatPlanFollowUpProvider>,
   )
 
-  return { dispatched }
+  return { created, dispatched }
 }
 
 function proposedPlan(
