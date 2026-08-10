@@ -41,6 +41,7 @@ import { ChatInputAttachmentList } from './chat-input-attachment-list'
 import { ChatInputActions } from './chat-input-actions'
 import { ChatInputCommandMenu } from './chat-input-command-menu'
 import { ChatInputEditor } from './chat-input-editor'
+import { CHAT_INPUT_EDITOR_NODES } from './chat-input-mention-node'
 
 export type ChatInputSubmitPayload = {
   attachments: ChatAttachmentUpload[]
@@ -123,6 +124,7 @@ export function ChatInput({
         $setChatInputText(initialDraft)
       },
       namespace: `platform-chat-input:${inputKey}`,
+      nodes: CHAT_INPUT_EDITOR_NODES,
       onError: (error) => {
         throw error
       },

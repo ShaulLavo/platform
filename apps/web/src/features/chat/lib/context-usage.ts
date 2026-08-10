@@ -24,31 +24,43 @@ const tokenUsagePayloadSchema = v.object({
 
 export type ContextUsage = {
   readonly compactsAutomatically: boolean
-  readonly maxTokens: number
-  /** 0–1, clamped: a provider that over-reports must not paint past a full ring. */
-  readonly ratio: number
+  /** Null when the provider reported occupancy without saying what it is out of. */
+  readonly maxTokens: number | null
+  /** 0–1, clamped: a provider that over-reports must not paint past a full ring. Null with no window. */
+  readonly ratio: number | null
   readonly totalProcessedTokens: number | null
   readonly usedTokens: number
 }
 
 /**
- * The newest usable snapshot in the thread. Activities arrive oldest-first, and a
- * provider can emit a snapshot without a window size (Claude's per-turn result
- * usage does), so the scan takes the last one that carries both numbers rather than
- * the last one outright.
+ * The newest usable snapshot in the thread. Activities arrive oldest-first, so the
+ * scan runs backwards and stops at the first snapshot that reports occupancy.
+ *
+ * A provider can report used tokens without a window size (Claude's per-turn result
+ * usage does). Dropping those snapshots hid the gauge outright; taking them at face
+ * value would throw away a window size an earlier snapshot already established. The
+ * window is a property of the session, not of one turn, so the newest count is kept
+ * and the most recent known window is carried onto it.
  */
 export function contextUsageForActivities(
   activities: readonly OrchestrationThreadActivity[],
 ): ContextUsage | null {
+  let latest: ContextUsage | null = null
+
   for (let index = activities.length - 1; index >= 0; index -= 1) {
     const activity = activities[index]
     if (activity?.kind !== CONTEXT_WINDOW_ACTIVITY_KIND) continue
 
     const usage = contextUsageForPayload(activity.payload)
-    if (usage) return usage
+    if (!usage) continue
+    if (!latest) latest = usage
+    if (latest.maxTokens !== null) return latest
+    if (usage.maxTokens === null) continue
+
+    return withMaxTokens(latest, usage.maxTokens)
   }
 
-  return null
+  return latest
 }
 
 export function contextUsageForPayload(payload: unknown): ContextUsage | null {
@@ -56,13 +68,12 @@ export function contextUsageForPayload(payload: unknown): ContextUsage | null {
   if (!parsed.success) return null
 
   const { compactsAutomatically, maxTokens, totalProcessedTokens, usedTokens } = parsed.output
-  if (!maxTokens) return null
   if (usedTokens === undefined) return null
 
   return {
     compactsAutomatically: compactsAutomatically ?? false,
-    maxTokens,
-    ratio: Math.min(1, usedTokens / maxTokens),
+    maxTokens: maxTokens ?? null,
+    ratio: contextUsageRatio(usedTokens, maxTokens),
     totalProcessedTokens: totalProcessedTokens ?? null,
     usedTokens,
   }
@@ -75,11 +86,26 @@ export function formatContextTokens(tokens: number) {
   return `${roundedTo(tokens / 1_000_000, 1)}M`
 }
 
-export function contextUsageTone(ratio: number) {
+export function contextUsageTone(ratio: number | null) {
+  if (ratio === null) return 'muted' as const
   if (ratio >= 0.9) return 'destructive' as const
   if (ratio >= 0.7) return 'warning' as const
 
   return 'muted' as const
+}
+
+function contextUsageRatio(usedTokens: number, maxTokens: number | undefined) {
+  if (!maxTokens) return null
+
+  return Math.min(1, usedTokens / maxTokens)
+}
+
+function withMaxTokens(usage: ContextUsage, maxTokens: number): ContextUsage {
+  return {
+    ...usage,
+    maxTokens,
+    ratio: contextUsageRatio(usage.usedTokens, maxTokens),
+  }
 }
 
 function roundedTo(value: number, decimals: number) {

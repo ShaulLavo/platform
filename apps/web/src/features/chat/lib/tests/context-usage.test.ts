@@ -30,9 +30,18 @@ test('reads the used and maximum token counts a provider reports', () => {
   })
 })
 
-test('has nothing to show without a window size to divide by', () => {
+test('still reports occupancy when the provider omits the window size', () => {
   // Claude's per-turn result usage looks exactly like this.
-  expect(contextUsageForPayload({ input_tokens: 10, usedTokens: 4200 })).toBeNull()
+  expect(contextUsageForPayload({ input_tokens: 10, usedTokens: 4200 })).toEqual({
+    compactsAutomatically: false,
+    maxTokens: null,
+    ratio: null,
+    totalProcessedTokens: null,
+    usedTokens: 4200,
+  })
+})
+
+test('has nothing to show without a used-token count', () => {
   expect(contextUsageForPayload({ maxTokens: 200_000 })).toBeNull()
   expect(contextUsageForPayload(null)).toBeNull()
 })
@@ -41,15 +50,22 @@ test('clamps a provider that over-reports rather than painting past full', () =>
   expect(contextUsageForPayload({ maxTokens: 100, usedTokens: 250 })?.ratio).toBe(1)
 })
 
-test('takes the newest snapshot that carries a window size', () => {
+test('takes the newest count and carries the last known window size onto it', () => {
   const usage = contextUsageForActivities([
     activity(1, { maxTokens: 200_000, usedTokens: 10_000 }),
     activity(2, { maxTokens: 200_000, usedTokens: 90_000 }),
-    // A later per-turn snapshot with no window must not blank the gauge.
-    activity(3, { usedTokens: 1_200 }),
+    // A per-turn snapshot with no window of its own: the count is current, the
+    // window belongs to the session and is still the one reported before it.
+    activity(3, { usedTokens: 20_000 }),
   ])
 
-  expect(usage?.usedTokens).toBe(90_000)
+  expect(usage).toMatchObject({ maxTokens: 200_000, ratio: 0.1, usedTokens: 20_000 })
+})
+
+test('reports a window-less thread rather than hiding the gauge', () => {
+  const usage = contextUsageForActivities([activity(1, { usedTokens: 4200 })])
+
+  expect(usage).toMatchObject({ maxTokens: null, ratio: null, usedTokens: 4200 })
 })
 
 test('ignores activities that are not context-window snapshots', () => {

@@ -1,6 +1,7 @@
 import { Elysia } from 'elysia'
 import {
   providerAuthResultSchema,
+  providerCommandCatalogSchema,
   providerInstanceIdSchema,
   providerListResultSchema,
   providerLoginAttemptSchema,
@@ -8,10 +9,15 @@ import {
   providerSignInMethodSchema,
   trimmedNonEmptyStringSchema,
   type ProviderAuth,
+  type ProviderCommandCatalog,
   type ProviderInstanceId,
   type ProviderLoginAttempt,
 } from '@workspace/contracts'
 import * as v from 'valibot'
+import {
+  recordChatPipelineInfo,
+  recordChatPipelineWarning,
+} from '../orchestration/orchestration-logging'
 import { providerErrors } from '../observability/structured-errors'
 import type { ProviderAdapterRegistry } from './provider-adapter-registry'
 import type { ProviderAdapter } from './types'
@@ -28,11 +34,26 @@ const attemptParamsSchema = v.object({
   attemptId: trimmedNonEmptyStringSchema,
 })
 
+/** Skills and project commands are per-directory files, so the project's cwd selects them. */
+const commandCatalogQuerySchema = v.object({
+  cwd: v.optional(trimmedNonEmptyStringSchema),
+})
+
 export function providerRoutes(adapterRegistry: ProviderAdapterRegistry) {
   return new Elysia({ name: 'provider-routes' })
     .get('/providers', () => adapterRegistry.listProviders(), {
       response: providerListResultSchema,
     })
+    .get(
+      '/providers/:providerInstanceId/commands',
+      ({ params, query }) =>
+        readCommandCatalog(adapterRegistry, params.providerInstanceId, query.cwd),
+      {
+        params: instanceParamsSchema,
+        query: commandCatalogQuerySchema,
+        response: providerCommandCatalogSchema,
+      },
+    )
     .group('/providers/:providerInstanceId/auth', (auth) =>
       auth
         .get('', ({ params }) => readAuth(adapterRegistry, params.providerInstanceId), {
@@ -94,6 +115,66 @@ export function providerRoutes(adapterRegistry: ProviderAdapterRegistry) {
           },
         ),
     )
+}
+
+/**
+ * Never fails: the catalog only fills a composer menu, so a provider that is
+ * missing, cannot list, or whose CLI probe blew up all resolve to an empty
+ * catalog with `supported: false`. An error here would take down the `/` and `$`
+ * menus for every *other* provider the composer shows at the same time.
+ */
+async function readCommandCatalog(
+  adapterRegistry: ProviderAdapterRegistry,
+  providerInstanceId: ProviderInstanceId,
+  cwd: string | undefined,
+) {
+  const adapter = adapterRegistry.adapter(providerInstanceId)
+  if (!adapter || !supportsCommandListing(adapter)) {
+    recordChatPipelineInfo('chat.pipeline.provider_commands.list', {
+      commandCount: 0,
+      cwd,
+      installed: Boolean(adapter),
+      providerInstanceId,
+      skillCount: 0,
+      supported: false,
+    })
+
+    return emptyCommandCatalog(providerInstanceId)
+  }
+
+  try {
+    const catalog = await adapter.listCommands(cwd ? { cwd } : {})
+    recordChatPipelineInfo('chat.pipeline.provider_commands.list', {
+      commandCount: catalog.commands.length,
+      cwd,
+      installed: true,
+      providerInstanceId,
+      skillCount: catalog.skills.length,
+      supported: true,
+    })
+
+    return v.parse(providerCommandCatalogSchema, {
+      ...catalog,
+      providerInstanceId,
+      supported: true,
+    })
+  } catch (error) {
+    recordChatPipelineWarning('chat.pipeline.provider_commands.list', {
+      commandCount: 0,
+      cwd,
+      error,
+      installed: true,
+      providerInstanceId,
+      skillCount: 0,
+      supported: false,
+    })
+
+    return emptyCommandCatalog(providerInstanceId)
+  }
+}
+
+function emptyCommandCatalog(providerInstanceId: ProviderInstanceId): ProviderCommandCatalog {
+  return { commands: [], providerInstanceId, skills: [], supported: false }
 }
 
 /**
@@ -176,6 +257,12 @@ function adapterOrThrow(
   if (!adapter) throw providerErrors.INSTANCE_NOT_FOUND({ providerInstanceId })
 
   return adapter
+}
+
+type CommandListingAdapter = ProviderAdapter & Required<Pick<ProviderAdapter, 'listCommands'>>
+
+function supportsCommandListing(adapter: ProviderAdapter): adapter is CommandListingAdapter {
+  return Boolean(adapter.capabilities.listCommands && adapter.listCommands)
 }
 
 function supportsProviderSignIn(adapter: ProviderAdapter): adapter is SignInAdapter {

@@ -1,11 +1,19 @@
 import { ModelEffortChip } from '@/features/chat/components/model-effort-chip'
 import { useModelPicker } from '@/features/chat/hooks/use-model-picker'
-import { modelSelectionEffort, type ModelEffortLevel } from '@/features/chat/lib/model-effort'
+import {
+  modelEffortDescriptor,
+  modelSelectionOptionValue,
+  type ModelEffortLevel,
+} from '@/features/chat/lib/model-effort'
 
 /**
  * Reasoning level for the selected model, as a footer under the model list.
  * Renders nothing when the model advertises no levels — the levels come from the
  * provider's own catalog, so there is no house set to fall back to.
+ *
+ * The level is read through the option descriptor rather than by reaching into
+ * `options.reasoningEffort`, so this control and the composer's option menu can
+ * never disagree about where the value lives.
  *
  * The model's default is shown as pressed while nothing is chosen, but is not
  * written into the selection: adapters read an absent level as "send no effort",
@@ -24,7 +32,9 @@ export function ModelEffortControl({
   const { modelSelection, selectEffort } = useModelPicker()
   if (levels.length === 0) return null
 
-  const activeEffort = modelSelectionEffort(modelSelection) ?? defaultEffort
+  const descriptor = modelEffortDescriptor({ defaultEffort, effortLevels: levels })
+  const activeEffort =
+    modelSelectionOptionValue(modelSelection, descriptor) ?? descriptor.defaultValue
 
   return (
     <div className='border-border/70 flex items-center gap-1.5 border-t px-2 py-1.5'>

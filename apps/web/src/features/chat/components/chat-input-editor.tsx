@@ -1,14 +1,18 @@
+import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { ContentEditable } from '@lexical/react/LexicalContentEditable'
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary'
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin'
 import { PlainTextPlugin } from '@lexical/react/LexicalPlainTextPlugin'
+import { collectComposerMentions } from '@workspace/contracts'
 import type { LexicalEditor } from 'lexical'
 import { useCallback, type ClipboardEvent, type RefObject } from 'react'
 
 import { imageFilesFromClipboard } from '../lib/chat-input-attachments'
+import { insertChatInputText } from '../lib/chat-input-editor-actions'
 import type { ChatInputTrigger } from '../lib/chat-input-logic'
 import { ChatInputDraftPlugin } from './chat-input-draft-plugin'
 import { ChatInputLineBoundaryPlugin } from './chat-input-line-boundary-plugin'
+import { ChatInputMentionPlugin } from './chat-input-mention-plugin'
 import { ChatInputSubmitPlugin } from './chat-input-submit-plugin'
 import { ChatInputSurroundPlugin } from './chat-input-surround-plugin'
 
@@ -47,18 +51,29 @@ export function ChatInputEditor({
   submitting: boolean
   trigger: ChatInputTrigger | null
 }) {
+  const [editor] = useLexicalComposerContext()
   // Drops are handled by the composer container so the attachment strip and the
   // action row are droppable too; paste stays here, on the element that owns the
   // caret.
   const handlePaste = useCallback(
     (event: ClipboardEvent<HTMLElement>) => {
       const files = imageFilesFromClipboard(event.clipboardData)
-      if (files.length === 0) return
+      if (files.length > 0) {
+        event.preventDefault()
+        onImageFiles(files)
+
+        return
+      }
+
+      // A pasted prompt carries mentions in their serialized form; letting the
+      // browser drop them in as plain text is how a chip would decay into text.
+      const text = event.clipboardData?.getData('text/plain') ?? ''
+      if (collectComposerMentions(text).length === 0) return
 
       event.preventDefault()
-      onImageFiles(files)
+      insertChatInputText(editor, text)
     },
-    [onImageFiles],
+    [editor, onImageFiles],
   )
   const handleBlur = useCallback(() => onFocusChange(false), [onFocusChange])
   const handleFocus = useCallback(() => onFocusChange(true), [onFocusChange])
@@ -104,6 +119,7 @@ export function ChatInputEditor({
         onSubmitRequest={onSubmitRequest}
       />
       <ChatInputLineBoundaryPlugin />
+      <ChatInputMentionPlugin />
       <ChatInputSurroundPlugin />
       <HistoryPlugin />
     </div>

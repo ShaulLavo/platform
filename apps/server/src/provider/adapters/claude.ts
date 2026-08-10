@@ -8,6 +8,7 @@ import {
   type Query,
   type SDKMessage,
   type SDKUserMessage,
+  type SlashCommand,
 } from '@anthropic-ai/claude-agent-sdk'
 import {
   DEFAULT_CLAUDE_PROVIDER_SETTINGS,
@@ -19,6 +20,8 @@ import {
   type ProviderApprovalDecision,
   type ProviderInstanceId,
   type ProviderInstanceSettings,
+  type ProviderSkill,
+  type ProviderSlashCommand,
   type ProviderSnapshot,
   type RuntimeMode,
   type ThreadId,
@@ -37,6 +40,8 @@ import type {
   ProviderAdapter,
   ProviderAdapterSession,
   ProviderApprovalResponseInput,
+  ProviderCommandCatalogInput,
+  ProviderCommandCatalogResult,
   ProviderRuntimeEvent,
   ProviderSessionStartInput,
   ProviderSignInInput,
@@ -88,6 +93,7 @@ const CLAUDE_INIT_TIMEOUT_MS = 25_000
 const EMPTY_ATTACHMENT_BYTES = new Uint8Array(0)
 
 export const CLAUDE_ADAPTER_CAPABILITIES = {
+  listCommands: true,
   readThread: false,
   rollbackThread: false,
   // Honest: `Query.setModel()` exists, and our prompt is a streaming
@@ -235,6 +241,15 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
   async authStatus() {
     const state = await this.readAuthState()
     return state.auth
+  }
+
+  /**
+   * Reuses the capability probe: the same never-yielding prompt that reads
+   * account state also carries the command list, and the skill list is one more
+   * control request on the already-running CLI. No turn is spent either way.
+   */
+  async listCommands({ cwd }: ProviderCommandCatalogInput) {
+    return probeClaudeCommandCatalog(this.createQuery, this.env, cwd)
   }
 
   async signIn(input: ProviderSignInInput) {
@@ -1981,6 +1996,102 @@ async function probeClaudeAccount(
   } finally {
     abortController.abort()
   }
+}
+
+/**
+ * The same never-yielding probe, run with the project's `cwd` so project-level
+ * commands and skills are discovered too. `initialize` already answers with the
+ * command list; `reload_skills` is the only control request that answers with
+ * skill metadata, and a CLI too old to know it leaves the skill list empty
+ * rather than failing the whole read.
+ */
+async function probeClaudeCommandCatalog(
+  createQuery: ClaudeCreateQuery,
+  env: NodeJS.ProcessEnv,
+  cwd: string | undefined,
+): Promise<ProviderCommandCatalogResult> {
+  const abortController = new AbortController()
+  const query = createQuery({
+    options: { ...claudeProbeOptions(abortController, env), ...(cwd ? { cwd } : {}) },
+    prompt: neverYieldingPrompt(abortController.signal),
+  })
+
+  try {
+    const initialization = await withClaudeTimeout(
+      query.initializationResult(),
+      CLAUDE_INIT_TIMEOUT_MS,
+      'Claude command catalog probe timed out.',
+    )
+
+    return {
+      commands: claudeSlashCommands(initialization.commands),
+      skills: await claudeSkills(query),
+    }
+  } finally {
+    abortController.abort()
+  }
+}
+
+async function claudeSkills(query: Query): Promise<ProviderSkill[]> {
+  if (typeof query.reloadSkills !== 'function') return []
+
+  const reloaded = await withClaudeTimeout(
+    query.reloadSkills(),
+    CLAUDE_INIT_TIMEOUT_MS,
+    'Claude skill list timed out.',
+  )
+
+  return namedClaudeEntries(reloaded.skills).map(claudeSkill)
+}
+
+function claudeSlashCommands(commands: readonly SlashCommand[] | undefined) {
+  return namedClaudeEntries(commands).map(claudeSlashCommand)
+}
+
+/** A blank name would fail the contract and take the whole catalog with it. */
+function namedClaudeEntries(entries: readonly SlashCommand[] | undefined) {
+  return (entries ?? []).filter((entry) => entry.name.trim().length > 0)
+}
+
+function claudeSlashCommand(command: SlashCommand): ProviderSlashCommand {
+  const description = claudeText(command.description)
+  const argumentHint = claudeText(command.argumentHint)
+  const aliases = (command.aliases ?? []).map((alias) => alias.trim()).filter(Boolean)
+
+  return {
+    name: command.name.trim(),
+    ...(description ? { description } : {}),
+    ...(argumentHint ? { argumentHint } : {}),
+    ...(aliases.length > 0 ? { aliases } : {}),
+  }
+}
+
+/** The CLI only reports skills it actually loaded, so a listed skill is enabled. */
+function claudeSkill(skill: SlashCommand): ProviderSkill {
+  const description = claudeText(skill.description)
+  const name = skill.name.trim()
+  const scope = claudeSkillScope(name)
+
+  return {
+    enabled: true,
+    name,
+    ...(description ? { description } : {}),
+    ...(scope ? { scope } : {}),
+  }
+}
+
+/** `plugin:skill` names carry their origin in the prefix; bare names have none. */
+function claudeSkillScope(name: string) {
+  const separator = name.lastIndexOf(':')
+
+  return separator > 0 ? name.slice(0, separator) : null
+}
+
+/** Blank provider copy must never reach a trimmed-non-empty contract field. */
+function claudeText(value: string | undefined) {
+  const trimmed = value?.trim()
+
+  return trimmed ? trimmed : null
 }
 
 function claudeProbeOptions(abortController: AbortController, env: NodeJS.ProcessEnv): Options {

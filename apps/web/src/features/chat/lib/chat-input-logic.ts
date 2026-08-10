@@ -1,4 +1,8 @@
-import type { EntryTypeFilter } from '@workspace/contracts'
+import {
+  activeComposerMention,
+  serializeComposerMention,
+  type EntryTypeFilter,
+} from '@workspace/contracts'
 
 export type ChatInputTriggerKind = 'mention' | 'slash-command'
 
@@ -125,16 +129,17 @@ export function detectChatInputTrigger(text: string, cursorInput: number): ChatI
   const slashTrigger = slashCommandTrigger(text, cursor)
   if (slashTrigger) return slashTrigger
 
-  const tokenStart = tokenStartForCursor(text, cursor)
-  const token = text.slice(tokenStart, cursor)
-  if (!token.startsWith('@')) return null
+  // The grammar owns where a mention starts and what has been typed into it, so
+  // a quoted path keeps the menu open across the spaces inside it.
+  const mention = activeComposerMention(text, cursor)
+  if (!mention) return null
 
   return {
     kind: 'mention',
-    query: token.slice(1),
+    query: mention.query,
     rangeEnd: cursor,
-    rangeStart: tokenStart,
-    text: token,
+    rangeStart: mention.start,
+    text: text.slice(mention.start, cursor),
   }
 }
 
@@ -202,7 +207,7 @@ export function chatInputLineBoundaryOffset(text: string, cursor: number, edge: 
 }
 
 function chatInputMentionReplacement(path: string) {
-  return `@${path} `
+  return `${serializeComposerMention(path)} `
 }
 
 export function searchChatInputSlashCommands(query: string) {
@@ -331,19 +336,6 @@ function clampCursor(text: string, cursorInput: number) {
   if (!Number.isFinite(cursorInput)) return text.length
 
   return Math.max(0, Math.min(text.length, Math.floor(cursorInput)))
-}
-
-function tokenStartForCursor(text: string, cursor: number) {
-  let index = cursor - 1
-  while (index >= 0 && !chatInputTriggerBoundary(text[index] ?? '')) {
-    index -= 1
-  }
-
-  return index + 1
-}
-
-function chatInputTriggerBoundary(char: string) {
-  return char === ' ' || char === '\n' || char === '\r' || char === '\t'
 }
 
 function isSensitiveMentionPath(path: string) {

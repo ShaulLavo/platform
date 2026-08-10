@@ -128,6 +128,40 @@ describe('chat runtime state', () => {
     expect(threadAlert.signIn).toBe(null)
   })
 
+  it('sorts what the user can act on above what is merely happening', () => {
+    const alerts = chatRuntimeAlerts({
+      commandState: { ...idle(), sendPending: true },
+      provider: provider({ message: 'Rate limited', status: 'warning' }),
+      providerError: null,
+      thread: thread({ pendingUserInputCount: 1 }),
+    })
+
+    // Produced in the order busy, warning, action — sorted the other way round,
+    // so the front banner is the one holding the turn open.
+    expect(alerts.map((alert) => alert.id)).toEqual(['user-input', 'provider', 'command:send'])
+  })
+
+  it('makes stale notices dismissible and live requests not, keyed by their message', () => {
+    const [failure] = chatRuntimeAlerts({
+      commandState: { ...idle(), commandFailure: 'Dispatch rejected' },
+      provider: provider(),
+      providerError: null,
+      thread: thread({ pendingApprovalCount: 1 }),
+    })
+    const [request] = chatRuntimeAlerts({
+      commandState: idle(),
+      provider: provider(),
+      providerError: null,
+      thread: thread({ pendingApprovalCount: 1 }),
+    })
+
+    // The key carries the message: waving away one failure must not swallow the
+    // next, different one under the same id.
+    expect(failure.dismissKey).toBe('command:failure:Command failed:Dispatch rejected')
+    // The turn is parked on the answer; hiding the ask would strand the thread.
+    expect(request.dismissKey).toBeNull()
+  })
+
   it('hides ready provider, running session, running turn, and available plan states', () => {
     const alerts = chatRuntimeAlerts({
       commandState: {

@@ -7,9 +7,12 @@ import { $getSelection, KEY_DOWN_COMMAND, type LexicalEditor } from 'lexical'
 import { useEffect } from 'react'
 
 import { ChatInputLineBoundaryPlugin } from '@/features/chat/components/chat-input-line-boundary-plugin'
+import { CHAT_INPUT_EDITOR_NODES } from '@/features/chat/components/chat-input-mention-node'
 import {
   $readChatInputTextSnapshot,
   $setChatInputText,
+  insertChatInputMention,
+  insertChatInputText,
   moveChatInputCaretToLineBoundary,
   replaceChatInputEditorRange,
   surroundChatInputSelection,
@@ -52,6 +55,36 @@ test('a second commit against the now-stale range is refused', () => {
 
   expect(second).toBeNull()
   expect(snapshot(editor).text).toBe('read @src/app.ts now')
+})
+
+test('a committed mention with a space in its path stays one token, caret behind it', () => {
+  const editor = mountChatInputEditor('read @my fi')
+
+  const applied = replaceChatInputEditorRange(editor, {
+    expectedText: '@my fi',
+    rangeEnd: 11,
+    rangeStart: 5,
+    replacement: '@"src/my file.ts" ',
+  })
+
+  expect(applied?.text).toBe('read @"src/my file.ts" ')
+  expect(snapshot(editor)).toEqual({ cursor: 23, text: 'read @"src/my file.ts" ' })
+})
+
+test('inserting a mention writes it through the grammar and leaves the caret after it', () => {
+  const editor = mountChatInputEditor('read ')
+
+  expect(insertChatInputMention(editor, 'src/my file.ts')).toBe(true)
+
+  expect(snapshot(editor)).toEqual({ cursor: 23, text: 'read @"src/my file.ts" ' })
+})
+
+test('inserted prompt text keeps offsets right for the prose that follows a mention', () => {
+  const editor = mountChatInputEditor('')
+
+  insertChatInputText(editor, 'see @"a b.ts" and @c.ts then')
+
+  expect(snapshot(editor)).toEqual({ cursor: 28, text: 'see @"a b.ts" and @c.ts then' })
 })
 
 test('Home and End move the caret to the bounds of the current line', () => {
@@ -101,6 +134,7 @@ function mountChatInputEditor(text: string) {
           $setChatInputText(text)
         },
         namespace: 'chat-input-editor-actions-test',
+        nodes: CHAT_INPUT_EDITOR_NODES,
         onError: (error) => {
           throw error
         },

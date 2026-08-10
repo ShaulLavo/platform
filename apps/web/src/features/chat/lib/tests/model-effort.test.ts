@@ -5,9 +5,12 @@ import {
   modelDefaultEffort,
   modelEffortLabel,
   modelEffortLevels,
+  modelOptionDescriptors,
   modelSelectionEffort,
+  modelSelectionOptionValue,
   reconcileModelEffort,
   withModelEffort,
+  withModelOption,
   type ModelEffortCapability,
 } from '@/features/chat/lib/model-effort'
 import { providerModel } from '../../../../../test/factories/chat'
@@ -148,4 +151,55 @@ test('a model that advertises nothing drops the level entirely', () => {
 test('choosing no level stays no level, so the adapter sends no effort at all', () => {
   expect(reconcileModelEffort(gpt, opus, capability(['low', 'high'], 'high'))).toEqual(opus)
   expect(reconcileModelEffort(null, opus, capability(['low', 'high'], 'high'))).toEqual(opus)
+})
+
+test('a model advertises one descriptor per knob it actually exposes', () => {
+  const descriptors = modelOptionDescriptors(
+    providerModel({
+      capabilities: {
+        defaultReasoningEffort: 'medium',
+        reasoningEfforts: [{ effort: 'low' }, { effort: 'medium' }],
+        supportsExtendedThinking: true,
+      },
+    }),
+  )
+
+  expect(descriptors.map((descriptor) => [descriptor.id, descriptor.kind])).toEqual([
+    ['reasoningEffort', 'select'],
+    ['thinking', 'boolean'],
+  ])
+  expect(descriptors[0].choices.map((choice) => choice.value)).toEqual(['low', 'medium'])
+  expect(descriptors[0].defaultValue).toBe('medium')
+  // Absent thinking means "leave the provider's own setting alone", which is a
+  // third state neither On nor Off can express — so there is no default to show.
+  expect(descriptors[1].defaultValue).toBeNull()
+})
+
+test('a model that advertises no knobs yields no descriptors', () => {
+  expect(modelOptionDescriptors(providerModel())).toEqual([])
+})
+
+test('a boolean option persists as a boolean, which is what the adapter reads', () => {
+  const [thinking] = modelOptionDescriptors(
+    providerModel({ capabilities: { supportsExtendedThinking: true } }),
+  )
+  const on = withModelOption(gpt, thinking, 'on')
+
+  expect(on.options).toEqual({ thinking: true })
+  expect(modelSelectionOptionValue(on, thinking)).toBe('on')
+  expect(withModelOption(on, thinking, 'off').options).toEqual({ thinking: false })
+  expect(withModelOption(on, thinking, null)).toEqual(gpt)
+  expect(v.parse(modelSelectionSchema, on)).toEqual(on)
+})
+
+test('one descriptor never disturbs another one already chosen', () => {
+  const [effort, thinking] = modelOptionDescriptors(
+    providerModel({
+      capabilities: { reasoningEfforts: [{ effort: 'high' }], supportsExtendedThinking: true },
+    }),
+  )
+  const selection = withModelOption(withModelOption(gpt, effort, 'high'), thinking, 'on')
+
+  expect(selection.options).toEqual({ reasoningEffort: 'high', thinking: true })
+  expect(modelSelectionOptionValue(selection, effort)).toBe('high')
 })

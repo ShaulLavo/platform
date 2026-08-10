@@ -1,0 +1,129 @@
+import { QueryClient } from '@tanstack/react-query'
+import { DEFAULT_PROVIDER_INSTANCE_ID, type ModelSelection } from '@workspace/contracts'
+import { screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+
+import { ModelOptionsMenu } from '@/features/chat/components/model-options-menu'
+import { providerListQueryOptions } from '@/features/chat/lib/provider-query'
+import { ChatModelPickerProvider } from '@/features/chat/providers/model-picker-provider'
+import {
+  resetChatInputDraftStore,
+  useChatInputDraftStore,
+  type ChatInputDraftTarget,
+} from '@/features/chat/state/chat-input-draft-store'
+import { providerModel, providerSnapshot } from '../../../../../test/factories/chat'
+import { expect, test } from '../../../../../test/fixtures'
+import { renderWithProviders } from '../../../../../test/render'
+
+const draftTarget: ChatInputDraftTarget = {
+  draftKey: 'thread-options',
+  rootPath: '/repo/platform',
+}
+const modelSelection: ModelSelection = {
+  model: 'claude-opus-5',
+  providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
+}
+
+test('every option the model advertises gets a control, not just the effort ladder', async () => {
+  renderMenu()
+
+  await userEvent.click(screen.getByRole('button', { name: 'Model options' }))
+
+  expect(await screen.findByRole('menuitemradio', { name: 'High' })).toBeVisible()
+  // Extended thinking was advertised long before anything could act on it.
+  expect(await screen.findByRole('menuitemradio', { name: 'On' })).toBeVisible()
+})
+
+test('a boolean option persists as a boolean, which is what the adapter reads', async () => {
+  renderMenu()
+
+  await userEvent.click(screen.getByRole('button', { name: 'Model options' }))
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'On' }))
+
+  expect(draftModelSelection()?.options).toEqual({ thinking: true })
+})
+
+test('a select option persists under its own key', async () => {
+  renderMenu()
+
+  await userEvent.click(screen.getByRole('button', { name: 'Model options' }))
+  await userEvent.click(await screen.findByRole('menuitemradio', { name: 'Max' }))
+
+  expect(draftModelSelection()?.options).toEqual({ reasoningEffort: 'max' })
+})
+
+test('a stored value comes back as the checked row, each descriptor on its own', async () => {
+  renderMenu({ options: { reasoningEffort: 'max' } })
+
+  await userEvent.click(screen.getByRole('button', { name: 'Model options' }))
+
+  const checked = await screen.findAllByRole('menuitemradio', { checked: true })
+  expect(checked.map((item) => item.textContent)).toEqual(['Max', 'Provider default'])
+})
+
+test('clearing an option hands the knob back to the provider', async () => {
+  renderMenu({ options: { reasoningEffort: 'max' } })
+
+  await userEvent.click(screen.getByRole('button', { name: 'Model options' }))
+  await userEvent.click(
+    await screen.findByRole('menuitemradio', { name: /Provider default \(High\)/ }),
+  )
+
+  expect(draftModelSelection()).toEqual(modelSelection)
+})
+
+test('a model that advertises nothing shows no control at all', () => {
+  renderMenu({ capabilities: null })
+
+  expect(screen.queryByRole('button', { name: 'Model options' })).toBeNull()
+})
+
+function draftModelSelection() {
+  return useChatInputDraftStore.getState().getDraft(draftTarget).modelSelection
+}
+
+function renderMenu({
+  options,
+  ...model
+}: Partial<Parameters<typeof providerModel>[0]> & {
+  options?: ModelSelection['options']
+} = {}) {
+  resetChatInputDraftStore()
+  if (options) {
+    useChatInputDraftStore.getState().setModelSelection(draftTarget, { ...modelSelection, options })
+  }
+
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { gcTime: Number.POSITIVE_INFINITY, retry: false } },
+  })
+  queryClient.setQueryData(providerListQueryOptions().queryKey, {
+    providers: [
+      providerSnapshot({
+        models: [
+          providerModel({
+            capabilities: {
+              defaultReasoningEffort: 'high',
+              reasoningEfforts: [{ effort: 'high' }, { effort: 'max' }],
+              supportsExtendedThinking: true,
+            },
+            name: 'Claude Opus 5',
+            slug: 'claude-opus-5',
+            ...model,
+          }),
+        ],
+      }),
+    ],
+  })
+
+  renderWithProviders(
+    <ChatModelPickerProvider
+      draftTarget={draftTarget}
+      locked={false}
+      modelSelection={modelSelection}
+      persistModelSelection={() => {}}
+    >
+      <ModelOptionsMenu compact={false} disabled={false} draftTarget={draftTarget} />
+    </ChatModelPickerProvider>,
+    { queryClient },
+  )
+}

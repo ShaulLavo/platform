@@ -131,6 +131,48 @@ export const providerListResultSchema = v.object({
   providers: v.array(providerSnapshotSchema),
 })
 
+/**
+ * One slash command a provider advertises. `name` never carries the leading
+ * slash: the composer owns that character, and providers disagree about whether
+ * it belongs to the name.
+ */
+export const providerSlashCommandSchema = v.object({
+  name: trimmedNonEmptyStringSchema,
+  description: v.optional(trimmedNonEmptyStringSchema),
+  /** The provider's own copy for the argument it expects, e.g. `<file>`. */
+  argumentHint: v.optional(trimmedNonEmptyStringSchema),
+  /** Other names that resolve to the same command (`/cost` -> `/usage`). */
+  aliases: v.optional(v.array(trimmedNonEmptyStringSchema)),
+})
+
+/**
+ * One `$skill`. Skills live on the user's disk and are discovered per working
+ * directory, so a catalog only means anything next to the `cwd` it was read for.
+ * `enabled` is carried rather than filtered away because a disabled skill is
+ * worth showing as unavailable instead of pretending it does not exist.
+ */
+export const providerSkillSchema = v.object({
+  name: trimmedNonEmptyStringSchema,
+  description: v.optional(trimmedNonEmptyStringSchema),
+  /** Directory the skill was loaded from, when the provider reports one. */
+  path: v.optional(trimmedNonEmptyStringSchema),
+  /** Where it came from — a plugin name, `user`, `project`, ... */
+  scope: v.optional(trimmedNonEmptyStringSchema),
+  enabled: v.boolean(),
+})
+
+export const providerCommandCatalogSchema = v.object({
+  providerInstanceId: providerInstanceIdSchema,
+  commands: v.array(providerSlashCommandSchema),
+  skills: v.array(providerSkillSchema),
+  /**
+   * False when the provider cannot answer at all — no listing path, or the probe
+   * failed. Discovery only feeds a menu, so the read degrades to an empty
+   * catalog instead of an error and reports the degradation here.
+   */
+  supported: v.boolean(),
+})
+
 export type ProviderAuthStatus = v.InferOutput<typeof providerAuthStatusSchema>
 export type ProviderSignInMethod = v.InferOutput<typeof providerSignInMethodSchema>
 export type ProviderSignInBody = v.InferOutput<typeof providerSignInBodySchema>
@@ -147,6 +189,9 @@ export type ProviderTraits = v.InferOutput<typeof providerTraitsSchema>
 export type ProviderInstanceSettings = v.InferOutput<typeof providerInstanceSettingsSchema>
 export type ProviderSnapshot = v.InferOutput<typeof providerSnapshotSchema>
 export type ProviderListResult = v.InferOutput<typeof providerListResultSchema>
+export type ProviderSlashCommand = v.InferOutput<typeof providerSlashCommandSchema>
+export type ProviderSkill = v.InferOutput<typeof providerSkillSchema>
+export type ProviderCommandCatalog = v.InferOutput<typeof providerCommandCatalogSchema>
 
 export const DEFAULT_CODEX_PROVIDER_SETTINGS = {
   displayLabel: 'Codex',

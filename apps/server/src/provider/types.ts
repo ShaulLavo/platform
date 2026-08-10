@@ -11,6 +11,8 @@ import type {
   ProviderInstanceId,
   ProviderLoginAttempt,
   ProviderSignInMethod,
+  ProviderSkill,
+  ProviderSlashCommand,
   ProviderSnapshot,
   ProviderUserInputAnswers,
   RuntimeMode,
@@ -449,6 +451,11 @@ export type ProviderRuntimeEvent =
     })
 
 type ProviderAdapterCapabilities = {
+  /**
+   * Whether the adapter implements `listCommands`. Optional so adapters whose
+   * protocol has no listing request (codex, today) stay untouched.
+   */
+  listCommands?: boolean
   readThread: boolean
   rollbackThread: boolean
   sessionModelSwitch: 'in-session' | 'unsupported'
@@ -463,6 +470,21 @@ type ProviderAdapterCapabilities = {
 export type ProviderSignInInput = {
   email?: string
   method: ProviderSignInMethod
+}
+
+export type ProviderCommandCatalogInput = {
+  /**
+   * Directory to discover from. Skills and project commands are files on the
+   * user's disk under the working directory, so the same provider answers
+   * differently per project and a catalog read without a `cwd` sees only the
+   * user-level ones.
+   */
+  cwd?: string
+}
+
+export type ProviderCommandCatalogResult = {
+  commands: ProviderSlashCommand[]
+  skills: ProviderSkill[]
 }
 
 export type ProviderAdapterSession = {
@@ -500,6 +522,11 @@ export type ProviderAdapter = {
   driverKind: ProviderDriverKind
   hasSession: (input: { threadId: ThreadId }) => Promise<boolean>
   interruptTurn: (input: ProviderTurnControlInput) => Promise<void>
+  /**
+   * The `/command` and `$skill` catalog for one working directory. Present only
+   * when `capabilities.listCommands` is true.
+   */
+  listCommands?: (input: ProviderCommandCatalogInput) => Promise<ProviderCommandCatalogResult>
   listSessions: () => Promise<ProviderAdapterSession[]>
   readThread: (input: { threadId: ThreadId }) => Promise<ProviderThreadSnapshot>
   respondApproval: (input: ProviderApprovalResponseInput) => Promise<void>

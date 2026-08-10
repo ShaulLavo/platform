@@ -14,12 +14,20 @@ import {
   type ThreadId,
 } from '@workspace/contracts'
 import { ProviderRuntimeEventStream } from '../provider-runtime-event-stream'
-import type { ProviderAdapter, ProviderSessionStartInput, ProviderTurnInput } from '../types'
+import type {
+  ProviderAdapter,
+  ProviderCommandCatalogInput,
+  ProviderCommandCatalogResult,
+  ProviderSessionStartInput,
+  ProviderTurnInput,
+} from '../types'
 import { sessionInputFromTurn } from './utils/session-input'
 
 export type MockProviderAdapterOptions = {
   approvalError?: string
   beforeComplete?: () => Promise<void> | void
+  /** Replaces the default catalog; `{ commands: [], skills: [] }` models a provider with nothing to offer. */
+  commandCatalog?: ProviderCommandCatalogResult
   displayLabel?: string
   driverKind?: ProviderDriverKind
   enabled?: boolean
@@ -36,11 +44,31 @@ export type MockProviderAdapterOptions = {
 }
 
 export const MOCK_ADAPTER_CAPABILITIES = {
+  listCommands: true,
   readThread: true,
   rollbackThread: true,
   sessionModelSwitch: 'in-session',
   stopAll: true,
 } satisfies ProviderAdapter['capabilities']
+
+/**
+ * Deliberately unsorted, and deliberately mixed: one command with an argument
+ * hint, one with an alias, one disabled skill, one plugin-scoped skill. A
+ * consumer that assumes provider order is already ranked, or that every listed
+ * skill is runnable, breaks against this.
+ */
+const MOCK_COMMAND_CATALOG: ProviderCommandCatalogResult = {
+  commands: [
+    { description: 'Summarize the conversation so far', name: 'summarize' },
+    { argumentHint: '<path>', description: 'Review a file', name: 'review' },
+    { aliases: ['stats'], description: 'Show token usage', name: 'usage' },
+  ],
+  skills: [
+    { description: 'Read and edit PDF files', enabled: true, name: 'pdf' },
+    { description: 'Build slide decks', enabled: false, name: 'pptx' },
+    { description: 'Review UI code', enabled: true, name: 'web-design', scope: 'anthropic-skills' },
+  ],
+}
 
 export class MockProviderAdapter implements ProviderAdapter {
   readonly adapterKey: ProviderInstanceId
@@ -52,6 +80,7 @@ export class MockProviderAdapter implements ProviderAdapter {
     threadId: ThreadId
   }> = []
   readonly interruptedThreads: ThreadId[] = []
+  readonly commandCatalogReads: ProviderCommandCatalogInput[] = []
   readonly rollbacks: Array<{ numTurns: number; threadId: ThreadId }> = []
   readonly startedSessions: ProviderSessionStartInput[] = []
   readonly startedTurns: ProviderTurnInput[] = []
@@ -68,6 +97,7 @@ export class MockProviderAdapter implements ProviderAdapter {
   private readonly settings: ProviderInstanceSettings
   private readonly approvalError: string | null
   private readonly beforeComplete: (() => Promise<void> | void) | null
+  private readonly commandCatalog: ProviderCommandCatalogResult
   private readonly interruptError: string | null
   private readonly responseText: string
   private readonly shouldFail: boolean
@@ -88,6 +118,7 @@ export class MockProviderAdapter implements ProviderAdapter {
     }
     this.approvalError = options.approvalError ?? null
     this.beforeComplete = options.beforeComplete ?? null
+    this.commandCatalog = options.commandCatalog ?? MOCK_COMMAND_CATALOG
     this.interruptError = options.interruptError ?? null
     this.probeError = options.probeError ?? null
     this.responseText = options.responseText ?? 'Mock response'
@@ -127,6 +158,12 @@ export class MockProviderAdapter implements ProviderAdapter {
       status: 'ready',
       version: 'mock',
     }
+  }
+
+  async listCommands(input: ProviderCommandCatalogInput): Promise<ProviderCommandCatalogResult> {
+    this.commandCatalogReads.push(input)
+
+    return this.commandCatalog
   }
 
   streamEvents() {

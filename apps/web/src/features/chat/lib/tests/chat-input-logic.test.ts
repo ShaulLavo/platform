@@ -39,6 +39,27 @@ describe('chat input logic', () => {
     expect(detectChatInputTrigger('email user@example.com', 18)).toBeNull()
   })
 
+  it('keeps a quoted mention triggered across the spaces inside the path', () => {
+    expect(detectChatInputTrigger('open @"src/my fi', 16)).toEqual({
+      kind: 'mention',
+      query: 'src/my fi',
+      rangeEnd: 16,
+      rangeStart: 5,
+      text: '@"src/my fi',
+    })
+    // Once the quote closes the mention is finished, so the menu lets go.
+    expect(detectChatInputTrigger('open @"src/my file.ts"', 22)).toBeNull()
+  })
+
+  it('serializes a mention path that could not otherwise be read back', () => {
+    expect(
+      chatInputMentionCommandItems([
+        { id: 'path:plain', label: 'app.tsx', path: 'src/app.tsx', type: 'file' },
+        { id: 'path:spaced', label: 'my file.ts', path: 'src/my file.ts', type: 'file' },
+      ]).map((item) => item.replacement),
+    ).toEqual(['@src/app.tsx ', '@"src/my file.ts" '])
+  })
+
   it('replaces a trigger range and swallows the space the prompt already had', () => {
     expect(
       chatInputRangeReplacement({

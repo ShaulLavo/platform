@@ -1,3 +1,4 @@
+import { serializeComposerMention, splitComposerPrompt } from '@workspace/contracts'
 import type { LexicalEditor, NodeKey } from 'lexical'
 import {
   $createLineBreakNode,
@@ -6,6 +7,7 @@ import {
   $createTextNode,
   $getRoot,
   $getSelection,
+  $isDecoratorNode,
   $isElementNode,
   $isLineBreakNode,
   $isRangeSelection,
@@ -13,6 +15,8 @@ import {
   $setSelection,
   type LexicalNode,
 } from 'lexical'
+
+import { $createChatInputMentionNode } from '@/features/chat/components/chat-input-mention-node'
 
 import {
   chatInputLineBoundaryOffset,
@@ -32,13 +36,32 @@ export function $setChatInputText(text: string) {
   root.clear()
 
   const paragraph = $createParagraphNode()
-  const lines = text.split('\n')
-  for (const [index, line] of lines.entries()) {
-    if (line.length > 0) paragraph.append($createTextNode(line))
-    if (index < lines.length - 1) paragraph.append($createLineBreakNode())
+  for (const node of $chatInputPromptNodes(text)) {
+    paragraph.append(node)
   }
   root.append(paragraph)
   paragraph.selectEnd()
+}
+
+/**
+ * Inserts prompt text at the caret, mentions included: the text goes through
+ * the grammar, so a serialized mention arrives as a chip instead of as the
+ * characters it was written with. This is what a paste of a copied prompt runs
+ * through.
+ */
+export function insertChatInputText(editor: LexicalEditor, text: string) {
+  let inserted = false
+
+  editor.update(() => {
+    inserted = $insertChatInputPrompt(text)
+  })
+
+  return inserted
+}
+
+/** Inserts one mention, plus the blank that separates it from what follows. */
+export function insertChatInputMention(editor: LexicalEditor, path: string) {
+  return insertChatInputText(editor, `${serializeComposerMention(path)} `)
 }
 
 export function clearChatInputEditor(editor: LexicalEditor) {
@@ -88,11 +111,8 @@ export function replaceChatInputEditorRange(
     })
     if (!result) return
     if (!$selectChatInputRange(result.rangeStart, result.rangeEnd)) return
+    if (!$replaceChatInputSelection(replacement)) return
 
-    const selection = $getSelection()
-    if (!$isRangeSelection(selection)) return
-
-    selection.insertText(replacement)
     applied = result
   })
 
@@ -154,6 +174,63 @@ export function $readChatInputTextSnapshot() {
   return {
     cursor: textOffsetForLexicalPoint(selection.anchor, text.length),
     text,
+  }
+}
+
+/**
+ * Prose is spliced with `insertText` so the edit stays one undo step. Only a
+ * replacement that carries a mention has to be built out of nodes, and it is
+ * cleared first so the range it replaces is gone before the chip lands.
+ */
+function $replaceChatInputSelection(replacement: string) {
+  const carriesMention = splitComposerPrompt(replacement).some(
+    (segment) => segment.type === 'mention',
+  )
+  const selection = $getSelection()
+  if (!$isRangeSelection(selection)) return false
+  if (!carriesMention) {
+    selection.insertText(replacement)
+
+    return true
+  }
+
+  selection.insertText('')
+
+  return $insertChatInputPrompt(replacement)
+}
+
+function $insertChatInputPrompt(text: string) {
+  const selection = $getSelection()
+  if (!$isRangeSelection(selection)) return false
+
+  const nodes = $chatInputPromptNodes(text)
+  if (nodes.length === 0) return false
+
+  selection.insertNodes(nodes)
+
+  return true
+}
+
+function $chatInputPromptNodes(text: string) {
+  const nodes: LexicalNode[] = []
+
+  for (const segment of splitComposerPrompt(text)) {
+    if (segment.type === 'mention') {
+      nodes.push($createChatInputMentionNode(segment.path))
+      continue
+    }
+
+    $appendChatInputTextNodes(nodes, segment.text)
+  }
+
+  return nodes
+}
+
+function $appendChatInputTextNodes(nodes: LexicalNode[], text: string) {
+  const lines = text.split('\n')
+  for (const [index, line] of lines.entries()) {
+    if (line.length > 0) nodes.push($createTextNode(line))
+    if (index < lines.length - 1) nodes.push($createLineBreakNode())
   }
 }
 
@@ -310,6 +387,9 @@ function elementTextSizeBeforeOffset(children: LexicalNode[], anchorOffset: numb
 function lexicalNodeTextSize(node: LexicalNode): number {
   if ($isTextNode(node)) return node.getTextContentSize()
   if ($isLineBreakNode(node)) return 1
+  // A chip occupies the width of the text it serializes to, or every offset
+  // past it in the prompt would be short by that much.
+  if ($isDecoratorNode(node)) return node.getTextContent().length
   if (!$isElementNode(node)) return 0
 
   return node.getChildren().reduce((size, child) => size + lexicalNodeTextSize(child), 0)
