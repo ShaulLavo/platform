@@ -1,5 +1,8 @@
 import type { Terminal } from 'ghostty-web'
 
+import type { TerminalContextSelection } from '@/features/chat/lib/terminal-context'
+
+import { captureTerminalSelection } from './capture'
 import { readClipboardText } from './clipboard'
 
 /**
@@ -15,13 +18,16 @@ const FORM_FEED = '\f'
  * right-clicked, even if the panel rebuilds its terminal while the menu is up.
  */
 export type TerminalMenuTarget = {
+  /** The same selection typed for the agent, line numbers and all. */
+  readonly contextSelection: TerminalContextSelection | null
   readonly hasScrollback: boolean
   readonly selection: string
   readonly terminal: Terminal
 }
 
-export function readTerminalMenuTarget(terminal: Terminal): TerminalMenuTarget {
+export function readTerminalMenuTarget(terminal: Terminal, sessionId: string): TerminalMenuTarget {
   return {
+    contextSelection: captureTerminalSelection(terminal, sessionId),
     hasScrollback: terminal.getScrollbackLength() > 0,
     selection: terminal.getSelection(),
     terminal,

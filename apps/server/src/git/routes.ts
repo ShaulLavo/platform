@@ -2,6 +2,7 @@ import { Elysia } from 'elysia'
 import {
   gitApplyPatchBodySchema,
   gitBlobDiffQuerySchema,
+  gitBranchDiffQuerySchema,
   gitCheckoutBodySchema,
   gitCommitBodySchema,
   gitCreateBranchBodySchema,
@@ -10,10 +11,15 @@ import {
   gitPathBodySchema,
   gitPathQuerySchema,
   gitPathsBodySchema,
+  gitWorktreeCreateBodySchema,
+  gitWorktreeRemoveBodySchema,
 } from './contracts'
 import type { GitService } from './service'
+import { GitWorktreeService } from './worktrees'
 
 export function gitRoutes(git: GitService) {
+  const worktrees = new GitWorktreeService(git)
+
   return new Elysia({ name: 'git-routes' }).group('/git', (app) =>
     app
       .get('/repo', ({ query }) => git.repo(query.path), {
@@ -33,6 +39,21 @@ export function gitRoutes(git: GitService) {
       })
       .get('/branches', ({ query }) => git.branches(query.path), {
         query: gitPathQuerySchema,
+      })
+      .get('/base-refs', ({ query }) => worktrees.baseRefs(query.path), {
+        query: gitPathQuerySchema,
+      })
+      .get('/branch-diff', ({ query }) => worktrees.branchDiff(query), {
+        query: gitBranchDiffQuerySchema,
+      })
+      .get('/worktrees', ({ query }) => worktrees.list(query.path), {
+        query: gitPathQuerySchema,
+      })
+      .post('/worktrees/create', ({ body }) => worktrees.create(body), {
+        body: gitWorktreeCreateBodySchema,
+      })
+      .post('/worktrees/remove', ({ body }) => worktrees.remove(body), {
+        body: gitWorktreeRemoveBodySchema,
       })
       .post('/stage', ({ body }) => git.stage(body), {
         body: gitPathsBodySchema,

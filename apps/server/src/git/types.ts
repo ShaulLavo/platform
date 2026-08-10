@@ -1,7 +1,10 @@
 import type { GitRepositoryInfo } from '@workspace/contracts'
 
 export type {
+  GitBaseRefChoice,
+  GitBaseRefChoicesResult,
   GitBranch,
+  GitBranchDiffResult,
   GitBranchesResult,
   GitCommitResult,
   GitDiffHunk,
@@ -10,6 +13,9 @@ export type {
   GitLineChange,
   GitRepositoryInfo,
   GitStatusResult,
+  GitWorktree,
+  GitWorktreeCreateResult,
+  GitWorktreeRemoveResult,
 } from '@workspace/contracts'
 
 export type GitCommandResult = {

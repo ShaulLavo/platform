@@ -1,7 +1,7 @@
 import { stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { FsError } from '../fs/errors'
-import type { WorkspacePaths } from '../fs/path'
+import type { WorkspacePath, WorkspacePaths } from '../fs/path'
 import { toPosix } from '../fs/path'
 import { elapsedMs, limitText, recordGitCommand, recordRequestContext } from '../observability'
 import { parseBranches } from './branches'
@@ -16,7 +16,12 @@ import type {
   GitPathsBody,
 } from './contracts'
 import { parseDiff, rewriteBlobPatchPaths } from './diff'
-import { mutationPaths, pathspecArgs, repositoryRelativePath } from './path-utils'
+import {
+  mutationPaths,
+  pathspecArgs,
+  relativeInsideRoot,
+  repositoryRelativePath,
+} from './path-utils'
 import { gitCwdForPath, lexicalRepositoryRoot } from './repository'
 import { parseRepositoryInfo, parseStatus, statusMatchesPathspec } from './status'
 import { UpstreamFetchScheduler } from './upstream-fetch'
@@ -74,14 +79,20 @@ export type GitRunOptions = Pick<GitCommandOptions, 'allowFailure' | 'env'>
 
 /**
  * A git command runner already bound to one resolved repository root. It is the
- * seam the checkpoint store needs: capture drives plumbing (`read-tree`,
- * `write-tree`, `commit-tree`) that has no business being a public verb on
- * `GitService`, yet must run through the same bounded process wrapper and the
- * same workspace-containment checks as every other git call.
+ * seam the checkpoint store and the worktree service need: both drive plumbing
+ * (`read-tree`, `commit-tree`, `worktree list`) that has no business being a
+ * public verb on `GitService`, yet must run through the same bounded process
+ * wrapper and the same workspace-containment checks as every other git call.
  */
 export type GitRepositoryRunner = {
   readonly rootAbsolutePath: string
+  /** The lexical root — the one workspace-relative paths are anchored on. */
+  readonly rootDisplayAbsolutePath: string
+  readonly rootPath: string
+  resolveWorkspacePath: (input: string) => WorkspacePath
   run: (args: readonly string[], options?: GitRunOptions) => Promise<GitCommandResult>
+  /** Workspace-relative form of an absolute path, or null when it is outside. */
+  toWorkspacePath: (absolutePath: string) => string | null
 }
 
 const DEFAULT_DIFF_CONCURRENCY = 4
@@ -322,8 +333,12 @@ export class GitService {
     const repository = await this.requiredRepositoryLocation(input)
 
     return {
+      resolveWorkspacePath: (target) => this.resolveServicePath(target),
       rootAbsolutePath: repository.rootAbsolutePath,
+      rootDisplayAbsolutePath: repository.rootDisplayAbsolutePath,
+      rootPath: repository.rootPath,
       run: (args, options = {}) => this.git(repository.rootAbsolutePath, args, options),
+      toWorkspacePath: (absolutePath) => this.workspacePath(repository, absolutePath),
     }
   }
 
@@ -564,6 +579,26 @@ export class GitService {
    */
   private invalidateStatus(rootAbsolutePath: string) {
     this.statuses.invalidatePrefix(`${rootAbsolutePath}\u0000`)
+  }
+
+  /**
+   * Git answers with resolved paths while workspace paths stay lexical, so on
+   * macOS a worktree git prints as /private/var/... has to be re-anchored on the
+   * repository's display root before it can come back as the path the client
+   * asked with. Paths outside the repository skip the anchor and are checked
+   * against the workspace directly — a hand-made worktree is still reportable.
+   */
+  private workspacePath(repository: GitRepositoryLocation, absolutePath: string) {
+    const insideRepository = relativeInsideRoot(repository.rootAbsolutePath, absolutePath)
+    const anchored =
+      insideRepository === null
+        ? absolutePath
+        : path.resolve(repository.rootDisplayAbsolutePath, insideRepository)
+
+    return (
+      relativeInsideRoot(this.paths.workspaceRoot, anchored) ??
+      relativeInsideRoot(this.paths.workspaceRootReal, anchored)
+    )
   }
 
   private pathspecForRepository(rootAbsolutePath: string, input = '') {

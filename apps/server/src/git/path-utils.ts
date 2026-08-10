@@ -1,4 +1,6 @@
+import path from 'node:path'
 import { FsError } from '../fs/errors'
+import { toPosix } from '../fs/path'
 import type { GitPathsBody } from './contracts'
 
 export function mutationPaths(body: GitPathsBody) {
@@ -44,6 +46,20 @@ export function repositoryRelativePath(rootPath: string, filePath: string) {
   if (!filePath.startsWith(prefix)) return filePath
 
   return filePath.slice(prefix.length)
+}
+
+/**
+ * Posix path from `root` down to `candidate`, or null when it escapes. The
+ * containment rule is deliberately the same one `WorkspacePaths.assertInside`
+ * enforces, so anything this maps is also a path the filesystem layer accepts.
+ */
+export function relativeInsideRoot(root: string, candidate: string) {
+  const relative = path.relative(root, candidate)
+  if (relative === '') return ''
+  if (relative.startsWith('..')) return null
+  if (path.isAbsolute(relative)) return null
+
+  return toPosix(relative)
 }
 
 export function unquoteGitPath(value: string) {

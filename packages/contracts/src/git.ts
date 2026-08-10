@@ -81,3 +81,61 @@ export type GitCommitResult =
       path: string
       repository: GitRepositoryInfo
     }
+
+/**
+ * One entry of `git worktree list`. Both paths are carried because they answer
+ * different questions: `path` is what every other git route speaks, while
+ * `absolutePath` is what a session's agent process is spawned with.
+ */
+export type GitWorktree = {
+  absolutePath: string
+  branch: string | null
+  commit: string | null
+  detached: boolean
+  locked: boolean
+  /** The repository's own checkout. It backs every linked worktree, so it is never removable. */
+  main: boolean
+  /** Workspace-relative path, or null when the worktree sits outside the workspace. */
+  path: string | null
+  prunable: boolean
+  /** The session that owns this worktree, or null for one a human made by hand. */
+  sessionId: string | null
+}
+
+export type GitWorktreeCreateResult = {
+  /** False when the session already had a worktree and this call re-used it. */
+  created: boolean
+  worktree: GitWorktree
+}
+
+export type GitWorktreeRemoveResult = {
+  removed: GitWorktree
+  worktrees: GitWorktree[]
+}
+
+/**
+ * A base a branch can be compared against. Local and remote are paired so the
+ * picker offers `main` once instead of twice, while still remembering that the
+ * comparison should run against `origin/main` when the remote is ahead.
+ */
+export type GitBaseRefChoice = {
+  id: string
+  label: string
+  local: string | null
+  remote: string | null
+}
+
+export type GitBaseRefChoicesResult = {
+  choices: GitBaseRefChoice[]
+  /** The choice a branch diff picks when the caller names no base. */
+  defaultChoiceId: string | null
+}
+
+export type GitBranchDiffResult = {
+  /** The base after the selection rules ran — never the raw request. */
+  baseRef: string
+  files: GitFileDiff[]
+  headRef: string
+  /** Where the branch left the base; null when the two share no history. */
+  mergeBase: string | null
+}

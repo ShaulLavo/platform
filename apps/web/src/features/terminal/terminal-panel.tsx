@@ -102,7 +102,7 @@ export function TerminalPanel({
     event.stopPropagation()
     // Snapshotted here because ghostty drops the selection from a document
     // `click` handler the moment a portalled menu item is pressed.
-    setMenuTarget(readTerminalMenuTarget(terminal))
+    setMenuTarget(readTerminalMenuTarget(terminal, sessionId))
     contextMenu.openAtEvent(event)
   }
   // Nothing owns focus for us: the anchor path has no trigger element for Base

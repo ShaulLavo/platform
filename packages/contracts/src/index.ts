@@ -21,7 +21,10 @@ export {
   type PinOrderAssignment,
 } from './pin-order'
 export type {
+  GitBaseRefChoice,
+  GitBaseRefChoicesResult,
   GitBranch,
+  GitBranchDiffResult,
   GitBranchesResult,
   GitCommitResult,
   GitDiffHunk,
@@ -31,6 +34,9 @@ export type {
   GitRepositoryInfo,
   GitStatusResult,
   GitTreeStatus,
+  GitWorktree,
+  GitWorktreeCreateResult,
+  GitWorktreeRemoveResult,
 } from './git'
 export type { WatchClientMessage, WatchServerMessage } from './watch-events'
 export {
