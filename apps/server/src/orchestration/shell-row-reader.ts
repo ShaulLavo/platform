@@ -104,6 +104,7 @@ export class ProjectionShellRowReader implements OrchestrationShellRowReader {
       modelSelection: parseJson<ModelSelection>(row.modelSelectionJson),
       pendingApprovalCount: row.pendingApprovalCount,
       pendingUserInputCount: row.pendingUserInputCount,
+      planProgress: parseJson<OrchestrationThreadShell['planProgress']>(row.planProgressJson, null),
       projectId: row.projectId,
       runtimeMode: row.runtimeMode,
       session: sessionShell(session),

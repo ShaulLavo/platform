@@ -16,6 +16,7 @@ import {
   matchingCheckpointDiff,
 } from '../lib/checkpoint-diff-query'
 import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
+import { useThreadDiffScopeStore } from '../state/thread-diff-scope-store'
 
 export function useOpenCheckpointDiffDocument() {
   const queryClient = useQueryClient()
@@ -36,6 +37,7 @@ export function useOpenCheckpointDiffDocument() {
       const documentInput = checkpointTurnDiffDocumentInput(summary)
       queryClient.setQueryData(checkpointDiffQueryKey(documentInput), diffs)
       selectFile(checkpointDiffDocumentId(documentInput))
+      rememberTurnScope(summary, null)
 
       return true
     }
@@ -50,6 +52,7 @@ export function useOpenCheckpointDiffDocument() {
     // missed would pin the tab to "no changes" instead of letting it ask again.
     if (diff) queryClient.setQueryData(checkpointDiffQueryKey(documentInput), [diff])
     selectFile(checkpointDiffDocumentId(documentInput))
+    rememberTurnScope(summary, documentPath)
 
     return true
   }
@@ -73,4 +76,20 @@ export function useOpenCheckpointDiffDocument() {
   }
 
   return { openCheckpointDiff, openFullThreadCheckpointDiff }
+}
+
+/**
+ * Opening a turn's diff is the act that makes it the thread's current diff, so
+ * the tool pane comes back to it after a reload — wherever the open came from,
+ * the transcript's changed-files card included. Read through `getState` rather
+ * than subscribed: this hook must not re-render every consumer of a card when
+ * the pick changes. The full-thread diff is deliberately not recorded; it is not
+ * one of the three scopes the pane can return to.
+ */
+function rememberTurnScope(summary: ChatTurnDiffSummary, filePath: string | null) {
+  useThreadDiffScopeStore.getState().selectThreadDiffScope(summary.threadId, {
+    filePath,
+    kind: 'turn',
+    turnId: summary.turnId,
+  })
 }

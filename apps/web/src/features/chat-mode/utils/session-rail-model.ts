@@ -6,7 +6,11 @@ import type {
 } from '@workspace/contracts'
 
 import { projectQualifiers } from '@/features/chat/lib/project-qualifiers'
-import { threadStatus, type ThreadStatus } from '@/features/chat/lib/thread-status'
+import {
+  threadPlanProgressLabel,
+  threadStatus,
+  type ThreadStatus,
+} from '@/features/chat/lib/thread-status'
 import type { ChatSidebarThreadSummary } from '@/features/chat/state/chat-projection-store'
 import {
   compareProjectsForRail,
@@ -30,6 +34,8 @@ export type SessionRailScope = ProjectId | null
  */
 export type SessionRailView = 'active' | 'archived'
 
+type ThreadPlanProgress = NonNullable<ReturnType<typeof threadPlanProgressLabel>>
+
 export type SessionRailItem = {
   /** Last thing that happened here. For the row's date label only, never for order. */
   readonly activityAt: string
@@ -39,6 +45,8 @@ export type SessionRailItem = {
   readonly id: ThreadId
   /** The slot the user dragged this row into. `null` until they drag it. */
   readonly pinOrderKey: string | null
+  /** What this session is doing right now, when it is following a plan. */
+  readonly planProgress: ThreadPlanProgress | null
   readonly projectId: ProjectId
   readonly projectTitle: string
   readonly status: ThreadStatus
@@ -198,6 +206,7 @@ export function sessionRailItem(
     pinOrderKey: pendingOrderKey ?? thread.pinOrderKey ?? null,
     projectId: thread.projectId,
     projectTitle,
+    planProgress: threadPlanProgressLabel(thread),
     status: threadStatus(thread),
     title: thread.title,
     unread: isSessionUnread(completedAt, seenAt),

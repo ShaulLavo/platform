@@ -20,7 +20,14 @@ import {
   orchestrationEventSummary,
   recordChatPipelineInfo,
 } from './orchestration-logging'
-import { mergedMessageText, settledTurnStateForSessionStatus } from './read-model'
+import {
+  isPlanProgressActivityKind,
+  mergedMessageText,
+  PLAN_PROGRESS_ACTIVITY_KIND,
+  settledTurnStateForSessionStatus,
+  threadPlanProgress,
+  type ThreadPlanProgress,
+} from './read-model'
 import { isPendingRequestActivityKind, pendingRequestCounts } from './pending-requests'
 
 export const ORCHESTRATION_PROJECTOR_NAME = 'orchestration'
@@ -140,6 +147,7 @@ export class OrchestrationProjectionPipeline {
         this.upsertActivity(event)
         this.updateTurnForActivity(event)
         this.refreshPendingRequestCountsForActivity(event)
+        this.refreshPlanProgressForActivity(event)
         return
       case 'thread.deleted':
         this.updateThread(event.payload.threadId, {
@@ -297,6 +305,7 @@ export class OrchestrationProjectionPipeline {
         pendingApprovalCount: 0,
         pendingUserInputCount: 0,
         pinOrderKey: null,
+        planProgressJson: null,
         pinnedAt: null,
         projectId: event.payload.projectId,
         runtimeMode: event.payload.runtimeMode,
@@ -716,6 +725,67 @@ export class OrchestrationProjectionPipeline {
     })
   }
 
+  /**
+   * Only a plan snapshot can move the field, so the streaming storm of tool-call
+   * activities never pays for the refold.
+   */
+  private refreshPlanProgressForActivity(
+    event: Extract<OrchestrationEvent, { type: 'thread.activity-appended' }>,
+  ) {
+    if (!isPlanProgressActivityKind(event.payload.activity.kind)) return
+
+    this.refreshPlanProgress(event.payload.threadId)
+  }
+
+  /**
+   * A refold over the thread's retained plan activities, never an in-place
+   * advance: a replayed snapshot, a revised one, or a revert that pruned the
+   * planning turn then cannot leave the rail narrating a step that no longer
+   * exists. The in-memory model runs the same fold over the same activities.
+   */
+  private refreshPlanProgress(threadId: string) {
+    const progress = threadPlanProgress(this.planActivities(threadId))
+
+    this.updateThread(threadId, {
+      planProgressJson: progress === null ? null : JSON.stringify(progress),
+    })
+  }
+
+  /**
+   * Filtered by kind in SQL rather than folded over the whole history: unlike
+   * the request counters, plan snapshots are a handful of rows in a thread that
+   * can hold thousands.
+   */
+  private planActivities(threadId: string) {
+    const rows = this.database
+      .select({
+        kind: projectionThreadActivities.kind,
+        payloadJson: projectionThreadActivities.payloadJson,
+        turnId: projectionThreadActivities.turnId,
+      })
+      .from(projectionThreadActivities)
+      .where(
+        and(
+          eq(projectionThreadActivities.threadId, threadId),
+          eq(projectionThreadActivities.kind, PLAN_PROGRESS_ACTIVITY_KIND),
+        ),
+      )
+      .orderBy(
+        asc(projectionThreadActivities.sequence),
+        asc(projectionThreadActivities.createdAt),
+        asc(projectionThreadActivities.activityId),
+      )
+      .all()
+
+    return rows.map((row) => ({
+      kind: row.kind,
+      payload: parseActivityPayload(row.payloadJson),
+      // The column stores what the branded id serialized to; this read is the
+      // boundary that hands it back.
+      turnId: row.turnId as ThreadPlanProgress['turnId'],
+    }))
+  }
+
   private requestActivities(threadId: string) {
     const rows = this.database
       .select({
@@ -913,8 +983,10 @@ export class OrchestrationProjectionPipeline {
       latestUserMessageAt: latestUserMessageAt(messages),
       updatedAt: event.payload.revertedAt,
     })
-    // Requests pruned with their turns must not keep the counters flagged.
+    // Requests pruned with their turns must not keep the counters flagged, and a
+    // plan pruned with its turn must not keep narrating a step.
     this.refreshPendingRequestCounts(threadId)
+    this.refreshPlanProgress(threadId)
     this.dropProposedPlansAfterRevert(threadId, retainedTurnIds)
     this.refreshActionableProposedPlan(threadId)
   }

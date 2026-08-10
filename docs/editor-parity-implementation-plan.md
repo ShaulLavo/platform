@@ -1,5 +1,5 @@
 > [!IMPORTANT]
-> **STATUS: 🟢 CURRENT (written 2026-08-10).** Living plan. Companion analysis: [editor-parity-gap-matrix.md](editor-parity-gap-matrix.md) — every non-have row there is assigned to a wave here. Supersedes the stale sections of `git-feature-comparison.md`, `command-palette-vscode-parity-backlog.md`, and `vscode-keymap-development.md` where they disagree (corrections listed in the matrix).
+> **STATUS: 🟢 CURRENT (written 2026-08-10).** Living plan. Companion analysis: [editor-parity-gap-matrix.md](editor-parity-gap-matrix.md) — every non-have row there is assigned to a wave here. The beyond-parity vision layer lives in [editor-1000-parity-plan.md](editor-1000-parity-plan.md) (this plan is its dimension D1). Supersedes the stale sections of `git-feature-comparison.md`, `command-palette-vscode-parity-backlog.md`, and `vscode-keymap-development.md` where they disagree (corrections listed in the matrix).
 
 # Editor Mode Parity Plan — VS Code / NeuralInverse / Athas
 

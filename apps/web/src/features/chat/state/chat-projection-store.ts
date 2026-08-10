@@ -92,6 +92,7 @@ export type ChatSidebarThreadSummary = Pick<
   | 'latestUserMessageAt'
   | 'pendingApprovalCount'
   | 'pendingUserInputCount'
+  | 'planProgress'
   | 'projectId'
   | 'session'
   | 'title'

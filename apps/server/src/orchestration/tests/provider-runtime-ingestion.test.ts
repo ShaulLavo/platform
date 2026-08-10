@@ -9,6 +9,7 @@ import * as v from 'valibot'
 import type { ProviderRuntimeEvent } from '../../provider/types'
 import { MAX_BUFFERED_ASSISTANT_CHARS } from '../provider-runtime-buffers'
 import { ProviderRuntimeIngestion } from '../provider-runtime-ingestion'
+import { threadPlanProgress } from '../read-model'
 
 const now = '2026-05-24T00:00:00.000Z'
 const later = '2026-05-24T00:01:00.000Z'
@@ -433,7 +434,47 @@ describe('provider runtime ingestion', () => {
       questions: [{ answerKind: 'text', id: 'q-2', options: [], prompt: 'Still answerable?' }],
     })
   })
+
+  /**
+   * Ingestion stores the provider's plan verbatim and the projection folds that
+   * same payload — this is the seam where a second, server-only notion of "step"
+   * would creep in and let the rail and the timeline disagree.
+   */
+  it('emits a plan snapshot the projection fold reads as the running step', async () => {
+    const { dispatched, ingestion } = fixture()
+
+    await ingestion.ingest(
+      planUpdated('plan-1', [
+        { status: 'completed', step: 'Read the code' },
+        { status: 'inProgress', step: 'Run the tests' },
+        { status: 'pending', step: 'Write the report' },
+      ]),
+    )
+
+    const [command] = dispatched
+    assert(command && 'activity' in command, 'no activity command was dispatched')
+    expect(threadPlanProgress([command.activity])).toEqual({
+      completedSteps: 1,
+      step: 'Run the tests',
+      totalSteps: 3,
+      turnId,
+    })
+  })
 })
+
+function planUpdated(
+  eventId: string,
+  plan: Array<{ status: 'completed' | 'inProgress' | 'pending'; step: string }>,
+): ProviderRuntimeEvent {
+  return {
+    createdAt: now,
+    eventId,
+    payload: { explanation: null, plan },
+    threadId,
+    turnId,
+    type: 'turn.plan.updated',
+  }
+}
 
 /**
  * Adapters assemble questions out of untyped provider JSON, so the event's

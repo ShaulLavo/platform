@@ -214,3 +214,127 @@ function killIfRunning(child: Bun.Subprocess) {
 
   child.kill('SIGKILL')
 }
+
+/** One line of a running command's output, tagged with the pipe it came from. */
+export type GitProcessLine = {
+  readonly stream: 'stderr' | 'stdout'
+  readonly text: string
+}
+
+export type GitProcessEvent =
+  | { readonly kind: 'line'; readonly line: GitProcessLine }
+  | {
+      readonly kind: 'exit'
+      readonly exitCode: number
+      readonly limit?: GitProcessLimit
+    }
+
+/**
+ * The same command as `runProcess`, reported line by line as it runs.
+ *
+ * A commit runs the repository's hooks, and a hook that takes forty seconds is
+ * indistinguishable from a wedged one when its output only arrives at the end —
+ * which is the whole reason this exists. Both of `runProcess`'s bounds still
+ * apply: lines are counted against the same byte budget, and the deadline still
+ * kills the process, so streaming does not reopen either unbounded edge.
+ */
+export async function* streamProcess(input: GitProcessInput): AsyncGenerator<GitProcessEvent> {
+  const maxBytes = input.maxOutputBytes ?? MAX_OUTPUT_BYTES
+  const timeoutMs = input.timeoutMs ?? defaultTimeoutMs(input.args)
+  const child = Bun.spawn(['git', '-C', input.cwd].concat(input.args), {
+    ...(input.env ? { env: { ...process.env, ...input.env } } : {}),
+    stderr: 'pipe',
+    stdin: input.input === undefined ? 'ignore' : 'pipe',
+    stdout: 'pipe',
+  })
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    killIfRunning(child)
+  }, timeoutMs)
+
+  try {
+    if (input.input !== undefined) await writeProcessInput(child.stdin, input.input)
+
+    const budget = { remaining: maxBytes }
+    // Interleaved rather than sequential: hooks write progress to stderr while
+    // git writes its summary to stdout, and draining one pipe at a time lets
+    // the other fill and block the process we are trying to watch.
+    yield* mergeProcessLines([
+      readProcessLines(child.stdout, 'stdout', budget),
+      readProcessLines(child.stderr, 'stderr', budget),
+    ])
+
+    const exitCode = await child.exited
+    if (timedOut) {
+      yield { exitCode, kind: 'exit', limit: { kind: 'timeout', timeoutMs } }
+      return
+    }
+    if (budget.remaining <= 0) {
+      yield {
+        exitCode,
+        kind: 'exit',
+        limit: { kind: 'output-limit', maxBytes, observedBytes: maxBytes, stream: 'stdout' },
+      }
+      return
+    }
+
+    yield { exitCode, kind: 'exit' }
+  } finally {
+    clearTimeout(timer)
+    killIfRunning(child)
+  }
+}
+
+/**
+ * Reads a pipe into whole lines, stopping once the shared budget is spent. The
+ * budget is shared so one runaway pipe cannot spend the other's allowance.
+ */
+async function* readProcessLines(
+  stream: ReadableStream<Uint8Array> | undefined,
+  name: 'stderr' | 'stdout',
+  budget: { remaining: number },
+): AsyncGenerator<GitProcessLine> {
+  if (!stream) return
+
+  const decoder = new TextDecoder()
+  let buffered = ''
+
+  for await (const chunk of stream) {
+    if (budget.remaining <= 0) return
+
+    budget.remaining -= chunk.byteLength
+    buffered += decoder.decode(chunk, { stream: true })
+    const lines = buffered.split('\n')
+    // The tail is whatever follows the last newline — a partial line the next
+    // chunk finishes, or the final line if the process ends here.
+    buffered = lines.pop() ?? ''
+
+    for (const text of lines) {
+      yield { stream: name, text }
+    }
+  }
+  if (buffered.length > 0) yield { stream: name, text: buffered }
+}
+
+/** Yields from every generator as it produces, rather than one after another. */
+async function* mergeProcessLines(sources: AsyncGenerator<GitProcessLine>[]) {
+  const pending = new Map(
+    sources.map((source, index) => [index, source.next().then((result) => ({ index, result }))]),
+  )
+
+  while (pending.size > 0) {
+    const { index, result } = await Promise.race(pending.values())
+    if (result.done) {
+      pending.delete(index)
+      continue
+    }
+
+    yield { kind: 'line' as const, line: result.value }
+    const source = sources[index]!
+    pending.set(
+      index,
+      source.next().then((next) => ({ index, result: next })),
+    )
+  }
+}

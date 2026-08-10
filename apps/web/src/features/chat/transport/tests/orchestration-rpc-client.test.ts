@@ -1,8 +1,10 @@
 import {
   ORCHESTRATION_WS_PROTOCOL_VERSION,
+  threadIdSchema,
   type OrchestrationWsClientMessage,
 } from '@workspace/contracts'
 import { describe } from 'vitest'
+import * as v from 'valibot'
 
 import { OrchestrationRpcClient } from '@/features/chat/transport/orchestration-rpc-client'
 import {
@@ -14,6 +16,7 @@ import { expect, test } from '../../../../../test/fixtures'
 const HEARTBEAT_MS = 10
 const HEARTBEAT_TIMEOUT_MS = 20
 const SLOW_REQUEST_MS = 15
+const THREAD_ID = v.parse(threadIdSchema, 'thread-1')
 
 describe('orchestration rpc client liveness', () => {
   test('an unanswered heartbeat tears the socket down so subscriptions can reconnect', async () => {
@@ -69,6 +72,20 @@ describe('orchestration rpc client liveness', () => {
   })
 })
 
+describe('orchestration rpc client transport boundary', () => {
+  test('the socket offers no authoritative snapshot read', () => {
+    const surface = Object.getOwnPropertyNames(OrchestrationRpcClient.prototype)
+
+    // Frames are written in order, so a snapshot for a workspace with hundreds
+    // of threads would stall every ping, dispatch and subscription frame behind
+    // it. Those two reads belong on `orchestration-http-snapshots.ts`; the
+    // subscriptions still deliver `kind: 'snapshot'` frames, which is fine —
+    // they are part of the ordered stream rather than a one-shot read.
+    expect(surface).not.toContain('shellSnapshot')
+    expect(surface).not.toContain('threadDetailSnapshot')
+  })
+})
+
 describe('orchestration rpc client connection identity', () => {
   test('the handshake tells the client which server process it reached', async () => {
     resetServerConnectionStore()
@@ -94,7 +111,7 @@ describe('orchestration rpc client connection identity', () => {
     resetServerConnectionStore()
     const socket = new FakeSocket()
     const client = createClient(socket, latencyOnly())
-    const snapshot = captureOutcome(client.shellSnapshot())
+    const page = captureOutcome(client.threadDetailPage({ threadId: THREAD_ID }))
 
     await tick()
     socket.open()
@@ -108,7 +125,7 @@ describe('orchestration rpc client connection identity', () => {
 
     const requestId = sentMessages(socket).find((message) => message.kind === 'request')?.requestId
     socket.deliver({ data: {}, kind: 'response', ok: true, requestId })
-    await snapshot
+    await page
 
     expect(useServerConnectionStore.getState().slowRequestCount).toBe(0)
   })
@@ -117,7 +134,7 @@ describe('orchestration rpc client connection identity', () => {
     resetServerConnectionStore()
     const socket = new FakeSocket()
     const client = createClient(socket, latencyOnly())
-    const failure = captureOutcome(client.shellSnapshot())
+    const failure = captureOutcome(client.threadDetailPage({ threadId: THREAD_ID }))
 
     await tick()
     socket.open()

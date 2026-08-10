@@ -200,9 +200,6 @@ function resolveOrchestrationRpcRequest(
 ) {
   if (message.method === 'dispatchCommand') return engine.dispatchClientCommand(message.command)
   if (message.method === 'serverConfig') return orchestrationWsServerConfig()
-  if (message.method === 'shellSnapshot') return engine.shellSnapshot()
-  if (message.method === 'threadDetailSnapshot')
-    return engine.threadDetailSnapshot(message.threadId)
   if (message.method === 'threadDetailPage') return engine.threadDetailPage(message.input)
 
   return engine.replay(message.input)
@@ -357,8 +354,6 @@ function sendOrchestrationRpcMessage(
 
 function orchestrationRpcRequestSummary(message: OrchestrationWsRequest) {
   if (message.method === 'dispatchCommand') return orchestrationCommandSummary(message.command)
-  if (message.method === 'threadDetailSnapshot')
-    return { method: message.method, threadId: message.threadId }
   if (message.method === 'threadDetailPage') {
     return {
       // Whether the walk started from a boundary is what tells a first page from

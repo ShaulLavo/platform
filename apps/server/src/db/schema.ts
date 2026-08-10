@@ -130,6 +130,12 @@ export const projectionThreads = sqliteTable(
     })
       .notNull()
       .default(false),
+    /**
+     * The plan kernel the shell delta serves, projected so a rail row never pays
+     * an activity scan to say which step is running. Null is "nothing to
+     * narrate".
+     */
+    planProgressJson: text('plan_progress_json'),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
     archivedAt: text('archived_at'),

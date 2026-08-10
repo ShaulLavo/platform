@@ -49,6 +49,31 @@ function isImplementingProposedPlan(thread: ThreadStatusSource) {
   return Boolean(thread.latestTurn.sourceProposedPlan)
 }
 
+export type ThreadPlanProgressSource = Pick<ChatSidebarThreadSummary, 'latestTurn' | 'planProgress'>
+
+/**
+ * "step 3 of 7: running tests" instead of a spinner, but only while that plan
+ * is the thing actually happening.
+ *
+ * The server keeps `planProgress` as a pure fold over retained activities so it
+ * survives replay and revert, which means it outlives the turn that produced
+ * it. Judging freshness is therefore the reader's job: a plan whose turn has
+ * settled is history, and narrating it would have the rail confidently describe
+ * work that finished an hour ago.
+ */
+export function threadPlanProgressLabel(thread: ThreadPlanProgressSource) {
+  const progress = thread.planProgress
+  if (!progress) return null
+  if (thread.latestTurn?.state !== 'running') return null
+  if (progress.turnId && progress.turnId !== thread.latestTurn.turnId) return null
+
+  return {
+    step: progress.step,
+    stepNumber: progress.completedSteps + 1,
+    totalSteps: progress.totalSteps,
+  }
+}
+
 export function threadStatusLabel(status: ThreadStatus) {
   if (status === 'waiting') return 'Waiting for you'
   if (status === 'working') return 'Working'

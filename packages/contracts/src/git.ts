@@ -83,6 +83,19 @@ export type GitCommitResult =
     }
 
 /**
+ * A commit reported as it happens, because a commit runs the repository's
+ * hooks: a forty-second pre-commit hook and a wedged one look identical while
+ * the only signal is a button that has not come back yet.
+ *
+ * `progress` frames carry hook output verbatim, tagged with the pipe they came
+ * from — hooks conventionally write status to stderr and that is not an error.
+ */
+export type GitCommitProgressEvent =
+  | { kind: 'progress'; stream: 'stderr' | 'stdout'; text: string }
+  | { kind: 'result'; result: GitCommitResult }
+  | { kind: 'failed'; message: string }
+
+/**
  * One entry of `git worktree list`. Both paths are carried because they answer
  * different questions: `path` is what every other git route speaks, while
  * `absolutePath` is what a session's agent process is spawned with.

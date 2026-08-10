@@ -21,8 +21,12 @@ import {
  * later on a frame it cannot parse.
  *
  * 2 — added the `threadDetailPage` request.
+ * 3 — dropped the `shellSnapshot` and `threadDetailSnapshot` requests. Both are
+ *     read over HTTP now: they are large one-shot bodies, and writing one into
+ *     the socket head-of-line-blocked every other frame for its duration. The
+ *     subscriptions still push snapshot *frames*; only the requests are gone.
  */
-export const ORCHESTRATION_WS_PROTOCOL_VERSION = 2
+export const ORCHESTRATION_WS_PROTOCOL_VERSION = 3
 
 /**
  * Hard ceiling on one `replayEvents` page. `replayEvents` is client-reachable,
@@ -125,17 +129,6 @@ export const orchestrationWsRequestSchema = v.variant('method', [
     requestId: orchestrationWsRequestIdSchema,
     method: v.literal('dispatchCommand'),
     command: clientOrchestrationCommandSchema,
-  }),
-  v.object({
-    kind: v.literal('request'),
-    requestId: orchestrationWsRequestIdSchema,
-    method: v.literal('shellSnapshot'),
-  }),
-  v.object({
-    kind: v.literal('request'),
-    requestId: orchestrationWsRequestIdSchema,
-    method: v.literal('threadDetailSnapshot'),
-    threadId: threadIdSchema,
   }),
   v.object({
     kind: v.literal('request'),

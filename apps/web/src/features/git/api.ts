@@ -1,7 +1,24 @@
+import type { GitCommitProgressEvent, GitCommitResult } from '@workspace/contracts'
+
 import { getClient } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
-import { unwrapEdenResponse } from '@/lib/eden-events'
+import { parseEdenSseStream, unwrapEdenResponse } from '@/lib/eden-events'
+import { createClientError } from '@/lib/structured-errors'
 import type { StatusResult } from './types'
+
+/**
+ * A hook rejecting a commit is an expected outcome, not a transport fault — the
+ * lines already relayed say why, so the error only has to carry the verdict.
+ */
+function createGitCommitFailure(message: string) {
+  return createClientError({
+    code: 'GIT_COMMIT_REJECTED',
+    message,
+    status: 409,
+    why: 'git commit exited non-zero, which for a repository with hooks usually means a hook refused the commit.',
+    fix: 'Read the hook output shown with the commit, fix what it reported, and commit again.',
+  })
+}
 
 export async function fetchStatus(path: string, signal?: AbortSignal) {
   return observeGitOperation(
@@ -103,6 +120,65 @@ export async function discardPaths(paths: readonly string[]) {
       emptyMessage: 'git server returned an empty response',
     })
   })
+}
+
+/**
+ * Commits with the hooks' output relayed as it happens.
+ *
+ * A commit runs the repository's hooks, and a forty-second pre-commit hook is
+ * indistinguishable from a wedged one while the only signal is a button that
+ * has not come back. `onProgress` is called per line so the caller can show the
+ * hook talking; the resolved value is the same commit result the one-shot route
+ * returns.
+ */
+export async function commitChangesStreaming(
+  path: string,
+  message: string,
+  onProgress: (line: { stream: 'stderr' | 'stdout'; text: string }) => void,
+): Promise<GitCommitResult> {
+  return observeGitOperation(
+    {
+      action: 'git.commit_stream',
+      messageBytes: new Blob([message]).size,
+      path,
+    },
+    async () => {
+      const response = await getClient().git['commit-stream'].post({ message, path })
+      const stream = unwrapEdenResponse(response, {
+        requireData: true,
+        emptyMessage: 'git server returned an empty response',
+      })
+
+      return readCommitProgress(stream, onProgress)
+    },
+    (result) => ({ kind: result.kind }),
+  )
+}
+
+/**
+ * A `failed` frame is the hook rejecting the commit — an ordinary outcome the
+ * server cannot report as a status code, because the response body has already
+ * begun by the time a hook runs.
+ */
+async function readCommitProgress(
+  stream: unknown,
+  onProgress: (line: { stream: 'stderr' | 'stdout'; text: string }) => void,
+): Promise<GitCommitResult> {
+  let result: GitCommitResult | null = null
+
+  for await (const event of parseEdenSseStream(stream)) {
+    const data = event.data as GitCommitProgressEvent
+    if (data.kind === 'progress') {
+      onProgress({ stream: data.stream, text: data.text })
+      continue
+    }
+    if (data.kind === 'failed') throw createGitCommitFailure(data.message)
+
+    result = data.result
+  }
+  if (!result) throw createGitCommitFailure('git commit ended without reporting a result')
+
+  return result
 }
 
 export async function commitChanges(path: string, message: string) {

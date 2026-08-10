@@ -2,7 +2,12 @@ import { sql } from 'drizzle-orm'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { PendingOrchestrationEvent } from '../event-store'
 import { projectEvents } from '../projector'
-import type { OrchestrationProjectedThread, OrchestrationReadModel } from '../read-model'
+import {
+  threadPlanProgress,
+  type OrchestrationProjectedThread,
+  type OrchestrationReadModel,
+} from '../read-model'
+import { createShellRowReader } from '../shell-row-reader'
 import {
   activityAppendedEvent,
   createProjectionFixture,
@@ -10,6 +15,7 @@ import {
   pendingEvent,
   sessionSetEvent,
   threadBootstrapEvents,
+  turnDiffCompletedEvent,
   turnStartEvent,
   THREAD_ID,
 } from './factories/projection'
@@ -256,6 +262,124 @@ describe('orchestration projection convergence', () => {
     }
   })
 
+  it('projects the plan step the thread is on, and both read models agree on it', () => {
+    const projected = project([
+      ...threadBootstrapEvents(),
+      turnStartEvent('turn-1', requestedAt),
+      planActivity('activity-plan-1', [
+        { status: 'completed', step: 'Read the code' },
+        { status: 'inProgress', step: 'Run the tests' },
+        { status: 'pending', step: 'Write the report' },
+      ]),
+    ])
+
+    expect(projected.shell?.planProgress).toEqual({
+      completedSteps: 1,
+      step: 'Run the tests',
+      totalSteps: 3,
+      turnId: 'turn-1',
+    })
+    expectPlanProgressConverges(projected)
+  })
+
+  it('narrates the first pending step of a plan nothing has started yet', () => {
+    const projected = project([
+      ...threadBootstrapEvents(),
+      turnStartEvent('turn-1', requestedAt),
+      planActivity('activity-plan-1', [
+        { status: 'pending', step: 'Read the code' },
+        { status: 'pending', step: 'Run the tests' },
+      ]),
+    ])
+
+    expect(projected.shell?.planProgress).toMatchObject({
+      completedSteps: 0,
+      step: 'Read the code',
+    })
+    expectPlanProgressConverges(projected)
+  })
+
+  /**
+   * The fold, not a counter: a revised snapshot that walks the plan backwards has
+   * to be believed. An implementation that advanced on each event would report
+   * the high-water mark forever.
+   */
+  it('refolds a revised plan snapshot instead of advancing past it', () => {
+    const projected = project([
+      ...threadBootstrapEvents(),
+      turnStartEvent('turn-1', requestedAt),
+      planActivity('activity-plan-1', [
+        { status: 'completed', step: 'Read the code' },
+        { status: 'completed', step: 'Run the tests' },
+        { status: 'inProgress', step: 'Write the report' },
+      ]),
+      planActivity(
+        'activity-plan-1',
+        [
+          { status: 'completed', step: 'Read the code' },
+          { status: 'inProgress', step: 'Run the tests' },
+          { status: 'pending', step: 'Write the report' },
+        ],
+        'turn-1',
+        revisedAt,
+      ),
+    ])
+
+    expect(projected.shell?.planProgress).toMatchObject({
+      completedSteps: 1,
+      step: 'Run the tests',
+    })
+    expectPlanProgressConverges(projected)
+  })
+
+  it.each([
+    { plan: [], reason: 'withdrawn' },
+    { plan: [{ status: 'completed', step: 'Read the code' }], reason: 'finished' },
+  ])('narrates nothing once the plan is $reason', ({ plan }) => {
+    const projected = project([
+      ...threadBootstrapEvents(),
+      turnStartEvent('turn-1', requestedAt),
+      planActivity('activity-plan-1', [{ status: 'inProgress', step: 'Read the code' }]),
+      planActivity('activity-plan-2', plan, 'turn-1', revisedAt),
+    ])
+
+    expect(projected.shell?.planProgress).toBeNull()
+    expectPlanProgressConverges(projected)
+  })
+
+  it('falls back to the retained turn when a revert prunes the planning turn', () => {
+    const projected = project([
+      ...threadBootstrapEvents(),
+      turnStartEvent('turn-1', requestedAt),
+      planActivity('activity-plan-1', [
+        { status: 'completed', step: 'Read the code' },
+        { status: 'inProgress', step: 'Sketch the fix' },
+      ]),
+      turnDiffCompletedEvent({ checkpointTurnCount: 1, turnId: 'turn-1' }),
+      turnStartEvent('turn-2', startedAt),
+      planActivity(
+        'activity-plan-2',
+        [{ status: 'inProgress', step: 'Run the tests' }],
+        'turn-2',
+        startedAt,
+      ),
+      turnDiffCompletedEvent({ checkpointTurnCount: 2, turnId: 'turn-2' }),
+      pendingEvent(
+        'thread.reverted',
+        { revertedAt: settledAt, threadId: THREAD_ID, turnCount: 1 },
+        settledAt,
+      ),
+    ])
+
+    expect(projected.shell?.planProgress).toEqual({
+      completedSteps: 1,
+      step: 'Sketch the fix',
+      totalSteps: 2,
+      turnId: 'turn-1',
+    })
+    expectPlanProgressConverges(projected)
+  })
+
   it('does not duplicate assistant text when a catch-up dies before its cursor advances', () => {
     const fixture = createProjectionFixture()
     fixtures.push(fixture)
@@ -282,11 +406,47 @@ function project(events: PendingOrchestrationEvent[]) {
 
   const appended = fixture.append(events)
   fixture.pipeline.applyEvents(appended)
+  // The production reader, not a hand-read column: a projected field only counts
+  // once the delta a rail row actually receives carries it.
+  const reader = createShellRowReader(fixture.snapshots, fixture.database)
+  reader.beginWindow()
 
   return {
     memory: projectedThread(projectEvents(appended)),
+    shell: reader.threadShell(THREAD_ID),
     sqlThread: projectedThread(fixture.snapshots.fullReadModel()),
   }
+}
+
+/**
+ * The projected column against the same fold run over each read model's own
+ * retained activities. Asserting only the column is how a projection that
+ * forgets to refold — after a revert, say — ships looking correct.
+ */
+function expectPlanProgressConverges(projected: ReturnType<typeof project>) {
+  expect(projected.shell?.planProgress ?? null).toEqual(
+    threadPlanProgress(projected.memory.activities),
+  )
+  expect(projected.shell?.planProgress ?? null).toEqual(
+    threadPlanProgress(projected.sqlThread.activities),
+  )
+}
+
+function planActivity(
+  id: string,
+  plan: ReadonlyArray<{ status: string; step: string }>,
+  turnId = 'turn-1',
+  createdAt?: string,
+) {
+  return activityAppendedEvent({
+    createdAt,
+    id,
+    kind: 'turn.plan.updated',
+    payload: { explanation: null, plan },
+    summary: 'Plan updated',
+    tone: 'thinking',
+    turnId,
+  })
 }
 
 function projectedThread(model: OrchestrationReadModel) {

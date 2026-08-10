@@ -3,10 +3,8 @@ import {
   type ClientOrchestrationCommand,
   type OrchestrationReplayEventsInput,
   type OrchestrationReplayEventsResult,
-  type OrchestrationShellSnapshot,
   type OrchestrationShellStreamItem,
   type OrchestrationThreadDetailPage,
-  type OrchestrationThreadDetailSnapshot,
   type OrchestrationThreadStreamItem,
   type OrchestrationWsClientMessage,
   type OrchestrationWsError,
@@ -97,56 +95,6 @@ export class OrchestrationRpcClient {
       (result) => ({
         deduped: result.deduped,
         sequence: result.sequence,
-      }),
-    )
-  }
-
-  shellSnapshot() {
-    return observeClientOperation(
-      {
-        action: 'chat.shell_snapshot.rpc',
-        area: 'chat',
-      },
-      async () => {
-        const request: OrchestrationWsRequest = {
-          kind: 'request',
-          method: 'shellSnapshot',
-          requestId: this.nextRequestId('shellSnapshot'),
-        }
-
-        return this.sendRequest<OrchestrationShellSnapshot>(request)
-      },
-      (snapshot) => ({
-        projectCount: snapshot.projects.length,
-        snapshotSequence: snapshot.snapshotSequence,
-        threadCount: snapshot.threads.length,
-      }),
-    )
-  }
-
-  threadDetailSnapshot(threadId: ThreadId) {
-    return observeClientOperation(
-      {
-        action: 'chat.thread_detail_snapshot.rpc',
-        area: 'chat',
-        threadId,
-      },
-      async () => {
-        const request: OrchestrationWsRequest = {
-          kind: 'request',
-          method: 'threadDetailSnapshot',
-          requestId: this.nextRequestId('threadDetailSnapshot'),
-          threadId,
-        }
-
-        return this.sendRequest<OrchestrationThreadDetailSnapshot>(request)
-      },
-      (snapshot) => ({
-        activityCount: snapshot.thread.activities.length,
-        latestTurnState: snapshot.thread.latestTurn?.state ?? null,
-        messageCount: snapshot.thread.messages.length,
-        sessionStatus: snapshot.thread.session?.status ?? null,
-        snapshotSequence: snapshot.snapshotSequence,
       }),
     )
   }
@@ -708,8 +656,6 @@ export const dispatchOrchestrationCommandRpc = localOrchestrationRpcClient.dispa
 )
 export const fetchOrchestrationThreadDetailPageRpc =
   localOrchestrationRpcClient.threadDetailPage.bind(localOrchestrationRpcClient)
-export const fetchOrchestrationThreadDetailSnapshotRpc =
-  localOrchestrationRpcClient.threadDetailSnapshot.bind(localOrchestrationRpcClient)
 export const replayOrchestrationEventsRpc = localOrchestrationRpcClient.replayEvents.bind(
   localOrchestrationRpcClient,
 )

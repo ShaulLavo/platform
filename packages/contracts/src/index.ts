@@ -26,6 +26,7 @@ export type {
   GitBranch,
   GitBranchDiffResult,
   GitBranchesResult,
+  GitCommitProgressEvent,
   GitCommitResult,
   GitDiffHunk,
   GitFileDiff,

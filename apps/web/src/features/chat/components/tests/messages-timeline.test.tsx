@@ -181,6 +181,58 @@ test('a thread the server sent whole offers nothing even at the top', () => {
   expect(screen.queryByRole('button', { name: 'Load earlier' })).not.toBeInTheDocument()
 })
 
+test('the turn rail appears only once there is a transcript to navigate', () => {
+  const { rerender } = renderTimeline(conversation(3))
+  // A rail beside three messages is noise: they are one flick apart.
+  expect(screen.queryByRole('navigation', { name: 'Turns' })).not.toBeInTheDocument()
+
+  rerender(timelineOf(conversation(13)))
+
+  expect(minimapMarks()).toHaveLength(13)
+})
+
+test('the rail says which turn the viewport is over', () => {
+  renderTimeline(conversation(13))
+
+  fireEvent.click(minimapMark(1, 13))
+  fireEvent.scroll(transcript())
+
+  expect(minimapMarks().filter((mark) => mark.getAttribute('aria-current') === 'true')).toEqual([
+    minimapMark(1, 13),
+  ])
+})
+
+test('jumping to a turn parks it at the top and stops following', () => {
+  renderTimeline(conversation(13))
+
+  fireEvent.click(minimapMark(5, 13))
+  fireEvent.scroll(transcript())
+
+  expect(rowOffsetInViewport(4)).toBe(TIMELINE_ANCHOR_OFFSET_PX)
+  // A jump is navigation: the transcript must not yank back to the live edge.
+  expect(jumpToLatest()).not.toHaveClass('opacity-0')
+})
+
+test('the rail is walkable by keyboard, one tab stop for the whole map', () => {
+  renderTimeline(conversation(13))
+  const first = minimapMark(1, 13)
+  first.focus()
+
+  fireEvent.keyDown(first, { key: 'ArrowDown' })
+
+  expect(document.activeElement).toBe(minimapMark(2, 13))
+  expect(minimapMark(2, 13)).toHaveAttribute('tabindex', '0')
+  expect(minimapMark(1, 13)).toHaveAttribute('tabindex', '-1')
+})
+
+function minimapMarks() {
+  return screen.getAllByRole('button', { name: /^Jump to turn / })
+}
+
+function minimapMark(ordinal: number, total: number) {
+  return screen.getByRole('button', { name: `Jump to turn ${ordinal} of ${total}` })
+}
+
 function seedThreadWindow(messages: readonly OrchestrationMessage[], windowSize: number) {
   const thread = threadFactory({ latestTurn: null, messages: [...messages] })
 

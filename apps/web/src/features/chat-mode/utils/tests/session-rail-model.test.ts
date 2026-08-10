@@ -475,6 +475,65 @@ test('counts unread sessions onto the project band', () => {
   expect(model.groups[0]?.project.unreadCount).toBe(1)
 })
 
+test('narrates the step of a running plan, and nothing once the turn that wrote it ends', () => {
+  const planning = {
+    completedSteps: 2,
+    step: 'run the migration',
+    totalSteps: 5,
+    turnId: v.parse(turnIdSchema, 'turn-planning'),
+  }
+  const running = threadSummary({
+    id: 'thread-running',
+    latestTurn: runningTurn('turn-planning'),
+    planProgress: planning,
+  })
+  const settled = threadSummary({
+    id: 'thread-settled',
+    latestTurn: {
+      ...runningTurn('turn-planning'),
+      completedAt: '2026-05-01T00:00:03Z',
+      state: 'completed' as const,
+    },
+    planProgress: planning,
+  })
+  // The fold keeps the plan, so a thread that has since started answering an
+  // unrelated question still carries the old turn's steps.
+  const movedOn = threadSummary({
+    id: 'thread-moved-on',
+    latestTurn: runningTurn('turn-later'),
+    planProgress: planning,
+  })
+
+  const model = sessionRailModel({
+    projects: [chatProject({ id: platformId })],
+    threads: [running, settled, movedOn].map((thread) => ({ ...thread, projectId: platformId })),
+  })
+  const progressById = Object.fromEntries(
+    model.sessions.map((session) => [session.id, session.planProgress]),
+  )
+
+  // Step 3 of 5, not 2: `completedSteps` counts what is done, and a row that
+  // says "2 of 5" while working on the third reads as one step behind.
+  expect(progressById['thread-running']).toEqual({
+    step: 'run the migration',
+    stepNumber: 3,
+    totalSteps: 5,
+  })
+  expect(progressById['thread-settled']).toBeNull()
+  expect(progressById['thread-moved-on']).toBeNull()
+})
+
+function runningTurn(turnId: string) {
+  return {
+    assistantMessageId: null,
+    completedAt: null,
+    requestedAt: '2026-05-01T00:00:01Z',
+    startedAt: '2026-05-01T00:00:02Z',
+    state: 'running' as const,
+    turnId: v.parse(turnIdSchema, turnId),
+  }
+}
+
 function threadSummary({
   id,
   ...overrides

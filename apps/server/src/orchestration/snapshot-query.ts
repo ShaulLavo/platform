@@ -22,6 +22,7 @@ import {
   type ChatAttachment,
   type ModelSelection,
   type OrchestrationLatestTurn,
+  type OrchestrationThreadShell,
   type OrchestrationProject,
   type OrchestrationSession,
   type OrchestrationShellSnapshot,
@@ -377,6 +378,10 @@ function shellThreadFromRow(row: ProjectionThreadRow, session?: ProjectionThread
     modelSelection: parseJson<ModelSelection>(row.modelSelectionJson),
     pendingApprovalCount: row.pendingApprovalCount,
     pendingUserInputCount: row.pendingUserInputCount,
+    // The cold read has to carry it too, or a reload leaves a thread that is
+    // mid-plan showing a coarse spinner until its next plan snapshot arrives —
+    // seconds during a live turn, and forever once the turn stops planning.
+    planProgress: parseJson<OrchestrationThreadShell['planProgress']>(row.planProgressJson, null),
     pinOrderKey: row.pinOrderKey,
     pinnedAt: row.pinnedAt,
     projectId: row.projectId,

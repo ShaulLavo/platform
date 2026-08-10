@@ -1,5 +1,5 @@
 import * as v from 'valibot'
-import { commandIdSchema, projectIdSchema, threadIdSchema } from './chat-ids'
+import { commandIdSchema, projectIdSchema, threadIdSchema, turnIdSchema } from './chat-ids'
 import {
   isoDateTimeSchema,
   nonNegativeIntegerSchema,
@@ -22,6 +22,23 @@ import {
 
 export const orchestrationProjectShellSchema = v.omit(orchestrationProjectSchema, ['deletedAt'])
 
+/**
+ * The kernel of a plan, sized for a rail row: which step the thread is on and
+ * how far the plan got. The steps themselves stay in the timeline — "step 3 of
+ * 7: running tests" needs three fields, not the plan, and the shell is read for
+ * every thread on every delta.
+ *
+ * `turnId` is the honesty gate. A plan belongs to the turn that wrote it, so a
+ * reader can refuse to narrate it once a newer turn is running; null when the
+ * provider reported the plan outside any turn.
+ */
+export const orchestrationThreadPlanProgressSchema = v.object({
+  turnId: v.nullable(turnIdSchema),
+  step: trimmedNonEmptyStringSchema,
+  completedSteps: nonNegativeIntegerSchema,
+  totalSteps: nonNegativeIntegerSchema,
+})
+
 export const orchestrationThreadShellSchema = v.object({
   id: threadIdSchema,
   projectId: projectIdSchema,
@@ -40,6 +57,14 @@ export const orchestrationThreadShellSchema = v.object({
   pendingApprovalCount: nonNegativeIntegerSchema,
   pendingUserInputCount: nonNegativeIntegerSchema,
   hasActionableProposedPlan: v.boolean(),
+  /**
+   * Absent and null both mean "nothing to narrate": no plan, a withdrawn one, or
+   * one whose every step is done. Optional rather than defaulted because the
+   * shell has more than one producer — only the delta row reader projects the
+   * column today, and a producer that says nothing must not be readable as a
+   * producer that said "no plan".
+   */
+  planProgress: v.optional(v.nullable(orchestrationThreadPlanProgressSchema)),
 })
 
 export const orchestrationShellSnapshotSchema = v.object({
@@ -209,6 +234,9 @@ export type OrchestrationThreadDetailPage = v.InferOutput<
   typeof orchestrationThreadDetailPageSchema
 >
 export type OrchestrationProjectShell = v.InferOutput<typeof orchestrationProjectShellSchema>
+export type OrchestrationThreadPlanProgress = v.InferOutput<
+  typeof orchestrationThreadPlanProgressSchema
+>
 export type OrchestrationThreadShell = v.InferOutput<typeof orchestrationThreadShellSchema>
 export type OrchestrationShellSnapshot = v.InferOutput<typeof orchestrationShellSnapshotSchema>
 export type OrchestrationThreadDetailSnapshot = v.InferOutput<

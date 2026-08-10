@@ -32,6 +32,7 @@ export const platformMigrations: readonly Migration[] = [
   { version: 3, name: 'app_settings', up: applyAppSettings },
   { version: 4, name: 'thread_lifecycle_columns', up: applyThreadLifecycleColumns },
   { version: 5, name: 'project_order_key', up: applyProjectOrderKey },
+  { version: 6, name: 'thread_plan_progress', up: applyThreadPlanProgress },
 ]
 
 /**
@@ -481,6 +482,17 @@ function applyThreadLifecycleColumns(database: PlatformDatabase) {
  */
 function applyProjectOrderKey(database: PlatformDatabase) {
   database.run(sql`ALTER TABLE projection_projects ADD COLUMN order_key TEXT`)
+}
+
+/**
+ * Which plan step a thread is on, as a projected column rather than a scan: the
+ * shell delta reader serves one row per event, and folding a thread's activity
+ * history there is what the row reader exists to avoid. Nullable with no
+ * default — a thread that has never planned carries nothing, which is exactly
+ * what the fold yields for it.
+ */
+function applyThreadPlanProgress(database: PlatformDatabase) {
+  database.run(sql`ALTER TABLE projection_threads ADD COLUMN plan_progress_json TEXT`)
 }
 
 function createProviderRuntimeTables(database: PlatformDatabase) {

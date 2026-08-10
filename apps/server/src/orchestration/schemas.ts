@@ -38,6 +38,7 @@ export {
   type OrchestrationShellStreamItem,
   type OrchestrationThread,
   type OrchestrationThreadActivity,
+  type OrchestrationThreadShell,
   type OrchestrationThreadDetailPage,
   type OrchestrationThreadDetailPageInput,
   type OrchestrationThreadDetailSnapshot,

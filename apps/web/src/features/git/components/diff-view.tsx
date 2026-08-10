@@ -8,6 +8,7 @@ import type { DiffDocumentInfo } from '../diff-document'
 import { useDiffDocumentDiffs } from '../hooks/use-diff-document-diffs'
 import { emptyDiffNotice, unrenderableDiffNotice } from '../utils/diff-presentation'
 import { editorDiffFiles } from '../utils/editor-diff-files'
+import { DiffLineCommentAction } from './diff-line-comment-action'
 import { DiffNotice } from './diff-notice'
 
 /**
@@ -38,6 +39,9 @@ export function DiffView({
   // A binary file and a pure rename both come back as a file entry with no
   // hunks, so "we got diffs" is not the same as "there is something to draw".
   const ready = !failure && !pending && files.some((file) => file.hunks.length > 0)
+  // `files[0]` rather than a selection of our own: the file list is off, so the
+  // view's own `selectedPathForFiles` can only ever settle on the first file.
+  const commentedFile = files[0]
 
   // `ready` is a dependency because the container only exists once there is a
   // diff to show — without it the view would never be built for the very first
@@ -79,5 +83,16 @@ export function DiffView({
     return <DiffNotice message={unrenderableDiffNotice(diffs, documentInfo, rootPath)} />
   }
 
-  return <div className='h-full min-h-0 w-full min-w-0 overflow-hidden' ref={containerRef} />
+  return (
+    <div className='relative h-full min-h-0 w-full min-w-0 overflow-hidden'>
+      <div className='h-full w-full' ref={containerRef} />
+      {commentedFile && (
+        <DiffLineCommentAction
+          file={commentedFile}
+          hostRef={containerRef}
+          key={commentedFile.path}
+        />
+      )}
+    </div>
+  )
 }

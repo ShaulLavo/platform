@@ -4,6 +4,7 @@ import { Input } from '@workspace/ui/components/input'
 import type { KeyboardEvent } from 'react'
 
 import { useCommitAction, useSyncChangesMutation } from '../hooks'
+import { CommitProgress } from './commit-progress'
 import type { RepositoryInfo } from '../types'
 import { canSyncChanges, syncChangesLabel } from '../utils/repository'
 
@@ -76,6 +77,7 @@ export function CommitControls({
           </Button>
         )}
       </div>
+      <CommitProgress rootPath={rootPath} />
     </>
   )
 }

@@ -4,6 +4,7 @@ import {
   orchestrationCheckpointSummarySchema,
   orchestrationProposedPlanSchema,
   orchestrationThreadDetailSnapshotSchema,
+  orchestrationThreadShellSchema,
 } from '../index'
 
 const now = '2026-05-24T00:00:00.000Z'
@@ -23,6 +24,26 @@ const thread = {
   messages: [],
   activities: [],
   session: null,
+}
+
+const threadShell = {
+  id: 'thread-1',
+  projectId: 'project-1',
+  title: 'Thread',
+  modelSelection: { model: 'gpt-5-codex', providerInstanceId: 'codex' },
+  runtimeMode: 'full-access',
+  interactionMode: 'default',
+  branch: null,
+  worktreePath: null,
+  latestTurn: null,
+  createdAt: now,
+  updatedAt: now,
+  archivedAt: null,
+  session: null,
+  latestUserMessageAt: null,
+  pendingApprovalCount: 0,
+  pendingUserInputCount: 0,
+  hasActionableProposedPlan: false,
 }
 
 const plan = {
@@ -80,5 +101,45 @@ describe('thread detail snapshot contract', () => {
 
     expect(files).toHaveLength(1)
     expect(() => v.parse(orchestrationCheckpointSummarySchema, withoutFiles as unknown)).toThrow()
+  })
+})
+
+describe('thread shell plan progress contract', () => {
+  it('carries the step a rail row narrates instead of a spinner', () => {
+    const parsed = v.parse(orchestrationThreadShellSchema, {
+      ...threadShell,
+      planProgress: { turnId: 'turn-1', step: 'Run the tests', completedSteps: 2, totalSteps: 7 },
+    } as unknown)
+
+    expect(parsed.planProgress).toEqual({
+      turnId: 'turn-1',
+      step: 'Run the tests',
+      completedSteps: 2,
+      totalSteps: 7,
+    })
+  })
+
+  it('leaves a producer that sends no plan progress distinguishable from "no plan"', () => {
+    const parsed = v.parse(orchestrationThreadShellSchema, threadShell as unknown)
+
+    expect(parsed.planProgress).toBeUndefined()
+  })
+
+  it('keeps a plan the provider reported outside any turn', () => {
+    const parsed = v.parse(orchestrationThreadShellSchema, {
+      ...threadShell,
+      planProgress: { turnId: null, step: 'Draft the plan', completedSteps: 0, totalSteps: 3 },
+    } as unknown)
+
+    expect(parsed.planProgress?.turnId).toBeNull()
+  })
+
+  it('rejects a blank step, which would render as a narration of nothing', () => {
+    expect(() =>
+      v.parse(orchestrationThreadShellSchema, {
+        ...threadShell,
+        planProgress: { turnId: 'turn-1', step: '   ', completedSteps: 0, totalSteps: 3 },
+      } as unknown),
+    ).toThrow()
   })
 })

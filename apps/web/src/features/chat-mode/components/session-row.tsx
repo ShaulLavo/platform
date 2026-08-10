@@ -100,12 +100,34 @@ export function SessionRow({
               {formatChatRelativeTime(session.activityAt, nowMs)}
             </span>
           </span>
-          {sessionBranch(session)}
+          {sessionSubline(session)}
           <SessionRowSnippet threadId={session.id} />
         </button>
       }
     />
   )
+}
+
+/**
+ * One subline, not two: the row is a recall aid, and stacking a branch under a
+ * step turns a dense list into a three-line one. A plan step wins while it is
+ * running because it is the answer to "what is this doing", and the branch is
+ * still on the header of the session once it is opened.
+ */
+function sessionSubline(session: SessionRailItem) {
+  const progress = session.planProgress
+  if (progress) {
+    return (
+      <span className='flex min-w-0 items-center gap-1.5 pl-[14px] text-[11px] leading-4 opacity-60'>
+        <span className='shrink-0 tabular-nums'>
+          {progress.stepNumber}/{progress.totalSteps}
+        </span>
+        <span className='truncate'>{progress.step}</span>
+      </span>
+    )
+  }
+
+  return sessionBranch(session)
 }
 
 /** The project name lives on the group header now, so the row only carries the branch. */

@@ -27,9 +27,18 @@ import {
   type TimelineScrollState,
   type TimelineViewportMetrics,
 } from '../utils/timeline-scroll-anchoring'
+import {
+  shouldShowTimelineMinimap,
+  timelineMinimapActiveMarkId,
+  timelineMinimapMarks,
+  timelineMinimapScrollTop,
+  timelineMinimapViewportBand,
+  type TimelineMinimapMark,
+} from '../utils/timeline-minimap'
 import { useThreadEarlierPage } from '../hooks/use-thread-earlier-page'
 import { ChatWelcomeView } from './chat-welcome-view'
 import { TimelineLoadEarlier } from './timeline-load-earlier'
+import { TimelineMinimap } from './timeline-minimap'
 import { TimelineRow } from './timeline-row'
 
 const CHAT_TIMELINE_OVERSCAN = 6
@@ -184,6 +193,37 @@ export function MessagesTimeline({
     })
   }
 
+  function handleMinimapSelect(mark: TimelineMinimapMark) {
+    if (!scrollElement) return
+
+    const scrollTop = timelineMinimapScrollTop({
+      mark,
+      topInset: TIMELINE_ANCHOR_OFFSET_PX,
+      viewport: readTimelineViewport(scrollElement),
+    })
+    // A jump is a navigation gesture like any other, so it breaks follow before
+    // moving — otherwise the end-follow effect pulls the viewport straight back
+    // on the commit that follows. It does not release the anchor or re-arm
+    // anything itself: landing on the content end re-arms follow through the
+    // same scroll rule every other gesture obeys.
+    dispatch({ type: 'user-navigated' })
+    virtualizer.scrollToOffset(scrollTop, { behavior: 'auto' })
+  }
+
+  // The virtualizer already re-renders this component on every scroll, so its
+  // own tracked geometry is the cheapest honest read of the viewport: no DOM
+  // measurement during render, and the same coordinate space as the rows.
+  const minimapViewport: TimelineViewportMetrics = {
+    contentHeight: virtualizer.getTotalSize(),
+    scrollTop: virtualizer.scrollOffset ?? 0,
+    viewportHeight: virtualizer.scrollRect?.height ?? 0,
+  }
+  const minimapMarks = timelineMinimapMarks({
+    contentHeight: minimapViewport.contentHeight,
+    items,
+    rows: virtualizer.measurementsCache,
+  })
+
   return (
     <div className='relative min-h-0 flex-1'>
       <div
@@ -228,6 +268,20 @@ export function MessagesTimeline({
           </div>
         </div>
       </div>
+      {shouldShowTimelineMinimap({
+        markCount: minimapMarks.length,
+        viewport: minimapViewport,
+      }) ? (
+        <TimelineMinimap
+          activeMarkId={timelineMinimapActiveMarkId({
+            marks: minimapMarks,
+            viewport: minimapViewport,
+          })}
+          band={timelineMinimapViewportBand(minimapViewport)}
+          marks={minimapMarks}
+          onSelect={handleMinimapSelect}
+        />
+      ) : null}
       {canLoadEarlier ? (
         <TimelineLoadEarlier
           error={earlierPage.error}

@@ -1282,6 +1282,7 @@ function sidebarSummaryFromThreadShell(
     pendingApprovalCount: thread.pendingApprovalCount,
     pendingUserInputCount: thread.pendingUserInputCount,
     pinOrderKey,
+    planProgress: thread.planProgress,
     projectId: thread.projectId,
     session: thread.session,
     title: thread.title,

@@ -14,6 +14,7 @@ import {
   gitWorktreeCreateBodySchema,
   gitWorktreeRemoveBodySchema,
 } from './contracts'
+import { toSse } from '../sse'
 import type { GitService } from './service'
 import { GitWorktreeService } from './worktrees'
 
@@ -70,6 +71,19 @@ export function gitRoutes(git: GitService) {
       .post('/commit', ({ body }) => git.commit(body), {
         body: gitCommitBodySchema,
       })
+      // Streamed rather than awaited: a commit runs the repository's hooks, and
+      // a slow hook is only distinguishable from a stuck one if its output
+      // arrives while it is still running.
+      .post(
+        '/commit-stream',
+        ({ body }) =>
+          toSse(git.commitProgress(body), {
+            event: (event) => event.kind,
+          }),
+        {
+          body: gitCommitBodySchema,
+        },
+      )
       .post('/checkout', ({ body }) => git.checkout(body), {
         body: gitCheckoutBodySchema,
       })

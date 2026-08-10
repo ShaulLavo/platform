@@ -4,6 +4,7 @@ import { FsError } from '../fs/errors'
 import type { WorkspacePath, WorkspacePaths } from '../fs/path'
 import { toPosix } from '../fs/path'
 import { elapsedMs, limitText, recordGitCommand, recordRequestContext } from '../observability'
+import type { GitCommitProgressEvent } from '@workspace/contracts'
 import { parseBranches } from './branches'
 import { commandOutput, gitErrorMessage } from './command'
 import { commitMessageTemplate } from './commit-message'
@@ -30,6 +31,7 @@ import {
   MAX_OUTPUT_BYTES,
   processLimitError,
   runProcess,
+  streamProcess,
   type GitProcessResult,
 } from './utils/process'
 import type {
@@ -427,6 +429,59 @@ export class GitService {
       kind: 'committed' as const,
       output: result.stdout.trim(),
       repository: repository.info,
+    }
+  }
+
+  /**
+   * The same commit, reported while it runs. Hooks are the reason: they can take
+   * tens of seconds and they write as they go, so the difference between "slow"
+   * and "stuck" only exists if their output reaches the user before the process
+   * exits.
+   *
+   * Yields its own failures as a `failed` frame rather than throwing. The
+   * response has already begun by the time a hook rejects, so there is no status
+   * code left to carry the error — the stream is the only channel there is.
+   */
+  async *commitProgress(body: GitCommitBody): AsyncGenerator<GitCommitProgressEvent> {
+    recordGitServiceOperation('commit_progress', body.path, {
+      messageBytes: Buffer.byteLength(body.message, 'utf8'),
+    })
+    const repository = await this.requiredRepository(body.path)
+    const message = body.message.trim()
+    if (!message) {
+      yield { kind: 'result', result: await this.openCommitMessage(repository) }
+      return
+    }
+
+    let lineCount = 0
+    for await (const event of streamProcess({
+      args: ['commit', '-m', message],
+      cwd: repository.rootAbsolutePath,
+    })) {
+      if (event.kind === 'line') {
+        lineCount += 1
+        yield { kind: 'progress', stream: event.line.stream, text: event.line.text }
+        continue
+      }
+
+      // Counted, never echoed: hook output is repository content and belongs in
+      // the response, not in the server's logs.
+      recordRequestContext({ git: { commitOutputLines: lineCount } })
+      if (event.limit) {
+        yield { kind: 'failed', message: processLimitError(event.limit, 'commit').message }
+        return
+      }
+      if (event.exitCode !== 0) {
+        // A non-zero commit is the ordinary "hook rejected this" path, and the
+        // lines above already said why.
+        yield { kind: 'failed', message: `git commit exited with code ${event.exitCode}` }
+        return
+      }
+
+      yield {
+        kind: 'result',
+        result: { kind: 'committed', output: '', repository: repository.info },
+      }
     }
   }
 
