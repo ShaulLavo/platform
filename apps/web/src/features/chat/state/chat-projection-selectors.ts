@@ -2,7 +2,7 @@ import type {
   OrchestrationLatestTurn,
   OrchestrationThreadActivity,
   OrchestrationThreadDetailAnchor,
-  OrchestrationThreadDetailPageInput,
+  OrchestrationWsThreadDetailPageInput,
   OrchestrationProjectShell,
   OrchestrationSession,
   ProjectId,
@@ -268,7 +268,9 @@ export function selectChatThreadHasEarlier(
 export function chatThreadEarlierPageInput(
   state: ChatProjectionState,
   threadId: ThreadId,
-): OrchestrationThreadDetailPageInput {
+  // The wire type, not the schema's `InferInput`: the latter widens `threadId`
+  // back to a plain string and the transport would reject the branded id.
+): OrchestrationWsThreadDetailPageInput {
   return {
     beforeActivity: anchorFrom(selectChatActivitiesForThread(state, threadId)[0]),
     beforeMessage: anchorFrom(selectChatMessagesForThread(state, threadId)[0]),

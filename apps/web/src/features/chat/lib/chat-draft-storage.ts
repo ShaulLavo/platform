@@ -9,17 +9,17 @@ import * as v from 'valibot'
 export const CHAT_INPUT_DRAFT_STORAGE_KEY = 'platform.chat-input-drafts.v1'
 const CHAT_INPUT_DRAFT_STORAGE_VERSION = 1
 
+/**
+ * The whole capture, not a rendered label: a restored draft has to be able to
+ * rebuild both the composer chip and the `<terminal_context>` block it sends.
+ */
+const lineNumberSchema = v.pipe(v.number(), v.integer(), v.minValue(1))
 const persistedTerminalContextSchema = v.object({
   id: trimmedNonEmptyStringSchema,
-  label: trimmedNonEmptyStringSchema,
-  value: trimmedNonEmptyStringSchema,
-})
-
-const draftPromotionSchema = v.object({
-  promotedThreadId: v.optional(trimmedNonEmptyStringSchema),
-  status: v.picklist(['idle', 'promoting', 'promoted']),
-  threadId: v.optional(trimmedNonEmptyStringSchema),
-  updatedAt: trimmedNonEmptyStringSchema,
+  lineEnd: lineNumberSchema,
+  lineStart: lineNumberSchema,
+  source: trimmedNonEmptyStringSchema,
+  text: trimmedNonEmptyStringSchema,
 })
 
 // Image attachments are deliberately absent: a draft is text-sized state, and a
@@ -29,7 +29,6 @@ const draftPromotionSchema = v.object({
 // `v.object` ignores unknown entries, so drafts written by the old schema still
 // parse — their `images` array is stripped instead of rehydrated.
 const persistedChatInputDraftSchema = v.object({
-  draftPromotion: v.optional(v.nullable(draftPromotionSchema), null),
   interactionMode: v.optional(v.nullable(interactionModeSchema), null),
   modelSelection: v.optional(v.nullable(modelSelectionSchema), null),
   prompt: v.optional(v.string(), ''),

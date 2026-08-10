@@ -81,6 +81,7 @@ export function ChatDraftView({
       interactionMode,
       modelSelection,
       runtimeMode,
+      terminalContexts,
       text,
     }: ChatInputSubmitPayload) => {
       if (!project) {
@@ -96,6 +97,7 @@ export function ChatDraftView({
         projectId: project.id,
         rootPath,
         runtimeMode,
+        terminalContexts,
         text,
       })
       const scope = createChatPipelineScope('chat.draft.dispatch.summary', {
@@ -106,6 +108,7 @@ export function ChatDraftView({
         projectId: project.id,
         providerInstanceId: modelSelection.providerInstanceId,
         runtimeMode,
+        terminalContextCount: terminalContexts.length,
         textLength: text.length,
       })
       const startedAt = performance.now()

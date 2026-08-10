@@ -1,4 +1,9 @@
-import type { OrchestrationProjectShell, ProjectId, ThreadId } from '@workspace/contracts'
+import type {
+  OrchestrationProjectShell,
+  OrchestrationThreadSearchMatch,
+  ProjectId,
+  ThreadId,
+} from '@workspace/contracts'
 
 import { projectQualifiers } from '@/features/chat/lib/project-qualifiers'
 import { threadStatus, type ThreadStatus } from '@/features/chat/lib/thread-status'
@@ -85,6 +90,16 @@ export type SessionRailModel = {
 
 const NO_PROJECT_IDS: readonly ProjectId[] = []
 const NO_ORDER_OVERRIDES: RailOrderOverrides = { projectOrderKeys: {}, sessionOrderKeys: {} }
+const NO_SEARCH_MATCHES: SessionSearchMatches = {}
+
+/**
+ * What the server found inside each thread's messages, keyed by thread. A thread the
+ * projection has not heard of simply never produces a row — the rail can only show
+ * sessions it already holds.
+ */
+export type SessionSearchMatches = Readonly<
+  Partial<Record<ThreadId, OrchestrationThreadSearchMatch>>
+>
 
 /**
  * Keys written by a drag that the server has not confirmed yet. Folding them in
@@ -104,6 +119,7 @@ export function sessionRailModel({
   projects,
   query = '',
   scope = null,
+  searchMatches = NO_SEARCH_MATCHES,
   seenByThreadId = {},
   threads,
   view = 'active',
@@ -116,6 +132,7 @@ export function sessionRailModel({
   readonly projects: readonly OrchestrationProjectShell[]
   readonly query?: string
   readonly scope?: SessionRailScope
+  readonly searchMatches?: SessionSearchMatches
   readonly seenByThreadId?: SessionSeenStamps
   readonly threads: readonly ChatSidebarThreadSummary[]
   readonly view?: SessionRailView
@@ -134,7 +151,7 @@ export function sessionRailModel({
     )
     .toSorted(compareSessionsForRail)
   const scoped = scope ? items.filter((item) => item.projectId === scope) : items
-  const sessions = matchingSessions(scoped, query)
+  const sessions = matchingSessions(scoped, query, searchMatches)
   const railProjects = projects
     .map((project) => withProjectOrderKey(project, orderOverrides.projectOrderKeys[project.id]))
     .toSorted(compareProjectsForRail)
@@ -237,15 +254,26 @@ function sessionRailGroups({
 }
 
 /**
- * Substring match over the fields the row actually shows. Deliberately not fuzzy: the
- * rail is a short recall list, and fuzzy ranking here surfaces sessions whose titles
- * share nothing visible with what was typed.
+ * Substring match over the fields the row actually shows, unioned with whatever the
+ * server found inside the messages. Deliberately not fuzzy: the rail is a short recall
+ * list, and fuzzy ranking here surfaces sessions whose titles share nothing visible
+ * with what was typed.
+ *
+ * The local half stays first-class rather than being replaced by the server: it is
+ * instant, it works while the request is in flight, and it still answers "which of
+ * these is the one on `fix/auth`" when the server is unreachable.
  */
-function matchingSessions(items: readonly SessionRailItem[], query: string) {
+function matchingSessions(
+  items: readonly SessionRailItem[],
+  query: string,
+  searchMatches: SessionSearchMatches,
+) {
   const needle = query.trim().toLowerCase()
   if (!needle) return items
 
-  return items.filter((item) => sessionSearchText(item).includes(needle))
+  return items.filter(
+    (item) => sessionSearchText(item).includes(needle) || Boolean(searchMatches[item.id]),
+  )
 }
 
 function sessionSearchText(item: SessionRailItem) {

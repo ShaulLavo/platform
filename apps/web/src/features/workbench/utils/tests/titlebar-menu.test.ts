@@ -8,8 +8,19 @@ const projects: readonly ProjectMenuEntry[] = [
   { qualifier: 'work', rootPath: '/work/web', title: 'web' },
 ]
 
-test('sections run project, view, then copy', () => {
-  expect(titlebarMenu(menuContext()).map((entry) => entry.id)).toEqual(['project', 'view', 'copy'])
+test('sections run project, view, settings, then copy', () => {
+  expect(titlebarMenu(menuContext()).map((entry) => entry.id)).toEqual([
+    'project',
+    'view',
+    'settings',
+    'copy',
+  ])
+})
+
+test('Settings stays offered with no workspace open', () => {
+  expect(labels(menuContext({ projects: [], workspacePath: null }), 'settings')).toEqual([
+    'Settings…',
+  ])
 })
 
 test('the project section leads with Open Folder, then Switch Project', () => {

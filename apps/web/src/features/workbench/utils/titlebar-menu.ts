@@ -5,6 +5,7 @@ import {
   DesktopIcon,
   FolderOpenIcon,
   FolderPlusIcon,
+  GearSixIcon,
   type Icon,
   MoonIcon,
   PaletteIcon,
@@ -87,6 +88,9 @@ export function titlebarMenu(context: TitlebarMenuContext): Menu {
           ]),
         ],
       }),
+    ]),
+    section('settings', [
+      commandItem('workspace.showSettings', { icon: GearSixIcon, label: 'Settings…' }),
     ]),
     section('copy', [
       actionItem({

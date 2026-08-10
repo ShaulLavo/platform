@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { useAttachTerminalContext } from '@/features/chat/hooks/use-attach-terminal-context'
 import { isClipboardReadBlocked } from '@/features/terminal/utils/clipboard'
 import {
   clearTerminal,
@@ -16,6 +17,7 @@ export function useTerminalMenu(target: TerminalMenuTarget) {
   // clipboard access from the omnibox at any time, and this hook only runs
   // while a menu is actually on screen.
   const [pasteBlocked, setPasteBlocked] = useState(false)
+  const attachTerminalContext = useAttachTerminalContext()
 
   useEffect(() => {
     let active = true
@@ -32,6 +34,11 @@ export function useTerminalMenu(target: TerminalMenuTarget) {
   }, [])
 
   return terminalMenu({
+    // Both read the snapshot taken when the menu opened, never the live
+    // terminal: ghostty drops the selection from a document `click` handler as
+    // the portalled item is pressed, so a run-time read is always empty.
+    askAgent: () => attachTerminalContext(target.contextSelection),
+    canAskAgent: target.contextSelection !== null,
     clear: () => clearTerminal(target.terminal),
     copySelection: () => void copyTextToClipboard(target.selection, 'selection'),
     hasScrollback: target.hasScrollback,

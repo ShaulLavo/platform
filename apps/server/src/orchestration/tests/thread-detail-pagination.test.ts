@@ -3,6 +3,7 @@ import {
   ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE,
   type OrchestrationThreadDetailAnchor,
 } from '@workspace/contracts'
+import { OrchestrationEngine } from '../engine'
 import type { OrchestrationSnapshotQuery } from '../snapshot-query'
 import {
   activityAppendedEvent,
@@ -136,6 +137,18 @@ describe('thread detail pagination', () => {
 
   it('rejects a page read for a thread that does not exist', () => {
     expect(() => snapshots.threadDetailPage({ threadId: 'thread-missing' })).toThrow()
+  })
+
+  it('is reachable from the engine, which is what the RPC method calls', () => {
+    // The page query is only useful if something client-facing can reach it;
+    // it spent a release complete and unexposed.
+    const engine = new OrchestrationEngine(fixture.database, { providerRuntime: false })
+    const page = engine.threadDetailPage({ limit: 3, threadId: THREAD_ID })
+
+    expect(page.messages.map((message) => message.id)).toEqual(
+      Array.from({ length: 3 }, (_, index) => messageId(MESSAGE_COUNT - 3 + index)),
+    )
+    expect(page.hasEarlier).toBe(true)
   })
 })
 

@@ -6,6 +6,7 @@ import { formatChatDateLabel } from '@/features/chat/lib/chat-formatters'
 import { threadStatusDotClass, threadStatusLabel } from '@/features/chat/lib/thread-status'
 import { SessionMenu } from '@/features/chat-mode/components/session-menu'
 import { SessionRename } from '@/features/chat-mode/components/session-rename'
+import { SessionRowSnippet } from '@/features/chat-mode/components/session-row-snippet'
 import { activateSessionRow } from '@/features/chat-mode/state/session-commands'
 import { useSessionMultiSelectStore } from '@/features/chat-mode/state/session-multi-select-store'
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
@@ -95,6 +96,7 @@ export function SessionRow({
             </span>
           </span>
           {sessionBranch(session)}
+          <SessionRowSnippet threadId={session.id} />
         </button>
       }
     />

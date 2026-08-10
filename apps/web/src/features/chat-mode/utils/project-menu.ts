@@ -1,0 +1,80 @@
+import {
+  ArchiveIcon,
+  CaretDownIcon,
+  CaretRightIcon,
+  CopyIcon,
+  FunnelIcon,
+  PlusIcon,
+  TrashIcon,
+} from '@phosphor-icons/react'
+
+import { actionItem, section, type Menu } from '@/features/menus/utils/model'
+
+export type ProjectMenuContext = {
+  /** False once every session is already filed away — archiving nothing is not an action. */
+  readonly canArchiveSessions: boolean
+  /** What the header is showing right now, so the item offers the flip, not a state. */
+  readonly collapsed: boolean
+  /** True when the rail already shows only this project. */
+  readonly scopedToProject: boolean
+  readonly archiveAllSessions: () => void
+  readonly copyPath: () => void
+  readonly deleteProject: () => void
+  readonly newSession: () => void
+  readonly scopeToProject: () => void
+  readonly toggleCollapsed: () => void
+}
+
+export function projectMenu(context: ProjectMenuContext): Menu {
+  return [
+    section('sessions', [
+      actionItem({
+        icon: PlusIcon,
+        id: 'newSession',
+        label: 'New Session in This Project',
+        run: context.newSession,
+      }),
+    ]),
+    section('manage', [
+      context.canArchiveSessions &&
+        actionItem({
+          icon: ArchiveIcon,
+          id: 'archiveAllSessions',
+          label: 'Archive All Sessions',
+          run: context.archiveAllSessions,
+        }),
+      actionItem({
+        destructive: true,
+        icon: TrashIcon,
+        id: 'deleteProject',
+        label: 'Delete Project',
+        run: context.deleteProject,
+      }),
+    ]),
+    section('view', [
+      // Dropped once the list is already narrowed to this project — same rule as the
+      // session menu: filtering to what you are looking at is a meaningless action.
+      !context.scopedToProject &&
+        actionItem({
+          icon: FunnelIcon,
+          id: 'scopeToProject',
+          label: 'Show Only This Project',
+          run: context.scopeToProject,
+        }),
+      actionItem({
+        icon: context.collapsed ? CaretDownIcon : CaretRightIcon,
+        id: 'toggleCollapsed',
+        label: context.collapsed ? 'Expand Project' : 'Collapse Project',
+        run: context.toggleCollapsed,
+      }),
+    ]),
+    section('copy', [
+      actionItem({
+        icon: CopyIcon,
+        id: 'copyPath',
+        label: 'Copy Path',
+        run: context.copyPath,
+      }),
+    ]),
+  ]
+}

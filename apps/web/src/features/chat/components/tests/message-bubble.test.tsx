@@ -46,6 +46,34 @@ test('a short user message is never collapsible', () => {
   expect(userMessageBody(container)?.dataset.userMessageCollapsible).toBe('false')
 })
 
+test('attached terminal output renders as a chip, never as raw markup', () => {
+  const { container } = renderBubble(
+    chatMessage({
+      role: 'user',
+      text: 'Why is this failing?\n\n<terminal_context>\n<selection source="terminal-1" lines="810-812">\nmake: *** [build] Error 1\n</selection>\n</terminal_context>',
+    }),
+  )
+
+  expect(container.textContent).not.toContain('<terminal_context>')
+  expect(container.textContent).not.toContain('<selection')
+  expect(userMessageBody(container)?.textContent).toContain('Why is this failing?')
+  expect(container.querySelector('[data-terminal-context-source="terminal-1"]')).not.toBeNull()
+  expect(container.textContent).toContain('lines 810-812')
+})
+
+test('a capture sent with no prompt still renders its chip', () => {
+  const { container } = renderBubble(
+    chatMessage({
+      role: 'user',
+      text: '<terminal_context>\n<selection source="terminal-1" lines="42">\nsegfault\n</selection>\n</terminal_context>',
+    }),
+  )
+
+  expect(userMessageBody(container)).toBeNull()
+  expect(container.querySelector('[data-terminal-context-source="terminal-1"]')).not.toBeNull()
+  expect(container.textContent).toContain('line 42')
+})
+
 test('only the terminal assistant message shows its metadata row', () => {
   const shown = renderBubble(chatMessage({ text: 'Done.' }), { showAssistantCopyButton: true })
   expect(shown.container.querySelector('[data-assistant-message-meta]')).not.toBeNull()

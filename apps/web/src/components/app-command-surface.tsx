@@ -2,6 +2,7 @@ import { AppKeymapController } from '@/app-keymap-controller'
 import { CommandPalette } from '@/components/command-palette'
 import { useEditorTabActions } from '@/features/editor/hooks/use-editor-tab-actions'
 import { useMenuCommand } from '@/features/menus/providers/command-context'
+import { SettingsDialog } from '@/features/settings/components/dialog'
 import { usePlatformCommandDispatch } from '@/keymap/commands'
 import type { PlatformKeyBinding } from '@/keymap/types'
 import { useCallback, useEffect, useState } from 'react'
@@ -14,13 +15,18 @@ export function AppCommandSurface({ bindings }: AppCommandSurfaceProps) {
   const { requestCloseTab } = useEditorTabActions()
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false)
   const [commandPaletteSearch, setCommandPaletteSearch] = useState('')
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const showCommandPalette = useCallback((initialSearch = '') => {
     setCommandPaletteSearch(initialSearch)
     setCommandPaletteOpen(true)
   }, [])
+  // Settings live here rather than in either layout so `Mod+,`, the titlebar
+  // item and the palette all reach the same dialog from workbench and chat.
+  const showSettings = useCallback(() => setSettingsOpen(true), [])
   const dispatchKeymapCommand = usePlatformCommandDispatch({
     requestCloseTab,
     showCommandPalette,
+    showSettings,
   })
   const setBindings = useMenuCommand((state) => state.setBindings)
   const setCommandDispatch = useMenuCommand((state) => state.setCommandDispatch)
@@ -48,6 +54,7 @@ export function AppCommandSurface({ bindings }: AppCommandSurfaceProps) {
         open={commandPaletteOpen}
         search={commandPaletteSearch}
       />
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </>
   )
 }

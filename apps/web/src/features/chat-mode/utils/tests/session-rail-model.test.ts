@@ -119,6 +119,71 @@ test('search reaches the branch a session is on', () => {
   expect(model.sessions.map((session) => session.id)).toEqual(['thread-a'])
 })
 
+test('a server match keeps a session whose title says nothing about the query', () => {
+  const model = sessionRailModel({
+    activeProjectId: platformId,
+    projects: [chatProject({ id: platformId })],
+    query: 'tokenizer',
+    searchMatches: {
+      [v.parse(threadIdSchema, 'thread-b')]: {
+        messageCreatedAt: '2026-05-09T09:00:00.000Z',
+        projectId: platformId,
+        snippet: 'rewrote the tokenizer fast path',
+        source: 'assistant',
+        threadId: v.parse(threadIdSchema, 'thread-b'),
+      },
+    },
+    threads: [
+      threadSummary({ id: 'thread-a', projectId: platformId, title: 'Tokenizer rewrite' }),
+      threadSummary({ id: 'thread-b', projectId: platformId, title: 'Friday cleanup' }),
+      threadSummary({ id: 'thread-c', projectId: platformId, title: 'Unrelated' }),
+    ],
+  })
+
+  expect(model.sessions.map((session) => session.id)).toEqual(['thread-a', 'thread-b'])
+})
+
+test('a match for a thread the projection never heard of produces no row', () => {
+  const model = sessionRailModel({
+    activeProjectId: platformId,
+    projects: [chatProject({ id: platformId })],
+    query: 'tokenizer',
+    searchMatches: {
+      [v.parse(threadIdSchema, 'thread-deleted')]: {
+        messageCreatedAt: '2026-05-09T09:00:00.000Z',
+        projectId: platformId,
+        snippet: 'tokenizer',
+        source: 'user',
+        threadId: v.parse(threadIdSchema, 'thread-deleted'),
+      },
+    },
+    threads: [threadSummary({ id: 'thread-a', projectId: platformId, title: 'Friday cleanup' })],
+  })
+
+  expect(model.sessions).toEqual([])
+})
+
+test('with no server matches the rail filters exactly as it always did', () => {
+  const threads = [
+    threadSummary({ id: 'thread-a', projectId: platformId, title: 'Fix the footer' }),
+    threadSummary({ id: 'thread-b', projectId: platformId, title: 'Rewrite the header' }),
+  ]
+  const withMatches = sessionRailModel({
+    projects: [chatProject({ id: platformId })],
+    query: 'footer',
+    searchMatches: {},
+    threads,
+  })
+  const withoutMatches = sessionRailModel({
+    projects: [chatProject({ id: platformId })],
+    query: 'footer',
+    threads,
+  })
+
+  expect(withMatches.sessions.map((session) => session.id)).toEqual(['thread-a'])
+  expect(withoutMatches.sessions.map((session) => session.id)).toEqual(['thread-a'])
+})
+
 test('the inbox omits archived sessions but still counts them', () => {
   const model = sessionRailModel({
     activeProjectId: platformId,

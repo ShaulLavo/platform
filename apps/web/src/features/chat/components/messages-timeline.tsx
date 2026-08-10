@@ -12,10 +12,12 @@ import type { ChatThread } from '../state/chat-projection-store'
 import type { OptimisticChatMessage } from '../state/chat-optimistic-store'
 import {
   initialTimelineScrollState,
+  isTimelineAtContentEnd,
   isTimelineWithinFollowBand,
   resolveTimelineAnchorItemId,
   timelineAnchoredTurnMetrics,
   timelineContentScrollsUp,
+  timelinePrependedScrollTop,
   timelineRemeasureScrollDelta,
   timelineScrollReducer,
   TIMELINE_ANCHOR_OFFSET_PX,
@@ -25,7 +27,9 @@ import {
   type TimelineScrollState,
   type TimelineViewportMetrics,
 } from '../utils/timeline-scroll-anchoring'
+import { useThreadEarlierPage } from '../hooks/use-thread-earlier-page'
 import { ChatWelcomeView } from './chat-welcome-view'
+import { TimelineLoadEarlier } from './timeline-load-earlier'
 import { TimelineRow } from './timeline-row'
 
 const CHAT_TIMELINE_OVERSCAN = 6
@@ -84,6 +88,14 @@ export function MessagesTimeline({
   })
   const virtualItems = virtualizer.getVirtualItems()
   const disclosureSettling = disclosureSettleTick !== null
+  const earlierPage = useThreadEarlierPage(thread.id)
+  // Offered only to a reader who has walked back to the oldest row held. Pinned
+  // to the live edge there is nothing to ask for, and an affordance floating
+  // over the newest message while the agent types is pure noise.
+  const canLoadEarlier =
+    earlierPage.hasEarlier &&
+    scrollState.followMode === 'free-scrolling' &&
+    virtualItems[0]?.index === 0
 
   useLayoutEffect(() => {
     // eslint-disable-next-line oxc-react-compiler/immutability -- virtual-core exposes this hook as an instance property, not a `useVirtualizer` option, so there is nowhere else to install it. The compiler already bails on this component (see the file header), so the freeze it is enforcing buys nothing here.
@@ -102,11 +114,28 @@ export function MessagesTimeline({
 
   useLayoutEffect(() => {
     dispatch({
+      firstItemId: items[0]?.id ?? null,
       latestUserItemId: resolveTimelineAnchorItemId(items),
       threadId: thread.id,
       type: 'items-changed',
     })
   }, [items, thread.id])
+
+  // Ahead of every other scroll effect: a page that landed above the viewport
+  // has already pushed the reader's row down, and anything that measures the
+  // viewport before this runs measures the wrong place.
+  useLayoutEffect(() => {
+    if (!scrollElement) return
+    if (!scrollState.prependedAboveItemId) return
+
+    absorbTimelinePrepend({
+      dispatch,
+      itemId: scrollState.prependedAboveItemId,
+      items,
+      scrollElement,
+      virtualizer,
+    })
+  }, [items, scrollElement, scrollState.prependedAboveItemId, virtualizer])
 
   useLayoutEffect(() => {
     if (!scrollElement) return
@@ -150,11 +179,8 @@ export function MessagesTimeline({
     if (!scrollElement) return
 
     dispatch({
+      atContentEnd: isTimelineAtContentEnd(readTimelineViewport(scrollElement)),
       type: 'scrolled',
-      withinFollowBand: isTimelineWithinFollowBand(
-        readTimelineViewport(scrollElement),
-        TIMELINE_COMPOSER_INSET_PX + scrollState.anchoredEndSpace,
-      ),
     })
   }
 
@@ -202,6 +228,13 @@ export function MessagesTimeline({
           </div>
         </div>
       </div>
+      {canLoadEarlier ? (
+        <TimelineLoadEarlier
+          error={earlierPage.error}
+          pending={earlierPage.pending}
+          onLoad={earlierPage.loadEarlier}
+        />
+      ) : null}
       <Button
         aria-label='Scroll to latest message'
         className={cn(
@@ -218,6 +251,41 @@ export function MessagesTimeline({
       </Button>
     </div>
   )
+}
+
+/**
+ * Puts the reader back where they were after a page landed in front of the
+ * transcript. Absorbed in one move rather than left to the browser: our own
+ * `overflowAnchor: none` is what rules the browser's out.
+ */
+function absorbTimelinePrepend({
+  dispatch,
+  itemId,
+  items,
+  scrollElement,
+  virtualizer,
+}: {
+  dispatch: Dispatch<TimelineScrollEvent>
+  itemId: string
+  items: readonly ChatTimelineItem[]
+  scrollElement: HTMLDivElement
+  virtualizer: TimelineVirtualizer
+}) {
+  const index = items.findIndex((item) => item.id === itemId)
+  if (index < 0) {
+    dispatch({ type: 'prepend-absorbed' })
+    return
+  }
+
+  const scrollTop = timelinePrependedScrollTop({
+    anchorRow: virtualizer.measurementsCache[index],
+    scrollTop: readTimelineViewport(scrollElement).scrollTop,
+    topInset: TIMELINE_TOP_INSET_PX,
+  })
+  dispatch({ type: 'prepend-absorbed' })
+  if (scrollTop === null) return
+
+  virtualizer.scrollToOffset(scrollTop, { behavior: 'auto' })
 }
 
 function applyTimelineScroll({

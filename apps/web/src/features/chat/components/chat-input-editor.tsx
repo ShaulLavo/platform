@@ -20,7 +20,7 @@ export function ChatInputEditor({
   busy,
   disabled,
   draftKey,
-  hasAttachments,
+  hasStagedContent,
   onCommandMenuCommit,
   onCommandMenuMove,
   onEditorReady,
@@ -37,7 +37,7 @@ export function ChatInputEditor({
   busy: boolean
   disabled: boolean
   draftKey: string
-  hasAttachments: boolean
+  hasStagedContent: boolean
   onCommandMenuCommit: () => boolean
   onCommandMenuMove: (offset: number) => boolean
   onEditorReady: (editor: LexicalEditor | null) => void
@@ -104,7 +104,7 @@ export function ChatInputEditor({
         busy={busy}
         disabled={disabled}
         draftKey={draftKey}
-        hasAttachments={hasAttachments}
+        hasStagedContent={hasStagedContent}
         rootPath={rootPath}
         sendButtonRef={sendButtonRef}
         submitting={submitting}

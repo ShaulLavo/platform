@@ -1,0 +1,96 @@
+import {
+  ORCHESTRATION_THREAD_SEARCH_DEFAULT_LIMIT,
+  ORCHESTRATION_THREAD_SEARCH_MIN_QUERY_LENGTH,
+  orchestrationSearchThreadsResultSchema,
+  type OrchestrationSearchThreadsResult,
+} from '@workspace/contracts'
+import { queryOptions } from '@tanstack/react-query'
+import * as v from 'valibot'
+
+import { getClient } from '@/lib/client'
+import { observeClientOperation } from '@/lib/client-logging'
+import { unwrapEdenResponse } from '@/lib/eden-events'
+
+/**
+ * How long typing has to pause before the rail asks the server. Longer than the
+ * mention search: this one is a `LIKE '%…%'` scan over every stored message on a
+ * synchronous single-connection SQLite handle, so a keystroke-per-request burst
+ * queues every other chat request behind it.
+ */
+export const SESSION_SEARCH_DEBOUNCE_MS = 220
+
+const SESSION_SEARCH_STALE_TIME_MS = 30_000
+const EMPTY_SESSION_SEARCH: OrchestrationSearchThreadsResult = { matches: [] }
+
+const sessionSearchQueryKeys = {
+  all: ['chat-session-search'] as const,
+  search: (query: string, limit: number) => [...sessionSearchQueryKeys.all, query, limit] as const,
+}
+
+type SessionSearchQueryKey = ReturnType<typeof sessionSearchQueryKeys.search>
+
+/** The server rejects anything shorter, so a one-character query never leaves the browser. */
+export function isSessionSearchQuery(query: string) {
+  return query.trim().length >= ORCHESTRATION_THREAD_SEARCH_MIN_QUERY_LENGTH
+}
+
+export function sessionSearchQueryOptions(input: { limit?: number; query: string }) {
+  const limit = input.limit ?? ORCHESTRATION_THREAD_SEARCH_DEFAULT_LIMIT
+  const query = input.query.trim()
+
+  return queryOptions<
+    OrchestrationSearchThreadsResult,
+    Error,
+    OrchestrationSearchThreadsResult,
+    SessionSearchQueryKey
+  >({
+    enabled: isSessionSearchQuery(query),
+    // Keep the last answer on screen while the next one is in flight: the rail
+    // is a list the user is reading, and blanking it mid-word reads as "gone".
+    placeholderData: (previous) => previous ?? EMPTY_SESSION_SEARCH,
+    queryFn: ({ signal }) => searchSessions({ limit, query, signal }),
+    queryKey: sessionSearchQueryKeys.search(query, limit),
+    // A failed scan is not worth a second scan: the user is still typing, and
+    // the next keystroke supersedes this query anyway.
+    retry: false,
+    staleTime: SESSION_SEARCH_STALE_TIME_MS,
+  })
+}
+
+async function searchSessions({
+  limit,
+  query,
+  signal,
+}: {
+  limit: number
+  query: string
+  signal: AbortSignal
+}): Promise<OrchestrationSearchThreadsResult> {
+  return observeClientOperation(
+    {
+      action: 'chat.session_search.http',
+      area: 'chat',
+      limit,
+      // The query is user content and stays off the wide event; its length is
+      // what explains a slow scan or a bounds rejection.
+      queryLength: query.length,
+      signal,
+    },
+    async () => {
+      const response = await getClient().orchestration['thread-search'].post(
+        { limit, query },
+        { fetch: { signal } },
+      )
+
+      return v.parse(
+        orchestrationSearchThreadsResultSchema,
+        unwrapEdenResponse(response, {
+          requireData: true,
+          emptyMessage: 'thread search returned an empty response',
+          normalizeDates: true,
+        }),
+      )
+    },
+    (result) => ({ matchCount: result.matches.length }),
+  )
+}

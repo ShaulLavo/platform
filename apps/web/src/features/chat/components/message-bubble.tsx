@@ -7,6 +7,7 @@ import { useContextMenu } from '@/features/menus/hooks/use-context-menu'
 
 import { formatChatTimestamp } from '../lib/chat-formatters'
 import { resolveAssistantMessageChromeState } from '../lib/chat-message-metadata'
+import { extractTerminalContexts } from '../lib/terminal-context'
 import type { OptimisticChatMessage } from '../state/chat-optimistic-store'
 import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
 import { allowsMessageContextMenu } from '../utils/message-menu'
@@ -17,6 +18,7 @@ import { AssistantMessageMeta } from './assistant-message-meta'
 import { AssistantMarkdown } from './assistant-markdown'
 import { MessageCompletionDivider } from './message-completion-divider'
 import { MessageMenu } from './message-menu'
+import { TerminalContextChip } from './terminal-context-chip'
 import { UserMessageBody } from './user-message-body'
 
 export function MessageBubble({
@@ -56,10 +58,16 @@ export function MessageBubble({
   const assistantText = assistant
     ? message.text || (effectiveAssistantStreaming ? '' : '(empty response)')
     : ''
+  // The composer appends captured terminal output as an XML block after the
+  // prompt. Split it back off so the reader sees the words they typed plus the
+  // same chip the composer showed, never the markup the agent received.
+  const userMessage = user
+    ? extractTerminalContexts(message.text)
+    : { contexts: [], text: message.text }
   const attachmentList = (
     <ChatAttachmentThumbnails
       attachments={attachments}
-      className={cn(user && message.text.trim().length > 0 && 'mb-2', !user && 'mt-2')}
+      className={cn(user && userMessage.text.trim().length > 0 && 'mb-2', !user && 'mt-2')}
     />
   )
   const assistantChrome = resolveAssistantMessageChromeState({
@@ -108,7 +116,24 @@ export function MessageBubble({
           {user ? (
             <>
               {attachmentList}
-              {message.text.trim().length > 0 ? <UserMessageBody text={message.text} /> : null}
+              {userMessage.text.trim().length > 0 ? (
+                <UserMessageBody text={userMessage.text} />
+              ) : null}
+              {userMessage.contexts.length > 0 ? (
+                <div
+                  className={cn(
+                    'flex min-w-0 flex-wrap gap-1',
+                    userMessage.text.trim().length > 0 && 'mt-2',
+                  )}
+                >
+                  {userMessage.contexts.map((context) => (
+                    <TerminalContextChip
+                      key={`${context.source}:${context.lineStart}-${context.lineEnd}`}
+                      selection={context}
+                    />
+                  ))}
+                </div>
+              ) : null}
             </>
           ) : (
             <>

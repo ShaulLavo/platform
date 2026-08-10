@@ -5,6 +5,7 @@ import {
   type OrchestrationReplayEventsResult,
   type OrchestrationShellSnapshot,
   type OrchestrationShellStreamItem,
+  type OrchestrationThreadDetailPage,
   type OrchestrationThreadDetailSnapshot,
   type OrchestrationThreadStreamItem,
   type OrchestrationWsClientMessage,
@@ -13,6 +14,7 @@ import {
   type OrchestrationWsServerMessage,
   type OrchestrationWsSubscribe,
   type OrchestrationWsSubscriptionId,
+  type OrchestrationWsThreadDetailPageInput,
   type ThreadId,
 } from '@workspace/contracts'
 import * as v from 'valibot'
@@ -140,6 +142,36 @@ export class OrchestrationRpcClient {
         messageCount: snapshot.thread.messages.length,
         sessionStatus: snapshot.thread.session?.status ?? null,
         snapshotSequence: snapshot.snapshotSequence,
+      }),
+    )
+  }
+
+  threadDetailPage(input: OrchestrationWsThreadDetailPageInput) {
+    return observeClientOperation(
+      {
+        action: 'chat.thread_detail_page.rpc',
+        area: 'chat',
+        // The boundary tells a first page from a continuation; the anchor ids
+        // themselves say nothing a reader of the log needs.
+        fromActivityAnchor: Boolean(input.beforeActivity),
+        fromMessageAnchor: Boolean(input.beforeMessage),
+        threadId: input.threadId,
+      },
+      async () => {
+        const request: OrchestrationWsRequest = {
+          input,
+          kind: 'request',
+          method: 'threadDetailPage',
+          requestId: this.nextRequestId('threadDetailPage'),
+        }
+
+        return this.sendRequest<OrchestrationThreadDetailPage>(request)
+      },
+      (page) => ({
+        activityCount: page.activities.length,
+        hasEarlier: page.hasEarlier,
+        messageCount: page.messages.length,
+        snapshotSequence: page.snapshotSequence,
       }),
     )
   }
@@ -644,6 +676,8 @@ const localOrchestrationRpcClient = new OrchestrationRpcClient()
 export const dispatchOrchestrationCommandRpc = localOrchestrationRpcClient.dispatchCommand.bind(
   localOrchestrationRpcClient,
 )
+export const fetchOrchestrationThreadDetailPageRpc =
+  localOrchestrationRpcClient.threadDetailPage.bind(localOrchestrationRpcClient)
 export const fetchOrchestrationThreadDetailSnapshotRpc =
   localOrchestrationRpcClient.threadDetailSnapshot.bind(localOrchestrationRpcClient)
 export const replayOrchestrationEventsRpc = localOrchestrationRpcClient.replayEvents.bind(

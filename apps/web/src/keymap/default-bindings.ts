@@ -139,6 +139,11 @@ const defaultBindingSpecs = [
     stopPropagation: true,
     vscodeCommandId: 'workbench.action.quickOpen',
   }),
+  workspaceBinding('Mod+,', 'workspace.showSettings', {
+    preventDefault: true,
+    stopPropagation: true,
+    vscodeCommandId: 'workbench.action.openSettings',
+  }),
   // TODO(electron): Bind these desktop/window-level VS Code defaults once
   // Platform can own shortcuts outside the browser sandbox.
   noOpBinding('Control+Tab', {

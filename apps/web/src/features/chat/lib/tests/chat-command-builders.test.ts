@@ -133,6 +133,38 @@ describe('chat command builders', () => {
     expect(turn.command.titleSeed).toBeUndefined()
   })
 
+  it('appends captured terminal output after the prompt without renaming the thread', () => {
+    const terminalContexts = [
+      { lineEnd: 812, lineStart: 810, source: 'terminal-1', text: 'make: *** [build] Error 1' },
+    ]
+    const turn = createTurnSubmission({
+      createdAt: '2026-05-24T12:00:00.000Z',
+      interactionMode: DEFAULT_INTERACTION_MODE,
+      modelSelection: testModelSelection,
+      runtimeMode: DEFAULT_RUNTIME_MODE,
+      terminalContexts,
+      text: 'Why is this failing?',
+      threadId: v.parse(threadIdSchema, 'thread-1'),
+    })
+    const draft = createDraftThreadSubmission({
+      createdAt: '2026-05-24T12:00:00.000Z',
+      modelSelection: testModelSelection,
+      projectId: workspaceProjectId('/Users/test/workspace/platform'),
+      rootPath: '/Users/test/workspace/platform',
+      terminalContexts,
+      // Nothing typed: the title must not fall back to the attached markup.
+      text: '',
+    })
+
+    expect(turn.command.message.text).toBe(
+      'Why is this failing?\n\n<terminal_context>\n<selection source="terminal-1" lines="810-812">\nmake: *** [build] Error 1\n</selection>\n</terminal_context>',
+    )
+    expect(turn.command.message.text).toBe(turn.optimisticMessage.text)
+    expect(turn.command.titleSeed).toBe('Why is this failing?')
+    expect(draft.command.bootstrap?.createThread?.title).toBe('New chat')
+    expect(draft.command.message.text).toContain('<terminal_context>')
+  })
+
   it('keeps interrupt commands scoped to the active thread and turn', () => {
     const threadId = v.parse(threadIdSchema, 'thread-1')
     const command = createThreadInterruptCommand({ threadId })

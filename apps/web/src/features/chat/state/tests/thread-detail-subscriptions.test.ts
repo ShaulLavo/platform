@@ -13,8 +13,8 @@ import * as v from 'valibot'
 
 import { createClientError } from '@/lib/structured-errors'
 import { expect, test } from '../../../../../test/fixtures'
+import { unsupportedChatEnvironment } from '../../../../../test/factories/chat-environment'
 import { shellSnapshot, threadShell } from '../../../../../test/factories/chat'
-import type { ChatEnvironment } from '../../environment/chat-environment'
 import { useChatProjectionStore } from '../chat-projection-store'
 import { selectThreadDetailSync, useThreadDetailSyncStore } from '../thread-detail-sync-store'
 import { createThreadDetailSubscriptionCache } from '../thread-detail-subscriptions'
@@ -305,7 +305,7 @@ function createFakeEnvironment(script: ScriptedAttempt[] = []) {
   const attempts: Array<{ afterSequence: number | undefined; threadId: ThreadId }> = []
   const aborts: ThreadId[] = []
 
-  const environment: ChatEnvironment = {
+  const environment = unsupportedChatEnvironment({
     dispatchCommand: async (_command: ClientOrchestrationCommand) => ({
       deduped: false,
       sequence: 0,
@@ -317,15 +317,6 @@ function createFakeEnvironment(script: ScriptedAttempt[] = []) {
       const item = await new Promise<OrchestrationShellStreamItem>(() => undefined)
 
       yield item
-    },
-    threadDetailSnapshot: async () => {
-      throw createClientError({
-        code: 'TEST_UNSUPPORTED',
-        message: 'threadDetailSnapshot is not used by subscription cache tests.',
-        status: 500,
-        why: 'The subscription cache only reads the thread detail stream.',
-        fix: 'Assert on threadDetailStream instead.',
-      })
     },
     threadDetailStream: async function* (threadId, input = {}) {
       const attempt = script[attempts.length] ?? {}
@@ -339,7 +330,7 @@ function createFakeEnvironment(script: ScriptedAttempt[] = []) {
       await waitForAbort(input.signal)
       aborts.push(threadId)
     },
-  }
+  })
 
   return { aborts, attempts, environment }
 }

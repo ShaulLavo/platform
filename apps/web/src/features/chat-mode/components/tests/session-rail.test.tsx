@@ -22,6 +22,7 @@ import { setSessionProjectOpener } from '@/features/chat-mode/state/session-comm
 import { useSessionMultiSelectStore } from '@/features/chat-mode/state/session-multi-select-store'
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
 import { resetSessionReadStore } from '@/features/chat-mode/state/session-read-store'
+import { resetSessionSearchStore } from '@/features/chat-mode/state/session-search-store'
 import {
   resetSessionSelectionStore,
   useSessionSelectionStore,
@@ -212,7 +213,9 @@ test('reports when the search matches nothing', async () => {
   await userEvent.type(screen.getByRole('searchbox', { name: 'Search sessions' }), 'nothing here')
 
   expect(sessionTitles()).toEqual([])
-  expect(screen.getByText(/No sessions match/)).toBeVisible()
+  // Not "no matches" until the message scan has answered — titles alone cannot
+  // rule out a hit inside the conversation.
+  expect(await screen.findByText(/No sessions match/)).toBeVisible()
 })
 
 test('scoping to a project hides the others', async () => {
@@ -390,6 +393,7 @@ function seedProjection({
   resetSessionSelectionStore()
   useActiveProjectStore.setState({ workspaceRoot: '/repo/platform' })
   resetSessionReadStore()
+  resetSessionSearchStore()
   useChatProjectionStore.getState().resetChatProjection()
   useChatProjectionStore.getState().syncShellSnapshot(
     shellSnapshot({

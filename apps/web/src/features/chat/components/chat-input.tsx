@@ -12,9 +12,11 @@ import { cn } from '@workspace/ui/lib/utils'
 import {
   $setChatInputText,
   clearChatInputEditor,
+  insertChatInputMention,
   readChatInputText,
   replaceChatInputEditorRange,
 } from '../lib/chat-input-editor-actions'
+import { composerDropCarriesFiles, composerDropMentionPath } from '../utils/composer-drop'
 import {
   chatInputUploadAttachments,
   imageFilesFromTransfer,
@@ -29,10 +31,13 @@ import {
   type ChatInputTrigger,
 } from '../lib/chat-input-logic'
 import { useProjectEntrySearch } from '../hooks/use-project-entry-search'
+import { useTerminalContextInbox } from '../hooks/use-terminal-context-inbox'
 import { ChatModelPickerProvider } from '../providers/model-picker-provider'
+import type { TerminalContextSelection } from '../lib/terminal-context'
 import {
   readChatInputDraftPrompt,
   selectChatInputDraftImages,
+  selectChatInputDraftTerminalContexts,
   useChatInputDraftStore,
   type ChatInputDraftStore,
   type ChatInputDraftTarget,
@@ -41,6 +46,7 @@ import { ChatInputAttachmentList } from './chat-input-attachment-list'
 import { ChatInputActions } from './chat-input-actions'
 import { ChatInputCommandMenu } from './chat-input-command-menu'
 import { ChatInputEditor } from './chat-input-editor'
+import { ChatInputTerminalContextList } from './chat-input-terminal-context-list'
 import { CHAT_INPUT_EDITOR_NODES } from './chat-input-mention-node'
 
 export type ChatInputSubmitPayload = {
@@ -48,6 +54,8 @@ export type ChatInputSubmitPayload = {
   interactionMode: InteractionMode
   modelSelection: ModelSelection
   runtimeMode: RuntimeMode
+  /** Captured output to serialize after the prompt. Never part of `text`. */
+  terminalContexts: readonly TerminalContextSelection[]
   text: string
 }
 
@@ -89,10 +97,16 @@ export function ChatInput({
     () => (state: ChatInputDraftStore) => selectChatInputDraftImages(state, draftTarget),
     [draftTarget],
   )
+  const terminalContextsSelector = useMemo(
+    () => (state: ChatInputDraftStore) => selectChatInputDraftTerminalContexts(state, draftTarget),
+    [draftTarget],
+  )
   const images = useChatInputDraftStore(imagesSelector)
+  const terminalContexts = useChatInputDraftStore(terminalContextsSelector)
   const addImages = useChatInputDraftStore((store) => store.addImages)
   const clearStoredDraft = useChatInputDraftStore((store) => store.clearDraft)
   const removeImage = useChatInputDraftStore((store) => store.removeImage)
+  const removeTerminalContext = useChatInputDraftStore((store) => store.removeTerminalContext)
   const setInteractionMode = useChatInputDraftStore((store) => store.setInteractionMode)
   const editorRef = useRef<LexicalEditor | null>(null)
   const submitButtonRef = useRef<HTMLButtonElement | null>(null)
@@ -103,9 +117,11 @@ export function ChatInput({
   const [editorFocused, setEditorFocused] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [trigger, setTrigger] = useState<ChatInputTrigger | null>(null)
-  const hasAttachments = images.length > 0
+  // Captured terminal output is content in its own right: "look at this" with a
+  // chip attached is a legitimate turn, so it must not read as an empty draft.
+  const hasStagedContent = images.length > 0 || terminalContexts.length > 0
   const composerDisabled = disabled || submitting
-  const sendDisabled = disabled || submitting || (!hasAttachments && !initialDraft.trim())
+  const sendDisabled = disabled || submitting || (!hasStagedContent && !initialDraft.trim())
   const statusLabel =
     attachmentError ?? error ?? (submitting ? 'Sending' : (commandStatusLabel ?? busyLabel(busy)))
   const projectEntries = useProjectEntrySearch({
@@ -131,6 +147,11 @@ export function ChatInput({
     }),
     [inputKey, initialDraft],
   )
+
+  // Captures made outside chat wait in the inbox until a composer exists to
+  // hold them — the terminal is often right-clicked while the sidebar is on
+  // Files, so the reveal that follows is what mounts this component.
+  useTerminalContextInbox(draftTarget)
 
   useEffect(() => {
     const activeItemStillPresent = commandMenuItems.some((item) => item.id === activeCommandItemId)
@@ -165,7 +186,7 @@ export function ChatInput({
     const text = editor ? readChatInputText(editor).trim() : ''
     const draft = useChatInputDraftStore.getState().getDraft(draftTarget)
     const attachments = chatInputUploadAttachments(draft.images)
-    if (!text && attachments.length === 0) return false
+    if (!text && attachments.length === 0 && draft.terminalContexts.length === 0) return false
 
     // No ready provider offers a model, so there is nothing legitimate to send.
     const selected = draft.modelSelection ?? modelSelection
@@ -178,6 +199,7 @@ export function ChatInput({
         interactionMode: draft.interactionMode ?? interactionMode,
         modelSelection: selected,
         runtimeMode: draft.runtimeMode ?? runtimeMode,
+        terminalContexts: draft.terminalContexts,
         text,
       })
       if (sent) clearDraft()
@@ -217,6 +239,12 @@ export function ChatInput({
       removeImage(draftTarget, imageId)
     },
     [draftTarget, removeImage],
+  )
+  const handleRemoveTerminalContext = useCallback(
+    (contextId: string) => {
+      removeTerminalContext(draftTarget, contextId)
+    },
+    [draftTarget, removeTerminalContext],
   )
   const handleCommandItemSelect = useCallback(
     (item: ChatInputCommandItem) => {
@@ -266,7 +294,7 @@ export function ChatInput({
 
   function handleComposerDragOver(event: DragEvent<HTMLElement>) {
     if (composerDisabled) return
-    if (!dragCarriesFiles(event)) return
+    if (!composerDropCarriesFiles(event.dataTransfer)) return
 
     // Without this the browser navigates to the dropped file and no drop event
     // ever reaches us.
@@ -284,11 +312,33 @@ export function ChatInput({
     setDropTargetActive(false)
     if (composerDisabled) return
 
+    // A dragged tree row before images: it is not a `Files` drag, so the image
+    // path would ignore it and the editor would paste a raw absolute path.
+    const mentionPath = composerDropMentionPath(event.dataTransfer, rootPath)
+    if (mentionPath) {
+      event.preventDefault()
+      insertMention(mentionPath)
+      return
+    }
+
     const files = imageFilesFromTransfer(event.dataTransfer)
     if (files.length === 0) return
 
     event.preventDefault()
     handleImageFiles(files)
+  }
+
+  /**
+   * Focused on the next frame, not here: focusing during the drop makes the
+   * not-yet-reconciled editor sync its stale state back over the mention.
+   */
+  function insertMention(path: string) {
+    const editor = editorRef.current
+    if (!editor) return
+    if (!insertChatInputMention(editor, path)) return
+
+    useChatInputDraftStore.getState().setPrompt(draftTarget, readChatInputText(editor))
+    requestAnimationFrame(() => editor.focus())
   }
 
   return (
@@ -333,7 +383,7 @@ export function ChatInput({
                 busy={busy}
                 disabled={composerDisabled}
                 draftKey={draftKey}
-                hasAttachments={hasAttachments}
+                hasStagedContent={hasStagedContent}
                 placeholder='Use @ to mention, / for commands.'
                 rootPath={rootPath}
                 sendButtonRef={submitButtonRef}
@@ -346,6 +396,11 @@ export function ChatInput({
                 onImageFiles={handleImageFiles}
                 onSubmitRequest={handleSubmit}
                 onTriggerChange={setTrigger}
+              />
+              <ChatInputTerminalContextList
+                contexts={terminalContexts}
+                disabled={composerDisabled}
+                onRemove={handleRemoveTerminalContext}
               />
               <ChatInputAttachmentList
                 attachments={images}
@@ -382,11 +437,6 @@ export function ChatInput({
 
 function busyLabel(busy: boolean) {
   return busy ? 'Working' : null
-}
-
-/** Text and element drags must keep their normal behaviour inside the editor. */
-function dragCarriesFiles(event: DragEvent<HTMLElement>) {
-  return event.dataTransfer.types.includes('Files')
 }
 
 /**

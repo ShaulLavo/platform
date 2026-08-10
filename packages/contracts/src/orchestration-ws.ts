@@ -7,8 +7,10 @@ import {
 } from './chat-model'
 import { clientOrchestrationCommandSchema } from './orchestration-commands'
 import {
+  ORCHESTRATION_THREAD_DETAIL_MAX_PAGE_SIZE,
   orchestrationReplayEventsInputSchema,
   orchestrationShellStreamItemSchema,
+  orchestrationThreadDetailAnchorSchema,
   orchestrationThreadStreamItemSchema,
 } from './orchestration-snapshots'
 
@@ -17,8 +19,10 @@ import {
  * read. The server reports it in the connection handshake so a client built
  * against a different protocol detects the skew on connect instead of failing
  * later on a frame it cannot parse.
+ *
+ * 2 — added the `threadDetailPage` request.
  */
-export const ORCHESTRATION_WS_PROTOCOL_VERSION = 1
+export const ORCHESTRATION_WS_PROTOCOL_VERSION = 2
 
 /**
  * Hard ceiling on one `replayEvents` page. `replayEvents` is client-reachable,
@@ -96,6 +100,25 @@ export const orchestrationWsReplayInputSchema = v.object({
   ),
 })
 
+/**
+ * The wire form of a backwards page read. Anchors and limit carry no defaults
+ * here on purpose: the frame says exactly what the client asked for, and
+ * `orchestrationThreadDetailPageInputSchema` on the server applies the defaults
+ * once, in the one place that owns them.
+ */
+export const orchestrationWsThreadDetailPageInputSchema = v.object({
+  threadId: threadIdSchema,
+  beforeMessage: v.nullish(orchestrationThreadDetailAnchorSchema),
+  beforeActivity: v.nullish(orchestrationThreadDetailAnchorSchema),
+  limit: v.optional(
+    v.pipe(
+      nonNegativeIntegerSchema,
+      v.minValue(1),
+      v.maxValue(ORCHESTRATION_THREAD_DETAIL_MAX_PAGE_SIZE),
+    ),
+  ),
+})
+
 export const orchestrationWsRequestSchema = v.variant('method', [
   v.object({
     kind: v.literal('request'),
@@ -113,6 +136,12 @@ export const orchestrationWsRequestSchema = v.variant('method', [
     requestId: orchestrationWsRequestIdSchema,
     method: v.literal('threadDetailSnapshot'),
     threadId: threadIdSchema,
+  }),
+  v.object({
+    kind: v.literal('request'),
+    requestId: orchestrationWsRequestIdSchema,
+    method: v.literal('threadDetailPage'),
+    input: orchestrationWsThreadDetailPageInputSchema,
   }),
   v.object({
     kind: v.literal('request'),
@@ -296,6 +325,9 @@ export type OrchestrationWsConnectedMessage = v.InferOutput<
 >
 export type OrchestrationWsError = v.InferOutput<typeof orchestrationWsErrorSchema>
 export type OrchestrationWsReplayInput = v.InferOutput<typeof orchestrationWsReplayInputSchema>
+export type OrchestrationWsThreadDetailPageInput = v.InferOutput<
+  typeof orchestrationWsThreadDetailPageInputSchema
+>
 export type OrchestrationWsRequest = v.InferOutput<typeof orchestrationWsRequestSchema>
 export type OrchestrationWsRequestId = v.InferOutput<typeof orchestrationWsRequestIdSchema>
 export type OrchestrationWsResponseMessage = v.InferOutput<

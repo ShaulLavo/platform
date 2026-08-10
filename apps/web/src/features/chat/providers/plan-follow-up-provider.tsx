@@ -126,6 +126,9 @@ async function dispatchPlanFollowUpTurn({
     modelSelection: draft.modelSelection ?? thread.modelSelection,
     runtimeMode: draft.runtimeMode ?? thread.runtimeMode,
     sourceProposedPlan,
+    // This path builds its own turn from the draft and then clears it, so
+    // anything staged that it forgets is destroyed rather than deferred.
+    terminalContexts: draft.terminalContexts,
     text: followUp.text,
     threadId: thread.id,
   })
@@ -136,6 +139,7 @@ async function dispatchPlanFollowUpTurn({
     planId: plan.id,
     planThreadId: plan.threadId,
     sourcePlanId: sourceProposedPlan?.planId ?? null,
+    terminalContextCount: draft.terminalContexts.length,
   })
 
   useChatOptimisticStore

@@ -6,6 +6,7 @@ import { useRailOrderStore } from '@/features/chat-mode/state/rail-order-store'
 import { useSessionMultiSelectStore } from '@/features/chat-mode/state/session-multi-select-store'
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
 import { useSessionReadStore } from '@/features/chat-mode/state/session-read-store'
+import { useSessionSearchStore } from '@/features/chat-mode/state/session-search-store'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
 import type { SessionClickIntent } from '@/features/chat-mode/utils/session-multi-select'
 import {
@@ -137,6 +138,7 @@ function visibleSessions() {
     projects: selectChatProjects(projection),
     query: rail.query,
     scope: rail.scope,
+    searchMatches: useSessionSearchStore.getState().matchByThreadId,
     seenByThreadId: useSessionReadStore.getState().seenByThreadId,
     threads: sessionThreads(projection.threadIds, projection.sidebarThreadSummaryById),
     view: rail.view,

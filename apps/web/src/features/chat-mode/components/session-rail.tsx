@@ -23,6 +23,7 @@ import { SessionGroup } from '@/features/chat-mode/components/session-group'
 import { SessionGroupHeader } from '@/features/chat-mode/components/session-group-header'
 import { SessionScopeMenu } from '@/features/chat-mode/components/session-scope-menu'
 import { useRailDragSensors } from '@/features/chat-mode/hooks/use-rail-drag-sensors'
+import { useSessionSearch } from '@/features/chat-mode/hooks/use-session-search'
 import { useChatRailOrder } from '@/features/chat-mode/providers/rail-order-context'
 import { useChatModeSession } from '@/features/chat-mode/providers/session-context'
 import { useRailOrderStore } from '@/features/chat-mode/state/rail-order-store'
@@ -36,6 +37,7 @@ import {
 } from '@/features/chat-mode/state/session-multi-select-store'
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
 import { useSessionReadStore } from '@/features/chat-mode/state/session-read-store'
+import { useSessionSearchStore } from '@/features/chat-mode/state/session-search-store'
 import {
   sessionRailModel,
   type SessionRailView,
@@ -66,6 +68,9 @@ export function SessionRail() {
   const setView = useSessionRailStore((state) => state.setView)
   const markedThreadIds = useSessionMultiSelectStore((state) => state.threadIds)
   const [draggingProjectId, setDraggingProjectId] = useState<string | null>(null)
+  useSessionSearch()
+  const searchMatches = useSessionSearchStore((state) => state.matchByThreadId)
+  const searching = useSessionSearchStore((state) => state.searching)
   const model = sessionRailModel({
     activeProjectId: project?.id ?? null,
     activeThreadId: activeSession.threadId,
@@ -74,6 +79,7 @@ export function SessionRail() {
     projects,
     query,
     scope,
+    searchMatches,
     seenByThreadId,
     threads: sessionThreads(threadIds, summaryById),
     view,
@@ -217,7 +223,7 @@ export function SessionRail() {
           </DndContext>
           {model.sessions.length === 0 ? (
             <p className='text-muted-foreground/60 px-2 py-3 text-[11px]'>
-              {emptyLabel({ query, ready, scopedCount: model.scopedCount, view })}
+              {emptyLabel({ query, ready, scopedCount: model.scopedCount, searching, view })}
             </p>
           ) : null}
         </div>
@@ -231,13 +237,18 @@ function emptyLabel({
   query,
   ready,
   scopedCount,
+  searching,
   view,
 }: {
   readonly query: string
   readonly ready: boolean
   readonly scopedCount: number
+  readonly searching: boolean
   readonly view: SessionRailView
 }) {
+  // Before the verdict: titles have already been filtered, but the message scan
+  // is still out, so "no matches" would be a claim the rail cannot yet make.
+  if (searching) return 'Searching…'
   if (query.trim()) return `No sessions match “${query.trim()}”.`
   if (view === 'archived') return 'No archived sessions.'
   if (scopedCount === 0 && !ready) return 'Connecting…'

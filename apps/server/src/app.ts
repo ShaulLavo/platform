@@ -24,6 +24,7 @@ import { OrchestrationEngine } from './orchestration/engine'
 import { OrchestrationCheckpointDiffQuery } from './orchestration/checkpoint-diff-query'
 import type { OrchestrationDatabase } from './orchestration/event-store'
 import { orchestrationRoutes } from './orchestration/routes'
+import { OrchestrationThreadSearchQuery } from './orchestration/thread-search-query'
 import { orchestrationWsRoutes } from './orchestration/ws-rpc'
 import {
   createDefaultProviderAdapterRegistry,
@@ -60,18 +61,14 @@ export function createApp(options: AppOptions) {
   const fonts = options.fonts ?? new NerdFontService()
   const providerAdapterRegistry =
     options.orchestration?.providerAdapterRegistry ?? createDefaultProviderAdapterRegistry()
-  const orchestration = new OrchestrationEngine(
-    options.orchestration?.database ?? getDefaultPlatformDatabase(),
-    {
-      providerRuntime: options.orchestration?.providerRuntime
-        ? { adapterRegistry: providerAdapterRegistry, checkpointGit: git }
-        : false,
-    },
-  )
-  const checkpointDiff = new OrchestrationCheckpointDiffQuery(
-    options.orchestration?.database ?? getDefaultPlatformDatabase(),
-    git,
-  )
+  const database = options.orchestration?.database ?? getDefaultPlatformDatabase()
+  const orchestration = new OrchestrationEngine(database, {
+    providerRuntime: options.orchestration?.providerRuntime
+      ? { adapterRegistry: providerAdapterRegistry, checkpointGit: git }
+      : false,
+  })
+  const checkpointDiff = new OrchestrationCheckpointDiffQuery(database, git)
+  const threadSearch = new OrchestrationThreadSearchQuery(database)
   // One SQLite file backs the whole platform, so settings ride on whichever
   // handle this app was given — in tests that is the in-memory database, which
   // is what keeps a test run from writing into the developer's real settings.
@@ -115,7 +112,7 @@ export function createApp(options: AppOptions) {
     .ws('/terminal', terminal.routes(auth))
     .use(providerRoutes(providerAdapterRegistry))
     .use(orchestrationWsRoutes(orchestration, auth))
-    .use(orchestrationRoutes(orchestration, checkpointDiff))
+    .use(orchestrationRoutes(orchestration, checkpointDiff, threadSearch))
     .use(attachmentRoutes())
     .use(fontRoutes(fonts))
     .use(wallpaperRoutes())

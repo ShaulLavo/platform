@@ -147,6 +147,49 @@ test('keeps in-memory attachments when local storage persistence fails', () => {
   expect(useChatInputDraftStore.getState().getDraft(TARGET).images).toHaveLength(1)
 })
 
+test('captured terminal output survives a reload, unlike image bytes', () => {
+  const store = useChatInputDraftStore.getState()
+  store.addTerminalContexts(TARGET, [terminalContext('context-1')])
+  store.addImages(TARGET, [imageAttachment('image-1')])
+
+  expect(flushChatInputDraftStorage()).toBe(true)
+  hydrateChatInputDraftStoreFromStorage()
+
+  const restored = useChatInputDraftStore.getState().getDraft(TARGET)
+  expect(restored.terminalContexts).toEqual([terminalContext('context-1')])
+  expect(restored.images).toHaveLength(0)
+})
+
+test('the same capture delivered twice only lands once', () => {
+  const store = useChatInputDraftStore.getState()
+  store.addTerminalContexts(TARGET, [terminalContext('context-1')])
+  store.addTerminalContexts(TARGET, [terminalContext('context-1'), terminalContext('context-2')])
+
+  expect(
+    useChatInputDraftStore
+      .getState()
+      .getDraft(TARGET)
+      .terminalContexts.map((context) => context.id),
+  ).toEqual(['context-1', 'context-2'])
+})
+
+test('dropping the last capture leaves no draft behind', () => {
+  const store = useChatInputDraftStore.getState()
+  store.addTerminalContexts(TARGET, [terminalContext('context-1')])
+  store.removeTerminalContext(TARGET, 'context-1')
+
+  expect(useChatInputDraftStore.getState().getDraft(TARGET).terminalContexts).toHaveLength(0)
+  expect(
+    useChatInputDraftStore.getState().draftsByKey[
+      chatInputDraftStorageId(TARGET.rootPath, TARGET.draftKey) ?? ''
+    ],
+  ).toBeUndefined()
+})
+
+function terminalContext(id: string) {
+  return { id, lineEnd: 812, lineStart: 810, source: 'terminal-1', text: 'Error 1' }
+}
+
 function imageAttachment(id: string, base64Chars = 8): ChatInputImageAttachment {
   const dataUrl = `data:image/png;base64,${'A'.repeat(base64Chars)}`
 

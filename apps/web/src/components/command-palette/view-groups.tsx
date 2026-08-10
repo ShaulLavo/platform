@@ -2,7 +2,7 @@ import { TerminalWindowIcon } from '@phosphor-icons/react'
 import { CommandGroup, CommandItem } from '@workspace/ui/components/command'
 
 import { useCommandPaletteActions } from '@/components/command-palette/hooks/use-command-palette-actions'
-import { viewPaletteItems } from './command-palette-data'
+import { viewPaletteItems, workspaceOptionalCommands } from './command-palette-data'
 
 type ViewGroupsProps = {
   readonly hasWorkspace: boolean
@@ -15,7 +15,10 @@ export function ViewGroups({ hasWorkspace }: ViewGroupsProps) {
     <CommandGroup heading='Views'>
       {viewPaletteItems.map((item) => (
         <CommandItem
-          disabled={!hasWorkspace && item.command !== 'workspace.openFilePicker'}
+          // Off the same set the `>` list and the menus read, so a command that
+          // works with no folder open cannot be enabled in one place and greyed
+          // out in the other.
+          disabled={!hasWorkspace && !workspaceOptionalCommands.has(item.command)}
           key={item.value}
           keywords={[item.title, item.description, item.command]}
           value={item.value}

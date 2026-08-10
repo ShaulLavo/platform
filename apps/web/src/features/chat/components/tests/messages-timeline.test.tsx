@@ -1,11 +1,18 @@
 import { fireEvent, screen } from '@testing-library/react'
-import { messageIdSchema, type OrchestrationMessage } from '@workspace/contracts'
+import {
+  messageIdSchema,
+  ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE,
+  type OrchestrationMessage,
+} from '@workspace/contracts'
 import * as v from 'valibot'
 import { afterEach, beforeEach } from 'vitest'
 
 import { MessagesTimeline } from '@/features/chat/components/messages-timeline'
 import { ChatTimelineActionsProvider } from '@/features/chat/providers/timeline-actions-provider'
-import type { ChatThread } from '@/features/chat/state/chat-projection-store'
+import {
+  useChatProjectionStore,
+  type ChatThread,
+} from '@/features/chat/state/chat-projection-store'
 import { EditorStateProvider } from '@/features/editor/editor-state-provider'
 import { TIMELINE_ANCHOR_OFFSET_PX } from '@/features/chat/utils/timeline-scroll-anchoring'
 import { expect, test } from '../../../../../test/fixtures'
@@ -141,19 +148,82 @@ test('sending a message parks it at the top instead of pinning to the bottom', (
   expect(rowOffsetInViewport(sent.length - 1)).toBe(TIMELINE_ANCHOR_OFFSET_PX)
 })
 
+test('a reader who walks back to the top is offered the history behind it', () => {
+  const history = conversation(3)
+  seedThreadWindow(history, ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE)
+  renderTimeline(history)
+  scrollHeightOverride = 4000
+
+  fireEvent.wheel(transcript(), { deltaY: -140 })
+
+  expect(screen.getByRole('button', { name: 'Load earlier' })).toBeVisible()
+})
+
+test('a transcript pinned to the live edge offers nothing to load', () => {
+  // There is history behind it, but the reader is at the newest message and an
+  // affordance floating over a streaming answer is noise.
+  const history = conversation(3)
+  seedThreadWindow(history, ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE)
+  renderTimeline(history)
+
+  expect(screen.queryByRole('button', { name: 'Load earlier' })).not.toBeInTheDocument()
+})
+
+test('a thread the server sent whole offers nothing even at the top', () => {
+  const history = conversation(3)
+  // A short window is proof there is nothing earlier, unlike a full one.
+  seedThreadWindow(history, 3)
+  renderTimeline(history)
+  scrollHeightOverride = 4000
+
+  fireEvent.wheel(transcript(), { deltaY: -140 })
+
+  expect(screen.queryByRole('button', { name: 'Load earlier' })).not.toBeInTheDocument()
+})
+
+function seedThreadWindow(messages: readonly OrchestrationMessage[], windowSize: number) {
+  const thread = threadFactory({ latestTurn: null, messages: [...messages] })
+
+  useChatProjectionStore.getState().resetChatProjection()
+  useChatProjectionStore.getState().syncThreadDetailSnapshot({
+    checkpoints: [],
+    proposedPlans: [],
+    snapshotSequence: 1,
+    thread: {
+      ...thread,
+      deletedAt: null,
+      // The window the server actually shipped, which is the only truncation
+      // signal a detail snapshot carries.
+      messages: Array.from({ length: windowSize }, (_unused, index) =>
+        userMessage(`w${index}`, `Windowed ${index}`),
+      ),
+    },
+  })
+}
+
 function transcript() {
   return screen.getByRole('log', { name: 'Messages' })
 }
 
-/** Where a virtualized row's top sits relative to the viewport top, in pixels. */
+/**
+ * Where a virtualized row's top sits relative to the viewport top, in pixels.
+ * Rows stack in flow inside one translated window, so a row's content offset is
+ * the window's translation plus the rows rendered above it — every row is
+ * `ROW_HEIGHT` tall here.
+ */
 function rowOffsetInViewport(index: number) {
   const row = transcript().querySelector(`[data-index="${index}"]`)
   if (!(row instanceof HTMLElement)) return null
 
-  const translated = /translateY\((-?[\d.]+)px\)/.exec(row.style.transform)
+  const window = row.parentElement
+  if (!window) return null
+
+  const translated = /translateY\((-?[\d.]+)px\)/.exec(window.style.transform)
   if (!translated?.[1]) return null
 
-  return Number.parseFloat(translated[1]) - transcript().scrollTop
+  const rowsAbove = [...window.children].indexOf(row)
+
+  return Number.parseFloat(translated[1]) + rowsAbove * ROW_HEIGHT - transcript().scrollTop
 }
 
 function virtualContentHeight(element: Element) {

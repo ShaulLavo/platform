@@ -295,6 +295,51 @@ describe('orchestration contracts', () => {
     expect(subscription.kind).toBe('subscribe')
     expect(response.kind).toBe('response')
   })
+
+  it('carries a backwards page read with or without a boundary', () => {
+    const firstPage = v.parse(orchestrationWsClientMessageSchema, {
+      kind: 'request',
+      requestId: 'request-1',
+      method: 'threadDetailPage',
+      input: { threadId: 'thread-1' },
+    })
+    const continuation = v.parse(orchestrationWsClientMessageSchema, {
+      kind: 'request',
+      requestId: 'request-2',
+      method: 'threadDetailPage',
+      input: {
+        threadId: 'thread-1',
+        beforeMessage: { createdAt: now, id: 'message-1' },
+        beforeActivity: null,
+        limit: 50,
+      },
+    })
+
+    expect(firstPage.kind === 'request' && firstPage.method).toBe('threadDetailPage')
+    // No defaults on the wire: the frame says exactly what was asked for, and
+    // the server's own input schema is the single place limits are decided.
+    expect(
+      firstPage.kind === 'request' && firstPage.method === 'threadDetailPage'
+        ? firstPage.input.limit
+        : 'unset',
+    ).toBeUndefined()
+    expect(
+      continuation.kind === 'request' && continuation.method === 'threadDetailPage'
+        ? continuation.input.beforeMessage?.id
+        : null,
+    ).toBe('message-1')
+  })
+
+  it('rejects a page read whose limit is past the server ceiling', () => {
+    expect(() =>
+      v.parse(orchestrationWsClientMessageSchema, {
+        kind: 'request',
+        requestId: 'request-1',
+        method: 'threadDetailPage',
+        input: { threadId: 'thread-1', limit: 10_000 },
+      }),
+    ).toThrow()
+  })
 })
 
 describe('thread lifecycle contracts', () => {

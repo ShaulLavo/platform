@@ -95,7 +95,7 @@ function renderComposer(initialText: string) {
         busy={false}
         disabled={false}
         draftKey='mention-node-test'
-        hasAttachments={false}
+        hasStagedContent={false}
         placeholder='Message'
         rootPath='/tmp/mention-node-test'
         sendButtonRef={{ current: null }}

@@ -25,7 +25,7 @@ export async function fetchLogSummary(
     query: logFilterQuery(filters),
   })
 
-  return v.parse(logDashboardSummarySchema, unwrapEdenResponse(response, { normalizeSse: true }))
+  return v.parse(logDashboardSummarySchema, unwrapEdenResponse(response, { normalizeDates: true }))
 }
 
 export async function fetchLogEvents(
@@ -40,7 +40,7 @@ export async function fetchLogEvents(
     },
   })
 
-  return v.parse(logEventsResultSchema, unwrapEdenResponse(response, { normalizeSse: true }))
+  return v.parse(logEventsResultSchema, unwrapEdenResponse(response, { normalizeDates: true }))
 }
 
 export async function fetchLogEventDetail(
@@ -52,7 +52,7 @@ export async function fetchLogEventDetail(
     query: { id },
   })
 
-  return v.parse(logEventDetailSchema, unwrapEdenResponse(response, { normalizeSse: true }))
+  return v.parse(logEventDetailSchema, unwrapEdenResponse(response, { normalizeDates: true }))
 }
 
 export async function* subscribeLogEvents(

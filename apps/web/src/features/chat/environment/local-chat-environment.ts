@@ -1,5 +1,6 @@
 import {
   dispatchOrchestrationCommandRpc,
+  fetchOrchestrationThreadDetailPageRpc,
   fetchOrchestrationThreadDetailSnapshotRpc,
   replayOrchestrationEventsRpc,
   subscribeOrchestrationShellRpc,
@@ -12,6 +13,7 @@ export function createLocalChatEnvironment(): ChatEnvironment {
     dispatchCommand: dispatchOrchestrationCommandRpc,
     replayEvents: replayOrchestrationEventsRpc,
     shellStream: subscribeOrchestrationShellRpc,
+    threadDetailPage: fetchOrchestrationThreadDetailPageRpc,
     threadDetailSnapshot: fetchOrchestrationThreadDetailSnapshotRpc,
     threadDetailStream: subscribeOrchestrationThreadDetailRpc,
   }

@@ -10,6 +10,7 @@ import type { PlatformCommandId } from '@/keymap/types'
 export type MenuSurfaceId =
   | 'chat.composer'
   | 'chat.message'
+  | 'chat.project'
   | 'chat.session'
   | 'editor.gutter'
   | 'editor.tab'

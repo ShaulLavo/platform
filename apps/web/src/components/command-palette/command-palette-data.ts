@@ -32,6 +32,7 @@ export const workspaceOptionalCommands: ReadonlySet<PlatformCommandId> = new Set
   'workspace.setLightTheme',
   'workspace.setSystemTheme',
   'workspace.showCommandPalette',
+  'workspace.showSettings',
   'workspace.toggleWallpaper',
 ])
 
@@ -77,6 +78,12 @@ export const viewPaletteItems: readonly ViewPaletteItem[] = [
     description: 'Choose a workspace folder.',
     title: 'Open Folder',
     value: 'view:open-folder',
+  },
+  {
+    command: 'workspace.showSettings',
+    description: 'Providers, models, and keybindings.',
+    title: 'Settings',
+    value: 'view:settings',
   },
 ]
 

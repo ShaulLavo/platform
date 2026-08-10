@@ -413,6 +413,7 @@ export {
   orchestrationWsSubscriptionIdSchema,
   orchestrationWsSubscriptionItemSchema,
   orchestrationWsSubscriptionNextMessageSchema,
+  orchestrationWsThreadDetailPageInputSchema,
   orchestrationWsUnsubscribeSchema,
   type OrchestrationSearchThreadsInput,
   type OrchestrationSearchThreadsResult,
@@ -433,6 +434,7 @@ export {
   type OrchestrationWsSubscribe,
   type OrchestrationWsSubscriptionId,
   type OrchestrationWsSubscriptionItem,
+  type OrchestrationWsThreadDetailPageInput,
 } from './orchestration-ws'
 export {
   logDashboardBreakdownItemSchema,

@@ -38,6 +38,8 @@ export {
   type OrchestrationShellStreamItem,
   type OrchestrationThread,
   type OrchestrationThreadActivity,
+  type OrchestrationThreadDetailPage,
+  type OrchestrationThreadDetailPageInput,
   type OrchestrationThreadDetailSnapshot,
   type OrchestrationThreadStreamItem,
   type OrchestrationWsClientMessage,

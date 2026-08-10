@@ -10,7 +10,6 @@ import {
 import * as v from 'valibot'
 
 import { PlanFollowUpBanner } from '@/features/chat/components/plan-follow-up-banner'
-import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
 import { ChatPlanFollowUpProvider } from '@/features/chat/providers/plan-follow-up-provider'
 import {
   resetChatInputDraftStore,
@@ -19,6 +18,7 @@ import {
 } from '@/features/chat/state/chat-input-draft-store'
 import { useChatOptimisticStore } from '@/features/chat/state/chat-optimistic-store'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
+import { unsupportedChatEnvironment } from '../../../../../test/factories/chat-environment'
 import { expect, test } from '../../../../../test/fixtures'
 import { thread as threadFactory } from '../../../../../test/factories/chat'
 import { renderWithProviders } from '../../../../../test/render'
@@ -144,7 +144,7 @@ function renderBanner({
   useChatProjectionStore.getState().syncThreadDetailSnapshot(snapshot)
 
   const dispatched: ClientOrchestrationCommand[] = []
-  const environment: ChatEnvironment = {
+  const environment = unsupportedChatEnvironment({
     dispatchCommand: async (command) => {
       dispatched.push(command)
       if (dispatch) return dispatch()
@@ -155,7 +155,7 @@ function renderBanner({
     shellStream: async function* () {},
     threadDetailSnapshot: async () => snapshot,
     threadDetailStream: async function* () {},
-  }
+  })
 
   renderWithProviders(
     <ChatPlanFollowUpProvider

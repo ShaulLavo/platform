@@ -28,6 +28,12 @@ const workspaceCommandSpecs = [
     ['workbench.action.showCommands'],
   ),
   workspaceCommand(
+    'workspace.showSettings',
+    'Settings',
+    'Open providers, models, and keybindings.',
+    ['workbench.action.openSettings'],
+  ),
+  workspaceCommand(
     'workspace.openFilePicker',
     'Open file picker',
     'Open the workspace file picker.',
@@ -109,6 +115,7 @@ const workspaceCommandSpecs = [
     'Move keyboard focus to the file tree.',
   ),
   workspaceCommand('workspace.focusGit', 'Focus Git', 'Move keyboard focus to the Git panel.'),
+  workspaceCommand('workspace.revealChat', 'Show chat', 'Bring the chat composer on screen.'),
   workspaceCommand(
     'workspace.closeCurrentTab',
     'Close current tab',

@@ -3,6 +3,7 @@ import {
   ArrowLineDownIcon,
   ArrowLineUpIcon,
   BroomIcon,
+  ChatCircleIcon,
   ClipboardTextIcon,
   CopyIcon,
   SelectionAllIcon,
@@ -18,6 +19,10 @@ import { formatHotkey } from '@/features/menus/utils/shortcut'
  * pressed, so an item that read it inside its own `run` would always see "".
  */
 export type TerminalMenuContext = {
+  /** Stages the selected lines on the chat composer and brings it on screen. */
+  readonly askAgent: () => void
+  /** False when the selection normalizes away — whitespace, or a terminal with no id. */
+  readonly canAskAgent: boolean
   readonly clear: () => void
   readonly copySelection: () => void
   /** No scrollback means both scroll actions are meaningless, not disabled. */
@@ -36,6 +41,17 @@ export function terminalMenu(context: TerminalMenuContext): Menu {
   const pasteHotkey = formatHotkey('mod+v')
 
   return [
+    // Above Copy: a failing command is the reason most people open this menu on
+    // a selection, and handing it to the agent is what they want next.
+    section('agent', [
+      actionItem({
+        disabled: !context.canAskAgent,
+        icon: ChatCircleIcon,
+        id: 'askAgent',
+        label: 'Ask the Agent',
+        run: context.askAgent,
+      }),
+    ]),
     section('clipboard', [
       actionItem({
         disabled: !context.hasSelection,

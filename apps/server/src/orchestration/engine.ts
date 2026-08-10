@@ -7,6 +7,7 @@ import {
   clientOrchestrationCommandSchema,
   type OrchestrationCommand,
   type OrchestrationEvent,
+  type OrchestrationThreadDetailPageInput,
 } from './schemas'
 import { CheckpointReactor } from './checkpoint-reactor'
 import { isDurableCommandRejection, OrchestrationCommandReceipts } from './command-receipts'
@@ -128,6 +129,11 @@ export class OrchestrationEngine {
 
   threadDetailSnapshot(threadId: string) {
     return this.snapshotQuery.threadDetailSnapshot(threadId)
+  }
+
+  /** One page of rows strictly older than the boundary the caller already holds. */
+  threadDetailPage(input: OrchestrationThreadDetailPageInput) {
+    return this.snapshotQuery.threadDetailPage(input)
   }
 
   replay(input: Parameters<OrchestrationEventStore['readAfter']>[0]) {

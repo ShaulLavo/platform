@@ -3,8 +3,10 @@ import type {
   OrchestrationReplayEventsInput,
   OrchestrationReplayEventsResult,
   OrchestrationShellStreamItem,
+  OrchestrationThreadDetailPage,
   OrchestrationThreadDetailSnapshot,
   OrchestrationThreadStreamItem,
+  OrchestrationWsThreadDetailPageInput,
   ThreadId,
 } from '@workspace/contracts'
 
@@ -16,6 +18,10 @@ export type ChatEnvironment = {
   ) => Promise<{ deduped: boolean; sequence: number }>
   replayEvents: (input: OrchestrationReplayEventsInput) => Promise<OrchestrationReplayEventsResult>
   shellStream: (input?: OrchestrationStreamInput) => AsyncIterable<OrchestrationShellStreamItem>
+  /** One page of rows older than the boundary the caller holds. */
+  threadDetailPage: (
+    input: OrchestrationWsThreadDetailPageInput,
+  ) => Promise<OrchestrationThreadDetailPage>
   threadDetailSnapshot: (threadId: ThreadId) => Promise<OrchestrationThreadDetailSnapshot>
   threadDetailStream: (
     threadId: ThreadId,

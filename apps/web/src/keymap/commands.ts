@@ -65,6 +65,7 @@ type WorkspaceCommandContext = {
   readonly setWallpaperHidden: (hidden: boolean) => void
   readonly setWorkbenchPanels: (panels: WorkbenchPanels) => void
   readonly showCommandPalette: (initialSearch?: string) => void
+  readonly showSettings: () => void
   readonly selectPreviousEditor: () => boolean
   readonly uiMode: WorkspaceUiMode
   readonly wallpaperHidden: boolean
@@ -76,9 +77,11 @@ type WorkspaceCommandHandler = (context: WorkspaceCommandContext) => boolean | v
 export function usePlatformCommandDispatch({
   requestCloseTab,
   showCommandPalette = noop,
+  showSettings = noop,
 }: {
   readonly requestCloseTab?: RequestCloseTab
   readonly showCommandPalette?: (initialSearch?: string) => void
+  readonly showSettings?: () => void
 } = {}): PlatformCommandDispatch {
   const documentStore = useEditorDocumentStoreApi()
   const queryClient = useQueryClient()
@@ -127,6 +130,7 @@ export function usePlatformCommandDispatch({
         setWallpaperHidden: workspace.setWallpaperHidden,
         setWorkbenchPanels: workspace.setWorkbenchPanels,
         showCommandPalette,
+        showSettings,
         selectPreviousEditor,
         uiMode: workspace.uiMode,
         wallpaperHidden: workspace.wallpaperHidden,
@@ -145,6 +149,7 @@ export function usePlatformCommandDispatch({
       setFocusArea,
       setTheme,
       showCommandPalette,
+      showSettings,
       workspaceStore,
     ],
   )
@@ -230,6 +235,15 @@ const workspaceCommandHandlers: Partial<Record<WorkspaceCommandId, WorkspaceComm
     setFocusArea('git')
     return true
   },
+  // Chat mode already puts the composer on the stage, so only the workbench has
+  // anything to reveal — and there it is a sidebar tab, not a focus target: the
+  // caller (terminal capture today) is handing over context, not the keyboard.
+  'workspace.revealChat': ({ setWorkbenchPanels, uiMode, workbenchPanels }) => {
+    if (uiMode === 'chat') return true
+
+    setWorkbenchPanels(setWorkbenchSidebarTab(workbenchPanels, 'chat'))
+    return true
+  },
   'workspace.gotoSymbol': ({ activeFilePath, showCommandPalette }) => {
     if (!fileBackedEditorPath(activeFilePath)) return false
 
@@ -281,6 +295,13 @@ const workspaceCommandHandlers: Partial<Record<WorkspaceCommandId, WorkspaceComm
   },
   'workspace.showQuickAccess': ({ showCommandPalette }) => {
     showCommandPalette('')
+    return true
+  },
+  // Settings are machine-wide, so this is the one workspace command that stays
+  // available with no folder open — it is where a provider gets configured in
+  // the first place.
+  'workspace.showSettings': ({ showSettings }) => {
+    showSettings()
     return true
   },
   'workspace.selectColorMode': ({ showCommandPalette }) => {

@@ -3,7 +3,6 @@ import type {
   InteractionMode,
   ModelSelection,
   RuntimeMode,
-  ThreadId,
 } from '@workspace/contracts'
 import { Debouncer } from '@tanstack/react-pacer/debouncer'
 import { create } from 'zustand'
@@ -16,6 +15,7 @@ import {
   type PersistedChatInputDraft,
   type PersistedChatInputDraftStorage,
 } from '../lib/chat-draft-storage'
+import type { TerminalContextSelection } from '../lib/terminal-context'
 
 const CHAT_INPUT_DRAFT_PERSIST_DEBOUNCE_MS = 300
 const CHAT_INPUT_DRAFT_PERSISTENCE_ERROR = 'Chat draft could not be saved locally.'
@@ -30,21 +30,17 @@ export type ChatInputImageAttachment = ChatAttachment & {
   previewUrl: string
 }
 
-type ChatInputTerminalContext = {
+/**
+ * A captured terminal slice waiting to be sent. It carries the whole selection
+ * rather than a rendered label so the composer chip and the transcript chip can
+ * be the same component fed from the same shape.
+ */
+export type ChatInputTerminalContext = TerminalContextSelection & {
+  /** Stable across re-renders and unique per capture — the same lines can be grabbed twice. */
   id: string
-  label: string
-  value: string
-}
-
-type ChatInputDraftPromotion = {
-  promotedThreadId?: ThreadId
-  status: 'idle' | 'promoting' | 'promoted'
-  threadId?: ThreadId
-  updatedAt: string
 }
 
 export type ChatInputDraft = {
-  draftPromotion: ChatInputDraftPromotion | null
   images: ChatInputImageAttachment[]
   interactionMode: InteractionMode | null
   modelSelection: ModelSelection | null
@@ -61,14 +57,15 @@ type ChatInputDraftState = {
 
 type ChatInputDraftActions = {
   addImages: (target: ChatInputDraftTarget, images: readonly ChatInputImageAttachment[]) => void
+  addTerminalContexts: (
+    target: ChatInputDraftTarget,
+    contexts: readonly ChatInputTerminalContext[],
+  ) => void
   clearDraft: (target: ChatInputDraftTarget) => void
   flush: () => boolean
   getDraft: (target: ChatInputDraftTarget) => ChatInputDraft
-  markDraftPromotion: (
-    target: ChatInputDraftTarget,
-    promotion: Omit<ChatInputDraftPromotion, 'updatedAt'>,
-  ) => void
   removeImage: (target: ChatInputDraftTarget, imageId: string) => void
+  removeTerminalContext: (target: ChatInputDraftTarget, contextId: string) => void
   setInteractionMode: (
     target: ChatInputDraftTarget,
     interactionMode: InteractionMode | null,
@@ -76,10 +73,6 @@ type ChatInputDraftActions = {
   setModelSelection: (target: ChatInputDraftTarget, modelSelection: ModelSelection | null) => void
   setPrompt: (target: ChatInputDraftTarget, prompt: string) => void
   setRuntimeMode: (target: ChatInputDraftTarget, runtimeMode: RuntimeMode | null) => void
-  setTerminalContexts: (
-    target: ChatInputDraftTarget,
-    terminalContexts: readonly ChatInputTerminalContext[],
-  ) => void
 }
 
 export type ChatInputDraftStore = ChatInputDraftState & ChatInputDraftActions
@@ -87,7 +80,6 @@ export type ChatInputDraftStore = ChatInputDraftState & ChatInputDraftActions
 const EMPTY_IMAGES: ChatInputImageAttachment[] = []
 const EMPTY_TERMINAL_CONTEXTS: ChatInputTerminalContext[] = []
 const EMPTY_CHAT_INPUT_DRAFT: ChatInputDraft = {
-  draftPromotion: null,
   images: EMPTY_IMAGES,
   interactionMode: null,
   modelSelection: null,
@@ -107,28 +99,29 @@ export const useChatInputDraftStore = create<ChatInputDraftStore>((set, get) => 
     set((state) => updateDraftForTarget(state, target, (draft) => addImagesToDraft(draft, images)))
     draftPersist.maybeExecute()
   },
+  addTerminalContexts: (target, contexts) => {
+    set((state) =>
+      updateDraftForTarget(state, target, (draft) => addTerminalContextsToDraft(draft, contexts)),
+    )
+    draftPersist.maybeExecute()
+  },
   clearDraft: (target) => {
     set((state) => removeDraftForTarget(state, target))
     draftPersist.maybeExecute()
   },
   flush: () => flushChatInputDraftStorage(),
   getDraft: (target) => chatInputDraftForTarget(get(), target),
-  markDraftPromotion: (target, promotion) => {
-    set((state) =>
-      updateDraftForTarget(state, target, (draft) =>
-        withDraftPatch(draft, {
-          draftPromotion: {
-            ...promotion,
-            updatedAt: new Date().toISOString(),
-          },
-        }),
-      ),
-    )
-    draftPersist.maybeExecute()
-  },
   removeImage: (target, imageId) => {
     set((state) =>
       updateDraftForTarget(state, target, (draft) => removeImageFromDraft(draft, imageId)),
+    )
+    draftPersist.maybeExecute()
+  },
+  removeTerminalContext: (target, contextId) => {
+    set((state) =>
+      updateDraftForTarget(state, target, (draft) =>
+        removeTerminalContextFromDraft(draft, contextId),
+      ),
     )
     draftPersist.maybeExecute()
   },
@@ -156,14 +149,6 @@ export const useChatInputDraftStore = create<ChatInputDraftStore>((set, get) => 
     )
     draftPersist.maybeExecute()
   },
-  setTerminalContexts: (target, terminalContexts) => {
-    set((state) =>
-      updateDraftForTarget(state, target, (draft) =>
-        withDraftPatch(draft, { terminalContexts: Array.from(terminalContexts) }),
-      ),
-    )
-    draftPersist.maybeExecute()
-  },
 }))
 
 export function selectChatInputDraftImages(
@@ -171,6 +156,13 @@ export function selectChatInputDraftImages(
   target: ChatInputDraftTarget,
 ) {
   return chatInputDraftForTarget(state, target).images
+}
+
+export function selectChatInputDraftTerminalContexts(
+  state: ChatInputDraftStore,
+  target: ChatInputDraftTarget,
+) {
+  return chatInputDraftForTarget(state, target).terminalContexts
 }
 
 export function selectChatInputDraftInteractionMode(
@@ -303,15 +295,38 @@ function removeImageFromDraft(draft: ChatInputDraft, imageId: string): ChatInput
   return withDraftPatch(draft, { images })
 }
 
+/**
+ * Deduped by id because the inbox drain and a React strict-mode double-invoke
+ * can both hand over the same capture.
+ */
+function addTerminalContextsToDraft(
+  draft: ChatInputDraft,
+  contexts: readonly ChatInputTerminalContext[],
+): ChatInputDraft {
+  const seen = new Set(draft.terminalContexts.map((context) => context.id))
+  const added = contexts.filter((context) => !seen.has(context.id))
+  if (added.length === 0) return draft
+
+  return withDraftPatch(draft, {
+    terminalContexts: draft.terminalContexts.concat(added),
+  })
+}
+
+function removeTerminalContextFromDraft(draft: ChatInputDraft, contextId: string): ChatInputDraft {
+  const terminalContexts = draft.terminalContexts.filter((context) => context.id !== contextId)
+  if (terminalContexts.length === draft.terminalContexts.length) return draft
+
+  return withDraftPatch(draft, { terminalContexts })
+}
+
 function isEmptyChatInputDraft(draft: ChatInputDraft) {
   if (draft.prompt.trim()) return false
   if (draft.images.length > 0) return false
   if (draft.terminalContexts.length > 0) return false
   if (draft.modelSelection) return false
   if (draft.runtimeMode) return false
-  if (draft.interactionMode) return false
 
-  return !draft.draftPromotion
+  return !draft.interactionMode
 }
 
 function draftsEqual(left: ChatInputDraft, right: ChatInputDraft) {
@@ -321,8 +336,7 @@ function draftsEqual(left: ChatInputDraft, right: ChatInputDraft) {
     left.terminalContexts === right.terminalContexts &&
     left.modelSelection === right.modelSelection &&
     left.runtimeMode === right.runtimeMode &&
-    left.interactionMode === right.interactionMode &&
-    left.draftPromotion === right.draftPromotion
+    left.interactionMode === right.interactionMode
   )
 }
 
@@ -340,7 +354,6 @@ function hydrateDrafts(storage: PersistedChatInputDraftStorage) {
 
 function hydrateDraft(draft: PersistedChatInputDraft): ChatInputDraft {
   return {
-    draftPromotion: draft.draftPromotion as ChatInputDraftPromotion | null,
     // Image bytes never reach storage, so a stored draft has no preview source:
     // restoring its attachments would only render broken thumbnails.
     images: EMPTY_IMAGES,
@@ -367,7 +380,6 @@ function persistedStorageFromState(state: ChatInputDraftState): PersistedChatInp
 
 function persistedDraft(draft: ChatInputDraft): PersistedChatInputDraft {
   return {
-    draftPromotion: draft.draftPromotion,
     interactionMode: draft.interactionMode,
     modelSelection: draft.modelSelection,
     prompt: draft.prompt,

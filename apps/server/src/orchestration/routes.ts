@@ -11,7 +11,7 @@ import {
 } from './schemas'
 import type { OrchestrationEngine } from './engine'
 import type { OrchestrationCheckpointDiffQuery } from './checkpoint-diff-query'
-import { OrchestrationThreadSearchQuery } from './thread-search-query'
+import type { OrchestrationThreadSearchQuery } from './thread-search-query'
 import { toSse } from '../sse'
 import { observeRequestOperation } from '../observability'
 import { chatOperationContext, orchestrationReplaySummary } from './orchestration-logging'
@@ -55,9 +55,7 @@ const threadDetailStreamQuerySchema = v.object({
 export function orchestrationRoutes(
   engine: OrchestrationEngine,
   checkpointDiff: OrchestrationCheckpointDiffQuery,
-  // Defaults to the process-wide database — the same handle production hands
-  // the engine. Callers holding their own handle pass a query built over it.
-  threadSearch: OrchestrationThreadSearchQuery = new OrchestrationThreadSearchQuery(),
+  threadSearch: OrchestrationThreadSearchQuery,
 ) {
   return new Elysia({ name: 'orchestration-routes' }).group('/orchestration', (app) =>
     app

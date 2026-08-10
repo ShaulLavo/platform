@@ -2,10 +2,21 @@ import type { MenuActionItem } from '@/features/menus/utils/model'
 import { terminalMenu, type TerminalMenuContext } from '@/features/terminal/utils/menu'
 import { expect, test } from '../../../../../test/fixtures'
 
-test('sections run clipboard, then screen, then scroll', () => {
+test('sections run agent, clipboard, screen, then scroll', () => {
   const ids = terminalMenu(menuContext({ hasScrollback: true })).map((entry) => entry.id)
 
-  expect(ids).toEqual(['clipboard', 'screen', 'scroll'])
+  expect(ids).toEqual(['agent', 'clipboard', 'screen', 'scroll'])
+})
+
+test('Ask the Agent is disabled until the capture survives normalization', () => {
+  // Keyed on the normalized capture, not on `hasSelection`: a drag that caught
+  // only whitespace is a selection the terminal reports and the agent cannot use.
+  expect(item(menuContext({ canAskAgent: false, hasSelection: true }), 'askAgent').disabled).toBe(
+    true,
+  )
+  expect(item(menuContext({ canAskAgent: true, hasSelection: true }), 'askAgent').disabled).toBe(
+    false,
+  )
 })
 
 test('the clipboard section reads Copy, Paste, Select All', () => {
@@ -65,7 +76,7 @@ test('scrollback adds Scroll to Top and Scroll to Bottom', () => {
 
 test('every item runs the callback it was built from', () => {
   const ran: string[] = []
-  const context = menuContext({ hasScrollback: true, hasSelection: true })
+  const context = menuContext({ canAskAgent: true, hasScrollback: true, hasSelection: true })
   const spied = Object.fromEntries(
     Object.entries(context).map(([key, value]) =>
       typeof value === 'function' ? [key, () => ran.push(key)] : [key, value],
@@ -81,6 +92,7 @@ test('every item runs the callback it was built from', () => {
   }
 
   expect(ran).toEqual([
+    'askAgent',
     'copySelection',
     'paste',
     'selectAll',
@@ -113,15 +125,19 @@ function item(context: TerminalMenuContext, id: string) {
 }
 
 function menuContext({
+  canAskAgent = false,
   hasScrollback = false,
   hasSelection = false,
   pasteBlocked = false,
 }: {
+  canAskAgent?: boolean
   hasScrollback?: boolean
   hasSelection?: boolean
   pasteBlocked?: boolean
 } = {}): TerminalMenuContext {
   return {
+    askAgent: () => {},
+    canAskAgent,
     clear: () => {},
     copySelection: () => {},
     hasScrollback,

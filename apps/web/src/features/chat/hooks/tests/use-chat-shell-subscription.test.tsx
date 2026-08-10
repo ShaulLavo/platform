@@ -7,10 +7,10 @@ import type {
 } from '@workspace/contracts'
 import { act, renderHook, waitFor } from '@testing-library/react'
 
-import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
 import { useChatShellSubscription } from '@/features/chat/hooks/use-chat-shell-subscription'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { createClientError } from '@/lib/structured-errors'
+import { unsupportedChatEnvironment } from '../../../../../test/factories/chat-environment'
 import { expect, test } from '../../../../../test/fixtures'
 
 test('a dropped shell stream reconnects instead of dying', async () => {
@@ -66,28 +66,27 @@ type ScriptedAttempt = {
 function createShellEnvironment(script: ScriptedAttempt[] = []) {
   let attempts = 0
 
-  const environment: ChatEnvironment & { attempts: () => number } = {
-    attempts: () => attempts,
-    dispatchCommand: async (_command: ClientOrchestrationCommand) => ({
-      deduped: false,
-      sequence: 0,
-    }),
-    replayEvents: async (
-      _input: OrchestrationReplayEventsInput,
-    ): Promise<OrchestrationReplayEventsResult> => ({ events: [] }),
-    shellStream: async function* (): AsyncGenerator<OrchestrationShellStreamItem> {
-      const attempt = script[attempts] ?? {}
-      attempts += 1
-      if (attempt.fail) throw attempt.fail
+  const environment = {
+    ...unsupportedChatEnvironment({
+      dispatchCommand: async (_command: ClientOrchestrationCommand) => ({
+        deduped: false,
+        sequence: 0,
+      }),
+      replayEvents: async (
+        _input: OrchestrationReplayEventsInput,
+      ): Promise<OrchestrationReplayEventsResult> => ({ events: [] }),
+      shellStream: async function* (): AsyncGenerator<OrchestrationShellStreamItem> {
+        const attempt = script[attempts] ?? {}
+        attempts += 1
+        if (attempt.fail) throw attempt.fail
 
-      yield await new Promise<OrchestrationShellStreamItem>(() => undefined)
-    },
-    threadDetailSnapshot: async () => {
-      throw dropped()
-    },
-    threadDetailStream: async function* (): AsyncGenerator<OrchestrationThreadStreamItem> {
-      yield await new Promise<OrchestrationThreadStreamItem>(() => undefined)
-    },
+        yield await new Promise<OrchestrationShellStreamItem>(() => undefined)
+      },
+      threadDetailStream: async function* (): AsyncGenerator<OrchestrationThreadStreamItem> {
+        yield await new Promise<OrchestrationThreadStreamItem>(() => undefined)
+      },
+    }),
+    attempts: () => attempts,
   }
 
   return environment

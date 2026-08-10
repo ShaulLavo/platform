@@ -11,7 +11,7 @@ export function ChatInputDraftPlugin({
   busy,
   disabled,
   draftKey,
-  hasAttachments,
+  hasStagedContent,
   onEditorReady,
   onTriggerChange,
   rootPath,
@@ -21,7 +21,7 @@ export function ChatInputDraftPlugin({
   busy: boolean
   disabled: boolean
   draftKey: string
-  hasAttachments: boolean
+  hasStagedContent: boolean
   onEditorReady: (editor: LexicalEditor | null) => void
   onTriggerChange: (trigger: ChatInputTrigger | null) => void
   rootPath: string
@@ -35,12 +35,12 @@ export function ChatInputDraftPlugin({
       updateSendButtonDisabled(sendButtonRef.current, {
         busy,
         disabled,
-        hasAttachments,
+        hasStagedContent,
         submitting,
         text,
       })
     },
-    [busy, disabled, hasAttachments, sendButtonRef, submitting],
+    [busy, disabled, hasStagedContent, sendButtonRef, submitting],
   )
 
   useEffect(() => {
@@ -85,18 +85,18 @@ function updateSendButtonDisabled(
   {
     busy,
     disabled,
-    hasAttachments,
+    hasStagedContent,
     submitting,
     text,
   }: {
     busy: boolean
     disabled: boolean
-    hasAttachments: boolean
+    hasStagedContent: boolean
     submitting: boolean
     text: string
   },
 ) {
   if (!button) return
 
-  button.disabled = busy ? disabled : disabled || submitting || (!hasAttachments && !text.trim())
+  button.disabled = busy ? disabled : disabled || submitting || (!hasStagedContent && !text.trim())
 }

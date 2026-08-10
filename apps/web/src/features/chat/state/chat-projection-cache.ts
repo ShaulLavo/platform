@@ -142,6 +142,11 @@ export function hydrateChatProjectionState(
     lastAppliedShellSequence: 0,
     lastAppliedShellUpdatedAt: null,
     threadDetailSequenceById: {},
+    // The cache holds a short tail by design, so replaying it through the
+    // snapshot writer concludes "no earlier history" for every thread. Dropped
+    // rather than trusted: unknown reads as "offer the page", and the real
+    // snapshot settles it moments later.
+    threadHasEarlierById: {},
   }
 }
 

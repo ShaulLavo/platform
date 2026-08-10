@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { normalizeEdenSseData, parseEdenSseStream } from '../eden-events'
+import { normalizeEdenDates, parseEdenSseStream } from '../eden-events'
 
 describe('Eden SSE events', () => {
   it('normalizes Date values to wire-compatible ISO strings', () => {
     const createdAt = new Date('2026-05-24T20:00:00.000Z')
 
     expect(
-      normalizeEdenSseData({
+      normalizeEdenDates({
         createdAt,
         nested: [{ updatedAt: createdAt }],
       }),

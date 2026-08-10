@@ -5,6 +5,7 @@ import { useChatTimelineActions } from '@/features/chat/hooks/use-chat-timeline-
 import { canOpenCheckpointDiff } from '@/features/chat/lib/checkpoint-diff-query'
 import type { OptimisticChatMessage } from '@/features/chat/state/chat-optimistic-store'
 import type { ChatTurnDiffSummary } from '@/features/chat/state/chat-projection-store'
+import { extractTerminalContexts } from '@/features/chat/lib/terminal-context'
 import { chatMessageMenu } from '@/features/chat/utils/message-menu'
 import { markdownToPlainText } from '@/features/chat/utils/message-text'
 import { copyTextToClipboard } from '@/lib/clipboard'
@@ -23,7 +24,9 @@ export function useMessageMenu({
 }) {
   const { openCheckpointDiff, revertToCheckpoint } = useChatTimelineActions()
   const assistant = message.role === 'assistant'
-  const text = message.text
+  // Copy hands over what the bubble shows. For a user message that is the
+  // prompt without the attached `<terminal_context>` block.
+  const text = assistant ? message.text : extractTerminalContexts(message.text).text
 
   function handleRevertToCheckpoint() {
     if (typeof revertTurnCount !== 'number') return

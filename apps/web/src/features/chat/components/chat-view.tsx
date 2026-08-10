@@ -218,13 +218,15 @@ async function submitChatTurn({
   setSending: (value: boolean) => void
   thread: ChatThread
 }): Promise<boolean> {
-  const { attachments, interactionMode, modelSelection, runtimeMode, text } = payload
+  const { attachments, interactionMode, modelSelection, runtimeMode, terminalContexts, text } =
+    payload
   const submission = createTurnSubmission({
     attachments,
     createdAt: new Date().toISOString(),
     interactionMode,
     modelSelection,
     runtimeMode,
+    terminalContexts,
     text,
     threadId: thread.id,
   })
@@ -236,6 +238,7 @@ async function submitChatTurn({
     model: modelSelection.model,
     providerInstanceId: modelSelection.providerInstanceId,
     runtimeMode,
+    terminalContextCount: terminalContexts.length,
     textLength: text.length,
   })
 

@@ -8,7 +8,6 @@ import {
   type OrchestrationSearchThreadsInput,
   type OrchestrationSearchThreadsResult,
 } from '@workspace/contracts'
-import { getDefaultPlatformDatabase } from '../db/client'
 import { projectionThreadMessages, projectionThreads } from '../db/schema'
 import type { OrchestrationDatabase } from './event-store'
 
@@ -24,15 +23,16 @@ const SNIPPET_LEAD_CHARS = 40
  * always something the thread actually said.
  */
 export class OrchestrationThreadSearchQuery {
-  private readonly injectedDatabase: OrchestrationDatabase | null
-
   /**
-   * The handle is optional and resolved lazily. Route wiring is built before
-   * any request arrives, and resolving the process-wide database there would
-   * open — and create — the real SQLite file inside tests that inject their own.
+   * Required, like every other query in this folder. A default that reached for
+   * the process-wide database made a forgotten wiring site look like it worked:
+   * the route answered from the developer's real SQLite file even when the app
+   * had been handed an in-memory one, so a test could pass for the wrong reason.
    */
-  constructor(database?: OrchestrationDatabase) {
-    this.injectedDatabase = database ?? null
+  private readonly database: OrchestrationDatabase
+
+  constructor(database: OrchestrationDatabase) {
+    this.database = database
   }
 
   search(input: OrchestrationSearchThreadsInput): OrchestrationSearchThreadsResult {
@@ -48,10 +48,6 @@ export class OrchestrationThreadSearchQuery {
         threadId: row.threadId,
       })),
     })
-  }
-
-  private get database(): OrchestrationDatabase {
-    return this.injectedDatabase ?? getDefaultPlatformDatabase()
   }
 
   /**

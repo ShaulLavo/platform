@@ -1,14 +1,17 @@
 import {
   initialTimelineScrollState,
+  isTimelineAtContentEnd,
   isTimelineWithinFollowBand,
   resolveTimelineAnchorItemId,
   timelineAnchoredTurnMetrics,
   timelineContentScrollsUp,
   timelineDistanceToContentEnd,
+  timelinePrependedScrollTop,
   timelineRemeasureScrollDelta,
   timelineScrollReducer,
   TIMELINE_ANCHOR_OFFSET_PX,
   TIMELINE_COMPOSER_INSET_PX,
+  TIMELINE_TOP_INSET_PX,
   type TimelineScrollState,
   type TimelineViewportMetrics,
 } from '@/features/chat/utils/timeline-scroll-anchoring'
@@ -27,10 +30,21 @@ function viewport(overrides: Partial<TimelineViewportMetrics> = {}): TimelineVie
 
 function openedThread(threadId = 'thread-1', latestUserItemId: string | null = 'message:u1') {
   return timelineScrollReducer(initialTimelineScrollState, {
+    firstItemId: 'message:u1',
     latestUserItemId,
     threadId,
     type: 'items-changed',
   })
+}
+
+/** An items change that adds nothing to the front — the ordinary streaming case. */
+function itemsChanged(latestUserItemId: string | null, threadId = 'thread-1') {
+  return {
+    firstItemId: 'message:u1',
+    latestUserItemId,
+    threadId,
+    type: 'items-changed',
+  } as const
 }
 
 function afterInitialScroll(state: TimelineScrollState) {
@@ -93,11 +107,10 @@ test('opening a thread lands at the end instead of anchoring its last message', 
 })
 
 test('sending a message anchors it instead of pinning to the bottom', () => {
-  const state = timelineScrollReducer(afterInitialScroll(openedThread()), {
-    latestUserItemId: 'message:u2',
-    threadId: 'thread-1',
-    type: 'items-changed',
-  })
+  const state = timelineScrollReducer(
+    afterInitialScroll(openedThread()),
+    itemsChanged('message:u2'),
+  )
 
   expect(state.followMode).toBe('anchoring-new-turn')
   expect(state.anchorItemId).toBe('message:u2')
@@ -109,24 +122,19 @@ test('sending while reading history still anchors the sent message', () => {
     type: 'user-navigated',
   })
 
-  const sent = timelineScrollReducer(reading, {
-    latestUserItemId: 'message:u2',
-    threadId: 'thread-1',
-    type: 'items-changed',
-  })
+  const sent = timelineScrollReducer(reading, itemsChanged('message:u2'))
 
   expect(sent.followMode).toBe('anchoring-new-turn')
 })
 
 test('streaming into an anchored turn never re-arms end-follow', () => {
-  const anchored = timelineScrollReducer(afterInitialScroll(openedThread()), {
-    latestUserItemId: 'message:u2',
-    threadId: 'thread-1',
-    type: 'items-changed',
-  })
+  const anchored = timelineScrollReducer(
+    afterInitialScroll(openedThread()),
+    itemsChanged('message:u2'),
+  )
 
-  for (const withinFollowBand of [true, false, true]) {
-    expect(timelineScrollReducer(anchored, { type: 'scrolled', withinFollowBand })).toBe(anchored)
+  for (const atContentEnd of [true, false, true]) {
+    expect(timelineScrollReducer(anchored, { atContentEnd, type: 'scrolled' })).toBe(anchored)
   }
 })
 
@@ -136,27 +144,37 @@ test('a user scrolling up mid-stream stops the transcript following', () => {
 
   expect(navigated.followMode).toBe('free-scrolling')
   // Further stream chunks and their scroll events must not drag them back.
-  const streamed = timelineScrollReducer(navigated, {
-    latestUserItemId: 'message:u1',
-    threadId: 'thread-1',
-    type: 'items-changed',
-  })
+  const streamed = timelineScrollReducer(navigated, itemsChanged('message:u1'))
   expect(streamed).toBe(navigated)
-  expect(timelineScrollReducer(navigated, { type: 'scrolled', withinFollowBand: false })).toBe(
+  expect(timelineScrollReducer(navigated, { atContentEnd: false, type: 'scrolled' })).toBe(
     navigated,
   )
 })
 
-test('scrolling back into the band re-arms follow and releases the anchor', () => {
-  const anchored = timelineScrollReducer(afterInitialScroll(openedThread()), {
-    latestUserItemId: 'message:u2',
-    threadId: 'thread-1',
-    type: 'items-changed',
+test('a small scroll off the live edge is not re-armed back into follow', () => {
+  // Re-arming here would scroll the transcript straight back to the end, so the
+  // reader could never get out of the first gesture's worth of distance.
+  const navigated = timelineScrollReducer(afterInitialScroll(openedThread()), {
+    type: 'user-navigated',
   })
+  const nudgedOffTheEnd = viewport({ contentHeight: 2000, scrollTop: 1390 })
+
+  expect(isTimelineAtContentEnd(nudgedOffTheEnd)).toBe(false)
+  expect(timelineScrollReducer(navigated, { atContentEnd: false, type: 'scrolled' })).toBe(
+    navigated,
+  )
+})
+
+test('scrolling back to the very end re-arms follow and releases the anchor', () => {
+  const anchored = timelineScrollReducer(
+    afterInitialScroll(openedThread()),
+    itemsChanged('message:u2'),
+  )
   const measured = timelineScrollReducer(anchored, { endSpace: 240, type: 'anchor-measured' })
   const navigated = timelineScrollReducer(measured, { type: 'user-navigated' })
 
-  const rearmed = timelineScrollReducer(navigated, { type: 'scrolled', withinFollowBand: true })
+  expect(isTimelineAtContentEnd(viewport({ contentHeight: 2000, scrollTop: 1400 }))).toBe(true)
+  const rearmed = timelineScrollReducer(navigated, { atContentEnd: true, type: 'scrolled' })
 
   expect(rearmed.followMode).toBe('following-end')
   expect(rearmed.anchorItemId).toBeNull()
@@ -164,11 +182,10 @@ test('scrolling back into the band re-arms follow and releases the anchor', () =
 })
 
 test('jumping to the latest message releases the anchor', () => {
-  const anchored = timelineScrollReducer(afterInitialScroll(openedThread()), {
-    latestUserItemId: 'message:u2',
-    threadId: 'thread-1',
-    type: 'items-changed',
-  })
+  const anchored = timelineScrollReducer(
+    afterInitialScroll(openedThread()),
+    itemsChanged('message:u2'),
+  )
   const parked = timelineScrollReducer(
     timelineScrollReducer(anchored, { endSpace: 240, type: 'anchor-measured' }),
     { type: 'anchor-parked' },
@@ -189,11 +206,7 @@ test('switching threads forgets the previous scroll intent', () => {
     type: 'user-navigated',
   })
 
-  const switched = timelineScrollReducer(navigated, {
-    latestUserItemId: 'message:other',
-    threadId: 'thread-2',
-    type: 'items-changed',
-  })
+  const switched = timelineScrollReducer(navigated, itemsChanged('message:other', 'thread-2'))
 
   expect(switched).toMatchObject({
     anchorItemId: null,
@@ -207,15 +220,96 @@ test('switching threads forgets the previous scroll intent', () => {
 test('unchanged input leaves the state object identical', () => {
   const state = afterInitialScroll(openedThread())
 
-  expect(
-    timelineScrollReducer(state, {
-      latestUserItemId: 'message:u1',
-      threadId: 'thread-1',
-      type: 'items-changed',
-    }),
-  ).toBe(state)
+  expect(timelineScrollReducer(state, itemsChanged('message:u1'))).toBe(state)
   expect(timelineScrollReducer(state, { endSpace: 0, type: 'anchor-measured' })).toBe(state)
   expect(timelineScrollReducer(state, { type: 'initial-scroll-done' })).toBe(state)
+})
+
+test('a page landing above the reader is marked for absorption', () => {
+  const reading = timelineScrollReducer(afterInitialScroll(openedThread()), {
+    type: 'user-navigated',
+  })
+
+  const prepended = timelineScrollReducer(reading, {
+    firstItemId: 'message:older',
+    latestUserItemId: 'message:u1',
+    threadId: 'thread-1',
+    type: 'items-changed',
+  })
+
+  expect(prepended.prependedAboveItemId).toBe('message:u1')
+  expect(prepended.firstItemId).toBe('message:older')
+  expect(prepended.followMode).toBe('free-scrolling')
+  expect(timelineScrollReducer(prepended, { type: 'prepend-absorbed' }).prependedAboveItemId).toBe(
+    null,
+  )
+})
+
+test('a front change while following the end is not a prepend to absorb', () => {
+  // Pinned to the live edge, the offset is re-derived every frame; compensating
+  // for a front change on top of that would fight `scrollToEnd`.
+  const following = afterInitialScroll(openedThread())
+
+  const changed = timelineScrollReducer(following, {
+    firstItemId: 'message:older',
+    latestUserItemId: 'message:u1',
+    threadId: 'thread-1',
+    type: 'items-changed',
+  })
+
+  expect(changed.prependedAboveItemId).toBeNull()
+  expect(changed.firstItemId).toBe('message:older')
+})
+
+test('sending while a prepend is unabsorbed hands the offset to the anchor', () => {
+  const reading = timelineScrollReducer(afterInitialScroll(openedThread()), {
+    type: 'user-navigated',
+  })
+  const prepended = timelineScrollReducer(reading, {
+    firstItemId: 'message:older',
+    latestUserItemId: 'message:u1',
+    threadId: 'thread-1',
+    type: 'items-changed',
+  })
+
+  const sent = timelineScrollReducer(prepended, {
+    firstItemId: 'message:older',
+    latestUserItemId: 'message:u2',
+    threadId: 'thread-1',
+    type: 'items-changed',
+  })
+
+  expect(sent.followMode).toBe('anchoring-new-turn')
+  expect(sent.prependedAboveItemId).toBeNull()
+})
+
+test('the absorbed offset keeps the reader on the same row', () => {
+  const scrollTop = 900
+  const rowStartBefore = 1_200
+  // The page pushed everything down: the previously-first row now starts 640px
+  // below the top inset instead of sitting on it.
+  const shift = 640
+  const scrolled = timelinePrependedScrollTop({
+    anchorRow: { size: 40, start: TIMELINE_TOP_INSET_PX + shift },
+    scrollTop,
+    topInset: TIMELINE_TOP_INSET_PX,
+  })
+
+  expect(scrolled).toBe(scrollTop + shift)
+  expect(rowStartBefore + shift - (scrolled ?? 0)).toBe(rowStartBefore - scrollTop)
+})
+
+test('a page that turned out to be empty moves nothing', () => {
+  expect(
+    timelinePrependedScrollTop({
+      anchorRow: { size: 40, start: TIMELINE_TOP_INSET_PX },
+      scrollTop: 900,
+      topInset: TIMELINE_TOP_INSET_PX,
+    }),
+  ).toBeNull()
+  expect(
+    timelinePrependedScrollTop({ anchorRow: undefined, scrollTop: 900, topInset: 16 }),
+  ).toBeNull()
 })
 
 test('an anchored turn parks the sent message near the top', () => {

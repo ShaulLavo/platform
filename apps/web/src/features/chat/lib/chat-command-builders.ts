@@ -15,6 +15,7 @@ import {
   type ModelSelection,
   type OrchestrationMessage,
   type ProjectCreateCommand,
+  type ProjectDeleteCommand,
   type ProjectId,
   type ProjectMetaUpdateCommand,
   type ProjectReorderCommand,
@@ -40,6 +41,9 @@ import {
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
+import { appendTerminalContextsToPrompt, type TerminalContextSelection } from './terminal-context'
+
+const NO_TERMINAL_CONTEXTS: readonly TerminalContextSelection[] = []
 const THREAD_TITLE_MAX_LENGTH = 48
 const SENSITIVE_THREAD_TITLE_WORDS = new Set([
   'apikey',
@@ -98,6 +102,7 @@ export function createTurnSubmission({
   modelSelection,
   runtimeMode,
   sourceProposedPlan,
+  terminalContexts = NO_TERMINAL_CONTEXTS,
   text,
   threadId,
 }: {
@@ -107,12 +112,17 @@ export function createTurnSubmission({
   modelSelection: ModelSelection
   runtimeMode: RuntimeMode
   sourceProposedPlan?: SourceProposedPlanReference
+  terminalContexts?: readonly TerminalContextSelection[]
   text: string
   threadId: ThreadId
 }): ChatTurnSubmission {
   const commandId = createCommandId()
   const messageId = createMessageId()
   const turnId = createTurnId()
+  // The serialized block is appended here rather than in the composer so the
+  // title keeps reading the typed text: a send that is nothing but captured
+  // output would otherwise name the thread `<terminal_context>`.
+  const prompt = appendTerminalContextsToPrompt(text, terminalContexts)
 
   return {
     command: {
@@ -122,7 +132,7 @@ export function createTurnSubmission({
         attachments,
         messageId,
         role: 'user',
-        text,
+        text: prompt,
       },
       modelSelection,
       runtimeMode,
@@ -140,7 +150,7 @@ export function createTurnSubmission({
       id: messageId,
       role: 'user',
       streaming: false,
-      text,
+      text: prompt,
       threadId,
       turnId,
       updatedAt: createdAt,
@@ -156,6 +166,7 @@ export function createDraftThreadSubmission({
   projectId,
   rootPath,
   runtimeMode = DEFAULT_RUNTIME_MODE,
+  terminalContexts = NO_TERMINAL_CONTEXTS,
   text,
 }: {
   attachments?: ChatAttachmentUpload[]
@@ -165,6 +176,7 @@ export function createDraftThreadSubmission({
   projectId: ProjectId
   rootPath: string
   runtimeMode?: RuntimeMode
+  terminalContexts?: readonly TerminalContextSelection[]
   text: string
 }): DraftThreadSubmission {
   const threadId = createThreadId()
@@ -175,6 +187,7 @@ export function createDraftThreadSubmission({
     interactionMode,
     modelSelection,
     runtimeMode,
+    terminalContexts,
     text,
     threadId,
   })
@@ -379,6 +392,24 @@ export function createProjectDefaultModelCommand({
     defaultModelSelection,
     projectId,
     type: 'project.meta.update',
+  }
+}
+
+/**
+ * `force` is always true from the client: the confirmation dialog the caller just
+ * ran is the explicit opt-in the command's guard exists to demand. The server
+ * cascades the project's threads in the same transaction.
+ */
+export function createProjectDeleteCommand({
+  projectId,
+}: {
+  projectId: ProjectId
+}): ProjectDeleteCommand {
+  return {
+    commandId: createCommandId(),
+    force: true,
+    projectId,
+    type: 'project.delete',
   }
 }
 

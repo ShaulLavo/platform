@@ -22,6 +22,7 @@ import {
 import type { OrchestrationEngine } from './engine'
 import {
   orchestrationWsClientMessageSchema,
+  type OrchestrationThreadDetailPage,
   type OrchestrationWsClientMessage,
   type OrchestrationWsRequest,
   type OrchestrationWsServerMessage,
@@ -175,6 +176,7 @@ async function handleOrchestrationRpcRequest(
     })
     recordChatPipelineInfo('chat.pipeline.ws.request.complete', {
       ...context,
+      ...orchestrationRpcResultSummary(message, data),
       durationMs: elapsedMs(startedAt),
     })
   } catch (error) {
@@ -201,6 +203,7 @@ function resolveOrchestrationRpcRequest(
   if (message.method === 'shellSnapshot') return engine.shellSnapshot()
   if (message.method === 'threadDetailSnapshot')
     return engine.threadDetailSnapshot(message.threadId)
+  if (message.method === 'threadDetailPage') return engine.threadDetailPage(message.input)
 
   return engine.replay(message.input)
 }
@@ -356,6 +359,17 @@ function orchestrationRpcRequestSummary(message: OrchestrationWsRequest) {
   if (message.method === 'dispatchCommand') return orchestrationCommandSummary(message.command)
   if (message.method === 'threadDetailSnapshot')
     return { method: message.method, threadId: message.threadId }
+  if (message.method === 'threadDetailPage') {
+    return {
+      // Whether the walk started from a boundary is what tells a first page from
+      // a continuation; the anchor ids themselves say nothing a reader needs.
+      fromMessageAnchor: Boolean(message.input.beforeMessage),
+      fromActivityAnchor: Boolean(message.input.beforeActivity),
+      limit: message.input.limit,
+      method: message.method,
+      threadId: message.input.threadId,
+    }
+  }
   if (message.method === 'replayEvents') {
     return {
       method: message.method,
@@ -364,6 +378,23 @@ function orchestrationRpcRequestSummary(message: OrchestrationWsRequest) {
   }
 
   return { method: message.method }
+}
+
+/**
+ * Folded into the one request event rather than emitted as a second line: what
+ * a page read is worth knowing about is how much came back and whether the walk
+ * reached the start of the thread.
+ */
+function orchestrationRpcResultSummary(message: OrchestrationWsRequest, data: unknown) {
+  if (message.method !== 'threadDetailPage') return {}
+
+  const page = data as OrchestrationThreadDetailPage
+
+  return {
+    activityCount: page.activities.length,
+    hasEarlier: page.hasEarlier,
+    messageCount: page.messages.length,
+  }
 }
 
 function orchestrationRpcSubscribeSummary(message: OrchestrationWsSubscribe) {

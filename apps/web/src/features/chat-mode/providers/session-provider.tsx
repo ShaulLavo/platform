@@ -6,6 +6,7 @@ import { useWorkspaceChatProject } from '@/features/chat/hooks/use-workspace-cha
 import { selectChatSidebarThreadsForProject } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { ProjectDeleteDialog } from '@/features/chat-mode/components/project-delete-dialog'
 import { SessionDeleteDialog } from '@/features/chat-mode/components/session-delete-dialog'
 import { useProjectRetry } from '@/features/chat-mode/hooks/use-project-retry'
 import { ChatRailOrderProvider } from '@/features/chat-mode/providers/rail-order-provider'
@@ -106,6 +107,7 @@ export function ChatModeSessionProvider({
       {/* Mounted here, not in the rail: the row that asks for the delete is the first
           thing to unmount once the answer is yes. */}
       <SessionDeleteDialog />
+      <ProjectDeleteDialog />
     </ChatModeSessionContext>
   )
 }
