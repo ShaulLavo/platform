@@ -156,6 +156,7 @@ async function dispatchPlanFollowUpTurn({
     environment,
     onAccepted: () => drafts.clearDraft(draftTarget),
     optimisticMessage: submission.optimisticMessage,
+    planThreadId: plan.threadId,
     replayAfterSequence: replayAfterTurnDispatch,
     scope: createChatPipelineScope('chat.plan_follow_up.dispatch.summary', {
       ...chatCommandSummary(submission.command),
@@ -209,6 +210,7 @@ async function dispatchPlanImplementationThread({
     // and the stage would sit on one that never arrives.
     onAccepted: () => onThreadCreated(command.threadId),
     optimisticMessage: submission.optimisticMessage,
+    planThreadId: plan.threadId,
     replayAfterSequence: replayAfterDraftTurnDispatch,
     scope: createChatPipelineScope('chat.plan_implementation_thread.dispatch.summary', {
       ...chatCommandSummary(command),
@@ -224,6 +226,7 @@ async function dispatchPlanTurn({
   environment,
   onAccepted,
   optimisticMessage,
+  planThreadId,
   replayAfterSequence,
   scope,
 }: {
@@ -231,33 +234,101 @@ async function dispatchPlanTurn({
   environment: ChatEnvironment
   onAccepted: () => void
   optimisticMessage: OrchestrationMessage
+  /** The thread the plan lives on, which is not always the one running the turn. */
+  planThreadId: ThreadId
   replayAfterSequence: (result: ThreadCommandDispatchResult) => number
   scope: ChatPipelineScope
 }): Promise<boolean> {
   const startedAt = performance.now()
+  const endScope = () =>
+    scope.end({ durationMs: Math.round((performance.now() - startedAt) * 100) / 100 })
+
   useChatOptimisticStore.getState().addOptimisticMessage(command.commandId, optimisticMessage)
+  scope.increment('command.dispatchStartCount')
+
+  let result: ThreadCommandDispatchResult
   try {
-    scope.increment('command.dispatchStartCount')
-    const result = await environment.dispatchCommand(command)
-    scope.increment('command.dispatchAcceptedCount')
-    scope.set({ deduped: result.deduped, outcome: 'ok', sequence: result.sequence })
-    onAccepted()
-    scheduleThreadProjectionSyncAfterDispatch({
-      environment,
-      replayAfterSequence: replayAfterSequence(result),
-      threadId: command.threadId,
-    })
-    return true
+    result = await environment.dispatchCommand(command)
   } catch (error) {
+    // Only the dispatch is guarded here. Anything after it runs on a command the
+    // server accepted, and rolling the message back then would erase a turn that
+    // is already running.
     useChatOptimisticStore
       .getState()
       .removeOptimisticMessage(optimisticMessage.threadId, optimisticMessage.id)
     scope.increment('command.dispatchFailedCount')
     scope.warn('Plan follow-up dispatch failed.', { error })
     scope.set({ outcome: 'error' })
+    endScope()
     return false
-  } finally {
-    scope.end({ durationMs: Math.round((performance.now() - startedAt) * 100) / 100 })
+  }
+
+  scope.increment('command.dispatchAcceptedCount')
+  scope.set({ deduped: result.deduped, outcome: 'ok', sequence: result.sequence })
+  syncThreadsAfterPlanTurn({
+    environment,
+    planThreadId,
+    replayAfterSequence: replayAfterSequence(result),
+    scope,
+    turnThreadId: command.threadId,
+  })
+  runOnAccepted(onAccepted, scope)
+  endScope()
+
+  return true
+}
+
+/**
+ * The turn thread converges on its own — its events carry the new turn. The plan's
+ * thread does not: the server stamps `implementedAt` across threads while projecting
+ * the turn start, and that write appends nothing to the plan thread's aggregate, so
+ * its detail stream (filtered by thread) will never mention it. Without a resnapshot
+ * here the source thread keeps offering to implement a plan that is already building.
+ */
+function syncThreadsAfterPlanTurn({
+  environment,
+  planThreadId,
+  replayAfterSequence,
+  scope,
+  turnThreadId,
+}: {
+  environment: ChatEnvironment
+  planThreadId: ThreadId
+  replayAfterSequence: number
+  scope: ChatPipelineScope
+  turnThreadId: ThreadId
+}) {
+  scheduleThreadProjectionSyncAfterDispatch({
+    environment,
+    replayAfterSequence,
+    threadId: turnThreadId,
+  })
+  scope.set({ planThreadResynced: planThreadId !== turnThreadId })
+  if (planThreadId === turnThreadId) return
+
+  // The plan's thread ran no turn of its own, so there is no tail to replay past
+  // what it already holds; the snapshot half of the sync is what carries the stamp.
+  const planThreadSequence =
+    useChatProjectionStore.getState().threadDetailSequenceById[planThreadId] ?? 0
+
+  scheduleThreadProjectionSyncAfterDispatch({
+    environment,
+    replayAfterSequence: planThreadSequence,
+    threadId: planThreadId,
+  })
+}
+
+/**
+ * Host code, so it is kept outside the dispatch guard and off the result: the
+ * command is accepted either way, and a host that cannot show the new thread must
+ * not read back as a failed dispatch.
+ */
+function runOnAccepted(onAccepted: () => void, scope: ChatPipelineScope) {
+  try {
+    onAccepted()
+  } catch (error) {
+    scope.increment('command.acceptedCallbackFailedCount')
+    scope.warn('Plan follow-up accepted callback failed.', { error })
   }
 }
 

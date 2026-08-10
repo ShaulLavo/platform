@@ -1,0 +1,64 @@
+import { useCallback } from 'react'
+
+import { useMenuCommand } from '@/features/menus/providers/command-context'
+import { log } from '@/lib/client-logging'
+
+import type { TerminalContextSelection } from '../lib/terminal-context'
+import { useComposerInboxStore } from '../state/composer-inbox-store'
+
+/**
+ * The one action a capture surface anywhere in the app calls to put something in
+ * the composer and bring the composer on screen.
+ *
+ * Narrow on purpose: surfaces hand over *what* they captured and nothing else.
+ * They do not learn which thread is open, they do not touch the draft store, and
+ * they never hold a reference to the editor — which is what stops each new
+ * capture surface growing a handle of its own.
+ */
+export function useAttachToComposer() {
+  const runCommand = useMenuCommand((state) => state.runCommand)
+
+  const reveal = useCallback(
+    (source: string, detail: Record<string, unknown>) => {
+      // After queueing: in the workbench this is what mounts the composer that
+      // drains the inbox.
+      const revealed = runCommand('workspace.revealChat')
+
+      log.info({ action: 'chat.composer_attach', area: 'chat', revealed, source, ...detail })
+    },
+    [runCommand],
+  )
+
+  const attachTerminalContext = useCallback(
+    (selection: TerminalContextSelection | null) => {
+      if (!selection) return false
+
+      const queued = useComposerInboxStore.getState().queueTerminalContext(selection)
+      if (!queued) return false
+
+      reveal('terminal', {
+        lineEnd: queued.lineEnd,
+        lineStart: queued.lineStart,
+        // The captured output is user content and stays off the event; its size
+        // is what explains a slow send or a rejected message.
+        textLength: queued.text.length,
+      })
+
+      return true
+    },
+    [reveal],
+  )
+
+  const attachText = useCallback(
+    (source: string, text: string) => {
+      if (!useComposerInboxStore.getState().queueText(text)) return false
+
+      reveal(source, { textLength: text.trim().length })
+
+      return true
+    },
+    [reveal],
+  )
+
+  return { attachTerminalContext, attachText }
+}

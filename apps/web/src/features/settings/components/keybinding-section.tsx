@@ -20,7 +20,7 @@ export function KeybindingSection({ overrides }: { overrides: KeybindingOverride
   return (
     <Section
       title='Keyboard shortcuts'
-      description='Type a shortcut such as Mod+Alt+S to replace a default. Mod is Command on macOS and Control everywhere else.'
+      description='Type a shortcut such as Mod+Alt+S to replace a default. Mod is Command on macOS and Control everywhere else. A shortcut you take from another command stops working for that command, which is marked as shadowed.'
     >
       {rows.map((row) => (
         <KeybindingRow key={row.command} binding={row} />

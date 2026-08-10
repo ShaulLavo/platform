@@ -2,9 +2,19 @@ import {
   activeComposerMention,
   serializeComposerMention,
   type EntryTypeFilter,
+  type ProviderCommandCatalog,
 } from '@workspace/contracts'
 
-export type ChatInputTriggerKind = 'mention' | 'slash-command'
+import {
+  composerCommandHint,
+  composerCommandLabel,
+  composerCommandReplacement,
+  composerSkillLabel,
+  composerSkillReplacement,
+} from './composer-skills'
+import { searchComposerCommands, searchComposerSkills } from './composer-command-search'
+
+export type ChatInputTriggerKind = 'mention' | 'skill' | 'slash-command'
 
 export type ChatInputTrigger = {
   kind: ChatInputTriggerKind
@@ -38,6 +48,21 @@ export type ChatInputCommandItem =
       replacement: string
       type: 'slash-command'
       value: ChatInputSlashCommand
+    }
+  | {
+      description: string
+      id: string
+      label: string
+      replacement: string
+      /** A command the provider advertises. Unlike a built-in it sets no mode. */
+      type: 'provider-command'
+    }
+  | {
+      description: string
+      id: string
+      label: string
+      replacement: string
+      type: 'skill'
     }
   | {
       description: string
@@ -128,6 +153,9 @@ export function detectChatInputTrigger(text: string, cursorInput: number): ChatI
   const cursor = clampCursor(text, cursorInput)
   const slashTrigger = slashCommandTrigger(text, cursor)
   if (slashTrigger) return slashTrigger
+
+  const skill = skillTrigger(text, cursor)
+  if (skill) return skill
 
   // The grammar owns where a mention starts and what has been typed into it, so
   // a quoted path keeps the menu open across the spaces inside it.
@@ -255,18 +283,59 @@ export function chatInputMentionCommandItems(
     }))
 }
 
+/** What the provider advertises for this project, ranked into menu rows. */
+export function chatInputProviderCommandItems(
+  catalog: ProviderCommandCatalog | null,
+  query: string,
+): ChatInputCommandItem[] {
+  if (!catalog?.supported) return []
+
+  return searchComposerCommands(catalog.commands, query).map((command) => ({
+    description: composerCommandHint(command),
+    id: `provider-command:${command.name}`,
+    label: composerCommandLabel(command),
+    replacement: composerCommandReplacement(command),
+    type: 'provider-command',
+  }))
+}
+
+export function chatInputSkillItems(
+  catalog: ProviderCommandCatalog | null,
+  query: string,
+): ChatInputCommandItem[] {
+  if (!catalog?.supported) return []
+
+  return searchComposerSkills(catalog.skills, query).map((skill) => ({
+    description: skill.description ?? '',
+    id: `skill:${skill.name}`,
+    label: composerSkillLabel(skill),
+    replacement: composerSkillReplacement(skill),
+    type: 'skill',
+  }))
+}
+
 export function chatInputCommandItems(
   trigger: ChatInputTrigger | null,
   entries: Parameters<typeof chatInputMentionCommandItems>[0],
+  catalog: ProviderCommandCatalog | null = null,
 ) {
   if (!trigger) return []
-  if (trigger.kind === 'slash-command') return searchChatInputSlashCommands(trigger.query)
+  if (trigger.kind === 'skill') return chatInputSkillItems(catalog, trigger.query)
+  // Built-ins first: they are two fixed modes the user picks constantly, and a
+  // provider with forty commands would otherwise bury them.
+  if (trigger.kind === 'slash-command') {
+    return [
+      ...searchChatInputSlashCommands(trigger.query),
+      ...chatInputProviderCommandItems(catalog, trigger.query),
+    ]
+  }
 
   return chatInputMentionCommandItems(entries)
 }
 
 export function chatInputCommandMenuEmptyLabel(trigger: ChatInputTrigger | null) {
   if (trigger?.kind === 'slash-command') return 'No matching commands'
+  if (trigger?.kind === 'skill') return 'No matching skills'
   if (trigger?.query.trim()) return 'No matching files or folders'
 
   return 'Type a file or folder name'
@@ -274,10 +343,15 @@ export function chatInputCommandMenuEmptyLabel(trigger: ChatInputTrigger | null)
 
 export function chatInputCommandMenuLoadingLabel(triggerKind: ChatInputTriggerKind) {
   if (triggerKind === 'mention') return 'Searching workspace files...'
+  if (triggerKind === 'skill') return 'Loading skills...'
 
   return 'Loading commands...'
 }
 
+/**
+ * Built-ins and provider commands are labelled apart because they behave apart:
+ * one switches the mode of the turn, the other is text the provider expands.
+ */
 export function groupChatInputCommandItems(
   items: readonly ChatInputCommandItem[],
   triggerKind: ChatInputTriggerKind,
@@ -286,7 +360,13 @@ export function groupChatInputCommandItems(
   if (triggerKind !== 'slash-command')
     return [{ id: 'default', items: Array.from(items), label: null }]
 
-  return [{ id: 'built-in', items: Array.from(items), label: 'Built-in' }]
+  const builtIn = items.filter((item) => item.type === 'slash-command')
+  const provider = items.filter((item) => item.type === 'provider-command')
+
+  return [
+    ...(builtIn.length > 0 ? [{ id: 'built-in', items: builtIn, label: 'Built-in' }] : []),
+    ...(provider.length > 0 ? [{ id: 'provider', items: provider, label: 'Provider' }] : []),
+  ]
 }
 
 export function activeChatInputCommandItem(
@@ -310,6 +390,31 @@ export function chatInputCommandItemByOffset(
   const nextIndex = (activeIndex + offset + items.length) % items.length
 
   return items[nextIndex] ?? null
+}
+
+/**
+ * `$name`, anywhere a word can start. Unlike a slash command it is a token
+ * inside the prompt rather than the whole line — a skill is invoked in the
+ * middle of a sentence — so it ends at the first blank and never spans one.
+ */
+function skillTrigger(text: string, cursor: number): ChatInputTrigger | null {
+  const start = text.lastIndexOf('$', Math.max(0, cursor - 1))
+  if (start < 0) return null
+
+  const before = text[start - 1]
+  // Only at a word boundary, or `$5.00` and `${VAR}` would open the menu.
+  if (before !== undefined && !/\s/.test(before)) return null
+
+  const query = text.slice(start + 1, cursor)
+  if (/[\s$]/.test(query)) return null
+
+  return {
+    kind: 'skill',
+    query,
+    rangeEnd: cursor,
+    rangeStart: start,
+    text: text.slice(start, cursor),
+  }
 }
 
 function slashCommandTrigger(text: string, cursor: number): ChatInputTrigger | null {

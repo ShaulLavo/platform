@@ -3,13 +3,16 @@ import { Badge } from '@workspace/ui/components/badge'
 import { Button } from '@workspace/ui/components/button'
 import { Input } from '@workspace/ui/components/input'
 
-import { isBindableHotkey, normalizedHotkey } from '@/keymap/active-bindings'
+import {
+  isBindableHotkey,
+  normalizedHotkey,
+  type CommandKeyBindingRow,
+} from '@/keymap/active-bindings'
 import { platformCommandSpec } from '@/keymap/command-registry'
-import type { CommandKeyBinding } from '@/keymap/types'
 
 import { useSettingsActions } from '../hooks/use-settings-actions'
 
-export function KeybindingRow({ binding }: { binding: CommandKeyBinding }) {
+export function KeybindingRow({ binding }: { binding: CommandKeyBindingRow }) {
   const { isSaving, resetKeybinding, setKeybinding } = useSettingsActions()
   const [rejected, setRejected] = useState(false)
   // Commands the palette does not carry a spec for fall back to their id, and
@@ -43,6 +46,13 @@ export function KeybindingRow({ binding }: { binding: CommandKeyBinding }) {
         ) : null}
       </div>
       {rejected ? <span className='text-destructive text-xs'>Not a shortcut</span> : null}
+      {binding.shadowedBy ? (
+        // The keys are still shown next to this: together they read as "this
+        // shortcut exists on paper and another command answers it".
+        <span className='text-warning text-xs whitespace-nowrap'>
+          Shadowed by {platformCommandSpec(binding.shadowedBy)?.title ?? binding.shadowedBy}
+        </span>
+      ) : null}
       {binding.source === 'user' ? <Badge variant='secondary'>Custom</Badge> : null}
       <Input
         // Remounts on a saved value so the field follows the server instead of

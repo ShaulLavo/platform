@@ -109,18 +109,64 @@ test('a url is left to the emulator instead of opening as a file', () => {
   expect(links).toEqual([])
 })
 
+test('a diagnostic label glued to a path is not part of the link', () => {
+  // `ERROR:` reads as a URL scheme to the shared resolver, which killed the link
+  // outright; the label is chrome, the path behind it is the thing to open.
+  const links = readTerminalPathLinks({
+    getLine: buffer([row('ERROR:src/a.ts:1 boom')]),
+    rootPath: ROOT,
+    row: 0,
+  })
+
+  expect(links).toEqual([
+    {
+      range: { end: { x: 15, y: 0 }, start: { x: 6, y: 0 } },
+      reference: {
+        column: null,
+        label: 'src/a.ts:1',
+        line: 1,
+        path: '/Users/dev/app/src/a.ts',
+      },
+      text: 'src/a.ts:1',
+    },
+  ])
+})
+
+test('a user agent string offers nothing to click', () => {
+  // Every segment here is `name/version`, and a version suffix is exactly what a
+  // file extension looks like — three links used to appear on this one line.
+  const links = readTerminalPathLinks({
+    getLine: buffer([row('ua Mozilla/5.0 Chrome/120.0.0.0 Safari/537.36', { columns: 46 })]),
+    rootPath: ROOT,
+    row: 0,
+  })
+
+  expect(links).toEqual([])
+})
+
+test('a host and port is not a file at a line', () => {
+  const links = readTerminalPathLinks({
+    getLine: buffer([row('serving example.com:8080', { columns: 26 })]),
+    rootPath: ROOT,
+    row: 0,
+  })
+
+  expect(links).toEqual([])
+})
+
 test('output that merely looks path-shaped offers nothing to click', () => {
-  // A package name, a runtime-internal frame and prose all carry slashes without
-  // naming a file anyone can open.
+  // A package name, a runtime-internal module (`internal/main` names no file on
+  // disk), an IP with a port, and prose all carry the shape without the substance.
   const getLine = buffer([
     row('lint @typescript-eslint/all'),
     row('at (node:internal/main:22:3)'),
+    row('bound 127.0.0.1:5173 ok'),
     row('npm ERR! 3 problems and/or 1'),
   ])
 
-  expect(readTerminalPathLinks({ getLine, rootPath: ROOT, row: 0 })).toEqual([])
-  expect(readTerminalPathLinks({ getLine, rootPath: ROOT, row: 1 })).toEqual([])
-  expect(readTerminalPathLinks({ getLine, rootPath: ROOT, row: 2 })).toEqual([])
+  for (const index of [0, 1, 2, 3]) {
+    expect(readTerminalPathLinks({ getLine, rootPath: ROOT, row: index })).toEqual([])
+  }
 })
 
 test('a relative path stays unlinked while no root is known', () => {
@@ -151,6 +197,38 @@ test('a row past the end of the buffer has no links', () => {
   ).toEqual([])
 })
 
+test('a screen filled with one unbroken run scans in linear time', () => {
+  // `openssl rand -hex 4000` on a 200x50 screen. ghostty calls the provider from
+  // its mousemove handler and re-scans after every write, so this whole scan has
+  // to fit inside a frame. The old backtracking scan took ~740ms here.
+  const columns = 200
+  const rows = 50
+  const getLine = buffer(
+    Array.from({ length: rows }, (_, index) =>
+      row(hexRun(index, columns), { columns, wrapped: index > 0 }),
+    ),
+  )
+  // Warm the path first: the budget measures scanning, not first-call compilation.
+  readTerminalPathLinks({ getLine, rootPath: ROOT, row: 0 })
+
+  const started = performance.now()
+  const links = readTerminalPathLinks({ getLine, rootPath: ROOT, row: 0 })
+  const elapsed = performance.now() - started
+
+  expect(links).toEqual([])
+  expect(elapsed).toBeLessThan(30)
+})
+
+function hexRun(seed: number, length: number) {
+  const digits = '0123456789abcdef'
+  let run = ''
+  for (let index = 0; index < length; index += 1) {
+    run += digits[(seed * 7 + index * 11) % digits.length]
+  }
+
+  return run
+}
+
 function linkText(link: { readonly text: string }) {
   return link.text
 }
@@ -159,8 +237,8 @@ function buffer(lines: readonly TerminalBufferLine[]): TerminalBufferLineReader 
   return (index) => lines[index]
 }
 
-function row(content: string, { wrapped = false } = {}): TerminalBufferLine {
-  const codepoints = [...content.padEnd(COLUMNS, UNWRITTEN)].map(
+function row(content: string, { columns = COLUMNS, wrapped = false } = {}): TerminalBufferLine {
+  const codepoints = [...content.padEnd(columns, UNWRITTEN)].map(
     (character) => character.codePointAt(0) ?? 0,
   )
 

@@ -1,12 +1,16 @@
+import { providerInstanceIdSchema, type ProviderCommandCatalog } from '@workspace/contracts'
 import { describe, expect, it } from 'vitest'
+import * as v from 'valibot'
 
 import {
+  chatInputCommandItems,
   chatInputLineBoundaryOffset,
   chatInputMentionCommandItems,
   chatInputRangeReplacement,
   chatInputStandaloneSlashCommand,
   chatInputSurroundClose,
   detectChatInputTrigger,
+  groupChatInputCommandItems,
   searchChatInputSlashCommands,
 } from '../chat-input-logic'
 
@@ -186,5 +190,79 @@ describe('chat input logic', () => {
       'src/tokenizer.ts',
       'src/app.tsx',
     ])
+  })
+})
+
+describe('provider-backed composer menus', () => {
+  const catalog: ProviderCommandCatalog = {
+    commands: [
+      { argumentHint: '<path>', description: 'Review a file', name: 'review' },
+      { description: 'Summarize the conversation', name: 'summarize' },
+    ],
+    providerInstanceId: v.parse(providerInstanceIdSchema, 'codex'),
+    skills: [
+      { description: 'Scan for tech debt', enabled: true, name: 'desloppify', scope: 'repo' },
+      { description: 'Never offered', enabled: false, name: 'disabled-skill', scope: 'repo' },
+    ],
+    supported: true,
+  } as ProviderCommandCatalog
+
+  it('opens a skill menu on a $ token at a word boundary', () => {
+    expect(detectChatInputTrigger('use $des', 8)).toEqual({
+      kind: 'skill',
+      query: 'des',
+      rangeEnd: 8,
+      rangeStart: 4,
+      text: '$des',
+    })
+    expect(detectChatInputTrigger('$', 1)?.kind).toBe('skill')
+  })
+
+  it('leaves prices and shell variables alone', () => {
+    // `$5.00` and `x$y` are not skill invocations; opening a menu over them
+    // would fight the user on ordinary text.
+    expect(detectChatInputTrigger('costs 5$5', 9)?.kind).not.toBe('skill')
+    expect(detectChatInputTrigger('echo x$HOME', 11)?.kind).not.toBe('skill')
+  })
+
+  it('ends the skill token at the first blank', () => {
+    expect(detectChatInputTrigger('use $desloppify now', 19)).toBeNull()
+  })
+
+  it('offers the provider’s skills, never the disabled ones', () => {
+    const items = chatInputCommandItems(detectChatInputTrigger('$', 1), [], catalog)
+
+    // A disabled skill committed into the prompt is a name the provider will
+    // not resolve, so it is dropped rather than ranked last.
+    expect(items.map((item) => item.label)).toEqual(['$desloppify'])
+    expect(items[0]?.replacement).toBe('$desloppify ')
+  })
+
+  it('lists built-in modes ahead of the provider’s commands', () => {
+    const items = chatInputCommandItems(detectChatInputTrigger('/', 1), [], catalog)
+
+    expect(items.map((item) => item.label)).toEqual(['/default', '/plan', '/review', '/summarize'])
+    expect(groupChatInputCommandItems(items, 'slash-command').map((group) => group.label)).toEqual([
+      'Built-in',
+      'Provider',
+    ])
+  })
+
+  it('ranks both menus by what has been typed', () => {
+    const commands = chatInputCommandItems(detectChatInputTrigger('/rev', 4), [], catalog)
+    const skills = chatInputCommandItems(detectChatInputTrigger('$slop', 5), [], catalog)
+
+    // Ranked, not filtered: the search is fuzzy, so a weaker match stays on the
+    // list behind the one the user is plainly typing.
+    expect(commands[0]?.label).toBe('/review')
+    expect(skills.map((item) => item.label)).toEqual(['$desloppify'])
+  })
+
+  it('offers only the built-ins when the provider cannot answer', () => {
+    const unsupported = { ...catalog, supported: false }
+
+    expect(chatInputCommandItems(detectChatInputTrigger('/', 1), [], unsupported)).toHaveLength(2)
+    expect(chatInputCommandItems(detectChatInputTrigger('$', 1), [], unsupported)).toEqual([])
+    expect(chatInputCommandItems(detectChatInputTrigger('$', 1), [], null)).toEqual([])
   })
 })

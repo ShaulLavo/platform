@@ -12,8 +12,14 @@ import {
   type ProviderInstanceId,
 } from '@workspace/contracts'
 import * as v from 'valibot'
+import { readFsLogs } from 'evlog/fs'
 import { CodexProviderAdapter } from '../codex'
 import type { ProviderRuntimeEvent, ProviderTurnInput } from '../../types'
+import {
+  flushObservability,
+  initializeObservability,
+  resetObservabilityForTests,
+} from '../../../observability/runtime'
 
 const fakeCodexScript = `#!/usr/bin/env node
 const readline = require('node:readline');
@@ -31,8 +37,15 @@ if (process.argv[2] !== 'app-server') {
 let threadStartCount = 0;
 let lastThreadStartParams = null;
 
+// One JSON line per app-server event a test needs to see from the outside: the
+// working directory each process was spawned in, and the params of every
+// request whose payload is the thing under test.
 const spawnLogPath = process.env.PLATFORM_FAKE_CODEX_SPAWN_LOG;
-if (spawnLogPath) require('node:fs').appendFileSync(spawnLogPath, 'spawn\\n');
+function record(entry) {
+  if (!spawnLogPath) return;
+  require('node:fs').appendFileSync(spawnLogPath, JSON.stringify(entry) + '\\n');
+}
+record({ cwd: process.cwd(), event: 'spawn' });
 
 function send(message) {
   process.stdout.write(JSON.stringify(message) + '\\n');
@@ -409,8 +422,23 @@ function handle(message) {
     return;
   }
   if (message.method === 'skills/list') {
+    record({ cwds: message.params && message.params.cwds, event: 'skills/list' });
     if (mode === 'skills-unavailable') {
       fail(message.id, 'unsupported method: skills/list');
+      return;
+    }
+    // Real Codex answers one entry per requested cwd and falls back to its own
+    // process directory when the list is empty.
+    const listed = (message.params && message.params.cwds) || [process.cwd()];
+    const parseFailure = {
+      message: 'invalid YAML: name: invalid type: sequence, expected a string',
+      path: listed[0] + '/.codex/skills/broken/SKILL.md',
+    };
+    if (mode === 'skills-all-broken') {
+      send({
+        id: message.id,
+        result: { data: [{ cwd: listed[0], errors: [parseFailure], skills: [] }] },
+      });
       return;
     }
     send({
@@ -418,14 +446,14 @@ function handle(message) {
       result: {
         data: [
           {
-            cwd: process.cwd(),
-            errors: [],
+            cwd: listed[0],
+            errors: mode === 'skills-partly-broken' ? [parseFailure] : [],
             skills: [
               {
                 description: 'Project scoped skill',
                 enabled: true,
                 name: 'proj-skill',
-                path: process.cwd() + '/.codex/skills/proj-skill/SKILL.md',
+                path: listed[0] + '/.codex/skills/proj-skill/SKILL.md',
                 scope: 'repo',
               },
               {
@@ -490,6 +518,12 @@ let fakeCodexLock: Promise<void> = Promise.resolve()
 const RUNTIME_MODES = ['approval-required', 'auto-accept-edits', 'full-access'] as const
 
 type FakeCodexContext = { readonly projectPath: string; readonly spawnLogPath: string }
+
+type FakeCodexLogEntry = {
+  readonly cwd?: string
+  readonly cwds?: readonly string[] | null
+  readonly event: 'skills/list' | 'spawn'
+}
 
 type EchoedModeParams = {
   approvalsReviewer: string | null
@@ -736,6 +770,23 @@ describe('CodexProviderAdapter', () => {
     )
   })
 
+  it('asks skills/list for the project directory instead of spawning inside it', async () => {
+    await withFakeCodex(async ({ projectPath, spawnLogPath }) => {
+      const adapter = new CodexProviderAdapter()
+
+      await adapter.listCommands({ cwd: projectPath })
+      const entries = await readFakeCodexLog(spawnLogPath)
+
+      // The directory travels in the request, so the shared spawn helper stays
+      // as narrow as every live session needs it to be: the app-server runs
+      // where the server runs and still answers for the project.
+      expect(entries.map((entry) => entry.cwds)).toContainEqual([projectPath])
+      expect(entries.filter((entry) => entry.event === 'spawn').map((entry) => entry.cwd)).toEqual([
+        process.cwd(),
+      ])
+    })
+  })
+
   it('discovers skills in the project directory and offers no slash commands', async () => {
     await withFakeCodex(async ({ projectPath }) => {
       const adapter = new CodexProviderAdapter()
@@ -745,10 +796,10 @@ describe('CodexProviderAdapter', () => {
       // Codex has no prompt or command listing at all, so the empty half of the
       // catalog is the honest answer rather than a read this skipped.
       expect(catalog.commands).toEqual([])
-      // The app-server ran inside the project, which is the only way
-      // `<cwd>/.codex/skills` is reachable. A disabled skill stays in the list
-      // as unavailable, a nameless one is dropped, and the same name listed for
-      // a second directory collapses into the first.
+      // Skills come back scoped to the requested directory, which is how
+      // `<cwd>/.codex/skills` is reachable at all. A disabled skill stays in the
+      // list as unavailable, a nameless one is dropped, and the same name listed
+      // for a second directory collapses into the first.
       expect(catalog.skills).toEqual([
         {
           description: 'Project scoped skill',
@@ -782,6 +833,60 @@ describe('CodexProviderAdapter', () => {
         expect(snapshot.models[0]).toMatchObject({ slug: 'gpt-5.5' })
       },
       { mode: 'skills-unavailable' },
+    )
+  })
+
+  it('refuses to call a directory of unreadable skills an empty catalog', async () => {
+    await withFakeCodex(
+      async ({ projectPath }) => {
+        const adapter = new CodexProviderAdapter()
+
+        // Every skill in the directory failed to parse. Answering with an empty
+        // list would reach the composer as "this project has no skills", which
+        // is the lie the loud failure path exists to prevent.
+        await expect(adapter.listCommands({ cwd: projectPath })).rejects.toThrow(
+          'Codex skills/list read no skills and 1 failed',
+        )
+        await expect(adapter.listCommands({ cwd: projectPath })).rejects.toThrow(
+          '.codex/skills/broken/SKILL.md',
+        )
+      },
+      { mode: 'skills-all-broken' },
+    )
+  })
+
+  it('keeps the readable skills and puts the unreadable ones on the wide event', async () => {
+    await withFakeCodex(
+      async ({ projectPath }) => {
+        const logDir = await realpath(await mkdtemp(path.join(tmpdir(), 'platform-codex-logs-')))
+        initializeObservability({
+          NODE_ENV: 'production',
+          OBSERVABILITY_CONSOLE: 'false',
+          OBSERVABILITY_DIR: logDir,
+          OBSERVABILITY_ENABLED: 'true',
+        })
+        const adapter = new CodexProviderAdapter()
+
+        try {
+          const catalog = await adapter.listCommands({ cwd: projectPath })
+          const event = await codexSkillWarningEvent(logDir)
+
+          // One broken file does not hide the 2 that parsed, and the failure is
+          // still on the record with the path that caused it.
+          expect(catalog.skills.map((skill) => skill.name)).toEqual(['proj-skill', 'retired'])
+          expect(event).toMatchObject({
+            cwd: projectPath,
+            skillCount: 2,
+            skillErrorCount: 1,
+          })
+          expect(JSON.stringify(event?.skillErrors)).toContain('.codex/skills/broken/SKILL.md')
+          expect(JSON.stringify(event?.skillErrors)).toContain('invalid YAML')
+        } finally {
+          await resetObservabilityForTests()
+          await rm(logDir, { force: true, recursive: true })
+        }
+      },
+      { mode: 'skills-partly-broken' },
     )
   })
 
@@ -1032,8 +1137,27 @@ async function withFakeCodex(
 
 /** One line per fake app-server process, so a test can prove a session was reused. */
 async function countFakeCodexSpawns(spawnLogPath: string) {
+  const entries = await readFakeCodexLog(spawnLogPath)
+  return entries.filter((entry) => entry.event === 'spawn').length
+}
+
+/** The one wide event the degraded skill read is allowed to produce. */
+async function codexSkillWarningEvent(logDir: string) {
+  await flushObservability()
+  const events: Record<string, unknown>[] = []
+  for await (const event of readFsLogs({ dir: logDir })) {
+    events.push(event as Record<string, unknown>)
+  }
+
+  return events.find((event) => event.action === 'chat.pipeline.provider_commands.codex_skills')
+}
+
+async function readFakeCodexLog(spawnLogPath: string) {
   const log = await readFile(spawnLogPath, 'utf8')
-  return log.split('\n').filter(Boolean).length
+  return log
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as FakeCodexLogEntry)
 }
 
 function collectAdapterEvents(adapter: CodexProviderAdapter, events: ProviderRuntimeEvent[]) {

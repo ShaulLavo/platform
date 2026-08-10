@@ -134,6 +134,51 @@ describe('resolvedPlatformKeyBindings', () => {
 
     expect(keysFor(resolved, 'workspace.saveFile')).toEqual(['Mod+S'])
   })
+
+  it('drops the binding whose key an override took instead of keeping a dead one', () => {
+    const resolved = resolvedPlatformKeyBindings(
+      defaultPlatformKeyBindings('linux'),
+      { 'workspace.saveFile': 'Mod+B' },
+      'linux',
+    )
+
+    expect(keysFor(resolved, 'workspace.toggleSidebarVisibility')).toEqual([])
+    expect(keysFor(resolved, 'workspace.saveFile')).toEqual(['Mod+B'])
+  })
+
+  it('keeps a binding an override only collides with in another pane', () => {
+    // Mod+F is Find inside the editor and the editor keeps its own keymap, so a
+    // global override of the same chord takes nothing away from it.
+    const resolved = resolvedPlatformKeyBindings(
+      defaultPlatformKeyBindings('linux'),
+      { 'workspace.togglePanel': 'Mod+F' },
+      'linux',
+    )
+
+    expect(keysFor(resolved, 'editor.find')).toEqual(['Mod+F'])
+    expect(keysFor(resolved, 'workspace.togglePanel')).toEqual(['Mod+F'])
+  })
+
+  it('keeps only the later of two overrides that name the same key', () => {
+    const resolved = resolvedPlatformKeyBindings(
+      defaultPlatformKeyBindings('linux'),
+      { 'workspace.saveFile': 'Mod+Alt+J', 'workspace.togglePanel': 'Mod+Alt+J' },
+      'linux',
+    )
+
+    expect(keysFor(resolved, 'workspace.saveFile')).toEqual([])
+    expect(keysFor(resolved, 'workspace.togglePanel')).toEqual(['Mod+Alt+J'])
+  })
+
+  it('leaves the command with its other default when only one key is taken', () => {
+    const resolved = resolvedPlatformKeyBindings(
+      defaultPlatformKeyBindings('linux'),
+      { 'workspace.togglePanel': 'F1' },
+      'linux',
+    )
+
+    expect(keysFor(resolved, 'workspace.showCommandPalette')).toEqual(['Mod+Shift+P'])
+  })
 })
 
 describe('platformKeyBindingForKeyboardEvent', () => {
@@ -185,37 +230,108 @@ describe('platformKeyBindingForKeyboardEvent', () => {
 
 describe('commandKeyBindings', () => {
   it('reports the default binding until the user overrides it', () => {
-    expect(commandKeyBindings(defaultPlatformKeyBindings('linux'), {})).toContainEqual({
+    expect(commandKeyBindings(defaultPlatformKeyBindings('linux'), {}, 'linux')).toContainEqual({
       command: 'workspace.saveFile',
       defaultKeys: ['Mod+S'],
       keys: 'Mod+S',
+      shadowedBy: null,
       source: 'default',
     })
   })
 
   it('shows the override in force beside the defaults it replaced', () => {
-    const rows = commandKeyBindings(defaultPlatformKeyBindings('linux'), {
-      'workspace.showCommandPalette': 'Mod+Alt+K',
-    })
+    const rows = commandKeyBindings(
+      defaultPlatformKeyBindings('linux'),
+      { 'workspace.showCommandPalette': 'Mod+Alt+K' },
+      'linux',
+    )
 
     expect(rows).toContainEqual({
       command: 'workspace.showCommandPalette',
       defaultKeys: ['Mod+Shift+P', 'F1'],
       keys: 'Mod+Alt+K',
+      shadowedBy: null,
       source: 'user',
     })
   })
 
   it('lists a command that only the user has bound', () => {
-    const rows = commandKeyBindings(defaultPlatformKeyBindings('linux'), {
-      'workspace.focusEditor': 'Mod+Alt+E',
-    })
+    const rows = commandKeyBindings(
+      defaultPlatformKeyBindings('linux'),
+      { 'workspace.focusEditor': 'Mod+Alt+E' },
+      'linux',
+    )
 
     expect(rows).toContainEqual({
       command: 'workspace.focusEditor',
       defaultKeys: [],
       keys: 'Mod+Alt+E',
+      shadowedBy: null,
       source: 'user',
+    })
+  })
+
+  it('reports an unbind as no keys at all', () => {
+    const rows = commandKeyBindings(
+      defaultPlatformKeyBindings('linux'),
+      { 'workspace.saveFile': null },
+      'linux',
+    )
+
+    expect(rows).toContainEqual({
+      command: 'workspace.saveFile',
+      defaultKeys: ['Mod+S'],
+      keys: null,
+      shadowedBy: null,
+      source: 'user',
+    })
+  })
+
+  it('names the command that took the key instead of calling a dead binding live', () => {
+    const rows = commandKeyBindings(
+      defaultPlatformKeyBindings('linux'),
+      { 'workspace.saveFile': 'Mod+B' },
+      'linux',
+    )
+
+    expect(rows).toContainEqual({
+      command: 'workspace.toggleSidebarVisibility',
+      defaultKeys: ['Mod+B'],
+      keys: 'Mod+B',
+      shadowedBy: 'workspace.saveFile',
+      source: 'default',
+    })
+  })
+
+  it('marks the losing override when two of them name the same key', () => {
+    const rows = commandKeyBindings(
+      defaultPlatformKeyBindings('linux'),
+      { 'workspace.saveFile': 'Mod+Alt+J', 'workspace.togglePanel': 'Mod+Alt+J' },
+      'linux',
+    )
+
+    expect(rows).toContainEqual({
+      command: 'workspace.saveFile',
+      defaultKeys: ['Mod+S'],
+      keys: 'Mod+Alt+J',
+      shadowedBy: 'workspace.togglePanel',
+      source: 'user',
+    })
+  })
+
+  it('leaves a command alone when only one of its two defaults is taken', () => {
+    const rows = commandKeyBindings(
+      defaultPlatformKeyBindings('linux'),
+      { 'workspace.togglePanel': 'F1' },
+      'linux',
+    )
+
+    expect(rows).toContainEqual({
+      command: 'workspace.showCommandPalette',
+      defaultKeys: ['Mod+Shift+P', 'F1'],
+      keys: 'Mod+Shift+P',
+      shadowedBy: null,
+      source: 'default',
     })
   })
 })

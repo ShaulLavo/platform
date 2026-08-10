@@ -319,22 +319,30 @@ allowlist — the Open Decision the previous revision raised is answered), `ckpt
 M0–M10 as originally scoped are substantially delivered. What remains re-sequences into five much smaller milestones.
 Foundation ordering still holds: **contracts → persistence → orchestration → transport → client store → UI**.
 
-| #      | Milestone                         | Depends on | Rough effort | Exit criterion — _done when…_                                                                                                                                                                                                                                                                                         |
-| ------ | --------------------------------- | ---------- | -----------: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **N0** | ✅ Honest counters + blob GC      | —          |         ~7 d | …a thread blocked on an approval or a question shows "Waiting for you" in the rail **without being opened**, by folding the same `hasOpenBlockingRequest` logic the settle guard already uses into the projection; and deleting a thread reclaims its image blobs from disk.                                          |
-| **N1** | ✅ Wire the four built seams      | N0         |         ~8 d | …settings opens from a real entry point; typing a phrase in the rail search finds the thread whose _messages_ contain it; a 5 000-message thread paints its last turns with a working "Load earlier"; and selecting failing terminal output and choosing "Ask the agent" puts a chip — not raw XML — in the composer. |
-| **N2** | 🟡 Composer insert seam + capture | N1         |         ~9 d | …one narrow provider action inserts text or a chip at the caret, and file-tree drag, editor "add selection to chat", and diff line-range review comments all ride it rather than each growing a handle.                                                                                                               |
-| **N3** | Provider completeness             | N0         |        ~22 d | …Codex advertises its slash commands and skills like Claude does; the rail shows "step 3 of 7: running tests" instead of a spinner; a background-liveness signal exists and only then does an idle-session reaper land; and user keybindings can be edited and actually take effect, including on non-US layouts.     |
-| **N4** | Git workflow + remaining breadth  | N2         |        ~45 d | …a commit with a slow pre-commit hook streams its output instead of freezing a button; a branch can be pushed and a PR opened from chat; a diff line range becomes attached context; per-thread diff scope survives a reload and reconciles after a revert; project scripts exist; terminal paths are clickable.      |
+| #      | Milestone                           | Depends on | Rough effort | Exit criterion — _done when…_                                                                                                                                                                                                                                                                                         |
+| ------ | ----------------------------------- | ---------- | -----------: | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **N0** | ✅ Honest counters + blob GC        | —          |         ~7 d | …a thread blocked on an approval or a question shows "Waiting for you" in the rail **without being opened**, by folding the same `hasOpenBlockingRequest` logic the settle guard already uses into the projection; and deleting a thread reclaims its image blobs from disk.                                          |
+| **N1** | ✅ Wire the four built seams        | N0         |         ~8 d | …settings opens from a real entry point; typing a phrase in the rail search finds the thread whose _messages_ contain it; a 5 000-message thread paints its last turns with a working "Load earlier"; and selecting failing terminal output and choosing "Ask the agent" puts a chip — not raw XML — in the composer. |
+| **N2** | ✅ Composer insert seam + capture   | N1         |         ~9 d | …one narrow provider action inserts text or a chip at the caret, and file-tree drag, editor "add selection to chat", and diff line-range review comments all ride it rather than each growing a handle.                                                                                                               |
+| **N3** | 🟡 Provider completeness            | N0         |        ~22 d | …Codex advertises its slash commands and skills like Claude does; the rail shows "step 3 of 7: running tests" instead of a spinner; a background-liveness signal exists and only then does an idle-session reaper land; and user keybindings can be edited and actually take effect, including on non-US layouts.     |
+| **N4** | 🟡 Git workflow + remaining breadth | N2         |        ~45 d | …a commit with a slow pre-commit hook streams its output instead of freezing a button; a branch can be pushed and a PR opened from chat; a diff line range becomes attached context; per-thread diff scope survives a reload and reconciles after a revert; project scripts exist; terminal paths are clickable.      |
 
-**N2 status.** File-tree mention drag and the `draftPromotion` deletion are done. What remains is the _cross-surface_
-half: the editor's "add selection to chat" and diff line-range review comments both need a handoff from a surface
-that is not mounted inside chat. N1's terminal capture already built one — `terminal-context-inbox-store.ts`, a queue
-the composer drains on mount — and that is the seam to generalize rather than a second mechanism. Note the shape it
-settled on differs from the reference's `composerHandleContext`: a ref to a composer handle cannot work here, because
-in the workbench the composer is genuinely unmounted when the capture happens (the sidebar is on Files), so the
-capture has to outlive the absence of an editor. Generalizing the queue to carry "text to insert" alongside a chip is
-the whole of the remaining seam work. "Implement plan in a new thread" is independent of it.
+**N2 status — done.** The seam is `composer-inbox-store.ts`: one queue carrying either a chip or text, taken by
+whichever composer is mounted (`use-composer-inbox.ts`), fed by one narrow action (`use-attach-to-composer.ts`).
+File-tree mention drag, the `draftPromotion` deletion and "implement plan in a new thread" all landed with it.
+
+Two shapes worth recording, because both were arrived at by being wrong first:
+
+- It is **not** the reference's `composerHandleContext`. A ref to a composer handle cannot work here: in the
+  workbench the composer is genuinely unmounted when the capture happens (the sidebar is on Files), so the capture
+  has to outlive the absence of an editor.
+- It **takes** rather than drains. A composer whose editor has not mounted yet can honour a chip but not text, and
+  the first attempt — drain everything, put back what did not fit — made the effect wake itself in an infinite loop.
+  `take(accept)` leaves `pending`'s identity untouched when nothing is accepted, which is what breaks the cycle.
+
+**Still open in N2's neighbourhood:** the editor's "add selection to chat" has a seam to ride but no source — the app
+never holds an editor session, so nothing can read the current selection. `@singapor/core` exposes `getSelections()`
+on its document session; wiring that up is the prerequisite, not the composer side.
 
 **Safely parallelizable:** N0 and N1's four seams are mutually independent and independent of N3. N2 must precede the
 capture surfaces in N4 but nothing else. The turn minimap, `causationEventId`, the two brands, the client checkpoint

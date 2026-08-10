@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   proposedPlanIdSchema,
@@ -161,6 +161,40 @@ test('typed feedback withdraws the new-thread action — there is no plan to bui
   ).not.toBeInTheDocument()
 })
 
+test('the thread holding the plan stops offering it once the build is split off', async () => {
+  const { snapshotRequests } = renderBanner()
+
+  await userEvent.click(screen.getByRole('button', { name: 'Implement in a new thread' }))
+
+  // The plan is stamped implemented on the source thread, and that write appends
+  // nothing to its aggregate — resnapshotting it is the only way it ever finds out.
+  await waitFor(() => {
+    expect(screen.queryByRole('status', { name: 'Plan ready' })).not.toBeInTheDocument()
+  })
+  expect(snapshotRequests).toContain(THREAD_ID)
+})
+
+test('a host that cannot show the new thread does not undo the accepted turn', async () => {
+  const { dispatched, snapshotRequests } = renderBanner({
+    onThreadCreated: () => {
+      throw new Error('no stage for this thread')
+    },
+  })
+
+  await userEvent.click(screen.getByRole('button', { name: 'Implement in a new thread' }))
+
+  // The server accepted the command and the turn is running, so the message it
+  // will answer stays on screen and the projection still catches up.
+  const command = dispatched[0]
+  const splitThreadId = command?.type === 'thread.turn.start' ? command.threadId : THREAD_ID
+  expect(
+    Object.keys(useChatOptimisticStore.getState().messagesByThreadId[splitThreadId] ?? {}),
+  ).toHaveLength(1)
+  await waitFor(() => {
+    expect(snapshotRequests).toContain(splitThreadId)
+  })
+})
+
 test('a rejected dispatch drops the optimistic message so the timeline stays honest', async () => {
   renderBanner({ dispatch: () => Promise.reject(new Error('offline')) })
 
@@ -175,10 +209,12 @@ test('a rejected dispatch drops the optimistic message so the timeline stays hon
 function renderBanner({
   busy = false,
   dispatch,
+  onThreadCreated,
   plan: planOverrides,
 }: {
   busy?: boolean
   dispatch?: () => Promise<{ deduped: boolean; sequence: number }>
+  onThreadCreated?: (threadId: ThreadId) => void
   plan?: Partial<OrchestrationProposedPlan>
 } = {}) {
   resetChatInputDraftStore()
@@ -187,27 +223,42 @@ function renderBanner({
 
   // The factory's default thread is mid-turn, which is exactly the busy case.
   const seeded = threadFactory(busy ? {} : { latestTurn: null, session: null })
-  const snapshot: OrchestrationThreadDetailSnapshot = {
+  // Server-side truth for the plan, mutated by dispatch the way the projection is:
+  // a turn started from a plan stamps that plan, wherever the plan lives.
+  let implementedAt = planOverrides?.implementedAt ?? null
+  const sourceSnapshot = (): OrchestrationThreadDetailSnapshot => ({
     checkpoints: [],
-    proposedPlans: [proposedPlan(planOverrides)],
+    proposedPlans: [proposedPlan({ ...planOverrides, implementedAt })],
     snapshotSequence: 1,
     // The store's ChatThread drops `deletedAt`; the wire snapshot still carries it.
     thread: { ...seeded, deletedAt: null },
-  }
-  useChatProjectionStore.getState().syncThreadDetailSnapshot(snapshot)
+  })
+  useChatProjectionStore.getState().syncThreadDetailSnapshot(sourceSnapshot())
 
   const created: ThreadId[] = []
   const dispatched: ClientOrchestrationCommand[] = []
+  const snapshotRequests: ThreadId[] = []
   const environment = unsupportedChatEnvironment({
     dispatchCommand: async (command) => {
       dispatched.push(command)
       if (dispatch) return dispatch()
 
+      // The stamp lands on the plan's thread even when the turn runs elsewhere,
+      // and it appends nothing to that thread's aggregate — hence no event here.
+      if (command.type === 'thread.turn.start' && command.sourceProposedPlan) {
+        implementedAt = '2026-05-28T00:00:09.000Z'
+      }
+
       return { deduped: false, sequence: 1 }
     },
     replayEvents: async () => ({ events: [] }),
     shellStream: async function* () {},
-    threadDetailSnapshot: async () => snapshot,
+    threadDetailSnapshot: async (threadId) => {
+      snapshotRequests.push(threadId)
+      if (threadId === seeded.id) return sourceSnapshot()
+
+      return splitThreadSnapshot(threadId)
+    },
     threadDetailStream: async function* () {},
   })
 
@@ -216,13 +267,28 @@ function renderBanner({
       draftTarget={draftTarget}
       environment={environment}
       threadId={seeded.id}
-      onThreadCreated={(threadId) => created.push(threadId)}
+      onThreadCreated={(threadId) => {
+        created.push(threadId)
+        onThreadCreated?.(threadId)
+      }}
     >
       <PlanFollowUpBanner draftTarget={draftTarget} />
     </ChatPlanFollowUpProvider>,
   )
 
-  return { created, dispatched }
+  return { created, dispatched, snapshotRequests }
+}
+
+/** The thread the build was split into: real thread, no plans of its own yet. */
+function splitThreadSnapshot(threadId: ThreadId): OrchestrationThreadDetailSnapshot {
+  const split = threadFactory({ id: threadId, latestTurn: null, session: null })
+
+  return {
+    checkpoints: [],
+    proposedPlans: [],
+    snapshotSequence: 1,
+    thread: { ...split, deletedAt: null },
+  }
 }
 
 function proposedPlan(

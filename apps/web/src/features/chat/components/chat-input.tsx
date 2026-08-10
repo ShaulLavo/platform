@@ -1,4 +1,5 @@
 import { LexicalComposer, type InitialConfigType } from '@lexical/react/LexicalComposer'
+import { useQuery } from '@tanstack/react-query'
 import type {
   ChatAttachmentUpload,
   InteractionMode,
@@ -31,7 +32,8 @@ import {
   type ChatInputTrigger,
 } from '../lib/chat-input-logic'
 import { useProjectEntrySearch } from '../hooks/use-project-entry-search'
-import { useTerminalContextInbox } from '../hooks/use-terminal-context-inbox'
+import { providerCommandCatalogQueryOptions } from '../lib/composer-skills'
+import { useComposerInbox } from '../hooks/use-composer-inbox'
 import { ChatModelPickerProvider } from '../providers/model-picker-provider'
 import type { TerminalContextSelection } from '../lib/terminal-context'
 import {
@@ -115,6 +117,9 @@ export function ChatInput({
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [dropTargetActive, setDropTargetActive] = useState(false)
   const [editorFocused, setEditorFocused] = useState(false)
+  // State as well as the ref: the inbox only splices text once a caret exists,
+  // and a ref cannot wake the effect that is waiting for one.
+  const [editorReady, setEditorReady] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [trigger, setTrigger] = useState<ChatInputTrigger | null>(null)
   // Captured terminal output is content in its own right: "look at this" with a
@@ -129,11 +134,25 @@ export function ChatInput({
     query: trigger?.kind === 'mention' ? trigger.query : '',
     rootPath,
   })
+  // Only while a `/` or `$` menu is open: a fetch spawns the provider CLI, so
+  // the catalog must never be a background cost of having chat on screen.
+  const commandCatalog = useQuery(
+    providerCommandCatalogQueryOptions({
+      cwd: rootPath,
+      enabled: trigger?.kind === 'skill' || trigger?.kind === 'slash-command',
+      providerInstanceId: modelSelection?.providerInstanceId ?? null,
+    }),
+  )
   const commandMenuItems = useMemo(
-    () => chatInputCommandItems(trigger, projectEntries.entries),
-    [projectEntries.entries, trigger],
+    () => chatInputCommandItems(trigger, projectEntries.entries, commandCatalog.data ?? null),
+    [commandCatalog.data, projectEntries.entries, trigger],
   )
   const commandMenuEmptyLabel = chatInputCommandMenuEmptyLabel(trigger)
+  // Built-in slash commands answer instantly, so the menu is only "loading"
+  // when nothing is on screen yet — otherwise every `/` keystroke would flash
+  // a spinner over rows that are already usable.
+  const commandMenuLoading =
+    trigger?.kind === 'mention' ? projectEntries.isSearching : commandCatalog.isFetching
   const initialConfig = useMemo<InitialConfigType>(
     () => ({
       editorState: () => {
@@ -151,7 +170,7 @@ export function ChatInput({
   // Captures made outside chat wait in the inbox until a composer exists to
   // hold them — the terminal is often right-clicked while the sidebar is on
   // Files, so the reveal that follows is what mounts this component.
-  useTerminalContextInbox(draftTarget)
+  useComposerInbox(draftTarget, editorRef, editorReady)
 
   useEffect(() => {
     const activeItemStillPresent = commandMenuItems.some((item) => item.id === activeCommandItemId)
@@ -168,6 +187,7 @@ export function ChatInput({
 
   const handleEditorReady = useCallback((editor: LexicalEditor | null) => {
     editorRef.current = editor
+    setEditorReady(editor !== null)
   }, [])
   const clearDraft = useCallback(() => {
     const editor = editorRef.current
@@ -357,7 +377,7 @@ export function ChatInput({
             <ChatInputCommandMenu
               activeItemId={activeCommandItemId}
               emptyLabel={commandMenuEmptyLabel}
-              isLoading={projectEntries.isSearching}
+              isLoading={commandMenuLoading}
               items={commandMenuItems}
               triggerKind={trigger.kind}
               onActiveItemChange={setActiveCommandItemId}

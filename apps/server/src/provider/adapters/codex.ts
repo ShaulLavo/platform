@@ -120,6 +120,12 @@ type CodexReasoningItem = {
   type: 'reasoning'
 }
 
+/** What `skills/list` reported, before the empty-vs-broken verdict is drawn. */
+type CodexSkillCatalog = {
+  errors: string[]
+  skills: ProviderSkill[]
+}
+
 type CodexModelOptions = {
   effort?: CodexReasoningEffort
   serviceTier?: 'fast'
@@ -1933,18 +1939,11 @@ class CodexAppServerRpcClient {
     })
   }
 
-  /**
-   * `cwd` is the process working directory, not a thread setting: `skills/list`
-   * answers for the directory the app-server itself runs in, so repo-scoped
-   * skills under `<cwd>/.codex/skills` are invisible without it. Sessions leave
-   * it unset — they carry their directory in `thread/start`.
-   */
-  static start(env: NodeJS.ProcessEnv = process.env, cwd?: string) {
+  static start(env: NodeJS.ProcessEnv = process.env) {
     return new CodexAppServerRpcClient(
       spawn(codexBinary(env), ['app-server'], {
         env,
         stdio: ['pipe', 'pipe', 'pipe'],
-        ...(cwd ? { cwd } : {}),
       }),
     )
   }
@@ -2154,36 +2153,97 @@ async function probeCodexProvider(env: NodeJS.ProcessEnv) {
  * A dedicated app-server process, deliberately not the snapshot probe: a skill
  * read that fails must not take the model list and auth state down with it.
  *
- * `skills/list` is absent from the pinned protocol schema, so it goes out as a
- * raw request — and a failure is relayed rather than degraded to an empty list.
- * Skills are the whole catalog for Codex, so "could not list" and "this project
- * has no skills" are different answers and the caller has to be able to tell
- * them apart.
+ * `skills/list` goes out raw only because this repo's hand-curated
+ * `CLIENT_REQUEST_METHODS` allowlist in `codex-protocol/generate.ts` omits it;
+ * the method is in the upstream schema at the pinned ref, so adding it there
+ * would give this request generated params and result types.
+ *
+ * A failure is relayed rather than degraded to an empty list. Skills are the
+ * whole catalog for Codex, so "could not list" and "this project has no skills"
+ * are different answers and the caller has to be able to tell them apart.
  */
 async function probeCodexCommandCatalog(
   env: NodeJS.ProcessEnv,
   cwd: string | undefined,
 ): Promise<ProviderCommandCatalogResult> {
-  const client = CodexAppServerRpcClient.start(env, cwd ? normalizeWorkspaceCwd(cwd) : undefined)
+  const client = CodexAppServerRpcClient.start(env)
   try {
     await initializeCodexClient(client, PROVIDER_PROBE_TIMEOUT_MS)
-    const response = await client.requestRaw('skills/list', {}, PROVIDER_PROBE_TIMEOUT_MS)
+    const response = await client.requestRaw(
+      'skills/list',
+      codexSkillsListParams(cwd),
+      PROVIDER_PROBE_TIMEOUT_MS,
+    )
 
-    return { commands: [], skills: codexSkills(response) }
+    return { commands: [], skills: codexCatalogSkills(codexSkillCatalog(response), cwd) }
   } finally {
     client.close()
   }
 }
 
-/** One entry per working directory the app-server knows; a probe process has one. */
-function codexSkills(response: unknown): ProviderSkill[] {
-  const byName = new Map<string, ProviderSkill>()
-  const entries = asRecord(response).data
-  for (const entry of Array.isArray(entries) ? entries : []) {
-    collectCodexSkills(asRecord(entry).skills, byName)
+/**
+ * The directory is a request parameter, not the process working directory:
+ * `cwds` is what `skills/list` answers for, and the app-server's own cwd is
+ * merely the default when the list is empty. Absolute because the projection
+ * hands over roots like `Users/shaul/platform` and Codex resolves a relative
+ * entry against its own process directory, which is the server's, not the
+ * project's.
+ */
+function codexSkillsListParams(cwd: string | undefined) {
+  if (!cwd) return {}
+
+  return { cwds: [normalizeWorkspaceCwd(cwd)] }
+}
+
+/**
+ * A skill Codex found and could not read is a hole in the catalog, not an
+ * absence, so the failing paths ride the wide event. A directory that produced
+ * nothing but errors is a failed read outright and throws: answering with an
+ * empty list would tell the composer this project has no skills, which is the
+ * one thing the caller must never be told by mistake.
+ */
+function codexCatalogSkills(catalog: CodexSkillCatalog, cwd: string | undefined) {
+  if (catalog.errors.length === 0) return catalog.skills
+  if (catalog.skills.length === 0) {
+    throw createInternalError(
+      `Codex skills/list read no skills and ${catalog.errors.length} failed: ${catalog.errors.join('; ')}`,
+    )
   }
 
-  return Array.from(byName.values())
+  recordChatPipelineWarning('chat.pipeline.provider_commands.codex_skills', {
+    cwd,
+    skillCount: catalog.skills.length,
+    skillErrorCount: catalog.errors.length,
+    skillErrors: catalog.errors,
+  })
+
+  return catalog.skills
+}
+
+/** One entry per working directory the request asked about; this probe asks one. */
+function codexSkillCatalog(response: unknown): CodexSkillCatalog {
+  const byName = new Map<string, ProviderSkill>()
+  const errors: string[] = []
+  const entries = asRecord(response).data
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const record = asRecord(entry)
+    collectCodexSkills(record.skills, byName)
+    collectCodexSkillErrors(record.errors, errors)
+  }
+
+  return { errors, skills: Array.from(byName.values()) }
+}
+
+/** `{ path, message }` upstream, flattened here because both halves are one fact. */
+function collectCodexSkillErrors(value: unknown, errors: string[]) {
+  for (const entry of Array.isArray(value) ? value : []) {
+    const record = asRecord(entry)
+    const message = stringField(record, 'message')?.trim()
+    const skillPath = stringField(record, 'path')?.trim()
+    if (!message && !skillPath) continue
+
+    errors.push([skillPath, message].filter(isPresent).join(': '))
+  }
 }
 
 /** Name is the composer's `$token` and its row key, so the first entry wins. */

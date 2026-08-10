@@ -3,7 +3,9 @@ import { expect, test } from '../../../../../test/fixtures'
 import { MAX_CHAT_ATTACHMENT_BYTES, MAX_CHAT_ATTACHMENTS } from '@workspace/contracts'
 
 import {
+  chatAttachmentDataUrlLength,
   classifyChatImageFile,
+  MAX_CHAT_ATTACHMENT_ENCODED_BYTES,
   MAX_COMPRESSIBLE_SOURCE_BYTES,
 } from '@/features/chat/lib/chat-input-attachment-limits'
 
@@ -108,4 +110,26 @@ test('rejects a source above the compressible ceiling, which is never safe to de
     reason: 'too-large',
     message: 'Images must be under 50 MB.',
   })
+})
+
+test('the byte budget is set so the base64 payload fits the wire cap, not the raw bytes', () => {
+  // What travels is the data URL, so compressing to MAX_CHAT_ATTACHMENT_BYTES
+  // shipped ~13.7 MB under a 10 MB limit and passed validation, because
+  // `sizeBytes` reports the pre-encoding size.
+  expect(MAX_CHAT_ATTACHMENT_ENCODED_BYTES).toBeLessThan(MAX_CHAT_ATTACHMENT_BYTES)
+  expect(
+    chatAttachmentDataUrlLength(MAX_CHAT_ATTACHMENT_ENCODED_BYTES, 'image/webp'),
+  ).toBeLessThanOrEqual(MAX_CHAT_ATTACHMENT_BYTES)
+})
+
+test('a blob at the old budget would have overflowed the wire cap', () => {
+  expect(chatAttachmentDataUrlLength(MAX_CHAT_ATTACHMENT_BYTES, 'image/webp')).toBeGreaterThan(
+    MAX_CHAT_ATTACHMENT_BYTES,
+  )
+})
+
+test('the data URL length counts its own prefix', () => {
+  // 3 bytes is exactly one base64 quantum, so the only variable left is the header.
+  expect(chatAttachmentDataUrlLength(3, 'image/png')).toBe('data:image/png;base64,'.length + 4)
+  expect(chatAttachmentDataUrlLength(0, 'image/png')).toBe('data:image/png;base64,'.length)
 })

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { useAttachTerminalContext } from '@/features/chat/hooks/use-attach-terminal-context'
+import { useAttachToComposer } from '@/features/chat/hooks/use-attach-to-composer'
 import { isClipboardReadBlocked } from '@/features/terminal/utils/clipboard'
 import {
   clearTerminal,
@@ -17,7 +17,7 @@ export function useTerminalMenu(target: TerminalMenuTarget) {
   // clipboard access from the omnibox at any time, and this hook only runs
   // while a menu is actually on screen.
   const [pasteBlocked, setPasteBlocked] = useState(false)
-  const attachTerminalContext = useAttachTerminalContext()
+  const { attachTerminalContext } = useAttachToComposer()
 
   useEffect(() => {
     let active = true

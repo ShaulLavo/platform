@@ -1,15 +1,12 @@
 import { useEffect, useMemo } from 'react'
 import { detectPlatform } from '@tanstack/react-hotkeys'
-import { DEFAULT_SETTINGS, type KeybindingOverrides } from '@workspace/contracts'
 
 import type { FocusArea } from '@/components/workspace/focus/providers/focus-state'
-import { useSettings } from '@/features/settings/hooks/use-settings'
 
 import {
   activePlatformKeyBindings,
   parsedPlatformKeyBindings,
   platformKeyBindingForKeyboardEvent,
-  resolvedPlatformKeyBindings,
 } from './active-bindings'
 import { isEditorPlatformCommandId } from './editor-keymap'
 import type { ParsedPlatformKeyBinding, PlatformCommandId, PlatformKeyBinding } from './types'
@@ -23,6 +20,12 @@ export type PlatformCommandDispatch = (
   event?: KeyboardEvent,
 ) => boolean | void
 
+/**
+ * Runs `bindings` as the document keymap. The table arrives already resolved
+ * against the user's overrides: the hook must not fold them in privately, or
+ * the surfaces that print shortcut hints from the same table would print a key
+ * this listener no longer answers to.
+ */
 export function useAppKeymap({
   bindings,
   dispatch,
@@ -33,13 +36,10 @@ export function useAppKeymap({
   readonly focusedPane: FocusArea
 }) {
   const platform = detectPlatform()
-  // The keymap is the settings document's always-mounted reader: overrides
-  // arrive on the same query the settings panel writes through, so a save lands
-  // on the key table without a reload.
-  const overrides = useSettings().data?.keybindings ?? DEFAULT_SETTINGS.keybindings
+  // Stable identity: the listener effect below re-subscribes on every change.
   const activeBindings = useMemo(
-    () => appHotkeyBindings(bindings, overrides, focusedPane, platform),
-    [bindings, focusedPane, overrides, platform],
+    () => appHotkeyBindings(bindings, focusedPane, platform),
+    [bindings, focusedPane, platform],
   )
 
   useEffect(() => {
@@ -59,13 +59,10 @@ export function appKeyBindingsForPane(
 
 function appHotkeyBindings(
   bindings: readonly PlatformKeyBinding[],
-  overrides: KeybindingOverrides,
   focusedPane: FocusArea,
   platform: PlatformName,
 ) {
-  const resolved = resolvedPlatformKeyBindings(bindings, overrides, platform)
-
-  return parsedPlatformKeyBindings(appKeyBindingsForPane(resolved, focusedPane), platform)
+  return parsedPlatformKeyBindings(appKeyBindingsForPane(bindings, focusedPane), platform)
 }
 
 function isAppKeyBinding(binding: PlatformKeyBinding) {
