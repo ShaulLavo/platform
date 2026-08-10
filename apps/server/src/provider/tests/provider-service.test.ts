@@ -230,6 +230,7 @@ function providerTurnInput(): ProviderTurnInput {
       defaultModelSelection: modelSelection,
       deletedAt: null,
       id: projectId,
+      orderKey: null,
       title: 'Platform',
       updatedAt: now,
       workspaceRoot: '/workspace',

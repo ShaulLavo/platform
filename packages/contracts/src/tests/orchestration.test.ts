@@ -125,6 +125,7 @@ describe('orchestration contracts', () => {
     expect(orchestrationEventTypes).toEqual([
       'project.created',
       'project.meta-updated',
+      'project.reordered',
       'project.deleted',
       'thread.created',
       'thread.meta-updated',

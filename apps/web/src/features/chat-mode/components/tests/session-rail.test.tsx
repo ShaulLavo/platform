@@ -13,6 +13,7 @@ import type { ChatEnvironment } from '@/features/chat/environment/chat-environme
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { SessionRail } from '@/features/chat-mode/components/session-rail'
 import { EditorStateProvider } from '@/features/editor/editor-state-provider'
+import { ChatRailOrderProvider } from '@/features/chat-mode/providers/rail-order-provider'
 import {
   ChatModeSessionContext,
   type ChatModeSession,
@@ -452,7 +453,9 @@ function renderSessionRail() {
   renderWithProviders(
     <EditorStateProvider>
       <ChatModeSessionContext value={session}>
-        <SessionRail />
+        <ChatRailOrderProvider>
+          <SessionRail />
+        </ChatRailOrderProvider>
       </ChatModeSessionContext>
     </EditorStateProvider>,
   )

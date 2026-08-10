@@ -1,4 +1,5 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtempSync } from 'node:fs'
+import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
@@ -8,6 +9,7 @@ import { readFsLogs } from 'evlog/fs'
 import * as v from 'valibot'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CODEX_PROVIDER_SETTINGS, threadIdSchema } from '@workspace/contracts'
+import { writeAttachmentFromDataUrl } from '../../attachments/store'
 import { migrateOrchestrationDatabase } from '../../db/migrations'
 import * as schema from '../../db/schema'
 import {
@@ -164,12 +166,39 @@ describe('thread deletion reactor', () => {
     })
     fixture.close()
   })
+
+  it("reclaims the deleted thread's attachment blobs from disk", async () => {
+    const fixture = createFixture()
+    const engine = new OrchestrationEngine(fixture.database)
+    engine.subscribeDomainEvents(fixture.reactor)
+    const written = await writeAttachmentFromDataUrl({
+      attachment: pngUpload('attachment-1'),
+      attachmentsDir: fixture.attachmentsDir,
+    })
+    // A blob the thread does not reference must survive the cleanup.
+    const orphaned = await writeAttachmentFromDataUrl({
+      attachment: pngUpload('attachment-orphaned'),
+      attachmentsDir: fixture.attachmentsDir,
+    })
+
+    await engine.dispatch(projectCreateCommand())
+    await engine.dispatch(threadCreateCommand())
+    await engine.dispatch(threadTurnStartCommand([attachmentMetadata('attachment-1')]))
+    await engine.dispatch(threadDeleteCommand())
+    await fixture.reactor.drain()
+
+    await expect(stat(written.filePath)).rejects.toThrow()
+    await expect(stat(orphaned.filePath)).resolves.toBeDefined()
+    fixture.close()
+  })
 })
 
 function createFixture(adapterOptions: ConstructorParameters<typeof MockProviderAdapter>[0] = {}) {
   const sqlite = new Database(':memory:', { create: true })
   const database = drizzle({ client: sqlite, schema })
   migrateOrchestrationDatabase(database)
+  const attachmentsDir = mkdtempSync(path.join(tmpdir(), 'platform-attachments-'))
+  roots.push(attachmentsDir)
   const adapter = new MockProviderAdapter(adapterOptions)
   const providerService = new ProviderService({
     adapterRegistry: new ProviderAdapterRegistry([adapter]),
@@ -178,10 +207,11 @@ function createFixture(adapterOptions: ConstructorParameters<typeof MockProvider
 
   return {
     adapter,
+    attachmentsDir,
     close: () => sqlite.close(),
     database,
     providerService,
-    reactor: new ThreadDeletionReactor({ providerService }),
+    reactor: new ThreadDeletionReactor({ attachmentsDir, database, providerService }),
   }
 }
 
@@ -250,12 +280,13 @@ function threadDeleteCommand() {
   })
 }
 
-function threadTurnStartCommand() {
+function threadTurnStartCommand(attachments: ReturnType<typeof attachmentMetadata>[] = []) {
   return command({
     commandId: 'cmd-turn-start',
     createdAt: later,
     interactionMode: 'default',
     message: {
+      attachments,
       messageId: 'message-1',
       role: 'user',
       text: 'Build the first slice',
@@ -265,6 +296,27 @@ function threadTurnStartCommand() {
     turnId: 'turn-1',
     type: 'thread.turn.start',
   })
+}
+
+// A 1×1 transparent PNG, small enough to keep the fixture readable.
+const PNG_DATA_URL =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+
+function pngUpload(id: string) {
+  return {
+    dataUrl: PNG_DATA_URL,
+    id,
+    mimeType: 'image/png',
+    name: `${id}.png`,
+    sizeBytes: 68,
+    type: 'image' as const,
+  }
+}
+
+function attachmentMetadata(id: string) {
+  const { dataUrl: _, ...metadata } = pngUpload(id)
+
+  return metadata
 }
 
 function command(value: unknown) {

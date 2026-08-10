@@ -71,6 +71,7 @@ export class ProjectionShellRowReader implements OrchestrationShellRowReader {
       createdAt: row.createdAt,
       defaultModelSelection: parseJson<ModelSelection | null>(row.defaultModelSelectionJson, null),
       id: row.projectId,
+      orderKey: row.orderKey,
       title: row.title,
       updatedAt: row.updatedAt,
       workspaceRoot: row.workspaceRoot,

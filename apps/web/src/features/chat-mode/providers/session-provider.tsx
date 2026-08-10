@@ -8,6 +8,7 @@ import { useChatProjectionStore } from '@/features/chat/state/chat-projection-st
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { SessionDeleteDialog } from '@/features/chat-mode/components/session-delete-dialog'
 import { useProjectRetry } from '@/features/chat-mode/hooks/use-project-retry'
+import { ChatRailOrderProvider } from '@/features/chat-mode/providers/rail-order-provider'
 import {
   ChatModeSessionContext,
   type ChatModeSession,
@@ -15,7 +16,7 @@ import {
 import { setSessionProjectOpener } from '@/features/chat-mode/state/session-commands'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
 import { activeSession } from '@/features/chat-mode/utils/active-session'
-import { compareSessionsByCreation } from '@/features/chat-mode/utils/session-order'
+import { compareSessionsForRail } from '@/features/chat-mode/utils/session-order'
 import { useOpenWorkspaceRoot } from '@/hooks/use-open-workspace-root'
 import { useActiveProjectStore } from '@/state/active-project-store'
 
@@ -45,7 +46,7 @@ export function ChatModeSessionProvider({
       : NO_PROJECT_THREAD_IDS,
   )
   const summaryById = useChatProjectionStore((state) => state.sidebarThreadSummaryById)
-  const threads = projectThreads.toSorted(compareSessionsByCreation)
+  const threads = projectThreads.toSorted(compareSessionsForRail)
   const threadIds = threads.map((thread) => thread.id)
   const archivedThreadIds = projectThreadIds.filter((threadId) =>
     Boolean(summaryById[threadId]?.archivedAt),
@@ -99,7 +100,9 @@ export function ChatModeSessionProvider({
 
   return (
     <ChatModeSessionContext value={value}>
-      {children}
+      {/* Inside the session context, which is where the dispatching environment
+          lives, and above the rail, which is the only surface that reorders. */}
+      <ChatRailOrderProvider>{children}</ChatRailOrderProvider>
       {/* Mounted here, not in the rail: the row that asks for the delete is the first
           thing to unmount once the answer is yes. */}
       <SessionDeleteDialog />

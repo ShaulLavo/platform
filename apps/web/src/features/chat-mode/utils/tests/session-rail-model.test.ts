@@ -150,22 +150,88 @@ test('the archive view lists exactly what the inbox hides', () => {
   expect(model.scopedCount).toBe(1)
 })
 
-test('sorts the active project ahead of a project with more sessions', () => {
+test('opening a project does not pull it to the top of the rail', () => {
+  const projects = [
+    chatProject({ createdAt: '2026-04-01T00:00:00Z', id: siteId, title: 'site' }),
+    chatProject({ createdAt: '2026-04-02T00:00:00Z', id: platformId, title: 'platform' }),
+  ]
+  const order = (activeProjectId: typeof platformId) =>
+    sessionRailModel({ activeProjectId, projects, threads: [] }).projects.map(
+      (project) => project.title,
+    )
+
+  expect(order(siteId)).toEqual(['site', 'platform'])
+  // Selection is carried by the highlighted row, never by the row's position.
+  expect(order(platformId)).toEqual(['site', 'platform'])
+})
+
+test('creating a session does not reshuffle the projects', () => {
+  const projects = [
+    chatProject({ createdAt: '2026-04-01T00:00:00Z', id: siteId, title: 'site' }),
+    chatProject({ createdAt: '2026-04-02T00:00:00Z', id: platformId, title: 'platform' }),
+  ]
+  const threads = [threadSummary({ id: 'thread-a', projectId: platformId })]
+  const order = (list: readonly ChatSidebarThreadSummary[]) =>
+    sessionRailModel({ projects, threads: list }).projects.map((project) => project.title)
+
+  expect(order(threads)).toEqual(['site', 'platform'])
+  expect(order([...threads, threadSummary({ id: 'thread-b', projectId: platformId })])).toEqual([
+    'site',
+    'platform',
+  ])
+})
+
+test('a dragged project holds its arranged slot ahead of the ones never dragged', () => {
   const model = sessionRailModel({
-    activeProjectId: platformId,
     projects: [
-      chatProject({ id: siteId, title: 'site' }),
-      chatProject({ id: platformId, title: 'platform' }),
+      chatProject({ createdAt: '2026-04-01T00:00:00Z', id: siteId, title: 'site' }),
+      chatProject({
+        createdAt: '2026-04-02T00:00:00Z',
+        id: platformId,
+        orderKey: 'd',
+        title: 'platform',
+      }),
+      chatProject({ createdAt: '2026-04-03T00:00:00Z', id: docsId, orderKey: 'b', title: 'docs' }),
     ],
+    threads: [],
+  })
+
+  expect(model.projects.map((project) => project.title)).toEqual(['docs', 'platform', 'site'])
+})
+
+test('a drag still in flight orders the rail before the server has confirmed it', () => {
+  const model = sessionRailModel({
+    orderOverrides: { projectOrderKeys: { [siteId]: 'b' }, sessionOrderKeys: {} },
+    projects: [
+      chatProject({ createdAt: '2026-04-01T00:00:00Z', id: platformId, title: 'platform' }),
+      chatProject({ createdAt: '2026-04-02T00:00:00Z', id: siteId, title: 'site' }),
+    ],
+    threads: [],
+  })
+
+  expect(model.projects.map((project) => project.title)).toEqual(['site', 'platform'])
+})
+
+test('a dragged session sits above the rest, which keep their creation order', () => {
+  const model = sessionRailModel({
+    projects: [chatProject({ id: platformId })],
     threads: [
-      threadSummary({ id: 'thread-a', projectId: platformId }),
-      threadSummary({ id: 'thread-b', projectId: siteId }),
-      threadSummary({ id: 'thread-c', projectId: siteId }),
+      threadSummary({ createdAt: '2026-05-09T00:00:00Z', id: 'thread-new', projectId: platformId }),
+      threadSummary({ createdAt: '2026-05-01T00:00:00Z', id: 'thread-old', projectId: platformId }),
+      threadSummary({
+        createdAt: '2026-05-05T00:00:00Z',
+        id: 'thread-dragged',
+        pinOrderKey: 'm',
+        projectId: platformId,
+      }),
     ],
   })
 
-  expect(model.projects.map((project) => project.title)).toEqual(['platform', 'site'])
-  expect(model.projects[0]?.active).toBe(true)
+  expect(model.sessions.map((session) => session.id)).toEqual([
+    'thread-dragged',
+    'thread-new',
+    'thread-old',
+  ])
 })
 
 test('reports the status a session is in', () => {

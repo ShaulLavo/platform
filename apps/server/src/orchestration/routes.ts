@@ -28,13 +28,21 @@ const streamQuerySchema = v.object({
 
 const turnCountQueryValueSchema = v.pipe(v.string(), v.toNumber(), v.integer(), v.minValue(0))
 
+/** Query strings arrive as text; only the exact "true" opts in. */
+const booleanQueryValueSchema = v.pipe(
+  v.string(),
+  v.transform((value) => value === 'true'),
+)
+
 const turnDiffQuerySchema = v.object({
   fromTurnCount: turnCountQueryValueSchema,
+  ignoreWhitespace: v.optional(booleanQueryValueSchema),
   threadId: threadIdSchema,
   toTurnCount: turnCountQueryValueSchema,
 })
 
 const fullThreadDiffQuerySchema = v.object({
+  ignoreWhitespace: v.optional(booleanQueryValueSchema),
   threadId: threadIdSchema,
   toTurnCount: turnCountQueryValueSchema,
 })
@@ -131,6 +139,7 @@ export function orchestrationRoutes(
           observeRequestOperation(
             chatOperationContext('orchestration.turn_diff', {
               fromTurnCount: query.fromTurnCount,
+              ignoreWhitespace: query.ignoreWhitespace ?? false,
               threadId: query.threadId,
               toTurnCount: query.toTurnCount,
             }),
@@ -146,6 +155,7 @@ export function orchestrationRoutes(
         ({ query }) =>
           observeRequestOperation(
             chatOperationContext('orchestration.full_thread_diff', {
+              ignoreWhitespace: query.ignoreWhitespace ?? false,
               threadId: query.threadId,
               toTurnCount: query.toTurnCount,
             }),

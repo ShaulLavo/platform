@@ -3,7 +3,6 @@ import type { ThreadId } from '@workspace/contracts'
 import { getClient } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
 import { unwrapEdenResponse } from '@/lib/eden-events'
-import { errorMessage } from '@/lib/error-message'
 import { gitKeys } from '@/lib/query-keys'
 import type { CheckpointDiffDocumentInput } from '@/features/git/diff-document'
 import type { FileDiff, FileStatus } from '@/features/git/types'
@@ -12,6 +11,13 @@ import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
 export type CheckpointDiffQueryInput = {
   filePath?: string
   fromTurnCount: number
+  /**
+   * Every client fetch is a *display* diff, so the builders pin `true`:
+   * whitespace-only hunks are noise to a reader. Stat counting is the server's
+   * own path (the checkpoint reactor pins `false` there). The flag rides the
+   * cache key because the two answers to the same range genuinely differ.
+   */
+  ignoreWhitespace?: boolean
   path?: string
   scope?: 'file' | 'thread' | 'turn'
   threadId: ThreadId
@@ -22,6 +28,7 @@ export function checkpointDiffQueryKey(input: CheckpointDiffQueryInput) {
   return gitKeys.checkpointDiff({
     filePath: input.filePath,
     fromTurnCount: input.fromTurnCount,
+    ignoreWhitespace: input.ignoreWhitespace,
     path: input.path,
     scope: input.scope,
     threadId: input.threadId,
@@ -36,6 +43,7 @@ export function checkpointDiffInputForSummary(
   return {
     filePath: path,
     fromTurnCount: Math.max(0, summary.checkpointTurnCount - 1),
+    ignoreWhitespace: true,
     path,
     scope: path ? 'file' : 'turn',
     threadId: summary.threadId,
@@ -48,6 +56,7 @@ export function checkpointFullThreadDiffInputForSummary(
 ): CheckpointDiffQueryInput {
   return {
     fromTurnCount: 0,
+    ignoreWhitespace: true,
     path: checkpointFullThreadDocumentPath(summary),
     scope: 'thread',
     threadId: summary.threadId,
@@ -136,6 +145,7 @@ export async function fetchCheckpointDiff(input: CheckpointDiffQueryInput, signa
         fetch: { signal },
         query: {
           fromTurnCount: input.fromTurnCount,
+          ignoreWhitespace: input.ignoreWhitespace ?? true,
           threadId: input.threadId,
           toTurnCount: input.toTurnCount,
         },
@@ -149,7 +159,7 @@ export async function fetchCheckpointDiff(input: CheckpointDiffQueryInput, signa
 }
 
 async function fetchFullThreadCheckpointDiff(
-  input: Pick<CheckpointDiffQueryInput, 'threadId' | 'toTurnCount'>,
+  input: Pick<CheckpointDiffQueryInput, 'ignoreWhitespace' | 'threadId' | 'toTurnCount'>,
   signal?: AbortSignal,
 ) {
   return observeClientOperation(
@@ -163,6 +173,7 @@ async function fetchFullThreadCheckpointDiff(
       const response = await getClient().orchestration['full-thread-diff'].get({
         fetch: { signal },
         query: {
+          ignoreWhitespace: input.ignoreWhitespace ?? true,
           threadId: input.threadId,
           toTurnCount: input.toTurnCount,
         },
@@ -174,12 +185,24 @@ async function fetchFullThreadCheckpointDiff(
   )
 }
 
+/**
+ * Retry policy off the typed catalog code, not the message: a reworded message
+ * used to silently turn a permanent range failure into a retry loop. Only
+ * RANGE_INVALID is permanent — a missing ref or a turn count overtaken by a
+ * revert can resolve itself as the projection catches up.
+ */
 export function checkpointDiffRetry(failureCount: number, error: unknown) {
   if (failureCount >= 2) return false
 
-  return !errorMessage(error, 'Checkpoint diff unavailable.')
-    .toLowerCase()
-    .includes('fromturncount')
+  return structuredErrorCode(error) !== 'checkpoint.RANGE_INVALID'
+}
+
+function structuredErrorCode(error: unknown) {
+  if (!error || typeof error !== 'object') return null
+  if (!('code' in error)) return null
+
+  const code = error.code
+  return typeof code === 'string' ? code : null
 }
 
 export function checkpointDiffRetryDelay(attemptIndex: number) {

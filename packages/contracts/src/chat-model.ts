@@ -15,7 +15,7 @@ import {
   modelSelectionSchema,
   runtimeModeSchema,
 } from './orchestration-runtime'
-import { isValidPinOrderKey } from './pin-order'
+import { isValidOrderKey } from './order-key'
 
 export const isoDateTimeSchema = v.string()
 export const nonNegativeIntegerSchema = v.pipe(v.number(), v.integer(), v.minValue(0))
@@ -112,6 +112,18 @@ export function chatAttachmentUrlPath(
   return `${CHAT_ATTACHMENT_URL_PREFIX}/${encodeURIComponent(attachment.id)}${extension}`
 }
 
+/**
+ * Fractional index into an arranged list — the pinned thread block and the
+ * project list both sit on it. Validated rather than taken as any string: the
+ * list sorts by plain string comparison, so one malformed key (an
+ * out-of-alphabet character, or a trailing minimum digit that leaves no room to
+ * insert before it) silently corrupts the arranged order for everyone.
+ */
+export const orderKeySchema = v.pipe(
+  trimmedNonEmptyStringSchema,
+  v.check(isValidOrderKey, 'Order key must be a lowercase a-z string not ending in "a"'),
+)
+
 export const orchestrationProjectSchema = v.object({
   id: projectIdSchema,
   title: trimmedNonEmptyStringSchema,
@@ -120,6 +132,9 @@ export const orchestrationProjectSchema = v.object({
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
   deletedAt: v.nullable(isoDateTimeSchema),
+  // Null until the user drags the project: an unplaced project sorts after the
+  // arranged run instead of jumping into the middle of it.
+  orderKey: v.optional(v.nullable(orderKeySchema), null),
 })
 
 export const orchestrationMessageRoleSchema = v.picklist(['user', 'assistant', 'system'])
@@ -252,17 +267,6 @@ export const threadSettledOverrideSchema = v.picklist(['settled', 'active'])
 export const threadLifecycleReasonSchema = v.picklist(['user', 'activity'])
 
 /**
- * Fractional index into the pinned block. Validated rather than taken as any
- * string: the block sorts by plain string comparison, so one malformed key
- * (an out-of-alphabet character, or a trailing minimum digit that leaves no
- * room to insert before it) silently corrupts the arranged order for everyone.
- */
-export const pinOrderKeySchema = v.pipe(
-  trimmedNonEmptyStringSchema,
-  v.check(isValidPinOrderKey, 'Pin order key must be a lowercase a-z string not ending in "a"'),
-)
-
-/**
  * The settle / snooze / pin lifecycle a thread carries alongside its work.
  * Shared as entries so every thread-shaped schema projects the same fields
  * instead of re-declaring them and drifting.
@@ -281,7 +285,7 @@ export const orchestrationThreadLifecycleEntries = {
   // A pin outranks the whole lifecycle: while `pinnedAt` is set the thread
   // renders in the pinned block and never classifies into a shelf.
   pinnedAt: v.optional(v.nullable(isoDateTimeSchema)),
-  pinOrderKey: v.optional(v.nullable(pinOrderKeySchema)),
+  pinOrderKey: v.optional(v.nullable(orderKeySchema)),
 } as const
 
 export const orchestrationThreadSchema = v.object({

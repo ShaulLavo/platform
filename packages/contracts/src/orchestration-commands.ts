@@ -16,7 +16,7 @@ import {
   orchestrationProposedPlanSchema,
   orchestrationSessionSchema,
   orchestrationThreadActivitySchema,
-  pinOrderKeySchema,
+  orderKeySchema,
   sourceProposedPlanReferenceSchema,
   trimmedNonEmptyStringSchema,
 } from './chat-model'
@@ -57,6 +57,17 @@ export const projectMetaUpdateCommandSchema = v.object({
   title: v.optional(trimmedNonEmptyStringSchema),
   workspaceRoot: v.optional(trimmedNonEmptyStringSchema),
   defaultModelSelection: v.optional(v.nullable(modelSelectionSchema)),
+})
+
+export const projectReorderCommandSchema = v.object({
+  ...commandBaseSchema,
+  type: v.literal('project.reorder'),
+  projectId: projectIdSchema,
+  // Fractional index, same algorithm the pinned thread block runs on: the
+  // project list sorts by plain string comparison of these keys, so one drag
+  // writes one key to one row and never touches the projects the user did not
+  // move.
+  orderKey: orderKeySchema,
 })
 
 export const projectDeleteCommandSchema = v.object({
@@ -167,7 +178,7 @@ export const threadPinCommandSchema = v.object({
   threadId: threadIdSchema,
   // Initial slot in the arranged pinned order. Optional: a pin with no key
   // falls to the creation-ordered tail of the pinned block until it is dragged.
-  orderKey: v.optional(pinOrderKeySchema),
+  orderKey: v.optional(orderKeySchema),
 })
 
 export const threadUnpinCommandSchema = v.object({
@@ -183,7 +194,7 @@ export const threadPinReorderCommandSchema = v.object({
   // Fractional index: the pinned block sorts by plain string comparison of
   // these keys, so one drag writes one key to one row and never touches the
   // neighbours the user did not move.
-  orderKey: pinOrderKeySchema,
+  orderKey: orderKeySchema,
 })
 
 export const threadRuntimeModeSetCommandSchema = v.object({
@@ -258,6 +269,7 @@ export const threadCheckpointRevertCommandSchema = v.object({
 export const clientOrchestrationCommandSchema = v.variant('type', [
   projectCreateCommandSchema,
   projectMetaUpdateCommandSchema,
+  projectReorderCommandSchema,
   projectDeleteCommandSchema,
   threadCreateCommandSchema,
   threadMetaUpdateCommandSchema,
@@ -363,6 +375,7 @@ export const orchestrationCommandSchema = v.variant('type', [
 
 export type ProjectCreateCommand = v.InferOutput<typeof projectCreateCommandSchema>
 export type ProjectMetaUpdateCommand = v.InferOutput<typeof projectMetaUpdateCommandSchema>
+export type ProjectReorderCommand = v.InferOutput<typeof projectReorderCommandSchema>
 export type ProjectDeleteCommand = v.InferOutput<typeof projectDeleteCommandSchema>
 export type ThreadCreateCommand = v.InferOutput<typeof threadCreateCommandSchema>
 export type ThreadTurnBootstrapCreateThread = v.InferOutput<

@@ -32,32 +32,21 @@ test('a model advertising extended thinking earns the capability badge', () => {
   })
 
   expect(option.supportsThinking).toBe(true)
-  expect(modelPickerRowBadges(option, null)).toEqual([
+  expect(modelPickerRowBadges(option)).toEqual([
     { key: 'thinking', label: 'Thinks', title: 'Supports extended thinking' },
   ])
 })
 
 test('a plain model earns no badges at all', () => {
-  expect(modelPickerRowBadges(optionFor(), null)).toEqual([])
+  expect(modelPickerRowBadges(optionFor())).toEqual([])
 })
 
-test('the chosen reasoning level leads the badges and a custom model follows it', () => {
+test('a custom model leads the badges and its capability follows it', () => {
   const option = optionFor({
     models: [model({ capabilities: { supportsExtendedThinking: true }, isCustom: true })],
   })
 
-  expect(modelPickerRowBadges(option, 'xhigh').map((badge) => badge.label)).toEqual([
-    'X-High',
-    'Custom',
-  ])
-})
-
-test('only the two most specific badges survive, so the model name keeps its width', () => {
-  const option = optionFor({
-    models: [model({ capabilities: { supportsExtendedThinking: true }, isCustom: true })],
-  })
-
-  expect(modelPickerRowBadges(option, 'high')).toHaveLength(2)
+  expect(modelPickerRowBadges(option).map((badge) => badge.label)).toEqual(['Custom', 'Thinks'])
 })
 
 test('the new marker is keyed by driver kind and slug together', () => {

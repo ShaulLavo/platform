@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, isNull } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, isNull } from 'drizzle-orm'
 import type { OrchestrationSessionStatus } from '@workspace/contracts'
 import type { OrchestrationEvent } from './schemas'
 import { getDefaultPlatformDatabase } from '../db/client'
@@ -21,6 +21,7 @@ import {
   recordChatPipelineInfo,
 } from './orchestration-logging'
 import { mergedMessageText, settledTurnStateForSessionStatus } from './read-model'
+import { isPendingRequestActivityKind, pendingRequestCounts } from './pending-requests'
 
 export const ORCHESTRATION_PROJECTOR_NAME = 'orchestration'
 
@@ -100,6 +101,9 @@ export class OrchestrationProjectionPipeline {
           workspaceRoot: event.payload.workspaceRoot,
         })
         return
+      case 'project.reordered':
+        this.updateProject(event.payload.projectId, { orderKey: event.payload.orderKey })
+        return
       case 'project.deleted':
         this.updateProject(event.payload.projectId, {
           deletedAt: event.payload.deletedAt,
@@ -135,6 +139,7 @@ export class OrchestrationProjectionPipeline {
       case 'thread.activity-appended':
         this.insertActivity(event)
         this.updateTurnForActivity(event)
+        this.refreshPendingRequestCountsForActivity(event)
         return
       case 'thread.deleted':
         this.updateThread(event.payload.threadId, {
@@ -254,6 +259,9 @@ export class OrchestrationProjectionPipeline {
         createdAt: event.payload.createdAt,
         defaultModelSelectionJson: jsonOrNull(event.payload.defaultModelSelection),
         deletedAt: null,
+        // Only on insert: a replayed `project.created` must not wipe the slot
+        // the user dragged this project into.
+        orderKey: null,
         projectId: event.payload.projectId,
         title: event.payload.title,
         updatedAt: event.payload.updatedAt,
@@ -659,6 +667,52 @@ export class OrchestrationProjectionPipeline {
     )
   }
 
+  /**
+   * Only a request-relevant activity can move the counters, so the streaming
+   * storm of tool-call activities never pays for the fold.
+   */
+  private refreshPendingRequestCountsForActivity(
+    event: Extract<OrchestrationEvent, { type: 'thread.activity-appended' }>,
+  ) {
+    if (!isPendingRequestActivityKind(event.payload.activity.kind)) return
+
+    this.refreshPendingRequestCounts(event.payload.threadId)
+  }
+
+  /**
+   * The counters are a fold over the thread's whole activity history, recomputed
+   * rather than incremented: a replayed event (`onConflictDoNothing` above) or a
+   * revert then can never leave them drifted from the request state they
+   * describe. This is the same fold the settle guard runs against the read
+   * model (`pending-requests.ts`).
+   */
+  private refreshPendingRequestCounts(threadId: string) {
+    const counts = pendingRequestCounts(this.requestActivities(threadId))
+
+    this.updateThread(threadId, {
+      pendingApprovalCount: counts.approvals,
+      pendingUserInputCount: counts.userInputs,
+    })
+  }
+
+  private requestActivities(threadId: string) {
+    const rows = this.database
+      .select({
+        kind: projectionThreadActivities.kind,
+        payloadJson: projectionThreadActivities.payloadJson,
+      })
+      .from(projectionThreadActivities)
+      .where(eq(projectionThreadActivities.threadId, threadId))
+      .orderBy(
+        asc(projectionThreadActivities.sequence),
+        asc(projectionThreadActivities.createdAt),
+        asc(projectionThreadActivities.activityId),
+      )
+      .all()
+
+    return rows.map((row) => ({ kind: row.kind, payload: parseActivityPayload(row.payloadJson) }))
+  }
+
   private completeTurn(
     threadId: string,
     turnId: string | undefined,
@@ -838,6 +892,8 @@ export class OrchestrationProjectionPipeline {
       latestUserMessageAt: latestUserMessageAt(messages),
       updatedAt: event.payload.revertedAt,
     })
+    // Requests pruned with their turns must not keep the counters flagged.
+    this.refreshPendingRequestCounts(threadId)
     this.dropProposedPlansAfterRevert(threadId, retainedTurnIds)
     this.refreshActionableProposedPlan(threadId)
   }
@@ -1067,4 +1123,16 @@ function parseJsonOrUndefined(value: string | null) {
   if (!value) return undefined
 
   return JSON.parse(value) as unknown
+}
+
+/**
+ * Null — never a throw — for a row whose payload no longer parses: the fold
+ * treats it as a non-request activity instead of poisoning the projection.
+ */
+function parseActivityPayload(payloadJson: string): unknown {
+  try {
+    return JSON.parse(payloadJson) as unknown
+  } catch {
+    return null
+  }
 }

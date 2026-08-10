@@ -1,3 +1,5 @@
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { GitBranchIcon } from '@phosphor-icons/react'
 
 import { formatChatDateLabel } from '@/features/chat/lib/chat-formatters'
@@ -20,6 +22,12 @@ export function SessionRow({
 }) {
   const renaming = useSessionRailStore((state) => state.renaming)
   const marked = useSessionMultiSelectStore((state) => state.threadIds.includes(session.id))
+  const { attributes, isDragging, listeners, setNodeRef, transform, transition } = useSortable({
+    attributes: {
+      roleDescription: 'sortable session row',
+    },
+    id: session.id,
+  })
 
   if (renaming?.surface === 'rail' && renaming.threadId === session.id) {
     return (
@@ -35,9 +43,11 @@ export function SessionRow({
       session={session}
       trigger={
         <button
+          {...attributes}
+          {...listeners}
           aria-current={active ? 'true' : undefined}
           className={cn(
-            'group/session focus-visible:ring-ring/50 flex w-full flex-col gap-1 rounded-md px-2 py-1.5 text-left outline-none focus-visible:ring-1',
+            'group/session focus-visible:ring-ring/50 flex w-full touch-none flex-col gap-1 rounded-md px-2 py-1.5 text-left outline-none focus-visible:ring-1',
             // Hover material only when not selected: bg-accent already carries
             // --surface-opacity, so a /60 hover on top of it composites *lighter*.
             'text-muted-foreground',
@@ -47,8 +57,12 @@ export function SessionRow({
             // the fill — the two states have to be readable at the same time.
             marked && !active && 'ring-ring/40 text-foreground ring-1',
             marked && active && 'ring-ring/60 ring-1',
+            isDragging && 'relative z-10 opacity-60',
           )}
           data-marked={marked ? 'true' : undefined}
+          ref={setNodeRef}
+          // Measured drag offsets: nothing but the drag itself knows these values.
+          style={{ transform: CSS.Transform.toString(transform), transition }}
           title={session.title}
           type='button'
           onClick={(event) => activateSessionRow(session, sessionClickIntent(event))}

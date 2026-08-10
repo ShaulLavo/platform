@@ -1,4 +1,4 @@
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import path from 'node:path'
 import {
@@ -117,6 +117,44 @@ export async function resolveAttachmentFile(input: {
   if (!stats?.isFile()) return null
 
   return { byteLength: stats.size, contentType, filePath }
+}
+
+/**
+ * Best-effort reclaim of the blobs a set of attachments points at. Never
+ * throws: the metadata that referenced the blob is already gone by the time a
+ * caller cleans up (a deleted thread, a pruned message), so a missing or
+ * unreadable file is the expected case, not a failure. Returns how many files
+ * were actually unlinked, for the wide event.
+ */
+export async function deleteAttachmentBlobs(input: {
+  readonly attachmentsDir: string
+  readonly attachments: readonly ChatAttachment[]
+}): Promise<number> {
+  let reclaimed = 0
+
+  for (const filePath of attachmentFilePaths(input)) {
+    const unlinked = await unlink(filePath).then(
+      () => true,
+      () => false,
+    )
+    if (unlinked) reclaimed += 1
+  }
+
+  return reclaimed
+}
+
+function attachmentFilePaths(input: {
+  readonly attachmentsDir: string
+  readonly attachments: readonly ChatAttachment[]
+}) {
+  const filePaths = new Set<string>()
+
+  for (const attachment of input.attachments) {
+    const filePath = attachmentFilePath({ attachment, attachmentsDir: input.attachmentsDir })
+    if (filePath) filePaths.add(filePath)
+  }
+
+  return filePaths
 }
 
 function attachmentFilePath(input: {

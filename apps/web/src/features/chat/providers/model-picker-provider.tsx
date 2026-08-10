@@ -1,7 +1,7 @@
 import type { ModelSelection } from '@workspace/contracts'
 import { useMemo, type ReactNode } from 'react'
 
-import { reconcileModelEffort, withModelEffort } from '@/features/chat/lib/model-effort'
+import { reconcileModelEffort } from '@/features/chat/lib/model-effort'
 import {
   ChatModelPickerContext,
   type ChatModelPicker,
@@ -53,13 +53,6 @@ export function ChatModelPickerProvider({
     return {
       locked,
       modelSelection: activeModelSelection,
-      selectEffort: (effort: string | null) => {
-        if (locked) return
-        // Nothing is selected, so there is no model the level could belong to.
-        if (!activeModelSelection) return
-
-        commit(withModelEffort(activeModelSelection, effort))
-      },
       selectModel: (option) => {
         if (locked) return
 

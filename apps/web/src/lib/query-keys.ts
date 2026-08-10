@@ -33,6 +33,7 @@ export const gitKeys = {
   checkpointDiff: (query: {
     filePath?: string
     fromTurnCount: number
+    ignoreWhitespace?: boolean
     path?: string
     scope?: 'file' | 'thread' | 'turn'
     threadId: string

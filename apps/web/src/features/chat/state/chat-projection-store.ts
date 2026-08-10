@@ -97,7 +97,14 @@ export type ChatSidebarThreadSummary = Pick<
   | 'title'
   | 'updatedAt'
   | 'worktreePath'
->
+> & {
+  /**
+   * The slot the user dragged this session into, `null` while it holds none.
+   * Event-derived rather than shell-derived: the thread shell carries no pin
+   * state, so the writers keep this field across a resnapshot themselves.
+   */
+  pinOrderKey?: string | null
+}
 
 export type ChatTurnDiffSummary = {
   assistantMessageId: MessageId | null

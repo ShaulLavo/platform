@@ -1,5 +1,6 @@
 import type { OrchestrationEvent, OrchestrationMessage } from './schemas'
 import type { OrchestrationSession } from '@workspace/contracts'
+import { pendingRequestCounts } from './pending-requests'
 import {
   appendBounded,
   boundCheckpoints,
@@ -39,6 +40,7 @@ function applyEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
         defaultModelSelection: event.payload.defaultModelSelection,
         deletedAt: null,
         id: event.payload.projectId,
+        orderKey: null,
         title: event.payload.title,
         workspaceRoot: event.payload.workspaceRoot,
         createdAt: event.payload.createdAt,
@@ -47,6 +49,9 @@ function applyEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
       return
     case 'project.meta-updated':
       updateProject(event, model)
+      return
+    case 'project.reordered':
+      updateProjectValue(model, event.payload.projectId, { orderKey: event.payload.orderKey })
       return
     case 'project.deleted':
       updateProjectValue(model, event.payload.projectId, {
@@ -71,10 +76,16 @@ function applyEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
     case 'thread.activity-appended':
       updateThread(model, event.payload.threadId, (thread) => {
         appendActivity(thread.activities, event)
+        // The counters are a fold over the retained activities, recomputed
+        // rather than incremented: a replayed batch or a reverted turn can
+        // never leave them drifted from the request state they describe.
+        const counts = pendingRequestCounts(thread.activities)
 
         return {
           ...thread,
           latestTurn: latestTurnAfterActivity(thread.latestTurn, event),
+          pendingApprovalCount: counts.approvals,
+          pendingUserInputCount: counts.userInputs,
           updatedAt: event.payload.activity.createdAt,
         }
       })
@@ -304,18 +315,24 @@ function revertedThread(
 ): OrchestrationProjectedThread {
   const checkpoints = retainedCheckpoints(thread, event.payload.turnCount)
   const retainedTurnIds = new Set(checkpoints.map((checkpoint) => checkpoint.turnId))
+  const activities = thread.activities.filter((activity) =>
+    shouldRetainAfterRevert(activity.turnId, retainedTurnIds),
+  )
+  // Requests pruned with their turns must not keep the thread flagged as
+  // waiting, and a retained request must survive the revert.
+  const counts = pendingRequestCounts(activities)
 
   return {
     ...thread,
-    activities: thread.activities.filter((activity) =>
-      shouldRetainAfterRevert(activity.turnId, retainedTurnIds),
-    ),
+    activities,
     checkpointByTurnId: recordByTurnId(checkpoints),
     hasActionableProposedPlan: false,
     latestTurn: latestTurnAfterRevert(thread.latestTurn, checkpoints, retainedTurnIds),
     messages: thread.messages.filter((message) =>
       shouldRetainAfterRevert(message.turnId, retainedTurnIds),
     ),
+    pendingApprovalCount: counts.approvals,
+    pendingUserInputCount: counts.userInputs,
     updatedAt: event.payload.revertedAt,
   }
 }

@@ -1,18 +1,31 @@
 import {
+  closestCenter,
+  DndContext,
+  DragOverlay,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core'
+import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import {
   ArchiveIcon,
   FolderPlusIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   XIcon,
 } from '@phosphor-icons/react'
-import type { KeyboardEvent } from 'react'
+import { useState, type KeyboardEvent } from 'react'
 
 import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { SessionBulkBar } from '@/features/chat-mode/components/session-bulk-bar'
 import { SessionGroup } from '@/features/chat-mode/components/session-group'
+import { SessionGroupHeader } from '@/features/chat-mode/components/session-group-header'
 import { SessionScopeMenu } from '@/features/chat-mode/components/session-scope-menu'
+import { useRailDragSensors } from '@/features/chat-mode/hooks/use-rail-drag-sensors'
+import { useChatRailOrder } from '@/features/chat-mode/providers/rail-order-context'
 import { useChatModeSession } from '@/features/chat-mode/providers/session-context'
+import { useRailOrderStore } from '@/features/chat-mode/state/rail-order-store'
 import {
   clearSessionMultiSelect,
   startScopedSessionDraft,
@@ -32,8 +45,14 @@ import { Button } from '@workspace/ui/components/button'
 import { Input } from '@workspace/ui/components/input'
 import { cn } from '@workspace/ui/lib/utils'
 
+const RAIL_DND_MODIFIERS = [restrictToVerticalAxis]
+
 export function SessionRail() {
   const { activeSession, addProject, project, ready } = useChatModeSession()
+  const { reorderProject } = useChatRailOrder()
+  const sensors = useRailDragSensors()
+  const projectOrderKeys = useRailOrderStore((state) => state.projectOrderKeys)
+  const sessionOrderKeys = useRailOrderStore((state) => state.sessionOrderKeys)
   const projects = useChatProjectionStore(selectChatProjects)
   const threadIds = useChatProjectionStore((state) => state.threadIds)
   const summaryById = useChatProjectionStore((state) => state.sidebarThreadSummaryById)
@@ -46,10 +65,12 @@ export function SessionRail() {
   const setScope = useSessionRailStore((state) => state.setScope)
   const setView = useSessionRailStore((state) => state.setView)
   const markedThreadIds = useSessionMultiSelectStore((state) => state.threadIds)
+  const [draggingProjectId, setDraggingProjectId] = useState<string | null>(null)
   const model = sessionRailModel({
     activeProjectId: project?.id ?? null,
     activeThreadId: activeSession.threadId,
     collapsedProjectIds,
+    orderOverrides: { projectOrderKeys, sessionOrderKeys },
     projects,
     query,
     scope,
@@ -61,6 +82,17 @@ export function SessionRail() {
   function toggleView() {
     setView(view === 'archived' ? 'active' : 'archived')
   }
+
+  function handleProjectDragStart(event: DragStartEvent) {
+    setDraggingProjectId(String(event.active.id))
+  }
+
+  function handleProjectDragEnd(event: DragEndEvent) {
+    setDraggingProjectId(null)
+    reorderProject(String(event.active.id), event.over ? String(event.over.id) : null)
+  }
+
+  const draggingGroup = model.groups.find((group) => group.project.id === draggingProjectId) ?? null
 
   // Escape is the universal "never mind" for a marked set, and the rail is the only
   // place it means that — the app keymap has no business knowing about this list.
@@ -153,13 +185,36 @@ export function SessionRail() {
       </div>
       <div className='min-h-0 flex-1 overflow-y-auto'>
         <div className='flex flex-col gap-2 px-1 pb-3'>
-          {model.groups.map((group) => (
-            <SessionGroup
-              activeThreadId={activeSession.threadId}
-              group={group}
-              key={group.project.id}
-            />
-          ))}
+          <DndContext
+            collisionDetection={closestCenter}
+            modifiers={RAIL_DND_MODIFIERS}
+            sensors={sensors}
+            onDragCancel={() => setDraggingProjectId(null)}
+            onDragEnd={handleProjectDragEnd}
+            onDragStart={handleProjectDragStart}
+          >
+            <SortableContext
+              items={model.groups.map((group) => group.project.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {model.groups.map((group) => (
+                <SessionGroup
+                  activeThreadId={activeSession.threadId}
+                  group={group}
+                  key={group.project.id}
+                />
+              ))}
+            </SortableContext>
+            {/* Only the header travels. Lifting the whole band — header plus every
+                session row — made a project drag a page-sized slab. */}
+            <DragOverlay dropAnimation={null}>
+              {draggingGroup ? (
+                <div className='bg-popover border-border pointer-events-none rounded-md border shadow-lg'>
+                  <SessionGroupHeader group={draggingGroup} />
+                </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
           {model.sessions.length === 0 ? (
             <p className='text-muted-foreground/60 px-2 py-3 text-[11px]'>
               {emptyLabel({ query, ready, scopedCount: model.scopedCount, view })}

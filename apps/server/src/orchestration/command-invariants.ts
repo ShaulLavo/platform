@@ -1,6 +1,22 @@
 import { defineErrorCatalog } from 'evlog'
+import { isValidOrderKey } from '@workspace/contracts'
 import { orchestrationErrors } from '../observability'
+import { pendingRequestCounts } from './pending-requests'
 import type { OrchestrationProjectedThread, OrchestrationReadModel } from './read-model'
+
+/**
+ * Arranged-order refusals. Shared by every list that sorts on a fractional key
+ * (the pinned thread block, the project list) so one malformed key is refused
+ * the same way everywhere instead of being persisted and corrupting the sort.
+ */
+export const orderKeyErrors = defineErrorCatalog('orchestration', {
+  ORDER_KEY_INVALID: {
+    status: 400,
+    message: ({ orderKey }: { orderKey: string }) => `Order key is malformed: ${orderKey}`,
+    why: 'The list sorts by plain string comparison, so a key outside the a-z alphabet — or one ending in the minimum digit, which leaves no room to insert before it — silently corrupts the arranged order for every client.',
+    fix: 'Mint the key with orderKeyBetween or generateSpreadOrderKeys instead of hand-writing it.',
+  },
+})
 
 /**
  * Refusals specific to the settle / snooze / pin lifecycle. They share the
@@ -93,6 +109,17 @@ export function requireProject(model: OrchestrationReadModel, projectId: string)
   if (!project || project.deletedAt) throw orchestrationErrors.PROJECT_NOT_FOUND({ projectId })
 
   return project
+}
+
+/**
+ * The wire schema already checks the key, but the decider is reachable from
+ * internal dispatch too — and an unvalidated key here is not a rejected
+ * command, it is a persisted row that sorts wrong forever.
+ */
+export function requireValidOrderKey(orderKey: string) {
+  if (isValidOrderKey(orderKey)) return
+
+  throw orderKeyErrors.ORDER_KEY_INVALID({ orderKey })
 }
 
 export function requireProjectAbsent(model: OrchestrationReadModel, projectId: string) {
@@ -194,59 +221,9 @@ export function requirePinned(thread: OrchestrationProjectedThread) {
  * activities while one is outstanding.
  */
 export function hasOpenBlockingRequest(thread: OrchestrationProjectedThread) {
-  const openRequestIds = new Set<string>()
+  const counts = pendingRequestCounts(thread.activities)
 
-  for (const activity of thread.activities) {
-    const payload = activityPayloadRecord(activity.payload)
-    const requestId = typeof payload?.requestId === 'string' ? payload.requestId : null
-    if (requestId === null) continue
-    if (isBlockingRequestOpened(activity.kind)) {
-      openRequestIds.add(requestId)
-      continue
-    }
-    if (!isBlockingRequestClosed(activity.kind, payload)) continue
-
-    openRequestIds.delete(requestId)
-  }
-
-  return openRequestIds.size > 0
-}
-
-function isBlockingRequestOpened(kind: string) {
-  return kind === 'approval.requested' || kind === 'user-input.requested'
-}
-
-function isBlockingRequestClosed(kind: string, payload: Record<string, unknown> | null) {
-  if (kind === 'approval.resolved' || kind === 'user-input.resolved') return true
-  if (
-    kind !== 'provider.approval.respond.failed' &&
-    kind !== 'provider.user-input.respond.failed'
-  ) {
-    return false
-  }
-
-  return isDeadRequestFailureDetail(payload)
-}
-
-/**
- * A respond failure only clears the request when the request itself is gone —
- * the provider forgot it, or no session is bound to answer it any more. Any
- * other failure (a transient provider error) leaves the request open, because
- * the user can still answer it.
- */
-function isDeadRequestFailureDetail(payload: Record<string, unknown> | null) {
-  const detail = typeof payload?.detail === 'string' ? payload.detail.toLowerCase() : null
-  if (detail === null) return false
-  if (detail.includes('no active provider session')) return true
-  if (detail.startsWith('stale pending ')) return true
-
-  return detail.includes('unknown pending ')
-}
-
-function activityPayloadRecord(payload: unknown) {
-  if (typeof payload !== 'object' || payload === null) return null
-
-  return payload as Record<string, unknown>
+  return counts.approvals + counts.userInputs > 0
 }
 
 /**

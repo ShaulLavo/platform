@@ -8,6 +8,7 @@ import type { ChatEnvironment } from '@/features/chat/environment/chat-environme
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { SessionDeleteDialog } from '@/features/chat-mode/components/session-delete-dialog'
 import { SessionRail } from '@/features/chat-mode/components/session-rail'
+import { ChatRailOrderProvider } from '@/features/chat-mode/providers/rail-order-provider'
 import {
   ChatModeSessionContext,
   type ChatModeSession,
@@ -209,8 +210,11 @@ function renderRail({
   renderWithProviders(
     <EditorStateProvider>
       <ChatModeSessionContext value={session}>
-        <SessionRail />
-        {/* ChatModeSessionProvider mounts this next to the surface in the real app. */}
+        {/* ChatModeSessionProvider wraps the surface in this and mounts the
+            dialog next to it; the rail reads its reorder actions out of it. */}
+        <ChatRailOrderProvider>
+          <SessionRail />
+        </ChatRailOrderProvider>
         <SessionDeleteDialog />
       </ChatModeSessionContext>
     </EditorStateProvider>,

@@ -2,6 +2,7 @@ import type { ProjectId, ThreadId } from '@workspace/contracts'
 
 import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
+import { useRailOrderStore } from '@/features/chat-mode/state/rail-order-store'
 import { useSessionMultiSelectStore } from '@/features/chat-mode/state/session-multi-select-store'
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
 import { useSessionReadStore } from '@/features/chat-mode/state/session-read-store'
@@ -132,6 +133,7 @@ function visibleSessions() {
   const rail = useSessionRailStore.getState()
 
   return sessionRailModel({
+    orderOverrides: useRailOrderStore.getState(),
     projects: selectChatProjects(projection),
     query: rail.query,
     scope: rail.scope,

@@ -8,7 +8,6 @@ import { cn } from '@workspace/ui/lib/utils'
 import { ProviderGlyph } from '@/features/chat/components/provider-glyph'
 import { useModelPicker } from '@/features/chat/hooks/use-model-picker'
 import { providerModelDisplayLabel, providerStatusLabel } from '@/features/chat/lib/chat-formatters'
-import { modelEffortLabel, modelSelectionEffort } from '@/features/chat/lib/model-effort'
 import { providerRequiresSignIn } from '@/features/chat/lib/provider-auth'
 import { providerListQueryOptions } from '@/features/chat/lib/provider-query'
 
@@ -35,10 +34,6 @@ export function ModelPickerTrigger({
     ? providerModelDisplayLabel(provider, modelSelection)
     : 'Select model'
   const statusLabel = triggerStatusLabel(provider)
-  // Only a level the user actually chose shows here. A model's own default is
-  // implied, and spelling it out would cost the composer's scarcest space.
-  const effort = modelSelectionEffort(modelSelection)
-  const effortLabel = effort ? modelEffortLabel(effort) : null
 
   return (
     <Tooltip>
@@ -65,14 +60,7 @@ export function ModelPickerTrigger({
                 driverKind={provider.driverKind}
               />
             ) : null}
-            {/* The model name gives up width first: the level is two syllables
-                and unreadable once truncated. */}
             <span className='min-w-0 truncate'>{modelLabel}</span>
-            {effortLabel ? (
-              <span className='border-border/70 text-muted-foreground/80 shrink-0 rounded-sm border px-1 text-[10px] leading-4 font-medium'>
-                {effortLabel}
-              </span>
-            ) : null}
             <CaretDownIcon className='size-3 shrink-0' />
             <span
               aria-label={statusLabel}
@@ -84,9 +72,7 @@ export function ModelPickerTrigger({
           </PopoverTrigger>
         }
       />
-      <TooltipContent>
-        {triggerTooltipLabel({ effortLabel, locked, modelLabel, statusLabel })}
-      </TooltipContent>
+      <TooltipContent>{triggerTooltipLabel({ locked, modelLabel, statusLabel })}</TooltipContent>
     </Tooltip>
   )
 }
@@ -112,18 +98,15 @@ function triggerStatusDotClass(provider: ProviderSnapshot | undefined, busy: boo
 }
 
 function triggerTooltipLabel({
-  effortLabel,
   locked,
   modelLabel,
   statusLabel,
 }: {
-  effortLabel: string | null
   locked: boolean
   modelLabel: string
   statusLabel: string
 }) {
-  const name = effortLabel ? `${modelLabel} at ${effortLabel} effort` : modelLabel
-  if (locked) return `${name} - locked for this thread`
+  if (locked) return `${modelLabel} - locked for this thread`
 
-  return `${name} - ${statusLabel}`
+  return `${modelLabel} - ${statusLabel}`
 }

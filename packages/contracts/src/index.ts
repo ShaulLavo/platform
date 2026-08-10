@@ -12,14 +12,14 @@ export {
 } from './tree-entry'
 export type { FileResult } from './file-result'
 export {
-  generateSpreadPinOrderKeys,
-  isValidPinOrderKey,
-  PIN_ORDER_DIGITS,
-  pinOrderKeyBetween,
+  generateSpreadOrderKeys,
+  isValidOrderKey,
+  ORDER_KEY_DIGITS,
+  orderKeyBetween,
   planPinnedReorder,
-  sortPinnedThreadsByOrderKey,
+  sortByOrderKey,
   type PinOrderAssignment,
-} from './pin-order'
+} from './order-key'
 export type {
   GitBaseRefChoice,
   GitBaseRefChoicesResult,
@@ -137,7 +137,7 @@ export {
   orchestrationThreadActivityToneSchema,
   orchestrationThreadLifecycleEntries,
   orchestrationThreadSchema,
-  pinOrderKeySchema,
+  orderKeySchema,
   sourceProposedPlanReferenceSchema,
   threadLifecycleReasonSchema,
   threadSettledOverrideSchema,
@@ -242,6 +242,7 @@ export {
   projectCreateCommandSchema,
   projectDeleteCommandSchema,
   projectMetaUpdateCommandSchema,
+  projectReorderCommandSchema,
   threadActivityAppendCommandSchema,
   threadApprovalRespondCommandSchema,
   threadArchiveCommandSchema,
@@ -277,6 +278,7 @@ export {
   type ProjectCreateCommand,
   type ProjectDeleteCommand,
   type ProjectMetaUpdateCommand,
+  type ProjectReorderCommand,
   type ThreadArchiveCommand,
   type ThreadApprovalRespondCommand,
   type ThreadCheckpointRevertCommand,
@@ -310,6 +312,7 @@ export {
   projectCreatedPayloadSchema,
   projectDeletedPayloadSchema,
   projectMetaUpdatedPayloadSchema,
+  projectReorderedPayloadSchema,
   threadActivityAppendedPayloadSchema,
   threadApprovalResponseRequestedPayloadSchema,
   threadArchivedPayloadSchema,

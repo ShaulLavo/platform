@@ -5,8 +5,10 @@ import {
   type OrchestrationCommand,
 } from './schemas'
 import * as v from 'valibot'
-import type { ProjectId, ThreadId } from '@workspace/contracts'
+import { approvalRequestIdSchema } from '@workspace/contracts'
+import type { EventId, OrchestrationEventMetadata, ProjectId, ThreadId } from '@workspace/contracts'
 import { orchestrationErrors } from '../observability'
+import { activityRequestId } from './pending-requests'
 import {
   liveProjectThreads,
   requireActiveProjectWorkspaceRootAbsent,
@@ -21,6 +23,7 @@ import {
   requireThreadArchived,
   requireThreadNotArchived,
   requireThreadNotDeleted,
+  requireValidOrderKey,
 } from './command-invariants'
 import type { PendingOrchestrationEvent } from './event-store'
 import type { OrchestrationProjectedThread, OrchestrationReadModel } from './read-model'
@@ -41,6 +44,8 @@ export function decideOrchestrationCommand(
       return projectCreated(command, model, at)
     case 'project.meta.update':
       return projectMetaUpdated(command, model, at)
+    case 'project.reorder':
+      return projectReordered(command, model, at)
     case 'project.delete':
       return projectDeleted(command, model, at)
     case 'thread.create':
@@ -119,21 +124,35 @@ export function decideOrchestrationCommand(
     case 'thread.approval.respond':
       requireThreadNotDeleted(model, command.threadId)
 
-      return one(command, at, 'thread.approval-response-requested', {
-        createdAt: at,
-        decision: command.decision,
-        requestId: command.requestId,
-        threadId: command.threadId,
-      })
+      return one(
+        command,
+        at,
+        'thread.approval-response-requested',
+        {
+          createdAt: at,
+          decision: command.decision,
+          requestId: command.requestId,
+          threadId: command.threadId,
+        },
+        // The envelope carries the requestId too, so a log scan can correlate
+        // the response with the request without unpacking the payload.
+        { metadata: { requestId: command.requestId } },
+      )
     case 'thread.user-input.respond':
       requireThreadNotDeleted(model, command.threadId)
 
-      return one(command, at, 'thread.user-input-response-requested', {
-        answers: command.answers,
-        createdAt: at,
-        requestId: command.requestId,
-        threadId: command.threadId,
-      })
+      return one(
+        command,
+        at,
+        'thread.user-input-response-requested',
+        {
+          answers: command.answers,
+          createdAt: at,
+          requestId: command.requestId,
+          threadId: command.threadId,
+        },
+        { metadata: { requestId: command.requestId } },
+      )
     case 'thread.checkpoint.revert':
       requireThreadNotArchived(model, command.threadId, command.type)
 
@@ -239,6 +258,26 @@ function projectMetaUpdated(
     title: command.title,
     updatedAt: at,
     workspaceRoot: command.workspaceRoot,
+  })
+}
+
+/**
+ * A drag writes exactly one key to exactly one project: the client mints a
+ * fractional key that sorts between the drop position's neighbours, and the
+ * neighbours are never touched. A reorder that raced a delete is refused rather
+ * than resurrecting the row as an orphaned key.
+ */
+function projectReordered(
+  command: Extract<OrchestrationCommand, { type: 'project.reorder' }>,
+  model: OrchestrationReadModel,
+  at: string,
+) {
+  requireProject(model, command.projectId)
+  requireValidOrderKey(command.orderKey)
+
+  return one(command, at, 'project.reordered', {
+    orderKey: command.orderKey,
+    projectId: command.projectId,
   })
 }
 
@@ -524,16 +563,36 @@ function activityAppended(
   at: string,
 ) {
   const thread = requireThreadNotDeleted(model, command.threadId)
-  const appended = event(command, at, 'thread.activity-appended', {
-    activity: command.activity,
-    threadId: command.threadId,
-  })
+  const appended = event(
+    command,
+    at,
+    'thread.activity-appended',
+    {
+      activity: command.activity,
+      threadId: command.threadId,
+    },
+    { metadata: activityEnvelopeMetadata(command.activity) },
+  )
   const wakes =
     command.activity.kind === 'approval.requested' ||
     command.activity.kind === 'user-input.requested'
   if (!wakes || thread.settledOverride == null) return [appended]
 
   return [autoUnsettled(command, at, command.threadId, command.createdAt), appended]
+}
+
+/**
+ * Lifts the request an approval/user-input activity addresses into the event
+ * envelope, so the log correlates request and response without payload
+ * unpacking. Non-request activities keep an empty metadata object.
+ */
+function activityEnvelopeMetadata(
+  activity: Extract<OrchestrationCommand, { type: 'thread.activity.append' }>['activity'],
+): OrchestrationEventMetadata {
+  const requestId = activityRequestId(activity.payload)
+  if (requestId === null) return {}
+
+  return { requestId: v.parse(approvalRequestIdSchema, requestId) }
 }
 
 /**
@@ -562,30 +621,39 @@ function turnStartRequested(
   const bootstrapEvent = bootstrapThreadCreated(command, model, at)
   if (!bootstrapEvent) requireThreadNotArchived(model, command.threadId, command.type)
 
+  const messageEvent = event(command, at, 'thread.message-sent', {
+    attachments: command.message.attachments,
+    createdAt: at,
+    messageId: command.message.messageId,
+    role: command.message.role,
+    streaming: false,
+    text: command.message.text,
+    threadId: command.threadId,
+    turnId: command.turnId,
+    updatedAt: at,
+  })
   const turnEvents = [
     ...lifecycleResetEvents(command, model.threads.get(command.threadId), at),
-    event(command, at, 'thread.message-sent', {
-      attachments: command.message.attachments,
-      createdAt: at,
-      messageId: command.message.messageId,
-      role: command.message.role,
-      streaming: false,
-      text: command.message.text,
-      threadId: command.threadId,
-      turnId: command.turnId,
-      updatedAt: at,
-    }),
-    event(command, at, 'thread.turn-start-requested', {
-      createdAt: at,
-      interactionMode: command.interactionMode,
-      messageId: command.message.messageId,
-      modelSelection: command.modelSelection,
-      runtimeMode: command.runtimeMode,
-      sourceProposedPlan: command.sourceProposedPlan,
-      threadId: command.threadId,
-      titleSeed: command.titleSeed,
-      turnId: command.turnId,
-    }),
+    messageEvent,
+    // The turn exists because the message asked for it; without the link the
+    // message→turn causal chain is unreconstructible from the log.
+    event(
+      command,
+      at,
+      'thread.turn-start-requested',
+      {
+        createdAt: at,
+        interactionMode: command.interactionMode,
+        messageId: command.message.messageId,
+        modelSelection: command.modelSelection,
+        runtimeMode: command.runtimeMode,
+        sourceProposedPlan: command.sourceProposedPlan,
+        threadId: command.threadId,
+        titleSeed: command.titleSeed,
+        turnId: command.turnId,
+      },
+      { causationEventId: messageEvent.eventId },
+    ),
   ]
 
   return bootstrapEvent ? [bootstrapEvent, ...turnEvents] : turnEvents
@@ -654,8 +722,14 @@ function one<Type extends PendingOrchestrationEvent['type']>(
   at: string,
   type: Type,
   payload: EventPayload,
+  options?: EventEnvelopeOptions,
 ) {
-  return [event(command, at, type, payload)]
+  return [event(command, at, type, payload, options)]
+}
+
+type EventEnvelopeOptions = {
+  readonly causationEventId?: EventId
+  readonly metadata?: OrchestrationEventMetadata
 }
 
 function event<Type extends PendingOrchestrationEvent['type']>(
@@ -663,6 +737,7 @@ function event<Type extends PendingOrchestrationEvent['type']>(
   at: string,
   type: Type,
   payload: EventPayload,
+  options?: EventEnvelopeOptions,
 ) {
   const pending: unknown = {
     actorKind:
@@ -670,11 +745,11 @@ function event<Type extends PendingOrchestrationEvent['type']>(
         ? 'provider'
         : 'client',
     ...aggregate(payload),
-    causationEventId: null,
+    causationEventId: options?.causationEventId ?? null,
     commandId: command.commandId,
     correlationId: command.commandId,
     eventId: v.parse(eventIdSchema, `event-${crypto.randomUUID()}`),
-    metadata: {},
+    metadata: options?.metadata ?? {},
     occurredAt: at,
     payload,
     type,

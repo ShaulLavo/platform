@@ -8,8 +8,6 @@ export type ChatModelPicker = {
   readonly locked: boolean
   /** The selection the composer will send with the next turn, or null when no provider offers one. */
   readonly modelSelection: ModelSelection | null
-  /** Sets the reasoning level for the current model; `null` leaves the provider's own default. */
-  readonly selectEffort: (effort: string | null) => void
   /** Takes the picker row, not a bare selection, so the level can be reconciled against the new model. */
   readonly selectModel: (option: ProviderModelOption) => void
 }

@@ -17,20 +17,17 @@ import type {
  * render one of its own or pass a `CommandShortcut`, which hides it.
  */
 export function ModelPickerRow({
-  activeEffort,
   onSelect,
   option,
   selected,
 }: {
-  /** The level the composer will send, set only on the selected row. */
-  readonly activeEffort: string | null
   readonly onSelect: (option: ProviderModelOption) => void
   readonly option: ProviderModelOption
   readonly selected: boolean
 }) {
   const disabledReason = option.disabledReason
   const disabled = disabledReason !== null
-  const badges = modelPickerRowBadges(option, activeEffort)
+  const badges = modelPickerRowBadges(option)
   const row = (
     <CommandItem
       className={cn(

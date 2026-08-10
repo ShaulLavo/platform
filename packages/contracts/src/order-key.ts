@@ -1,75 +1,78 @@
 /**
- * Fractional index keys for the user-arranged pinned block.
+ * Fractional index keys for a user-arranged list.
  *
- * A pinned thread carries an optional `pinOrderKey` — a base-26 string. The
- * pinned block sorts keyed threads by plain string comparison, so a drag writes
- * ONE key to ONE thread: the neighbours are never rewritten, and two clients
- * that saw the same drop converge on the same order without a shared counter.
+ * A row carries an optional order key — a base-26 string. The list sorts keyed
+ * rows by plain string comparison, so a drag writes ONE key to ONE row: the
+ * neighbours are never rewritten, and two clients that saw the same drop
+ * converge on the same order without a shared counter.
+ *
+ * One algorithm serves every arranged list: the pinned thread block (which
+ * persists its key as `pinOrderKey`) and the project list (`orderKey`).
  */
-export const PIN_ORDER_DIGITS = 'abcdefghijklmnopqrstuvwxyz'
+export const ORDER_KEY_DIGITS = 'abcdefghijklmnopqrstuvwxyz'
 
-const PIN_ORDER_MIN_DIGIT = PIN_ORDER_DIGITS.charAt(0)
+const ORDER_KEY_MIN_DIGIT = ORDER_KEY_DIGITS.charAt(0)
 
-export function isValidPinOrderKey(key: string) {
+export function isValidOrderKey(key: string) {
   if (key.length === 0) return false
   for (const char of key) {
-    if (!PIN_ORDER_DIGITS.includes(char)) return false
+    if (!ORDER_KEY_DIGITS.includes(char)) return false
   }
 
   // A trailing minimum digit would leave no room to sort a key immediately
   // before this one; generators never produce it, so treat it as corrupt.
-  return key.at(-1) !== PIN_ORDER_MIN_DIGIT
+  return key.at(-1) !== ORDER_KEY_MIN_DIGIT
 }
 
 /**
  * Midpoint of two digit strings read as fractions in (0, 1). `''` stands for
- * the open bound on either side. Only reachable through `pinOrderKeyBetween`,
+ * the open bound on either side. Only reachable through `orderKeyBetween`,
  * which is what establishes `a < b` — the recursion preserves it.
  */
-function pinOrderMidpoint(a: string, b: string): string {
+function orderKeyMidpoint(a: string, b: string): string {
   if (b !== '') {
     // Recurse past the longest common prefix (the minimum digit pads the
     // shorter side).
     let n = 0
-    while ((a.charAt(n) || PIN_ORDER_MIN_DIGIT) === b.charAt(n)) n += 1
-    if (n > 0) return b.slice(0, n) + pinOrderMidpoint(a.slice(n), b.slice(n))
+    while ((a.charAt(n) || ORDER_KEY_MIN_DIGIT) === b.charAt(n)) n += 1
+    if (n > 0) return b.slice(0, n) + orderKeyMidpoint(a.slice(n), b.slice(n))
   }
 
-  const digitA = a === '' ? 0 : PIN_ORDER_DIGITS.indexOf(a.charAt(0))
-  const digitB = b === '' ? PIN_ORDER_DIGITS.length : PIN_ORDER_DIGITS.indexOf(b.charAt(0))
-  if (digitB - digitA > 1) return PIN_ORDER_DIGITS.charAt(Math.round((digitA + digitB) / 2))
+  const digitA = a === '' ? 0 : ORDER_KEY_DIGITS.indexOf(a.charAt(0))
+  const digitB = b === '' ? ORDER_KEY_DIGITS.length : ORDER_KEY_DIGITS.indexOf(b.charAt(0))
+  if (digitB - digitA > 1) return ORDER_KEY_DIGITS.charAt(Math.round((digitA + digitB) / 2))
   // Consecutive leading digits: either b has spare digits to shorten into, or
   // we extend a — never producing a trailing minimum digit, because the base
   // case midpoint('', '') is the middle of the alphabet.
   if (b.length > 1) return b.charAt(0)
 
-  return PIN_ORDER_DIGITS.charAt(digitA) + pinOrderMidpoint(a.slice(1), '')
+  return ORDER_KEY_DIGITS.charAt(digitA) + orderKeyMidpoint(a.slice(1), '')
 }
 
 /**
  * Key that sorts strictly between two neighbours; `null` bounds mean "top of
- * the pinned block" / "bottom of the keyed run". Returns `null` rather than
- * throwing when the existing keys are corrupt or out of order — the caller
- * falls back to rewriting the whole section.
+ * the list" / "bottom of the keyed run". Returns `null` rather than throwing
+ * when the existing keys are corrupt or out of order — the caller falls back to
+ * rewriting the whole section.
  */
-export function pinOrderKeyBetween(before: string | null, after: string | null): string | null {
+export function orderKeyBetween(before: string | null, after: string | null): string | null {
   const a = before ?? ''
   const b = after ?? ''
-  if (a !== '' && !isValidPinOrderKey(a)) return null
-  if (b !== '' && !isValidPinOrderKey(b)) return null
+  if (a !== '' && !isValidOrderKey(a)) return null
+  if (b !== '' && !isValidOrderKey(b)) return null
   if (b !== '' && a >= b) return null
 
-  return pinOrderMidpoint(a, b)
+  return orderKeyMidpoint(a, b)
 }
 
 /**
- * Evenly spaced keys for rewriting a whole pinned section, used when a drop
- * lands next to a keyless thread so single-key insertion has nothing to anchor
- * on. Two base-26 digits give 675 slots — far beyond any real pinned section —
- * with monotonicity enforced as belt and braces.
+ * Evenly spaced keys for rewriting a whole section, used when a drop lands next
+ * to a keyless row so single-key insertion has nothing to anchor on. Two
+ * base-26 digits give 675 slots — far beyond any real arranged section — with
+ * monotonicity enforced as belt and braces.
  */
-export function generateSpreadPinOrderKeys(count: number): string[] {
-  const space = PIN_ORDER_DIGITS.length * PIN_ORDER_DIGITS.length
+export function generateSpreadOrderKeys(count: number): string[] {
+  const space = ORDER_KEY_DIGITS.length * ORDER_KEY_DIGITS.length
   const step = space / (count + 1)
   const keys: string[] = []
   let previous = 0
@@ -77,12 +80,12 @@ export function generateSpreadPinOrderKeys(count: number): string[] {
   for (let index = 0; index < count; index += 1) {
     let value = Math.max(Math.round(step * (index + 1)), previous + 1)
     // Skip values whose low digit is the minimum (a trailing 'a' key).
-    if (value % PIN_ORDER_DIGITS.length === 0) value += 1
+    if (value % ORDER_KEY_DIGITS.length === 0) value += 1
     value = Math.min(value, space - 1)
     previous = value
     keys.push(
-      PIN_ORDER_DIGITS.charAt(Math.floor(value / PIN_ORDER_DIGITS.length)) +
-        PIN_ORDER_DIGITS.charAt(value % PIN_ORDER_DIGITS.length),
+      ORDER_KEY_DIGITS.charAt(Math.floor(value / ORDER_KEY_DIGITS.length)) +
+        ORDER_KEY_DIGITS.charAt(value % ORDER_KEY_DIGITS.length),
     )
   }
 
@@ -111,10 +114,10 @@ export function planPinnedReorder(input: {
   const movedIndex = orderedIds.indexOf(movedId)
   if (movedIndex === -1) return []
 
-  const single = singlePinOrderWrite(orderedIds, keysById, movedId, movedIndex)
+  const single = singleOrderKeyWrite(orderedIds, keysById, movedId, movedIndex)
   if (single) return single
 
-  const keys = generateSpreadPinOrderKeys(orderedIds.length)
+  const keys = generateSpreadOrderKeys(orderedIds.length)
 
   return orderedIds.flatMap((id, index) => {
     const orderKey = keys[index]
@@ -125,7 +128,7 @@ export function planPinnedReorder(input: {
   })
 }
 
-function singlePinOrderWrite(
+function singleOrderKeyWrite(
   orderedIds: readonly string[],
   keysById: ReadonlyMap<string, string | null | undefined>,
   movedId: string,
@@ -139,47 +142,54 @@ function singlePinOrderWrite(
   if (beforeId != null && beforeKey === null) return null
   if (afterId != null && afterKey === null) return null
 
-  const orderKey = pinOrderKeyBetween(beforeKey, afterKey)
+  const orderKey = orderKeyBetween(beforeKey, afterKey)
   if (orderKey === null) return null
 
   return [{ id: movedId, orderKey }]
 }
 
 /**
- * Pinned block order: user-arranged keys first (plain string comparison, id
- * tiebreak), then keyless threads newest-created first — so threads pinned
- * before reordering existed keep a stable creation order at the bottom of the
- * block instead of breaking the section.
+ * A row of an arranged list. Threads persist their key as `pinOrderKey` and
+ * projects as `orderKey`; the sort reads whichever the row carries so both
+ * lists run on this one comparison instead of two that can drift.
  */
-export function sortPinnedThreadsByOrderKey<
-  Thread extends {
-    readonly id: string
-    readonly createdAt: string
-    readonly pinOrderKey?: string | null | undefined
-  },
->(threads: readonly Thread[]): Thread[] {
-  const keyed: Thread[] = []
-  const keyless: Thread[] = []
-  for (const thread of threads) {
-    if (thread.pinOrderKey == null) {
-      keyless.push(thread)
+type OrderKeyedRow = {
+  readonly id: string
+  readonly createdAt: string
+  readonly orderKey?: string | null | undefined
+  readonly pinOrderKey?: string | null | undefined
+}
+
+/**
+ * Arranged order: user-placed keys first (plain string comparison, id
+ * tiebreak), then keyless rows newest-created first — so rows that existed
+ * before reordering did keep a stable creation order at the bottom of the list
+ * instead of breaking the section.
+ */
+export function sortByOrderKey<Row extends OrderKeyedRow>(rows: readonly Row[]): Row[] {
+  const keyed: Row[] = []
+  const keyless: Row[] = []
+  for (const row of rows) {
+    if (readOrderKey(row) == null) {
+      keyless.push(row)
       continue
     }
-    keyed.push(thread)
+    keyed.push(row)
   }
 
-  keyed.sort(comparePinOrderKeys)
+  keyed.sort(compareOrderKeys)
   keyless.sort(compareNewestCreatedFirst)
 
   return [...keyed, ...keyless]
 }
 
-function comparePinOrderKeys(
-  left: { readonly id: string; readonly pinOrderKey?: string | null },
-  right: { readonly id: string; readonly pinOrderKey?: string | null },
-) {
-  const leftKey = left.pinOrderKey ?? ''
-  const rightKey = right.pinOrderKey ?? ''
+function readOrderKey(row: OrderKeyedRow) {
+  return row.orderKey ?? row.pinOrderKey ?? null
+}
+
+function compareOrderKeys(left: OrderKeyedRow, right: OrderKeyedRow) {
+  const leftKey = readOrderKey(left) ?? ''
+  const rightKey = readOrderKey(right) ?? ''
   if (leftKey < rightKey) return -1
   if (leftKey > rightKey) return 1
 

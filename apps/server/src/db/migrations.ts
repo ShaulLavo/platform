@@ -31,6 +31,7 @@ export const platformMigrations: readonly Migration[] = [
   },
   { version: 3, name: 'app_settings', up: applyAppSettings },
   { version: 4, name: 'thread_lifecycle_columns', up: applyThreadLifecycleColumns },
+  { version: 5, name: 'project_order_key', up: applyProjectOrderKey },
 ]
 
 /**
@@ -471,6 +472,15 @@ function applyThreadLifecycleColumns(database: PlatformDatabase) {
 		CREATE INDEX projection_threads_pinned_order_idx
 		ON projection_threads (pinned_at, pin_order_key)
 	`)
+}
+
+/**
+ * The user's own project order. Nullable with no default: "never dragged" has
+ * to stay distinguishable from a placed key, because an unplaced project sorts
+ * after the arranged run rather than into the middle of it.
+ */
+function applyProjectOrderKey(database: PlatformDatabase) {
+  database.run(sql`ALTER TABLE projection_projects ADD COLUMN order_key TEXT`)
 }
 
 function createProviderRuntimeTables(database: PlatformDatabase) {

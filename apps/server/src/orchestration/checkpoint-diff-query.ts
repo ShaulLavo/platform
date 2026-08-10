@@ -47,6 +47,7 @@ export class OrchestrationCheckpointDiffQuery {
     await this.assertCheckpointRefAvailable(context, refs.fromRef, query.fromTurnCount)
     await this.assertCheckpointRefAvailable(context, refs.toRef, query.toTurnCount)
     return this.git.diffRefs({
+      ignoreWhitespace: query.ignoreWhitespace,
       newRef: refs.toRef,
       oldRef: refs.fromRef,
       path: context.workspacePath,
@@ -58,6 +59,7 @@ export class OrchestrationCheckpointDiffQuery {
 
     return this.turnDiff({
       fromTurnCount: 0,
+      ignoreWhitespace: query.ignoreWhitespace,
       threadId: query.threadId,
       toTurnCount: query.toTurnCount,
     })

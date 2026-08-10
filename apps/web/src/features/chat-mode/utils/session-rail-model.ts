@@ -3,7 +3,11 @@ import type { OrchestrationProjectShell, ProjectId, ThreadId } from '@workspace/
 import { projectQualifiers } from '@/features/chat/lib/project-qualifiers'
 import { threadStatus, type ThreadStatus } from '@/features/chat/lib/thread-status'
 import type { ChatSidebarThreadSummary } from '@/features/chat/state/chat-projection-store'
-import { compareSessionsByCreation } from '@/features/chat-mode/utils/session-order'
+import {
+  compareProjectsForRail,
+  withProjectOrderKey,
+} from '@/features/chat-mode/utils/project-order'
+import { compareSessionsForRail } from '@/features/chat-mode/utils/session-order'
 import { rollupThreadStatus } from '@/features/chat-mode/utils/session-status-rollup'
 import {
   isSessionUnread,
@@ -28,6 +32,8 @@ export type SessionRailItem = {
   readonly branch: string | null
   readonly createdAt: string
   readonly id: ThreadId
+  /** The slot the user dragged this row into. `null` until they drag it. */
+  readonly pinOrderKey: string | null
   readonly projectId: ProjectId
   readonly projectTitle: string
   readonly status: ThreadStatus
@@ -39,6 +45,8 @@ export type SessionRailItem = {
 export type SessionRailProject = {
   readonly active: boolean
   readonly id: ProjectId
+  /** The slot the user dragged this project into. `null` until they drag it. */
+  readonly orderKey: string | null
   readonly sessionCount: number
   /** The worst state anything inside is in — the whole point of a collapsed header. */
   readonly status: ThreadStatus
@@ -76,11 +84,23 @@ export type SessionRailModel = {
 }
 
 const NO_PROJECT_IDS: readonly ProjectId[] = []
+const NO_ORDER_OVERRIDES: RailOrderOverrides = { projectOrderKeys: {}, sessionOrderKeys: {} }
+
+/**
+ * Keys written by a drag that the server has not confirmed yet. Folding them in
+ * here rather than in the components is what keeps the rendered list and the
+ * lists the keyboard commands walk agreeing during a reorder.
+ */
+export type RailOrderOverrides = {
+  readonly projectOrderKeys: Readonly<Partial<Record<ProjectId, string>>>
+  readonly sessionOrderKeys: Readonly<Partial<Record<ThreadId, string>>>
+}
 
 export function sessionRailModel({
   activeProjectId = null,
   activeThreadId = null,
   collapsedProjectIds = NO_PROJECT_IDS,
+  orderOverrides = NO_ORDER_OVERRIDES,
   projects,
   query = '',
   scope = null,
@@ -92,6 +112,7 @@ export function sessionRailModel({
   /** The session on the stage. It stays visible through a collapse, wherever it lives. */
   readonly activeThreadId?: ThreadId | null
   readonly collapsedProjectIds?: readonly ProjectId[]
+  readonly orderOverrides?: RailOrderOverrides
   readonly projects: readonly OrchestrationProjectShell[]
   readonly query?: string
   readonly scope?: SessionRailScope
@@ -108,12 +129,15 @@ export function sessionRailModel({
         thread,
         titleByProjectId.get(thread.projectId) ?? 'Workspace',
         seenByThreadId[thread.id],
+        orderOverrides.sessionOrderKeys[thread.id],
       ),
     )
-    .toSorted(compareSessionsByCreation)
+    .toSorted(compareSessionsForRail)
   const scoped = scope ? items.filter((item) => item.projectId === scope) : items
   const sessions = matchingSessions(scoped, query)
   const railProjects = projects
+    .map((project) => withProjectOrderKey(project, orderOverrides.projectOrderKeys[project.id]))
+    .toSorted(compareProjectsForRail)
     .map((project) =>
       sessionRailProject(project, {
         active: project.id === activeProjectId,
@@ -121,7 +145,6 @@ export function sessionRailModel({
         sessions: items.filter((item) => item.projectId === project.id),
       }),
     )
-    .toSorted(compareSessionRailProjects)
 
   return {
     archivedCount: threads.filter((thread) => Boolean(thread.archivedAt)).length,
@@ -145,6 +168,7 @@ export function sessionRailItem(
   thread: ChatSidebarThreadSummary,
   projectTitle: string,
   seenAt: string | undefined,
+  pendingOrderKey?: string,
 ): SessionRailItem {
   const completedAt = sessionCompletedAt(thread)
 
@@ -154,6 +178,7 @@ export function sessionRailItem(
     branch: thread.branch ?? null,
     createdAt: thread.createdAt,
     id: thread.id,
+    pinOrderKey: pendingOrderKey ?? thread.pinOrderKey ?? null,
     projectId: thread.projectId,
     projectTitle,
     status: threadStatus(thread),
@@ -177,6 +202,7 @@ function sessionRailProject(
   return {
     active,
     id: project.id,
+    orderKey: project.orderKey ?? null,
     qualifier,
     sessionCount: sessions.length,
     status: rollupThreadStatus(sessions.map((session) => session.status)),
@@ -224,12 +250,4 @@ function matchingSessions(items: readonly SessionRailItem[], query: string) {
 
 function sessionSearchText(item: SessionRailItem) {
   return `${item.title}\n${item.projectTitle}\n${item.branch ?? ''}`.toLowerCase()
-}
-
-/** Active project first, then most sessions, then alphabetical. */
-function compareSessionRailProjects(left: SessionRailProject, right: SessionRailProject) {
-  if (left.active !== right.active) return left.active ? -1 : 1
-  if (left.sessionCount !== right.sessionCount) return right.sessionCount - left.sessionCount
-
-  return left.title.localeCompare(right.title)
 }

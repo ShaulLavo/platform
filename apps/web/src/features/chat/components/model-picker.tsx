@@ -9,7 +9,6 @@ import { useState } from 'react'
 
 import { useModelPicker } from '@/features/chat/hooks/use-model-picker'
 import { useProviderSignInDialog } from '@/features/chat/hooks/use-provider-sign-in-dialog'
-import { modelSelectionEffort } from '@/features/chat/lib/model-effort'
 import { rankModelPickerOptions } from '@/features/chat/lib/model-picker-search'
 import type { ProviderSignInTarget } from '@/features/chat/lib/provider-auth'
 import {
@@ -19,7 +18,6 @@ import {
   type ProviderModelOptionGroup,
 } from '@/features/chat/lib/provider-model-options'
 import { providerListQueryOptions } from '@/features/chat/lib/provider-query'
-import { ModelEffortControl } from '@/features/chat/components/model-effort-control'
 import { ModelPickerRail } from '@/features/chat/components/model-picker-rail'
 import { ModelPickerRow } from '@/features/chat/components/model-picker-row'
 import { ModelPickerSignInItem } from '@/features/chat/components/model-picker-sign-in-item'
@@ -91,10 +89,6 @@ export function ModelPicker({
   )
   const list = pickerList(groups, activeGroup, query)
   const selectedKey = modelSelection ? providerModelSelectionKey(modelSelection) : null
-  // Read from every group, not from `list`: the effort footer belongs to the
-  // selected model, which a search or a rail switch can scope out of the list.
-  const selectedOption = selectedKey ? findOption(groups, selectedKey) : null
-  const selectedEffort = modelSelectionEffort(modelSelection)
   const emptyLabel = pickerEmptyLabel(providersQuery.isPending, groups.length > 0)
 
   function handleOpenChange(nextOpen: boolean) {
@@ -161,7 +155,6 @@ export function ModelPicker({
                 ) : null}
                 {list.options.map((option) => (
                   <ModelPickerRow
-                    activeEffort={option.key === selectedKey ? selectedEffort : null}
                     key={option.key}
                     option={option}
                     selected={option.key === selectedKey}
@@ -170,29 +163,11 @@ export function ModelPicker({
                 ))}
               </CommandList>
             </div>
-            {selectedOption ? (
-              <ModelEffortControl
-                defaultEffort={selectedOption.defaultEffort}
-                levels={selectedOption.effortLevels}
-              />
-            ) : null}
           </Command>
         </TooltipProvider>
       </PopoverContent>
     </Popover>
   )
-}
-
-function findOption(
-  groups: readonly ProviderModelOptionGroup[],
-  key: string,
-): ProviderModelOption | null {
-  for (const group of groups) {
-    const match = group.options.find((option) => option.key === key)
-    if (match) return match
-  }
-
-  return null
 }
 
 /** The group the rail scopes the list to, or `null` when there is no rail. */

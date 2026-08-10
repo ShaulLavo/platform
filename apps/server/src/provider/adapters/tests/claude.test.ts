@@ -982,6 +982,7 @@ function providerTurnInput(
       defaultModelSelection: selection,
       deletedAt: null,
       id: projectId,
+      orderKey: null,
       title: 'Platform',
       updatedAt: now,
       workspaceRoot: WORKSPACE_ROOT,

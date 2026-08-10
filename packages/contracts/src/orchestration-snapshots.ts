@@ -171,11 +171,18 @@ export const orchestrationGetTurnDiffInputSchema = v.object({
   threadId: threadIdSchema,
   fromTurnCount: nonNegativeIntegerSchema,
   toTurnCount: nonNegativeIntegerSchema,
+  /**
+   * Display diffs ignore whitespace-only hunks (they are noise to a reader);
+   * stat counting does not (they are real changes). Absent means git's default:
+   * whitespace counts.
+   */
+  ignoreWhitespace: v.optional(v.boolean()),
 })
 
 export const orchestrationGetFullThreadDiffInputSchema = v.object({
   threadId: threadIdSchema,
   toTurnCount: nonNegativeIntegerSchema,
+  ignoreWhitespace: v.optional(v.boolean()),
 })
 
 export const orchestrationCommandReceiptStatusSchema = v.picklist(['accepted', 'rejected'])

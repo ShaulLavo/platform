@@ -176,22 +176,30 @@ export function MessagesTimeline({
             overflowAnchor: 'none',
           }}
         >
-          {virtualItems.map((virtualItem) => (
-            <div
-              className='absolute top-0 left-0 w-full py-1.5'
-              data-index={virtualItem.index}
-              key={virtualItem.key}
-              ref={virtualizer.measureElement}
-              style={{
-                transform: `translateY(${virtualItem.start}px)`,
-              }}
-            >
-              <TimelineRow
-                checkpointRevertPending={checkpointRevertPending}
-                item={items[virtualItem.index]!}
-              />
-            </div>
-          ))}
+          {/* Rows stack in normal flow and only the window is translated. Giving
+              each row its own absolute offset paints a broken frame on every
+              width change: the reflow lands immediately but the offsets it
+              invalidates are recomputed a frame later, so rows overlap by
+              however much they grew. In flow they push each other instead, and
+              a stale window offset is a uniform shift rather than a pile-up. */}
+          <div
+            className='absolute top-0 left-0 w-full'
+            style={{ transform: `translateY(${virtualItems[0]?.start ?? 0}px)` }}
+          >
+            {virtualItems.map((virtualItem) => (
+              <div
+                className='w-full py-1.5'
+                data-index={virtualItem.index}
+                key={virtualItem.key}
+                ref={virtualizer.measureElement}
+              >
+                <TimelineRow
+                  checkpointRevertPending={checkpointRevertPending}
+                  item={items[virtualItem.index]!}
+                />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
       <Button

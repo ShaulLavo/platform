@@ -482,6 +482,7 @@ function makeProject(
     createdAt: timestamp(0),
     defaultModelSelection: null,
     id: parseProjectId('project-1'),
+    orderKey: null,
     title: 'Project',
     updatedAt: timestamp(0),
     workspaceRoot: '/workspace',

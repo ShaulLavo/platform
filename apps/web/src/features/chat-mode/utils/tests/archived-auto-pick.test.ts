@@ -8,7 +8,7 @@ import {
 import { createInitialChatProjectionState } from '@/features/chat/state/chat-projection-store'
 import { syncChatProjectionShellSnapshot } from '@/features/chat/state/chat-projection-writers'
 import { activeSession } from '@/features/chat-mode/utils/active-session'
-import { compareSessionsByCreation } from '@/features/chat-mode/utils/session-order'
+import { compareSessionsForRail } from '@/features/chat-mode/utils/session-order'
 import { sessionRailModel } from '@/features/chat-mode/utils/session-rail-model'
 import { chatProject, threadShell } from '../../../../../test/factories/chat'
 import { expect, test } from '../../../../../test/fixtures'
@@ -20,7 +20,7 @@ const liveId = v.parse(threadIdSchema, 'thread-live')
 test('the stage never opens a session the rail refuses to draw', () => {
   const state = projection()
   const stageThreadIds = selectChatSidebarThreadsForProject(state, projectId)
-    .toSorted(compareSessionsByCreation)
+    .toSorted(compareSessionsForRail)
     .map((thread) => thread.id)
   const rail = sessionRailModel({
     activeProjectId: projectId,

@@ -116,6 +116,7 @@ function sessionItem(
     branch: null,
     createdAt: '2026-05-09T00:00:00.000Z',
     id,
+    pinOrderKey: null,
     projectId,
     projectTitle,
     status: 'idle',
@@ -129,6 +130,7 @@ function sessionProjects(): readonly SessionRailProject[] {
     {
       active: true,
       id: platformId,
+      orderKey: null,
       qualifier: null,
       sessionCount: 1,
       status: 'idle',
@@ -139,6 +141,7 @@ function sessionProjects(): readonly SessionRailProject[] {
     {
       active: false,
       id: siteId,
+      orderKey: null,
       qualifier: null,
       sessionCount: 1,
       status: 'idle',

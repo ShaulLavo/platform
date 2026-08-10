@@ -21,7 +21,7 @@ import {
   type SessionDeleteRequest,
 } from '@/features/chat-mode/state/session-delete-request-store'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
-import { compareSessionsByCreation } from '@/features/chat-mode/utils/session-order'
+import { compareSessionsForRail } from '@/features/chat-mode/utils/session-order'
 import { hasRunningTurn } from '@/features/chat-mode/utils/running-turn'
 import { log } from '@/lib/client-logging'
 import { errorMessage } from '@/lib/error-message'
@@ -126,7 +126,7 @@ function railOrderThreadIds(thread: ChatSidebarThreadSummary | undefined) {
   if (!thread) return []
 
   return selectChatSidebarThreadsForProject(useChatProjectionStore.getState(), thread.projectId)
-    .toSorted(compareSessionsByCreation)
+    .toSorted(compareSessionsForRail)
     .map((entry) => entry.id)
 }
 

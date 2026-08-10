@@ -17,6 +17,7 @@ import {
   type ProjectCreateCommand,
   type ProjectId,
   type ProjectMetaUpdateCommand,
+  type ProjectReorderCommand,
   type ProviderApprovalDecision,
   type ProviderUserInputAnswers,
   type RuntimeMode,
@@ -27,6 +28,8 @@ import {
   type ThreadId,
   type ThreadInteractionModeSetCommand,
   type ThreadMetaUpdateCommand,
+  type ThreadPinCommand,
+  type ThreadPinReorderCommand,
   type ThreadRuntimeModeSetCommand,
   type ThreadSessionStopCommand,
   type ThreadTurnInterruptCommand,
@@ -376,6 +379,62 @@ export function createProjectDefaultModelCommand({
     defaultModelSelection,
     projectId,
     type: 'project.meta.update',
+  }
+}
+
+/**
+ * One drag, one key, one row. The key already sorts between the drop position's
+ * neighbours, so the projects either side of it are never rewritten and two
+ * clients that saw the same drop converge without a shared counter.
+ */
+export function createProjectReorderCommand({
+  orderKey,
+  projectId,
+}: {
+  orderKey: string
+  projectId: ProjectId
+}): ProjectReorderCommand {
+  return {
+    commandId: createCommandId(),
+    orderKey,
+    projectId,
+    type: 'project.reorder',
+  }
+}
+
+/** Moves a session that already holds a slot in its project's arranged run. */
+export function createSessionReorderCommand({
+  orderKey,
+  threadId,
+}: {
+  orderKey: string
+  threadId: ThreadId
+}): ThreadPinReorderCommand {
+  return {
+    commandId: createCommandId(),
+    orderKey,
+    threadId,
+    type: 'thread.pin.reorder',
+  }
+}
+
+/**
+ * The first drag of a session, which is also what puts it in the arranged run:
+ * the server refuses `thread.pin.reorder` for a thread that holds no slot yet,
+ * so the same key arrives as the pin's opening position instead.
+ */
+export function createSessionPlaceCommand({
+  orderKey,
+  threadId,
+}: {
+  orderKey: string
+  threadId: ThreadId
+}): ThreadPinCommand {
+  return {
+    commandId: createCommandId(),
+    orderKey,
+    threadId,
+    type: 'thread.pin',
   }
 }
 

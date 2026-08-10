@@ -110,6 +110,52 @@ describe('orchestration checkpoint diff query', () => {
       sqlite.close()
     }
   })
+
+  it('hides whitespace-only hunks for display and counts them by default', async () => {
+    const root = await fixtureRoot()
+    await initGitRepository(root)
+    const turnZeroRef = checkpointRefForThreadTurn(threadId, 0)
+    const turnOneRef = checkpointRefForThreadTurn(threadId, 1)
+
+    await writeFile(path.join(root, 'app.txt'), 'before\n')
+    await runGit(root, ['add', 'app.txt'])
+    await runGit(root, ['commit', '-m', 'turn zero'])
+    await runGit(root, ['update-ref', turnZeroRef, 'HEAD'])
+    // The only change between the refs is leading whitespace.
+    await writeFile(path.join(root, 'app.txt'), '  before\n')
+    await runGit(root, ['add', 'app.txt'])
+    await runGit(root, ['commit', '-m', 'turn one'])
+    await runGit(root, ['update-ref', turnOneRef, 'HEAD'])
+
+    const sqlite = new Database(':memory:', { create: true })
+    const database = drizzle({ client: sqlite, schema })
+    const engine = new OrchestrationEngine(database)
+    const checkpointDiff = new OrchestrationCheckpointDiffQuery(
+      database,
+      new GitService(createWorkspacePaths(root)),
+    )
+
+    try {
+      await dispatchCheckpointThread(engine, root, turnOneRef)
+
+      const display = await checkpointDiff.turnDiff({
+        fromTurnCount: 0,
+        ignoreWhitespace: true,
+        threadId,
+        toTurnCount: 1,
+      })
+      expect(display).toEqual([])
+
+      const honest = await checkpointDiff.turnDiff({
+        fromTurnCount: 0,
+        threadId,
+        toTurnCount: 1,
+      })
+      expect(honest).toHaveLength(1)
+    } finally {
+      sqlite.close()
+    }
+  })
 })
 
 async function dispatchCheckpointThread(

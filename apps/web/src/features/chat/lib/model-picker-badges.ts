@@ -1,4 +1,3 @@
-import { modelEffortLabel } from '@/features/chat/lib/model-effort'
 import type { ProviderModelOption } from '@/features/chat/lib/provider-model-options'
 
 /** One chip on a picker row. `title` is the hover text; the label is the chip. */
@@ -17,28 +16,17 @@ export type ModelPickerBadge = {
  */
 const NEW_MODEL_KEYS = new Set<string>(['claude:claude-opus-5', 'claude:claude-opus-5[1m]'])
 
-/** Two chips is what a 360px row can carry without the model name truncating. */
-const MAX_ROW_BADGES = 2
-
 export function isNewProviderModel(option: ProviderModelOption): boolean {
   return NEW_MODEL_KEYS.has(`${option.driverKind}:${option.modelSelection.model}`)
 }
 
 /**
- * The metadata chips for one row, most specific first. The reasoning level is
- * passed in rather than read off the option because only the selected row has
- * one: it is the level the composer will actually send, not a property of the
- * model, and showing it on every row would state a level nobody chose.
+ * The metadata chips for one row, most specific first. These are properties of
+ * the model itself — the chosen reasoning level lives on the composer's own
+ * options control, never in this list.
  */
-export function modelPickerRowBadges(
-  option: ProviderModelOption,
-  activeEffort: string | null,
-): ModelPickerBadge[] {
+export function modelPickerRowBadges(option: ProviderModelOption): ModelPickerBadge[] {
   const badges: ModelPickerBadge[] = []
-  if (activeEffort) {
-    const label = modelEffortLabel(activeEffort)
-    badges.push({ key: 'effort', label, title: `${label} reasoning effort` })
-  }
   if (option.isCustom) {
     badges.push({ key: 'custom', label: 'Custom', title: 'Model added by your configuration' })
   }
@@ -46,5 +34,5 @@ export function modelPickerRowBadges(
     badges.push({ key: 'thinking', label: 'Thinks', title: 'Supports extended thinking' })
   }
 
-  return badges.slice(0, MAX_ROW_BADGES)
+  return badges
 }

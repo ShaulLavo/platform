@@ -113,12 +113,15 @@ function commandAggregate(command: OrchestrationCommand) {
   return { id: command.threadId, kind: 'thread' as const }
 }
 
+/**
+ * Matched on the type prefix rather than a hand-listed union: the runtime test
+ * already is the prefix, and a listed union silently drifts every time a
+ * project command is added — the receipt then looks for a `threadId` that a
+ * project command does not have.
+ */
 function isProjectCommand(
   command: OrchestrationCommand,
-): command is Extract<
-  OrchestrationCommand,
-  { type: 'project.create' | 'project.meta.update' | 'project.delete' }
-> {
+): command is Extract<OrchestrationCommand, { type: `project.${string}` }> {
   return command.type.startsWith('project.')
 }
 

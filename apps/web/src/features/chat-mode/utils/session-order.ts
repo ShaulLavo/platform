@@ -1,19 +1,22 @@
 import type { ChatSidebarThreadSummary } from '@/features/chat/state/chat-projection-store'
+import { compareOrderKeys } from '@/features/chat-mode/utils/rail-reorder'
 
-type SessionOrderSource = Pick<ChatSidebarThreadSummary, 'createdAt' | 'id'>
+type SessionOrderSource = Pick<ChatSidebarThreadSummary, 'createdAt' | 'id' | 'pinOrderKey'>
 
 /**
- * The one order every chat-mode surface sorts by: newest session on top, and there
- * it stays for the rest of its life.
+ * The one order every chat-mode surface sorts by: the sessions the user has
+ * dragged into place first, in the order they arranged them, then everything
+ * else newest-created on top — and there it stays for the rest of its life.
  *
- * Activity is deliberately absent from the comparator. Sorting by last message means
- * an unrelated session finishing a turn slides the row you are aiming at out from
- * under the cursor — with several agents running at once that is not an edge case,
- * it is the normal state of the list. Status is carried by the row's dot and its
- * unread mark, never by its position.
+ * Activity is deliberately absent from the comparator. Sorting by last message
+ * means an unrelated session finishing a turn slides the row you are aiming at
+ * out from under the cursor — with several agents running at once that is not an
+ * edge case, it is the normal state of the list. Status is carried by the row's
+ * dot and its unread mark, never by its position.
  */
-export function compareSessionsByCreation(left: SessionOrderSource, right: SessionOrderSource) {
+export function compareSessionsForRail(left: SessionOrderSource, right: SessionOrderSource) {
   return (
+    compareOrderKeys(left.pinOrderKey ?? null, right.pinOrderKey ?? null) ||
     orderTimestampMs(right.createdAt) - orderTimestampMs(left.createdAt) ||
     left.id.localeCompare(right.id)
   )

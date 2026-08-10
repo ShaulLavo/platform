@@ -231,6 +231,10 @@ export function messageSentEvent(input: {
 export function activityAppendedEvent(input: {
   createdAt?: string
   id: string
+  kind?: string
+  payload?: unknown
+  summary?: string
+  tone?: string
   turnId?: string | null
 }) {
   const createdAt = input.createdAt ?? '2026-05-24T00:01:30.000Z'
@@ -241,11 +245,11 @@ export function activityAppendedEvent(input: {
       activity: {
         createdAt,
         id: input.id,
-        kind: 'tool.started',
-        payload: null,
-        summary: 'Tool started',
+        kind: input.kind ?? 'tool.started',
+        payload: input.payload ?? null,
+        summary: input.summary ?? 'Tool started',
         threadId: THREAD_ID,
-        tone: 'tool',
+        tone: input.tone ?? 'tool',
         turnId: input.turnId ?? null,
       },
       threadId: THREAD_ID,

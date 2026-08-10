@@ -3,7 +3,7 @@ import { eq } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/bun-sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
 import * as v from 'valibot'
-import { pinOrderKeyBetween, planPinnedReorder } from '@workspace/contracts'
+import { orderKeyBetween, planPinnedReorder } from '@workspace/contracts'
 import { migrateOrchestrationDatabase } from '../../db/migrations'
 import * as schema from '../../db/schema'
 import { projectionThreads } from '../../db/schema'
@@ -371,7 +371,7 @@ describe('pinning', () => {
     for (let step = 0; step < 20; step += 1) {
       const rows = pinnedRows(database)
       const moved = rows.at(-1)!
-      const orderKey = pinOrderKeyBetween(null, rows[0]!.pinOrderKey)
+      const orderKey = orderKeyBetween(null, rows[0]!.pinOrderKey)
       expect(orderKey).not.toBeNull()
 
       await engine.dispatch(pinReorderCommand(orderKey!, moved.threadId))

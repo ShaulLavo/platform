@@ -352,7 +352,13 @@ export class OrchestrationEngine {
 
     // Stopping a deleted thread's session is only meaningful where a runtime
     // exists to stop, so the deletion reactor attaches with this one.
-    this.domainEvents.subscribe(new ThreadDeletionReactor({ providerService }))
+    this.domainEvents.subscribe(
+      new ThreadDeletionReactor({
+        attachmentsDir: this.attachmentsDir,
+        database: this.database,
+        providerService,
+      }),
+    )
     this.subscribeCheckpointReactor(providerRuntimeOptions?.checkpointGit, providerService)
 
     return new ProviderCommandReactor({

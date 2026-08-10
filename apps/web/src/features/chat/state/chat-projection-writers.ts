@@ -55,7 +55,13 @@ export function syncChatProjectionShellSnapshot(
     bootstrapComplete: true,
     lastAppliedShellSequence: snapshot.snapshotSequence,
     lastAppliedShellUpdatedAt: snapshot.updatedAt,
-    sidebarThreadSummaryById: {},
+    // Every surviving summary is rewritten by the loop below; the retained
+    // record exists only to carry `pinOrderKey`, which the shell does not send
+    // and a resnapshot would otherwise wipe out from under the arranged order.
+    sidebarThreadSummaryById: retainThreadScopedRecord(
+      state.sidebarThreadSummaryById,
+      nextThreadIds,
+    ),
     threadIds: [],
     threadIdsByProjectId: {},
     threadSessionById: {},
@@ -332,6 +338,9 @@ function applyProjectEvent(
         createdAt: event.payload.createdAt,
         defaultModelSelection: event.payload.defaultModelSelection,
         id: event.payload.projectId,
+        // A project is never born arranged: it sorts oldest-first at the tail
+        // until the user drags it, and only `project.reordered` writes a key.
+        orderKey: null,
         title: event.payload.title,
         updatedAt: event.payload.updatedAt,
         workspaceRoot: event.payload.workspaceRoot,
@@ -343,6 +352,8 @@ function applyProjectEvent(
         updatedAt: event.payload.updatedAt,
         workspaceRoot: event.payload.workspaceRoot,
       })
+    case 'project.reordered':
+      return patchProject(state, event.payload.projectId, { orderKey: event.payload.orderKey })
     case 'project.deleted':
       return removeProject(state, event.payload.projectId)
     default:
@@ -416,7 +427,19 @@ function applyFreshThreadEvent(
     case 'thread.approval-response-requested':
     case 'thread.user-input-response-requested':
       return state
-    // Settle/snooze/pin live on the server thread row; the shell snapshot the
+    // The arranged slot is the one piece of pin state the rail draws, and the
+    // shell snapshot does not carry it — these events are the only producer.
+    case 'thread.pinned':
+      return writeThreadPinOrderKey(
+        state,
+        event.payload.threadId,
+        event.payload.pinOrderKey ?? null,
+      )
+    case 'thread.unpinned':
+      return writeThreadPinOrderKey(state, event.payload.threadId, null)
+    case 'thread.pin-reordered':
+      return writeThreadPinOrderKey(state, event.payload.threadId, event.payload.orderKey)
+    // Settle and snooze live on the server thread row; the shell snapshot the
     // client projects does not carry those fields, so there is nothing here to
     // patch. `updatedAt` deliberately stays untouched — bumping it from an
     // event whose state the client cannot see would reorder the rail for a
@@ -425,10 +448,30 @@ function applyFreshThreadEvent(
     case 'thread.unsettled':
     case 'thread.snoozed':
     case 'thread.unsnoozed':
-    case 'thread.pinned':
-    case 'thread.unpinned':
-    case 'thread.pin-reordered':
       return state
+  }
+}
+
+/**
+ * Slice-scoped to the sidebar summary: the arranged slot never reaches the
+ * thread shell, so writing it through `patchThreadShellAndSummary` would put a
+ * field on the shell record that no shell write can ever refresh.
+ */
+function writeThreadPinOrderKey(
+  state: ChatProjectionState,
+  threadId: ThreadId,
+  pinOrderKey: string | null,
+): ChatProjectionState {
+  const summary = state.sidebarThreadSummaryById[threadId]
+  if (!summary) return state
+  if ((summary.pinOrderKey ?? null) === pinOrderKey) return state
+
+  return {
+    ...state,
+    sidebarThreadSummaryById: {
+      ...state.sidebarThreadSummaryById,
+      [threadId]: { ...summary, pinOrderKey },
+    },
   }
 }
 
@@ -490,7 +533,10 @@ function writeThreadShellState(
       ...nextState,
       sidebarThreadSummaryById: {
         ...nextState.sidebarThreadSummaryById,
-        [thread.id]: sidebarSummaryFromThreadShell(thread),
+        [thread.id]: sidebarSummaryFromThreadShell(
+          thread,
+          nextState.sidebarThreadSummaryById[thread.id]?.pinOrderKey ?? null,
+        ),
       },
       threadSessionById: {
         ...nextState.threadSessionById,
@@ -1220,7 +1266,10 @@ function detailMetaFromThread(thread: OrchestrationThread): ChatProjectionThread
   }
 }
 
-function sidebarSummaryFromThreadShell(thread: OrchestrationThreadShell): ChatSidebarThreadSummary {
+function sidebarSummaryFromThreadShell(
+  thread: OrchestrationThreadShell,
+  pinOrderKey: string | null,
+): ChatSidebarThreadSummary {
   return {
     archivedAt: thread.archivedAt,
     branch: thread.branch,
@@ -1232,6 +1281,7 @@ function sidebarSummaryFromThreadShell(thread: OrchestrationThreadShell): ChatSi
     latestUserMessageAt: thread.latestUserMessageAt,
     pendingApprovalCount: thread.pendingApprovalCount,
     pendingUserInputCount: thread.pendingUserInputCount,
+    pinOrderKey,
     projectId: thread.projectId,
     session: thread.session,
     title: thread.title,

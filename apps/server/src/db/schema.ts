@@ -101,6 +101,8 @@ export const projectionProjects = sqliteTable(
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
     deletedAt: text('deleted_at'),
+    /** Fractional index; the project list sorts on plain string comparison. */
+    orderKey: text('order_key'),
   },
   (table) => [index('projection_projects_updated_at_idx').on(table.updatedAt)],
 )

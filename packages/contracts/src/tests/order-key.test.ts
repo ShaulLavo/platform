@@ -1,15 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
-  generateSpreadPinOrderKeys,
-  isValidPinOrderKey,
-  pinOrderKeyBetween,
+  generateSpreadOrderKeys,
+  isValidOrderKey,
+  orderKeyBetween,
   planPinnedReorder,
-  sortPinnedThreadsByOrderKey,
-} from '../pin-order'
+  sortByOrderKey,
+} from '../order-key'
 
-describe('pin order keys', () => {
+describe('order keys', () => {
   it('mints a key strictly between its neighbours', () => {
-    const key = pinOrderKeyBetween('b', 'c')
+    const key = orderKeyBetween('b', 'c')
 
     expect(key).not.toBeNull()
     expect(key! > 'b').toBe(true)
@@ -17,8 +17,8 @@ describe('pin order keys', () => {
   })
 
   it('mints keys for the open bounds at either end of the block', () => {
-    const top = pinOrderKeyBetween(null, 'b')
-    const bottom = pinOrderKeyBetween('y', null)
+    const top = orderKeyBetween(null, 'b')
+    const bottom = orderKeyBetween('y', null)
 
     expect(top! < 'b').toBe(true)
     expect(bottom! > 'y').toBe(true)
@@ -29,38 +29,38 @@ describe('pin order keys', () => {
     const high = 'c'
 
     for (let step = 0; step < 60; step += 1) {
-      const key = pinOrderKeyBetween(low, high)
+      const key = orderKeyBetween(low, high)
       expect(key).not.toBeNull()
       expect(key! > low).toBe(true)
       expect(key! < high).toBe(true)
-      expect(isValidPinOrderKey(key!)).toBe(true)
+      expect(isValidOrderKey(key!)).toBe(true)
       low = key!
     }
   })
 
   it('never mints a key that leaves no room before it', () => {
     const keys = [
-      pinOrderKeyBetween(null, null),
-      pinOrderKeyBetween(null, 'ab'),
-      pinOrderKeyBetween('ab', 'b'),
-      ...generateSpreadPinOrderKeys(12),
+      orderKeyBetween(null, null),
+      orderKeyBetween(null, 'ab'),
+      orderKeyBetween('ab', 'b'),
+      ...generateSpreadOrderKeys(12),
     ]
 
     for (const key of keys) {
       expect(key).not.toBeNull()
-      expect(isValidPinOrderKey(key!)).toBe(true)
+      expect(isValidOrderKey(key!)).toBe(true)
     }
   })
 
   it('refuses corrupt or inverted bounds instead of minting a key', () => {
-    expect(pinOrderKeyBetween('c', 'b')).toBeNull()
-    expect(pinOrderKeyBetween('b', 'b')).toBeNull()
-    expect(pinOrderKeyBetween('B', 'c')).toBeNull()
-    expect(pinOrderKeyBetween('ba', 'c')).toBeNull()
+    expect(orderKeyBetween('c', 'b')).toBeNull()
+    expect(orderKeyBetween('b', 'b')).toBeNull()
+    expect(orderKeyBetween('B', 'c')).toBeNull()
+    expect(orderKeyBetween('ba', 'c')).toBeNull()
   })
 
   it('spreads a whole section into strictly increasing keys', () => {
-    const keys = generateSpreadPinOrderKeys(25)
+    const keys = generateSpreadOrderKeys(25)
 
     expect(keys).toHaveLength(25)
     expect(keys.toSorted()).toEqual(keys)
@@ -117,7 +117,7 @@ describe('planPinnedReorder', () => {
   })
 })
 
-describe('sortPinnedThreadsByOrderKey', () => {
+describe('sortByOrderKey', () => {
   it('orders keyed threads by plain string comparison and is stable under a drag', () => {
     const threads = [
       { createdAt: '2026-06-01T00:00:00.000Z', id: 'thread-c', pinOrderKey: 'f' },
@@ -125,7 +125,7 @@ describe('sortPinnedThreadsByOrderKey', () => {
       { createdAt: '2026-06-03T00:00:00.000Z', id: 'thread-b', pinOrderKey: 'd' },
     ]
 
-    expect(sortPinnedThreadsByOrderKey(threads).map((thread) => thread.id)).toEqual([
+    expect(sortByOrderKey(threads).map((thread) => thread.id)).toEqual([
       'thread-a',
       'thread-b',
       'thread-c',
@@ -140,7 +140,7 @@ describe('sortPinnedThreadsByOrderKey', () => {
       thread.id === write?.id ? { ...thread, pinOrderKey: write.orderKey } : thread,
     )
 
-    expect(sortPinnedThreadsByOrderKey(moved).map((thread) => thread.id)).toEqual([
+    expect(sortByOrderKey(moved).map((thread) => thread.id)).toEqual([
       'thread-a',
       'thread-c',
       'thread-b',
@@ -148,7 +148,7 @@ describe('sortPinnedThreadsByOrderKey', () => {
   })
 
   it('parks keyless threads after the arranged run, newest created first', () => {
-    const sorted = sortPinnedThreadsByOrderKey([
+    const sorted = sortByOrderKey([
       { createdAt: '2026-06-01T00:00:00.000Z', id: 'thread-old', pinOrderKey: null },
       { createdAt: '2026-06-05T00:00:00.000Z', id: 'thread-new', pinOrderKey: null },
       { createdAt: '2026-06-03T00:00:00.000Z', id: 'thread-keyed', pinOrderKey: 'm' },
@@ -158,11 +158,27 @@ describe('sortPinnedThreadsByOrderKey', () => {
   })
 
   it('breaks equal keys on id so two clients cannot disagree', () => {
-    const sorted = sortPinnedThreadsByOrderKey([
+    const sorted = sortByOrderKey([
       { createdAt: '2026-06-01T00:00:00.000Z', id: 'thread-b', pinOrderKey: 'm' },
       { createdAt: '2026-06-01T00:00:00.000Z', id: 'thread-a', pinOrderKey: 'm' },
     ])
 
     expect(sorted.map((thread) => thread.id)).toEqual(['thread-a', 'thread-b'])
+  })
+
+  it('sorts projects on their own key with the same comparison', () => {
+    const sorted = sortByOrderKey([
+      { createdAt: '2026-06-01T00:00:00.000Z', id: 'project-c', orderKey: 'f' },
+      { createdAt: '2026-06-02T00:00:00.000Z', id: 'project-a', orderKey: 'b' },
+      { createdAt: '2026-06-04T00:00:00.000Z', id: 'project-unplaced', orderKey: null },
+      { createdAt: '2026-06-03T00:00:00.000Z', id: 'project-b', orderKey: 'd' },
+    ])
+
+    expect(sorted.map((project) => project.id)).toEqual([
+      'project-a',
+      'project-b',
+      'project-c',
+      'project-unplaced',
+    ])
   })
 })

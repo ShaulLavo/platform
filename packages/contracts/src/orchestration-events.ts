@@ -18,7 +18,7 @@ import {
   orchestrationProposedPlanSchema,
   orchestrationSessionSchema,
   orchestrationThreadActivitySchema,
-  pinOrderKeySchema,
+  orderKeySchema,
   sourceProposedPlanReferenceSchema,
   threadLifecycleReasonSchema,
   trimmedNonEmptyStringSchema,
@@ -36,6 +36,7 @@ import {
 export const orchestrationEventTypes = [
   'project.created',
   'project.meta-updated',
+  'project.reordered',
   'project.deleted',
   'thread.created',
   'thread.meta-updated',
@@ -84,6 +85,17 @@ export const projectMetaUpdatedPayloadSchema = v.object({
   workspaceRoot: v.optional(trimmedNonEmptyStringSchema),
   defaultModelSelection: v.optional(v.nullable(modelSelectionSchema)),
   updatedAt: isoDateTimeSchema,
+})
+
+/**
+ * A reorder carries no `updatedAt`: arranging the list is a view placement, not
+ * an edit of the project, and bumping the row's timestamp would churn every
+ * ordering that reads `updatedAt`. Re-sending the same key is therefore a
+ * natural no-op.
+ */
+export const projectReorderedPayloadSchema = v.object({
+  projectId: projectIdSchema,
+  orderKey: orderKeySchema,
 })
 
 export const projectDeletedPayloadSchema = v.object({
@@ -159,7 +171,7 @@ export const threadPinnedPayloadSchema = v.object({
   pinnedAt: isoDateTimeSchema,
   // Absent when re-pinning an already-pinned thread — the key the user already
   // placed wins over a raced duplicate — and when the pin carried no slot.
-  pinOrderKey: v.optional(pinOrderKeySchema),
+  pinOrderKey: v.optional(orderKeySchema),
   updatedAt: isoDateTimeSchema,
 })
 
@@ -170,7 +182,7 @@ export const threadUnpinnedPayloadSchema = v.object({
 
 export const threadPinReorderedPayloadSchema = v.object({
   threadId: threadIdSchema,
-  orderKey: pinOrderKeySchema,
+  orderKey: orderKeySchema,
   updatedAt: isoDateTimeSchema,
 })
 
@@ -304,6 +316,11 @@ export const orchestrationEventSchema = v.variant('type', [
     ...eventBaseSchema,
     type: v.literal('project.meta-updated'),
     payload: projectMetaUpdatedPayloadSchema,
+  }),
+  v.object({
+    ...eventBaseSchema,
+    type: v.literal('project.reordered'),
+    payload: projectReorderedPayloadSchema,
   }),
   v.object({
     ...eventBaseSchema,
