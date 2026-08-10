@@ -460,6 +460,23 @@ describe('provider runtime ingestion', () => {
       turnId,
     })
   })
+
+  it('stamps liveness for every accepted event, including the ones that carry no status', async () => {
+    const seen: string[] = []
+    const { ingestion } = fixture({ onLiveness: (id) => seen.push(id) })
+
+    // A delta is the whole point: the binding already tracks status-bearing
+    // events on its own, so a turn that streams for an hour between
+    // `turn.started` and `turn.completed` reads as untouched without this feed.
+    await ingestion.ingest(assistantDelta('delta-1', 'Working'))
+    await ingestion.ingest(assistantDelta('delta-2', ' on it'))
+    // Redelivery after a reconnect is not a new sign of life, but it is also
+    // not a reason to skip the events that follow it.
+    await ingestion.ingest(assistantDelta('delta-1', 'Working'))
+    await ingestion.ingest(assistantComplete('complete-1'))
+
+    expect(seen).toEqual([threadId, threadId, threadId])
+  })
 })
 
 function planUpdated(

@@ -39,6 +39,7 @@ const CLIENT_REQUEST_METHODS = [
   'turn/interrupt',
   'thread/read',
   'thread/rollback',
+  'skills/list',
 ] as const
 
 const SERVER_NOTIFICATION_METHODS = [

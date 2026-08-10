@@ -9,6 +9,7 @@ export const CODEX_CLIENT_REQUEST_METHODS = {
   'thread/resume': 'thread/resume',
   'thread/rollback': 'thread/rollback',
   'thread/read': 'thread/read',
+  'skills/list': 'skills/list',
   'turn/start': 'turn/start',
   'turn/interrupt': 'turn/interrupt',
   'model/list': 'model/list',
@@ -82,6 +83,7 @@ export interface CodexClientRequestParamsByMethod {
   readonly 'thread/resume': CodexSchema.V2ThreadResumeParams
   readonly 'thread/rollback': CodexSchema.V2ThreadRollbackParams
   readonly 'thread/read': CodexSchema.V2ThreadReadParams
+  readonly 'skills/list': CodexSchema.V2SkillsListParams
   readonly 'turn/start': CodexSchema.V2TurnStartParams
   readonly 'turn/interrupt': CodexSchema.V2TurnInterruptParams
   readonly 'model/list': CodexSchema.V2ModelListParams
@@ -94,6 +96,7 @@ export interface CodexClientRequestResultByMethod {
   readonly 'thread/resume': CodexSchema.V2ThreadResumeResponse
   readonly 'thread/rollback': CodexSchema.V2ThreadRollbackResponse
   readonly 'thread/read': CodexSchema.V2ThreadReadResponse
+  readonly 'skills/list': CodexSchema.V2SkillsListResponse
   readonly 'turn/start': CodexSchema.V2TurnStartResponse
   readonly 'turn/interrupt': CodexSchema.V2TurnInterruptResponse
   readonly 'model/list': CodexSchema.V2ModelListResponse
@@ -164,6 +167,7 @@ export const CODEX_CLIENT_REQUEST_PARAMS = {
   'thread/resume': CodexSchema.V2ThreadResumeParamsSchema,
   'thread/rollback': CodexSchema.V2ThreadRollbackParamsSchema,
   'thread/read': CodexSchema.V2ThreadReadParamsSchema,
+  'skills/list': CodexSchema.V2SkillsListParamsSchema,
   'turn/start': CodexSchema.V2TurnStartParamsSchema,
   'turn/interrupt': CodexSchema.V2TurnInterruptParamsSchema,
   'model/list': CodexSchema.V2ModelListParamsSchema,
@@ -176,6 +180,7 @@ export const CODEX_CLIENT_REQUEST_RESULTS = {
   'thread/resume': CodexSchema.V2ThreadResumeResponseSchema,
   'thread/rollback': CodexSchema.V2ThreadRollbackResponseSchema,
   'thread/read': CodexSchema.V2ThreadReadResponseSchema,
+  'skills/list': CodexSchema.V2SkillsListResponseSchema,
   'turn/start': CodexSchema.V2TurnStartResponseSchema,
   'turn/interrupt': CodexSchema.V2TurnInterruptResponseSchema,
   'model/list': CodexSchema.V2ModelListResponseSchema,

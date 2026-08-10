@@ -49,6 +49,7 @@ export class ProviderRuntimeIngestion {
   private readonly buffers: ProviderRuntimeBuffers
   private readonly dispatch: ProviderRuntimeDispatch
   private readonly getReadModel: (() => OrchestrationReadModel) | null
+  private readonly onLiveness: ((threadId: ThreadId) => void) | null
   private queue = Promise.resolve()
   private readonly seenEventIds: BoundedTtlCache<string, true>
 
@@ -59,12 +60,20 @@ export class ProviderRuntimeIngestion {
       buffers?: ProviderRuntimeBuffers
       getReadModel?: () => OrchestrationReadModel
       now?: () => number
+      /**
+       * Called once per accepted event, before anything is dispatched. This is
+       * the signal an idle-session reaper reads: a turn can stream for an hour
+       * without a single status transition, so status alone cannot say whether
+       * a session is alive.
+       */
+      onLiveness?: (threadId: ThreadId) => void
     } = {},
   ) {
     this.assistantDeliveryMode = options.assistantDeliveryMode ?? 'streaming'
     this.buffers = options.buffers ?? new ProviderRuntimeBuffers({ now: options.now })
     this.dispatch = dispatch
     this.getReadModel = options.getReadModel ?? null
+    this.onLiveness = options.onLiveness ?? null
     this.seenEventIds = new BoundedTtlCache({
       capacity: SEEN_RUNTIME_EVENT_ID_MAX,
       now: options.now,
@@ -86,6 +95,7 @@ export class ProviderRuntimeIngestion {
     if (this.seenEventIds.has(event.eventId)) return
 
     this.seenEventIds.set(event.eventId, true)
+    this.onLiveness?.(event.threadId)
     await this.dispatchSessionCommand(event)
     await this.dispatchMetadataCommands(event)
     await this.dispatchContentCommands(event)

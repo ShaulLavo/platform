@@ -1,6 +1,6 @@
 import { createInternalError } from '../observability/structured-errors'
 
-import { asc, eq } from 'drizzle-orm'
+import { and, asc, eq, lt } from 'drizzle-orm'
 import {
   DEFAULT_RUNTIME_MODE,
   providerDriverKindSchema,
@@ -54,11 +54,20 @@ export type ProviderRuntimeBindingWithMetadata = {
   threadId: ThreadId
 }
 
+/** How often a stream of runtime events is allowed to move `last_seen_at`. */
+const LIVENESS_WRITE_THROTTLE_MS = 5_000
+
 export class ProviderSessionDirectory {
   private readonly database: OrchestrationDatabase
+  private readonly lastSeenWriteAtMs = new Map<ThreadId, number>()
+  private readonly now: () => number
 
-  constructor(database: OrchestrationDatabase = getDefaultPlatformDatabase()) {
+  constructor(
+    database: OrchestrationDatabase = getDefaultPlatformDatabase(),
+    options: { now?: () => number } = {},
+  ) {
     this.database = database
+    this.now = options.now ?? Date.now
   }
 
   upsert(binding: ProviderRuntimeBinding) {
@@ -70,7 +79,9 @@ export class ProviderSessionDirectory {
       threadId: binding.threadId,
     })
     const existing = this.findRow(binding.threadId)
-    const resolved = resolveBindingForWrite(binding, existing)
+    const now = this.now()
+    this.lastSeenWriteAtMs.set(binding.threadId, now)
+    const resolved = resolveBindingForWrite(binding, existing, now)
 
     this.database
       .insert(providerSessionRuntime)
@@ -142,14 +153,60 @@ export class ProviderSessionDirectory {
     return bindings
   }
 
+  /**
+   * Liveness without a status change: the session is doing something, whatever
+   * the projection thinks it is doing. This is what makes an idle deadline safe
+   * to act on — a turn that streams for forty minutes writes `running` once and
+   * would otherwise look untouched since, and a subagent working in the
+   * background produces runtime traffic with no status transition at all.
+   *
+   * Throttled per thread because the caller is the event stream: a token delta
+   * must not cost a write. The deadline is minutes wide, so a stamp that lags
+   * by the throttle window is exact enough for every reader there is.
+   */
+  /**
+   * Reap candidates, filtered in SQL. Deliberately not `listBindings()`: this
+   * runs on the way into every turn, and that one scans the table and puts
+   * every thread id on a wide event for an answer that is almost always empty.
+   */
+  listIdleSince(cutoffIso: string, status: ProviderRuntimeBindingStatus) {
+    return this.database
+      .select()
+      .from(providerSessionRuntime)
+      .where(
+        and(
+          eq(providerSessionRuntime.status, status),
+          lt(providerSessionRuntime.lastSeenAt, cutoffIso),
+        ),
+      )
+      .orderBy(asc(providerSessionRuntime.lastSeenAt), asc(providerSessionRuntime.threadId))
+      .all()
+      .map(rowToBinding)
+  }
+
+  markSeen(threadId: ThreadId) {
+    const now = this.now()
+    const wroteAt = this.lastSeenWriteAtMs.get(threadId)
+    if (wroteAt !== undefined && now - wroteAt < LIVENESS_WRITE_THROTTLE_MS) return
+
+    this.lastSeenWriteAtMs.set(threadId, now)
+    this.database
+      .update(providerSessionRuntime)
+      .set({ lastSeenAt: new Date(now).toISOString() })
+      .where(eq(providerSessionRuntime.threadId, threadId))
+      .run()
+  }
+
   markStatus(threadId: ThreadId, status: ProviderRuntimeBindingStatus) {
     recordChatPipelineInfo('chat.pipeline.provider_session_directory.mark_status', {
       status,
       threadId,
     })
+    const now = this.now()
+    this.lastSeenWriteAtMs.set(threadId, now)
     this.database
       .update(providerSessionRuntime)
-      .set({ lastSeenAt: new Date().toISOString(), status })
+      .set({ lastSeenAt: new Date(now).toISOString(), status })
       .where(eq(providerSessionRuntime.threadId, threadId))
       .run()
   }
@@ -180,6 +237,7 @@ export class ProviderSessionDirectory {
 function resolveBindingForWrite(
   binding: ProviderRuntimeBinding,
   existing: ProviderSessionRuntimeRow | undefined,
+  nowMs: number,
 ): ProviderRuntimeBindingWithMetadata {
   const providerChanged =
     existing !== undefined && existing.providerDriverKind !== binding.providerDriverKind
@@ -188,7 +246,7 @@ function resolveBindingForWrite(
 
   return {
     adapterKey: resolveAdapterKey(binding, existing, providerChanged),
-    lastSeenAt: new Date().toISOString(),
+    lastSeenAt: new Date(nowMs).toISOString(),
     providerDriverKind: binding.providerDriverKind,
     providerInstanceId,
     providerSessionId: resolveProviderSessionId(binding, existing),

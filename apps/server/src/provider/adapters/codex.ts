@@ -48,6 +48,7 @@ import {
   type CodexClientRequestParamsByMethod,
   type CodexClientRequestResultByMethod,
   type CodexServerNotificationParamsByMethod,
+  type V2SkillsListResponse__SkillMetadata,
 } from './codex-protocol'
 import { providerErrorMessage } from './utils/adapters'
 import { activeProviderTurn, type ActiveProviderTurn } from './utils/active-turn'
@@ -2153,14 +2154,12 @@ async function probeCodexProvider(env: NodeJS.ProcessEnv) {
  * A dedicated app-server process, deliberately not the snapshot probe: a skill
  * read that fails must not take the model list and auth state down with it.
  *
- * `skills/list` goes out raw only because this repo's hand-curated
- * `CLIENT_REQUEST_METHODS` allowlist in `codex-protocol/generate.ts` omits it;
- * the method is in the upstream schema at the pinned ref, so adding it there
- * would give this request generated params and result types.
- *
  * A failure is relayed rather than degraded to an empty list. Skills are the
  * whole catalog for Codex, so "could not list" and "this project has no skills"
- * are different answers and the caller has to be able to tell them apart.
+ * are different answers and the caller has to be able to tell them apart. That
+ * includes a response the pinned schema rejects: parsing it loosely and keeping
+ * whatever survived would hand the composer a silently short catalog, and a
+ * skill the user knows exists but cannot invoke is worse than a visible error.
  */
 async function probeCodexCommandCatalog(
   env: NodeJS.ProcessEnv,
@@ -2169,7 +2168,7 @@ async function probeCodexCommandCatalog(
   const client = CodexAppServerRpcClient.start(env)
   try {
     await initializeCodexClient(client, PROVIDER_PROBE_TIMEOUT_MS)
-    const response = await client.requestRaw(
+    const response = await client.request(
       'skills/list',
       codexSkillsListParams(cwd),
       PROVIDER_PROBE_TIMEOUT_MS,
@@ -2189,7 +2188,9 @@ async function probeCodexCommandCatalog(
  * entry against its own process directory, which is the server's, not the
  * project's.
  */
-function codexSkillsListParams(cwd: string | undefined) {
+function codexSkillsListParams(
+  cwd: string | undefined,
+): CodexClientRequestParamsByMethod['skills/list'] {
   if (!cwd) return {}
 
   return { cwds: [normalizeWorkspaceCwd(cwd)] }
@@ -2221,34 +2222,27 @@ function codexCatalogSkills(catalog: CodexSkillCatalog, cwd: string | undefined)
 }
 
 /** One entry per working directory the request asked about; this probe asks one. */
-function codexSkillCatalog(response: unknown): CodexSkillCatalog {
+/** One entry per requested cwd, each reporting what it read and what it could not. */
+function codexSkillCatalog(
+  response: CodexClientRequestResultByMethod['skills/list'],
+): CodexSkillCatalog {
   const byName = new Map<string, ProviderSkill>()
   const errors: string[] = []
-  const entries = asRecord(response).data
-  for (const entry of Array.isArray(entries) ? entries : []) {
-    const record = asRecord(entry)
-    collectCodexSkills(record.skills, byName)
-    collectCodexSkillErrors(record.errors, errors)
+  for (const entry of response.data) {
+    collectCodexSkills(entry.skills, byName)
+    // `{ path, message }` upstream, flattened here because both halves are one fact.
+    errors.push(...entry.errors.map((error) => [error.path, error.message].join(': ')))
   }
 
   return { errors, skills: Array.from(byName.values()) }
 }
 
-/** `{ path, message }` upstream, flattened here because both halves are one fact. */
-function collectCodexSkillErrors(value: unknown, errors: string[]) {
-  for (const entry of Array.isArray(value) ? value : []) {
-    const record = asRecord(entry)
-    const message = stringField(record, 'message')?.trim()
-    const skillPath = stringField(record, 'path')?.trim()
-    if (!message && !skillPath) continue
-
-    errors.push([skillPath, message].filter(isPresent).join(': '))
-  }
-}
-
 /** Name is the composer's `$token` and its row key, so the first entry wins. */
-function collectCodexSkills(value: unknown, byName: Map<string, ProviderSkill>) {
-  for (const entry of Array.isArray(value) ? value : []) {
+function collectCodexSkills(
+  entries: readonly V2SkillsListResponse__SkillMetadata[],
+  byName: Map<string, ProviderSkill>,
+) {
+  for (const entry of entries) {
     const skill = codexSkill(entry)
     if (!skill) continue
     if (byName.has(skill.name)) continue
@@ -2259,20 +2253,18 @@ function collectCodexSkills(value: unknown, byName: Map<string, ProviderSkill>) 
 
 /**
  * Codex reports disabled skills alongside enabled ones, so `enabled` is carried
- * through instead of being used as a filter. Only an explicit `false` disables:
- * a listed skill Codex said nothing about is one it loaded.
+ * through instead of being used as a filter.
  */
-function codexSkill(value: unknown): ProviderSkill | null {
-  const record = asRecord(value)
-  const name = stringField(record, 'name')?.trim()
+function codexSkill(entry: V2SkillsListResponse__SkillMetadata): ProviderSkill | null {
+  const name = entry.name.trim()
   if (!name) return null
 
-  const description = stringField(record, 'description')?.trim()
-  const skillPath = stringField(record, 'path')?.trim()
-  const scope = stringField(record, 'scope')?.trim()
+  const description = entry.description.trim()
+  const skillPath = entry.path.trim()
+  const scope = entry.scope.trim()
 
   return {
-    enabled: record.enabled !== false,
+    enabled: entry.enabled,
     name,
     ...(description ? { description } : {}),
     ...(skillPath ? { path: skillPath } : {}),

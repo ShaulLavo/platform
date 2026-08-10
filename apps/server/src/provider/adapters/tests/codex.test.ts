@@ -463,14 +463,26 @@ function handle(message) {
                 path: '/home/skills/retired/SKILL.md',
                 scope: 'user',
               },
-              { description: 'No usable name', enabled: true, name: '   ' },
+              {
+                description: 'No usable name',
+                enabled: true,
+                name: '   ',
+                path: listed[0] + '/.codex/skills/nameless/SKILL.md',
+                scope: 'repo',
+              },
             ],
           },
           {
             cwd: '/another/project',
             errors: [],
             skills: [
-              { description: 'Same skill, second directory', enabled: true, name: 'proj-skill' },
+              {
+                description: 'Same skill, second directory',
+                enabled: true,
+                name: 'proj-skill',
+                path: '/another/project/.codex/skills/proj-skill/SKILL.md',
+                scope: 'repo',
+              },
             ],
           },
         ],

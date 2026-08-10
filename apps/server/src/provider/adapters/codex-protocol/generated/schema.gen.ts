@@ -2337,6 +2337,100 @@ export type V2ServerRequestResolvedNotification = v.InferOutput<
 export const V2SkillsChangedNotificationSchema = v.looseObject({})
 export type V2SkillsChangedNotification = v.InferOutput<typeof V2SkillsChangedNotificationSchema>
 
+export const V2SkillsListParams__SkillsListExtraRootsForCwdSchema = v.looseObject({
+  cwd: v.string(),
+  extraUserRoots: v.array(v.string()),
+})
+export type V2SkillsListParams__SkillsListExtraRootsForCwd = v.InferOutput<
+  typeof V2SkillsListParams__SkillsListExtraRootsForCwdSchema
+>
+
+export const V2SkillsListParamsSchema = v.looseObject({
+  cwds: v.optional(v.array(v.string())),
+  forceReload: v.optional(v.boolean()),
+  perCwdExtraUserRoots: v.optional(
+    v.union([v.array(V2SkillsListParams__SkillsListExtraRootsForCwdSchema), v.null()]),
+  ),
+})
+export type V2SkillsListParams = v.InferOutput<typeof V2SkillsListParamsSchema>
+
+export const V2SkillsListResponse__AbsolutePathBufSchema = v.string()
+export type V2SkillsListResponse__AbsolutePathBuf = v.InferOutput<
+  typeof V2SkillsListResponse__AbsolutePathBufSchema
+>
+
+export const V2SkillsListResponse__SkillToolDependencySchema = v.looseObject({
+  command: v.optional(v.union([v.string(), v.null()])),
+  description: v.optional(v.union([v.string(), v.null()])),
+  transport: v.optional(v.union([v.string(), v.null()])),
+  type: v.string(),
+  url: v.optional(v.union([v.string(), v.null()])),
+  value: v.string(),
+})
+export type V2SkillsListResponse__SkillToolDependency = v.InferOutput<
+  typeof V2SkillsListResponse__SkillToolDependencySchema
+>
+
+export const V2SkillsListResponse__SkillDependenciesSchema = v.looseObject({
+  tools: v.array(V2SkillsListResponse__SkillToolDependencySchema),
+})
+export type V2SkillsListResponse__SkillDependencies = v.InferOutput<
+  typeof V2SkillsListResponse__SkillDependenciesSchema
+>
+
+export const V2SkillsListResponse__SkillErrorInfoSchema = v.looseObject({
+  message: v.string(),
+  path: v.string(),
+})
+export type V2SkillsListResponse__SkillErrorInfo = v.InferOutput<
+  typeof V2SkillsListResponse__SkillErrorInfoSchema
+>
+
+export const V2SkillsListResponse__SkillInterfaceSchema = v.looseObject({
+  brandColor: v.optional(v.union([v.string(), v.null()])),
+  defaultPrompt: v.optional(v.union([v.string(), v.null()])),
+  displayName: v.optional(v.union([v.string(), v.null()])),
+  iconLarge: v.optional(v.union([V2SkillsListResponse__AbsolutePathBufSchema, v.null()])),
+  iconSmall: v.optional(v.union([V2SkillsListResponse__AbsolutePathBufSchema, v.null()])),
+  shortDescription: v.optional(v.union([v.string(), v.null()])),
+})
+export type V2SkillsListResponse__SkillInterface = v.InferOutput<
+  typeof V2SkillsListResponse__SkillInterfaceSchema
+>
+
+export const V2SkillsListResponse__SkillScopeSchema = openEnum(['user', 'repo', 'system', 'admin'])
+export type V2SkillsListResponse__SkillScope = v.InferOutput<
+  typeof V2SkillsListResponse__SkillScopeSchema
+>
+
+export const V2SkillsListResponse__SkillMetadataSchema = v.looseObject({
+  dependencies: v.optional(v.union([V2SkillsListResponse__SkillDependenciesSchema, v.null()])),
+  description: v.string(),
+  enabled: v.boolean(),
+  interface: v.optional(v.union([V2SkillsListResponse__SkillInterfaceSchema, v.null()])),
+  name: v.string(),
+  path: V2SkillsListResponse__AbsolutePathBufSchema,
+  scope: V2SkillsListResponse__SkillScopeSchema,
+  shortDescription: v.optional(v.union([v.string(), v.null()])),
+})
+export type V2SkillsListResponse__SkillMetadata = v.InferOutput<
+  typeof V2SkillsListResponse__SkillMetadataSchema
+>
+
+export const V2SkillsListResponse__SkillsListEntrySchema = v.looseObject({
+  cwd: v.string(),
+  errors: v.array(V2SkillsListResponse__SkillErrorInfoSchema),
+  skills: v.array(V2SkillsListResponse__SkillMetadataSchema),
+})
+export type V2SkillsListResponse__SkillsListEntry = v.InferOutput<
+  typeof V2SkillsListResponse__SkillsListEntrySchema
+>
+
+export const V2SkillsListResponseSchema = v.looseObject({
+  data: v.array(V2SkillsListResponse__SkillsListEntrySchema),
+})
+export type V2SkillsListResponse = v.InferOutput<typeof V2SkillsListResponseSchema>
+
 export const V2TerminalInteractionNotificationSchema = v.looseObject({
   itemId: v.string(),
   processId: v.string(),

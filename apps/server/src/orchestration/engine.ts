@@ -351,15 +351,16 @@ export class OrchestrationEngine {
       typeof options.providerRuntime === 'object' ? options.providerRuntime : null
     const adapterRegistry =
       providerRuntimeOptions?.adapterRegistry ?? createDefaultProviderAdapterRegistry()
-    const ingestion = new ProviderRuntimeIngestion((command) => this.dispatch(command), {
-      getReadModel: () => this.readModel,
-    })
     const providerService = providerRuntimeOptions?.providerService
       ? providerRuntimeOptions.providerService
       : new ProviderService({
           adapterRegistry,
           sessionDirectory: new ProviderSessionDirectory(this.database),
         })
+    const ingestion = new ProviderRuntimeIngestion((command) => this.dispatch(command), {
+      getReadModel: () => this.readModel,
+      onLiveness: (threadId) => providerService.markSessionSeen(threadId),
+    })
 
     // Stopping a deleted thread's session is only meaningful where a runtime
     // exists to stop, so the deletion reactor attaches with this one.

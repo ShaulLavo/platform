@@ -21,6 +21,7 @@ import {
   type ProviderRuntimeBindingStatus,
   type ProviderRuntimeBindingWithMetadata,
 } from './provider-session-directory'
+import { ProviderSessionReaper } from './provider-session-reaper'
 import {
   providerBindingSummary,
   providerRuntimeEventSummary,
@@ -41,6 +42,8 @@ import type {
 
 export type ProviderServiceOptions = {
   adapterRegistry?: ProviderAdapterRegistry
+  /** Overridden in tests that need the deadline to be reachable within one. */
+  idleSessionDeadlineMs?: number
   sessionDirectory?: ProviderSessionDirectory
 }
 
@@ -81,6 +84,7 @@ export type ProviderRuntimeEventListener = (event: ProviderRuntimeEvent) => Prom
 
 export class ProviderService {
   private readonly adapterRegistry: ProviderAdapterRegistry
+  private readonly reaper: ProviderSessionReaper
   private readonly runtimeEventListeners = new Set<ProviderRuntimeEventListener>()
   private readonly sessionDirectory: ProviderSessionDirectory
   private readonly streamedProviderInstances = new Set<ProviderInstanceId>()
@@ -90,7 +94,20 @@ export class ProviderService {
   constructor(options: ProviderServiceOptions = {}) {
     this.adapterRegistry = options.adapterRegistry ?? createDefaultProviderAdapterRegistry()
     this.sessionDirectory = options.sessionDirectory ?? new ProviderSessionDirectory()
+    this.reaper = new ProviderSessionReaper({
+      deadlineMs: options.idleSessionDeadlineMs,
+      directory: this.sessionDirectory,
+      stopSession: (input) => this.stopSession(input),
+    })
     this.startAdapterEventStreams()
+  }
+
+  /**
+   * Liveness, called for every runtime event the ingestion pipeline accepts.
+   * The reaper's deadline is only safe to act on because this is fed.
+   */
+  markSessionSeen(threadId: ThreadId) {
+    this.sessionDirectory.markSeen(threadId)
   }
 
   /**
@@ -147,6 +164,9 @@ export class ProviderService {
       runtimeMode: input.runtimeMode,
       threadId: input.threadId,
     })
+    // Reclaim before allocating, and never the thread being ensured: its own
+    // binding can easily be the oldest one here.
+    await this.reaper.sweep({ exceptThreadId: input.threadId })
     const adapter = this.adapterRegistry.getByInstance(input.providerInstanceId)
     const existing = this.sessionDirectory.getBinding(input.threadId)
     const reusableBinding = canReuseProviderBinding(existing, input, adapter) ? existing : null
