@@ -1,5 +1,5 @@
 import * as v from 'valibot'
-import { threadIdSchema } from './chat-ids'
+import { projectIdSchema, threadIdSchema } from './chat-ids'
 import {
   isoDateTimeSchema,
   nonNegativeIntegerSchema,
@@ -35,6 +35,56 @@ export const ORCHESTRATION_REPLAY_MAX_EVENTS = 1_000
  * history.
  */
 export const ORCHESTRATION_RESUME_MAX_GAP = 1_000
+
+/**
+ * Bounds on server-side thread search. The server's SQLite client is
+ * synchronous and single-connection, so both the scan input and the response
+ * size are bounded: an unbounded search is a request-shaped way for one client
+ * to monopolize that connection for every other request in the process.
+ */
+export const ORCHESTRATION_THREAD_SEARCH_MIN_QUERY_LENGTH = 2
+export const ORCHESTRATION_THREAD_SEARCH_MAX_QUERY_LENGTH = 200
+export const ORCHESTRATION_THREAD_SEARCH_DEFAULT_LIMIT = 20
+export const ORCHESTRATION_THREAD_SEARCH_MAX_LIMIT = 50
+
+/** Long enough to read the phrase in context, short enough that fifty of them stay one frame. */
+export const ORCHESTRATION_THREAD_SEARCH_SNIPPET_MAX_LENGTH = 240
+
+export const orchestrationThreadSearchSourceSchema = v.picklist(['user', 'assistant'])
+
+export const orchestrationSearchThreadsInputSchema = v.object({
+  query: v.pipe(
+    v.string(),
+    v.trim(),
+    v.minLength(ORCHESTRATION_THREAD_SEARCH_MIN_QUERY_LENGTH),
+    v.maxLength(ORCHESTRATION_THREAD_SEARCH_MAX_QUERY_LENGTH),
+  ),
+  limit: v.optional(
+    v.pipe(
+      nonNegativeIntegerSchema,
+      v.minValue(1),
+      v.maxValue(ORCHESTRATION_THREAD_SEARCH_MAX_LIMIT),
+    ),
+    ORCHESTRATION_THREAD_SEARCH_DEFAULT_LIMIT,
+  ),
+})
+
+/**
+ * One match per thread, not per message: the answer to "where did I discuss X"
+ * is a thread, and a thread that says X forty times would otherwise bury every
+ * other thread out of the bounded result.
+ */
+export const orchestrationThreadSearchMatchSchema = v.object({
+  threadId: threadIdSchema,
+  projectId: projectIdSchema,
+  source: orchestrationThreadSearchSourceSchema,
+  snippet: v.pipe(v.string(), v.maxLength(ORCHESTRATION_THREAD_SEARCH_SNIPPET_MAX_LENGTH)),
+  messageCreatedAt: isoDateTimeSchema,
+})
+
+export const orchestrationSearchThreadsResultSchema = v.object({
+  matches: v.array(orchestrationThreadSearchMatchSchema),
+})
 
 export const orchestrationWsRequestIdSchema = trimmedNonEmptyStringSchema
 export const orchestrationWsSubscriptionIdSchema = trimmedNonEmptyStringSchema
@@ -227,6 +277,18 @@ export type OrchestrationShellStreamFrame = v.InferOutput<
 >
 export type OrchestrationThreadStreamFrame = v.InferOutput<
   typeof orchestrationThreadStreamFrameSchema
+>
+export type OrchestrationSearchThreadsInput = v.InferInput<
+  typeof orchestrationSearchThreadsInputSchema
+>
+export type OrchestrationSearchThreadsResult = v.InferOutput<
+  typeof orchestrationSearchThreadsResultSchema
+>
+export type OrchestrationThreadSearchMatch = v.InferOutput<
+  typeof orchestrationThreadSearchMatchSchema
+>
+export type OrchestrationThreadSearchSource = v.InferOutput<
+  typeof orchestrationThreadSearchSourceSchema
 >
 export type OrchestrationWsClientMessage = v.InferOutput<typeof orchestrationWsClientMessageSchema>
 export type OrchestrationWsConnectedMessage = v.InferOutput<

@@ -1,4 +1,4 @@
-import type { ThreadId } from '@workspace/contracts'
+import type { ProjectId, ThreadId } from '@workspace/contracts'
 import { create } from 'zustand'
 
 import type {
@@ -14,15 +14,19 @@ export type SessionRenameTarget = {
   readonly threadId: ThreadId
 }
 
+const NO_PROJECT_IDS: readonly ProjectId[] = []
+
 /**
  * How the session list is currently being looked at: which projects, which text, the
- * inbox or the archive, and which row has swapped its title for a rename field.
+ * inbox or the archive, which projects are folded shut, and which row has swapped its
+ * title for a rename field.
  *
  * A store rather than rail-local state because the keyboard commands act on exactly
  * the list the user can see, and they run from the app keymap — several layers above
  * chat mode, with no React context of the rail's to read.
  */
 type SessionRailStore = {
+  readonly collapsedProjectIds: readonly ProjectId[]
   readonly query: string
   readonly renaming: SessionRenameTarget | null
   readonly scope: SessionRailScope
@@ -32,9 +36,11 @@ type SessionRailStore = {
   readonly setScope: (scope: SessionRailScope) => void
   readonly setView: (view: SessionRailView) => void
   readonly startRename: (target: SessionRenameTarget) => void
+  readonly toggleProjectCollapsed: (projectId: ProjectId) => void
 }
 
 export const useSessionRailStore = create<SessionRailStore>()((set) => ({
+  collapsedProjectIds: NO_PROJECT_IDS,
   endRename: () => set({ renaming: null }),
   query: '',
   renaming: null,
@@ -43,5 +49,15 @@ export const useSessionRailStore = create<SessionRailStore>()((set) => ({
   setScope: (scope) => set({ scope }),
   setView: (view) => set({ view }),
   startRename: (renaming) => set({ renaming }),
+  toggleProjectCollapsed: (projectId) =>
+    set((state) => ({
+      collapsedProjectIds: toggledProjectIds(state.collapsedProjectIds, projectId),
+    })),
   view: 'active',
 }))
+
+function toggledProjectIds(projectIds: readonly ProjectId[], projectId: ProjectId) {
+  if (!projectIds.includes(projectId)) return [...projectIds, projectId]
+
+  return projectIds.filter((candidate) => candidate !== projectId)
+}

@@ -15,6 +15,10 @@ export type ChatModeSession = {
   readonly openProject: (workspaceRoot: string) => void
   readonly project: OrchestrationProjectShell | null
   readonly ready: boolean
+  /** True while a retry is in flight, so the button can say so instead of doing nothing. */
+  readonly retrying: boolean
+  /** Asks the server again for this workspace's project. The way out of a failed first run. */
+  readonly retryProject: () => void
   /** The active project's workspace root — what chat sends, not where the editor is. */
   readonly rootPath: string
   readonly selectSession: (projectId: ProjectId, threadId: ThreadId) => void

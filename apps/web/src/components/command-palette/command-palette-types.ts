@@ -56,7 +56,14 @@ export type EditorPaletteItem = {
   readonly pathLabel: string
 }
 
-export type QuickAccessMode = 'colorMode' | 'commands' | 'editors' | 'files' | 'symbols' | 'views'
+export type QuickAccessMode =
+  | 'colorMode'
+  | 'commands'
+  | 'editors'
+  | 'files'
+  | 'sessions'
+  | 'symbols'
+  | 'views'
 
 export type QuickOpenFileMatch = {
   readonly birthtimeMs?: number

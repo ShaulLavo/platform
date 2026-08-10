@@ -154,6 +154,58 @@ export class OrchestrationProjectionPipeline {
           updatedAt: event.payload.updatedAt,
         })
         return
+      case 'thread.settled':
+        this.updateThread(event.payload.threadId, {
+          settledAt: event.payload.settledAt,
+          settledOverride: 'settled',
+          updatedAt: event.payload.updatedAt,
+        })
+        return
+      case 'thread.unsettled':
+        // "user" is an explicit keep-active override; "activity" resets to
+        // neutral so the thread can settle on its own again.
+        this.updateThread(event.payload.threadId, {
+          settledAt: null,
+          settledOverride: event.payload.reason === 'user' ? 'active' : null,
+          updatedAt: event.payload.updatedAt,
+        })
+        return
+      case 'thread.snoozed':
+        this.updateThread(event.payload.threadId, {
+          snoozedAt: event.payload.snoozedAt,
+          snoozedUntil: event.payload.snoozedUntil,
+          updatedAt: event.payload.updatedAt,
+        })
+        return
+      case 'thread.unsnoozed':
+        this.updateThread(event.payload.threadId, {
+          snoozedAt: null,
+          snoozedUntil: null,
+          updatedAt: event.payload.updatedAt,
+        })
+        return
+      case 'thread.pinned':
+        // An absent key is "keep what is there": a re-pin must not overwrite the
+        // slot the user already dragged this thread into.
+        this.updateThread(event.payload.threadId, {
+          pinOrderKey: event.payload.pinOrderKey,
+          pinnedAt: event.payload.pinnedAt,
+          updatedAt: event.payload.updatedAt,
+        })
+        return
+      case 'thread.unpinned':
+        this.updateThread(event.payload.threadId, {
+          pinOrderKey: null,
+          pinnedAt: null,
+          updatedAt: event.payload.updatedAt,
+        })
+        return
+      case 'thread.pin-reordered':
+        this.updateThread(event.payload.threadId, {
+          pinOrderKey: event.payload.orderKey,
+          updatedAt: event.payload.updatedAt,
+        })
+        return
       case 'thread.runtime-mode-set':
         this.updateThread(event.payload.threadId, {
           runtimeMode: event.payload.runtimeMode,
@@ -236,8 +288,14 @@ export class OrchestrationProjectionPipeline {
         modelSelectionJson: JSON.stringify(event.payload.modelSelection),
         pendingApprovalCount: 0,
         pendingUserInputCount: 0,
+        pinOrderKey: null,
+        pinnedAt: null,
         projectId: event.payload.projectId,
         runtimeMode: event.payload.runtimeMode,
+        settledAt: null,
+        settledOverride: null,
+        snoozedAt: null,
+        snoozedUntil: null,
         threadId: event.payload.threadId,
         title: event.payload.title,
         updatedAt: event.payload.updatedAt,

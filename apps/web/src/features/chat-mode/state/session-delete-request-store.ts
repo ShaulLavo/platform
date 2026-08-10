@@ -2,13 +2,15 @@ import type { ThreadId } from '@workspace/contracts'
 import { create } from 'zustand'
 
 export type SessionDeleteRequest = {
-  readonly threadId: ThreadId
+  /** One entry for a row, many for a bulk pick. Never empty. */
+  readonly threadIds: readonly ThreadId[]
+  /** The single session's title; ignored once the request covers several. */
   readonly title: string
 }
 
 /**
- * The session a delete confirmation is currently asking about. It lives outside the rail
- * because the row that raised the question is the first thing to disappear once the
+ * The sessions a delete confirmation is currently asking about. It lives outside the rail
+ * because the rows that raised the question are the first thing to disappear once the
  * answer is yes — and because the menu that asks sits several levels below the surface
  * that owns the dialog.
  */

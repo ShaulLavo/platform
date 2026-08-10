@@ -198,6 +198,8 @@ function renderRail({
     openProject: () => {},
     project: chatProject({ id: projectId, title: 'platform', workspaceRoot: '/repo/platform' }),
     ready: true,
+    retrying: false,
+    retryProject: () => {},
     rootPath: '/repo/platform',
     selectSession: () => {},
     startDraft: () => {},

@@ -117,6 +117,8 @@ function chatModeSession(dispatched: ClientOrchestrationCommand[]): ChatModeSess
     openProject: () => {},
     project: chatProject({ id: projectId, title: 'platform' }),
     ready: true,
+    retrying: false,
+    retryProject: () => {},
     rootPath: '/repo/platform',
     selectSession: () => {},
     startDraft: () => {},

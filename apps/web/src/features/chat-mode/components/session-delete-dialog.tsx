@@ -11,6 +11,10 @@ import {
 
 import { useSessionActions } from '@/features/chat-mode/hooks/use-session-actions'
 import { useSessionDeleteRequestStore } from '@/features/chat-mode/state/session-delete-request-store'
+import {
+  sessionDeletePrompt,
+  sessionDeleteTitle,
+} from '@/features/chat-mode/utils/session-delete-prompt'
 
 /**
  * Deleting a session takes its whole event history with it and there is no undo, so it
@@ -19,6 +23,7 @@ import { useSessionDeleteRequestStore } from '@/features/chat-mode/state/session
 export function SessionDeleteDialog() {
   const request = useSessionDeleteRequestStore((state) => state.request)
   const actions = useSessionActions()
+  const count = request?.threadIds.length ?? 1
 
   return (
     <Dialog onOpenChange={(open) => open || actions.cancelDelete()} open={request !== null}>
@@ -27,10 +32,9 @@ export function SessionDeleteDialog() {
         showCloseButton={false}
       >
         <DialogHeader>
-          <DialogTitle>Delete session</DialogTitle>
+          <DialogTitle>{sessionDeleteTitle(count)}</DialogTitle>
           <DialogDescription>
-            Permanently delete “{request?.title ?? 'this session'}” and everything said in it? This
-            cannot be undone.
+            {sessionDeletePrompt({ count, title: request?.title ?? 'this session' })}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

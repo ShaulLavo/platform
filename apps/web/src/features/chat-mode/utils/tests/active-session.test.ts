@@ -71,12 +71,36 @@ test('abandons a stale foreign draft instead of stranding the stage', () => {
   expect(activeSessionShowsComposer(session)).toBe(true)
 })
 
+test('reports a restored pick whose session no longer exists as gone', () => {
+  const session = resolve({
+    restored: true,
+    selection: { kind: 'session', projectId, threadId: threadB },
+    threadIds: [threadA],
+  })
+
+  // Not `resolving`: nothing is on its way, and a spinner here is an app that hangs.
+  expect(session).toEqual({ status: 'missing', threadId: null })
+})
+
+test('waits on a restored pick until its project has loaded', () => {
+  const session = activeSession({
+    projectId: null,
+    restored: true,
+    selection: { kind: 'session', projectId, threadId: threadB },
+    threadIds: [],
+  })
+
+  expect(session.status).toBe('resolving')
+})
+
 function resolve({
+  restored = false,
   selection,
   threadIds,
 }: {
+  restored?: boolean
   selection: SessionSelection
   threadIds: readonly ReturnType<typeof v.parse<typeof threadIdSchema>>[]
 }) {
-  return activeSession({ projectId, selection, threadIds })
+  return activeSession({ projectId, restored, selection, threadIds })
 }

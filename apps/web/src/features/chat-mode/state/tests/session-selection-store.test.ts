@@ -1,7 +1,10 @@
 import { projectIdSchema, threadIdSchema } from '@workspace/contracts'
 import * as v from 'valibot'
 
-import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
+import {
+  resetSessionSelectionStore,
+  useSessionSelectionStore,
+} from '@/features/chat-mode/state/session-selection-store'
 import { expect, test } from '../../../../../test/fixtures'
 
 const projectA = v.parse(projectIdSchema, 'project-a')
@@ -13,10 +16,18 @@ const threadC = v.parse(threadIdSchema, 'thread-c')
 const railOrder = [threadA, threadB, threadC]
 
 function reset() {
-  useSessionSelectionStore.setState({ selection: { kind: 'auto' } })
+  resetSessionSelectionStore()
 
   return useSessionSelectionStore.getState()
 }
+
+test('a pick made in this session is not a restored one', () => {
+  const store = reset()
+
+  store.selectSession(projectA, threadA)
+
+  expect(useSessionSelectionStore.getState().restored).toBe(false)
+})
 
 test('a session pick records both the project and the thread', () => {
   const store = reset()

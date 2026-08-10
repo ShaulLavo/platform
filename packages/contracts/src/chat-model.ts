@@ -15,6 +15,7 @@ import {
   modelSelectionSchema,
   runtimeModeSchema,
 } from './orchestration-runtime'
+import { isValidPinOrderKey } from './pin-order'
 
 export const isoDateTimeSchema = v.string()
 export const nonNegativeIntegerSchema = v.pipe(v.number(), v.integer(), v.minValue(0))
@@ -236,6 +237,53 @@ export const orchestrationCheckpointSummarySchema = v.object({
   completedAt: isoDateTimeSchema,
 })
 
+/**
+ * `settled` is the user parking a thread by hand; `active` is the user pulling
+ * it back out. `null` is neither — the thread classifies purely on its own
+ * activity, which is where real work always resets it.
+ */
+export const threadSettledOverrideSchema = v.picklist(['settled', 'active'])
+
+/**
+ * `user` is an explicit button; `activity` is the server clearing the state
+ * because real work arrived. Only the server can stamp `activity`, so a client
+ * cannot forge the neutral reset.
+ */
+export const threadLifecycleReasonSchema = v.picklist(['user', 'activity'])
+
+/**
+ * Fractional index into the pinned block. Validated rather than taken as any
+ * string: the block sorts by plain string comparison, so one malformed key
+ * (an out-of-alphabet character, or a trailing minimum digit that leaves no
+ * room to insert before it) silently corrupts the arranged order for everyone.
+ */
+export const pinOrderKeySchema = v.pipe(
+  trimmedNonEmptyStringSchema,
+  v.check(isValidPinOrderKey, 'Pin order key must be a lowercase a-z string not ending in "a"'),
+)
+
+/**
+ * The settle / snooze / pin lifecycle a thread carries alongside its work.
+ * Shared as entries so every thread-shaped schema projects the same fields
+ * instead of re-declaring them and drifting.
+ */
+export const orchestrationThreadLifecycleEntries = {
+  // Absent and null both mean "the user has said nothing": every field is
+  // optional so a thread payload minted before this lifecycle existed — or by a
+  // producer that only cares about the work — still decodes.
+  settledOverride: v.optional(v.nullable(threadSettledOverrideSchema)),
+  settledAt: v.optional(v.nullable(isoDateTimeSchema)),
+  // Snooze is an overlay on the active lifecycle, not a fourth destination: a
+  // snoozed thread is still active and is only suppressed from the inbox until
+  // `snoozedUntil` passes or the thread raises its hand.
+  snoozedUntil: v.optional(v.nullable(isoDateTimeSchema)),
+  snoozedAt: v.optional(v.nullable(isoDateTimeSchema)),
+  // A pin outranks the whole lifecycle: while `pinnedAt` is set the thread
+  // renders in the pinned block and never classifies into a shelf.
+  pinnedAt: v.optional(v.nullable(isoDateTimeSchema)),
+  pinOrderKey: v.optional(v.nullable(pinOrderKeySchema)),
+} as const
+
 export const orchestrationThreadSchema = v.object({
   id: threadIdSchema,
   projectId: projectIdSchema,
@@ -253,6 +301,7 @@ export const orchestrationThreadSchema = v.object({
   messages: v.array(orchestrationMessageSchema),
   activities: v.array(orchestrationThreadActivitySchema),
   session: v.nullable(orchestrationSessionSchema),
+  ...orchestrationThreadLifecycleEntries,
 })
 
 export type IsoDateTime = v.InferOutput<typeof isoDateTimeSchema>
@@ -276,4 +325,6 @@ export type OrchestrationCheckpointFile = v.InferOutput<typeof orchestrationChec
 export type OrchestrationCheckpointSummary = v.InferOutput<
   typeof orchestrationCheckpointSummarySchema
 >
+export type ThreadSettledOverride = v.InferOutput<typeof threadSettledOverrideSchema>
+export type ThreadLifecycleReason = v.InferOutput<typeof threadLifecycleReasonSchema>
 export type OrchestrationThread = v.InferOutput<typeof orchestrationThreadSchema>

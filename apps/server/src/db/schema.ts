@@ -132,6 +132,14 @@ export const projectionThreads = sqliteTable(
     updatedAt: text('updated_at').notNull(),
     archivedAt: text('archived_at'),
     deletedAt: text('deleted_at'),
+    /** null = classify on activity alone; the two values are explicit user intent. */
+    settledOverride: text('settled_override', { enum: ['settled', 'active'] }),
+    settledAt: text('settled_at'),
+    snoozedUntil: text('snoozed_until'),
+    snoozedAt: text('snoozed_at'),
+    pinnedAt: text('pinned_at'),
+    /** Fractional index; the pinned block sorts on plain string comparison. */
+    pinOrderKey: text('pin_order_key'),
   },
   (table) => [
     index('projection_threads_project_deleted_created_idx').on(
@@ -139,6 +147,9 @@ export const projectionThreads = sqliteTable(
       table.deletedAt,
       table.createdAt,
     ),
+    // The thread list reads the pinned block first and orders it by key, so the
+    // pinned rows are found without scanning every thread of the project.
+    index('projection_threads_pinned_order_idx').on(table.pinnedAt, table.pinOrderKey),
   ],
 )
 

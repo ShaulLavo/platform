@@ -16,6 +16,7 @@ import {
   orchestrationProposedPlanSchema,
   orchestrationSessionSchema,
   orchestrationThreadActivitySchema,
+  pinOrderKeySchema,
   sourceProposedPlanReferenceSchema,
   trimmedNonEmptyStringSchema,
 } from './chat-model'
@@ -126,6 +127,65 @@ export const threadUnarchiveCommandSchema = v.object({
   threadId: threadIdSchema,
 })
 
+export const threadSettleCommandSchema = v.object({
+  ...commandBaseSchema,
+  type: v.literal('thread.settle'),
+  threadId: threadIdSchema,
+})
+
+export const threadUnsettleCommandSchema = v.object({
+  ...commandBaseSchema,
+  type: v.literal('thread.unsettle'),
+  threadId: threadIdSchema,
+  // Commands only carry "user": activity un-settles are decided server-side
+  // (the decider emits `thread.unsettled` with reason "activity" directly), so
+  // a client cannot forge the neutral reset.
+  reason: v.literal('user'),
+})
+
+export const threadSnoozeCommandSchema = v.object({
+  ...commandBaseSchema,
+  type: v.literal('thread.snooze'),
+  threadId: threadIdSchema,
+  // The wake time. Event-shaped wake conditions (PR merged, review posted) will
+  // arrive alongside this; a timer is just the first kind of condition.
+  snoozedUntil: isoDateTimeSchema,
+})
+
+export const threadUnsnoozeCommandSchema = v.object({
+  ...commandBaseSchema,
+  type: v.literal('thread.unsnooze'),
+  threadId: threadIdSchema,
+  // Same as unsettle: only the server stamps "activity". A timer wake emits no
+  // event at all — a passed `snoozedUntil` simply stops classifying as snoozed.
+  reason: v.literal('user'),
+})
+
+export const threadPinCommandSchema = v.object({
+  ...commandBaseSchema,
+  type: v.literal('thread.pin'),
+  threadId: threadIdSchema,
+  // Initial slot in the arranged pinned order. Optional: a pin with no key
+  // falls to the creation-ordered tail of the pinned block until it is dragged.
+  orderKey: v.optional(pinOrderKeySchema),
+})
+
+export const threadUnpinCommandSchema = v.object({
+  ...commandBaseSchema,
+  type: v.literal('thread.unpin'),
+  threadId: threadIdSchema,
+})
+
+export const threadPinReorderCommandSchema = v.object({
+  ...commandBaseSchema,
+  type: v.literal('thread.pin.reorder'),
+  threadId: threadIdSchema,
+  // Fractional index: the pinned block sorts by plain string comparison of
+  // these keys, so one drag writes one key to one row and never touches the
+  // neighbours the user did not move.
+  orderKey: pinOrderKeySchema,
+})
+
 export const threadRuntimeModeSetCommandSchema = v.object({
   ...commandBaseSchema,
   type: v.literal('thread.runtime-mode.set'),
@@ -204,6 +264,13 @@ export const clientOrchestrationCommandSchema = v.variant('type', [
   threadDeleteCommandSchema,
   threadArchiveCommandSchema,
   threadUnarchiveCommandSchema,
+  threadSettleCommandSchema,
+  threadUnsettleCommandSchema,
+  threadSnoozeCommandSchema,
+  threadUnsnoozeCommandSchema,
+  threadPinCommandSchema,
+  threadUnpinCommandSchema,
+  threadPinReorderCommandSchema,
   threadRuntimeModeSetCommandSchema,
   threadInteractionModeSetCommandSchema,
   threadTurnStartCommandSchema,
@@ -306,6 +373,13 @@ export type ThreadMetaUpdateCommand = v.InferOutput<typeof threadMetaUpdateComma
 export type ThreadDeleteCommand = v.InferOutput<typeof threadDeleteCommandSchema>
 export type ThreadArchiveCommand = v.InferOutput<typeof threadArchiveCommandSchema>
 export type ThreadUnarchiveCommand = v.InferOutput<typeof threadUnarchiveCommandSchema>
+export type ThreadSettleCommand = v.InferOutput<typeof threadSettleCommandSchema>
+export type ThreadUnsettleCommand = v.InferOutput<typeof threadUnsettleCommandSchema>
+export type ThreadSnoozeCommand = v.InferOutput<typeof threadSnoozeCommandSchema>
+export type ThreadUnsnoozeCommand = v.InferOutput<typeof threadUnsnoozeCommandSchema>
+export type ThreadPinCommand = v.InferOutput<typeof threadPinCommandSchema>
+export type ThreadUnpinCommand = v.InferOutput<typeof threadUnpinCommandSchema>
+export type ThreadPinReorderCommand = v.InferOutput<typeof threadPinReorderCommandSchema>
 export type ThreadRuntimeModeSetCommand = v.InferOutput<typeof threadRuntimeModeSetCommandSchema>
 export type ThreadInteractionModeSetCommand = v.InferOutput<
   typeof threadInteractionModeSetCommandSchema

@@ -13,6 +13,7 @@ import {
   type ChatModePanels,
   type ChatModeToolTab,
 } from '@/features/chat-mode/utils/panels'
+import type { SessionSelection } from '@/features/chat-mode/utils/active-session'
 import {
   createDefaultWorkbenchLayout,
   normalizeWorkbenchLayout,
@@ -25,10 +26,12 @@ import {
   type WorkbenchPanels,
 } from '@/features/workbench/utils/workbench-panels'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
-import type {
-  WorkspaceSearchMatch,
-  WorkspaceSearchMatchMode,
-  WorkspaceSearchQuery,
+import {
+  projectIdSchema,
+  threadIdSchema,
+  type WorkspaceSearchMatch,
+  type WorkspaceSearchMatchMode,
+  type WorkspaceSearchQuery,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
@@ -48,6 +51,7 @@ export const WORKSPACE_SLICE_LIMIT = 8
 
 export const WORKSPACE_CACHE_STORAGE_KEYS = {
   chatModePanels: `${CACHE_KEY_PREFIX}.chatModePanels`,
+  chatModeSelection: `${CACHE_KEY_PREFIX}.chatModeSelection`,
   diffViewMode: `${CACHE_KEY_PREFIX}.diffViewMode`,
   rootFolder: `${CACHE_KEY_PREFIX}.rootFolder`,
   uiMode: `${CACHE_KEY_PREFIX}.uiMode`,
@@ -217,6 +221,17 @@ const chatModePanelsSchema = v.strictObject({
   sessionRailOpen: v.boolean(),
   toolPaneOpen: v.boolean(),
 })
+const chatModeSelectionSchema = v.union([
+  v.strictObject({ kind: v.literal('auto') }),
+  v.strictObject({ kind: v.literal('draft'), projectId: projectIdSchema }),
+  v.strictObject({
+    kind: v.literal('session'),
+    projectId: projectIdSchema,
+    threadId: threadIdSchema,
+  }),
+])
+
+const AUTO_SESSION_SELECTION: SessionSelection = { kind: 'auto' }
 
 /** Everything a single project remembers. Keyed by its root path, never merged. */
 export type CachedWorkspaceSlice = {
@@ -264,6 +279,26 @@ export function writeWorkbenchLayoutCache(workbenchLayout: WorkbenchLayout) {
 
 export function writeChatModePanelsCache(chatModePanels: ChatModePanels) {
   writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.chatModePanels, chatModePanels)
+}
+
+/**
+ * Which conversation chat mode was last showing. Its own key rather than a field of
+ * `CachedWorkspaceState`: that blob belongs to the editor workspace store, while the
+ * selection store needs the value synchronously at module init — a selection restored
+ * one frame late is a selection the auto-pick has already overwritten.
+ */
+export function readSessionSelectionCache(): SessionSelection {
+  if (!canUseLocalStorage()) return AUTO_SESSION_SELECTION
+
+  return readCacheEntry(
+    WORKSPACE_CACHE_STORAGE_KEYS.chatModeSelection,
+    chatModeSelectionSchema,
+    AUTO_SESSION_SELECTION,
+  )
+}
+
+export function writeSessionSelectionCache(selection: SessionSelection) {
+  writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.chatModeSelection, selection)
 }
 
 export function writeRootFolderCache(rootFolder: PickedFsEntry | null) {

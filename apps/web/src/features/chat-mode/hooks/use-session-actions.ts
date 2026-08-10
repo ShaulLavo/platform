@@ -15,6 +15,7 @@ import {
   type ChatSidebarThreadSummary,
 } from '@/features/chat/state/chat-projection-store'
 import { useChatModeSession } from '@/features/chat-mode/providers/session-context'
+import { clearSessionMultiSelect } from '@/features/chat-mode/state/session-commands'
 import {
   useSessionDeleteRequestStore,
   type SessionDeleteRequest,
@@ -40,33 +41,42 @@ export function useSessionActions() {
     void dispatchSessionCommand({ action, command, environment, threadId })
   }
 
+  function archive(threadId: ThreadId) {
+    const thread = threadSummary(threadId)
+    // Archiving only hides the row; the agent would keep writing to a thread the user
+    // can no longer reach. Stopping it is a deliberate act, so ask for it instead.
+    if (hasRunningTurn(thread)) {
+      toast.error(`“${thread?.title ?? 'This session'}” is still running`, {
+        description: 'Stop the agent session before archiving it.',
+      })
+      log.warn({
+        action: 'chat.session.archive',
+        area: 'chat',
+        commandType: 'thread.archive',
+        outcome: 'blocked',
+        reason: 'turn-running',
+        sessionStatus: thread?.session?.status ?? null,
+        threadId,
+        turnState: thread?.latestTurn?.state ?? null,
+      })
+
+      return
+    }
+
+    // The rail hides archived sessions, so the stage must let go of this one
+    // before it vanishes from the list.
+    releaseSession(threadId, railOrderThreadIds(thread))
+    dispatch('chat.session.archive', threadId, createThreadArchiveCommand({ threadId }))
+  }
+
   return {
-    archive(threadId: ThreadId) {
-      const thread = threadSummary(threadId)
-      // Archiving only hides the row; the agent would keep writing to a thread the user
-      // can no longer reach. Stopping it is a deliberate act, so ask for it instead.
-      if (hasRunningTurn(thread)) {
-        toast.error(`“${thread?.title ?? 'This session'}” is still running`, {
-          description: 'Stop the agent session before archiving it.',
-        })
-        log.warn({
-          action: 'chat.session.archive',
-          area: 'chat',
-          commandType: 'thread.archive',
-          outcome: 'blocked',
-          reason: 'turn-running',
-          sessionStatus: thread?.session?.status ?? null,
-          threadId,
-          turnState: thread?.latestTurn?.state ?? null,
-        })
-
-        return
+    archive,
+    /** One command per session, each refusing on its own terms — a running one blocks itself. */
+    archiveSessions(threadIds: readonly ThreadId[]) {
+      for (const threadId of threadIds) {
+        archive(threadId)
       }
-
-      // The rail hides archived sessions, so the stage must let go of this one
-      // before it vanishes from the list.
-      releaseSession(threadId, railOrderThreadIds(thread))
-      dispatch('chat.session.archive', threadId, createThreadArchiveCommand({ threadId }))
+      clearSessionMultiSelect()
     },
     cancelDelete() {
       dismissDelete()
@@ -74,16 +84,21 @@ export function useSessionActions() {
     /** Runs the delete the dialog just confirmed — nothing else may call it. */
     confirmDelete(request: SessionDeleteRequest) {
       dismissDelete()
-      releaseSession(request.threadId, railOrderThreadIds(threadSummary(request.threadId)))
-      dispatch(
-        'chat.session.delete',
-        request.threadId,
-        createThreadDeleteCommand({ threadId: request.threadId }),
-      )
+      for (const threadId of request.threadIds) {
+        releaseSession(threadId, railOrderThreadIds(threadSummary(threadId)))
+        dispatch('chat.session.delete', threadId, createThreadDeleteCommand({ threadId }))
+      }
+      clearSessionMultiSelect()
     },
     /** Deleting drops the whole event history for the thread, so it always asks first. */
     deleteSession(threadId: ThreadId, title: string) {
-      requestDelete({ threadId, title })
+      requestDelete({ threadIds: [threadId], title })
+    },
+    deleteSessions(threadIds: readonly ThreadId[]) {
+      const first = threadIds[0]
+      if (!first) return
+
+      requestDelete({ threadIds, title: threadSummary(first)?.title ?? 'this session' })
     },
     /** `title` must already be trimmed and non-empty — the server rejects blanks. */
     rename(threadId: ThreadId, title: string) {

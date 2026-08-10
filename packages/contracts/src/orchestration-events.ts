@@ -18,7 +18,9 @@ import {
   orchestrationProposedPlanSchema,
   orchestrationSessionSchema,
   orchestrationThreadActivitySchema,
+  pinOrderKeySchema,
   sourceProposedPlanReferenceSchema,
+  threadLifecycleReasonSchema,
   trimmedNonEmptyStringSchema,
 } from './chat-model'
 import {
@@ -40,6 +42,13 @@ export const orchestrationEventTypes = [
   'thread.deleted',
   'thread.archived',
   'thread.unarchived',
+  'thread.settled',
+  'thread.unsettled',
+  'thread.snoozed',
+  'thread.unsnoozed',
+  'thread.pinned',
+  'thread.unpinned',
+  'thread.pin-reordered',
   'thread.runtime-mode-set',
   'thread.interaction-mode-set',
   'thread.message-sent',
@@ -117,6 +126,51 @@ export const threadArchivedPayloadSchema = v.object({
 
 export const threadUnarchivedPayloadSchema = v.object({
   threadId: threadIdSchema,
+  updatedAt: isoDateTimeSchema,
+})
+
+export const threadSettledPayloadSchema = v.object({
+  threadId: threadIdSchema,
+  settledAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema,
+})
+
+export const threadUnsettledPayloadSchema = v.object({
+  threadId: threadIdSchema,
+  reason: threadLifecycleReasonSchema,
+  updatedAt: isoDateTimeSchema,
+})
+
+export const threadSnoozedPayloadSchema = v.object({
+  threadId: threadIdSchema,
+  snoozedUntil: isoDateTimeSchema,
+  snoozedAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema,
+})
+
+export const threadUnsnoozedPayloadSchema = v.object({
+  threadId: threadIdSchema,
+  reason: threadLifecycleReasonSchema,
+  updatedAt: isoDateTimeSchema,
+})
+
+export const threadPinnedPayloadSchema = v.object({
+  threadId: threadIdSchema,
+  pinnedAt: isoDateTimeSchema,
+  // Absent when re-pinning an already-pinned thread — the key the user already
+  // placed wins over a raced duplicate — and when the pin carried no slot.
+  pinOrderKey: v.optional(pinOrderKeySchema),
+  updatedAt: isoDateTimeSchema,
+})
+
+export const threadUnpinnedPayloadSchema = v.object({
+  threadId: threadIdSchema,
+  updatedAt: isoDateTimeSchema,
+})
+
+export const threadPinReorderedPayloadSchema = v.object({
+  threadId: threadIdSchema,
+  orderKey: pinOrderKeySchema,
   updatedAt: isoDateTimeSchema,
 })
 
@@ -280,6 +334,41 @@ export const orchestrationEventSchema = v.variant('type', [
     ...eventBaseSchema,
     type: v.literal('thread.unarchived'),
     payload: threadUnarchivedPayloadSchema,
+  }),
+  v.object({
+    ...eventBaseSchema,
+    type: v.literal('thread.settled'),
+    payload: threadSettledPayloadSchema,
+  }),
+  v.object({
+    ...eventBaseSchema,
+    type: v.literal('thread.unsettled'),
+    payload: threadUnsettledPayloadSchema,
+  }),
+  v.object({
+    ...eventBaseSchema,
+    type: v.literal('thread.snoozed'),
+    payload: threadSnoozedPayloadSchema,
+  }),
+  v.object({
+    ...eventBaseSchema,
+    type: v.literal('thread.unsnoozed'),
+    payload: threadUnsnoozedPayloadSchema,
+  }),
+  v.object({
+    ...eventBaseSchema,
+    type: v.literal('thread.pinned'),
+    payload: threadPinnedPayloadSchema,
+  }),
+  v.object({
+    ...eventBaseSchema,
+    type: v.literal('thread.unpinned'),
+    payload: threadUnpinnedPayloadSchema,
+  }),
+  v.object({
+    ...eventBaseSchema,
+    type: v.literal('thread.pin-reordered'),
+    payload: threadPinReorderedPayloadSchema,
   }),
   v.object({
     ...eventBaseSchema,

@@ -24,6 +24,7 @@ import {
   writeRootFolderCache,
   writeChatModePanelsCache,
   writeSearchBufferCache,
+  writeSessionSelectionCache,
   writeUiModeCache,
   writeWallpaperHiddenCache,
   writeWorkbenchLayoutCache,
@@ -228,6 +229,7 @@ describe('workspace cache', () => {
     writeWallpaperHiddenCache(false)
     writeWorkbenchLayoutCache(createDefaultWorkbenchLayout())
     writeRootFolderCache(pickedDirectory('/repo'))
+    writeSessionSelectionCache({ kind: 'auto' })
     writeWorkspaceIndexCache(['/repo'])
 
     expect(new Set(STORE.keys())).toEqual(new Set(Object.values(WORKSPACE_CACHE_STORAGE_KEYS)))

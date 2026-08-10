@@ -416,6 +416,19 @@ function applyFreshThreadEvent(
     case 'thread.approval-response-requested':
     case 'thread.user-input-response-requested':
       return state
+    // Settle/snooze/pin live on the server thread row; the shell snapshot the
+    // client projects does not carry those fields, so there is nothing here to
+    // patch. `updatedAt` deliberately stays untouched — bumping it from an
+    // event whose state the client cannot see would reorder the rail for a
+    // change nothing renders.
+    case 'thread.settled':
+    case 'thread.unsettled':
+    case 'thread.snoozed':
+    case 'thread.unsnoozed':
+    case 'thread.pinned':
+    case 'thread.unpinned':
+    case 'thread.pin-reordered':
+      return state
   }
 }
 

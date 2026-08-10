@@ -100,6 +100,57 @@ function applyEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
         updatedAt: event.payload.updatedAt,
       })
       return
+    case 'thread.settled':
+      updateThreadValue(model, event.payload.threadId, {
+        settledAt: event.payload.settledAt,
+        settledOverride: 'settled',
+        updatedAt: event.payload.updatedAt,
+      })
+      return
+    case 'thread.unsettled':
+      // "user" is the un-settle button — an explicit keep-active override.
+      // "activity" is the server resetting to neutral so the thread can settle
+      // on its own again once this burst of work goes stale.
+      updateThreadValue(model, event.payload.threadId, {
+        settledAt: null,
+        settledOverride: event.payload.reason === 'user' ? 'active' : null,
+        updatedAt: event.payload.updatedAt,
+      })
+      return
+    case 'thread.snoozed':
+      updateThreadValue(model, event.payload.threadId, {
+        snoozedAt: event.payload.snoozedAt,
+        snoozedUntil: event.payload.snoozedUntil,
+        updatedAt: event.payload.updatedAt,
+      })
+      return
+    case 'thread.unsnoozed':
+      updateThreadValue(model, event.payload.threadId, {
+        snoozedAt: null,
+        snoozedUntil: null,
+        updatedAt: event.payload.updatedAt,
+      })
+      return
+    case 'thread.pinned':
+      updateThreadValue(model, event.payload.threadId, {
+        pinOrderKey: event.payload.pinOrderKey,
+        pinnedAt: event.payload.pinnedAt,
+        updatedAt: event.payload.updatedAt,
+      })
+      return
+    case 'thread.unpinned':
+      updateThreadValue(model, event.payload.threadId, {
+        pinOrderKey: null,
+        pinnedAt: null,
+        updatedAt: event.payload.updatedAt,
+      })
+      return
+    case 'thread.pin-reordered':
+      updateThreadValue(model, event.payload.threadId, {
+        pinOrderKey: event.payload.orderKey,
+        updatedAt: event.payload.updatedAt,
+      })
+      return
     case 'thread.runtime-mode-set':
       updateThreadValue(model, event.payload.threadId, {
         runtimeMode: event.payload.runtimeMode,
@@ -232,9 +283,15 @@ function createdThread(event: Extract<OrchestrationEvent, { type: 'thread.create
     modelSelection: event.payload.modelSelection,
     pendingApprovalCount: 0,
     pendingUserInputCount: 0,
+    pinOrderKey: null,
+    pinnedAt: null,
     projectId: event.payload.projectId,
     runtimeMode: event.payload.runtimeMode,
     session: null,
+    settledAt: null,
+    settledOverride: null,
+    snoozedAt: null,
+    snoozedUntil: null,
     title: event.payload.title,
     updatedAt: event.payload.updatedAt,
     worktreePath: event.payload.worktreePath,

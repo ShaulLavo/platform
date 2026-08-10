@@ -29,7 +29,10 @@ import {
   quickAccessQuery,
 } from '@/components/command-palette/command-palette-utils'
 import { useCommandPaletteFiles } from '@/components/command-palette/use-command-palette-files'
+import { useCommandPaletteSessions } from '@/components/command-palette/use-command-palette-sessions'
 import { useCommandPaletteSymbols } from '@/components/command-palette/use-command-palette-symbols'
+import { openSessionRow, startSessionDraft } from '@/features/chat-mode/state/session-commands'
+import { useOpenWorkspaceRoot } from '@/hooks/use-open-workspace-root'
 import {
   CommandPaletteActionsContext,
   type CommandPaletteActions,
@@ -74,6 +77,10 @@ export function CommandPaletteContent({
     rootPath: rootFolder?.path ?? null,
     selectedFilePath: activeFilePath,
   })
+  const { projects: sessionProjects, sessions: sessionItems } = useCommandPaletteSessions()
+  // Chat mode registers the project opener only while it is mounted, and the palette
+  // can open a session from the workbench — so it brings its own.
+  const openWorkspaceRoot = useOpenWorkspaceRoot()
   const commandItems = commandPaletteItems(platformCommandSpecs, bindings)
   const groups = groupedCommandItems(commandItems, search)
 
@@ -125,6 +132,13 @@ export function CommandPaletteContent({
 
         onOpenChange(false)
       },
+      selectSession: (session) => {
+        // Chat mode first: the stage that will show this session has to exist before
+        // the pick lands, or the user is left staring at the editor.
+        dispatch('workspace.showChatMode')
+        openSessionRow(session, { openProject: openWorkspaceRoot })
+        onOpenChange(false)
+      },
       selectSymbol: (symbol) => {
         if (!selectedFileBackedPath) return
 
@@ -137,6 +151,11 @@ export function CommandPaletteContent({
 
         onOpenChange(false)
       },
+      startSessionDraft: (projectId) => {
+        dispatch('workspace.showChatMode')
+        startSessionDraft(projectId, { openProject: openWorkspaceRoot })
+        onOpenChange(false)
+      },
     }),
     [
       activeFilePath,
@@ -144,6 +163,7 @@ export function CommandPaletteContent({
       hasWorkspace,
       onOpenChange,
       openDefinition,
+      openWorkspaceRoot,
       selectFile,
       selectedFileBackedPath,
     ],
@@ -179,6 +199,8 @@ export function CommandPaletteContent({
             hasWorkspace={hasWorkspace}
             activeFilePath={activeFilePath}
             mode={mode}
+            sessionItems={sessionItems}
+            sessionProjects={sessionProjects}
             symbolItems={symbolQuery.data ?? []}
             symbolsPending={symbolsEnabled && symbolQuery.isPending}
           />

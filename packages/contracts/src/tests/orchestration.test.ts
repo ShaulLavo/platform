@@ -131,6 +131,13 @@ describe('orchestration contracts', () => {
       'thread.deleted',
       'thread.archived',
       'thread.unarchived',
+      'thread.settled',
+      'thread.unsettled',
+      'thread.snoozed',
+      'thread.unsnoozed',
+      'thread.pinned',
+      'thread.unpinned',
+      'thread.pin-reordered',
       'thread.runtime-mode-set',
       'thread.interaction-mode-set',
       'thread.message-sent',
@@ -286,5 +293,85 @@ describe('orchestration contracts', () => {
     expect(request.kind).toBe('request')
     expect(subscription.kind).toBe('subscribe')
     expect(response.kind).toBe('response')
+  })
+})
+
+describe('thread lifecycle contracts', () => {
+  it('accepts the settle, snooze and pin client commands', () => {
+    const commands = [
+      { commandId: 'cmd-1', threadId: 'thread-1', type: 'thread.settle' },
+      { commandId: 'cmd-2', reason: 'user', threadId: 'thread-1', type: 'thread.unsettle' },
+      { commandId: 'cmd-3', snoozedUntil: now, threadId: 'thread-1', type: 'thread.snooze' },
+      { commandId: 'cmd-4', reason: 'user', threadId: 'thread-1', type: 'thread.unsnooze' },
+      { commandId: 'cmd-5', orderKey: 'm', threadId: 'thread-1', type: 'thread.pin' },
+      { commandId: 'cmd-6', threadId: 'thread-1', type: 'thread.unpin' },
+      { commandId: 'cmd-7', orderKey: 'mn', threadId: 'thread-1', type: 'thread.pin.reorder' },
+    ]
+
+    for (const command of commands) {
+      expect(v.parse(clientOrchestrationCommandSchema, command as unknown)).toMatchObject({
+        type: command.type,
+      })
+    }
+  })
+
+  it('refuses to let a client forge an activity reset', () => {
+    expect(() =>
+      v.parse(clientOrchestrationCommandSchema, {
+        commandId: 'cmd-1',
+        reason: 'activity',
+        threadId: 'thread-1',
+        type: 'thread.unsettle',
+      } as unknown),
+    ).toThrow()
+  })
+
+  it('refuses a pin order key that would corrupt the arranged order', () => {
+    for (const orderKey of ['', 'M', 'm1', 'ma']) {
+      expect(() =>
+        v.parse(clientOrchestrationCommandSchema, {
+          commandId: 'cmd-1',
+          orderKey,
+          threadId: 'thread-1',
+          type: 'thread.pin.reorder',
+        } as unknown),
+      ).toThrow()
+    }
+  })
+
+  it('round-trips the lifecycle events', () => {
+    const payloads = {
+      'thread.pin-reordered': { orderKey: 'm', threadId: 'thread-1', updatedAt: now },
+      'thread.pinned': { pinOrderKey: 'm', pinnedAt: now, threadId: 'thread-1', updatedAt: now },
+      'thread.settled': { settledAt: now, threadId: 'thread-1', updatedAt: now },
+      'thread.snoozed': {
+        snoozedAt: now,
+        snoozedUntil: now,
+        threadId: 'thread-1',
+        updatedAt: now,
+      },
+      'thread.unpinned': { threadId: 'thread-1', updatedAt: now },
+      'thread.unsettled': { reason: 'activity', threadId: 'thread-1', updatedAt: now },
+      'thread.unsnoozed': { reason: 'activity', threadId: 'thread-1', updatedAt: now },
+    }
+
+    for (const [type, payload] of Object.entries(payloads)) {
+      const parsed = v.parse(orchestrationEventSchema, {
+        actorKind: 'client',
+        aggregateId: 'thread-1',
+        aggregateKind: 'thread',
+        causationEventId: null,
+        commandId: 'cmd-1',
+        correlationId: 'cmd-1',
+        eventId: 'event-1',
+        metadata: {},
+        occurredAt: now,
+        payload,
+        sequence: 1,
+        type,
+      } as unknown)
+
+      expect(parsed.payload).toEqual(payload)
+    }
   })
 })

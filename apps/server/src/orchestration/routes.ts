@@ -1,6 +1,9 @@
 import { Elysia } from 'elysia'
 import * as v from 'valibot'
-import { ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE } from '@workspace/contracts'
+import {
+  ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE,
+  orchestrationSearchThreadsInputSchema,
+} from '@workspace/contracts'
 import {
   clientOrchestrationCommandSchema,
   orchestrationReplayEventsInputSchema,
@@ -8,6 +11,7 @@ import {
 } from './schemas'
 import type { OrchestrationEngine } from './engine'
 import type { OrchestrationCheckpointDiffQuery } from './checkpoint-diff-query'
+import { OrchestrationThreadSearchQuery } from './thread-search-query'
 import { toSse } from '../sse'
 import { observeRequestOperation } from '../observability'
 import { chatOperationContext, orchestrationReplaySummary } from './orchestration-logging'
@@ -43,6 +47,9 @@ const threadDetailStreamQuerySchema = v.object({
 export function orchestrationRoutes(
   engine: OrchestrationEngine,
   checkpointDiff: OrchestrationCheckpointDiffQuery,
+  // Defaults to the process-wide database — the same handle production hands
+  // the engine. Callers holding their own handle pass a query built over it.
+  threadSearch: OrchestrationThreadSearchQuery = new OrchestrationThreadSearchQuery(),
 ) {
   return new Elysia({ name: 'orchestration-routes' }).group('/orchestration', (app) =>
     app
@@ -99,6 +106,23 @@ export function orchestrationRoutes(
           ),
         {
           query: threadDetailQuerySchema,
+        },
+      )
+      .post(
+        '/thread-search',
+        ({ body }) =>
+          observeRequestOperation(
+            // The query text is user content and stays off the wide event; its
+            // length is what explains a slow scan or a bounds rejection.
+            chatOperationContext('orchestration.thread_search', {
+              limit: body.limit,
+              queryLength: body.query.length,
+            }),
+            async () => threadSearch.search(body),
+            (result) => ({ matchCount: result.matches.length }),
+          ),
+        {
+          body: orchestrationSearchThreadsInputSchema,
         },
       )
       .get(

@@ -1,4 +1,4 @@
-import { projectIdSchema, threadIdSchema } from '@workspace/contracts'
+import { projectIdSchema, threadIdSchema, turnIdSchema } from '@workspace/contracts'
 import * as v from 'valibot'
 
 import type { ChatSidebarThreadSummary } from '@/features/chat/state/chat-projection-store'
@@ -239,6 +239,109 @@ test('disambiguates projects whose folder leaf is identical', () => {
   expect(byId.get(siteId)?.qualifier).toBe('D')
   // A unique title needs no qualifier.
   expect(byId.get(docsId)?.qualifier).toBeNull()
+})
+
+test('bands sessions by project and rolls the worst status onto the band', () => {
+  const model = sessionRailModel({
+    projects: [
+      chatProject({ id: platformId, title: 'platform', workspaceRoot: '/repo/platform' }),
+      chatProject({ id: siteId, title: 'site', workspaceRoot: '/repo/site' }),
+    ],
+    threads: [
+      threadSummary({
+        createdAt: '2026-05-09T00:00:00Z',
+        id: 'thread-idle',
+        latestTurn: null,
+        projectId: platformId,
+        session: null,
+      }),
+      threadSummary({
+        createdAt: '2026-05-05T00:00:00Z',
+        id: 'thread-waiting',
+        pendingApprovalCount: 1,
+        projectId: siteId,
+      }),
+    ],
+  })
+
+  const byId = new Map(model.groups.map((group) => [group.project.id, group]))
+  expect(byId.get(platformId)?.project.status).toBe('idle')
+  expect(byId.get(siteId)?.project.status).toBe('waiting')
+  expect(byId.get(siteId)?.sessions.map((session) => session.id)).toEqual(['thread-waiting'])
+})
+
+test('a project with no sessions in view never becomes an empty band', () => {
+  const model = sessionRailModel({
+    projects: [chatProject({ id: platformId }), chatProject({ id: docsId, title: 'docs' })],
+    threads: [threadSummary({ id: 'thread-1', projectId: platformId })],
+  })
+
+  expect(model.groups.map((group) => group.project.id)).toEqual([platformId])
+  // Still offered as a scope, though — that is how a first session gets drafted into it.
+  expect(model.projects.map((project) => project.id)).toContain(docsId)
+})
+
+test('a collapsed project keeps the session on the stage and counts the rest away', () => {
+  const model = sessionRailModel({
+    activeThreadId: v.parse(threadIdSchema, 'thread-open'),
+    collapsedProjectIds: [platformId],
+    projects: [chatProject({ id: platformId })],
+    threads: [
+      threadSummary({
+        createdAt: '2026-05-09T00:00:00Z',
+        id: 'thread-open',
+        projectId: platformId,
+      }),
+      threadSummary({
+        createdAt: '2026-05-05T00:00:00Z',
+        id: 'thread-shut',
+        projectId: platformId,
+      }),
+    ],
+  })
+
+  const group = model.groups[0]
+  expect(group?.collapsed).toBe(true)
+  expect(group?.sessions.map((session) => session.id)).toEqual(['thread-open'])
+  expect(group?.hiddenCount).toBe(1)
+  // The flat list the keyboard commands walk is untouched by a fold.
+  expect(model.sessions).toHaveLength(2)
+})
+
+test('a search reopens folded projects rather than hiding its own matches', () => {
+  const model = sessionRailModel({
+    collapsedProjectIds: [platformId],
+    projects: [chatProject({ id: platformId })],
+    query: 'footer',
+    threads: [threadSummary({ id: 'thread-1', projectId: platformId, title: 'Fix the footer' })],
+  })
+
+  expect(model.groups[0]?.collapsed).toBe(false)
+  expect(model.groups[0]?.sessions).toHaveLength(1)
+})
+
+test('counts unread sessions onto the project band', () => {
+  const model = sessionRailModel({
+    projects: [chatProject({ id: platformId })],
+    seenByThreadId: {},
+    threads: [
+      threadSummary({
+        id: 'thread-finished',
+        latestTurn: {
+          assistantMessageId: null,
+          completedAt: '2026-05-09T10:00:00Z',
+          requestedAt: '2026-05-09T09:00:00Z',
+          startedAt: '2026-05-09T09:00:00Z',
+          state: 'completed',
+          turnId: v.parse(turnIdSchema, 'turn-1'),
+        },
+        projectId: platformId,
+      }),
+      threadSummary({ id: 'thread-quiet', projectId: platformId }),
+    ],
+  })
+
+  expect(model.groups[0]?.project.unreadCount).toBe(1)
 })
 
 function threadSummary({

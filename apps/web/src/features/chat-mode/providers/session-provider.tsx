@@ -7,6 +7,7 @@ import { selectChatSidebarThreadsForProject } from '@/features/chat/state/chat-p
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { SessionDeleteDialog } from '@/features/chat-mode/components/session-delete-dialog'
+import { useProjectRetry } from '@/features/chat-mode/hooks/use-project-retry'
 import {
   ChatModeSessionContext,
   type ChatModeSession,
@@ -49,10 +50,12 @@ export function ChatModeSessionProvider({
   const archivedThreadIds = projectThreadIds.filter((threadId) =>
     Boolean(summaryById[threadId]?.archivedAt),
   )
+  const restored = useSessionSelectionStore((state) => state.restored)
   const selection = useSessionSelectionStore((state) => state.selection)
   const selectSession = useSessionSelectionStore((state) => state.selectSession)
   const startDraft = useSessionSelectionStore((state) => state.startDraft)
   const openWorkspaceRoot = useOpenWorkspaceRoot()
+  const retry = useProjectRetry({ environment, rootPath })
   // Reuses the workspace picker already mounted by AppWorkspace: picking a folder
   // opens it, and useWorkspaceChatProject creates the project for it.
   const addProject = useEditorWorkspaceState((state) => state.openPicker)
@@ -66,13 +69,26 @@ export function ChatModeSessionProvider({
   }, [openWorkspaceRoot])
 
   const value: ChatModeSession = {
-    activeSession: activeSession({ archivedThreadIds, projectId, selection, threadIds }),
+    activeSession: activeSession({
+      archivedThreadIds,
+      projectId,
+      restored,
+      selection,
+      threadIds,
+    }),
     addProject,
     environment,
-    error: projectState.error ?? shell.error,
+    error: chatModeError({
+      hasProject: projectState.project !== null,
+      projectError: projectState.error,
+      retryError: retry.error,
+      shellError: shell.error,
+    }),
     openProject: (workspaceRoot) => void openWorkspaceRoot(workspaceRoot),
     project: projectState.project,
     ready: projectState.status === 'ready',
+    retrying: retry.retrying,
+    retryProject: retry.retryProject,
     // The project's own root, never the editor's: a draft dispatched here stamps this
     // path into the event log as the thread's worktree, and that stamp is permanent.
     rootPath: projectState.project?.workspaceRoot ?? rootPath,
@@ -89,4 +105,25 @@ export function ChatModeSessionProvider({
       <SessionDeleteDialog />
     </ChatModeSessionContext>
   )
+}
+
+/**
+ * A project that exists is the proof the setup failure is over, so its error stops being
+ * reported — otherwise a successful retry leaves the banner from the attempt before it
+ * sitting under a working chat.
+ */
+function chatModeError({
+  hasProject,
+  projectError,
+  retryError,
+  shellError,
+}: {
+  readonly hasProject: boolean
+  readonly projectError: string | null
+  readonly retryError: string | null
+  readonly shellError: string | null
+}) {
+  if (hasProject) return shellError
+
+  return retryError ?? projectError ?? shellError
 }

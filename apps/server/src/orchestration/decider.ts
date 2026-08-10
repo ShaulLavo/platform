@@ -11,15 +11,19 @@ import {
   liveProjectThreads,
   requireActiveProjectWorkspaceRootAbsent,
   requireExpectedBranch,
+  requireFutureWakeTime,
+  requirePinned,
   requireProject,
   requireProjectAbsent,
+  requireSettleable,
+  requireSnoozable,
   requireThreadAbsent,
   requireThreadArchived,
   requireThreadNotArchived,
   requireThreadNotDeleted,
 } from './command-invariants'
 import type { PendingOrchestrationEvent } from './event-store'
-import type { OrchestrationReadModel } from './read-model'
+import type { OrchestrationProjectedThread, OrchestrationReadModel } from './read-model'
 
 /**
  * One server clock reading per command. It stamps every event's `occurredAt`
@@ -65,6 +69,20 @@ export function decideOrchestrationCommand(
         threadId: command.threadId,
         updatedAt: at,
       })
+    case 'thread.settle':
+      return threadSettled(command, model, at)
+    case 'thread.unsettle':
+      return threadUnsettled(command, model, at)
+    case 'thread.snooze':
+      return threadSnoozed(command, model, at)
+    case 'thread.unsnooze':
+      return threadUnsnoozed(command, model, at)
+    case 'thread.pin':
+      return threadPinned(command, model, at)
+    case 'thread.unpin':
+      return threadUnpinned(command, model, at)
+    case 'thread.pin.reorder':
+      return threadPinReordered(command, model, at)
     case 'thread.runtime-mode.set':
       requireThreadNotArchived(model, command.threadId, command.type)
 
@@ -125,12 +143,7 @@ export function decideOrchestrationCommand(
         turnCount: command.turnCount,
       })
     case 'thread.session.set':
-      requireThreadNotDeleted(model, command.threadId)
-
-      return one(command, at, 'thread.session-set', {
-        session: command.session,
-        threadId: command.threadId,
-      })
+      return sessionSet(command, model, at)
     case 'thread.message.assistant.delta':
       requireThreadNotDeleted(model, command.threadId)
 
@@ -160,12 +173,7 @@ export function decideOrchestrationCommand(
         updatedAt: command.completedAt,
       })
     case 'thread.activity.append':
-      requireThreadNotDeleted(model, command.threadId)
-
-      return one(command, at, 'thread.activity-appended', {
-        activity: command.activity,
-        threadId: command.threadId,
-      })
+      return activityAppended(command, model, at)
     case 'thread.proposed-plan.upsert':
       requireThreadNotDeleted(model, command.threadId)
 
@@ -310,6 +318,242 @@ function threadMetaUpdated(
   })
 }
 
+/**
+ * Settling is idempotent by re-emission rather than by returning nothing: the
+ * engine rejects a zero-event command, and a bulk settle or a double click has
+ * to stay a silent no-op instead of surfacing an error. Re-emitting the
+ * original `settledAt` *and* `updatedAt` is what makes the duplicate project as
+ * a no-op — a fresh timestamp would churn every ordering that reads updatedAt.
+ */
+function threadSettled(
+  command: Extract<OrchestrationCommand, { type: 'thread.settle' }>,
+  model: OrchestrationReadModel,
+  at: string,
+) {
+  const thread = requireThreadNotArchived(model, command.threadId, command.type)
+  requireSettleable(thread, command.type, at)
+
+  const settledAt = thread.settledOverride === 'settled' ? thread.settledAt : null
+  const settled = event(command, at, 'thread.settled', {
+    settledAt: settledAt ?? at,
+    threadId: command.threadId,
+    updatedAt: settledAt ? thread.updatedAt : at,
+  })
+  // Settling is "I am done with this", so it clears a pin the same way it parks
+  // the thread. Without this the pin would hold the card in place and the
+  // settle would only stamp invisible state.
+  if (!thread.pinnedAt) return [settled]
+
+  return [
+    settled,
+    event(command, at, 'thread.unpinned', { threadId: command.threadId, updatedAt: at }),
+  ]
+}
+
+function threadUnsettled(
+  command: Extract<OrchestrationCommand, { type: 'thread.unsettle' }>,
+  model: OrchestrationReadModel,
+  at: string,
+) {
+  const thread = requireThreadNotArchived(model, command.threadId, command.type)
+  const alreadyActive = thread.settledOverride === 'active'
+
+  return one(command, at, 'thread.unsettled', {
+    reason: command.reason,
+    threadId: command.threadId,
+    updatedAt: alreadyActive ? thread.updatedAt : at,
+  })
+}
+
+function threadSnoozed(
+  command: Extract<OrchestrationCommand, { type: 'thread.snooze' }>,
+  model: OrchestrationReadModel,
+  at: string,
+) {
+  const thread = requireThreadNotArchived(model, command.threadId, command.type)
+  requireFutureWakeTime(command.threadId, command.snoozedUntil, at)
+  requireSnoozable(thread, command.type, at)
+
+  // Re-snoozing to the SAME wake time is a duplicate (double click, raced
+  // clients) and re-emits the original timestamps so it projects as a no-op. A
+  // different wake time is a real change and stamps fresh.
+  const snoozedAt = thread.snoozedUntil === command.snoozedUntil ? thread.snoozedAt : null
+
+  return one(command, at, 'thread.snoozed', {
+    snoozedAt: snoozedAt ?? at,
+    snoozedUntil: command.snoozedUntil,
+    threadId: command.threadId,
+    updatedAt: snoozedAt ? thread.updatedAt : at,
+  })
+}
+
+function threadUnsnoozed(
+  command: Extract<OrchestrationCommand, { type: 'thread.unsnooze' }>,
+  model: OrchestrationReadModel,
+  at: string,
+) {
+  const thread = requireThreadNotArchived(model, command.threadId, command.type)
+  const alreadyAwake = thread.snoozedUntil == null
+
+  return one(command, at, 'thread.unsnoozed', {
+    reason: command.reason,
+    threadId: command.threadId,
+    updatedAt: alreadyAwake ? thread.updatedAt : at,
+  })
+}
+
+/**
+ * Pinning carries no lifecycle invariant — a pin only ever promotes a thread,
+ * so it can never hide pending work — but it is a promotion rather than an
+ * override: it spends the settle and the snooze instead of silently outranking
+ * them. The thread is on top now, not on Tuesday.
+ */
+function threadPinned(
+  command: Extract<OrchestrationCommand, { type: 'thread.pin' }>,
+  model: OrchestrationReadModel,
+  at: string,
+) {
+  const thread = requireThreadNotArchived(model, command.threadId, command.type)
+  const pinnedAt = thread.pinnedAt ?? null
+  const pinned = event(command, at, 'thread.pinned', {
+    pinnedAt: pinnedAt ?? at,
+    // A fresh pin takes the client's slot; on a re-pin the existing key wins so
+    // a raced duplicate cannot move a thread the user already placed.
+    ...(pinnedAt || command.orderKey === undefined ? {} : { pinOrderKey: command.orderKey }),
+    threadId: command.threadId,
+    updatedAt: pinnedAt ? thread.updatedAt : at,
+  })
+
+  return [pinned, ...promotionEvents(command, thread, at)]
+}
+
+function promotionEvents(
+  command: Extract<OrchestrationCommand, { type: 'thread.pin' }>,
+  thread: OrchestrationProjectedThread,
+  at: string,
+) {
+  const events: PendingOrchestrationEvent[] = []
+  if (thread.settledOverride === 'settled') {
+    events.push(
+      event(command, at, 'thread.unsettled', {
+        reason: 'user',
+        threadId: command.threadId,
+        updatedAt: at,
+      }),
+    )
+  }
+  if (thread.snoozedUntil != null) {
+    events.push(
+      event(command, at, 'thread.unsnoozed', {
+        reason: 'user',
+        threadId: command.threadId,
+        updatedAt: at,
+      }),
+    )
+  }
+
+  return events
+}
+
+function threadUnpinned(
+  command: Extract<OrchestrationCommand, { type: 'thread.unpin' }>,
+  model: OrchestrationReadModel,
+  at: string,
+) {
+  const thread = requireThreadNotArchived(model, command.threadId, command.type)
+  const alreadyUnpinned = thread.pinnedAt == null
+
+  return one(command, at, 'thread.unpinned', {
+    threadId: command.threadId,
+    updatedAt: alreadyUnpinned ? thread.updatedAt : at,
+  })
+}
+
+/**
+ * A drag writes exactly one key to exactly one row: the client computes a
+ * fractional key that sorts between the drop position's neighbours, and the
+ * neighbours are never touched. Refusing an unpinned thread (rather than
+ * silently pinning it) keeps a reorder that raced an unpin from resurrecting
+ * the pin the user just cleared.
+ */
+function threadPinReordered(
+  command: Extract<OrchestrationCommand, { type: 'thread.pin.reorder' }>,
+  model: OrchestrationReadModel,
+  at: string,
+) {
+  const thread = requireThreadNotArchived(model, command.threadId, command.type)
+  requirePinned(thread)
+  const unchanged = thread.pinOrderKey === command.orderKey
+
+  return one(command, at, 'thread.pin-reordered', {
+    orderKey: command.orderKey,
+    threadId: command.threadId,
+    updatedAt: unchanged ? thread.updatedAt : at,
+  })
+}
+
+/**
+ * Only a session coming alive counts as activity worth waking a settled thread
+ * for: ready/stopped/error writes arrive after the fact and must not fight a
+ * user's explicit settle. Snooze is deliberately NOT cleared here — snooze
+ * never pauses the agent, so its session starting is not the user re-engaging.
+ */
+function sessionSet(
+  command: Extract<OrchestrationCommand, { type: 'thread.session.set' }>,
+  model: OrchestrationReadModel,
+  at: string,
+) {
+  const thread = requireThreadNotDeleted(model, command.threadId)
+  const sessionSetEvent = event(command, at, 'thread.session-set', {
+    session: command.session,
+    threadId: command.threadId,
+  })
+  const alive = command.session.status === 'starting' || command.session.status === 'running'
+  if (!alive || thread.settledOverride == null) return [sessionSetEvent]
+
+  return [autoUnsettled(command, at, command.threadId, command.createdAt), sessionSetEvent]
+}
+
+/**
+ * An approval or user-input request is blocked-on-you work: it must never stay
+ * hidden inside a settled row.
+ */
+function activityAppended(
+  command: Extract<OrchestrationCommand, { type: 'thread.activity.append' }>,
+  model: OrchestrationReadModel,
+  at: string,
+) {
+  const thread = requireThreadNotDeleted(model, command.threadId)
+  const appended = event(command, at, 'thread.activity-appended', {
+    activity: command.activity,
+    threadId: command.threadId,
+  })
+  const wakes =
+    command.activity.kind === 'approval.requested' ||
+    command.activity.kind === 'user-input.requested'
+  if (!wakes || thread.settledOverride == null) return [appended]
+
+  return [autoUnsettled(command, at, command.threadId, command.createdAt), appended]
+}
+
+/**
+ * Real activity resets ANY override: it wakes an explicitly settled thread and
+ * it clears a keep-active override back to neutral, so the thread can settle on
+ * its own again once this burst of work goes stale.
+ */
+function autoUnsettled(
+  command: OrchestrationCommand,
+  at: string,
+  threadId: ThreadId,
+  updatedAt: string,
+) {
+  return event(command, at, 'thread.unsettled', {
+    reason: 'activity',
+    threadId,
+    updatedAt,
+  })
+}
+
 function turnStartRequested(
   command: Extract<OrchestrationCommand, { type: 'thread.turn.start' }>,
   model: OrchestrationReadModel,
@@ -319,6 +563,7 @@ function turnStartRequested(
   if (!bootstrapEvent) requireThreadNotArchived(model, command.threadId, command.type)
 
   const turnEvents = [
+    ...lifecycleResetEvents(command, model.threads.get(command.threadId), at),
     event(command, at, 'thread.message-sent', {
       attachments: command.message.attachments,
       createdAt: at,
@@ -344,6 +589,37 @@ function turnStartRequested(
   ]
 
   return bootstrapEvent ? [bootstrapEvent, ...turnEvents] : turnEvents
+}
+
+/**
+ * Sending is the loudest activity there is, so a turn start spends every parked
+ * state before the message lands: an explicit settle wakes, a keep-active
+ * override drops back to neutral, and the snooze's return ticket is spent —
+ * the user is re-engaging now, not on Tuesday. A bootstrapped thread has no
+ * prior state to reset.
+ */
+function lifecycleResetEvents(
+  command: Extract<OrchestrationCommand, { type: 'thread.turn.start' }>,
+  thread: OrchestrationProjectedThread | undefined,
+  at: string,
+) {
+  if (!thread) return []
+
+  const events: PendingOrchestrationEvent[] = []
+  if (thread.settledOverride != null) {
+    events.push(autoUnsettled(command, at, command.threadId, at))
+  }
+  if (thread.snoozedUntil != null) {
+    events.push(
+      event(command, at, 'thread.unsnoozed', {
+        reason: 'activity',
+        threadId: command.threadId,
+        updatedAt: at,
+      }),
+    )
+  }
+
+  return events
 }
 
 function bootstrapThreadCreated(

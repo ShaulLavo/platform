@@ -1,10 +1,12 @@
-import type { ProjectId } from '@workspace/contracts'
+import type { ProjectId, ThreadId } from '@workspace/contracts'
 
 import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
+import { useSessionMultiSelectStore } from '@/features/chat-mode/state/session-multi-select-store'
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
 import { useSessionReadStore } from '@/features/chat-mode/state/session-read-store'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
+import type { SessionClickIntent } from '@/features/chat-mode/utils/session-multi-select'
 import {
   sessionRailModel,
   type SessionRailItem,
@@ -19,8 +21,8 @@ type SessionProjectOpener = (workspaceRoot: string) => unknown
 /**
  * Opening a project is app-level work that lives behind a hook — it stats the path,
  * switches the editor root, and records the folder as recent — so chat mode hands the
- * opener over for as long as it is mounted. Null the rest of the time, which is also
- * the honest answer for a session command fired while chat mode is not on screen.
+ * opener over for as long as it is mounted. Null the rest of the time, which is why
+ * callers that can fire while chat mode is down — the command palette — bring their own.
  */
 let openProjectRoot: SessionProjectOpener | null = null
 
@@ -28,20 +30,55 @@ export function setSessionProjectOpener(opener: SessionProjectOpener | null) {
   openProjectRoot = opener
 }
 
+export type SessionOpenOptions = {
+  /** Overrides the mounted opener, for callers that run before chat mode exists. */
+  readonly openProject?: SessionProjectOpener
+}
+
 /**
  * The one way a session reaches the stage. Every caller — a row click, a menu item, a
- * keyboard jump — goes through here, so "activate the owning project first" can never
- * be forgotten by one of them.
+ * keyboard jump, a palette row — goes through here, so "activate the owning project
+ * first" can never be forgotten by one of them.
  */
-export function openSessionRow(session: SessionRailItem) {
-  activateSessionProject(session.projectId)
+export function openSessionRow(session: SessionRailItem, options: SessionOpenOptions = {}) {
+  activateSessionProject(session.projectId, options)
   useSessionSelectionStore.getState().selectSession(session.projectId, session.id)
 
   return true
 }
 
-export function startSessionDraft(projectId: ProjectId) {
-  activateSessionProject(projectId)
+/**
+ * A row click, with its modifier keys already read. Plain clicks open and reset the
+ * marked set; the modified ones only mark, because extending a selection and changing
+ * what the stage is showing are different requests.
+ */
+export function activateSessionRow(session: SessionRailItem, intent: SessionClickIntent) {
+  const multiSelect = useSessionMultiSelectStore.getState()
+  if (intent === 'toggle') {
+    multiSelect.toggle(session.id)
+
+    return true
+  }
+  if (intent === 'extend') {
+    multiSelect.extendTo(
+      session.id,
+      visibleSessions().map((item) => item.id),
+    )
+
+    return true
+  }
+
+  multiSelect.markOnly(session.id)
+
+  return openSessionRow(session)
+}
+
+export function clearSessionMultiSelect() {
+  useSessionMultiSelectStore.getState().clear()
+}
+
+export function startSessionDraft(projectId: ProjectId, options: SessionOpenOptions = {}) {
+  activateSessionProject(projectId, options)
   // A new session lands in the inbox, so leaving the archive on screen would show a
   // list the session it just created can never appear in.
   useSessionRailStore.getState().setView('active')
@@ -80,6 +117,8 @@ function openSessionAt(sessions: readonly SessionRailItem[], index: number) {
   const session = sessions[index]
   if (!session) return false
 
+  useSessionMultiSelectStore.getState().markOnly(session.id)
+
   return openSessionRow(session)
 }
 
@@ -102,7 +141,7 @@ function visibleSessions() {
   }).sessions
 }
 
-function selectedThreadId() {
+function selectedThreadId(): ThreadId | null {
   const { selection } = useSessionSelectionStore.getState()
   if (selection.kind !== 'session') return null
 
@@ -121,11 +160,13 @@ function activeProjectId(): ProjectId | null {
   )
 }
 
-function activateSessionProject(projectId: ProjectId) {
+function activateSessionProject(projectId: ProjectId, options: SessionOpenOptions) {
   const project = useChatProjectionStore.getState().projectById[projectId]
   if (!project) return
   if (project.workspaceRoot === useActiveProjectStore.getState().workspaceRoot) return
-  if (!openProjectRoot) return
 
-  void openProjectRoot(project.workspaceRoot)
+  const opener = options.openProject ?? openProjectRoot
+  if (!opener) return
+
+  void opener(project.workspaceRoot)
 }

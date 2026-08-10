@@ -5,7 +5,7 @@ import {
   type ClientOrchestrationCommand,
   type OrchestrationThreadShell,
 } from '@workspace/contracts'
-import { screen } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import * as v from 'valibot'
 
@@ -18,9 +18,13 @@ import {
   type ChatModeSession,
 } from '@/features/chat-mode/providers/session-context'
 import { setSessionProjectOpener } from '@/features/chat-mode/state/session-commands'
+import { useSessionMultiSelectStore } from '@/features/chat-mode/state/session-multi-select-store'
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
 import { resetSessionReadStore } from '@/features/chat-mode/state/session-read-store'
-import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
+import {
+  resetSessionSelectionStore,
+  useSessionSelectionStore,
+} from '@/features/chat-mode/state/session-selection-store'
 import { useActiveProjectStore } from '@/state/active-project-store'
 import { chatProject, shellSnapshot, threadShell } from '../../../../../test/factories/chat'
 import { expect, test } from '../../../../../test/fixtures'
@@ -44,11 +48,98 @@ test('lists every project’s sessions in one ordered list', () => {
   expect(sessionTitles()).toEqual(['Ship the rail', 'Fix the footer'])
 })
 
-test('shows the owning project on each row while every project is in scope', () => {
+test('bands the sessions under their project', () => {
   seedProjection()
   renderSessionRail()
 
-  expect(screen.getByTitle('Fix the footer')).toHaveTextContent('site')
+  // The project name belongs to the header now; repeating it on every row was noise.
+  expect(screen.getByRole('button', { name: /platform/ })).toBeVisible()
+  expect(screen.getByRole('button', { name: /site/ })).toBeVisible()
+  expect(screen.getByTitle('Fix the footer')).not.toHaveTextContent('site')
+})
+
+test('rolls the worst session status up onto the project header', () => {
+  seedProjection({ withWaitingSession: true })
+  renderSessionRail()
+
+  // The site project holds the waiting session; platform holds an idle one.
+  expect(screen.getByRole('button', { name: /site/ })).toHaveTextContent('site')
+  expect(within(screen.getByRole('button', { name: /site/ })).getByRole('status')).toHaveAttribute(
+    'title',
+    'Waiting for you',
+  )
+})
+
+test('a collapsed project keeps the session on the stage visible', async () => {
+  seedProjection()
+  renderSessionRail()
+
+  await userEvent.click(screen.getByRole('button', { name: /platform/ }))
+  // The stage is on "Ship the rail", which lives in the project just folded shut.
+  expect(screen.getByTitle('Ship the rail')).toBeVisible()
+  expect(screen.getByRole('button', { name: /platform/ })).toHaveAttribute('aria-expanded', 'false')
+
+  await userEvent.click(screen.getByRole('button', { name: /site/ }))
+  expect(screen.queryByTitle('Fix the footer')).toBeNull()
+  expect(screen.getByText('1 hidden')).toBeVisible()
+})
+
+test('cmd-click marks a second session instead of opening it', async () => {
+  seedProjection()
+  renderSessionRail()
+  // One user session: held modifiers only carry across clicks made by the same instance.
+  const user = userEvent.setup()
+
+  await user.click(screen.getByTitle('Ship the rail'))
+  await user.keyboard('{Meta>}')
+  await user.click(screen.getByTitle('Fix the footer'))
+  await user.keyboard('{/Meta}')
+
+  expect(useSessionMultiSelectStore.getState().threadIds).toEqual([platformThreadId, siteThreadId])
+  // The stage never moved: marking and opening are different requests.
+  expect(useSessionSelectionStore.getState().selection).toEqual({
+    kind: 'session',
+    projectId: platformId,
+    threadId: platformThreadId,
+  })
+})
+
+test('shift-click extends the mark across the rows between', async () => {
+  seedProjection()
+  renderSessionRail()
+  const user = userEvent.setup()
+
+  await markBothSessions(user)
+
+  expect(useSessionMultiSelectStore.getState().threadIds).toEqual([platformThreadId, siteThreadId])
+  expect(screen.getByRole('toolbar', { name: 'Selected sessions' })).toHaveTextContent('2 selected')
+})
+
+test('escape clears the marked sessions', async () => {
+  seedProjection()
+  renderSessionRail()
+  const user = userEvent.setup()
+
+  await markBothSessions(user)
+  await user.keyboard('{Escape}')
+
+  expect(useSessionMultiSelectStore.getState().threadIds).toEqual([])
+  expect(screen.queryByRole('toolbar', { name: 'Selected sessions' })).toBeNull()
+})
+
+test('archives every marked session in one action', async () => {
+  seedProjection()
+  const calls = renderSessionRail()
+  const user = userEvent.setup()
+
+  await markBothSessions(user)
+  await user.click(screen.getByRole('button', { name: 'Archive' }))
+
+  expect(calls.dispatched.map((command) => command.type)).toEqual([
+    'thread.archive',
+    'thread.archive',
+  ])
+  expect(useSessionMultiSelectStore.getState().threadIds).toEqual([])
 })
 
 test('activates the owning project before selecting a session from another project', async () => {
@@ -123,7 +214,7 @@ test('reports when the search matches nothing', async () => {
   expect(screen.getByText(/No sessions match/)).toBeVisible()
 })
 
-test('scoping to a project hides the others and drops the project label', async () => {
+test('scoping to a project hides the others', async () => {
   seedProjection()
   renderSessionRail()
 
@@ -131,7 +222,6 @@ test('scoping to a project hides the others and drops the project label', async 
   await userEvent.click(await screen.findByRole('menuitemradio', { name: /^site/ }))
 
   expect(sessionTitles()).toEqual(['Fix the footer'])
-  expect(screen.getByTitle('Fix the footer')).not.toHaveTextContent('site')
 })
 
 test('starts a draft in the open project from the new session button', async () => {
@@ -225,6 +315,13 @@ function sessionTitles() {
     .map((element) => element.getAttribute('title') ?? '')
 }
 
+async function markBothSessions(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByTitle('Ship the rail'))
+  await user.keyboard('{Shift>}')
+  await user.click(screen.getByTitle('Fix the footer'))
+  await user.keyboard('{/Shift}')
+}
+
 function isSessionRow(element: HTMLElement) {
   return element.className.includes('group/session')
 }
@@ -249,10 +346,12 @@ function seedProjection({
   withArchivedSession = false,
   withEmptyProject = false,
   withFinishedSession = false,
+  withWaitingSession = false,
 }: {
   withArchivedSession?: boolean
   withEmptyProject?: boolean
   withFinishedSession?: boolean
+  withWaitingSession?: boolean
 } = {}) {
   const emptyProject = withEmptyProject
     ? [chatProject({ id: docsId, title: 'docs', workspaceRoot: '/repo/docs' })]
@@ -269,15 +368,25 @@ function seedProjection({
         }),
       ]
     : []
-  const siteThread = seededThread(
+  const baseSiteThread = seededThread(
     siteThreadId,
     'Fix the footer',
     '2026-05-01T00:00:00.000Z',
     siteId,
   )
+  const siteThread = withWaitingSession
+    ? { ...baseSiteThread, pendingApprovalCount: 1 }
+    : baseSiteThread
 
-  useSessionRailStore.setState({ query: '', renaming: null, scope: null, view: 'active' })
-  useSessionSelectionStore.setState({ selection: { kind: 'auto' } })
+  useSessionRailStore.setState({
+    collapsedProjectIds: [],
+    query: '',
+    renaming: null,
+    scope: null,
+    view: 'active',
+  })
+  useSessionMultiSelectStore.getState().clear()
+  resetSessionSelectionStore()
   useActiveProjectStore.setState({ workspaceRoot: '/repo/platform' })
   resetSessionReadStore()
   useChatProjectionStore.getState().resetChatProjection()
@@ -326,6 +435,8 @@ function renderSessionRail() {
     openProject: (workspaceRoot) => calls.openedProjects.push(workspaceRoot),
     project: chatProject({ id: platformId, title: 'platform', workspaceRoot: '/repo/platform' }),
     ready: true,
+    retrying: false,
+    retryProject: () => {},
     rootPath: '/repo/platform',
     selectSession: () => {},
     startDraft: () => {},

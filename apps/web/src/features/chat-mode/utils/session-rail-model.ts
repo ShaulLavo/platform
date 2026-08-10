@@ -4,6 +4,7 @@ import { projectQualifiers } from '@/features/chat/lib/project-qualifiers'
 import { threadStatus, type ThreadStatus } from '@/features/chat/lib/thread-status'
 import type { ChatSidebarThreadSummary } from '@/features/chat/state/chat-projection-store'
 import { compareSessionsByCreation } from '@/features/chat-mode/utils/session-order'
+import { rollupThreadStatus } from '@/features/chat-mode/utils/session-status-rollup'
 import {
   isSessionUnread,
   sessionCompletedAt,
@@ -39,15 +40,33 @@ export type SessionRailProject = {
   readonly active: boolean
   readonly id: ProjectId
   readonly sessionCount: number
+  /** The worst state anything inside is in — the whole point of a collapsed header. */
+  readonly status: ThreadStatus
   readonly title: string
   /** Parent-path hint, set only when another project shares this title. */
   readonly qualifier: string | null
+  readonly unreadCount: number
   readonly workspaceRoot: string
+}
+
+/**
+ * One project's slice of the list. Collapsing a project hides its rows, so the header
+ * has to carry what was in them: a status rollup, an unread count, and how many rows
+ * are folded away.
+ */
+export type SessionRailGroup = {
+  readonly collapsed: boolean
+  /** Rows a collapse is holding back. Zero while the group is open. */
+  readonly hiddenCount: number
+  readonly project: SessionRailProject
+  readonly sessions: readonly SessionRailItem[]
 }
 
 export type SessionRailModel = {
   /** How many sessions are filed away, whichever view is showing. */
   readonly archivedCount: number
+  /** The visible list, split by project. Empty projects never make a group. */
+  readonly groups: readonly SessionRailGroup[]
   readonly projects: readonly SessionRailProject[]
   /** One ordered list — view, scope and search have already been applied. */
   readonly sessions: readonly SessionRailItem[]
@@ -56,8 +75,12 @@ export type SessionRailModel = {
   readonly scopeTitle: string
 }
 
+const NO_PROJECT_IDS: readonly ProjectId[] = []
+
 export function sessionRailModel({
   activeProjectId = null,
+  activeThreadId = null,
+  collapsedProjectIds = NO_PROJECT_IDS,
   projects,
   query = '',
   scope = null,
@@ -66,6 +89,9 @@ export function sessionRailModel({
   view = 'active',
 }: {
   readonly activeProjectId?: ProjectId | null
+  /** The session on the stage. It stays visible through a collapse, wherever it lives. */
+  readonly activeThreadId?: ThreadId | null
+  readonly collapsedProjectIds?: readonly ProjectId[]
   readonly projects: readonly OrchestrationProjectShell[]
   readonly query?: string
   readonly scope?: SessionRailScope
@@ -86,23 +112,31 @@ export function sessionRailModel({
     )
     .toSorted(compareSessionsByCreation)
   const scoped = scope ? items.filter((item) => item.projectId === scope) : items
-  const countByProjectId = sessionCountByProjectId(items)
+  const sessions = matchingSessions(scoped, query)
+  const railProjects = projects
+    .map((project) =>
+      sessionRailProject(project, {
+        active: project.id === activeProjectId,
+        qualifier: qualifiers.get(project.id) ?? null,
+        sessions: items.filter((item) => item.projectId === project.id),
+      }),
+    )
+    .toSorted(compareSessionRailProjects)
 
   return {
     archivedCount: threads.filter((thread) => Boolean(thread.archivedAt)).length,
-    projects: projects
-      .map((project) => ({
-        active: project.id === activeProjectId,
-        id: project.id,
-        qualifier: qualifiers.get(project.id) ?? null,
-        sessionCount: countByProjectId.get(project.id) ?? 0,
-        title: project.title,
-        workspaceRoot: project.workspaceRoot,
-      }))
-      .toSorted(compareSessionRailProjects),
+    groups: sessionRailGroups({
+      activeThreadId,
+      // A search is a request to see matches. Honouring a collapse on top of one hides
+      // the very rows the user just asked for and reads as a broken search.
+      collapsedProjectIds: query.trim() ? NO_PROJECT_IDS : collapsedProjectIds,
+      projects: railProjects,
+      sessions,
+    }),
+    projects: railProjects,
     scopedCount: scoped.length,
     scopeTitle: scope ? (titleByProjectId.get(scope) ?? 'Project') : 'All projects',
-    sessions: matchingSessions(scoped, query),
+    sessions,
   }
 }
 
@@ -128,6 +162,54 @@ export function sessionRailItem(
   }
 }
 
+function sessionRailProject(
+  project: OrchestrationProjectShell,
+  {
+    active,
+    qualifier,
+    sessions,
+  }: {
+    readonly active: boolean
+    readonly qualifier: string | null
+    readonly sessions: readonly SessionRailItem[]
+  },
+): SessionRailProject {
+  return {
+    active,
+    id: project.id,
+    qualifier,
+    sessionCount: sessions.length,
+    status: rollupThreadStatus(sessions.map((session) => session.status)),
+    title: project.title,
+    unreadCount: sessions.filter((session) => session.unread).length,
+    workspaceRoot: project.workspaceRoot,
+  }
+}
+
+function sessionRailGroups({
+  activeThreadId,
+  collapsedProjectIds,
+  projects,
+  sessions,
+}: {
+  readonly activeThreadId: ThreadId | null
+  readonly collapsedProjectIds: readonly ProjectId[]
+  readonly projects: readonly SessionRailProject[]
+  readonly sessions: readonly SessionRailItem[]
+}): readonly SessionRailGroup[] {
+  return projects.flatMap((project) => {
+    const owned = sessions.filter((session) => session.projectId === project.id)
+    if (owned.length === 0) return []
+
+    const collapsed = collapsedProjectIds.includes(project.id)
+    // Folding a project must never fold away the conversation on screen, or the rail
+    // stops agreeing with the stage and the highlighted row simply disappears.
+    const visible = collapsed ? owned.filter((session) => session.id === activeThreadId) : owned
+
+    return [{ collapsed, hiddenCount: owned.length - visible.length, project, sessions: visible }]
+  })
+}
+
 /**
  * Substring match over the fields the row actually shows. Deliberately not fuzzy: the
  * rail is a short recall list, and fuzzy ranking here surfaces sessions whose titles
@@ -142,15 +224,6 @@ function matchingSessions(items: readonly SessionRailItem[], query: string) {
 
 function sessionSearchText(item: SessionRailItem) {
   return `${item.title}\n${item.projectTitle}\n${item.branch ?? ''}`.toLowerCase()
-}
-
-function sessionCountByProjectId(items: readonly SessionRailItem[]) {
-  const counts = new Map<ProjectId, number>()
-  for (const item of items) {
-    counts.set(item.projectId, (counts.get(item.projectId) ?? 0) + 1)
-  }
-
-  return counts
 }
 
 /** Active project first, then most sessions, then alphabetical. */

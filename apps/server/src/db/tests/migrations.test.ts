@@ -96,14 +96,34 @@ describe('platform migration ledger', () => {
     expect(columnInfo(handle, 'provider_session_runtime', 'provider_instance_id')?.not_null).toBe(1)
   })
 
+  it('adds the thread lifecycle columns and their pinned lookup index', () => {
+    const handle = openTempDatabase()
+
+    migrateOrchestrationDatabase(handle.db)
+
+    expect(columnNames(handle, 'projection_threads')).toEqual(
+      expect.arrayContaining([
+        'settled_override',
+        'settled_at',
+        'snoozed_until',
+        'snoozed_at',
+        'pinned_at',
+        'pin_order_key',
+      ]),
+    )
+    expect(indexNames(handle, 'projection_threads')).toContain(
+      'projection_threads_pinned_order_idx',
+    )
+  })
+
   it('adds a column to a database already at the 001 baseline', () => {
     const handle = openTempDatabase()
     migratePlatformDatabase(handle.db)
 
-    const applied = migratePlatformDatabase(handle.db, [...platformMigrations, addSnoozedAt])
+    const applied = migratePlatformDatabase(handle.db, [...platformMigrations, addParkedAt])
 
     expect(applied.map((migration) => migration.version)).toEqual([nextVersion])
-    expect(columnNames(handle, 'projection_threads')).toContain('snoozed_at')
+    expect(columnNames(handle, 'projection_threads')).toContain('parked_at')
     expect(ledgerVersions(handle)).toEqual([...ledgerVersionNumbers, nextVersion])
   })
 
@@ -112,10 +132,10 @@ describe('platform migration ledger', () => {
     migratePlatformDatabase(handle.db)
 
     expect(() =>
-      migratePlatformDatabase(handle.db, [...platformMigrations, addSnoozedAtThenThrow]),
-    ).toThrow(new RegExp(`migration ${nextVersion}_add_projection_threads_snoozed_at failed`, 'i'))
+      migratePlatformDatabase(handle.db, [...platformMigrations, addParkedAtThenThrow]),
+    ).toThrow(new RegExp(`migration ${nextVersion}_add_projection_threads_parked_at failed`, 'i'))
 
-    expect(columnNames(handle, 'projection_threads')).not.toContain('snoozed_at')
+    expect(columnNames(handle, 'projection_threads')).not.toContain('parked_at')
     expect(ledgerVersions(handle)).toEqual(ledgerVersionNumbers)
   })
 
@@ -123,7 +143,7 @@ describe('platform migration ledger', () => {
     const handle = openTempDatabase()
 
     const error = captureError(() =>
-      migratePlatformDatabase(handle.db, [...platformMigrations, addSnoozedAtThenThrow]),
+      migratePlatformDatabase(handle.db, [...platformMigrations, addParkedAtThenThrow]),
     )
 
     expect(error).toMatchObject({
@@ -135,18 +155,18 @@ describe('platform migration ledger', () => {
   })
 })
 
-const addSnoozedAt: Migration = {
-  name: 'add_projection_threads_snoozed_at',
+const addParkedAt: Migration = {
+  name: 'add_projection_threads_parked_at',
   up: (database) => {
-    database.run(sql`ALTER TABLE projection_threads ADD COLUMN snoozed_at TEXT`)
+    database.run(sql`ALTER TABLE projection_threads ADD COLUMN parked_at TEXT`)
   },
   version: nextVersion,
 }
 
-const addSnoozedAtThenThrow: Migration = {
-  name: 'add_projection_threads_snoozed_at',
+const addParkedAtThenThrow: Migration = {
+  name: 'add_projection_threads_parked_at',
   up: (database) => {
-    database.run(sql`ALTER TABLE projection_threads ADD COLUMN snoozed_at TEXT`)
+    database.run(sql`ALTER TABLE projection_threads ADD COLUMN parked_at TEXT`)
     throw new Error('migration exploded after its DDL')
   },
   version: nextVersion,

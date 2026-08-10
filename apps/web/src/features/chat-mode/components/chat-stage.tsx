@@ -5,6 +5,8 @@ import { ChatView } from '@/features/chat/components/chat-view'
 import { contextUsageForActivities } from '@/features/chat/lib/context-usage'
 import { selectChatThreadById } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
+import { SessionMissingState } from '@/features/chat-mode/components/session-missing-state'
+import { StageEmptyState } from '@/features/chat-mode/components/stage-empty-state'
 import { StageHeader } from '@/features/chat-mode/components/stage-header'
 import { useMarkSessionSeen } from '@/features/chat-mode/hooks/use-mark-session-seen'
 import {
@@ -87,6 +89,9 @@ function stageBody({
   readonly rootPath: string
   readonly onThreadCreated: (threadId: ThreadId) => void
 }) {
+  // Before anything else: with no project there is no session to resolve, and a
+  // composer that cannot send is the state this screen exists to replace.
+  if (!ready) return <StageEmptyState />
   if (activeSession.status === 'resolving') {
     return (
       <div className='text-muted-foreground flex min-h-0 flex-1 items-center justify-center px-4 text-center text-xs'>
@@ -94,10 +99,13 @@ function stageBody({
       </div>
     )
   }
+  if (activeSession.status === 'missing') return <SessionMissingState />
   if (activeSessionShowsComposer(activeSession)) {
     return (
       <ChatDraftView
-        disabled={!ready}
+        // Never disabled here: reaching this line means the project is ready, and the
+        // states that are not get their own screen above.
+        disabled={false}
         environment={environment}
         project={project}
         rootPath={rootPath}

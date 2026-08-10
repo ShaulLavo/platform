@@ -30,6 +30,7 @@ export const platformMigrations: readonly Migration[] = [
     up: applyThreadProposedPlanAndCheckpointProjections,
   },
   { version: 3, name: 'app_settings', up: applyAppSettings },
+  { version: 4, name: 'thread_lifecycle_columns', up: applyThreadLifecycleColumns },
 ]
 
 /**
@@ -451,6 +452,24 @@ function applyAppSettings(database: PlatformDatabase) {
 			value_json TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		)
+	`)
+}
+
+/**
+ * The settle / snooze / pin lifecycle. Every column is nullable with no
+ * default: "the user has said nothing about this thread" is the ground state,
+ * and it has to be distinguishable from "the user explicitly kept it active".
+ */
+function applyThreadLifecycleColumns(database: PlatformDatabase) {
+  database.run(sql`ALTER TABLE projection_threads ADD COLUMN settled_override TEXT`)
+  database.run(sql`ALTER TABLE projection_threads ADD COLUMN settled_at TEXT`)
+  database.run(sql`ALTER TABLE projection_threads ADD COLUMN snoozed_until TEXT`)
+  database.run(sql`ALTER TABLE projection_threads ADD COLUMN snoozed_at TEXT`)
+  database.run(sql`ALTER TABLE projection_threads ADD COLUMN pinned_at TEXT`)
+  database.run(sql`ALTER TABLE projection_threads ADD COLUMN pin_order_key TEXT`)
+  database.run(sql`
+		CREATE INDEX projection_threads_pinned_order_idx
+		ON projection_threads (pinned_at, pin_order_key)
 	`)
 }
 

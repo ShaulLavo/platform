@@ -5,13 +5,22 @@ import {
   PlusIcon,
   XIcon,
 } from '@phosphor-icons/react'
+import type { KeyboardEvent } from 'react'
 
 import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
-import { SessionRow } from '@/features/chat-mode/components/session-row'
+import { SessionBulkBar } from '@/features/chat-mode/components/session-bulk-bar'
+import { SessionGroup } from '@/features/chat-mode/components/session-group'
 import { SessionScopeMenu } from '@/features/chat-mode/components/session-scope-menu'
 import { useChatModeSession } from '@/features/chat-mode/providers/session-context'
-import { startScopedSessionDraft } from '@/features/chat-mode/state/session-commands'
+import {
+  clearSessionMultiSelect,
+  startScopedSessionDraft,
+} from '@/features/chat-mode/state/session-commands'
+import {
+  isSessionBulkSelection,
+  useSessionMultiSelectStore,
+} from '@/features/chat-mode/state/session-multi-select-store'
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
 import { useSessionReadStore } from '@/features/chat-mode/state/session-read-store'
 import {
@@ -29,14 +38,18 @@ export function SessionRail() {
   const threadIds = useChatProjectionStore((state) => state.threadIds)
   const summaryById = useChatProjectionStore((state) => state.sidebarThreadSummaryById)
   const seenByThreadId = useSessionReadStore((state) => state.seenByThreadId)
+  const collapsedProjectIds = useSessionRailStore((state) => state.collapsedProjectIds)
   const query = useSessionRailStore((state) => state.query)
   const scope = useSessionRailStore((state) => state.scope)
   const view = useSessionRailStore((state) => state.view)
   const setQuery = useSessionRailStore((state) => state.setQuery)
   const setScope = useSessionRailStore((state) => state.setScope)
   const setView = useSessionRailStore((state) => state.setView)
+  const markedThreadIds = useSessionMultiSelectStore((state) => state.threadIds)
   const model = sessionRailModel({
     activeProjectId: project?.id ?? null,
+    activeThreadId: activeSession.threadId,
+    collapsedProjectIds,
     projects,
     query,
     scope,
@@ -49,8 +62,21 @@ export function SessionRail() {
     setView(view === 'archived' ? 'active' : 'archived')
   }
 
+  // Escape is the universal "never mind" for a marked set, and the rail is the only
+  // place it means that — the app keymap has no business knowing about this list.
+  function handleKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (event.key !== 'Escape') return
+    if (markedThreadIds.length === 0) return
+
+    event.preventDefault()
+    clearSessionMultiSelect()
+  }
+
   return (
-    <aside className='bg-card backdrop-material border-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-r'>
+    <aside
+      className='bg-card backdrop-material border-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-r'
+      onKeyDown={handleKeyDown}
+    >
       <div className='flex shrink-0 items-center gap-1 px-2 pt-2'>
         <Button
           className='h-8 min-w-0 flex-1 justify-start gap-2 rounded-md px-2 text-[13px]'
@@ -126,13 +152,12 @@ export function SessionRail() {
         ) : null}
       </div>
       <div className='min-h-0 flex-1 overflow-y-auto'>
-        <div className='flex flex-col gap-0.5 px-1 pb-3'>
-          {model.sessions.map((session) => (
-            <SessionRow
-              active={session.id === activeSession.threadId}
-              key={session.id}
-              session={session}
-              showProject={scope === null}
+        <div className='flex flex-col gap-2 px-1 pb-3'>
+          {model.groups.map((group) => (
+            <SessionGroup
+              activeThreadId={activeSession.threadId}
+              group={group}
+              key={group.project.id}
             />
           ))}
           {model.sessions.length === 0 ? (
@@ -142,6 +167,7 @@ export function SessionRail() {
           ) : null}
         </div>
       </div>
+      {isSessionBulkSelection(markedThreadIds) ? <SessionBulkBar /> : null}
     </aside>
   )
 }
