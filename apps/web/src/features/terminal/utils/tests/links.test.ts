@@ -216,7 +216,15 @@ test('a screen filled with one unbroken run scans in linear time', () => {
   const elapsed = performance.now() - started
 
   expect(links).toEqual([])
-  expect(elapsed).toBeLessThan(30)
+  // 200ms, not 30: the defect this guards is catastrophic backtracking, which
+  // is an order-of-magnitude failure (~740ms above), so 3.7x of headroom still
+  // catches it — while 30ms was inside the noise of a machine running the rest
+  // of the suite beside it, and went red there.
+  //
+  // If this flakes again, change the instrument rather than the number. A
+  // wall-clock budget shared with 200 other test files measures the machine;
+  // the honest deterministic form is a step-count on the scanner.
+  expect(elapsed).toBeLessThan(200)
 })
 
 function hexRun(seed: number, length: number) {

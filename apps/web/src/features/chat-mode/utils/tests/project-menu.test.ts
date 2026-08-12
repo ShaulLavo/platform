@@ -8,12 +8,17 @@ test('offers a new session first, then manage, then the view controls, then copy
   expect(itemLabels(menuContext(), 'copy')).toEqual(['Copy Path'])
 })
 
-test('offers to archive everything and to delete the project', () => {
-  expect(itemLabels(menuContext(), 'manage')).toEqual(['Archive All Sessions', 'Delete Project'])
+test('offers to rename, archive everything, and delete the project', () => {
+  expect(itemLabels(menuContext(), 'manage')).toEqual([
+    'Rename Project',
+    'Archive All Sessions',
+    'Delete Project',
+  ])
 })
 
 test('omits archive all once every session is already filed away', () => {
   expect(itemLabels(menuContext({ canArchiveSessions: false }), 'manage')).toEqual([
+    'Rename Project',
     'Delete Project',
   ])
 })
@@ -50,6 +55,7 @@ test('every item runs its own callback', () => {
 
   expect(calls).toEqual([
     'newSession',
+    'renameProject',
     'archiveAllSessions',
     'deleteProject',
     'scopeToProject',
@@ -97,6 +103,7 @@ function menuContext({
     copyPath: () => record.push('copyPath'),
     deleteProject: () => record.push('deleteProject'),
     newSession: () => record.push('newSession'),
+    renameProject: () => record.push('renameProject'),
     scopedToProject,
     scopeToProject: () => record.push('scopeToProject'),
     toggleCollapsed: () => record.push('toggleCollapsed'),

@@ -2,6 +2,7 @@ import { selectChatSidebarThreadsForProject } from '@/features/chat/state/chat-p
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { useProjectActions } from '@/features/chat-mode/hooks/use-project-actions'
 import { startSessionDraft } from '@/features/chat-mode/state/session-commands'
+import { useProjectRenameRequestStore } from '@/features/chat-mode/state/project-rename-request-store'
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
 import { projectMenu } from '@/features/chat-mode/utils/project-menu'
 import type { SessionRailGroup } from '@/features/chat-mode/utils/session-rail-model'
@@ -31,6 +32,10 @@ export function useProjectMenu(group: SessionRailGroup) {
     copyPath: () => void copyTextToClipboard(project.workspaceRoot, 'path'),
     deleteProject: () => actions.deleteProject(project),
     newSession: () => startSessionDraft(project.id),
+    renameProject: () =>
+      useProjectRenameRequestStore
+        .getState()
+        .requestRename({ projectId: project.id, title: project.title }),
     scopedToProject: scope === project.id,
     scopeToProject: () => setScope(project.id),
     toggleCollapsed: () => toggleProjectCollapsed(project.id),

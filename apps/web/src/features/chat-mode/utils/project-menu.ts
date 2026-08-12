@@ -4,6 +4,7 @@ import {
   CaretRightIcon,
   CopyIcon,
   FunnelIcon,
+  PencilSimpleIcon,
   PlusIcon,
   TrashIcon,
 } from '@phosphor-icons/react'
@@ -21,6 +22,7 @@ export type ProjectMenuContext = {
   readonly copyPath: () => void
   readonly deleteProject: () => void
   readonly newSession: () => void
+  readonly renameProject: () => void
   readonly scopeToProject: () => void
   readonly toggleCollapsed: () => void
 }
@@ -36,6 +38,12 @@ export function projectMenu(context: ProjectMenuContext): Menu {
       }),
     ]),
     section('manage', [
+      actionItem({
+        icon: PencilSimpleIcon,
+        id: 'renameProject',
+        label: 'Rename Project',
+        run: context.renameProject,
+      }),
       context.canArchiveSessions &&
         actionItem({
           icon: ArchiveIcon,

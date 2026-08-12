@@ -13,6 +13,8 @@ import {
   createDraftThreadSubmission,
   createCheckpointRevertCommand,
   createProjectDefaultModelCommand,
+  createProjectMetaCommand,
+  createProjectScriptsCommand,
   createThreadInterruptCommand,
   createTurnSubmission,
   createWorkspaceProjectCommand,
@@ -194,5 +196,35 @@ describe('chat command builders', () => {
       'Fix the failing chat projection tests',
     )
     expect(threadTitleFromPrompt('x'.repeat(80))).toHaveLength(50)
+  })
+
+  it('a project rename names only the field it changes', () => {
+    const projectId = workspaceProjectId('/Users/test/workspace/platform')
+    const command = createProjectMetaCommand({ projectId, title: 'Renamed' })
+
+    // The projection patches compactly, so an absent key means "leave it alone".
+    // Sending `workspaceRoot: undefined` explicitly would be the same object to
+    // JSON but a different one to Valibot's `v.optional`, and repointing a
+    // project at `undefined` is not what a rename means.
+    expect(command).toEqual({
+      commandId: expect.any(String),
+      projectId,
+      title: 'Renamed',
+      type: 'project.meta.update',
+    })
+    expect('workspaceRoot' in command).toBe(false)
+    expect('scripts' in command).toBe(false)
+  })
+
+  it('saved scripts are written as a whole list, empty included', () => {
+    const cleared = createProjectScriptsCommand({
+      projectId: workspaceProjectId('/Users/test/workspace/platform'),
+      scripts: [],
+    })
+
+    // Empty is a real value the user chose — it is how the list is cleared — so
+    // it must survive as `[]` rather than being dropped as "nothing to say".
+    expect(cleared.scripts).toEqual([])
+    expect('title' in cleared).toBe(false)
   })
 })

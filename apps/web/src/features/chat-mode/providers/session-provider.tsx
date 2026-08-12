@@ -7,6 +7,7 @@ import { selectChatSidebarThreadsForProject } from '@/features/chat/state/chat-p
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { ProjectDeleteDialog } from '@/features/chat-mode/components/project-delete-dialog'
+import { ProjectRenameDialog } from '@/features/chat-mode/components/project-rename-dialog'
 import { SessionDeleteDialog } from '@/features/chat-mode/components/session-delete-dialog'
 import { useProjectRetry } from '@/features/chat-mode/hooks/use-project-retry'
 import { ChatRailOrderProvider } from '@/features/chat-mode/providers/rail-order-provider'
@@ -108,6 +109,7 @@ export function ChatModeSessionProvider({
           thing to unmount once the answer is yes. */}
       <SessionDeleteDialog />
       <ProjectDeleteDialog />
+      <ProjectRenameDialog />
     </ChatModeSessionContext>
   )
 }
