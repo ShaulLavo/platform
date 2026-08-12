@@ -51,7 +51,7 @@ Effort letters from the matrix: S = days, M = 1–2 wk, L = 3–6 wk, XL = multi
 
 ### E0 — Unwired wins (~2 weeks total; everything here has its data or engine code already built)
 
-> **Status: 7 of 11 landed** — bracket matching, word wrap, go-to-line, occurrence highlighting, document links, signature help, compare-with-saved. Committed in both repos with tests; the highlighters, links, and compare-with-saved were verified in the running app. Remaining: expand/shrink selection, markdown preview, open-at-ref, AI commit message.
+> **Status: 8 of 11 landed** — bracket matching, word wrap, go-to-line, occurrence highlighting, document links, signature help, compare-with-saved, open-file-at-ref. Committed in both repos with tests; the highlighters, links, compare-with-saved, and open-at-ref were verified in the running app. Remaining: expand/shrink selection (re-rated, see below), markdown preview, AI commit message.
 
 - ✅ **Bracket-match highlight + jump-to-bracket** — the worker's bracket ranges had no consumer past `syntaxController`; `brackets` now reaches `EditorViewSnapshot` (gated by the folds coverage check) and `bracketMatchPlugin` paints the pair. `editor.action.jumpToBracket` on `Mod+\` — VS Code's `Mod+Shift+\` is unavailable because the hotkey layer refuses Shift+punctuation as layout-dependent. Matching validates characters rather than trusting the worker's `depth`, which collides on unbalanced text (`{ a ]`).
 - ✅ **Word wrap** — `wordWrap` in EditorOptions, `setWordWrap`/`isWordWrapEnabled`, and `editor.action.toggleWordWrap` on `Alt+Z`.
@@ -62,7 +62,7 @@ Effort letters from the matrix: S = days, M = 1–2 wk, L = 3–6 wk, XL = multi
 - ✅ **Document links** — http(s) URLs underlined, Cmd/Ctrl+click to open; viewport-scoped, narrow matching, keeps a `)` the address itself opened.
 - Markdown live preview — engine package built; add to platform plugin list. (S) — _blocked on adding `@singapor/markdown` as a web dependency, which touches the bun-link/turbo-cache setup._
 - ✅ **Compare with Saved** — a `compare-saved:` document kind diffing the live buffer against disk, both sides read live so the diff keeps updating as you type. In the editor context menu. _Revert file, compare-with-clipboard, and select-for-compare remain open; revert also needs the undo-history hazard resolved (see the text-menu note)._
-- Open file at ref — server `file(path, ref)` exists; add the command. (S)
+- ✅ **Open file at ref** — `git-ref:` document kind + "Open File at HEAD". Read-only by construction: the content lands in an _unsynced_ document, which the save path and the file-backed guards both refuse, because the editor has no read-only flag.
 - AI commit message — sparkle button over the orchestration runtime we already run. (S)
 
 ### E1 — Typing assistance (the "feels finished" wave)
