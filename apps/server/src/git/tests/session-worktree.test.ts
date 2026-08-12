@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -55,6 +55,34 @@ describe('session worktrees', () => {
     expect(await fileExists(path.join(b.worktree.absolutePath, 'only-a.txt'))).toBe(false)
     expect(await fileExists(path.join(root, 'only-a.txt'))).toBe(false)
   })
+  it('removes a session checkout that has nothing uncommitted in it', async () => {
+    const root = await gitRepo()
+    const worktrees = worktreeService(root)
+    const created = await worktrees.create({ path: root, sessionId: 'session-a' })
+
+    await worktrees.remove({
+      force: false,
+      path: root,
+      worktreePath: created.worktree.absolutePath,
+    })
+
+    expect(await directoryExists(created.worktree.absolutePath)).toBe(false)
+  })
+
+  it('refuses to discard a session checkout with uncommitted work', async () => {
+    const root = await gitRepo()
+    const worktrees = worktreeService(root)
+    const created = await worktrees.create({ path: root, sessionId: 'session-a' })
+    await writeFile(path.join(created.worktree.absolutePath, 'unsaved.txt'), 'work\n')
+
+    // Deleting a conversation is not consent to throw away the code that came
+    // out of it. The unforced remove has to fail so the caller can leave the
+    // checkout on disk and say where it is.
+    await expect(
+      worktrees.remove({ force: false, path: root, worktreePath: created.worktree.absolutePath }),
+    ).rejects.toThrow()
+    expect(await directoryExists(created.worktree.absolutePath)).toBe(true)
+  })
 })
 
 function worktreeService(root: string) {
@@ -63,6 +91,14 @@ function worktreeService(root: string) {
 
 async function fileExists(target: string) {
   return Bun.file(target).exists()
+}
+
+/** `Bun.file().exists()` is false for a directory, so worktrees need `stat`. */
+async function directoryExists(target: string) {
+  return stat(target).then(
+    (entry) => entry.isDirectory(),
+    () => false,
+  )
 }
 
 async function branchAt(cwd: string) {

@@ -1,8 +1,9 @@
 import { eq } from 'drizzle-orm'
 import type { ChatAttachment, ThreadId } from '@workspace/contracts'
 import { deleteAttachmentBlobs } from '../attachments/store'
-import { projectionThreadMessages } from '../db/schema'
+import { projectionProjects, projectionThreadMessages, projectionThreads } from '../db/schema'
 import type { OrchestrationDatabase } from './event-store'
+import type { GitWorktreeService } from '../git/worktrees'
 import type { ProviderService } from '../provider/provider-service'
 import type { ProviderRuntimeBindingWithMetadata } from '../provider/provider-session-directory'
 import {
@@ -37,19 +38,24 @@ export class ThreadDeletionReactor implements OrchestrationDomainEventReactor {
   private readonly cleanups = new Set<Promise<void>>()
   private readonly cleaningThreads = new Set<ThreadId>()
   private readonly attachmentsDir: string
+  /** Null when the engine was built without git; reclamation is skipped rather than faked. */
+  private readonly worktrees: GitWorktreeService | null
   private readonly database: OrchestrationDatabase
   private readonly providerService: ProviderService
 
   constructor({
     attachmentsDir,
+    worktrees,
     database,
     providerService,
   }: {
     attachmentsDir: string
+    worktrees?: GitWorktreeService | null
     database: OrchestrationDatabase
     providerService: ProviderService
   }) {
     this.attachmentsDir = attachmentsDir
+    this.worktrees = worktrees ?? null
     this.database = database
     this.providerService = providerService
   }
@@ -98,11 +104,16 @@ export class ThreadDeletionReactor implements OrchestrationDomainEventReactor {
     // is still there to tell us which blobs the thread owned. Deleting a thread
     // is the only moment its images become unreclaimable garbage.
     const blobsReclaimed = await this.reclaimBlobs(threadId)
+    // A session that ran in its own checkout leaves a whole worktree behind,
+    // which no other deletion path reclaims — the row is a tombstone and the
+    // directory outlives the app.
+    const worktree = await this.reclaimWorktree(threadId)
     const cleanup = {
       ...orchestrationEventSummary(event),
       bindingStatus: binding?.status ?? null,
       blobsReclaimed,
       durationMs: elapsedMs(startedAt),
+      ...worktree,
       ...outcome,
     }
 
@@ -126,6 +137,58 @@ export class ThreadDeletionReactor implements OrchestrationDomainEventReactor {
     } catch {
       return 0
     }
+  }
+
+  /**
+   * Removes the session's own checkout, and only ever that.
+   *
+   * Never forced. A worktree with uncommitted changes is left on disk and named
+   * on the wide event instead: the user deleted a conversation, which is not
+   * the same as consenting to throw away the code that came out of it. The
+   * worktree list is where they find it afterwards.
+   */
+  private async reclaimWorktree(threadId: ThreadId) {
+    if (!this.worktrees) return { worktreeRemoved: false }
+
+    const target = this.threadWorktree(threadId)
+    if (!target) return { worktreeRemoved: false }
+
+    try {
+      await this.worktrees.remove({
+        force: false,
+        path: target.workspaceRoot,
+        worktreePath: target.worktreePath,
+      })
+
+      return { worktreeRemoved: true }
+    } catch (error) {
+      return { worktreeRemoved: false, worktreeRetained: target.worktreePath, worktreeError: error }
+    }
+  }
+
+  /** Null unless the thread had a checkout of its own — the project root is not one. */
+  private threadWorktree(threadId: ThreadId) {
+    const row = this.database
+      .select({
+        projectId: projectionThreads.projectId,
+        worktreePath: projectionThreads.worktreePath,
+      })
+      .from(projectionThreads)
+      .where(eq(projectionThreads.threadId, threadId))
+      .get()
+    if (!row?.worktreePath) return null
+
+    const project = this.database
+      .select({ workspaceRoot: projectionProjects.workspaceRoot })
+      .from(projectionProjects)
+      .where(eq(projectionProjects.projectId, row.projectId))
+      .get()
+    if (!project) return null
+    // The overwhelmingly common case, and the one that must never be removed:
+    // a thread with no worktree of its own is stamped with the project root.
+    if (project.workspaceRoot === row.worktreePath) return null
+
+    return { workspaceRoot: project.workspaceRoot, worktreePath: row.worktreePath }
   }
 
   private threadAttachments(threadId: ThreadId): ChatAttachment[] {

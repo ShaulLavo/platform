@@ -14,6 +14,7 @@ import { isDurableCommandRejection, OrchestrationCommandReceipts } from './comma
 import { decideOrchestrationCommand } from './decider'
 import { OrchestrationEventStore, type OrchestrationDatabase } from './event-store'
 import { OrchestrationProjectionPipeline } from './projection-pipeline'
+import { GitWorktreeService } from '../git/worktrees'
 import { ThreadBranchReactor } from './thread-branch-reactor'
 import { ensureCommandWorkspaceRoot } from './workspace-root'
 import { ProviderCommandReactor } from './provider-command-reactor'
@@ -380,6 +381,9 @@ export class OrchestrationEngine {
         attachmentsDir: this.attachmentsDir,
         database: this.database,
         providerService,
+        worktrees: providerRuntimeOptions?.checkpointGit
+          ? new GitWorktreeService(providerRuntimeOptions.checkpointGit)
+          : null,
       }),
     )
     this.subscribeCheckpointReactor(providerRuntimeOptions?.checkpointGit, providerService)
