@@ -31,16 +31,17 @@ const EDITOR_COLOR_THEME_STORAGE_KEY = 'platform.editor-color-theme.v1'
 const EDITOR_COLOR_THEME_STORAGE_VERSION = 1
 /**
  * Running the pointer down the theme list is one decision, not sixty-five.
- * Applying a preview costs the shiki worker a full re-tokenize of every open
- * document — measured at ~500ms for a theme it has not built a highlighter for
- * yet, ~60ms once warm — and the worker runs those one after another per
- * document. Applying every row the pointer crosses queues far more work than the
- * scrub took to perform, and the theme the user actually stops on lands minutes
- * later, behind the queue. So the preview state moves immediately (badges and
- * anything reading the selection stay honest) while the reload it triggers waits
- * for the pointer to settle.
+ * Applying a preview costs the shiki worker a re-tokenize of every open document
+ * (~120ms here, and the worker runs them one after another per document), so
+ * applying every row the pointer crosses queues far more work than the scrub took
+ * to perform and buries the theme the user actually stopped on behind it. The
+ * preview state moves immediately — badges and anything reading the selection
+ * stay honest — while the reload it triggers waits for the pointer to settle.
+ *
+ * Kept short deliberately: this is the floor on how fast a preview can feel, so
+ * it wants to be just long enough to swallow a scrub and no longer.
  */
-const PREVIEW_SETTLE_MS = 150
+const PREVIEW_SETTLE_MS = 60
 
 const DEFAULT_DEFINITION_BY_COLOR_MODE = {
   dark: requireVscodeThemeDefinition('dark-plus'),
@@ -58,6 +59,7 @@ const previewSettle = new Debouncer(() => notifyEditorColorThemeListeners(), {
   wait: PREVIEW_SETTLE_MS,
 })
 
+let themeSwitchingPrepared = false
 let selectionByColorMode: Record<EditorColorMode, string> | null = null
 let activeEditorColorMode: EditorColorMode = 'dark'
 // A hover-preview that overlays the persisted selection without touching
@@ -123,6 +125,29 @@ export function clearEditorThemePreview() {
 
   previewTheme = null
   notifyEditorColorThemeListeners()
+}
+
+/**
+ * Called when the user opens the theme picker, i.e. the first moment switching
+ * themes stops being hypothetical. Until then a highlighter session names only
+ * the theme it renders, so opening a document never pays for the other
+ * sixty-four; from here on sessions name them all, which is what keeps a swap on
+ * one already-built highlighter. The notify rebuilds the open sessions right
+ * away, so the cost lands while the user is still reaching for the first row
+ * rather than inside the first preview.
+ *
+ * One-way on purpose: a user who has opened the picker once is likely to open it
+ * again, and narrowing the set back would spend the same rebuild to undo it.
+ */
+export function prepareEditorThemeSwitching() {
+  if (themeSwitchingPrepared) return
+
+  themeSwitchingPrepared = true
+  notifyEditorColorThemeListeners()
+}
+
+export function editorThemeSwitchingPrepared(): boolean {
+  return themeSwitchingPrepared
 }
 
 /**
@@ -212,6 +237,7 @@ export function preloadVscodeThemeRegistrations(): Promise<void> {
 /** Test hook: drops in-memory state so the next read hits localStorage again. */
 export function resetEditorColorThemeStore() {
   previewSettle.cancel()
+  themeSwitchingPrepared = false
   selectionByColorMode = null
   activeEditorColorMode = 'dark'
   previewTheme = null

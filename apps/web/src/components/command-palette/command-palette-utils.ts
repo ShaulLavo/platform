@@ -16,12 +16,14 @@ import type { PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
 import { fuzzyRankScore } from '@workspace/contracts'
 
 import {
+  colorModePaletteItems,
   hiddenCommandPaletteCommands,
   paletteModeCommands,
   selectedFileCommands,
   workspaceOptionalCommands,
 } from './command-palette-data'
 import type {
+  ColorModePaletteItem,
   CommandPaletteItem,
   EditorPaletteItem,
   FilePaletteItem,
@@ -42,14 +44,57 @@ export function commandPaletteItems(
     .map((spec) => platformCommandPaletteItem(spec, bindings))
 }
 
+export const RECENTLY_USED_COMMANDS_HEADING = 'Recently Used'
+/**
+ * How many recents lead the list. Enough that what you just ran is one glance
+ * away, few enough that the categories underneath are still reachable without
+ * typing — a recents group tall enough to fill the list would bury them.
+ */
+const RECENTLY_USED_COMMANDS_SHOWN = 6
+
 export function groupedCommandItems(
   items: readonly CommandPaletteItem[],
   search = '',
+  recentCommandIds: readonly string[] = [],
 ): readonly (readonly [string, readonly CommandPaletteItem[]])[] {
   const query = quickAccessQuery(search)
-  if (query) return groupedCommandItemsInOrder(rankedCommandItems(items, query))
+  const recency = recencyRankByCommandId(recentCommandIds)
+  if (query) return groupedCommandItemsInOrder(rankedCommandItems(items, query, recency))
 
-  return groupedCommandItemsInOrder(items)
+  return recentCommandsFirstGroups(items, recency)
+}
+
+function recencyRankByCommandId(recentCommandIds: readonly string[]): ReadonlyMap<string, number> {
+  return new Map(recentCommandIds.map((commandId, rank) => [commandId, rank]))
+}
+
+function commandRecencyRank(item: CommandPaletteItem, recency: ReadonlyMap<string, number>) {
+  return recency.get(item.id) ?? Number.MAX_SAFE_INTEGER
+}
+
+/**
+ * With no query the palette is a menu, and the useful default for a menu is what
+ * you reached for last. Recents lead; everything else keeps its category order
+ * underneath, minus the ones already promoted so no command is listed twice.
+ */
+function recentCommandsFirstGroups(
+  items: readonly CommandPaletteItem[],
+  recency: ReadonlyMap<string, number>,
+): readonly (readonly [string, readonly CommandPaletteItem[]])[] {
+  const recent = items
+    .filter((item) => recency.has(item.id))
+    .toSorted(
+      (left, right) => commandRecencyRank(left, recency) - commandRecencyRank(right, recency),
+    )
+    .slice(0, RECENTLY_USED_COMMANDS_SHOWN)
+  if (recent.length === 0) return groupedCommandItemsInOrder(items)
+
+  const promoted = new Set(recent.map((item) => item.id))
+
+  return [
+    [RECENTLY_USED_COMMANDS_HEADING, recent] as const,
+    ...groupedCommandItemsInOrder(items.filter((item) => !promoted.has(item.id))),
+  ]
 }
 
 function groupedCommandItemsInOrder(
@@ -72,12 +117,17 @@ function groupedCommandItemsInOrder(
 type RankedCommandItem = {
   readonly item: CommandPaletteItem
   readonly order: number
+  readonly recency: number
   readonly score: number
   readonly strong: boolean
 }
 
-function rankedCommandItems(items: readonly CommandPaletteItem[], query: string) {
-  const ranked = items.flatMap((item, order) => rankedCommandItem(item, query, order))
+function rankedCommandItems(
+  items: readonly CommandPaletteItem[],
+  query: string,
+  recency: ReadonlyMap<string, number>,
+) {
+  const ranked = items.flatMap((item, order) => rankedCommandItem(item, query, order, recency))
   const hasStrongMatch = ranked.some((item) => item.strong)
 
   return ranked
@@ -86,7 +136,12 @@ function rankedCommandItems(items: readonly CommandPaletteItem[], query: string)
     .map((item) => item.item)
 }
 
-function rankedCommandItem(item: CommandPaletteItem, query: string, order: number) {
+function rankedCommandItem(
+  item: CommandPaletteItem,
+  query: string,
+  order: number,
+  recency: ReadonlyMap<string, number>,
+) {
   const score = quickAccessFilter(item.id, query, item.keywords)
   if (score <= 0) return []
 
@@ -94,6 +149,7 @@ function rankedCommandItem(item: CommandPaletteItem, query: string, order: numbe
     {
       item,
       order,
+      recency: commandRecencyRank(item, recency),
       score,
       strong: commandItemStrongMatch(item, query),
     },
@@ -111,8 +167,15 @@ function commandItemMatchesPiece(item: CommandPaletteItem, piece: string) {
   return item.keywords.some((keyword) => keyword.toLocaleLowerCase().includes(piece))
 }
 
+// Match quality first — a typed query is a statement about what you want, and
+// recency must not talk over it. Recency only breaks ties, which is exactly where
+// registry order was deciding arbitrarily before.
 function compareRankedCommandItems(left: RankedCommandItem, right: RankedCommandItem) {
-  return compareNumbers(right.score, left.score) || compareNumbers(left.order, right.order)
+  return (
+    compareNumbers(right.score, left.score) ||
+    compareNumbers(left.recency, right.recency) ||
+    compareNumbers(left.order, right.order)
+  )
 }
 
 export function filePaletteItems(state: LoadState<TreeModel>): readonly FilePaletteItem[] {
@@ -311,6 +374,24 @@ export function sessionPaletteKeywords(session: {
 
 export function sessionItemValue(threadId: string) {
   return `session:${threadId}`
+}
+
+const COLOR_THEME_VALUE_PREFIX = 'color-theme:'
+
+export function colorThemeItemValue(themeId: string) {
+  return `${COLOR_THEME_VALUE_PREFIX}${themeId}`
+}
+
+/** The theme behind a highlighted palette row, or `null` if the row is not one. */
+export function colorThemeIdFromItemValue(value: string): string | null {
+  if (!value.startsWith(COLOR_THEME_VALUE_PREFIX)) return null
+
+  return value.slice(COLOR_THEME_VALUE_PREFIX.length) || null
+}
+
+/** The color mode behind a highlighted palette row, or `null` if the row is not one. */
+export function colorModeItemForValue(value: string): ColorModePaletteItem | null {
+  return colorModePaletteItems.find((item) => item.value === value) ?? null
 }
 
 export function sessionProjectItemValue(projectId: string) {

@@ -38,6 +38,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import {
   activeEditorThemeUsesShiki,
   activeShikiThemeId,
+  editorThemeSwitchingPrepared,
   getLoadedVscodeThemeRegistration,
   subscribeEditorColorTheme,
 } from '@/features/editor/state/editor-color-theme-store'
@@ -58,6 +59,8 @@ const FOLD_CHEVRON_ICON_MARKUP = renderToStaticMarkup(
     weight: 'bold',
   }),
 )
+
+const NO_PRELOADED_THEMES: readonly string[] = []
 
 let treeSitterSyntaxProvider: EditorSyntaxProvider | null = null
 let treeSitterSyntaxBackend: TreeSitterBackend | null = null
@@ -267,7 +270,11 @@ function createEditorShikiHighlighterPlugin(): EditorPlugin {
     languages: EDITOR_SHIKI_LANGUAGE_MAP,
     onThemeChanged: (listener) => subscribeEditorColorTheme(listener),
     preloadLanguages: EDITOR_SHIKI_PRELOAD_LANGUAGES,
-    preloadThemes: EDITOR_SHIKI_PRELOAD_THEMES,
+    // Naming every theme is what makes a swap reuse one highlighter, but it is
+    // only worth building until the user shows they intend to switch — opening a
+    // document should not pay for sixty-five themes nobody asked for.
+    preloadThemes: () =>
+      editorThemeSwitchingPrepared() ? EDITOR_SHIKI_PRELOAD_THEMES : NO_PRELOADED_THEMES,
     theme: () => resolveShikiThemeForSession(),
     // The worker can resolve only ~20 themes by name; the rest need a real
     // registration object handed over synchronously at session creation.

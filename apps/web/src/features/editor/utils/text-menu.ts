@@ -12,6 +12,7 @@ import {
   GitDiffIcon,
   GitForkIcon,
   ListMagnifyingGlassIcon,
+  MagicWandIcon,
 } from '@phosphor-icons/react'
 
 import { commandItem, section, type Menu } from '@/features/menus/utils/model'
@@ -75,6 +76,10 @@ export function editorTextMenu(): Menu {
       commandItem('editor.editor.action.blockComment', {
         icon: CodeBlockIcon,
         label: 'Toggle Block Comment',
+      }),
+      commandItem('editor.editor.action.formatDocument', {
+        icon: MagicWandIcon,
+        label: 'Format Document',
       }),
     ]),
     // Acts on the active editor, the same surface the caret commands above target —

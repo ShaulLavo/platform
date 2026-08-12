@@ -1,8 +1,9 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 
 import { expect, test } from '../../../../test/fixtures'
 import { ColorModeGroups } from '@/components/command-palette/color-mode-groups'
+import { colorModeItemForValue } from '@/components/command-palette/command-palette-utils'
 import {
   CommandPaletteActionsContext,
   type CommandPaletteActions,
@@ -10,7 +11,7 @@ import {
 import { Command } from '@workspace/ui/components/command'
 import type { ReactNode } from 'react'
 
-test('previews color mode on hover without selecting the command', () => {
+test('rows carry the value the preview path reads back', () => {
   const actions = commandPaletteActions()
 
   render(
@@ -21,26 +22,13 @@ test('previews color mode on hover without selecting the command', () => {
     </CommandPaletteActionsProvider>,
   )
 
-  fireEvent.pointerEnter(screen.getByText('Dark'))
+  // Preview runs off the highlighted row's value so the keyboard previews too;
+  // the row value has to resolve back to the mode it stands for.
+  const row = screen.getByText('Dark').closest('[cmdk-item]')
 
-  expect(actions.previewPlatformCommand).toHaveBeenCalledWith('workspace.setDarkTheme')
-  expect(actions.selectPlatformCommand).not.toHaveBeenCalled()
-})
-
-test('does not preview the already active color mode', () => {
-  const actions = commandPaletteActions()
-
-  render(
-    <CommandPaletteActionsProvider actions={actions}>
-      <Command>
-        <ColorModeGroups currentTheme='dark' />
-      </Command>
-    </CommandPaletteActionsProvider>,
+  expect(colorModeItemForValue(row?.getAttribute('data-value') ?? '')?.command).toBe(
+    'workspace.setDarkTheme',
   )
-
-  fireEvent.pointerEnter(screen.getByText('Dark'))
-
-  expect(actions.previewPlatformCommand).not.toHaveBeenCalled()
 })
 
 function CommandPaletteActionsProvider({

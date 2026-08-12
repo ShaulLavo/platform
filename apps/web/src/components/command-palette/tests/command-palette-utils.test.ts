@@ -7,6 +7,7 @@ import {
   fileBackedPath,
   groupedCommandItems,
   quickAccessMode,
+  RECENTLY_USED_COMMANDS_HEADING,
   quickAccessQuery,
 } from '@/components/command-palette/command-palette-utils'
 import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
@@ -38,6 +39,56 @@ test('command groups rank strong command matches above earlier weak fuzzy groups
   expect(groups.flatMap(([, groupItems]) => groupItems.map((item) => item.id))).not.toContain(
     'workspace.toggleSidebarVisibility',
   )
+})
+
+test('the unfiltered command list leads with what was used most recently', () => {
+  const items = commandPaletteItems(platformCommandSpecs, defaultPlatformKeyBindings('linux'))
+  const groups = groupedCommandItems(items, '>', [
+    'workspace.selectColorTheme',
+    'workspace.toggleSidebarVisibility',
+  ])
+
+  expect(groups[0]?.[0]).toBe(RECENTLY_USED_COMMANDS_HEADING)
+  expect(groups[0]?.[1].map((item) => item.id)).toEqual([
+    'workspace.selectColorTheme',
+    'workspace.toggleSidebarVisibility',
+  ])
+})
+
+test('a promoted command is not also listed under its category', () => {
+  const items = commandPaletteItems(platformCommandSpecs, defaultPlatformKeyBindings('linux'))
+  const groups = groupedCommandItems(items, '>', ['workspace.selectColorTheme'])
+  const idsBelowRecents = groups
+    .slice(1)
+    .flatMap(([, groupItems]) => groupItems.map((item) => item.id))
+
+  expect(idsBelowRecents).not.toContain('workspace.selectColorTheme')
+})
+
+test('no recents leaves the plain category order alone', () => {
+  const items = commandPaletteItems(platformCommandSpecs, defaultPlatformKeyBindings('linux'))
+
+  expect(groupedCommandItems(items, '>', [])).toEqual(groupedCommandItems(items, '>'))
+})
+
+test('recency does not outrank a better match once a query is typed', () => {
+  const items = commandPaletteItems(platformCommandSpecs, defaultPlatformKeyBindings('linux'))
+  const ids = (recentCommandIds: readonly string[]) =>
+    groupedCommandItems(items, '> color', recentCommandIds).flatMap(([, groupItems]) =>
+      groupItems.map((item) => item.id),
+    )
+
+  // A typed query is a statement about what you want; recency only settles
+  // matches the query itself cannot separate, and these two it can.
+  expect(ids([])).toEqual(ids(['workspace.selectColorTheme']))
+  expect(ids([])).toEqual(['workspace.selectColorMode', 'workspace.selectColorTheme'])
+})
+
+test('a query never promotes recents into a group of their own', () => {
+  const items = commandPaletteItems(platformCommandSpecs, defaultPlatformKeyBindings('linux'))
+  const groups = groupedCommandItems(items, '> color', ['workspace.selectColorTheme'])
+
+  expect(groups.map(([heading]) => heading)).not.toContain(RECENTLY_USED_COMMANDS_HEADING)
 })
 
 test('workspace commands require a workspace unless explicitly optional', () => {

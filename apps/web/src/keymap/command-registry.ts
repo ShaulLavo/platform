@@ -250,6 +250,9 @@ const editorCommandSpecs = [
   ]),
   editorCommand('editor.action.changeAll', 'Change all occurrences', ['editor.action.changeAll']),
   editorCommand('editor.action.jumpToBracket', 'Go to bracket', ['editor.action.jumpToBracket']),
+  editorCommand('editor.action.formatDocument', 'Format document', [
+    'editor.action.formatDocument',
+  ]),
   editorCommand('editor.action.toggleWordWrap', 'Toggle word wrap', [
     'editor.action.toggleWordWrap',
   ]),

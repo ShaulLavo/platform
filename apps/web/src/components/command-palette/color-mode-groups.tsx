@@ -5,20 +5,13 @@ import { CommandGroup, CommandItem, CommandShortcut } from '@workspace/ui/compon
 import { useCommandPaletteActions } from '@/components/command-palette/hooks/use-command-palette-actions'
 import { colorModePaletteItems } from './command-palette-data'
 import { RowLabel } from './row-label'
-import type { PlatformCommandId } from '@/keymap/types'
 
 type ColorModeGroupsProps = {
   readonly currentTheme: Theme
 }
 
 export function ColorModeGroups({ currentTheme }: ColorModeGroupsProps) {
-  const { previewPlatformCommand, selectPlatformCommand } = useCommandPaletteActions()
-
-  function previewColorMode(command: PlatformCommandId, mode: Theme) {
-    if (mode === currentTheme) return
-
-    previewPlatformCommand(command)
-  }
+  const { selectPlatformCommand } = useCommandPaletteActions()
 
   return (
     <CommandGroup heading='Color Mode'>
@@ -27,7 +20,6 @@ export function ColorModeGroups({ currentTheme }: ColorModeGroupsProps) {
           key={item.value}
           keywords={[item.title, item.description, item.command]}
           value={item.value}
-          onPointerEnter={() => previewColorMode(item.command, item.mode)}
           onSelect={() => selectPlatformCommand(item.command)}
         >
           <CommandIcon className='text-muted-foreground' />

@@ -11,12 +11,17 @@ import {
 
 import { CommandPaletteGroupsFactory } from '@/components/command-palette/command-palette-groups-factory'
 import { useCommandPaletteScripts } from '@/components/command-palette/use-command-palette-scripts'
+import { useHighlightedPaletteValue } from '@/components/command-palette/hooks/use-highlighted-palette-value'
+import { useRecentCommandIds } from '@/components/command-palette/hooks/use-recent-command-ids'
+import { recordCommandUse } from '@/components/command-palette/state/recent-commands-store'
 import { useTerminalCommandInboxStore } from '@/features/terminal/state/command-inbox-store'
 import type {
   CommandPaletteItem,
   CommandPaletteProps,
 } from '@/components/command-palette/command-palette-types'
 import {
+  colorModeItemForValue,
+  colorThemeIdFromItemValue,
   commandKeepsPaletteOpen,
   commandPaletteItemDisabledReason,
   commandPaletteItems,
@@ -46,7 +51,7 @@ import {
   type CommandPaletteActions,
 } from '@/components/command-palette/providers/actions-context'
 import { useTheme } from '@/components/theme-context'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 
 export function CommandPaletteContent({
   bindings,
@@ -95,7 +100,9 @@ export function CommandPaletteContent({
   // can open a session from the workbench — so it brings its own.
   const openWorkspaceRoot = useOpenWorkspaceRoot()
   const commandItems = commandPaletteItems(platformCommandSpecs, bindings)
-  const groups = groupedCommandItems(commandItems, search)
+  const recentCommandIds = useRecentCommandIds()
+  const groups = groupedCommandItems(commandItems, search, recentCommandIds)
+  const listRef = useRef<HTMLDivElement>(null)
 
   // Cancel any hover-preview when the palette closes without a selection; the
   // commit path in `selectColorTheme` clears the preview itself.
@@ -104,10 +111,40 @@ export function CommandPaletteContent({
     clearEditorThemePreview()
   }, [open])
 
+  // Preview follows the highlighted row rather than the pointer, so arrowing
+  // through the list previews exactly like moving the mouse over it does.
+  useHighlightedPaletteValue({
+    enabled: open && isColorPreviewMode(mode),
+    listRef,
+    onHighlight: (value) => {
+      if (mode === 'colorTheme') {
+        previewHighlightedColorTheme(value)
+        return
+      }
+      previewHighlightedColorMode(value)
+    },
+  })
+
   function handleCommandValueChange(value: string) {
     if (mode !== 'files') return
 
     setSelectedFileItemValue(value)
+  }
+
+  function previewHighlightedColorTheme(value: string) {
+    const themeId = colorThemeIdFromItemValue(value)
+    if (!themeId) return
+
+    previewEditorTheme(resolvedTheme, themeId)
+  }
+
+  function previewHighlightedColorMode(value: string) {
+    const item = colorModeItemForValue(value)
+    // Previewing a color mode means actually running its command, so the mode
+    // already in effect must not be re-dispatched.
+    if (!item || item.mode === theme) return
+
+    dispatch(item.command)
   }
 
   function handleSearchChange(value: string) {
@@ -142,6 +179,8 @@ export function CommandPaletteContent({
 
         const handled = dispatch(item.command.command)
         if (handled === false) return
+
+        recordCommandUse(item.command.command)
         if (commandPaletteItemKeepsOpen(item)) return
 
         onOpenChange(false)
@@ -155,6 +194,8 @@ export function CommandPaletteContent({
 
         const handled = dispatch(command)
         if (handled === false) return
+
+        recordCommandUse(command)
         if (commandKeepsPaletteOpen(command)) return
 
         onOpenChange(false)
@@ -244,7 +285,7 @@ export function CommandPaletteContent({
         onValueChange={handleSearchChange}
       />
       {/* VS Code's quick-input list height, floored so a short window still fits. */}
-      <CommandList className='max-h-[min(440px,calc(100vh-8rem))] py-1'>
+      <CommandList className='max-h-[min(440px,calc(100vh-8rem))] py-1' ref={listRef}>
         <CommandEmpty>{emptyLabelForMode(mode)}</CommandEmpty>
         <CommandPaletteActionsContext value={actions}>
           <CommandPaletteGroupsFactory

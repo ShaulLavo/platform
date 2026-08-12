@@ -4,18 +4,24 @@ import { useEffect } from 'react'
 
 import { useCommandPaletteActions } from '@/components/command-palette/hooks/use-command-palette-actions'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
-import { preloadVscodeThemeRegistrations } from '@/features/editor/state/editor-color-theme-store'
+import {
+  prepareEditorThemeSwitching,
+  preloadVscodeThemeRegistrations,
+} from '@/features/editor/state/editor-color-theme-store'
 import { editorThemeOptions, type EditorThemeOption } from '@/features/editor/utils/theme-catalog'
+import { colorThemeItemValue } from './command-palette-utils'
 import { RowLabel } from './row-label'
 
 export function ColorThemeGroups() {
-  const { previewColorTheme, selectColorTheme } = useCommandPaletteActions()
-  const { committedThemeId, shikiTheme } = useEditorColorTheme()
+  const { selectColorTheme } = useCommandPaletteActions()
+  const { committedThemeId } = useEditorColorTheme()
 
-  // Warm every bundled theme's registration so hover-preview can switch to any
-  // of the 65 themes without the few-frame flash of unhighlighted text the
-  // worker would otherwise show while its dynamic import is in flight.
+  // Opening this list is the moment switching themes stops being hypothetical,
+  // so both warmups start here rather than at document open: the registrations
+  // every preview hands the worker, and the worker-side highlighter that makes a
+  // swap a re-tokenize instead of a rebuild.
   useEffect(() => {
+    prepareEditorThemeSwitching()
     void preloadVscodeThemeRegistrations()
   }, [])
 
@@ -24,17 +30,13 @@ export function ColorThemeGroups() {
       <ColorThemeGroup
         heading='Color Theme — Dark'
         activeThemeId={committedThemeId}
-        previewThemeId={shikiTheme}
         themes={editorThemeOptions('dark')}
-        onPreview={previewColorTheme}
         onSelect={selectColorTheme}
       />
       <ColorThemeGroup
         heading='Color Theme — Light'
         activeThemeId={committedThemeId}
-        previewThemeId={shikiTheme}
         themes={editorThemeOptions('light')}
-        onPreview={previewColorTheme}
         onSelect={selectColorTheme}
       />
     </>
@@ -44,16 +46,12 @@ export function ColorThemeGroups() {
 function ColorThemeGroup({
   heading,
   activeThemeId,
-  previewThemeId,
   themes,
-  onPreview,
   onSelect,
 }: {
   readonly heading: string
   readonly activeThemeId: string
-  readonly previewThemeId: string
   readonly themes: readonly EditorThemeOption[]
-  readonly onPreview: (themeId: string) => void
   readonly onSelect: (themeId: string) => void
 }) {
   return (
@@ -62,11 +60,7 @@ function ColorThemeGroup({
         <CommandItem
           key={theme.id}
           keywords={[theme.label, theme.id, theme.type, theme.source]}
-          value={`color-theme:${theme.id}`}
-          onPointerEnter={() => {
-            if (theme.id === previewThemeId) return
-            onPreview(theme.id)
-          }}
+          value={colorThemeItemValue(theme.id)}
           onSelect={() => onSelect(theme.id)}
         >
           <PaletteIcon className='text-muted-foreground' />
