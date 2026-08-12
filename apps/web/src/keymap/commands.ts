@@ -28,6 +28,7 @@ import {
   nextEditorDiffViewMode,
   type EditorDiffViewMode,
 } from '@/features/editor/utils/diff-view-mode'
+import { useSessionIsolationStore } from '@/features/chat-mode/state/session-isolation-store'
 import {
   activeEditorPathForWorkbenchPanels,
   activeEditorTabForWorkbenchPanels,
@@ -263,6 +264,14 @@ const workspaceCommandHandlers: Partial<Record<WorkspaceCommandId, WorkspaceComm
     setUiMode('workbench')
     setWorkbenchPanels(setWorkbenchBottomTab(workbenchPanels, 'terminal'))
     setFocusArea('terminal')
+    return true
+  },
+  // Arms the next send rather than creating anything now: the worktree is
+  // prepared when the message is actually sent, so an armed draft the user
+  // abandons leaves no checkout behind to clean up.
+  'workspace.newIsolatedSession': ({ setUiMode }) => {
+    useSessionIsolationStore.getState().setIsolateNextSession(true)
+    setUiMode('chat')
     return true
   },
   'workspace.gotoSymbol': ({ activeFilePath, showCommandPalette }) => {

@@ -51,6 +51,7 @@ export type WorkspaceCommandId =
   | 'workspace.focusGit'
   | 'workspace.revealChat'
   | 'workspace.revealTerminal'
+  | 'workspace.newIsolatedSession'
   | 'workspace.closeCurrentTab'
   | 'workspace.toggleDiffViewMode'
   | 'workspace.toggleUiMode'

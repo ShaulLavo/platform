@@ -171,6 +171,7 @@ export function createDraftThreadSubmission({
   terminalContexts = NO_TERMINAL_CONTEXTS,
   text,
   title: titleOverride,
+  worktree,
 }: {
   attachments?: ChatAttachmentUpload[]
   createdAt: string
@@ -188,6 +189,12 @@ export function createDraftThreadSubmission({
    * instruction that carries it.
    */
   title?: string
+  /**
+   * The session's own checkout, when one was prepared for it. Absent means the
+   * session shares the project root, which is what every session did before
+   * worktrees were reachable.
+   */
+  worktree?: { branch: string | null; path: string }
 }): DraftThreadSubmission {
   const threadId = createThreadId()
   const title = titleOverride ?? threadTitleFromPrompt(text) ?? 'New chat'
@@ -208,13 +215,13 @@ export function createDraftThreadSubmission({
       ...submission.command,
       bootstrap: {
         createThread: {
-          branch: null,
+          branch: worktree?.branch ?? null,
           interactionMode,
           modelSelection,
           projectId,
           runtimeMode,
           title,
-          worktreePath: rootPath,
+          worktreePath: worktree?.path ?? rootPath,
         },
       },
       titleSeed: title,
