@@ -236,6 +236,24 @@ function createEditorSyntaxHighlightingPlugins(): readonly EditorPlugin[] {
 }
 
 /**
+ * The theme name the shiki worker is asked for, logged at the point of decision.
+ * Nothing downstream reports which theme a highlighter session was built with, so
+ * without this a theme swap that fails to repaint is indistinguishable from one
+ * that never reached the worker.
+ */
+function resolveShikiThemeForSession(): string {
+  const themeId = activeShikiThemeId()
+  log.debug({
+    action: 'editor.color-theme.shiki_resolved',
+    area: 'editor',
+    hasRegistration: Boolean(getLoadedVscodeThemeRegistration(themeId)),
+    themeId,
+  })
+
+  return themeId
+}
+
+/**
  * The shiki highlighter, registered only while the selected theme is one shiki
  * can paint. The built-in themes color tree-sitter's captures instead, and
  * tree-sitter emits highlights only when no highlighter session exists — so a
@@ -248,7 +266,7 @@ function createEditorShikiHighlighterPlugin(): EditorPlugin {
     languages: EDITOR_SHIKI_LANGUAGE_MAP,
     onThemeChanged: (listener) => subscribeEditorColorTheme(listener),
     preloadLanguages: EDITOR_SHIKI_PRELOAD_LANGUAGES,
-    theme: () => activeShikiThemeId(),
+    theme: () => resolveShikiThemeForSession(),
     // The worker can resolve only ~20 themes by name; the rest need a real
     // registration object handed over synchronously at session creation.
     themeRegistration: () => getLoadedVscodeThemeRegistration(activeShikiThemeId()),

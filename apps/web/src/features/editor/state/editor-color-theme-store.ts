@@ -8,14 +8,21 @@ import {
 } from '@singapor/core/shiki'
 import type { ShikiWorkerThemeRegistration } from '@singapor/core/shiki'
 
+import {
+  builtinEditorTheme,
+  editorThemeExists,
+  isBuiltinEditorThemeId,
+  type BuiltinEditorThemeDefinition,
+} from '@/features/editor/utils/theme-catalog'
 import { log } from '@/lib/client-logging'
 import { clientErrors } from '@/lib/structured-errors'
 
 export type EditorColorMode = 'dark' | 'light'
 
 export type LoadedEditorColorTheme = {
-  readonly definition: VscodeThemeDefinition
-  readonly registration: VscodeThemeRegistration
+  /** `null` for the built-in themes: they are not backed by a VSCode theme. */
+  readonly definition: VscodeThemeDefinition | null
+  readonly registration: VscodeThemeRegistration | null
   readonly editorTheme: EditorTheme
 }
 
@@ -45,7 +52,7 @@ let previewTheme: { readonly colorMode: EditorColorMode; readonly themeId: strin
  * when one is active, otherwise the committed selection. Used by the shiki
  * plugin's theme resolver and by surfaces that follow live preview.
  */
-export function getSelectedVscodeThemeId(colorMode: EditorColorMode): string {
+export function getSelectedEditorThemeId(colorMode: EditorColorMode): string {
   if (previewTheme?.colorMode === colorMode) return previewTheme.themeId
   return readSelectionByColorMode()[colorMode]
 }
@@ -55,13 +62,13 @@ export function getSelectedVscodeThemeId(colorMode: EditorColorMode): string {
  * palette's "active" badge so it tracks what the user committed, not the row
  * currently under the pointer.
  */
-export function getCommittedVscodeThemeId(colorMode: EditorColorMode): string {
+export function getCommittedEditorThemeId(colorMode: EditorColorMode): string {
   return readSelectionByColorMode()[colorMode]
 }
 
-export function setSelectedVscodeThemeId(colorMode: EditorColorMode, themeId: string) {
+export function setSelectedEditorThemeId(colorMode: EditorColorMode, themeId: string) {
   const selection = readSelectionByColorMode()
-  if (!vscodeThemeDefinitionById.has(themeId)) return
+  if (!editorThemeExists(themeId)) return
   if (selection[colorMode] === themeId && previewTheme === null) return
 
   previewTheme = null
@@ -73,8 +80,8 @@ export function setSelectedVscodeThemeId(colorMode: EditorColorMode, themeId: st
   void ensureRegistrationLoaded(themeId)
 }
 
-export function previewVscodeTheme(colorMode: EditorColorMode, themeId: string) {
-  if (!vscodeThemeDefinitionById.has(themeId)) return
+export function previewEditorTheme(colorMode: EditorColorMode, themeId: string) {
+  if (!editorThemeExists(themeId)) return
   if (previewTheme?.colorMode === colorMode && previewTheme.themeId === themeId) return
   if (previewTheme === null && readSelectionByColorMode()[colorMode] === themeId) return
 
@@ -87,11 +94,34 @@ export function previewVscodeTheme(colorMode: EditorColorMode, themeId: string) 
   void ensureRegistrationLoaded(themeId)
 }
 
-export function clearVscodeThemePreview() {
+export function clearEditorThemePreview() {
   if (previewTheme === null) return
 
   previewTheme = null
   notifyEditorColorThemeListeners()
+}
+
+/**
+ * Whether the active selection is painted by shiki. The built-in themes color
+ * tree-sitter captures instead, and tree-sitter only emits highlights while no
+ * highlighter session exists — so this is what decides whether the shiki
+ * highlighter is registered at all.
+ */
+export function activeEditorThemeUsesShiki(): boolean {
+  return !isBuiltinEditorThemeId(getSelectedEditorThemeId(activeEditorColorMode))
+}
+
+/**
+ * The shiki theme name for the active color mode. Falls back to that mode's
+ * default when a built-in theme is selected, so a resolver call that races the
+ * highlighter's deregistration can never hand the worker a name it cannot
+ * resolve.
+ */
+export function activeShikiThemeId(): string {
+  const themeId = getSelectedEditorThemeId(activeEditorColorMode)
+  if (vscodeThemeDefinitionById.has(themeId)) return themeId
+
+  return DEFAULT_DEFINITION_BY_COLOR_MODE[activeEditorColorMode].id
 }
 
 /**
@@ -130,9 +160,12 @@ export function setActiveEditorColorMode(colorMode: EditorColorMode) {
 export function loadEditorThemeForSelection(
   colorMode: EditorColorMode,
 ): Promise<LoadedEditorColorTheme> {
+  const themeId = getSelectedEditorThemeId(colorMode)
+  const builtin = builtinEditorTheme(themeId)
+  if (builtin) return loadBuiltinEditorTheme(builtin)
+
   const definition =
-    vscodeThemeDefinitionById.get(getSelectedVscodeThemeId(colorMode)) ??
-    DEFAULT_DEFINITION_BY_COLOR_MODE[colorMode]
+    vscodeThemeDefinitionById.get(themeId) ?? DEFAULT_DEFINITION_BY_COLOR_MODE[colorMode]
 
   return loadEditorTheme(definition, colorMode)
 }
@@ -160,6 +193,22 @@ export function resetEditorColorThemeStore() {
   loadedThemeById.clear()
   registrationByIdSync.clear()
   editorColorThemeListeners.clear()
+}
+
+function loadBuiltinEditorTheme(
+  builtin: BuiltinEditorThemeDefinition,
+): Promise<LoadedEditorColorTheme> {
+  const cached = loadedThemeById.get(builtin.id)
+  if (cached) return cached
+
+  const loaded = Promise.resolve({
+    definition: null,
+    editorTheme: builtin.editorTheme,
+    registration: null,
+  } satisfies LoadedEditorColorTheme)
+
+  loadedThemeById.set(builtin.id, loaded)
+  return loaded
 }
 
 function loadEditorTheme(
@@ -213,6 +262,8 @@ function ensureRegistrationLoaded(
     return inFlight.then(() => undefined).catch(() => undefined)
   }
 
+  // Built-in themes carry their palette inline — nothing to import, and nothing
+  // the shiki worker would accept.
   const definition = vscodeThemeDefinitionById.get(themeId)
   if (!definition) return Promise.resolve()
 
@@ -254,7 +305,7 @@ function persistedThemeIdForColorMode(colorMode: EditorColorMode): string {
   const fallback = DEFAULT_DEFINITION_BY_COLOR_MODE[colorMode].id
   const persisted = readPersistedSelection()
   const themeId = persisted?.[colorMode]
-  if (!themeId || !vscodeThemeDefinitionById.has(themeId)) return fallback
+  if (!themeId || !editorThemeExists(themeId)) return fallback
 
   return themeId
 }
@@ -299,7 +350,7 @@ function notifyEditorColorThemeListeners() {
 
 function themeIdIsCurrentlySelected(themeId: string): boolean {
   return (
-    getSelectedVscodeThemeId('dark') === themeId || getSelectedVscodeThemeId('light') === themeId
+    getSelectedEditorThemeId('dark') === themeId || getSelectedEditorThemeId('light') === themeId
   )
 }
 

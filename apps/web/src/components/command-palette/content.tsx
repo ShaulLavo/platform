@@ -8,7 +8,6 @@ import {
   CommandInput,
   CommandList,
 } from '@workspace/ui/components/command'
-import { cn } from '@workspace/ui/lib/utils'
 
 import { CommandPaletteGroupsFactory } from '@/components/command-palette/command-palette-groups-factory'
 import { useCommandPaletteScripts } from '@/components/command-palette/use-command-palette-scripts'
@@ -222,15 +221,8 @@ export function CommandPaletteContent({
     ],
   )
 
-  const colorPreview = isColorPreviewMode(mode)
-
   return (
     <CommandDialog
-      // Picking a color is the one mode where the palette is not the thing being
-      // looked at — the editor behind it is. So it pulls up, narrows, and stops
-      // frosting the overlay, leaving as much live-previewed code on screen as a
-      // centered dialog can.
-      className={colorPreview ? 'top-[6vh] sm:max-w-[420px]' : undefined}
       commandProps={{
         filter: quickAccessFilter,
         loop: true,
@@ -238,7 +230,11 @@ export function CommandPaletteContent({
         shouldFilter: mode !== 'files',
         value: selectedCommandValue,
       }}
-      overlayClassName={colorPreview ? 'supports-backdrop-filter:backdrop-blur-none' : undefined}
+      // Drop the frosted overlay while picking colors so the live hover-preview
+      // of the editor behind the palette is visible, not blurred.
+      overlayClassName={
+        isColorPreviewMode(mode) ? 'supports-backdrop-filter:backdrop-blur-none' : undefined
+      }
       open={open}
       onOpenChange={onOpenChange}
     >
@@ -247,9 +243,8 @@ export function CommandPaletteContent({
         value={search}
         onValueChange={handleSearchChange}
       />
-      <CommandList
-        className={cn('py-1', colorPreview ? 'max-h-[min(38vh,300px)]' : 'max-h-[min(58vh,440px)]')}
-      >
+      {/* VS Code's quick-input list height, floored so a short window still fits. */}
+      <CommandList className='max-h-[min(440px,calc(100vh-8rem))] py-1'>
         <CommandEmpty>{emptyLabelForMode(mode)}</CommandEmpty>
         <CommandPaletteActionsContext value={actions}>
           <CommandPaletteGroupsFactory

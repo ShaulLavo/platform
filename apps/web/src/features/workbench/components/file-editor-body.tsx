@@ -1,5 +1,7 @@
 import { WarningCircleIcon } from '@phosphor-icons/react'
 
+import { CompareSavedView } from '@/features/editor/components/compare-saved-view'
+import { parseCompareSavedDocumentId } from '@/features/editor/compare-saved-document'
 import { Editor } from '@/features/editor/components/editor'
 import { LanguageServerReferencesPane } from '@/features/editor/components/language-server-references-pane'
 import type { EditorRenderDocument } from '@/features/editor/editor-render-document'
@@ -41,6 +43,11 @@ export function FileEditorBody({
   const diffDocument = parseDiffDocumentId(path)
 
   if (diffDocument) return <DiffView documentInfo={diffDocument} rootPath={rootPath} />
+
+  // Same reasoning as the diff branch: a compare document is not file-backed, so it never owns a
+  // live editor document and has to be claimed before the editor branch.
+  const comparePath = parseCompareSavedDocumentId(path)
+  if (comparePath) return <CompareSavedView path={comparePath} rootPath={rootPath} />
 
   if (liveDocument) {
     return (

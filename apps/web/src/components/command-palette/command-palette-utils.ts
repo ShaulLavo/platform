@@ -1,3 +1,4 @@
+import { parseCompareSavedDocumentId } from '@/features/editor/compare-saved-document'
 import {
   parseSearchBufferDocumentId,
   searchBufferDocumentLabel,
@@ -228,6 +229,7 @@ export function commandDisabledReason(command: PlatformCommandId, context: Comma
 export function fileBackedPath(path: string | null) {
   if (!path) return null
   if (parseSearchBufferDocumentId(path)) return null
+  if (parseCompareSavedDocumentId(path)) return null
 
   return path
 }

@@ -3,8 +3,14 @@ import type { MenuCommandItem } from '@/features/menus/utils/model'
 import { commandDisabledReason } from '@/components/command-palette/command-palette-utils'
 import { expect, test } from '../../../../../test/fixtures'
 
-test('sections run navigate, edit, then palette', () => {
-  expect(editorTextMenu().map((entry) => entry.id)).toEqual(['navigate', 'edit', 'palette'])
+test('sections run navigate, edit, file, then palette', () => {
+  expect(editorTextMenu().map((entry) => entry.id)).toEqual(['navigate', 'edit', 'file', 'palette'])
+})
+
+// Revert File is intentionally absent: our revert rebuilds the buffer and discards undo history,
+// so it stays in the palette rather than one misclick away.
+test('the file section offers Save and not Revert', () => {
+  expect(labels('file')).toEqual(['Save'])
 })
 
 test('the navigate section leads with the definition jumps, then the wider searches', () => {

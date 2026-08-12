@@ -52,8 +52,11 @@ function CommandDialog({
         <DialogDescription>{description}</DialogDescription>
       </DialogHeader>
       <DialogContent
+        // VS Code's quick input geometry: 600px wide, pinned near the top of the
+        // window rather than centered, so the palette never sits on top of the
+        // content it is being used to act on.
         className={cn(
-          'top-[12vh] w-full translate-y-0 overflow-hidden rounded-none p-0 shadow-2xl shadow-black/25 sm:max-w-[640px]',
+          'top-8 w-full translate-y-0 overflow-hidden rounded-none p-0 shadow-2xl shadow-black/25 sm:max-w-[600px]',
           className,
         )}
         overlayClassName={overlayClassName}

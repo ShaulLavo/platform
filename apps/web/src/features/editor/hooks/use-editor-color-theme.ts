@@ -14,8 +14,8 @@ import type { VscodeThemeDefinition, VscodeThemeRegistration } from '@singapor/c
 
 import { useTheme } from '@/components/theme-context'
 import {
-  getCommittedVscodeThemeId,
-  getSelectedVscodeThemeId,
+  getCommittedEditorThemeId,
+  getSelectedEditorThemeId,
   loadEditorThemeForSelection,
   setActiveEditorColorMode,
   subscribeEditorColorTheme,
@@ -41,10 +41,10 @@ export function EditorColorThemeProvider({ children }: { readonly children: Reac
   // The selection id doubles as the shiki theme name (id === shikiName), so the
   // provider knows the theme name synchronously even before the JSON loads.
   const shikiTheme = useSyncExternalStore(subscribeEditorColorTheme, () =>
-    getSelectedVscodeThemeId(resolvedTheme),
+    getSelectedEditorThemeId(resolvedTheme),
   )
   const committedThemeId = useSyncExternalStore(subscribeEditorColorTheme, () =>
-    getCommittedVscodeThemeId(resolvedTheme),
+    getCommittedEditorThemeId(resolvedTheme),
   )
   const [loadedTheme, setLoadedTheme] = useState<LoadedEditorColorTheme | null>(null)
   const shikiThemeResolver = useCallback(() => shikiTheme, [shikiTheme])

@@ -4,6 +4,10 @@ import {
   parseSearchBufferDocumentId,
   searchBufferDocumentLabel,
 } from '@/features/search/search-buffer-document'
+import {
+  compareSavedDocumentLabel,
+  parseCompareSavedDocumentId,
+} from '@/features/editor/compare-saved-document'
 import { basename } from '@/lib/path-formatters'
 
 /**
@@ -19,6 +23,7 @@ export function documentLabel(path: string) {
   if (parseDiffDocumentId(path)) return diffDocumentLabel(path)
   if (parseSearchBufferDocumentId(path)) return searchBufferDocumentLabel()
   if (parseConflictDiffDocumentId(path)) return 'Conflict'
+  if (parseCompareSavedDocumentId(path)) return compareSavedDocumentLabel(path)
 
   return basename(path)
 }

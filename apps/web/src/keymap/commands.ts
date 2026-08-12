@@ -4,10 +4,12 @@ import { useFocus, type FocusArea } from '@/components/workspace/focus/providers
 import { useTheme, type Theme } from '@/components/theme-context'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
+import { compareSavedDocumentId } from '@/features/editor/compare-saved-document'
 import {
   useEditorDocumentStoreApi,
   type EditorDocumentStoreApi,
 } from '@/features/editor/state/editor-document-state'
+import { openEditorPathInWorkbenchPanels } from '@/features/workbench/utils/workbench-panels'
 import {
   jumpToSession,
   selectAdjacentSession,
@@ -279,6 +281,21 @@ const workspaceCommandHandlers: Partial<Record<WorkspaceCommandId, WorkspaceComm
     const selected = selectPreviousEditor()
     if (!selected) return false
 
+    requestEditorFocus()
+    return true
+  },
+  'workspace.compareWithSaved': ({
+    activeFilePath,
+    requestEditorFocus,
+    setWorkbenchPanels,
+    workbenchPanels,
+  }) => {
+    const path = fileBackedEditorPath(activeFilePath)
+    if (!path) return false
+
+    setWorkbenchPanels(
+      openEditorPathInWorkbenchPanels(workbenchPanels, compareSavedDocumentId(path)),
+    )
     requestEditorFocus()
     return true
   },

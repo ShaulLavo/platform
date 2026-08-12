@@ -69,6 +69,12 @@ const workspaceCommandSpecs = [
   workspaceCommand('workspace.saveAllFiles', 'Save all', 'Save all dirty editors.', [
     'workbench.action.files.saveAll',
   ]),
+  workspaceCommand(
+    'workspace.compareWithSaved',
+    'Compare with saved',
+    'Diff the active editor against the file on disk.',
+    ['workbench.files.action.compareWithSaved'],
+  ),
   workspaceCommand('workspace.revertFile', 'Revert file', 'Reload the active editor from disk.', [
     'workbench.action.files.revert',
   ]),
