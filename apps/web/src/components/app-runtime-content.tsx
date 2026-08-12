@@ -9,6 +9,10 @@ import { MenuCommandProvider } from '@/features/menus/providers/command-provider
 import { useRestoreRecentWorkspaceRoot } from '@/hooks/use-restore-recent-workspace-root'
 import { useUnsavedWorkGuard } from '@/hooks/use-unsaved-work-guard'
 import { useWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
+import { DEFAULT_SETTINGS } from '@workspace/contracts'
+
+import { useSettings } from '@/features/settings/hooks/use-settings'
+import { resolvedPlatformKeyBindings } from '@/keymap/active-bindings'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
 import { editorKeymapLayersFromPlatform } from '@/keymap/editor-keymap'
 
@@ -16,9 +20,18 @@ export function AppRuntimeContent() {
   const setFocusArea = useFocus((state) => state.setFocusArea)
   const { dirtyTabCloseDialog, requestCloseTab, requestCloseTabs } = useDirtyTabCloseRequest()
   const defaultKeymapBindings = useMemo(() => defaultPlatformKeyBindings(), [])
+  // Overrides resolved *before* the editor layers are built. Building them from
+  // the raw defaults is what made every `editor.*` command unrebindable: the
+  // settings panel wrote the override, the app keymap honoured it, and the
+  // editor kept its own keymap from the defaults — so the row hid itself rather
+  // than appear to work and do nothing.
+  const keybindingOverrides = useSettings().data?.keybindings ?? DEFAULT_SETTINGS.keybindings
   const editorKeymapLayers = useMemo(
-    () => editorKeymapLayersFromPlatform(defaultKeymapBindings),
-    [defaultKeymapBindings],
+    () =>
+      editorKeymapLayersFromPlatform(
+        resolvedPlatformKeyBindings(defaultKeymapBindings, keybindingOverrides),
+      ),
+    [defaultKeymapBindings, keybindingOverrides],
   )
 
   // Subscribe before recovery so a recovered root recreates its erased cache entry.
