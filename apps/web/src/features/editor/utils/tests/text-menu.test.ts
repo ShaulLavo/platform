@@ -29,6 +29,7 @@ test('the edit section offers occurrences before the two comment toggles', () =>
     'Change All Occurrences',
     'Toggle Line Comment',
     'Toggle Block Comment',
+    'Rename Symbol',
     'Format Document',
   ])
 })
@@ -54,6 +55,7 @@ test('the navigate and edit items route to the editor command handlers', () => {
     'editor.editor.action.changeAll',
     'editor.editor.action.commentLine',
     'editor.editor.action.blockComment',
+    'editor.editor.action.rename',
     'editor.editor.action.formatDocument',
   ])
 })

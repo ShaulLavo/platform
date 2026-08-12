@@ -13,6 +13,7 @@ import {
   GitForkIcon,
   ListMagnifyingGlassIcon,
   MagicWandIcon,
+  PencilSimpleIcon,
 } from '@phosphor-icons/react'
 
 import { commandItem, section, type Menu } from '@/features/menus/utils/model'
@@ -76,6 +77,10 @@ export function editorTextMenu(): Menu {
       commandItem('editor.editor.action.blockComment', {
         icon: CodeBlockIcon,
         label: 'Toggle Block Comment',
+      }),
+      commandItem('editor.editor.action.rename', {
+        icon: PencilSimpleIcon,
+        label: 'Rename Symbol',
       }),
       commandItem('editor.editor.action.formatDocument', {
         icon: MagicWandIcon,

@@ -279,6 +279,7 @@ const editorCommandSpecs = [
   editorCommand('editor.action.transformToTitlecase', 'Transform to title case', [
     'editor.action.transformToTitlecase',
   ]),
+  editorCommand('editor.action.rename', 'Rename symbol', ['editor.action.rename']),
   editorCommand('editor.action.formatDocument', 'Format document', [
     'editor.action.formatDocument',
   ]),

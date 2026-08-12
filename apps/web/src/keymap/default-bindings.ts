@@ -340,6 +340,7 @@ const defaultBindingSpecs = [
   editorBinding('Control+Alt+ArrowRight', 'editor.cursorWordPartRight', 'cursorWordPartRight', {
     platforms: ['mac'],
   }),
+  editorBinding('F2', 'editor.editor.action.rename', 'editor.action.rename'),
   // VS Code writes this Shift+Alt+F; the hotkey layer canonicalises modifiers as Alt+Shift.
   editorBinding(
     'Alt+Shift+F',
