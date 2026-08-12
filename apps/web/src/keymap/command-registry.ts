@@ -250,6 +250,28 @@ const editorCommandSpecs = [
   ]),
   editorCommand('editor.action.changeAll', 'Change all occurrences', ['editor.action.changeAll']),
   editorCommand('editor.action.jumpToBracket', 'Go to bracket', ['editor.action.jumpToBracket']),
+  editorCommand('editor.action.trimTrailingWhitespace', 'Trim trailing whitespace', [
+    'editor.action.trimTrailingWhitespace',
+  ]),
+  editorCommand('editor.action.sortLinesAscending', 'Sort lines ascending', [
+    'editor.action.sortLinesAscending',
+  ]),
+  editorCommand('editor.action.sortLinesDescending', 'Sort lines descending', [
+    'editor.action.sortLinesDescending',
+  ]),
+  editorCommand('editor.action.joinLines', 'Join lines', ['editor.action.joinLines']),
+  editorCommand('editor.action.duplicateSelection', 'Duplicate selection', [
+    'editor.action.duplicateSelection',
+  ]),
+  editorCommand('editor.action.transformToUppercase', 'Transform to uppercase', [
+    'editor.action.transformToUppercase',
+  ]),
+  editorCommand('editor.action.transformToLowercase', 'Transform to lowercase', [
+    'editor.action.transformToLowercase',
+  ]),
+  editorCommand('editor.action.transformToTitlecase', 'Transform to title case', [
+    'editor.action.transformToTitlecase',
+  ]),
   editorCommand('editor.action.formatDocument', 'Format document', [
     'editor.action.formatDocument',
   ]),

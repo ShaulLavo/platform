@@ -4,6 +4,8 @@ import { Button } from '@workspace/ui/components/button'
 import { SearchPane } from '@/components/workspace/search/components/search-pane'
 import type { EditorTabConflictMap } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
 import { ChatDiffStatLabel } from '@/features/chat/components/chat-diff-stat-label'
+import { useSessionTerminalId } from '@/features/chat-mode/hooks/use-session-terminal-id'
+import { useSessionToolRoot } from '@/features/chat-mode/hooks/use-session-tool-root'
 import { useThreadDiffScope } from '@/features/chat/hooks/use-thread-diff-scope'
 import { Panel as GitPanel } from '@/features/git/panel'
 import type { FileStatus } from '@/features/git/types'
@@ -29,6 +31,7 @@ export function ToolPane({
   readonly conflicts: EditorTabConflictMap
   readonly editorKeymapLayers: readonly EditorKeymapLayer[]
   readonly gitFiles: readonly FileStatus[]
+  /** The project root. Individual tools act on the session's checkout below. */
   readonly rootPath: string
   readonly tab: ChatModeToolTab
   readonly workbenchPanels: WorkbenchPanels
@@ -37,6 +40,11 @@ export function ToolPane({
   // turn a revert deleted, and it can only do that while it is mounted. Tying it
   // to the git tab would leave a dangling turn in storage until the tab is opened.
   const diffScope = useThreadDiffScope()
+  // These are *this session's* tools, so every one of them follows the session's
+  // checkout rather than the project root. Same value for a session with no
+  // worktree; the difference only appears once one has its own.
+  const toolRoot = useSessionToolRoot()
+  const terminalSessionId = useSessionTerminalId()
 
   if (tab === 'editor') {
     return (
@@ -49,8 +57,8 @@ export function ToolPane({
       />
     )
   }
-  if (tab === 'files') return <FileNavigatorPanel rootPath={rootPath} />
-  if (tab === 'git') return gitToolPane(rootPath, diffScope)
+  if (tab === 'files') return <FileNavigatorPanel rootPath={toolRoot} />
+  if (tab === 'git') return gitToolPane(toolRoot, diffScope)
   if (tab === 'logs') {
     return (
       <section className='flex h-full min-h-0 min-w-0 flex-col overflow-hidden'>
@@ -72,14 +80,19 @@ export function ToolPane({
     )
   }
   if (tab === 'search') {
-    return <SearchPane editorKeymapLayers={editorKeymapLayers} rootPath={rootPath} />
+    return <SearchPane editorKeymapLayers={editorKeymapLayers} rootPath={toolRoot} />
   }
 
   return (
     <section className='flex h-full min-h-0 min-w-0 flex-col overflow-hidden'>
       <ToolPaneHeader tab='terminal' />
       <div className='min-h-0 min-w-0 flex-1 overflow-hidden'>
-        <TerminalPanel active className='h-full' rootPath={rootPath} sessionId='terminal-1' />
+        <TerminalPanel
+          active
+          className='h-full'
+          rootPath={toolRoot}
+          sessionId={terminalSessionId}
+        />
       </div>
     </section>
   )

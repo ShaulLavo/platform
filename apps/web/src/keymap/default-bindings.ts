@@ -328,6 +328,11 @@ const defaultBindingSpecs = [
   // layout-dependent (see PunctuationKey). Mod+\ is unclaimed and keeps the backslash mnemonic.
   editorBinding('Mod+\\', 'editor.editor.action.jumpToBracket', 'editor.action.jumpToBracket'),
   editorBinding('Alt+Z', 'editor.editor.action.toggleWordWrap', 'editor.action.toggleWordWrap'),
+  // Duplicate Selection stays palette-only, as in VS Code: Alt+Shift+Down is Copy Line Down, and
+  // taking that key would replace a line command with a selection one.
+  editorBinding('Control+J', 'editor.editor.action.joinLines', 'editor.action.joinLines', {
+    platforms: ['mac'],
+  }),
   // VS Code writes this Shift+Alt+F; the hotkey layer canonicalises modifiers as Alt+Shift.
   editorBinding(
     'Alt+Shift+F',
