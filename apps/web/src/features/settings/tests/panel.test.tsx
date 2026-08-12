@@ -18,7 +18,9 @@ test('lists the running providers even when nothing has been saved', async ({ cl
   // An untouched server has an empty settings document and live providers, and
   // the section has to show the second rather than report the first.
   expect(await screen.findByRole('switch', { name: /Enable/ })).toBeDefined()
-  expect(screen.getByText('No model preferences yet.')).toBeDefined()
+  // Models get the same treatment: the catalog the providers report, not the
+  // preferences already formed about it.
+  expect(screen.getByRole('switch', { name: /Show / })).toBeDefined()
   // Shortcuts have no empty state: every command ships with its default in the
   // list so there is something to edit before any override exists.
   expect(shortcutField('Save')).toHaveProperty('value', 'Mod+S')
