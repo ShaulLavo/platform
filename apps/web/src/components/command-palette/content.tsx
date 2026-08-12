@@ -22,6 +22,7 @@ import {
   emptyLabelForMode,
   fileUriForPath,
   groupedCommandItems,
+  isColorPreviewMode,
   isCommandDisabled,
   placeholderForMode,
   quickAccessFilter,
@@ -32,13 +33,18 @@ import { useCommandPaletteFiles } from '@/components/command-palette/use-command
 import { useCommandPaletteSessions } from '@/components/command-palette/use-command-palette-sessions'
 import { useCommandPaletteSymbols } from '@/components/command-palette/use-command-palette-symbols'
 import { openSessionRow, startSessionDraft } from '@/features/chat-mode/state/session-commands'
+import {
+  clearVscodeThemePreview,
+  previewVscodeTheme,
+  setSelectedVscodeThemeId,
+} from '@/features/editor/state/editor-color-theme-store'
 import { useOpenWorkspaceRoot } from '@/hooks/use-open-workspace-root'
 import {
   CommandPaletteActionsContext,
   type CommandPaletteActions,
 } from '@/components/command-palette/providers/actions-context'
 import { useTheme } from '@/components/theme-context'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 
 export function CommandPaletteContent({
   bindings,
@@ -48,7 +54,7 @@ export function CommandPaletteContent({
   open,
   search,
 }: CommandPaletteProps) {
-  const { theme } = useTheme()
+  const { resolvedTheme, theme } = useTheme()
   const hasWorkspace = useEditorWorkspaceState((state) => Boolean(state.rootFolder))
   const rootFolder = useEditorWorkspaceState((state) => state.rootFolder)
   const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
@@ -84,6 +90,13 @@ export function CommandPaletteContent({
   const commandItems = commandPaletteItems(platformCommandSpecs, bindings)
   const groups = groupedCommandItems(commandItems, search)
 
+  // Cancel any hover-preview when the palette closes without a selection; the
+  // commit path in `selectColorTheme` clears the preview itself.
+  useEffect(() => {
+    if (open) return
+    clearVscodeThemePreview()
+  }, [open])
+
   function handleCommandValueChange(value: string) {
     if (mode !== 'files') return
 
@@ -105,6 +118,13 @@ export function CommandPaletteContent({
         if (isCommandDisabled(command, { activeFilePath, hasWorkspace })) return
 
         dispatch(command)
+      },
+      previewColorTheme: (themeId) => {
+        previewVscodeTheme(resolvedTheme, themeId)
+      },
+      selectColorTheme: (themeId) => {
+        setSelectedVscodeThemeId(resolvedTheme, themeId)
+        onOpenChange(false)
       },
       selectCommand: (item) => {
         const disabledReason = commandPaletteItemDisabledReason(item, {
@@ -164,6 +184,7 @@ export function CommandPaletteContent({
       onOpenChange,
       openDefinition,
       openWorkspaceRoot,
+      resolvedTheme,
       selectFile,
       selectedFileBackedPath,
     ],
@@ -178,6 +199,11 @@ export function CommandPaletteContent({
         shouldFilter: mode !== 'files',
         value: selectedCommandValue,
       }}
+      // Drop the frosted overlay while picking colors so the live hover-preview
+      // of the editor behind the palette is visible, not blurred.
+      overlayClassName={
+        isColorPreviewMode(mode) ? 'supports-backdrop-filter:backdrop-blur-none' : undefined
+      }
       open={open}
       onOpenChange={onOpenChange}
     >

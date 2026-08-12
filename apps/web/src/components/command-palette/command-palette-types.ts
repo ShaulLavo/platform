@@ -58,6 +58,7 @@ export type EditorPaletteItem = {
 
 export type QuickAccessMode =
   | 'colorMode'
+  | 'colorTheme'
   | 'commands'
   | 'editors'
   | 'files'

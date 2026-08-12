@@ -72,6 +72,7 @@ const COMMAND_ICONS: Partial<Record<PlatformCommandId, Icon>> = {
   'workspace.closeCurrentTab': XIcon,
   'workspace.toggleDiffViewMode': GitDiffIcon,
   'workspace.selectColorMode': PaletteIcon,
+  'workspace.selectColorTheme': PaletteIcon,
   'workspace.setDarkTheme': MoonIcon,
   'workspace.setLightTheme': SunIcon,
   'workspace.setSystemTheme': DesktopIcon,

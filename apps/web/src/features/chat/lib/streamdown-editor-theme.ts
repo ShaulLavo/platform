@@ -24,10 +24,11 @@ const FALLBACK_THEME_BY_COLOR_MODE = {
 export function streamdownThemesForEditorTheme(
   theme: EditorTheme,
   colorMode: StreamdownEditorColorMode,
+  activeThemeRegistration?: ThemeInput,
 ): [ThemeInput, ThemeInput] {
   return [
-    streamdownThemeFromEditorTheme(theme, colorMode, 'light'),
-    streamdownThemeFromEditorTheme(theme, colorMode, 'dark'),
+    streamdownThemeForSlot(theme, colorMode, 'light', activeThemeRegistration),
+    streamdownThemeForSlot(theme, colorMode, 'dark', activeThemeRegistration),
   ]
 }
 
@@ -35,11 +36,16 @@ export function streamdownThemesForEditorTheme(
  * Identity of the palette a highlight was produced with. Colour mode alone is
  * not enough: two themes can share a mode, and cached tokens carry baked colours.
  */
-export function streamdownEditorThemeKey(theme: EditorTheme, colorMode: StreamdownEditorColorMode) {
+export function streamdownEditorThemeKey(
+  theme: EditorTheme,
+  colorMode: StreamdownEditorColorMode,
+  shikiThemeName?: string,
+) {
   const syntax = theme.syntax
 
   return [
     colorMode,
+    shikiThemeName ?? '',
     theme.backgroundColor ?? '',
     theme.foregroundColor ?? '',
     syntax?.keyword ?? '',
@@ -71,6 +77,19 @@ export function createStreamdownEditorCodePlugin(
       return result ? normalizeStreamdownTokenColors(result, options.language, editorTheme) : result
     },
   }
+}
+
+function streamdownThemeForSlot(
+  theme: EditorTheme,
+  colorMode: StreamdownEditorColorMode,
+  shikiColorMode: StreamdownEditorColorMode,
+  activeThemeRegistration?: ThemeInput,
+): ThemeInput {
+  // The active mode's slot renders through the real loaded VSCode theme; the
+  // other mode stays synthetic, derived from the current EditorTheme.
+  if (shikiColorMode === colorMode && activeThemeRegistration) return activeThemeRegistration
+
+  return streamdownThemeFromEditorTheme(theme, colorMode, shikiColorMode)
 }
 
 function streamdownThemeFromEditorTheme(

@@ -147,6 +147,11 @@ const workspaceCommandSpecs = [
     'Choose color mode',
     'Pick light, dark, or system color mode.',
   ),
+  appearanceCommand(
+    'workspace.selectColorTheme',
+    'Choose color theme',
+    'Pick the editor color theme from the bundled VSCode themes.',
+  ),
   appearanceCommand('workspace.setDarkTheme', 'Dark color mode', 'Use dark color mode.'),
   appearanceCommand('workspace.setLightTheme', 'Light color mode', 'Use light color mode.'),
   appearanceCommand(

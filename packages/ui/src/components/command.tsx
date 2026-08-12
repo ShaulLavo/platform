@@ -33,6 +33,7 @@ function CommandDialog({
   children,
   className,
   commandProps,
+  overlayClassName,
   showCloseButton = false,
   ...props
 }: Omit<React.ComponentProps<typeof Dialog>, 'children'> & {
@@ -40,6 +41,7 @@ function CommandDialog({
   description?: string
   className?: string
   commandProps?: Omit<React.ComponentProps<typeof CommandPrimitive>, 'children'>
+  overlayClassName?: string
   showCloseButton?: boolean
   children: React.ReactNode
 }) {
@@ -54,6 +56,7 @@ function CommandDialog({
           'top-[12vh] w-full translate-y-0 overflow-hidden rounded-none p-0 shadow-2xl shadow-black/25 sm:max-w-[640px]',
           className,
         )}
+        overlayClassName={overlayClassName}
         showCloseButton={showCloseButton}
       >
         <Command {...commandProps}>{children}</Command>

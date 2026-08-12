@@ -13,6 +13,11 @@ import { createFoldGutterPlugin, createLineGutterPlugin } from '@singapor/gutter
 import type { FoldGutterIconContext } from '@singapor/gutters'
 import { CaretDownIcon } from '@phosphor-icons/react/ssr'
 import {
+  createShikiHighlighterPlugin,
+  createShikiWorkerOwner,
+  type ShikiWorkerOwner,
+} from '@singapor/core/shiki'
+import {
   createTreeSitterSyntaxProvider,
   createTreeSitterWorkerBackend,
   type TreeSitterBackend,
@@ -28,7 +33,17 @@ import {
 } from '@singapor/tree-sitter-languages'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import {
+  getActiveEditorColorMode,
+  getLoadedVscodeThemeRegistration,
+  getSelectedVscodeThemeId,
+  subscribeEditorColorTheme,
+} from '@/features/editor/state/editor-color-theme-store'
 import { requestedDecodeMode } from '@/features/editor/utils/decode-mode'
+import {
+  EDITOR_SHIKI_LANGUAGE_MAP,
+  EDITOR_SHIKI_PRELOAD_LANGUAGES,
+} from '@/features/editor/utils/shiki-languages'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
 import { editorPerformanceFeatureDisabled } from '@/lib/editor-performance-trace'
@@ -43,6 +58,7 @@ const FOLD_CHEVRON_ICON_MARKUP = renderToStaticMarkup(
 
 let treeSitterSyntaxProvider: EditorSyntaxProvider | null = null
 let treeSitterSyntaxBackend: TreeSitterBackend | null = null
+let shikiWorkerOwner: ShikiWorkerOwner | null = null
 const editorScrollPositionsByInstanceId = new Map<string, EditorScrollPosition>()
 const ignoredEditorInfoActions = new Set([
   'editor.plugins.gutters.changed',
@@ -210,7 +226,40 @@ function createEditorSyntaxHighlightingPlugins(
 
   if (editorPerformanceFeatureDisabled('syntax')) return []
 
-  return [javaScript({ jsx: true }), typeScript({ tsx: true }), html(), css(), json(), markdown()]
+  return [
+    // Tree-sitter stays for structure (folds/brackets); its token output is
+    // suppressed automatically once the shiki highlighter session exists.
+    javaScript({ jsx: true }),
+    typeScript({ tsx: true }),
+    html(),
+    css(),
+    json(),
+    markdown(),
+    createShikiHighlighterPlugin({
+      languages: EDITOR_SHIKI_LANGUAGE_MAP,
+      onThemeChanged: (listener) => subscribeEditorColorTheme(listener),
+      preloadLanguages: EDITOR_SHIKI_PRELOAD_LANGUAGES,
+      theme: () => getSelectedVscodeThemeId(getActiveEditorColorMode()),
+      // The worker can resolve only ~20 themes by name; the rest need a real
+      // registration object handed over synchronously at session creation.
+      themeRegistration: () =>
+        getLoadedVscodeThemeRegistration(getSelectedVscodeThemeId(getActiveEditorColorMode())),
+      workerOwner: editorShikiWorkerOwner(),
+    }),
+  ]
+}
+
+export function editorShikiWorkerOwner(): ShikiWorkerOwner {
+  if (shikiWorkerOwner) return shikiWorkerOwner
+
+  shikiWorkerOwner = createShikiWorkerOwner()
+  return shikiWorkerOwner
+}
+
+export async function disposeEditorShikiWorkerOwner() {
+  const owner = shikiWorkerOwner
+  shikiWorkerOwner = null
+  await owner?.dispose?.()
 }
 
 export function editorTreeSitterSyntaxProvider(): EditorSyntaxProvider {

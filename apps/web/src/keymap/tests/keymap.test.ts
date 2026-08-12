@@ -437,6 +437,11 @@ describe('command registry', () => {
       description: 'Pick light, dark, or system color mode.',
       title: 'Choose color mode',
     })
+    expect(platformCommandSpec('workspace.selectColorTheme')).toMatchObject({
+      category: 'Appearance',
+      description: 'Pick the editor color theme from the bundled VSCode themes.',
+      title: 'Choose color theme',
+    })
     expect(platformCommandSpec('workspace.setLightTheme')).toMatchObject({
       category: 'Appearance',
       description: 'Use light color mode.',

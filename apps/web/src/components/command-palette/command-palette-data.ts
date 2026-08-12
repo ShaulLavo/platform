@@ -6,6 +6,7 @@ export const paletteModeCommands: ReadonlySet<PlatformCommandId> = new Set([
   'workspace.gotoSymbol',
   'workspace.quickOpenView',
   'workspace.selectColorMode',
+  'workspace.selectColorTheme',
   'workspace.showAllEditors',
   'workspace.showCommandPalette',
   'workspace.showQuickAccess',
@@ -28,6 +29,7 @@ export const hiddenCommandPaletteCommands: ReadonlySet<PlatformCommandId> = new 
 export const workspaceOptionalCommands: ReadonlySet<PlatformCommandId> = new Set([
   'workspace.openFilePicker',
   'workspace.selectColorMode',
+  'workspace.selectColorTheme',
   'workspace.setDarkTheme',
   'workspace.setLightTheme',
   'workspace.setSystemTheme',

@@ -308,6 +308,10 @@ const workspaceCommandHandlers: Partial<Record<WorkspaceCommandId, WorkspaceComm
     showCommandPalette('color ')
     return true
   },
+  'workspace.selectColorTheme': ({ showCommandPalette }) => {
+    showCommandPalette('theme ')
+    return true
+  },
   'workspace.setDarkTheme': ({ setTheme }) => {
     setTheme('dark')
     return true

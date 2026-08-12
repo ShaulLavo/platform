@@ -31,7 +31,10 @@ test('command groups rank strong command matches above earlier weak fuzzy groups
   const groups = groupedCommandItems(items, '> color')
 
   expect(groups[0]?.[0]).toBe('Appearance')
-  expect(groups[0]?.[1].map((item) => item.id)).toEqual(['workspace.selectColorMode'])
+  expect(groups[0]?.[1].map((item) => item.id)).toEqual([
+    'workspace.selectColorMode',
+    'workspace.selectColorTheme',
+  ])
   expect(groups.flatMap(([, groupItems]) => groupItems.map((item) => item.id))).not.toContain(
     'workspace.toggleSidebarVisibility',
   )
@@ -96,6 +99,8 @@ test('quick access prefixes select the expected mode and query', () => {
   expect(quickAccessMode('view git')).toBe('views')
   expect(quickAccessQuery('view git')).toBe('git')
   expect(quickAccessMode('color dark')).toBe('colorMode')
+  expect(quickAccessMode('theme monokai')).toBe('colorTheme')
+  expect(quickAccessQuery('theme monokai')).toBe('monokai')
   expect(quickAccessQuery('> save')).toBe('save')
   expect(quickAccessMode('@ Component')).toBe('symbols')
 })

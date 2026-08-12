@@ -54,6 +54,7 @@ export type WorkspaceCommandId =
   | 'workspace.showChatMode'
   | 'workspace.showWorkbenchMode'
   | 'workspace.selectColorMode'
+  | 'workspace.selectColorTheme'
   | 'workspace.setLightTheme'
   | 'workspace.setDarkTheme'
   | 'workspace.setSystemTheme'

@@ -2,6 +2,7 @@ import type { Theme } from '@/components/theme-context'
 import type { FlatDocumentSymbol } from '@/lib/document-symbols'
 
 import { ColorModeGroups } from './color-mode-groups'
+import { ColorThemeGroups } from './color-theme-groups'
 import { CommandGroups } from './command-groups'
 import type {
   CommandPaletteItem,
@@ -66,6 +67,10 @@ export function CommandPaletteGroupsFactory({
 
   if (mode === 'colorMode') {
     return <ColorModeGroups currentTheme={currentTheme} />
+  }
+
+  if (mode === 'colorTheme') {
+    return <ColorThemeGroups />
   }
 
   if (mode === 'editors') {

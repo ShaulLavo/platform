@@ -1,5 +1,6 @@
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import { cjk } from '@streamdown/cjk'
+import type { ThemeInput } from '@streamdown/code'
 import { math } from '@streamdown/math'
 import { mermaid } from '@streamdown/mermaid'
 import { cn } from '@workspace/ui/lib/utils'
@@ -47,11 +48,16 @@ export function AssistantMarkdown({
   streaming?: boolean
   text: string
 }) {
-  const { colorMode, editorTheme } = useEditorColorTheme()
+  const { colorMode, definition, editorTheme, registration } = useEditorColorTheme()
   const { openFileReference, rootPath } = useOpenFileReference()
   const streamdownThemes = useMemo(
-    () => streamdownThemesForEditorTheme(editorTheme, colorMode),
-    [colorMode, editorTheme],
+    () =>
+      streamdownThemesForEditorTheme(
+        editorTheme,
+        colorMode,
+        (registration ?? undefined) as ThemeInput | undefined,
+      ),
+    [colorMode, editorTheme, registration],
   )
   const codePlugin = useMemo(
     () => createStreamdownEditorCodePlugin(streamdownThemes, editorTheme),
@@ -74,24 +80,29 @@ export function AssistantMarkdown({
     }),
     [codePlugin],
   )
-  const themeKey = streamdownEditorThemeKey(editorTheme, colorMode)
+  const themeKey = streamdownEditorThemeKey(editorTheme, colorMode, definition?.shikiName)
   const highlighter = useMemo(
-    () => ({
-      highlight: (
-        input: { readonly code: string; readonly language: string },
-        onResult: Parameters<typeof codePlugin.highlight>[1],
-      ) =>
-        codePlugin.highlight(
-          {
-            code: input.code,
-            language: input.language as Parameters<typeof codePlugin.highlight>[0]['language'],
-            themes: streamdownThemes,
-          },
-          onResult,
-        ),
-      themeKey,
-    }),
-    [codePlugin, streamdownThemes, themeKey],
+    () =>
+      registration
+        ? {
+            highlight: (
+              input: { readonly code: string; readonly language: string },
+              onResult: Parameters<typeof codePlugin.highlight>[1],
+            ) =>
+              codePlugin.highlight(
+                {
+                  code: input.code,
+                  language: input.language as Parameters<
+                    typeof codePlugin.highlight
+                  >[0]['language'],
+                  themes: streamdownThemes,
+                },
+                onResult,
+              ),
+            themeKey,
+          }
+        : null,
+    [codePlugin, registration, streamdownThemes, themeKey],
   )
   const fileLinkActions = useMemo(
     () => ({ openFileReference, rootPath }),

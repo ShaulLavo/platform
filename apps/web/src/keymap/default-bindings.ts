@@ -324,6 +324,9 @@ const defaultBindingSpecs = [
   }),
   editorBinding('Mod+]', 'editor.editor.action.indentLines', 'editor.action.indentLines'),
   editorBinding('Mod+[', 'editor.editor.action.outdentLines', 'editor.action.outdentLines'),
+  // VS Code binds this to Mod+Shift+\, which the hotkey layer refuses: Shift with punctuation is
+  // layout-dependent (see PunctuationKey). Mod+\ is unclaimed and keeps the backslash mnemonic.
+  editorBinding('Mod+\\', 'editor.editor.action.jumpToBracket', 'editor.action.jumpToBracket'),
   editorBinding(
     'Mod+Alt+ArrowUp',
     'editor.editor.action.insertCursorAbove',

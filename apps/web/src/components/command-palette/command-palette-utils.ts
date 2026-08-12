@@ -234,15 +234,21 @@ export function fileBackedPath(path: string | null) {
 export function quickAccessMode(search: string): QuickAccessMode {
   if (search.startsWith('view ')) return 'views'
   if (search.startsWith('color ')) return 'colorMode'
+  if (search.startsWith('theme ')) return 'colorTheme'
   if (search.startsWith('edt ')) return 'editors'
   if (search.startsWith(SESSION_PREFIX)) return 'sessions'
   if (search.startsWith('@')) return 'symbols'
   return search.startsWith('>') ? 'commands' : 'files'
 }
 
+export function isColorPreviewMode(mode: QuickAccessMode): boolean {
+  return mode === 'colorMode' || mode === 'colorTheme'
+}
+
 export function quickAccessQuery(search: string) {
   if (search.startsWith('view ')) return search.slice(5).trimStart()
   if (search.startsWith('color ')) return search.slice(6).trimStart()
+  if (search.startsWith('theme ')) return search.slice(6).trimStart()
   if (search.startsWith('edt ')) return search.slice(4).trimStart()
   if (search.startsWith(SESSION_PREFIX)) return search.slice(SESSION_PREFIX.length).trimStart()
   if (search.startsWith('@')) return search.slice(1).trimStart()
@@ -262,6 +268,7 @@ export function emptyLabelForMode(mode: QuickAccessMode) {
   if (mode === 'commands') return 'No matching commands'
   if (mode === 'views') return 'No matching views'
   if (mode === 'colorMode') return 'No matching color modes'
+  if (mode === 'colorTheme') return 'No matching color themes'
   if (mode === 'editors') return 'No open editors'
   if (mode === 'sessions') return 'No matching sessions'
   if (mode === 'symbols') return 'No matching symbols'
@@ -273,6 +280,7 @@ export function placeholderForMode(mode: QuickAccessMode) {
   if (mode === 'commands') return 'Search commands...'
   if (mode === 'views') return 'Search views...'
   if (mode === 'colorMode') return 'Choose color mode...'
+  if (mode === 'colorTheme') return 'Choose color theme...'
   if (mode === 'editors') return 'Search open editors...'
   if (mode === 'sessions') return 'Search sessions, or start one in a project...'
   if (mode === 'symbols') return 'Search symbols in the active editor...'
