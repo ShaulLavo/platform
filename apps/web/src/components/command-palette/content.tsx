@@ -8,6 +8,7 @@ import {
   CommandInput,
   CommandList,
 } from '@workspace/ui/components/command'
+import { cn } from '@workspace/ui/lib/utils'
 
 import { CommandPaletteGroupsFactory } from '@/components/command-palette/command-palette-groups-factory'
 import { useCommandPaletteScripts } from '@/components/command-palette/use-command-palette-scripts'
@@ -36,9 +37,9 @@ import { useCommandPaletteSessions } from '@/components/command-palette/use-comm
 import { useCommandPaletteSymbols } from '@/components/command-palette/use-command-palette-symbols'
 import { openSessionRow, startSessionDraft } from '@/features/chat-mode/state/session-commands'
 import {
-  clearVscodeThemePreview,
-  previewVscodeTheme,
-  setSelectedVscodeThemeId,
+  clearEditorThemePreview,
+  previewEditorTheme,
+  setSelectedEditorThemeId,
 } from '@/features/editor/state/editor-color-theme-store'
 import { useOpenWorkspaceRoot } from '@/hooks/use-open-workspace-root'
 import {
@@ -101,7 +102,7 @@ export function CommandPaletteContent({
   // commit path in `selectColorTheme` clears the preview itself.
   useEffect(() => {
     if (open) return
-    clearVscodeThemePreview()
+    clearEditorThemePreview()
   }, [open])
 
   function handleCommandValueChange(value: string) {
@@ -127,10 +128,10 @@ export function CommandPaletteContent({
         dispatch(command)
       },
       previewColorTheme: (themeId) => {
-        previewVscodeTheme(resolvedTheme, themeId)
+        previewEditorTheme(resolvedTheme, themeId)
       },
       selectColorTheme: (themeId) => {
-        setSelectedVscodeThemeId(resolvedTheme, themeId)
+        setSelectedEditorThemeId(resolvedTheme, themeId)
         onOpenChange(false)
       },
       selectCommand: (item) => {
@@ -174,6 +175,21 @@ export function CommandPaletteContent({
         openSessionRow(session, { openProject: openWorkspaceRoot })
         onOpenChange(false)
       },
+      selectGotoLine: (target) => {
+        if (!selectedFileBackedPath) return
+
+        // The editor takes zero-based positions; the palette takes the numbers shown in the
+        // gutter, so the conversion happens here, at the boundary between them.
+        const position = { character: target.column - 1, line: target.line - 1 }
+        const handled = openDefinition({
+          path: selectedFileBackedPath,
+          range: { end: position, start: position },
+          uri: fileUriForPath(selectedFileBackedPath),
+        })
+        if (handled === false) return
+
+        onOpenChange(false)
+      },
       selectSymbol: (symbol) => {
         if (!selectedFileBackedPath) return
 
@@ -206,8 +222,15 @@ export function CommandPaletteContent({
     ],
   )
 
+  const colorPreview = isColorPreviewMode(mode)
+
   return (
     <CommandDialog
+      // Picking a color is the one mode where the palette is not the thing being
+      // looked at — the editor behind it is. So it pulls up, narrows, and stops
+      // frosting the overlay, leaving as much live-previewed code on screen as a
+      // centered dialog can.
+      className={colorPreview ? 'top-[6vh] sm:max-w-[420px]' : undefined}
       commandProps={{
         filter: quickAccessFilter,
         loop: true,
@@ -215,11 +238,7 @@ export function CommandPaletteContent({
         shouldFilter: mode !== 'files',
         value: selectedCommandValue,
       }}
-      // Drop the frosted overlay while picking colors so the live hover-preview
-      // of the editor behind the palette is visible, not blurred.
-      overlayClassName={
-        isColorPreviewMode(mode) ? 'supports-backdrop-filter:backdrop-blur-none' : undefined
-      }
+      overlayClassName={colorPreview ? 'supports-backdrop-filter:backdrop-blur-none' : undefined}
       open={open}
       onOpenChange={onOpenChange}
     >
@@ -228,7 +247,9 @@ export function CommandPaletteContent({
         value={search}
         onValueChange={handleSearchChange}
       />
-      <CommandList className='max-h-[min(58vh,440px)] py-1'>
+      <CommandList
+        className={cn('py-1', colorPreview ? 'max-h-[min(38vh,300px)]' : 'max-h-[min(58vh,440px)]')}
+      >
         <CommandEmpty>{emptyLabelForMode(mode)}</CommandEmpty>
         <CommandPaletteActionsContext value={actions}>
           <CommandPaletteGroupsFactory

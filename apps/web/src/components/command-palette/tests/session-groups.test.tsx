@@ -95,6 +95,7 @@ function commandPaletteActions(): CommandPaletteActions {
     selectPlatformCommand: vi.fn(),
     selectScript: vi.fn(),
     selectSession: vi.fn(),
+    selectGotoLine: vi.fn(),
     selectSymbol: vi.fn(),
     startSessionDraft: vi.fn(),
   }

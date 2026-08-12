@@ -1,17 +1,15 @@
 import { PaletteIcon } from '@phosphor-icons/react'
 import { CommandGroup, CommandItem, CommandShortcut } from '@workspace/ui/components/command'
-import { VSCODE_THEMES, type VscodeThemeDefinition } from '@singapor/core/shiki'
 import { useEffect } from 'react'
 
 import { useCommandPaletteActions } from '@/components/command-palette/hooks/use-command-palette-actions'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import { preloadVscodeThemeRegistrations } from '@/features/editor/state/editor-color-theme-store'
+import { editorThemeOptions, type EditorThemeOption } from '@/features/editor/utils/theme-catalog'
 
 export function ColorThemeGroups() {
   const { previewColorTheme, selectColorTheme } = useCommandPaletteActions()
   const { committedThemeId, shikiTheme } = useEditorColorTheme()
-  const darkThemes = VSCODE_THEMES.filter((theme) => theme.type === 'dark')
-  const lightThemes = VSCODE_THEMES.filter((theme) => theme.type === 'light')
 
   // Warm every bundled theme's registration so hover-preview can switch to any
   // of the 65 themes without the few-frame flash of unhighlighted text the
@@ -26,7 +24,7 @@ export function ColorThemeGroups() {
         heading='Color Theme — Dark'
         activeThemeId={committedThemeId}
         previewThemeId={shikiTheme}
-        themes={darkThemes}
+        themes={editorThemeOptions('dark')}
         onPreview={previewColorTheme}
         onSelect={selectColorTheme}
       />
@@ -34,7 +32,7 @@ export function ColorThemeGroups() {
         heading='Color Theme — Light'
         activeThemeId={committedThemeId}
         previewThemeId={shikiTheme}
-        themes={lightThemes}
+        themes={editorThemeOptions('light')}
         onPreview={previewColorTheme}
         onSelect={selectColorTheme}
       />
@@ -53,7 +51,7 @@ function ColorThemeGroup({
   readonly heading: string
   readonly activeThemeId: string
   readonly previewThemeId: string
-  readonly themes: readonly VscodeThemeDefinition[]
+  readonly themes: readonly EditorThemeOption[]
   readonly onPreview: (themeId: string) => void
   readonly onSelect: (themeId: string) => void
 }) {
@@ -62,7 +60,7 @@ function ColorThemeGroup({
       {themes.map((theme) => (
         <CommandItem
           key={theme.id}
-          keywords={[theme.label, theme.id, theme.type]}
+          keywords={[theme.label, theme.id, theme.type, theme.source]}
           value={`color-theme:${theme.id}`}
           onPointerEnter={() => {
             if (theme.id === previewThemeId) return
@@ -73,7 +71,9 @@ function ColorThemeGroup({
           <PaletteIcon className='text-muted-foreground' />
           <span className='min-w-0 flex-1'>
             <span className='block truncate font-medium'>{theme.label}</span>
-            <span className='text-muted-foreground block truncate text-[11px]'>{theme.id}</span>
+            <span className='text-muted-foreground block truncate text-[11px]'>
+              {theme.subtitle}
+            </span>
           </span>
           {theme.id === activeThemeId && <CommandShortcut>active</CommandShortcut>}
         </CommandItem>

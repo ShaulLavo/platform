@@ -29,6 +29,25 @@ test('lists the bundled VSCode themes grouped by dark and light', () => {
   expect(screen.getByText('GitHub Light')).toBeInTheDocument()
 })
 
+test('offers the built-in tree-sitter palettes ahead of the VSCode themes', () => {
+  const actions = commandPaletteActions()
+
+  renderWithProviders(
+    <CommandPaletteActionsProvider actions={actions}>
+      <Command>
+        <ColorThemeGroups />
+      </Command>
+    </CommandPaletteActionsProvider>,
+  )
+
+  const darkGroup = screen.getByText('Color Theme — Dark').closest('[cmdk-group]')
+  const rows = darkGroup?.querySelectorAll('[cmdk-item]') ?? []
+
+  expect(screen.getByText('Tree-sitter Dark')).toBeInTheDocument()
+  expect(screen.getByText('Tree-sitter Light')).toBeInTheDocument()
+  expect(rows[0]?.textContent).toContain('Tree-sitter Dark')
+})
+
 test('marks the selected theme of the active color mode as active', () => {
   const actions = commandPaletteActions()
 
@@ -118,6 +137,7 @@ function commandPaletteActions(): CommandPaletteActions {
     selectPlatformCommand: vi.fn(),
     selectScript: vi.fn(),
     selectSession: vi.fn(),
+    selectGotoLine: vi.fn(),
     selectSymbol: vi.fn(),
     startSessionDraft: vi.fn(),
   }

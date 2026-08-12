@@ -240,6 +240,7 @@ export function quickAccessMode(search: string): QuickAccessMode {
   if (search.startsWith(SCRIPT_PREFIX)) return 'scripts'
   if (search.startsWith(SESSION_PREFIX)) return 'sessions'
   if (search.startsWith('@')) return 'symbols'
+  if (search.startsWith(':')) return 'gotoLine'
   return search.startsWith('>') ? 'commands' : 'files'
 }
 
@@ -255,6 +256,7 @@ export function quickAccessQuery(search: string) {
   if (search.startsWith(SCRIPT_PREFIX)) return search.slice(SCRIPT_PREFIX.length).trimStart()
   if (search.startsWith(SESSION_PREFIX)) return search.slice(SESSION_PREFIX.length).trimStart()
   if (search.startsWith('@')) return search.slice(1).trimStart()
+  if (search.startsWith(':')) return search.slice(1).trimStart()
   if (!search.startsWith('>')) return search
 
   return search.slice(1).trimStart()

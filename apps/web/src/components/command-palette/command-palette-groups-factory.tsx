@@ -1,5 +1,6 @@
 import type { Theme } from '@/components/theme-context'
 import type { FlatDocumentSymbol } from '@/lib/document-symbols'
+import { GotoLineGroups } from './goto-line-groups'
 
 import { ColorModeGroups } from './color-mode-groups'
 import { ColorThemeGroups } from './color-theme-groups'
@@ -91,6 +92,10 @@ export function CommandPaletteGroupsFactory({
 
   if (mode === 'symbols') {
     return <SymbolGroups isPending={symbolsPending} items={symbolItems} />
+  }
+
+  if (mode === 'gotoLine') {
+    return <GotoLineGroups query={fileQuery} />
   }
 
   return (

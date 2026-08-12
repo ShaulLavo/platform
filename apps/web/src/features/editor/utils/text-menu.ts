@@ -7,6 +7,7 @@ import {
   CommandIcon,
   CursorTextIcon,
   EyeIcon,
+  FloppyDiskIcon,
   GitForkIcon,
   ListMagnifyingGlassIcon,
 } from '@phosphor-icons/react'
@@ -72,6 +73,19 @@ export function editorTextMenu(): Menu {
       commandItem('editor.editor.action.blockComment', {
         icon: CodeBlockIcon,
         label: 'Toggle Block Comment',
+      }),
+    ]),
+    // Acts on the active editor, the same surface the caret commands above target —
+    // a right-click never moves the caret or the active tab.
+    //
+    // Revert File is deliberately not here. Unlike VS Code's, our revert rebuilds
+    // the buffer and so discards undo history (workspace-document-service
+    // replacementRecord), making it unrecoverable; it stays in the palette, where
+    // running it is a deliberate act rather than a misclick.
+    section('file', [
+      commandItem('workspace.saveFile', {
+        icon: FloppyDiskIcon,
+        label: 'Save',
       }),
     ]),
     section('palette', [
