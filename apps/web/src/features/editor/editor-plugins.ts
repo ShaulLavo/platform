@@ -1,5 +1,6 @@
 import {
   createBracketMatchPlugin,
+  createDocumentLinkPlugin,
   createEditorLoggingPlugin,
   createMergeConflictPlugin,
   createOccurrenceHighlightPlugin,
@@ -35,9 +36,9 @@ import {
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
-  getActiveEditorColorMode,
+  activeEditorThemeUsesShiki,
+  activeShikiThemeId,
   getLoadedVscodeThemeRegistration,
-  getSelectedVscodeThemeId,
   subscribeEditorColorTheme,
 } from '@/features/editor/state/editor-color-theme-store'
 import { requestedDecodeMode } from '@/features/editor/utils/decode-mode'
@@ -77,15 +78,9 @@ const PLATFORM_SEARCH_RESULT_EDITOR_LOGGING_PLUGIN = createEditorLoggingPlugin(
 let nonCriticalEditorPlugins: readonly EditorPlugin[] | null = null
 let nonCriticalEditorPluginsPromise: Promise<readonly EditorPlugin[]> | null = null
 
-export type EditorSyntaxHighlightingOptions = {
-  readonly highlighter?: 'tree-sitter'
-}
-
-export function createCriticalEditorCorePlugins(
-  syntaxOptions: EditorSyntaxHighlightingOptions = {},
-): readonly EditorPlugin[] {
+export function createCriticalEditorCorePlugins(): readonly EditorPlugin[] {
   return [
-    ...createEditorSyntaxHighlightingPlugins(syntaxOptions),
+    ...createEditorSyntaxHighlightingPlugins(),
     createLineGutterPlugin(),
     createFoldGutterPlugin({
       width: 16,
@@ -100,6 +95,7 @@ export function createCriticalEditorCorePlugins(
     createOccurrenceHighlightPlugin({
       style: { backgroundColor: 'var(--editor-occurrence-highlight-background)' },
     }),
+    createDocumentLinkPlugin(),
     createPlatformEditorConsoleLoggingPlugin(),
   ]
 }
@@ -223,11 +219,7 @@ function disposeAll(disposables: readonly EditorDisposable[]) {
   for (const disposable of disposables) disposable.dispose()
 }
 
-function createEditorSyntaxHighlightingPlugins(
-  _options: EditorSyntaxHighlightingOptions = {},
-): readonly EditorPlugin[] {
-  void _options
-
+function createEditorSyntaxHighlightingPlugins(): readonly EditorPlugin[] {
   if (editorPerformanceFeatureDisabled('syntax')) return []
 
   return [
@@ -239,18 +231,59 @@ function createEditorSyntaxHighlightingPlugins(
     css(),
     json(),
     markdown(),
-    createShikiHighlighterPlugin({
-      languages: EDITOR_SHIKI_LANGUAGE_MAP,
-      onThemeChanged: (listener) => subscribeEditorColorTheme(listener),
-      preloadLanguages: EDITOR_SHIKI_PRELOAD_LANGUAGES,
-      theme: () => getSelectedVscodeThemeId(getActiveEditorColorMode()),
-      // The worker can resolve only ~20 themes by name; the rest need a real
-      // registration object handed over synchronously at session creation.
-      themeRegistration: () =>
-        getLoadedVscodeThemeRegistration(getSelectedVscodeThemeId(getActiveEditorColorMode())),
-      workerOwner: editorShikiWorkerOwner(),
-    }),
+    createEditorShikiHighlighterPlugin(),
   ]
+}
+
+/**
+ * The shiki highlighter, registered only while the selected theme is one shiki
+ * can paint. The built-in themes color tree-sitter's captures instead, and
+ * tree-sitter emits highlights only when no highlighter session exists — so a
+ * built-in selection has to take the provider off the editor, not just hand it
+ * different colors. Deregistering reloads every open document's highlighter,
+ * which is exactly the repaint the swap needs.
+ */
+function createEditorShikiHighlighterPlugin(): EditorPlugin {
+  const shiki = createShikiHighlighterPlugin({
+    languages: EDITOR_SHIKI_LANGUAGE_MAP,
+    onThemeChanged: (listener) => subscribeEditorColorTheme(listener),
+    preloadLanguages: EDITOR_SHIKI_PRELOAD_LANGUAGES,
+    theme: () => activeShikiThemeId(),
+    // The worker can resolve only ~20 themes by name; the rest need a real
+    // registration object handed over synchronously at session creation.
+    themeRegistration: () => getLoadedVscodeThemeRegistration(activeShikiThemeId()),
+    workerOwner: editorShikiWorkerOwner(),
+  })
+
+  return {
+    name: 'platform.shiki-highlighter',
+    activate: (context) => {
+      let activation: EditorDisposable | null = null
+
+      const syncActivation = () => {
+        const wanted = activeEditorThemeUsesShiki()
+        if (wanted === (activation !== null)) return
+        if (!wanted) {
+          activation?.dispose()
+          activation = null
+          return
+        }
+
+        activation = disposableFromActivationResult(shiki.activate(context))
+      }
+
+      syncActivation()
+      const unsubscribe = subscribeEditorColorTheme(syncActivation)
+
+      return {
+        dispose: () => {
+          unsubscribe()
+          activation?.dispose()
+          activation = null
+        },
+      }
+    },
+  }
 }
 
 export function editorShikiWorkerOwner(): ShikiWorkerOwner {
