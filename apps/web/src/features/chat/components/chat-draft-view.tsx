@@ -135,7 +135,7 @@ export function ChatDraftView({
         scope.end({ durationMs: elapsedMs(startedAt) })
       }
     },
-    [environment, onThreadCreated, project, rootPath],
+    [consumeIsolation, environment, onThreadCreated, project, rootPath],
   )
 
   return (

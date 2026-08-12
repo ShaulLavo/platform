@@ -21,10 +21,23 @@ type Issues = [v.BaseIssue<unknown>, ...v.BaseIssue<unknown>[]]
  */
 export class SettingsService {
   private readonly database: PlatformDatabase
+  private readonly listeners = new Set<(settings: Settings) => void>()
 
   constructor(database: PlatformDatabase = getDefaultPlatformDatabase()) {
     this.database = database
     migratePlatformDatabase(database)
+  }
+
+  /**
+   * Notified after every successful write. This is what makes a saved setting
+   * take effect without a restart — the provider registry subscribes so an
+   * edited instance list is reconciled immediately rather than sitting in the
+   * database being read by nobody.
+   */
+  onChange(listener: (settings: Settings) => void) {
+    this.listeners.add(listener)
+
+    return () => this.listeners.delete(listener)
   }
 
   read(): Settings {
@@ -45,8 +58,24 @@ export class SettingsService {
       ...settingsContext('update', settings),
       settingsSections: sections.map(([section]) => section),
     })
+    this.notify(settings)
 
     return settings
+  }
+
+  /**
+   * A listener that throws must not fail the write: the settings are already
+   * durable by this point, and reporting "save failed" for a reconcile problem
+   * would have the user retry a write that already happened.
+   */
+  private notify(settings: Settings) {
+    for (const listener of this.listeners) {
+      try {
+        listener(settings)
+      } catch (error) {
+        recordRequestContext({ settingsListenerError: String(error) })
+      }
+    }
   }
 
   private writeSections(sections: readonly (readonly [string, unknown])[]) {

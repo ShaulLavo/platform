@@ -32,6 +32,8 @@ import {
 } from './provider/provider-adapter-registry'
 import { providerRoutes } from './provider/routes'
 import { settingsRoutes } from './settings/routes'
+import { DEFAULT_PROVIDER_INSTANCES } from './provider/drivers/built-in'
+import { mergeProviderInstanceConfigs } from './provider/utils/instance-config-merge'
 import { SettingsService } from './settings/service'
 import { TerminalService, type TerminalPtyFactory } from './terminal/service'
 import { wallpaperRoutes } from './wallpaper/routes'
@@ -59,9 +61,23 @@ export function createApp(options: AppOptions) {
   })
   const terminal = new TerminalService(Object.assign({ paths: fs.paths }, options.terminal))
   const fonts = options.fonts ?? new NerdFontService()
-  const providerAdapterRegistry =
-    options.orchestration?.providerAdapterRegistry ?? createDefaultProviderAdapterRegistry()
   const database = options.orchestration?.database ?? getDefaultPlatformDatabase()
+  // Before the registry, because the registry is built *from* it. One SQLite
+  // file backs the whole platform, so settings ride on whichever handle this
+  // app was given — in tests that is the in-memory database, which is what
+  // keeps a test run from writing into the developer's real settings.
+  const settings = new SettingsService(options.orchestration?.database)
+  const providerAdapterRegistry =
+    options.orchestration?.providerAdapterRegistry ??
+    createDefaultProviderAdapterRegistry(settings.read().providerInstances)
+  // A saved provider list is inert unless something re-runs the registry when
+  // it changes. Without this the settings UI writes rows the server never reads
+  // until the next restart.
+  settings.onChange((next) =>
+    providerAdapterRegistry.reconcile(
+      mergeProviderInstanceConfigs(DEFAULT_PROVIDER_INSTANCES, next.providerInstances),
+    ),
+  )
   const orchestration = new OrchestrationEngine(database, {
     providerRuntime: options.orchestration?.providerRuntime
       ? { adapterRegistry: providerAdapterRegistry, checkpointGit: git }
@@ -69,10 +85,6 @@ export function createApp(options: AppOptions) {
   })
   const checkpointDiff = new OrchestrationCheckpointDiffQuery(database, git)
   const threadSearch = new OrchestrationThreadSearchQuery(database)
-  // One SQLite file backs the whole platform, so settings ride on whichever
-  // handle this app was given — in tests that is the in-memory database, which
-  // is what keeps a test run from writing into the developer's real settings.
-  const settings = new SettingsService(options.orchestration?.database)
   const auth = createAuthConfig(options.auth)
   const cleanup = appCleanup(terminal, fs)
 

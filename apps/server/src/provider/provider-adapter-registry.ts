@@ -17,6 +17,7 @@ import type { AnyProviderDriver, ProviderInstanceConfig } from './driver'
 import { BUILT_IN_PROVIDER_DRIVERS, DEFAULT_PROVIDER_INSTANCES } from './drivers/built-in'
 import { defaultProviderStatusCacheDir, ProviderStatusCache } from './status-cache'
 import type { ProviderAdapter } from './types'
+import { mergeProviderInstanceConfigs } from './utils/instance-config-merge'
 import { resolveProviderInstanceEnvironment } from './utils/instance-environment'
 
 export type ProviderInstanceRoutingInfo = {
@@ -398,12 +399,19 @@ export class ProviderAdapterRegistry {
  * The product registry: built-in drivers, one instance each, status cached on
  * disk so a cold start renders providers without waiting on a CLI probe.
  */
-export function createDefaultProviderAdapterRegistry() {
+export function createDefaultProviderAdapterRegistry(
+  savedInstances: readonly ProviderInstanceConfig[] = [],
+) {
   const registry = new ProviderAdapterRegistry({
     drivers: BUILT_IN_PROVIDER_DRIVERS,
     statusCache: new ProviderStatusCache({ directory: defaultProviderStatusCacheDir() }),
   })
-  void registry.reconcile(DEFAULT_PROVIDER_INSTANCES)
+  // Reconciled against the settings document rather than a constant. Passing
+  // `DEFAULT_PROVIDER_INSTANCES` straight through is what made every
+  // configurable field on `providerInstanceConfigSchema` unreadable: the
+  // contract carried them, the settings service stored them, and the only
+  // caller of `reconcile` never looked.
+  void registry.reconcile(mergeProviderInstanceConfigs(DEFAULT_PROVIDER_INSTANCES, savedInstances))
 
   return registry
 }
