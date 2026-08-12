@@ -15,6 +15,7 @@ export const paletteModeCommands: ReadonlySet<PlatformCommandId> = new Set([
 export const selectedFileCommands: ReadonlySet<PlatformCommandId> = new Set([
   'workspace.closeCurrentTab',
   'workspace.compareWithSaved',
+  'workspace.openFileAtHead',
   'workspace.gotoSymbol',
   'workspace.revertFile',
   'workspace.saveFile',

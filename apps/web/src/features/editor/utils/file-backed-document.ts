@@ -2,6 +2,7 @@ import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-doc
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 import { parseCompareSavedDocumentId } from '@/features/editor/compare-saved-document'
+import { parseRefDocumentId } from '@/features/git/ref-document'
 
 export function fileBackedDocumentPath(path: string | null | undefined) {
   if (!path) return null
@@ -9,6 +10,7 @@ export function fileBackedDocumentPath(path: string | null | undefined) {
   if (parseConflictDiffDocumentId(path)) return null
   if (parseSearchBufferDocumentId(path)) return null
   if (parseCompareSavedDocumentId(path)) return null
+  if (parseRefDocumentId(path)) return null
 
   return path
 }

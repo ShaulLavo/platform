@@ -115,7 +115,11 @@ export function editorThemeExists(themeId: string): boolean {
   return builtinThemeById.has(themeId) || vscodeThemeById.has(themeId)
 }
 
-/** Every selectable theme for one color mode, the built-ins first. */
+/**
+ * Every selectable theme for one color mode, the built-ins first. Only the
+ * built-ins carry a subtitle — a VSCode theme's id says nothing its label does
+ * not, and it is already searchable through the row's keywords.
+ */
 export function editorThemeOptions(type: EditorColorModeType): readonly EditorThemeOption[] {
   const builtins = BUILTIN_EDITOR_THEMES.filter((theme) => theme.type === type).map(
     (theme) =>
@@ -133,7 +137,7 @@ export function editorThemeOptions(type: EditorColorModeType): readonly EditorTh
         id: theme.id,
         label: theme.label,
         source: 'vscode',
-        subtitle: theme.id,
+        subtitle: '',
         type: theme.type,
       }) satisfies EditorThemeOption,
   )

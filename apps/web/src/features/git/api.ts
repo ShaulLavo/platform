@@ -26,6 +26,28 @@ function createGitCommitFailure(message: string) {
   })
 }
 
+/**
+ * Reads a file as of a git ref. Unlike the diff endpoints this returns plain content with no
+ * version or mtime, so the result can only back a read-only buffer, never a saveable document.
+ */
+export async function fetchGitFile(path: string, ref: string, signal?: AbortSignal) {
+  return observeGitOperation(
+    { action: 'git.file', path, signal },
+    async () => {
+      const response = await getClient().git.file.get({
+        fetch: { signal },
+        query: { path, ref },
+      })
+
+      return unwrapEdenResponse(response, {
+        emptyMessage: 'git server returned an empty response',
+        requireData: true,
+      })
+    },
+    (result) => ({ length: result.content.length }),
+  )
+}
+
 export async function fetchStatus(path: string, signal?: AbortSignal) {
   return observeGitOperation(
     { action: 'git.status', path, signal },

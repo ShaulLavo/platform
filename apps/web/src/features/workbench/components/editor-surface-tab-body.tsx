@@ -15,6 +15,7 @@ import {
   EditorSurfaceActionsContext,
   type EditorSurfaceActions,
 } from '@/features/workbench/providers/editor-surface-actions-context'
+import { parseRefDocumentId } from '@/features/git/ref-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 import { useSelectedFile } from '@/hooks/use-selected-file'
 import type { DocumentSessionChange, EditorKeymapLayer } from '@singapor/core'
@@ -40,7 +41,10 @@ export function EditorSurfaceTabBody({
 }) {
   const selectedConflictDiff = useMemo(() => parseConflictDiffDocumentId(path), [path])
   const selectedSearchBuffer = useMemo(() => parseSearchBufferDocumentId(path), [path])
-  const { fileState } = useSelectedFile(selectedConflictDiff || selectedSearchBuffer ? null : path)
+  const selectedRefDocument = useMemo(() => parseRefDocumentId(path), [path])
+  const { fileState } = useSelectedFile(
+    selectedConflictDiff || selectedSearchBuffer || selectedRefDocument ? null : path,
+  )
   const selectedViewDocumentId = useEditorDocumentState(
     (state) => state.viewsByTabId[tabId]?.documentId ?? null,
   )
@@ -103,12 +107,21 @@ export function EditorSurfaceTabBody({
     ensureEditorView(tabId, selectedFile)
   }, [ensureEditorView, selectedFile, tabId])
 
+  // Conflict and git-ref tabs both own an unsynced document rather than a file, so they attach a
+  // view by document id instead of going through the file path.
   useEffect(() => {
-    if (!selectedConflictDiff) return
+    if (!selectedConflictDiff && !selectedRefDocument) return
     if (!getLiveEditorDocument(path)) return
 
     ensureEditorViewForDocument(tabId, path)
-  }, [ensureEditorViewForDocument, getLiveEditorDocument, path, selectedConflictDiff, tabId])
+  }, [
+    ensureEditorViewForDocument,
+    getLiveEditorDocument,
+    path,
+    selectedConflictDiff,
+    selectedRefDocument,
+    tabId,
+  ])
 
   useEffect(() => {
     if (!active) return

@@ -42,6 +42,7 @@ export const gitKeys = {
     toTurnCount: number
   }) => [...gitKeys.diffs(), 'checkpoint', query] as const,
   diff: (path: string, staged: boolean) => [...gitKeys.diffs(), path, staged] as const,
+  file: (path: string, ref: string) => [...gitKeys.all, 'file', path, ref] as const,
   statuses: () => [...gitKeys.all, 'statuses'] as const,
   status: (path: string) => [...gitKeys.statuses(), path] as const,
 }

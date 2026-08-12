@@ -10,7 +10,7 @@ test('sections run navigate, edit, file, then palette', () => {
 // Revert File is intentionally absent: our revert rebuilds the buffer and discards undo history,
 // so it stays in the palette rather than one misclick away.
 test('the file section offers Save and not Revert', () => {
-  expect(labels('file')).toEqual(['Save', 'Compare with Saved'])
+  expect(labels('file')).toEqual(['Save', 'Compare with Saved', 'Open File at HEAD'])
 })
 
 test('the navigate section leads with the definition jumps, then the wider searches', () => {

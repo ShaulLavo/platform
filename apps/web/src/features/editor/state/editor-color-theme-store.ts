@@ -7,6 +7,7 @@ import {
   type VscodeThemeRegistration,
 } from '@singapor/core/shiki'
 import type { ShikiWorkerThemeRegistration } from '@singapor/core/shiki'
+import { Debouncer } from '@tanstack/react-pacer/debouncer'
 
 import {
   builtinEditorTheme,
@@ -28,6 +29,18 @@ export type LoadedEditorColorTheme = {
 
 const EDITOR_COLOR_THEME_STORAGE_KEY = 'platform.editor-color-theme.v1'
 const EDITOR_COLOR_THEME_STORAGE_VERSION = 1
+/**
+ * Running the pointer down the theme list is one decision, not sixty-five.
+ * Applying a preview costs the shiki worker a full re-tokenize of every open
+ * document — measured at ~500ms for a theme it has not built a highlighter for
+ * yet, ~60ms once warm — and the worker runs those one after another per
+ * document. Applying every row the pointer crosses queues far more work than the
+ * scrub took to perform, and the theme the user actually stops on lands minutes
+ * later, behind the queue. So the preview state moves immediately (badges and
+ * anything reading the selection stay honest) while the reload it triggers waits
+ * for the pointer to settle.
+ */
+const PREVIEW_SETTLE_MS = 150
 
 const DEFAULT_DEFINITION_BY_COLOR_MODE = {
   dark: requireVscodeThemeDefinition('dark-plus'),
@@ -40,6 +53,10 @@ const loadedThemeById = new Map<string, Promise<LoadedEditorColorTheme>>()
 // Registrations cached for synchronous reads (the shiki plugin resolves theme
 // registrations at worker-session creation, with no await).
 const registrationByIdSync = new Map<string, VscodeThemeRegistration>()
+
+const previewSettle = new Debouncer(() => notifyEditorColorThemeListeners(), {
+  wait: PREVIEW_SETTLE_MS,
+})
 
 let selectionByColorMode: Record<EditorColorMode, string> | null = null
 let activeEditorColorMode: EditorColorMode = 'dark'
@@ -69,6 +86,10 @@ export function getCommittedEditorThemeId(colorMode: EditorColorMode): string {
 export function setSelectedEditorThemeId(colorMode: EditorColorMode, themeId: string) {
   const selection = readSelectionByColorMode()
   if (!editorThemeExists(themeId)) return
+
+  // A commit outranks any preview still waiting to settle; letting that one fire
+  // afterwards would reload every editor a second time for the same theme.
+  previewSettle.cancel()
   if (selection[colorMode] === themeId && previewTheme === null) return
 
   previewTheme = null
@@ -86,15 +107,18 @@ export function previewEditorTheme(colorMode: EditorColorMode, themeId: string) 
   if (previewTheme === null && readSelectionByColorMode()[colorMode] === themeId) return
 
   previewTheme = { colorMode, themeId }
-  notifyEditorColorThemeListeners()
-  // The shiki plugin reloads synchronously off the notify above; if the worker
-  // has no registration for this theme yet it cannot highlight (string name
-  // resolution covers only ~20 of the bundled themes). Start the load now and
-  // re-notify when it resolves so the plugin gets a real registration.
+  // Paced, not immediate — see PREVIEW_SETTLE_MS. Rows the pointer only passes
+  // over never reach the highlighter.
+  previewSettle.maybeExecute()
+  // The registration load is not paced: it is a cached dynamic import with no
+  // per-document cost, and having it in flight during the settle window is what
+  // lets the preview that does land hand the worker a real registration instead
+  // of a bare name it can only resolve for ~20 of the bundled themes.
   void ensureRegistrationLoaded(themeId)
 }
 
 export function clearEditorThemePreview() {
+  previewSettle.cancel()
   if (previewTheme === null) return
 
   previewTheme = null
@@ -187,6 +211,7 @@ export function preloadVscodeThemeRegistrations(): Promise<void> {
 
 /** Test hook: drops in-memory state so the next read hits localStorage again. */
 export function resetEditorColorThemeStore() {
+  previewSettle.cancel()
   selectionByColorMode = null
   activeEditorColorMode = 'dark'
   previewTheme = null

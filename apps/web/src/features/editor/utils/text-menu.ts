@@ -1,6 +1,7 @@
 import {
   ArrowSquareOutIcon,
   BracketsCurlyIcon,
+  ClockCounterClockwiseIcon,
   CodeBlockIcon,
   CodeIcon,
   ColumnsPlusRightIcon,
@@ -91,6 +92,10 @@ export function editorTextMenu(): Menu {
       commandItem('workspace.compareWithSaved', {
         icon: GitDiffIcon,
         label: 'Compare with Saved',
+      }),
+      commandItem('workspace.openFileAtHead', {
+        icon: ClockCounterClockwiseIcon,
+        label: 'Open File at HEAD',
       }),
     ]),
     section('palette', [

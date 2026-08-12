@@ -3,6 +3,7 @@ import { CommandGroup, CommandItem } from '@workspace/ui/components/command'
 
 import { useCommandPaletteActions } from '@/components/command-palette/hooks/use-command-palette-actions'
 import { viewPaletteItems, workspaceOptionalCommands } from './command-palette-data'
+import { RowLabel } from './row-label'
 
 type ViewGroupsProps = {
   readonly hasWorkspace: boolean
@@ -25,12 +26,7 @@ export function ViewGroups({ hasWorkspace }: ViewGroupsProps) {
           onSelect={() => selectPlatformCommand(item.command)}
         >
           <TerminalWindowIcon className='text-muted-foreground' />
-          <span className='min-w-0 flex-1'>
-            <span className='block truncate font-medium'>{item.title}</span>
-            <span className='text-muted-foreground block truncate text-[11px]'>
-              {item.description}
-            </span>
-          </span>
+          <RowLabel label={item.title} description={item.description} />
         </CommandItem>
       ))}
     </CommandGroup>

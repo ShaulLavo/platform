@@ -45,6 +45,7 @@ import { requestedDecodeMode } from '@/features/editor/utils/decode-mode'
 import {
   EDITOR_SHIKI_LANGUAGE_MAP,
   EDITOR_SHIKI_PRELOAD_LANGUAGES,
+  EDITOR_SHIKI_PRELOAD_THEMES,
 } from '@/features/editor/utils/shiki-languages'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
@@ -266,6 +267,7 @@ function createEditorShikiHighlighterPlugin(): EditorPlugin {
     languages: EDITOR_SHIKI_LANGUAGE_MAP,
     onThemeChanged: (listener) => subscribeEditorColorTheme(listener),
     preloadLanguages: EDITOR_SHIKI_PRELOAD_LANGUAGES,
+    preloadThemes: EDITOR_SHIKI_PRELOAD_THEMES,
     theme: () => resolveShikiThemeForSession(),
     // The worker can resolve only ~20 themes by name; the rest need a real
     // registration object handed over synchronously at session creation.

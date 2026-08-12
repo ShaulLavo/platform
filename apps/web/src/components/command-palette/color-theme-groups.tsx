@@ -6,6 +6,7 @@ import { useCommandPaletteActions } from '@/components/command-palette/hooks/use
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import { preloadVscodeThemeRegistrations } from '@/features/editor/state/editor-color-theme-store'
 import { editorThemeOptions, type EditorThemeOption } from '@/features/editor/utils/theme-catalog'
+import { RowLabel } from './row-label'
 
 export function ColorThemeGroups() {
   const { previewColorTheme, selectColorTheme } = useCommandPaletteActions()
@@ -69,12 +70,7 @@ function ColorThemeGroup({
           onSelect={() => onSelect(theme.id)}
         >
           <PaletteIcon className='text-muted-foreground' />
-          <span className='min-w-0 flex-1'>
-            <span className='block truncate font-medium'>{theme.label}</span>
-            <span className='text-muted-foreground block truncate text-[11px]'>
-              {theme.subtitle}
-            </span>
-          </span>
+          <RowLabel label={theme.label} description={theme.subtitle} />
           {theme.id === activeThemeId && <CommandShortcut>active</CommandShortcut>}
         </CommandItem>
       ))}

@@ -4,6 +4,7 @@ import { CommandGroup, CommandItem, CommandShortcut } from '@workspace/ui/compon
 
 import { useCommandPaletteActions } from '@/components/command-palette/hooks/use-command-palette-actions'
 import { colorModePaletteItems } from './command-palette-data'
+import { RowLabel } from './row-label'
 import type { PlatformCommandId } from '@/keymap/types'
 
 type ColorModeGroupsProps = {
@@ -30,12 +31,7 @@ export function ColorModeGroups({ currentTheme }: ColorModeGroupsProps) {
           onSelect={() => selectPlatformCommand(item.command)}
         >
           <CommandIcon className='text-muted-foreground' />
-          <span className='min-w-0 flex-1'>
-            <span className='block truncate font-medium'>{item.title}</span>
-            <span className='text-muted-foreground block truncate text-[11px]'>
-              {item.description}
-            </span>
-          </span>
+          <RowLabel label={item.title} description={item.description} />
           {item.mode === currentTheme && <CommandShortcut>active</CommandShortcut>}
         </CommandItem>
       ))}

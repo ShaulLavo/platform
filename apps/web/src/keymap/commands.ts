@@ -5,6 +5,7 @@ import { useTheme, type Theme } from '@/components/theme-context'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { compareSavedDocumentId } from '@/features/editor/compare-saved-document'
+import { useOpenFileAtRef } from '@/features/git/hooks/use-open-file-at-ref'
 import {
   useEditorDocumentStoreApi,
   type EditorDocumentStoreApi,
@@ -53,6 +54,7 @@ type WorkspaceCommandContext = {
   readonly diffViewMode: EditorDiffViewMode
   readonly documentStore: EditorDocumentStoreApi
   readonly openPicker: () => void
+  readonly openFileAtRef: (path: string, ref: string) => Promise<boolean>
   readonly openSearchEditor: (rootPath: string) => void
   readonly queryClient: QueryClient
   readonly reopenClosedEditor: () => boolean
@@ -94,6 +96,7 @@ export function usePlatformCommandDispatch({
   const setFocusArea = useFocus((state) => state.setFocusArea)
   const { closeTab, openSearchEditor, reopenClosedEditor, selectPreviousEditor } =
     useEditorCommands()
+  const openFileAtRef = useOpenFileAtRef()
   const fallbackRequestCloseTab = useCallback<RequestCloseTab>(
     (tabId) => {
       closeTab(tabId)
@@ -118,6 +121,7 @@ export function usePlatformCommandDispatch({
         diffViewMode: workspace.diffViewMode,
         documentStore,
         openPicker: workspace.openPicker,
+        openFileAtRef,
         openSearchEditor,
         queryClient,
         reopenClosedEditor,
@@ -143,6 +147,7 @@ export function usePlatformCommandDispatch({
       documentStore,
       dispatchEditorCommand,
       queryClient,
+      openFileAtRef,
       openSearchEditor,
       reopenClosedEditor,
       requestEditorFocus,
@@ -297,6 +302,13 @@ const workspaceCommandHandlers: Partial<Record<WorkspaceCommandId, WorkspaceComm
       openEditorPathInWorkbenchPanels(workbenchPanels, compareSavedDocumentId(path)),
     )
     requestEditorFocus()
+    return true
+  },
+  'workspace.openFileAtHead': ({ activeFilePath, openFileAtRef }) => {
+    const path = fileBackedEditorPath(activeFilePath)
+    if (!path) return false
+
+    void openFileAtRef(path, 'HEAD').catch(reportCommandError)
     return true
   },
   'workspace.quickOpenView': ({ showCommandPalette }) => {

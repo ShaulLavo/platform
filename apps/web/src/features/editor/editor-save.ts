@@ -7,6 +7,7 @@ import {
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
 import { parseCompareSavedDocumentId } from '@/features/editor/compare-saved-document'
+import { parseRefDocumentId } from '@/features/git/ref-document'
 import { FileSyncService } from '@/features/editor/file-sync-service'
 import type { QueryClient } from '@tanstack/react-query'
 
@@ -72,6 +73,7 @@ export function fileBackedEditorPath(path: string | null | undefined) {
   if (parseConflictDiffDocumentId(path)) return null
   if (parseSearchBufferDocumentId(path)) return null
   if (parseCompareSavedDocumentId(path)) return null
+  if (parseRefDocumentId(path)) return null
 
   return path
 }

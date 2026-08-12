@@ -38,6 +38,7 @@ export type WorkspaceCommandId =
   | 'workspace.saveFile'
   | 'workspace.saveAllFiles'
   | 'workspace.compareWithSaved'
+  | 'workspace.openFileAtHead'
   | 'workspace.revertFile'
   | 'workspace.reopenClosedEditor'
   | 'workspace.toggleSidebarVisibility'

@@ -4,6 +4,7 @@ import { CommandGroup, CommandItem, CommandShortcut } from '@workspace/ui/compon
 
 import { useCommandPaletteActions } from '@/components/command-palette/hooks/use-command-palette-actions'
 import { symbolDescription, symbolKindLabel } from './command-palette-utils'
+import { RowLabel } from './row-label'
 
 type SymbolGroupsProps = {
   readonly isPending: boolean
@@ -34,12 +35,7 @@ export function SymbolGroups({ isPending, items }: SymbolGroupsProps) {
           onSelect={() => selectSymbol(item)}
         >
           <TextTIcon className='text-muted-foreground' />
-          <span className='min-w-0 flex-1'>
-            <span className='block truncate font-medium'>{item.name}</span>
-            <span className='text-muted-foreground block truncate text-[11px]'>
-              {symbolDescription(item)}
-            </span>
-          </span>
+          <RowLabel label={item.name} description={symbolDescription(item)} />
           <CommandShortcut>{item.selectionRange.start.line + 1}</CommandShortcut>
         </CommandItem>
       ))}

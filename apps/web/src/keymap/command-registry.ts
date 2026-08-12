@@ -75,6 +75,12 @@ const workspaceCommandSpecs = [
     'Diff the active editor against the file on disk.',
     ['workbench.files.action.compareWithSaved'],
   ),
+  workspaceCommand(
+    'workspace.openFileAtHead',
+    'Open file at HEAD',
+    'Open the committed version of the active file, read-only.',
+    ['git.openFile'],
+  ),
   workspaceCommand('workspace.revertFile', 'Revert file', 'Reload the active editor from disk.', [
     'workbench.action.files.revert',
   ]),

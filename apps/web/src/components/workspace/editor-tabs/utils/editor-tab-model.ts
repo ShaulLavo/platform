@@ -9,6 +9,7 @@ import {
   parseConflictDiffDocumentId,
 } from '@/features/editor/conflict-diff-document'
 import { parseCompareSavedDocumentId } from '@/features/editor/compare-saved-document'
+import { parseRefDocumentId } from '@/features/git/ref-document'
 import { documentLabel } from '@/components/workspace/editor-tabs/utils/document-label'
 import {
   diffDocumentShortHash,
@@ -94,6 +95,8 @@ function iconName(path: string, conflicts: EditorTabConflictMap) {
   if (parseConflictDiffDocumentId(path)) return 'conflict.txt'
   const compared = parseCompareSavedDocumentId(path)
   if (compared) return basename(compared)
+  const atRef = parseRefDocumentId(path)
+  if (atRef) return basename(atRef.path)
 
   return basename(path)
 }
@@ -114,6 +117,8 @@ function tabTitle(path: string, conflicts: EditorTabConflictMap) {
   if (parseConflictDiffDocumentId(path)) return 'Filesystem conflict editor'
   const comparedTitle = parseCompareSavedDocumentId(path)
   if (comparedTitle) return `${displayPath(comparedTitle)} — working tree vs saved`
+  const atRefTitle = parseRefDocumentId(path)
+  if (atRefTitle) return `${displayPath(atRefTitle.path)} at ${atRefTitle.ref}`
 
   return displayPath(path)
 }
@@ -127,6 +132,9 @@ function tabCopyPath(path: string, conflicts: EditorTabConflictMap) {
 
   const compared = parseCompareSavedDocumentId(path)
   if (compared) return compared
+
+  const atRef = parseRefDocumentId(path)
+  if (atRef) return atRef.path
 
   const conflict = conflictForDocument(path, conflicts)
   if (conflict) return conflict.remotePath

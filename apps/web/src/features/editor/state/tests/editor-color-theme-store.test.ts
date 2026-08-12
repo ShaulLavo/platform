@@ -215,6 +215,26 @@ test('a hover-preview overlays the selection without persisting', () => {
   expect(getSelectedEditorThemeId('dark')).toBe('monokai')
 })
 
+test('scrubbing the theme list does not reload the editor for every row it crosses', async () => {
+  const listener = vi.fn()
+  subscribeEditorColorTheme(listener)
+
+  previewEditorTheme('dark', 'monokai')
+  previewEditorTheme('dark', 'dracula')
+  previewEditorTheme('dark', 'nord')
+
+  // The selection follows the pointer immediately, so badges stay honest...
+  expect(getSelectedEditorThemeId('dark')).toBe('nord')
+  // ...but nothing has reached the highlighter yet. Three rows crossed, zero
+  // re-tokenizes queued — the whole point, since each one costs the shiki
+  // worker hundreds of milliseconds it runs serially per document.
+  expect(listener).not.toHaveBeenCalled()
+
+  await vi.waitFor(() => {
+    expect(listener).toHaveBeenCalled()
+  })
+})
+
 test('preview is ignored when it targets the already-selected theme', () => {
   const listener = vi.fn()
   subscribeEditorColorTheme(listener)

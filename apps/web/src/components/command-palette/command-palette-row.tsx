@@ -2,6 +2,7 @@ import { CommandItem, CommandShortcut } from '@workspace/ui/components/command'
 import { cn } from '@workspace/ui/lib/utils'
 
 import { CommandPaletteIcon } from './command-palette-icon'
+import { RowLabel } from './row-label'
 import type { CommandPaletteItem } from './command-palette-types'
 import { useCommandPaletteActions } from '@/components/command-palette/hooks/use-command-palette-actions'
 
@@ -22,17 +23,11 @@ export function CommandPaletteRow({ disabledReason, item }: CommandPaletteRowPro
       onSelect={() => selectCommand(item)}
     >
       <CommandPaletteIcon category={item.category} command={item.command.command} />
-      <span className='min-w-0 flex-1'>
-        <span className='block truncate font-medium'>{item.title}</span>
-        <span
-          className={cn(
-            'text-muted-foreground block truncate text-[11px]',
-            disabled && 'text-muted-foreground/70',
-          )}
-        >
-          {disabledReason ?? item.description ?? item.id}
-        </span>
-      </span>
+      <RowLabel
+        label={item.title}
+        description={disabledReason ?? item.description ?? item.id}
+        descriptionClassName={cn(disabled && 'text-muted-foreground/70')}
+      />
       {item.shortcut && <CommandShortcut>{item.shortcut}</CommandShortcut>}
     </CommandItem>
   )
