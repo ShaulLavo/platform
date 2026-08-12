@@ -327,6 +327,7 @@ const defaultBindingSpecs = [
   // VS Code binds this to Mod+Shift+\, which the hotkey layer refuses: Shift with punctuation is
   // layout-dependent (see PunctuationKey). Mod+\ is unclaimed and keeps the backslash mnemonic.
   editorBinding('Mod+\\', 'editor.editor.action.jumpToBracket', 'editor.action.jumpToBracket'),
+  editorBinding('Alt+Z', 'editor.editor.action.toggleWordWrap', 'editor.action.toggleWordWrap'),
   editorBinding(
     'Mod+Alt+ArrowUp',
     'editor.editor.action.insertCursorAbove',
