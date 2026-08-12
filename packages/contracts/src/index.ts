@@ -478,6 +478,7 @@ export {
   providerInstanceConfigSchema,
   providerInstanceConfigsSchema,
   settingsPatchSchema,
+  REDACTED_SETTINGS_VALUE,
   settingsSchema,
   type KeybindingOverrides,
   type ModelPreferences,

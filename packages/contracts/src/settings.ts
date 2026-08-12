@@ -11,6 +11,19 @@ const KEYBINDING_COMMAND_ID_PATTERN = /^[a-zA-Z][a-zA-Z0-9_.-]*$/
  * the clear, so this is for `PATH`-style knobs, not credentials: nothing here
  * is encrypted and the settings route returns it verbatim.
  */
+/**
+ * What a stored environment value is replaced with on its way to a client.
+ *
+ * Provider environment variables are where an API token ends up, and the
+ * settings document is served over HTTP. Sending the real value would put every
+ * secret in the app behind nothing but an origin check — and into any log,
+ * devtools pane or crash report that captures a response body.
+ *
+ * Sent back unchanged, it means "keep what is stored". Without that rule the
+ * first save after a read would overwrite every secret with the mask.
+ */
+export const REDACTED_SETTINGS_VALUE = '••••••••'
+
 export const providerEnvironmentVariableSchema = v.object({
   name: v.pipe(
     trimmedNonEmptyStringSchema,

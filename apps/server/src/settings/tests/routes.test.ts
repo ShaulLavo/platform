@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { closeApp, createApp } from '../../app'
 import { createMetadataDatabase, type MetadataDatabaseHandle } from '../../db/client'
 import { settingsErrors } from '../structured-errors'
+import { redactSettings } from '../utils/redaction'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
 
@@ -56,8 +57,14 @@ describe('settings routes', () => {
 
     const written = await writeSettings(harness, patch)
 
-    expect(written).toEqual({ ...DEFAULT_SETTINGS, ...patch })
-    expect(await readSettings(harness)).toEqual(written)
+    // Everything round-trips except the environment values, which come back
+    // masked: this document is served over HTTP and it is where an API token
+    // ends up. The mask is what a client is allowed to see, and sending it back
+    // unchanged means "keep what is stored".
+    const expected = redactSettings({ ...DEFAULT_SETTINGS, ...patch } as unknown as Settings)
+    expect(written).toEqual(expected)
+    expect(await readSettings(harness)).toEqual(expected)
+    expect(JSON.stringify(written)).not.toContain('/opt/codex')
   })
 
   it('survives a restart against the same database', async () => {

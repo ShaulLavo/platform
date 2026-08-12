@@ -1,4 +1,5 @@
 import { settingsSchema } from '@workspace/contracts'
+import { redactSettings } from './utils/redaction'
 import { Elysia } from 'elysia'
 import type { SettingsService } from './service'
 
@@ -15,6 +16,8 @@ import type { SettingsService } from './service'
  */
 export function settingsRoutes(settings: SettingsService) {
   return new Elysia({ name: 'settings-routes' })
-    .get('/settings', () => settings.read(), { response: settingsSchema })
-    .post('/settings', ({ body }) => settings.update(body), { response: settingsSchema })
+    .get('/settings', () => settings.readForClient(), { response: settingsSchema })
+    .post('/settings', ({ body }) => redactSettings(settings.update(body)), {
+      response: settingsSchema,
+    })
 }

@@ -5,6 +5,7 @@ import { migratePlatformDatabase } from '../db/migrations'
 import { appSettings } from '../db/schema'
 import { limitText, recordRequestContext } from '../observability'
 import { settingsErrors } from './structured-errors'
+import { redactSettings, restoreRedactedSecrets } from './utils/redaction'
 
 const MAX_REASON_CHARS = 400
 
@@ -40,6 +41,17 @@ export class SettingsService {
     return () => this.listeners.delete(listener)
   }
 
+  /**
+   * The document as a client may see it: provider environment values masked.
+   *
+   * A separate method rather than redacting in `read()`, because the registry
+   * needs the real values to launch a provider with them — the split is the
+   * point. Everything that leaves the process goes through this one.
+   */
+  readForClient(): Settings {
+    return redactSettings(this.read())
+  }
+
   read(): Settings {
     const settings = this.load()
     recordRequestContext(settingsContext('read', settings))
@@ -51,7 +63,10 @@ export class SettingsService {
     const parsed = v.safeParse(settingsPatchSchema, patch)
     if (!parsed.success) throw settingsErrors.PATCH_INVALID({ reason: issueReason(parsed.issues) })
 
-    const sections = Object.entries(parsed.output)
+    // A client edits the document it was given, and that one is masked. Writing
+    // it back verbatim would replace every secret with the mask on the first
+    // save after a read, so a value that still *is* the mask means "unchanged".
+    const sections = Object.entries(restoreRedactedSecrets(parsed.output, this.load()))
     this.writeSections(sections)
     const settings = this.load()
     recordRequestContext({
