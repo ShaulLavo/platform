@@ -333,6 +333,13 @@ const defaultBindingSpecs = [
   editorBinding('Control+J', 'editor.editor.action.joinLines', 'editor.action.joinLines', {
     platforms: ['mac'],
   }),
+  // VS Code's subword motion, which it ships on Ctrl+Alt+Arrow on macOS.
+  editorBinding('Control+Alt+ArrowLeft', 'editor.cursorWordPartLeft', 'cursorWordPartLeft', {
+    platforms: ['mac'],
+  }),
+  editorBinding('Control+Alt+ArrowRight', 'editor.cursorWordPartRight', 'cursorWordPartRight', {
+    platforms: ['mac'],
+  }),
   // VS Code writes this Shift+Alt+F; the hotkey layer canonicalises modifiers as Alt+Shift.
   editorBinding(
     'Alt+Shift+F',

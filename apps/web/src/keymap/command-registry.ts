@@ -134,6 +134,11 @@ const workspaceCommandSpecs = [
     'Bring the workbench terminal on screen.',
   ),
   workspaceCommand(
+    'workspace.newIsolatedSession',
+    'New session in its own worktree',
+    'Run the next session on its own branch in a separate checkout.',
+  ),
+  workspaceCommand(
     'workspace.closeCurrentTab',
     'Close current tab',
     'Close the selected editor tab.',
@@ -250,6 +255,8 @@ const editorCommandSpecs = [
   ]),
   editorCommand('editor.action.changeAll', 'Change all occurrences', ['editor.action.changeAll']),
   editorCommand('editor.action.jumpToBracket', 'Go to bracket', ['editor.action.jumpToBracket']),
+  editorCommand('cursorWordPartLeft', 'Cursor word part left', ['cursorWordPartLeft']),
+  editorCommand('cursorWordPartRight', 'Cursor word part right', ['cursorWordPartRight']),
   editorCommand('editor.action.trimTrailingWhitespace', 'Trim trailing whitespace', [
     'editor.action.trimTrailingWhitespace',
   ]),
