@@ -199,6 +199,7 @@ export function CommandPaletteContent({
       onOpenChange,
       openDefinition,
       openWorkspaceRoot,
+      queueTerminalCommand,
       resolvedTheme,
       selectFile,
       selectedFileBackedPath,
