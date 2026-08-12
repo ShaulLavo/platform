@@ -11,11 +11,13 @@ import { SettingsPanel } from '../panel'
 // Real routes, real store: the panel renders what the server actually holds and
 // its toggles write back through the same routes the app uses.
 
-test('renders empty sections for an untouched server', async ({ client }) => {
+test('lists the running providers even when nothing has been saved', async ({ client }) => {
   expect(client).toBeDefined()
   renderWithProviders(<SettingsPanel />)
 
-  expect(await screen.findByText('No provider instances configured yet.')).toBeDefined()
+  // An untouched server has an empty settings document and live providers, and
+  // the section has to show the second rather than report the first.
+  expect(await screen.findByRole('switch', { name: /Enable/ })).toBeDefined()
   expect(screen.getByText('No model preferences yet.')).toBeDefined()
   // Shortcuts have no empty state: every command ships with its default in the
   // list so there is something to edit before any override exists.

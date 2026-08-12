@@ -15,7 +15,7 @@ export function SettingsPanel() {
        column its default `min-height: auto` would size it to its content and
        push the overflow past the dialog instead of scrolling inside it. */
     <div className='flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4'>
-      <ProviderSection instances={settings.data.providerInstances} />
+      <ProviderSection saved={settings.data.providerInstances} />
       <ModelSection preferences={settings.data.models} />
       <KeybindingSection overrides={settings.data.keybindings} />
     </div>

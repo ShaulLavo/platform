@@ -4,22 +4,34 @@ import {
   type ModelPreferences,
   type ModelRef,
   type ProviderInstanceConfig,
-  type ProviderInstanceId,
 } from '@workspace/contracts'
 
 /**
  * Sections are replaced whole, so every edit rebuilds the list it touches
  * rather than sending a delta the server would have to merge.
  */
+/**
+ * Toggling a provider the document has never mentioned appends it rather than
+ * doing nothing.
+ *
+ * The built-in instances live in the registry, not in settings, so an untouched
+ * install has an empty list — and mapping over it silently dropped every toggle
+ * of the only two providers that exist. The appended entry is the driver's own
+ * configuration with `enabled` changed, which is exactly what layering over the
+ * defaults expects to receive.
+ */
 export function withProviderEnabled(
   instances: readonly ProviderInstanceConfig[],
-  providerInstanceId: ProviderInstanceId,
+  instance: ProviderInstanceConfig,
   enabled: boolean,
 ): ProviderInstanceConfig[] {
-  return instances.map((instance) => {
-    if (instance.providerInstanceId !== providerInstanceId) return instance
+  const known = instances.some((saved) => saved.providerInstanceId === instance.providerInstanceId)
+  if (!known) return instances.concat({ ...instance, enabled })
 
-    return { ...instance, enabled }
+  return instances.map((saved) => {
+    if (saved.providerInstanceId !== instance.providerInstanceId) return saved
+
+    return { ...saved, enabled }
   })
 }
 

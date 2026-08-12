@@ -16,5 +16,9 @@ test('an open dialog shows the real settings panel', async ({ client }) => {
   renderWithProviders(<SettingsDialog open onOpenChange={() => {}} />)
 
   expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeDefined()
-  expect(await screen.findByText('No provider instances configured yet.')).toBeDefined()
+  // The running providers, not the saved ones. This used to assert the empty
+  // state, which was the bug: the built-ins live in the registry, so the one
+  // screen for configuring providers said there were none while two ran.
+  expect(await screen.findByText('Providers')).toBeDefined()
+  expect(await screen.findByRole('switch', { name: /Enable/ })).toBeDefined()
 })

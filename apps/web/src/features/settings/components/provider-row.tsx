@@ -21,7 +21,7 @@ export function ProviderRow({ instance }: { instance: ProviderInstanceConfig }) 
         aria-label={`Enable ${label}`}
         checked={instance.enabled}
         disabled={isSaving}
-        onCheckedChange={(checked) => setProviderEnabled(instance.providerInstanceId, checked)}
+        onCheckedChange={(checked) => setProviderEnabled(instance, checked)}
       />
     </div>
   )

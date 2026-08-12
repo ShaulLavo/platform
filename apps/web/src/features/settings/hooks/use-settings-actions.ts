@@ -1,7 +1,7 @@
 import {
   DEFAULT_SETTINGS,
   type ModelRef,
-  type ProviderInstanceId,
+  type ProviderInstanceConfig,
   type Settings,
 } from '@workspace/contracts'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -48,13 +48,12 @@ export function useSettingsActions() {
     setModelHidden: (ref: ModelRef, hidden: boolean) => {
       mutation.mutate({ models: withModelHidden(current().models, ref, hidden) })
     },
-    setProviderEnabled: (providerInstanceId: ProviderInstanceId, enabled: boolean) => {
+    // Takes the whole instance, not just its id: a built-in the settings
+    // document has never mentioned has to be appended, and only the caller
+    // knows what its configuration is.
+    setProviderEnabled: (instance: ProviderInstanceConfig, enabled: boolean) => {
       mutation.mutate({
-        providerInstances: withProviderEnabled(
-          current().providerInstances,
-          providerInstanceId,
-          enabled,
-        ),
+        providerInstances: withProviderEnabled(current().providerInstances, instance, enabled),
       })
     },
   }
