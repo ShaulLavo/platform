@@ -8,6 +8,7 @@ import {
   CursorTextIcon,
   EyeIcon,
   FloppyDiskIcon,
+  GitDiffIcon,
   GitForkIcon,
   ListMagnifyingGlassIcon,
 } from '@phosphor-icons/react'
@@ -86,6 +87,10 @@ export function editorTextMenu(): Menu {
       commandItem('workspace.saveFile', {
         icon: FloppyDiskIcon,
         label: 'Save',
+      }),
+      commandItem('workspace.compareWithSaved', {
+        icon: GitDiffIcon,
+        label: 'Compare with Saved',
       }),
     ]),
     section('palette', [
