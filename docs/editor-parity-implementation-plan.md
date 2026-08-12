@@ -67,6 +67,10 @@ Effort letters from the matrix: S = days, M = 1–2 wk, L = 3–6 wk, XL = multi
 
 ### E1 — Typing assistance (the "feels finished" wave)
 
+> **Started.** Landed: auto-closing pairs with type-over, pair-backspace, and surround-with; auto-indent on Enter (including the `{`+Enter block expansion, verified in the app); and `completionItem/resolve`, without which accepting an auto-import completion silently inserted the symbol with no import.
+>
+> Still open in the typing cluster: multi-caret for auto-close/indent (needs one edit per caret — two zero-width edits at one offset pass batch validation but apply in an unspecified order), undo coalescing across an auto-close (needs `TypingRun` to carry a caret offset distinct from the edit end), snippets, and syntax-aware suppression — captures are the only scope-bearing data, are requested off, and are not projected through edits, so a `scopeAt()` would be stale exactly at the caret.
+
 Substrate S4 first, then:
 
 - Auto-closing pairs, type-over, surround-with-brackets, auto-delete pair (M/core)
