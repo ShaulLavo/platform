@@ -417,6 +417,21 @@ describe('orchestration projection convergence', () => {
       sql: [],
     })
   })
+  it('keeps a project rename from clobbering its scripts, and the reverse', () => {
+    const scripts = [{ command: 'bun run dev', name: 'dev' }]
+
+    // The projection patches compactly, so a command that names only one field
+    // must leave the others exactly as they were. This is what makes a rename
+    // and a script edit two independent actions rather than a last-writer-wins
+    // race between two dialogs.
+    const renamed = projectMeta({ scripts }, { title: 'Renamed' })
+    expect(projectScripts(renamed)).toEqual({ memory: scripts, sql: scripts })
+    expect(renamed.shell?.title).toBe('Renamed')
+
+    const rescripted = projectMeta({ title: 'Renamed' }, { scripts })
+    expect(rescripted.shell?.title).toBe('Renamed')
+    expect(projectScripts(rescripted)).toEqual({ memory: scripts, sql: scripts })
+  })
 })
 
 /** One or more `project.meta-updated` events over a bootstrapped project. */

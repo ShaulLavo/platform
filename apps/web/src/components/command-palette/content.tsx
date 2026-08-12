@@ -11,6 +11,7 @@ import {
 
 import { CommandPaletteGroupsFactory } from '@/components/command-palette/command-palette-groups-factory'
 import { useCommandPaletteScripts } from '@/components/command-palette/use-command-palette-scripts'
+import { useSaveProjectScript } from '@/features/chat-mode/hooks/use-save-project-script'
 import { useHighlightedPaletteValue } from '@/components/command-palette/hooks/use-highlighted-palette-value'
 import { useRecentCommandIds } from '@/components/command-palette/hooks/use-recent-command-ids'
 import { recordCommandUse } from '@/components/command-palette/state/recent-commands-store'
@@ -92,6 +93,7 @@ export function CommandPaletteContent({
   })
   const { projects: sessionProjects, sessions: sessionItems } = useCommandPaletteSessions()
   const queueTerminalCommand = useTerminalCommandInboxStore((state) => state.queueCommand)
+  const saveProjectScript = useSaveProjectScript()
   const scriptItems = useCommandPaletteScripts({
     enabled: open && mode === 'scripts',
     rootPath: rootFolder?.path ?? null,
@@ -201,6 +203,9 @@ export function CommandPaletteContent({
         onOpenChange(false)
       },
       selectScript: (script) => {
+        // Running it is what saves it. Otherwise `project.scripts` has no writer
+        // at all and the palette's saved group is permanently empty.
+        saveProjectScript(script)
         // The terminal is the surface that can actually run it; the inbox is what
         // lets the pick land before one exists. Revealing the panel is what turns
         // a queued command into a visible one.
@@ -256,6 +261,7 @@ export function CommandPaletteContent({
       openDefinition,
       openWorkspaceRoot,
       queueTerminalCommand,
+      saveProjectScript,
       resolvedTheme,
       selectFile,
       selectedFileBackedPath,

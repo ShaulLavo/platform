@@ -14,6 +14,7 @@ import {
   type MessageId,
   type ModelSelection,
   type OrchestrationMessage,
+  type OrchestrationProjectScript,
   type ProjectCreateCommand,
   type ProjectDeleteCommand,
   type ProjectId,
@@ -401,6 +402,51 @@ export function createProjectDefaultModelCommand({
     commandId: createCommandId(),
     defaultModelSelection,
     projectId,
+    type: 'project.meta.update',
+  }
+}
+
+/**
+ * Renames a project, or repoints it at a different folder.
+ *
+ * Both fields are optional and omitted when absent, because the projection
+ * patches compactly: sending `title` alone must leave the workspace root and
+ * the default model exactly as they were.
+ */
+export function createProjectMetaCommand({
+  projectId,
+  title,
+  workspaceRoot,
+}: {
+  projectId: ProjectId
+  title?: string
+  workspaceRoot?: string
+}): ProjectMetaUpdateCommand {
+  return {
+    commandId: createCommandId(),
+    projectId,
+    type: 'project.meta.update',
+    ...(title === undefined ? {} : { title }),
+    ...(workspaceRoot === undefined ? {} : { workspaceRoot }),
+  }
+}
+
+/**
+ * Writes the project's saved scripts. The whole list every time — scripts are
+ * renamed and reordered as a set, and an empty array is how the user clears
+ * them, which is why the command distinguishes absent from empty.
+ */
+export function createProjectScriptsCommand({
+  projectId,
+  scripts,
+}: {
+  projectId: ProjectId
+  scripts: readonly OrchestrationProjectScript[]
+}): ProjectMetaUpdateCommand {
+  return {
+    commandId: createCommandId(),
+    projectId,
+    scripts: [...scripts],
     type: 'project.meta.update',
   }
 }
