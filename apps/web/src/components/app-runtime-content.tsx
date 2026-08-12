@@ -6,6 +6,7 @@ import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { useDirtyTabCloseRequest } from '@/features/editor/hooks/use-dirty-tab-close'
 import { EditorTabActionsProvider } from '@/features/editor/providers/editor-tab-actions-provider'
 import { MenuCommandProvider } from '@/features/menus/providers/command-provider'
+import { useRestoreRecentWorkspaceRoot } from '@/hooks/use-restore-recent-workspace-root'
 import { useUnsavedWorkGuard } from '@/hooks/use-unsaved-work-guard'
 import { useWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
@@ -20,7 +21,9 @@ export function AppRuntimeContent() {
     [defaultKeymapBindings],
   )
 
+  // Subscribe before recovery so a recovered root recreates its erased cache entry.
   useWorkspaceCachePersistence()
+  useRestoreRecentWorkspaceRoot()
   useUnsavedWorkGuard()
 
   const handleGlobalFocusCapture = useCallback(

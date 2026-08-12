@@ -217,6 +217,7 @@
 
   /* Editor surface */
   --editor-inactive-selection: oklch(0.72 0.13 240 / 0.18);
+  --editor-bracket-match-background: oklch(0.55 0.02 260 / 0.22);
 
   /* Terminal surface — light (matches --background) */
   --terminal-background-solid: #ffffff;
@@ -361,6 +362,7 @@
 
   /* Editor surface */
   --editor-inactive-selection: oklch(0.72 0.13 240 / 0.16);
+  --editor-bracket-match-background: oklch(0.78 0.02 260 / 0.26);
 
   /* Terminal surface — dark (matches --background) */
   --terminal-background-solid: #0a0a0a;

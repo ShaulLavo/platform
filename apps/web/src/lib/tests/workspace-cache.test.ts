@@ -57,6 +57,7 @@ describe('workspace cache', () => {
     writeWorkspaceSliceCache('/repo', {
       editorHistory: [diffPath, '/repo/src/readme.md'],
       recentlyClosedEditorPaths: ['/repo/src/closed.ts'],
+      scrollPositionByPath: {},
       workbenchPanels: workbenchPanelsForPaths(['/repo/src/readme.md', diffPath], diffPath),
     })
     writeWorkspaceIndexCache(['/repo'])
@@ -77,6 +78,7 @@ describe('workspace cache', () => {
     writeWorkspaceSliceCache('/repo', {
       editorHistory: [diffPath, conflictDiffDocumentId('conflict-1')],
       recentlyClosedEditorPaths: ['/other/src/closed.ts'],
+      scrollPositionByPath: {},
       workbenchPanels: workbenchPanelsForPaths([diffPath, '/repo/src/a.ts'], diffPath),
     })
 
@@ -87,6 +89,20 @@ describe('workspace cache', () => {
     expect(cachedSlice('/repo').workbenchPanels.editorTabs.map((tab) => tab.path)).toEqual([
       '/repo/src/a.ts',
     ])
+  })
+
+  it('persists scroll positions for workspace paths only', () => {
+    writeWorkspaceSliceCache('/repo', {
+      ...emptyWorkspaceSlice(),
+      scrollPositionByPath: {
+        '/other/src/elsewhere.ts': { left: 0, top: 40 },
+        '/repo/src/app.ts': { left: 8, top: 320 },
+      },
+    })
+
+    expect(cachedSlice('/repo').scrollPositionByPath).toEqual({
+      '/repo/src/app.ts': { left: 8, top: 320 },
+    })
   })
 
   it('keeps a search editor tab only for the workspace it searches', () => {

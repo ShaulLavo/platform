@@ -95,6 +95,18 @@ export const gitWorktreeRemoveBodySchema = v.object({
   force: v.optional(v.boolean(), false),
 })
 
+/**
+ * The title and body reach `gh` as argv, not a shell, so no quoting is needed —
+ * only a length ceiling, because a runaway body would be an unbounded argument.
+ */
+export const gitCreatePullRequestBodySchema = v.object({
+  path: v.optional(pathSchema, ''),
+  base: v.optional(gitRefNameSchema),
+  body: v.optional(v.pipe(v.string(), v.maxLength(60_000)), ''),
+  draft: v.optional(v.boolean(), false),
+  title: v.pipe(v.string(), v.trim(), v.minLength(1), v.maxLength(300)),
+})
+
 export const gitBranchDiffQuerySchema = v.object({
   path: v.optional(pathSchema, ''),
   base: v.optional(gitRefNameSchema),
@@ -109,3 +121,4 @@ export type GitCreateBranchBody = v.InferOutput<typeof gitCreateBranchBodySchema
 export type GitWorktreeCreateBody = v.InferOutput<typeof gitWorktreeCreateBodySchema>
 export type GitWorktreeRemoveBody = v.InferOutput<typeof gitWorktreeRemoveBodySchema>
 export type GitBranchDiffQuery = v.InferOutput<typeof gitBranchDiffQuerySchema>
+export type GitCreatePullRequestBody = v.InferOutput<typeof gitCreatePullRequestBodySchema>

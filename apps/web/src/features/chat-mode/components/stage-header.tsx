@@ -8,8 +8,10 @@ import {
   threadStatusTextClass,
   type ThreadStatus,
 } from '@/features/chat/lib/thread-status'
+import { BranchActions } from '@/features/git/components/branch-actions'
 import { SessionRename } from '@/features/chat-mode/components/session-rename'
 import { StageSessionMenu } from '@/features/chat-mode/components/stage-session-menu'
+import { useChatModeSession } from '@/features/chat-mode/providers/session-context'
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
 import type { SessionRailItem } from '@/features/chat-mode/utils/session-rail-model'
 import { cn } from '@workspace/ui/lib/utils'
@@ -24,6 +26,7 @@ export function StageHeader({
   /** Null while the stage is on the composer — there is no session to name or act on. */
   readonly session: SessionRailItem | null
 }) {
+  const { rootPath } = useChatModeSession()
   const renaming = useSessionRailStore((state) => state.renaming)
   const editing =
     Boolean(session) && renaming?.surface === 'header' && renaming.threadId === session?.id
@@ -57,6 +60,14 @@ export function StageHeader({
           <h1 className='min-w-0 flex-1 truncate font-medium'>{session?.title ?? 'New session'}</h1>
         )}
       </nav>
+      {session?.branch ? (
+        <BranchActions
+          pullRequestTitle={session.title}
+          // The session's worktree is its own checkout with its own HEAD, so the
+          // project root would push whatever branch the main tree happens to be on.
+          rootPath={session.worktreePath ?? rootPath}
+        />
+      ) : null}
       {session ? statusBadge(session.status) : null}
       {contextUsage ? <ContextUsageRing usage={contextUsage} /> : null}
       {session ? <StageSessionMenu session={session} /> : null}

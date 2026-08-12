@@ -233,6 +233,7 @@ function cachedWorkspace(slice: Partial<CachedWorkspaceSlice>): CachedWorkspaceS
       [rootFolder.path]: {
         editorHistory: [],
         recentlyClosedEditorPaths: [],
+        scrollPositionByPath: {},
         workbenchPanels: createDefaultWorkbenchPanels(),
         ...slice,
       },

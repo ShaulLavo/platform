@@ -3,13 +3,14 @@ import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createEditorWorkspaceStore } from '@/features/editor/state/editor-workspace-state'
+import { createEditorDocumentStore } from '@/features/editor/state/editor-document-state'
 import { DEFAULT_DIFF_VIEW_MODE } from '@/features/editor/utils/diff-view-mode'
 import { createSearchBufferStore } from '@/features/search/search-buffer-state'
 import {
   createDefaultWorkbenchPanels,
   openEditorPathInWorkbenchPanels,
 } from '@/features/workbench/utils/workbench-panels'
-import type { PickedFsEntry } from '@/lib/file-system-types'
+import type { FileResult, PickedFsEntry } from '@/lib/file-system-types'
 import type {
   CachedSearchBufferState,
   CachedWorkspaceSlice,
@@ -191,19 +192,47 @@ describe('workspace cache persistence', () => {
 
     unsubscribe()
   })
+
+  it('writes editor scroll positions into the workspace slice keyed by path', () => {
+    const { documentStore, unsubscribe, workspaceStore, writes } = harness()
+    workspaceStore
+      .getState()
+      .setWorkbenchPanels(
+        openEditorPathInWorkbenchPanels(
+          workspaceStore.getState().workbenchPanels,
+          '/repo/src/a.ts',
+        ),
+      )
+    vi.runAllTimers()
+    writes.length = 0
+
+    const tab = workspaceStore.getState().workbenchPanels.editorTabs[0]
+    expect(tab).toBeTruthy()
+    documentStore.getState().ensureEditorView(tab!.id, fileResult('/repo/src/a.ts'))
+    documentStore.getState().setEditorViewScrollPosition(tab!.id, { left: 0, top: 240 })
+    vi.runAllTimers()
+
+    expect(lastCacheWrite(writes, 'workspaceSlice')?.slice.scrollPositionByPath).toEqual({
+      '/repo/src/a.ts': { left: 0, top: 240 },
+    })
+
+    unsubscribe()
+  })
 })
 
 function harness() {
+  const documentStore = createEditorDocumentStore()
   const workspaceStore = createEditorWorkspaceStore(cachedWorkspace())
   const searchStore = createSearchBufferStore()
   const writes: CacheWrite[] = []
   const unsubscribe = subscribeWorkspaceCachePersistence({
     cacheWriters: recordingCacheWriters(writes),
+    documentStore,
     searchStore,
     workspaceStore,
   })
 
-  return { searchStore, unsubscribe, workspaceStore, writes }
+  return { documentStore, searchStore, unsubscribe, workspaceStore, writes }
 }
 
 function cachedWorkspace(): CachedWorkspaceState {
@@ -220,6 +249,7 @@ function cachedWorkspace(): CachedWorkspaceState {
       '/repo': {
         editorHistory: [],
         recentlyClosedEditorPaths: [],
+        scrollPositionByPath: {},
         workbenchPanels: createDefaultWorkbenchPanels(),
       },
     },
@@ -235,6 +265,16 @@ function pickedDirectory(path: string): PickedFsEntry {
     size: 1,
     type: 'directory',
     version: 'test:1:1',
+  }
+}
+
+function fileResult(path: string): FileResult {
+  return {
+    content: `contents of ${path}`,
+    mtimeMs: 1,
+    path,
+    size: 1,
+    version: `test:${path}`,
   }
 }
 

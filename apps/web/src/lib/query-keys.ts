@@ -23,6 +23,8 @@ export const filePickerKeys = {
 export const gitKeys = {
   all: ['git'] as const,
   branches: (path: string) => [...gitKeys.all, 'branches', path] as const,
+  branchRemoteState: (path: string) => [...gitKeys.all, 'branch-remote-state', path] as const,
+  pullRequestState: (path: string) => [...gitKeys.all, 'pull-request-state', path] as const,
   blobDiff: (query: {
     newObjectId?: string
     oldObjectId?: string

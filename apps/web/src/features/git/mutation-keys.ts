@@ -8,6 +8,8 @@ export const mutationKeys = {
     ['git', 'mutation', 'discard-staged-many', ...paths] as const,
   fetch: (rootPath: string) => ['git', 'mutation', 'fetch', rootPath] as const,
   pull: (rootPath: string) => ['git', 'mutation', 'pull', rootPath] as const,
+  createPullRequest: (rootPath: string) =>
+    ['git', 'mutation', 'create-pull-request', rootPath] as const,
   push: (rootPath: string) => ['git', 'mutation', 'push', rootPath] as const,
   sync: (rootPath: string) => ['git', 'mutation', 'sync', rootPath] as const,
   stage: (path: string) => ['git', 'mutation', 'stage', path] as const,

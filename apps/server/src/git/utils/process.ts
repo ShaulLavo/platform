@@ -77,9 +77,25 @@ export type GitProcessInput = {
  * callers turn that into `gitProcessErrors`, never into a usable result.
  */
 export async function runProcess(input: GitProcessInput): Promise<GitProcessResult> {
+  return runBoundedProcess({
+    ...input,
+    argv: ['git', '-C', input.cwd].concat(input.args),
+    timeoutMs: input.timeoutMs ?? defaultTimeoutMs(input.args),
+  })
+}
+
+/**
+ * The same two closed edges for a command that is not `git`. `gh` is the only
+ * other binary we shell out to, and it waits on GitHub, so it needs the byte
+ * budget and the deadline for exactly the reasons git's network commands do.
+ */
+export async function runBoundedProcess(
+  input: Omit<GitProcessInput, 'args'> & { argv: readonly string[] },
+): Promise<GitProcessResult> {
   const maxBytes = input.maxOutputBytes ?? MAX_OUTPUT_BYTES
-  const timeoutMs = input.timeoutMs ?? defaultTimeoutMs(input.args)
-  const child = Bun.spawn(['git', '-C', input.cwd].concat(input.args), {
+  const timeoutMs = input.timeoutMs ?? NETWORK_TIMEOUT_MS
+  const child = Bun.spawn(input.argv.slice(), {
+    cwd: input.cwd,
     // Bun replaces the environment wholesale when `env` is set, so an override
     // has to be layered over the inherited one or git loses PATH and HOME.
     ...(input.env ? { env: { ...process.env, ...input.env } } : {}),

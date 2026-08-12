@@ -39,6 +39,7 @@ function storeWithRoot(path: string | null) {
           [path]: {
             editorHistory: [],
             recentlyClosedEditorPaths: [],
+            scrollPositionByPath: {},
             workbenchPanels: createDefaultWorkbenchPanels(),
           },
         }

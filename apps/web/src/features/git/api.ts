@@ -1,4 +1,10 @@
-import type { GitCommitProgressEvent, GitCommitResult } from '@workspace/contracts'
+import type {
+  GitBranchRemoteState,
+  GitCommitProgressEvent,
+  GitCommitResult,
+  GitPullRequestCreateResult,
+  GitPullRequestState,
+} from '@workspace/contracts'
 
 import { getClient } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
@@ -242,6 +248,67 @@ export async function pushRemote(path: string) {
       })
     },
     outputSummary,
+  )
+}
+
+export async function fetchBranchRemoteState(path: string, signal?: AbortSignal) {
+  return observeGitOperation(
+    { action: 'git.branch_remote_state', path, signal },
+    async () => {
+      const response = await getClient().git['branch-remote-state'].get({
+        fetch: { signal },
+        query: { path },
+      })
+
+      return unwrapEdenResponse<GitBranchRemoteState>(response, {
+        requireData: true,
+        emptyMessage: 'git server returned an empty response',
+      })
+    },
+    (state) => ({ ahead: state.ahead, hasUpstream: state.hasUpstream }),
+  )
+}
+
+export async function fetchPullRequestState(path: string, signal?: AbortSignal) {
+  return observeGitOperation(
+    { action: 'git.pull_request_state', path, signal },
+    async () => {
+      const response = await getClient().git['pull-request'].get({
+        fetch: { signal },
+        query: { path },
+      })
+
+      return unwrapEdenResponse<GitPullRequestState>(response, {
+        requireData: true,
+        emptyMessage: 'git server returned an empty response',
+      })
+    },
+    (state) => ({ pullRequestNumber: state.pullRequest?.number ?? null, support: state.support }),
+  )
+}
+
+export async function createPullRequest(input: {
+  base?: string
+  body?: string
+  draft?: boolean
+  path: string
+  title: string
+}) {
+  return observeGitOperation(
+    { action: 'git.create_pull_request', path: input.path },
+    async () => {
+      const response = await getClient().git['pull-request'].post({
+        ...input,
+        body: input.body ?? '',
+        draft: input.draft ?? false,
+      })
+
+      return unwrapEdenResponse<GitPullRequestCreateResult>(response, {
+        requireData: true,
+        emptyMessage: 'git server returned an empty response',
+      })
+    },
+    (result) => ({ kind: result.kind }),
   )
 }
 

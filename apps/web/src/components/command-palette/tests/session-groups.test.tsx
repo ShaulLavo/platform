@@ -123,6 +123,7 @@ function sessionItem(
     status: 'idle',
     title,
     unread: false,
+    worktreePath: null,
   }
 }
 

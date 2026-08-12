@@ -12,6 +12,7 @@ import {
 import type { CachedWorkspaceSlice, CachedWorkspaceState } from '@/lib/workspace-cache'
 import { emptyWorkspaceSlice, readWorkspaceCache } from '@/lib/workspace-cache'
 import { clientErrors } from '@/lib/structured-errors'
+import type { EditorScrollPosition } from '@singapor/core'
 import { createContext, use } from 'react'
 import { useStore } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
@@ -43,6 +44,8 @@ type EditorWorkspaceStoreActions = {
   setChatModePanels: (panels: ChatModePanels) => void
   setDiffViewMode: (mode: EditorDiffViewMode) => void
   setEditorHistory: (paths: string[]) => void
+  /** Merges latest scroll positions; positions for closed tabs are kept for reopen. */
+  setEditorScrollPositions: (byPath: Record<string, EditorScrollPosition>) => void
   setPickerOpen: (open: boolean) => void
   setRecentlyClosedEditorPaths: (paths: string[]) => void
   setUiMode: (mode: WorkspaceUiMode) => void
@@ -98,6 +101,12 @@ export function createEditorWorkspaceStore(
       setChatModePanels: (chatModePanels) => set({ chatModePanels }),
       setDiffViewMode: (diffViewMode) => set({ diffViewMode }),
       setEditorHistory: (editorHistory) => set({ editorHistory }),
+      setEditorScrollPositions: (byPath) => {
+        const merged = mergedScrollPositions(get().scrollPositionByPath, byPath)
+        if (!merged) return
+
+        set({ scrollPositionByPath: merged })
+      },
       setPickerOpen: (pickerOpen) => set({ pickerOpen }),
       setRecentlyClosedEditorPaths: (recentlyClosedEditorPaths) =>
         set({ recentlyClosedEditorPaths }),
@@ -151,6 +160,7 @@ function currentWorkspaceSlice(state: EditorWorkspaceStore): CachedWorkspaceSlic
   return {
     editorHistory: state.editorHistory,
     recentlyClosedEditorPaths: state.recentlyClosedEditorPaths,
+    scrollPositionByPath: state.scrollPositionByPath,
     workbenchPanels: state.workbenchPanels,
   }
 }
@@ -160,6 +170,7 @@ function activeWorkspaceState(slice: CachedWorkspaceSlice) {
     ...editorWorkspaceSelectionForWorkbenchPanels(slice.workbenchPanels),
     editorHistory: slice.editorHistory,
     recentlyClosedEditorPaths: slice.recentlyClosedEditorPaths,
+    scrollPositionByPath: slice.scrollPositionByPath,
   }
 }
 
@@ -217,4 +228,22 @@ function sameOpenFilePaths(left: readonly string[], right: readonly string[]) {
   if (left.length !== right.length) return false
 
   return left.every((path, index) => path === right[index])
+}
+
+/** Returns null when nothing changed, so no-op writes keep the record's identity. */
+function mergedScrollPositions(
+  current: Readonly<Record<string, EditorScrollPosition>>,
+  incoming: Readonly<Record<string, EditorScrollPosition>>,
+): Record<string, EditorScrollPosition> | null {
+  let changed = false
+  const next: Record<string, EditorScrollPosition> = { ...current }
+  for (const [path, position] of Object.entries(incoming)) {
+    const existing = next[path]
+    if (existing && existing.left === position.left && existing.top === position.top) continue
+
+    next[path] = { left: position.left, top: position.top }
+    changed = true
+  }
+
+  return changed ? next : null
 }

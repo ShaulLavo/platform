@@ -1,4 +1,5 @@
 import {
+  createBracketMatchPlugin,
   createEditorLoggingPlugin,
   createMergeConflictPlugin,
   type EditorDisposable,
@@ -76,6 +77,9 @@ export function createCriticalEditorCorePlugins(
     }),
     createEditorFindPlugin(),
     createMergeConflictPlugin(),
+    createBracketMatchPlugin({
+      style: { backgroundColor: 'var(--editor-bracket-match-background)' },
+    }),
     createPlatformEditorConsoleLoggingPlugin(),
   ]
 }

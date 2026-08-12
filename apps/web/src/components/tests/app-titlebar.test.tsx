@@ -72,6 +72,7 @@ function createTitlebarStore() {
       '/repo': {
         editorHistory: [],
         recentlyClosedEditorPaths: [],
+        scrollPositionByPath: {},
         workbenchPanels: panels,
       },
     },

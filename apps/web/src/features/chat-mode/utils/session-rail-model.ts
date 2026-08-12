@@ -53,6 +53,8 @@ export type SessionRailItem = {
   readonly title: string
   /** Finished since the last time this session was on the stage. */
   readonly unread: boolean
+  /** The session's own checkout, when it has one. Git acts on this, not the project root. */
+  readonly worktreePath: string | null
 }
 
 export type SessionRailProject = {
@@ -210,6 +212,7 @@ export function sessionRailItem(
     status: threadStatus(thread),
     title: thread.title,
     unread: isSessionUnread(completedAt, seenAt),
+    worktreePath: thread.worktreePath ?? null,
   }
 }
 

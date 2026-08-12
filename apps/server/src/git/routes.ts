@@ -8,6 +8,7 @@ import {
   gitCreateBranchBodySchema,
   gitDiffQuerySchema,
   gitFileQuerySchema,
+  gitCreatePullRequestBodySchema,
   gitPathBodySchema,
   gitPathQuerySchema,
   gitPathsBodySchema,
@@ -98,6 +99,15 @@ export function gitRoutes(git: GitService) {
       })
       .post('/push', ({ body }) => git.push(body.path), {
         body: gitPathBodySchema,
+      })
+      .get('/branch-remote-state', ({ query }) => git.branchRemoteState(query.path), {
+        query: gitPathQuerySchema,
+      })
+      .get('/pull-request', ({ query }) => git.pullRequestState(query.path), {
+        query: gitPathQuerySchema,
+      })
+      .post('/pull-request', ({ body }) => git.createPullRequest(body), {
+        body: gitCreatePullRequestBodySchema,
       }),
   )
 }

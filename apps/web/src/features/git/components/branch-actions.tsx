@@ -1,0 +1,113 @@
+import { ArrowSquareOutIcon, GitPullRequestIcon, UploadSimpleIcon } from '@phosphor-icons/react'
+import type {
+  GitBranchRemoteState,
+  GitPullRequest,
+  GitPullRequestState,
+} from '@workspace/contracts'
+
+import { useBranchRemoteState, useCreatePullRequestMutation, usePullRequestState } from '../hooks'
+import { usePushRemoteMutation } from '../hooks/use-push-remote-mutation'
+import { Button } from '@workspace/ui/components/button'
+import { cn } from '@workspace/ui/lib/utils'
+
+/**
+ * Publish, push and open-a-pull-request, in the header where the branch already
+ * is. Everything here is conditional on what the branch actually needs: a branch
+ * with nothing to push shows no push button, and Create is offered only when we
+ * were able to ask GitHub and it said there is none.
+ */
+export function BranchActions({
+  pullRequestTitle,
+  rootPath,
+}: {
+  /** What a new pull request is called. The session's own title, not the branch. */
+  readonly pullRequestTitle: string
+  readonly rootPath: string
+}) {
+  const { data: state } = useBranchRemoteState(rootPath)
+  // Its own query, and never awaited by the rest: reading a pull request shells
+  // out to `gh`, and Publish must not wait on GitHub to appear.
+  const { data: pullRequestState } = usePullRequestState(rootPath)
+  const push = usePushRemoteMutation(rootPath)
+  const createPullRequest = useCreatePullRequestMutation(rootPath)
+  if (!state?.branch) return null
+
+  return (
+    <span className='flex shrink-0 items-center gap-1'>
+      {pushLabel(state) ? (
+        <Button
+          className='h-6 gap-1 rounded-md px-1.5 text-[11px]'
+          disabled={push.isPending}
+          size='sm'
+          type='button'
+          variant='ghost'
+          onClick={() => push.mutate()}
+        >
+          <UploadSimpleIcon className='size-3' />
+          {pushLabel(state)}
+        </Button>
+      ) : null}
+      {pullRequestState?.pullRequest ? (
+        <a
+          className={cn(
+            'flex h-6 items-center gap-1 rounded-md px-1.5 text-[11px]',
+            'hover:bg-accent',
+            pullRequestToneClass(pullRequestState.pullRequest.state),
+          )}
+          href={pullRequestState.pullRequest.url}
+          rel='noreferrer'
+          target='_blank'
+        >
+          <GitPullRequestIcon className='size-3' />
+          <span className='tabular-nums'>#{pullRequestState.pullRequest.number}</span>
+          <ArrowSquareOutIcon className='size-3 opacity-60' />
+        </a>
+      ) : null}
+      {canCreatePullRequest(state, pullRequestState) ? (
+        <Button
+          className='h-6 gap-1 rounded-md px-1.5 text-[11px]'
+          disabled={createPullRequest.isPending}
+          size='sm'
+          type='button'
+          variant='ghost'
+          onClick={() => createPullRequest.mutate({ title: pullRequestTitle })}
+        >
+          <GitPullRequestIcon className='size-3' />
+          Pull request
+        </Button>
+      ) : null}
+    </span>
+  )
+}
+
+/**
+ * A branch nobody has pushed needs publishing even with nothing ahead — its
+ * upstream does not exist yet, which is a different job from sending commits.
+ */
+function pushLabel(state: GitBranchRemoteState) {
+  if (!state.hasUpstream) return 'Publish'
+  if (state.ahead > 0) return `Push ${state.ahead}`
+
+  return null
+}
+
+/**
+ * Only when GitHub actually answered. `support` short of `ready` means we could
+ * not ask, and offering Create then is how someone ends up trying to open a
+ * second pull request for a branch that already has one.
+ */
+function canCreatePullRequest(
+  branch: GitBranchRemoteState,
+  pullRequest: GitPullRequestState | undefined,
+) {
+  if (!branch.hasUpstream) return false
+
+  return pullRequest?.support === 'ready' && !pullRequest.pullRequest
+}
+
+function pullRequestToneClass(state: GitPullRequest['state']) {
+  if (state === 'merged') return 'text-info'
+  if (state === 'closed') return 'text-muted-foreground'
+
+  return 'text-success'
+}

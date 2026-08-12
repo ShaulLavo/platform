@@ -4,7 +4,13 @@ import { FsError } from '../fs/errors'
 import type { WorkspacePath, WorkspacePaths } from '../fs/path'
 import { toPosix } from '../fs/path'
 import { elapsedMs, limitText, recordGitCommand, recordRequestContext } from '../observability'
-import type { GitCommitProgressEvent } from '@workspace/contracts'
+import type {
+  GitBranchRemoteState,
+  GitCommitProgressEvent,
+  GitPullRequestCreateResult,
+  GitPullRequestState,
+  GitPushResult,
+} from '@workspace/contracts'
 import { parseBranches } from './branches'
 import { commandOutput, gitErrorMessage } from './command'
 import { commitMessageTemplate } from './commit-message'
@@ -13,10 +19,12 @@ import type {
   GitBlobDiffQuery,
   GitCheckoutBody,
   GitCommitBody,
+  GitCreatePullRequestBody,
   GitCreateBranchBody,
   GitPathsBody,
 } from './contracts'
 import { parseDiff, rewriteBlobPatchPaths } from './diff'
+import { createPullRequest, readPullRequest } from './pull-request'
 import {
   mutationPaths,
   pathspecArgs,
@@ -27,6 +35,7 @@ import { gitCwdForPath, lexicalRepositoryRoot } from './repository'
 import { parseRepositoryInfo, parseStatus, statusMatchesPathspec } from './status'
 import { UpstreamFetchScheduler } from './upstream-fetch'
 import { BoundedTtlCache } from './utils/bounded-cache'
+import { gitPullRequestErrors } from './utils/pull-request-errors'
 import {
   MAX_OUTPUT_BYTES,
   processLimitError,
@@ -536,11 +545,86 @@ export class GitService {
     return { output: commandOutput(result), repository: repository.info }
   }
 
-  async push(input = '') {
+  /**
+   * A plain `git push` fails on a branch nobody has published, which is the
+   * only kind of branch a session ever creates. The upstream is set on that
+   * first push instead of making the user drop to a terminal for it.
+   */
+  async push(input = ''): Promise<GitPushResult> {
     recordGitServiceOperation('push', input)
     const repository = await this.requiredRepository(input)
-    const result = await this.git(repository.rootAbsolutePath, ['push'])
-    return { output: commandOutput(result), repository: repository.info }
+    const branch = repository.info.branch
+    if (!branch) throw gitPullRequestErrors.PUSH_DETACHED_HEAD({ path: repository.info.path })
+
+    const setUpstream = !(await this.upstreamRef(repository.rootAbsolutePath))
+    const args = setUpstream ? ['push', '--set-upstream', 'origin', branch] : ['push']
+    const result = await this.git(repository.rootAbsolutePath, args)
+
+    return { branch, output: commandOutput(result), repository: repository.info, setUpstream }
+  }
+
+  /**
+   * Local only, and fast on purpose. The pull request half lives in its own
+   * route because it shells out to `gh`: a header that cannot offer Publish
+   * until GitHub answers is blank exactly when the network is worst.
+   */
+  async branchRemoteState(input = ''): Promise<GitBranchRemoteState> {
+    recordGitServiceOperation('branch_remote_state', input)
+    // `requiredRepository` already ran `status --porcelain=v2 --branch`, which
+    // is where the branch name and the ahead/behind counts come from — reading
+    // them again through `rev-list` would be two more processes for the answer
+    // already in hand. Only the upstream's existence is missing, because 0/0
+    // means both "in sync" and "no upstream to be behind".
+    const repository = await this.requiredRepository(input)
+    const branch = repository.info.branch
+    const upstream = branch ? await this.upstreamRef(repository.rootAbsolutePath) : null
+
+    return {
+      ahead: repository.info.ahead,
+      behind: repository.info.behind,
+      branch,
+      hasUpstream: Boolean(upstream),
+    }
+  }
+
+  async pullRequestState(input = ''): Promise<GitPullRequestState> {
+    recordGitServiceOperation('pull_request_state', input)
+    const repository = await this.requiredRepository(input)
+    const branch = repository.info.branch
+    if (!branch) return { branch: null, pullRequest: null, support: 'no-github-remote' }
+
+    const read = await readPullRequest({ branch, cwd: repository.rootAbsolutePath })
+
+    return { branch, ...read }
+  }
+
+  async createPullRequest(body: GitCreatePullRequestBody): Promise<GitPullRequestCreateResult> {
+    recordGitServiceOperation('create_pull_request', body.path)
+    const repository = await this.requiredRepository(body.path)
+    const branch = repository.info.branch
+    if (!branch) throw gitPullRequestErrors.PUSH_DETACHED_HEAD({ path: repository.info.path })
+
+    return createPullRequest({
+      base: body.base,
+      body: body.body,
+      branch,
+      cwd: repository.rootAbsolutePath,
+      draft: body.draft,
+      title: body.title,
+    })
+  }
+
+  private async upstreamRef(cwd: string) {
+    const result = await this.git(
+      cwd,
+      ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'],
+      {
+        allowFailure: true,
+      },
+    )
+    if (result.exitCode !== 0) return null
+
+    return result.stdout.trim() || null
   }
 
   private async resolveMutationTarget(body: GitPathsBody) {

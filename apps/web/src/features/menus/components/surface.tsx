@@ -1,4 +1,4 @@
-import type { ReactElement } from 'react'
+import { useState, type ReactElement } from 'react'
 
 import { useResolvedMenu } from '@/features/menus/hooks/use-resolved-menu'
 import type { Menu, MenuSurfaceId } from '@/features/menus/utils/model'
@@ -49,6 +49,17 @@ export function MenuSurface({
   const sections = useResolvedMenu(menu)
 
   /**
+   * Closing clears the consumer's anchor while Base UI's exit animation is
+   * still running. An anchorless Positioner falls back to the viewport corner,
+   * flashing the popup there for the animation's duration. Keep the last
+   * anchor until the next open replaces it.
+   */
+  const [lastAnchor, setLastAnchor] = useState<MenuAnchor | null>(null)
+  if (anchor && anchor !== lastAnchor) {
+    setLastAnchor(anchor)
+  }
+
+  /**
    * Logging only — the row itself runs the item. Every kind reports, so a menu
    * whose only affordance is a radio group is not invisible in the logs.
    */
@@ -67,7 +78,7 @@ export function MenuSurface({
     <ContextMenu onOpenChange={onOpenChange} open={open}>
       {trigger ? <ContextMenuTrigger render={trigger} /> : null}
       <ContextMenuContent
-        anchor={anchor ?? undefined}
+        anchor={anchor ?? lastAnchor ?? undefined}
         className={className}
         data-menu-surface={surface}
         {...popupProps}

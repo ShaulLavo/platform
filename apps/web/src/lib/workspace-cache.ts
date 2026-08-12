@@ -34,10 +34,11 @@ import {
   type WorkspaceSearchQuery,
 } from '@workspace/contracts'
 import * as v from 'valibot'
+import type { EditorScrollPosition } from '@singapor/core'
 
 // Local-only UI state uses an explicit schema version plus a clear mismatch policy:
 // update deliberately or drop intentionally. Server-backed caches may reset/refetch.
-const CACHE_VERSION = 15
+const CACHE_VERSION = 16
 const CACHE_KEY_PREFIX = `platform.workspace-state.v${CACHE_VERSION}`
 const WORKSPACE_SLICE_KEY_PREFIX = `${CACHE_KEY_PREFIX}.workspace:`
 const SEARCH_BUFFER_KEY_PREFIX = `${CACHE_KEY_PREFIX}.search:`
@@ -192,6 +193,10 @@ const editorTabRecordSchema = v.strictObject({
   id: v.string(),
   path: v.string(),
 })
+const scrollPositionSchema = v.strictObject({
+  left: v.number(),
+  top: v.number(),
+})
 const outerLayoutSchema = v.strictObject({
   main: v.number(),
   sidebar: v.number(),
@@ -213,6 +218,7 @@ const workbenchLayoutSchema = v.strictObject({
 const workspaceSliceSchema = v.strictObject({
   editorHistory: stringArraySchema,
   recentlyClosedEditorPaths: stringArraySchema,
+  scrollPositionByPath: v.record(v.string(), scrollPositionSchema),
   workbenchPanels: workbenchPanelsSchema,
 })
 const uiModeSchema = v.custom<WorkspaceUiMode>(isWorkspaceUiMode)
@@ -237,6 +243,7 @@ const AUTO_SESSION_SELECTION: SessionSelection = { kind: 'auto' }
 export type CachedWorkspaceSlice = {
   editorHistory: string[]
   recentlyClosedEditorPaths: string[]
+  scrollPositionByPath: Record<string, EditorScrollPosition>
   workbenchPanels: WorkbenchPanels
 }
 
@@ -482,6 +489,7 @@ function sliceForWorkspace(rootPath: string, slice: CachedWorkspaceSlice): Cache
   return {
     editorHistory: workspacePathsForCache(rootPath, slice.editorHistory),
     recentlyClosedEditorPaths: workspacePathsForCache(rootPath, slice.recentlyClosedEditorPaths),
+    scrollPositionByPath: scrollPositionsForWorkspace(rootPath, slice.scrollPositionByPath),
     workbenchPanels: normalizeWorkbenchPanels({
       activeBottomTab: slice.workbenchPanels.activeBottomTab,
       activeEditorTabId: activeEditorTabIdForTabs(
@@ -496,6 +504,15 @@ function sliceForWorkspace(rootPath: string, slice: CachedWorkspaceSlice): Cache
 
 function workspacePathsForCache(rootPath: string, paths: readonly string[]) {
   return Array.from(new Set(paths.filter((path) => pathForWorkspace(rootPath, path))))
+}
+
+function scrollPositionsForWorkspace(
+  rootPath: string,
+  scrollPositionByPath: Readonly<Record<string, EditorScrollPosition>>,
+) {
+  return Object.fromEntries(
+    Object.entries(scrollPositionByPath).filter(([path]) => pathForWorkspace(rootPath, path)),
+  )
 }
 
 function pathForWorkspace(rootPath: string, path: string) {
@@ -527,6 +544,7 @@ export function emptyWorkspaceSlice(): CachedWorkspaceSlice {
   return {
     editorHistory: [],
     recentlyClosedEditorPaths: [],
+    scrollPositionByPath: {},
     workbenchPanels: createDefaultWorkbenchPanels(),
   }
 }

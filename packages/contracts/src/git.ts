@@ -152,3 +152,69 @@ export type GitBranchDiffResult = {
   /** Where the branch left the base; null when the two share no history. */
   mergeBase: string | null
 }
+
+/**
+ * A branch's standing against its remote. Local git only — reading it costs one
+ * `rev-parse` on top of the status the caller already ran.
+ *
+ * Deliberately separate from `GitPullRequestState`: that one shells out to `gh`
+ * and waits on GitHub, and a header that cannot say "Publish" until a network
+ * round-trip returns is a header that is blank whenever the network is slow.
+ */
+export type GitBranchRemoteState = {
+  /** Commits on the branch the upstream does not have. Zero when there is no upstream. */
+  ahead: number
+  behind: number
+  branch: string | null
+  /** False on a fresh branch, which is what makes a push need `--set-upstream`. */
+  hasUpstream: boolean
+}
+
+/**
+ * What the GitHub CLI could tell us about a branch's pull request.
+ *
+ * `pullRequest` being null means "there is no pull request"; a `support` other
+ * than `ready` means "we could not ask". They are different answers and the
+ * caller must never render the second as the first — offering "Create pull
+ * request" to someone who already has one open is the exact failure.
+ */
+export type GitPullRequestState = {
+  branch: string | null
+  pullRequest: GitPullRequest | null
+  support: GitPullRequestSupport
+}
+
+/**
+ * Why a pull request could not be read or created. Every non-`ready` value is
+ * actionable by the user, so each one is a distinct case rather than a message.
+ */
+export type GitPullRequestSupport =
+  | 'ready'
+  /** `gh` is not on PATH. */
+  | 'cli-missing'
+  /** `gh` is installed but nobody has signed in. */
+  | 'unauthenticated'
+  /** No GitHub remote, so there is nothing for `gh` to talk to. */
+  | 'no-github-remote'
+
+export type GitPullRequest = {
+  draft: boolean
+  number: number
+  state: 'closed' | 'merged' | 'open'
+  title: string
+  url: string
+}
+
+export type GitPushResult = {
+  branch: string
+  output: string
+  repository: GitRepositoryInfo
+  /** True when the push had to create the upstream ref, not just update it. */
+  setUpstream: boolean
+}
+
+export type GitPullRequestCreateResult =
+  | { kind: 'created'; pullRequest: GitPullRequest }
+  /** A branch can only have one open pull request, so a second attempt is a no-op. */
+  | { kind: 'exists'; pullRequest: GitPullRequest }
+  | { kind: 'unsupported'; support: GitPullRequestSupport }

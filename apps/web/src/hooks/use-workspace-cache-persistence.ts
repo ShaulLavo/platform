@@ -1,6 +1,11 @@
 import { Debouncer } from '@tanstack/react-pacer/debouncer'
 import { useEffect } from 'react'
+import type { EditorScrollPosition } from '@singapor/core'
 
+import {
+  type EditorDocumentStoreApi,
+  useEditorDocumentStoreApi,
+} from '@/features/editor/state/editor-document-state'
 import {
   type EditorWorkspaceStore,
   type EditorWorkspaceStoreApi,
@@ -44,6 +49,7 @@ export type WorkspaceCacheWriters = {
 type WorkspaceCachePersistenceOptions = {
   cacheWriters?: WorkspaceCacheWriters
   debounceMs?: number
+  documentStore: EditorDocumentStoreApi
   searchStore: SearchBufferStoreApi
   workspaceStore: EditorWorkspaceStoreApi
 }
@@ -61,28 +67,32 @@ const WORKSPACE_CACHE_WRITERS = {
 } satisfies WorkspaceCacheWriters
 
 export function useWorkspaceCachePersistence() {
+  const documentStore = useEditorDocumentStoreApi()
   const workspaceStore = useEditorWorkspaceStoreApi()
   const searchStore = useSearchBufferStoreApi()
 
   useEffect(
     () =>
       subscribeWorkspaceCachePersistence({
+        documentStore,
         searchStore,
         workspaceStore,
       }),
-    [searchStore, workspaceStore],
+    [documentStore, searchStore, workspaceStore],
   )
 }
 
 export function subscribeWorkspaceCachePersistence({
   cacheWriters = WORKSPACE_CACHE_WRITERS,
   debounceMs = WORKSPACE_CACHE_WRITE_DEBOUNCE_MS,
+  documentStore,
   searchStore,
   workspaceStore,
 }: WorkspaceCachePersistenceOptions) {
   const subscriptions = workspaceCacheSubscriptions({
     cacheWriters,
     debounceMs,
+    documentStore,
     searchStore,
     workspaceStore,
   })
@@ -140,6 +150,7 @@ type SearchBuffersCacheValue = {
 type WorkspaceCacheSubscriptionOptions = {
   cacheWriters: WorkspaceCacheWriters
   debounceMs: number
+  documentStore: EditorDocumentStoreApi
   searchStore: SearchBufferStoreApi
   workspaceStore: EditorWorkspaceStoreApi
 }
@@ -147,6 +158,7 @@ type WorkspaceCacheSubscriptionOptions = {
 function workspaceCacheSubscriptions({
   cacheWriters,
   debounceMs,
+  documentStore,
   searchStore,
   workspaceStore,
 }: WorkspaceCacheSubscriptionOptions): CacheSubscription[] {
@@ -187,9 +199,45 @@ function workspaceCacheSubscriptions({
       store: workspaceStore,
       write: cacheWriters.rootFolder,
     }),
+    // Before the slice subscription in flush order: a pagehide flush pushes the
+    // latest scroll positions into the workspace store first, so the slice flush
+    // right after writes them out.
+    subscribeScrollPositions({ debounceMs, documentStore, workspaceStore }),
     subscribeWorkspaceSlices({ cacheWriters, debounceMs, workspaceStore }),
     subscribeSearchBuffers({ cacheWriters, debounceMs, searchStore }),
   ]
+}
+
+/**
+ * Scroll positions live in the document store (keyed by tab) but persist with the
+ * workspace slice (keyed by path). The workspace store stays the single slice writer;
+ * this subscription just keeps its scrollPositionByPath current, and the slice
+ * subscription does the actual cache write.
+ */
+function subscribeScrollPositions({
+  debounceMs,
+  documentStore,
+  workspaceStore,
+}: Pick<
+  WorkspaceCacheSubscriptionOptions,
+  'debounceMs' | 'documentStore' | 'workspaceStore'
+>): CacheSubscription {
+  return subscribeCacheEntry({
+    debounceMs,
+    select: (state) => state.scrollPositionByTabId,
+    store: documentStore,
+    write: (byTabId) => {
+      const state = workspaceStore.getState()
+      const byPath: Record<string, EditorScrollPosition> = {}
+      for (const tab of state.workbenchPanels.editorTabs) {
+        const scrollPosition = byTabId[tab.id]
+        if (!scrollPosition) continue
+
+        byPath[tab.path] = scrollPosition
+      }
+      state.setEditorScrollPositions(byPath)
+    },
+  })
 }
 
 function subscribeCacheEntry<TState, TValue>({
@@ -225,7 +273,10 @@ function subscribeWorkspaceSlices({
   cacheWriters,
   debounceMs,
   workspaceStore,
-}: Omit<WorkspaceCacheSubscriptionOptions, 'searchStore'>): CacheSubscription {
+}: Pick<
+  WorkspaceCacheSubscriptionOptions,
+  'cacheWriters' | 'debounceMs' | 'workspaceStore'
+>): CacheSubscription {
   // Seeded from what was restored: nothing has drifted yet, so a session that only
   // reads its cache back never rewrites it.
   const restored = workspaceSlicesCacheValue(workspaceStore.getState())
@@ -256,7 +307,10 @@ function subscribeSearchBuffers({
   cacheWriters,
   debounceMs,
   searchStore,
-}: Omit<WorkspaceCacheSubscriptionOptions, 'workspaceStore'>): CacheSubscription {
+}: Pick<
+  WorkspaceCacheSubscriptionOptions,
+  'cacheWriters' | 'debounceMs' | 'searchStore'
+>): CacheSubscription {
   const written = new Map<string, SearchBufferSnapshot>(searchStore.getState().parked)
 
   return subscribeCacheEntry({
@@ -290,6 +344,7 @@ function workspaceSlicesCacheValue(state: EditorWorkspaceStore): WorkspaceSlices
     slices.set(activeRootPath, {
       editorHistory: state.editorHistory,
       recentlyClosedEditorPaths: state.recentlyClosedEditorPaths,
+      scrollPositionByPath: state.scrollPositionByPath,
       workbenchPanels: state.workbenchPanels,
     })
   }
@@ -372,8 +427,30 @@ function sameWorkspaceSlice(
   if (!left || !right) return false
   if (left.workbenchPanels !== right.workbenchPanels) return false
   if (!readonlyArraysEqual(left.editorHistory, right.editorHistory)) return false
+  if (!readonlyArraysEqual(left.recentlyClosedEditorPaths, right.recentlyClosedEditorPaths)) {
+    return false
+  }
 
-  return readonlyArraysEqual(left.recentlyClosedEditorPaths, right.recentlyClosedEditorPaths)
+  return scrollPositionsEqual(left.scrollPositionByPath, right.scrollPositionByPath)
+}
+
+function scrollPositionsEqual(
+  left: Readonly<Record<string, EditorScrollPosition>>,
+  right: Readonly<Record<string, EditorScrollPosition>>,
+) {
+  const leftKeys = Object.keys(left)
+  if (leftKeys.length !== Object.keys(right).length) return false
+
+  for (const key of leftKeys) {
+    const leftPosition = left[key]
+    const rightPosition = right[key]
+    if (!rightPosition) return false
+    if (leftPosition.left !== rightPosition.left || leftPosition.top !== rightPosition.top) {
+      return false
+    }
+  }
+
+  return true
 }
 
 function mapsEqual<TValue>(

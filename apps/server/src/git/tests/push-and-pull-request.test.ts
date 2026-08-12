@@ -1,0 +1,144 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
+import { writeFile } from 'node:fs/promises'
+import { afterEach, describe, expect, it } from 'vitest'
+
+import { createWorkspacePaths } from '../../fs/path'
+import { GitService } from '../service'
+
+const roots: string[] = []
+
+afterEach(async () => {
+  await Promise.all(roots.splice(0).map((root) => rm(root, { force: true, recursive: true })))
+})
+
+describe('push', () => {
+  it('publishes a branch nobody has pushed by setting its upstream', async () => {
+    const { origin, work } = await clonedRepo()
+    await runGit(work, ['checkout', '-b', 'feature/login'])
+    await commit(work, 'two\n', 'add login')
+
+    const result = await gitService(work).push(work)
+
+    // A plain `git push` fails here — a session-created branch has no upstream,
+    // and telling the user to open a terminal is the gap this closes.
+    expect(result).toMatchObject({ branch: 'feature/login', setUpstream: true })
+    expect(await remoteBranches(origin)).toContain('feature/login')
+  })
+
+  it('updates an already-published branch without touching its upstream again', async () => {
+    const { work } = await clonedRepo()
+    await runGit(work, ['checkout', '-b', 'feature/login'])
+    await commit(work, 'two\n', 'add login')
+    const service = gitService(work)
+    await service.push(work)
+    await commit(work, 'three\n', 'polish login')
+
+    const result = await service.push(work)
+
+    expect(result.setUpstream).toBe(false)
+  })
+
+  it('refuses to push a detached head instead of pushing the wrong thing', async () => {
+    const { work } = await clonedRepo()
+    const head = (await runGit(work, ['rev-parse', 'HEAD'])).trim()
+    await runGit(work, ['checkout', head])
+
+    await expect(gitService(work).push(work)).rejects.toThrow('no checked-out branch')
+  })
+})
+
+describe('branch remote state', () => {
+  it('reports a fresh branch as having no upstream and nothing ahead', async () => {
+    const { work } = await clonedRepo()
+    await runGit(work, ['checkout', '-b', 'feature/login'])
+    await commit(work, 'two\n', 'add login')
+
+    const state = await gitService(work).branchRemoteState(work)
+
+    // Zero ahead with no upstream is not "in sync": there is nothing to be in
+    // sync with, which is why `hasUpstream` is carried separately.
+    expect(state).toMatchObject({ ahead: 0, branch: 'feature/login', hasUpstream: false })
+  })
+
+  it('counts commits the upstream does not have once the branch is published', async () => {
+    const { work } = await clonedRepo()
+    await runGit(work, ['checkout', '-b', 'feature/login'])
+    await commit(work, 'two\n', 'add login')
+    const service = gitService(work)
+    await service.push(work)
+    await commit(work, 'three\n', 'polish login')
+
+    const state = await service.branchRemoteState(work)
+
+    expect(state).toMatchObject({ ahead: 1, behind: 0, hasUpstream: true })
+  })
+
+  it('says why a pull request could not be read rather than reporting none', async () => {
+    const { work } = await clonedRepo()
+
+    const state = await gitService(work).pullRequestState(work)
+
+    // The remote here is a local directory, so `gh` has nothing to talk to. The
+    // caller must be able to tell that from "this branch has no pull request",
+    // or it offers Create to someone who already has one open.
+    expect(state.pullRequest).toBeNull()
+    expect(state.support).not.toBe('ready')
+  })
+})
+
+function gitService(root: string) {
+  return new GitService(createWorkspacePaths(root))
+}
+
+async function clonedRepo() {
+  const origin = await fixtureRoot('origin')
+  await runGit(origin, ['init', '--bare', '-b', 'main'])
+  const seed = await fixtureRoot('seed')
+  await runGit(seed, ['init', '-b', 'main'])
+  await identify(seed)
+  await commit(seed, 'one\n', 'initial')
+  await runGit(seed, ['remote', 'add', 'origin', origin])
+  await runGit(seed, ['push', '-u', 'origin', 'main'])
+
+  const work = await fixtureRoot('work')
+  await runGit(work, ['clone', origin, '.'])
+  await identify(work)
+
+  return { origin, work }
+}
+
+async function identify(root: string) {
+  await runGit(root, ['config', 'user.email', 'test@example.com'])
+  await runGit(root, ['config', 'user.name', 'Test User'])
+}
+
+async function commit(root: string, contents: string, message: string) {
+  await writeFile(path.join(root, 'tracked.txt'), contents)
+  await runGit(root, ['add', 'tracked.txt'])
+  await runGit(root, ['commit', '-m', message])
+}
+
+async function remoteBranches(origin: string) {
+  return runGit(origin, ['branch', '--format', '%(refname:short)'])
+}
+
+async function fixtureRoot(label: string) {
+  const root = await mkdtemp(path.join(tmpdir(), `platform-push-${label}-`))
+  roots.push(root)
+
+  return root
+}
+
+async function runGit(root: string, args: readonly string[]) {
+  const child = Bun.spawn(['git', '-C', root].concat(args), { stderr: 'pipe', stdout: 'pipe' })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ])
+  if (exitCode === 0) return stdout
+
+  throw new Error(`${stderr}${stdout}`.trim())
+}

@@ -64,27 +64,39 @@ export type WorkspaceDocumentServiceState = {
 }
 
 type LiveEditorDocumentRecord = {
-  buffer: EditorTextBuffer
-  contentRevision: string
-  id: string
-  localRevision: number
-  path: string
-  sync: LiveDocumentSync
+  readonly buffer: EditorTextBuffer
+  readonly contentRevision: string
+  readonly id: string
+  readonly localRevision: number
+  readonly path: string
+  readonly sync: LiveDocumentSync
 }
 
 type EditorDocumentViewRecord = {
-  documentId: string
-  scrollPosition?: EditorScrollPosition
-  tabId: string
-  view: EditorViewSession
+  readonly documentId: string
+  readonly scrollPosition?: EditorScrollPosition
+  readonly tabId: string
+  readonly view: EditorViewSession
 }
 
 export class WorkspaceDocumentService {
-  private readonly documentContentRevisions = new Map<string, string>()
-  private readonly dirtyFilePaths = new Set<string>()
+  private documentContentRevisions: Readonly<Record<string, string>> = {}
+  private dirtyFilePaths: ReadonlySet<string> = new Set()
   private dirtyContentRevision = 0
   private readonly liveDocumentsById = new Map<string, LiveEditorDocumentRecord>()
   private readonly viewsByTabId = new Map<string, EditorDocumentViewRecord>()
+  /**
+   * Last known scroll position per document, seeded from the workspace cache.
+   * Read when a view is created, so a reopened file (or a refreshed app)
+   * lands where it was; updated on every scroll write.
+   */
+  private readonly scrollPositionSeeds = new Map<string, EditorScrollPosition>()
+  private readonly liveDocumentProjectionCache = new WeakMap<
+    LiveEditorDocumentRecord,
+    LiveEditorDocument
+  >()
+  private readonly viewProjectionCache = new WeakMap<EditorDocumentViewRecord, EditorDocumentView>()
+  private cachedState: WorkspaceDocumentServiceState | null = null
 
   /**
    * The single eviction path. Drops every live document and view outside the keep
@@ -133,8 +145,8 @@ export class WorkspaceDocumentService {
     const wasDirty = this.isDirtyDocument(documentId)
     const hadLiveDocument = this.liveDocumentsById.delete(documentId)
 
-    this.dirtyFilePaths.delete(path)
-    this.documentContentRevisions.delete(documentId)
+    this.deleteDirtyPath(path)
+    this.documentContentRevisions = omitKey(this.documentContentRevisions, documentId)
 
     for (const [tabId, view] of this.viewsByTabId) {
       if (view.documentId !== documentId) continue
@@ -154,8 +166,8 @@ export class WorkspaceDocumentService {
 
     const record = this.createFileDocumentRecord(file)
     this.liveDocumentsById.set(file.path, record)
-    this.documentContentRevisions.set(file.path, record.contentRevision)
-    this.dirtyFilePaths.delete(file.path)
+    this.setContentRevision(file.path, record.contentRevision)
+    this.deleteDirtyPath(file.path)
     this.rebindViewsForDocument(file.path)
     return this.liveDocumentProjection(record)
   }
@@ -174,7 +186,7 @@ export class WorkspaceDocumentService {
 
     const record = this.createUnsyncedDocumentRecord(input)
     this.liveDocumentsById.set(input.id, record)
-    this.documentContentRevisions.set(input.id, record.contentRevision)
+    this.setContentRevision(input.id, record.contentRevision)
     this.rebindViewsForDocument(input.id)
     return this.liveDocumentProjection(record)
   }
@@ -186,11 +198,12 @@ export class WorkspaceDocumentService {
       return this.viewDocumentProjection(existing)
     }
 
+    const scrollPosition = existing?.scrollPosition ?? this.scrollPositionSeeds.get(document.id)
     const view = createEditorViewSession(document.buffer, `tab:${tabId}`)
-    view.setScrollPosition(existing?.scrollPosition)
+    view.setScrollPosition(scrollPosition)
     this.viewsByTabId.set(tabId, {
       documentId: document.id,
-      scrollPosition: existing?.scrollPosition,
+      scrollPosition,
       tabId,
       view,
     })
@@ -220,8 +233,8 @@ export class WorkspaceDocumentService {
     const record = this.replacementRecord(file, existing)
 
     this.liveDocumentsById.set(file.path, record)
-    this.documentContentRevisions.set(file.path, record.contentRevision)
-    this.dirtyFilePaths.delete(file.path)
+    this.setContentRevision(file.path, record.contentRevision)
+    this.deleteDirtyPath(file.path)
     this.rebindViewsForDocument(file.path)
     return { changed: true, wasDirty }
   }
@@ -268,15 +281,22 @@ export class WorkspaceDocumentService {
     if (!document) return false
     if (document.sync.kind !== 'file') return false
 
-    document.sync.mtimeMs = mtimeMs
-    document.sync.fileVersion = fileVersion
-    document.sync.state = 'idle'
+    // The write already landed on disk, so the sync metadata advances even
+    // when in-flight edits make the content checks below fail.
+    const synced: LiveEditorDocumentRecord = {
+      ...document,
+      sync: { ...document.sync, fileVersion, mtimeMs, state: 'idle' },
+    }
+    this.liveDocumentsById.set(documentId, synced)
     if (document.contentRevision !== savedContentRevision) return false
     if (!textSnapshotEqualsText(document.buffer.getTextSnapshot(), savedText)) return false
 
     document.buffer.markClean()
-    document.localRevision = document.buffer.getRevision()
-    this.dirtyFilePaths.delete(document.path)
+    this.liveDocumentsById.set(documentId, {
+      ...synced,
+      localRevision: document.buffer.getRevision(),
+    })
+    this.deleteDirtyPath(document.path)
     return true
   }
 
@@ -284,36 +304,43 @@ export class WorkspaceDocumentService {
     this.dirtyContentRevision += 1
     const contentRevision = editedContentRevision(this.dirtyContentRevision)
     const document = this.liveDocumentsById.get(documentId)
-    if (document) {
-      document.contentRevision = contentRevision
-      document.localRevision = document.buffer.getRevision()
-      this.documentContentRevisions.set(documentId, contentRevision)
-      this.dirtyFilePaths.add(document.path)
+    if (!document) {
+      this.addDirtyPath(documentId)
       return
     }
 
-    this.dirtyFilePaths.add(documentId)
+    this.liveDocumentsById.set(documentId, {
+      ...document,
+      contentRevision,
+      localRevision: document.buffer.getRevision(),
+    })
+    this.setContentRevision(documentId, contentRevision)
+    this.addDirtyPath(document.path)
   }
 
   renameLiveDocument(from: string, to: string): { wasDirty: boolean } {
     const wasDirty = this.isDirtyDocument(from)
     const document = this.liveDocumentsById.get(from)
-    const contentRevision = this.documentContentRevisions.get(from)
+    const contentRevision = this.documentContentRevisions[from]
 
     this.liveDocumentsById.delete(from)
-    this.documentContentRevisions.delete(from)
+    this.documentContentRevisions = omitKey(this.documentContentRevisions, from)
     this.renameDirtyPath(from, to)
 
-    if (contentRevision !== undefined) this.documentContentRevisions.set(to, contentRevision)
+    if (contentRevision !== undefined) this.setContentRevision(to, contentRevision)
     if (document) {
-      document.id = to
-      document.path = to
-      if (document.sync.kind === 'file') document.sync.path = to
-      this.liveDocumentsById.set(to, document)
+      this.liveDocumentsById.set(to, {
+        ...document,
+        id: to,
+        path: to,
+        sync: document.sync.kind === 'file' ? { ...document.sync, path: to } : document.sync,
+      })
     }
 
-    for (const view of this.viewsByTabId.values()) {
-      if (view.documentId === from) view.documentId = to
+    for (const [tabId, view] of this.viewsByTabId) {
+      if (view.documentId !== from) continue
+
+      this.viewsByTabId.set(tabId, { ...view, documentId: to })
     }
 
     return { wasDirty }
@@ -322,11 +349,11 @@ export class WorkspaceDocumentService {
   setDirty(documentId: string, dirty: boolean): void {
     const path = this.liveDocumentsById.get(documentId)?.path ?? documentId
     if (dirty) {
-      this.dirtyFilePaths.add(path)
+      this.addDirtyPath(path)
       return
     }
 
-    this.dirtyFilePaths.delete(path)
+    this.deleteDirtyPath(path)
   }
 
   setViewScrollPosition(tabId: string, scrollPosition: EditorScrollPosition): boolean {
@@ -334,31 +361,75 @@ export class WorkspaceDocumentService {
     if (!view) return false
     if (scrollPositionsEqual(view.scrollPosition, scrollPosition)) return false
 
-    view.scrollPosition = scrollPosition
+    this.viewsByTabId.set(tabId, { ...view, scrollPosition })
+    this.scrollPositionSeeds.set(view.documentId, scrollPosition)
     view.view.setScrollPosition(scrollPosition)
     return true
   }
 
-  state(): WorkspaceDocumentServiceState {
-    return {
-      documentContentRevisions: Object.fromEntries(this.documentContentRevisions),
-      dirtyContentRevision: this.dirtyContentRevision,
-      dirtyFilePaths: new Set(this.dirtyFilePaths),
-      liveDocumentsById: Object.fromEntries(
-        Array.from(this.liveDocumentsById, ([documentId, document]) => [
-          documentId,
-          this.liveDocumentProjection(document),
-        ]),
-      ),
-      scrollPositionByTabId: Object.fromEntries(
-        Array.from(this.viewsByTabId)
-          .filter(([, view]) => view.scrollPosition !== undefined)
-          .map(([tabId, view]) => [tabId, view.scrollPosition!]),
-      ),
-      viewsByTabId: Object.fromEntries(
-        Array.from(this.viewsByTabId, ([tabId, view]) => [tabId, this.viewProjection(view)]),
-      ),
+  seedScrollPositions(byPath: Readonly<Record<string, EditorScrollPosition>>): void {
+    this.scrollPositionSeeds.clear()
+    for (const [path, scrollPosition] of Object.entries(byPath)) {
+      this.scrollPositionSeeds.set(path, scrollPosition)
     }
+  }
+
+  /**
+   * Records are replaced on write, never mutated in place, so unchanged
+   * entries keep their identity and projections memoize on the record object
+   * itself. A slice is reused wholesale when every entry survives, which lets
+   * high-frequency writes (per-frame scroll position updates) notify the
+   * store without re-rendering subscribers of unrelated slices.
+   */
+  state(): WorkspaceDocumentServiceState {
+    const previous = this.cachedState
+    const viewsByTabId = this.viewsState(previous?.viewsByTabId)
+    const next: WorkspaceDocumentServiceState = {
+      documentContentRevisions: this.documentContentRevisions,
+      dirtyContentRevision: this.dirtyContentRevision,
+      dirtyFilePaths: this.dirtyFilePaths,
+      liveDocumentsById: this.liveDocumentsState(previous?.liveDocumentsById),
+      scrollPositionByTabId: this.scrollPositionsState(
+        viewsByTabId,
+        previous?.scrollPositionByTabId,
+      ),
+      viewsByTabId,
+    }
+    this.cachedState = next
+    return next
+  }
+
+  private liveDocumentsState(
+    previous: Readonly<Record<string, LiveEditorDocument>> | undefined,
+  ): Readonly<Record<string, LiveEditorDocument>> {
+    return projectedRecord(
+      this.liveDocumentsById,
+      (record) => this.liveDocumentProjection(record),
+      previous,
+    )
+  }
+
+  private viewsState(
+    previous: Readonly<Record<string, EditorDocumentView>> | undefined,
+  ): Readonly<Record<string, EditorDocumentView>> {
+    return projectedRecord(this.viewsByTabId, (record) => this.viewProjection(record), previous)
+  }
+
+  private scrollPositionsState(
+    viewsByTabId: Readonly<Record<string, EditorDocumentView>>,
+    previous: Readonly<Record<string, EditorScrollPosition>> | undefined,
+  ): Readonly<Record<string, EditorScrollPosition>> {
+    let count = 0
+    let unchanged = previous !== undefined
+    const next: Record<string, EditorScrollPosition> = {}
+    for (const [tabId, view] of Object.entries(viewsByTabId)) {
+      if (view.scrollPosition === undefined) continue
+      next[tabId] = view.scrollPosition
+      count += 1
+      if (previous?.[tabId] !== view.scrollPosition) unchanged = false
+    }
+    if (unchanged && previous && Object.keys(previous).length === count) return previous
+    return next
   }
 
   private createFileDocumentRecord(file: FileResult): LiveEditorDocumentRecord {
@@ -407,16 +478,18 @@ export class WorkspaceDocumentService {
     }
 
     existing.buffer.markClean()
-    existing.localRevision = existing.buffer.getRevision()
-    existing.contentRevision = contentRevisionForText(file.content)
-    existing.sync = {
-      fileVersion: file.version,
-      kind: 'file',
-      mtimeMs: file.mtimeMs,
-      path: file.path,
-      state: 'idle',
+    return {
+      ...existing,
+      contentRevision: contentRevisionForText(file.content),
+      localRevision: existing.buffer.getRevision(),
+      sync: {
+        fileVersion: file.version,
+        kind: 'file',
+        mtimeMs: file.mtimeMs,
+        path: file.path,
+        state: 'idle',
+      },
     }
-    return existing
   }
 
   private rebindViewsForDocument(documentId: string): void {
@@ -436,23 +509,33 @@ export class WorkspaceDocumentService {
   }
 
   private liveDocumentProjection(document: LiveEditorDocumentRecord): LiveEditorDocument {
-    return {
+    const cached = this.liveDocumentProjectionCache.get(document)
+    if (cached) return cached
+
+    const projection: LiveEditorDocument = {
       buffer: document.buffer,
       contentRevision: document.contentRevision,
       id: document.id,
       localRevision: document.localRevision,
       path: document.path,
-      sync: syncProjection(document.sync),
+      sync: document.sync,
     }
+    this.liveDocumentProjectionCache.set(document, projection)
+    return projection
   }
 
   private viewProjection(view: EditorDocumentViewRecord): EditorDocumentView {
-    return {
+    const cached = this.viewProjectionCache.get(view)
+    if (cached) return cached
+
+    const projection: EditorDocumentView = {
       documentId: view.documentId,
       scrollPosition: view.scrollPosition,
       tabId: view.tabId,
       view: view.view,
     }
+    this.viewProjectionCache.set(view, projection)
+    return projection
   }
 
   private viewDocumentProjection(view: EditorDocumentViewRecord): LiveEditorViewDocument {
@@ -484,8 +567,35 @@ export class WorkspaceDocumentService {
   }
 
   private renameDirtyPath(from: string, to: string): void {
-    const wasDirty = this.dirtyFilePaths.delete(from)
-    if (wasDirty) this.dirtyFilePaths.add(to)
+    if (!this.dirtyFilePaths.has(from)) return
+
+    const next = new Set(this.dirtyFilePaths)
+    next.delete(from)
+    next.add(to)
+    this.dirtyFilePaths = next
+  }
+
+  private addDirtyPath(path: string): void {
+    if (this.dirtyFilePaths.has(path)) return
+
+    const next = new Set(this.dirtyFilePaths)
+    next.add(path)
+    this.dirtyFilePaths = next
+  }
+
+  private deleteDirtyPath(path: string): void {
+    if (!this.dirtyFilePaths.has(path)) return
+
+    const next = new Set(this.dirtyFilePaths)
+    next.delete(path)
+    this.dirtyFilePaths = next
+  }
+
+  private setContentRevision(documentId: string, contentRevision: string): void {
+    this.documentContentRevisions = {
+      ...this.documentContentRevisions,
+      [documentId]: contentRevision,
+    }
   }
 }
 
@@ -509,8 +619,29 @@ function fileSyncVersion(document: LiveEditorDocumentRecord | undefined) {
   return document.sync.fileVersion
 }
 
-function syncProjection(sync: LiveDocumentSync): LiveDocumentSync {
-  if (sync.kind === 'none') return { kind: 'none' }
+function omitKey(
+  record: Readonly<Record<string, string>>,
+  key: string,
+): Readonly<Record<string, string>> {
+  if (!(key in record)) return record
 
-  return { ...sync }
+  const next = { ...record }
+  delete next[key]
+  return next
+}
+
+function projectedRecord<RecordT, ProjectionT>(
+  source: Map<string, RecordT>,
+  project: (record: RecordT) => ProjectionT,
+  previous: Readonly<Record<string, ProjectionT>> | undefined,
+): Readonly<Record<string, ProjectionT>> {
+  let unchanged = previous !== undefined && Object.keys(previous).length === source.size
+  const next: Record<string, ProjectionT> = {}
+  for (const [key, record] of source) {
+    const projection = project(record)
+    next[key] = projection
+    if (previous?.[key] !== projection) unchanged = false
+  }
+  if (unchanged && previous) return previous
+  return next
 }

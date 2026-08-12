@@ -16,12 +16,17 @@ import {
   SearchBufferStateContext,
 } from '@/features/search/search-buffer-state'
 import { readWorkspaceCache } from '@/lib/workspace-cache'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 
 export function EditorStateProvider({ children }: { children: ReactNode }) {
   const [workspaceCache] = useState(readWorkspaceCache)
   const [conflictStore] = useState(createEditorConflictStore)
-  const [documentStore] = useState(createEditorDocumentStore)
+  const [workspaceStore] = useState(() => createEditorWorkspaceStore(workspaceCache))
+  const [documentStore] = useState(() =>
+    createEditorDocumentStore({
+      scrollPositionSeeds: workspaceStore.getState().scrollPositionByPath,
+    }),
+  )
   const [searchBufferStore] = useState(() =>
     createSearchBufferStore({
       cachedByRootPath: workspaceCache.searchBuffers,
@@ -29,7 +34,19 @@ export function EditorStateProvider({ children }: { children: ReactNode }) {
     }),
   )
   const [uiStore] = useState(createEditorUiStore)
-  const [workspaceStore] = useState(() => createEditorWorkspaceStore(workspaceCache))
+
+  // A workspace switch swaps the slice synchronously, and zustand listeners fire
+  // during `set` — so reseeding here lands before any view of the new workspace
+  // is created.
+  useEffect(
+    () =>
+      workspaceStore.subscribe(
+        (state) => state.scrollPositionByPath,
+        (scrollPositionByPath) =>
+          documentStore.getState().seedEditorScrollPositions(scrollPositionByPath),
+      ),
+    [documentStore, workspaceStore],
+  )
 
   return (
     <EditorWorkspaceStateContext value={workspaceStore}>
