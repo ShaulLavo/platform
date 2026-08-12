@@ -2,6 +2,7 @@ import {
   createBracketMatchPlugin,
   createEditorLoggingPlugin,
   createMergeConflictPlugin,
+  createOccurrenceHighlightPlugin,
   type EditorDisposable,
   type EditorLogEvent,
   type EditorPlugin,
@@ -95,6 +96,9 @@ export function createCriticalEditorCorePlugins(
     createMergeConflictPlugin(),
     createBracketMatchPlugin({
       style: { backgroundColor: 'var(--editor-bracket-match-background)' },
+    }),
+    createOccurrenceHighlightPlugin({
+      style: { backgroundColor: 'var(--editor-occurrence-highlight-background)' },
     }),
     createPlatformEditorConsoleLoggingPlugin(),
   ]
