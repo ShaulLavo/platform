@@ -124,6 +124,18 @@ export const orderKeySchema = v.pipe(
   v.check(isValidOrderKey, 'Order key must be a lowercase a-z string not ending in "a"'),
 )
 
+/**
+ * A command the project already knows how to run — `dev`, `test`, the migration
+ * one nobody remembers the flags for. Stored on the project rather than read off
+ * `package.json` on demand: not every project is a Node one, the useful list is
+ * usually a subset of what the manifest holds, and a name the user chose beats a
+ * key someone else did.
+ */
+export const orchestrationProjectScriptSchema = v.object({
+  command: trimmedNonEmptyStringSchema,
+  name: trimmedNonEmptyStringSchema,
+})
+
 export const orchestrationProjectSchema = v.object({
   id: projectIdSchema,
   title: trimmedNonEmptyStringSchema,
@@ -135,6 +147,7 @@ export const orchestrationProjectSchema = v.object({
   // Null until the user drags the project: an unplaced project sorts after the
   // arranged run instead of jumping into the middle of it.
   orderKey: v.optional(v.nullable(orderKeySchema), null),
+  scripts: v.optional(v.array(orchestrationProjectScriptSchema), []),
 })
 
 export const orchestrationMessageRoleSchema = v.picklist(['user', 'assistant', 'system'])
@@ -312,6 +325,7 @@ export type IsoDateTime = v.InferOutput<typeof isoDateTimeSchema>
 export type ChatAttachment = v.InferOutput<typeof chatAttachmentSchema>
 export type ChatAttachmentUpload = v.InferOutput<typeof chatAttachmentUploadSchema>
 export type OrchestrationProject = v.InferOutput<typeof orchestrationProjectSchema>
+export type OrchestrationProjectScript = v.InferOutput<typeof orchestrationProjectScriptSchema>
 export type OrchestrationMessageRole = v.InferOutput<typeof orchestrationMessageRoleSchema>
 export type OrchestrationMessage = v.InferOutput<typeof orchestrationMessageSchema>
 export type OrchestrationThreadActivityTone = v.InferOutput<

@@ -33,6 +33,7 @@ export const platformMigrations: readonly Migration[] = [
   { version: 4, name: 'thread_lifecycle_columns', up: applyThreadLifecycleColumns },
   { version: 5, name: 'project_order_key', up: applyProjectOrderKey },
   { version: 6, name: 'thread_plan_progress', up: applyThreadPlanProgress },
+  { version: 7, name: 'project_scripts', up: applyProjectScripts },
 ]
 
 /**
@@ -493,6 +494,10 @@ function applyProjectOrderKey(database: PlatformDatabase) {
  */
 function applyThreadPlanProgress(database: PlatformDatabase) {
   database.run(sql`ALTER TABLE projection_threads ADD COLUMN plan_progress_json TEXT`)
+}
+
+function applyProjectScripts(database: PlatformDatabase) {
+  database.run(sql`ALTER TABLE projection_projects ADD COLUMN scripts_json TEXT`)
 }
 
 function createProviderRuntimeTables(database: PlatformDatabase) {

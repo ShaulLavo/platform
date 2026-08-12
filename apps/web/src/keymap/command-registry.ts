@@ -117,6 +117,11 @@ const workspaceCommandSpecs = [
   workspaceCommand('workspace.focusGit', 'Focus Git', 'Move keyboard focus to the Git panel.'),
   workspaceCommand('workspace.revealChat', 'Show chat', 'Bring the chat composer on screen.'),
   workspaceCommand(
+    'workspace.revealTerminal',
+    'Show terminal',
+    'Bring the workbench terminal on screen.',
+  ),
+  workspaceCommand(
     'workspace.closeCurrentTab',
     'Close current tab',
     'Close the selected editor tab.',

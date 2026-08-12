@@ -62,6 +62,7 @@ export type QuickAccessMode =
   | 'commands'
   | 'editors'
   | 'files'
+  | 'scripts'
   | 'sessions'
   | 'symbols'
   | 'views'

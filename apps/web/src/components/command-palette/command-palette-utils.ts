@@ -28,6 +28,7 @@ import type {
 } from './command-palette-types'
 
 /** Chat sessions have no path and no file icon, so they need a prefix of their own. */
+export const SCRIPT_PREFIX = 'run '
 export const SESSION_PREFIX = 'sess '
 
 export function commandPaletteItems(
@@ -236,6 +237,7 @@ export function quickAccessMode(search: string): QuickAccessMode {
   if (search.startsWith('color ')) return 'colorMode'
   if (search.startsWith('theme ')) return 'colorTheme'
   if (search.startsWith('edt ')) return 'editors'
+  if (search.startsWith(SCRIPT_PREFIX)) return 'scripts'
   if (search.startsWith(SESSION_PREFIX)) return 'sessions'
   if (search.startsWith('@')) return 'symbols'
   return search.startsWith('>') ? 'commands' : 'files'
@@ -250,6 +252,7 @@ export function quickAccessQuery(search: string) {
   if (search.startsWith('color ')) return search.slice(6).trimStart()
   if (search.startsWith('theme ')) return search.slice(6).trimStart()
   if (search.startsWith('edt ')) return search.slice(4).trimStart()
+  if (search.startsWith(SCRIPT_PREFIX)) return search.slice(SCRIPT_PREFIX.length).trimStart()
   if (search.startsWith(SESSION_PREFIX)) return search.slice(SESSION_PREFIX.length).trimStart()
   if (search.startsWith('@')) return search.slice(1).trimStart()
   if (!search.startsWith('>')) return search

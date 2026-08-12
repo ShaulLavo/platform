@@ -12,9 +12,11 @@ import type {
 } from './command-palette-types'
 import { EditorGroups } from './editor-groups'
 import { QuickOpenGroups } from './quick-open-groups'
+import { ScriptGroups } from './script-groups'
 import { SessionGroups } from './session-groups'
 import { SymbolGroups } from './symbol-groups'
 import { ViewGroups } from './view-groups'
+import type { ProjectScriptSuggestion } from '@/features/chat-mode/utils/project-scripts'
 import type {
   SessionRailItem,
   SessionRailProject,
@@ -30,6 +32,7 @@ type CommandPaletteGroupsFactoryProps = {
   readonly fileSearchError: boolean
   readonly hasWorkspace: boolean
   readonly mode: QuickAccessMode
+  readonly scriptItems: readonly ProjectScriptSuggestion[]
   readonly sessionItems: readonly SessionRailItem[]
   readonly sessionProjects: readonly SessionRailProject[]
   readonly symbolItems: readonly FlatDocumentSymbol[]
@@ -46,6 +49,7 @@ export function CommandPaletteGroupsFactory({
   fileSearchError,
   hasWorkspace,
   mode,
+  scriptItems,
   sessionItems,
   sessionProjects,
   symbolItems,
@@ -75,6 +79,10 @@ export function CommandPaletteGroupsFactory({
 
   if (mode === 'editors') {
     return <EditorGroups items={editorItems} />
+  }
+
+  if (mode === 'scripts') {
+    return <ScriptGroups scripts={scriptItems} />
   }
 
   if (mode === 'sessions') {

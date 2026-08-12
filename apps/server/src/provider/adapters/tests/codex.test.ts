@@ -1218,6 +1218,7 @@ function providerTurnInput(): ProviderTurnInput {
       deletedAt: null,
       id: projectId,
       orderKey: null,
+      scripts: [],
       title: 'Platform',
       updatedAt: now,
       workspaceRoot: 'Users/shaul/Desktop/platform',

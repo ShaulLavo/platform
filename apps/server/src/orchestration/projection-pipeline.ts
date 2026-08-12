@@ -103,6 +103,10 @@ export class OrchestrationProjectionPipeline {
       case 'project.meta-updated':
         this.updateProject(event.payload.projectId, {
           defaultModelSelectionJson: jsonPatch(event.payload.defaultModelSelection),
+          // `jsonOrUndefined`, not `jsonPatch`: an empty list is a real value
+          // the user chose, and it has to survive as `[]` rather than becoming
+          // the null that means "never set".
+          scriptsJson: jsonOrUndefined(event.payload.scripts),
           title: event.payload.title,
           updatedAt: event.payload.updatedAt,
           workspaceRoot: event.payload.workspaceRoot,
@@ -271,6 +275,9 @@ export class OrchestrationProjectionPipeline {
         // the user dragged this project into.
         orderKey: null,
         projectId: event.payload.projectId,
+        // Only on insert, for the same reason as `orderKey`: a replayed
+        // `project.created` must not wipe scripts added since.
+        scriptsJson: null,
         title: event.payload.title,
         updatedAt: event.payload.updatedAt,
         workspaceRoot: event.payload.workspaceRoot,

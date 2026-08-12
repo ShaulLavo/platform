@@ -255,6 +255,7 @@ function projectMetaUpdated(
   return one(command, at, 'project.meta-updated', {
     defaultModelSelection: command.defaultModelSelection,
     projectId: command.projectId,
+    scripts: command.scripts,
     title: command.title,
     updatedAt: at,
     workspaceRoot: command.workspaceRoot,

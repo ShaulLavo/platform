@@ -10,6 +10,8 @@ import {
 } from '@workspace/ui/components/command'
 
 import { CommandPaletteGroupsFactory } from '@/components/command-palette/command-palette-groups-factory'
+import { useCommandPaletteScripts } from '@/components/command-palette/use-command-palette-scripts'
+import { useTerminalCommandInboxStore } from '@/features/terminal/state/command-inbox-store'
 import type {
   CommandPaletteItem,
   CommandPaletteProps,
@@ -84,6 +86,11 @@ export function CommandPaletteContent({
     selectedFilePath: activeFilePath,
   })
   const { projects: sessionProjects, sessions: sessionItems } = useCommandPaletteSessions()
+  const queueTerminalCommand = useTerminalCommandInboxStore((state) => state.queueCommand)
+  const scriptItems = useCommandPaletteScripts({
+    enabled: open && mode === 'scripts',
+    rootPath: rootFolder?.path ?? null,
+  })
   // Chat mode registers the project opener only while it is mounted, and the palette
   // can open a session from the workbench — so it brings its own.
   const openWorkspaceRoot = useOpenWorkspaceRoot()
@@ -150,6 +157,14 @@ export function CommandPaletteContent({
         if (handled === false) return
         if (commandKeepsPaletteOpen(command)) return
 
+        onOpenChange(false)
+      },
+      selectScript: (script) => {
+        // The terminal is the surface that can actually run it; the inbox is what
+        // lets the pick land before one exists. Revealing the panel is what turns
+        // a queued command into a visible one.
+        queueTerminalCommand(script.command)
+        dispatch('workspace.revealTerminal')
         onOpenChange(false)
       },
       selectSession: (session) => {
@@ -225,6 +240,7 @@ export function CommandPaletteContent({
             hasWorkspace={hasWorkspace}
             activeFilePath={activeFilePath}
             mode={mode}
+            scriptItems={scriptItems}
             sessionItems={sessionItems}
             sessionProjects={sessionProjects}
             symbolItems={symbolQuery.data ?? []}

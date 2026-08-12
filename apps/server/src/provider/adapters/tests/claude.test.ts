@@ -983,6 +983,7 @@ function providerTurnInput(
       deletedAt: null,
       id: projectId,
       orderKey: null,
+      scripts: [],
       title: 'Platform',
       updatedAt: now,
       workspaceRoot: WORKSPACE_ROOT,

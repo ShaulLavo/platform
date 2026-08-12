@@ -19,11 +19,15 @@ import { DEFAULT_MONO_FONT_STACK } from '@/lib/default-nerd-font'
 import { connectTerminalSocket, type EdenServerSocket } from '@/lib/server-sockets'
 
 import { TerminalMenu } from './components/menu'
+import { useTerminalCommandInbox } from './hooks/use-terminal-command-inbox'
 import { useTerminalLinks } from './hooks/use-terminal-links'
 import { sendTerminalClientMessage } from './terminal-socket'
 import { readTerminalMenuTarget, type TerminalMenuTarget } from './utils/commands'
 import { readTerminalTheme } from './terminal-theme'
 import { isFocusOutsideElement } from './utils/focus-target'
+
+/** Writes to the terminal's socket. False when the connection is not up yet. */
+type TerminalInputSender = (data: string) => boolean
 
 type TerminalDimensions = {
   cols: number
@@ -59,13 +63,16 @@ export function TerminalPanel({
   const activationFrameRef = useRef<number | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const hostRef = useRef<HTMLDivElement | null>(null)
+  const sendInputRef = useRef<TerminalInputSender | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const { resolvedTheme } = useTheme()
   const contextMenu = useContextMenu()
   const [menuTarget, setMenuTarget] = useState<TerminalMenuTarget | null>(null)
+  const [socketConnected, setSocketConnected] = useState(false)
   const terminalHasFocusArea = useFocus((state) => state.activeArea === 'terminal')
   const setFocusArea = useFocus((state) => state.setFocusArea)
   const registerTerminalLinks = useTerminalLinks(rootPath)
+  useTerminalCommandInbox({ active: active && socketConnected, sendInputRef })
   const activateTerminalAfterFrame = useEffectEvent(() => {
     if (activationFrameRef.current !== null) {
       window.cancelAnimationFrame(activationFrameRef.current)
@@ -83,11 +90,19 @@ export function TerminalPanel({
   // ghostty resolves long after the effect that asked for it, so the handover
   // runs as an effect event and sees the current render rather than the one
   // that started the mount.
-  const handleTerminalReady = useEffectEvent((terminal: Terminal, fitAddon: FitAddon) => {
-    fitAddonRef.current = fitAddon
-    terminalRef.current = terminal
-    registerTerminalLinks(terminal)
-    activateTerminalIfActive()
+  const handleTerminalReady = useEffectEvent(
+    (terminal: Terminal, fitAddon: FitAddon, sendInput: TerminalInputSender) => {
+      fitAddonRef.current = fitAddon
+      terminalRef.current = terminal
+      sendInputRef.current = sendInput
+      registerTerminalLinks(terminal)
+      activateTerminalIfActive()
+    },
+  )
+  // State, not just the ref: a script queued before the socket opened has to
+  // wake the effect that runs it, and writing a ref never re-renders.
+  const handleTerminalConnectedChange = useEffectEvent((connected: boolean) => {
+    setSocketConnected(connected)
   })
   const handleTerminalFocus = () => {
     setFocusArea('terminal')
@@ -138,6 +153,7 @@ export function TerminalPanel({
       host,
       rootPath,
       sessionId,
+      onConnectedChange: handleTerminalConnectedChange,
       onReady: handleTerminalReady,
     })
 
@@ -209,12 +225,14 @@ function mountTerminal({
   host,
   rootPath,
   sessionId,
+  onConnectedChange,
   onReady,
 }: {
   host: HTMLDivElement
   rootPath: string
   sessionId: string
-  onReady: (terminal: Terminal, fitAddon: FitAddon) => void
+  onConnectedChange: (connected: boolean) => void
+  onReady: (terminal: Terminal, fitAddon: FitAddon, sendInput: TerminalInputSender) => void
 }) {
   let cancelled = false
   let dataDisposable: IDisposable | null = null
@@ -235,7 +253,14 @@ function mountTerminal({
       fitAddon.fit()
       terminalDimensions = currentTerminalDimensions(terminal)
       fitAddon.observeResize()
-      onReady(terminal, fitAddon)
+      // The socket is opened below, so the sender is deliberately late-bound:
+      // a command queued before the connection lands must not be written into a
+      // null socket and silently dropped.
+      onReady(terminal, fitAddon, (data) => {
+        if (!socket) return false
+
+        return sendTerminalClientMessage(socket, { data, type: 'input' })
+      })
       dataDisposable = terminal.onData((data) =>
         sendTerminalClientMessage(socket, { type: 'input', data }),
       )
@@ -246,6 +271,7 @@ function mountTerminal({
       socket = openTerminalSocket({
         getTerminalDimensions: () => terminalDimensions,
         isCancelled: () => cancelled,
+        onConnectedChange,
         rootPath,
         sessionId,
         terminal,
@@ -271,12 +297,14 @@ function mountTerminal({
 function openTerminalSocket({
   getTerminalDimensions,
   isCancelled,
+  onConnectedChange,
   rootPath,
   sessionId,
   terminal,
 }: {
   getTerminalDimensions: () => TerminalDimensions | null
   isCancelled: () => boolean
+  onConnectedChange: (connected: boolean) => void
   rootPath: string
   sessionId: string
   terminal: Terminal
@@ -287,6 +315,12 @@ function openTerminalSocket({
     if (isCancelled()) return
 
     sendTerminalResize(socket, getTerminalDimensions())
+    onConnectedChange(true)
+  })
+  socket.addEventListener('close', () => {
+    if (isCancelled()) return
+
+    onConnectedChange(false)
   })
   socket.addEventListener('message', (event) => {
     if (isCancelled()) return

@@ -13,6 +13,7 @@ import {
   nonNegativeIntegerSchema,
   orchestrationCheckpointFileSchema,
   orchestrationCheckpointStatusSchema,
+  orchestrationProjectScriptSchema,
   orchestrationProposedPlanSchema,
   orchestrationSessionSchema,
   orchestrationThreadActivitySchema,
@@ -63,6 +64,10 @@ export const projectMetaUpdateCommandSchema = v.object({
   title: v.optional(trimmedNonEmptyStringSchema),
   workspaceRoot: v.optional(trimmedNonEmptyStringSchema),
   defaultModelSelection: v.optional(v.nullable(modelSelectionSchema)),
+  // The whole list every time, never a patch. Scripts are reordered and renamed
+  // as a set, and a per-entry command would need a stable script id that the
+  // thing being identified — a name and a command line — does not have.
+  scripts: v.optional(v.array(orchestrationProjectScriptSchema)),
 })
 
 export const projectReorderCommandSchema = v.object({

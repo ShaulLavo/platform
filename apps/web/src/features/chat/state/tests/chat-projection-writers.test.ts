@@ -483,6 +483,7 @@ function makeProject(
     defaultModelSelection: null,
     id: parseProjectId('project-1'),
     orderKey: null,
+    scripts: [],
     title: 'Project',
     updatedAt: timestamp(0),
     workspaceRoot: '/workspace',

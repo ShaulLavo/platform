@@ -244,6 +244,20 @@ const workspaceCommandHandlers: Partial<Record<WorkspaceCommandId, WorkspaceComm
     setWorkbenchPanels(setWorkbenchSidebarTab(workbenchPanels, 'chat'))
     return true
   },
+  // Unlike the chat reveal, this one has somewhere to go from either mode: the
+  // terminal lives in the workbench, so a caller in chat mode has to be taken
+  // there or its command runs somewhere the user cannot see.
+  'workspace.revealTerminal': ({
+    setFocusArea,
+    setUiMode,
+    setWorkbenchPanels,
+    workbenchPanels,
+  }) => {
+    setUiMode('workbench')
+    setWorkbenchPanels(setWorkbenchBottomTab(workbenchPanels, 'terminal'))
+    setFocusArea('terminal')
+    return true
+  },
   'workspace.gotoSymbol': ({ activeFilePath, showCommandPalette }) => {
     if (!fileBackedEditorPath(activeFilePath)) return false
 

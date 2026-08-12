@@ -17,6 +17,7 @@ import {
   threadBootstrapEvents,
   turnDiffCompletedEvent,
   turnStartEvent,
+  PROJECT_ID,
   THREAD_ID,
 } from './factories/projection'
 
@@ -398,7 +399,62 @@ describe('orchestration projection convergence', () => {
     const thread = projectedThread(fixture.snapshots.fullReadModel())
     expect(thread.messages[0]?.text).toBe('Hello')
   })
+  it('carries project scripts through both read models, and lets an empty list clear them', () => {
+    const scripts = [
+      { command: 'bun run dev', name: 'dev' },
+      { command: 'bun --bun vitest run', name: 'test' },
+    ]
+
+    expect(projectScripts(projectMeta({ scripts }))).toEqual({ memory: scripts, sql: scripts })
+    // Absent is "unchanged" and empty is "the user removed them all". A patch
+    // helper that folds `[]` into null would make clearing the list impossible.
+    expect(projectScripts(projectMeta({ scripts }, { title: 'Renamed' }))).toEqual({
+      memory: scripts,
+      sql: scripts,
+    })
+    expect(projectScripts(projectMeta({ scripts }, { scripts: [] }))).toEqual({
+      memory: [],
+      sql: [],
+    })
+  })
 })
+
+/** One or more `project.meta-updated` events over a bootstrapped project. */
+function projectMeta(...updates: ReadonlyArray<Record<string, unknown>>) {
+  return projectProject([
+    ...threadBootstrapEvents(),
+    ...updates.map((update, index) =>
+      pendingEvent(
+        'project.meta-updated',
+        { projectId: PROJECT_ID, ...update, updatedAt: `2026-05-24T00:0${index + 1}:00.000Z` },
+        `2026-05-24T00:0${index + 1}:00.000Z`,
+      ),
+    ),
+  ])
+}
+
+function projectScripts(projected: ReturnType<typeof projectProject>) {
+  return {
+    memory: projected.memory?.scripts ?? null,
+    // The shell reader, not the row: a column nobody reads back is not projected.
+    sql: projected.shell?.scripts ?? null,
+  }
+}
+
+function projectProject(events: PendingOrchestrationEvent[]) {
+  const fixture = createProjectionFixture()
+  fixtures.push(fixture)
+
+  const appended = fixture.append(events)
+  fixture.pipeline.applyEvents(appended)
+  const reader = createShellRowReader(fixture.snapshots, fixture.database)
+  reader.beginWindow()
+
+  return {
+    memory: projectEvents(appended).projects.get(PROJECT_ID),
+    shell: reader.projectShell(PROJECT_ID),
+  }
+}
 
 function project(events: PendingOrchestrationEvent[]) {
   const fixture = createProjectionFixture()

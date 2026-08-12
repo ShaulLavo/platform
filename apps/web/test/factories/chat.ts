@@ -137,6 +137,7 @@ export function chatProject(
     defaultModelSelection: null,
     id: v.parse(projectIdSchema, 'project-1'),
     orderKey: null,
+    scripts: [],
     title: 'platform',
     updatedAt: timestamp(1),
     workspaceRoot: '/repo/platform',

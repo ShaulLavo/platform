@@ -15,6 +15,7 @@ import {
   orchestrationCheckpointFileSchema,
   orchestrationCheckpointStatusSchema,
   orchestrationMessageRoleSchema,
+  orchestrationProjectScriptSchema,
   orchestrationProposedPlanSchema,
   orchestrationSessionSchema,
   orchestrationThreadActivitySchema,
@@ -84,6 +85,9 @@ export const projectMetaUpdatedPayloadSchema = v.object({
   title: v.optional(trimmedNonEmptyStringSchema),
   workspaceRoot: v.optional(trimmedNonEmptyStringSchema),
   defaultModelSelection: v.optional(v.nullable(modelSelectionSchema)),
+  // Absent means "unchanged", an empty array means "the user removed them all".
+  // Collapsing the two would make clearing the list impossible.
+  scripts: v.optional(v.array(orchestrationProjectScriptSchema)),
   updatedAt: isoDateTimeSchema,
 })
 

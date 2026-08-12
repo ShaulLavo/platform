@@ -231,6 +231,7 @@ function providerTurnInput(): ProviderTurnInput {
       deletedAt: null,
       id: projectId,
       orderKey: null,
+      scripts: [],
       title: 'Platform',
       updatedAt: now,
       workspaceRoot: '/workspace',

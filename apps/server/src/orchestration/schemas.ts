@@ -31,6 +31,7 @@ export {
   type OrchestrationLatestTurn,
   type OrchestrationMessage,
   type OrchestrationProject,
+  type OrchestrationProjectScript,
   type OrchestrationReplayEventsInput,
   type OrchestrationReplayEventsResult,
   type OrchestrationSession,

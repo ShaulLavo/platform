@@ -160,6 +160,7 @@ export {
   type OrchestrationMessage,
   type OrchestrationMessageRole,
   type OrchestrationProject,
+  type OrchestrationProjectScript,
   type OrchestrationProposedPlan,
   type OrchestrationSession,
   type OrchestrationSessionStatus,

@@ -341,6 +341,7 @@ function applyProjectEvent(
         // A project is never born arranged: it sorts oldest-first at the tail
         // until the user drags it, and only `project.reordered` writes a key.
         orderKey: null,
+        scripts: [],
         title: event.payload.title,
         updatedAt: event.payload.updatedAt,
         workspaceRoot: event.payload.workspaceRoot,
@@ -348,6 +349,7 @@ function applyProjectEvent(
     case 'project.meta-updated':
       return patchProject(state, event.payload.projectId, {
         defaultModelSelection: event.payload.defaultModelSelection,
+        scripts: event.payload.scripts,
         title: event.payload.title,
         updatedAt: event.payload.updatedAt,
         workspaceRoot: event.payload.workspaceRoot,

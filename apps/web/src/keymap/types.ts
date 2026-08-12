@@ -48,6 +48,7 @@ export type WorkspaceCommandId =
   | 'workspace.focusFileTree'
   | 'workspace.focusGit'
   | 'workspace.revealChat'
+  | 'workspace.revealTerminal'
   | 'workspace.closeCurrentTab'
   | 'workspace.toggleDiffViewMode'
   | 'workspace.toggleUiMode'

@@ -41,6 +41,7 @@ function applyEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
         deletedAt: null,
         id: event.payload.projectId,
         orderKey: null,
+        scripts: [],
         title: event.payload.title,
         workspaceRoot: event.payload.workspaceRoot,
         createdAt: event.payload.createdAt,
@@ -381,6 +382,7 @@ function updateProject(
 ) {
   updateProjectValue(model, event.payload.projectId, {
     defaultModelSelection: event.payload.defaultModelSelection,
+    scripts: event.payload.scripts,
     title: event.payload.title,
     updatedAt: event.payload.updatedAt,
     workspaceRoot: event.payload.workspaceRoot,
