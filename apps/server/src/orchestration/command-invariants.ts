@@ -116,6 +116,27 @@ export function requireProject(model: OrchestrationReadModel, projectId: string)
  * internal dispatch too — and an unvalidated key here is not a rejected
  * command, it is a persisted row that sorts wrong forever.
  */
+/**
+ * A turn may implement a plan that lives on another thread, so the cited thread
+ * is not required to be the one running the turn — but it does have to exist,
+ * and it has to actually be holding an actionable plan.
+ *
+ * Without this the projection clears `hasActionableProposedPlan` on whatever
+ * thread the client names. A stale client then silently strips the badge off an
+ * unrelated conversation, and nothing in the log says why it went away.
+ */
+export function requireActionableSourcePlan(
+  model: OrchestrationReadModel,
+  source: { readonly threadId: string } | undefined,
+) {
+  if (!source) return
+
+  const thread = requireThreadNotDeleted(model, source.threadId)
+  if (thread.hasActionableProposedPlan) return
+
+  throw orchestrationErrors.SOURCE_PLAN_NOT_ACTIONABLE({ planThreadId: source.threadId })
+}
+
 export function requireValidOrderKey(orderKey: string) {
   if (isValidOrderKey(orderKey)) return
 

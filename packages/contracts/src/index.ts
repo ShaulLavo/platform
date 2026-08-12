@@ -128,6 +128,7 @@ export {
   chatAttachmentUrlPath,
   isoDateTimeSchema,
   MAX_CHAT_ATTACHMENT_BYTES,
+  MAX_CHAT_ATTACHMENT_DATA_URL_LENGTH,
   MAX_CHAT_ATTACHMENTS,
   nonNegativeIntegerSchema,
   orchestrationCheckpointFileSchema,

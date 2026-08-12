@@ -222,6 +222,15 @@ export const threadInteractionModeSetCommandSchema = v.object({
   interactionMode: interactionModeSchema,
 })
 
+/**
+ * Ceiling on one user message. Generous — a pasted stack trace or a whole file
+ * is legitimate — but not unbounded: this string is appended to the event log,
+ * which is the one store nothing ever prunes, and it is replayed into every
+ * snapshot that thread will serve for the rest of its life. A runaway paste
+ * with no ceiling is a permanent cost, not a transient one.
+ */
+export const MAX_TURN_MESSAGE_CHARS = 1_000_000
+
 export const threadTurnStartCommandSchema = v.object({
   ...commandBaseSchema,
   type: v.literal('thread.turn.start'),
@@ -230,7 +239,7 @@ export const threadTurnStartCommandSchema = v.object({
   message: v.object({
     messageId: messageIdSchema,
     role: v.literal('user'),
-    text: v.string(),
+    text: v.pipe(v.string(), v.maxLength(MAX_TURN_MESSAGE_CHARS)),
     attachments: v.optional(chatAttachmentUploadsSchema, []),
   }),
   modelSelection: v.optional(modelSelectionSchema),

@@ -113,6 +113,13 @@ export const orchestrationErrors = defineErrorCatalog('orchestration', {
     why: 'The requested thread is missing or has been deleted.',
     fix: 'Refresh the orchestration shell and select an existing thread.',
   },
+  SOURCE_PLAN_NOT_ACTIONABLE: {
+    status: 409,
+    message: ({ planThreadId }: { planThreadId: string }) =>
+      `Thread ${planThreadId} has no actionable proposed plan to implement`,
+    why: 'A turn cited a proposed plan that the read model does not hold as actionable — the plan was already implemented, was reverted away, or the client is working from a stale shell.',
+    fix: 'Reload the thread and start the turn from the plan the timeline currently shows.',
+  },
 })
 
 export const providerErrors = defineErrorCatalog('provider', {

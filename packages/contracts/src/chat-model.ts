@@ -36,6 +36,13 @@ export const MAX_CHAT_ATTACHMENTS = 8
  */
 export const MAX_CHAT_ATTACHMENT_BYTES = 10 * 1024 * 1024
 
+/**
+ * The same ceiling expressed in data-URL characters. base64 spends 4 characters
+ * per 3 bytes; the constant slack covers the `data:image/…;base64,` prefix, so
+ * the bound stays a bound rather than becoming a second, looser limit.
+ */
+export const MAX_CHAT_ATTACHMENT_DATA_URL_LENGTH = 64 + 4 * Math.ceil(MAX_CHAT_ATTACHMENT_BYTES / 3)
+
 export const chatAttachmentSchema = v.object({
   type: v.literal('image'),
   id: trimmedNonEmptyStringSchema,
@@ -51,7 +58,18 @@ export const chatAttachmentSchema = v.object({
  */
 export const chatAttachmentUploadSchema = v.object({
   ...chatAttachmentSchema.entries,
-  dataUrl: v.optional(v.pipe(v.string(), v.regex(/^data:image\/[a-z+]+;base64,/i))),
+  dataUrl: v.optional(
+    v.pipe(
+      v.string(),
+      // The length ceiling, not just the shape. `sizeBytes` is a number the
+      // client declares and the bytes need not match it, so validating only
+      // that leaves the actual payload unbounded: a client can say `1` and
+      // send half a gigabyte, which the server would decode whole into memory
+      // before anything noticed.
+      v.maxLength(MAX_CHAT_ATTACHMENT_DATA_URL_LENGTH),
+      v.regex(/^data:image\/[a-z+]+;base64,/i),
+    ),
+  ),
 })
 
 /**

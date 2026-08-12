@@ -21,6 +21,7 @@ import {
   requireSnoozable,
   requireThreadAbsent,
   requireThreadArchived,
+  requireActionableSourcePlan,
   requireThreadNotArchived,
   requireThreadNotDeleted,
   requireValidOrderKey,
@@ -621,6 +622,10 @@ function turnStartRequested(
 ) {
   const bootstrapEvent = bootstrapThreadCreated(command, model, at)
   if (!bootstrapEvent) requireThreadNotArchived(model, command.threadId, command.type)
+  // Checked before any event is planned: the projector clears the cited
+  // thread's actionable-plan flag unconditionally, so an unvalidated reference
+  // is a write to a thread this turn has nothing to do with.
+  requireActionableSourcePlan(model, command.sourceProposedPlan)
 
   const messageEvent = event(command, at, 'thread.message-sent', {
     attachments: command.message.attachments,

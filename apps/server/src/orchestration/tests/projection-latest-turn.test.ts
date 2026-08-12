@@ -28,10 +28,14 @@ afterEach(() => {
 describe('projection latest turn snapshots', () => {
   it('returns the canonical latest turn after an assistant turn completes', async () => {
     const engine = createEngine()
-    const sourceProposedPlan = { planId: 'plan-1', threadId: 'thread-source' }
+    // A real plan on the thread that runs the turn. The decider refuses a
+    // reference it cannot resolve, so a made-up thread id here would be
+    // asserting that the projection carries a plan that could never exist.
+    const sourceProposedPlan = { planId: 'plan-1', threadId: 'thread-1' }
     const before = new Date().toISOString()
 
     await dispatchProjectThread(engine)
+    await engine.dispatch(proposePlanCommand())
     await engine.dispatch(startTurnCommand({ sourceProposedPlan }))
     await engine.dispatch(assistantDeltaCommand())
     await engine.dispatch(assistantCompleteCommand())
@@ -49,6 +53,34 @@ describe('projection latest turn snapshots', () => {
       turnId: 'turn-1',
     })
     expectServerStamped(turn?.requestedAt, before)
+  })
+
+  it('refuses a turn that cites a plan no thread is actually offering', async () => {
+    const engine = createEngine()
+    await dispatchProjectThread(engine)
+
+    // The projector clears `hasActionableProposedPlan` on whichever thread the
+    // command names, so an unresolvable reference is a write to a conversation
+    // this turn has nothing to do with — a stale client silently stripping the
+    // badge off someone else's thread.
+    await expect(
+      engine.dispatch(
+        startTurnCommand({
+          commandId: 'cmd-turn-ghost',
+          sourceProposedPlan: { planId: 'plan-1', threadId: 'thread-ghost' },
+        }),
+      ),
+    ).rejects.toThrow('Thread not found')
+
+    // The thread exists here, but is offering nothing.
+    await expect(
+      engine.dispatch(
+        startTurnCommand({
+          commandId: 'cmd-turn-unoffered',
+          sourceProposedPlan: { planId: 'plan-1', threadId: 'thread-1' },
+        }),
+      ),
+    ).rejects.toThrow('no actionable proposed plan')
   })
 
   it('returns interrupted latest turn state after a turn interrupt', async () => {
@@ -170,6 +202,23 @@ function threadCreateCommand() {
     title: 'Projection',
     type: 'thread.create',
     worktreePath: null,
+  })
+}
+
+function proposePlanCommand() {
+  return command({
+    commandId: 'cmd-propose-plan',
+    createdAt: '2026-05-24T00:00:30.000Z',
+    proposedPlan: {
+      createdAt: '2026-05-24T00:00:30.000Z',
+      id: 'plan-1',
+      planMarkdown: '1. Do the thing',
+      threadId: 'thread-1',
+      turnId: null,
+      updatedAt: '2026-05-24T00:00:30.000Z',
+    },
+    threadId: 'thread-1',
+    type: 'thread.proposed-plan.upsert',
   })
 }
 

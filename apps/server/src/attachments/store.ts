@@ -3,6 +3,7 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import {
   chatAttachmentExtension,
+  MAX_CHAT_ATTACHMENT_BYTES,
   type ChatAttachment,
   type ChatAttachmentUpload,
 } from '@workspace/contracts'
@@ -66,6 +67,15 @@ export async function writeAttachmentFromDataUrl(input: {
   }
 
   const bytes = Buffer.from(payload.base64, 'base64')
+  // Measured, not declared. `sizeBytes` arrives from the client and the schema
+  // caps it, but nothing makes the payload agree with it — so the decoded
+  // length is re-checked here, and it is this number the caller persists.
+  if (bytes.byteLength > MAX_CHAT_ATTACHMENT_BYTES) {
+    throw createInternalError(
+      `Attachment ${attachment.id} decodes to ${bytes.byteLength} bytes, over the ${MAX_CHAT_ATTACHMENT_BYTES} limit.`,
+    )
+  }
+
   await mkdir(path.dirname(filePath), { recursive: true })
   await writeFile(filePath, bytes)
   return { bytesWritten: bytes.byteLength, filePath }

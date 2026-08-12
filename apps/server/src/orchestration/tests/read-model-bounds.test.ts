@@ -71,8 +71,11 @@ describe('in-memory read model bounds', () => {
 
     // Cloning made this ratio grow without bound (measured 17x at 4k messages).
     // The floor keeps a fast machine's noise from turning a microsecond
-    // baseline into an impossible bar.
-    expect(late.averageMs).toBeLessThan(Math.max(early.averageMs, 0.003) * 5)
+    // baseline into an impossible bar; the multiplier is 8 rather than 5
+    // because this ran red twice on a loaded machine while still being
+    // nowhere near the 17x it exists to catch. A tripwire that cries wolf in
+    // CI gets ignored, which costs more than the sensitivity buys.
+    expect(late.averageMs).toBeLessThan(Math.max(early.averageMs, 0.003) * 8)
   })
 
   it('hydrates only the newest rows when rebuilding the model from SQL', () => {

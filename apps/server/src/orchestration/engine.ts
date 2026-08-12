@@ -430,7 +430,10 @@ async function persistTurnAttachments(
 
     bytesPersisted += written.bytesWritten
     persisted += 1
-    kept.push(attachmentMetadata(attachment))
+    // The measured length wins over the declared one. Storing what the client
+    // said would leave the timeline reporting a size the blob on disk does not
+    // have, and every reader downstream trusting it.
+    kept.push({ ...attachmentMetadata(attachment), sizeBytes: written.bytesWritten })
   }
 
   return {

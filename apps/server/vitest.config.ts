@@ -8,7 +8,10 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     // The suite spawns real processes (git, PTYs, LSP servers); cold spawns
     // under parallel load blow Vitest's 5s default. Server project only —
-    // web and packages keep the default.
-    testTimeout: 15_000,
+    // web and packages keep the default. Raised from 15s after the read-model
+    // hydration test — which dispatches several thousand events one at a time —
+    // took 16s on a machine that was busy, twice. A timeout that only holds on
+    // an idle machine is a flake generator in CI.
+    testTimeout: 30_000,
   },
 })
