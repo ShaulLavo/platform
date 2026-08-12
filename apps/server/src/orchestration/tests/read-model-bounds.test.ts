@@ -61,21 +61,38 @@ describe('in-memory read model bounds', () => {
     expect(projectedThread(next).messages).toBe(messages)
   })
 
-  it('does not let dispatch cost grow with thread length', () => {
-    // Warm the projector first: a cold first window measures the JIT, not the
-    // projection, and that inflated baseline hides real growth.
-    const warm = projectMessages(projectEvents(withSequences(threadBootstrapEvents())), 0, 400)
-    const early = projectMessages(warm.model, 500, 400)
-    const filled = projectMessages(early.model, 1_000, 4_000)
-    const late = projectMessages(filled.model, 10_000, 400)
+  /**
+   * The regression this guards is that projecting one message used to *clone*
+   * the retained messages, so dispatch cost grew with thread length (17x at 4k).
+   *
+   * It used to assert that as a wall-clock ratio, and that assertion failed
+   * three times on a loaded machine while nowhere near 17x — a stopwatch shared
+   * with fifteen other test files measures the machine, not the projector.
+   * Widening the threshold twice would have been the second epicycle, so the
+   * instrument changed instead: cloning is observable directly and exactly, as
+   * object identity. A projector that copies cannot keep the references, and a
+   * projector that keeps them cannot be copying — no timing, no flake, and it
+   * fails on the actual defect rather than on a proxy for it.
+   */
+  it('does not copy the retained messages to project one more', () => {
+    const filled = projectMessages(projectEvents(withSequences(threadBootstrapEvents())), 0, 400)
+    const before = projectedThread(filled.model).messages
+    // Snapshotted as values: the projector appends in place, so the array
+    // reference itself is not a stable "before" and asserting on its length
+    // later would be reading the "after".
+    const beforeCount = before.length
+    const beforeHead = before.at(0)
+    const beforeTail = before.at(-1)
 
-    // Cloning made this ratio grow without bound (measured 17x at 4k messages).
-    // The floor keeps a fast machine's noise from turning a microsecond
-    // baseline into an impossible bar; the multiplier is 8 rather than 5
-    // because this ran red twice on a loaded machine while still being
-    // nowhere near the 17x it exists to catch. A tripwire that cries wolf in
-    // CI gets ignored, which costs more than the sensitivity buys.
-    expect(late.averageMs).toBeLessThan(Math.max(early.averageMs, 0.003) * 8)
+    const after = projectMessages(filled.model, 400, 1)
+    const afterMessages = projectedThread(after.model).messages
+
+    // The same objects, not merely equal ones — `toBe` is the whole point.
+    // Whether the array is reused or rebuilt is an implementation detail worth
+    // leaving free; copying the *elements* is the defect.
+    expect(afterMessages.at(0)).toBe(beforeHead)
+    expect(afterMessages.at(-2)).toBe(beforeTail)
+    expect(afterMessages).toHaveLength(beforeCount + 1)
   })
 
   it('hydrates only the newest rows when rebuilding the model from SQL', () => {

@@ -14,6 +14,7 @@ import { isDurableCommandRejection, OrchestrationCommandReceipts } from './comma
 import { decideOrchestrationCommand } from './decider'
 import { OrchestrationEventStore, type OrchestrationDatabase } from './event-store'
 import { OrchestrationProjectionPipeline } from './projection-pipeline'
+import { ThreadBranchReactor } from './thread-branch-reactor'
 import { ensureCommandWorkspaceRoot } from './workspace-root'
 import { ProviderCommandReactor } from './provider-command-reactor'
 import { ProviderRuntimeIngestion } from './provider-runtime-ingestion'
@@ -65,6 +66,7 @@ export class OrchestrationEngine {
   private queue = Promise.resolve()
   private readonly attachmentsDir: string
   private checkpointReactor: CheckpointReactor | null = null
+  private threadBranchReactor: ThreadBranchReactor | null = null
   private readonly database: OrchestrationDatabase
   private readonly domainEvents = new OrchestrationDomainEventBus()
   private readonly receipts: OrchestrationCommandReceipts
@@ -164,6 +166,7 @@ export class OrchestrationEngine {
   async providerRuntimeIdle() {
     await this.providerCommandReactor?.drain()
     await this.checkpointReactor?.drain()
+    await this.threadBranchReactor?.drain()
   }
 
   private dispatchNow(
@@ -342,6 +345,14 @@ export class OrchestrationEngine {
       providerService,
     })
     this.domainEvents.subscribe(this.checkpointReactor)
+    // Rides the same git handle: without it `thread.branch` is null forever and
+    // every branch-gated affordance is unreachable.
+    this.threadBranchReactor = new ThreadBranchReactor({
+      dispatch: (command) => this.dispatch(command),
+      getReadModel: () => this.readModel,
+      git,
+    })
+    this.domainEvents.subscribe(this.threadBranchReactor)
   }
 
   private createProviderCommandReactor(options: OrchestrationEngineOptions) {
