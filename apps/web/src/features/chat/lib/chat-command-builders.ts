@@ -170,8 +170,8 @@ export function createDraftThreadSubmission({
   sourceProposedPlan,
   terminalContexts = NO_TERMINAL_CONTEXTS,
   text,
+  requestWorktree,
   title: titleOverride,
-  worktree,
 }: {
   attachments?: ChatAttachmentUpload[]
   createdAt: string
@@ -190,11 +190,11 @@ export function createDraftThreadSubmission({
    */
   title?: string
   /**
-   * The session's own checkout, when one was prepared for it. Absent means the
-   * session shares the project root, which is what every session did before
-   * worktrees were reachable.
+   * Ask the server to give this session a checkout of its own. The path comes
+   * back later as a `thread.meta.update`; the client never creates one itself,
+   * so a client that dies mid-send cannot orphan a directory.
    */
-  worktree?: { branch: string | null; path: string }
+  requestWorktree?: boolean
 }): DraftThreadSubmission {
   const threadId = createThreadId()
   const title = titleOverride ?? threadTitleFromPrompt(text) ?? 'New chat'
@@ -215,13 +215,14 @@ export function createDraftThreadSubmission({
       ...submission.command,
       bootstrap: {
         createThread: {
-          branch: worktree?.branch ?? null,
+          branch: null,
           interactionMode,
           modelSelection,
           projectId,
+          ...(requestWorktree ? { requestWorktree } : {}),
           runtimeMode,
           title,
-          worktreePath: worktree?.path ?? rootPath,
+          worktreePath: rootPath,
         },
       },
       titleSeed: title,

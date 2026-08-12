@@ -12,7 +12,7 @@ import { useCallback, useMemo, useState } from 'react'
 
 import { errorMessage } from '@/lib/error-message'
 import type { ChatEnvironment } from '../environment/chat-environment'
-import { usePrepareSessionWorktree } from '@/features/chat/hooks/use-prepare-session-worktree'
+import { useSessionIsolationStore } from '@/features/chat-mode/state/session-isolation-store'
 import {
   createDraftThreadSubmission,
   createProjectDefaultModelCommand,
@@ -62,7 +62,7 @@ export function ChatDraftView({
     providersQuery.data?.providers,
     project?.defaultModelSelection ?? null,
   )
-  const prepareSessionWorktree = usePrepareSessionWorktree()
+  const consumeIsolation = useSessionIsolationStore((state) => state.consumeIsolation)
   const handleStop = useCallback(() => undefined, [])
   const handlePersistModelSelection = useCallback(
     (next: ModelSelection) => {
@@ -91,11 +91,10 @@ export function ChatDraftView({
         return false
       }
 
-      // Prepared before the command is built, because the thread is created by
-      // that command and has to be born already knowing its checkout — a
-      // worktree attached afterwards would leave the first turn running against
-      // the project root.
-      const worktree = await prepareSessionWorktree({ projectId: project.id, rootPath })
+      // Declared, not created. The server makes the worktree while the turn is
+      // held at the gate, so a client that dies here cannot orphan a directory
+      // no thread owns.
+      const requestWorktree = consumeIsolation()
       const submission = createDraftThreadSubmission({
         attachments,
         createdAt: new Date().toISOString(),
@@ -106,7 +105,7 @@ export function ChatDraftView({
         runtimeMode,
         terminalContexts,
         text,
-        ...(worktree ? { worktree } : {}),
+        ...(requestWorktree ? { requestWorktree } : {}),
       })
       const scope = createChatPipelineScope('chat.draft.dispatch.summary', {
         ...chatCommandSummary(submission.command),

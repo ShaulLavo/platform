@@ -713,6 +713,7 @@ function bootstrapThreadCreated(
     interactionMode: createThread.interactionMode ?? DEFAULT_INTERACTION_MODE,
     modelSelection: createThread.modelSelection,
     projectId: createThread.projectId,
+    requestWorktree: createThread.requestWorktree,
     runtimeMode: createThread.runtimeMode ?? DEFAULT_RUNTIME_MODE,
     threadId: command.threadId,
     title: createThread.title,

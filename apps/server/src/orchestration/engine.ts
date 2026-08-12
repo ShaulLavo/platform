@@ -15,7 +15,7 @@ import { decideOrchestrationCommand } from './decider'
 import { OrchestrationEventStore, type OrchestrationDatabase } from './event-store'
 import { OrchestrationProjectionPipeline } from './projection-pipeline'
 import { GitWorktreeService } from '../git/worktrees'
-import { ThreadBranchReactor } from './thread-branch-reactor'
+import { SessionCheckoutReactor } from './session-checkout-reactor'
 import { ensureCommandWorkspaceRoot } from './workspace-root'
 import { ProviderCommandReactor } from './provider-command-reactor'
 import { ProviderRuntimeIngestion } from './provider-runtime-ingestion'
@@ -67,7 +67,7 @@ export class OrchestrationEngine {
   private queue = Promise.resolve()
   private readonly attachmentsDir: string
   private checkpointReactor: CheckpointReactor | null = null
-  private threadBranchReactor: ThreadBranchReactor | null = null
+  private sessionCheckoutReactor: SessionCheckoutReactor | null = null
   private readonly database: OrchestrationDatabase
   private readonly domainEvents = new OrchestrationDomainEventBus()
   private readonly receipts: OrchestrationCommandReceipts
@@ -167,7 +167,7 @@ export class OrchestrationEngine {
   async providerRuntimeIdle() {
     await this.providerCommandReactor?.drain()
     await this.checkpointReactor?.drain()
-    await this.threadBranchReactor?.drain()
+    await this.sessionCheckoutReactor?.drain()
   }
 
   private dispatchNow(
@@ -324,8 +324,18 @@ export class OrchestrationEngine {
    * still being published, so draining the reactor here is what puts the
    * capture strictly before the provider is allowed to touch the worktree.
    */
-  private checkpointBaselineSettled() {
-    return this.checkpointReactor?.drain() ?? Promise.resolve()
+  /**
+   * Everything that has to be true of the working tree before the provider is
+   * allowed to touch it: the session's worktree exists, and the baseline the
+   * turn will be diffed against has been photographed.
+   *
+   * Ordered, not parallel. The checkpoint has to photograph the checkout the
+   * turn will actually run in, and for an isolated session that directory does
+   * not exist until the worktree reactor has finished making it.
+   */
+  private async turnPrerequisitesSettled() {
+    await this.sessionCheckoutReactor?.drain()
+    await this.checkpointReactor?.drain()
   }
 
   /**
@@ -348,12 +358,13 @@ export class OrchestrationEngine {
     this.domainEvents.subscribe(this.checkpointReactor)
     // Rides the same git handle: without it `thread.branch` is null forever and
     // every branch-gated affordance is unreachable.
-    this.threadBranchReactor = new ThreadBranchReactor({
+    this.sessionCheckoutReactor = new SessionCheckoutReactor({
       dispatch: (command) => this.dispatch(command),
       getReadModel: () => this.readModel,
       git,
+      worktrees: new GitWorktreeService(git),
     })
-    this.domainEvents.subscribe(this.threadBranchReactor)
+    this.domainEvents.subscribe(this.sessionCheckoutReactor)
   }
 
   private createProviderCommandReactor(options: OrchestrationEngineOptions) {
@@ -389,7 +400,7 @@ export class OrchestrationEngine {
     this.subscribeCheckpointReactor(providerRuntimeOptions?.checkpointGit, providerService)
 
     return new ProviderCommandReactor({
-      beforeTurnStart: () => this.checkpointBaselineSettled(),
+      beforeTurnStart: () => this.turnPrerequisitesSettled(),
       checkpointGit: providerRuntimeOptions?.checkpointGit ?? null,
       dispatch: (command) => this.dispatch(command),
       getReadModel: () => this.readModel,

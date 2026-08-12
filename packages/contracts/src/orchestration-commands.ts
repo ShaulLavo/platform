@@ -111,6 +111,19 @@ export const threadTurnBootstrapCreateThreadSchema = v.object({
   interactionMode: v.optional(interactionModeSchema, DEFAULT_INTERACTION_MODE),
   branch: v.optional(v.nullable(trimmedNonEmptyStringSchema), null),
   worktreePath: v.optional(v.nullable(trimmedNonEmptyStringSchema), null),
+  /**
+   * Ask the server to prepare a checkout for this session.
+   *
+   * An intent, not a path. The client used to create the worktree itself and
+   * then send the result, so a client that died between the two orphaned a
+   * directory no thread owned and no deletion would ever reclaim. Declaring the
+   * intent inside the command that creates the thread makes the worktree exist
+   * only once the thread durably does.
+   *
+   * No default, deliberately: the output key stays optional, so every existing
+   * caller keeps compiling untouched.
+   */
+  requestWorktree: v.optional(v.boolean()),
 })
 
 export const threadTurnBootstrapSchema = v.object({

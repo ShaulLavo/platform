@@ -116,6 +116,12 @@ export const threadCreatedPayloadSchema = v.object({
   interactionMode: v.optional(interactionModeSchema, DEFAULT_INTERACTION_MODE),
   branch: v.nullable(trimmedNonEmptyStringSchema),
   worktreePath: v.nullable(trimmedNonEmptyStringSchema),
+  /**
+   * The thread asked to run in a checkout of its own. A fact about how it was
+   * created, not projected state — the worktree that answers it arrives later
+   * as a `thread.meta-updated` carrying the real path.
+   */
+  requestWorktree: v.optional(v.boolean(), false),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
 })

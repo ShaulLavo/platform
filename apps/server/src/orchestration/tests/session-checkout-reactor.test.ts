@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
@@ -23,7 +23,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { force: true, recursive: true })))
 })
 
-describe('thread branch reactor', () => {
+describe('session checkout reactor', () => {
   it('stamps the branch the thread’s checkout is actually on', async () => {
     const root = await gitRepo('feature/login')
     const engine = createEngine(root)
@@ -69,6 +69,33 @@ describe('thread branch reactor', () => {
       .events.filter((event) => event.type === 'thread.meta-updated')
     expect(stamps).toHaveLength(0)
   })
+  it('prepares the session its own checkout when the turn asks for one', async () => {
+    const root = await gitRepo('main')
+    const engine = createEngine(root)
+
+    await startThread(engine, root, { requestWorktree: true })
+    await engine.providerRuntimeIdle()
+
+    const thread = engine.readModelSnapshot().threads.get('thread-1')
+    // A directory of its own, and the branch that goes with it — not `main`,
+    // which is what reading the project root would have reported.
+    expect(thread?.worktreePath).toBeDefined()
+    expect(thread?.worktreePath).not.toBe(root)
+    expect(thread?.branch).toBe('session/thread-thread-1')
+    expect(await directoryExists(thread?.worktreePath ?? '')).toBe(true)
+  })
+
+  it('leaves a session on the project root when it did not ask', async () => {
+    const root = await gitRepo('main')
+    const engine = createEngine(root)
+
+    await startThread(engine, root)
+    await engine.providerRuntimeIdle()
+
+    const thread = engine.readModelSnapshot().threads.get('thread-1')
+    expect(thread?.worktreePath).toBe(root)
+    expect(thread?.branch).toBe('main')
+  })
 })
 
 function threadBranch(engine: OrchestrationEngine) {
@@ -89,7 +116,20 @@ function createEngine(workspaceRoot: string) {
   })
 }
 
-async function startThread(engine: OrchestrationEngine, workspaceRoot: string) {
+async function directoryExists(target: string) {
+  if (!target) return false
+
+  return stat(target).then(
+    (entry) => entry.isDirectory(),
+    () => false,
+  )
+}
+
+async function startThread(
+  engine: OrchestrationEngine,
+  workspaceRoot: string,
+  bootstrap: { requestWorktree?: boolean } = {},
+) {
   await engine.dispatch(
     command({
       commandId: 'cmd-project-create',
@@ -100,21 +140,29 @@ async function startThread(engine: OrchestrationEngine, workspaceRoot: string) {
       workspaceRoot,
     }),
   )
+  // Through the turn's own bootstrap, which is the only path that carries the
+  // worktree intent — a standalone `thread.create` cannot ask for one.
   await engine.dispatch(
     command({
-      branch: null,
-      commandId: 'cmd-thread-create',
+      bootstrap: {
+        createThread: {
+          interactionMode: 'default',
+          modelSelection: { model: 'gpt-5-codex', providerInstanceId: 'codex' },
+          projectId: 'project-1',
+          title: 'Session',
+          worktreePath: workspaceRoot,
+          ...bootstrap,
+        },
+      },
+      commandId: 'cmd-turn-1',
       interactionMode: 'default',
-      modelSelection: { model: 'gpt-5-codex', providerInstanceId: 'codex' },
-      projectId: 'project-1',
+      message: { attachments: [], messageId: 'message-1', role: 'user', text: 'Build it' },
       runtimeMode: 'full-access',
       threadId: 'thread-1',
-      title: 'Session',
-      type: 'thread.create',
-      worktreePath: null,
+      turnId: 'turn-1',
+      type: 'thread.turn.start',
     }),
   )
-  await engine.dispatch(turnStartCommand('cmd-turn-1', 'turn-1', 'message-1'))
 }
 
 function turnStartCommand(commandId: string, turnId: string, messageId: string) {
@@ -134,7 +182,10 @@ function command(value: unknown) {
 }
 
 async function gitRepo(branch: string) {
-  const root = await mkdtemp(path.join(tmpdir(), 'platform-branch-'))
+  // realpath, because macOS hands out /var/... and the containment checks
+  // resolve to /private/var/... — a worktree inside the repo then reads as
+  // outside the workspace and the branch never lands.
+  const root = await realpath(await mkdtemp(path.join(tmpdir(), 'platform-branch-')))
   roots.push(root)
   await runGit(root, ['init', '-b', branch])
   await runGit(root, ['config', 'user.email', 'test@example.com'])
