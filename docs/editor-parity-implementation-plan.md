@@ -51,14 +51,16 @@ Effort letters from the matrix: S = days, M = 1–2 wk, L = 3–6 wk, XL = multi
 
 ### E0 — Unwired wins (~2 weeks total; everything here has its data or engine code already built)
 
-- Bracket-match highlight + jump-to-bracket — worker already ships bracket ranges on SyntaxUpdate; write the consumer. (S)
-- Word wrap — WrapMap + `setWrapEnabled` built; expose via EditorOptions + a setting + command. (S)
-- Expand/shrink selection — tree-sitter helpers exist; wire commands + keybindings. (S)
-- Go to line/column — command + `:` palette mode (three reports asked). (S)
-- Passive occurrence/word highlight — occurrence query + highlight registry exist. (S)
-- Signature help — server handlers already answer; reuse markdown-tooltip infra for the widget. (S)
-- Document links (clickable URLs in buffers) — terminal already has the resolver pattern. (S)
-- Markdown live preview — engine package built; add to platform plugin list. (S)
+> **Status: 5 of 11 landed** (bracket matching, word wrap, go-to-line, occurrence highlighting, document links). Each is committed in both repos with tests, and the three highlighters were verified in the running app by reading `CSS.highlights`. Remaining: signature help, expand/shrink selection, markdown preview, compare-with-saved, open-at-ref, AI commit message.
+
+- ✅ **Bracket-match highlight + jump-to-bracket** — the worker's bracket ranges had no consumer past `syntaxController`; `brackets` now reaches `EditorViewSnapshot` (gated by the folds coverage check) and `bracketMatchPlugin` paints the pair. `editor.action.jumpToBracket` on `Mod+\` — VS Code's `Mod+Shift+\` is unavailable because the hotkey layer refuses Shift+punctuation as layout-dependent. Matching validates characters rather than trusting the worker's `depth`, which collides on unbalanced text (`{ a ]`).
+- ✅ **Word wrap** — `wordWrap` in EditorOptions, `setWordWrap`/`isWordWrapEnabled`, and `editor.action.toggleWordWrap` on `Alt+Z`.
+- Expand/shrink selection — tree-sitter helpers exist; wire commands + keybindings. (S) — _still open: the helpers are async and need the tree-sitter backend, so this is a plugin, not a command alias._
+- ✅ **Go to line/column** — `:line[:column]` quick-access mode, navigating through the same `openDefinition` path the `@` symbol mode uses.
+- ✅ **Passive occurrence/word highlight** — scans only the mounted rows the snapshot carries, so it never materializes the document; whole-word matching reuses `wordRangeAtOffset`.
+- Signature help — server handlers already answer; reuse markdown-tooltip infra for the widget. (S) — _still open: needs a controller inside `lsp-plugin/plugin.ts` (it requires the LSP client), unlike the standalone view-contribution plugins above. `createTooltipController` is the reusable widget._
+- ✅ **Document links** — http(s) URLs underlined, Cmd/Ctrl+click to open; viewport-scoped, narrow matching, keeps a `)` the address itself opened.
+- Markdown live preview — engine package built; add to platform plugin list. (S) — _blocked on adding `@singapor/markdown` as a web dependency, which touches the bun-link/turbo-cache setup._
 - Compare-with-saved / revert file / compare-with-clipboard / select-for-compare — diff engine is our strongest asset; these are commands over existing document types. (S)
 - Open file at ref — server `file(path, ref)` exists; add the command. (S)
 - AI commit message — sparkle button over the orchestration runtime we already run. (S)
