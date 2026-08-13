@@ -1,9 +1,12 @@
 import {
   DEFAULT_SETTING_VALUES,
+  descriptorFor,
+  layerAllowsScope,
   SETTING_IDS,
   type ModelRef,
   type ProviderInstanceConfig,
   type SettingId,
+  type SettingsEdit,
   type SettingsSnapshot,
   type SettingsValues,
   type SettingsWriteTarget,
@@ -46,16 +49,26 @@ export function useSettingsActions() {
     },
   })
 
-  const values = () =>
-    queryClient.getQueryData<SettingsSnapshot>(settingsKeys.document())?.values ??
-    DEFAULT_SETTING_VALUES
+  const cached = () => queryClient.getQueryData<SettingsSnapshot>(settingsKeys.document())
+  const values = () => cached()?.values ?? DEFAULT_SETTING_VALUES
+
+  /**
+   * Every write carries the revision its values were read from.
+   *
+   * The collection edits below send a whole rebuilt value, so without this a
+   * keybinding added by hand between the last snapshot and this click is
+   * overwritten silently. With it the server refuses and the user is told.
+   */
+  const save = (edits: readonly SettingsEdit[]) => {
+    mutation.mutate({ baseRevision: cached()?.revision, edits })
+  }
 
   const setSetting = <K extends SettingId>(
     key: K,
     value: SettingsValues[K],
     target: SettingsWriteTarget = 'user',
   ) => {
-    mutation.mutate([{ key, target, value }])
+    save([{ key, target, value }])
   }
 
   return {
@@ -68,7 +81,7 @@ export function useSettingsActions() {
     /** Omitting the value is what removes the key from the file entirely, which
      * is what keeps the registry default live rather than freezing today's. */
     resetSetting: (key: SettingId, target: SettingsWriteTarget = 'user') => {
-      mutation.mutate([{ key, target }])
+      save([{ key, target }])
     },
     /**
      * Clears every key from one layer in a single write.
@@ -77,10 +90,18 @@ export function useSettingsActions() {
      * one pass, so a half-reset cannot survive a failure partway through.
      */
     resetAll: (target: SettingsWriteTarget = 'user') => {
-      mutation.mutate(SETTING_IDS.map((key) => ({ key, target })))
+      // Only the keys this layer is allowed to carry. The store validates every
+      // edit before writing any, so one `application` key in a workspace reset
+      // rejects the whole request — and this is the documented way out of a
+      // settings file too broken to edit, so it has to be the thing that works.
+      const resettable = SETTING_IDS.filter((key) =>
+        layerAllowsScope(target, descriptorFor(key).scope),
+      )
+
+      save(resettable.map((key) => ({ key, target })))
     },
     resetKeybinding: (command: PlatformCommandId) => {
-      mutation.mutate([
+      save([
         {
           key: 'keybindings.overrides',
           target: 'user',
@@ -90,7 +111,7 @@ export function useSettingsActions() {
     },
     /** `null` unbinds the command; resetting is what restores its default. */
     setKeybinding: (command: PlatformCommandId, keys: string | null) => {
-      mutation.mutate([
+      save([
         {
           key: 'keybindings.overrides',
           target: 'user',
@@ -99,23 +120,23 @@ export function useSettingsActions() {
       ])
     },
     /**
-     * Moves a model within the explicit leading order.
+     * Moves a model one place in the list the user is looking at.
      *
-     * A model with no rank yet is appended before being moved, because `order`
-     * is sparse: it names only the models the user has an opinion about, so
-     * "move this up" first has to make it one of them.
+     * `displayed` is that list, and it has to come from the caller: the stored
+     * order is sparse, so it cannot say where a model sits on screen, and a move
+     * computed from it lands somewhere else entirely.
      */
-    moveModel: (ref: ModelRef, direction: -1 | 1) => {
-      mutation.mutate([
+    moveModel: (ref: ModelRef, direction: -1 | 1, displayed: readonly ModelRef[]) => {
+      save([
         {
           key: 'models.order',
           target: 'user',
-          value: withMovedModel(values()['models.order'], ref, direction),
+          value: withMovedModel(displayed, ref, direction),
         },
       ])
     },
     setModelHidden: (ref: ModelRef, hidden: boolean) => {
-      mutation.mutate([
+      save([
         {
           key: 'models.hidden',
           target: 'user',
@@ -127,7 +148,7 @@ export function useSettingsActions() {
     // document has never mentioned has to be appended, and only the caller
     // knows what its configuration is.
     setProviderEnabled: (instance: ProviderInstanceConfig, enabled: boolean) => {
-      mutation.mutate([
+      save([
         {
           key: 'providers.instances',
           target: 'user',

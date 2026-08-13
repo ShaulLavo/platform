@@ -107,5 +107,3 @@ stays safe to read, share and export.
 | Setting                 | Default | Scope   | What it does                                                      |
 | ----------------------- | ------- | ------- | ----------------------------------------------------------------- |
 | `window.nativeVibrancy` | `false` | machine | Composite the live macOS desktop behind the window. _(read-only)_ |
-| `window.defaultWidth`   | `1440`  | machine | Width the desktop window opens at. _(restart)_                    |
-| `window.defaultHeight`  | `960`   | machine | Height the desktop window opens at. _(restart)_                   |

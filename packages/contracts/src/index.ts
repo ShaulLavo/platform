@@ -508,6 +508,7 @@ export {
 export {
   deriveWriteTarget,
   inspectSetting,
+  layerAllowsScope,
   policyControlledIds,
   resolveSettings,
   SETTINGS_LAYER_ORDER,

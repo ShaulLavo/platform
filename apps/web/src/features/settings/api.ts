@@ -19,17 +19,33 @@ export async function fetchSettings(signal?: AbortSignal): Promise<SettingsSnaps
   )
 }
 
+export type SaveSettingsRequest = {
+  readonly edits: readonly SettingsEdit[]
+  /**
+   * The revision the edits were computed against.
+   *
+   * Load-bearing, not decorative: the collection-valued edits send the whole
+   * value built from the cached snapshot, so a hand-edit that landed since that
+   * snapshot is overwritten rather than merged. This is what turns that into a
+   * refusal the user can see.
+   */
+  readonly baseRevision?: string
+}
+
 /**
  * The server answers with the whole snapshot, so the caller never has to merge
  * its own edits back into the cache — the response is the new truth.
  */
-export async function saveSettings(edits: readonly SettingsEdit[]): Promise<SettingsSnapshot> {
+export async function saveSettings({
+  baseRevision,
+  edits,
+}: SaveSettingsRequest): Promise<SettingsSnapshot> {
   return observeClientOperation(
     // Ids only. A settings value can be a provider environment, and this event
     // ends up in a log file the agent itself reads.
     { action: 'settings.write', area: 'settings', settingIds: edits.map((edit) => edit.key) },
     async () => {
-      const response = await getClient().settings.write.post({ edits: [...edits] })
+      const response = await getClient().settings.write.post({ baseRevision, edits: [...edits] })
 
       return unwrapEdenResponse(response, {
         requireData: true,

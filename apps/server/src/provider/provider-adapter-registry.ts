@@ -309,6 +309,19 @@ export class ProviderAdapterRegistry {
 
     const existing = this.instances.get(entry.providerInstanceId)
     if (existing && configEqual(existing.config, entry)) return null
+    // The same rule the removal loop follows, for the path a *disable* actually
+    // takes: switching a provider off rewrites its entry rather than dropping
+    // it, so it arrives here as a config change. Replacing the adapter now would
+    // dispose the child process a streaming turn is reading from — the exact
+    // thing deferring disposal exists to prevent. The old adapter keeps serving
+    // and the new config lands on the next reconcile after the turn ends.
+    if (existing && this.hasLiveSessions(entry.providerInstanceId)) {
+      recordChatPipelineWarning('chat.pipeline.provider_registry.reconfigure_deferred', {
+        providerInstanceId: entry.providerInstanceId,
+      })
+
+      return null
+    }
     if (existing) {
       this.instances.delete(entry.providerInstanceId)
       await disposeInstance(entry.providerInstanceId, existing)

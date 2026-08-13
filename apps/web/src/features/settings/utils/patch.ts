@@ -65,23 +65,25 @@ export function withoutKeybindingOverride(
 }
 
 /**
- * Moves a model one place within the sparse leading order.
+ * Moves a model one place, and returns the order that produces that list.
  *
- * A model that has no rank yet is appended first: `order` names only the models
- * the user has an opinion about, so "move this up" has to make it one of them
- * before it can move at all. Everything unlisted keeps provider order, after
- * these.
+ * Takes the sequence the user is actually looking at rather than the stored
+ * `order`, because the stored one is sparse and a move within it does not
+ * correspond to a move on screen: appending an unranked model puts it last in
+ * `order`, which puts it *first* on screen — so "move down" clamped to nothing
+ * on the first row and jumped the model to the top everywhere else. Naming every
+ * displayed model is what makes one click equal one place.
  */
 export function withMovedModel(
-  order: readonly ModelRef[],
+  displayed: readonly ModelRef[],
   ref: ModelRef,
   direction: -1 | 1,
 ): ModelRef[] {
   const key = modelRefKey(ref)
-  const next = order.some((entry) => modelRefKey(entry) === key) ? [...order] : [...order, ref]
+  const next = [...displayed]
   const index = next.findIndex((entry) => modelRefKey(entry) === key)
   const target = index + direction
-  if (target < 0 || target >= next.length) return next
+  if (index < 0 || target < 0 || target >= next.length) return next
 
   const [moved] = next.splice(index, 1)
   next.splice(target, 0, moved!)

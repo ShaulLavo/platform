@@ -35,6 +35,15 @@ function instanceWithToken(value: string) {
 const writeInstances = (store: SettingsStore, instances: unknown) =>
   store.write({ edits: [{ key: 'providers.instances', value: instances, target: 'user' }] })
 
+/** The one variable `instanceWithToken` sets, wherever that list came from. */
+function environmentValue(instances: unknown): unknown {
+  const instance = Array.isArray(instances)
+    ? instances.find((entry) => entry?.providerInstanceId === 'codex-work')
+    : undefined
+
+  return instance?.environment?.[0]?.value
+}
+
 afterEach(async () => {
   for (const store of stores.splice(0)) store.close()
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
@@ -131,6 +140,35 @@ describe('provider secrets stay out of the document', () => {
     expect(environment[1]?.value).toBe('')
   })
 
+  it('hands the real value to the spawn path synchronously, for the boot registry', async () => {
+    // `createApp` is synchronous and builds the provider registry inline, so the
+    // boot path cannot await. Reading the masked snapshot there launched every
+    // provider with the redaction glyph as its credential, for the whole session.
+    const settings = await createSettings()
+    await writeInstances(settings, [instanceWithToken('sk-live-abc')])
+
+    const spawned = settings.providerInstancesForSpawnSync()
+
+    expect(environmentValue(spawned)).toBe('sk-live-abc')
+    expect(environmentValue(settings.snapshot().values['providers.instances'])).toBe(
+      REDACTED_SETTINGS_VALUE,
+    )
+  })
+
+  it('sees a secret added to the file by hand, without a restart', async () => {
+    // The secret store has no watcher, so the masking set has to be re-read when
+    // the document reloads. Stale refs made the page report a set variable as
+    // empty — and saving that row back deletes the secret.
+    const settings = await createSettings()
+    await writeInstances(settings, [instanceWithToken('sk-first')])
+    await writeInstances(settings, [instanceWithToken(REDACTED_SETTINGS_VALUE)])
+
+    expect(environmentValue(settings.snapshot().values['providers.instances'])).toBe(
+      REDACTED_SETTINGS_VALUE,
+    )
+    expect(environmentValue(settings.providerInstancesForSpawnSync())).toBe('sk-first')
+  })
+
   it('clears the secret when the value is emptied', async () => {
     const settings = await createSettings()
     await writeInstances(settings, [instanceWithToken('sk-live-abc123')])
@@ -216,4 +254,87 @@ describe('reconcile against a live session', () => {
 
     expect(registry.listInstances()).toHaveLength(0)
   })
+
+  it('does not dispose when the config changes under a live session', async () => {
+    // The path a *disable* actually takes: switching a provider off rewrites its
+    // entry rather than removing it, so it never reaches the removal loop above.
+    // Disposing here kills the child process the streaming turn is reading from
+    // — the same kill the deferral exists to prevent.
+    const spy = disposeSpy()
+    const registry = new ProviderAdapterRegistry({
+      drivers: [spy.driver],
+      hasLiveSessions: (id) => spy.live.has(id),
+    })
+    await registry.reconcile([spiedInstance(true)])
+    spy.live.add('spied')
+    expect(spy.disposals).toBe(0)
+
+    await registry.reconcile([spiedInstance(false)])
+
+    expect(spy.disposals).toBe(0)
+    expect(registry.listInstances()).toContain('spied')
+  })
+
+  it('applies the changed config on a later reconcile once the session ends', async () => {
+    const spy = disposeSpy()
+    const registry = new ProviderAdapterRegistry({
+      drivers: [spy.driver],
+      hasLiveSessions: (id) => spy.live.has(id),
+    })
+    await registry.reconcile([spiedInstance(true)])
+    spy.live.add('spied')
+    await registry.reconcile([spiedInstance(false)])
+
+    spy.live.delete('spied')
+    await registry.reconcile([spiedInstance(false)])
+
+    // Deferred, not dropped: the edit still lands, just after the turn.
+    expect(spy.disposals).toBe(1)
+    expect(spy.created.at(-1)?.enabled).toBe(false)
+  })
 })
+
+function spiedInstance(enabled: boolean) {
+  return {
+    driverKind: DEFAULT_PROVIDER_INSTANCES[0]!.driverKind,
+    enabled,
+    providerInstanceId: parseInstanceId('spied'),
+  }
+}
+
+/**
+ * A driver that counts disposals.
+ *
+ * Adapter identity cannot stand in for this: `MockProviderAdapter` is reused
+ * across instances, so a dispose-and-recreate is invisible by reference — and
+ * disposal is precisely the thing that kills the turn.
+ */
+function disposeSpy() {
+  const state = {
+    created: [] as { enabled: boolean }[],
+    disposals: 0,
+    driver: undefined as never,
+    live: new Set<string>(),
+  }
+  state.driver = {
+    capabilities: { ...new MockProviderAdapter().capabilities, multiInstance: true },
+    credentialPaths: () => [],
+    create: async (input: { enabled: boolean }) => {
+      state.created.push({ enabled: input.enabled })
+
+      return {
+        adapter: new MockProviderAdapter(),
+        dispose: async () => {
+          state.disposals += 1
+        },
+      }
+    },
+    defaultConfig: () => ({}),
+    displayName: 'Spied',
+    driverKind: 'codex',
+    environment: () => [],
+    parseConfig: () => ({}),
+  } as never
+
+  return state
+}

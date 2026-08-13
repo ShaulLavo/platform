@@ -17,18 +17,20 @@ test('reads registry defaults from an untouched server', async ({ client }) => {
 test('round-trips a saved document through the real server', async ({ client }) => {
   expect(client).toBeDefined()
 
-  const saved = await saveSettings([
-    {
-      key: 'providers.instances',
-      target: 'user',
-      value: [{ providerInstanceId: 'codex', driverKind: 'codex', displayLabel: 'Codex' }],
-    },
-    {
-      key: 'keybindings.overrides',
-      target: 'user',
-      value: { 'workspace.saveFile': 'mod+s' },
-    },
-  ])
+  const saved = await saveSettings({
+    edits: [
+      {
+        key: 'providers.instances',
+        target: 'user',
+        value: [{ providerInstanceId: 'codex', driverKind: 'codex', displayLabel: 'Codex' }],
+      },
+      {
+        key: 'keybindings.overrides',
+        target: 'user',
+        value: { 'workspace.saveFile': 'mod+s' },
+      },
+    ],
+  })
 
   expect(saved.values['providers.instances']).toEqual([
     {
@@ -52,16 +54,18 @@ test('surfaces the typed settings error for a rejected write', async ({ client }
   // edit is built raw here: the point is that the server, not the client, is
   // what refuses it.
   await expect(
-    saveSettings([
-      {
-        key: 'providers.instances',
-        target: 'user',
-        value: [
-          { providerInstanceId: 'codex', driverKind: 'codex' },
-          { providerInstanceId: 'codex', driverKind: 'claude' },
-        ],
-      },
-    ]),
+    saveSettings({
+      edits: [
+        {
+          key: 'providers.instances',
+          target: 'user',
+          value: [
+            { providerInstanceId: 'codex', driverKind: 'codex' },
+            { providerInstanceId: 'codex', driverKind: 'claude' },
+          ],
+        },
+      ],
+    }),
   ).rejects.toMatchObject({ code: 'settings.WRITE_INVALID' })
 
   expect((await fetchSettings()).values).toEqual(DEFAULT_SETTING_VALUES)
@@ -74,12 +78,14 @@ test('refuses an application-scoped key written to workspace settings', async ({
   // carries a binary path and an environment, so it is readable only from the
   // user's own file — enforced by the server, not by the page hiding a control.
   await expect(
-    saveSettings([
-      {
-        key: 'providers.instances',
-        target: 'workspace',
-        value: [{ providerInstanceId: 'codex', driverKind: 'codex' }],
-      },
-    ]),
+    saveSettings({
+      edits: [
+        {
+          key: 'providers.instances',
+          target: 'workspace',
+          value: [{ providerInstanceId: 'codex', driverKind: 'codex' }],
+        },
+      ],
+    }),
   ).rejects.toMatchObject({ code: 'settings.SCOPE_NOT_ALLOWED' })
 })

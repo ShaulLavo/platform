@@ -83,8 +83,14 @@ export class SettingsFileLayer {
    * a partial parse tree corrupts the parts that did parse. Read-tolerance and
    * write-refusal are two halves of one rule — shipping only the first gives
    * data loss, only the second gives a settings file nobody can fix.
+   *
+   * `baseRevision` is the revision the *caller's* values were computed against.
+   * Guarding on our own fresh read instead would compare the file to itself and
+   * always pass, which silently loses whatever landed in between — and the
+   * collection-valued edits are whole-value replaces, so "in between" means the
+   * user's other keybinding, not a merge conflict.
    */
-  async write(edits: readonly DocumentEdit[]): Promise<void> {
+  async write(edits: readonly DocumentEdit[], baseRevision?: string | null): Promise<void> {
     const current = await this.read()
     if (current.parseErrors.length > 0) {
       throw settingsErrors.FILE_MALFORMED({
@@ -95,7 +101,7 @@ export class SettingsFileLayer {
 
     const text = editSettingsText(current.text, edits)
     const revision = await writeSettingsFile(this.filePath, text, {
-      expectedRevision: current.revision,
+      expectedRevision: baseRevision === undefined ? current.revision : baseRevision,
       onRevisionMismatch: () => {
         throw settingsErrors.REVISION_STALE({ file: this.filePath })
       },
@@ -110,6 +116,7 @@ export class SettingsFileLayer {
       text,
       present: true,
     }
+    this.rearmWatchers()
   }
 
   /**
@@ -144,6 +151,7 @@ export class SettingsFileLayer {
       text,
       present: true,
     }
+    this.rearmWatchers()
   }
 
   watch(onChange: () => void): void {
@@ -180,6 +188,28 @@ export class SettingsFileLayer {
     } catch {
       // No file yet. The directory watcher picks up its creation.
     }
+  }
+
+  /**
+   * Arms whatever can be armed now.
+   *
+   * `fs.watch` throws ENOENT synchronously on a missing path, and a workspace
+   * layer points at `<root>/.platform/settings.json` — a directory an ordinary
+   * repository does not have — so at construction both watchers fail and the
+   * layer is deaf for the process's life. Re-arming after every write is what
+   * makes the file we just created watchable, so the hand-edit that follows a
+   * click is seen.
+   */
+  private rearmWatchers() {
+    if (!this.onChange) return
+    if (this.watcher && this.directoryWatcher) return
+
+    this.watcher?.close()
+    this.directoryWatcher?.close()
+    this.watcher = null
+    this.directoryWatcher = null
+    this.watchFile()
+    this.watchDirectory()
   }
 
   /**

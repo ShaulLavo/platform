@@ -16,7 +16,7 @@ import { applyAppearance } from '@/features/settings/utils/apply-appearance.ts'
 import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-color-theme.ts'
 import { installServerRestartInvalidation } from '@/features/chat/state/server-restart-invalidation.ts'
 import { initializeClientLogging, log } from '@/lib/client-logging.ts'
-import { loadDefaultNerdFont } from '@/lib/default-nerd-font.ts'
+import { loadNerdFont } from '@/lib/default-nerd-font.ts'
 import { isDesktop } from '@/lib/platform/bridge.ts'
 import { applyNativeVibrancy } from '@/lib/platform/native-vibrancy.ts'
 import { installEditorPerformanceTraceFromUrl } from '@/lib/editor-performance-trace.ts'
@@ -32,7 +32,8 @@ applyNativeVibrancy(isDesktop())
 // effects, so an effect near the root would land after descendants that read
 // computed styles — the terminal snapshots CSS variables when it is built. The
 // React pass in `AppearanceProvider` is the correction, not the primary path.
-applyAppearance(bootAppearance(), document.documentElement, systemPrefersDark())
+const boot = bootAppearance()
+applyAppearance(boot, document.documentElement, systemPrefersDark())
 const visualViewport = window.visualViewport
 log.info({
   action: 'app.bootstrap',
@@ -49,9 +50,12 @@ log.info({
   visualViewportHeight: visualViewport?.height ?? null,
   visualViewportWidth: visualViewport?.width ?? null,
 })
-// The chosen font is loaded by `AppearanceProvider` once settings resolve. This
-// is the pre-settings default, so the first paint is not in a fallback face.
-void loadDefaultNerdFont()
+// The mirrored family, not the shipped default: `loadNerdFont` writes
+// `--font-mono` both before and after its fetch, so loading JetBrainsMono here
+// would overwrite the family `applyAppearance` just set — once immediately, and
+// again whenever the download resolved, which could land after
+// `AppearanceProvider` had already corrected it.
+void loadNerdFont(boot['editor.fontFamily'])
 
 createRoot(document.getElementById('root')!, {
   onCaughtError: (error, errorInfo) => {

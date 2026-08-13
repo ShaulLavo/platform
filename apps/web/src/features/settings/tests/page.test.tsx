@@ -82,10 +82,12 @@ test('shows a diagnostic for a key the settings file holds but cannot apply', as
 
 test('reset all clears every key from the layer in one write', async ({ client }) => {
   expect(client).toBeDefined()
-  await saveSettings([
-    { key: 'workbench.colorTheme', target: 'user', value: 'light' },
-    { key: 'workbench.surface.opacity', target: 'user', value: 40 },
-  ])
+  await saveSettings({
+    edits: [
+      { key: 'workbench.colorTheme', target: 'user', value: 'light' },
+      { key: 'workbench.surface.opacity', target: 'user', value: 40 },
+    ],
+  })
 
   renderWithProviders(<SettingsPage />)
   await userEvent.click(await screen.findByRole('button', { name: 'Settings actions' }))
@@ -192,9 +194,11 @@ test('lists the real model catalog, and hiding one keeps its row to bring it bac
 
 test('renders a record editor for keybindings rather than raw JSON', async ({ client }) => {
   expect(client).toBeDefined()
-  await saveSettings([
-    { key: 'keybindings.overrides', target: 'user', value: { 'workspace.saveFile': 'Mod+S' } },
-  ])
+  await saveSettings({
+    edits: [
+      { key: 'keybindings.overrides', target: 'user', value: { 'workspace.saveFile': 'Mod+S' } },
+    ],
+  })
   renderWithProviders(<SettingsPage />)
 
   await userEvent.type(await screen.findByLabelText('Search settings'), 'keybinding')

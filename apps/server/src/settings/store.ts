@@ -1,6 +1,7 @@
 import {
   descriptorFor,
   isSettingId,
+  layerAllowsScope,
   resolveSettings,
   type SettingId,
   type SettingsLayer,
@@ -107,9 +108,27 @@ export class SettingsStore {
     return applyProviderSecrets(this.snapshot().values[PROVIDER_INSTANCES], secrets)
   }
 
+  /**
+   * The same values, for the one caller that cannot await: `createApp` is
+   * synchronous and builds the provider registry inline, so without this the
+   * registry's first spawn gets the masked document and every provider starts
+   * with the redaction glyph for a credential.
+   */
+  providerInstancesForSpawnSync(): SettingsValues[typeof PROVIDER_INSTANCES] {
+    return applyProviderSecrets(
+      this.snapshot().values[PROVIDER_INSTANCES],
+      this.secretStore.readSync(),
+    )
+  }
+
   async write(request: SettingsWriteRequest): Promise<SettingsSnapshot> {
     const byTarget = new Map<SettingsWriteTarget, DocumentEdit[]>()
     const secretEdits = new Map<SecretRef, string | null>()
+    // `''` is what the snapshot reports for a file that does not exist yet, and
+    // `null` is what the disk reports for the same thing. Without this they
+    // compare unequal and the first write on a fresh install is refused.
+    const baseRevision =
+      request.baseRevision === undefined ? undefined : request.baseRevision || null
 
     for (const edit of request.edits) {
       this.assertWritable(edit.key, edit.target)
@@ -126,9 +145,10 @@ export class SettingsStore {
     // Secrets first: a settings file naming a variable whose value never landed
     // is recoverable, the reverse leaves a secret with nothing referencing it.
     await this.secretStore.write(secretEdits)
-    if (secretEdits.size > 0) this.secretRefs = new Set((await this.secretStore.read()).keys())
     for (const [target, edits] of byTarget) {
-      await this.layerFor(target).write(edits)
+      // Only the user layer: `revision` on the snapshot is that layer's, so it
+      // is the only one the client's `baseRevision` can be talking about.
+      await this.layerFor(target).write(edits, target === 'user' ? baseRevision : undefined)
     }
 
     this.invalidate()
@@ -182,13 +202,18 @@ export class SettingsStore {
       queue.push(snapshot)
       wake?.()
     })
+    // Registered once, not per park. `{ once: true }` only removes a listener
+    // that actually fired, and this one does not fire on the ordinary wake — so
+    // arming it inside the loop left one dead listener per delivered snapshot,
+    // for the life of the connection.
+    const onAbort = () => wake?.()
+    signal?.addEventListener('abort', onAbort, { once: true })
 
     try {
       while (!signal?.aborted) {
         if (queue.length === 0) {
           await new Promise<void>((resolve) => {
             wake = resolve
-            signal?.addEventListener('abort', () => resolve(), { once: true })
           })
           wake = null
           continue
@@ -197,6 +222,7 @@ export class SettingsStore {
         yield queue.shift() as SettingsSnapshot
       }
     } finally {
+      signal?.removeEventListener('abort', onAbort)
       stop()
     }
   }
@@ -235,8 +261,7 @@ export class SettingsStore {
     if (Object.hasOwn(this.policy, key)) throw settingsErrors.POLICY_CONTROLLED({ key })
 
     const { scope } = descriptorFor(key)
-    if (target === 'user') return
-    if (scope === 'window' || scope === 'resource') return
+    if (layerAllowsScope(target, scope)) return
 
     throw settingsErrors.SCOPE_NOT_ALLOWED({ key, scope, target })
   }
@@ -279,6 +304,11 @@ export class SettingsStore {
 
   private invalidate() {
     this.cachedSnapshot = null
+    // Re-read on every invalidation, not only when *we* wrote a secret. The
+    // secret file has no watcher, so a hand-edit is otherwise invisible: the
+    // page would show a set variable as empty, and the next save of that row
+    // sends `''` back, which the write path reads as "delete it".
+    this.secretRefs = new Set(this.secretStore.readSync().keys())
     const snapshot = this.snapshot()
 
     for (const listener of this.listeners) {

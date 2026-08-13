@@ -37,7 +37,11 @@ export function RecordWidget({
     const key = draftKey.trim()
     if (key === '' || Object.hasOwn(value, key)) return
 
-    onChange({ ...value, [key]: '' })
+    // `null`, not `''`: the schema's values are a non-empty string or null, so
+    // an empty seed is refused by the server and the row never appears — which
+    // takes the recorder that would fill it down with it. `null` is the legal
+    // "bound to nothing yet" and leaves a row to record into.
+    onChange({ ...value, [key]: null })
     setDraftKey('')
   }
 

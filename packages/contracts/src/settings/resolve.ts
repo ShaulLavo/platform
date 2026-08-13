@@ -46,6 +46,17 @@ const SCOPES_BY_LAYER: Readonly<Record<SettingsLayerId, readonly SettingScope[]>
   policy: ['application', 'machine', 'window', 'resource'],
 }
 
+/**
+ * Whether a layer may carry a key of this scope.
+ *
+ * Exported so the write guard and the page read the rule instead of restating
+ * it. It is a security boundary, and a boundary with three copies of its
+ * predicate is a boundary that will eventually disagree with itself.
+ */
+export function layerAllowsScope(layer: SettingsLayerId, scope: SettingScope): boolean {
+  return SCOPES_BY_LAYER[layer].includes(scope)
+}
+
 export type SettingsDiagnosticKind = 'unknown-key' | 'scope-not-allowed' | 'invalid-value'
 
 /**

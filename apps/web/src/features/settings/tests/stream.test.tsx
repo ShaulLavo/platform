@@ -20,7 +20,7 @@ test('lands a change made by another writer in this tab’s cache', async ({ cli
 
   // Stands in for the other writer: a second window, or a hand-edit to the file.
   // Either way it reaches this tab over the stream, not by polling.
-  await saveSettings([{ key: 'workbench.colorTheme', target: 'user', value: 'dark' }])
+  await saveSettings({ edits: [{ key: 'workbench.colorTheme', target: 'user', value: 'dark' }] })
 
   await waitFor(() => {
     const cached = queryClient.getQueryData(settingsKeys.document())

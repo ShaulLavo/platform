@@ -37,7 +37,7 @@ import { mergeProviderInstanceConfigs } from './provider/utils/instance-config-m
 import { SettingsStore, type SettingsStoreOptions } from './settings/store'
 import { TerminalService, type TerminalPtyFactory } from './terminal/service'
 import { wallpaperRoutes } from './wallpaper/routes'
-import { ProviderSessionDirectory } from './provider/provider-session-directory'
+import { isActiveBinding, ProviderSessionDirectory } from './provider/provider-session-directory'
 
 export type AppOptions = FileSystemServiceOptions & {
   auth?: AuthOptions
@@ -81,16 +81,27 @@ export function createApp(options: AppOptions) {
     createDefaultProviderAdapterRegistry(
       mergeProviderInstanceConfigs(
         DEFAULT_PROVIDER_INSTANCES,
-        settings.snapshot().values['providers.instances'],
+        // Secrets put back before the first spawn, not after the first settings
+        // write: `snapshot()` masks the provider environment, and handing the
+        // mask to the registry launches every provider with `••••••••` as its
+        // credential until something happens to touch settings.
+        settings.providerInstancesForSpawnSync(),
       ),
       {
         // Disabling a provider must not kill a turn that is mid-stream. The
         // registry defers disposal while the directory still lists a session on
         // that instance, and removes it on the next reconcile once the turn ends.
+        //
+        // Filtered on status: rows outlive their turns — nothing deletes them —
+        // so an unfiltered scan reports every instance ever used as live, and
+        // the deferral would never resolve.
         hasLiveSessions: (providerInstanceId) =>
           new ProviderSessionDirectory(database)
             .listBindings()
-            .some((binding) => binding.providerInstanceId === providerInstanceId),
+            .some(
+              (binding) =>
+                binding.providerInstanceId === providerInstanceId && isActiveBinding(binding),
+            ),
       },
     )
   // A saved provider list is inert unless something re-runs the registry when

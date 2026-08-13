@@ -19,7 +19,7 @@ export function SettingRow({ id, snapshot }: { id: SettingId; snapshot: Settings
   const scope = useSettingsScope()
   const { setSetting } = useSettingsActions()
   const inspection = settingInspection(id, snapshot, scope)
-  const { alsoModifiedIn, isModified } = inspection
+  const { alsoModifiedIn, isModified, overriddenBy } = inspection
   // A read-only key is shown, not hidden: the answer to "why is this off" belongs
   // on the page rather than in a commit message. It outranks the scope reason —
   // no scope makes a read-only key writable.
@@ -55,6 +55,14 @@ export function SettingRow({ id, snapshot }: { id: SettingId; snapshot: Settings
           // simply wrong: the control shows the resolved value and nothing says
           // where it came from.
           <p className='text-info text-xs'>Also modified in {alsoModifiedIn.join(', ')} settings</p>
+        ) : null}
+        {overriddenBy ? (
+          // Stronger than "also modified": this scope loses. Editing here writes
+          // the file and the app keeps using the other layer's value, which
+          // without a word on screen just reads as a control that does nothing.
+          <p className='text-warning text-xs'>
+            {overriddenBy} settings override this — editing here will not change the value in use
+          </p>
         ) : null}
         {disabledReason ? <p className='text-warning text-xs'>{disabledReason}</p> : null}
       </div>

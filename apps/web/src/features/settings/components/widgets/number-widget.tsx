@@ -39,7 +39,10 @@ export function NumberWidget({
   }, [value])
 
   const commit = () => {
-    const next = Number(draft)
+    // `Number('')` is `0`, and `0` is finite — so an emptied field would commit
+    // a zero the user never typed, and `type='number'` reports `''` for a
+    // half-typed `-` or `1e` too. Blank means "left it alone", not "zero".
+    const next = draft.trim() === '' ? Number.NaN : Number(draft)
     if (!Number.isFinite(next) || next === value) {
       // Snap back rather than leave a value the server rejected on screen.
       setDraft(String(value))

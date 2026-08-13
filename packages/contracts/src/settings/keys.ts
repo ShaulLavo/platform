@@ -322,28 +322,6 @@ export const SETTINGS_REGISTRY = {
       'Deliberately off: transparency forces CEF into off-screen rendering, which measured a 5.5MB CPU copy per paint.',
     keywords: ['window', 'vibrancy', 'transparency', 'desktop', 'macos'],
   }),
-  'window.defaultWidth': defineSetting({
-    schema: v.pipe(v.number(), v.integer(), v.minValue(480), v.maxValue(10_000)),
-    default: 1440,
-    scope: 'machine',
-    widget: 'number',
-    category: 'Window',
-    description: 'Width the desktop window opens at.',
-    // The desktop shell reads the settings file itself, at startup, before the
-    // server is even healthy — so a change lands on the next launch.
-    requiresRestart: true,
-    keywords: ['window', 'width', 'size', 'desktop'],
-  }),
-  'window.defaultHeight': defineSetting({
-    schema: v.pipe(v.number(), v.integer(), v.minValue(360), v.maxValue(10_000)),
-    default: 960,
-    scope: 'machine',
-    widget: 'number',
-    category: 'Window',
-    description: 'Height the desktop window opens at.',
-    requiresRestart: true,
-    keywords: ['window', 'height', 'size', 'desktop'],
-  }),
   'files.autoSave': defineSetting({
     schema: v.picklist(['off', 'afterDelay', 'onFocusChange', 'onWindowChange'] as const),
     default: 'off',

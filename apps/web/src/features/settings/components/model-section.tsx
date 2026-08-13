@@ -32,12 +32,17 @@ export function ModelSection({ settingId }: { settingId: SettingId }) {
 
   if (rows.length === 0) return <EmptyRow>No models are available yet.</EmptyRow>
 
+  // A move is one place in *this* sequence, so the rows are what it is computed
+  // against — the stored order is sparse and cannot describe the screen.
+  const displayed = rows.map((row) => row.ref)
+
   return (
     <div className='border-border flex max-h-64 w-96 flex-col overflow-y-auto rounded-md border'>
       {rows.map((row, index) => (
         <ModelRow
           canMoveDown={index < rows.length - 1}
           canMoveUp={index > 0}
+          displayed={displayed}
           key={row.key}
           // Ranking controls only appear on the row that stands for the order
           // key, so the two settings stay distinguishable on the page.

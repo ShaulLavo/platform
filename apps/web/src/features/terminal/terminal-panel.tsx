@@ -42,14 +42,24 @@ type TerminalCursorOptions = {
   cursorStyle: TerminalCursorStyle
 }
 
-const FOCUSED_TERMINAL_CURSOR: TerminalCursorOptions = {
-  cursorBlink: true,
-  cursorStyle: 'block',
-}
+/**
+ * Focus owns the cursor's *shape*; `terminal.integrated.cursorBlinking` owns
+ * whether it blinks.
+ *
+ * They used to be one constant carrying both, which meant every focus, blur and
+ * click wrote a hardcoded blink over the setting — and the settings effect does
+ * not re-run on focus, so the setting never won again.
+ */
+const FOCUSED_TERMINAL_CURSOR_STYLE: TerminalCursorStyle = 'block'
+const UNFOCUSED_TERMINAL_CURSOR_STYLE: TerminalCursorStyle = 'outline'
 
-const UNFOCUSED_TERMINAL_CURSOR: TerminalCursorOptions = {
-  cursorBlink: false,
-  cursorStyle: 'outline',
+function terminalCursorOptions(focused: boolean, cursorBlink: boolean): TerminalCursorOptions {
+  return {
+    // Scoped to a focused terminal, per the setting's own description: an
+    // unfocused cursor is a static outline whatever the preference says.
+    cursorBlink: focused && cursorBlink,
+    cursorStyle: focused ? FOCUSED_TERMINAL_CURSOR_STYLE : UNFOCUSED_TERMINAL_CURSOR_STYLE,
+  }
 }
 
 let ghosttyInitPromise: Promise<void> | null = null
@@ -117,16 +127,16 @@ export function TerminalPanel({
   })
   const handleTerminalFocus = () => {
     setFocusArea('terminal')
-    applyTerminalCursorOptions(terminalRef.current, FOCUSED_TERMINAL_CURSOR)
+    applyTerminalCursorOptions(terminalRef.current, terminalCursorOptions(true, cursorBlink))
   }
   const handleTerminalBlur = (event: FocusEvent<HTMLElement>) => {
     if (!isFocusOutsideElement(event.currentTarget, event.relatedTarget)) return
 
-    applyTerminalCursorOptions(terminalRef.current, UNFOCUSED_TERMINAL_CURSOR)
+    applyTerminalCursorOptions(terminalRef.current, terminalCursorOptions(false, cursorBlink))
   }
   const handleTerminalPointerDown = () => {
     setFocusArea('terminal')
-    applyTerminalCursorOptions(terminalRef.current, FOCUSED_TERMINAL_CURSOR)
+    applyTerminalCursorOptions(terminalRef.current, terminalCursorOptions(true, cursorBlink))
   }
   // ghostty registers its own `contextmenu` listener on the canvas and never
   // calls preventDefault — it parks a hidden textarea under the cursor so the
@@ -203,9 +213,9 @@ export function TerminalPanel({
   useEffect(() => {
     applyTerminalCursorOptions(
       terminalRef.current,
-      terminalHasFocusArea ? FOCUSED_TERMINAL_CURSOR : UNFOCUSED_TERMINAL_CURSOR,
+      terminalCursorOptions(terminalHasFocusArea, cursorBlink),
     )
-  }, [terminalHasFocusArea])
+  }, [cursorBlink, terminalHasFocusArea])
 
   return (
     <section
@@ -379,8 +389,9 @@ function handleTerminalServerMessage({
 function createTerminal(root: HTMLElement) {
   return new Terminal({
     allowTransparency: true,
-    cursorBlink: UNFOCUSED_TERMINAL_CURSOR.cursorBlink,
-    cursorStyle: patchedTerminalCursorStyle(UNFOCUSED_TERMINAL_CURSOR.cursorStyle),
+    // Constructed unfocused; the real values arrive at handover, before paint.
+    cursorBlink: false,
+    cursorStyle: patchedTerminalCursorStyle(UNFOCUSED_TERMINAL_CURSOR_STYLE),
     fontFamily: DEFAULT_MONO_FONT_STACK,
     fontSize: DEFAULT_TERMINAL_FONT_SIZE,
     scrollback: DEFAULT_TERMINAL_SCROLLBACK,

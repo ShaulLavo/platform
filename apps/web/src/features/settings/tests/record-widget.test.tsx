@@ -46,7 +46,9 @@ describe('RecordWidget', () => {
 
     await userEvent.clear(add)
     await userEvent.type(add, 'fresh{Enter}')
-    expect(onChange).toHaveBeenCalledWith({ existing: 'Mod+1', fresh: '' })
+    // `null`, not `''`: the schema refuses an empty string, so seeding one meant
+    // the row could never be created at all.
+    expect(onChange).toHaveBeenCalledWith({ existing: 'Mod+1', fresh: null })
   })
 
   it('edits a value in place', async () => {

@@ -49,11 +49,14 @@ export function useAutoSave() {
       return () => window.removeEventListener('blur', saveDirtyDocuments)
     }
 
-    // Debounced on the store rather than on keystrokes: the buffer reports
-    // dirty, and quiet time since the last change is what "after a delay" means.
+    // Subscribed to the content revisions, not to `dirtyFilePaths`: the dirty
+    // set changes only when a file crosses clean↔dirty, so debouncing on it
+    // would fire once when typing starts and then save mid-word `delay` later —
+    // the opposite of quiet time. Revisions change on every edit, which is what
+    // "after a delay" is actually measuring.
     const pending = new Debouncer(saveDirtyDocuments, { wait: delay })
     const unsubscribe = documentStore.subscribe(
-      (state) => state.dirtyFilePaths,
+      (state) => state.documentContentRevisions,
       () => pending.maybeExecute(),
     )
 
