@@ -531,6 +531,10 @@ html[data-wallpaper-hidden] {
 
   flex: 1;
   font-family: var(--font-mono);
+
+  /* Settings-driven, with the package's own default as the fallback so the
+     editor still renders correctly before the first snapshot lands. */
+  font-size: var(--editor-font-size, 13px);
   min-height: 0;
   min-width: 0;
   overflow-anchor: none;

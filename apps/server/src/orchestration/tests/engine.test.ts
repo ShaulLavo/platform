@@ -36,6 +36,7 @@ import {
   type OrchestrationEvent,
   type OrchestrationReplayEventsResult,
 } from '../schemas'
+import { testSettingsOptions } from '../../settings/testing'
 
 const now = '2026-05-24T00:00:00.000Z'
 const later = '2026-05-24T00:01:00.000Z'
@@ -413,6 +414,7 @@ describe('orchestration engine', () => {
     const app = createApp({
       auth: { allowedOrigins: ['http://localhost:5173'] },
       orchestration: { database: fixture.database },
+      settings: testSettingsOptions(root),
       watch: false,
       workspaceRoot: root,
     })
@@ -530,6 +532,7 @@ describe('orchestration engine', () => {
     const app = createApp({
       auth: { allowedOrigins: ['http://localhost:5173'] },
       orchestration: { database: fixture.database, providerAdapterRegistry: adapterRegistry },
+      settings: testSettingsOptions(root),
       watch: false,
       workspaceRoot: root,
     })
@@ -1211,6 +1214,7 @@ function createOrchestrationTestApp(
   return createApp({
     auth: { allowedOrigins: ['http://localhost:5173'] },
     orchestration: { database },
+    settings: testSettingsOptions(root),
     watch: false,
     workspaceRoot: root,
   })

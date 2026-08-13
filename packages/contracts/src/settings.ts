@@ -1,3 +1,9 @@
+/**
+ * Value schemas for the settings registry.
+ *
+ * The whole-document schema that used to live here is gone: settings are a flat
+ * registry of dotted keys now, and each of these is one key's `schema`.
+ */
 import * as v from 'valibot'
 import { providerInstanceIdSchema } from './chat-ids'
 import { trimmedNonEmptyStringSchema } from './chat-model'
@@ -55,7 +61,6 @@ export const providerInstanceConfigSchema = v.object({
   enabled: v.optional(v.boolean(), true),
   /** Empty string means "resolve the driver's binary from `PATH`". */
   binaryPath: v.optional(v.pipe(v.string(), v.trim()), ''),
-  launchArgs: v.optional(v.array(trimmedNonEmptyStringSchema), []),
   environment: v.optional(v.array(providerEnvironmentVariableSchema), []),
   config: v.optional(v.record(v.string(), v.unknown()), {}),
 })
@@ -76,22 +81,10 @@ export const modelRefSchema = v.object({
   model: trimmedNonEmptyStringSchema,
 })
 
-const modelRefListSchema = v.pipe(
+export const modelRefListSchema = v.pipe(
   v.array(modelRefSchema),
   v.check(hasUniqueModelRefs, 'model references must be unique within a list'),
 )
-
-/**
- * Both lists are sparse: they name only the models the user has an opinion
- * about. Everything the provider advertises and neither list mentions stays
- * visible, after the ordered ones, in provider order.
- */
-export const modelPreferencesSchema = v.object({
-  /** Models the picker must not offer. */
-  hidden: v.optional(modelRefListSchema, []),
-  /** Explicit leading order for the picker. */
-  order: v.optional(modelRefListSchema, []),
-})
 
 export const keybindingCommandIdSchema = v.pipe(
   trimmedNonEmptyStringSchema,
@@ -109,40 +102,10 @@ export const keybindingOverridesSchema = v.record(
   v.nullable(trimmedNonEmptyStringSchema),
 )
 
-/**
- * The whole durable settings document. Every section has a default, so an
- * untouched install parses `{}` into a complete, usable value and the store
- * only ever has to persist the sections the user actually changed.
- */
-export const settingsSchema = v.object({
-  providerInstances: v.optional(providerInstanceConfigsSchema, []),
-  models: v.optional(modelPreferencesSchema, {}),
-  keybindings: v.optional(keybindingOverridesSchema, {}),
-})
-
-/**
- * A write replaces whole sections; it does not deep-merge. Partial merging of
- * `providerInstances` would let a half-applied driver config survive, and the
- * document is small enough that sending a whole section back is cheap.
- *
- * Strict on purpose: a mistyped section name is a client bug that would
- * otherwise be a silent no-op.
- */
-export const settingsPatchSchema = v.strictObject({
-  providerInstances: v.optional(providerInstanceConfigsSchema),
-  models: v.optional(modelPreferencesSchema),
-  keybindings: v.optional(keybindingOverridesSchema),
-})
-
 export type ProviderEnvironmentVariable = v.InferOutput<typeof providerEnvironmentVariableSchema>
 export type ProviderInstanceConfig = v.InferOutput<typeof providerInstanceConfigSchema>
 export type ModelRef = v.InferOutput<typeof modelRefSchema>
-export type ModelPreferences = v.InferOutput<typeof modelPreferencesSchema>
 export type KeybindingOverrides = v.InferOutput<typeof keybindingOverridesSchema>
-export type Settings = v.InferOutput<typeof settingsSchema>
-export type SettingsPatch = v.InferOutput<typeof settingsPatchSchema>
-
-export const DEFAULT_SETTINGS: Settings = v.parse(settingsSchema, {})
 
 /** Stable identity for a model across the hidden and order lists. */
 export function modelRefKey(ref: ModelRef): string {

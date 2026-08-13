@@ -34,7 +34,7 @@ describe('logDashboardFilters', () => {
   it('omits all-selection and empty search filters', () => {
     expect(
       logDashboardFilters({
-        ...defaultLogsFilterState,
+        ...defaultLogsFilterState(),
         search: '   ',
         timeRange: 'all',
       }),

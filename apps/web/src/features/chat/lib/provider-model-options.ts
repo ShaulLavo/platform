@@ -6,6 +6,8 @@ import type {
   ProviderStatus,
 } from '@workspace/contracts'
 
+import { applyModelPreferences, type ModelPreferences } from './model-preferences'
+
 import {
   modelDefaultEffort,
   modelEffortLevels,
@@ -74,12 +76,16 @@ export function providerModelSelectionKey(modelSelection: ModelSelection) {
 
 export function providerModelOptionGroups(
   providers: readonly ProviderSnapshot[] | undefined,
+  preferences: ModelPreferences = { hidden: [], order: [] },
 ): ProviderModelOptionGroup[] {
   if (!providers) return []
 
   const groups: ProviderModelOptionGroup[] = []
   for (const provider of providers) {
-    const options = providerOptions(provider)
+    // Preferences applied per provider, not across the flattened list: the
+    // picker groups by provider, so a global reorder could not survive the
+    // regrouping anyway.
+    const options = applyModelPreferences(providerOptions(provider), preferences)
     if (options.length === 0) continue
 
     groups.push({
@@ -95,8 +101,11 @@ export function providerModelOptionGroups(
   return groups
 }
 
-export function providerModelOptions(providers: readonly ProviderSnapshot[] | undefined) {
-  return providerModelOptionGroups(providers).flatMap((group) => group.options)
+export function providerModelOptions(
+  providers: readonly ProviderSnapshot[] | undefined,
+  preferences?: ModelPreferences,
+) {
+  return providerModelOptionGroups(providers, preferences).flatMap((group) => group.options)
 }
 
 function providerOptions(provider: ProviderSnapshot): ProviderModelOption[] {

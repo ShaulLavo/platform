@@ -315,12 +315,6 @@ export const providerSessionRuntime = sqliteTable(
   ],
 )
 
-export const appSettings = sqliteTable('app_settings', {
-  section: text('section').primaryKey(),
-  valueJson: text('value_json').notNull(),
-  updatedAt: text('updated_at').notNull(),
-})
-
 export type OrchestrationEventRow = typeof orchestrationEvents.$inferSelect
 export type OrchestrationCommandReceiptRow = typeof orchestrationCommandReceipts.$inferSelect
 export type ProjectionProjectRow = typeof projectionProjects.$inferSelect

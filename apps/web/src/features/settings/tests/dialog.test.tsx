@@ -11,14 +11,13 @@ test('a closed dialog renders no settings surface at all', ({ client }) => {
   expect(screen.queryByRole('dialog')).toBeNull()
 })
 
-test('an open dialog shows the real settings panel', async ({ client }) => {
+test('an open dialog shows the real settings page', async ({ client }) => {
   expect(client).toBeDefined()
   renderWithProviders(<SettingsDialog open onOpenChange={() => {}} />)
 
   expect(await screen.findByRole('dialog', { name: 'Settings' })).toBeDefined()
-  // The running providers, not the saved ones. This used to assert the empty
-  // state, which was the bug: the built-ins live in the registry, so the one
-  // screen for configuring providers said there were none while two ran.
-  expect(await screen.findByText('Providers')).toBeDefined()
-  expect(await screen.findByRole('switch', { name: /Enable/ })).toBeDefined()
+  // The dialog is the folderless shell now: same page, reachable when there is
+  // no tab strip to put a Settings tab in, and with a way back out.
+  expect(await screen.findByLabelText('Search settings')).toBeDefined()
+  expect(await screen.findByRole('switch', { name: 'Wallpaper enabled' })).toBeDefined()
 })

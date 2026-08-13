@@ -20,7 +20,9 @@ import { parseDiffDocumentId, snapshotDiffDocumentId } from '@/features/git/diff
 import type { DiffDocumentInfo, SnapshotDiffDocumentInput } from '@/features/git/diff-document'
 import type { FileDiff } from '@/features/git/types'
 import { expect, test } from '../../../../../test/fixtures'
-import { renderWithProviders } from '../../../../../test/render'
+import { createTestQueryClient, renderWithProviders } from '../../../../../test/render'
+import { DEFAULT_SETTING_VALUES } from '@workspace/contracts'
+import { settingsKeys } from '@/features/settings/query-keys'
 
 // Real git, real routes, and the editor's real diff view: its rows are ordinary
 // elements carrying `data-editor-virtual-row`, which is the only thing the
@@ -130,17 +132,26 @@ async function dragRows(side: PaneSide, anchorRow: number, headRow: number) {
   rows[headRow]?.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 }))
 }
 
-/** The diff pane reads `diffViewMode` from the editor workspace store, which the
- *  workbench always provides around it. Split, because a side-addressed comment
- *  is only ambiguous when the two sides are drawn in separate panes. */
+/** The diff pane reads `editor.diff.viewMode` from settings. Split, because a
+ *  side-addressed comment is only ambiguous when the two sides are drawn in
+ *  separate panes. */
 function renderDiffView(ui: ReactElement) {
   stubHighlightApi()
   resetComposerInboxStore()
   const store = createEditorWorkspaceStore()
-  store.getState().setDiffViewMode('split')
+  const queryClient = createTestQueryClient()
+  // Seeded rather than written through the server: this suite is about diff
+  // addressing, and a real save would make every case wait on a round trip.
+  queryClient.setQueryData(settingsKeys.document(), {
+    diagnostics: [],
+    layers: [],
+    revision: '',
+    values: { ...DEFAULT_SETTING_VALUES, 'editor.diff.viewMode': 'split' },
+  })
 
   return renderWithProviders(
     <EditorWorkspaceStateContext.Provider value={store}>{ui}</EditorWorkspaceStateContext.Provider>,
+    { queryClient },
   )
 }
 

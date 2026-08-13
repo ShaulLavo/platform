@@ -12,7 +12,6 @@ import {
   EditorWorkspaceStateContext,
   useEditorWorkspaceState,
 } from '@/features/editor/state/editor-workspace-state'
-import { DEFAULT_DIFF_VIEW_MODE } from '@/features/editor/utils/diff-view-mode'
 import { useTerminalLinks } from '@/features/terminal/hooks/use-terminal-links'
 import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
 import { expect, test } from '../../../../../test/fixtures'
@@ -181,7 +180,6 @@ function withEditorWorkspace(children: ReactNode) {
 function createWorkspaceStore() {
   return createEditorWorkspaceStore({
     chatModePanels: createDefaultChatModePanels(),
-    diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     rootFolder: {
       birthtimeMs: 0,
       mtimeMs: 0,
@@ -193,7 +191,6 @@ function createWorkspaceStore() {
     },
     searchBuffers: {},
     uiMode: 'workbench',
-    wallpaperHidden: false,
     workbenchLayout: createDefaultWorkbenchLayout(),
     workspaceOrder: [PROJECT_ROOT],
     workspaces: {},

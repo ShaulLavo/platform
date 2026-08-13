@@ -25,6 +25,7 @@ import { sendTerminalClientMessage } from './terminal-socket'
 import { readTerminalMenuTarget, type TerminalMenuTarget } from './utils/commands'
 import { readTerminalTheme } from './terminal-theme'
 import { isFocusOutsideElement } from './utils/focus-target'
+import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 
 /** Writes to the terminal's socket. False when the connection is not up yet. */
 type TerminalInputSender = (data: string) => boolean
@@ -66,6 +67,12 @@ export function TerminalPanel({
   const sendInputRef = useRef<TerminalInputSender | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const { resolvedTheme } = useTheme()
+  // Read as primitives, not an object: an object literal is a new value every
+  // render, which would make the effect below run on every render and, worse,
+  // tempt someone into making it a dependency of the mount effect.
+  const cursorBlink = useSettingValue('terminal.integrated.cursorBlinking')
+  const fontSize = useSettingValue('terminal.integrated.fontSize')
+  const scrollback = useSettingValue('terminal.integrated.scrollback')
   const contextMenu = useContextMenu()
   const [menuTarget, setMenuTarget] = useState<TerminalMenuTarget | null>(null)
   const [socketConnected, setSocketConnected] = useState(false)
@@ -95,6 +102,10 @@ export function TerminalPanel({
       fitAddonRef.current = fitAddon
       terminalRef.current = terminal
       sendInputRef.current = sendInput
+      // At handover rather than at construction: ghostty resolves long after the
+      // mount effect started, and this is an effect event, so it sees the
+      // current settings rather than the ones the mount began with.
+      applyTerminalAppearance(terminal, { cursorBlink, fontSize, scrollback })
       registerTerminalLinks(terminal)
       activateTerminalIfActive()
     },
@@ -145,6 +156,10 @@ export function TerminalPanel({
   // no runtime theme API, so a live theme switch is applied by rebuilding the
   // terminal: the new instance reads the active CSS palette and the server
   // replays its buffer on reconnect (same as a page refresh).
+  useEffect(() => {
+    applyTerminalAppearance(terminalRef.current, { cursorBlink, fontSize, scrollback })
+  }, [cursorBlink, fontSize, scrollback])
+
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
@@ -367,11 +382,36 @@ function createTerminal(root: HTMLElement) {
     cursorBlink: UNFOCUSED_TERMINAL_CURSOR.cursorBlink,
     cursorStyle: patchedTerminalCursorStyle(UNFOCUSED_TERMINAL_CURSOR.cursorStyle),
     fontFamily: DEFAULT_MONO_FONT_STACK,
-    fontSize: 12,
-    scrollback: 10_000,
+    fontSize: DEFAULT_TERMINAL_FONT_SIZE,
+    scrollback: DEFAULT_TERMINAL_SCROLLBACK,
     smoothScrollDuration: 80,
     theme: readTerminalTheme(root),
   })
+}
+
+/** Construction defaults; the real values arrive at handover, before first paint. */
+const DEFAULT_TERMINAL_FONT_SIZE = 12
+const DEFAULT_TERMINAL_SCROLLBACK = 10_000
+
+export type TerminalAppearance = {
+  readonly cursorBlink: boolean
+  readonly fontSize: number
+  readonly scrollback: number
+}
+
+/**
+ * Pushes appearance settings into a live terminal.
+ *
+ * Mutating `terminal.options.*` rather than re-creating the Terminal, because
+ * re-creating it clears the scrollback — the user's output is the one thing a
+ * font-size change must not cost them.
+ */
+export function applyTerminalAppearance(terminal: Terminal | null, appearance: TerminalAppearance) {
+  if (!terminal) return
+
+  terminal.options.fontSize = appearance.fontSize
+  terminal.options.scrollback = appearance.scrollback
+  terminal.options.cursorBlink = appearance.cursorBlink
 }
 
 function applyTerminalCursorOptions(terminal: Terminal | null, options: TerminalCursorOptions) {

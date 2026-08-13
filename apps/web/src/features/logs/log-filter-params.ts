@@ -1,4 +1,5 @@
 import type { LogDashboardFilters, LogDashboardLevel } from '@workspace/contracts'
+import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
 
 export type LogTimeRange = '15m' | '1h' | '6h' | '24h' | 'all'
 
@@ -11,13 +12,22 @@ export type LogsFilterState = {
   timeRange: LogTimeRange
 }
 
-export const defaultLogsFilterState: LogsFilterState = {
-  area: 'all',
-  level: 'all',
-  search: '',
-  slowMs: 500,
-  source: 'all',
-  timeRange: '1h',
+/**
+ * A function, not a constant: the settings mirror is read per call, so a change
+ * to the log defaults applies to the next panel that opens. As a module-level
+ * const it would be evaluated once at import and never move again.
+ */
+export function defaultLogsFilterState(): LogsFilterState {
+  const settings = readSettingsMirror()
+
+  return {
+    area: 'all',
+    level: 'all',
+    search: '',
+    slowMs: settings['logs.slowThresholdMs'],
+    source: 'all',
+    timeRange: settings['logs.defaultTimeRange'],
+  }
 }
 
 const rangeMinutes: Record<Exclude<LogTimeRange, 'all'>, number> = {

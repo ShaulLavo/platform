@@ -14,6 +14,7 @@ import { basename, toTreePath } from '@/lib/path-formatters'
 import { clientErrors } from '@/lib/structured-errors'
 import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
 import { compareSearchPaths } from '@/features/search/search-sort'
+import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
 import {
   expandedSearchResultItems,
   searchResultContentItems,
@@ -714,9 +715,15 @@ function activeRun(snapshot: SearchBufferSnapshot | null, runId: number) {
 }
 
 function emptySearchBuffer(rootPath: string): SearchBufferSnapshot {
+  // Seeded from settings, not hardcoded: these are the defaults a *new* search
+  // starts from. The per-buffer values the user toggles afterwards stay in the
+  // buffer — a setting that reached back in and reset them mid-session would be
+  // a setting nobody could work with.
+  const settings = readSettingsMirror()
+
   return {
     activeResultId: null,
-    caseSensitive: false,
+    caseSensitive: settings['search.caseSensitive'],
     collapsedPaths: [],
     error: null,
     excludeGlobText: '',
@@ -724,7 +731,7 @@ function emptySearchBuffer(rootPath: string): SearchBufferSnapshot {
     groups: EMPTY_SEARCH_GROUPS,
     id: searchBufferDocumentId(rootPath),
     includeGlobText: '',
-    matchMode: 'literal',
+    matchMode: settings['search.defaultMatchMode'],
     matches: [],
     query: '',
     queryHistory: [],
@@ -750,7 +757,7 @@ function emptySearchBuffer(rootPath: string): SearchBufferSnapshot {
     streamBaseMatches: [],
     totalCount: 0,
     truncated: false,
-    wholeWord: false,
+    wholeWord: settings['search.wholeWord'],
   }
 }
 

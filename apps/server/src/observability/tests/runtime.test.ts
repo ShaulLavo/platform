@@ -7,6 +7,7 @@ import type { WideEvent } from 'evlog'
 
 import { createApp } from '../../app'
 import { flushObservability, initializeObservability, resetObservabilityForTests } from '../runtime'
+import { testSettingsOptions } from '../../settings/testing'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
 const roots: string[] = []
@@ -326,6 +327,7 @@ function testApp(root: string, options: { sessionToken?: string } = {}) {
       allowedOrigins: [TRUSTED_ORIGIN],
       sessionToken: options.sessionToken,
     },
+    settings: testSettingsOptions(root),
     watch: false,
     workspaceRoot: root,
   })

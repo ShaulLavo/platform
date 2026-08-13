@@ -62,7 +62,7 @@ Where the reference's model does not map cleanly for us, in one line each:
 
 ### 2.1 Server-side identity
 
-Add a singleton row to the platform database (`apps/server/src/db/client.ts:8-9`, default `~/.platform-file-picker/fs-metadata.sqlite`):
+Add a singleton row to the platform database (`apps/server/src/db/client.ts:8-9`, default `~/.platform/fs-metadata.sqlite`):
 
 ```
 environment(id TEXT PRIMARY KEY, created_at TEXT NOT NULL)

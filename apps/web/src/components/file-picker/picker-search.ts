@@ -3,8 +3,8 @@ import type { FindMatch, FsEntry, SearchScope } from '@/lib/file-system-types'
 import { streamWorkspaceSearch } from '@/lib/workspace-search-client'
 
 import { ROOT_PATH, basename, compareSearchEntries, type FilePickerMode } from './model'
+import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
 
-const SEARCH_LIMIT = 80
 const SEARCH_SCOPE_TIMEOUT_MS = 6000
 
 /**
@@ -78,7 +78,7 @@ async function streamSearchScope(
         entryType: searchEntryType(mode),
         includeContent: false,
         includeNames: true,
-        limit: SEARCH_LIMIT,
+        limit: readSettingsMirror()['search.quickOpenLimit'],
         matchMode: 'literal',
         path,
         query,

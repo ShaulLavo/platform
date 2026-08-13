@@ -45,7 +45,7 @@ describe('MessageBubble browser rendering', () => {
 
     flushSync(() => {
       root?.render(
-        <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
+        <ThemeProvider>
           <EditorColorThemeProvider>
             {withChatTimelineActions(
               <MessageBubble
@@ -80,7 +80,7 @@ describe('MessageBubble browser rendering', () => {
 
     flushSync(() => {
       root?.render(
-        <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
+        <ThemeProvider>
           <EditorColorThemeProvider>
             {withChatTimelineActions(<StreamingMessageBubble />)}
           </EditorColorThemeProvider>
@@ -124,7 +124,7 @@ describe('MessageBubble browser rendering', () => {
 
     flushSync(() => {
       root?.render(
-        <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
+        <ThemeProvider>
           <EditorColorThemeProvider>
             {withChatTimelineActions(
               <MessageBubble
@@ -161,7 +161,7 @@ describe('MessageBubble browser rendering', () => {
 
     flushSync(() => {
       root?.render(
-        <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
+        <ThemeProvider>
           <EditorColorThemeProvider>
             {withChatTimelineActions(
               <MessageBubble
@@ -198,7 +198,7 @@ describe('MessageBubble browser rendering', () => {
 
     flushSync(() => {
       root?.render(
-        <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
+        <ThemeProvider>
           <EditorColorThemeProvider>
             {withChatTimelineActions(
               <MessageBubble
@@ -237,7 +237,7 @@ describe('MessageBubble browser rendering', () => {
 
     flushSync(() => {
       root?.render(
-        <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
+        <ThemeProvider>
           <EditorColorThemeProvider>
             {withChatTimelineActions(
               <MessageBubble
@@ -273,7 +273,7 @@ describe('MessageBubble browser rendering', () => {
 
     flushSync(() => {
       root?.render(
-        <ThemeProvider defaultTheme='dark' storageKey={THEME_STORAGE_KEY}>
+        <ThemeProvider>
           <EditorColorThemeProvider>
             {withChatTimelineActions(
               <MessageBubble message={userMessage} revertTurnCount={2} />,

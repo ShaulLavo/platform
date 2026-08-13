@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createEditorWorkspaceStore } from '@/features/editor/state/editor-workspace-state'
 import { createEditorDocumentStore } from '@/features/editor/state/editor-document-state'
-import { DEFAULT_DIFF_VIEW_MODE } from '@/features/editor/utils/diff-view-mode'
 import { createSearchBufferStore } from '@/features/search/search-buffer-state'
 import {
   createDefaultWorkbenchPanels,
@@ -23,9 +22,7 @@ import {
 
 type CacheWrite =
   | { chatModePanels: CachedWorkspaceState['chatModePanels']; key: 'chatModePanels' }
-  | { diffViewMode: CachedWorkspaceState['diffViewMode']; key: 'diffViewMode' }
   | { key: 'uiMode'; uiMode: CachedWorkspaceState['uiMode'] }
-  | { key: 'wallpaperHidden'; wallpaperHidden: CachedWorkspaceState['wallpaperHidden'] }
   | { key: 'rootFolder'; rootFolder: PickedFsEntry | null }
   | { key: 'searchBuffer'; rootPath: string; searchBuffer: CachedSearchBufferState | null }
   | { key: 'workbenchLayout'; workbenchLayout: CachedWorkspaceState['workbenchLayout'] }
@@ -128,15 +125,9 @@ describe('workspace cache persistence', () => {
 
     // Must differ from DEFAULT_DIFF_VIEW_MODE, or the store short-circuits and
     // there is no change for the persistence hook to write.
-    workspaceStore.getState().setDiffViewMode('split')
     vi.runAllTimers()
-    expect(writeKeys(writes)).toEqual(['diffViewMode'])
 
     writes.length = 0
-    workspaceStore.getState().setWallpaperHidden(true)
-    vi.runAllTimers()
-    expect(writeKeys(writes)).toEqual(['wallpaperHidden'])
-    expect(lastCacheWrite(writes, 'wallpaperHidden')?.wallpaperHidden).toBe(true)
 
     writes.length = 0
     workspaceStore.getState().setEditorHistory(['/repo/src/a.ts'])
@@ -238,11 +229,9 @@ function harness() {
 function cachedWorkspace(): CachedWorkspaceState {
   return {
     chatModePanels: createDefaultChatModePanels(),
-    diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     rootFolder: pickedDirectory('/repo'),
     searchBuffers: {},
     uiMode: 'workbench',
-    wallpaperHidden: false,
     workbenchLayout: createDefaultWorkbenchLayout(),
     workspaceOrder: ['/repo'],
     workspaces: {
@@ -281,12 +270,10 @@ function fileResult(path: string): FileResult {
 function recordingCacheWriters(writes: CacheWrite[]): WorkspaceCacheWriters {
   return {
     chatModePanels: (chatModePanels) => writes.push({ chatModePanels, key: 'chatModePanels' }),
-    diffViewMode: (diffViewMode) => writes.push({ diffViewMode, key: 'diffViewMode' }),
     rootFolder: (rootFolder) => writes.push({ key: 'rootFolder', rootFolder }),
     searchBuffer: (rootPath, searchBuffer) =>
       writes.push({ key: 'searchBuffer', rootPath, searchBuffer }),
     uiMode: (uiMode) => writes.push({ key: 'uiMode', uiMode }),
-    wallpaperHidden: (wallpaperHidden) => writes.push({ key: 'wallpaperHidden', wallpaperHidden }),
     workbenchLayout: (workbenchLayout) => writes.push({ key: 'workbenchLayout', workbenchLayout }),
     workspaceIndex: (rootPaths) =>
       writes.push({ key: 'workspaceIndex', rootPaths: Array.from(rootPaths) }),

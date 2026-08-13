@@ -3,7 +3,7 @@ import type { OrchestrationProjectScript } from '@workspace/contracts'
 import { createProjectScriptsCommand } from '@/features/chat/lib/chat-command-builders'
 import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
-import { useChatModeSession } from '@/features/chat-mode/providers/session-context'
+import { useOptionalChatModeSession } from '@/features/chat-mode/providers/session-context'
 
 /**
  * Promotes a script the user actually ran into the project's saved list.
@@ -18,10 +18,19 @@ import { useChatModeSession } from '@/features/chat-mode/providers/session-conte
  * the thing at the top.
  */
 export function useSaveProjectScript() {
-  const { environment, rootPath } = useChatModeSession()
+  // Optional, not required: the command palette calls this, and the palette
+  // mounts above `ChatModeSessionProvider` in both layouts. Demanding the
+  // provider here took the whole palette down with a CONTEXT_MISSING error.
+  // There is no project to save a script to without a session, so the writer is
+  // simply inert — which is what the caller already handles for a missing
+  // project.
+  const session = useOptionalChatModeSession()
   const projects = useChatProjectionStore(selectChatProjects)
 
   return (script: OrchestrationProjectScript) => {
+    if (!session) return
+
+    const { environment, rootPath } = session
     const project = projects.find((candidate) => candidate.workspaceRoot === rootPath)
     if (!project) return
 

@@ -1,7 +1,6 @@
 import type { WorkspaceSearchMatchMode, WorkspaceSearchQuery } from '@workspace/contracts'
 import { workspaceSearchGlobPatterns } from '@workspace/contracts'
-
-const SEARCH_LIMIT = 200
+import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
 
 export type WorkspaceSearchQueryOptions = {
   caseSensitive: boolean
@@ -26,7 +25,7 @@ export function workspaceSearchQuery(
     includeContent: true,
     includeGlobs: filtersVisible ? workspaceSearchGlobPatterns(options.includeGlobText) : [],
     includeNames: false,
-    limit: SEARCH_LIMIT,
+    limit: readSettingsMirror()['search.maxResults'],
     matchMode: options.matchMode ?? 'literal',
     path: rootPath,
     query,

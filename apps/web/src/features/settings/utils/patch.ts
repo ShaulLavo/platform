@@ -1,7 +1,6 @@
 import {
   modelRefKey,
   type KeybindingOverrides,
-  type ModelPreferences,
   type ModelRef,
   type ProviderInstanceConfig,
 } from '@workspace/contracts'
@@ -36,17 +35,14 @@ export function withProviderEnabled(
 }
 
 export function withModelHidden(
-  preferences: ModelPreferences,
+  hiddenModels: readonly ModelRef[],
   ref: ModelRef,
   hidden: boolean,
-): ModelPreferences {
+): ModelRef[] {
   const key = modelRefKey(ref)
-  const without = preferences.hidden.filter((entry) => modelRefKey(entry) !== key)
+  const without = hiddenModels.filter((entry) => modelRefKey(entry) !== key)
 
-  return {
-    hidden: hidden ? [...without, ref] : without,
-    order: preferences.order,
-  }
+  return hidden ? [...without, ref] : without
 }
 
 export function withKeybindingOverride(
@@ -66,4 +62,29 @@ export function withoutKeybindingOverride(
   command: string,
 ): KeybindingOverrides {
   return Object.fromEntries(Object.entries(overrides).filter(([key]) => key !== command))
+}
+
+/**
+ * Moves a model one place within the sparse leading order.
+ *
+ * A model that has no rank yet is appended first: `order` names only the models
+ * the user has an opinion about, so "move this up" has to make it one of them
+ * before it can move at all. Everything unlisted keeps provider order, after
+ * these.
+ */
+export function withMovedModel(
+  order: readonly ModelRef[],
+  ref: ModelRef,
+  direction: -1 | 1,
+): ModelRef[] {
+  const key = modelRefKey(ref)
+  const next = order.some((entry) => modelRefKey(entry) === key) ? [...order] : [...order, ref]
+  const index = next.findIndex((entry) => modelRefKey(entry) === key)
+  const target = index + direction
+  if (target < 0 || target >= next.length) return next
+
+  const [moved] = next.splice(index, 1)
+  next.splice(target, 0, moved!)
+
+  return next
 }

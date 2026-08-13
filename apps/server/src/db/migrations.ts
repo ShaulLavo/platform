@@ -34,6 +34,7 @@ export const platformMigrations: readonly Migration[] = [
   { version: 5, name: 'project_order_key', up: applyProjectOrderKey },
   { version: 6, name: 'thread_plan_progress', up: applyThreadPlanProgress },
   { version: 7, name: 'project_scripts', up: applyProjectScripts },
+  { version: 8, name: 'drop_app_settings', up: applyDropAppSettings },
 ]
 
 /**
@@ -527,4 +528,19 @@ function createProviderRuntimeTables(database: PlatformDatabase) {
 		CREATE INDEX IF NOT EXISTS provider_session_runtime_provider_session_idx
 		ON provider_session_runtime (provider_session_id)
 	`)
+}
+
+/**
+ * Settings moved out of SQLite and into `~/.platform/settings.json`.
+ *
+ * No data is carried across. This project is greenfield with no external users,
+ * and the row this drops held provider config, model preferences and keybinding
+ * overrides — all of which a developer re-enters in seconds. Writing migration
+ * code to move three rows would outlive the reason it existed.
+ *
+ * Version 3 stays in the ledger as history; a database that already recorded it
+ * never re-runs it, which is why migrations are only ever appended.
+ */
+function applyDropAppSettings(database: PlatformDatabase) {
+  database.run(sql`DROP TABLE IF EXISTS app_settings`)
 }

@@ -8,6 +8,8 @@ import {
   recordProcessWarning,
   serverErrors,
 } from './observability'
+import { defaultSecretsFilePath, defaultSettingsFilePath } from './settings/paths'
+import { settingsPolicyFromEnv } from './settings/policy'
 
 const port = Number(Bun.env.PORT ?? 3001)
 const hostname = Bun.env.FS_HOST ?? Bun.env.HOST ?? '127.0.0.1'
@@ -29,6 +31,12 @@ export const app = createApp({
   homeDirectory,
   maxTextFileBytes,
   orchestration: { providerRuntime: true },
+  settings: {
+    policy: settingsPolicyFromEnv(Bun.env),
+    secretsFilePath: Bun.env.PLATFORM_SECRETS_FILE ?? defaultSecretsFilePath(),
+    userFilePath: Bun.env.PLATFORM_SETTINGS_FILE ?? defaultSettingsFilePath(),
+    watch: Bun.env.FS_WATCH !== 'false',
+  },
   systemRoot,
   treeConcurrency,
   watch,

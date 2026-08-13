@@ -17,6 +17,8 @@ import {
 } from '@/features/workbench/providers/editor-surface-actions-context'
 import { parseRefDocumentId } from '@/features/git/ref-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { SettingsPage } from '@/features/settings/components/page'
+import { isSettingsDocumentId } from '@/features/settings/settings-document'
 import { useSelectedFile } from '@/hooks/use-selected-file'
 import type { DocumentSessionChange, EditorKeymapLayer } from '@singapor/core'
 import type {
@@ -179,6 +181,11 @@ export function EditorSurfaceTabBody({
       tabId,
     ],
   )
+
+  // Before the file paths: a settings tab has no document, no language server
+  // and nothing to save, so falling through to the editor machinery would only
+  // give it a spinner for a file that does not exist.
+  if (isSettingsDocumentId(path)) return <SettingsPage />
 
   if (selectedSearchBuffer) {
     return (

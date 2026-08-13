@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import type { ProviderInstanceId } from '@workspace/contracts'
+
+import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 import { Command, CommandEmpty, CommandInput, CommandList } from '@workspace/ui/components/command'
 import { Popover, PopoverContent } from '@workspace/ui/components/popover'
 import { Spinner } from '@workspace/ui/components/spinner'
@@ -79,7 +81,12 @@ export function ModelPicker({
     null,
   )
 
-  const groups = providerModelOptionGroups(providersQuery.data?.providers)
+  // The picker is where hiding and ordering a model has to mean something.
+  // Until now both lists were written and never read.
+  const groups = providerModelOptionGroups(providersQuery.data?.providers, {
+    hidden: useSettingValue('models.hidden'),
+    order: useSettingValue('models.order'),
+  })
   // The rail scopes the list to one provider. It appears the moment a second
   // provider exists and always has a selection, so the list is never an
   // unscoped pile of every provider's models.

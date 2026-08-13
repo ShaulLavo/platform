@@ -8,7 +8,6 @@ import {
   EditorWorkspaceStateContext,
 } from '@/features/editor/state/editor-workspace-state'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
-import { DEFAULT_DIFF_VIEW_MODE } from '@/features/editor/utils/diff-view-mode'
 import {
   createDefaultWorkbenchPanels,
   openEditorPathInWorkbenchPanels,
@@ -53,7 +52,6 @@ function createTitlebarStore() {
 
   return createEditorWorkspaceStore({
     chatModePanels: createDefaultChatModePanels(),
-    diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     rootFolder: {
       birthtimeMs: 0,
       mtimeMs: 0,
@@ -65,7 +63,6 @@ function createTitlebarStore() {
     },
     searchBuffers: {},
     uiMode: 'workbench',
-    wallpaperHidden: false,
     workbenchLayout: createDefaultWorkbenchLayout(),
     workspaceOrder: ['/repo'],
     workspaces: {

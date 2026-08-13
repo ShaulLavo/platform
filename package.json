@@ -30,6 +30,7 @@
     "format:check": "bun run --filter '*' format:check",
     "typecheck": "bun run --sequential --filter '*' typecheck",
     "test": "bun run test:scripts && bun run --filter '*' test",
+    "settings:reference": "bun scripts/generate-settings-reference.ts",
     "test:scripts": "bun --bun vitest run scripts/runtime-network.test.ts --environment node",
     "verify": "bun run typecheck && bun run lint && bun run format:check && bun run test",
     "dupes": "jscpd apps packages",

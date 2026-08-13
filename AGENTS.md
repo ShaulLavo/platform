@@ -56,6 +56,15 @@
 - Opaque-on-purpose surfaces use the `-solid` utilities (`bg-background-solid`, `bg-card-solid`, ...). They deliberately ignore the user's transparency setting — use them for things that must never fade (e.g. switch thumbs, active tab fills).
 - Regenerate `apps/web/public/workbench/wallpaper-vibrancy.png` (blur 48px, saturate 160%, 35% opacity baked into the alpha channel, ~1280px wide) whenever the wallpaper image changes. Keep the alpha low — it is a color cast; higher values drown the backdrop ghosting.
 
+## Settings
+
+- Every user-facing knob is a registry entry in `packages/contracts/src/settings/keys.ts`. Never a new `localStorage` key, never a new env var, never a hardcoded constant someone has to recompile to change.
+- A key is never registered inert. Register it in the same pass that wires its consumer, or do not register it — a knob that writes a file nothing reads is worse than no knob.
+- Scope is a security boundary. A value that reaches **execution** — selects a binary, sets env, becomes a flag name, or binds a key — is `application` or `machine`, never `window`: a workspace file ships inside a cloned repository. A value that reaches only **suppression** may be `window`, and then it must show the cross-scope indicator.
+- Settings are read through `useSettingValue` in React, or `readSettingsMirror()` outside it (module scope, async generators). Do not reach into the query cache directly.
+- Secrets never enter the settings document. They go to the secret store, which is why the raw JSON view, export and the settings file itself are safe to read.
+- Regenerate `docs/settings-reference.md` with `bun run settings:reference` after changing the registry.
+
 ## Greenfield, No Backward Compatibility
 
 - This project is greenfield and not live: no releases, no external users, no data anyone needs migrated.

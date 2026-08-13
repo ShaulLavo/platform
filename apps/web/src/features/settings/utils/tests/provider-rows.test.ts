@@ -64,7 +64,6 @@ function configFor(id: string): ProviderInstanceConfig {
     driverKind: 'codex',
     enabled: true,
     environment: [],
-    launchArgs: [],
     providerInstanceId: id,
   } as unknown as ProviderInstanceConfig
 }

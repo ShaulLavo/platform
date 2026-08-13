@@ -1,10 +1,10 @@
-import type { Settings, SettingsPatch } from '@workspace/contracts'
+import type { SettingsEdit, SettingsSnapshot } from '@workspace/contracts'
 
 import { getClient } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
 import { unwrapEdenResponse } from '@/lib/eden-events'
 
-export async function fetchSettings(signal?: AbortSignal): Promise<Settings> {
+export async function fetchSettings(signal?: AbortSignal): Promise<SettingsSnapshot> {
   return observeClientOperation(
     { action: 'settings.read', area: 'settings', signal },
     async () => {
@@ -20,14 +20,16 @@ export async function fetchSettings(signal?: AbortSignal): Promise<Settings> {
 }
 
 /**
- * The server answers with the whole document, so the caller never has to merge
- * its own patch back into the cache — the response is the new truth.
+ * The server answers with the whole snapshot, so the caller never has to merge
+ * its own edits back into the cache — the response is the new truth.
  */
-export async function saveSettings(patch: SettingsPatch): Promise<Settings> {
+export async function saveSettings(edits: readonly SettingsEdit[]): Promise<SettingsSnapshot> {
   return observeClientOperation(
-    { action: 'settings.update', area: 'settings', sections: Object.keys(patch) },
+    // Ids only. A settings value can be a provider environment, and this event
+    // ends up in a log file the agent itself reads.
+    { action: 'settings.write', area: 'settings', settingIds: edits.map((edit) => edit.key) },
     async () => {
-      const response = await getClient().settings.post(patch)
+      const response = await getClient().settings.write.post({ edits: [...edits] })
 
       return unwrapEdenResponse(response, {
         requireData: true,
@@ -38,10 +40,11 @@ export async function saveSettings(patch: SettingsPatch): Promise<Settings> {
   )
 }
 
-function summarizeSettings(settings: Settings) {
+function summarizeSettings(snapshot: SettingsSnapshot) {
   return {
-    hiddenModelCount: settings.models.hidden.length,
-    keybindingOverrideCount: Object.keys(settings.keybindings).length,
-    providerInstanceCount: settings.providerInstances.length,
+    diagnosticCount: snapshot.diagnostics.length,
+    hiddenModelCount: snapshot.values['models.hidden'].length,
+    keybindingOverrideCount: Object.keys(snapshot.values['keybindings.overrides']).length,
+    providerInstanceCount: snapshot.values['providers.instances'].length,
   }
 }

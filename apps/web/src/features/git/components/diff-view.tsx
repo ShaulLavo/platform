@@ -3,13 +3,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { editorTreeSitterSyntaxProvider } from '@/features/editor/editor-plugins'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
-import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import type { DiffDocumentInfo } from '../diff-document'
 import { useDiffDocumentDiffs } from '../hooks/use-diff-document-diffs'
 import { emptyDiffNotice, unrenderableDiffNotice } from '../utils/diff-presentation'
 import { editorDiffFiles } from '../utils/editor-diff-files'
 import { DiffLineCommentAction } from './diff-line-comment-action'
 import { DiffNotice } from './diff-notice'
+import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 
 /**
  * Renders a `git-diff:` document through the editor's own diff view, so a diff
@@ -27,7 +27,7 @@ export function DiffView({
 }) {
   const { diffs, failure, pending } = useDiffDocumentDiffs(documentInfo)
   const { editorTheme } = useEditorColorTheme()
-  const mode = useEditorWorkspaceState((state) => state.diffViewMode)
+  const mode = useSettingValue('editor.diff.viewMode')
   const containerRef = useRef<HTMLDivElement | null>(null)
   // The view lives in state, not a ref, so that rebuilding it re-runs the two
   // effects below — that is what re-applies the current files and mode instead

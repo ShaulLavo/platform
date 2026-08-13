@@ -1,12 +1,11 @@
 import { mkdirSync } from 'node:fs'
-import { homedir } from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
 import { drizzle } from 'drizzle-orm/bun-sqlite'
 import * as schema from './schema'
+import { platformHomePath } from '../home'
 
-const defaultMetadataDatabasePath =
-  Bun.env.FS_METADATA_DB ?? path.join(homedir(), '.platform-file-picker', 'fs-metadata.sqlite')
+const defaultMetadataDatabasePath = Bun.env.FS_METADATA_DB ?? platformHomePath('fs-metadata.sqlite')
 
 export type PlatformDatabase = ReturnType<typeof openPlatformDatabase>['db']
 

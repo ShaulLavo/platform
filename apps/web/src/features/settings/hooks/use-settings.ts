@@ -4,8 +4,8 @@ import { fetchSettings } from '../api'
 import { settingsKeys } from '../query-keys'
 
 /**
- * The whole settings document, as the server sees it. Every consumer reads the
- * same query so a save anywhere lands everywhere at once.
+ * The whole resolved settings snapshot, as the server sees it. Every consumer
+ * reads the same query so a save anywhere lands everywhere at once.
  */
 export function useSettings() {
   return useQuery({

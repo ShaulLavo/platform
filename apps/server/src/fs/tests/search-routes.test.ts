@@ -4,6 +4,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { createApp } from '../../app'
+import { testSettingsOptions } from '../../settings/testing'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
 const roots: string[] = []
@@ -100,6 +101,7 @@ type SseEvent = { type: string } & Record<string, unknown>
 async function search(root: string, query: Record<string, string>) {
   const app = createApp({
     auth: { allowedOrigins: [TRUSTED_ORIGIN] },
+    settings: testSettingsOptions(root),
     watch: false,
     workspaceRoot: root,
   })

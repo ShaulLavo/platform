@@ -1,6 +1,5 @@
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { ChatModePanels } from '@/features/chat-mode/utils/panels'
-import type { EditorDiffViewMode } from '@/features/editor/utils/diff-view-mode'
 import type { WorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
 import type { WorkspaceUiMode } from '@/lib/ui-mode'
 import {
@@ -26,7 +25,6 @@ type ParkedWorkspace = CachedWorkspaceSlice & {
 
 type EditorWorkspaceStoreState = CachedWorkspaceSlice & {
   chatModePanels: ChatModePanels
-  diffViewMode: EditorDiffViewMode
   openFilePaths: string[]
   /** Every project except the open one, by root path. */
   parkedWorkspaces: ReadonlyMap<string, ParkedWorkspace>
@@ -34,7 +32,6 @@ type EditorWorkspaceStoreState = CachedWorkspaceSlice & {
   rootFolder: PickedFsEntry | null
   selectedFilePath: string | null
   uiMode: WorkspaceUiMode
-  wallpaperHidden: boolean
   workbenchLayout: WorkbenchLayout
 }
 
@@ -42,14 +39,12 @@ type EditorWorkspaceStoreActions = {
   clearRootFolder: () => void
   openPicker: () => void
   setChatModePanels: (panels: ChatModePanels) => void
-  setDiffViewMode: (mode: EditorDiffViewMode) => void
   setEditorHistory: (paths: string[]) => void
   /** Merges latest scroll positions; positions for closed tabs are kept for reopen. */
   setEditorScrollPositions: (byPath: Record<string, EditorScrollPosition>) => void
   setPickerOpen: (open: boolean) => void
   setRecentlyClosedEditorPaths: (paths: string[]) => void
   setUiMode: (mode: WorkspaceUiMode) => void
-  setWallpaperHidden: (hidden: boolean) => void
   setWorkbenchLayout: (layout: WorkbenchLayout) => void
   setWorkbenchPanels: (panels: WorkbenchPanels) => void
   /** Parks the open project's tabs and restores the target's. Nothing is discarded. */
@@ -89,17 +84,14 @@ export function createEditorWorkspaceStore(
     subscribeWithSelector((set, get) => ({
       ...activeWorkspaceState(sliceForRootPath(initialState, activeRootPath)),
       chatModePanels: initialState.chatModePanels,
-      diffViewMode: initialState.diffViewMode,
       parkedWorkspaces: parkedWorkspacesFromCache(initialState, activeRootPath),
       pickerOpen: false,
       rootFolder: initialState.rootFolder,
       uiMode: initialState.uiMode,
-      wallpaperHidden: initialState.wallpaperHidden,
       workbenchLayout: initialState.workbenchLayout,
       clearRootFolder: () => set(switchedWorkspaceState(get(), null)),
       openPicker: () => set({ pickerOpen: true }),
       setChatModePanels: (chatModePanels) => set({ chatModePanels }),
-      setDiffViewMode: (diffViewMode) => set({ diffViewMode }),
       setEditorHistory: (editorHistory) => set({ editorHistory }),
       setEditorScrollPositions: (byPath) => {
         const merged = mergedScrollPositions(get().scrollPositionByPath, byPath)
@@ -111,7 +103,6 @@ export function createEditorWorkspaceStore(
       setRecentlyClosedEditorPaths: (recentlyClosedEditorPaths) =>
         set({ recentlyClosedEditorPaths }),
       setUiMode: (uiMode) => set({ uiMode }),
-      setWallpaperHidden: (wallpaperHidden) => set({ wallpaperHidden }),
       setWorkbenchLayout: (workbenchLayout) => set({ workbenchLayout }),
       setWorkbenchPanels: (workbenchPanels) =>
         set((state) =>

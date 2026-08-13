@@ -1,9 +1,4 @@
 import type { PickedFsEntry } from '@/lib/file-system-types'
-import {
-  DEFAULT_DIFF_VIEW_MODE,
-  isEditorDiffViewMode,
-  type EditorDiffViewMode,
-} from '@/features/editor/utils/diff-view-mode'
 import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
@@ -53,10 +48,8 @@ export const WORKSPACE_SLICE_LIMIT = 8
 export const WORKSPACE_CACHE_STORAGE_KEYS = {
   chatModePanels: `${CACHE_KEY_PREFIX}.chatModePanels`,
   chatModeSelection: `${CACHE_KEY_PREFIX}.chatModeSelection`,
-  diffViewMode: `${CACHE_KEY_PREFIX}.diffViewMode`,
   rootFolder: `${CACHE_KEY_PREFIX}.rootFolder`,
   uiMode: `${CACHE_KEY_PREFIX}.uiMode`,
-  wallpaperHidden: `${CACHE_KEY_PREFIX}.wallpaperHidden`,
   workbenchLayout: `${CACHE_KEY_PREFIX}.workbenchLayout`,
   workspaceIndex: `${CACHE_KEY_PREFIX}.workspaces`,
 } as const
@@ -117,7 +110,6 @@ const pickedSymlinkDirectorySchema = v.object({
 })
 const rootFolderSchema = v.nullable(v.union([pickedDirectorySchema, pickedSymlinkDirectorySchema]))
 const nullableStringSchema = v.nullable(v.string())
-const diffViewModeSchema = v.custom<EditorDiffViewMode>(isEditorDiffViewMode)
 const stringArraySchema = v.array(v.string())
 const entryTypeSchema = v.union([
   v.literal('file'),
@@ -249,13 +241,11 @@ export type CachedWorkspaceSlice = {
 
 export type CachedWorkspaceState = {
   chatModePanels: ChatModePanels
-  diffViewMode: EditorDiffViewMode
   rootFolder: PickedFsEntry | null
   /** Restored search results, by the root path they belong to. */
   searchBuffers: Record<string, CachedSearchBufferState>
   uiMode: WorkspaceUiMode
   /** Suppresses the wallpaper image and video everywhere they are drawn. */
-  wallpaperHidden: boolean
   workbenchLayout: WorkbenchLayout
   /** Every remembered project, active one included. Most-recent-first is `workspaceOrder`. */
   workspaces: Record<string, CachedWorkspaceSlice>
@@ -268,16 +258,8 @@ export function readWorkspaceCache(): CachedWorkspaceState {
   return workspaceStateFromCache()
 }
 
-export function writeDiffViewModeCache(diffViewMode: EditorDiffViewMode) {
-  writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.diffViewMode, diffViewMode)
-}
-
 export function writeUiModeCache(uiMode: WorkspaceUiMode) {
   writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.uiMode, uiMode)
-}
-
-export function writeWallpaperHiddenCache(wallpaperHidden: boolean) {
-  writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.wallpaperHidden, wallpaperHidden)
 }
 
 export function writeWorkbenchLayoutCache(workbenchLayout: WorkbenchLayout) {
@@ -371,22 +353,12 @@ function workspaceStateFromCache(): CachedWorkspaceState {
       chatModePanelsSchema,
       createDefaultChatModePanels(),
     ),
-    diffViewMode: readCacheEntry(
-      WORKSPACE_CACHE_STORAGE_KEYS.diffViewMode,
-      diffViewModeSchema,
-      DEFAULT_DIFF_VIEW_MODE,
-    ),
     rootFolder,
     searchBuffers,
     uiMode: readCacheEntry(
       WORKSPACE_CACHE_STORAGE_KEYS.uiMode,
       uiModeSchema,
       DEFAULT_WORKSPACE_UI_MODE,
-    ),
-    wallpaperHidden: readCacheEntry(
-      WORKSPACE_CACHE_STORAGE_KEYS.wallpaperHidden,
-      v.boolean(),
-      false,
     ),
     workbenchLayout: normalizeWorkbenchLayout(
       readCacheEntry(
@@ -552,11 +524,9 @@ export function emptyWorkspaceSlice(): CachedWorkspaceSlice {
 function emptyWorkspaceState(): CachedWorkspaceState {
   return {
     chatModePanels: createDefaultChatModePanels(),
-    diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     rootFolder: null,
     searchBuffers: {},
     uiMode: DEFAULT_WORKSPACE_UI_MODE,
-    wallpaperHidden: false,
     workbenchLayout: createDefaultWorkbenchLayout(),
     workspaceOrder: [],
     workspaces: {},

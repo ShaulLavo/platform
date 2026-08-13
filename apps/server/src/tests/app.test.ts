@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { closeApp, createApp } from '../app'
+import { testSettingsOptions } from '../settings/testing'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
 const apps: Array<ReturnType<typeof createApp>> = []
@@ -287,6 +288,7 @@ describe('fs rpc filesystem limits', () => {
         allowedOrigins: [TRUSTED_ORIGIN],
       },
       homeDirectory: root,
+      settings: testSettingsOptions(root),
       systemRoot: root,
     })
     apps.push(app)
@@ -995,6 +997,7 @@ function testApp(
     },
     homeDirectory: options.homeDirectory,
     maxTextFileBytes: options.maxTextFileBytes,
+    settings: testSettingsOptions(root),
     treeConcurrency: options.treeConcurrency,
     watch: options.watch,
     watchBackend: options.watchBackend ?? 'node',

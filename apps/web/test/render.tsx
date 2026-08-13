@@ -8,7 +8,7 @@ import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-col
 import { MenuCommandProvider } from '@/features/menus/providers/command-provider'
 
 // Retry/gc off so failing queries surface immediately and no timers outlive a test.
-function createTestQueryClient() {
+export function createTestQueryClient() {
   return new QueryClient({
     defaultOptions: { queries: { gcTime: Number.POSITIVE_INFINITY, retry: false } },
   })
@@ -31,10 +31,15 @@ export function renderWithProviders(
     ...options
   }: RenderWithProvidersOptions = {},
 ): RenderWithProvidersResult {
+  // Theme is a setting now, so there is no prop to pass. Seeding the boot
+  // mirror is the honest equivalent: it is exactly what the app reads before
+  // the first snapshot lands.
+  seedBootMirrorTheme(theme)
+
   function Wrapper({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
-        <ThemeProvider defaultTheme={theme} storageKey='platform-test-theme'>
+        <ThemeProvider>
           <EditorColorThemeProvider>
             <MenuCommandProvider>
               <TooltipProvider delay={0}>{children}</TooltipProvider>
@@ -46,4 +51,11 @@ export function renderWithProviders(
   }
 
   return { queryClient, ...render(ui, { wrapper: Wrapper, ...options }) }
+}
+
+function seedBootMirrorTheme(theme: 'dark' | 'light') {
+  localStorage.setItem(
+    'platform.settings-boot-mirror.v1',
+    JSON.stringify({ 'workbench.colorTheme': theme }),
+  )
 }

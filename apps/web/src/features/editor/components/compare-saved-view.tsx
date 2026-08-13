@@ -4,9 +4,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import { editorTreeSitterSyntaxProvider } from '@/features/editor/editor-plugins'
 import { useEditorDocumentState } from '@/features/editor/state/editor-document-state'
-import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
 import { useSelectedFile } from '@/hooks/use-selected-file'
 import { languageIdForFilePath } from '@/features/editor/utils/file-path'
+import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 
 /**
  * Diffs the active buffer against the file on disk — VS Code's "Compare Active File with Saved".
@@ -18,7 +18,7 @@ import { languageIdForFilePath } from '@/features/editor/utils/file-path'
 export function CompareSavedView({ path, rootPath }: { path: string; rootPath: string }) {
   void rootPath
   const { editorTheme } = useEditorColorTheme()
-  const mode = useEditorWorkspaceState((state) => state.diffViewMode)
+  const mode = useSettingValue('editor.diff.viewMode')
   const { fileState } = useSelectedFile(path)
   const buffer = useEditorDocumentState((state) => state.liveDocumentsById[path]?.buffer ?? null)
   // Revision, not the buffer object: the buffer is mutated in place, so its identity never changes

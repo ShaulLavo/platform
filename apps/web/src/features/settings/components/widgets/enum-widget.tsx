@@ -1,0 +1,45 @@
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@workspace/ui/components/select'
+
+export function EnumWidget({
+  disabled,
+  id,
+  onChange,
+  options,
+  value,
+}: {
+  disabled?: boolean
+  id: string
+  onChange: (next: string) => void
+  options: readonly string[]
+  value: string
+}) {
+  return (
+    <Select
+      disabled={disabled}
+      onValueChange={(next) => {
+        // base-ui hands back `null` when a selection is cleared; there is no
+        // "unset" state for an enum setting, so that is simply not a change.
+        if (next === null) return
+        onChange(next)
+      }}
+      value={value}
+    >
+      <SelectTrigger className='w-44' id={id}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem key={option} value={option}>
+            {option}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}

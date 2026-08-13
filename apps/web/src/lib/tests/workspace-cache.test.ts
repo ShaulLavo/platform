@@ -20,13 +20,11 @@ import {
   workspaceSliceStorageKey,
   type CachedSearchBufferState,
   type CachedWorkspaceSlice,
-  writeDiffViewModeCache,
   writeRootFolderCache,
   writeChatModePanelsCache,
   writeSearchBufferCache,
   writeSessionSelectionCache,
   writeUiModeCache,
-  writeWallpaperHiddenCache,
   writeWorkbenchLayoutCache,
   writeWorkspaceIndexCache,
   writeWorkspaceSliceCache,
@@ -240,16 +238,13 @@ describe('workspace cache', () => {
 
   it('keeps workspace-independent entries in their own keys', () => {
     writeChatModePanelsCache(createDefaultChatModePanels())
-    writeDiffViewModeCache('stacked')
     writeUiModeCache(DEFAULT_WORKSPACE_UI_MODE)
-    writeWallpaperHiddenCache(false)
     writeWorkbenchLayoutCache(createDefaultWorkbenchLayout())
     writeRootFolderCache(pickedDirectory('/repo'))
     writeSessionSelectionCache({ kind: 'auto' })
     writeWorkspaceIndexCache(['/repo'])
 
     expect(new Set(STORE.keys())).toEqual(new Set(Object.values(WORKSPACE_CACHE_STORAGE_KEYS)))
-    expect(readWorkspaceCache().diffViewMode).toBe('stacked')
   })
 })
 
