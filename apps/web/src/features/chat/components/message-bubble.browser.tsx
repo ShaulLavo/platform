@@ -1,13 +1,13 @@
-import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-color-theme'
+import type { QueryClient } from '@tanstack/react-query'
 import type { OrchestrationMessage } from '@workspace/contracts'
 import '@workspace/ui/globals.css'
 import { useEffect, useState, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ThemeProvider } from '@/components/theme-provider'
 import { EditorStateProvider } from '@/features/editor/editor-state-provider'
+import { AppProviders, createTestQueryClient, seedBootMirrorTheme } from '../../../../test/render'
 import {
   ChatTimelineActionsContext,
   type ChatTimelineActions,
@@ -15,7 +15,6 @@ import {
 import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
 import { MessageBubble } from './message-bubble'
 
-const THEME_STORAGE_KEY = 'platform-message-bubble-browser-theme'
 // Token colours from Dark Plus, the default dark editor theme, which the app
 // loads as a real VS Code theme through shiki. What these assertions are for is
 // that tokens get *theme* colours rather than the plain editor foreground
@@ -29,6 +28,14 @@ const EXPECTED_DARK_EDITOR_PROPERTY_COLOR = 'rgb(156, 220, 254)' // #9CDCFE
 const EXPECTED_DARK_EDITOR_TYPE_COLOR = 'rgb(86, 156, 214)' // #569CD6
 
 let root: Root | null = null
+let queryClient: QueryClient
+
+beforeEach(() => {
+  queryClient = createTestQueryClient()
+  // Dark is what every colour assertion below is written against, and it is a
+  // setting now rather than a prop — the mirror is where the app reads it.
+  seedBootMirrorTheme('dark')
+})
 
 afterEach(() => {
   if (root) {
@@ -37,7 +44,8 @@ afterEach(() => {
   }
 
   document.body.innerHTML = ''
-  localStorage.removeItem(THEME_STORAGE_KEY)
+  queryClient.clear()
+  localStorage.clear()
 })
 
 describe('MessageBubble browser rendering', () => {
@@ -49,19 +57,17 @@ describe('MessageBubble browser rendering', () => {
 
     flushSync(() => {
       root?.render(
-        <ThemeProvider>
-          <EditorColorThemeProvider>
-            {withChatTimelineActions(
-              <MessageBubble
-                message={{
-                  ...assistantCodeMessage,
-                  streaming: true,
-                  text: 'Streaming code:\n\n```html\n<!doctype html>\n<html',
-                }}
-              />,
-            )}
-          </EditorColorThemeProvider>
-        </ThemeProvider>,
+        <AppProviders queryClient={queryClient}>
+          {withChatTimelineActions(
+            <MessageBubble
+              message={{
+                ...assistantCodeMessage,
+                streaming: true,
+                text: 'Streaming code:\n\n```html\n<!doctype html>\n<html',
+              }}
+            />,
+          )}
+        </AppProviders>,
       )
     })
 
@@ -76,7 +82,6 @@ describe('MessageBubble browser rendering', () => {
   })
 
   it('keeps assistant code highlighting after streaming completion', async () => {
-    localStorage.removeItem(THEME_STORAGE_KEY)
     const container = document.createElement('main')
     container.style.width = '720px'
     document.body.append(container)
@@ -84,11 +89,9 @@ describe('MessageBubble browser rendering', () => {
 
     flushSync(() => {
       root?.render(
-        <ThemeProvider>
-          <EditorColorThemeProvider>
-            {withChatTimelineActions(<StreamingMessageBubble />)}
-          </EditorColorThemeProvider>
-        </ThemeProvider>,
+        <AppProviders queryClient={queryClient}>
+          {withChatTimelineActions(<StreamingMessageBubble />)}
+        </AppProviders>,
       )
     })
 
@@ -130,19 +133,17 @@ describe('MessageBubble browser rendering', () => {
 
     flushSync(() => {
       root?.render(
-        <ThemeProvider>
-          <EditorColorThemeProvider>
-            {withChatTimelineActions(
-              <MessageBubble
-                message={{
-                  ...assistantCodeMessage,
-                  text: 'Changed these files:',
-                }}
-                turnDiffSummary={assistantChangedFilesSummary}
-              />,
-            )}
-          </EditorColorThemeProvider>
-        </ThemeProvider>,
+        <AppProviders queryClient={queryClient}>
+          {withChatTimelineActions(
+            <MessageBubble
+              message={{
+                ...assistantCodeMessage,
+                text: 'Changed these files:',
+              }}
+              turnDiffSummary={assistantChangedFilesSummary}
+            />,
+          )}
+        </AppProviders>,
       )
     })
 
@@ -167,18 +168,16 @@ describe('MessageBubble browser rendering', () => {
 
     flushSync(() => {
       root?.render(
-        <ThemeProvider>
-          <EditorColorThemeProvider>
-            {withChatTimelineActions(
-              <MessageBubble
-                message={{
-                  ...assistantCodeMessage,
-                  text: 'First line\nsecond line\n\nNext paragraph\nwith detail',
-                }}
-              />,
-            )}
-          </EditorColorThemeProvider>
-        </ThemeProvider>,
+        <AppProviders queryClient={queryClient}>
+          {withChatTimelineActions(
+            <MessageBubble
+              message={{
+                ...assistantCodeMessage,
+                text: 'First line\nsecond line\n\nNext paragraph\nwith detail',
+              }}
+            />,
+          )}
+        </AppProviders>,
       )
     })
 
@@ -204,20 +203,18 @@ describe('MessageBubble browser rendering', () => {
 
     flushSync(() => {
       root?.render(
-        <ThemeProvider>
-          <EditorColorThemeProvider>
-            {withChatTimelineActions(
-              <MessageBubble
-                message={{
-                  ...assistantCodeMessage,
-                  text: 'Changed these files:',
-                }}
-                turnDiffSummary={assistantChangedFilesSummary}
-              />,
-              actions,
-            )}
-          </EditorColorThemeProvider>
-        </ThemeProvider>,
+        <AppProviders queryClient={queryClient}>
+          {withChatTimelineActions(
+            <MessageBubble
+              message={{
+                ...assistantCodeMessage,
+                text: 'Changed these files:',
+              }}
+              turnDiffSummary={assistantChangedFilesSummary}
+            />,
+            actions,
+          )}
+        </AppProviders>,
       )
     })
 
@@ -243,22 +240,20 @@ describe('MessageBubble browser rendering', () => {
 
     flushSync(() => {
       root?.render(
-        <ThemeProvider>
-          <EditorColorThemeProvider>
-            {withChatTimelineActions(
-              <MessageBubble
-                message={{
-                  ...assistantCodeMessage,
-                  text: 'Changed these files:',
-                }}
-                turnDiffSummary={{
-                  ...assistantChangedFilesSummary,
-                  status: 'missing',
-                }}
-              />,
-            )}
-          </EditorColorThemeProvider>
-        </ThemeProvider>,
+        <AppProviders queryClient={queryClient}>
+          {withChatTimelineActions(
+            <MessageBubble
+              message={{
+                ...assistantCodeMessage,
+                text: 'Changed these files:',
+              }}
+              turnDiffSummary={{
+                ...assistantChangedFilesSummary,
+                status: 'missing',
+              }}
+            />,
+          )}
+        </AppProviders>,
       )
     })
 
@@ -279,14 +274,12 @@ describe('MessageBubble browser rendering', () => {
 
     flushSync(() => {
       root?.render(
-        <ThemeProvider>
-          <EditorColorThemeProvider>
-            {withChatTimelineActions(
-              <MessageBubble message={userMessage} revertTurnCount={2} />,
-              actions,
-            )}
-          </EditorColorThemeProvider>
-        </ThemeProvider>,
+        <AppProviders queryClient={queryClient}>
+          {withChatTimelineActions(
+            <MessageBubble message={userMessage} revertTurnCount={2} />,
+            actions,
+          )}
+        </AppProviders>,
       )
     })
 
