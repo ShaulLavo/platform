@@ -1,0 +1,67 @@
+name: Setup
+description: Installs the toolchain, provisions the sibling @singapor editor packages, and installs dependencies.
+
+inputs:
+  editor-ref:
+    description: Git ref of the ShaulLavo/singapor checkout the @singapor/* links resolve to.
+    required: false
+    default: main
+
+runs:
+  using: composite
+  steps:
+    # Pinned from `packageManager` in package.json so CI and the pre-commit
+    # hook cannot disagree about which Bun compiled the code.
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version-file: package.json
+
+    # The node-pty bridge spawns the real Node binary, never Bun's `node`
+    # shim, so the terminal tests need a genuine Node on PATH.
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+
+    - name: Cache Bun install
+      uses: actions/cache@v4
+      with:
+        path: ~/.bun/install/cache
+        key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-bun-
+
+    # The @singapor/* packages are not installable from npm — @singapor/decode
+    # has never been published, and the rest are consumed from source well past
+    # their published 0.1.1. Root `overrides` redirects all of them to
+    # `link:@singapor/*`, which resolves through Bun's global link registry.
+    # A developer machine populates that registry by hand; here we rebuild it
+    # from a clone. The clone must land at the *sibling* path because the
+    # tracked `packages/editor-*` symlinks point at `../../Editor/packages/*`.
+    # `singapor` is the same repo a developer machine checks out as `Editor`;
+    # it was renamed, and the old URL survives only on GitHub's redirect.
+    - name: Clone editor packages
+      shell: bash
+      run: git clone --depth 1 --branch '${{ inputs.editor-ref }}' https://github.com/ShaulLavo/singapor.git "$GITHUB_WORKSPACE/../Editor"
+
+    # Every @singapor package exports `./dist/*`, so an unbuilt checkout
+    # resolves to nothing and typecheck fails with TS2307.
+    - name: Build editor packages
+      shell: bash
+      working-directory: ${{ github.workspace }}/../Editor
+      run: |
+        bun install --frozen-lockfile
+        bun run build
+
+    - name: Link editor packages
+      shell: bash
+      working-directory: ${{ github.workspace }}/../Editor
+      run: |
+        for package in packages/*/; do
+          (cd "$package" && bun link)
+        done
+
+    - name: Install dependencies
+      shell: bash
+      run: bun install --frozen-lockfile

@@ -186,7 +186,9 @@ describe('log reader', () => {
       timestamp: new Date().toISOString(),
     })
 
-    const result = await withTimeout(nextEvent, 2_000)
+    // Generous on purpose: this guards against a tail that never fires, not
+    // against a slow one. A loaded CI runner needs well past 2s to poll.
+    const result = await withTimeout(nextEvent, 15_000)
     if (result.done) throw new Error('expected live event')
 
     abort.abort()

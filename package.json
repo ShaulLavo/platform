@@ -48,7 +48,8 @@
     "oxc-plugin-react-compiler": "^0.2.0",
     "oxfmt": "0.55.0",
     "oxlint": "1.70.0",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "vitest": "catalog:"
   },
   "overrides": {
     "@singapor/core": "link:@singapor/core",
@@ -75,7 +76,7 @@
     "node": ">=20"
   },
   "packageManager": "bun@1.3.10",
-  "//ci-link-todo": "CI BLOCKER (plan 001): the @singapor/* `link:` overrides below resolve only via a local `bun link` registration + the sibling ../../Editor repo. A clean CI checkout has neither, so `bun install --frozen-lockfile` silently omits the @singapor/* packages and typecheck fails with TS2307 'cannot find module'. TODO before adding .github/workflows/ci.yml: remove/neutralize these `link:` overrides for CI so it installs the published versions (e.g. @singapor/core 0.1.1, already on npm), or have CI check out + bun link the sibling Editor repo. See plans/001-ci-pipeline-and-verify.md.",
+  "//singapor-links": "The @singapor/* `link:` overrides above resolve through a `bun link` registration pointing at the sibling ../../Editor checkout — there is no npm fallback (@singapor/decode is unpublished). CI reproduces that by cloning ShaulLavo/singapor as a sibling, building it, and linking each package; see .github/actions/setup/action.yml.",
   "patchedDependencies": {
     "ghostty-web@0.4.0": "patches/ghostty-web@0.4.0.patch"
   }
