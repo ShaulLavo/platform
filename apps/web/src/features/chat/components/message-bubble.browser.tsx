@@ -16,13 +16,17 @@ import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
 import { MessageBubble } from './message-bubble'
 
 const THEME_STORAGE_KEY = 'platform-message-bubble-browser-theme'
+// Token colours from Dark Plus, the default dark editor theme, which the app
+// loads as a real VS Code theme through shiki. What these assertions are for is
+// that tokens get *theme* colours rather than the plain editor foreground
+// (#D4D4D4) — so they move if the default dark theme ever changes.
 const EXPECTED_DARK_EDITOR_COLORS = [
-  'rgb(110, 231, 183)',
-  'rgb(253, 230, 138)',
-  'rgb(125, 211, 252)',
+  'rgb(86, 156, 214)', // #569CD6 — tag names and keywords
+  'rgb(206, 145, 120)', // #CE9178 — strings
+  'rgb(220, 220, 170)', // #DCDCAA — functions
 ]
-const EXPECTED_DARK_EDITOR_PROPERTY_COLOR = 'rgb(233, 213, 255)'
-const EXPECTED_DARK_EDITOR_TYPE_COLOR = 'rgb(125, 211, 252)'
+const EXPECTED_DARK_EDITOR_PROPERTY_COLOR = 'rgb(156, 220, 254)' // #9CDCFE
+const EXPECTED_DARK_EDITOR_TYPE_COLOR = 'rgb(86, 156, 214)' // #569CD6
 
 let root: Root | null = null
 
@@ -105,14 +109,16 @@ describe('MessageBubble browser rendering', () => {
         expect(streamdownTokenColor((text) => text.trim() === 'head')).toBe(
           EXPECTED_DARK_EDITOR_TYPE_COLOR,
         )
-        expect(streamdownTokenColor((text) => text.includes('--bg:'))).toBe(
-          EXPECTED_DARK_EDITOR_PROPERTY_COLOR,
-        )
+        // The custom property and its colon are separate tokens, so match the
+        // property alone — no span ever holds `--bg:`.
         expect(streamdownTokenColor((text) => text.trim() === '--bg')).toBe(
           EXPECTED_DARK_EDITOR_PROPERTY_COLOR,
         )
       },
-      { interval: 100, timeout: 15_000 },
+      // Under the test timeout on purpose: matched, waitFor never gets to
+      // report which assertion was still failing and the run says only
+      // "timed out".
+      { interval: 100, timeout: 10_000 },
     )
   })
 
