@@ -11,6 +11,13 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # The @singapor/* editor packages are consumed from source out of a sibling
+  # repo, so CI tracks its default branch the same way a developer machine
+  # tracks whatever is checked out. Pin to a SHA here if that drift ever costs
+  # more than it saves.
+  EDITOR_REF: main
+
 jobs:
   quality:
     name: Format, lint, typecheck, test
@@ -20,32 +27,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Pinned from `packageManager` in package.json so CI and the pre-commit
-      # hook cannot disagree about which Bun compiled the code.
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Setup
+        uses: ./.github/actions/setup
         with:
-          bun-version-file: package.json
-
-      # The node-pty bridge spawns the real Node binary, never Bun's `node`
-      # shim, so the terminal tests need a genuine Node on PATH.
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Cache Bun and Turbo
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.bun/install/cache
-            .turbo
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}-${{ hashFiles('turbo.json') }}
-          restore-keys: |
-            ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}-
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+          editor-ref: ${{ env.EDITOR_REF }}
 
       # `format:check`, never `format` — a CI job that rewrites files and then
       # passes is a job that reports on a tree nobody reviewed.
@@ -58,9 +43,9 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
-      # Runs the scripts suite plus every workspace's own. `apps/web`'s `test`
-      # is scoped to `--project node --project dom`; the browser project is a
-      # separate job below because its runner is unreliable.
+      # Runs the scripts suite plus every workspace's own. The `test` scripts in
+      # `apps/web` and `packages/tree` are scoped to `--project node --project
+      # dom`; their browser projects are the separate job below.
       - name: Test
         run: bun run test
 
@@ -69,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Known unreliable: the Vitest browser runner hangs at the RUN banner
-    # locally even for a trivial test, so the two `*.browser.tsx` files are
+    # locally even for a trivial test, so the `*.browser.tsx` files are
     # currently verified by nobody. This job exists to find out whether the
     # hang is a local-environment problem or a real one — it must not be able
     # to block a merge until that is answered, hence `continue-on-error`.
@@ -79,21 +64,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+      - name: Setup
+        uses: ./.github/actions/setup
         with:
-          bun-version-file: package.json
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Cache Bun
-        uses: actions/cache@v4
-        with:
-          path: ~/.bun/install/cache
-          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          editor-ref: ${{ env.EDITOR_REF }}
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
@@ -101,12 +75,17 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('bun.lock') }}
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
+      # The workspace's own playwright binary, never `bunx playwright` — bunx
+      # resolves a fresh copy from npm and downloads the browser revision *that*
+      # version wants, leaving the pinned playwright pointing at a build that
+      # was never fetched.
       - name: Install Chromium
-        run: bunx playwright install --with-deps chromium
+        run: apps/web/node_modules/.bin/playwright install --with-deps chromium
 
       # Plain Node, not `--bun`: Vitest browser orchestration breaks under Bun.
-      - name: Browser test
+      - name: Browser test (web)
         run: bun run --cwd apps/web test:browser
+
+      - name: Browser test (tree)
+        if: ${{ !cancelled() }}
+        run: bun run --cwd packages/tree test:browser

@@ -22,7 +22,8 @@
     "format": "oxfmt --write .",
     "format:check": "oxfmt --check .",
     "typecheck": "tsgo --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --project node --project dom",
+    "test:browser": "vitest run --project browser"
   },
   "dependencies": {
     "evlog": "^2.19.1",
