@@ -17,18 +17,18 @@ import { ModelRow } from './model-row'
  * them in their head. The row it renders in tells it which key it is standing
  * for, so the page still reads as one setting per row.
  *
- * Sourced from the provider catalogue, not from the preferences. Deriving rows
- * from `hidden` meant the list could only contain models the user had already
- * hidden — so it started empty, and there was no way to hide anything from it.
+ * The catalogue is read *unfiltered* — no preferences are passed to
+ * `providerModelOptions`, whose job in the picker is to subtract the hidden
+ * models. Subtracting them here would mean the switch that hides a model also
+ * removes the row holding it, leaving no way to bring it back from the one
+ * screen built to do that. `modelPreferenceRows` applies `hidden` as a flag
+ * instead, which is what this screen exists to toggle.
  */
 export function ModelSection({ settingId }: { settingId: SettingId }) {
   const { data } = useQuery(providerListQueryOptions())
   const hidden = useSettingValue('models.hidden')
   const order = useSettingValue('models.order')
-  const rows = modelPreferenceRows(providerModelOptions(data?.providers, { hidden, order }), {
-    hidden,
-    order,
-  })
+  const rows = modelPreferenceRows(providerModelOptions(data?.providers), { hidden, order })
 
   if (rows.length === 0) return <EmptyRow>No models are available yet.</EmptyRow>
 

@@ -160,6 +160,36 @@ test('renders a real providers editor rather than a JSON escape hatch', async ({
   expect((await screen.findAllByRole('switch', { name: /Enable/ })).length).toBeGreaterThan(0)
 })
 
+test('lists the real model catalog, and hiding one keeps its row to bring it back', async ({
+  client,
+}) => {
+  expect(client).toBeDefined()
+  renderWithProviders(<SettingsPage />)
+
+  await userEvent.type(await screen.findByLabelText('Search settings'), 'models')
+
+  // Same defect as the providers section, one screen over: settings remember the
+  // models you have an opinion about, so listing those meant the screen for
+  // forming an opinion started empty.
+  const switches = await screen.findAllByRole('switch', { name: /Show / })
+  expect(switches.length).toBeGreaterThan(0)
+
+  const first = switches[0]
+  expect(first).toBeDefined()
+  const label = first!.getAttribute('aria-label')
+  await userEvent.click(first!)
+
+  await waitFor(async () => {
+    const snapshot = await fetchSettings()
+    expect(snapshot.values['models.hidden']).toHaveLength(1)
+  })
+
+  // The row survives the toggle, unchecked. If hiding removed it, the switch
+  // that un-hides it would go with it and the model would be hidden for good.
+  const after = await screen.findByRole('switch', { name: label! })
+  expect(after).not.toBeChecked()
+})
+
 test('renders a record editor for keybindings rather than raw JSON', async ({ client }) => {
   expect(client).toBeDefined()
   await saveSettings([

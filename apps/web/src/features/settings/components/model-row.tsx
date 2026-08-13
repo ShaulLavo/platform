@@ -2,11 +2,9 @@ import { CaretDownIcon, CaretUpIcon } from '@phosphor-icons/react'
 import { Button } from '@workspace/ui/components/button'
 import { Switch } from '@workspace/ui/components/switch'
 
-import type { modelPreferenceRows } from '@/features/chat/lib/model-preferences'
+import type { ModelPreferenceRow } from '@/features/chat/lib/model-preferences'
 
 import { useSettingsActions } from '../hooks/use-settings-actions'
-
-type Row = ReturnType<typeof modelPreferenceRows>[number]
 
 export function ModelRow({
   canMoveDown,
@@ -17,7 +15,7 @@ export function ModelRow({
   canMoveDown: boolean
   canMoveUp: boolean
   ranked: boolean
-  row: Row
+  row: ModelPreferenceRow
 }) {
   const { isSaving, moveModel, setModelHidden } = useSettingsActions()
 

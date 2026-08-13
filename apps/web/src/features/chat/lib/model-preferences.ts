@@ -40,25 +40,63 @@ export function applyModelPreferences(
   return [...ranked, ...rest]
 }
 
+export type ModelPreferenceRow = {
+  readonly hidden: boolean
+  readonly key: string
+  readonly label: string
+  readonly providerLabel: string
+  readonly ref: ModelRef
+}
+
 /**
- * The models a provider actually advertises, as rows the settings page can show.
+ * Every model the settings page should offer a row for, in the order it shows them.
  *
- * Sourced from the provider catalogue rather than from the preferences, which is
- * the fix that makes the Models section possible at all: deriving rows from
- * `hidden`/`order` meant the list could only ever contain models the user had
- * already acted on, so it started empty and stayed empty.
+ * The union of three sources, and each one is load-bearing:
+ *
+ * - `preferences.order` first, so a ranked model keeps its position. Globally,
+ *   not per provider: this list is flat, unlike the picker, which groups by
+ *   provider and so ranks within each group.
+ * - then the provider catalogue, which is what makes the section usable at all.
+ *   Deriving rows from `hidden`/`order` alone meant the list could only contain
+ *   models the user had already acted on, so it started empty and stayed empty.
+ * - then anything left in `preferences.hidden`. A model whose provider has
+ *   stopped reporting it is absent from the catalogue, and without this pass it
+ *   would lose its row while staying hidden — permanently, with nothing left in
+ *   the UI able to bring it back.
+ *
+ * `options` must be the *unfiltered* catalogue. Hiding is a flag here, never a
+ * subtraction, because hiding is the decision this screen exists to take back.
  */
 export function modelPreferenceRows(
   options: readonly ProviderModelOption[],
   preferences: ModelPreferences,
-) {
+): ModelPreferenceRow[] {
   const hidden = new Set(preferences.hidden.map(modelRefKey))
+  const catalogue = new Map(options.map((option) => [modelRefKey(option.modelSelection), option]))
+  const rows = new Map<string, ModelPreferenceRow>()
 
-  return options.map((option) => ({
-    hidden: hidden.has(modelRefKey(option.modelSelection)),
-    key: option.key,
-    label: option.label,
-    providerLabel: option.providerLabel,
-    ref: option.modelSelection,
-  }))
+  const addRow = (ref: ModelRef) => {
+    const key = modelRefKey(ref)
+    if (rows.has(key)) return
+
+    const option = catalogue.get(key)
+    rows.set(key, {
+      hidden: hidden.has(key),
+      key,
+      // A ref the catalogue no longer carries has no label to borrow, so the
+      // slug stands in rather than the row rendering blank.
+      label: option?.label ?? ref.model,
+      providerLabel: option?.providerLabel ?? ref.providerInstanceId,
+      // Normalised rather than passed through: the row's ref is written straight
+      // back into `models.hidden`/`models.order`, and a `ModelSelection` carries
+      // fields the stored ref schema does not.
+      ref: { model: ref.model, providerInstanceId: ref.providerInstanceId },
+    })
+  }
+
+  for (const ref of preferences.order) addRow(ref)
+  for (const option of options) addRow(option.modelSelection)
+  for (const ref of preferences.hidden) addRow(ref)
+
+  return Array.from(rows.values())
 }
