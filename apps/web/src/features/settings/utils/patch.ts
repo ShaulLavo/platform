@@ -1,7 +1,6 @@
 import {
   modelRefKey,
   type KeybindingOverrides,
-  type ModelPreferences,
   type ModelRef,
   type ProviderInstanceConfig,
 } from '@workspace/contracts'
@@ -36,17 +35,14 @@ export function withProviderEnabled(
 }
 
 export function withModelHidden(
-  preferences: ModelPreferences,
+  hiddenModels: readonly ModelRef[],
   ref: ModelRef,
   hidden: boolean,
-): ModelPreferences {
+): ModelRef[] {
   const key = modelRefKey(ref)
-  const without = preferences.hidden.filter((entry) => modelRefKey(entry) !== key)
+  const without = hiddenModels.filter((entry) => modelRefKey(entry) !== key)
 
-  return {
-    hidden: hidden ? [...without, ref] : without,
-    order: preferences.order,
-  }
+  return hidden ? [...without, ref] : without
 }
 
 export function withKeybindingOverride(
@@ -66,4 +62,31 @@ export function withoutKeybindingOverride(
   command: string,
 ): KeybindingOverrides {
   return Object.fromEntries(Object.entries(overrides).filter(([key]) => key !== command))
+}
+
+/**
+ * Moves a model one place, and returns the order that produces that list.
+ *
+ * Takes the sequence the user is actually looking at rather than the stored
+ * `order`, because the stored one is sparse and a move within it does not
+ * correspond to a move on screen: appending an unranked model puts it last in
+ * `order`, which puts it *first* on screen — so "move down" clamped to nothing
+ * on the first row and jumped the model to the top everywhere else. Naming every
+ * displayed model is what makes one click equal one place.
+ */
+export function withMovedModel(
+  displayed: readonly ModelRef[],
+  ref: ModelRef,
+  direction: -1 | 1,
+): ModelRef[] {
+  const key = modelRefKey(ref)
+  const next = [...displayed]
+  const index = next.findIndex((entry) => modelRefKey(entry) === key)
+  const target = index + direction
+  if (index < 0 || target < 0 || target >= next.length) return next
+
+  const [moved] = next.splice(index, 1)
+  next.splice(target, 0, moved!)
+
+  return next
 }

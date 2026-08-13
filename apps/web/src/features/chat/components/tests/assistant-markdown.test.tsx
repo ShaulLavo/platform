@@ -10,7 +10,6 @@ import {
   useEditorWorkspaceState,
 } from '@/features/editor/state/editor-workspace-state'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
-import { DEFAULT_DIFF_VIEW_MODE } from '@/features/editor/utils/diff-view-mode'
 import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
 import { AssistantMarkdown } from '@/features/chat/components/assistant-markdown'
 import { serializeRenderedMarkdownFragment } from '@/features/chat/lib/markdown-clipboard'
@@ -216,7 +215,6 @@ function EditorSelectionProbe() {
 function createWorkspaceStore() {
   return createEditorWorkspaceStore({
     chatModePanels: createDefaultChatModePanels(),
-    diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     rootFolder: {
       birthtimeMs: 0,
       mtimeMs: 0,
@@ -228,7 +226,6 @@ function createWorkspaceStore() {
     },
     searchBuffers: {},
     uiMode: 'workbench',
-    wallpaperHidden: false,
     workbenchLayout: createDefaultWorkbenchLayout(),
     workspaceOrder: [ROOT_PATH],
     workspaces: {},

@@ -8,7 +8,6 @@ import {
   createEditorWorkspaceStore,
   EditorWorkspaceStateContext,
 } from '@/features/editor/state/editor-workspace-state'
-import { DEFAULT_DIFF_VIEW_MODE } from '@/features/editor/utils/diff-view-mode'
 import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
 import { createDefaultWorkbenchPanels } from '@/features/workbench/utils/workbench-panels'
 import { expect, test } from '../../../test/fixtures'
@@ -17,7 +16,6 @@ import { renderWithProviders } from '../../../test/render'
 function storeWithRoot(path: string | null) {
   return createEditorWorkspaceStore({
     chatModePanels: createDefaultChatModePanels(),
-    diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     rootFolder: path
       ? {
           birthtimeMs: 0,
@@ -31,7 +29,6 @@ function storeWithRoot(path: string | null) {
       : null,
     searchBuffers: {},
     uiMode: 'workbench',
-    wallpaperHidden: false,
     workbenchLayout: createDefaultWorkbenchLayout(),
     workspaceOrder: path ? [path] : [],
     workspaces: path

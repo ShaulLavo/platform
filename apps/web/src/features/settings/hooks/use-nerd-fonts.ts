@@ -1,0 +1,23 @@
+import { useQuery } from '@tanstack/react-query'
+
+import { getClient } from '@/lib/client'
+
+/**
+ * Every Nerd Font the server can fetch, subset and cache on demand.
+ *
+ * Scraped from nerdfonts.com and cached under `~/.platform/fonts`, so this is
+ * the real catalogue rather than whatever happens to be installed on the machine
+ * — picking one here means the user gets it, not that they already had it.
+ */
+export function useNerdFonts() {
+  return useQuery({
+    queryFn: async () => {
+      const response = await getClient().fonts.get()
+
+      return Object.keys(response.data ?? {}).sort((a, b) => a.localeCompare(b))
+    },
+    queryKey: ['fonts', 'nerd-fonts'],
+    // The catalogue is a release manifest; it does not move while the app is open.
+    staleTime: Number.POSITIVE_INFINITY,
+  })
+}

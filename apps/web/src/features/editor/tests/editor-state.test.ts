@@ -6,7 +6,6 @@ import { createEditorCommands } from '@/features/editor/state/editor-commands'
 import { createEditorDocumentStore } from '@/features/editor/state/editor-document-state'
 import { createEditorUiStore } from '@/features/editor/state/editor-ui-state'
 import { createEditorWorkspaceStore } from '@/features/editor/state/editor-workspace-state'
-import { DEFAULT_DIFF_VIEW_MODE } from '@/features/editor/utils/diff-view-mode'
 import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
 import { createSearchBufferStore } from '@/features/search/search-buffer-state'
 import {
@@ -222,11 +221,9 @@ function cachedWorkspace(slice: Partial<CachedWorkspaceSlice>): CachedWorkspaceS
 
   return {
     chatModePanels: createDefaultChatModePanels(),
-    diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     rootFolder,
     searchBuffers: {},
     uiMode: 'workbench',
-    wallpaperHidden: false,
     workbenchLayout: createDefaultWorkbenchLayout(),
     workspaceOrder: [rootFolder.path],
     workspaces: {

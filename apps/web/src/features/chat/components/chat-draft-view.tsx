@@ -1,6 +1,4 @@
 import {
-  DEFAULT_INTERACTION_MODE,
-  DEFAULT_RUNTIME_MODE,
   type CommandId,
   type ModelSelection,
   type OrchestrationMessage,
@@ -34,6 +32,7 @@ import { useChatOptimisticStore } from '../state/chat-optimistic-store'
 import type { ChatInputDraftTarget } from '../state/chat-input-draft-store'
 import { ChatInput, type ChatInputSubmitPayload } from './chat-input'
 import { ChatWelcomeView } from './chat-welcome-view'
+import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 
 const DRAFT_CHAT_KEY = 'draft'
 
@@ -53,6 +52,11 @@ export function ChatDraftView({
   const [sendError, setSendError] = useState<string | null>(null)
   // The same target ChatInput builds for itself, so a mode pick lands on the
   // draft the send path reads. Stable identity: it feeds the modes context value.
+  // The user's chosen posture for a new session. The server keeps its own
+  // `?? DEFAULT_RUNTIME_MODE` fallbacks as the untrusted-input floor; this is
+  // only the seed the composer starts from.
+  const defaultRuntimeMode = useSettingValue('chat.defaultRuntimeMode')
+  const defaultInteractionMode = useSettingValue('chat.defaultInteractionMode')
   const draftTarget = useMemo<ChatInputDraftTarget>(
     () => ({ draftKey: DRAFT_CHAT_KEY, rootPath }),
     [rootPath],
@@ -153,10 +157,10 @@ export function ChatDraftView({
           disabled={disabled || !project}
           draftKey={DRAFT_CHAT_KEY}
           error={sendError}
-          interactionMode={DEFAULT_INTERACTION_MODE}
+          interactionMode={defaultInteractionMode}
           modelSelection={modelSelection}
           rootPath={rootPath}
-          runtimeMode={DEFAULT_RUNTIME_MODE}
+          runtimeMode={defaultRuntimeMode}
           onPersistModelSelection={handlePersistModelSelection}
           onStop={handleStop}
           onSubmit={handleSend}

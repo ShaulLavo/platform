@@ -41,6 +41,14 @@ export type ProviderAdapterRegistryOptions = {
   adapters?: readonly ProviderAdapter[]
   drivers?: readonly AnyProviderDriver[]
   statusCache?: ProviderStatusCache
+  /**
+   * Whether an instance is still serving a session.
+   *
+   * Injected rather than looked up: the registry owns adapters, not the session
+   * directory, and making it read the database directly would tie provider
+   * configuration to the orchestration schema.
+   */
+  hasLiveSessions?: (providerInstanceId: ProviderInstanceId) => boolean
 }
 
 type LiveProviderInstance = {
@@ -62,6 +70,7 @@ export class ProviderAdapterRegistry {
     void this.refreshInstances(providerInstanceIds)
   })
   private readonly drivers = new Map<ProviderDriverKind, AnyProviderDriver>()
+  private readonly hasLiveSessions: (providerInstanceId: ProviderInstanceId) => boolean
   private readonly instances = new Map<ProviderInstanceId, LiveProviderInstance>()
   private reconcileChain: Promise<void> = Promise.resolve()
   private readonly statusCache: ProviderStatusCache
@@ -73,6 +82,7 @@ export class ProviderAdapterRegistry {
       ? { adapters: options as readonly ProviderAdapter[] }
       : (options as ProviderAdapterRegistryOptions)
     this.statusCache = resolved.statusCache ?? new ProviderStatusCache()
+    this.hasLiveSessions = resolved.hasLiveSessions ?? (() => false)
     for (const driver of resolved.drivers ?? []) {
       this.registerDriver(driver)
     }
@@ -121,6 +131,19 @@ export class ProviderAdapterRegistry {
 
     for (const [providerInstanceId, instance] of this.instances) {
       if (seen.has(providerInstanceId)) continue
+
+      // Disposing an adapter mid-turn kills the child process a streaming
+      // session is reading from, and threads route by `providerInstanceId`, so
+      // the turn would fail with whatever the transport happened to throw. The
+      // instance is kept instead and removed by a later reconcile once its
+      // sessions end — a setting that takes effect a little later is a far
+      // smaller surprise than a turn that dies halfway.
+      if (this.hasLiveSessions(providerInstanceId)) {
+        recordChatPipelineWarning('chat.pipeline.provider_registry.dispose_deferred', {
+          providerInstanceId,
+        })
+        continue
+      }
 
       this.instances.delete(providerInstanceId)
       this.statusCache.forget(providerInstanceId)
@@ -286,6 +309,19 @@ export class ProviderAdapterRegistry {
 
     const existing = this.instances.get(entry.providerInstanceId)
     if (existing && configEqual(existing.config, entry)) return null
+    // The same rule the removal loop follows, for the path a *disable* actually
+    // takes: switching a provider off rewrites its entry rather than dropping
+    // it, so it arrives here as a config change. Replacing the adapter now would
+    // dispose the child process a streaming turn is reading from — the exact
+    // thing deferring disposal exists to prevent. The old adapter keeps serving
+    // and the new config lands on the next reconcile after the turn ends.
+    if (existing && this.hasLiveSessions(entry.providerInstanceId)) {
+      recordChatPipelineWarning('chat.pipeline.provider_registry.reconfigure_deferred', {
+        providerInstanceId: entry.providerInstanceId,
+      })
+
+      return null
+    }
     if (existing) {
       this.instances.delete(entry.providerInstanceId)
       await disposeInstance(entry.providerInstanceId, existing)
@@ -357,11 +393,23 @@ export class ProviderAdapterRegistry {
   /** Keeps `listInstances()` in settings-author order rather than creation order. */
   private reorderInstances(entries: readonly ProviderInstanceConfig[]) {
     const ordered: Array<[ProviderInstanceId, LiveProviderInstance]> = []
+    const listed = new Set<ProviderInstanceId>()
     for (const entry of entries) {
       const instance = this.instances.get(entry.providerInstanceId)
       if (!instance) continue
 
+      listed.add(entry.providerInstanceId)
       ordered.push([entry.providerInstanceId, instance])
+    }
+
+    // An instance whose disposal was deferred is not in `entries` any more, so
+    // rebuilding the map purely from them would drop it here — undoing the
+    // deferral and leaving a live session pointing at an adapter the registry no
+    // longer lists. Kept at the end: it is on its way out, just not yet.
+    for (const [providerInstanceId, instance] of this.instances) {
+      if (listed.has(providerInstanceId)) continue
+
+      ordered.push([providerInstanceId, instance])
     }
 
     this.instances.clear()
@@ -401,9 +449,11 @@ export class ProviderAdapterRegistry {
  */
 export function createDefaultProviderAdapterRegistry(
   savedInstances: readonly ProviderInstanceConfig[] = [],
+  options: { hasLiveSessions?: (providerInstanceId: ProviderInstanceId) => boolean } = {},
 ) {
   const registry = new ProviderAdapterRegistry({
     drivers: BUILT_IN_PROVIDER_DRIVERS,
+    hasLiveSessions: options.hasLiveSessions,
     statusCache: new ProviderStatusCache({ directory: defaultProviderStatusCacheDir() }),
   })
   // Reconciled against the settings document rather than a constant. Passing

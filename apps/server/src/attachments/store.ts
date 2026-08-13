@@ -1,5 +1,4 @@
 import { mkdir, readFile, stat, unlink, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import path from 'node:path'
 import {
   chatAttachmentExtension,
@@ -8,6 +7,7 @@ import {
   type ChatAttachmentUpload,
 } from '@workspace/contracts'
 
+import { platformHomePath } from '../home'
 import { createInternalError } from '../observability/structured-errors'
 import {
   attachmentFileName,
@@ -33,7 +33,7 @@ export type AttachmentFile = {
  * local platform state sits under one directory.
  */
 export function defaultAttachmentsDir(): string {
-  return path.join(homedir(), '.platform-file-picker', 'attachments')
+  return platformHomePath('attachments')
 }
 
 export async function writeAttachmentFromDataUrl(input: {

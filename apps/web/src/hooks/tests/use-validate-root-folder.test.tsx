@@ -8,7 +8,6 @@ import {
   createEditorWorkspaceStore,
   EditorWorkspaceStateContext,
 } from '@/features/editor/state/editor-workspace-state'
-import { DEFAULT_DIFF_VIEW_MODE } from '@/features/editor/utils/diff-view-mode'
 import { useValidateRootFolder } from '@/hooks/use-validate-root-folder'
 import { createFileContent, ensureFolderPath } from '@/lib/file-server'
 import type { PickedFsEntry } from '@/lib/file-system-types'
@@ -59,11 +58,9 @@ function pickedDirectory(path: string): PickedFsEntry {
 function storeWithRoot(rootFolder: PickedFsEntry) {
   return createEditorWorkspaceStore({
     chatModePanels: createDefaultChatModePanels(),
-    diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     rootFolder,
     searchBuffers: {},
     uiMode: 'workbench',
-    wallpaperHidden: false,
     workbenchLayout: createDefaultWorkbenchLayout(),
     workspaceOrder: [rootFolder.path],
     workspaces: {},

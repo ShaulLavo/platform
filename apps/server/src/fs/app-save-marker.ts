@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
 import path from 'node:path'
+import { platformHomePath } from '../home'
 
 const DEFAULT_TTL_MS = 10_000
 const MAX_MARKERS = 512
@@ -17,10 +17,7 @@ type AppSaveMarkerOptions = {
 }
 
 function appSaveMarkerFilePath(env: NodeJS.ProcessEnv = process.env): string {
-  return (
-    env.PLATFORM_APP_SAVE_MARKER_FILE ??
-    path.join(homedir(), '.platform-file-picker', 'app-save-markers.json')
-  )
+  return env.PLATFORM_APP_SAVE_MARKER_FILE ?? platformHomePath('app-save-markers.json')
 }
 
 export function recordAppSave(absolutePath: string, options: AppSaveMarkerOptions = {}): boolean {

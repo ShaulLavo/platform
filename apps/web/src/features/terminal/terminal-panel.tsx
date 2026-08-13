@@ -25,6 +25,7 @@ import { sendTerminalClientMessage } from './terminal-socket'
 import { readTerminalMenuTarget, type TerminalMenuTarget } from './utils/commands'
 import { readTerminalTheme } from './terminal-theme'
 import { isFocusOutsideElement } from './utils/focus-target'
+import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 
 /** Writes to the terminal's socket. False when the connection is not up yet. */
 type TerminalInputSender = (data: string) => boolean
@@ -41,14 +42,24 @@ type TerminalCursorOptions = {
   cursorStyle: TerminalCursorStyle
 }
 
-const FOCUSED_TERMINAL_CURSOR: TerminalCursorOptions = {
-  cursorBlink: true,
-  cursorStyle: 'block',
-}
+/**
+ * Focus owns the cursor's *shape*; `terminal.integrated.cursorBlinking` owns
+ * whether it blinks.
+ *
+ * They used to be one constant carrying both, which meant every focus, blur and
+ * click wrote a hardcoded blink over the setting — and the settings effect does
+ * not re-run on focus, so the setting never won again.
+ */
+const FOCUSED_TERMINAL_CURSOR_STYLE: TerminalCursorStyle = 'block'
+const UNFOCUSED_TERMINAL_CURSOR_STYLE: TerminalCursorStyle = 'outline'
 
-const UNFOCUSED_TERMINAL_CURSOR: TerminalCursorOptions = {
-  cursorBlink: false,
-  cursorStyle: 'outline',
+function terminalCursorOptions(focused: boolean, cursorBlink: boolean): TerminalCursorOptions {
+  return {
+    // Scoped to a focused terminal, per the setting's own description: an
+    // unfocused cursor is a static outline whatever the preference says.
+    cursorBlink: focused && cursorBlink,
+    cursorStyle: focused ? FOCUSED_TERMINAL_CURSOR_STYLE : UNFOCUSED_TERMINAL_CURSOR_STYLE,
+  }
 }
 
 let ghosttyInitPromise: Promise<void> | null = null
@@ -66,6 +77,12 @@ export function TerminalPanel({
   const sendInputRef = useRef<TerminalInputSender | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const { resolvedTheme } = useTheme()
+  // Read as primitives, not an object: an object literal is a new value every
+  // render, which would make the effect below run on every render and, worse,
+  // tempt someone into making it a dependency of the mount effect.
+  const cursorBlink = useSettingValue('terminal.integrated.cursorBlinking')
+  const fontSize = useSettingValue('terminal.integrated.fontSize')
+  const scrollback = useSettingValue('terminal.integrated.scrollback')
   const contextMenu = useContextMenu()
   const [menuTarget, setMenuTarget] = useState<TerminalMenuTarget | null>(null)
   const [socketConnected, setSocketConnected] = useState(false)
@@ -95,6 +112,10 @@ export function TerminalPanel({
       fitAddonRef.current = fitAddon
       terminalRef.current = terminal
       sendInputRef.current = sendInput
+      // At handover rather than at construction: ghostty resolves long after the
+      // mount effect started, and this is an effect event, so it sees the
+      // current settings rather than the ones the mount began with.
+      applyTerminalAppearance(terminal, { cursorBlink, fontSize, scrollback })
       registerTerminalLinks(terminal)
       activateTerminalIfActive()
     },
@@ -106,16 +127,16 @@ export function TerminalPanel({
   })
   const handleTerminalFocus = () => {
     setFocusArea('terminal')
-    applyTerminalCursorOptions(terminalRef.current, FOCUSED_TERMINAL_CURSOR)
+    applyTerminalCursorOptions(terminalRef.current, terminalCursorOptions(true, cursorBlink))
   }
   const handleTerminalBlur = (event: FocusEvent<HTMLElement>) => {
     if (!isFocusOutsideElement(event.currentTarget, event.relatedTarget)) return
 
-    applyTerminalCursorOptions(terminalRef.current, UNFOCUSED_TERMINAL_CURSOR)
+    applyTerminalCursorOptions(terminalRef.current, terminalCursorOptions(false, cursorBlink))
   }
   const handleTerminalPointerDown = () => {
     setFocusArea('terminal')
-    applyTerminalCursorOptions(terminalRef.current, FOCUSED_TERMINAL_CURSOR)
+    applyTerminalCursorOptions(terminalRef.current, terminalCursorOptions(true, cursorBlink))
   }
   // ghostty registers its own `contextmenu` listener on the canvas and never
   // calls preventDefault — it parks a hidden textarea under the cursor so the
@@ -145,6 +166,10 @@ export function TerminalPanel({
   // no runtime theme API, so a live theme switch is applied by rebuilding the
   // terminal: the new instance reads the active CSS palette and the server
   // replays its buffer on reconnect (same as a page refresh).
+  useEffect(() => {
+    applyTerminalAppearance(terminalRef.current, { cursorBlink, fontSize, scrollback })
+  }, [cursorBlink, fontSize, scrollback])
+
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
@@ -188,9 +213,9 @@ export function TerminalPanel({
   useEffect(() => {
     applyTerminalCursorOptions(
       terminalRef.current,
-      terminalHasFocusArea ? FOCUSED_TERMINAL_CURSOR : UNFOCUSED_TERMINAL_CURSOR,
+      terminalCursorOptions(terminalHasFocusArea, cursorBlink),
     )
-  }, [terminalHasFocusArea])
+  }, [cursorBlink, terminalHasFocusArea])
 
   return (
     <section
@@ -364,14 +389,40 @@ function handleTerminalServerMessage({
 function createTerminal(root: HTMLElement) {
   return new Terminal({
     allowTransparency: true,
-    cursorBlink: UNFOCUSED_TERMINAL_CURSOR.cursorBlink,
-    cursorStyle: patchedTerminalCursorStyle(UNFOCUSED_TERMINAL_CURSOR.cursorStyle),
+    // Constructed unfocused; the real values arrive at handover, before paint.
+    cursorBlink: false,
+    cursorStyle: patchedTerminalCursorStyle(UNFOCUSED_TERMINAL_CURSOR_STYLE),
     fontFamily: DEFAULT_MONO_FONT_STACK,
-    fontSize: 12,
-    scrollback: 10_000,
+    fontSize: DEFAULT_TERMINAL_FONT_SIZE,
+    scrollback: DEFAULT_TERMINAL_SCROLLBACK,
     smoothScrollDuration: 80,
     theme: readTerminalTheme(root),
   })
+}
+
+/** Construction defaults; the real values arrive at handover, before first paint. */
+const DEFAULT_TERMINAL_FONT_SIZE = 12
+const DEFAULT_TERMINAL_SCROLLBACK = 10_000
+
+export type TerminalAppearance = {
+  readonly cursorBlink: boolean
+  readonly fontSize: number
+  readonly scrollback: number
+}
+
+/**
+ * Pushes appearance settings into a live terminal.
+ *
+ * Mutating `terminal.options.*` rather than re-creating the Terminal, because
+ * re-creating it clears the scrollback — the user's output is the one thing a
+ * font-size change must not cost them.
+ */
+export function applyTerminalAppearance(terminal: Terminal | null, appearance: TerminalAppearance) {
+  if (!terminal) return
+
+  terminal.options.fontSize = appearance.fontSize
+  terminal.options.scrollback = appearance.scrollback
+  terminal.options.cursorBlink = appearance.cursorBlink
 }
 
 function applyTerminalCursorOptions(terminal: Terminal | null, options: TerminalCursorOptions) {

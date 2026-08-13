@@ -7,6 +7,7 @@ import { closeApp, createApp } from '../../app'
 import { createWorkspacePaths } from '../../fs/path'
 import { GitService } from '../service'
 import type { GitCommitProgressEvent } from '@workspace/contracts'
+import { testSettingsOptions } from '../../settings/testing'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
 const apps: Array<ReturnType<typeof createApp>> = []
@@ -20,6 +21,7 @@ afterEach(async () => {
 function testApp(root: string) {
   const app = createApp({
     auth: { allowedOrigins: [TRUSTED_ORIGIN] },
+    settings: testSettingsOptions(root),
     watch: false,
     workspaceRoot: root,
   })

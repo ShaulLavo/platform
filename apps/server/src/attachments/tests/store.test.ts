@@ -38,10 +38,8 @@ afterEach(async () => {
 })
 
 describe('defaultAttachmentsDir', () => {
-  it('sits beside the sqlite metadata database', () => {
-    expect(defaultAttachmentsDir()).toBe(
-      path.join(homedir(), '.platform-file-picker', 'attachments'),
-    )
+  it('sits under the one platform home directory', () => {
+    expect(defaultAttachmentsDir()).toBe(path.join(homedir(), '.platform', 'attachments'))
   })
 })
 

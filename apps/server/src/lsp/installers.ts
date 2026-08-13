@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto'
 import { accessSync, constants } from 'node:fs'
 import { access, chmod, mkdir, readdir, rm, writeFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import path from 'node:path'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 
@@ -12,6 +11,7 @@ import {
   type PinnedLspRuntimeManifestEntry,
 } from './installer-manifest'
 import type { LspServerHandle } from './registry'
+import { platformHomePath } from '../home'
 
 type CommandOptions = {
   readonly cwd: string
@@ -36,7 +36,7 @@ type HashiCorpRelease = {
   readonly version?: string
 }
 
-const lspRoot = path.join(homedir(), '.platform', 'lsp')
+const lspRoot = platformHomePath('lsp')
 const nodePackageRoot = path.join(lspRoot, 'node')
 const toolRoot = path.join(lspRoot, 'bin')
 const nodePackageBin = path.join(nodePackageRoot, 'node_modules', '.bin')

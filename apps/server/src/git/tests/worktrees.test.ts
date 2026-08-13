@@ -7,6 +7,7 @@ import { createWorkspacePaths } from '../../fs/path'
 import { GitService } from '../service'
 import { gitWorktreeErrors } from '../utils/worktree-errors'
 import { GitWorktreeService } from '../worktrees'
+import { testSettingsOptions } from '../../settings/testing'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
 const SESSION_ROOT = '.git/platform-worktrees'
@@ -281,6 +282,7 @@ function worktreeService(root: string) {
 function testApp(root: string) {
   const app = createApp({
     auth: { allowedOrigins: [TRUSTED_ORIGIN] },
+    settings: testSettingsOptions(root),
     watch: false,
     workspaceRoot: root,
   })

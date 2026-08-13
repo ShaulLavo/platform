@@ -51,6 +51,8 @@ import {
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
 import { editorPerformanceFeatureDisabled } from '@/lib/editor-performance-trace'
+import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
+import type { DecodeMode } from '@singapor/decode'
 
 const FOLD_CHEVRON_ICON_MARKUP = renderToStaticMarkup(
   createElement(CaretDownIcon, {
@@ -147,14 +149,15 @@ function loadNonCriticalEditorPlugins(): Promise<readonly EditorPlugin[]> {
 
 function nonCriticalEditorPluginLoaders(): readonly Promise<EditorPlugin | null>[] {
   const loaders: Promise<EditorPlugin | null>[] = []
-  if (!editorPerformanceFeatureDisabled('scope-lines')) {
+  const settings = readSettingsMirror()
+  if (settings['editor.guides.indentation'] && !editorPerformanceFeatureDisabled('scope-lines')) {
     loaders.push(
       loadPlugin('@singapor/scope-lines', () =>
         import('@singapor/scope-lines').then((module) => module.createScopeLinesPlugin()),
       ),
     )
   }
-  if (!editorPerformanceFeatureDisabled('minimap')) {
+  if (settings['editor.minimap.enabled'] && !editorPerformanceFeatureDisabled('minimap')) {
     loaders.push(
       loadPlugin('@singapor/minimap', () =>
         import('@singapor/minimap').then((module) => module.createMinimapPlugin()),
@@ -162,10 +165,12 @@ function nonCriticalEditorPluginLoaders(): readonly Promise<EditorPlugin | null>
     )
   }
 
-  // File-open "writes itself" animation. Off unless the URL asks for it, e.g.
-  // `?decode=diffusion` (denoise into the file) | 'autoregressive' (typewriter) |
-  // 'parallel' | 'token' (one LLM-style token at a time).
-  const decodeMode = requestedDecodeMode(typeof window === 'undefined' ? '' : location.search)
+  // File-open "writes itself" animation. The setting is the source of truth; the
+  // `?decode=` query param survives as a debug override so a mode can be tried
+  // without changing the user's document.
+  const decodeMode =
+    requestedDecodeMode(typeof window === 'undefined' ? '' : location.search) ??
+    decodeModeFromSetting(settings['editor.decode.mode'])
   if (decodeMode) {
     loaders.push(
       loadPlugin('@singapor/decode', () =>
@@ -224,6 +229,7 @@ function disposeAll(disposables: readonly EditorDisposable[]) {
 }
 
 function createEditorSyntaxHighlightingPlugins(): readonly EditorPlugin[] {
+  if (!readSettingsMirror()['editor.syntaxHighlighting.enabled']) return []
   if (editorPerformanceFeatureDisabled('syntax')) return []
 
   return [
@@ -480,4 +486,9 @@ function editorLogViewportHasScrollPosition(
     typeof (viewport as Record<string, unknown>).scrollLeft === 'number' &&
     typeof (viewport as Record<string, unknown>).scrollTop === 'number'
   )
+}
+
+/** `off` is the registry's way of saying no plugin; the plugin has no such mode. */
+function decodeModeFromSetting(mode: string): DecodeMode | null {
+  return mode === 'off' ? null : (mode as DecodeMode)
 }

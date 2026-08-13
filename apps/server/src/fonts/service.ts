@@ -2,11 +2,11 @@ import * as cheerio from 'cheerio'
 import { createHash } from 'node:crypto'
 import { readFile, mkdir, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { homedir } from 'node:os'
 import path from 'node:path'
 
 import { FsError } from '../fs/errors'
 import { defaultPreviewText, isValidFontName } from './contracts'
+import { platformHomePath } from '../home'
 
 export type FontLinks = Record<string, string>
 
@@ -38,7 +38,7 @@ type NerdFontServiceOptions = {
 }
 
 const nerdFontsDownloadUrl = 'https://www.nerdfonts.com/font-downloads'
-const defaultCacheRoot = path.join(homedir(), '.platform', 'fonts')
+const defaultCacheRoot = platformHomePath('fonts')
 const require = createRequire(import.meta.url)
 const JSZip = require('jszip') as JSZipModule
 const subsetFont = require('subset-font') as FontSubsetter

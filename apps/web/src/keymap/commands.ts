@@ -47,6 +47,9 @@ import { editorCommandIdFromPlatform } from './editor-keymap'
 import { SESSION_JUMP_POSITIONS, sessionJumpCommandId } from './types'
 import type { PlatformCommandId, WorkspaceCommandId } from './types'
 import type { PlatformCommandDispatch } from './use-app-keymap'
+import { DEFAULT_SETTING_VALUES } from '@workspace/contracts'
+import { useSettings } from '@/features/settings/hooks/use-settings'
+import { useSettingsActions } from '@/features/settings/hooks/use-settings-actions'
 
 type WorkspaceCommandContext = {
   readonly activeFilePath: string | null
@@ -67,13 +70,13 @@ type WorkspaceCommandContext = {
   readonly setFocusArea: (area: FocusArea) => void
   readonly setTheme: (theme: Theme) => void
   readonly setUiMode: (mode: WorkspaceUiMode) => void
-  readonly setWallpaperHidden: (hidden: boolean) => void
+  readonly setWallpaperEnabled: (enabled: boolean) => void
   readonly setWorkbenchPanels: (panels: WorkbenchPanels) => void
   readonly showCommandPalette: (initialSearch?: string) => void
   readonly showSettings: () => void
   readonly selectPreviousEditor: () => boolean
   readonly uiMode: WorkspaceUiMode
-  readonly wallpaperHidden: boolean
+  readonly wallpaperEnabled: boolean
   readonly workbenchPanels: WorkbenchPanels
 }
 
@@ -92,6 +95,16 @@ export function usePlatformCommandDispatch({
   const queryClient = useQueryClient()
   const workspaceStore = useEditorWorkspaceStoreApi()
   const { setTheme } = useTheme()
+  const settings = useSettings()
+  const { setSetting } = useSettingsActions()
+  const diffViewMode =
+    settings.data?.values['editor.diff.viewMode'] ?? DEFAULT_SETTING_VALUES['editor.diff.viewMode']
+  const setDiffViewMode = (mode: EditorDiffViewMode) => setSetting('editor.diff.viewMode', mode)
+  const wallpaperEnabled =
+    settings.data?.values['workbench.wallpaper.enabled'] ??
+    DEFAULT_SETTING_VALUES['workbench.wallpaper.enabled']
+  const setWallpaperEnabled = (enabled: boolean) =>
+    setSetting('workbench.wallpaper.enabled', enabled)
   const requestEditorFocus = useFocus((state) => state.requestEditorFocus)
   const dispatchEditorCommand = useFocus((state) => state.dispatchEditorCommand)
   const setFocusArea = useFocus((state) => state.setFocusArea)
@@ -119,7 +132,7 @@ export function usePlatformCommandDispatch({
         activeFilePath: activeEditorPathForWorkbenchPanels(workspace.workbenchPanels),
         activeTabId: activeEditorTabForWorkbenchPanels(workspace.workbenchPanels)?.id ?? null,
         chatModePanels: workspace.chatModePanels,
-        diffViewMode: workspace.diffViewMode,
+        diffViewMode,
         documentStore,
         openPicker: workspace.openPicker,
         openFileAtRef,
@@ -130,17 +143,17 @@ export function usePlatformCommandDispatch({
         requestEditorFocus,
         rootPath: workspace.rootFolder?.path ?? null,
         setChatModePanels: workspace.setChatModePanels,
-        setDiffViewMode: workspace.setDiffViewMode,
+        setDiffViewMode,
         setFocusArea,
         setTheme,
         setUiMode: workspace.setUiMode,
-        setWallpaperHidden: workspace.setWallpaperHidden,
+        setWallpaperEnabled,
         setWorkbenchPanels: workspace.setWorkbenchPanels,
         showCommandPalette,
         showSettings,
         selectPreviousEditor,
         uiMode: workspace.uiMode,
-        wallpaperHidden: workspace.wallpaperHidden,
+        wallpaperEnabled,
         workbenchPanels: workspace.workbenchPanels,
       })
     },
@@ -377,6 +390,8 @@ const workspaceCommandHandlers: Partial<Record<WorkspaceCommandId, WorkspaceComm
     return true
   },
   'workspace.toggleDiffViewMode': ({ diffViewMode, setDiffViewMode }) => {
+    // Through the settings write path: the command and the settings page are two
+    // front doors onto one value.
     setDiffViewMode(nextEditorDiffViewMode(diffViewMode))
     return true
   },
@@ -394,8 +409,11 @@ const workspaceCommandHandlers: Partial<Record<WorkspaceCommandId, WorkspaceComm
     setUiMode(toggledWorkspaceUiMode(uiMode))
     return true
   },
-  'workspace.toggleWallpaper': ({ setWallpaperHidden, wallpaperHidden }) => {
-    setWallpaperHidden(!wallpaperHidden)
+  'workspace.toggleWallpaper': ({ setWallpaperEnabled, wallpaperEnabled }) => {
+    // Through the settings write path, not a store setter. The command and the
+    // settings page are two front doors onto one value; if they wrote to
+    // different places they would disagree the first time either was used.
+    setWallpaperEnabled(!wallpaperEnabled)
     return true
   },
   'workspace.showChatMode': ({ setUiMode }) => {

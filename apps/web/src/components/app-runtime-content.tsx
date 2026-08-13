@@ -9,12 +9,13 @@ import { MenuCommandProvider } from '@/features/menus/providers/command-provider
 import { useRestoreRecentWorkspaceRoot } from '@/hooks/use-restore-recent-workspace-root'
 import { useUnsavedWorkGuard } from '@/hooks/use-unsaved-work-guard'
 import { useWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
-import { DEFAULT_SETTINGS } from '@workspace/contracts'
+import { DEFAULT_SETTING_VALUES } from '@workspace/contracts'
 
 import { useSettings } from '@/features/settings/hooks/use-settings'
 import { resolvedPlatformKeyBindings } from '@/keymap/active-bindings'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
 import { editorKeymapLayersFromPlatform } from '@/keymap/editor-keymap'
+import { useAutoSave } from '@/features/editor/hooks/use-auto-save'
 
 export function AppRuntimeContent() {
   const setFocusArea = useFocus((state) => state.setFocusArea)
@@ -25,7 +26,9 @@ export function AppRuntimeContent() {
   // settings panel wrote the override, the app keymap honoured it, and the
   // editor kept its own keymap from the defaults — so the row hid itself rather
   // than appear to work and do nothing.
-  const keybindingOverrides = useSettings().data?.keybindings ?? DEFAULT_SETTINGS.keybindings
+  const keybindingOverrides =
+    useSettings().data?.values['keybindings.overrides'] ??
+    DEFAULT_SETTING_VALUES['keybindings.overrides']
   const editorKeymapLayers = useMemo(
     () =>
       editorKeymapLayersFromPlatform(
@@ -36,6 +39,9 @@ export function AppRuntimeContent() {
 
   // Subscribe before recovery so a recovered root recreates its erased cache entry.
   useWorkspaceCachePersistence()
+  // Mounted beside the cache persistence: both need the document store, and both
+  // are app-lifetime concerns rather than anything a pane owns.
+  useAutoSave()
   useRestoreRecentWorkspaceRoot()
   useUnsavedWorkGuard()
 

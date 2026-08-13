@@ -1,5 +1,4 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { homedir } from 'node:os'
 import path from 'node:path'
 import {
   providerSnapshotSchema,
@@ -9,6 +8,7 @@ import {
 } from '@workspace/contracts'
 import * as v from 'valibot'
 import { recordChatPipelineWarning } from '../orchestration/orchestration-logging'
+import { platformHomePath } from '../home'
 
 const DEFAULT_PROVIDER_STATUS_TTL_MS = 60_000
 
@@ -32,7 +32,7 @@ export type ProviderStatusCacheOptions = {
  * local platform state sits under one directory.
  */
 export function defaultProviderStatusCacheDir() {
-  return path.join(homedir(), '.platform-file-picker', 'provider-status')
+  return platformHomePath('provider-status')
 }
 
 /**

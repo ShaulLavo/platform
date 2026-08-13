@@ -7,7 +7,6 @@ import {
   createEditorWorkspaceStore,
   EditorWorkspaceStateContext,
 } from '@/features/editor/state/editor-workspace-state'
-import { DEFAULT_DIFF_VIEW_MODE } from '@/features/editor/utils/diff-view-mode'
 import { useOpenWorkspaceRoot } from '@/hooks/use-open-workspace-root'
 import { ensureFolderPath, fetchRecentEntries } from '@/lib/file-server'
 import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
@@ -54,11 +53,9 @@ function renderOpener(rootPath: string) {
 function emptyWorkspaceStore() {
   return createEditorWorkspaceStore({
     chatModePanels: createDefaultChatModePanels(),
-    diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     rootFolder: null,
     searchBuffers: {},
     uiMode: 'workbench',
-    wallpaperHidden: false,
     workbenchLayout: createDefaultWorkbenchLayout(),
     workspaceOrder: [],
     workspaces: {},

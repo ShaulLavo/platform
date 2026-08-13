@@ -6,7 +6,6 @@ import {
   createEditorWorkspaceStore,
   EditorWorkspaceStateContext,
 } from '@/features/editor/state/editor-workspace-state'
-import { DEFAULT_DIFF_VIEW_MODE } from '@/features/editor/utils/diff-view-mode'
 import { useRestoreRecentWorkspaceRoot } from '@/hooks/use-restore-recent-workspace-root'
 import { useWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
 import { ensureFolderPath, recordRecentEntry } from '@/lib/file-server'
@@ -46,11 +45,9 @@ function RecentWorkspaceRecovery() {
 function emptyWorkspaceStore() {
   return createEditorWorkspaceStore({
     chatModePanels: createDefaultChatModePanels(),
-    diffViewMode: DEFAULT_DIFF_VIEW_MODE,
     rootFolder: null,
     searchBuffers: {},
     uiMode: 'workbench',
-    wallpaperHidden: false,
     workbenchLayout: createDefaultWorkbenchLayout(),
     workspaceOrder: [],
     workspaces: {},

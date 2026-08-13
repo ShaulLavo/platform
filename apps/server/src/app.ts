@@ -34,9 +34,10 @@ import { providerRoutes } from './provider/routes'
 import { settingsRoutes } from './settings/routes'
 import { DEFAULT_PROVIDER_INSTANCES } from './provider/drivers/built-in'
 import { mergeProviderInstanceConfigs } from './provider/utils/instance-config-merge'
-import { SettingsService } from './settings/service'
+import { SettingsStore, type SettingsStoreOptions } from './settings/store'
 import { TerminalService, type TerminalPtyFactory } from './terminal/service'
 import { wallpaperRoutes } from './wallpaper/routes'
+import { isActiveBinding, ProviderSessionDirectory } from './provider/provider-session-directory'
 
 export type AppOptions = FileSystemServiceOptions & {
   auth?: AuthOptions
@@ -50,6 +51,14 @@ export type AppOptions = FileSystemServiceOptions & {
     providerAdapterRegistry?: ProviderAdapterRegistry
     providerRuntime?: boolean
   }
+  /**
+   * Required in practice. `settingsPaths` throws `settings.FILE_PATH_UNSET`
+   * without a user file path rather than defaulting to the home directory —
+   * there are fifteen `createApp` call sites, and a forgotten one silently
+   * reading and overwriting the developer's real settings is not recoverable,
+   * because this repo deliberately keeps no healing code.
+   */
+  settings?: Omit<SettingsStoreOptions, 'workspaceRoot'>
 }
 
 const appCleanups = new WeakMap<object, () => Promise<void>>()
@@ -66,18 +75,50 @@ export function createApp(options: AppOptions) {
   // file backs the whole platform, so settings ride on whichever handle this
   // app was given — in tests that is the in-memory database, which is what
   // keeps a test run from writing into the developer's real settings.
-  const settings = new SettingsService(options.orchestration?.database)
+  const settings = new SettingsStore({ ...options.settings, workspaceRoot: fs.paths.workspaceRoot })
   const providerAdapterRegistry =
     options.orchestration?.providerAdapterRegistry ??
-    createDefaultProviderAdapterRegistry(settings.read().providerInstances)
+    createDefaultProviderAdapterRegistry(
+      mergeProviderInstanceConfigs(
+        DEFAULT_PROVIDER_INSTANCES,
+        // Secrets put back before the first spawn, not after the first settings
+        // write: `snapshot()` masks the provider environment, and handing the
+        // mask to the registry launches every provider with `••••••••` as its
+        // credential until something happens to touch settings.
+        settings.providerInstancesForSpawnSync(),
+      ),
+      {
+        // Disabling a provider must not kill a turn that is mid-stream. The
+        // registry defers disposal while the directory still lists a session on
+        // that instance, and removes it on the next reconcile once the turn ends.
+        //
+        // Filtered on status: rows outlive their turns — nothing deletes them —
+        // so an unfiltered scan reports every instance ever used as live, and
+        // the deferral would never resolve.
+        hasLiveSessions: (providerInstanceId) =>
+          new ProviderSessionDirectory(database)
+            .listBindings()
+            .some(
+              (binding) =>
+                binding.providerInstanceId === providerInstanceId && isActiveBinding(binding),
+            ),
+      },
+    )
   // A saved provider list is inert unless something re-runs the registry when
   // it changes. Without this the settings UI writes rows the server never reads
   // until the next restart.
-  settings.onChange((next) =>
-    providerAdapterRegistry.reconcile(
-      mergeProviderInstanceConfigs(DEFAULT_PROVIDER_INSTANCES, next.providerInstances),
-    ),
-  )
+  //
+  // Secrets are resolved here rather than in the snapshot: the values a provider
+  // spawns with never appear in anything a route can return.
+  settings.onChange(() => {
+    void settings
+      .providerInstancesForSpawn()
+      .then((instances) =>
+        providerAdapterRegistry.reconcile(
+          mergeProviderInstanceConfigs(DEFAULT_PROVIDER_INSTANCES, instances),
+        ),
+      )
+  })
   const orchestration = new OrchestrationEngine(database, {
     providerRuntime: options.orchestration?.providerRuntime
       ? { adapterRegistry: providerAdapterRegistry, checkpointGit: git }
@@ -86,7 +127,7 @@ export function createApp(options: AppOptions) {
   const checkpointDiff = new OrchestrationCheckpointDiffQuery(database, git)
   const threadSearch = new OrchestrationThreadSearchQuery(database)
   const auth = createAuthConfig(options.auth)
-  const cleanup = appCleanup(terminal, fs)
+  const cleanup = appCleanup(terminal, fs, settings)
 
   const app = new Elysia({ name: 'platform' })
   applyObservability(app)
@@ -142,7 +183,7 @@ export async function closeApp(app: App) {
   await appCleanups.get(app)?.()
 }
 
-function appCleanup(terminal: TerminalService, fs: FileSystemService) {
+function appCleanup(terminal: TerminalService, fs: FileSystemService, settings: SettingsStore) {
   let closed = false
 
   return async () => {
@@ -150,6 +191,9 @@ function appCleanup(terminal: TerminalService, fs: FileSystemService) {
 
     closed = true
     terminal.dispose()
+    // Releases the settings file watchers; without this a test run leaks a
+    // native handle per app it builds.
+    settings.close()
     await fs.close()
     await flushObservability()
   }

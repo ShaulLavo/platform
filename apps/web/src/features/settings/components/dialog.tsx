@@ -7,12 +7,16 @@ import {
   DialogTitle,
 } from '@workspace/ui/components/dialog'
 
-import { SettingsPanel } from '@/features/settings/panel'
+import { SettingsPage } from '@/features/settings/components/page'
 
 /**
- * Settings are machine-wide, not document-scoped, so they get a dialog rather
- * than an editor tab or a sidebar surface: the same `Mod+,` has to land in the
- * workbench and in chat mode, and neither layout owns the other's tab strip.
+ * Settings with no folder open.
+ *
+ * With a folder, settings are an editor tab — both layouts render the same
+ * `CodePanel`, so one surface covers workbench and chat mode. Without one there
+ * is no tab strip to put a tab in, and that is exactly when first-run provider
+ * setup happens, so this shell exists to be reachable and, unlike a bare
+ * full-screen surface, to have a way out.
  */
 export function SettingsDialog({
   open,
@@ -37,7 +41,7 @@ export function SettingsDialog({
         </DialogHeader>
         {/* Mounted only while open so the settings query is not held warm — and
             so closing the dialog discards any half-typed provider config. */}
-        {open ? <SettingsPanel /> : null}
+        {open ? <SettingsPage /> : null}
       </DialogContent>
     </Dialog>
   )

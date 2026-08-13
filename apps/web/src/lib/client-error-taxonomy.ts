@@ -73,6 +73,13 @@ export function toClientError(input: unknown): ClientError {
     }
   }
 
+  // Structured errors from any non-fs catalog — settings, orchestration — carry
+  // their own message, `why` and `fix`. Falling through to `unknown` here is
+  // what made every rejected settings save silent: `notifySaveError` returns
+  // before its toast on `unknown`, so the user saw nothing at all.
+  const structured = structuredErrorMessage(input)
+  if (structured) return { category: 'io_error', message: structured, cause: input }
+
   return {
     category: 'unknown',
     message: messagesByCategory.unknown,
@@ -162,4 +169,26 @@ function fsErrorCodeFromErrorContainer(value: unknown): FsErrorCode | null {
 
 function isFsErrorCode(value: unknown): value is FsErrorCode {
   return typeof value === 'string' && value in categoryByFsErrorCode
+}
+
+/**
+ * Pulls the server's own message out of a structured error envelope.
+ *
+ * Deliberately message-first rather than code-mapped: a catalog entry already
+ * phrases the failure for a person, and re-deriving a generic sentence from its
+ * code would throw away the `fix` the server took care to write.
+ */
+function structuredErrorMessage(input: unknown): string | null {
+  if (!input || typeof input !== 'object') return null
+
+  const container = 'value' in input ? (input as { value: unknown }).value : input
+  if (!container || typeof container !== 'object') return null
+
+  const error = 'error' in container ? (container as { error: unknown }).error : container
+  if (!error || typeof error !== 'object') return null
+  if (!('code' in error) || typeof (error as { code: unknown }).code !== 'string') return null
+
+  const message = 'message' in error ? (error as { message: unknown }).message : null
+
+  return typeof message === 'string' && message.length > 0 ? message : null
 }

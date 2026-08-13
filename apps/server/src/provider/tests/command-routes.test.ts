@@ -9,6 +9,7 @@ import { ClaudeProviderAdapter, type ClaudeCreateQuery } from '../adapters/claud
 import { MockProviderAdapter } from '../adapters/mock'
 import { ClaudeAuthRunner, type ClaudeAuthProcess } from '../adapters/utils/claude-auth'
 import { ProviderAdapterRegistry } from '../provider-adapter-registry'
+import { testSettingsOptions } from '../../settings/testing'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
 
@@ -73,6 +74,7 @@ async function testHarness(createQuery?: ClaudeCreateQuery) {
     orchestration: {
       providerAdapterRegistry: new ProviderAdapterRegistry([claude, new MockProviderAdapter()]),
     },
+    settings: testSettingsOptions(root),
     watch: false,
     workspaceRoot: root,
   })

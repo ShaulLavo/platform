@@ -43,7 +43,6 @@ function configFromSnapshot(snapshot: ProviderSnapshot): ProviderInstanceConfig 
     driverKind: snapshot.driverKind,
     enabled: snapshot.enabled,
     environment: [],
-    launchArgs: [],
     providerInstanceId: snapshot.providerInstanceId,
   }
 }

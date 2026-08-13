@@ -7,6 +7,7 @@ import {
   createMetadataDatabase,
   MockProviderAdapter,
   ProviderAdapterRegistry,
+  testSettingsOptions,
   type MetadataDatabaseHandle,
 } from 'server/testing'
 
@@ -39,6 +40,7 @@ export async function makeTestServer(): Promise<TestServer> {
       // read the developer's own machine, and answer differently per checkout.
       providerAdapterRegistry: new ProviderAdapterRegistry([new MockProviderAdapter()]),
     },
+    settings: testSettingsOptions(root),
     watch: false,
     workspaceRoot: root,
   })

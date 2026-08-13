@@ -1,0 +1,146 @@
+import { describe, expect, it } from 'vitest'
+import * as v from 'valibot'
+import {
+  DEFAULT_SETTING_VALUES,
+  descriptorFor,
+  isSettingId,
+  SETTING_IDS,
+  SETTINGS_REGISTRY,
+  settingsValuesSchema,
+  type SettingsValues,
+} from '../settings/keys'
+import { defineSetting, registryProblems } from '../settings/registry'
+import { modelRefListSchema, providerInstanceConfigsSchema } from '../settings'
+
+/**
+ * Type-derivation gate.
+ *
+ * These are declarations, not assertions: `tsgo --noEmit` is what enforces them.
+ * `expectTypeOf` would be a runtime no-op here, because no vitest project in
+ * this repo enables `test.typecheck` — a broken derivation would report green.
+ */
+// Assigning parse output to the derived type is the assertion: it only compiles
+// if `SettingsValues[K]` really is `v.InferOutput<registry[K]['schema']>`,
+// branded ids and all.
+const _instancesAreProviderConfigs: SettingsValues['providers.instances'] = v.parse(
+  providerInstanceConfigsSchema,
+  [{ providerInstanceId: 'codex-personal', driverKind: 'codex' }],
+)
+const _hiddenIsModelRefList: SettingsValues['models.hidden'] = v.parse(modelRefListSchema, [
+  { providerInstanceId: 'codex-personal', model: 'gpt-5' },
+])
+const _overridesAreNullableStrings: SettingsValues['keybindings.overrides'] = {
+  'workspace.saveFile': 'Mod+S',
+  'workspace.saveAllFiles': null,
+}
+
+// @ts-expect-error a keybinding override is a string or null, never a number
+const _overrideRejectsNumber: SettingsValues['keybindings.overrides'] = { 'a.b': 3 }
+// @ts-expect-error the instance list is an array, not a bare object
+const _instancesRejectObject: SettingsValues['providers.instances'] = { providerInstanceId: 'x' }
+// @ts-expect-error keys not in the registry have no type
+const _unknownKeyHasNoType: SettingsValues['editor.notRegistered'] = 13
+
+void _instancesAreProviderConfigs
+void _overridesAreNullableStrings
+void _hiddenIsModelRefList
+void _overrideRejectsNumber
+void _instancesRejectObject
+void _unknownKeyHasNoType
+
+describe('settings registry', () => {
+  it('registers no malformed id and no default that fails its own schema', () => {
+    expect(registryProblems(SETTINGS_REGISTRY)).toEqual([])
+  })
+
+  it('catches a default that satisfies the type but violates the schema', () => {
+    // `v.InferOutput` is `string` here, so the compiler is satisfied; only the
+    // refinement can reject it. This is the class of mistake the runtime pass
+    // exists for.
+    const problems = registryProblems({
+      'editor.fontFamily': defineSetting({
+        schema: v.pipe(v.string(), v.maxLength(4)),
+        default: 'far too long',
+        scope: 'window',
+        widget: 'string',
+        category: 'Editor',
+        description: 'x',
+      }),
+    })
+
+    expect(problems).toHaveLength(1)
+    expect(problems[0]).toMatchObject({ id: 'editor.fontFamily' })
+    expect(problems[0].reason).toContain('default does not parse')
+  })
+
+  it('rejects an id that is not dotted lowerCamel segments', () => {
+    const problems = registryProblems({
+      nodots: defineSetting({
+        schema: v.boolean(),
+        default: true,
+        scope: 'window',
+        widget: 'boolean',
+        category: 'X',
+        description: 'x',
+      }),
+      '[typescript]': defineSetting({
+        schema: v.boolean(),
+        default: true,
+        scope: 'window',
+        widget: 'boolean',
+        category: 'X',
+        description: 'x',
+      }),
+    })
+
+    expect(problems.map((problem) => problem.id)).toEqual(['nodots', '[typescript]'])
+  })
+
+  it("rejects merge: 'record' on a non-object default", () => {
+    const problems = registryProblems({
+      'a.b': defineSetting({
+        schema: v.array(v.string()),
+        default: [],
+        scope: 'window',
+        widget: 'list',
+        category: 'X',
+        description: 'x',
+        merge: 'record',
+      }),
+    })
+
+    expect(problems).toHaveLength(1)
+    expect(problems[0].reason).toContain('object default')
+  })
+
+  it('derives defaults from the descriptors rather than a second list', () => {
+    for (const id of SETTING_IDS) {
+      expect(DEFAULT_SETTING_VALUES[id]).toBe(descriptorFor(id).default)
+    }
+  })
+
+  it('parses an empty document into a complete set of defaults', () => {
+    expect(v.parse(settingsValuesSchema, {})).toEqual(DEFAULT_SETTING_VALUES)
+  })
+
+  it('narrows an arbitrary string to a setting id', () => {
+    expect(isSettingId('keybindings.overrides')).toBe(true)
+    expect(isSettingId('keybindings')).toBe(false)
+  })
+
+  /**
+   * The standing security rule, enforced rather than documented. Anything whose
+   * value reaches process spawn, exec, env, or the keymap must not be readable
+   * from a workspace file, because that file ships inside a cloned repository.
+   */
+  it('keeps every execution-reaching key out of the workspace layer', () => {
+    const executionReaching = [
+      'providers.instances',
+      'keybindings.overrides',
+    ] as const satisfies readonly (keyof typeof SETTINGS_REGISTRY)[]
+
+    for (const id of executionReaching) {
+      expect(['application', 'machine']).toContain(descriptorFor(id).scope)
+    }
+  })
+})

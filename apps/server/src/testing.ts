@@ -12,3 +12,5 @@ export { createMetadataDatabase } from './db/client'
 export { MockProviderAdapter } from './provider/adapters/mock'
 export { ProviderAdapterRegistry } from './provider/provider-adapter-registry'
 export type { MetadataDatabaseHandle, PlatformDatabase } from './db/client'
+
+export { testSettingsOptions } from './settings/testing'

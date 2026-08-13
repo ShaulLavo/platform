@@ -29,6 +29,18 @@ export type ProviderRuntimeBindingStatus =
   | 'stopped'
   | 'error'
 
+/**
+ * A binding that still has a turn behind it.
+ *
+ * Rows are never deleted — `markStatus` writes `stopped`, it does not remove —
+ * so "a row exists" means "this instance was used once", not "it is busy". Every
+ * liveness question has to go through this predicate or it answers `true`
+ * forever.
+ */
+export function isActiveBinding(binding: { status?: ProviderRuntimeBindingStatus }) {
+  return binding.status === 'starting' || binding.status === 'ready' || binding.status === 'running'
+}
+
 export type ProviderRuntimeBinding = {
   adapterKey?: string
   providerDriverKind: ProviderDriverKind

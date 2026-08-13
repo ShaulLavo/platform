@@ -22,11 +22,9 @@ import {
   type CachedSearchBufferState,
   type CachedWorkspaceSlice,
   writeChatModePanelsCache,
-  writeDiffViewModeCache,
   writeRootFolderCache,
   writeSearchBufferCache,
   writeUiModeCache,
-  writeWallpaperHiddenCache,
   writeWorkbenchLayoutCache,
   writeWorkspaceIndexCache,
   writeWorkspaceSliceCache,
@@ -36,11 +34,9 @@ const WORKSPACE_CACHE_WRITE_DEBOUNCE_MS = 350
 
 export type WorkspaceCacheWriters = {
   chatModePanels: typeof writeChatModePanelsCache
-  diffViewMode: typeof writeDiffViewModeCache
   rootFolder: typeof writeRootFolderCache
   searchBuffer: typeof writeSearchBufferCache
   uiMode: typeof writeUiModeCache
-  wallpaperHidden: typeof writeWallpaperHiddenCache
   workbenchLayout: typeof writeWorkbenchLayoutCache
   workspaceIndex: typeof writeWorkspaceIndexCache
   workspaceSlice: typeof writeWorkspaceSliceCache
@@ -56,11 +52,9 @@ type WorkspaceCachePersistenceOptions = {
 
 const WORKSPACE_CACHE_WRITERS = {
   chatModePanels: writeChatModePanelsCache,
-  diffViewMode: writeDiffViewModeCache,
   rootFolder: writeRootFolderCache,
   searchBuffer: writeSearchBufferCache,
   uiMode: writeUiModeCache,
-  wallpaperHidden: writeWallpaperHiddenCache,
   workbenchLayout: writeWorkbenchLayoutCache,
   workspaceIndex: writeWorkspaceIndexCache,
   workspaceSlice: writeWorkspaceSliceCache,
@@ -171,21 +165,9 @@ function workspaceCacheSubscriptions({
     }),
     subscribeCacheEntry({
       debounceMs,
-      select: (state) => state.diffViewMode,
-      store: workspaceStore,
-      write: cacheWriters.diffViewMode,
-    }),
-    subscribeCacheEntry({
-      debounceMs,
       select: (state) => state.uiMode,
       store: workspaceStore,
       write: cacheWriters.uiMode,
-    }),
-    subscribeCacheEntry({
-      debounceMs,
-      select: (state) => state.wallpaperHidden,
-      store: workspaceStore,
-      write: cacheWriters.wallpaperHidden,
     }),
     subscribeCacheEntry({
       debounceMs,

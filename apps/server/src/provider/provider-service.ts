@@ -17,6 +17,7 @@ import type {
 } from './provider-adapter-registry'
 import { createDefaultProviderAdapterRegistry } from './provider-adapter-registry'
 import {
+  isActiveBinding,
   ProviderSessionDirectory,
   type ProviderRuntimeBindingStatus,
   type ProviderRuntimeBindingWithMetadata,
@@ -542,10 +543,6 @@ function bindingForUpsert(binding: ProviderRuntimeBindingWithMetadata) {
     runtimeMode: binding.runtimeMode,
     threadId: binding.threadId,
   }
-}
-
-function isActiveBinding(binding: ProviderRuntimeBindingWithMetadata) {
-  return binding.status === 'starting' || binding.status === 'ready' || binding.status === 'running'
 }
 
 async function activeProviderBinding(

@@ -77,7 +77,11 @@ export default defineConfig({
             },
             enabled: true,
             headless: true,
-            provider: playwright(),
+            // `workbench.colorTheme` defaults to `system`, and these tests
+            // assert against the dark editor palette. Headless Chromium reports
+            // light unless told otherwise, so the browser itself is the thing to
+            // put in dark — then the default setting and a seeded `dark` agree.
+            provider: playwright({ contextOptions: { colorScheme: 'dark' } }),
             screenshotFailures: false,
             instances: [{ browser: 'chromium', viewport: { height: 700, width: 900 } }],
           },

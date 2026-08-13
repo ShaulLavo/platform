@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { closeApp, createApp } from '../../app'
 import { createWorkspacePaths } from '../../fs/path'
 import { GitService } from '../service'
+import { testSettingsOptions } from '../../settings/testing'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
 const apps: Array<ReturnType<typeof createApp>> = []
@@ -483,6 +484,7 @@ function testApp(root: string) {
     auth: {
       allowedOrigins: [TRUSTED_ORIGIN],
     },
+    settings: testSettingsOptions(root),
     watch: false,
     workspaceRoot: root,
   })

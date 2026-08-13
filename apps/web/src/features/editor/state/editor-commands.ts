@@ -47,6 +47,7 @@ import { log } from '@/lib/client-logging'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { LanguageServerDefinitionTarget } from '@singapor/lsp-plugin'
 import { useMemo } from 'react'
+import { settingsDocumentId } from '@/features/settings/settings-document'
 
 export type EditorCommands = {
   closeTab: (tabId: string) => void
@@ -62,6 +63,7 @@ export type EditorCommands = {
   openDefinition: (target: LanguageServerDefinitionTarget) => boolean
   openFileSurface: (path: string) => void
   openSearchEditor: (rootPath: string) => void
+  openSettingsEditor: () => void
   reopenClosedEditor: () => boolean
   renameLiveEditorDocument: (from: string, to: string) => { wasDirty: boolean }
   reorderTab: (paneId: string, tabId: string, targetIndex: number) => boolean
@@ -111,6 +113,10 @@ export function createEditorCommands({
     openFileSurface: (path) => openEditorPathSurface(path, workspaceStore, documentStore),
     openSearchEditor: (rootPath) =>
       openEditorPathSurface(searchBufferDocumentId(rootPath), workspaceStore, documentStore),
+    // Dedupes by path like every other editor surface, so the settings tab is a
+    // singleton without any bookkeeping of its own.
+    openSettingsEditor: () =>
+      openEditorPathSurface(settingsDocumentId(), workspaceStore, documentStore),
     reopenClosedEditor: () => reopenClosedEditor(workspaceStore, documentStore),
     renameLiveEditorDocument: (from, to) =>
       renameLiveEditorDocument(from, to, workspaceStore, documentStore, uiStore),

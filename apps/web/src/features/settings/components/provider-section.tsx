@@ -6,27 +6,29 @@ import { providerListQueryOptions } from '@/features/chat/lib/provider-query'
 import { providerSettingRows } from '../utils/provider-rows'
 import { EmptyRow } from './empty-row'
 import { ProviderRow } from './provider-row'
-import { Section } from './section'
 
+/**
+ * The provider list, as the control for `providers.instances`.
+ *
+ * No heading of its own: it renders inside a settings row that already carries
+ * the label, the id and the description, and the category above it is already
+ * called Providers. A third "Providers" would be noise.
+ *
+ * The running providers, not the saved ones — the built-ins are registry
+ * constants, so listing the settings document showed an empty screen while two
+ * providers were live behind it.
+ */
 export function ProviderSection({ saved }: { saved: readonly ProviderInstanceConfig[] }) {
-  // The running providers, not the saved ones: the built-ins are registry
-  // constants, so listing the settings document showed an empty screen while
-  // two providers were live behind it.
   const { data } = useQuery(providerListQueryOptions())
   const instances = providerSettingRows({ saved, snapshots: data?.providers ?? [] })
 
+  if (instances.length === 0) return <EmptyRow>No providers are available.</EmptyRow>
+
   return (
-    <Section
-      title='Providers'
-      description='Configured provider instances. Disabling one hides it everywhere without deleting its configuration.'
-    >
-      {instances.length === 0 ? (
-        <EmptyRow>No providers are available.</EmptyRow>
-      ) : (
-        instances.map((instance) => (
-          <ProviderRow key={instance.providerInstanceId} instance={instance} />
-        ))
-      )}
-    </Section>
+    <div className='border-border flex w-96 flex-col rounded-md border'>
+      {instances.map((instance) => (
+        <ProviderRow key={instance.providerInstanceId} instance={instance} />
+      ))}
+    </div>
   )
 }
