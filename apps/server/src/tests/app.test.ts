@@ -518,6 +518,12 @@ describe('fs rpc events', () => {
 
   it('reports external file updates from the native watcher', async () => {
     const root = await fixtureRoot()
+    // Seed before the watcher exists, the way the deletion test does. Creating
+    // and then updating a file through a live watcher puts both writes in one
+    // inotify batch, which coalesces them into the single `created` event — so
+    // the update this test is about would never arrive on its own.
+    await writeFile(path.join(root, 'external-update.txt'), 'before')
+
     const app = testApp(root)
     const stream = await app.handle(
       new Request('http://local/fs/events', {
@@ -527,12 +533,6 @@ describe('fs rpc events', () => {
     const events = createSseReader(stream)
 
     expect(await events.next()).toMatchObject({ type: 'ready' })
-
-    await writeFile(path.join(root, 'external-update.txt'), 'before')
-    await nextMatchingEvent(
-      events,
-      (candidate) => candidate.type === 'created' && candidate.path === 'external-update.txt',
-    )
 
     await writeFile(path.join(root, 'external-update.txt'), 'after')
     const event = await nextMatchingEvent(
