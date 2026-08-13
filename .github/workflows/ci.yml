@@ -53,13 +53,6 @@ jobs:
     name: Browser tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Known unreliable: the Vitest browser runner hangs at the RUN banner
-    # locally even for a trivial test, so the `*.browser.tsx` files are
-    # currently verified by nobody. This job exists to find out whether the
-    # hang is a local-environment problem or a real one — it must not be able
-    # to block a merge until that is answered, hence `continue-on-error`.
-    # Remove that line (and this comment) the first time it goes green.
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
