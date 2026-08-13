@@ -39,6 +39,25 @@ runs:
     # A developer machine populates that registry by hand; here we rebuild it
     # from a clone. The clone must land at the *sibling* path because the
     # tracked `packages/editor-*` symlinks point at `../../Editor/packages/*`.
+    # Workspace search shells out to `fd` and `rg`, and silently degrades to a
+    # different provider when either is missing — so without these the search
+    # tests do not fail loudly, they assert against the fallback's results.
+    # Ubuntu ships fd as `fdfind`; the code spawns `fd`.
+    - name: Install search tools
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y fd-find ripgrep
+        sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
+
+    # The git service tests build real repositories and commit to them, which
+    # needs an identity the runner does not have.
+    - name: Configure git identity
+      shell: bash
+      run: |
+        git config --global user.email 'ci@example.com'
+        git config --global user.name 'CI'
+
     # `singapor` is the same repo a developer machine checks out as `Editor`;
     # it was renamed, and the old URL survives only on GitHub's redirect.
     - name: Clone editor packages

@@ -1090,11 +1090,15 @@ function parseSsePayload(raw: string) {
   return JSON.parse(data) as Record<string, unknown>
 }
 
+// Guards against a watcher that never delivers, not against a slow one — a cold
+// CI runner takes well past 2.5s to hand over the first event.
+const FS_EVENT_TIMEOUT_MS = 15_000
+
 async function nextMatchingEvent(
   events: ReturnType<typeof createSseReader>,
   matches: (event: Record<string, unknown>) => boolean,
 ) {
-  const deadline = Date.now() + 2_500
+  const deadline = Date.now() + FS_EVENT_TIMEOUT_MS
 
   while (Date.now() < deadline) {
     const event = await Promise.race([
@@ -1109,7 +1113,7 @@ async function nextMatchingEvent(
 }
 
 async function nextEvent(events: ReturnType<typeof createSseReader>) {
-  const event = await Promise.race([events.next(), delay(2_500).then(() => null)])
+  const event = await Promise.race([events.next(), delay(FS_EVENT_TIMEOUT_MS).then(() => null)])
   if (!event) throw new Error('timed out waiting for filesystem event')
 
   return event
