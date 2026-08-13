@@ -597,11 +597,21 @@ describe('fs rpc events', () => {
     await mkdir(path.join(root, 'logs'), { recursive: true })
     await writeFile(path.join(root, 'logs', '2026-05-25.jsonl'), '{}\n')
 
-    // The ignored external changes must emit nothing. Drain deterministically with
-    // a visible external write: the watcher preserves order, so a leaked ignored
-    // event would arrive before this sentinel.
+    // The ignored external changes must emit nothing, and a visible write is the
+    // sentinel that proves the watcher got that far. Linux delivers a burst of
+    // writes as one coalesced batch, so the sentinel needs its own batch or its
+    // event is merged into an ignored one and never surfaces at all.
+    await settleWatcher()
+
     await writeFile(path.join(root, 'visible.txt'), 'ok')
-    expect(await nextEvent(events)).toMatchObject({ path: 'visible.txt' })
+    // Drain rather than demanding the sentinel be first: batching decides the
+    // order, so a leak is "an ignored path appeared", not "it appeared early".
+    const event = await nextMatchingEvent(events, (candidate) => {
+      expect(candidate.path).not.toMatch(/^(node_modules|logs)\//)
+      return candidate.path === 'visible.txt'
+    })
+
+    expect(event).toMatchObject({ path: 'visible.txt' })
     await events.close()
   })
 })
@@ -1110,6 +1120,12 @@ async function nextMatchingEvent(
   }
 
   throw new Error('timed out waiting for matching filesystem event')
+}
+
+// Lets the watcher flush the writes made so far, so the next write starts a new
+// coalescing batch instead of being merged into the previous one.
+function settleWatcher() {
+  return delay(250)
 }
 
 async function nextEvent(events: ReturnType<typeof createSseReader>) {
