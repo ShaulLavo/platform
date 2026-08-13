@@ -45,9 +45,11 @@ export function commandPaletteItems(
 }
 
 export const RECENTLY_USED_COMMANDS_HEADING = 'Recently Used'
+export const OTHER_COMMANDS_HEADING = 'Other Commands'
+const ALL_COMMANDS_HEADING = 'Commands'
 /**
- * How many recents lead the list. Enough that what you just ran is one glance
- * away, few enough that the categories underneath are still reachable without
+ * How many recents lead the unfiltered list. Enough that what you just ran is one
+ * glance away, few enough that the categories underneath are still reachable without
  * typing — a recents group tall enough to fill the list would bury them.
  */
 const RECENTLY_USED_COMMANDS_SHOWN = 6
@@ -59,7 +61,7 @@ export function groupedCommandItems(
 ): readonly (readonly [string, readonly CommandPaletteItem[]])[] {
   const query = quickAccessQuery(search)
   const recency = recencyRankByCommandId(recentCommandIds)
-  if (query) return groupedCommandItemsInOrder(rankedCommandItems(items, query, recency))
+  if (query) return searchedCommandGroups(rankedCommandItems(items, query), recency)
 
   return recentCommandsFirstGroups(items, recency)
 }
@@ -97,6 +99,36 @@ function recentCommandsFirstGroups(
   ]
 }
 
+/**
+ * A query narrows which commands are on offer; it does not change which of them you
+ * reach for. So the matches you have run before lead, newest first, and the rest follow
+ * by match quality. Both halves are already filtered by the query, so leading with
+ * recents can only promote something the user just asked for.
+ *
+ * Categories are dropped here on purpose: re-bucketing a globally ranked list by
+ * category scatters that ranking across headings, which is how the best match ended up
+ * below a worse one.
+ */
+function searchedCommandGroups(
+  ranked: readonly CommandPaletteItem[],
+  recency: ReadonlyMap<string, number>,
+): readonly (readonly [string, readonly CommandPaletteItem[]])[] {
+  const recent = ranked
+    .filter((item) => recency.has(item.id))
+    .toSorted(
+      (left, right) => commandRecencyRank(left, recency) - commandRecencyRank(right, recency),
+    )
+  if (recent.length === 0) return [[ALL_COMMANDS_HEADING, ranked] as const]
+
+  const rest = ranked.filter((item) => !recency.has(item.id))
+  if (rest.length === 0) return [[RECENTLY_USED_COMMANDS_HEADING, recent] as const]
+
+  return [
+    [RECENTLY_USED_COMMANDS_HEADING, recent] as const,
+    [OTHER_COMMANDS_HEADING, rest] as const,
+  ]
+}
+
 function groupedCommandItemsInOrder(
   items: readonly CommandPaletteItem[],
 ): readonly (readonly [string, readonly CommandPaletteItem[]])[] {
@@ -117,17 +149,12 @@ function groupedCommandItemsInOrder(
 type RankedCommandItem = {
   readonly item: CommandPaletteItem
   readonly order: number
-  readonly recency: number
   readonly score: number
   readonly strong: boolean
 }
 
-function rankedCommandItems(
-  items: readonly CommandPaletteItem[],
-  query: string,
-  recency: ReadonlyMap<string, number>,
-) {
-  const ranked = items.flatMap((item, order) => rankedCommandItem(item, query, order, recency))
+function rankedCommandItems(items: readonly CommandPaletteItem[], query: string) {
+  const ranked = items.flatMap((item, order) => rankedCommandItem(item, query, order))
   const hasStrongMatch = ranked.some((item) => item.strong)
 
   return ranked
@@ -136,24 +163,11 @@ function rankedCommandItems(
     .map((item) => item.item)
 }
 
-function rankedCommandItem(
-  item: CommandPaletteItem,
-  query: string,
-  order: number,
-  recency: ReadonlyMap<string, number>,
-) {
+function rankedCommandItem(item: CommandPaletteItem, query: string, order: number) {
   const score = quickAccessFilter(item.id, query, item.keywords)
   if (score <= 0) return []
 
-  return [
-    {
-      item,
-      order,
-      recency: commandRecencyRank(item, recency),
-      score,
-      strong: commandItemStrongMatch(item, query),
-    },
-  ]
+  return [{ item, order, score, strong: commandItemStrongMatch(item, query) }]
 }
 
 function commandItemStrongMatch(item: CommandPaletteItem, query: string) {
@@ -167,15 +181,10 @@ function commandItemMatchesPiece(item: CommandPaletteItem, piece: string) {
   return item.keywords.some((keyword) => keyword.toLocaleLowerCase().includes(piece))
 }
 
-// Match quality first — a typed query is a statement about what you want, and
-// recency must not talk over it. Recency only breaks ties, which is exactly where
-// registry order was deciding arbitrarily before.
+// Recency is applied a level up, by splitting these into recent and not, so the only
+// job left here is match quality — with registry order settling what the score cannot.
 function compareRankedCommandItems(left: RankedCommandItem, right: RankedCommandItem) {
-  return (
-    compareNumbers(right.score, left.score) ||
-    compareNumbers(left.recency, right.recency) ||
-    compareNumbers(left.order, right.order)
-  )
+  return compareNumbers(right.score, left.score) || compareNumbers(left.order, right.order)
 }
 
 export function filePaletteItems(state: LoadState<TreeModel>): readonly FilePaletteItem[] {
@@ -313,6 +322,19 @@ export function quickAccessMode(search: string): QuickAccessMode {
 
 export function isColorPreviewMode(mode: QuickAccessMode): boolean {
   return mode === 'colorMode' || mode === 'colorTheme'
+}
+
+/**
+ * Modes whose rows arrive already filtered and already ordered — commands by recency
+ * then match, files by the search server's own rank.
+ *
+ * cmdk re-sorts the rendered list by its own match score whenever it filters, and it
+ * re-sorts groups by their best-scoring row. For these two that is not a second opinion
+ * but a silent override: it would drop a just-used command back below a better textual
+ * match, which is the whole thing recency exists to prevent.
+ */
+export function paletteOwnsItemOrder(mode: QuickAccessMode) {
+  return mode === 'commands' || mode === 'files'
 }
 
 export function quickAccessQuery(search: string) {

@@ -32,6 +32,7 @@ import {
   groupedCommandItems,
   isColorPreviewMode,
   isCommandDisabled,
+  paletteOwnsItemOrder,
   placeholderForMode,
   quickAccessFilter,
   quickAccessMode,
@@ -274,7 +275,7 @@ export function CommandPaletteContent({
         filter: quickAccessFilter,
         loop: true,
         onValueChange: handleCommandValueChange,
-        shouldFilter: mode !== 'files',
+        shouldFilter: !paletteOwnsItemOrder(mode),
         value: selectedCommandValue,
       }}
       // Drop the frosted overlay while picking colors so the live hover-preview

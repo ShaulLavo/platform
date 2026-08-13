@@ -6,6 +6,7 @@ import {
   editorPaletteItems,
   fileBackedPath,
   groupedCommandItems,
+  OTHER_COMMANDS_HEADING,
   quickAccessMode,
   RECENTLY_USED_COMMANDS_HEADING,
   quickAccessQuery,
@@ -31,7 +32,6 @@ test('command groups rank strong command matches above earlier weak fuzzy groups
   const items = commandPaletteItems(platformCommandSpecs, defaultPlatformKeyBindings('linux'))
   const groups = groupedCommandItems(items, '> color')
 
-  expect(groups[0]?.[0]).toBe('Appearance')
   expect(groups[0]?.[1].map((item) => item.id)).toEqual([
     'workspace.selectColorMode',
     'workspace.selectColorTheme',
@@ -39,6 +39,14 @@ test('command groups rank strong command matches above earlier weak fuzzy groups
   expect(groups.flatMap(([, groupItems]) => groupItems.map((item) => item.id))).not.toContain(
     'workspace.toggleSidebarVisibility',
   )
+})
+
+test('a query ranks matches in one flat list rather than scattering them by category', () => {
+  const items = commandPaletteItems(platformCommandSpecs, defaultPlatformKeyBindings('linux'))
+  const groups = groupedCommandItems(items, '> mode')
+
+  expect(groups).toHaveLength(1)
+  expect(groups[0]?.[0]).toBe('Commands')
 })
 
 test('the unfiltered command list leads with what was used most recently', () => {
@@ -71,24 +79,45 @@ test('no recents leaves the plain category order alone', () => {
   expect(groupedCommandItems(items, '>', [])).toEqual(groupedCommandItems(items, '>'))
 })
 
-test('recency does not outrank a better match once a query is typed', () => {
+test('a matching recent leads the query results even when something else scores higher', () => {
   const items = commandPaletteItems(platformCommandSpecs, defaultPlatformKeyBindings('linux'))
   const ids = (recentCommandIds: readonly string[]) =>
     groupedCommandItems(items, '> color', recentCommandIds).flatMap(([, groupItems]) =>
       groupItems.map((item) => item.id),
     )
 
-  // A typed query is a statement about what you want; recency only settles
-  // matches the query itself cannot separate, and these two it can.
-  expect(ids([])).toEqual(ids(['workspace.selectColorTheme']))
   expect(ids([])).toEqual(['workspace.selectColorMode', 'workspace.selectColorTheme'])
+  expect(ids(['workspace.selectColorTheme'])).toEqual([
+    'workspace.selectColorTheme',
+    'workspace.selectColorMode',
+  ])
 })
 
-test('a query never promotes recents into a group of their own', () => {
+test('a query splits recents out under their own heading, newest first', () => {
   const items = commandPaletteItems(platformCommandSpecs, defaultPlatformKeyBindings('linux'))
-  const groups = groupedCommandItems(items, '> color', ['workspace.selectColorTheme'])
+  const groups = groupedCommandItems(items, '> mode', [
+    'workspace.showSettings',
+    'workspace.showChatMode',
+  ])
 
-  expect(groups.map(([heading]) => heading)).not.toContain(RECENTLY_USED_COMMANDS_HEADING)
+  expect(groups.map(([heading]) => heading)).toEqual([
+    RECENTLY_USED_COMMANDS_HEADING,
+    OTHER_COMMANDS_HEADING,
+  ])
+  expect(groups[0]?.[1].map((item) => item.id)).toEqual([
+    'workspace.showSettings',
+    'workspace.showChatMode',
+  ])
+  expect(groups[1]?.[1].map((item) => item.id)).not.toContain('workspace.showSettings')
+})
+
+test('recents that do not match the query are not dragged into the results', () => {
+  const items = commandPaletteItems(platformCommandSpecs, defaultPlatformKeyBindings('linux'))
+  const groups = groupedCommandItems(items, '> color', ['workspace.toggleSidebarVisibility'])
+
+  expect(groups.flatMap(([, groupItems]) => groupItems.map((item) => item.id))).not.toContain(
+    'workspace.toggleSidebarVisibility',
+  )
 })
 
 test('workspace commands require a workspace unless explicitly optional', () => {
