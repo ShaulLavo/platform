@@ -324,6 +324,12 @@ const defaultBindingSpecs = [
   }),
   editorBinding('Mod+]', 'editor.editor.action.indentLines', 'editor.action.indentLines'),
   editorBinding('Mod+[', 'editor.editor.action.outdentLines', 'editor.action.outdentLines'),
+  // Also app bindings, not only editor ones. Outside the editor these keys used to
+  // reach the browser untouched, which was harmless only while there was no history
+  // to walk; now that there is, the app has to own them or a back press in the file
+  // tree leaves the workspace entirely.
+  workspaceBinding('Mod+[', 'workspace.navigateBack'),
+  workspaceBinding('Mod+]', 'workspace.navigateForward'),
   // VS Code binds this to Mod+Shift+\, which the hotkey layer refuses: Shift with punctuation is
   // layout-dependent (see PunctuationKey). Mod+\ is unclaimed and keeps the backslash mnemonic.
   editorBinding('Mod+\\', 'editor.editor.action.jumpToBracket', 'editor.action.jumpToBracket'),

@@ -64,8 +64,10 @@ describe('workspace cache', () => {
       editorHistory: [diffPath, '/repo/src/readme.md'],
       recentlyClosedEditorPaths: ['/repo/src/closed.ts'],
     })
+    // Stored file paths are workspace-relative. A diff document id is not a workspace
+    // path, so it is stored whole — its portable form is an address token, not a slice.
     expect(cachedSlice('/repo').workbenchPanels.editorTabs.map((tab) => tab.path)).toEqual([
-      '/repo/src/readme.md',
+      './src/readme.md',
       diffPath,
     ])
   })
@@ -85,7 +87,7 @@ describe('workspace cache', () => {
       recentlyClosedEditorPaths: [],
     })
     expect(cachedSlice('/repo').workbenchPanels.editorTabs.map((tab) => tab.path)).toEqual([
-      '/repo/src/a.ts',
+      './src/a.ts',
     ])
   })
 
@@ -99,7 +101,7 @@ describe('workspace cache', () => {
     })
 
     expect(cachedSlice('/repo').scrollPositionByPath).toEqual({
-      '/repo/src/app.ts': { left: 8, top: 320 },
+      './src/app.ts': { left: 8, top: 320 },
     })
   })
 
@@ -110,6 +112,39 @@ describe('workspace cache', () => {
     })
 
     expect(cachedSlice('/repo').editorHistory).toEqual([searchBufferDocumentId('/repo')])
+  })
+
+  // The filter runs in both directions and only understands absolute paths, so
+  // relativizing inside it would make every restored path fail the workspace test and
+  // empty the slice on the first reload — silently, since an empty-but-valid slice is
+  // not a schema miss. This is the test that fails if the two directions are ever fused.
+  it('restores a written slice unchanged, with every path absolute again', () => {
+    const slice: CachedWorkspaceSlice = {
+      editorHistory: ['/repo/src/a.ts', '/repo/src/b.ts'],
+      recentlyClosedEditorPaths: ['/repo/src/closed.ts'],
+      scrollPositionByPath: { '/repo/src/a.ts': { left: 8, top: 320 } },
+      workbenchPanels: workbenchPanelsForPaths(
+        ['/repo/src/a.ts', '/repo/src/b.ts'],
+        '/repo/src/b.ts',
+      ),
+    }
+
+    writeRootFolderCache(pickedDirectory('/repo'))
+    writeWorkspaceSliceCache('/repo', slice)
+    writeWorkspaceIndexCache(['/repo'])
+
+    expect(readWorkspaceCache().workspaces['/repo']).toEqual(slice)
+  })
+
+  it('sweeps superseded cache versions, which nothing else can reach', () => {
+    const stale = 'platform.workspace-state.v16.workspace:/repo'
+    localStorage.setItem(stale, JSON.stringify(emptyWorkspaceSlice()))
+    writeRootFolderCache(pickedDirectory('/repo'))
+
+    readWorkspaceCache()
+
+    expect(localStorage.getItem(stale)).toBeNull()
+    expect(readWorkspaceCache().rootFolder?.path).toBe('/repo')
   })
 
   it('persists fixed panel tabs', () => {
@@ -352,6 +387,10 @@ type FakeLocalStorageOptions = {
 function fakeLocalStorage(options: FakeLocalStorageOptions = {}) {
   return {
     getItem: (key: string) => STORE.get(key) ?? null,
+    key: (index: number) => Array.from(STORE.keys())[index] ?? null,
+    get length() {
+      return STORE.size
+    },
     removeItem: (key: string) => {
       STORE.delete(key)
     },

@@ -1,6 +1,41 @@
 # Addressable State: URL Design and Implementation Plan
 
-**Status:** proposal · **Scope:** `apps/web` (+ two lines in `apps/desktop`) · **Author:** judge synthesis of the three competing designs
+**Status:** implemented (M1–M9, 2026-08-13) · **Scope:** `apps/web` · **Author:** judge synthesis of the three competing designs
+
+> [!NOTE]
+> **Read the code, not this document, where the two disagree.** Nine milestones shipped in
+> `apps/web/src/features/address/`. Corrections made against the plan during implementation:
+>
+> - **Zero lines changed in `apps/desktop`.** The shell already launches at `/`, which is what M4 wants.
+> - **Two document kinds the plan never names** — `git-ref:` and `settings:` — are real `EditorTabRecord.path`
+>   values. `git-ref:` got an `r/` token; `settings:` maps to the `?settings=` overlay slot.
+> - **`d/` and `k/` tokens carry `status` and `oldPath`.** Neither is re-derivable: `oldPath` keys the
+>   blob-diff query and decides `renamed`, and `status` is only re-derived while the change is uncommitted.
+> - **Object ids are `[0-9a-f]{40,64}`**, not 40 — a fixed-40 grammar rejects every SHA-256 repository.
+> - **`?scope=` was double-booked** across the rail scope and the thread diff scope. The rail scope is a
+>   `ProjectId` and cannot be addressed at all; the thread diff scope owns `?diff=`.
+> - **Relativization does not live inside `sliceForWorkspace`.** That filter runs in both directions and only
+>   understands absolute paths; relativizing inside it empties every slice on the first reload.
+> - **`render.tsx` is untouched.** §6 was right and the 2026-08-12 amendment was wrong on this point: no
+>   component reads a URL hook, so mounting `RouterProvider` broke none of the 1697 tests. The route tree is
+>   deliberately degenerate — root plus catch-all — so navigation never remounts `EditorStateProvider`.
+> - The "622 → ~100 char" figure measured the wrong document. Real: checkpoint 576 → 82, snapshot 329 → 114.
+>
+> **Known gaps, deliberately left (not defects in what shipped):**
+>
+> - **§5's twelve stale-link screens.** `applyAddress` computes the three-state result and logs it, but no
+>   surface renders it. An unknown workspace or a dead thread degrades quietly instead of explaining itself.
+> - **M4/M9's retirement of the `uiMode` and `chatModeSelection` cache keys.** They are NOT inert: the store is
+>   seeded from them synchronously in `workspaceStateFromCache`, before React mounts, while the address applier
+>   runs in an effect. Deleting them without first seeding the store from the parsed address would flash the
+>   wrong mode on every launch. Retiring them is a boot-sequence change, not a deletion.
+> - **§3.3 resolver step 3** (unique basename among the file server's recent directories). `resolveWorkspaceSlug`
+>   supports it — `sources.recent` is threaded through and tested — but the boot caller passes only the index,
+>   because the recents query is gated `enabled: rootPath === null` and never runs on a warm boot.
+> - **§3.3's `?root=` escape hatch**, §1.1's drop-filters-on-document-change retention rule, M7's absolute
+>   `log.from`/`log.to` window, M8's palette cleanups, and the `bench-workspace.mjs` migration.
+> - **§6's `dom` restore tests and `test/address.ts`.** The address layer's own logic is covered by 119 node
+>   tests, but neither `useAddressRestore` nor `useAddressProjection` is mounted in a test.
 
 ---
 

@@ -256,6 +256,25 @@ const workspaceCommandHandlers: Partial<Record<WorkspaceCommandId, WorkspaceComm
     setFocusArea('git')
     return true
   },
+  'workspace.copyAddress': () => {
+    if (!navigator.clipboard?.writeText) return false
+
+    // The address bar already holds the full address — thread, tool pane, filters and
+    // all. Rebuilding a workbench-only subset here copied a strictly weaker link than
+    // the one on screen, which defeats the point of the command.
+    void navigator.clipboard.writeText(`${location.pathname}${location.search}${location.hash}`)
+    return true
+  },
+  // History is the browser's, so back and forward are one call each. The popstate
+  // listener in the address layer is what turns the move into applied state.
+  'workspace.navigateBack': () => {
+    history.back()
+    return true
+  },
+  'workspace.navigateForward': () => {
+    history.forward()
+    return true
+  },
   // Chat mode already puts the composer on the stage, so only the workbench has
   // anything to reveal — and there it is a sidebar tab, not a focus target: the
   // caller (terminal capture today) is handing over context, not the keyboard.

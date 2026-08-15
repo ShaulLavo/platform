@@ -8,6 +8,8 @@ import { EditorTabActionsProvider } from '@/features/editor/providers/editor-tab
 import { MenuCommandProvider } from '@/features/menus/providers/command-provider'
 import { useRestoreRecentWorkspaceRoot } from '@/hooks/use-restore-recent-workspace-root'
 import { useUnsavedWorkGuard } from '@/hooks/use-unsaved-work-guard'
+import { useAddressProjection } from '@/features/address/hooks/use-address-projection'
+import { useAddressRestore } from '@/features/address/hooks/use-address-restore'
 import { useWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
 import { DEFAULT_SETTING_VALUES } from '@workspace/contracts'
 
@@ -39,6 +41,10 @@ export function AppRuntimeContent() {
 
   // Subscribe before recovery so a recovered root recreates its erased cache entry.
   useWorkspaceCachePersistence()
+  // Restore before projecting, so the applier's writes are what the first projection
+  // sees rather than racing it.
+  useAddressRestore()
+  useAddressProjection()
   // Mounted beside the cache persistence: both need the document store, and both
   // are app-lifetime concerns rather than anything a pane owns.
   useAutoSave()

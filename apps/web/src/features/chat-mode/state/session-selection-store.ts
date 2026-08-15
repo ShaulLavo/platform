@@ -34,6 +34,13 @@ type SessionSelectionStore = {
    */
   readonly releaseSession: (threadId: ThreadId, threadIds: readonly ThreadId[]) => void
   readonly selectSession: (projectId: ProjectId, threadId: ThreadId) => void
+  /**
+   * A pick that came from an address rather than from a click. It sets `restored`,
+   * which `selectSession` deliberately clears — without that distinction a link to a
+   * deleted thread reports `resolving` forever and the stage sits on "Opening
+   * session" instead of saying the conversation is gone.
+   */
+  readonly restoreSession: (projectId: ProjectId, threadId: ThreadId) => void
   readonly startDraft: (projectId: ProjectId) => void
 }
 
@@ -47,6 +54,8 @@ export function createSessionSelectionStore() {
     releaseSession: (threadId, threadIds) =>
       set((state) => releasedSelection(state.selection, threadId, threadIds)),
     restored: remembered.kind !== 'auto',
+    restoreSession: (projectId, threadId) =>
+      set({ restored: true, selection: { kind: 'session', projectId, threadId } }),
     selection: remembered,
     selectSession: (projectId, threadId) =>
       set({ restored: false, selection: { kind: 'session', projectId, threadId } }),

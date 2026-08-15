@@ -7,7 +7,7 @@ import { create } from 'zustand'
  * is to move a prompt to another thread or another model, so nothing about the
  * model it was typed against travels with it.
  */
-const PROMPT_STASH_STORAGE_KEY = 'platform:prompt-stash:v1'
+const PROMPT_STASH_STORAGE_KEY = 'platform.prompt-stash.v1'
 
 /** Newest first, oldest evicted. Deep enough to park a morning's worth of ideas. */
 export const MAX_PROMPT_STASH_ENTRIES = 20
