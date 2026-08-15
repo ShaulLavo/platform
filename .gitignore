@@ -25,7 +25,9 @@ apps/desktop/build/
 
 # Debug
 npm-debug.log*
-logs/
+# Anchored: the structured log output lives at the repo root. Unanchored, this also
+# swallowed new files under any `logs/` directory in the source tree.
+/logs/
 .evlog/
 
 # Misc
