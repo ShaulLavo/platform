@@ -1,7 +1,7 @@
 import type { Address } from '@/features/address/utils/grammar'
 import { log } from '@/lib/client-logging'
 import { documentTokenForPath } from '@/features/address/utils/document-token'
-import { emptyAddress } from '@/features/address/utils/grammar'
+import { emptyAddress, formatAddress } from '@/features/address/utils/grammar'
 import { NO_WORKSPACE_SLUG, workspaceSlug } from '@/features/address/utils/slug'
 import { isSettingsDocumentId } from '@/features/settings/settings-document'
 
@@ -89,7 +89,7 @@ export function addressFromSnapshot(snapshot: AddressSnapshot): Address {
     ? documentTokenForPath(rootPath, snapshot.activeDocumentPath)
     : null
 
-  return {
+  return withinUrlBudget({
     ...emptyAddress(),
     bottom: snapshot.bottomTab,
     diff: snapshot.threadDiffScope,
@@ -105,7 +105,58 @@ export function addressFromSnapshot(snapshot: AddressSnapshot): Address {
     tabs: tabTokens(rootPath, snapshot.editorTabPaths),
     tool: snapshot.toolTab,
     workspace: workspaceSlug(rootPath, [...snapshot.knownRootPaths, rootPath]),
+  })
+}
+
+/**
+ * A total ceiling on the emitted URL, because three slots are unbounded free text:
+ * `s.q`, `s.in`/`s.x` and `log.find` all carry whatever the user typed — or pasted.
+ *
+ * Measured against the real servers: both the Vite dev server (Node) and the Elysia
+ * backend (Bun) answer **431** past roughly 16KB, which is a blank error page rather
+ * than a degraded app, and it strikes on reload or on opening a shared link — the
+ * moments the URL travels over HTTP before React exists. 4000 leaves room under the
+ * 8KB default that nginx (`large_client_header_buffers`) and Apache
+ * (`LimitRequestLine`) impose if this ever sits behind a proxy, and absorbs the 3.75×
+ * blow-up that percent-encoding inflicts on a non-ASCII path.
+ */
+const URL_BUDGET_BYTES = 4000
+
+/**
+ * Dropped in ascending order of how much the recipient of a link would miss them. The
+ * identity — workspace, mode, document, focus — is never dropped, so an over-budget
+ * address still lands you on the right file; it just arrives without the search query
+ * that was never yours anyway.
+ */
+const DROPPABLE_SLOTS: readonly (readonly [string, (address: Address) => Address])[] = [
+  ['search', (address) => ({ ...address, search: null })],
+  ['logs', (address) => ({ ...address, logs: null })],
+  ['tabs', (address) => ({ ...address, tabs: null })],
+]
+
+function withinUrlBudget(address: Address): Address {
+  if (formatAddress(address).length <= URL_BUDGET_BYTES) return address
+
+  const dropped: string[] = []
+  let trimmed = address
+  for (const [slot, drop] of DROPPABLE_SLOTS) {
+    trimmed = drop(trimmed)
+    dropped.push(slot)
+    if (formatAddress(trimmed).length <= URL_BUDGET_BYTES) break
   }
+
+  log.warn({
+    action: 'address.truncated',
+    area: 'address',
+    budgetBytes: URL_BUDGET_BYTES,
+    dropped,
+    // Lengths, never the content: an over-budget address is over budget precisely
+    // because it carries a lot of what the user typed.
+    finalLength: formatAddress(trimmed).length,
+    originalLength: formatAddress(address).length,
+  })
+
+  return trimmed
 }
 
 /**

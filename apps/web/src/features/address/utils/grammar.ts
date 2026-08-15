@@ -97,7 +97,7 @@ export function parseAddress(href: string): Address {
 
   return {
     ...emptyAddress(),
-    ...searchFields(url.searchParams),
+    ...searchFields(url.searchParams, url.search),
     document: rest.slice(1).join('/') || null,
     focus: parseFocus(url.hash),
     mode: addressMode(rest[0]),
@@ -129,10 +129,29 @@ function serializePathname(address: Address) {
   return `/${segments.join('/')}`
 }
 
+/**
+ * `?tabs=` is written OUTSIDE `URLSearchParams`, and read back raw.
+ *
+ * RFC 3986 puts `/` in the legal character set for a query (`query = *( pchar / "/" /
+ * "?" )`); `URLSearchParams` escapes it anyway, out of conservatism rather than need.
+ * Since every tab token is already a `/`-joined list of individually encoded segments,
+ * that escaping cost three characters per separator and turned a readable token into
+ * `f%2Fapps%2Fweb%2Fsrc%2Fmain.tsx` — measured at 25% of the whole param on a
+ * twelve-tab workspace.
+ *
+ * Reading it back has a trap, and it is why this cannot simply drop the encoding and
+ * keep using `params.get`. That getter percent-decodes once, and the decode is
+ * currently absorbed by `set` having escaped `%` as `%25` on the way out. Remove the
+ * outer layer and a file named `a~b.ts` — encoded `a%7Eb.ts` — decodes back to a
+ * literal `~` BEFORE the split, silently becoming two tabs. So the value is split
+ * first and decoded per segment afterwards, exactly as `parseAddress` already treats
+ * the path, for exactly the same reason.
+ */
+const TAB_SEPARATOR = '~'
+
 function serializeSearch(address: Address) {
   const params = new URLSearchParams()
 
-  if (address.tabs?.length) params.set('tabs', address.tabs.join('~'))
   if (address.side) params.set('side', address.side)
   if (address.bottom) params.set('bottom', address.bottom)
   // `!== null` for the free-text slots, matching `settings` below: an empty `?tool=`
@@ -151,12 +170,37 @@ function serializeSearch(address: Address) {
     params.set(`${SEARCH_PREFIX}${key}`, value)
   for (const [key, value] of Object.entries(address.passthrough)) params.set(key, value)
 
-  const search = params.toString()
-  return search ? `?${search}` : ''
+  // Tabs lead, as they did when `URLSearchParams` owned them, so the URL shape a user
+  // has seen before does not reorder underneath them.
+  const tabs = address.tabs?.length ? `tabs=${address.tabs.join(TAB_SEPARATOR)}` : ''
+  const query = [tabs, params.toString()].filter(Boolean).join('&')
+
+  return query ? `?${query}` : ''
 }
 
-function searchFields(params: URLSearchParams) {
-  const tabs = params.get('tabs')
+/**
+ * The raw, still-encoded value of one query key.
+ *
+ * Splitting on `&` and `=` is safe for exactly the keys that need it: every tab token
+ * segment goes through `encodeSegment`, which leaves only unreserved characters plus
+ * `/` — never `&`, `=` or `#`.
+ */
+function rawSearchValue(search: string, key: string) {
+  for (const pair of search.replace(/^\?/, '').split('&')) {
+    const equals = pair.indexOf('=')
+    if (equals < 0) continue
+    if (pair.slice(0, equals) !== key) continue
+
+    return pair.slice(equals + 1)
+  }
+
+  return null
+}
+
+function searchFields(params: URLSearchParams, rawSearch: string) {
+  // Raw, not `params.get`: see `TAB_SEPARATOR`. Decoding before the split would let a
+  // file named `a~b.ts` break the token list into two.
+  const tabs = rawSearchValue(rawSearch, 'tabs')
 
   return {
     bottom: pick(params.get('bottom'), ['terminal', 'problems'] as const),
@@ -167,7 +211,7 @@ function searchFields(params: URLSearchParams) {
     rail: pick(params.get('rail'), ['active', 'archived'] as const),
     settings: params.get('settings'),
     side: pick(params.get('side'), ['chat', 'files', 'git', 'logs', 'search'] as const),
-    tabs: tabs ? tabs.split('~').filter(Boolean) : null,
+    tabs: tabs ? tabs.split(TAB_SEPARATOR).filter(Boolean) : null,
     tool: params.get('tool'),
   }
 }

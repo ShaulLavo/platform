@@ -27,12 +27,23 @@ export function writeAddressCache(href: string) {
  * ride the live URL so the code reading them late still sees them, but persisting them
  * here would turn `?decode=diffusion` — documented as opt-in per session — into a
  * permanent setting with no UI to clear it, reinstated on every launch.
+ *
+ * Filtered as raw text rather than through `url.searchParams.delete`. Touching
+ * `searchParams` at all re-serializes the entire query, which re-escapes the `/` and
+ * `~` that `?tabs=` deliberately leaves bare — so the stored address came back in a
+ * shape the parser no longer reads, and a reload restored no tabs from the URL.
  */
 function withoutDevParams(href: string) {
   const url = new URL(href, 'http://localhost')
-  for (const key of DEV_SEARCH_KEYS) url.searchParams.delete(key)
+  const query = url.search.slice(1)
+  if (!query) return `${url.pathname}${url.hash}`
 
-  return `${url.pathname}${url.search}${url.hash}`
+  const kept = query
+    .split('&')
+    .filter((pair) => !DEV_SEARCH_KEYS.some((key) => pair === key || pair.startsWith(`${key}=`)))
+    .join('&')
+
+  return `${url.pathname}${kept ? `?${kept}` : ''}${url.hash}`
 }
 
 export function readAddressCache() {

@@ -251,7 +251,8 @@ describe('every owned field survives a round trip', () => {
 
     for (const fragment of [
       '/~platform/workbench/f/apps/web/src/main.tsx',
-      'tabs=f%2Fa.ts%7Ef%2Fb.ts%7Es',
+      // `/` unescaped: legal in a query per RFC 3986, and `~` still separates.
+      'tabs=f/a.ts~f/b.ts~s',
       'side=git',
       'bottom=problems',
       'tool=git',
@@ -265,6 +266,30 @@ describe('every owned field survives a round trip', () => {
     ]) {
       expect(href, `missing ${fragment}`).toContain(fragment)
     }
+  })
+
+  /**
+   * The guard on reading `?tabs=` raw. `URLSearchParams.get` percent-decodes once, so
+   * a token carrying an escaped separator comes back with a literal `~` and the split
+   * finds a boundary that is not there — one tab silently becomes two. Anyone
+   * "simplifying" the raw read back to `params.get` fails here.
+   */
+  test('keeps a file named with the tab separator as one tab', () => {
+    const tabs = ['f/a%7Eb.ts', 'f/d%C3%BCr/x.ts']
+    const href = formatAddress({ ...emptyAddress(), tabs, workspace: 'p' })
+
+    expect(parseAddress(href).tabs).toEqual(tabs)
+  })
+
+  test('leaves the slash unescaped, and still round-trips', () => {
+    const href = formatAddress({
+      ...emptyAddress(),
+      tabs: ['f/apps/web/src/main.tsx'],
+      workspace: 'p',
+    })
+
+    expect(href).toBe('/~p?tabs=f/apps/web/src/main.tsx')
+    expect(parseAddress(href).tabs).toEqual(['f/apps/web/src/main.tsx'])
   })
 
   // Field-by-field, so a failure names the field that broke rather than dumping a diff.
