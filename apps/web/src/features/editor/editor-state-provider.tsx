@@ -15,7 +15,7 @@ import {
   createSearchBufferStore,
   SearchBufferStateContext,
 } from '@/features/search/search-buffer-state'
-import { addressedWorkspaceCache } from '@/features/address/utils/addressed-cache'
+import { addressedWorkspaceCache } from '@/features/address/utils/cache'
 import { parseAddress } from '@/features/address/utils/grammar'
 import { readWorkspaceCache } from '@/lib/workspace-cache'
 import { useEffect, useState, type ReactNode } from 'react'

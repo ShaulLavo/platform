@@ -1,3 +1,5 @@
+import { WORKSPACE_CACHE_STORAGE_KEYS } from '@/lib/workspace-cache'
+
 /**
  * Which state is a place, which is a preference, and which must never be replayed.
  *
@@ -22,6 +24,17 @@ export type ClassifiedState = {
   readonly why: string
 }
 
+/**
+ * Read from the cache's own key map rather than retyped.
+ *
+ * These keys carry `CACHE_VERSION` in them, and the drift test cannot catch a stale
+ * copy: the real keys are built by template interpolation, so `persistedKeysInSource`
+ * never sees them as literals, and `classifiedStorageKeys()` is only ever used as a
+ * filter. Six hand-written `…v17.…` strings would therefore have gone silently wrong at
+ * the next version bump — in a table whose entire purpose is to notice drift.
+ */
+const CACHE_KEYS = WORKSPACE_CACHE_STORAGE_KEYS
+
 export const STATE_CLASSIFICATIONS: Readonly<Record<string, ClassifiedState>> = {
   address: {
     classification: 'address',
@@ -35,12 +48,12 @@ export const STATE_CLASSIFICATIONS: Readonly<Record<string, ClassifiedState>> = 
   },
   chatModePanels: {
     classification: 'preference',
-    storageKey: 'platform.workspace-state.v17.chatModePanels',
+    storageKey: CACHE_KEYS.chatModePanels,
     why: 'fused: activeToolTab is address (?tool=), sessionRailOpen/toolPaneOpen are chrome',
   },
   chatModeSelection: {
     classification: 'address',
-    storageKey: 'platform.workspace-state.v17.chatModeSelection',
+    storageKey: CACHE_KEYS.chatModeSelection,
     why: 't/<id> | t/new | absent — key retired once the address restores it',
   },
   chatProjection: {
@@ -121,7 +134,7 @@ export const STATE_CLASSIFICATIONS: Readonly<Record<string, ClassifiedState>> = 
   },
   rootFolder: {
     classification: 'address',
-    storageKey: 'platform.workspace-state.v17.rootFolder',
+    storageKey: CACHE_KEYS.rootFolder,
     why: '~slug; the absolute path stays local',
   },
   scrollPositions: {
@@ -168,7 +181,7 @@ export const STATE_CLASSIFICATIONS: Readonly<Record<string, ClassifiedState>> = 
   },
   uiMode: {
     classification: 'address',
-    storageKey: 'platform.workspace-state.v17.uiMode',
+    storageKey: CACHE_KEYS.uiMode,
     why: 'path segment 2 — key retired once the address restores it',
   },
   workbenchBottomTab: {
@@ -181,7 +194,7 @@ export const STATE_CLASSIFICATIONS: Readonly<Record<string, ClassifiedState>> = 
   },
   workbenchLayout: {
     classification: 'preference',
-    storageKey: 'platform.workspace-state.v17.workbenchLayout',
+    storageKey: CACHE_KEYS.workbenchLayout,
     why: 'pane geometry is global; a link must never resize your window',
   },
   workbenchSidebarTab: {
@@ -190,7 +203,7 @@ export const STATE_CLASSIFICATIONS: Readonly<Record<string, ClassifiedState>> = 
   },
   workspaceIndex: {
     classification: 'preference',
-    storageKey: 'platform.workspace-state.v17.workspaces',
+    storageKey: CACHE_KEYS.workspaceIndex,
     why: 'the slug→root oracle, not an address',
   },
 }

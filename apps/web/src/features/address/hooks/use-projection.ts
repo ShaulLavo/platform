@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { writeAddressCache } from '@/features/address/state/address-storage'
+import { writeAddressCache } from '@/features/address/state/storage'
 import {
   createAddressProjection,
   PROJECTION_DEBOUNCE_MS,
@@ -20,7 +20,10 @@ import { defaultLogsFilterState } from '@/features/logs/log-filter-params'
 import { logsParamsFor } from '@/features/address/utils/logs-params'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
 import { createDefaultWorkbenchPanels } from '@/features/workbench/utils/workbench-panels'
-import { readSettingsCategory } from '@/features/settings/state/category-store'
+import {
+  readSettingsCategory,
+  subscribe as subscribeSettingsCategory,
+} from '@/features/settings/state/category-store'
 import { WORKSPACE_SLICE_LIMIT } from '@/lib/workspace-cache'
 import { settingsCategorySlug } from '@/features/address/utils/settings-category'
 import { useEditorUiStoreApi } from '@/features/editor/state/editor-ui-state'
@@ -109,6 +112,10 @@ export function useAddressProjection() {
     const unsubscribeUi = uiStoreApi.subscribe(project)
     const unsubscribeSearch = searchStoreApi.subscribe(project)
     const unsubscribeLogs = subscribeLogsFilters(project)
+    // `snapshotFromStore` reads the settings category, so the projection has to hear
+    // about it: clearing a pinned category changes nothing else, and without this the
+    // URL kept `?settings=` until an unrelated store moved.
+    const unsubscribeSettings = subscribeSettingsCategory(project)
 
     return () => {
       projection.cancel()
@@ -121,6 +128,7 @@ export function useAddressProjection() {
       unsubscribeUi()
       unsubscribeSearch()
       unsubscribeLogs()
+      unsubscribeSettings()
     }
   }, [passthrough, searchStoreApi, storeApi, uiStoreApi])
 }

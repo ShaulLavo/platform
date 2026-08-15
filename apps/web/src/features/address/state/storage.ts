@@ -46,6 +46,18 @@ function withoutDevParams(href: string) {
   return `${url.pathname}${kept ? `?${kept}` : ''}${url.hash}`
 }
 
+/**
+ * The address as something a recipient can actually open: absolute, and without the
+ * dev params.
+ *
+ * Same filter as the stored payload, for the same reason — a dev param belongs to the
+ * session someone typed it into. `?decode=` is documented as opt-in per session, so
+ * shipping it inside a shared link makes it someone else's permanent setting.
+ */
+export function shareableAddress(href: string = location.href, origin = location.origin) {
+  return `${origin}${withoutDevParams(href)}`
+}
+
 export function readAddressCache() {
   if (typeof localStorage === 'undefined') return null
 
@@ -84,11 +96,35 @@ export function restoreAddressFromStorage(historyApi: History = history) {
   return href
 }
 
+/**
+ * Merged as raw text, for the same reason `withoutDevParams` filters as raw text:
+ * `url.searchParams.set` re-serializes the ENTIRE query, re-escaping the `/` and `~`
+ * that `?tabs=` deliberately leaves bare — so the address handed to `parseAddress`
+ * came back in a shape it no longer reads and the tab set silently vanished.
+ *
+ * A live key REPLACES the stored one and the rest of the stored query is untouched,
+ * which is the same rule the old `set` loop had.
+ */
 function mergeLiveSearch(stored: string, liveSearch: string) {
   if (!liveSearch || liveSearch === '?') return stored
 
   const url = new URL(stored, 'http://localhost')
-  for (const [key, value] of new URLSearchParams(liveSearch)) url.searchParams.set(key, value)
+  const live = liveSearch.replace(/^\?/, '')
+  if (!live) return stored
 
-  return `${url.pathname}${url.search}${url.hash}`
+  const overridden = new Set(Array.from(new URLSearchParams(live).keys()))
+  const kept = url.search
+    .slice(1)
+    .split('&')
+    .filter((pair) => Boolean(pair) && !overridden.has(searchPairKey(pair)))
+  const query = [...kept, live].join('&')
+
+  return `${url.pathname}?${query}${url.hash}`
+}
+
+/** The key half of a raw `key=value` pair; a bare `key` with no `=` is all key. */
+function searchPairKey(pair: string) {
+  const equals = pair.indexOf('=')
+
+  return equals < 0 ? pair : pair.slice(0, equals)
 }

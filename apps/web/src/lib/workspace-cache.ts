@@ -342,7 +342,7 @@ function workspaceStateFromCache(): CachedWorkspaceState {
     rootFolderSchema,
     null,
   )
-  const workspaceOrder = workspaceOrderFromCache(rootFolder)
+  const workspaceOrder = workspaceOrderFromCache(rootFolder?.path ?? null)
   const workspaces: Record<string, CachedWorkspaceSlice> = {}
   const searchBuffers: Record<string, CachedSearchBufferState> = {}
 
@@ -377,10 +377,23 @@ function workspaceStateFromCache(): CachedWorkspaceState {
   }
 }
 
+/**
+ * Just the workspace order — the slug→root oracle — without touching a single slice.
+ *
+ * `readWorkspaceCache()` parses every slice AND every search buffer, and a search
+ * buffer carries a materialized match list; it also sweeps the whole localStorage
+ * keyspace. A caller that only needs the order should not pay for any of that, least
+ * of all on a path that runs per back/forward press.
+ */
+export function readWorkspaceOrder(activeRootPath: string | null): readonly string[] {
+  if (!canUseLocalStorage()) return []
+
+  return workspaceOrderFromCache(activeRootPath)
+}
+
 /** The open root always leads, even when the index predates it or was dropped. */
-function workspaceOrderFromCache(rootFolder: PickedFsEntry | null) {
+function workspaceOrderFromCache(activePath: string | null) {
   const stored = readWorkspaceIndex()
-  const activePath = rootFolder?.path
   if (!activePath) return stored.slice(0, WORKSPACE_SLICE_LIMIT)
 
   return [activePath, ...stored.filter((rootPath) => rootPath !== activePath)].slice(

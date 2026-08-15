@@ -123,7 +123,7 @@ Then delete the vacuous ones: `grammar.test.ts:149`'s hostile-input loop asserts
 
 The structural change. New pure module, composed entirely from helpers that already exist:
 
-`features/address/utils/addressed-cache.ts`
+`features/address/utils/cache.ts`
 
 ```ts
 export function addressedWorkspaceCache(

@@ -149,6 +149,25 @@ function serializePathname(address: Address) {
  */
 const TAB_SEPARATOR = '~'
 
+/**
+ * A link naming more tabs than a person could have opened is not a tab set.
+ *
+ * Here rather than beside either consumer, because BOTH paths that apply `?tabs=` have
+ * to honour it: the boot merge in `utils/cache.ts` and the post-mount applier in
+ * `hooks/use-restore.ts`. The encoder caps what it writes, which says nothing about a
+ * hand-edited or hostile link — and the boot merge runs inside a `useState`
+ * initializer, so an unbounded set there blocks first paint and is then persisted.
+ */
+export const MAX_APPLIED_TABS = 64
+
+/** The tab tokens an address may apply, or `null` when the set is not a tab set. */
+export function applicableTabs(tabs: readonly string[] | null) {
+  if (!tabs?.length) return null
+  if (tabs.length > MAX_APPLIED_TABS) return null
+
+  return tabs
+}
+
 function serializeSearch(address: Address) {
   const params = new URLSearchParams()
 

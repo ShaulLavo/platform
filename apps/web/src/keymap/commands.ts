@@ -5,6 +5,7 @@ import { useTheme, type Theme } from '@/components/theme-context'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { compareSavedDocumentId } from '@/features/editor/compare-saved-document'
+import { shareableAddress } from '@/features/address/state/storage'
 import { useOpenFileAtRef } from '@/features/git/hooks/use-open-file-at-ref'
 import {
   useEditorDocumentStoreApi,
@@ -262,7 +263,11 @@ const workspaceCommandHandlers: Partial<Record<WorkspaceCommandId, WorkspaceComm
     // The address bar already holds the full address — thread, tool pane, filters and
     // all. Rebuilding a workbench-only subset here copied a strictly weaker link than
     // the one on screen, which defeats the point of the command.
-    void navigator.clipboard.writeText(`${location.pathname}${location.search}${location.hash}`)
+    //
+    // Through `shareableAddress`, not the raw location: a copied link needs an origin
+    // to be openable at all, and it must not carry the dev params, which belong to the
+    // session someone typed them into rather than to everyone they send the link to.
+    void navigator.clipboard.writeText(shareableAddress())
     return true
   },
   // History is the browser's, so back and forward are one call each. The popstate

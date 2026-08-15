@@ -119,7 +119,15 @@ export function createAddressProjection({
       cancelScheduled?.()
       cancelScheduled = null
     },
-    flushNow: flush,
+    // Cancels before flushing, unlike the timer's own call into `flush`. Without this
+    // `pagehide` left the timer armed AND dropped its canceller, so a page resumed from
+    // the back/forward cache had an orphan that no later `project()` could stop — and
+    // that orphan fired mid-burst, writing at the very moment coalescing exists to avoid.
+    flushNow() {
+      cancelScheduled?.()
+      cancelScheduled = null
+      flush()
+    },
     // Trailing edge: every change restarts the quiet period, so a burst writes once at
     // the end, at the address the user actually stopped on.
     project(address) {

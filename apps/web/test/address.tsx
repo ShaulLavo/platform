@@ -2,9 +2,9 @@ import { waitFor } from '@testing-library/react'
 import { useEffect } from 'react'
 import { expect } from 'vitest'
 
-import { useAddressProjection } from '@/features/address/hooks/use-address-projection'
+import { useAddressProjection } from '@/features/address/hooks/use-projection'
 import { PROJECTION_DEBOUNCE_MS } from '@/features/address/state/projection'
-import { useAddressRestore } from '@/features/address/hooks/use-address-restore'
+import { useAddressRestore } from '@/features/address/hooks/use-restore'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
 import { EditorStateProvider } from '@/features/editor/editor-state-provider'
 import {

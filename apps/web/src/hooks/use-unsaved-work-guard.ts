@@ -5,7 +5,7 @@ import { useEditorDocumentStoreApi } from '@/features/editor/state/editor-docume
 /**
  * Switching projects discards nothing — buffers are parked, not wiped — and history
  * navigation discards nothing either, because the applier refuses to close a tab with
- * unsaved edits (`closeTabsOutsideAddress` in `use-address-restore.ts`). So closing the
+ * unsaved edits (`closeTabsOutsideAddress` in `address/hooks/use-restore.ts`). So closing the
  * tab and reloading remain the only ways to lose unsaved work, and `beforeunload`
  * covers both.
  *

@@ -1,3 +1,4 @@
+import { MAX_APPLIED_TABS } from '@/features/address/utils/grammar'
 import { readSettingsCategory } from '@/features/settings/state/category-store'
 import { settingsDocumentId } from '@/features/settings/settings-document'
 
@@ -19,13 +20,19 @@ import {
 
 const ROOT = '/repo'
 
+/**
+ * The fixtures below spell `?tabs=` with BARE slashes, the way `serializeSearch` emits
+ * it. Percent-encoding them (`f%2Fa.ts`) makes `pathForDocumentToken` reject each token
+ * as an unknown kind, so the union never runs and any "tabs unchanged" assertion passes
+ * against a decoder rejection rather than against the behaviour it names.
+ */
 test('a foreign link does not close the tabs the cache restored', async () => {
-  // Twelve tabs remembered locally; a shared link naming two of them.
+  // Six tabs remembered locally; a shared link naming two of them.
   const remembered = ['a.ts', 'b.ts', 'c.ts', 'd.ts', 'e.ts', 'f.ts'].map(
     (name) => `${ROOT}/${name}`,
   )
   seedWorkspaceCache({ rootPath: ROOT, tabPaths: remembered })
-  startAt('/~repo/workbench/f/a.ts?tabs=f%2Fa.ts~f%2Fb.ts')
+  startAt('/~repo/workbench/f/a.ts?tabs=f/a.ts~f/b.ts')
 
   const { harness } = await renderAddressHarness()
   await flushProjection()
@@ -33,6 +40,37 @@ test('a foreign link does not close the tabs the cache restored', async () => {
   // Someone else's link is not an instruction to delete your workspace. The encoder
   // already refuses to emit a truncated tab set for exactly this reason.
   expect(editorTabPaths(harness.workspace)).toEqual(remembered)
+})
+
+/**
+ * The other half, and the one the assertion above cannot make: a token the cache does
+ * NOT already hold has to arrive. Without it, "union" and "ignore the address entirely"
+ * are indistinguishable.
+ */
+test('a link opens the tabs it names alongside the remembered ones', async () => {
+  seedWorkspaceCache({ rootPath: ROOT, tabPaths: [`${ROOT}/a.ts`] })
+  startAt('/~repo/workbench/f/a.ts?tabs=f/a.ts~f/new.ts')
+
+  const { harness } = await renderAddressHarness()
+  await flushProjection()
+
+  expect(editorTabPaths(harness.workspace)).toEqual([`${ROOT}/a.ts`, `${ROOT}/new.ts`])
+})
+
+/**
+ * The cap belongs to both consumers. The boot merge runs inside `EditorStateProvider`'s
+ * `useState` initializer, so an unbounded `?tabs=` blocks first paint on a quadratic
+ * open loop — and the result is real store state the cache persistence then writes out.
+ */
+test('a link naming more tabs than a person could open is rejected whole', async () => {
+  seedWorkspaceCache({ rootPath: ROOT, tabPaths: [`${ROOT}/a.ts`] })
+  const tokens = Array.from({ length: MAX_APPLIED_TABS + 1 }, (_, index) => `f/many-${index}.ts`)
+  startAt(`/~repo/workbench/f/a.ts?tabs=${tokens.join('~')}`)
+
+  const { harness } = await renderAddressHarness()
+  await flushProjection()
+
+  expect(editorTabPaths(harness.workspace)).toEqual([`${ROOT}/a.ts`])
 })
 
 test('going back does not answer with a push', async () => {

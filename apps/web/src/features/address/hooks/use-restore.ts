@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react'
 
-import { parseAddress } from '@/features/address/utils/grammar'
+import { applicableTabs, parseAddress } from '@/features/address/utils/grammar'
 import { pathForDocumentToken } from '@/features/address/utils/document-token'
 import { resolveWorkspaceSlug, NO_WORKSPACE_SLUG } from '@/features/address/utils/slug'
 import { parseSessionToken } from '@/features/address/utils/session-token'
+import { claimAddressRoot, releaseAddressRoot } from '@/features/address/state/root-claim'
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
 import { useThreadDiffScopeStore } from '@/features/chat/state/thread-diff-scope-store'
 import { diffScopeFor } from '@/features/address/utils/diff-scope'
@@ -17,7 +18,7 @@ import { SETTING_IDS, descriptorFor } from '@workspace/contracts'
 import { searchStateFor } from '@/features/address/utils/search-params'
 import { logsFiltersFor } from '@/features/address/utils/logs-params'
 import { defaultLogsFilterState } from '@/features/logs/log-filter-params'
-import { setLogsFilters } from '@/features/logs/state/filter-store'
+import { resetLogsFilters, setLogsFilters } from '@/features/logs/state/filter-store'
 import { useSearchBufferStoreApi } from '@/features/search/search-buffer-state'
 import type { SearchBufferStoreApi } from '@/features/search/search-buffer-state'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
@@ -26,6 +27,7 @@ import { documentTokenForPath } from '@/features/address/utils/document-token'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
 import { useOpenWorkspaceRoot } from '@/hooks/use-open-workspace-root'
 import {
+  createDefaultWorkbenchPanels,
   setWorkbenchBottomTab,
   setWorkbenchSidebarTab,
 } from '@/features/workbench/utils/workbench-panels'
@@ -34,7 +36,7 @@ import { toast } from 'sonner'
 
 import { log } from '@/lib/client-logging'
 import { fetchRecentEntries } from '@/lib/file-server'
-import { readWorkspaceCache } from '@/lib/workspace-cache'
+import { readWorkspaceOrder } from '@/lib/workspace-cache'
 
 /**
  * The inbound edge for everything `addressedWorkspaceCache` could not decide.
@@ -52,11 +54,11 @@ import { readWorkspaceCache } from '@/lib/workspace-cache'
  * store can never end up claiming a file is selected while the editor pane shows
  * nothing.
  *
- * Absent fields mean "defer to the remembered slice", never "reset to default", so a
- * short link lands somewhere sane instead of flattening everything it does not name.
+ * On BOOT an absent field means "defer to the remembered slice", never "reset to
+ * default", so a short link lands somewhere sane instead of flattening everything it
+ * does not name. On POPSTATE the address is authoritative — it is one this app wrote —
+ * so an absent field means the default, and back is the inverse of forward.
  */
-/** A link naming more tabs than a person could have opened is not a tab set. */
-const MAX_APPLIED_TABS = 64
 
 /**
  * Why the address is being applied, which decides two things a boot and a back press
@@ -106,7 +108,13 @@ export function useAddressRestore() {
     const deps = { commands, documentStoreApi, openWorkspaceRoot, searchStoreApi, storeApi }
     if (!applied.current) {
       applied.current = true
-      void applyAddress(deps, 'boot')
+      // Claimed synchronously, BEFORE the first await, and released however the apply
+      // ends. `useRestoreRecentWorkspaceRoot` fills the same empty root slot, and this
+      // path has to resolve a slug — sometimes over the network — before it can name
+      // its root, so without the claim the recents fallback opens a different project
+      // first and the pasted link is lost to a supersede that looks routine.
+      if (addressNamesWorkspace()) claimAddressRoot()
+      void applyAddress(deps, 'boot').finally(releaseAddressRoot)
     }
 
     // The second inbound edge. `pushState`/`replaceState` do not emit `popstate`, so
@@ -119,6 +127,13 @@ export function useAddressRestore() {
     window.addEventListener('popstate', applyOnPopState)
     return () => window.removeEventListener('popstate', applyOnPopState)
   }, [commands, documentStoreApi, openWorkspaceRoot, searchStoreApi, storeApi])
+}
+
+/** Whether the URL names a real workspace, decidable before any await. */
+function addressNamesWorkspace() {
+  const workspace = parseAddress(window.location.href).workspace
+
+  return Boolean(workspace) && workspace !== NO_WORKSPACE_SLUG
 }
 
 async function applyAddress(
@@ -179,7 +194,7 @@ async function applyAddress(
 
   if (!seeded) {
     applyMode(address.mode, storeApi)
-    applyPanels(address, storeApi)
+    applyPanels(address, storeApi, reason)
     if (address.mode === 'chat') applyChatToolTab(address, storeApi)
     applyTabs(address, rootPath, commands, storeApi, documentStoreApi, reason, trace)
   }
@@ -197,8 +212,8 @@ async function applyAddress(
   // Always applied: none of these lives in a workspace slice, so the merge cannot
   // reach them however the address arrived.
   if (address.mode === 'chat') applyChatSelection(address, rootPath, trace)
-  applySearch(address, rootPath, searchStoreApi)
-  applyLogs(address)
+  applySearch(address, rootPath, searchStoreApi, reason)
+  applyLogs(address, reason)
 
   return report({ status: 'applied', reason }, trace)
 }
@@ -211,16 +226,11 @@ async function resolveRoot(
   storeApi: ReturnType<typeof useEditorWorkspaceStoreApi>,
   trace: ApplyTrace,
 ) {
-  const current = storeApi.getState().rootFolder?.path
-  const indexed = [...readWorkspaceCache().workspaceOrder, ...(current ? [current] : [])]
-  const resolution = resolveWorkspaceSlug(slug, {
-    indexed,
-    // Only consulted when the index cannot answer — `resolveWorkspaceSlug` tries the
-    // cheap local steps first — so a warm boot never pays for this round trip. Wiring
-    // it is what lets a link reach a project this machine has on disk but has not
-    // opened recently enough to still be in the eight-slot index.
-    recent: await recentRootPaths(slug, indexed),
-  })
+  // The index only, never `readWorkspaceCache()`: that parses every slice and every
+  // search buffer — and a search buffer holds a materialized match list — and sweeps
+  // the whole localStorage keyspace, all to read one array, on every back press.
+  const indexed = readWorkspaceOrder(storeApi.getState().rootFolder?.path ?? null)
+  const resolution = await resolvedSlug(slug, indexed)
 
   if (resolution.kind === 'resolved') return resolution.rootPath
   // Ambiguity is not a guess to make: two checkouts named the same thing are two
@@ -231,15 +241,29 @@ async function resolveRoot(
 }
 
 /**
- * Skipped entirely when the index already holds the slug, so the common path stays
- * local and synchronous. A failure here is not a failed restore — it just means the
- * resolver falls back to what it already had.
+ * The index first, and the file server's recent directories only when the index has no
+ * answer at all — so a warm boot never pays for the round trip.
+ *
+ * The recents pass is handed an EMPTY index deliberately: reaching it means the index
+ * steps already returned `unknown`, and re-running them would rebuild the whole slug
+ * map (grouping, qualifying and hashing every root) a second time to reach the same
+ * dead end. Wiring the step at all is what lets a link reach a project this machine has
+ * on disk but has not opened recently enough to still be in the eight-slot index.
  */
-async function recentRootPaths(slug: string, indexed: readonly string[]) {
-  if (resolveWorkspaceSlug(slug, { indexed }).kind !== 'unknown') return []
+async function resolvedSlug(slug: string, indexed: readonly string[]) {
+  const local = resolveWorkspaceSlug(slug, { indexed })
+  if (local.kind !== 'unknown') return local
 
+  return resolveWorkspaceSlug(slug, { indexed: [], recent: await recentRootPaths() })
+}
+
+/**
+ * A failure here is not a failed restore — it just means the resolver falls back to
+ * what it already had.
+ */
+async function recentRootPaths() {
   try {
-    const entries = await fetchRecentEntries(RECENT_DIRECTORY_LIMIT, new AbortController().signal)
+    const entries = await fetchRecentEntries(RECENT_DIRECTORY_LIMIT)
 
     return entries.filter((entry) => isDirectoryEntry(entry)).map((entry) => entry.path)
   } catch {
@@ -354,15 +378,26 @@ function applyChatToolTab(
   state.setChatModePanels(showChatModeToolTab(panels, address.tool))
 }
 
+/**
+ * On boot an absent `?side=`/`?bottom=` defers to the remembered slice. On popstate it
+ * means the DEFAULT, because the encoder omits a slot sitting at its default
+ * (`orAbsent` in `use-projection.ts`) — so treating absence as "leave it alone" made
+ * back stop being the inverse of forward: you returned to an earlier document still
+ * wearing the panels you had switched to after leaving it.
+ */
 function applyPanels(
   address: ReturnType<typeof parseAddress>,
   storeApi: ReturnType<typeof useEditorWorkspaceStoreApi>,
+  reason: ApplyReason,
 ) {
   const state = storeApi.getState()
+  const defaults = createDefaultWorkbenchPanels()
+  const side = address.side ?? (reason === 'popstate' ? defaults.activeSidebarTab : null)
+  const bottom = address.bottom ?? (reason === 'popstate' ? defaults.activeBottomTab : null)
   let panels = state.workbenchPanels
 
-  if (address.side) panels = setWorkbenchSidebarTab(panels, address.side)
-  if (address.bottom) panels = setWorkbenchBottomTab(panels, address.bottom)
+  if (side) panels = setWorkbenchSidebarTab(panels, side)
+  if (bottom) panels = setWorkbenchBottomTab(panels, bottom)
   if (panels === state.workbenchPanels) return
 
   state.setWorkbenchPanels(panels)
@@ -422,9 +457,16 @@ function applySearch(
   address: ReturnType<typeof parseAddress>,
   rootPath: string,
   searchStoreApi: SearchBufferStoreApi,
+  reason: ApplyReason,
 ) {
   const wanted = searchStateFor(address.search)
-  if (!wanted?.query) return
+  // Absence is authoritative on popstate: the encoder emits `s.q` whenever there is a
+  // query, so an address without one is an address where the box was empty. Deferring
+  // there left a query the user typed AFTER the entry they just walked back to.
+  if (!wanted?.query) {
+    if (reason === 'popstate') clearSearchQuery(rootPath, searchStoreApi)
+    return
+  }
 
   const store = searchStoreApi.getState()
   store.prepareBuffer(rootPath)
@@ -439,11 +481,29 @@ function applySearch(
   store.setQuery(rootPath, wanted.query)
 }
 
-function applyLogs(address: ReturnType<typeof parseAddress>) {
-  const filters = logsFiltersFor(address.logs, defaultLogsFilterState())
-  if (!filters) return
+/** Only the buffer that already exists — restoring a document must not mint one. */
+function clearSearchQuery(rootPath: string, searchStoreApi: SearchBufferStoreApi) {
+  const active = searchStoreApi.getState().active
+  if (!active?.query) return
 
-  setLogsFilters(filters)
+  searchStoreApi.getState().setQuery(rootPath, '')
+}
+
+/**
+ * `logsParamsFor` emits only what differs from the defaults, so on popstate no `log.*`
+ * means the filters were untouched at that entry — reset them rather than leaving the
+ * ones set after it.
+ */
+function applyLogs(address: ReturnType<typeof parseAddress>, reason: ApplyReason) {
+  const filters = logsFiltersFor(address.logs, defaultLogsFilterState())
+  if (filters) {
+    setLogsFilters(filters)
+    return
+  }
+
+  // `resetLogsFilters`, not a defaults snapshot: storing one would freeze
+  // `logs.defaultTimeRange` for the session and leak `log.*` back into every address.
+  if (reason === 'popstate') resetLogsFilters()
 }
 
 /**
@@ -462,15 +522,17 @@ function applyTabs(
 ) {
   if (!address.tabs?.length) return
 
-  // Bounded on apply as well as on encode. The encoder caps what IT writes, which says
-  // nothing about a hand-edited or hostile link: without this, `?tabs=` with 5000
-  // tokens opens 5000 editor tabs in one synchronous loop.
-  if (address.tabs.length > MAX_APPLIED_TABS) {
+  // Bounded on apply as well as on encode, by the same rule the boot merge uses. The
+  // encoder caps what IT writes, which says nothing about a hand-edited or hostile
+  // link: without this, `?tabs=` with 5000 tokens opens 5000 editor tabs in one
+  // synchronous loop.
+  const tabs = applicableTabs(address.tabs)
+  if (!tabs) {
     trace.tabsRejected = address.tabs.length
     return
   }
 
-  for (const token of address.tabs) {
+  for (const token of tabs) {
     if (token === address.document) continue
 
     const parsed = pathForDocumentToken(rootPath, token)
@@ -485,7 +547,7 @@ function applyTabs(
   // later, surviving the restart. Walking history is the only case where the tab set
   // is one this app wrote, and therefore the only case where absence means "close".
   if (reason === 'popstate') {
-    closeTabsOutsideAddress(address.tabs, rootPath, commands, storeApi, documentStoreApi)
+    closeTabsOutsideAddress(tabs, rootPath, commands, storeApi, documentStoreApi)
   }
 }
 

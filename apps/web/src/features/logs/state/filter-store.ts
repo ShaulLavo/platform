@@ -1,7 +1,3 @@
-import { useSyncExternalStore } from 'react'
-
-import { defaultLogsFilterState, type LogsFilterState } from '@/features/logs/log-filter-params'
-
 /**
  * The log dashboard's filters, lifted out of the panel so an address can name them.
  *
@@ -11,6 +7,10 @@ import { defaultLogsFilterState, type LogsFilterState } from '@/features/logs/lo
  * clicked away. Before this the filters were plain `useState` and survived nothing,
  * so the feature strictly gains.
  */
+import { useSyncExternalStore } from 'react'
+
+import { defaultLogsFilterState, type LogsFilterState } from '@/features/logs/log-filter-params'
+
 /**
  * `null` means "nobody has touched the filters", which is NOT the same as a snapshot of
  * the defaults: `defaultLogsFilterState()` reads the settings mirror per call, so
@@ -56,7 +56,18 @@ export function setLogsFilters(next: LogsFilterState) {
   for (const listener of listeners) listener()
 }
 
-function subscribe(listener: () => void) {
+/**
+ * Back to "nobody has touched the filters", which is NOT the same as storing a snapshot
+ * of the defaults: a stored snapshot freezes `logs.defaultTimeRange` until a full
+ * reload, and makes the projection compare live defaults against frozen filters, which
+ * leaks `log.*` into every address.
+ */
+export function resetLogsFilters() {
+  filters = null
+  for (const listener of listeners) listener()
+}
+
+export function subscribeLogsFilters(listener: () => void) {
   listeners.add(listener)
 
   return () => {
@@ -64,10 +75,6 @@ function subscribe(listener: () => void) {
   }
 }
 
-export function subscribeLogsFilters(listener: () => void) {
-  return subscribe(listener)
-}
-
 export function useLogsFilters() {
-  return useSyncExternalStore(subscribe, currentFilters, currentFilters)
+  return useSyncExternalStore(subscribeLogsFilters, currentFilters, currentFilters)
 }

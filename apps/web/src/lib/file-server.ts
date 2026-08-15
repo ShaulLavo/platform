@@ -291,7 +291,8 @@ export async function statPath(path: string, signal: AbortSignal) {
   )
 }
 
-export async function fetchRecentEntries(limit: number, signal: AbortSignal) {
+/** `signal` is optional: a caller with no lifecycle to hang it on must not fake one. */
+export async function fetchRecentEntries(limit: number, signal?: AbortSignal) {
   return observeClientOperation(
     { action: 'fs.recents', area: 'fs', limit, signal },
     async () => {

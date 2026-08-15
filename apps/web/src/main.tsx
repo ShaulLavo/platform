@@ -4,7 +4,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 
 import '@workspace/ui/globals.css'
 import { App } from './App.tsx'
-import { restoreAddressFromStorage } from '@/features/address/state/address-storage.ts'
+import { restoreAddressFromStorage } from '@/features/address/state/storage.ts'
 import { LoggingErrorBoundary } from '@/components/logging-error-boundary.tsx'
 import { ThemeAwareToaster } from '@/components/theme-aware-toaster.tsx'
 import { ThemeProvider } from '@/components/theme-provider.tsx'

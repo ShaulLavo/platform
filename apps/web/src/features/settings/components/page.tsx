@@ -56,8 +56,11 @@ export function SettingsPage() {
           value={query}
         />
         <div className='flex flex-wrap items-center gap-2'>
+          {/* `visible` is already query-filtered, so "of N" only says something while a
+              category narrows the list further; otherwise it printed the same number twice. */}
           <p className='text-muted-foreground text-xs tabular-nums'>
-            {shownCount(shown)} of {visible.length} {visible.length === 1 ? 'setting' : 'settings'}
+            {selectedCategory ? `${shownCount(shown)} of ` : ''}
+            {visible.length} {visible.length === 1 ? 'setting' : 'settings'}
           </p>
           {/* The only way out of a category a link pinned. Without it the page showed
               one section while the header counted every setting, and nothing in the UI
@@ -121,16 +124,16 @@ function emptySettingsMessage(query: string, category: string | null) {
   return `No settings match “${query}”.`
 }
 
-/**
- * Grouped by the descriptor's own `category`, not by key prefix. Deriving groups
- * from prefixes invents categories nobody chose and reshuffles the page whenever
- * a key is renamed.
- */
 /** What the list is actually showing, which a pinned category makes smaller. */
 function shownCount(shown: readonly (readonly [string, SettingId[]])[]) {
   return shown.reduce((total, [, ids]) => total + ids.length, 0)
 }
 
+/**
+ * Grouped by the descriptor's own `category`, not by key prefix. Deriving groups
+ * from prefixes invents categories nobody chose and reshuffles the page whenever
+ * a key is renamed.
+ */
 function groupByCategory(ids: readonly SettingId[]): Map<string, SettingId[]> {
   const categories = new Map<string, SettingId[]>()
 

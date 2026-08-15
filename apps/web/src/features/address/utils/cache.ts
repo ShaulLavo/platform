@@ -1,5 +1,5 @@
 import { pathForDocumentToken } from '@/features/address/utils/document-token'
-import type { Address } from '@/features/address/utils/grammar'
+import { applicableTabs, type Address } from '@/features/address/utils/grammar'
 import { NO_WORKSPACE_SLUG, resolveWorkspaceSlug } from '@/features/address/utils/slug'
 import { isChatModeToolTab, showChatModeToolTab } from '@/features/chat-mode/utils/panels'
 import {
@@ -79,9 +79,11 @@ function seedableRootPath(cached: CachedWorkspaceState, address: Address) {
 
 function panelsForAddress(panels: WorkbenchPanels, rootPath: string, address: Address) {
   const withPanes = withBottomTab(withSidebarTab(panels, address), address)
-  // The active document is opened LAST so it ends up selected: every
-  // `openEditorPathInWorkbenchPanels` selects the tab it opens.
-  const withTabs = (address.tabs ?? []).reduce(
+  // Bounded by the same rule the post-mount applier uses. This runs inside
+  // `EditorStateProvider`'s `useState` initializer, so an unbounded `?tabs=` blocks
+  // first paint on a quadratic open loop — and the result is real store state, which
+  // the cache persistence then writes to disk.
+  const withTabs = (applicableTabs(address.tabs) ?? []).reduce(
     (next, token) => withDocumentToken(next, rootPath, token),
     withPanes,
   )

@@ -8,8 +8,8 @@ import { EditorTabActionsProvider } from '@/features/editor/providers/editor-tab
 import { MenuCommandProvider } from '@/features/menus/providers/command-provider'
 import { useRestoreRecentWorkspaceRoot } from '@/hooks/use-restore-recent-workspace-root'
 import { useUnsavedWorkGuard } from '@/hooks/use-unsaved-work-guard'
-import { useAddressProjection } from '@/features/address/hooks/use-address-projection'
-import { useAddressRestore } from '@/features/address/hooks/use-address-restore'
+import { useAddressProjection } from '@/features/address/hooks/use-projection'
+import { useAddressRestore } from '@/features/address/hooks/use-restore'
 import { useWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
 import { DEFAULT_SETTING_VALUES } from '@workspace/contracts'
 

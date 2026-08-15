@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useRef } from 'react'
 
+import { useAddressRootClaimed } from '@/features/address/state/root-claim'
 import {
   useEditorWorkspaceState,
   useEditorWorkspaceStoreApi,
@@ -20,19 +21,26 @@ export function useRestoreRecentWorkspaceRoot() {
   const attemptedRootPath = useRef<string | null>(null)
   const recentFolders = useQuery(recentFoldersQueryOptions({ enabled: rootPath === null }))
   const recentRootPath = recentFolders.data?.[0]?.path ?? null
+  // A link names a workspace explicitly; recents is a guess. While the address applier
+  // is still resolving one, this must not fill the slot — both call `openWorkspaceRoot`
+  // and the later caller wins, so the guess was beating the instruction roughly half
+  // the time on a machine with no cached root. Released as soon as the applier settles,
+  // so a dead link still falls back here rather than leaving the app empty.
+  const addressClaimsRoot = useAddressRootClaimed()
 
   useEffect(() => {
     if (rootPath !== null) {
       attemptedRootPath.current = null
       return
     }
+    if (addressClaimsRoot) return
     if (!recentRootPath) return
     if (attemptedRootPath.current === recentRootPath) return
     if (workspaceStore.getState().rootFolder) return
 
     attemptedRootPath.current = recentRootPath
     void restoreRecentWorkspaceRoot(recentRootPath, openWorkspaceRoot)
-  }, [openWorkspaceRoot, recentRootPath, rootPath, workspaceStore])
+  }, [addressClaimsRoot, openWorkspaceRoot, recentRootPath, rootPath, workspaceStore])
 }
 
 async function restoreRecentWorkspaceRoot(
