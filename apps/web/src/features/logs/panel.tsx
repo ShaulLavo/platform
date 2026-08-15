@@ -3,16 +3,13 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { logsKeys } from '@/lib/query-keys'
-import {
-  logDashboardFilters,
-  defaultLogsFilterState,
-  type LogsFilterState,
-} from './log-filter-params'
+import { logDashboardFilters } from './log-filter-params'
 import { logFilterQuery, logToolbarOptionFilters } from './log-filter-params'
 import { useLogSummary } from './use-log-summary'
 import { LogsEventListContainer } from './logs-event-list-container'
 import { LogsTimeline } from './logs-timeline'
 import { LogsToolbar } from './log-toolbar'
+import { setLogsFilters, useLogsFilters } from '@/features/logs/state/filter-store'
 
 type LogsPanelProps = {
   active: boolean
@@ -21,7 +18,7 @@ type LogsPanelProps = {
 export const LogsPanel = memo(({ active }: LogsPanelProps) => {
   const queryClient = useQueryClient()
   const setFocusArea = useFocus((state) => state.setFocusArea)
-  const [filtersState, setFiltersState] = useState<LogsFilterState>(defaultLogsFilterState)
+  const filtersState = useLogsFilters()
   const [inspectedEventId, setInspectedEventId] = useState<string | null>(null)
   const [now, setNow] = useState(Date.now)
   const filters = useMemo(() => logDashboardFilters(filtersState, now), [filtersState, now])
@@ -57,7 +54,7 @@ export const LogsPanel = memo(({ active }: LogsPanelProps) => {
         filters={filtersState}
         refreshing={summary.isFetching || optionSummary.isFetching}
         sources={optionSummary.data?.sources ?? []}
-        onFiltersChange={setFiltersState}
+        onFiltersChange={setLogsFilters}
         onRefresh={handleRefresh}
       />
       <LogsTimeline summary={summary.data} />

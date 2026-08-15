@@ -1,0 +1,265 @@
+import { readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { describe } from 'vitest'
+
+import { expect, test } from '../../../../test/fixtures'
+
+import {
+  STATE_CLASSIFICATIONS,
+  classifiedStorageKeys,
+  statesClassifiedAs,
+} from '@/features/address/utils/classification'
+import { applicableTabs, MAX_APPLIED_TABS } from '@/features/address/utils/grammar'
+import { addressFromSnapshot } from '@/features/address/utils/snapshot'
+import { emptyAddressSnapshot } from '@/features/address/utils/snapshot'
+
+const SOURCE_ROOT = join(import.meta.dirname, '../../..')
+const STORAGE_KEY_PATTERN = /['"`](platform[.:][\w.:-]*)['"`]/g
+
+/**
+ * `platform.` also prefixes logger areas, plugin ids and keymap categories, none of
+ * which are persisted state. A literal counts as a storage key only where it is used
+ * as one: on a line touching `localStorage`, or one naming a storage-key constant.
+ */
+const STORAGE_CONTEXT_PATTERN =
+  /localStorage|sessionStorage|[A-Z0-9_]*_KEY\b|[A-Za-z]+(?:Storage|Cache)Key|storageKey/
+
+function sourceFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name)
+    if (entry.isDirectory()) return sourceFiles(path)
+    if (!/\.tsx?$/.test(entry.name)) return []
+
+    return [path]
+  })
+}
+
+function persistedKeysInSource() {
+  const keys = new Map<string, string>()
+
+  for (const file of sourceFiles(SOURCE_ROOT)) {
+    for (const line of readFileSync(file, 'utf8').split('\n')) {
+      if (!STORAGE_CONTEXT_PATTERN.test(line)) continue
+
+      for (const [, key] of line.matchAll(STORAGE_KEY_PATTERN)) {
+        if (!keys.has(key)) keys.set(key, file)
+      }
+    }
+  }
+
+  return keys
+}
+
+describe('the classification table', () => {
+  test('classifies every state exactly once, with a reason', () => {
+    for (const [name, entry] of Object.entries(STATE_CLASSIFICATIONS)) {
+      expect(entry.why, `${name} needs a reason`).toBeTruthy()
+      expect(['address', 'preference', 'ephemeral']).toContain(entry.classification)
+    }
+  })
+
+  // The one drift this design cannot otherwise catch: a new code path that persists
+  // something and never tells the address layer it exists.
+  test('accounts for every `platform.*` storage key in the source tree', () => {
+    const classified = classifiedStorageKeys()
+    const unclassified = [...persistedKeysInSource()]
+      .filter(([key]) => !classified.has(key))
+      // A namespace fragment that a classified key is BUILT FROM is not its own state:
+      // the per-root slice and search keys are `${CACHE_KEY_PREFIX}.workspace:` plus a
+      // runtime path, so only the prefix literal ever appears in the source.
+      .filter(([key]) => ![...classified].some((full) => full.startsWith(key)))
+      .map(([key, file]) => `${key} (${file.replace(SOURCE_ROOT, '')})`)
+
+    expect(unclassified, 'classify these in features/address/utils/classification.ts').toEqual([])
+  })
+
+  test('keeps the take-once inboxes ephemeral, which is why the deny-list is structural', () => {
+    const ephemeral = statesClassifiedAs('ephemeral')
+
+    expect(ephemeral).toContain('terminalCommandInbox')
+    expect(ephemeral).toContain('composerInbox')
+    expect(ephemeral).toContain('searchReplaceText')
+    expect(ephemeral).toContain('sessionMultiSelect')
+  })
+
+  test('keeps geometry and appearance out of the address', () => {
+    const preference = statesClassifiedAs('preference')
+
+    expect(preference).toContain('workbenchLayout')
+    expect(preference).toContain('resizableLayoutChatMode')
+    expect(preference).toContain('editorColorTheme')
+    expect(preference).toContain('scrollPositions')
+  })
+})
+
+describe('the encoder cannot emit what it cannot reach', () => {
+  test('produces only whitelisted fields, and nothing ephemeral', () => {
+    const address = addressFromSnapshot({
+      ...emptyAddressSnapshot(),
+      activeDocumentPath: '/repo/src/a.ts',
+      editorTabPaths: ['/repo/src/a.ts'],
+      knownRootPaths: ['/repo'],
+      mode: 'workbench',
+      rootPath: '/repo',
+    })
+
+    expect(Object.keys(address).sort()).toEqual([
+      'bottom',
+      'diff',
+      'document',
+      'focus',
+      'logs',
+      'mode',
+      'passthrough',
+      'rail',
+      'search',
+      'settings',
+      'side',
+      'tabs',
+      'tool',
+      'workspace',
+    ])
+    expect(JSON.stringify(address)).not.toContain('replace')
+    expect(JSON.stringify(address)).not.toContain('queryHistory')
+  })
+
+  // The projection overwrites the whole URL, so a dropped dev param is gone for the
+  // session — and two of them are read late enough that nothing would report it.
+  test('carries the reserved dev params into every projected address', () => {
+    const passthrough = {
+      decode: 'diffusion',
+      editorPerfLayout: 'transform',
+      editorPerfTrace: '1',
+    }
+
+    expect(
+      addressFromSnapshot({
+        ...emptyAddressSnapshot(),
+        knownRootPaths: ['/repo'],
+        passthrough,
+        rootPath: '/repo',
+      }).passthrough,
+    ).toEqual(passthrough)
+    expect(addressFromSnapshot({ ...emptyAddressSnapshot(), passthrough }).passthrough).toEqual(
+      passthrough,
+    )
+  })
+
+  test('emits no workspace document at all when no folder is open', () => {
+    const address = addressFromSnapshot(emptyAddressSnapshot())
+
+    expect(address).toMatchObject({ document: null, tabs: null, workspace: '-' })
+  })
+
+  test('drops a conflict document from the tab set rather than encoding it', () => {
+    const address = addressFromSnapshot({
+      ...emptyAddressSnapshot(),
+      editorTabPaths: ['/repo/src/a.ts', 'conflict-diff:abc'],
+      knownRootPaths: ['/repo'],
+      rootPath: '/repo',
+    })
+
+    expect(address.tabs).toEqual(['f/src/a.ts'])
+  })
+})
+
+describe('the tab set budget', () => {
+  // A partial tab set would DELETE tabs on apply, so over budget it is dropped whole.
+  test('drops `tabs` entirely rather than truncating it', () => {
+    const many = Array.from({ length: 400 }, (_, index) => `/repo/src/a-very-long-name-${index}.ts`)
+    const address = addressFromSnapshot({
+      ...emptyAddressSnapshot(),
+      activeDocumentPath: many[0],
+      editorTabPaths: many,
+      knownRootPaths: ['/repo'],
+      rootPath: '/repo',
+    })
+
+    expect(address.tabs).toBeNull()
+    // The path still names the active document, so the link degrades to something useful.
+    expect(address.document).toBe('f/src/a-very-long-name-0.ts')
+  })
+
+  /**
+   * The count ceiling, which the byte ceiling does not imply: sixty-five short tokens sit
+   * far under 1500 bytes, and `applicableTabs` on the reading side discards any set past
+   * `MAX_APPLIED_TABS` whole — so emitting one handed the recipient a link that restored
+   * no tabs at all.
+   */
+  test('drops a tab set larger than the reader will apply, however short the tokens', () => {
+    const many = Array.from({ length: MAX_APPLIED_TABS + 1 }, (_, index) => `/repo/${index}.ts`)
+    const address = addressFromSnapshot({
+      ...emptyAddressSnapshot(),
+      editorTabPaths: many,
+      knownRootPaths: ['/repo'],
+      rootPath: '/repo',
+    })
+
+    expect(many.join('~').length).toBeLessThan(1500)
+    expect(address.tabs).toBeNull()
+  })
+
+  test('keeps a tab set exactly at the reader\u2019s ceiling', () => {
+    const many = Array.from({ length: MAX_APPLIED_TABS }, (_, index) => `/repo/${index}.ts`)
+    const address = addressFromSnapshot({
+      ...emptyAddressSnapshot(),
+      editorTabPaths: many,
+      knownRootPaths: ['/repo'],
+      rootPath: '/repo',
+    })
+
+    expect(address.tabs).toHaveLength(MAX_APPLIED_TABS)
+    expect(applicableTabs(address.tabs)).not.toBeNull()
+  })
+
+  test('keeps a tab set that fits', () => {
+    const address = addressFromSnapshot({
+      ...emptyAddressSnapshot(),
+      editorTabPaths: ['/repo/src/a.ts', '/repo/src/b.ts'],
+      knownRootPaths: ['/repo'],
+      rootPath: '/repo',
+    })
+
+    expect(address.tabs).toEqual(['f/src/a.ts', 'f/src/b.ts'])
+  })
+})
+
+describe('the settings slot is driven by the tab, not the remembered category', () => {
+  // The category store keeps its pick after the tab closes. Reading it directly left
+  // `?settings=` in the URL forever and reopened the page on every reload.
+  test('emits nothing when no settings tab is open, even with a remembered category', () => {
+    expect(
+      addressFromSnapshot({
+        ...emptyAddressSnapshot(),
+        editorTabPaths: ['/repo/src/a.ts'],
+        knownRootPaths: ['/repo'],
+        rootPath: '/repo',
+        settingsCategory: 'providers',
+      }).settings,
+    ).toBeNull()
+  })
+
+  test('emits the category when a settings tab is open', () => {
+    expect(
+      addressFromSnapshot({
+        ...emptyAddressSnapshot(),
+        editorTabPaths: ['settings:'],
+        knownRootPaths: ['/repo'],
+        rootPath: '/repo',
+        settingsCategory: 'providers',
+      }).settings,
+    ).toBe('providers')
+  })
+
+  test('emits an empty category for a settings tab in the background', () => {
+    expect(
+      addressFromSnapshot({
+        ...emptyAddressSnapshot(),
+        activeDocumentPath: '/repo/src/a.ts',
+        editorTabPaths: ['/repo/src/a.ts', 'settings:'],
+        knownRootPaths: ['/repo'],
+        rootPath: '/repo',
+      }).settings,
+    ).toBe('')
+  })
+})

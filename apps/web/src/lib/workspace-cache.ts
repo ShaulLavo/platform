@@ -21,6 +21,8 @@ import {
   type WorkbenchPanels,
 } from '@/features/workbench/utils/workbench-panels'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
+import { log } from '@/lib/client-logging'
+import { isPathInWorkspace, toWorkspaceAbsolute, toWorkspaceRelative } from '@/lib/workspace-path'
 import {
   projectIdSchema,
   threadIdSchema,
@@ -33,8 +35,9 @@ import type { EditorScrollPosition } from '@singapor/core'
 
 // Local-only UI state uses an explicit schema version plus a clear mismatch policy:
 // update deliberately or drop intentionally. Server-backed caches may reset/refetch.
-const CACHE_VERSION = 16
+const CACHE_VERSION = 17
 const CACHE_KEY_PREFIX = `platform.workspace-state.v${CACHE_VERSION}`
+const CACHE_KEY_NAMESPACE = 'platform.workspace-state.v'
 const WORKSPACE_SLICE_KEY_PREFIX = `${CACHE_KEY_PREFIX}.workspace:`
 const SEARCH_BUFFER_KEY_PREFIX = `${CACHE_KEY_PREFIX}.search:`
 
@@ -255,6 +258,8 @@ export type CachedWorkspaceState = {
 export function readWorkspaceCache(): CachedWorkspaceState {
   if (!canUseLocalStorage()) return emptyWorkspaceState()
 
+  purgeSupersededCacheVersions()
+
   return workspaceStateFromCache()
 }
 
@@ -295,7 +300,7 @@ export function writeRootFolderCache(rootFolder: PickedFsEntry | null) {
 }
 
 export function writeWorkspaceSliceCache(rootPath: string, slice: CachedWorkspaceSlice) {
-  writeCacheEntry(workspaceSliceStorageKey(rootPath), sliceForWorkspace(rootPath, slice))
+  writeCacheEntry(workspaceSliceStorageKey(rootPath), storedSliceForWorkspace(rootPath, slice))
 }
 
 export function writeSearchBufferCache(
@@ -337,7 +342,7 @@ function workspaceStateFromCache(): CachedWorkspaceState {
     rootFolderSchema,
     null,
   )
-  const workspaceOrder = workspaceOrderFromCache(rootFolder)
+  const workspaceOrder = workspaceOrderFromCache(rootFolder?.path ?? null)
   const workspaces: Record<string, CachedWorkspaceSlice> = {}
   const searchBuffers: Record<string, CachedSearchBufferState> = {}
 
@@ -372,10 +377,23 @@ function workspaceStateFromCache(): CachedWorkspaceState {
   }
 }
 
+/**
+ * Just the workspace order — the slug→root oracle — without touching a single slice.
+ *
+ * `readWorkspaceCache()` parses every slice AND every search buffer, and a search
+ * buffer carries a materialized match list; it also sweeps the whole localStorage
+ * keyspace. A caller that only needs the order should not pay for any of that, least
+ * of all on a path that runs per back/forward press.
+ */
+export function readWorkspaceOrder(activeRootPath: string | null): readonly string[] {
+  if (!canUseLocalStorage()) return []
+
+  return workspaceOrderFromCache(activeRootPath)
+}
+
 /** The open root always leads, even when the index predates it or was dropped. */
-function workspaceOrderFromCache(rootFolder: PickedFsEntry | null) {
+function workspaceOrderFromCache(activePath: string | null) {
   const stored = readWorkspaceIndex()
-  const activePath = rootFolder?.path
   if (!activePath) return stored.slice(0, WORKSPACE_SLICE_LIMIT)
 
   return [activePath, ...stored.filter((rootPath) => rootPath !== activePath)].slice(
@@ -393,7 +411,7 @@ function readWorkspaceIndex() {
 }
 
 function readWorkspaceSlice(rootPath: string): CachedWorkspaceSlice {
-  return sliceForWorkspace(
+  return restoredSliceForWorkspace(
     rootPath,
     readCacheEntry<CachedWorkspaceSlice>(
       workspaceSliceStorageKey(rootPath),
@@ -506,10 +524,121 @@ function backingPathForWorkspace(path: string) {
   return path
 }
 
-function isPathInWorkspace(path: string, rootPath: string) {
-  if (path === rootPath) return true
+/**
+ * Serialized paths are workspace-relative; in-memory paths stay absolute, because the
+ * file server wants absolute. The `./` marker is what makes the two forms tellable
+ * apart on the way back in: every real file path is absolute and every synthetic
+ * document id (`git-diff:`, `search-buffer:`, …) starts with a letter, so nothing
+ * else in a slice can begin `./`. That avoids sniffing a list of document-id prefixes,
+ * of which this codebase already keeps five copies that disagree.
+ */
+const RELATIVE_PATH_MARKER = './'
 
-  return path.startsWith(`${rootPath}/`)
+function storedPath(rootPath: string, path: string) {
+  const relative = toWorkspaceRelative(rootPath, path)
+  if (!relative) return path
+
+  return `${RELATIVE_PATH_MARKER}${relative}`
+}
+
+function restoredPath(rootPath: string, path: string) {
+  if (!path.startsWith(RELATIVE_PATH_MARKER)) return path
+
+  return toWorkspaceAbsolute(rootPath, path.slice(RELATIVE_PATH_MARKER.length)) ?? path
+}
+
+/**
+ * Relativize on the way out, absolutize on the way in. Both wrap `sliceForWorkspace`
+ * rather than living inside it: that filter runs in BOTH directions and its predicate
+ * only understands absolute paths, so relativizing inside it would make every restored
+ * path fail `isPathInWorkspace` and silently empty the slice on the first reload.
+ */
+function storedSliceForWorkspace(rootPath: string, slice: CachedWorkspaceSlice) {
+  return mapSlicePaths(sliceForWorkspace(rootPath, slice), (path) => storedPath(rootPath, path))
+}
+
+function restoredSliceForWorkspace(rootPath: string, slice: CachedWorkspaceSlice) {
+  return sliceForWorkspace(
+    rootPath,
+    mapSlicePaths(slice, (path) => restoredPath(rootPath, path)),
+  )
+}
+
+function mapSlicePaths(
+  slice: CachedWorkspaceSlice,
+  mapPath: (path: string) => string,
+): CachedWorkspaceSlice {
+  return {
+    editorHistory: slice.editorHistory.map(mapPath),
+    recentlyClosedEditorPaths: slice.recentlyClosedEditorPaths.map(mapPath),
+    scrollPositionByPath: Object.fromEntries(
+      Object.entries(slice.scrollPositionByPath).map(([path, position]) => [
+        mapPath(path),
+        position,
+      ]),
+    ),
+    workbenchPanels: {
+      ...slice.workbenchPanels,
+      editorTabs: slice.workbenchPanels.editorTabs.map((tab) => ({
+        ...tab,
+        path: mapPath(tab.path),
+      })),
+    },
+  }
+}
+
+/**
+ * Bumping `CACHE_VERSION` renames the index too, and `writeWorkspaceIndexCache` — the
+ * only deleter of per-root storage — walks the CURRENT version's index. So every
+ * superseded `…v<n>.workspace:<root>` and `…v<n>.search:<root>` key becomes unreachable
+ * and undeletable. Search buffers carry a materialized match list, so that is real
+ * quota, not a few bytes. Sweeping them is garbage collection of keys nothing can
+ * reach, not a migration: no value is read, translated or preserved.
+ */
+function purgeSupersededCacheVersions() {
+  if (!canUseLocalStorage()) return
+
+  const superseded = supersededCacheKeys()
+  if (superseded.length === 0) return
+
+  for (const key of superseded) removeCacheEntry(key)
+
+  log.info({
+    action: 'workspace.cache_versions_purged',
+    area: 'workspace',
+    keys: superseded.length,
+    version: CACHE_VERSION,
+  })
+}
+
+/**
+ * Keys renamed rather than versioned, so the namespace walk below cannot see them.
+ * Greenfield rule: delete the orphan instead of teaching anything to read it.
+ */
+const RENAMED_CACHE_KEYS = ['platform:prompt-stash:v1'] as const
+
+function supersededCacheKeys() {
+  const keys: string[] = []
+
+  // Collected before any removal: deleting during the walk renumbers the indices.
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index)
+      if (!key) continue
+      if (RENAMED_CACHE_KEYS.some((renamed) => renamed === key)) {
+        keys.push(key)
+        continue
+      }
+      if (!key.startsWith(CACHE_KEY_NAMESPACE)) continue
+      if (key.startsWith(`${CACHE_KEY_PREFIX}.`)) continue
+
+      keys.push(key)
+    }
+  } catch {
+    return []
+  }
+
+  return keys
 }
 
 export function emptyWorkspaceSlice(): CachedWorkspaceSlice {

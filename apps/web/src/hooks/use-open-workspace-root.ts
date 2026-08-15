@@ -2,6 +2,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { isDirectoryEntry } from '@workspace/contracts'
 import { useCallback } from 'react'
 
+import { workspacePathLeaf } from '@/lib/workspace-path'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
 import { useResetWorkspaceTreeLoad } from '@/hooks/use-workspace-tree'
@@ -62,7 +63,7 @@ export function useOpenWorkspaceRoot() {
         }
 
         resetTreeLoad()
-        switchRootFolder({ ...entry, name: pathLeaf(workspaceRoot), type: 'directory' })
+        switchRootFolder({ ...entry, name: workspacePathLeaf(workspaceRoot), type: 'directory' })
         log.info({ action: 'workspace.root_opened', area: 'workspace', path: workspaceRoot })
         void recordRootAsRecent(queryClient, workspaceRoot)
         return 'opened'
@@ -87,8 +88,4 @@ async function recordRootAsRecent(queryClient: QueryClient, workspaceRoot: strin
   // Both the titlebar menu and the picker sidebar read this list.
   await queryClient.invalidateQueries({ queryKey: recentFolderKeys.all })
   await queryClient.invalidateQueries({ queryKey: filePickerKeys.recents() })
-}
-
-function pathLeaf(path: string) {
-  return path.split('/').filter(Boolean).at(-1) ?? path
 }

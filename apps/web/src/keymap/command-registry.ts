@@ -127,6 +127,13 @@ const workspaceCommandSpecs = [
     'Move keyboard focus to the file tree.',
   ),
   workspaceCommand('workspace.focusGit', 'Focus Git', 'Move keyboard focus to the Git panel.'),
+  workspaceCommand(
+    'workspace.copyAddress',
+    'Copy address',
+    'Copy a link to exactly where you are — no absolute paths, no dev-only parameters.',
+  ),
+  workspaceCommand('workspace.navigateBack', 'Back', 'Go back to the previous document.'),
+  workspaceCommand('workspace.navigateForward', 'Forward', 'Go forward again.'),
   workspaceCommand('workspace.revealChat', 'Show chat', 'Bring the chat composer on screen.'),
   workspaceCommand(
     'workspace.revealTerminal',

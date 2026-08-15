@@ -1,5 +1,7 @@
 import { descriptorFor, type SettingId } from '@workspace/contracts'
+import { Button } from '@workspace/ui/components/button'
 import { Input } from '@workspace/ui/components/input'
+import { XIcon } from '@phosphor-icons/react'
 import { useRef, useState } from 'react'
 
 import { useHasWorkspace } from '../hooks/use-has-workspace'
@@ -11,6 +13,10 @@ import { PageActions } from './page-actions'
 import { ScopeTabs } from './scope-tabs'
 import { SettingRow } from './setting-row'
 import { Status } from './status'
+import {
+  selectSettingsCategory,
+  useSettingsCategory,
+} from '@/features/settings/state/category-store'
 
 export function SettingsPage() {
   const settings = useSettings()
@@ -18,6 +24,8 @@ export function SettingsPage() {
   const hasWorkspace = useHasWorkspace()
   const [query, setQuery] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
+  // Above the early returns: hooks cannot sit behind a conditional exit.
+  const selectedCategory = useSettingsCategory()
 
   if (settings.isPending) return <Status>Loading settings…</Status>
   if (settings.isError) return <Status tone='destructive'>Settings could not be loaded.</Status>
@@ -26,6 +34,11 @@ export function SettingsPage() {
     (id) => (descriptorFor(id).visibility ?? 'user') !== 'internal',
   )
   const categories = groupByCategory(visible)
+  // An address can narrow the page to one category. Unknown or absent means all of
+  // them, so a stale link degrades to the full page rather than to nothing.
+  const shown = selectedCategory
+    ? [...categories].filter(([category]) => category === selectedCategory)
+    : [...categories]
 
   return (
     <div className='flex h-full min-h-0 flex-col'>
@@ -42,9 +55,28 @@ export function SettingsPage() {
           placeholder='Search settings'
           value={query}
         />
-        <p className='text-muted-foreground text-xs tabular-nums'>
-          {visible.length} {visible.length === 1 ? 'setting' : 'settings'}
-        </p>
+        <div className='flex flex-wrap items-center gap-2'>
+          {/* `visible` is already query-filtered, so "of N" only says something while a
+              category narrows the list further; otherwise it printed the same number twice. */}
+          <p className='text-muted-foreground text-xs tabular-nums'>
+            {selectedCategory ? `${shownCount(shown)} of ` : ''}
+            {visible.length} {visible.length === 1 ? 'setting' : 'settings'}
+          </p>
+          {/* The only way out of a category a link pinned. Without it the page showed
+              one section while the header counted every setting, and nothing in the UI
+              could clear it — `selectSettingsCategory` had no caller but the applier. */}
+          {selectedCategory ? (
+            <Button
+              aria-label={`Show all settings, not just ${selectedCategory}`}
+              onClick={() => selectSettingsCategory(null)}
+              size='sm'
+              variant='secondary'
+            >
+              {selectedCategory}
+              <XIcon aria-hidden />
+            </Button>
+          ) : null}
+        </div>
       </header>
 
       {/* Escape returns to the search box from anywhere in the list, so a
@@ -64,10 +96,10 @@ export function SettingsPage() {
         }}
       >
         <DiagnosticsBanner diagnostics={settings.data.diagnostics} />
-        {visible.length === 0 ? (
-          <Status>{`No settings match “${query}”.`}</Status>
+        {shown.length === 0 ? (
+          <Status>{emptySettingsMessage(query, selectedCategory)}</Status>
         ) : (
-          [...categories].map(([category, ids]) => (
+          shown.map(([category, ids]) => (
             <section className='mb-6' key={category}>
               <h2 className='text-foreground mb-1 text-sm font-semibold'>{category}</h2>
               {ids.map((id) => (
@@ -79,6 +111,22 @@ export function SettingsPage() {
       </div>
     </div>
   )
+}
+
+/**
+ * A category filter and a search query can disagree: the query matches settings that
+ * live in another section. Saying so beats an empty page under a header that claims
+ * matches exist.
+ */
+function emptySettingsMessage(query: string, category: string | null) {
+  if (category) return `No settings in ${category} match “${query}”.`
+
+  return `No settings match “${query}”.`
+}
+
+/** What the list is actually showing, which a pinned category makes smaller. */
+function shownCount(shown: readonly (readonly [string, SettingId[]])[]) {
+  return shown.reduce((total, [, ids]) => total + ids.length, 0)
 }
 
 /**

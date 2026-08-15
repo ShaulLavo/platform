@@ -4,6 +4,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 
 import '@workspace/ui/globals.css'
 import { App } from './App.tsx'
+import { restoreAddressFromStorage } from '@/features/address/state/storage.ts'
 import { LoggingErrorBoundary } from '@/components/logging-error-boundary.tsx'
 import { ThemeAwareToaster } from '@/components/theme-aware-toaster.tsx'
 import { ThemeProvider } from '@/components/theme-provider.tsx'
@@ -57,6 +58,11 @@ log.info({
 // `AppearanceProvider` had already corrected it.
 void loadNerdFont(boot['editor.fontFamily'])
 
+// Before `createRoot`, deliberately: `EditorStateProvider` seeds its stores from the
+// address during its first render, so the stored address has to be in the URL by then.
+// A desktop launch always arrives at `/`, which is exactly the case this covers.
+restoreAddressFromStorage()
+
 createRoot(document.getElementById('root')!, {
   onCaughtError: (error, errorInfo) => {
     reportReactError({ error, errorInfo, kind: 'caught' })
@@ -75,6 +81,8 @@ createRoot(document.getElementById('root')!, {
           <ThemeProvider>
             <EditorColorThemeProvider>
               <TooltipProvider delay={600}>
+                {/* `ThemeAwareToaster` stays a sibling of the app so an in-flight toast
+                    keeps its identity across an address change. */}
                 <App />
                 <ThemeAwareToaster />
               </TooltipProvider>

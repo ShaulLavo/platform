@@ -1,6 +1,50 @@
 # Addressable State: URL Design and Implementation Plan
 
-**Status:** proposal · **Scope:** `apps/web` (+ two lines in `apps/desktop`) · **Author:** judge synthesis of the three competing designs
+**Status:** implemented (M1–M9, 2026-08-13) · **Scope:** `apps/web` · **Author:** judge synthesis of the three competing designs
+
+> [!NOTE]
+> **Read the code, not this document, where the two disagree.** Nine milestones shipped in
+> `apps/web/src/features/address/`. Corrections made against the plan during implementation:
+>
+> - **Zero lines changed in `apps/desktop`.** The shell already launches at `/`, which is what M4 wants.
+> - **Two document kinds the plan never names** — `git-ref:` and `settings:` — are real `EditorTabRecord.path`
+>   values. `git-ref:` got an `r/` token; `settings:` maps to the `?settings=` overlay slot.
+> - **`d/` and `k/` tokens carry `status` and `oldPath`.** Neither is re-derivable: `oldPath` keys the
+>   blob-diff query and decides `renamed`, and `status` is only re-derived while the change is uncommitted.
+> - **Object ids are `[0-9a-f]{40,64}`**, not 40 — a fixed-40 grammar rejects every SHA-256 repository.
+> - **`?scope=` was double-booked** across the rail scope and the thread diff scope. The rail scope is a
+>   `ProjectId` and cannot be addressed at all; the thread diff scope owns `?diff=`.
+> - **Relativization does not live inside `sliceForWorkspace`.** That filter runs in both directions and only
+>   understands absolute paths; relativizing inside it empties every slice on the first reload.
+> - **`render.tsx` is untouched.** §6 was right and the 2026-08-12 amendment was wrong on this point: no
+>   component reads a URL hook, so mounting `RouterProvider` broke none of the tests.
+> - **TanStack Router was adopted at M1 and then removed.** Every mention of a router below is historical.
+>   Its whole consumed surface was `RouterProvider` plus `history.push`/`replace`: `validateSearch` was the
+>   identity function and both route components returned `null`. The address layer writes the URL through
+>   the native `history` API — see [`address-rework-plan.md`](./address-rework-plan.md) §"Delete the router".
+>   The rule the degenerate route tree existed to enforce outlived it and now lives in `App.tsx`: nothing
+>   may mount a route hierarchy above `EditorStateProvider`, or a project switch unmounts the service
+>   holding unsaved buffers.
+> - The "622 → ~100 char" figure measured the wrong document. Real: checkpoint 576 → 82, snapshot 329 → 114.
+>
+> **Known gaps at M9. Four of the five closed in the follow-up rework** — see
+> [`address-rework-plan.md`](./address-rework-plan.md), which supersedes this list:
+>
+> - ~~**§5's twelve stale-link screens.**~~ **Closed.** `reportUnavailable` raises a toast on a dead link.
+>   The other eleven screens are still unwritten; only the unresolvable-workspace case is surfaced.
+> - **M4/M9's retirement of the `uiMode` and `chatModeSelection` cache keys.** Still open, but no longer
+>   blocked. The obstacle was that the store is seeded from them synchronously in `workspaceStateFromCache`
+>   before React mounts, while the applier ran in an effect — so deleting them flashed the wrong mode on
+>   every launch. `addressedWorkspaceCache` now folds the address in at that same synchronous seam, so the
+>   keys are the defaults layer the address overrides and retiring them is an ordinary deletion. They are
+>   still written and still read today.
+> - ~~**§3.3 resolver step 3**~~ (unique basename among the file server's recent directories). **Closed.**
+>   `resolvedSlug` consults `sources.recent` whenever the index answers `unknown`, on boot and on popstate
+>   alike; the warm path never pays for the round trip because the index answers first.
+> - **§3.3's `?root=` escape hatch**, §1.1's drop-filters-on-document-change retention rule, M7's absolute
+>   `log.from`/`log.to` window, M8's palette cleanups, and the `bench-workspace.mjs` migration. Still open.
+> - ~~**§6's `dom` restore tests and `test/address.ts`.**~~ **Closed.** `apps/web/test/address.tsx` mounts
+>   both hooks over the real store stack, and `tests/edges.test.tsx` drives boot, popstate and the tab cap.
 
 ---
 
