@@ -31,6 +31,12 @@ export function LogsEventList({
         : (element) => element.getBoundingClientRect().height,
     overscan: 12,
   })
+  // Read once here rather than as `ref={virtualizer.measureElement}` inside the row
+  // loop. The React Compiler reads a member expression in a `ref` position as accessing
+  // a ref value during render and fails the lint gate on it. Safe to hoist: virtual-core
+  // assigns `measureElement` as an instance arrow function in its constructor, so it
+  // carries its own binding and does not need the receiver.
+  const measureElement = virtualizer.measureElement
 
   if (events.length === 0) {
     return (
@@ -54,7 +60,7 @@ export function LogsEventList({
               expanded={inspectedEventId === event.id}
               index={virtualRow.index}
               key={event.id}
-              ref={virtualizer.measureElement}
+              ref={measureElement}
               start={virtualRow.start}
               onInspectEvent={onInspectEvent}
             />
