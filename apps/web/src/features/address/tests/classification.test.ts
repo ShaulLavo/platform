@@ -9,6 +9,7 @@ import {
   classifiedStorageKeys,
   statesClassifiedAs,
 } from '@/features/address/utils/classification'
+import { applicableTabs, MAX_APPLIED_TABS } from '@/features/address/utils/grammar'
 import { addressFromSnapshot } from '@/features/address/utils/snapshot'
 import { emptyAddressSnapshot } from '@/features/address/utils/snapshot'
 
@@ -177,6 +178,38 @@ describe('the tab set budget', () => {
     expect(address.tabs).toBeNull()
     // The path still names the active document, so the link degrades to something useful.
     expect(address.document).toBe('f/src/a-very-long-name-0.ts')
+  })
+
+  /**
+   * The count ceiling, which the byte ceiling does not imply: sixty-five short tokens sit
+   * far under 1500 bytes, and `applicableTabs` on the reading side discards any set past
+   * `MAX_APPLIED_TABS` whole — so emitting one handed the recipient a link that restored
+   * no tabs at all.
+   */
+  test('drops a tab set larger than the reader will apply, however short the tokens', () => {
+    const many = Array.from({ length: MAX_APPLIED_TABS + 1 }, (_, index) => `/repo/${index}.ts`)
+    const address = addressFromSnapshot({
+      ...emptyAddressSnapshot(),
+      editorTabPaths: many,
+      knownRootPaths: ['/repo'],
+      rootPath: '/repo',
+    })
+
+    expect(many.join('~').length).toBeLessThan(1500)
+    expect(address.tabs).toBeNull()
+  })
+
+  test('keeps a tab set exactly at the reader\u2019s ceiling', () => {
+    const many = Array.from({ length: MAX_APPLIED_TABS }, (_, index) => `/repo/${index}.ts`)
+    const address = addressFromSnapshot({
+      ...emptyAddressSnapshot(),
+      editorTabPaths: many,
+      knownRootPaths: ['/repo'],
+      rootPath: '/repo',
+    })
+
+    expect(address.tabs).toHaveLength(MAX_APPLIED_TABS)
+    expect(applicableTabs(address.tabs)).not.toBeNull()
   })
 
   test('keeps a tab set that fits', () => {

@@ -130,7 +130,7 @@ const workspaceCommandSpecs = [
   workspaceCommand(
     'workspace.copyAddress',
     'Copy address',
-    'Copy a short link naming this project, mode and open file — no absolute paths.',
+    'Copy a link to exactly where you are — no absolute paths, no dev-only parameters.',
   ),
   workspaceCommand('workspace.navigateBack', 'Back', 'Go back to the previous document.'),
   workspaceCommand('workspace.navigateForward', 'Forward', 'Go forward again.'),

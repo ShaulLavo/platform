@@ -98,6 +98,9 @@ describe('snapshot diffs', () => {
     } as Parameters<typeof snapshotDiffDocumentId>[0])
 
     expect(token(added)).toContain(`_..${NEW_OID}`)
+    // The name promises a round trip, so assert one: `_` has to survive the decode as a
+    // missing side, which is what `missingSidesForStatus` reconstructs.
+    expect(roundTrip(added)).toBe(added)
   })
 
   // The server validates object ids as 40-64 hex; a fixed-width-40 grammar would
@@ -222,6 +225,18 @@ describe('hostile input', () => {
   test('rejects an unknown token kind rather than guessing', () => {
     expect(pathForDocumentToken(ROOT, 'zzz/a.ts')).toMatchObject({ kind: 'rejected' })
     expect(pathForDocumentToken(ROOT, '')).toMatchObject({ kind: 'rejected' })
+  })
+
+  /**
+   * The same shape check `parseSessionToken` applies to a `t/` token. Without it any
+   * decoded segment became a `ThreadId`, so a hand-edited `k/` token minted a checkpoint
+   * document for a thread that cannot exist — and that tab then persisted into the cache.
+   */
+  test('refuses to turn an arbitrary URL segment into a thread id', () => {
+    expect(pathForDocumentToken(ROOT, 'k/not-a-thread/1..2/src/a.ts')).toMatchObject({
+      kind: 'rejected',
+    })
+    expect(pathForDocumentToken(ROOT, `k/${THREAD}/1..2/src/a.ts`)).toMatchObject({ kind: 'path' })
   })
 })
 

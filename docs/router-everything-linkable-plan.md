@@ -17,25 +17,34 @@
 > - **Relativization does not live inside `sliceForWorkspace`.** That filter runs in both directions and only
 >   understands absolute paths; relativizing inside it empties every slice on the first reload.
 > - **`render.tsx` is untouched.** §6 was right and the 2026-08-12 amendment was wrong on this point: no
->   component reads a URL hook, so mounting `RouterProvider` broke none of the 1697 tests. The route tree is
->   deliberately degenerate — root plus catch-all — so navigation never remounts `EditorStateProvider`.
+>   component reads a URL hook, so mounting `RouterProvider` broke none of the tests.
+> - **TanStack Router was adopted at M1 and then removed.** Every mention of a router below is historical.
+>   Its whole consumed surface was `RouterProvider` plus `history.push`/`replace`: `validateSearch` was the
+>   identity function and both route components returned `null`. The address layer writes the URL through
+>   the native `history` API — see [`address-rework-plan.md`](./address-rework-plan.md) §"Delete the router".
+>   The rule the degenerate route tree existed to enforce outlived it and now lives in `App.tsx`: nothing
+>   may mount a route hierarchy above `EditorStateProvider`, or a project switch unmounts the service
+>   holding unsaved buffers.
 > - The "622 → ~100 char" figure measured the wrong document. Real: checkpoint 576 → 82, snapshot 329 → 114.
 >
-> **Known gaps, deliberately left (not defects in what shipped):**
+> **Known gaps at M9. Four of the five closed in the follow-up rework** — see
+> [`address-rework-plan.md`](./address-rework-plan.md), which supersedes this list:
 >
-> - **§5's twelve stale-link screens.** `applyAddress` computes the three-state result and logs it, but no
->   surface renders it. An unknown workspace or a dead thread degrades quietly instead of explaining itself.
-> - **M4/M9's retirement of the `uiMode` and `chatModeSelection` cache keys.** They are NOT inert: the store is
->   seeded from them synchronously in `workspaceStateFromCache`, before React mounts, while the address applier
->   runs in an effect. Deleting them without first seeding the store from the parsed address would flash the
->   wrong mode on every launch. Retiring them is a boot-sequence change, not a deletion.
-> - **§3.3 resolver step 3** (unique basename among the file server's recent directories). `resolveWorkspaceSlug`
->   supports it — `sources.recent` is threaded through and tested — but the boot caller passes only the index,
->   because the recents query is gated `enabled: rootPath === null` and never runs on a warm boot.
+> - ~~**§5's twelve stale-link screens.**~~ **Closed.** `reportUnavailable` raises a toast on a dead link.
+>   The other eleven screens are still unwritten; only the unresolvable-workspace case is surfaced.
+> - **M4/M9's retirement of the `uiMode` and `chatModeSelection` cache keys.** Still open, but no longer
+>   blocked. The obstacle was that the store is seeded from them synchronously in `workspaceStateFromCache`
+>   before React mounts, while the applier ran in an effect — so deleting them flashed the wrong mode on
+>   every launch. `addressedWorkspaceCache` now folds the address in at that same synchronous seam, so the
+>   keys are the defaults layer the address overrides and retiring them is an ordinary deletion. They are
+>   still written and still read today.
+> - ~~**§3.3 resolver step 3**~~ (unique basename among the file server's recent directories). **Closed.**
+>   `resolvedSlug` consults `sources.recent` whenever the index answers `unknown`, on boot and on popstate
+>   alike; the warm path never pays for the round trip because the index answers first.
 > - **§3.3's `?root=` escape hatch**, §1.1's drop-filters-on-document-change retention rule, M7's absolute
->   `log.from`/`log.to` window, M8's palette cleanups, and the `bench-workspace.mjs` migration.
-> - **§6's `dom` restore tests and `test/address.ts`.** The address layer's own logic is covered by 119 node
->   tests, but neither `useAddressRestore` nor `useAddressProjection` is mounted in a test.
+>   `log.from`/`log.to` window, M8's palette cleanups, and the `bench-workspace.mjs` migration. Still open.
+> - ~~**§6's `dom` restore tests and `test/address.ts`.**~~ **Closed.** `apps/web/test/address.tsx` mounts
+>   both hooks over the real store stack, and `tests/edges.test.tsx` drives boot, popstate and the tab cap.
 
 ---
 

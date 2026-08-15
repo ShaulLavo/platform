@@ -1,7 +1,12 @@
 import type { Address } from '@/features/address/utils/grammar'
 import { log } from '@/lib/client-logging'
 import { documentTokenForPath } from '@/features/address/utils/document-token'
-import { emptyAddress, formatAddress } from '@/features/address/utils/grammar'
+import {
+  emptyAddress,
+  formatAddress,
+  MAX_APPLIED_TABS,
+  TAB_SEPARATOR,
+} from '@/features/address/utils/grammar'
 import { NO_WORKSPACE_SLUG, workspaceSlug } from '@/features/address/utils/slug'
 import { isSettingsDocumentId } from '@/features/settings/settings-document'
 
@@ -192,13 +197,19 @@ function tabTokens(rootPath: string, paths: readonly string[]) {
     .flatMap((result) => (result.kind === 'token' ? [result.token] : []))
   if (tokens.length === 0) return null
 
-  const bytes = tokens.join('~').length
-  if (bytes <= TABS_BUDGET_BYTES) return tokens
+  // Two ceilings, because they bind on different link shapes. `MAX_APPLIED_TABS` is the
+  // reader's rule, and emitting past it would hand the recipient a set their own applier
+  // discards whole — sixty-five short tokens sit far under the byte budget, so the byte
+  // check alone let the two sides disagree. `TABS_BUDGET_BYTES` still catches the few
+  // very long tokens that fit the count but not the URL.
+  const bytes = tokens.join(TAB_SEPARATOR).length
+  if (tokens.length <= MAX_APPLIED_TABS && bytes <= TABS_BUDGET_BYTES) return tokens
 
   log.warn({
     action: 'address.tabs_omitted',
     area: 'address',
     bytes,
+    maxAppliedTabs: MAX_APPLIED_TABS,
     tabCount: tokens.length,
   })
   return null

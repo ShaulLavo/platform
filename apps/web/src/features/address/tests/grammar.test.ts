@@ -70,6 +70,22 @@ describe('the fragment', () => {
     expect(parseAddress('/~p/workbench/f/a.ts#nonsense').focus).toBeNull()
     expect(parseAddress('/~p/workbench/f/a.ts#L0').focus).toBeNull()
   })
+
+  /**
+   * Every part is validated, not just the line. A 0 column is not a position the 1-based
+   * grammar can mean — and `serializeFocus` drops it as falsy, so it cannot even survive
+   * a round trip — while a reversed range is a selection the editor would have to apply
+   * backwards. Neither is emittable, so both are hand-edited input.
+   */
+  test('drops a column or a range the encoder could never emit', () => {
+    expect(parseAddress('/~p/workbench/f/a.ts#L10,0').focus).toBeNull()
+    expect(parseAddress('/~p/workbench/f/a.ts#L20-L10').focus).toBeNull()
+    // The boundary stays legal: a one-line range is how a single-line selection reads.
+    expect(parseAddress('/~p/workbench/f/a.ts#L20-L20').focus).toMatchObject({
+      endLine: 20,
+      line: 20,
+    })
+  })
 })
 
 describe('reserved pass-through', () => {

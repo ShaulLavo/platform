@@ -267,7 +267,7 @@ const workspaceCommandHandlers: Partial<Record<WorkspaceCommandId, WorkspaceComm
     // Through `shareableAddress`, not the raw location: a copied link needs an origin
     // to be openable at all, and it must not carry the dev params, which belong to the
     // session someone typed them into rather than to everyone they send the link to.
-    void navigator.clipboard.writeText(shareableAddress())
+    void navigator.clipboard.writeText(shareableAddress()).catch(reportCommandError)
     return true
   },
   // History is the browser's, so back and forward are one call each. The popstate

@@ -41,9 +41,17 @@ describe('parseSessionToken', () => {
     expect(parseSessionToken('f/src/a.ts')).toBeNull()
   })
 
-  // Thread ids are compared by exact equality everywhere, so a prefix cannot resolve.
-  test('rejects an abbreviated or malformed thread id rather than guessing', () => {
+  /**
+   * Shape only. The parser checks the `thread-` prefix and nothing else, because a
+   * `ThreadId` is an opaque branded string — there is no format to validate against.
+   * An abbreviated id therefore parses and then simply matches no thread, which is the
+   * restore reporting `unavailable` rather than the parser guessing.
+   */
+  test('accepts any `thread-` shaped id without resolving it to a thread', () => {
     expect(parseSessionToken('t/thread-9f3a')).toEqual({ kind: 'session', threadId: 'thread-9f3a' })
+  })
+
+  test('rejects a malformed thread id rather than guessing', () => {
     expect(parseSessionToken('t/9f3a1c2e')).toEqual({ kind: 'rejected' })
     expect(parseSessionToken('t/')).toEqual({ kind: 'rejected' })
     expect(parseSessionToken('t/%E0%A4%A')).toEqual({ kind: 'rejected' })

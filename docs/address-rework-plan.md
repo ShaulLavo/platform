@@ -25,9 +25,15 @@
 > - **`AddressRestoreResult` was surfaced rather than deleted** — a dead link now raises a toast instead of
 >   silently landing the recipient on their own last session.
 >
-> Verified: **1733 tests / 241 files green**, typecheck clean, format clean, lint at the pre-existing
-> baseline. Back/forward confirmed in the running app: `history.length` no longer grows on a back press
-> and the forward entry survives.
+> Verified with `bun run test` (the `node` + `dom` projects) in `apps/web`, 2026-08-15: **1761 tests /
+> 244 files green**, typecheck clean, format clean, `bun run lint` clean across every workspace.
+> Back/forward confirmed in the running app: `history.length` no longer grows on a back press and the
+> forward entry survives.
+>
+> The restore harness that M9 listed as missing now exists — `apps/web/test/address.tsx` mounts both
+> hooks over the real store stack, and `tests/edges.test.tsx` drives boot, popstate and the tab cap.
+> Everything still open is listed under "Known gaps at M9" in
+> [`router-everything-linkable-plan.md`](./router-everything-linkable-plan.md).
 
 The address layer shipped in PR #9. Its `utils/` are good and stay. Its two edges —
 store→URL and URL→store — were built as if they were one edge, and they are not. This
@@ -143,6 +149,14 @@ What it merges, all synchronously, all from localStorage only:
 | `document`        | active slice `workbenchPanels` | `selectEditorTabInWorkbenchPanels`                  |
 | `tool`            | `chatModePanels.activeToolTab` | `showChatModeToolTab`                               |
 
+> [!WARNING]
+> **Not what shipped.** The paragraph below was written before the entry shape was checked and is kept
+> only to show what was rejected. `PickedFsEntry` also carries `birthtimeMs`, `mtimeMs` and `size`, and
+> `useValidateRootFolder` only _clears_ an invalid root — it never replaces the entry — so a fabricated
+> stat outlives the boot that invented it. The synchronous seed therefore handles the workspace already
+> open and nothing else; a slug naming any other root goes through the post-mount applier and a real
+> `statPath`. See the first departure in the header note.
+
 Resolving a slug to a root the cache knows but has no `PickedFsEntry` for: synthesize
 `{ path, name: workspacePathLeaf(path), type: 'directory' }` — exactly what `switchRootFolder`
 builds from a stat result. `use-validate-root-folder` already corrects or rejects a stale root
@@ -150,9 +164,11 @@ on mount, so this needs no network and adds no new failure mode.
 
 Then:
 
-- `use-address-restore.ts` loses its boot apply entirely. `applied.current`, the
-  `openWorkspaceRoot` await, the `superseded` branch, and the boot half of the race all go with it.
-  The hook becomes popstate-only (Phase 4).
+- `use-address-restore.ts` loses the boot apply **for the slots a cache slice owns** — mode, panels,
+  tabs, the active document. Those move to the synchronous seed and stop being re-applied.
+  _As shipped this is narrower than "entirely":_ `applied.current`, the `openWorkspaceRoot` await and
+  the `superseded` branch all remain, because the seed only covers the workspace already open. A link
+  naming any other root still resolves and switches at boot, so the hook is not popstate-only.
 - Keep a small **post-mount** apply for the slots no cache slice can hold: settings category,
   search buffer query/flags, logs filters, chat session/thread/diff scope, `#L` focus. These are
   additive and idempotent — none of them closes or replaces anything.

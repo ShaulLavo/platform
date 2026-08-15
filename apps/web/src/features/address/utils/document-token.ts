@@ -254,14 +254,14 @@ function snapshotDiffPath(rootPath: string, segments: readonly string[]): Parsed
 }
 
 function checkpointDiffPath(rootPath: string, segments: readonly string[]): ParsedDocumentToken {
-  const threadId = decodeSegment(segments[0])
+  const threadId = threadIdOrNull(decodeSegment(segments[0]))
   const turnSegment = segments[1] ?? ''
   const isTurnScope = turnSegment.endsWith(TURN_SCOPE_SUFFIX)
   const turns = parseTurnRange(
     isTurnScope ? turnSegment.slice(0, -TURN_SCOPE_SUFFIX.length) : turnSegment,
   )
   if (!threadId || !turns)
-    return { kind: 'rejected', reason: 'checkpoint token needs a turn range' }
+    return { kind: 'rejected', reason: 'checkpoint token needs a thread id and a turn range' }
 
   const filePath = segments.length > 2 ? decodePath(rootPath, segments.slice(2)) : null
   const scope = checkpointScope(filePath, isTurnScope)
@@ -368,6 +368,19 @@ const GIT_STATUSES = new Set([
   'unmodified',
   'untracked',
 ])
+
+/**
+ * Validated, not cast, for the same reason as the status and the object ids beside it:
+ * an arbitrary URL segment must not become a typed id. `parseSessionToken` already
+ * applies this shape check to `t/` tokens; without it here a hand-edited `k/` token
+ * minted a checkpoint document for a thread that cannot exist, and the resulting tab
+ * persisted into the cache.
+ */
+function threadIdOrNull(threadId: string | null) {
+  if (!threadId?.startsWith('thread-')) return null
+
+  return threadId
+}
 
 /** Validated, not cast: an arbitrary URL string must not become a typed git status. */
 function gitStatusOrUndefined(status: string | undefined) {

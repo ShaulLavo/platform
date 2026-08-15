@@ -28,7 +28,9 @@ export function logsFiltersFor(
 ): LogsFilterState | null {
   if (!params) return null
 
-  const slowMs = Number(params.slow)
+  // `Number('')` is `0`, not `NaN`, so a bare `?log.slow=` would otherwise read as a
+  // real zero threshold and silently show every event as slow.
+  const slowMs = params.slow ? Number(params.slow) : Number.NaN
 
   return {
     area: params.area ?? defaults.area,

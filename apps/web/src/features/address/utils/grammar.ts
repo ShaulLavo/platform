@@ -147,7 +147,7 @@ function serializePathname(address: Address) {
  * first and decoded per segment afterwards, exactly as `parseAddress` already treats
  * the path, for exactly the same reason.
  */
-const TAB_SEPARATOR = '~'
+export const TAB_SEPARATOR = '~'
 
 /**
  * A link naming more tabs than a person could have opened is not a tab set.
@@ -311,11 +311,18 @@ function parseFocus(hash: string) {
   const line = Number(match[1])
   if (!Number.isInteger(line) || line < 1) return null
 
-  return {
-    column: match[2] ? Number(match[2]) : null,
-    endLine: match[3] ? Number(match[3]) : null,
-    line,
-  }
+  // Every part is validated, not just the line. `#L10,0` yields a column the 1-based
+  // grammar cannot mean — and which `serializeFocus` then drops as falsy, so it does not
+  // even survive a round trip — while `#L20-L10` is a reversed range the editor would
+  // have to apply as a selection. Neither is something the encoder can emit, so a
+  // fragment carrying one is hand-edited and gets the same answer as any other garbage
+  // segment: the field it names is dropped, and nothing else.
+  const column = match[2] ? Number(match[2]) : null
+  const endLine = match[3] ? Number(match[3]) : null
+  if (column !== null && column < 1) return null
+  if (endLine !== null && endLine < line) return null
+
+  return { column, endLine, line }
 }
 
 function serializeFocus(focus: Address['focus']) {

@@ -129,6 +129,21 @@ export function useAddressRestore() {
   }, [commands, documentStoreApi, openWorkspaceRoot, searchStoreApi, storeApi])
 }
 
+/**
+ * Which restore is the current one.
+ *
+ * `applyAddress` awaits twice — slug resolution, which may hit the file server, and the
+ * project switch — and nothing stopped a second press from starting while the first was
+ * parked. The older call then resumed and wrote settings, tabs, search, logs and the
+ * document selection over the newer one, so holding the back button landed the app on
+ * whichever restore happened to finish last rather than on the entry the user stopped at.
+ *
+ * `openWorkspaceRoot` already arbitrates its own switches through `activateWorkspaceRoot`,
+ * which is why the damage showed up in the slots AROUND the root rather than in the root
+ * itself. This is the same protocol for the rest of the apply.
+ */
+let restoreGeneration = 0
+
 /** Whether the URL names a real workspace, decidable before any await. */
 function addressNamesWorkspace() {
   const workspace = parseAddress(window.location.href).workspace
@@ -153,6 +168,8 @@ async function applyAddress(
   reason: ApplyReason,
 ): Promise<AddressRestoreResult> {
   const trace = emptyApplyTrace()
+  const generation = ++restoreGeneration
+  const superseded = () => generation !== restoreGeneration
   const address = parseAddress(window.location.href)
   if (!address.workspace) {
     return report({ status: 'pending', reason: 'no address to apply' }, trace)
@@ -166,6 +183,9 @@ async function applyAddress(
   }
 
   const rootPath = await resolveRoot(address.workspace, storeApi, trace)
+  // A newer press started while this one was resolving. Everything below writes store
+  // state, so continuing would drag the older address over the newer one.
+  if (superseded()) return report({ status: 'pending', reason: 'superseded' }, trace)
   if (!rootPath) {
     return report(
       {
@@ -190,6 +210,7 @@ async function applyAddress(
     if (outcome === 'failed') {
       return report({ status: 'unavailable', reason: 'root failed to open' }, trace)
     }
+    if (superseded()) return report({ status: 'pending', reason: 'superseded' }, trace)
   }
 
   if (!seeded) {
@@ -481,10 +502,16 @@ function applySearch(
   store.setQuery(rootPath, wanted.query)
 }
 
-/** Only the buffer that already exists — restoring a document must not mint one. */
+/**
+ * Only the buffer that already exists — restoring a document must not mint one — and
+ * only when that buffer is the one being cleared. The guard reads `active` while the
+ * write targets `rootPath`, so without the root check a buffer belonging to another
+ * workspace could satisfy the guard and send `setQuery` at a buffer nobody looked at.
+ */
 function clearSearchQuery(rootPath: string, searchStoreApi: SearchBufferStoreApi) {
   const active = searchStoreApi.getState().active
   if (!active?.query) return
+  if (active.rootPath !== rootPath) return
 
   searchStoreApi.getState().setQuery(rootPath, '')
 }
