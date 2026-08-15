@@ -22,11 +22,7 @@ import {
 } from '@/features/workbench/utils/workbench-panels'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
-import {
-  isPathInWorkspace,
-  toWorkspaceAbsolute,
-  toWorkspaceRelative,
-} from '@/features/address/utils/workspace-path'
+import { isPathInWorkspace, toWorkspaceAbsolute, toWorkspaceRelative } from '@/lib/workspace-path'
 import {
   projectIdSchema,
   threadIdSchema,
@@ -602,6 +598,12 @@ function purgeSupersededCacheVersions() {
   })
 }
 
+/**
+ * Keys renamed rather than versioned, so the namespace walk below cannot see them.
+ * Greenfield rule: delete the orphan instead of teaching anything to read it.
+ */
+const RENAMED_CACHE_KEYS = ['platform:prompt-stash:v1'] as const
+
 function supersededCacheKeys() {
   const keys: string[] = []
 
@@ -609,7 +611,12 @@ function supersededCacheKeys() {
   try {
     for (let index = 0; index < localStorage.length; index += 1) {
       const key = localStorage.key(index)
-      if (!key?.startsWith(CACHE_KEY_NAMESPACE)) continue
+      if (!key) continue
+      if (RENAMED_CACHE_KEYS.some((renamed) => renamed === key)) {
+        keys.push(key)
+        continue
+      }
+      if (!key.startsWith(CACHE_KEY_NAMESPACE)) continue
       if (key.startsWith(`${CACHE_KEY_PREFIX}.`)) continue
 
       keys.push(key)

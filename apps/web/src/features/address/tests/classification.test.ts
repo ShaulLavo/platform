@@ -1,6 +1,8 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe } from 'vitest'
+
+import { expect, test } from '../../../../test/fixtures'
 
 import {
   STATE_CLASSIFICATIONS,
@@ -48,7 +50,7 @@ function persistedKeysInSource() {
 }
 
 describe('the classification table', () => {
-  it('classifies every state exactly once, with a reason', () => {
+  test('classifies every state exactly once, with a reason', () => {
     for (const [name, entry] of Object.entries(STATE_CLASSIFICATIONS)) {
       expect(entry.why, `${name} needs a reason`).toBeTruthy()
       expect(['address', 'preference', 'ephemeral']).toContain(entry.classification)
@@ -57,7 +59,7 @@ describe('the classification table', () => {
 
   // The one drift this design cannot otherwise catch: a new code path that persists
   // something and never tells the address layer it exists.
-  it('accounts for every `platform.*` storage key in the source tree', () => {
+  test('accounts for every `platform.*` storage key in the source tree', () => {
     const classified = classifiedStorageKeys()
     const unclassified = [...persistedKeysInSource()]
       .filter(([key]) => !classified.has(key))
@@ -70,7 +72,7 @@ describe('the classification table', () => {
     expect(unclassified, 'classify these in features/address/utils/classification.ts').toEqual([])
   })
 
-  it('keeps the take-once inboxes ephemeral, which is why the deny-list is structural', () => {
+  test('keeps the take-once inboxes ephemeral, which is why the deny-list is structural', () => {
     const ephemeral = statesClassifiedAs('ephemeral')
 
     expect(ephemeral).toContain('terminalCommandInbox')
@@ -79,7 +81,7 @@ describe('the classification table', () => {
     expect(ephemeral).toContain('sessionMultiSelect')
   })
 
-  it('keeps geometry and appearance out of the address', () => {
+  test('keeps geometry and appearance out of the address', () => {
     const preference = statesClassifiedAs('preference')
 
     expect(preference).toContain('workbenchLayout')
@@ -90,7 +92,7 @@ describe('the classification table', () => {
 })
 
 describe('the encoder cannot emit what it cannot reach', () => {
-  it('produces only whitelisted fields, and nothing ephemeral', () => {
+  test('produces only whitelisted fields, and nothing ephemeral', () => {
     const address = addressFromSnapshot({
       ...emptyAddressSnapshot(),
       activeDocumentPath: '/repo/src/a.ts',
@@ -122,7 +124,7 @@ describe('the encoder cannot emit what it cannot reach', () => {
 
   // The projection overwrites the whole URL, so a dropped dev param is gone for the
   // session — and two of them are read late enough that nothing would report it.
-  it('carries the reserved dev params into every projected address', () => {
+  test('carries the reserved dev params into every projected address', () => {
     const passthrough = {
       decode: 'diffusion',
       editorPerfLayout: 'transform',
@@ -142,13 +144,13 @@ describe('the encoder cannot emit what it cannot reach', () => {
     )
   })
 
-  it('emits no workspace document at all when no folder is open', () => {
+  test('emits no workspace document at all when no folder is open', () => {
     const address = addressFromSnapshot(emptyAddressSnapshot())
 
     expect(address).toMatchObject({ document: null, tabs: null, workspace: '-' })
   })
 
-  it('drops a conflict document from the tab set rather than encoding it', () => {
+  test('drops a conflict document from the tab set rather than encoding it', () => {
     const address = addressFromSnapshot({
       ...emptyAddressSnapshot(),
       editorTabPaths: ['/repo/src/a.ts', 'conflict-diff:abc'],
@@ -162,7 +164,7 @@ describe('the encoder cannot emit what it cannot reach', () => {
 
 describe('the tab set budget', () => {
   // A partial tab set would DELETE tabs on apply, so over budget it is dropped whole.
-  it('drops `tabs` entirely rather than truncating it', () => {
+  test('drops `tabs` entirely rather than truncating it', () => {
     const many = Array.from({ length: 400 }, (_, index) => `/repo/src/a-very-long-name-${index}.ts`)
     const address = addressFromSnapshot({
       ...emptyAddressSnapshot(),
@@ -177,7 +179,7 @@ describe('the tab set budget', () => {
     expect(address.document).toBe('f/src/a-very-long-name-0.ts')
   })
 
-  it('keeps a tab set that fits', () => {
+  test('keeps a tab set that fits', () => {
     const address = addressFromSnapshot({
       ...emptyAddressSnapshot(),
       editorTabPaths: ['/repo/src/a.ts', '/repo/src/b.ts'],
@@ -192,7 +194,7 @@ describe('the tab set budget', () => {
 describe('the settings slot is driven by the tab, not the remembered category', () => {
   // The category store keeps its pick after the tab closes. Reading it directly left
   // `?settings=` in the URL forever and reopened the page on every reload.
-  it('emits nothing when no settings tab is open, even with a remembered category', () => {
+  test('emits nothing when no settings tab is open, even with a remembered category', () => {
     expect(
       addressFromSnapshot({
         ...emptyAddressSnapshot(),
@@ -204,7 +206,7 @@ describe('the settings slot is driven by the tab, not the remembered category', 
     ).toBeNull()
   })
 
-  it('emits the category when a settings tab is open', () => {
+  test('emits the category when a settings tab is open', () => {
     expect(
       addressFromSnapshot({
         ...emptyAddressSnapshot(),
@@ -216,7 +218,7 @@ describe('the settings slot is driven by the tab, not the remembered category', 
     ).toBe('providers')
   })
 
-  it('emits an empty category for a settings tab in the background', () => {
+  test('emits an empty category for a settings tab in the background', () => {
     expect(
       addressFromSnapshot({
         ...emptyAddressSnapshot(),

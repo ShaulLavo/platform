@@ -15,11 +15,19 @@ import {
   createSearchBufferStore,
   SearchBufferStateContext,
 } from '@/features/search/search-buffer-state'
+import { addressedWorkspaceCache } from '@/features/address/utils/addressed-cache'
+import { parseAddress } from '@/features/address/utils/grammar'
 import { readWorkspaceCache } from '@/lib/workspace-cache'
 import { useEffect, useState, type ReactNode } from 'react'
 
 export function EditorStateProvider({ children }: { children: ReactNode }) {
-  const [workspaceCache] = useState(readWorkspaceCache)
+  // The address is folded in HERE, not applied later in an effect. Every store below
+  // is seeded from this one value, so an address that arrived after them would have to
+  // overwrite state the cache had already restored — which is how a shared link came to
+  // close the recipient's tabs. One restore, from one merged value, before any store exists.
+  const [workspaceCache] = useState(() =>
+    addressedWorkspaceCache(readWorkspaceCache(), parseAddress(window.location.href)),
+  )
   const [conflictStore] = useState(createEditorConflictStore)
   const [workspaceStore] = useState(() => createEditorWorkspaceStore(workspaceCache))
   const [documentStore] = useState(() =>

@@ -1,5 +1,7 @@
 import { descriptorFor, type SettingId } from '@workspace/contracts'
+import { Button } from '@workspace/ui/components/button'
 import { Input } from '@workspace/ui/components/input'
+import { XIcon } from '@phosphor-icons/react'
 import { useRef, useState } from 'react'
 
 import { useHasWorkspace } from '../hooks/use-has-workspace'
@@ -11,7 +13,10 @@ import { PageActions } from './page-actions'
 import { ScopeTabs } from './scope-tabs'
 import { SettingRow } from './setting-row'
 import { Status } from './status'
-import { useSettingsCategory } from '@/features/settings/state/category-store'
+import {
+  selectSettingsCategory,
+  useSettingsCategory,
+} from '@/features/settings/state/category-store'
 
 export function SettingsPage() {
   const settings = useSettings()
@@ -50,9 +55,25 @@ export function SettingsPage() {
           placeholder='Search settings'
           value={query}
         />
-        <p className='text-muted-foreground text-xs tabular-nums'>
-          {visible.length} {visible.length === 1 ? 'setting' : 'settings'}
-        </p>
+        <div className='flex flex-wrap items-center gap-2'>
+          <p className='text-muted-foreground text-xs tabular-nums'>
+            {shownCount(shown)} of {visible.length} {visible.length === 1 ? 'setting' : 'settings'}
+          </p>
+          {/* The only way out of a category a link pinned. Without it the page showed
+              one section while the header counted every setting, and nothing in the UI
+              could clear it — `selectSettingsCategory` had no caller but the applier. */}
+          {selectedCategory ? (
+            <Button
+              aria-label={`Show all settings, not just ${selectedCategory}`}
+              onClick={() => selectSettingsCategory(null)}
+              size='sm'
+              variant='secondary'
+            >
+              {selectedCategory}
+              <XIcon aria-hidden />
+            </Button>
+          ) : null}
+        </div>
       </header>
 
       {/* Escape returns to the search box from anywhere in the list, so a
@@ -105,6 +126,11 @@ function emptySettingsMessage(query: string, category: string | null) {
  * from prefixes invents categories nobody chose and reshuffles the page whenever
  * a key is renamed.
  */
+/** What the list is actually showing, which a pinned category makes smaller. */
+function shownCount(shown: readonly (readonly [string, SettingId[]])[]) {
+  return shown.reduce((total, [, ids]) => total + ids.length, 0)
+}
+
 function groupByCategory(ids: readonly SettingId[]): Map<string, SettingId[]> {
   const categories = new Map<string, SettingId[]>()
 

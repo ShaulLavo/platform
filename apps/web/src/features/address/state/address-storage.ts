@@ -1,3 +1,4 @@
+import { DEV_SEARCH_KEYS } from '@/features/address/utils/grammar'
 import { log } from '@/lib/client-logging'
 
 /**
@@ -15,10 +16,23 @@ export function writeAddressCache(href: string) {
   if (typeof localStorage === 'undefined') return
 
   try {
-    localStorage.setItem(ADDRESS_STORAGE_KEY, href)
+    localStorage.setItem(ADDRESS_STORAGE_KEY, withoutDevParams(href))
   } catch {
     // Private mode and quota failures are not worth breaking a navigation over.
   }
+}
+
+/**
+ * A dev param belongs to the session someone typed it into, not to the machine. They
+ * ride the live URL so the code reading them late still sees them, but persisting them
+ * here would turn `?decode=diffusion` — documented as opt-in per session — into a
+ * permanent setting with no UI to clear it, reinstated on every launch.
+ */
+function withoutDevParams(href: string) {
+  const url = new URL(href, 'http://localhost')
+  for (const key of DEV_SEARCH_KEYS) url.searchParams.delete(key)
+
+  return `${url.pathname}${url.search}${url.hash}`
 }
 
 export function readAddressCache() {
@@ -50,7 +64,11 @@ export function restoreAddressFromStorage(historyApi: History = history) {
   // the last session happened to carry, so the live search wins over the stored one.
   const href = mergeLiveSearch(stored, location.search)
   historyApi.replaceState(null, '', href)
-  log.info({ action: 'address.restored_from_storage', area: 'address', href })
+  // Length, not content. An address carries the user's search query, their file paths
+  // and their branch names, and this is `info` — it ships in production. The redaction
+  // list in `client-logging` works by field name (`absolutePath`, `fileName`, `cwd`),
+  // so logging the same content as `href` would route straight around it.
+  log.info({ action: 'address.restored_from_storage', area: 'address', hrefLength: href.length })
 
   return href
 }

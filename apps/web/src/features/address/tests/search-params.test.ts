@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe } from 'vitest'
+
+import { expect, test } from '../../../../test/fixtures'
 
 import { searchParamsFor, searchStateFor } from '@/features/address/utils/search-params'
 import { emptyAddress, formatAddress, parseAddress } from '@/features/address/utils/grammar'
@@ -13,7 +15,7 @@ const BUFFER = {
 }
 
 describe('search params', () => {
-  it('carries the query, flags and globs', () => {
+  test('carries the query, flags and globs', () => {
     expect(searchParamsFor(BUFFER)).toEqual({
       case: '1',
       in: 'apps/web/**',
@@ -23,7 +25,7 @@ describe('search params', () => {
     })
   })
 
-  it('omits defaults so a plain search stays a short link', () => {
+  test('omits defaults so a plain search stays a short link', () => {
     expect(
       searchParamsFor({
         ...BUFFER,
@@ -35,12 +37,12 @@ describe('search params', () => {
     ).toEqual({ q: 'createStructuredError' })
   })
 
-  it('is absent without a query — an empty search is not a place', () => {
+  test('is absent without a query — an empty search is not a place', () => {
     expect(searchParamsFor({ ...BUFFER, query: '' })).toBeNull()
     expect(searchParamsFor(null)).toBeNull()
   })
 
-  it('round-trips through the state form', () => {
+  test('round-trips through the state form', () => {
     expect(searchStateFor(searchParamsFor(BUFFER))).toMatchObject({
       caseSensitive: true,
       excludeGlobText: '**/tests/**',
@@ -51,7 +53,7 @@ describe('search params', () => {
   })
 
   // A link that prefilled a bulk-replace field is one click from data loss.
-  it('has no field for replacement text or for results', () => {
+  test('has no field for replacement text or for results', () => {
     const encoded = JSON.stringify(searchParamsFor(BUFFER))
 
     expect(encoded).not.toContain('replace')
@@ -61,7 +63,7 @@ describe('search params', () => {
 })
 
 describe('the prefixed groups in the grammar', () => {
-  it('round-trips s.* and log.* to a fixed point', () => {
+  test('round-trips s.* and log.* to a fixed point', () => {
     const href =
       '/~platform/workbench/s?s.q=createStructuredError&s.m=regex&s.case=1&log.level=error&log.area=git'
     const once = formatAddress(parseAddress(href))
@@ -71,13 +73,13 @@ describe('the prefixed groups in the grammar', () => {
     expect(parseAddress(href).logs).toEqual({ area: 'git', level: 'error' })
   })
 
-  it('keeps the prefixed groups out of passthrough', () => {
+  test('keeps the prefixed groups out of passthrough', () => {
     expect(
       parseAddress('/~p/workbench?s.q=a&log.level=error&decode=diffusion').passthrough,
     ).toEqual({ decode: 'diffusion' })
   })
 
-  it('serializes the groups back with their prefixes', () => {
+  test('serializes the groups back with their prefixes', () => {
     const href = formatAddress({
       ...emptyAddress(),
       logs: { level: 'error' },

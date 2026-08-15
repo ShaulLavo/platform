@@ -71,8 +71,3 @@ export function subscribeLogsFilters(listener: () => void) {
 export function useLogsFilters() {
   return useSyncExternalStore(subscribe, currentFilters, currentFilters)
 }
-
-/** Matches the `useState` setter the panel used to hold, so its call sites are unchanged. */
-export function useSetLogsFilters() {
-  return setLogsFilters
-}

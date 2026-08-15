@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe } from 'vitest'
+
+import { expect, test } from '../../../../test/fixtures'
 
 import {
   parseSessionToken,
@@ -11,7 +13,7 @@ const THREAD = 'thread-9f3a1c2e-77b0-4d51-9a2e-0c8f1b6d4a10' as ThreadId
 const PROJECT = 'project-3f9c1a2b' as ProjectId
 
 describe('sessionTokenFor', () => {
-  it('encodes the three selection variants', () => {
+  test('encodes the three selection variants', () => {
     expect(sessionTokenFor({ kind: 'session', projectId: PROJECT, threadId: THREAD })).toBe(
       `t/${THREAD}`,
     )
@@ -20,7 +22,7 @@ describe('sessionTokenFor', () => {
   })
 
   // ProjectId is a one-way hash of an absolute path and must never reach a URL.
-  it('never leaks the project id', () => {
+  test('never leaks the project id', () => {
     expect(
       sessionTokenFor({ kind: 'session', projectId: PROJECT, threadId: THREAD }),
     ).not.toContain(PROJECT)
@@ -29,18 +31,18 @@ describe('sessionTokenFor', () => {
 })
 
 describe('parseSessionToken', () => {
-  it('round-trips a thread and a draft', () => {
+  test('round-trips a thread and a draft', () => {
     expect(parseSessionToken(`t/${THREAD}`)).toEqual({ kind: 'session', threadId: THREAD })
     expect(parseSessionToken('t/new')).toEqual({ kind: 'draft' })
   })
 
-  it('is absent for an auto-pick and for a non-chat token', () => {
+  test('is absent for an auto-pick and for a non-chat token', () => {
     expect(parseSessionToken(null)).toBeNull()
     expect(parseSessionToken('f/src/a.ts')).toBeNull()
   })
 
   // Thread ids are compared by exact equality everywhere, so a prefix cannot resolve.
-  it('rejects an abbreviated or malformed thread id rather than guessing', () => {
+  test('rejects an abbreviated or malformed thread id rather than guessing', () => {
     expect(parseSessionToken('t/thread-9f3a')).toEqual({ kind: 'session', threadId: 'thread-9f3a' })
     expect(parseSessionToken('t/9f3a1c2e')).toEqual({ kind: 'rejected' })
     expect(parseSessionToken('t/')).toEqual({ kind: 'rejected' })
@@ -49,7 +51,7 @@ describe('parseSessionToken', () => {
 })
 
 describe('sessionSelectionFor', () => {
-  it('rebuilds the selection with a project id derived from the workspace', () => {
+  test('rebuilds the selection with a project id derived from the workspace', () => {
     expect(sessionSelectionFor({ kind: 'session', threadId: THREAD }, PROJECT)).toEqual({
       kind: 'session',
       projectId: PROJECT,

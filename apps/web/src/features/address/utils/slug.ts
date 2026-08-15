@@ -1,5 +1,5 @@
 import { stablePathHash } from '@/lib/stable-path-hash'
-import { normalizeWorkspaceRoot, workspacePathLeaf } from '@/features/address/utils/workspace-path'
+import { normalizeWorkspaceRoot, workspacePathLeaf } from '@/lib/workspace-path'
 
 /**
  * A workspace is named in an address by a slug, never by a `ProjectId` and never by an
@@ -13,7 +13,11 @@ import { normalizeWorkspaceRoot, workspacePathLeaf } from '@/features/address/ut
  * becomes ambiguous when it genuinely is.
  */
 
-/** `/~-` — a remembered app with no folder open. Not a legal leaf, so it cannot collide. */
+/**
+ * `/~-` — a remembered app with no folder open. `-` IS a legal directory name, so this
+ * is reserved in `workspaceSlugs` rather than assumed safe: a project at `~/code/-`
+ * would otherwise be handed the slug that means "no folder".
+ */
 export const NO_WORKSPACE_SLUG = '-'
 
 const QUALIFIER_HASH_LENGTH = 4
@@ -43,14 +47,22 @@ export function workspaceSlugs(allRootPaths: readonly string[]) {
   const roots = Array.from(new Set(allRootPaths.map(normalizeWorkspaceRoot))).filter(Boolean)
   const byLeaf = groupBy(roots, workspacePathLeaf)
   const slugs = new Map<string, string>()
+  // Every bare leaf in play, including the ones this pass has not reached yet: a
+  // qualifier is minted INTO this namespace, so it has to know all of it up front.
+  // `-` is reserved from the start — it is a perfectly legal directory name, so a
+  // project at `~/code/-` would otherwise take the slug that means "no folder open".
+  const taken = new Set([...byLeaf.keys(), NO_WORKSPACE_SLUG])
 
   for (const [leaf, group] of byLeaf) {
-    if (group.length === 1) {
+    if (group.length === 1 && leaf !== NO_WORKSPACE_SLUG) {
       slugs.set(group[0], leaf)
       continue
     }
 
-    for (const [rootPath, slug] of qualifiedSlugs(leaf, group)) slugs.set(rootPath, slug)
+    for (const [rootPath, slug] of qualifiedSlugs(leaf, group, taken)) {
+      slugs.set(rootPath, slug)
+      taken.add(slug)
+    }
   }
 
   return slugs
@@ -96,14 +108,28 @@ function resolveFromRecent(slug: string, recent: readonly string[]): WorkspaceSl
   return { kind: 'unknown' }
 }
 
-function qualifiedSlugs(leaf: string, group: readonly string[]) {
+/**
+ * `<parent>-<leaf>`, falling back to a hash suffix whenever that form is not free.
+ *
+ * The `taken` check is what keeps this an inverse of `resolveWorkspaceSlug`. Without
+ * it, `/dev/work/api` beside `/dev/oss/api` and a third root literally named
+ * `work-api` all minted or held the slug `work-api` — so the encoder emitted a slug
+ * its own resolver then reported as `ambiguous`, and both workspaces became
+ * unreachable by link. The resolver's comment already warned about this collision;
+ * the encoder was the thing creating it.
+ */
+function qualifiedSlugs(leaf: string, group: readonly string[], taken: ReadonlySet<string>) {
   const byParent = groupBy(group, parentSegment)
   const slugs: [string, string][] = []
+  const claimed = new Set<string>()
 
   for (const [parent, sharing] of byParent) {
     const qualifier = parent ? `${parent}-${leaf}` : leaf
-    if (sharing.length === 1) {
+    const free = qualifier !== leaf && !taken.has(qualifier) && !claimed.has(qualifier)
+
+    if (sharing.length === 1 && free) {
       slugs.push([sharing[0], qualifier])
+      claimed.add(qualifier)
       continue
     }
 

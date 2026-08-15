@@ -2,7 +2,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { isDirectoryEntry } from '@workspace/contracts'
 import { useCallback } from 'react'
 
-import { workspacePathLeaf } from '@/features/address/utils/workspace-path'
+import { workspacePathLeaf } from '@/lib/workspace-path'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
 import { useResetWorkspaceTreeLoad } from '@/hooks/use-workspace-tree'

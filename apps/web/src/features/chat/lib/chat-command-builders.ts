@@ -42,7 +42,7 @@ import {
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
-import { workspacePathLeaf } from '@/features/address/utils/workspace-path'
+import { workspacePathLeaf } from '@/lib/workspace-path'
 import { stablePathHash } from '@/lib/stable-path-hash'
 
 import { appendTerminalContextsToPrompt, type TerminalContextSelection } from './terminal-context'

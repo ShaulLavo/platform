@@ -1,5 +1,3 @@
-import * as v from 'valibot'
-
 import { NO_WORKSPACE_SLUG } from '@/features/address/utils/slug'
 
 /**
@@ -22,41 +20,43 @@ export const ADDRESS_MODES = ['chat', 'workbench'] as const
 export type AddressMode = (typeof ADDRESS_MODES)[number]
 
 /**
- * A `strictObject` on purpose: this is the whitelist that makes the deny-list
- * structural. A store the encoder must never reach — the terminal command inbox, the
- * composer inbox — cannot be written into an `Address` even by mistake, because the
- * schema has no field to put it in.
+ * A closed record, and that is the whitelist that makes the deny-list structural: a
+ * store the encoder must never reach — the terminal command inbox, the composer inbox —
+ * cannot be written into an `Address` even by mistake, because there is no field to put
+ * it in. The same property, from the other side, is what `AddressSnapshot` provides:
+ * nothing dangerous can be read FROM the store either.
+ *
+ * A plain type rather than a valibot schema. It was a `strictObject`, but nothing ever
+ * parsed it — only `InferOutput` read it — so the runtime strictness was never on, and
+ * naming a schema implied a validation step that did not exist. The URL is untrusted
+ * input handled by a normalizing parser (below), which is the real defence: a garbage
+ * segment costs the field it names and nothing else, where a schema would throw.
  */
-export const addressSchema = v.strictObject({
-  bottom: v.nullable(v.picklist(['terminal', 'problems'])),
+export type Address = {
+  readonly bottom: 'terminal' | 'problems' | null
   /** Thread diff scope. Deliberately NOT `scope`: the rail owns no addressable scope. */
-  diff: v.nullable(v.string()),
-  document: v.nullable(v.string()),
+  readonly diff: string | null
+  readonly document: string | null
+  readonly focus: {
+    readonly column: number | null
+    readonly endLine: number | null
+    readonly line: number
+  } | null
   /** `log.*` — the log dashboard's filters, which persist nothing today. */
-  logs: v.nullable(v.record(v.string(), v.string())),
-  focus: v.nullable(
-    v.strictObject({
-      column: v.nullable(v.number()),
-      endLine: v.nullable(v.number()),
-      line: v.number(),
-    }),
-  ),
-  mode: v.nullable(v.picklist(ADDRESS_MODES)),
-  /** Unowned search keys, copied through byte-for-byte. See the dev-param note below. */
-  passthrough: v.record(v.string(), v.string()),
-  rail: v.nullable(v.picklist(['active', 'archived'])),
+  readonly logs: Readonly<Record<string, string>> | null
+  readonly mode: AddressMode | null
+  /** The four dev params, by name. Bounded on purpose — see `DEV_SEARCH_KEYS`. */
+  readonly passthrough: Readonly<Record<string, string>>
+  readonly rail: 'active' | 'archived' | null
   /** `s.*` — the search buffer's query and flags. Never its replacement text. */
-  search: v.nullable(v.record(v.string(), v.string())),
-  settings: v.nullable(v.string()),
-  side: v.nullable(v.picklist(['chat', 'files', 'git', 'logs', 'search'])),
-  tabs: v.nullable(v.array(v.string())),
-  tool: v.nullable(v.string()),
-  workspace: v.nullable(v.string()),
-})
+  readonly search: Readonly<Record<string, string>> | null
+  readonly settings: string | null
+  readonly side: 'chat' | 'files' | 'git' | 'logs' | 'search' | null
+  readonly tabs: readonly string[] | null
+  readonly tool: string | null
+  readonly workspace: string | null
+}
 
-export type Address = v.InferOutput<typeof addressSchema>
-
-const OWNED_SEARCH_KEYS = new Set(['tabs', 'side', 'bottom', 'tool', 'rail', 'diff', 'settings'])
 const LOGS_PREFIX = 'log.'
 const SEARCH_PREFIX = 's.'
 
@@ -135,9 +135,12 @@ function serializeSearch(address: Address) {
   if (address.tabs?.length) params.set('tabs', address.tabs.join('~'))
   if (address.side) params.set('side', address.side)
   if (address.bottom) params.set('bottom', address.bottom)
-  if (address.tool) params.set('tool', address.tool)
+  // `!== null` for the free-text slots, matching `settings` below: an empty `?tool=`
+  // or `?diff=` is a value the parser reads back, and dropping it as falsy made the
+  // encoder disagree with its own decoder.
+  if (address.tool !== null) params.set('tool', address.tool)
   if (address.rail) params.set('rail', address.rail)
-  if (address.diff) params.set('diff', address.diff)
+  if (address.diff !== null) params.set('diff', address.diff)
   // `!== null`, not truthiness: `?settings=` with an empty value is a real state —
   // the settings page open on no particular category — and dropping it as falsy lost
   // the whole tab on reload.
@@ -170,18 +173,39 @@ function searchFields(params: URLSearchParams) {
 }
 
 /**
- * Four dev params are read by code that runs outside React's lifecycle, and two of
- * them are read LATE — `editorPerfLayout` during every editor render, and `decode` on
- * the first editor's idle callback. A canonicalizing rewrite that dropped them would
- * change behaviour mid-session with no error and no log, so every key the serializer
- * does not own is copied through untouched.
+ * The four dev params, by name.
+ *
+ * They are carried because they are read by code outside React's lifecycle, two of
+ * them LATE — `editorPerfLayout` during every editor render, and `decode` on the first
+ * editor's idle callback — so a canonicalizing rewrite that dropped them would change
+ * behaviour mid-session with no error and no log.
+ *
+ * An allow-list rather than "everything unowned", which is what this used to be. That
+ * version made ANY query param permanent for the install: the projection copied it into
+ * every subsequent address, `mergeLiveSearch` can override a stored key but never remove
+ * one, and `copyAddress` then shipped it to whoever received the link. `?decode=`, whose
+ * own docs call it opt-in per session, became a setting you could not turn off. It also
+ * punched an unbounded wildcard through the `strictObject` whose entire purpose is that
+ * un-addressable state has no field to travel in.
  */
+export const DEV_SEARCH_KEYS = [
+  'decode',
+  'editorPerfDisable',
+  'editorPerfLayout',
+  'editorPerfTrace',
+] as const
+
+const DEV_SEARCH_KEY_SET: ReadonlySet<string> = new Set(DEV_SEARCH_KEYS)
+
 function passthroughFrom(params: URLSearchParams) {
   const passthrough: Record<string, string> = {}
 
   for (const [key, value] of params) {
-    if (OWNED_SEARCH_KEYS.has(key)) continue
-    if (key.startsWith(LOGS_PREFIX) || key.startsWith(SEARCH_PREFIX)) continue
+    if (!DEV_SEARCH_KEY_SET.has(key)) continue
+    // First wins, matching `URLSearchParams.get` — which is how every named slot above
+    // reads its value. Letting these loops take the LAST occurrence instead meant
+    // `?side=git&side=files` and `?decode=a&decode=b` resolved by opposite rules.
+    if (key in passthrough) continue
 
     passthrough[key] = value
   }
@@ -196,7 +220,11 @@ function prefixedGroup(params: URLSearchParams, prefix: string) {
   for (const [key, value] of params) {
     if (!key.startsWith(prefix)) continue
 
-    group[key.slice(prefix.length)] = value
+    const name = key.slice(prefix.length)
+    // First wins, as everywhere else in this parser.
+    if (name in group) continue
+
+    group[name] = value
   }
 
   return Object.keys(group).length > 0 ? group : null
@@ -229,6 +257,9 @@ function parseFocus(hash: string) {
 
 function serializeFocus(focus: Address['focus']) {
   if (!focus) return ''
+  // A line the parser could not read back is worse than no fragment: `1e21` stringifies
+  // to `1e+21`, which `#L(\d+)` rejects, so the position silently vanished on reload.
+  if (!Number.isSafeInteger(focus.line) || focus.line < 1) return ''
 
   // Column and range are independent: `#L10,5-L20` is a real position and the parser
   // already reads it. Emitting them exclusively silently dropped the column on every

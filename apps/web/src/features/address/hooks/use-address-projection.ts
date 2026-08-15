@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { useRouter } from '@tanstack/react-router'
 
 import { writeAddressCache } from '@/features/address/state/address-storage'
-import { createAddressProjection } from '@/features/address/state/projection'
+import {
+  createAddressProjection,
+  PROJECTION_DEBOUNCE_MS,
+} from '@/features/address/state/projection'
 import { parseAddress } from '@/features/address/utils/grammar'
 import { addressFromSnapshot, emptyAddressSnapshot } from '@/features/address/utils/snapshot'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
@@ -19,6 +21,7 @@ import { logsParamsFor } from '@/features/address/utils/logs-params'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
 import { createDefaultWorkbenchPanels } from '@/features/workbench/utils/workbench-panels'
 import { readSettingsCategory } from '@/features/settings/state/category-store'
+import { WORKSPACE_SLICE_LIMIT } from '@/lib/workspace-cache'
 import { settingsCategorySlug } from '@/features/address/utils/settings-category'
 import { useEditorUiStoreApi } from '@/features/editor/state/editor-ui-state'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
@@ -27,14 +30,14 @@ import type { EditorUiStoreApi } from '@/features/editor/state/editor-ui-state'
 import type { EditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
 
 /**
- * Mounted once, next to the cache persistence it will eventually replace.
+ * Mounted once, beside the cache persistence it renders alongside.
  *
- * Read-only in this milestone: the store is the source of truth and the URL is a
- * rendering of it. Nothing here reads the address back, so there is exactly one
- * outbound edge and no echo to guard against.
+ * The store is the source of truth and the URL is a rendering of it, so this is an
+ * outbound edge — with exactly one inbound fact, `adopt`, for the case the browser
+ * moves the URL without asking: a back or forward press. Everything else here is
+ * store → URL.
  */
 export function useAddressProjection() {
-  const router = useRouter()
   const storeApi = useEditorWorkspaceStoreApi()
   const uiStoreApi = useEditorUiStoreApi()
   const searchStoreApi = useSearchBufferStoreApi()
@@ -47,27 +50,27 @@ export function useAddressProjection() {
 
   useEffect(() => {
     const projection = createAddressProjection({
-      now: () => performance.now(),
       // A timer, not `requestAnimationFrame`: rAF does not fire in a background or
       // not-yet-interacted tab, which left the address stuck at `/` until the user
-      // clicked something. A macrotask still coalesces a synchronous burst, and the
-      // identical-href guard absorbs the rest.
+      // clicked something.
       schedule: (write) => {
-        setTimeout(write, 0)
+        const timer = setTimeout(write, PROJECTION_DEBOUNCE_MS)
+
+        return () => clearTimeout(timer)
       },
-      // The router's history, not `navigate`: a projection is a URL rewrite, not a
-      // navigation. Going through the history keeps this a single outbound edge — no
-      // route match, no transition, and no re-render that would turn the write back
-      // into an inbound apply.
+      // `history` directly, not a router: a projection is a URL rewrite, not a
+      // navigation. There is no route to match and no transition to run, so anything
+      // more than `pushState`/`replaceState` would only add a re-render that could turn
+      // this write back into an inbound apply.
       writer: {
         push: (href) => {
-          router.history.push(href)
+          history.pushState(null, '', href)
           writeAddressCache(href)
         },
         // The other half of the dual serialization. Writing both from one place is
         // what guarantees the URL and the restore payload cannot disagree.
         replace: (href) => {
-          router.history.replace(href)
+          history.replaceState(null, '', href)
           writeAddressCache(href)
         },
       },
@@ -79,7 +82,26 @@ export function useAddressProjection() {
       )
     }
 
+    // The projection's own inbound edge, and the only one it has.
+    //
+    // Registration order against the applier's `popstate` listener does not matter:
+    // both run synchronously while the event dispatches, and the store changes the
+    // applier makes only schedule a flush onto a later macrotask. By the time `flush`
+    // compares identities, this has already run.
+    const adopt = () => {
+      projection.adopt(`${location.pathname}${location.search}${location.hash}`)
+    }
+
+    // A debounced write has a quiet period to survive, and closing the tab does not
+    // wait for it. `pagehide` rather than `beforeunload`: it is the one that fires on
+    // mobile and on back/forward-cache eviction.
+    const flushNow = () => {
+      projection.flushNow()
+    }
+
     project()
+    window.addEventListener('pagehide', flushNow)
+    window.addEventListener('popstate', adopt)
     const unsubscribeSelection = useSessionSelectionStore.subscribe(project)
     const unsubscribeRail = useSessionRailStore.subscribe(project)
     const unsubscribeDiffScope = useThreadDiffScopeStore.subscribe(project)
@@ -90,6 +112,8 @@ export function useAddressProjection() {
 
     return () => {
       projection.cancel()
+      window.removeEventListener('pagehide', flushNow)
+      window.removeEventListener('popstate', adopt)
       unsubscribeDiffScope()
       unsubscribeRail()
       unsubscribeSelection()
@@ -98,7 +122,7 @@ export function useAddressProjection() {
       unsubscribeSearch()
       unsubscribeLogs()
     }
-  }, [passthrough, router, searchStoreApi, storeApi, uiStoreApi])
+  }, [passthrough, searchStoreApi, storeApi, uiStoreApi])
 }
 
 function snapshotFromStore(
@@ -124,8 +148,13 @@ function snapshotFromStore(
     // localStorage keyspace and re-parses every slice AND every search buffer — and
     // search buffers carry a materialized match list. Measured at 32 key enumerations
     // and 14 parses per single file click, on a path that runs on every store change.
-    // `parkedWorkspaces` is the same remembered set, already in memory.
-    knownRootPaths: [...state.parkedWorkspaces.keys(), rootPath],
+    //
+    // Capped to match the persisted index the DECODER resolves against. A slug is a
+    // property of the whole set, and `parkedWorkspaces` only ever grows within a
+    // session while `writeWorkspaceIndexCache` trims to `WORKSPACE_SLICE_LIMIT` — so
+    // past that many project switches the encoder was qualifying against roots the
+    // resolver had never heard of, and emitting slugs nothing could resolve.
+    knownRootPaths: cappedKnownRoots(rootPath, state.parkedWorkspaces.keys()),
     passthrough,
     mode: state.uiMode === 'chat' ? ('chat' as const) : ('workbench' as const),
     rootPath,
@@ -141,6 +170,14 @@ function snapshotFromStore(
       createDefaultChatModePanels().activeToolTab,
     ),
   }
+}
+
+/**
+ * The active root first, then the parked ones, trimmed to what the workspace index
+ * actually persists. Mirrors `workspaceOrderFromCache`, which the decoder reads.
+ */
+function cappedKnownRoots(rootPath: string, parked: Iterable<string>) {
+  return [rootPath, ...parked].slice(0, WORKSPACE_SLICE_LIMIT)
 }
 
 /**

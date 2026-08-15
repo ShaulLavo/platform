@@ -11,6 +11,7 @@ import { useSessionSelectionStore } from '@/features/chat-mode/state/session-sel
 import { showChatModeToolTab, isChatModeToolTab } from '@/features/chat-mode/utils/panels'
 import { workspaceProjectId } from '@/features/chat/lib/chat-command-builders'
 import { settingsCategoryForSlug } from '@/features/address/utils/settings-category'
+import { isSettingsDocumentId } from '@/features/settings/settings-document'
 import { selectSettingsCategory } from '@/features/settings/state/category-store'
 import { SETTING_IDS, descriptorFor } from '@workspace/contracts'
 import { searchStateFor } from '@/features/address/utils/search-params'
@@ -28,11 +29,20 @@ import {
   setWorkbenchBottomTab,
   setWorkbenchSidebarTab,
 } from '@/features/workbench/utils/workbench-panels'
+import { isDirectoryEntry } from '@workspace/contracts'
+import { toast } from 'sonner'
+
 import { log } from '@/lib/client-logging'
+import { fetchRecentEntries } from '@/lib/file-server'
 import { readWorkspaceCache } from '@/lib/workspace-cache'
 
 /**
- * The single inbound edge. Runs once, at boot.
+ * The inbound edge for everything `addressedWorkspaceCache` could not decide.
+ *
+ * That merge runs before the stores exist and owns the slots a workspace slice can
+ * hold — mode, panels, tabs, the active document — for the workspace already open. What
+ * is left here is the rest: a cross-workspace switch, which needs a real `statPath`, and
+ * the slots no slice holds at all (settings, search, logs, chat selection).
  *
  * Everything is applied through domain actions in slot order — workspace, mode,
  * document, panel — never through raw setters. Three consequences: the URL cannot
@@ -48,8 +58,39 @@ import { readWorkspaceCache } from '@/lib/workspace-cache'
 /** A link naming more tabs than a person could have opened is not a tab set. */
 const MAX_APPLIED_TABS = 64
 
+/**
+ * Why the address is being applied, which decides two things a boot and a back press
+ * must not share.
+ *
+ * `boot` may find the work already done: when the address names the workspace that is
+ * already open, the provider's merge has seeded mode, panels and tabs, and re-applying
+ * them would be redundant at best. `boot` also never CLOSES a tab, because the address
+ * may be a link someone else wrote.
+ *
+ * `popstate` always applies in full and does close tabs, because there the tab set is
+ * one this app wrote and back has to be the inverse of push.
+ */
+type ApplyReason = 'boot' | 'popstate'
+
+/**
+ * Everything worth knowing about one restore, accumulated so it can leave as a single
+ * wide event. Applying an address used to emit up to four narrow lines — one per
+ * rejected token, plus the tab cap, plus the slug warning, plus the outcome — which is
+ * the shape the evlog rule exists to prevent: the pieces were only correlatable by
+ * timestamp, and a boot that rejected three tokens looked like three unrelated faults.
+ */
+type ApplyTrace = {
+  ambiguousSlugCandidates: number | null
+  rejectedTokens: string[]
+  tabsRejected: number | null
+}
+
+function emptyApplyTrace(): ApplyTrace {
+  return { ambiguousSlugCandidates: null, rejectedTokens: [], tabsRejected: null }
+}
+
 export type AddressRestoreResult =
-  | { readonly status: 'applied' }
+  | { readonly status: 'applied'; readonly reason: ApplyReason }
   | { readonly status: 'pending'; readonly reason: string }
   | { readonly status: 'unavailable'; readonly reason: string }
 
@@ -62,16 +103,17 @@ export function useAddressRestore() {
   const applied = useRef(false)
 
   useEffect(() => {
+    const deps = { commands, documentStoreApi, openWorkspaceRoot, searchStoreApi, storeApi }
     if (!applied.current) {
       applied.current = true
-      void applyAddress({ commands, documentStoreApi, openWorkspaceRoot, searchStoreApi, storeApi })
+      void applyAddress(deps, 'boot')
     }
 
     // The second inbound edge. `pushState`/`replaceState` do not emit `popstate`, so
     // the projection's own writes cannot echo back here — only a real back, forward,
     // mouse-back or trackpad swipe reaches this listener.
     function applyOnPopState() {
-      void applyAddress({ commands, documentStoreApi, openWorkspaceRoot, searchStoreApi, storeApi })
+      void applyAddress(deps, 'popstate')
     }
 
     window.addEventListener('popstate', applyOnPopState)
@@ -79,77 +121,131 @@ export function useAddressRestore() {
   }, [commands, documentStoreApi, openWorkspaceRoot, searchStoreApi, storeApi])
 }
 
-async function applyAddress({
-  commands,
-  documentStoreApi,
-  openWorkspaceRoot,
-  searchStoreApi,
-  storeApi,
-}: {
-  commands: ReturnType<typeof useEditorCommands>
-  documentStoreApi: ReturnType<typeof useEditorDocumentStoreApi>
-  openWorkspaceRoot: ReturnType<typeof useOpenWorkspaceRoot>
-  searchStoreApi: SearchBufferStoreApi
-  storeApi: ReturnType<typeof useEditorWorkspaceStoreApi>
-}): Promise<AddressRestoreResult> {
+async function applyAddress(
+  {
+    commands,
+    documentStoreApi,
+    openWorkspaceRoot,
+    searchStoreApi,
+    storeApi,
+  }: {
+    commands: ReturnType<typeof useEditorCommands>
+    documentStoreApi: ReturnType<typeof useEditorDocumentStoreApi>
+    openWorkspaceRoot: ReturnType<typeof useOpenWorkspaceRoot>
+    searchStoreApi: SearchBufferStoreApi
+    storeApi: ReturnType<typeof useEditorWorkspaceStoreApi>
+  },
+  reason: ApplyReason,
+): Promise<AddressRestoreResult> {
+  const trace = emptyApplyTrace()
   const address = parseAddress(window.location.href)
-  if (!address.workspace) return report({ status: 'pending', reason: 'no address to apply' })
+  if (!address.workspace) {
+    return report({ status: 'pending', reason: 'no address to apply' }, trace)
+  }
   // `/~-` names "no folder open", not "nothing to do": the settings overlay works
   // without a workspace, and returning early made every documented folderless address
   // a silent no-op.
   if (address.workspace === NO_WORKSPACE_SLUG) {
-    applySettings(address, commands)
-    return report({ status: 'applied' })
+    applySettings(address, commands, storeApi)
+    return report({ status: 'applied', reason }, trace)
   }
 
-  const rootPath = await resolveRoot(address.workspace, storeApi)
+  const rootPath = await resolveRoot(address.workspace, storeApi, trace)
   if (!rootPath) {
-    return report({
-      status: 'unavailable',
-      reason: `no workspace named ${address.workspace} on this machine`,
-    })
+    return report(
+      {
+        status: 'unavailable',
+        reason: `no workspace named ${address.workspace} on this machine`,
+      },
+      trace,
+    )
   }
+
+  // Whether the provider's merge already seeded the slice slots. It only ever seeds the
+  // workspace that was already open, so a switch below always leaves this false.
+  const seeded = reason === 'boot' && storeApi.getState().rootFolder?.path === rootPath
 
   if (storeApi.getState().rootFolder?.path !== rootPath) {
     const outcome = await openWorkspaceRoot(rootPath)
     // `superseded` means another project switch won while this one was in flight.
     // Applying the rest would drag that project's tabs into the winner.
-    if (outcome === 'superseded') return report({ status: 'pending', reason: 'superseded' })
-    if (outcome === 'failed')
-      return report({ status: 'unavailable', reason: 'root failed to open' })
+    if (outcome === 'superseded') {
+      return report({ status: 'pending', reason: 'superseded' }, trace)
+    }
+    if (outcome === 'failed') {
+      return report({ status: 'unavailable', reason: 'root failed to open' }, trace)
+    }
   }
 
-  applyMode(address.mode, storeApi)
-  if (address.mode === 'chat') applyChat(address, rootPath, storeApi)
-  else applyDocument(address, rootPath, commands)
-  applyPanels(address, storeApi)
-  applySettings(address, commands)
+  if (!seeded) {
+    applyMode(address.mode, storeApi)
+    applyPanels(address, storeApi)
+    if (address.mode === 'chat') applyChatToolTab(address, storeApi)
+    applyTabs(address, rootPath, commands, storeApi, documentStoreApi, reason, trace)
+  }
+
+  // Before the document, always. `openSettingsEditor` selects the tab it opens, so
+  // running it afterwards made which tab you land on depend on `?tabs=` byte order.
+  applySettings(address, commands, storeApi)
+
+  // Last, and NOT inside `applyTabs`: opening the tab set moves the selection, and an
+  // address without `?tabs=` skips that step entirely — so a document re-select that
+  // lived in there simply did not happen for short links, and back left the previous
+  // document selected. One call, one place, after everything that can steal focus.
+  if (address.mode !== 'chat') applyDocument(address, rootPath, commands, trace)
+
+  // Always applied: none of these lives in a workspace slice, so the merge cannot
+  // reach them however the address arrived.
+  if (address.mode === 'chat') applyChatSelection(address, rootPath, trace)
   applySearch(address, rootPath, searchStoreApi)
   applyLogs(address)
-  applyTabs(address, rootPath, commands, storeApi, documentStoreApi)
 
-  return report({ status: 'applied' })
+  return report({ status: 'applied', reason }, trace)
 }
 
-async function resolveRoot(slug: string, storeApi: ReturnType<typeof useEditorWorkspaceStoreApi>) {
+/** Enough to cover a link to a project opened a while ago, without a slow round trip. */
+const RECENT_DIRECTORY_LIMIT = 50
+
+async function resolveRoot(
+  slug: string,
+  storeApi: ReturnType<typeof useEditorWorkspaceStoreApi>,
+  trace: ApplyTrace,
+) {
   const current = storeApi.getState().rootFolder?.path
+  const indexed = [...readWorkspaceCache().workspaceOrder, ...(current ? [current] : [])]
   const resolution = resolveWorkspaceSlug(slug, {
-    indexed: [...readWorkspaceCache().workspaceOrder, ...(current ? [current] : [])],
+    indexed,
+    // Only consulted when the index cannot answer — `resolveWorkspaceSlug` tries the
+    // cheap local steps first — so a warm boot never pays for this round trip. Wiring
+    // it is what lets a link reach a project this machine has on disk but has not
+    // opened recently enough to still be in the eight-slot index.
+    recent: await recentRootPaths(slug, indexed),
   })
 
   if (resolution.kind === 'resolved') return resolution.rootPath
   // Ambiguity is not a guess to make: two checkouts named the same thing are two
   // different workspaces, and picking one silently swaps the user's whole world.
-  if (resolution.kind === 'ambiguous') {
-    log.warn({
-      action: 'address.slug_ambiguous',
-      area: 'address',
-      candidates: resolution.rootPaths.length,
-      slug,
-    })
-  }
+  if (resolution.kind === 'ambiguous') trace.ambiguousSlugCandidates = resolution.rootPaths.length
 
   return null
+}
+
+/**
+ * Skipped entirely when the index already holds the slug, so the common path stays
+ * local and synchronous. A failure here is not a failed restore — it just means the
+ * resolver falls back to what it already had.
+ */
+async function recentRootPaths(slug: string, indexed: readonly string[]) {
+  if (resolveWorkspaceSlug(slug, { indexed }).kind !== 'unknown') return []
+
+  try {
+    const entries = await fetchRecentEntries(RECENT_DIRECTORY_LIMIT, new AbortController().signal)
+
+    return entries.filter((entry) => isDirectoryEntry(entry)).map((entry) => entry.path)
+  } catch {
+    // Swallowed, not silent: `fs.recents` carries the failure as its own wide event.
+    return []
+  }
 }
 
 function applyMode(
@@ -165,20 +261,16 @@ function applyDocument(
   address: ReturnType<typeof parseAddress>,
   rootPath: string,
   commands: ReturnType<typeof useEditorCommands>,
+  trace: ApplyTrace,
 ) {
   const token = address.document
   if (!token) return
 
   const parsed = pathForDocumentToken(rootPath, token)
   if (parsed.kind !== 'path') {
-    // Logged rather than swallowed: a token that parses to nothing is otherwise a
+    // Recorded rather than swallowed: a token that parses to nothing is otherwise a
     // blank tab with no error anywhere.
-    log.warn({
-      action: 'address.token_rejected',
-      area: 'address',
-      reason: 'reason' in parsed ? parsed.reason : parsed.kind,
-      token,
-    })
+    trace.rejectedTokens.push('reason' in parsed ? parsed.reason : parsed.kind)
     return
   }
 
@@ -215,16 +307,13 @@ function definitionTargetFor(
 }
 
 /**
- * Chat slots, applied through the same domain actions a click goes through — so
- * `?tool=git` selects git and opens the pane exactly as clicking it would, without
- * `toolPaneOpen` ever being serialized. The tab is only shown when it actually
- * differs: `showChatModeToolTab` forces the pane open, and re-applying the tab a
- * user had already collapsed would reopen it on every reload.
+ * The chat thread on stage, plus the rail and diff scope that belong to it. None of
+ * these lives in a workspace slice, so this runs however the address arrived.
  */
-function applyChat(
+function applyChatSelection(
   address: ReturnType<typeof parseAddress>,
   rootPath: string,
-  storeApi: ReturnType<typeof useEditorWorkspaceStoreApi>,
+  trace: ApplyTrace,
 ) {
   const parsed = parseSessionToken(address.document)
   if (parsed?.kind === 'session') {
@@ -235,14 +324,7 @@ function applyChat(
   if (parsed?.kind === 'draft') {
     useSessionSelectionStore.getState().startDraft(workspaceProjectId(rootPath))
   }
-  if (parsed?.kind === 'rejected') {
-    log.warn({
-      action: 'address.token_rejected',
-      area: 'address',
-      reason: 'thread id',
-      token: address.document,
-    })
-  }
+  if (parsed?.kind === 'rejected') trace.rejectedTokens.push('thread id')
 
   if (address.rail === 'archived') useSessionRailStore.getState().setView('archived')
 
@@ -252,7 +334,18 @@ function applyChat(
   if (scope && parsed?.kind === 'session') {
     useThreadDiffScopeStore.getState().selectThreadDiffScope(parsed.threadId, scope)
   }
+}
 
+/**
+ * `?tool=git` selects git and opens the pane exactly as clicking it would, without
+ * `toolPaneOpen` ever being serialized. Only applied when it actually differs:
+ * `showChatModeToolTab` forces the pane open, and re-applying the tab a user had
+ * already collapsed would reopen it on every reload.
+ */
+function applyChatToolTab(
+  address: ReturnType<typeof parseAddress>,
+  storeApi: ReturnType<typeof useEditorWorkspaceStoreApi>,
+) {
   const state = storeApi.getState()
   const panels = state.chatModePanels
   if (!address.tool || !isChatModeToolTab(address.tool)) return
@@ -279,18 +372,45 @@ function applyPanels(
  * A param rather than a route, deliberately: a real `/settings` route would unmount
  * the workspace behind it, killing live terminal sockets and editor DOM. The empty
  * string means "settings, no category" — the page opens showing everything.
+ *
+ * Symmetric, which it was not: with no `null` branch the slot was a one-way sink.
+ * `selectSettingsCategory` has no other caller, so nothing in the UI could undo a
+ * category a link had pinned, and backing out of settings left the tab open forever.
  */
 function applySettings(
   address: ReturnType<typeof parseAddress>,
   commands: ReturnType<typeof useEditorCommands>,
+  storeApi: ReturnType<typeof useEditorWorkspaceStoreApi>,
 ) {
-  if (address.settings === null) return
+  if (address.settings === null) {
+    closeSettingsTab(commands, storeApi)
+    return
+  }
 
   const categories = SETTING_IDS.map((id) => descriptorFor(id).category)
   selectSettingsCategory(
     address.settings ? settingsCategoryForSlug(address.settings, categories) : null,
   )
   commands.openSettingsEditor()
+}
+
+/**
+ * The settings tab is addressed by the `?settings=` slot rather than a `?tabs=` token,
+ * so `closeTabsOutsideAddress` cannot see it — which is why walking back out of
+ * settings used to leave it open. Closing it here keeps the one slot that owns it
+ * responsible for both directions.
+ */
+function closeSettingsTab(
+  commands: ReturnType<typeof useEditorCommands>,
+  storeApi: ReturnType<typeof useEditorWorkspaceStoreApi>,
+) {
+  const open = storeApi
+    .getState()
+    .workbenchPanels.editorTabs.find((tab) => isSettingsDocumentId(tab.path))
+  if (!open) return
+
+  selectSettingsCategory(null)
+  commands.closeTab(open.id)
 }
 
 /**
@@ -337,6 +457,8 @@ function applyTabs(
   commands: ReturnType<typeof useEditorCommands>,
   storeApi: ReturnType<typeof useEditorWorkspaceStoreApi>,
   documentStoreApi: ReturnType<typeof useEditorDocumentStoreApi>,
+  reason: ApplyReason,
+  trace: ApplyTrace,
 ) {
   if (!address.tabs?.length) return
 
@@ -344,12 +466,7 @@ function applyTabs(
   // nothing about a hand-edited or hostile link: without this, `?tabs=` with 5000
   // tokens opens 5000 editor tabs in one synchronous loop.
   if (address.tabs.length > MAX_APPLIED_TABS) {
-    log.warn({
-      action: 'address.tabs_rejected',
-      area: 'address',
-      limit: MAX_APPLIED_TABS,
-      tabCount: address.tabs.length,
-    })
+    trace.tabsRejected = address.tabs.length
     return
   }
 
@@ -362,15 +479,14 @@ function applyTabs(
     commands.openFileSurface(parsed.path)
   }
 
-  closeTabsOutsideAddress(address.tabs, rootPath, commands, storeApi, documentStoreApi)
-
-  // Re-select the active document, because opening the rest moved the selection — but
-  // only when the document slot actually holds one. In chat mode it holds a `t/` thread
-  // token, which is not a workspace document: re-applying it logged a false
-  // `token_rejected` and left the wrong workbench tab selected.
-  if (address.mode === 'chat') return
-
-  applyDocument(address, rootPath, commands)
+  // Only a back press closes tabs. On boot the address may be a link someone else
+  // wrote, and a stranger's two-tab link is not an instruction to delete the ten tabs
+  // you had open — the cache persistence would then write that deletion to disk 350ms
+  // later, surviving the restart. Walking history is the only case where the tab set
+  // is one this app wrote, and therefore the only case where absence means "close".
+  if (reason === 'popstate') {
+    closeTabsOutsideAddress(address.tabs, rootPath, commands, storeApi, documentStoreApi)
+  }
 }
 
 /**
@@ -402,13 +518,35 @@ function closeTabsOutsideAddress(
   }
 }
 
-function report(result: AddressRestoreResult) {
-  log.info({
-    action: 'address.restored',
-    area: 'address',
-    reason: 'reason' in result ? result.reason : null,
-    status: result.status,
+/**
+ * A dead link is the one failure the user has to be told about.
+ *
+ * Every other outcome degrades into something reasonable, but an address naming a
+ * workspace this machine does not have silently lands the recipient on their own last
+ * session — which looks exactly like the link having worked. The three-state result was
+ * being computed and logged with nothing rendering it; this is the missing surface.
+ */
+function reportUnavailable(result: AddressRestoreResult) {
+  if (result.status !== 'unavailable') return result
+
+  toast.error('That link points somewhere this machine does not have', {
+    description: result.reason,
   })
 
   return result
+}
+
+function report(result: AddressRestoreResult, trace: ApplyTrace) {
+  log.info({
+    action: 'address.restored',
+    ambiguousSlugCandidates: trace.ambiguousSlugCandidates,
+    area: 'address',
+    reason: 'reason' in result ? result.reason : null,
+    rejectedTokenCount: trace.rejectedTokens.length,
+    rejectedTokenReasons: trace.rejectedTokens,
+    status: result.status,
+    tabsRejected: trace.tabsRejected,
+  })
+
+  return reportUnavailable(result)
 }

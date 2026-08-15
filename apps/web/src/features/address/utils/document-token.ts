@@ -14,7 +14,7 @@ import {
   searchBufferDocumentId,
 } from '@/features/search/search-buffer-document'
 import { isSettingsDocumentId } from '@/features/settings/settings-document'
-import { toWorkspaceAbsolute, toWorkspaceRelative } from '@/features/address/utils/workspace-path'
+import { toWorkspaceAbsolute, toWorkspaceRelative } from '@/lib/workspace-path'
 import type { ThreadId } from '@workspace/contracts'
 
 /**
@@ -130,7 +130,15 @@ function checkpointToken(
 ): DocumentTokenResult {
   const scope = query.scope ?? 'file'
   const turns = `${query.fromTurnCount}..${query.toTurnCount}`
-  const extras = tokenExtras(query.status, relativeOrNull(rootPath, query.oldPath))
+  // The object ids ride along because `checkpointDiffDocumentId` puts them IN the id:
+  // dropping them minted a different id on the way back, so a restored checkpoint tab
+  // never matched the one the app would open and the workbench kept both.
+  const extras = tokenExtras({
+    newObjectId: query.newObjectId,
+    oldObjectId: query.oldObjectId,
+    oldPath: relativeOrNull(rootPath, query.oldPath),
+    status: query.status,
+  })
   const head = `k/${encodeSegment(query.threadId)}/${turns}${extras}`
 
   if (scope === 'thread') return { kind: 'token', token: head }
@@ -172,13 +180,26 @@ function revisionSegment(
   if (!oldObjectId && !newObjectId) return null
 
   const range = `${oldObjectId ?? MISSING_OBJECT_ID}..${newObjectId ?? MISSING_OBJECT_ID}`
-  return `${range}${tokenExtras(status, oldPath)}`
+  // No `o=`/`n=` here: a `d/` token already spells both sides in its range segment.
+  return `${range}${tokenExtras({ oldPath, status })}`
 }
 
-function tokenExtras(status: string | undefined, oldPath: string | null) {
+function tokenExtras({
+  newObjectId,
+  oldObjectId,
+  oldPath,
+  status,
+}: {
+  readonly newObjectId?: string
+  readonly oldObjectId?: string
+  readonly oldPath: string | null
+  readonly status: string | undefined
+}) {
   const extras: string[] = []
   if (status) extras.push(`s=${encodeSegment(status)}`)
   if (oldPath) extras.push(`r=${encodeSegment(oldPath)}`)
+  if (oldObjectId) extras.push(`o=${oldObjectId}`)
+  if (newObjectId) extras.push(`n=${newObjectId}`)
 
   return extras.length > 0 ? `,${extras.join(',')}` : ''
 }
@@ -250,6 +271,8 @@ function checkpointDiffPath(rootPath: string, segments: readonly string[]): Pars
     path: checkpointDiffDocumentId({
       filePath: filePath ?? undefined,
       fromTurnCount: turns.from,
+      newObjectId: turns.newObjectId,
+      oldObjectId: turns.oldObjectId,
       oldPath: absoluteOrUndefined(rootPath, turns.oldPath),
       // Thread- and turn-scope checkpoints carry a synthetic path, matching what the
       // checkpoint query mints for them.
@@ -301,7 +324,10 @@ function parseRevisionSegment(segment: string) {
   if (newRaw !== MISSING_OBJECT_ID && !newObjectId) return null
   if (!oldObjectId && !newObjectId) return null
 
-  return { newObjectId, oldObjectId, ...parseExtras(extras) }
+  // Range last: a `d/` token spells both object ids in its range segment, and the
+  // extras carry `o=`/`n=` only for `k/`. Spreading the extras over the range instead
+  // would overwrite both sides with `undefined`.
+  return { ...parseExtras(extras), newObjectId, oldObjectId }
 }
 
 function parseTurnRange(segment: string) {
@@ -323,7 +349,13 @@ function parseExtras(extras: readonly string[]) {
     }),
   )
 
-  return { oldPath: byKey.get('r') ?? undefined, status: byKey.get('s') ?? undefined }
+  return {
+    // Validated, not trusted: an arbitrary URL string must not become a git object id.
+    newObjectId: objectIdOrUndefined(byKey.get('n') ?? ''),
+    oldObjectId: objectIdOrUndefined(byKey.get('o') ?? ''),
+    oldPath: byKey.get('r') ?? undefined,
+    status: byKey.get('s') ?? undefined,
+  }
 }
 
 const GIT_STATUSES = new Set([
@@ -361,6 +393,10 @@ function decodePath(rootPath: string, segments: readonly string[]) {
 
   const decoded = segments.map(decodeSegment)
   if (decoded.some((segment) => segment === null)) return null
+  // An empty or `.` segment means the token went through a normalizer that collapsed
+  // it — `f//a.ts` and `f/./a.ts` both name a DIFFERENT file than `f/a.ts`, and
+  // resolving them anyway opened the wrong one rather than reporting a bad token.
+  if (decoded.some((segment) => segment === '' || segment === '.')) return null
 
   return toWorkspaceAbsolute(rootPath, decoded.join('/'))
 }

@@ -1,11 +1,9 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
-import { RouterProvider } from '@tanstack/react-router'
 
 import '@workspace/ui/globals.css'
 import { App } from './App.tsx'
-import { createAppRouter } from '@/features/address/router.tsx'
 import { restoreAddressFromStorage } from '@/features/address/state/address-storage.ts'
 import { LoggingErrorBoundary } from '@/components/logging-error-boundary.tsx'
 import { ThemeAwareToaster } from '@/components/theme-aware-toaster.tsx'
@@ -60,12 +58,10 @@ log.info({
 // `AppearanceProvider` had already corrected it.
 void loadNerdFont(boot['editor.fontFamily'])
 
-// Before `createAppRouter`, deliberately: the router reads `location` when it is
-// built, so the stored address has to be in the URL by then. A desktop launch always
-// arrives at `/`, which is exactly the case this covers.
+// Before `createRoot`, deliberately: `EditorStateProvider` seeds its stores from the
+// address during its first render, so the stored address has to be in the URL by then.
+// A desktop launch always arrives at `/`, which is exactly the case this covers.
 restoreAddressFromStorage()
-
-const router = createAppRouter({ renderApp: () => <App /> })
 
 createRoot(document.getElementById('root')!, {
   onCaughtError: (error, errorInfo) => {
@@ -85,10 +81,9 @@ createRoot(document.getElementById('root')!, {
           <ThemeProvider>
             <EditorColorThemeProvider>
               <TooltipProvider delay={600}>
-                {/* The router owns the URL; the app renders from its root route, which
-                    never unmounts. `ThemeAwareToaster` stays a sibling so an in-flight
-                    toast keeps its identity across a navigation. */}
-                <RouterProvider router={router} />
+                {/* `ThemeAwareToaster` stays a sibling of the app so an in-flight toast
+                    keeps its identity across an address change. */}
+                <App />
                 <ThemeAwareToaster />
               </TooltipProvider>
             </EditorColorThemeProvider>

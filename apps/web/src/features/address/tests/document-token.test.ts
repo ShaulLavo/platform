@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe } from 'vitest'
+
+import { expect, test } from '../../../../test/fixtures'
 
 import { documentTokenForPath, pathForDocumentToken } from '@/features/address/utils/document-token'
 import { emptyAddress, formatAddress, parseAddress } from '@/features/address/utils/grammar'
@@ -17,44 +19,44 @@ const THREAD = 'thread-9f3a1c2e-77b0-4d51-9a2e-0c8f1b6d4a10' as ThreadId
 
 function token(path: string) {
   const result = documentTokenForPath(ROOT, path)
-  if (result.kind !== 'token') throw new Error(`expected a token, got ${result.kind}`)
+  if (result.kind !== 'token') return expect.unreachable(`expected a token, got ${result.kind}`)
 
   return result.token
 }
 
 function roundTrip(path: string) {
   const parsed = pathForDocumentToken(ROOT, token(path))
-  if (parsed.kind !== 'path') throw new Error(`expected a path, got ${parsed.kind}`)
+  if (parsed.kind !== 'path') return expect.unreachable(`expected a path, got ${parsed.kind}`)
 
   return parsed.path
 }
 
 describe('files, compare-saved, refs and the search buffer', () => {
-  it('round-trips a file', () => {
+  test('round-trips a file', () => {
     expect(token(`${ROOT}/apps/web/src/main.tsx`)).toBe('f/apps/web/src/main.tsx')
     expect(roundTrip(`${ROOT}/apps/web/src/main.tsx`)).toBe(`${ROOT}/apps/web/src/main.tsx`)
   })
 
-  it('round-trips a compare-saved document', () => {
+  test('round-trips a compare-saved document', () => {
     const path = compareSavedDocumentId(`${ROOT}/src/App.tsx`)
 
     expect(token(path)).toBe('c/src/App.tsx')
     expect(roundTrip(path)).toBe(path)
   })
 
-  it('round-trips a git-ref document, a kind the plan never names', () => {
+  test('round-trips a git-ref document, a kind the plan never names', () => {
     const path = refDocumentId({ path: `${ROOT}/src/a.ts`, ref: 'refs/heads/main' })
 
     expect(token(path)).toBe('r/refs%2Fheads%2Fmain/src/a.ts')
     expect(roundTrip(path)).toBe(path)
   })
 
-  it('drops the encoded absolute root from the search buffer', () => {
+  test('drops the encoded absolute root from the search buffer', () => {
     expect(token(searchBufferDocumentId(ROOT))).toBe('s')
     expect(roundTrip(searchBufferDocumentId(ROOT))).toBe(searchBufferDocumentId(ROOT))
   })
 
-  it('refuses a search buffer belonging to another workspace', () => {
+  test('refuses a search buffer belonging to another workspace', () => {
     expect(documentTokenForPath(ROOT, searchBufferDocumentId('/other'))).toMatchObject({
       kind: 'unaddressable',
     })
@@ -69,14 +71,14 @@ describe('snapshot diffs', () => {
     staged: false,
   }
 
-  it('collapses a percent-encoded JSON id into a readable token', () => {
+  test('collapses a percent-encoded JSON id into a readable token', () => {
     const path = snapshotDiffDocumentId(diff as Parameters<typeof snapshotDiffDocumentId>[0])
 
     expect(token(path)).toBe(`d/worktree/${OLD_OID}..${NEW_OID},s=modified/src/app.ts`)
     expect(token(path).length).toBeLessThan(path.length / 2)
   })
 
-  it('keeps `status` and `oldPath`, which the app cannot re-derive', () => {
+  test('keeps `status` and `oldPath`, which the app cannot re-derive', () => {
     const renamed = snapshotDiffDocumentId({
       ...diff,
       oldPath: `${ROOT}/src/old.ts`,
@@ -87,7 +89,7 @@ describe('snapshot diffs', () => {
     expect(roundTrip(renamed)).toBe(renamed)
   })
 
-  it('marks a missing side with `_` and round-trips an added file', () => {
+  test('marks a missing side with `_` and round-trips an added file', () => {
     const added = snapshotDiffDocumentId({
       newObjectId: NEW_OID,
       oldFileMissing: true,
@@ -100,12 +102,12 @@ describe('snapshot diffs', () => {
 
   // The server validates object ids as 40-64 hex; a fixed-width-40 grammar would
   // reject every id from a SHA-256 repository.
-  it('accepts SHA-256 object ids', () => {
+  test('accepts SHA-256 object ids', () => {
     const sha256 = 'c'.repeat(64)
     expect(pathForDocumentToken(ROOT, `d/worktree/${sha256}..${sha256}/a.ts`).kind).toBe('path')
   })
 
-  it('rejects a revision naming nothing, and a malformed one', () => {
+  test('rejects a revision naming nothing, and a malformed one', () => {
     expect(pathForDocumentToken(ROOT, 'd/worktree/_.._/a.ts')).toMatchObject({ kind: 'rejected' })
     expect(pathForDocumentToken(ROOT, 'd/worktree/zzz..zzz/a.ts')).toMatchObject({
       kind: 'rejected',
@@ -113,7 +115,7 @@ describe('snapshot diffs', () => {
     expect(pathForDocumentToken(ROOT, 'd/bogus/a..b/a.ts')).toMatchObject({ kind: 'rejected' })
   })
 
-  it('reports branch diffs as unavailable rather than rejecting them', () => {
+  test('reports branch diffs as unavailable rather than rejecting them', () => {
     expect(pathForDocumentToken(ROOT, 'd/branch/main...feature')).toMatchObject({
       kind: 'unavailable',
     })
@@ -123,7 +125,7 @@ describe('snapshot diffs', () => {
 describe('checkpoint diffs', () => {
   const base = { fromTurnCount: 3, threadId: THREAD, toTurnCount: 5 }
 
-  it('round-trips file scope', () => {
+  test('round-trips file scope', () => {
     const path = checkpointDiffDocumentId({
       ...base,
       filePath: `${ROOT}/src/a.ts`,
@@ -135,7 +137,7 @@ describe('checkpoint diffs', () => {
     expect(roundTrip(path)).toBe(path)
   })
 
-  it('round-trips thread scope, whose path is synthetic', () => {
+  test('round-trips thread scope, whose path is synthetic', () => {
     const path = checkpointDiffDocumentId({
       ...base,
       path: 'checkpoint-thread-5',
@@ -146,7 +148,7 @@ describe('checkpoint diffs', () => {
     expect(roundTrip(path)).toBe(path)
   })
 
-  it('round-trips turn scope', () => {
+  test('round-trips turn scope', () => {
     const path = checkpointDiffDocumentId({
       ...base,
       path: 'checkpoint-turn-5',
@@ -159,7 +161,7 @@ describe('checkpoint diffs', () => {
 
   // The real measurement, against the plan's mistaken "622 -> ~100": the plan cites
   // the snapshot encoder and quotes the checkpoint's length.
-  it('is dramatically shorter than the encoded id it replaces', () => {
+  test('is dramatically shorter than the encoded id it replaces', () => {
     const path = checkpointDiffDocumentId({
       ...base,
       filePath: `${ROOT}/apps/web/src/keymap/commands.ts`,
@@ -171,53 +173,53 @@ describe('checkpoint diffs', () => {
     expect(token(path).length).toBeLessThan(100)
   })
 
-  it('rejects a turn range that runs backwards', () => {
+  test('rejects a turn range that runs backwards', () => {
     expect(pathForDocumentToken(ROOT, `k/${THREAD}/9..2`)).toMatchObject({ kind: 'rejected' })
   })
 })
 
 describe('what has no token', () => {
-  it('cannot encode a conflict document', () => {
+  test('cannot encode a conflict document', () => {
     expect(documentTokenForPath(ROOT, conflictDiffDocumentId('conflict-1'))).toMatchObject({
       kind: 'unaddressable',
     })
   })
 
-  it('routes settings to the overlay slot rather than a tab token', () => {
+  test('routes settings to the overlay slot rather than a tab token', () => {
     expect(documentTokenForPath(ROOT, settingsDocumentId())).toMatchObject({
       kind: 'overlay',
       overlay: 'settings',
     })
   })
 
-  it('cannot encode a document outside the workspace', () => {
+  test('cannot encode a document outside the workspace', () => {
     expect(documentTokenForPath(ROOT, '/elsewhere/a.ts')).toMatchObject({ kind: 'unaddressable' })
   })
 })
 
 describe('hostile input', () => {
   // encodeURIComponent leaves `~` and `!` alone, and both are structural in the grammar.
-  it('escapes the tab separator and the turn marker inside a filename', () => {
+  test('escapes the tab separator and the turn marker inside a filename', () => {
     expect(token(`${ROOT}/a~b!c.ts`)).toBe('f/a%7Eb%21c.ts')
     expect(roundTrip(`${ROOT}/a~b!c.ts`)).toBe(`${ROOT}/a~b!c.ts`)
   })
 
-  it('round-trips spaces, unicode and reserved characters', () => {
+  test('round-trips spaces, unicode and reserved characters', () => {
     for (const name of ['a b.ts', 'ünïcödé.ts', 'a#b.ts', 'a?b.ts', 'a%20b.ts']) {
       expect(roundTrip(`${ROOT}/${name}`)).toBe(`${ROOT}/${name}`)
     }
   })
 
-  it('degrades instead of throwing on a malformed percent-escape', () => {
+  test('degrades instead of throwing on a malformed percent-escape', () => {
     expect(() => pathForDocumentToken(ROOT, 'f/a%E0%A4%A')).not.toThrow()
     expect(pathForDocumentToken(ROOT, 'f/a%E0%A4%A')).toMatchObject({ kind: 'rejected' })
   })
 
-  it('refuses a token that would escape the workspace', () => {
+  test('refuses a token that would escape the workspace', () => {
     expect(pathForDocumentToken(ROOT, 'f/../../etc/passwd')).toMatchObject({ kind: 'rejected' })
   })
 
-  it('rejects an unknown token kind rather than guessing', () => {
+  test('rejects an unknown token kind rather than guessing', () => {
     expect(pathForDocumentToken(ROOT, 'zzz/a.ts')).toMatchObject({ kind: 'rejected' })
     expect(pathForDocumentToken(ROOT, '')).toMatchObject({ kind: 'rejected' })
   })
@@ -230,7 +232,7 @@ describe('hostile input', () => {
 describe('tokens survive the whole URL, not just the codec', () => {
   function throughUrl(path: string) {
     const result = documentTokenForPath(ROOT, path)
-    if (result.kind !== 'token') throw new Error(`expected a token, got ${result.kind}`)
+    if (result.kind !== 'token') return expect.unreachable(`expected a token, got ${result.kind}`)
 
     const href = formatAddress({
       ...emptyAddress(),
@@ -239,23 +241,23 @@ describe('tokens survive the whole URL, not just the codec', () => {
       workspace: 'repo',
     })
     const parsed = pathForDocumentToken(ROOT, parseAddress(href).document ?? '')
-    if (parsed.kind !== 'path') throw new Error(`expected a path, got ${parsed.kind}`)
+    if (parsed.kind !== 'path') return expect.unreachable(`expected a path, got ${parsed.kind}`)
 
     return parsed.path
   }
 
-  it('round-trips a git-ref whose ref contains slashes', () => {
+  test('round-trips a git-ref whose ref contains slashes', () => {
     const path = refDocumentId({ path: `${ROOT}/src/a.ts`, ref: 'refs/heads/main' })
 
     expect(throughUrl(path)).toBe(path)
   })
 
-  it('round-trips a file whose name contains a slash-encoded character', () => {
+  test('round-trips a file whose name contains a slash-encoded character', () => {
     expect(throughUrl(`${ROOT}/src/a b.ts`)).toBe(`${ROOT}/src/a b.ts`)
     expect(throughUrl(`${ROOT}/src/a~b!c.ts`)).toBe(`${ROOT}/src/a~b!c.ts`)
   })
 
-  it('round-trips a renamed snapshot diff, whose oldPath rides in the revision segment', () => {
+  test('round-trips a renamed snapshot diff, whose oldPath rides in the revision segment', () => {
     const renamed = snapshotDiffDocumentId({
       newObjectId: NEW_OID,
       oldObjectId: OLD_OID,
@@ -267,7 +269,7 @@ describe('tokens survive the whole URL, not just the codec', () => {
     expect(throughUrl(renamed)).toBe(renamed)
   })
 
-  it('round-trips a file-scope checkpoint diff', () => {
+  test('round-trips a file-scope checkpoint diff', () => {
     const path = checkpointDiffDocumentId({
       filePath: `${ROOT}/src/a.ts`,
       fromTurnCount: 3,
@@ -279,12 +281,43 @@ describe('tokens survive the whole URL, not just the codec', () => {
 
     expect(throughUrl(path)).toBe(path)
   })
+
+  /**
+   * The ids are part of the document id, so dropping them from the token minted a
+   * DIFFERENT id on the way back — the restored tab never matched the one the app
+   * would open, and the workbench kept both. The test above misses it only because it
+   * omits the ids the app always sets.
+   */
+  test('round-trips a checkpoint diff carrying its object ids', () => {
+    const path = checkpointDiffDocumentId({
+      filePath: `${ROOT}/src/a.ts`,
+      fromTurnCount: 3,
+      newObjectId: 'b'.repeat(40),
+      oldObjectId: 'a'.repeat(40),
+      path: `${ROOT}/src/a.ts`,
+      scope: 'file',
+      status: 'modified',
+      threadId: THREAD,
+      toTurnCount: 5,
+    })
+
+    expect(throughUrl(path)).toBe(path)
+  })
+
+  test('refuses an object id the URL made up', () => {
+    const token = `k/${THREAD}/3..5,o=nothex/src%2Fa.ts`
+
+    expect(pathForDocumentToken(ROOT, token)).toMatchObject({ kind: 'path' })
+    expect(pathForDocumentToken(ROOT, token)).not.toMatchObject({
+      path: expect.stringContaining('nothex'),
+    })
+  })
 })
 
 describe('status survives the round trip', () => {
   // `snapshotDiffDocumentId` re-derives status from which side is missing rather than
   // accepting one, so carrying `s=` means restoring the inputs that produce it.
-  it.each(['deleted', 'untracked', 'modified'] as const)('round-trips %s', (status) => {
+  test.each(['deleted', 'untracked', 'modified'] as const)('round-trips %s', (status) => {
     const sides = {
       deleted: { newFileMissing: true },
       modified: {},
@@ -302,7 +335,7 @@ describe('status survives the round trip', () => {
     expect(roundTrip(path)).toBe(path)
   })
 
-  it('refuses to turn an arbitrary URL string into a git status', () => {
+  test('refuses to turn an arbitrary URL string into a git status', () => {
     const parsed = pathForDocumentToken(ROOT, `k/${THREAD}/1..2,s=notastatus/src/a.ts`)
 
     expect(parsed.kind).toBe('path')
