@@ -22,6 +22,7 @@
   touches `apps/server/src/fs/watch.ts`.
 - **Category**: correctness
 - **Planned at**: commit `826df96`, 2026-08-16
+- **Status**: DONE — Option B, commits `f93dd1d` (classifier) and `1f8eb0d` (fallback logging)
 
 ## Why this matters
 

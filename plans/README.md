@@ -45,45 +45,34 @@ They are Phase 4. This is a change from how they were originally sequenced.
 | 013  | [Test-baseline repairs: stop writing to the real SQLite; typecheck `scripts/`; give `packages/ui` a test script](013-test-baseline-repairs.md) | P1       | S–M    | —          | **DONE** (`58bf4d0`) — independently verified: `~/.platform/fs-metadata.sqlite` mtime unchanged across a full `apps/server` run. Also surfaced a real hidden error once `scripts/` got typechecked: `descriptorFor(id as never)` |
 | 014  | [`packages/tree` path-store + `getVisibleRows` characterization tests](014-tree-path-store-characterization-tests.md)                          | P1       | M      | —          | **DONE** (`5774dc6`) — independently verified: `packages/tree` went 9 tests → **78 passing** across 5 files, oracle + fuzz in place. **The gate for 039 is now open**                                                            |
 
-> ### 🔴 The one failing server test is catching a REAL BUG — do not wave past it
+> ### ✅ The one failing server test was catching a REAL BUG — fixed by 047
 >
 > `apps/server/src/tests/app.test.ts > fs rpc events > reports external file
-updates from the native watcher` fails deterministically (~15s timeout). It is
-> **pre-existing** — it fails identically at `ac9ca7f`, before any plan in this
-> set landed — but it is **not** environmental flakiness, and an earlier revision
-> of this note wrongly said it was. The test is right and the product is wrong.
+updates from the native watcher` used to fail deterministically (~15s
+> timeout). It was never environmental flakiness: the test was right and the
+> product was wrong. **Fixed by [047](047-watcher-event-classification.md)**
+> (`f93dd1d`), which replaced the `knownNativePaths` cache with classification
+> from stat data.
 >
-> **The bug (finding F-WATCH):** the first modification of any file that existed
-> before the watcher started is reported to clients as `created` instead of
-> `changed`, and the `changed` event that would tell them to refresh never
-> arrives. It self-heals after one event per path, which is why it hid.
-> **Now planned as [047](047-watcher-event-classification.md)** — that plan's
-> done criterion is this test going green and the suite returning to 773/773.
->
-> The honest baseline for `cd apps/server && bun run test` is therefore
-> **772 passed / 1 failed (773)**. Plans that state "all pass" should be read as
-> _no new failures beyond this one_ — but treat that as a temporary allowance,
-> not a permanent fact. Once F-WATCH is fixed the baseline returns to 773/773 and
-> "all pass" becomes literal again.
->
-> Unrelated to `cc9e210` / `07f4245`, which fixed genuine watcher-timing races.
-> This one is a classification defect, not a timing one.
+> The baseline for `cd apps/server && bun run test` is **0 failed**, and plans
+> that state "all pass" are literal again. The suite total is now 779 rather
+> than 773 because 047 added six watcher-classification tests.
 
 ### Phase 1 — Cheap, high-confidence, independent
 
-| Plan | Title                                                                                                                                      | Priority | Effort | Depends on | Status                                                                                            |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------- | ------ | ---------- | ------------------------------------------------------------------------------------------------- |
-| 047  | [Stop reporting a modified pre-existing file as `created` (F-WATCH)](047-watcher-event-classification.md)                                  | P1       | M      | —          | TODO — **fixes the red test; returns the suite to 773/773**. Needs an operator decision at Step 0 |
-| 017  | [Security + correctness one-liners: argv option-injection hardening and the `..`-prefix containment bug](017-argv-and-path-containment.md) | P1       | S      | —          | TODO                                                                                              |
-| 018  | [Stale-closure command bugs: `toggleWallpaper` and `toggleDiffViewMode` read frozen settings](018-stale-closure-commands.md)               | P1       | S      | —          | TODO                                                                                              |
-| 005  | [Patch vulnerable dependencies](005-patch-vulnerable-dependencies.md)                                                                      | P2       | S–M    | —          | **TODO — STALE**, see note below                                                                  |
-| 019  | [Delete `--sort path` from the ripgrep invocation](019-ripgrep-sort-path-removal.md)                                                       | P2       | S      | —          | TODO                                                                                              |
-| 020  | [One gated, indexed fold for the pending-request counters](020-pending-request-counter-single-fold.md)                                     | P2       | S      | —          | TODO                                                                                              |
-| 021  | [Give fire-and-forget async a rejection boundary (server + client)](021-async-rejection-boundaries.md)                                     | P2       | S      | —          | TODO                                                                                              |
-| 022  | [Delete the ~4,400 unreachable lines across tree, ui, contracts, provider, web](022-delete-unreachable-code.md)                            | P2       | M      | —          | TODO                                                                                              |
-| 023  | [Stop rebuilding the chat projection once per streamed token delta](023-chat-per-delta-work.md)                                            | P2       | M      | —          | TODO                                                                                              |
-| 024  | [Four design-engineering one-liners](024-design-one-liners.md)                                                                             | P3       | S      | —          | TODO                                                                                              |
-| 025  | [`WorkspaceIndex`: running counters, parent→children map, lazy snapshot](025-workspace-index-incremental.md)                               | P3       | M      | —          | TODO                                                                                              |
+| Plan | Title                                                                                                                                      | Priority | Effort | Depends on | Status                                                                                                            |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------ | -------- | ------ | ---------- | ----------------------------------------------------------------------------------------------------------------- |
+| 047  | [Stop reporting a modified pre-existing file as `created` (F-WATCH)](047-watcher-event-classification.md)                                  | P1       | M      | —          | **DONE** (`f93dd1d`, `1f8eb0d`) — Option B; red test green, suite 779/779, silent parcel→node fallback now logged |
+| 017  | [Security + correctness one-liners: argv option-injection hardening and the `..`-prefix containment bug](017-argv-and-path-containment.md) | P1       | S      | —          | TODO                                                                                                              |
+| 018  | [Stale-closure command bugs: `toggleWallpaper` and `toggleDiffViewMode` read frozen settings](018-stale-closure-commands.md)               | P1       | S      | —          | TODO                                                                                                              |
+| 005  | [Patch vulnerable dependencies](005-patch-vulnerable-dependencies.md)                                                                      | P2       | S–M    | —          | **TODO — STALE**, see note below                                                                                  |
+| 019  | [Delete `--sort path` from the ripgrep invocation](019-ripgrep-sort-path-removal.md)                                                       | P2       | S      | —          | TODO                                                                                                              |
+| 020  | [One gated, indexed fold for the pending-request counters](020-pending-request-counter-single-fold.md)                                     | P2       | S      | —          | TODO                                                                                                              |
+| 021  | [Give fire-and-forget async a rejection boundary (server + client)](021-async-rejection-boundaries.md)                                     | P2       | S      | —          | TODO                                                                                                              |
+| 022  | [Delete the ~4,400 unreachable lines across tree, ui, contracts, provider, web](022-delete-unreachable-code.md)                            | P2       | M      | —          | TODO                                                                                                              |
+| 023  | [Stop rebuilding the chat projection once per streamed token delta](023-chat-per-delta-work.md)                                            | P2       | M      | —          | TODO                                                                                                              |
+| 024  | [Four design-engineering one-liners](024-design-one-liners.md)                                                                             | P3       | S      | —          | TODO                                                                                                              |
+| 025  | [`WorkspaceIndex`: running counters, parent→children map, lazy snapshot](025-workspace-index-incremental.md)                               | P3       | M      | —          | TODO                                                                                                              |
 
 ### Phase 2 — Typed contracts (each deletes a cast cluster)
 
@@ -258,7 +247,7 @@ Recorded so future audits don't re-litigate them.
 - **F-WATCH — a modified pre-existing file is reported to clients as `created`.**
   Found by the plan-013 executor while investigating the failing watcher test;
   independently confirmed by reading the code.
-  **Planned as [047](047-watcher-event-classification.md).**
+  **RESOLVED by [047](047-watcher-event-classification.md)** (`f93dd1d`).
 
   Mechanism, all in `apps/server/src/fs/watch.ts`:
   1. `FileChangeHub` keeps `knownNativePaths` (`:41`) as its record of files it
