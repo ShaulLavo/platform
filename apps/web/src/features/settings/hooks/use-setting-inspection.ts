@@ -3,6 +3,7 @@ import {
   inspectSetting,
   layerAllowsScope,
   SETTINGS_LAYER_ORDER,
+  settingRowIds,
   type SettingId,
   type SettingInspection as SettingInspectionResult,
   type SettingScope,
@@ -52,17 +53,41 @@ export function settingInspection(
   scope: SettingsScope,
 ): SettingInspection {
   const descriptor = descriptorFor(id)
-  const inspection = inspectSetting(id, snapshot.layers, snapshot)
-  const alsoModifiedIn = inspection.layers
-    .filter((layer) => layer.layer !== scope)
-    .map((layer) => layer.layer)
+  // Across every key the row writes, not just its own: the row is what carries
+  // the marker and the Reset, so a row whose ordering is set and whose hiding is
+  // not would otherwise claim to be untouched and reset to nothing.
+  const inspections = settingRowIds(id).map((key) => inspectSetting(key, snapshot.layers, snapshot))
+  const setLayers = new Set(
+    inspections.flatMap((inspection) => inspection.layers.map((layer) => layer.layer)),
+  )
 
   return {
-    alsoModifiedIn,
+    // Ordered by the layer table rather than by which key happened to be read
+    // first, so the sentence the row prints is stable across renders.
+    alsoModifiedIn: SETTINGS_LAYER_ORDER.filter((layer) => layer !== scope && setLayers.has(layer)),
     disabledReason: writeBlockedReason(descriptor.scope, scope),
-    isModified: inspection.layers.some((layer) => layer.layer === scope),
-    overriddenBy: overridingLayer(inspection.effectiveLayer, scope),
+    isModified: setLayers.has(scope),
+    overriddenBy: overridingLayer(effectiveLayerAbove(inspections), scope),
   }
+}
+
+/**
+ * The winning layer of whichever key the row loses hardest on.
+ *
+ * A row is overridden if *any* of its keys is: the warning is about the edit
+ * failing to take effect, and a row where only the ordering is pinned elsewhere
+ * still misleads if it says nothing.
+ */
+function effectiveLayerAbove(
+  inspections: readonly SettingInspectionResult[],
+): SettingInspectionResult['effectiveLayer'] {
+  const rank = (layer: SettingsLayerId) => SETTINGS_LAYER_ORDER.indexOf(layer)
+  const above = inspections
+    .map((inspection) => inspection.effectiveLayer)
+    .filter((layer) => layer !== 'default')
+    .sort((left, right) => rank(right) - rank(left))
+
+  return above[0] ?? 'default'
 }
 
 /** The winning layer, when it sits above the one being edited. */

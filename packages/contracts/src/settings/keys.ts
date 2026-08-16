@@ -359,8 +359,14 @@ export const SETTINGS_REGISTRY = {
     scope: 'application',
     widget: 'models',
     category: 'Models',
-    description: 'Models the picker must not offer.',
-    keywords: ['model', 'hide', 'picker'],
+    // Stored as a denylist because that is the only shape where a model the
+    // provider starts offering next week appears on its own. An allowlist would
+    // have to materialise every other model the first time one was turned off,
+    // and then go quiet about everything added afterwards.
+    title: 'Models',
+    description:
+      'Which models the picker offers, and in what order. Turn one off to keep it out of the picker.',
+    keywords: ['model', 'hide', 'show', 'visible', 'order', 'sort', 'picker'],
   }),
   'models.order': defineSetting({
     schema: modelRefListSchema,
@@ -368,6 +374,10 @@ export const SETTINGS_REGISTRY = {
     scope: 'application',
     widget: 'models',
     category: 'Models',
+    // Hiding and ranking are one decision taken per model, so they are one row.
+    // Two rows rendered the whole catalogue twice and left the user matching a
+    // switch in the first list to a pair of arrows in the second.
+    rowOwner: 'models.hidden',
     description:
       'Explicit leading order for the picker. Models named by neither list stay visible after these, in provider order.',
     keywords: ['model', 'order', 'sort', 'picker'],
@@ -412,6 +422,27 @@ export function descriptorFor<K extends SettingId>(id: K): SettingsRegistry[K] {
 
 export function isSettingId(id: string): id is SettingId {
   return Object.hasOwn(SETTINGS_REGISTRY, id)
+}
+
+/** The ids that have a row of their own, in registry order. */
+export const SETTING_ROW_IDS = SETTING_IDS.filter((id) => descriptorFor(id).rowOwner === undefined)
+
+/**
+ * Every key one row writes: the row's own, then the keys that named it `rowOwner`.
+ *
+ * The row is the unit the page resets and marks as modified, so both have to ask
+ * this rather than the id — a "Reset setting" that cleared the switches and left
+ * the ordering behind would be a reset only in name.
+ */
+export function settingRowIds(id: SettingId): readonly SettingId[] {
+  return [id, ...SETTING_IDS.filter((other) => descriptorFor(other).rowOwner === id)]
+}
+
+/** The row a key is edited from, which is itself for all but the shared keys. */
+export function settingRowOwner(id: SettingId): SettingId {
+  const owner = descriptorFor(id).rowOwner
+
+  return owner !== undefined && isSettingId(owner) ? owner : id
 }
 
 /**

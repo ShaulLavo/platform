@@ -3,6 +3,7 @@ import {
   descriptorFor,
   layerAllowsScope,
   SETTING_IDS,
+  settingRowIds,
   type ModelRef,
   type ProviderInstanceConfig,
   type SettingId,
@@ -20,6 +21,7 @@ import { providerQueryKeys } from '@/features/chat/lib/provider-query'
 import { saveSettings } from '../api'
 import { notifySaveError } from '../notify-save-error'
 import { settingsKeys } from '../query-keys'
+import { isDefaultValue } from '../utils/default-value'
 import {
   withMovedModel,
   withKeybindingOverride,
@@ -71,6 +73,23 @@ export function useSettingsActions() {
     save([{ key, target, value }])
   }
 
+  /**
+   * The edit for a collection, which is a reset once the collection is empty again.
+   *
+   * The collection actions rebuild the whole value, so un-hiding the last model
+   * wrote `[]` — a key present in the file, holding the registry default. The
+   * page reads "modified" as *this layer sets the key*, because that is what its
+   * Reset removes, so the row stayed marked forever with nothing left to undo.
+   * Sending no value drops the key instead, and the row goes back to clean.
+   */
+  const saveCollection = <K extends SettingId>(
+    key: K,
+    value: SettingsValues[K],
+    target: SettingsWriteTarget = 'user',
+  ) => {
+    save([isDefaultValue(key, value) ? { key, target } : { key, target, value }])
+  }
+
   return {
     isSaving: mutation.isPending,
     /** The one write path. Commands and the page both go through it, so the
@@ -78,10 +97,16 @@ export function useSettingsActions() {
     setSetting,
     setColorTheme: (theme: SettingsValues['workbench.colorTheme']) =>
       setSetting('workbench.colorTheme', theme),
-    /** Omitting the value is what removes the key from the file entirely, which
-     * is what keeps the registry default live rather than freezing today's. */
+    /**
+     * Omitting the value is what removes the key from the file entirely, which
+     * is what keeps the registry default live rather than freezing today's.
+     *
+     * Resets the whole row, not the key: the Models row writes both the hidden
+     * list and the ordering, and a Reset that cleared the switches while leaving
+     * the ordering behind would be a reset only in name.
+     */
     resetSetting: (key: SettingId, target: SettingsWriteTarget = 'user') => {
-      save([{ key, target }])
+      save(settingRowIds(key).map((id) => ({ key: id, target })))
     },
     /**
      * Clears every key from one layer in a single write.
@@ -101,23 +126,17 @@ export function useSettingsActions() {
       save(resettable.map((key) => ({ key, target })))
     },
     resetKeybinding: (command: PlatformCommandId) => {
-      save([
-        {
-          key: 'keybindings.overrides',
-          target: 'user',
-          value: withoutKeybindingOverride(values()['keybindings.overrides'], command),
-        },
-      ])
+      saveCollection(
+        'keybindings.overrides',
+        withoutKeybindingOverride(values()['keybindings.overrides'], command),
+      )
     },
     /** `null` unbinds the command; resetting is what restores its default. */
     setKeybinding: (command: PlatformCommandId, keys: string | null) => {
-      save([
-        {
-          key: 'keybindings.overrides',
-          target: 'user',
-          value: withKeybindingOverride(values()['keybindings.overrides'], command, keys),
-        },
-      ])
+      saveCollection(
+        'keybindings.overrides',
+        withKeybindingOverride(values()['keybindings.overrides'], command, keys),
+      )
     },
     /**
      * Moves a model one place in the list the user is looking at.
@@ -127,34 +146,19 @@ export function useSettingsActions() {
      * computed from it lands somewhere else entirely.
      */
     moveModel: (ref: ModelRef, direction: -1 | 1, displayed: readonly ModelRef[]) => {
-      save([
-        {
-          key: 'models.order',
-          target: 'user',
-          value: withMovedModel(displayed, ref, direction),
-        },
-      ])
+      saveCollection('models.order', withMovedModel(displayed, ref, direction))
     },
     setModelHidden: (ref: ModelRef, hidden: boolean) => {
-      save([
-        {
-          key: 'models.hidden',
-          target: 'user',
-          value: withModelHidden(values()['models.hidden'], ref, hidden),
-        },
-      ])
+      saveCollection('models.hidden', withModelHidden(values()['models.hidden'], ref, hidden))
     },
     // Takes the whole instance, not just its id: a built-in the settings
     // document has never mentioned has to be appended, and only the caller
     // knows what its configuration is.
     setProviderEnabled: (instance: ProviderInstanceConfig, enabled: boolean) => {
-      save([
-        {
-          key: 'providers.instances',
-          target: 'user',
-          value: withProviderEnabled(values()['providers.instances'], instance, enabled),
-        },
-      ])
+      saveCollection(
+        'providers.instances',
+        withProviderEnabled(values()['providers.instances'], instance, enabled),
+      )
     },
   }
 }

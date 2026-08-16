@@ -74,6 +74,31 @@ export type SettingDescriptor<TSchema extends v.GenericSchema = v.GenericSchema>
   /** Groups the key on the page. Explicit, so a rename cannot silently regroup it. */
   readonly category: string
   readonly description: string
+  /**
+   * The row's human name. Defaults to the humanized id, which is right for
+   * almost every key.
+   *
+   * Set it when the id is shaped by storage rather than by the decision the user
+   * is making. `models.hidden` is the case: it is a denylist because that is the
+   * only shape where a model the provider adds later stays visible, but a row
+   * titled "Hidden" carrying switches that are on for visible models reads as a
+   * contradiction. The id is still shown next to the title, so the file stays
+   * findable from the page.
+   */
+  readonly title?: string
+  /**
+   * Another key's row edits this one too, so this key gets no row of its own.
+   *
+   * For the case where two keys are one decision: `models.hidden` and
+   * `models.order` are both answered per model, and separate rows meant the same
+   * catalogue rendered twice on one page with the user holding the mapping
+   * between the two lists in their head.
+   *
+   * A `SettingId` in spirit, typed as `string` because this type is what *builds*
+   * the registry `SettingId` is derived from. `registryProblems` checks it names
+   * a real key, so the looser type costs nothing.
+   */
+  readonly rowOwner?: string
   readonly visibility?: SettingVisibility
   readonly merge?: SettingMerge
   /** Extra words the page's search should match beyond id, category and description. */
@@ -146,7 +171,35 @@ export function registryProblems(registry: SettingsRegistryShape): RegistryProbl
     if (descriptor.merge === 'record' && !isRecord(descriptor.default)) {
       problems.push({ id, reason: "merge: 'record' requires an object default" })
     }
+
+    problems.push(...rowOwnerProblems(registry, id, descriptor))
   }
 
   return problems
+}
+
+/**
+ * A `rowOwner` that names nothing is a key with no row at all — invisible on the
+ * page and unreachable from it, which is the one failure this field can cause
+ * and the one a reader of the registry cannot see.
+ */
+function rowOwnerProblems(
+  registry: SettingsRegistryShape,
+  id: string,
+  descriptor: SettingDescriptor,
+): RegistryProblem[] {
+  const owner = descriptor.rowOwner
+  if (owner === undefined) return []
+  if (owner === id) return [{ id, reason: 'rowOwner cannot name its own key' }]
+
+  const target = registry[owner]
+  if (!target) return [{ id, reason: `rowOwner names an unregistered key: ${owner}` }]
+
+  // One hop only. A chain would need the page to resolve it transitively, and
+  // the field exists for two keys sharing one control, not for a hierarchy.
+  if (target.rowOwner !== undefined) {
+    return [{ id, reason: `rowOwner must name a key that owns its own row: ${owner} does not` }]
+  }
+
+  return []
 }

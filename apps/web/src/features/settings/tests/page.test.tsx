@@ -61,6 +61,15 @@ test('filters by id, label, keyword and description', () => {
   expect(matchingSettingIds('nothing-matches-this')).toEqual([])
 })
 
+test('searching a key edited from another row finds the row that edits it', () => {
+  // `models.order` has no row of its own, so a search for it has to answer with
+  // the row that writes it. Returning the key itself would put a row on the page
+  // that renders nothing; returning nothing would make the setting unfindable by
+  // the only name the reference documents it under.
+  expect(matchingSettingIds('models.order')).toEqual(['models.hidden'])
+  expect(matchingSettingIds('models')).not.toContain('models.order')
+})
+
 test('shows a diagnostic for a key the settings file holds but cannot apply', async ({
   client,
 }) => {
@@ -190,6 +199,64 @@ test('lists the real model catalog, and hiding one keeps its row to bring it bac
   // that un-hides it would go with it and the model would be hidden for good.
   const after = await screen.findByRole('switch', { name: label! })
   expect(after).not.toBeChecked()
+})
+
+test('hiding and ordering models are one row, not the catalogue printed twice', async ({
+  client,
+}) => {
+  expect(client).toBeDefined()
+  renderWithProviders(<SettingsPage />)
+
+  await userEvent.type(await screen.findByLabelText('Search settings'), 'models')
+
+  // One row, named for the decision rather than for the denylist that stores it.
+  // "Hidden" over switches that are *on* for the models you can see reads as a
+  // contradiction, and it was one row per key that forced the name.
+  expect(await screen.findByText('Models', { selector: 'label' })).toBeDefined()
+  expect(screen.queryByText('Hidden')).toBeNull()
+  expect(screen.queryByText('Order')).toBeNull()
+  expect(await screen.findByText('1 setting')).toBeDefined()
+
+  // Both keys are still named on the row. The title is free to say "Models" only
+  // because the ids say which lines of settings.json this row writes.
+  expect(await screen.findByText('models.hidden')).toBeDefined()
+  expect(await screen.findByText('models.order')).toBeDefined()
+
+  // Both controls on the same line, so hiding and ranking a model are taken
+  // where the model is rather than in two lists the user has to align by eye.
+  const shown = await screen.findAllByRole('switch', { name: /Show / })
+  const moves = await screen.findAllByRole('button', { name: /Move .* down/ })
+  expect(moves.length).toBe(shown.length)
+})
+
+test('a collection edited back to empty leaves no key behind to look modified', async ({
+  client,
+}) => {
+  expect(client).toBeDefined()
+  renderWithProviders(<SettingsPage />)
+
+  await userEvent.type(await screen.findByLabelText('Search settings'), 'models')
+
+  const first = (await screen.findAllByRole('switch', { name: /Show / }))[0]
+  expect(first).toBeDefined()
+  const label = first!.getAttribute('aria-label')
+  await userEvent.click(first!)
+  await waitFor(async () => {
+    expect((await fetchSettings()).values['models.hidden']).toHaveLength(1)
+  })
+
+  await userEvent.click(await screen.findByRole('switch', { name: label! }))
+
+  // Un-hiding the last model used to write `[]` — the default, but *present*,
+  // which is what the page reads as modified. The row then claimed a change it
+  // could not describe and offered a Reset with nothing to remove.
+  await waitFor(async () => {
+    const snapshot = await fetchSettings()
+    expect(snapshot.layers.find((layer) => layer.id === 'user')?.raw).not.toHaveProperty(
+      'models.hidden',
+    )
+  })
+  expect(screen.queryByLabelText('Modified')).toBeNull()
 })
 
 test('renders a record editor for keybindings rather than raw JSON', async ({ client }) => {

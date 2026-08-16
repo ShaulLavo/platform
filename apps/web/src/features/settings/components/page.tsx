@@ -30,6 +30,8 @@ export function SettingsPage() {
   if (settings.isPending) return <Status>Loading settings…</Status>
   if (settings.isError) return <Status tone='destructive'>Settings could not be loaded.</Status>
 
+  // `matchingSettingIds` already searches rows rather than keys, so a key edited
+  // from another row is folded into its owner here rather than dropped.
   const visible = matchingSettingIds(query).filter(
     (id) => (descriptorFor(id).visibility ?? 'user') !== 'internal',
   )

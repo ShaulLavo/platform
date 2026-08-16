@@ -1,9 +1,14 @@
-import { descriptorFor, type SettingId, type SettingsSnapshot } from '@workspace/contracts'
+import {
+  descriptorFor,
+  settingRowIds,
+  type SettingId,
+  type SettingsSnapshot,
+} from '@workspace/contracts'
 
 import { useSettingsActions } from '../hooks/use-settings-actions'
 import { settingInspection } from '../hooks/use-setting-inspection'
 import { useSettingsScope } from '../state/scope-store'
-import { humanizeSettingId } from '../utils/humanize'
+import { settingRowTitle } from '../utils/humanize'
 import { ModelSection } from './model-section'
 import { ProviderSection } from './provider-section'
 import { RowActions } from './row-actions'
@@ -40,9 +45,16 @@ export function SettingRow({ id, snapshot }: { id: SettingId; snapshot: Settings
             />
           ) : null}
           <label className='text-foreground text-sm font-medium' htmlFor={id}>
-            {humanizeSettingId(id)}
+            {settingRowTitle(id)}
           </label>
-          <code className='text-muted-foreground text-xs'>{id}</code>
+          {/* Every key the row writes, not just the one it is named after. The
+              title is free to say "Models" only because the ids underneath it
+              still say which lines of settings.json this row is editing. */}
+          {settingRowIds(id).map((key) => (
+            <code className='text-muted-foreground text-xs' key={key}>
+              {key}
+            </code>
+          ))}
           {descriptor.requiresRestart ? (
             <span className='border-warning/30 bg-warning/10 text-warning rounded border px-1 text-[10px]'>
               Restart required
@@ -124,7 +136,7 @@ function SettingControl({
   }
 
   if (descriptor.widget === 'models') {
-    return <ModelSection settingId={id} />
+    return <ModelSection />
   }
 
   if (descriptor.widget === 'record') {

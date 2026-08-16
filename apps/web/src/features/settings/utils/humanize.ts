@@ -1,3 +1,17 @@
+import { descriptorFor, type SettingId } from '@workspace/contracts'
+
+/**
+ * The name a row shows.
+ *
+ * The registry gets the first word: a handful of ids are shaped by how the value
+ * is stored rather than by the choice being made, and `models.hidden` — a
+ * denylist rendered as switches that are *on* for visible models — reads as a
+ * contradiction under its own key name.
+ */
+export function settingRowTitle(id: SettingId): string {
+  return descriptorFor(id).title ?? humanizeSettingId(id)
+}
+
 /**
  * `workbench.wallpaper.enabled` becomes "Wallpaper enabled".
  *

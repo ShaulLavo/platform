@@ -75,7 +75,7 @@ stays safe to read, share and export.
 
 | Setting         | Default | Scope       | What it does                                                                                                     |
 | --------------- | ------- | ----------- | ---------------------------------------------------------------------------------------------------------------- |
-| `models.hidden` | `[]`    | application | Models the picker must not offer.                                                                                |
+| `models.hidden` | `[]`    | application | Which models the picker offers, and in what order. Turn one off to keep it out of the picker.                    |
 | `models.order`  | `[]`    | application | Explicit leading order for the picker. Models named by neither list stay visible after these, in provider order. |
 
 ## Providers
