@@ -1,6 +1,5 @@
 import parcelWatcher from '@parcel/watcher'
 import { watch } from 'node:fs'
-import { stat } from 'node:fs/promises'
 import path from 'node:path'
 import type { FileSystemEntryMetadata } from '@workspace/contracts'
 import { FsError } from './errors'
@@ -25,6 +24,12 @@ const watcherIgnoredChildGlobs = defaultIgnoredNames.flatMap((name) => [
   `**/${name}/**`,
 ])
 
+// A file is written after it is created, so a brand-new entry's mtime trails
+// its birthtime by however long the write took. Measured under Bun on APFS: 3ms
+// for 10MB, 25ms for 50MB, 112ms for 200MB. Anything past this window is a
+// later edit of a file we watched being born, not part of its creation.
+const createWriteSettleMs = 250
+
 export type WatchBackend = 'auto' | 'node'
 
 export type WatchOptions = {
@@ -38,7 +43,6 @@ export type WatchStreamOptions = {
 
 export class FileChangeHub {
   private readonly backend: WatchBackend
-  private readonly knownNativePaths = new Set<string>()
   private readonly listeners = new Set<Listener>()
   private readonly nativeWatchers = new Map<string, WatcherEntry>()
   private readonly paths: WorkspacePaths
@@ -154,8 +158,9 @@ export class FileChangeHub {
   private createNodeWatcher(relativeRoot: string): WatchRelease {
     try {
       const target = this.paths.resolve(relativeRoot)
+      const attachedAtMs = wallClockMs()
       const watcher = watch(target.absolutePath, { recursive: true }, (event, filename) => {
-        void this.handleNodeEvent(relativeRoot, event, filename?.toString() ?? '')
+        void this.handleNodeEvent(relativeRoot, event, filename?.toString() ?? '', attachedAtMs)
       })
       watcher.on('error', (error) => {
         this.emit(watchError(error, relativeRoot))
@@ -183,42 +188,25 @@ export class FileChangeHub {
     this.emit(nativeWatchEvent(type, relativePath, entry))
   }
 
-  private async handleNodeEvent(relativeRoot: string, nativeEvent: string, filename: string) {
+  private async handleNodeEvent(
+    relativeRoot: string,
+    nativeEvent: string,
+    filename: string,
+    attachedAtMs: number,
+  ) {
     const relativePath = watchEventPath(relativeRoot, filename)
+    // One stat answers both questions the event leaves open — whether the path
+    // still exists, and whether it is new — and doubles as the emitted entry.
+    const entry = await nativeEventEntry(this.paths, relativePath)
+    const type = nativeEventType(nativeEvent, entry, attachedAtMs)
+    if (!type) return
 
-    const type = await this.nativeEventType(relativePath, nativeEvent)
     if (isIgnoredPath(relativePath)) {
-      this.recordNativeEventPath(relativePath, type)
       this.emit(nativeWatchEvent(type, relativePath, undefined))
       return
     }
 
-    const entry = type === 'deleted' ? undefined : await nativeEventEntry(this.paths, relativePath)
-
-    this.recordNativeEventPath(relativePath, type)
     this.emit(nativeWatchEvent(type, relativePath, entry))
-  }
-
-  private async nativeEventType(
-    relativePath: string,
-    nativeEvent: string,
-  ): Promise<'created' | 'changed' | 'deleted'> {
-    if (nativeEvent === 'change') return 'changed'
-
-    const exists = await pathExists(this.paths, relativePath)
-    if (!exists) return 'deleted'
-    if (this.knownNativePaths.has(relativePath)) return 'changed'
-
-    return 'created'
-  }
-
-  private recordNativeEventPath(relativePath: string, type: 'created' | 'changed' | 'deleted') {
-    if (type === 'deleted') {
-      this.knownNativePaths.delete(relativePath)
-      return
-    }
-
-    this.knownNativePaths.add(relativePath)
   }
 
   private async *createStream(
@@ -430,14 +418,49 @@ function nativeWatchEvent(
   return { type, path, entry, version: entry.version }
 }
 
-async function pathExists(paths: WorkspacePaths, relativePath: string) {
-  try {
-    const target = paths.resolve(relativePath)
-    await stat(target.absolutePath)
-    return true
-  } catch {
-    return false
-  }
+// Node reports a bare `rename` for every mutation macOS FSEvents forwards —
+// creations, plain writes, deletions and move-ins all arrive identically — so
+// the event name alone cannot classify anything. The filesystem can: an entry's
+// birthtime says when the inode appeared, and comparing that to the moment this
+// watcher attached tells creation from modification without keeping a cache of
+// paths that could never contain the files present at startup.
+function nativeEventType(
+  nativeEvent: string,
+  entry: TreeEntry | undefined,
+  attachedAtMs: number,
+): 'created' | 'changed' | 'deleted' | null {
+  if (!entry) return 'deleted'
+  if (nativeEvent === 'change') return 'changed'
+
+  return existingPathEventType(entry, attachedAtMs)
+}
+
+function existingPathEventType(entry: TreeEntry, attachedAtMs: number) {
+  // Filesystems that do not track birthtime report 0. There the old, broader
+  // `created` stands: it makes the client refresh the whole directory, which
+  // repairs a superset of what `changed` does.
+  if (!(entry.birthtimeMs > 0)) return 'created'
+
+  // Stat timestamps are whole milliseconds, so the attach time has to be
+  // compared at that resolution — otherwise a file born in the attach
+  // millisecond falls on whichever side the sub-millisecond remainder lands.
+  const attachedMs = Math.floor(attachedAtMs)
+  if (entry.birthtimeMs >= attachedMs) return bornWhileWatchingEventType(entry)
+  // macOS replays writes made just before a watcher attaches. The event is
+  // real, but its subject is not news: this inode predates us and its content
+  // has not been touched since we started watching, so there is nothing a
+  // client could learn from it.
+  if (entry.mtimeMs < attachedMs) return null
+
+  return 'changed'
+}
+
+function bornWhileWatchingEventType(entry: TreeEntry) {
+  return entry.mtimeMs - entry.birthtimeMs > createWriteSettleMs ? 'changed' : 'created'
+}
+
+function wallClockMs() {
+  return performance.timeOrigin + performance.now()
 }
 
 async function nativeEventEntry(
