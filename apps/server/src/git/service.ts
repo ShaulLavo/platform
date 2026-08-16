@@ -521,7 +521,9 @@ export class GitService {
       checkout: body.checkout,
     })
     const repository = await this.requiredRepositoryLocation(body.path)
-    const args = ['branch', body.branch]
+    // `git branch` ends option parsing at `--`; `git checkout` does not — there
+    // `--` introduces pathspecs, so the ref schema is the whole defense.
+    const args = ['branch', '--', body.branch]
     if (body.startPoint) args.push(body.startPoint)
 
     await this.git(repository.rootAbsolutePath, args)

@@ -4,7 +4,13 @@ import path from 'node:path'
 import type { FileSystemEntryMetadata } from '@workspace/contracts'
 import { errorSummary, recordRequestWarning } from '../observability'
 import { FsError } from './errors'
-import { defaultIgnoredNames, isIgnoredPath, toPosix, type WorkspacePaths } from './path'
+import {
+  defaultIgnoredNames,
+  isIgnoredPath,
+  isOutsideRoot,
+  toPosix,
+  type WorkspacePaths,
+} from './path'
 import { statPath } from './stat'
 import type { TreeEntry, WatchServerMessage } from './contracts'
 
@@ -317,8 +323,7 @@ function parcelEventPath(paths: WorkspacePaths, absolutePath: string) {
 function relativePathInside(root: string, candidate: string) {
   const relative = path.relative(root, candidate)
   if (relative === '') return ''
-  if (relative.startsWith('..')) return null
-  if (path.isAbsolute(relative)) return null
+  if (isOutsideRoot(relative)) return null
 
   return toPosix(relative)
 }

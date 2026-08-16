@@ -90,11 +90,22 @@ function assertClientPathShape(input: string) {
   if (/^[a-zA-Z]:/.test(input)) throw new FsError('PATH_OUTSIDE_WORKSPACE')
 }
 
+/**
+ * `path.relative` output, not a client path: it carries platform separators, so
+ * the escape prefix is `..${path.sep}` rather than `'../'`. A bare `..` escapes;
+ * `..foo` is an ordinary filename and must not be mistaken for one.
+ */
+export function isOutsideRoot(relative: string) {
+  if (relative === '..') return true
+  if (relative.startsWith(`..${path.sep}`)) return true
+
+  return path.isAbsolute(relative)
+}
+
 function assertInside(root: string, candidate: string) {
   const relative = path.relative(root, candidate)
   if (relative === '') return
-  if (relative.startsWith('..')) throw new FsError('PATH_OUTSIDE_WORKSPACE')
-  if (path.isAbsolute(relative)) throw new FsError('PATH_OUTSIDE_WORKSPACE')
+  if (isOutsideRoot(relative)) throw new FsError('PATH_OUTSIDE_WORKSPACE')
 }
 
 function ignoredNameSet(ignoredNames: readonly string[]) {

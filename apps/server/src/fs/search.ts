@@ -700,7 +700,8 @@ function fdArgs(context: FindContext) {
 
   for (const ignored of defaultIgnoredNames) args.push('--exclude', ignored)
 
-  if (searchMatchMode(context.options) !== 'fuzzy') args.push(context.query)
+  // fd reads a pattern starting with `-` as a flag unless `--` comes first.
+  if (searchMatchMode(context.options) !== 'fuzzy') args.push('--', context.query)
   return args
 }
 

@@ -16,6 +16,19 @@ export const gitDiffQuerySchema = v.object({
 
 const gitObjectIdSchema = v.pipe(v.string(), v.regex(/^[0-9a-f]{40,64}$/i))
 
+/**
+ * Refs reach git as argv, so a leading dash would be read as a flag and a space
+ * would split into two arguments. The allowed shape is git's own ref grammar
+ * narrowed to what a base or branch name ever needs.
+ */
+const gitRefNameSchema = v.pipe(
+  v.string(),
+  v.trim(),
+  v.minLength(1),
+  v.maxLength(255),
+  v.regex(/^[A-Za-z0-9_][A-Za-z0-9._/-]*$/),
+)
+
 export const gitBlobDiffQuerySchema = v.object({
   path: pathSchema,
   oldPath: v.optional(pathSchema),
@@ -25,7 +38,7 @@ export const gitBlobDiffQuerySchema = v.object({
 
 export const gitFileQuerySchema = v.object({
   path: pathSchema,
-  ref: v.optional(v.string(), 'HEAD'),
+  ref: v.optional(gitRefNameSchema, 'HEAD'),
 })
 
 export const gitPathsBodySchema = v.object({
@@ -46,28 +59,15 @@ export const gitCommitBodySchema = v.object({
 
 export const gitCheckoutBodySchema = v.object({
   path: v.optional(pathSchema, ''),
-  branch: v.pipe(v.string(), v.trim(), v.minLength(1)),
+  branch: gitRefNameSchema,
 })
 
 export const gitCreateBranchBodySchema = v.object({
   path: v.optional(pathSchema, ''),
-  branch: v.pipe(v.string(), v.trim(), v.minLength(1)),
+  branch: gitRefNameSchema,
   checkout: v.optional(v.boolean(), true),
-  startPoint: v.optional(v.pipe(v.string(), v.trim(), v.minLength(1))),
+  startPoint: v.optional(gitRefNameSchema),
 })
-
-/**
- * Refs reach git as argv, so a leading dash would be read as a flag and a space
- * would split into two arguments. The allowed shape is git's own ref grammar
- * narrowed to what a base or branch name ever needs.
- */
-const gitRefNameSchema = v.pipe(
-  v.string(),
-  v.trim(),
-  v.minLength(1),
-  v.maxLength(255),
-  v.regex(/^[A-Za-z0-9_][A-Za-z0-9._/-]*$/),
-)
 
 /**
  * A session id becomes a directory name under the repository's worktree root,
