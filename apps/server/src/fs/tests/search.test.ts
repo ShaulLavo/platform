@@ -340,8 +340,6 @@ describe('workspace disk search provider', () => {
       '--no-require-git',
       '--max-filesize',
       '12345',
-      '--sort',
-      'path',
       '--fixed-strings',
       '--ignore-case',
       '--word-regexp',
@@ -418,8 +416,6 @@ describe('workspace disk search provider', () => {
       '--no-require-git',
       '--max-filesize',
       '1000000',
-      '--sort',
-      'path',
       '--crlf',
       '--engine',
       'auto',
@@ -1065,27 +1061,32 @@ describe('workspace disk search provider', () => {
     })
   })
 
-  it('ranks content matches by path before applying the result limit', async () => {
+  it('truncates content matches at the result limit without promising path order', async () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, 'src'), { recursive: true })
     await writeFile(path.join(root, 'src', 'z.ts'), 'needle')
     await writeFile(path.join(root, 'src', 'a.ts'), 'needle')
 
-    const result = await findInWorkspace(createWorkspacePaths(root), {
-      includeContent: true,
-      includeNames: false,
-      limit: 1,
-      maxContentBytes: 1_000_000,
-      path: '',
-      query: 'needle',
+    const events = await collectEvents(
+      findInWorkspaceStream(createWorkspacePaths(root), {
+        includeContent: true,
+        includeNames: false,
+        limit: 1,
+        maxContentBytes: 1_000_000,
+        path: '',
+        query: 'needle',
+      }),
+    )
+    const contentPaths = events.flatMap((event) => {
+      if (event.type !== 'match') return []
+      if (event.match.kind !== 'content') return []
+
+      return [event.match.path]
     })
 
-    expect(result.matches).toEqual([
-      expect.objectContaining({
-        kind: 'content',
-        path: 'src/a.ts',
-      }),
-    ])
+    expect(contentPaths).toHaveLength(1)
+    expect(['src/a.ts', 'src/z.ts']).toContain(contentPaths[0])
+    expect(doneEvent(events)).toMatchObject({ count: 1, truncated: true })
   })
 
   it('ranks filename matches before applying the result limit', async () => {

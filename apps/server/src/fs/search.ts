@@ -723,8 +723,6 @@ export function contentSearchRgArgs(input: ContentSearchRgArgsInput) {
     '--no-require-git',
     '--max-filesize',
     String(input.options.maxContentBytes),
-    '--sort',
-    'path',
   ]
   const matchMode = searchMatchMode(input.options)
 
