@@ -100,12 +100,9 @@ export function usePlatformCommandDispatch({
   const { setSetting } = useSettingsActions()
   const diffViewMode =
     settings.data?.values['editor.diff.viewMode'] ?? DEFAULT_SETTING_VALUES['editor.diff.viewMode']
-  const setDiffViewMode = (mode: EditorDiffViewMode) => setSetting('editor.diff.viewMode', mode)
   const wallpaperEnabled =
     settings.data?.values['workbench.wallpaper.enabled'] ??
     DEFAULT_SETTING_VALUES['workbench.wallpaper.enabled']
-  const setWallpaperEnabled = (enabled: boolean) =>
-    setSetting('workbench.wallpaper.enabled', enabled)
   const requestEditorFocus = useFocus((state) => state.requestEditorFocus)
   const dispatchEditorCommand = useFocus((state) => state.dispatchEditorCommand)
   const setFocusArea = useFocus((state) => state.setFocusArea)
@@ -121,6 +118,11 @@ export function usePlatformCommandDispatch({
   )
   const resolvedRequestCloseTab = requestCloseTab ?? fallbackRequestCloseTab
 
+  // Stable identity, not performance: the consumer re-subscribes the document
+  // keydown listener and republishes the menu dispatch on every change, so the
+  // array below has to name everything the callback reads. Values sourced from
+  // `workspaceStore.getState()` are read at call time and are deliberately
+  // absent; the settings values are closed over and are deliberately present.
   return useCallback(
     (command: PlatformCommandId, event?: KeyboardEvent) => {
       const editorCommand = editorCommandIdFromPlatform(command)
@@ -144,11 +146,11 @@ export function usePlatformCommandDispatch({
         requestEditorFocus,
         rootPath: workspace.rootFolder?.path ?? null,
         setChatModePanels: workspace.setChatModePanels,
-        setDiffViewMode,
+        setDiffViewMode: (mode) => setSetting('editor.diff.viewMode', mode),
         setFocusArea,
         setTheme,
         setUiMode: workspace.setUiMode,
-        setWallpaperEnabled,
+        setWallpaperEnabled: (enabled) => setSetting('workbench.wallpaper.enabled', enabled),
         setWorkbenchPanels: workspace.setWorkbenchPanels,
         showCommandPalette,
         showSettings,
@@ -159,6 +161,7 @@ export function usePlatformCommandDispatch({
       })
     },
     [
+      diffViewMode,
       documentStore,
       dispatchEditorCommand,
       queryClient,
@@ -169,9 +172,11 @@ export function usePlatformCommandDispatch({
       resolvedRequestCloseTab,
       selectPreviousEditor,
       setFocusArea,
+      setSetting,
       setTheme,
       showCommandPalette,
       showSettings,
+      wallpaperEnabled,
       workspaceStore,
     ],
   )
