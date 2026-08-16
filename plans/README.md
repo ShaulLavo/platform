@@ -40,10 +40,25 @@ They are Phase 4. This is a change from how they were originally sequenced.
 
 ### Phase 0 — Verification baseline (nothing risky starts before this)
 
-| Plan | Title                                                                                                                                          | Priority | Effort | Depends on | Status               |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------ | ---------- | -------------------- |
-| 013  | [Test-baseline repairs: stop writing to the real SQLite; typecheck `scripts/`; give `packages/ui` a test script](013-test-baseline-repairs.md) | P1       | S–M    | —          | DONE                 |
-| 014  | [`packages/tree` path-store + `getVisibleRows` characterization tests](014-tree-path-store-characterization-tests.md)                          | P1       | M      | —          | DONE — **gates 039** |
+| Plan | Title                                                                                                                                          | Priority | Effort | Depends on | Status                                                                                                                                                                                                                           |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------ | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 013  | [Test-baseline repairs: stop writing to the real SQLite; typecheck `scripts/`; give `packages/ui` a test script](013-test-baseline-repairs.md) | P1       | S–M    | —          | **DONE** (`58bf4d0`) — independently verified: `~/.platform/fs-metadata.sqlite` mtime unchanged across a full `apps/server` run. Also surfaced a real hidden error once `scripts/` got typechecked: `descriptorFor(id as never)` |
+| 014  | [`packages/tree` path-store + `getVisibleRows` characterization tests](014-tree-path-store-characterization-tests.md)                          | P1       | M      | —          | **DONE** (`5774dc6`) — independently verified: `packages/tree` went 9 tests → **78 passing** across 5 files, oracle + fuzz in place. **The gate for 039 is now open**                                                            |
+
+> ### ⚠️ Known pre-existing test failure — read this before gating on the server suite
+>
+> `apps/server/src/tests/app.test.ts > fs rpc events > reports external file
+updates from the native watcher` **fails deterministically on this machine**
+> (~15s timeout, native `@parcel/watcher` backend). Confirmed **pre-existing**:
+> it fails identically at `ac9ca7f`, before plan 013 landed, so it is not a
+> regression from anything in this plan set.
+>
+> The honest baseline for `cd apps/server && bun run test` is therefore
+> **772 passed / 1 failed (773)**. Several plans state "all pass" as a done
+> criterion — read that as _no new failures beyond this one_. An executor seeing
+> a single failure should compare the test name against this note and continue
+> rather than treating it as its own breakage. Same family as `cc9e210` and
+> `07f4245`, which fixed two other watcher-timing races.
 
 ### Phase 1 — Cheap, high-confidence, independent
 
@@ -227,6 +242,24 @@ document — which is what this status table is for.
 ## Findings considered and rejected
 
 Recorded so future audits don't re-litigate them.
+
+### Reported during execution, investigated and rejected
+
+- **"`flattenEmptyDirectories` defaults disagree between `path-store/options.ts:6`
+  (`!== false`, on) and `path-store/store.ts:99` (`=== true`, off)"** — reported by
+  the plan-014 executor, which correctly declined to touch production code and
+  flagged it instead. **Investigated and rejected: there is no behavioral
+  divergence.** `store.ts:99` reads `state.snapshot.options`, which is typed
+  `ResolvedPathStoreOptions` (`internal-types.ts:104-107`) where
+  `flattenEmptyDirectories` is a strict `boolean`. The default is applied exactly
+  once, in `resolvePathStoreOptions`. Against an already-strict boolean,
+  `=== true`, `!== true`, and a bare read are all equivalent — which is why all
+  five read sites (`store.ts:99`, `static-store.ts:374`, `flatten.ts:13`,
+  `projection.ts:662,764`) behave identically today.
+  The residue is style, not correctness: three spellings for one boolean. It
+  becomes a real bug only if someone changes `snapshot.options` to carry raw
+  user options, at which point `store.ts:99` would silently flip the default.
+  Worth a one-line comment on the type, not a plan.
 
 ### Third pass (2026-08-16)
 
