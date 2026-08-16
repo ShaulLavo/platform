@@ -3,6 +3,7 @@ import type {
   LanguageServerDiagnosticSummary,
   LanguageServerStatus,
 } from '@singapor/lsp-plugin'
+import { cn } from '@workspace/ui/lib/utils'
 
 import { useEditorLanguageServerStatus } from '@/features/editor/hooks/use-editor-language-server-status'
 import { useEditorCommands } from '@/features/editor/state/editor-commands'
@@ -58,10 +59,18 @@ function renderDiagnosticsStatus({
     <div className='min-h-0 flex-1 overflow-auto p-3 text-xs'>
       <div className='text-muted-foreground mb-3 truncate'>{source.filePath}</div>
       <div className='grid grid-cols-4 gap-2'>
-        {renderDiagnosticCount('Errors', diagnostics.counts.error)}
-        {renderDiagnosticCount('Warnings', diagnostics.counts.warning)}
-        {renderDiagnosticCount('Info', diagnostics.counts.information)}
-        {renderDiagnosticCount('Hints', diagnostics.counts.hint)}
+        {renderDiagnosticCount({ label: 'Errors', severity: 1, value: diagnostics.counts.error })}
+        {renderDiagnosticCount({
+          label: 'Warnings',
+          severity: 2,
+          value: diagnostics.counts.warning,
+        })}
+        {renderDiagnosticCount({
+          label: 'Info',
+          severity: 3,
+          value: diagnostics.counts.information,
+        })}
+        {renderDiagnosticCount({ label: 'Hints', severity: 4, value: diagnostics.counts.hint })}
       </div>
       {renderDiagnosticList({
         diagnostics,
@@ -73,11 +82,24 @@ function renderDiagnosticsStatus({
   )
 }
 
-function renderDiagnosticCount(label: string, value: number) {
+function renderDiagnosticCount({
+  label,
+  severity,
+  value,
+}: {
+  readonly label: string
+  readonly severity: number
+  readonly value: number
+}) {
   return (
-    <div className='rounded border px-2 py-1' key={label}>
+    <div
+      className={cn('rounded border px-2 py-1', diagnosticTileClass(severity, value))}
+      key={label}
+    >
       <div className='text-muted-foreground'>{label}</div>
-      <div className='text-foreground font-medium tabular-nums'>{value}</div>
+      <div className={cn('font-medium tabular-nums', diagnosticValueClass(severity, value))}>
+        {value}
+      </div>
     </div>
   )
 }
@@ -101,7 +123,10 @@ function renderDiagnosticList({
         const target = diagnosticTarget(path, diagnostics.uri ?? fileUriForPath(path), diagnostic)
 
         return (
-          <li className='rounded border' key={diagnosticKey(diagnostic, index)}>
+          <li
+            className={cn('rounded border border-l-2', diagnosticRuleClass(diagnostic.severity))}
+            key={diagnosticKey(diagnostic, index)}
+          >
             <button
               className='hover:bg-muted/55 focus-visible:ring-ring/50 block w-full rounded px-2 py-2 text-left outline-none focus-visible:ring-1'
               type='button'
@@ -134,6 +159,36 @@ function emptyDiagnosticsMessage(status: LanguageServerStatus) {
   if (status === 'error') return 'Diagnostics unavailable'
 
   return 'No problems reported'
+}
+
+/**
+ * LSP severities: 1 error, 2 warning, 3 information, 4 hint. Hints have no
+ * status token by design — the lowest severity should recede, not compete.
+ */
+function diagnosticValueClass(severity: number, value: number) {
+  if (value === 0) return 'text-muted-foreground'
+  if (severity === 1) return 'text-destructive'
+  if (severity === 2) return 'text-warning'
+  if (severity === 3) return 'text-info'
+
+  return 'text-foreground'
+}
+
+function diagnosticTileClass(severity: number, value: number) {
+  if (value === 0) return 'border-border'
+  if (severity === 1) return 'border-destructive/30 bg-destructive/10'
+  if (severity === 2) return 'border-warning/30 bg-warning/10'
+  if (severity === 3) return 'border-info/30 bg-info/10'
+
+  return 'border-border'
+}
+
+function diagnosticRuleClass(severity: number | undefined) {
+  if (severity === 1) return 'border-l-destructive'
+  if (severity === 2) return 'border-l-warning'
+  if (severity === 3) return 'border-l-info'
+
+  return 'border-l-border'
 }
 
 function diagnosticSeverityLabel(severity: number | undefined) {

@@ -82,6 +82,23 @@ test('only the terminal assistant message shows its metadata row', () => {
   expect(hidden.container.querySelector('[data-assistant-message-meta]')).toBeNull()
 })
 
+test('the assistant copy button reveals on keyboard focus and never eats a click while hidden', () => {
+  const { container } = renderBubble(chatMessage({ text: 'Done.' }), {
+    renderAssistantCopyButton: (text) => <button type='button'>{`Copy ${text}`}</button>,
+    showAssistantCopyButton: true,
+  })
+
+  const actions = container.querySelector<HTMLElement>('[data-assistant-copy-actions]')
+
+  expect(actions).not.toBeNull()
+  // The negative: hiding it must not have unmounted it.
+  expect(actions?.querySelector('button')?.textContent).toBe('Copy Done.')
+  expect(actions).toHaveClass('pointer-events-none')
+  expect(actions).toHaveClass('group-focus-within/assistant:opacity-100')
+  expect(actions).toHaveClass('group-focus-within/assistant:pointer-events-auto')
+  expect(actions).toHaveClass('group-hover/assistant:pointer-events-auto')
+})
+
 test('a sent image renders as a thumbnail and opens in a lightbox', async () => {
   const user = userEvent.setup()
   const { container } = renderBubble(
@@ -131,11 +148,21 @@ function userMessageBody(container: HTMLElement) {
 
 function renderBubble(
   message: ReturnType<typeof chatMessage>,
-  { showAssistantCopyButton = false }: { showAssistantCopyButton?: boolean } = {},
+  {
+    renderAssistantCopyButton,
+    showAssistantCopyButton = false,
+  }: {
+    renderAssistantCopyButton?: (text: string) => ReactNode
+    showAssistantCopyButton?: boolean
+  } = {},
 ) {
   return renderWithProviders(
     withProviders(
-      <MessageBubble message={message} showAssistantCopyButton={showAssistantCopyButton} />,
+      <MessageBubble
+        message={message}
+        renderAssistantCopyButton={renderAssistantCopyButton}
+        showAssistantCopyButton={showAssistantCopyButton}
+      />,
     ),
   )
 }

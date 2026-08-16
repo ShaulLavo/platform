@@ -171,7 +171,10 @@ export function MessageBubble({
                 />
               </p>
               {assistantChrome.copyVisible && renderAssistantCopyButton ? (
-                <div className='flex items-center opacity-0 transition-opacity duration-200 group-hover/assistant:opacity-100'>
+                <div
+                  className='pointer-events-none flex items-center opacity-0 transition-opacity duration-150 group-focus-within/assistant:pointer-events-auto group-focus-within/assistant:opacity-100 group-hover/assistant:pointer-events-auto group-hover/assistant:opacity-100'
+                  data-assistant-copy-actions='true'
+                >
                   {renderAssistantCopyButton(assistantChrome.copyText ?? '')}
                 </div>
               ) : null}

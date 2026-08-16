@@ -25,6 +25,15 @@ test('hides the horizontal tab strip scrollbar', () => {
   expect(screen.getByRole('tablist', { name: 'Editor tabs' })).toHaveClass('no-scrollbar')
 })
 
+test('only the active tab carries a background fill, and inactive tabs react to hover', () => {
+  const { container } = renderWithProviders(<TestEditorTabs tabs={editorTabs()} />)
+
+  expect(editorTabElement(container, 'tab-a')).toHaveClass('bg-background-solid')
+  expect(editorTabElement(container, 'tab-a')).not.toHaveClass('hover:bg-accent')
+  expect(editorTabElement(container, 'tab-b')).not.toHaveClass('bg-background-solid')
+  expect(editorTabElement(container, 'tab-b')).toHaveClass('hover:bg-accent')
+})
+
 test('closes the clicked tab id', () => {
   const closeTab = vi.fn()
 
