@@ -22,44 +22,11 @@ export interface PathStorePreparedInput {
   paths: readonly string[]
 }
 
-export type PathStoreCleanupMode = 'stable' | 'aggressive'
-
-export interface PathStoreCleanupOptions {
-  mode?: PathStoreCleanupMode
-}
-
-export interface PathStoreCleanupResult {
-  activeNodeCountAfter: number
-  activeNodeCountBefore: number
-  cachedPathEntryCountAfter: number
-  cachedPathEntryCountBefore: number
-  idsPreserved: boolean
-  loadInfoEntryCountAfter: number
-  loadInfoEntryCountBefore: number
-  mode: PathStoreCleanupMode
-  reclaimedCachedPathEntryCount: number
-  reclaimedLoadInfoEntryCount: number
-  reclaimedNodeSlotCount: number
-  reclaimedSegmentCount: number
-  segmentCountAfter: number
-  segmentCountBefore: number
-  totalNodeSlotCountAfter: number
-  totalNodeSlotCountBefore: number
-}
-
-export type PathStoreDirectoryLoadState = 'unloaded' | 'loading' | 'loaded' | 'error'
-
 export interface PathStoreChildPatch {
   metadata?: {
     knownChildCount?: number
   }
   operations: readonly PathStoreOperation[]
-}
-
-export interface PathStoreLoadAttempt {
-  attemptId: number
-  nodeId: number
-  reused: boolean
 }
 
 export interface PathStoreConstructorOptions extends PathStoreOptions {
@@ -90,9 +57,7 @@ export interface PathStoreVisibleRow {
   id: number
   isExpanded: boolean
   isFlattened: boolean
-  isLoading: boolean
   kind: 'directory' | 'file'
-  loadState?: PathStoreDirectoryLoadState
   name: string
   path: string
 }
@@ -173,56 +138,12 @@ export interface PathStoreCollapseEvent extends PathStoreEventInvalidation {
   path: string
 }
 
-export interface PathStoreMarkDirectoryUnloadedEvent extends PathStoreEventInvalidation {
-  operation: 'mark-directory-unloaded'
-  path: string
-}
-
-export interface PathStoreBeginChildLoadEvent extends PathStoreEventInvalidation {
-  attemptId: number
-  operation: 'begin-child-load'
-  path: string
-  reused: boolean
-}
-
-export interface PathStoreApplyChildPatchEvent extends PathStoreEventInvalidation {
-  attemptId: number
-  childEvents: readonly PathStoreSemanticEvent[]
-  operation: 'apply-child-patch'
-  path: string
-}
-
-export interface PathStoreCompleteChildLoadEvent extends PathStoreEventInvalidation {
-  attemptId: number
-  operation: 'complete-child-load'
-  path: string
-  stale: boolean
-}
-
-export interface PathStoreFailChildLoadEvent extends PathStoreEventInvalidation {
-  attemptId: number
-  errorMessage?: string
-  operation: 'fail-child-load'
-  path: string
-  stale: boolean
-}
-
-export interface PathStoreCleanupEvent extends PathStoreEventInvalidation, PathStoreCleanupResult {
-  operation: 'cleanup'
-}
-
 export type PathStoreSemanticEvent =
   | PathStoreAddEvent
   | PathStoreRemoveEvent
   | PathStoreMoveEvent
   | PathStoreExpandEvent
   | PathStoreCollapseEvent
-  | PathStoreMarkDirectoryUnloadedEvent
-  | PathStoreBeginChildLoadEvent
-  | PathStoreApplyChildPatchEvent
-  | PathStoreCompleteChildLoadEvent
-  | PathStoreFailChildLoadEvent
-  | PathStoreCleanupEvent
 
 export interface PathStoreBatchEvent extends PathStoreEventInvalidation {
   events: readonly PathStoreSemanticEvent[]

@@ -732,8 +732,6 @@ function bindingStatusFromRuntimeEvent(
       return 'running'
     case 'turn.completed':
       return event.payload.state === 'failed' ? 'error' : 'ready'
-    case 'turn.aborted':
-      return 'ready'
     case 'runtime.error':
       return 'error'
     case 'session.exited':
@@ -753,7 +751,6 @@ function bindingStatusFromSessionState(
 
 function activeTurnIdFromRuntimeEvent(event: ProviderRuntimeEvent) {
   if (event.type === 'turn.completed') return null
-  if (event.type === 'turn.aborted') return null
   if (event.type === 'session.exited') return null
 
   return event.turnId ?? null

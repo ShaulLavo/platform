@@ -13,7 +13,6 @@
     "./utils/*": "./src/utils/*.ts",
     "./utils/model/*": "./src/utils/model/*.ts",
     "./utils/path-store/*": "./src/utils/path-store/*.ts",
-    "./utils/path-store/internal/*": "./src/utils/path-store/internal/*.ts",
     "./utils/render/*": "./src/utils/render/*.ts"
   },
   "scripts": {
@@ -27,8 +26,7 @@
   },
   "dependencies": {
     "evlog": "^2.19.1",
-    "preact": "catalog:",
-    "preact-render-to-string": "catalog:"
+    "preact": "catalog:"
   },
   "devDependencies": {
     "@types/bun": "^1.3.14",

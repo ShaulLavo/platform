@@ -1,10 +1,8 @@
 import {
-  logEventDetailSchema,
   logEventsResultSchema,
   logDashboardSummarySchema,
   logLiveStreamItemSchema,
   type LogDashboardFilters,
-  type LogEventDetail,
   type LogEventsResult,
   type LogDashboardSummary,
   type LogLiveStreamItem,
@@ -41,18 +39,6 @@ export async function fetchLogEvents(
   })
 
   return v.parse(logEventsResultSchema, unwrapEdenResponse(response, { normalizeDates: true }))
-}
-
-export async function fetchLogEventDetail(
-  id: string,
-  signal?: AbortSignal,
-): Promise<LogEventDetail> {
-  const response = await getClient()._log.dashboard.event.get({
-    fetch: { signal },
-    query: { id },
-  })
-
-  return v.parse(logEventDetailSchema, unwrapEdenResponse(response, { normalizeDates: true }))
 }
 
 export async function* subscribeLogEvents(

@@ -107,10 +107,6 @@ export function isBuiltinEditorThemeId(themeId: string): boolean {
   return builtinThemeById.has(themeId)
 }
 
-export function vscodeEditorTheme(themeId: string): VscodeThemeDefinition | undefined {
-  return vscodeThemeById.get(themeId)
-}
-
 export function editorThemeExists(themeId: string): boolean {
   return builtinThemeById.has(themeId) || vscodeThemeById.has(themeId)
 }

@@ -23,10 +23,6 @@ export function renderFileTreeRoot(element: HTMLElement, props: FileTreeViewProp
   fileTreeRenderer.renderRoot(element, props)
 }
 
-export function hydrateFileTreeRoot(element: HTMLElement, props: FileTreeViewProps): void {
-  fileTreeRenderer.hydrateRoot(element, props)
-}
-
 export function unmountFileTreeRoot(element: HTMLElement): void {
   fileTreeRenderer.unmountRoot(element)
 }

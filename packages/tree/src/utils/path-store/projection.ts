@@ -21,10 +21,8 @@ import {
 } from './flatten'
 import type { DirectoryChildIndex, NodeId } from './internal-types'
 import { isDirectoryNode } from './internal-types'
-import { setBenchmarkCounter, withBenchmarkPhase } from './internal/benchmarkInstrumentation'
 import type {
   PathStoreCollapseEvent,
-  PathStoreDirectoryLoadState,
   PathStoreExpandEvent,
   PathStoreVisibleAncestorRow,
   PathStoreVisibleRow,
@@ -34,7 +32,7 @@ import type {
   PathStoreVisibleTreeProjectionRow,
 } from './public-types'
 import { getSegmentValue } from './segments'
-import { getDirectoryLoadState, isDirectoryExpanded, setDirectoryExpanded } from './state'
+import { isDirectoryExpanded, setDirectoryExpanded } from './state'
 import type { PathStoreState } from './state'
 
 const INITIAL_PROJECTION_DEPTH_CAPACITY = 64
@@ -269,7 +267,6 @@ export function getVisibleSlice(
   start: number,
   end: number,
 ): readonly PathStoreVisibleRow[] {
-  const instrumentation = state.instrumentation
   const totalVisibleCount = getVisibleCount(state)
   if (totalVisibleCount <= 0 || end < start) {
     return []
@@ -278,59 +275,25 @@ export function getVisibleSlice(
   const normalizedStart = Math.max(0, Math.min(start, totalVisibleCount - 1))
   const normalizedEnd = Math.max(normalizedStart, Math.min(end, totalVisibleCount - 1))
 
-  if (instrumentation == null) {
-    // Fast path: full-tree DFS avoids the expensive parent-walk for finding
-    // next siblings that getNextVisibleRowCursor performs.
-    if (normalizedStart === 0) {
-      return collectVisibleRowsDFS(state, normalizedEnd + 1)
-    }
-
-    const rows: PathStoreVisibleRow[] = []
-    let currentCursor = selectVisibleRow(state, normalizedStart)
-
-    for (
-      let visibleIndex = normalizedStart;
-      visibleIndex <= normalizedEnd && currentCursor != null;
-      visibleIndex++
-    ) {
-      const row = materializeVisibleRow(state, currentCursor)
-      rows.push(row)
-      currentCursor = getNextVisibleRowCursor(state, currentCursor)
-    }
-
-    return rows
+  // Fast path: full-tree DFS avoids the expensive parent-walk for finding
+  // next siblings that getNextVisibleRowCursor performs.
+  if (normalizedStart === 0) {
+    return collectVisibleRowsDFS(state, normalizedEnd + 1)
   }
 
   const rows: PathStoreVisibleRow[] = []
-  let flattenedRowCount = 0
-  let flattenedSegmentCount = 0
-  let currentCursor = withBenchmarkPhase(
-    instrumentation,
-    'store.getVisibleSlice.selectFirstRow',
-    () => selectVisibleRow(state, normalizedStart),
-  )
+  let currentCursor = selectVisibleRow(state, normalizedStart)
 
   for (
     let visibleIndex = normalizedStart;
     visibleIndex <= normalizedEnd && currentCursor != null;
     visibleIndex++
   ) {
-    const row = withBenchmarkPhase(instrumentation, 'store.getVisibleSlice.materializeRow', () =>
-      materializeVisibleRow(state, currentCursor as VisibleRowCursor),
-    )
+    const row = materializeVisibleRow(state, currentCursor)
     rows.push(row)
-    if (row.isFlattened) {
-      flattenedRowCount++
-      flattenedSegmentCount += row.flattenedSegments?.length ?? 0
-    }
-    currentCursor = withBenchmarkPhase(instrumentation, 'store.getVisibleSlice.advanceCursor', () =>
-      getNextVisibleRowCursor(state, currentCursor as VisibleRowCursor),
-    )
+    currentCursor = getNextVisibleRowCursor(state, currentCursor)
   }
 
-  setBenchmarkCounter(instrumentation, 'workload.visibleRowsRead', rows.length)
-  setBenchmarkCounter(instrumentation, 'workload.flattenedRowsRead', flattenedRowCount)
-  setBenchmarkCounter(instrumentation, 'workload.flattenedSegmentsRead', flattenedSegmentCount)
   return rows
 }
 
@@ -338,14 +301,7 @@ export function getVisibleTreeProjectionData(
   state: PathStoreState,
   maxRows: number = getVisibleCount(state),
 ): PathStoreVisibleTreeProjectionData {
-  const instrumentation = state.instrumentation
-  if (instrumentation == null) {
-    return buildVisibleTreeProjectionDataDFS(state, maxRows)
-  }
-
-  return withBenchmarkPhase(instrumentation, 'store.getVisibleTreeProjection', () =>
-    buildVisibleTreeProjectionDataDFS(state, maxRows),
-  )
+  return buildVisibleTreeProjectionDataDFS(state, maxRows)
 }
 
 export function getVisibleTreeProjection(state: PathStoreState): PathStoreVisibleTreeProjection {
@@ -466,13 +422,11 @@ function selectVisibleRowWithinDirectory(
   parentVisibleDepth: number,
 ): VisibleRowCursor {
   const directoryIndex = getDirectoryIndex(state, directoryNodeId)
-  const instrumentation = state.instrumentation
-  const { childIndex, localVisibleIndex } =
-    instrumentation == null
-      ? selectChildIndexByVisibleIndex(state.snapshot.nodes, directoryIndex, index)
-      : withBenchmarkPhase(instrumentation, 'store.getVisibleSlice.selectChildIndex', () =>
-          selectChildIndexByVisibleIndex(state.snapshot.nodes, directoryIndex, index),
-        )
+  const { childIndex, localVisibleIndex } = selectChildIndexByVisibleIndex(
+    state.snapshot.nodes,
+    directoryIndex,
+    index,
+  )
   const childId = directoryIndex.childIds[childIndex]
   if (childId != null) {
     return selectVisibleRowWithinSubtree(state, childId, localVisibleIndex, parentVisibleDepth + 1)
@@ -535,21 +489,9 @@ function createVisibleRowCursor(
     }
   }
 
-  if (state.instrumentation == null) {
-    return {
-      headNodeId: nodeId,
-      terminalNodeId: getFlattenedTerminalDirectoryId(state, nodeId),
-      visibleDepth,
-    }
-  }
-
   return {
     headNodeId: nodeId,
-    terminalNodeId: withBenchmarkPhase(
-      state.instrumentation,
-      'store.getVisibleSlice.flatten.resolveTerminalDirectory',
-      () => getFlattenedTerminalDirectoryId(state, nodeId),
-    ),
+    terminalNodeId: getFlattenedTerminalDirectoryId(state, nodeId),
     visibleDepth,
   }
 }
@@ -790,9 +732,7 @@ function collectVisibleRowsDFS(state: PathStoreState, maxRows: number): PathStor
         id: childId,
         isExpanded: false,
         isFlattened: false,
-        isLoading: false,
         kind: 'file',
-        loadState: undefined,
         name: segmentValues[childNode.nameId],
         path:
           cachedPathEntry != null && cachedPathEntry.version === pathCacheVersion
@@ -837,36 +777,22 @@ function materializeVisibleRow(
   cursor: VisibleRowCursor,
 ): PathStoreVisibleRow {
   const terminalNode = requireNode(state, cursor.terminalNodeId)
-  const loadState = isDirectoryNode(terminalNode) ? getVisibleRowLoadState(state, cursor) : null
   const path = materializeNodePath(state, cursor.terminalNodeId)
   const name = getSegmentValue(state.snapshot.segmentTable, terminalNode.nameId)
   const hasChildren =
     isDirectoryNode(terminalNode) &&
     getDirectoryIndex(state, cursor.terminalNodeId).childIds.length > 0
   const isFlattened = cursor.headNodeId !== cursor.terminalNodeId
-  const instrumentation = state.instrumentation
   const flattenedSegments = isFlattened
-    ? instrumentation == null
-      ? collectFlattenedDirectoryChainIds(state, cursor.headNodeId).map((nodeId) => {
-          const node = requireNode(state, nodeId)
-          return {
-            isTerminal: nodeId === cursor.terminalNodeId,
-            name: getSegmentValue(state.snapshot.segmentTable, node.nameId),
-            nodeId,
-            path: materializeNodePath(state, nodeId),
-          }
-        })
-      : withBenchmarkPhase(instrumentation, 'store.getVisibleSlice.flatten.collectSegments', () =>
-          collectFlattenedDirectoryChainIds(state, cursor.headNodeId).map((nodeId) => {
-            const node = requireNode(state, nodeId)
-            return {
-              isTerminal: nodeId === cursor.terminalNodeId,
-              name: getSegmentValue(state.snapshot.segmentTable, node.nameId),
-              nodeId,
-              path: materializeNodePath(state, nodeId),
-            }
-          }),
-        )
+    ? collectFlattenedDirectoryChainIds(state, cursor.headNodeId).map((nodeId) => {
+        const node = requireNode(state, nodeId)
+        return {
+          isTerminal: nodeId === cursor.terminalNodeId,
+          name: getSegmentValue(state.snapshot.segmentTable, node.nameId),
+          nodeId,
+          path: materializeNodePath(state, nodeId),
+        }
+      })
     : undefined
 
   return {
@@ -878,52 +804,8 @@ function materializeVisibleRow(
       isDirectoryNode(terminalNode) &&
       isDirectoryExpanded(state, cursor.terminalNodeId, terminalNode),
     isFlattened,
-    isLoading: loadState === 'loading',
     kind: isDirectoryNode(terminalNode) ? 'directory' : 'file',
-    loadState:
-      loadState == null || loadState === 'loaded'
-        ? undefined
-        : (loadState as PathStoreDirectoryLoadState),
     name,
     path,
   }
-}
-
-function getVisibleRowLoadState(
-  state: PathStoreState,
-  cursor: VisibleRowCursor,
-): PathStoreDirectoryLoadState {
-  if (cursor.headNodeId === cursor.terminalNodeId) {
-    return getDirectoryLoadState(state, cursor.terminalNodeId)
-  }
-
-  const chainNodeIds = collectFlattenedDirectoryChainIds(state, cursor.headNodeId)
-  let hasUnloaded = false
-  let hasError = false
-
-  for (const nodeId of chainNodeIds) {
-    const loadState = getDirectoryLoadState(state, nodeId)
-    if (loadState === 'loading') {
-      return 'loading'
-    }
-
-    if (loadState === 'error') {
-      hasError = true
-      continue
-    }
-
-    if (loadState === 'unloaded') {
-      hasUnloaded = true
-    }
-  }
-
-  if (hasError) {
-    return 'error'
-  }
-
-  if (hasUnloaded) {
-    return 'unloaded'
-  }
-
-  return 'loaded'
 }

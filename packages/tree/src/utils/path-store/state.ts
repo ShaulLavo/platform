@@ -1,14 +1,11 @@
 import { createTreeError } from '../structured-errors'
 
 import { getNodeDepth, hasNodeFlag, isDirectoryNode } from './internal-types'
-import type { DirectoryLoadInfo, NodeId, PathStoreNode, PathStoreSnapshot } from './internal-types'
+import type { NodeId, PathStoreNode, PathStoreSnapshot } from './internal-types'
 import { PATH_STORE_NODE_FLAG_ROOT } from './internal-types'
-import type { BenchmarkInstrumentation } from './internal/benchmarkInstrumentation'
 import type {
-  PathStoreDirectoryLoadState,
   PathStoreEvent,
   PathStoreInitialExpansion,
-  PathStoreLoadAttempt,
   PathStoreSemanticEvent,
 } from './public-types'
 
@@ -31,9 +28,7 @@ export interface PathStoreState {
   defaultExpansion: PathStoreInitialExpansion
   directoriesOpenByDefault: boolean
   hasCollapsedDirectoryOverrides: boolean
-  directoryLoadInfoById: Map<NodeId, DirectoryLoadInfo>
   expandedDirectoryIds: Set<NodeId>
-  instrumentation: BenchmarkInstrumentation | null
   listeners: Map<string, Set<(event: PathStoreEvent) => void>>
   pathCacheByNodeId: Map<NodeId, { path: string; version: number }>
   pathCacheVersion: number
@@ -44,7 +39,6 @@ export interface PathStoreState {
 export function createPathStoreState(
   snapshot: PathStoreSnapshot,
   initialExpansion: PathStoreInitialExpansion = 'closed',
-  instrumentation: BenchmarkInstrumentation | null = null,
 ): PathStoreState {
   const defaultExpansion = resolveInitialExpansion(initialExpansion)
   return {
@@ -54,9 +48,7 @@ export function createPathStoreState(
     defaultExpansion,
     directoriesOpenByDefault: defaultExpansion === 'open',
     hasCollapsedDirectoryOverrides: false,
-    directoryLoadInfoById: new Map<NodeId, DirectoryLoadInfo>(),
     expandedDirectoryIds: new Set<NodeId>(),
-    instrumentation,
     listeners: new Map<string, Set<(event: PathStoreEvent) => void>>(),
     pathCacheByNodeId: new Map<NodeId, { path: string; version: number }>([
       [snapshot.rootId, { path: '', version: 0 }],
@@ -162,105 +154,4 @@ export function setDirectoryExpanded(
   }
 
   state.expandedDirectoryIds.delete(nodeId)
-}
-
-function getOrCreateDirectoryLoadInfo(state: PathStoreState, nodeId: NodeId): DirectoryLoadInfo {
-  const existingInfo = state.directoryLoadInfoById.get(nodeId)
-  if (existingInfo != null) {
-    return existingInfo
-  }
-
-  const nextInfo: DirectoryLoadInfo = {
-    activeAttemptId: null,
-    errorMessage: null,
-    nextAttemptId: 1,
-    state: 'loaded',
-  }
-  state.directoryLoadInfoById.set(nodeId, nextInfo)
-  return nextInfo
-}
-
-export function getDirectoryLoadState(
-  state: PathStoreState,
-  nodeId: NodeId,
-): PathStoreDirectoryLoadState {
-  return state.directoryLoadInfoById.get(nodeId)?.state ?? 'loaded'
-}
-
-export function getDirectoryLoadError(state: PathStoreState, nodeId: NodeId): string | null {
-  return state.directoryLoadInfoById.get(nodeId)?.errorMessage ?? null
-}
-
-export function beginDirectoryLoad(state: PathStoreState, nodeId: NodeId): PathStoreLoadAttempt {
-  const loadInfo = getOrCreateDirectoryLoadInfo(state, nodeId)
-  if (loadInfo.state === 'loading' && loadInfo.activeAttemptId != null) {
-    return {
-      attemptId: loadInfo.activeAttemptId,
-      nodeId,
-      reused: true,
-    }
-  }
-
-  const attemptId = loadInfo.nextAttemptId
-  loadInfo.activeAttemptId = attemptId
-  loadInfo.errorMessage = null
-  loadInfo.nextAttemptId += 1
-  loadInfo.state = 'loading'
-  return {
-    attemptId,
-    nodeId,
-    reused: false,
-  }
-}
-
-export function markDirectoryUnloadedState(state: PathStoreState, nodeId: NodeId): void {
-  const loadInfo = getOrCreateDirectoryLoadInfo(state, nodeId)
-  loadInfo.activeAttemptId = null
-  loadInfo.errorMessage = null
-  loadInfo.state = 'unloaded'
-}
-
-export function completeDirectoryLoad(
-  state: PathStoreState,
-  nodeId: NodeId,
-  attemptId: number,
-): boolean {
-  const loadInfo = state.directoryLoadInfoById.get(nodeId)
-  if (loadInfo == null || loadInfo.activeAttemptId !== attemptId) {
-    return false
-  }
-
-  loadInfo.activeAttemptId = null
-  loadInfo.errorMessage = null
-  loadInfo.state = 'loaded'
-  return true
-}
-
-export function isDirectoryLoadAttemptCurrent(
-  state: PathStoreState,
-  nodeId: NodeId,
-  attemptId: number,
-): boolean {
-  return state.directoryLoadInfoById.get(nodeId)?.activeAttemptId === attemptId
-}
-
-export function failDirectoryLoad(
-  state: PathStoreState,
-  nodeId: NodeId,
-  attemptId: number,
-  errorMessage: string | undefined,
-): boolean {
-  const loadInfo = state.directoryLoadInfoById.get(nodeId)
-  if (loadInfo == null || loadInfo.activeAttemptId !== attemptId) {
-    return false
-  }
-
-  loadInfo.activeAttemptId = null
-  loadInfo.errorMessage = errorMessage ?? null
-  loadInfo.state = 'error'
-  return true
-}
-
-export function clearDirectoryLoadInfo(state: PathStoreState, nodeId: NodeId): void {
-  state.directoryLoadInfoById.delete(nodeId)
 }

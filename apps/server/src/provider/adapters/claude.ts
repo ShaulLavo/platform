@@ -94,13 +94,10 @@ const EMPTY_ATTACHMENT_BYTES = new Uint8Array(0)
 
 export const CLAUDE_ADAPTER_CAPABILITIES = {
   listCommands: true,
-  readThread: false,
-  rollbackThread: false,
   // Honest: `Query.setModel()` exists, and our prompt is a streaming
   // AsyncIterable, which is the only mode where that method works.
   sessionModelSwitch: 'in-session',
   signIn: true,
-  stopAll: true,
 } satisfies ProviderAdapter['capabilities']
 
 const CLAUDE_SIGNED_OUT_MESSAGE =
@@ -296,6 +293,7 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
     return claudeAuthState(cli, account)
   }
 
+  /** Adapter-local inspection, not part of the driver SPI. */
   async listSessions() {
     return Array.from(this.sessions.values())
       .filter((session) => session.isActive())
@@ -304,10 +302,6 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
 
   async hasSession({ threadId }: { threadId: ThreadId }) {
     return Boolean(this.sessions.get(threadId)?.isActive())
-  }
-
-  async readThread(): Promise<never> {
-    throw createInternalError('Claude readThread is not supported.')
   }
 
   async rollbackThread(): Promise<never> {

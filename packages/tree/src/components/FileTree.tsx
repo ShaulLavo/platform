@@ -1,5 +1,4 @@
 /** @jsxImportSource react */
-'use client'
 
 import type { CSSProperties, HTMLAttributes, ReactNode } from 'react'
 import {
@@ -21,7 +20,6 @@ import type {
   FileTreeCompositionOptions,
   FileTreeContextMenuItem,
   FileTreeContextMenuOpenContext,
-  FileTreeSsrPayload,
 } from '@workspace/tree/utils/model/publicTypes'
 import type { FileTree as FileTreeModel } from '@workspace/tree/utils/render/FileTree'
 
@@ -31,8 +29,6 @@ interface ActiveContextMenuState {
   context: FileTreeContextMenuOpenContext
   item: FileTreeContextMenuItem
 }
-
-export type FileTreePreloadedData = Pick<FileTreeSsrPayload, 'id' | 'shadowHtml'>
 
 function renderFileTreeChildren(
   header: ReactNode,
@@ -59,38 +55,6 @@ function renderFileTreeChildren(
       {contextMenuChild}
     </>
   )
-}
-
-function renderPreloadedShadowDom(
-  children: ReactNode,
-  preloadedData: FileTreePreloadedData | undefined,
-): ReactNode {
-  if (typeof window === 'undefined' && preloadedData != null) {
-    return (
-      <>
-        <template
-          // @ts-expect-error React does not know the declarative shadow DOM attribute.
-          shadowrootmode='open'
-          dangerouslySetInnerHTML={{ __html: preloadedData.shadowHtml }}
-        />
-        {children}
-      </>
-    )
-  }
-
-  return <>{children}</>
-}
-
-function hasExistingPreloadedContent(host: HTMLElement): boolean {
-  const shadowRoot = host.shadowRoot
-  if (
-    shadowRoot?.querySelector('[data-file-tree-id]') instanceof HTMLElement ||
-    shadowRoot?.querySelector('[data-file-tree-id]') instanceof SVGElement
-  ) {
-    return true
-  }
-
-  return host.querySelector('template[shadowrootmode="open"]') instanceof HTMLTemplateElement
 }
 
 function resolveComposition(
@@ -136,7 +100,6 @@ function resolveComposition(
 export interface FileTreeProps extends Omit<HTMLAttributes<HTMLElement>, 'children'> {
   header?: ReactNode
   model: FileTreeModel
-  preloadedData?: FileTreePreloadedData
   renderContextMenu?: (
     item: FileTreeContextMenuItem,
     context: FileTreeContextMenuOpenContext,
@@ -147,7 +110,6 @@ export function FileTree({
   header,
   id,
   model,
-  preloadedData,
   renderContextMenu,
   ...hostProps
 }: FileTreeProps): React.JSX.Element {
@@ -206,23 +168,15 @@ export function FileTree({
       return
     }
 
-    if (preloadedData != null && hasExistingPreloadedContent(hostElement)) {
-      model.hydrate({ fileTreeContainer: hostElement })
-    } else {
-      model.render({ fileTreeContainer: hostElement })
-    }
+    model.render({ fileTreeContainer: hostElement })
 
     return () => {
       model.unmount()
       model.setComposition(baselineComposition)
     }
-  }, [baselineComposition, hostElement, model, preloadedData])
+  }, [baselineComposition, hostElement, model])
 
-  const children = renderPreloadedShadowDom(
-    renderFileTreeChildren(header, renderContextMenu, activeContextMenu),
-    preloadedData,
-  )
-  const resolvedHostId = id ?? preloadedData?.id
+  const children = renderFileTreeChildren(header, renderContextMenu, activeContextMenu)
 
   // Paint the model's resolved density onto the host so callers don't have to
   // set `--trees-item-height` and `--trees-density-override` themselves.
@@ -237,10 +191,9 @@ export function FileTree({
     FILE_TREE_TAG_NAME,
     {
       ...hostProps,
-      id: resolvedHostId,
+      id,
       ref: handleHostRef,
       style: mergedStyle,
-      suppressHydrationWarning: preloadedData != null,
     },
     children,
   )

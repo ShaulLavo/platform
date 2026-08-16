@@ -232,23 +232,6 @@ export class ProviderRuntimeIngestion {
           updatedAt: event.updatedAt ?? event.createdAt,
         })
         return
-      case 'turn.proposed.delta':
-        this.buffers.appendBufferedProposedPlan(
-          proposedPlanIdFromEvent(event),
-          event.payload.delta,
-          event.createdAt,
-        )
-        return
-      case 'turn.proposed.completed':
-        await this.finalizeBufferedProposedPlan({
-          event,
-          fallbackMarkdown: event.payload.planMarkdown,
-          planId: proposedPlanIdFromEvent(event),
-          threadId: event.threadId,
-          turnId: event.turnId,
-          updatedAt: event.createdAt,
-        })
-        return
       case 'turn.completed':
         await this.completeTurn(event)
         return
@@ -659,8 +642,6 @@ function activitiesForRuntimeEvent(event: ProviderRuntimeEvent): OrchestrationTh
       return reasoningContentDeltaActivity(event)
     case 'item.started':
       return toolActivity(event, 'tool.started', `${event.payload.title ?? 'Tool'} started`)
-    case 'item.updated':
-      return toolActivity(event, 'tool.updated', event.payload.title ?? 'Tool updated')
     case 'item.completed':
       return toolActivity(event, 'tool.completed', event.payload.title ?? 'Tool')
     case 'request.opened':
@@ -759,10 +740,7 @@ function activityFromLegacyEvent(
 }
 
 function toolActivity(
-  event: Extract<
-    ProviderRuntimeEvent,
-    { type: 'item.started' | 'item.updated' | 'item.completed' }
-  >,
+  event: Extract<ProviderRuntimeEvent, { type: 'item.started' | 'item.completed' }>,
   kind: string,
   summary: string,
 ) {

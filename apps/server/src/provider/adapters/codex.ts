@@ -27,7 +27,6 @@ import type {
   ProviderCommandCatalogInput,
   ProviderCommandCatalogResult,
   ProviderRuntimeEvent,
-  ProviderThreadSnapshot,
   ProviderSessionStartInput,
   ProviderTurnInput,
   ProviderUserInputResponseInput,
@@ -74,10 +73,7 @@ const BENIGN_CODEX_STDERR_ERROR_SNIPPETS = [
 ]
 export const CODEX_ADAPTER_CAPABILITIES = {
   listCommands: true,
-  readThread: true,
-  rollbackThread: true,
   sessionModelSwitch: 'in-session',
-  stopAll: true,
 } satisfies ProviderAdapter['capabilities']
 
 type JsonRpcId = number | string
@@ -247,6 +243,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
     return probeCodexCommandCatalog(this.env, cwd)
   }
 
+  /** Adapter-local inspection, not part of the driver SPI. */
   async listSessions() {
     return Array.from(this.sessions.values())
       .filter((session) => session.isActive())
@@ -255,10 +252,6 @@ export class CodexProviderAdapter implements ProviderAdapter {
 
   async hasSession({ threadId }: { threadId: ThreadId }) {
     return Boolean(this.sessions.get(threadId)?.isActive())
-  }
-
-  async readThread({ threadId }: { threadId: ThreadId }) {
-    return this.requireSession(threadId, 'thread/read').readThread()
   }
 
   async rollbackThread({ numTurns, threadId }: { numTurns: number; threadId: ThreadId }) {
@@ -540,23 +533,9 @@ class CodexAppServerSession {
     }
   }
 
-  async readThread(): Promise<ProviderThreadSnapshot> {
-    const response = await this.client.request('thread/read', {
-      includeTurns: true,
-      threadId: this.providerThreadId,
-    })
-
-    return providerThreadSnapshot(this.threadId, response)
-  }
-
-  async rollbackThread(numTurns: number): Promise<ProviderThreadSnapshot> {
-    const response = await this.client.request('thread/rollback', {
-      numTurns,
-      threadId: this.providerThreadId,
-    })
+  async rollbackThread(numTurns: number): Promise<void> {
+    await this.client.request('thread/rollback', { numTurns, threadId: this.providerThreadId })
     this.status = 'ready'
-
-    return providerThreadSnapshot(this.threadId, response)
   }
 
   async sendTurn({ input, messageId }: { input: ProviderTurnInput; messageId: string }) {
@@ -2634,23 +2613,6 @@ function readProviderThreadId(thread: unknown) {
 
 function readTurnIdFromTurnResponse(response: CodexClientRequestResultByMethod['turn/start']) {
   return response.turn.id
-}
-
-function providerThreadSnapshot(
-  threadId: ThreadId,
-  response:
-    | CodexClientRequestResultByMethod['thread/read']
-    | CodexClientRequestResultByMethod['thread/rollback'],
-): ProviderThreadSnapshot {
-  return {
-    providerThreadId: response.thread.id,
-    threadId,
-    turns: response.thread.turns.map(providerThreadTurn),
-  }
-}
-
-function providerThreadTurn(value: { readonly id: string; readonly items: readonly unknown[] }) {
-  return { id: value.id, items: [...value.items] }
 }
 
 function parseJsonRpcMessage(line: string): JsonRpcMessage {

@@ -45,10 +45,7 @@ export type MockProviderAdapterOptions = {
 
 export const MOCK_ADAPTER_CAPABILITIES = {
   listCommands: true,
-  readThread: true,
-  rollbackThread: true,
   sessionModelSwitch: 'in-session',
-  stopAll: true,
 } satisfies ProviderAdapter['capabilities']
 
 /**
@@ -266,29 +263,8 @@ export class MockProviderAdapter implements ProviderAdapter {
     })
   }
 
-  async listSessions() {
-    return Array.from(this.sessions.values()).map((input) => ({
-      cwd: input.cwd,
-      model: input.modelSelection.model,
-      providerInstanceId: input.providerInstanceId as ProviderInstanceId,
-      providerSessionId: `mock:${input.threadId}`,
-      providerThreadId: `mock-thread:${input.threadId}`,
-      resumeCursor: input.resumeCursor ?? null,
-      runtimeMode: input.runtimeMode,
-      status: 'ready' as const,
-      threadId: input.threadId,
-    }))
-  }
-
   async hasSession({ threadId }: { threadId: ThreadId }) {
     return this.sessions.has(threadId)
-  }
-
-  async readThread({ threadId }: { threadId: ThreadId }) {
-    if (!this.sessions.has(threadId))
-      throw createInternalError(`Mock provider session not found: ${threadId}`)
-
-    return { providerThreadId: `mock-thread:${threadId}`, threadId, turns: [] }
   }
 
   async rollbackThread({ numTurns, threadId }: { numTurns: number; threadId: ThreadId }) {
@@ -297,7 +273,6 @@ export class MockProviderAdapter implements ProviderAdapter {
     }
 
     this.rollbacks.push({ numTurns, threadId })
-    return this.readThread({ threadId })
   }
 
   async interruptTurn({ threadId }: { threadId: ThreadId }) {

@@ -32,8 +32,8 @@ import type {
 } from './command-palette-types'
 
 /** Chat sessions have no path and no file icon, so they need a prefix of their own. */
-export const SCRIPT_PREFIX = 'run '
-export const SESSION_PREFIX = 'sess '
+const SCRIPT_PREFIX = 'run '
+const SESSION_PREFIX = 'sess '
 
 export function commandPaletteItems(
   specs: readonly CommandSpec[],

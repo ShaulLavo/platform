@@ -566,10 +566,7 @@ describe('CodexProviderAdapter', () => {
 
       expect(adapter.capabilities).toEqual({
         listCommands: true,
-        readThread: true,
-        rollbackThread: true,
         sessionModelSwitch: 'in-session',
-        stopAll: true,
       })
       expect(snapshot).toMatchObject({
         installed: true,
@@ -1033,44 +1030,10 @@ describe('CodexProviderAdapter', () => {
     )
   })
 
-  it('reads and rolls back active provider threads', async () => {
-    await withFakeCodex(async () => {
-      const adapter = new CodexProviderAdapter()
-      const input = providerTurnInput()
-
-      await adapter.sendTurn(input)
-      const snapshot = await adapter.readThread({ threadId: input.thread.id })
-      const rolledBack = await adapter.rollbackThread({
-        numTurns: 1,
-        threadId: input.thread.id,
-      })
-      await adapter.stopAll()
-
-      expect(snapshot).toEqual({
-        providerThreadId: 'provider-thread-1',
-        threadId: input.thread.id,
-        turns: [
-          {
-            id: 'provider-turn-1',
-            items: [{ id: 'item-1', type: 'agentMessage', text: 'hello' }],
-          },
-        ],
-      })
-      expect(rolledBack).toEqual({
-        providerThreadId: 'provider-thread-1',
-        threadId: input.thread.id,
-        turns: [],
-      })
-    })
-  })
-
-  it('fails read and rollback requests without an active session', async () => {
+  it('fails rollback requests without an active session', async () => {
     const adapter = new CodexProviderAdapter()
     const input = providerTurnInput()
 
-    await expect(adapter.readThread({ threadId: input.thread.id })).rejects.toThrow(
-      'Codex thread/read requires an active session',
-    )
     await expect(
       adapter.rollbackThread({ numTurns: 1, threadId: input.thread.id }),
     ).rejects.toThrow('Codex thread/rollback requires an active session')

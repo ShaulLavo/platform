@@ -32,15 +32,7 @@ type FileTreeStoreMoveEvent = FileTreeStoreEventInvalidation & {
 }
 
 type FileTreeStoreIgnoredSemanticEvent = FileTreeStoreEventInvalidation & {
-  operation:
-    | 'expand'
-    | 'collapse'
-    | 'mark-directory-unloaded'
-    | 'begin-child-load'
-    | 'apply-child-patch'
-    | 'complete-child-load'
-    | 'fail-child-load'
-    | 'cleanup'
+  operation: 'expand' | 'collapse'
 }
 
 type FileTreeStoreSemanticEvent =
@@ -109,12 +101,6 @@ export function remapPathThroughMutation(
     case 'add':
     case 'expand':
     case 'collapse':
-    case 'mark-directory-unloaded':
-    case 'begin-child-load':
-    case 'apply-child-patch':
-    case 'complete-child-load':
-    case 'fail-child-load':
-    case 'cleanup':
       return path
     case 'remove':
       return isPathRemoved(path, event.path) ? (preserveRemovedPath ? path : null) : path

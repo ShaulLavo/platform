@@ -5,7 +5,6 @@ import {
   createDirectoryChildIndex,
   createPresortedDirectoryChildIndex,
 } from './child-index'
-import { rebuildDirectoryChildAggregates } from './child-index'
 import {
   addNodeFlag,
   createNodeDepthAndFlags,
@@ -28,17 +27,6 @@ interface PathStoreBuilderStartupHints {
   initialExpandedPaths?: readonly string[]
 }
 
-// Options passed to PathStoreBuilder.finish(). Callers that run their own
-// per-node count computation afterwards (PathStore constructor always runs
-// either initializeOpenVisibleCounts or recomputeCountsRecursive) can set
-// skipSubtreeCountPass to avoid buildPresortedFinish's backward accumulation
-// pass. Callers that read subtreeNodeCount directly from the returned
-// snapshot (for example, static-store) must leave skipSubtreeCountPass
-// unset or false.
-export interface BuilderFinishOptions {
-  skipSubtreeCountPass?: boolean
-}
-
 type PreparedInputKind = 'prepared' | 'presorted'
 
 const PREPARED_INPUT_KIND = Symbol('pathStorePreparedInputKind')
@@ -58,12 +46,6 @@ function attachPreparedInputKind<TValue extends InternalPreparedInput>(
 import { PATH_STORE_NODE_FLAG_EXPLICIT } from './internal-types'
 import { PATH_STORE_NODE_FLAG_ROOT } from './internal-types'
 import { PATH_STORE_NODE_KIND_DIRECTORY } from './internal-types'
-import {
-  getBenchmarkInstrumentation,
-  setBenchmarkCounter,
-  withBenchmarkPhase,
-} from './internal/benchmarkInstrumentation'
-import type { BenchmarkInstrumentation } from './internal/benchmarkInstrumentation'
 import { resolvePathStoreOptions } from './options'
 import { parseInputPath } from './path'
 import type {
@@ -237,15 +219,9 @@ export function preparePathEntries(
   options: PathStoreOptions = {},
 ): PreparedPath[] {
   const resolvedOptions = resolvePathStoreOptions(options)
-  const instrumentation = getBenchmarkInstrumentation(options)
-  setBenchmarkCounter(instrumentation, 'workload.inputFiles', paths.length)
-  const preparedPaths = withBenchmarkPhase(instrumentation, 'store.preparePathEntries.parse', () =>
-    paths.map((path) => parseInputPath(path)),
-  )
+  const preparedPaths = paths.map((path) => parseInputPath(path))
 
-  withBenchmarkPhase(instrumentation, 'store.preparePathEntries.sort', () =>
-    preparedPaths.sort((left, right) => compareWithSortOption(left, right, resolvedOptions.sort)),
-  )
+  preparedPaths.sort((left, right) => compareWithSortOption(left, right, resolvedOptions.sort))
 
   return preparedPaths
 }
@@ -264,13 +240,11 @@ export class PathStoreBuilder {
   private lastPreparedPath: PreparedPath | null = null
   private readonly nodes: PathStoreNode[] = [createRootNode()]
   private readonly options: ResolvedPathStoreOptions
-  private readonly instrumentation: BenchmarkInstrumentation | null
   private readonly segmentSortKeyCache = new Map<string, SegmentSortKey>()
   private readonly segmentTable = createSegmentTable()
   private hasDeferredDirectoryIndexes = false
 
   public constructor(options: PathStoreOptions = {}) {
-    this.instrumentation = getBenchmarkInstrumentation(options)
     this.options = resolvePathStoreOptions(options)
 
     const initialExpandedPaths =
@@ -299,19 +273,15 @@ export class PathStoreBuilder {
   }
 
   public appendPaths(paths: readonly string[]): this {
-    return withBenchmarkPhase(this.instrumentation, 'store.builder.appendPaths.parse', () =>
-      this.appendPreparedPaths(paths.map((path) => parseInputPath(path))),
-    )
+    return this.appendPreparedPaths(paths.map((path) => parseInputPath(path)))
   }
 
   public appendPreparedPaths(preparedPaths: readonly PreparedPath[], validateOrder = true): this {
     this.createdDirectoriesAllExpanded = false
 
-    withBenchmarkPhase(this.instrumentation, 'store.builder.appendPreparedPaths', () => {
-      for (const preparedPath of preparedPaths) {
-        this.appendPreparedPath(preparedPath, validateOrder)
-      }
-    })
+    for (const preparedPath of preparedPaths) {
+      this.appendPreparedPath(preparedPath, validateOrder)
+    }
 
     return this
   }
@@ -320,195 +290,189 @@ export class PathStoreBuilder {
     paths: readonly string[],
     containsDirectories: boolean | null = null,
   ): this {
-    withBenchmarkPhase(this.instrumentation, 'store.builder.appendPresortedPaths', () => {
-      if (containsDirectories === false) {
-        this.appendPresortedFilePaths(paths)
-        return
+    if (containsDirectories === false) {
+      this.appendPresortedFilePaths(paths)
+      return this
+    }
+
+    this.createdDirectoriesAllExpanded = false
+
+    let previousPath: string | null = null
+    let currentDepth = 0
+    const nodes = this.nodes
+    const segmentTable = this.segmentTable
+    const idByValue = segmentTable.idByValue
+    const valueById = segmentTable.valueById
+    const dirStack = this.directoryStack
+    let stackTop = 0
+
+    // Cache the previous file's directory prefix so consecutive files in
+    // the same directory can use a fast native startsWith check instead of
+    // the full char-by-char prefix comparison.
+    let cachedDirPrefix = ''
+    let cachedDirDepth = 0
+
+    for (const path of paths) {
+      // Only catches adjacent duplicates — presorted input guarantees
+      // duplicates are consecutive, so this is sufficient.
+      if (previousPath === path) {
+        throw createTreeError(`Duplicate path: "${path}"`)
       }
 
-      this.createdDirectoriesAllExpanded = false
+      // Inline prefix comparison to avoid per-path result object
+      // allocation and function-call overhead.
+      const hasTrailingSlash = path.length > 0 && path.charCodeAt(path.length - 1) === 47
+      const endIndex = hasTrailingSlash ? path.length - 1 : path.length
+      let sharedDirectoryDepth = 0
+      let unsharedSegmentStart = 0
 
-      let previousPath: string | null = null
-      let currentDepth = 0
-      const nodes = this.nodes
-      const segmentTable = this.segmentTable
-      const idByValue = segmentTable.idByValue
-      const valueById = segmentTable.valueById
-      const dirStack = this.directoryStack
-      let stackTop = 0
-
-      // Cache the previous file's directory prefix so consecutive files in
-      // the same directory can use a fast native startsWith check instead of
-      // the full char-by-char prefix comparison.
-      let cachedDirPrefix = ''
-      let cachedDirDepth = 0
-
-      for (const path of paths) {
-        // Only catches adjacent duplicates — presorted input guarantees
-        // duplicates are consecutive, so this is sufficient.
-        if (previousPath === path) {
-          throw createTreeError(`Duplicate path: "${path}"`)
-        }
-
-        // Inline prefix comparison to avoid per-path result object
-        // allocation and function-call overhead.
-        const hasTrailingSlash = path.length > 0 && path.charCodeAt(path.length - 1) === 47
-        const endIndex = hasTrailingSlash ? path.length - 1 : path.length
-        let sharedDirectoryDepth = 0
-        let unsharedSegmentStart = 0
-
-        if (previousPath != null) {
-          // Fast path: if the path starts with the cached directory prefix,
-          // skip the char-by-char comparison.  Native startsWith uses
-          // optimized memory comparison.  The inner indexOf loop still
-          // handles any new subdirectories beyond the cached prefix.
-          if (
-            cachedDirPrefix.length > 0 &&
-            path.length > cachedDirPrefix.length &&
-            path.startsWith(cachedDirPrefix)
-          ) {
-            sharedDirectoryDepth = cachedDirDepth
-            unsharedSegmentStart = cachedDirPrefix.length
-          } else {
-            const compareLength = Math.min(endIndex, previousPath.length)
-            let prefixMatched = true
-            for (let ci = 0; ci < compareLength; ci++) {
-              const cc = path.charCodeAt(ci)
-              if (cc !== previousPath.charCodeAt(ci)) {
-                prefixMatched = false
-                break
-              }
-              if (cc === 47) {
-                sharedDirectoryDepth++
-                unsharedSegmentStart = ci + 1
-              }
+      if (previousPath != null) {
+        // Fast path: if the path starts with the cached directory prefix,
+        // skip the char-by-char comparison.  Native startsWith uses
+        // optimized memory comparison.  The inner indexOf loop still
+        // handles any new subdirectories beyond the cached prefix.
+        if (
+          cachedDirPrefix.length > 0 &&
+          path.length > cachedDirPrefix.length &&
+          path.startsWith(cachedDirPrefix)
+        ) {
+          sharedDirectoryDepth = cachedDirDepth
+          unsharedSegmentStart = cachedDirPrefix.length
+        } else {
+          const compareLength = Math.min(endIndex, previousPath.length)
+          let prefixMatched = true
+          for (let ci = 0; ci < compareLength; ci++) {
+            const cc = path.charCodeAt(ci)
+            if (cc !== previousPath.charCodeAt(ci)) {
+              prefixMatched = false
+              break
             }
-            if (
-              prefixMatched &&
-              hasTrailingSlash &&
-              compareLength === endIndex &&
-              previousPath.length > endIndex &&
-              previousPath.charCodeAt(endIndex) === 47
-            ) {
+            if (cc === 47) {
               sharedDirectoryDepth++
-              unsharedSegmentStart = endIndex + 1
+              unsharedSegmentStart = ci + 1
             }
           }
+          if (
+            prefixMatched &&
+            hasTrailingSlash &&
+            compareLength === endIndex &&
+            previousPath.length > endIndex &&
+            previousPath.charCodeAt(endIndex) === 47
+          ) {
+            sharedDirectoryDepth++
+            unsharedSegmentStart = endIndex + 1
+          }
+        }
+      }
+
+      stackTop = sharedDirectoryDepth
+      currentDepth = sharedDirectoryDepth
+
+      let segmentStart = unsharedSegmentStart
+      let slashPos = path.indexOf('/', segmentStart)
+      while (slashPos >= 0 && slashPos < endIndex) {
+        const parentId = dirStack[stackTop]
+        if (parentId === undefined) {
+          throw createTreeError('Directory stack underflow while building the path store')
         }
 
-        stackTop = sharedDirectoryDepth
-        currentDepth = sharedDirectoryDepth
+        currentDepth++
+        const dirSeg = path.slice(segmentStart, slashPos)
+        let dirNameId = idByValue.get(dirSeg)
+        if (dirNameId === undefined) {
+          dirNameId = valueById.length
+          idByValue.set(dirSeg, dirNameId)
+          valueById.push(dirSeg)
+        }
+        const nodeId = nodes.length
+        nodes.push({
+          depthAndFlags: createNodeDepthAndFlags(currentDepth, 0, PATH_STORE_NODE_KIND_DIRECTORY),
+          nameId: dirNameId,
+          parentId,
+          subtreeNodeCount: 1,
+          visibleSubtreeCount: 1,
+        })
+        this.recordCreatedDirectoryPath(path.slice(0, slashPos))
+        stackTop++
+        dirStack[stackTop] = nodeId
+        segmentStart = slashPos + 1
+        slashPos = path.indexOf('/', segmentStart)
+      }
 
-        let segmentStart = unsharedSegmentStart
-        let slashPos = path.indexOf('/', segmentStart)
-        while (slashPos >= 0 && slashPos < endIndex) {
+      if (hasTrailingSlash) {
+        if (segmentStart < endIndex) {
           const parentId = dirStack[stackTop]
           if (parentId === undefined) {
-            throw createTreeError('Directory stack underflow while building the path store')
+            throw createTreeError(`Unable to resolve directory parent for "${path}"`)
           }
 
           currentDepth++
-          const dirSeg = path.slice(segmentStart, slashPos)
-          let dirNameId = idByValue.get(dirSeg)
-          if (dirNameId === undefined) {
-            dirNameId = valueById.length
-            idByValue.set(dirSeg, dirNameId)
-            valueById.push(dirSeg)
+          const trailSeg = path.slice(segmentStart, endIndex)
+          let trailNameId = idByValue.get(trailSeg)
+          if (trailNameId === undefined) {
+            trailNameId = valueById.length
+            idByValue.set(trailSeg, trailNameId)
+            valueById.push(trailSeg)
           }
           const nodeId = nodes.length
           nodes.push({
             depthAndFlags: createNodeDepthAndFlags(currentDepth, 0, PATH_STORE_NODE_KIND_DIRECTORY),
-            nameId: dirNameId,
+            nameId: trailNameId,
             parentId,
             subtreeNodeCount: 1,
             visibleSubtreeCount: 1,
           })
-          this.recordCreatedDirectoryPath(path.slice(0, slashPos))
           stackTop++
           dirStack[stackTop] = nodeId
-          segmentStart = slashPos + 1
-          slashPos = path.indexOf('/', segmentStart)
         }
 
-        if (hasTrailingSlash) {
-          if (segmentStart < endIndex) {
-            const parentId = dirStack[stackTop]
-            if (parentId === undefined) {
-              throw createTreeError(`Unable to resolve directory parent for "${path}"`)
-            }
-
-            currentDepth++
-            const trailSeg = path.slice(segmentStart, endIndex)
-            let trailNameId = idByValue.get(trailSeg)
-            if (trailNameId === undefined) {
-              trailNameId = valueById.length
-              idByValue.set(trailSeg, trailNameId)
-              valueById.push(trailSeg)
-            }
-            const nodeId = nodes.length
-            nodes.push({
-              depthAndFlags: createNodeDepthAndFlags(
-                currentDepth,
-                0,
-                PATH_STORE_NODE_KIND_DIRECTORY,
-              ),
-              nameId: trailNameId,
-              parentId,
-              subtreeNodeCount: 1,
-              visibleSubtreeCount: 1,
-            })
-            stackTop++
-            dirStack[stackTop] = nodeId
-          }
-
-          const directoryId = dirStack[stackTop]
-          if (directoryId === undefined) {
-            throw createTreeError(`Unable to resolve directory node for "${path}"`)
-          }
-
-          this.promoteDirectoryToExplicit(directoryId, path)
-        } else {
-          const parentId = dirStack[stackTop]
-          if (parentId === undefined) {
-            throw createTreeError(`Unable to resolve file parent for "${path}"`)
-          }
-
-          const fileSeg = path.slice(segmentStart)
-          let fileNameId = idByValue.get(fileSeg)
-          if (fileNameId === undefined) {
-            fileNameId = valueById.length
-            idByValue.set(fileSeg, fileNameId)
-            valueById.push(fileSeg)
-          }
-          nodes.push({
-            depthAndFlags: createNodeDepthAndFlags(currentDepth + 1, 0),
-            nameId: fileNameId,
-            parentId,
-            subtreeNodeCount: 1,
-            visibleSubtreeCount: 1,
-          })
+        const directoryId = dirStack[stackTop]
+        if (directoryId === undefined) {
+          throw createTreeError(`Unable to resolve directory node for "${path}"`)
         }
 
-        // Update the directory prefix cache.  Only allocate a new prefix
-        // string when the directory actually changed.
-        if (segmentStart !== cachedDirPrefix.length) {
-          cachedDirPrefix = path.substring(0, segmentStart)
-          cachedDirDepth = currentDepth
+        this.promoteDirectoryToExplicit(directoryId, path)
+      } else {
+        const parentId = dirStack[stackTop]
+        if (parentId === undefined) {
+          throw createTreeError(`Unable to resolve file parent for "${path}"`)
         }
 
-        previousPath = path
+        const fileSeg = path.slice(segmentStart)
+        let fileNameId = idByValue.get(fileSeg)
+        if (fileNameId === undefined) {
+          fileNameId = valueById.length
+          idByValue.set(fileSeg, fileNameId)
+          valueById.push(fileSeg)
+        }
+        nodes.push({
+          depthAndFlags: createNodeDepthAndFlags(currentDepth + 1, 0),
+          nameId: fileNameId,
+          parentId,
+          subtreeNodeCount: 1,
+          visibleSubtreeCount: 1,
+        })
       }
 
-      // Sync directory stack length for potential subsequent non-presorted
-      // operations.
-      dirStack.length = stackTop + 1
-
-      if (previousPath != null) {
-        this.lastPreparedPath = parseInputPath(previousPath)
+      // Update the directory prefix cache.  Only allocate a new prefix
+      // string when the directory actually changed.
+      if (segmentStart !== cachedDirPrefix.length) {
+        cachedDirPrefix = path.substring(0, segmentStart)
+        cachedDirDepth = currentDepth
       }
 
-      this.hasDeferredDirectoryIndexes = true
-    })
+      previousPath = path
+    }
+
+    // Sync directory stack length for potential subsequent non-presorted
+    // operations.
+    dirStack.length = stackTop + 1
+
+    if (previousPath != null) {
+      this.lastPreparedPath = parseInputPath(previousPath)
+    }
+
+    this.hasDeferredDirectoryIndexes = true
 
     return this
   }
@@ -631,17 +595,10 @@ export class PathStoreBuilder {
     this.hasDeferredDirectoryIndexes = true
   }
 
-  public finish(options: BuilderFinishOptions = {}): PathStoreSnapshot {
-    const skipSubtreeCountPass = options.skipSubtreeCountPass === true
+  public finish(): PathStoreSnapshot {
     if (this.hasDeferredDirectoryIndexes) {
-      withBenchmarkPhase(this.instrumentation, 'store.builder.buildDirectoryIndexes', () =>
-        this.buildPresortedFinish(skipSubtreeCountPass),
-      )
+      this.buildPresortedFinish()
       this.hasDeferredDirectoryIndexes = false
-    } else if (!skipSubtreeCountPass) {
-      withBenchmarkPhase(this.instrumentation, 'store.builder.computeSubtreeCounts', () =>
-        this.computeSubtreeCounts(0),
-      )
     }
     return {
       directories: this.directories,
@@ -927,7 +884,7 @@ export class PathStoreBuilder {
   // presorted fast path, then computes subtree counts bottom-up and rebuilds
   // directory child aggregates — all in linear passes instead of recursive
   // tree descent.
-  private buildPresortedFinish(skipSubtreeCountPass: boolean): void {
+  private buildPresortedFinish(): void {
     const nodes = this.nodes
     const directories = this.directories
 
@@ -976,35 +933,6 @@ export class PathStoreBuilder {
         parentIndex.childIds.push(nodeId)
       }
     }
-
-    // Backward pass: accumulate subtree counts bottom-up into parent nodes.
-    // Parents always have lower IDs than their children, so iterating
-    // backward ensures each child's counts are finalized before its parent
-    // reads them. Directory-level aggregates (totalChildSubtreeNodeCount,
-    // etc.) and visible-child chunk summaries are NOT computed here; they
-    // are derived during state initialization when initializeOpenVisibleCounts
-    // or recomputeCountsRecursive iterates each directory's children.
-    //
-    // PathStore's constructor always runs one of those re-walks and will
-    // populate both subtreeNodeCount and visibleSubtreeCount from childIds,
-    // so the caller can pass skipSubtreeCountPass to avoid ~990K redundant
-    // adds here. Callers that read subtreeNodeCount directly off the
-    // snapshot (static-store) must leave skipSubtreeCountPass unset.
-    if (skipSubtreeCountPass) {
-      return
-    }
-    for (let nodeId = nodes.length - 1; nodeId >= 1; nodeId--) {
-      const node = nodes[nodeId]
-      if (node == null) {
-        continue
-      }
-
-      const parentNode = nodes[node.parentId]
-      if (parentNode != null) {
-        parentNode.subtreeNodeCount += node.subtreeNodeCount
-        parentNode.visibleSubtreeCount += node.visibleSubtreeCount
-      }
-    }
   }
 
   // Builds directory-child indexes in the same layout as buildPresortedFinish
@@ -1031,34 +959,5 @@ export class PathStoreBuilder {
         appendChildReference(parentIndex, nodeId)
       }
     }
-  }
-
-  // Computes subtree counts after bulk ingest so projection math can read
-  // aggregate counts without changing the canonical storage layout.
-  private computeSubtreeCounts(nodeId: NodeId): number {
-    const node = this.nodes[nodeId]
-    if (node === undefined) {
-      throw createTreeError(`Unknown node ID: ${String(nodeId)}`)
-    }
-
-    if (!isDirectoryNode(node)) {
-      node.subtreeNodeCount = 1
-      node.visibleSubtreeCount = 1
-      return 1
-    }
-
-    const directoryIndex = this.getDirectoryIndex(nodeId)
-    let subtreeNodeCount = 1
-    for (const childId of directoryIndex.childIds) {
-      subtreeNodeCount += this.computeSubtreeCounts(childId)
-    }
-
-    // Children already have final counts from the recursive descent above, so
-    // the directory can derive its cached child aggregates before writing its
-    // own subtree totals.
-    rebuildDirectoryChildAggregates(this.nodes, directoryIndex)
-    node.subtreeNodeCount = subtreeNodeCount
-    node.visibleSubtreeCount = subtreeNodeCount
-    return subtreeNodeCount
   }
 }

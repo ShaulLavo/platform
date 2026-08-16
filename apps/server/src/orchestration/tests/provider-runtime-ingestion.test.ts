@@ -178,19 +178,12 @@ describe('provider runtime ingestion', () => {
     await ingestion.ingest({
       createdAt: now,
       eventId: 'plan-delta-1',
-      payload: { delta: '1. Inspect\n' },
+      payload: { delta: '1. Inspect\n', streamKind: 'plan_text' },
       threadId,
       turnId,
-      type: 'turn.proposed.delta',
+      type: 'content.delta',
     })
-    await ingestion.ingest({
-      createdAt: later,
-      eventId: 'plan-complete-1',
-      payload: { planMarkdown: 'unused fallback' },
-      threadId,
-      turnId,
-      type: 'turn.proposed.completed',
-    })
+    await ingestion.ingest(turnCompleted('turn-complete-1'))
 
     expect(dispatched).toMatchObject([
       {

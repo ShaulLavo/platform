@@ -1,5 +1,3 @@
-'use client'
-
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import type { FileTreeOptions } from '@workspace/tree/utils/model/publicTypes'

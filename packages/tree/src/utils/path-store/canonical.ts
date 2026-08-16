@@ -29,7 +29,6 @@ import { PATH_STORE_NODE_FLAG_EXPLICIT } from './internal-types'
 import { PATH_STORE_NODE_FLAG_REMOVED } from './internal-types'
 import { PATH_STORE_NODE_FLAG_ROOT } from './internal-types'
 import { PATH_STORE_NODE_KIND_DIRECTORY } from './internal-types'
-import { withBenchmarkPhase } from './internal/benchmarkInstrumentation'
 import { parseInputPath, parseLookupPath } from './path'
 import type {
   PathStoreAddEvent,
@@ -42,7 +41,7 @@ import type {
 } from './public-types'
 import { getSegmentValue, internSegment } from './segments'
 import { compareSegmentSortKeys, getSegmentSortKey } from './sort'
-import { clearDirectoryLoadInfo, isDirectoryExpanded } from './state'
+import { isDirectoryExpanded } from './state'
 import type { MoveTarget, PathStoreState } from './state'
 
 export function listPaths(state: PathStoreState, path?: string): string[] {
@@ -259,15 +258,7 @@ export function materializeNodePath(state: PathStoreState, nodeId: NodeId): stri
 }
 
 export function recomputeCountsUpwardFrom(state: PathStoreState, startNodeId: NodeId): void {
-  const instrumentation = state.instrumentation
-  if (instrumentation == null) {
-    recomputeCountsUpwardFromNow(state, startNodeId)
-    return
-  }
-
-  withBenchmarkPhase(instrumentation, 'store.recomputeCountsUpwardFrom', () =>
-    recomputeCountsUpwardFromNow(state, startNodeId),
-  )
+  recomputeCountsUpwardFromNow(state, startNodeId)
 }
 
 // Iterative post-order traversal that recomputes subtree and visible counts
@@ -751,7 +742,6 @@ function removeSubtree(state: PathStoreState, nodeId: NodeId): NodeId[] {
         state.hasCollapsedDirectoryOverrides = state.collapsedDirectoryIds.size > 0
       }
       state.expandedDirectoryIds.delete(frame.nodeId)
-      clearDirectoryLoadInfo(state, frame.nodeId)
       state.activeNodeCount--
       removedNodeIds.push(frame.nodeId)
       continue
@@ -935,15 +925,7 @@ function recomputeNodeCounts(
   currentNode = requireNode(state, nodeId),
   rebuildChildAggregates = false,
 ): void {
-  const instrumentation = state.instrumentation
-  if (instrumentation == null) {
-    recomputeNodeCountsNow(state, nodeId, currentNode, rebuildChildAggregates)
-    return
-  }
-
-  withBenchmarkPhase(instrumentation, 'store.recomputeNodeCounts', () =>
-    recomputeNodeCountsNow(state, nodeId, currentNode, rebuildChildAggregates),
-  )
+  recomputeNodeCountsNow(state, nodeId, currentNode, rebuildChildAggregates)
 }
 
 function recomputeCountsUpwardFromNow(state: PathStoreState, startNodeId: NodeId): void {
@@ -991,14 +973,7 @@ function recomputeNodeCountsNow(
 
   const currentIndex = getDirectoryIndex(state, nodeId)
   if (rebuildChildAggregates) {
-    const instrumentation = state.instrumentation
-    if (instrumentation == null) {
-      rebuildDirectoryChildAggregates(state.snapshot.nodes, currentIndex)
-    } else {
-      withBenchmarkPhase(instrumentation, 'store.recomputeNodeCounts.rebuildChildAggregates', () =>
-        rebuildDirectoryChildAggregates(state.snapshot.nodes, currentIndex),
-      )
-    }
+    rebuildDirectoryChildAggregates(state.snapshot.nodes, currentIndex)
   }
   const subtreeNodeCount = 1 + currentIndex.totalChildSubtreeNodeCount
   const visibleChildCount = currentIndex.totalChildVisibleSubtreeCount

@@ -4,7 +4,6 @@ import type {
   GitCommitResult,
   GitPullRequestCreateResult,
   GitPullRequestState,
-  GitWorktreeCreateResult,
 } from '@workspace/contracts'
 
 import { getClient } from '@/lib/client'
@@ -210,25 +209,6 @@ async function readCommitProgress(
   return result
 }
 
-export async function commitChanges(path: string, message: string) {
-  return observeGitOperation(
-    {
-      action: 'git.commit',
-      messageBytes: new Blob([message]).size,
-      path,
-    },
-    async () => {
-      const response = await getClient().git.commit.post({ message, path })
-
-      return unwrapEdenResponse(response, {
-        requireData: true,
-        emptyMessage: 'git server returned an empty response',
-      })
-    },
-    (result) => ({ kind: result.kind }),
-  )
-}
-
 export async function fetchRemote(path: string) {
   return observeGitOperation(
     { action: 'git.fetch_remote', path },
@@ -332,31 +312,6 @@ export async function createPullRequest(input: {
       })
     },
     (result) => ({ kind: result.kind }),
-  )
-}
-
-/**
- * Prepares a session's own checkout. Idempotent by session id — the service
- * returns the existing worktree rather than failing, so a retried send cannot
- * strand a second one.
- */
-export async function createSessionWorktree(input: {
-  base?: string
-  branch?: string
-  path: string
-  sessionId: string
-}) {
-  return observeGitOperation(
-    { action: 'git.create_worktree', path: input.path, sessionId: input.sessionId },
-    async () => {
-      const response = await getClient().git.worktrees.create.post(input)
-
-      return unwrapEdenResponse<GitWorktreeCreateResult>(response, {
-        requireData: true,
-        emptyMessage: 'git server returned an empty response',
-      })
-    },
-    (result) => ({ branch: result.worktree.branch, created: result.created }),
   )
 }
 

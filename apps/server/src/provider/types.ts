@@ -92,9 +92,6 @@ type RuntimeEventRawSource =
   | 'codex.sdk.thread-event'
   | 'claude.sdk.message'
   | 'claude.sdk.permission'
-  | 'opencode.sdk.event'
-  | 'acp.jsonrpc'
-  | `acp.${string}.extension`
 
 type RuntimeEventRaw = {
   messageType?: string
@@ -197,25 +194,7 @@ export type ProviderRuntimeEvent =
       }
     })
   | (ProviderRuntimeBaseEvent & {
-      type: 'turn.proposed.delta'
-      payload: { delta: string }
-    })
-  | (ProviderRuntimeBaseEvent & {
-      type: 'turn.proposed.completed'
-      payload: { planMarkdown: string }
-    })
-  | (ProviderRuntimeBaseEvent & {
       type: 'item.started'
-      payload: {
-        data?: unknown
-        detail?: string
-        itemType: string
-        status?: ProviderRuntimeItemStatus
-        title?: string
-      }
-    })
-  | (ProviderRuntimeBaseEvent & {
-      type: 'item.updated'
       payload: {
         data?: unknown
         detail?: string
@@ -364,10 +343,6 @@ export type ProviderRuntimeEvent =
       }
     })
   | (ProviderRuntimeBaseEvent & {
-      type: 'turn.aborted'
-      payload: { reason: string }
-    })
-  | (ProviderRuntimeBaseEvent & {
       type: 'turn.plan.updated'
       payload: {
         explanation?: string | null
@@ -456,15 +431,12 @@ type ProviderAdapterCapabilities = {
    * protocol has no listing request (codex, today) stay untouched.
    */
   listCommands?: boolean
-  readThread: boolean
-  rollbackThread: boolean
   sessionModelSwitch: 'in-session' | 'unsupported'
   /**
    * Whether the adapter implements the optional auth members below. Optional so
    * adapters that cannot drive a sign-in flow (codex, mock) stay untouched.
    */
   signIn?: boolean
-  stopAll: boolean
 }
 
 export type ProviderSignInInput = {
@@ -499,17 +471,6 @@ export type ProviderAdapterSession = {
   threadId: ThreadId
 }
 
-type ProviderThreadTurnSnapshot = {
-  id: string
-  items: unknown[]
-}
-
-export type ProviderThreadSnapshot = {
-  providerThreadId?: string
-  threadId: ThreadId
-  turns: ProviderThreadTurnSnapshot[]
-}
-
 export type ProviderAdapter = {
   adapterKey: string
   /**
@@ -527,14 +488,9 @@ export type ProviderAdapter = {
    * when `capabilities.listCommands` is true.
    */
   listCommands?: (input: ProviderCommandCatalogInput) => Promise<ProviderCommandCatalogResult>
-  listSessions: () => Promise<ProviderAdapterSession[]>
-  readThread: (input: { threadId: ThreadId }) => Promise<ProviderThreadSnapshot>
   respondApproval: (input: ProviderApprovalResponseInput) => Promise<void>
   respondUserInput: (input: ProviderUserInputResponseInput) => Promise<void>
-  rollbackThread: (input: {
-    numTurns: number
-    threadId: ThreadId
-  }) => Promise<ProviderThreadSnapshot>
+  rollbackThread: (input: { numTurns: number; threadId: ThreadId }) => Promise<void>
   /**
    * Starts an interactive sign-in. Returns as soon as the flow is running — the
    * user still has a browser round trip to finish — so callers poll

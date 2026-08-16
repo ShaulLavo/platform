@@ -251,18 +251,6 @@ export interface FileTreeRenderProps {
   fileTreeContainer?: HTMLElement
 }
 
-export interface FileTreeHydrationProps {
-  fileTreeContainer: HTMLElement
-}
-
-export interface FileTreeSsrPayload {
-  domOuterStart: string
-  id: string
-  outerEnd: string
-  outerStart: string
-  shadowHtml: string
-}
-
 export interface FileTreeMutationEventInvalidation {
   canonicalChanged: boolean
   projectionChanged: boolean

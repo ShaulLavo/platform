@@ -1,21 +1,13 @@
 import { createTreeError } from '../structured-errors'
 
-import { withBenchmarkPhase } from './internal/benchmarkInstrumentation'
 import type {
   PathStoreAddEvent,
-  PathStoreApplyChildPatchEvent,
   PathStoreBatchEvent,
-  PathStoreBeginChildLoadEvent,
-  PathStoreCleanupEvent,
-  PathStoreCleanupResult,
   PathStoreCollapseEvent,
-  PathStoreCompleteChildLoadEvent,
   PathStoreEvent,
   PathStoreEventForType,
   PathStoreEventType,
   PathStoreExpandEvent,
-  PathStoreFailChildLoadEvent,
-  PathStoreMarkDirectoryUnloadedEvent,
   PathStoreMoveEvent,
   PathStoreRemoveEvent,
   PathStoreSemanticEvent,
@@ -125,131 +117,6 @@ export function createCollapseEvent(
   }
 }
 
-export function createMarkDirectoryUnloadedEvent(
-  args: EventInvalidationArgs & { path: string },
-): PathStoreMarkDirectoryUnloadedEvent {
-  return {
-    affectedAncestorIds: args.affectedAncestorIds ?? [],
-    affectedNodeIds: args.affectedNodeIds ?? [],
-    canonicalChanged: false,
-    operation: 'mark-directory-unloaded',
-    path: args.path,
-    projectionChanged: args.projectionChanged,
-    visibleCountDelta: null,
-  }
-}
-
-export function createBeginChildLoadEvent(
-  args: EventInvalidationArgs & {
-    attemptId: number
-    path: string
-    reused: boolean
-  },
-): PathStoreBeginChildLoadEvent {
-  return {
-    affectedAncestorIds: args.affectedAncestorIds ?? [],
-    affectedNodeIds: args.affectedNodeIds ?? [],
-    attemptId: args.attemptId,
-    canonicalChanged: false,
-    operation: 'begin-child-load',
-    path: args.path,
-    projectionChanged: args.projectionChanged,
-    reused: args.reused,
-    visibleCountDelta: null,
-  }
-}
-
-export function createApplyChildPatchEvent(
-  args: EventInvalidationArgs & {
-    attemptId: number
-    childEvents: readonly PathStoreSemanticEvent[]
-    path: string
-  },
-): PathStoreApplyChildPatchEvent {
-  return {
-    affectedAncestorIds: args.affectedAncestorIds ?? [],
-    affectedNodeIds: args.affectedNodeIds ?? [],
-    attemptId: args.attemptId,
-    canonicalChanged: args.childEvents.some((event) => event.canonicalChanged),
-    childEvents: args.childEvents,
-    operation: 'apply-child-patch',
-    path: args.path,
-    projectionChanged: args.projectionChanged,
-    visibleCountDelta: null,
-  }
-}
-
-export function createCompleteChildLoadEvent(
-  args: EventInvalidationArgs & {
-    attemptId: number
-    path: string
-    stale: boolean
-  },
-): PathStoreCompleteChildLoadEvent {
-  return {
-    affectedAncestorIds: args.affectedAncestorIds ?? [],
-    affectedNodeIds: args.affectedNodeIds ?? [],
-    attemptId: args.attemptId,
-    canonicalChanged: false,
-    operation: 'complete-child-load',
-    path: args.path,
-    projectionChanged: args.projectionChanged,
-    stale: args.stale,
-    visibleCountDelta: null,
-  }
-}
-
-export function createFailChildLoadEvent(
-  args: EventInvalidationArgs & {
-    attemptId: number
-    errorMessage: string | undefined
-    path: string
-    stale: boolean
-  },
-): PathStoreFailChildLoadEvent {
-  return {
-    affectedAncestorIds: args.affectedAncestorIds ?? [],
-    affectedNodeIds: args.affectedNodeIds ?? [],
-    attemptId: args.attemptId,
-    canonicalChanged: false,
-    errorMessage: args.errorMessage,
-    operation: 'fail-child-load',
-    path: args.path,
-    projectionChanged: args.projectionChanged,
-    stale: args.stale,
-    visibleCountDelta: null,
-  }
-}
-
-export function createCleanupEvent(
-  args: EventInvalidationArgs & PathStoreCleanupResult,
-): PathStoreCleanupEvent {
-  return {
-    activeNodeCountAfter: args.activeNodeCountAfter,
-    activeNodeCountBefore: args.activeNodeCountBefore,
-    affectedAncestorIds: args.affectedAncestorIds ?? [],
-    affectedNodeIds: args.affectedNodeIds ?? [],
-    cachedPathEntryCountAfter: args.cachedPathEntryCountAfter,
-    cachedPathEntryCountBefore: args.cachedPathEntryCountBefore,
-    canonicalChanged: false,
-    idsPreserved: args.idsPreserved,
-    loadInfoEntryCountAfter: args.loadInfoEntryCountAfter,
-    loadInfoEntryCountBefore: args.loadInfoEntryCountBefore,
-    mode: args.mode,
-    operation: 'cleanup',
-    projectionChanged: args.projectionChanged,
-    reclaimedCachedPathEntryCount: args.reclaimedCachedPathEntryCount,
-    reclaimedLoadInfoEntryCount: args.reclaimedLoadInfoEntryCount,
-    reclaimedNodeSlotCount: args.reclaimedNodeSlotCount,
-    reclaimedSegmentCount: args.reclaimedSegmentCount,
-    segmentCountAfter: args.segmentCountAfter,
-    segmentCountBefore: args.segmentCountBefore,
-    totalNodeSlotCountAfter: args.totalNodeSlotCountAfter,
-    totalNodeSlotCountBefore: args.totalNodeSlotCountBefore,
-    visibleCountDelta: null,
-  }
-}
-
 export function finalizeEvent(
   state: PathStoreState,
   previousVisibleCount: number,
@@ -277,13 +144,7 @@ export function batchEvents(state: PathStoreState, run: () => void): void {
 }
 
 export function recordEvent(state: PathStoreState, event: PathStoreSemanticEvent): void {
-  const instrumentation = state.instrumentation
-  if (instrumentation == null) {
-    recordEventNow(state, event)
-    return
-  }
-
-  withBenchmarkPhase(instrumentation, 'store.events.record', () => recordEventNow(state, event))
+  recordEventNow(state, event)
 }
 
 function recordEventNow(state: PathStoreState, event: PathStoreSemanticEvent): void {
@@ -314,28 +175,14 @@ function finishTransaction(
 
   const parentFrame = state.transactionStack[state.transactionStack.length - 1] ?? null
   if (parentFrame != null) {
-    const instrumentation = state.instrumentation
-    if (instrumentation == null) {
-      mergeBatchFrameIntoParent(parentFrame, frame)
-    } else {
-      withBenchmarkPhase(instrumentation, 'store.events.batch.merge', () =>
-        mergeBatchFrameIntoParent(parentFrame, frame),
-      )
-    }
+    mergeBatchFrameIntoParent(parentFrame, frame)
     return
   }
 
   const batchEvent = createBatchEvent(frame, visibleCountDelta)
 
-  const instrumentation = state.instrumentation
-  if (instrumentation == null) {
-    emitEvent(state, batchEvent)
-    return
-  }
-
-  withBenchmarkPhase(instrumentation, 'store.events.batch.commit', () =>
-    emitEvent(state, batchEvent),
-  )
+  emitEvent(state, batchEvent)
+  emitEvent(state, batchEvent)
 }
 
 function createBatchEvent(
@@ -381,13 +228,7 @@ function mergeEventMetadataIntoFrame(frame: TransactionFrame, event: PathStoreSe
 }
 
 function emitEvent(state: PathStoreState, event: PathStoreEvent): void {
-  const instrumentation = state.instrumentation
-  if (instrumentation == null) {
-    emitEventNow(state, event)
-    return
-  }
-
-  withBenchmarkPhase(instrumentation, 'store.events.emit', () => emitEventNow(state, event))
+  emitEventNow(state, event)
 }
 
 function emitEventNow(state: PathStoreState, event: PathStoreEvent): void {

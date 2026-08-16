@@ -1206,8 +1206,6 @@ export function FileTreeView({
     scrollTop: number
   } | null>(null)
   const pointerFocusScrollPathRef = useRef<string | null>(null)
-  const debugContextMenuTriggerPathRef = useRef<string | null>(null)
-  const debugDisableScrollSuppressionRef = useRef(false)
 
   // Keep the coupled sticky-keyboard refs moving together so each transition
   // leaves exactly one preservation mode active.
@@ -1289,52 +1287,6 @@ export function FileTreeView({
   const contextMenuButtonVisibility = composition?.contextMenu?.buttonVisibility ?? 'when-needed'
   const contextMenuRightClickEnabled =
     contextMenuTriggerMode === 'both' || contextMenuTriggerMode === 'right-click'
-  useLayoutEffect(() => {
-    const rootElement = rootRef.current
-    if (rootElement == null) {
-      return
-    }
-
-    const handleDebugSetContextMenuTrigger = (event: Event): void => {
-      if (!(event instanceof CustomEvent)) {
-        return
-      }
-      const detail = event.detail as { path?: string | null } | null
-      const nextPath = detail?.path ?? null
-      debugContextMenuTriggerPathRef.current = nextPath
-      setContextHoverPath(nextPath)
-      setLastContextMenuInteraction(nextPath == null ? null : 'pointer')
-    }
-
-    const handleDebugSetScrollSuppression = (event: Event): void => {
-      if (!(event instanceof CustomEvent)) {
-        return
-      }
-      const detail = event.detail as { disabled?: boolean } | null
-      debugDisableScrollSuppressionRef.current = detail?.disabled === true
-    }
-
-    rootElement.addEventListener(
-      'file-tree-debug-set-context-menu-trigger',
-      handleDebugSetContextMenuTrigger as EventListener,
-    )
-    rootElement.addEventListener(
-      'file-tree-debug-set-scroll-suppression',
-      handleDebugSetScrollSuppression as EventListener,
-    )
-
-    return () => {
-      rootElement.removeEventListener(
-        'file-tree-debug-set-context-menu-trigger',
-        handleDebugSetContextMenuTrigger as EventListener,
-      )
-      rootElement.removeEventListener(
-        'file-tree-debug-set-scroll-suppression',
-        handleDebugSetScrollSuppression as EventListener,
-      )
-    }
-  }, [])
-
   const registerRowButton = useCallback((path: string, element: HTMLElement | null): void => {
     setButtonRef(rowButtonRefs.current, path, element)
   }, [])
@@ -2439,9 +2391,6 @@ export function FileTreeView({
     // too late — the user would see the floating trigger sit at its old row
     // position for a frame while the rows themselves have already scrolled.
     const markScrolling = (): void => {
-      if (debugDisableScrollSuppressionRef.current === true) {
-        return
-      }
       if (listElement != null) {
         listElement.dataset.isScrolling ??= ''
       }
@@ -2482,7 +2431,7 @@ export function FileTreeView({
       }
     }
     const markOverlayReveal = (): void => {
-      if (rootElement == null || debugDisableScrollSuppressionRef.current === true) {
+      if (rootElement == null) {
         return
       }
       if (scrollElement.scrollTop > 0) {
@@ -2516,10 +2465,6 @@ export function FileTreeView({
       // not close the menu the user is actively interacting with.
       if (contextMenuStateRef.current != null && isScrollingRef.current) {
         closeContextMenuRef.current()
-      }
-      if (debugDisableScrollSuppressionRef.current === true) {
-        isScrollingRef.current = false
-        return
       }
       setContextHoverPath((previousPath) => (previousPath == null ? previousPath : null))
       markScrolling()
@@ -2956,11 +2901,7 @@ export function FileTreeView({
       : null
   const pointerTriggerPath = lastContextMenuInteraction === 'pointer' ? contextHoverPath : null
   const triggerPath =
-    contextMenuState?.path ??
-    debugContextMenuTriggerPathRef.current ??
-    pointerTriggerPath ??
-    focusTriggerPath ??
-    contextHoverPath
+    contextMenuState?.path ?? pointerTriggerPath ?? focusTriggerPath ?? contextHoverPath
   const isPointerContextMenuOpen = contextMenuState?.source === 'right-click'
 
   useLayoutEffect(() => {

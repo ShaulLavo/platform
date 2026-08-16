@@ -1,8 +1,4 @@
-import type {
-  PathStoreDirectoryLoadState,
-  PathStorePathComparator,
-  PathStorePreparedInput,
-} from './public-types'
+import type { PathStorePathComparator, PathStorePreparedInput } from './public-types'
 
 export type NodeId = number
 export type SegmentId = number
@@ -83,13 +79,6 @@ export function addNodeFlag(node: PathStoreNode, flag: number): void {
 
 export function setNodeDepth(node: PathStoreNode, depth: number): void {
   node.depthAndFlags = createNodeDepthAndFlags(depth, getNodeFlags(node), getNodeKind(node))
-}
-
-export interface DirectoryLoadInfo {
-  activeAttemptId: number | null
-  errorMessage: string | null
-  nextAttemptId: number
-  state: PathStoreDirectoryLoadState
 }
 
 export interface DirectoryChildIndex {
