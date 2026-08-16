@@ -2,8 +2,10 @@ import { homedir } from 'node:os'
 import path from 'node:path'
 import { createApp } from './app'
 import {
+  errorSummary,
   flushObservability,
   initializeObservability,
+  recordProcessError,
   recordProcessInfo,
   recordProcessWarning,
   serverErrors,
@@ -25,6 +27,7 @@ const treeConcurrency = numberFromEnv(Bun.env.FS_TREE_CONCURRENCY)
 
 assertLoopbackHost(hostname)
 initializeObservability(Bun.env)
+installCrashHandlers()
 
 export const app = createApp({
   auth: { allowedOrigins, sessionToken },
@@ -53,6 +56,29 @@ export const app = createApp({
 installShutdownHandlers()
 
 export type App = typeof app
+
+/**
+ * Bun ends the process on an unhandled rejection, and until this existed the
+ * only trace was on stderr — nothing in `logs/*.jsonl`, which is the file
+ * AGENTS.md tells everyone to debug from. Registering a handler suppresses
+ * Bun's own exit, so this deliberately re-creates it: record, flush, exit 1.
+ */
+function installCrashHandlers() {
+  let crashing = false
+
+  process.on('unhandledRejection', (reason) => {
+    if (crashing) return
+
+    crashing = true
+    recordProcessError('server.unhandled_rejection', { error: errorSummary(reason) })
+    void crash()
+  })
+}
+
+async function crash() {
+  await flushObservability()
+  process.exit(1)
+}
 
 function installShutdownHandlers() {
   let stopping = false

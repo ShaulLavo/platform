@@ -68,7 +68,7 @@ updates from the native watcher` used to fail deterministically (~15s
 | 005  | [Patch vulnerable dependencies](005-patch-vulnerable-dependencies.md)                                                                      | P2       | S–M    | —          | **DONE** — inventory rebuilt against the live 27 advisories; `bun audit` now reports **No vulnerabilities found**. All cleared in-major via `overrides`; no source change                              |
 | 019  | [Delete `--sort path` from the ripgrep invocation](019-ripgrep-sort-path-removal.md)                                                       | P2       | S      | —          | **DONE** — full-tree content search 158.06ms → 61.92ms (2.55x) on the real pipeline; truncation is now arrival-order, client still owns display order. First T6 instance closed                        |
 | 020  | [One gated, indexed fold for the pending-request counters](020-pending-request-counter-single-fold.md)                                     | P2       | S      | —          | **DONE** — SQL read filtered to 6 kinds + migration 9 index (`EXPLAIN` confirms the seek); in-memory fold gated; third fold deleted. Second T6 instance closed. `bun run verify` exits 0               |
-| 021  | [Give fire-and-forget async a rejection boundary (server + client)](021-async-rejection-boundaries.md)                                     | P2       | S      | —          | TODO                                                                                                                                                                                                   |
+| 021  | [Give fire-and-forget async a rejection boundary (server + client)](021-async-rejection-boundaries.md)                                     | P2       | S      | —          | **BLOCKED** — server half (Steps 1–3) landed and verified; Step 2a's own assertion fails for a reason the plan predicted and put out of scope (`store.ts:311`). Client half (Steps 4–5) not started    |
 | 022  | [Delete the ~4,400 unreachable lines across tree, ui, contracts, provider, web](022-delete-unreachable-code.md)                            | P2       | M      | —          | TODO                                                                                                                                                                                                   |
 | 023  | [Stop rebuilding the chat projection once per streamed token delta](023-chat-per-delta-work.md)                                            | P2       | M      | —          | TODO                                                                                                                                                                                                   |
 | 024  | [Four design-engineering one-liners](024-design-one-liners.md)                                                                             | P3       | S      | —          | TODO                                                                                                                                                                                                   |
@@ -285,6 +285,24 @@ Recorded so future audits don't re-litigate them.
   "have I seen this path" set at all? Seeding is the smaller change; dropping the
   set is the one that cannot silently regress. Either way the web client's
   handling of `created` vs `changed` needs checking before the semantics move.
+
+### Reported during execution, investigated and CONFIRMED (021)
+
+- **`runDetached` closes the crash and reveals a dropped settings change.** Plan
+  021's Step 2a test reproduces exactly as written: an unreadable secrets file
+  (a directory where `secrets.json` should be) throws `EISDIR` out of
+  `invalidate()` into the detached reload, and before the fix Vitest reports it
+  as an unhandled rejection. After the fix the rejection is gone and the process
+  survives — but the plan's own assertion, that the _next_ settings change is
+  still delivered, **fails**: the snapshot comes back with defaults.
+  This is the consequence plan 021 predicted in its own Maintenance notes —
+  `invalidate()` clears `cachedSnapshot` and then reads secrets _before_
+  notifying listeners, so the throw drops the notification instead of crashing.
+  Closing it means editing `settings/store.ts:311`, which 021 lists under both
+  "Out of scope" and STOP conditions, because stale `secretRefs` decide what
+  `maskProviderSecrets` redacts. **That is the next owner's decision, and it is a
+  redaction question, not an error-handling one.** The test now asserts what is
+  true (the process survives) and documents what is not.
 
 ### Reported during execution, investigated and rejected
 

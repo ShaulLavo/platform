@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { SettingsSnapshot } from '@workspace/contracts'
@@ -184,5 +184,35 @@ describe('the settings file itself', () => {
     // it comes from the running build rather than a copy frozen at write time.
     expect(text).not.toContain('models.hidden')
     expect(text).not.toContain('providers.instances')
+  })
+})
+
+describe('a secrets file that cannot be read', () => {
+  it('does not take the process down during a watch-driven reload', async () => {
+    const root = await tempRoot()
+    // Construct the store *before* the bad directory exists: `SettingsStore`'s
+    // constructor also calls `secretStore.readSync()`, so creating the directory
+    // first would throw here instead of on the reload path under test.
+    const store = createStore(root)
+    const secretsPath = path.join(root, 'secrets.json')
+    // A directory where the file should be: `readFileSync` throws EISDIR, which
+    // is not ENOENT, so `readSettingsFileSync` rethrows out of `invalidate()` —
+    // straight into the detached reload. Before `runDetached` this killed Bun.
+    await mkdir(secretsPath)
+
+    await writeFile(path.join(root, 'settings.json'), '{ "models.hidden": ["alpha"] }', 'utf8')
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    await rm(secretsPath, { recursive: true })
+
+    // The process is still here, and the store still answers. What it does NOT
+    // do is deliver the change that was in flight when the secrets read threw:
+    // `invalidate()` clears `cachedSnapshot` and then reads secrets *before*
+    // notifying, so the throw drops the notification. That is the honest state
+    // after this fix — the crash is closed, the dropped change is not, and
+    // closing it means deciding what stale `secretRefs` mean for redaction.
+    await writeFile(path.join(root, 'settings.json'), '{ "models.hidden": ["beta"] }', 'utf8')
+    await new Promise((resolve) => setTimeout(resolve, 400))
+
+    expect(store.snapshot()).toBeDefined()
   })
 })

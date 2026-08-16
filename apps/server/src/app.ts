@@ -19,6 +19,7 @@ import {
   recordClientInstance,
   recordRequestContext,
   recordRequestError,
+  runDetached,
 } from './observability'
 import { OrchestrationEngine } from './orchestration/engine'
 import { OrchestrationCheckpointDiffQuery } from './orchestration/checkpoint-diff-query'
@@ -111,13 +112,17 @@ export function createApp(options: AppOptions) {
   // Secrets are resolved here rather than in the snapshot: the values a provider
   // spawns with never appear in anything a route can return.
   settings.onChange(() => {
-    void settings
-      .providerInstancesForSpawn()
-      .then((instances) =>
-        providerAdapterRegistry.reconcile(
-          mergeProviderInstanceConfigs(DEFAULT_PROVIDER_INSTANCES, instances),
-        ),
-      )
+    runDetached(
+      () =>
+        settings
+          .providerInstancesForSpawn()
+          .then((instances) =>
+            providerAdapterRegistry.reconcile(
+              mergeProviderInstanceConfigs(DEFAULT_PROVIDER_INSTANCES, instances),
+            ),
+          ),
+      { area: 'provider', operation: 'reconcile' },
+    )
   })
   const orchestration = new OrchestrationEngine(database, {
     providerRuntime: options.orchestration?.providerRuntime

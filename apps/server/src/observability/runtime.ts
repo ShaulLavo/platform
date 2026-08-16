@@ -5,6 +5,7 @@ export {
   flushObservability,
   isObservabilityActive,
   observabilityConfig,
+  recordObservabilityError as recordProcessError,
   recordObservabilityInfo as recordProcessInfo,
   recordObservabilityWarning as recordProcessWarning,
   resetObservabilityForTests,

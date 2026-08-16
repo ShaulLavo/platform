@@ -1,6 +1,7 @@
 import { watch, type FSWatcher } from 'node:fs'
 import path from 'node:path'
 import type { SettingsLayerId } from '@workspace/contracts'
+import { runDetached } from '../observability'
 import {
   editSettingsText,
   parseSettingsDocument,
@@ -237,7 +238,7 @@ export class SettingsFileLayer {
     if (this.debounce) clearTimeout(this.debounce)
     this.debounce = setTimeout(() => {
       this.debounce = null
-      void this.reload()
+      runDetached(() => this.reload(), { area: 'settings', layer: this.id, operation: 'reload' })
     }, RELOAD_DEBOUNCE_MS)
   }
 

@@ -2,7 +2,7 @@ import parcelWatcher from '@parcel/watcher'
 import { watch } from 'node:fs'
 import path from 'node:path'
 import type { FileSystemEntryMetadata } from '@workspace/contracts'
-import { errorSummary, recordRequestWarning } from '../observability'
+import { errorSummary, recordRequestWarning, runDetached } from '../observability'
 import { FsError } from './errors'
 import {
   defaultIgnoredNames,
@@ -167,7 +167,11 @@ export class FileChangeHub {
         }
 
         for (const event of events) {
-          void this.handleParcelEvent(relativeRoot, event)
+          runDetached(() => this.handleParcelEvent(relativeRoot, event), {
+            area: 'fs',
+            backend: 'parcel',
+            operation: 'watch_event',
+          })
         }
       },
       { ignore: watcherIgnoredChildGlobs },
@@ -181,7 +185,10 @@ export class FileChangeHub {
       const target = this.paths.resolve(relativeRoot)
       const attachedAtMs = wallClockMs()
       const watcher = watch(target.absolutePath, { recursive: true }, (event, filename) => {
-        void this.handleNodeEvent(relativeRoot, event, filename?.toString() ?? '', attachedAtMs)
+        runDetached(
+          () => this.handleNodeEvent(relativeRoot, event, filename?.toString() ?? '', attachedAtMs),
+          { area: 'fs', backend: 'node', operation: 'watch_event' },
+        )
       })
       watcher.on('error', (error) => {
         this.emit(watchError(error, relativeRoot))
