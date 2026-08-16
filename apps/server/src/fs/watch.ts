@@ -2,6 +2,7 @@ import parcelWatcher from '@parcel/watcher'
 import { watch } from 'node:fs'
 import path from 'node:path'
 import type { FileSystemEntryMetadata } from '@workspace/contracts'
+import { errorSummary, recordRequestWarning } from '../observability'
 import { FsError } from './errors'
 import { defaultIgnoredNames, isIgnoredPath, toPosix, type WorkspacePaths } from './path'
 import { statPath } from './stat'
@@ -130,7 +131,21 @@ export class FileChangeHub {
 
     try {
       return await this.createParcelWatcher(relativeRoot)
-    } catch {
+    } catch (error) {
+      // `@parcel/watcher` is a native module the server build marks external, so
+      // this fallback is reachable in production. The two backends do not report
+      // identically — parcel states create/update/delete, the node backend
+      // infers them from stat data — so a silent downgrade leaves "why are my
+      // file events wrong?" unanswerable from `logs/` alone.
+      recordRequestWarning('fs.watch.backend_fallback', {
+        area: 'fs',
+        backend: 'node',
+        error: errorSummary(error),
+        operation: 'fs.watch.createWatcher',
+        requestedBackend: this.backend,
+        root: relativeRoot || '/',
+      })
+
       return this.createNodeWatcher(relativeRoot)
     }
   }
