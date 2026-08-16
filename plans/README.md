@@ -43,7 +43,7 @@ They are Phase 4. This is a change from how they were originally sequenced.
 | Plan | Title                                                                                                                                          | Priority | Effort | Depends on | Status               |
 | ---- | ---------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------ | ---------- | -------------------- |
 | 013  | [Test-baseline repairs: stop writing to the real SQLite; typecheck `scripts/`; give `packages/ui` a test script](013-test-baseline-repairs.md) | P1       | S–M    | —          | DONE                 |
-| 014  | [`packages/tree` path-store + `getVisibleRows` characterization tests](014-tree-path-store-characterization-tests.md)                          | P1       | M      | —          | TODO — **gates 039** |
+| 014  | [`packages/tree` path-store + `getVisibleRows` characterization tests](014-tree-path-store-characterization-tests.md)                          | P1       | M      | —          | DONE — **gates 039** |
 
 ### Phase 1 — Cheap, high-confidence, independent
 
