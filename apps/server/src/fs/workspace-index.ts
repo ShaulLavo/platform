@@ -90,13 +90,22 @@ type ScanResult = {
   skippedEntryCount: number
 }
 
+type WorkspaceIndexCounts = {
+  entryCount: number
+  fileCount: number
+  staleEntryCount: number
+}
+
 type IndexPathAction = 'changed' | 'created' | 'deleted'
 
 export class WorkspaceIndex {
+  private childPathsByParent = new Map<string, Set<string>>()
   private entriesByPath = new Map<string, WorkspaceIndexEntry>()
+  private fileEntryCount = 0
   private pendingCreatedPaths = new Set<string>()
   private readonly paths: WorkspacePaths
   private rebuildSequence = 0
+  private staleEntryCount = 0
   private state: WorkspaceIndexMutableStatus
 
   constructor(paths: WorkspacePaths) {
@@ -106,10 +115,6 @@ export class WorkspaceIndex {
 
   status(): WorkspaceIndexStatus {
     return { ...this.state }
-  }
-
-  entries() {
-    return Array.from(this.entriesByPath.values(), cloneEntry)
   }
 
   entryMap(): ReadonlyMap<string, Readonly<WorkspaceIndexEntry>> {
@@ -138,16 +143,16 @@ export class WorkspaceIndex {
 
     try {
       const result = await scanWorkspaceIndex(this.paths)
-      if (!this.isCurrentRebuild(rebuildId)) return this.snapshot()
+      if (!this.isCurrentRebuild(rebuildId)) return this.status()
 
-      this.entriesByPath = result.entries
+      this.replaceEntries(result.entries)
       this.pendingCreatedPaths.clear()
-      this.state = readyStatus(this.paths.workspaceRoot, result, startedAt, reason)
-      return this.snapshot()
+      this.state = readyStatus(this.paths.workspaceRoot, this.counts(), result, startedAt, reason)
+      return this.status()
     } catch (error) {
-      if (!this.isCurrentRebuild(rebuildId)) return this.snapshot()
+      if (!this.isCurrentRebuild(rebuildId)) return this.status()
 
-      this.entriesByPath = new Map()
+      this.clearEntries()
       this.pendingCreatedPaths.clear()
       this.state = failedStatus(this.paths.workspaceRoot, startedAt, reason, error)
       throw error
@@ -156,10 +161,10 @@ export class WorkspaceIndex {
 
   async applyWatchEvents(events: readonly WatchServerMessage[]) {
     const queuedEvents = events.filter(shouldQueueIndexEvent)
-    if (queuedEvents.length === 0) return this.snapshot()
+    if (queuedEvents.length === 0) return this.status()
     const watchError = queuedEvents.find(isWatchErrorEvent)
     if (watchError) return this.rebuildAndMarkFailed('watch-error', watchError.message)
-    if (this.state.readiness === 'failed') return this.snapshot()
+    if (this.state.readiness === 'failed') return this.status()
     if (!canApplyIncrementalUpdates(this.state.readiness)) {
       return this.rebuild({ reason: 'watch-event-without-ready-index' })
     }
@@ -167,17 +172,17 @@ export class WorkspaceIndex {
     const updateId = this.rebuildSequence
     for (const event of queuedEvents) {
       if (!isWorkspaceIndexFilesystemEvent(event)) continue
-      if (!this.canCommitIncrementalUpdate(updateId)) return this.snapshot()
+      if (!this.canCommitIncrementalUpdate(updateId)) return this.status()
 
       await this.applyFilesystemEvent(event, updateId)
     }
 
     this.clearPendingCreatedPaths(queuedEvents)
-    return this.snapshot()
+    return this.status()
   }
 
   async refresh(relativePath: string) {
-    if (this.state.readiness === 'failed') return this.snapshot()
+    if (this.state.readiness === 'failed') return this.status()
     if (!canApplyIncrementalUpdates(this.state.readiness)) {
       return this.rebuild({ reason: 'incremental-refresh-without-ready-index' })
     }
@@ -186,7 +191,7 @@ export class WorkspaceIndex {
   }
 
   private async refreshForUpdate(relativePath: string, updateId: number) {
-    if (!this.canCommitIncrementalUpdate(updateId)) return this.snapshot()
+    if (!this.canCommitIncrementalUpdate(updateId)) return this.status()
 
     const normalized = indexPathKey(relativePath)
     if (!normalized) return this.rebuild({ reason: 'incremental-root-refresh' })
@@ -198,50 +203,55 @@ export class WorkspaceIndex {
   }
 
   deleteSubtree(relativePath: string) {
-    if (!canApplyIncrementalUpdates(this.state.readiness)) return this.snapshot()
+    if (!canApplyIncrementalUpdates(this.state.readiness)) return this.status()
 
     return this.deleteSubtreeForUpdate(relativePath, this.rebuildSequence)
   }
 
   private deleteSubtreeForUpdate(relativePath: string, updateId: number) {
-    if (!this.canCommitIncrementalUpdate(updateId)) return this.snapshot()
+    if (!this.canCommitIncrementalUpdate(updateId)) return this.status()
 
     this.removeEntriesAt(relativePath)
-    this.state = incrementalStatus(this.state, this.entriesByPath)
-    return this.snapshot()
+    this.state = incrementalStatus(this.state, this.counts())
+    return this.status()
   }
 
   markSubtreeStale(relativePath: string) {
     if (!canApplyIncrementalUpdates(this.state.readiness)) return
 
-    const normalized = indexPathKey(relativePath)
-    let changed = false
-
-    for (const [entryPath, entry] of this.entriesByPath) {
-      if (!isSameOrChildPath(entryPath, normalized)) continue
-      if (entry.stale) continue
-
-      changed = true
-      this.entriesByPath.set(entryPath, { ...entry, stale: true })
-    }
-
+    const changed = this.markSubtreeEntriesStale(indexPathKey(relativePath))
     if (!changed && this.state.readiness === 'stale') return
 
-    this.state = staleLiveStatus(this.state, this.entriesByPath)
+    this.state = staleLiveStatus(this.state, this.counts())
+  }
+
+  private markSubtreeEntriesStale(normalized: string) {
+    let changed = false
+
+    for (const entryPath of this.collectSubtreePaths(normalized)) {
+      const entry = this.entriesByPath.get(entryPath)
+      if (!entry) continue
+      if (entry.stale) continue
+
+      this.setEntry({ ...entry, stale: true })
+      changed = true
+    }
+
+    return changed
   }
 
   markCreatedPathPending(relativePath: string) {
     if (!canApplyIncrementalUpdates(this.state.readiness)) return
 
     this.pendingCreatedPaths.add(indexPathKey(relativePath))
-    this.state = staleLiveStatus(this.state, this.entriesByPath, this.pendingCreatedPaths)
+    this.state = staleLiveStatus(this.state, this.counts(), this.pendingCreatedPaths)
   }
 
   markFailed(reason: string, error: unknown) {
     this.nextRebuildId()
     this.pendingCreatedPaths.clear()
-    this.state = failedLiveStatus(this.state, this.entriesByPath, reason, error)
-    return this.snapshot()
+    this.state = failedLiveStatus(this.state, this.counts(), reason, error)
+    return this.status()
   }
 
   async rebuildAndMarkFailed(reason: string, error: unknown) {
@@ -315,7 +325,7 @@ export class WorkspaceIndex {
     updateId: number,
     removePaths: readonly string[] = [],
   ) {
-    if (!this.canCommitIncrementalUpdate(updateId)) return this.snapshot()
+    if (!this.canCommitIncrementalUpdate(updateId)) return this.status()
 
     for (const removePath of removePaths) {
       this.removeEntriesAt(removePath)
@@ -323,25 +333,127 @@ export class WorkspaceIndex {
 
     this.removeEntriesAt(scanPath)
     for (const entry of result.entries.values()) {
-      this.entriesByPath.set(entry.path, entry)
+      this.setEntry(entry)
     }
 
-    this.state = incrementalStatus(this.state, this.entriesByPath, result)
-    return this.snapshot()
+    this.state = incrementalStatus(this.state, this.counts(), result)
+    return this.status()
   }
 
   private removeEntriesAt(relativePath: string) {
     const normalized = indexPathKey(relativePath)
     if (!normalized) {
-      this.entriesByPath.clear()
+      this.clearEntries()
       return
     }
 
-    for (const entryPath of Array.from(this.entriesByPath.keys())) {
-      if (!isSameOrChildPath(entryPath, normalized)) continue
-
-      this.entriesByPath.delete(entryPath)
+    for (const entryPath of this.collectSubtreePaths(normalized)) {
+      this.deleteEntryPath(entryPath)
     }
+
+    this.unlinkChildPath(normalized)
+  }
+
+  private counts(): WorkspaceIndexCounts {
+    return {
+      entryCount: this.entriesByPath.size,
+      fileCount: this.fileEntryCount,
+      staleEntryCount: this.staleEntryCount,
+    }
+  }
+
+  private applyCountDelta(entry: WorkspaceIndexEntry, delta: number) {
+    if (entry.type === 'file') this.fileEntryCount += delta
+    if (entry.stale) this.staleEntryCount += delta
+  }
+
+  private setEntry(entry: WorkspaceIndexEntry) {
+    const previous = this.entriesByPath.get(entry.path)
+    if (previous) this.applyCountDelta(previous, -1)
+    if (!previous) this.linkChildPath(entry.path)
+
+    this.entriesByPath.set(entry.path, entry)
+    this.applyCountDelta(entry, 1)
+  }
+
+  private replaceEntries(entries: Map<string, WorkspaceIndexEntry>) {
+    this.entriesByPath = entries
+    this.childPathsByParent = new Map()
+    this.fileEntryCount = 0
+    this.staleEntryCount = 0
+
+    for (const entry of entries.values()) {
+      this.linkChildPath(entry.path)
+      this.applyCountDelta(entry, 1)
+    }
+  }
+
+  // `.clear()`, not `= new Map()`. The old removeEntriesAt('') cleared in place,
+  // and `entryMap()` hands the live map to ContentIndexFilter — swapping the
+  // instance here would change what an in-flight search observes.
+  private clearEntries() {
+    this.entriesByPath.clear()
+    this.childPathsByParent.clear()
+    this.fileEntryCount = 0
+    this.staleEntryCount = 0
+  }
+
+  private linkChildPath(entryPath: string) {
+    const parent = parentIndexPath(entryPath)
+    if (parent === undefined) return
+
+    const siblings = this.childPathsByParent.get(parent)
+    if (siblings) {
+      siblings.add(entryPath)
+      return
+    }
+
+    this.childPathsByParent.set(parent, new Set([entryPath]))
+  }
+
+  private unlinkChildPath(entryPath: string) {
+    const parent = parentIndexPath(entryPath)
+    if (parent === undefined) return
+
+    const siblings = this.childPathsByParent.get(parent)
+    if (!siblings) return
+
+    siblings.delete(entryPath)
+    if (siblings.size > 0) return
+
+    this.childPathsByParent.delete(parent)
+  }
+
+  // Materializes the subtree rooted at `normalized` (inclusive) by walking the
+  // parent->children links instead of scanning every key in the index.
+  private collectSubtreePaths(normalized: string) {
+    const collected: string[] = []
+    const stack: string[] = [normalized]
+
+    while (stack.length > 0) {
+      const current = stack.pop()
+      if (current === undefined) continue
+
+      collected.push(current)
+      const children = this.childPathsByParent.get(current)
+      if (!children) continue
+
+      for (const child of children) stack.push(child)
+    }
+
+    return collected
+  }
+
+  private deleteEntryPath(entryPath: string) {
+    const entry = this.entriesByPath.get(entryPath)
+    this.entriesByPath.delete(entryPath)
+    // Every descendant of this path is deleted in the same pass, so its whole
+    // child set goes with it; only the subtree root needs unlinking from its
+    // parent's set.
+    this.childPathsByParent.delete(entryPath)
+    if (!entry) return
+
+    this.applyCountDelta(entry, -1)
   }
 
   private nextRebuildId() {
@@ -357,13 +469,6 @@ export class WorkspaceIndex {
     if (!this.isCurrentRebuild(updateId)) return false
 
     return canApplyIncrementalUpdates(this.state.readiness)
-  }
-
-  snapshot() {
-    return {
-      entries: this.entries(),
-      status: this.status(),
-    }
   }
 }
 
@@ -876,6 +981,16 @@ function entryExtension(relativePath: string, type: EntryTypeFilter) {
   return path.posix.extname(relativePath).toLowerCase()
 }
 
+// Returns undefined for the workspace root (key ''), which has no parent.
+function parentIndexPath(entryPath: string) {
+  if (!entryPath) return undefined
+
+  const separatorIndex = entryPath.lastIndexOf('/')
+  if (separatorIndex < 0) return ''
+
+  return entryPath.slice(0, separatorIndex)
+}
+
 function indexPathKey(relativePath: string) {
   const normalized = path.posix.normalize(toPosix(relativePath) || '.')
   if (normalized === '.') return ''
@@ -937,13 +1052,6 @@ function firstMissingAncestorPath(
   }
 
   return undefined
-}
-
-function isSameOrChildPath(path: string, parent: string) {
-  if (!parent) return true
-  if (path === parent) return true
-
-  return path.startsWith(`${parent}/`)
 }
 
 function isWatchErrorEvent(event: WatchServerMessage) {
@@ -1095,13 +1203,14 @@ function emptyStatus(scanRoot: string): WorkspaceIndexStatus {
 
 function readyStatus(
   scanRoot: string,
+  counts: WorkspaceIndexCounts,
   result: ScanResult,
   startedAt: number,
   reason: string,
 ): WorkspaceIndexStatus {
   return {
-    entryCount: result.entries.size,
-    fileCount: fileCount(result.entries),
+    entryCount: counts.entryCount,
+    fileCount: counts.fileCount,
     lastFullScanAtMs: Date.now(),
     lastFullScanDurationMs: elapsedMs(startedAt),
     pendingCreatedPathCount: 0,
@@ -1110,7 +1219,7 @@ function readyStatus(
     scanWarningCount: result.scanWarningCount,
     scanRoot,
     skippedEntryCount: result.skippedEntryCount,
-    staleEntryCount: 0,
+    staleEntryCount: counts.staleEntryCount,
   }
 }
 
@@ -1137,26 +1246,26 @@ function failedStatus(
 
 function failedLiveStatus(
   previous: WorkspaceIndexMutableStatus,
-  entries: ReadonlyMap<string, WorkspaceIndexEntry>,
+  counts: WorkspaceIndexCounts,
   reason: string,
   error: unknown,
 ): WorkspaceIndexStatus {
   return {
     ...previous,
-    entryCount: entries.size,
+    entryCount: counts.entryCount,
     errorMessage: errorMessage(error),
-    fileCount: fileCount(entries),
+    fileCount: counts.fileCount,
     lastIncrementalUpdateAtMs: Date.now(),
     pendingCreatedPathCount: 0,
     readiness: 'failed',
     rebuildReason: reason,
-    staleEntryCount: staleEntryCount(entries),
+    staleEntryCount: counts.staleEntryCount,
   }
 }
 
 function staleLiveStatus(
   previous: WorkspaceIndexMutableStatus,
-  entries: ReadonlyMap<string, WorkspaceIndexEntry>,
+  counts: WorkspaceIndexCounts,
   pendingCreatedPaths = new Set<string>(),
 ): WorkspaceIndexStatus {
   return {
@@ -1164,28 +1273,26 @@ function staleLiveStatus(
     lastIncrementalUpdateAtMs: Date.now(),
     pendingCreatedPathCount: pendingCreatedPaths.size,
     readiness: 'stale',
-    staleEntryCount: staleEntryCount(entries),
+    staleEntryCount: counts.staleEntryCount,
   }
 }
 
 function incrementalStatus(
   previous: WorkspaceIndexMutableStatus,
-  entries: ReadonlyMap<string, WorkspaceIndexEntry>,
+  counts: WorkspaceIndexCounts,
   result?: ScanResult,
 ): WorkspaceIndexStatus {
-  const staleCount = staleEntryCount(entries)
-
   return {
     ...previous,
-    entryCount: entries.size,
+    entryCount: counts.entryCount,
     errorMessage: undefined,
-    fileCount: fileCount(entries),
+    fileCount: counts.fileCount,
     lastIncrementalUpdateAtMs: Date.now(),
     pendingCreatedPathCount: 0,
-    readiness: staleCount === 0 ? 'ready' : 'stale',
+    readiness: counts.staleEntryCount === 0 ? 'ready' : 'stale',
     scanWarningCount: previous.scanWarningCount + (result?.scanWarningCount ?? 0),
     skippedEntryCount: previous.skippedEntryCount + (result?.skippedEntryCount ?? 0),
-    staleEntryCount: staleCount,
+    staleEntryCount: counts.staleEntryCount,
   }
 }
 
@@ -1197,30 +1304,6 @@ function statusWithPendingCreatedPathCount(
     ...previous,
     pendingCreatedPathCount: pendingCreatedPaths.size,
   }
-}
-
-function fileCount(entries: ReadonlyMap<string, WorkspaceIndexEntry>) {
-  let count = 0
-
-  for (const entry of entries.values()) {
-    if (entry.type !== 'file') continue
-
-    count += 1
-  }
-
-  return count
-}
-
-function staleEntryCount(entries: ReadonlyMap<string, WorkspaceIndexEntry>) {
-  let count = 0
-
-  for (const entry of entries.values()) {
-    if (!entry.stale) continue
-
-    count += 1
-  }
-
-  return count
 }
 
 function elapsedMs(startedAt: number) {

@@ -42,7 +42,7 @@ describe('workspace index', () => {
     expect(entry?.charBag).toContain('a')
     expect(entry?.charBag).not.toContain('/')
     expect(status).toMatchObject({
-      entryCount: index.entries().length,
+      entryCount: index.entryMap().size,
       fileCount: 1,
       readiness: 'ready',
       rebuildReason: 'test',
@@ -209,21 +209,15 @@ describe('workspace index', () => {
     })
   })
 
-  it('returns entry snapshots instead of mutable index entries', async () => {
+  it('returns cloned entries from get so callers cannot mutate the index', async () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, 'src'), { recursive: true })
     await writeFile(path.join(root, 'src', 'app.ts'), 'export const app = true\n')
 
     const index = await buildWorkspaceIndex(createWorkspacePaths(root))
     const entry = requireEntry(index.get('src/app.ts'))
-    const listedEntry = requireEntry(index.entries().find((item) => item.path === 'src/app.ts'))
-    const snapshotEntry = requireEntry(
-      index.snapshot().entries.find((item) => item.path === 'src/app.ts'),
-    )
 
     entry.stale = true
-    listedEntry.stale = true
-    snapshotEntry.stale = true
 
     expect(index.get('src/app.ts')).toMatchObject({ stale: false })
     expect(index.status()).toMatchObject({ staleEntryCount: 0 })
@@ -295,6 +289,107 @@ describe('workspace index', () => {
       basename: 'new.ts',
       type: 'file',
     })
+  })
+
+  it('keeps status counts in step with the entry map across watch events', async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, 'src'), { recursive: true })
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    expect(index.status()).toMatchObject(derivedCounts(index))
+
+    await writeFile(path.join(root, 'src', 'created.ts'), 'export const created = true\n')
+    await index.applyWatchEvents([{ type: 'created', path: 'src/created.ts' }])
+    expect(index.status()).toMatchObject(derivedCounts(index))
+
+    await writeFile(path.join(root, 'src', 'created.ts'), 'export const changed = true\n')
+    await index.applyWatchEvents([{ type: 'changed', path: 'src/created.ts' }])
+    expect(index.status()).toMatchObject(derivedCounts(index))
+
+    await rename(path.join(root, 'src', 'created.ts'), path.join(root, 'src', 'renamed.ts'))
+    await index.applyWatchEvents([
+      { type: 'renamed', oldPath: 'src/created.ts', path: 'src/renamed.ts' },
+    ])
+    expect(index.status()).toMatchObject(derivedCounts(index))
+
+    await rm(path.join(root, 'src', 'renamed.ts'))
+    await index.applyWatchEvents([{ type: 'deleted', path: 'src/renamed.ts' }])
+    expect(index.status()).toMatchObject(derivedCounts(index))
+    expect(index.get('src/renamed.ts')).toBeUndefined()
+  })
+
+  it('removes a whole subtree and its counts from one delete event', async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, 'src', 'nested', 'deep'), { recursive: true })
+    await writeFile(path.join(root, 'src', 'a.ts'), 'export const a = true\n')
+    await writeFile(path.join(root, 'src', 'nested', 'b.ts'), 'export const b = true\n')
+    await writeFile(path.join(root, 'src', 'nested', 'deep', 'c.ts'), 'export const c = true\n')
+    await writeFile(path.join(root, 'keep.ts'), 'export const keep = true\n')
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+
+    await rm(path.join(root, 'src'), { recursive: true, force: true })
+    await index.applyWatchEvents([{ type: 'deleted', path: 'src' }])
+
+    expect(index.get('src')).toBeUndefined()
+    expect(index.get('src/a.ts')).toBeUndefined()
+    expect(index.get('src/nested/b.ts')).toBeUndefined()
+    expect(index.get('src/nested/deep/c.ts')).toBeUndefined()
+    expect(index.get('keep.ts')).toMatchObject({ type: 'file' })
+    expect(index.status()).toMatchObject(derivedCounts(index))
+    expect(index.status().fileCount).toBe(1)
+  })
+
+  it('marks only the target subtree stale and clears the count on refresh', async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, 'src', 'nested'), { recursive: true })
+    await mkdir(path.join(root, 'other'), { recursive: true })
+    await writeFile(path.join(root, 'src', 'nested', 'b.ts'), 'export const b = true\n')
+    await writeFile(path.join(root, 'other', 'c.ts'), 'export const c = true\n')
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+
+    index.markSubtreeStale('src')
+    // src, src/nested, src/nested/b.ts
+    expect(index.status().staleEntryCount).toBe(3)
+    expect(index.status()).toMatchObject(derivedCounts(index))
+    expect(index.get('other/c.ts')).toMatchObject({ stale: false })
+
+    // Marking the same subtree twice must not double-count.
+    index.markSubtreeStale('src')
+    expect(index.status().staleEntryCount).toBe(3)
+
+    await index.refresh('src')
+    expect(index.status()).toMatchObject({ readiness: 'ready', staleEntryCount: 0 })
+    expect(index.status()).toMatchObject(derivedCounts(index))
+  })
+
+  // The opposite case: this refactor NARROWS two full-index walks into subtree
+  // walks. This test proves the whole-index case was not narrowed with them.
+  // `indexPathKey('.')` is '', the workspace root's own key, and both
+  // markSubtreeStale('') and removeEntriesAt('') must still reach everything.
+  it('still marks and clears the whole index from the workspace root key', async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, 'src', 'nested'), { recursive: true })
+    await writeFile(path.join(root, 'src', 'nested', 'b.ts'), 'export const b = true\n')
+    await writeFile(path.join(root, 'keep.ts'), 'export const keep = true\n')
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const totalEntries = index.entryMap().size
+
+    expect(totalEntries).toBeGreaterThan(3)
+
+    index.markSubtreeStale('.')
+    expect(index.status()).toMatchObject({
+      readiness: 'stale',
+      staleEntryCount: totalEntries,
+    })
+    expect(index.status()).toMatchObject(derivedCounts(index))
+
+    index.deleteSubtree('.')
+    expect(index.entryMap().size).toBe(0)
+    expect(index.status()).toMatchObject({
+      entryCount: 0,
+      fileCount: 0,
+      staleEntryCount: 0,
+    })
+    expect(index.status()).toMatchObject(derivedCounts(index))
   })
 
   it('updates the service workspace index from FileChangeHub mutations', async () => {
@@ -677,6 +772,18 @@ async function fixtureRoot() {
   const root = await mkdtemp(path.join(tmpdir(), 'platform-workspace-index-'))
   roots.push(root)
   return root
+}
+
+function derivedCounts(index: WorkspaceIndex) {
+  let fileCount = 0
+  let staleEntryCount = 0
+
+  for (const entry of index.entryMap().values()) {
+    if (entry.type === 'file') fileCount += 1
+    if (entry.stale) staleEntryCount += 1
+  }
+
+  return { entryCount: index.entryMap().size, fileCount, staleEntryCount }
 }
 
 function requireEntry<T>(entry: T | undefined): T {
