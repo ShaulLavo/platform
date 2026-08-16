@@ -45,20 +45,27 @@ They are Phase 4. This is a change from how they were originally sequenced.
 | 013  | [Test-baseline repairs: stop writing to the real SQLite; typecheck `scripts/`; give `packages/ui` a test script](013-test-baseline-repairs.md) | P1       | S–M    | —          | **DONE** (`58bf4d0`) — independently verified: `~/.platform/fs-metadata.sqlite` mtime unchanged across a full `apps/server` run. Also surfaced a real hidden error once `scripts/` got typechecked: `descriptorFor(id as never)` |
 | 014  | [`packages/tree` path-store + `getVisibleRows` characterization tests](014-tree-path-store-characterization-tests.md)                          | P1       | M      | —          | **DONE** (`5774dc6`) — independently verified: `packages/tree` went 9 tests → **78 passing** across 5 files, oracle + fuzz in place. **The gate for 039 is now open**                                                            |
 
-> ### ⚠️ Known pre-existing test failure — read this before gating on the server suite
+> ### 🔴 The one failing server test is catching a REAL BUG — do not wave past it
 >
 > `apps/server/src/tests/app.test.ts > fs rpc events > reports external file
-updates from the native watcher` **fails deterministically on this machine**
-> (~15s timeout, native `@parcel/watcher` backend). Confirmed **pre-existing**:
-> it fails identically at `ac9ca7f`, before plan 013 landed, so it is not a
-> regression from anything in this plan set.
+updates from the native watcher` fails deterministically (~15s timeout). It is
+> **pre-existing** — it fails identically at `ac9ca7f`, before any plan in this
+> set landed — but it is **not** environmental flakiness, and an earlier revision
+> of this note wrongly said it was. The test is right and the product is wrong.
+>
+> **The bug (finding F-WATCH, see below):** the first modification of any file
+> that existed before the watcher started is reported to clients as `created`
+> instead of `changed`, and the `changed` event that would tell them to refresh
+> never arrives. It self-heals after one event per path, which is why it hid.
 >
 > The honest baseline for `cd apps/server && bun run test` is therefore
-> **772 passed / 1 failed (773)**. Several plans state "all pass" as a done
-> criterion — read that as _no new failures beyond this one_. An executor seeing
-> a single failure should compare the test name against this note and continue
-> rather than treating it as its own breakage. Same family as `cc9e210` and
-> `07f4245`, which fixed two other watcher-timing races.
+> **772 passed / 1 failed (773)**. Plans that state "all pass" should be read as
+> _no new failures beyond this one_ — but treat that as a temporary allowance,
+> not a permanent fact. Once F-WATCH is fixed the baseline returns to 773/773 and
+> "all pass" becomes literal again.
+>
+> Unrelated to `cc9e210` / `07f4245`, which fixed genuine watcher-timing races.
+> This one is a classification defect, not a timing one.
 
 ### Phase 1 — Cheap, high-confidence, independent
 
@@ -242,6 +249,44 @@ document — which is what this status table is for.
 ## Findings considered and rejected
 
 Recorded so future audits don't re-litigate them.
+
+### Reported during execution, investigated and CONFIRMED
+
+- **F-WATCH — a modified pre-existing file is reported to clients as `created`.**
+  Found by the plan-013 executor while investigating the failing watcher test;
+  independently confirmed by reading the code. **Not planned yet — needs plan 047.**
+
+  Mechanism, all in `apps/server/src/fs/watch.ts`:
+  1. `FileChangeHub` keeps `knownNativePaths` (`:41`) as its record of files it
+     knows about.
+  2. That set has exactly four references — declared `:41`, read `:210`, deleted
+     `:217`, added `:221`. **Nothing populates it at startup.** The directory scan
+     that runs when the watcher attaches adds nothing, so at watch time the set is
+     empty even though the files are all there.
+  3. `nativeEventType` (`:202-212`) returns `changed` immediately when Node's raw
+     event is `change`. When the raw event is `rename` — what macOS reports for
+     the temp-file-plus-rename atomic save nearly every editor performs — it looks
+     the path up in the empty set, misses, and falls through to `created`.
+
+  **Consequence:** the first modification of any pre-existing file reaches clients
+  as a creation, and the `changed` event that would tell them to refresh never
+  arrives. Self-heals after one event per path, which is why it survived this long.
+
+  Live `/fs/events` probe on a file that existed before the watcher started:
+
+  ```
+  801ms:  write 'after'               → created   ← wrong, the file already existed
+  2802ms: write 'much-longer-content' → changed   ← right, path is now in the set
+  ```
+
+  **Why it is not folded into an existing plan:** it is server production code, in
+  no plan's in-scope list, it predates all of this work, and the fix changes
+  client-visible event semantics — which is a design decision, not a patch. The
+  open question a plan must answer: should the startup scan seed
+  `knownNativePaths`, or should the classifier stop depending on a
+  "have I seen this path" set at all? Seeding is the smaller change; dropping the
+  set is the one that cannot silently regress. Either way the web client's
+  handling of `created` vs `changed` needs checking before the semantics move.
 
 ### Reported during execution, investigated and rejected
 
