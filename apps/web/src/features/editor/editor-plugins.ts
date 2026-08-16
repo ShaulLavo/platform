@@ -8,11 +8,13 @@ import {
   type EditorLogEvent,
   type EditorPlugin,
   type EditorScrollPosition,
+  type EditorSyntaxLanguageId,
   type EditorSyntaxProvider,
 } from '@singapor/core'
 import { createEditorFindPlugin } from '@singapor/find'
 import { createFoldGutterPlugin, createLineGutterPlugin } from '@singapor/gutters'
 import type { FoldGutterIconContext } from '@singapor/gutters'
+import { createMarkdownPreviewPlugin } from '@singapor/markdown'
 import { CaretDownIcon } from '@phosphor-icons/react/ssr'
 import {
   createShikiHighlighterPlugin,
@@ -84,7 +86,14 @@ const PLATFORM_SEARCH_RESULT_EDITOR_LOGGING_PLUGIN = createEditorLoggingPlugin(
 let nonCriticalEditorPlugins: readonly EditorPlugin[] | null = null
 let nonCriticalEditorPluginsPromise: Promise<readonly EditorPlugin[]> | null = null
 
-export function createCriticalEditorCorePlugins(): readonly EditorPlugin[] {
+/**
+ * `languageId` gates the language-specific plugins. Markdown preview is registered only for markdown
+ * documents because registering it at all makes the editor ask tree-sitter for raw captures, and
+ * that query is pure waste on a file shiki is already painting.
+ */
+export function createCriticalEditorCorePlugins(
+  languageId: EditorSyntaxLanguageId | null,
+): readonly EditorPlugin[] {
   return [
     ...createEditorSyntaxHighlightingPlugins(),
     createLineGutterPlugin(),
@@ -102,6 +111,10 @@ export function createCriticalEditorCorePlugins(): readonly EditorPlugin[] {
       style: { backgroundColor: 'var(--editor-occurrence-highlight-background)' },
     }),
     createDocumentLinkPlugin(),
+    // Critical rather than lazy: loading it after first paint would flash raw markdown first. It
+    // derives its replacements from tree-sitter's markdown captures, so a file renders as source
+    // while syntax highlighting is off.
+    ...(languageId === 'markdown' ? [createMarkdownPreviewPlugin()] : []),
     createPlatformEditorConsoleLoggingPlugin(),
   ]
 }

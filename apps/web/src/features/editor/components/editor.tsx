@@ -75,7 +75,11 @@ export function Editor({
     document: liveDocument,
     onScrollPositionChange,
   })
-  const criticalEditorCorePlugins = useMemo(() => createCriticalEditorCorePlugins(), [])
+  const documentLanguageId = languageIdForFilePath(liveDocument.path)
+  const criticalEditorCorePlugins = useMemo(
+    () => createCriticalEditorCorePlugins(documentLanguageId),
+    [documentLanguageId],
+  )
   const nonCriticalEditorPlugins = useMemo(() => createNonCriticalEditorPluginsLoaderPlugin(), [])
   const plugins = useMemo(
     () => [
@@ -90,11 +94,11 @@ export function Editor({
     () => ({
       documentId: liveDocument.id,
       buffer: liveDocument.buffer,
-      languageId: languageIdForFilePath(liveDocument.path),
+      languageId: documentLanguageId,
       text: '',
       view: liveDocument.view,
     }),
-    [liveDocument.buffer, liveDocument.id, liveDocument.path, liveDocument.view],
+    [documentLanguageId, liveDocument.buffer, liveDocument.id, liveDocument.view],
   )
   const editorKeymap = useMemo(
     () =>

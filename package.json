@@ -60,6 +60,7 @@
     "@singapor/gutters": "link:@singapor/gutters",
     "@singapor/lsp": "link:@singapor/lsp",
     "@singapor/lsp-plugin": "link:@singapor/lsp-plugin",
+    "@singapor/markdown": "link:@singapor/markdown",
     "@singapor/minimap": "link:@singapor/minimap",
     "@singapor/panes": "link:@singapor/panes",
     "@singapor/react": "link:@singapor/react",

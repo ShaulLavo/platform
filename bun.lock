@@ -90,6 +90,7 @@
         "@singapor/find": "0.1.1",
         "@singapor/gutters": "0.1.1",
         "@singapor/lsp-plugin": "0.1.1",
+        "@singapor/markdown": "0.1.1",
         "@singapor/minimap": "0.1.1",
         "@singapor/react": "0.1.1",
         "@singapor/scope-lines": "0.1.1",
@@ -275,6 +276,7 @@
     "@singapor/gutters": "link:@singapor/gutters",
     "@singapor/lsp": "link:@singapor/lsp",
     "@singapor/lsp-plugin": "link:@singapor/lsp-plugin",
+    "@singapor/markdown": "link:@singapor/markdown",
     "@singapor/minimap": "link:@singapor/minimap",
     "@singapor/panes": "link:@singapor/panes",
     "@singapor/react": "link:@singapor/react",
@@ -852,6 +854,8 @@
     "@singapor/lsp": ["@singapor/lsp@link:@singapor/lsp", {}],
 
     "@singapor/lsp-plugin": ["@singapor/lsp-plugin@link:@singapor/lsp-plugin", {}],
+
+    "@singapor/markdown": ["@singapor/markdown@link:@singapor/markdown", {}],
 
     "@singapor/minimap": ["@singapor/minimap@link:@singapor/minimap", {}],
 
