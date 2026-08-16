@@ -65,7 +65,7 @@ updates from the native watcher` used to fail deterministically (~15s
 | 047  | [Stop reporting a modified pre-existing file as `created` (F-WATCH)](047-watcher-event-classification.md)                                  | P1       | M      | —          | **DONE** (`f93dd1d`, `1f8eb0d`) — Option B; red test green, suite 779/779, silent parcel→node fallback now logged                                                                                      |
 | 017  | [Security + correctness one-liners: argv option-injection hardening and the `..`-prefix containment bug](017-argv-and-path-containment.md) | P1       | S      | —          | **DONE** — `checkout`/`create-branch`/`file` refs now on `gitRefNameSchema`; `--` added to `git branch` and `fd` (not `git checkout`, where `--` means pathspec); one `isOutsideRoot`; server 787/787  |
 | 018  | [Stale-closure command bugs: `toggleWallpaper` and `toggleDiffViewMode` read frozen settings](018-stale-closure-commands.md)               | P1       | S      | —          | **BLOCKED** — Step-1 STOP: the bug does not reproduce. `openFileAtRef` and `setTheme` are already in the array and are rebuilt every render, so the memo is inert and nothing freezes. See note below. |
-| 005  | [Patch vulnerable dependencies](005-patch-vulnerable-dependencies.md)                                                                      | P2       | S–M    | —          | **TODO — STALE**, see note below                                                                                                                                                                       |
+| 005  | [Patch vulnerable dependencies](005-patch-vulnerable-dependencies.md)                                                                      | P2       | S–M    | —          | **DONE** — inventory rebuilt against the live 27 advisories; `bun audit` now reports **No vulnerabilities found**. All cleared in-major via `overrides`; no source change                              |
 | 019  | [Delete `--sort path` from the ripgrep invocation](019-ripgrep-sort-path-removal.md)                                                       | P2       | S      | —          | TODO                                                                                                                                                                                                   |
 | 020  | [One gated, indexed fold for the pending-request counters](020-pending-request-counter-single-fold.md)                                     | P2       | S      | —          | TODO                                                                                                                                                                                                   |
 | 021  | [Give fire-and-forget async a rejection boundary (server + client)](021-async-rejection-boundaries.md)                                     | P2       | S      | —          | TODO                                                                                                                                                                                                   |
@@ -158,10 +158,15 @@ baseline itself is worth doing first — the format failure is one command.
 > dependency note but the file was never written and the premise is moot.
 > Numbering is kept monotonic.
 
-> **Plan 005 is stale.** It was written 2026-06-18 against 4 advisories.
-> `bun audit` at `ace313f` reports **27** (1 critical `@vitest/browser`, 10 high
-> incl. `undici` and `immutable`). Refresh it against the current output before
-> executing; the plan's _approach_ still holds, its _inventory_ does not.
+> **Plan 005 was stale and has been re-executed against a fresh inventory.**
+> Written 2026-06-18 against 11 advisories; `bun audit` at `ace313f` reported
+> **27** (1 critical, 10 high, 13 moderate, 3 low). The plan's _approach_ held
+> exactly — every advisory cleared with a root `overrides` pin inside the same
+> major, with no source change and no direct-dep major bump. `bun audit` now
+> reports **No vulnerabilities found** (27 → 0). Three of the pins already
+> existed and had simply been overtaken (`brace-expansion` 5.0.6 → 5.0.9,
+> `dompurify` 3.4.11 → 3.4.13, `undici` 7.28.0 → 7.29.0), which is the argument
+> for the maintenance note's CI gate: a pin is a snapshot, not a fix.
 
 ---
 
