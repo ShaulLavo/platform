@@ -4,8 +4,7 @@ import { Database } from 'bun:sqlite'
 import { drizzle } from 'drizzle-orm/bun-sqlite'
 import * as schema from './schema'
 import { platformHomePath } from '../home'
-
-const defaultMetadataDatabasePath = Bun.env.FS_METADATA_DB ?? platformHomePath('fs-metadata.sqlite')
+import { createStructuredError } from '../observability/structured-errors'
 
 export type PlatformDatabase = ReturnType<typeof openPlatformDatabase>['db']
 
@@ -18,7 +17,34 @@ export type MetadataDatabaseHandle = {
 export function createMetadataDatabase(
   options: { databasePath?: string } = {},
 ): MetadataDatabaseHandle {
-  return openPlatformDatabase(options.databasePath ?? defaultMetadataDatabasePath)
+  return openPlatformDatabase(options.databasePath ?? resolveDefaultDatabasePath())
+}
+
+/**
+ * Resolved per call, never at import time, so this module stays side-effect-free
+ * to import and the guard below throws where the caller can see it.
+ */
+function resolveDefaultDatabasePath(): string {
+  const explicit = Bun.env.FS_METADATA_DB
+  if (explicit) return explicit
+
+  // A test process must never touch the developer's real database. Defaulting
+  // silently is what let the server suite migrate and WAL-lock ~/.platform.
+  if (isTestProcess()) {
+    throw createStructuredError({
+      code: 'db.TEST_DATABASE_NOT_INJECTED',
+      fix: "Inject a database in the test: `createMetadataDatabase({ databasePath: ':memory:' })`, then pass it as `metadataDatabase` and `orchestration.database`. See `apps/web/test/server.ts`.",
+      message: 'A test process reached the default platform database path',
+      status: 500,
+      why: "The default path is the developer's real ~/.platform/fs-metadata.sqlite; opening it from a test migrates and WAL-locks live state and makes results depend on that machine's data.",
+    })
+  }
+
+  return platformHomePath('fs-metadata.sqlite')
+}
+
+function isTestProcess(): boolean {
+  return Bun.env.VITEST === 'true' || Bun.env.NODE_ENV === 'test'
 }
 
 let defaultHandle: MetadataDatabaseHandle | null = null

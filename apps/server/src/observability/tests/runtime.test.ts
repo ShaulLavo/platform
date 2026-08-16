@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { readFsLogs } from 'evlog/fs'
 import type { WideEvent } from 'evlog'
 
-import { createApp } from '../../app'
+import { closeTestApps, createTestApp } from '../../../test/server'
 import { flushObservability, initializeObservability, resetObservabilityForTests } from '../runtime'
 import { testSettingsOptions } from '../../settings/testing'
 
@@ -13,6 +13,7 @@ const TRUSTED_ORIGIN = 'http://localhost:5173'
 const roots: string[] = []
 
 afterEach(async () => {
+  await closeTestApps()
   await resetObservabilityForTests()
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
@@ -322,7 +323,7 @@ describe('observability runtime', () => {
 })
 
 function testApp(root: string, options: { sessionToken?: string } = {}) {
-  return createApp({
+  return createTestApp({
     auth: {
       allowedOrigins: [TRUSTED_ORIGIN],
       sessionToken: options.sessionToken,

@@ -299,7 +299,11 @@ describe('workspace index', () => {
 
   it('updates the service workspace index from FileChangeHub mutations', async () => {
     const root = await fixtureRoot()
-    const service = new FileSystemService({ workspaceRoot: root, watch: false })
+    const service = new FileSystemService({
+      metadataDatabasePath: ':memory:',
+      workspaceRoot: root,
+      watch: false,
+    })
 
     try {
       await waitForStatus(service.workspaceIndex, 'ready')

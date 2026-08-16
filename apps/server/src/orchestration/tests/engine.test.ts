@@ -11,7 +11,8 @@ import {
   threadIdSchema,
   turnIdSchema,
 } from '@workspace/contracts'
-import { createApp } from '../../app'
+import type { App } from '../../app'
+import { closeTestApps, createTestApp } from '../../../test/server'
 import * as schema from '../../db/schema'
 import { migrateOrchestrationDatabase } from '../../db/migrations'
 import { createWorkspacePaths } from '../../fs/path'
@@ -49,6 +50,7 @@ const modelSelection = {
 const roots: string[] = []
 
 afterEach(async () => {
+  await closeTestApps()
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
 
@@ -411,7 +413,7 @@ describe('orchestration engine', () => {
   it('serves the Phase 2 HTTP command and snapshot flow', async () => {
     const fixture = createFixture()
     const root = await fixtureRoot()
-    const app = createApp({
+    const app = createTestApp({
       auth: { allowedOrigins: ['http://localhost:5173'] },
       orchestration: { database: fixture.database },
       settings: testSettingsOptions(root),
@@ -529,7 +531,7 @@ describe('orchestration engine', () => {
     const fixture = createFixture()
     const root = await fixtureRoot()
     const adapterRegistry = new ProviderAdapterRegistry([new MockProviderAdapter()])
-    const app = createApp({
+    const app = createTestApp({
       auth: { allowedOrigins: ['http://localhost:5173'] },
       orchestration: { database: fixture.database, providerAdapterRegistry: adapterRegistry },
       settings: testSettingsOptions(root),
@@ -1211,7 +1213,7 @@ function createOrchestrationTestApp(
   root: string,
   database: ReturnType<typeof createFixture>['database'],
 ) {
-  return createApp({
+  return createTestApp({
     auth: { allowedOrigins: ['http://localhost:5173'] },
     orchestration: { database },
     settings: testSettingsOptions(root),
@@ -1220,11 +1222,11 @@ function createOrchestrationTestApp(
   })
 }
 
-async function postCommand(app: ReturnType<typeof createApp>, body: OrchestrationCommand) {
+async function postCommand(app: App, body: OrchestrationCommand) {
   return postJson<{ sequence: number }>(app, '/orchestration/commands', body)
 }
 
-async function postJson<T>(app: ReturnType<typeof createApp>, url: string, body: unknown) {
+async function postJson<T>(app: App, url: string, body: unknown) {
   const response = await app.handle(
     new Request(`http://local${url}`, {
       body: JSON.stringify(body),
@@ -1238,7 +1240,7 @@ async function postJson<T>(app: ReturnType<typeof createApp>, url: string, body:
   return (await response.json()) as T
 }
 
-async function getJson<T>(app: ReturnType<typeof createApp>, url: string) {
+async function getJson<T>(app: App, url: string) {
   const response = await app.handle(
     new Request(`http://local${url}`, {
       headers: trustedHeaders(),

@@ -8,7 +8,7 @@
 import { writeFileSync } from 'node:fs'
 import path from 'node:path'
 
-import { SETTING_IDS, descriptorFor } from '../packages/contracts/src/index'
+import { SETTING_IDS, descriptorFor, type SettingId } from '../packages/contracts/src/index'
 
 const SCOPE_NOTES: Record<string, string> = {
   application: 'user file only',
@@ -17,9 +17,9 @@ const SCOPE_NOTES: Record<string, string> = {
   window: 'user or workspace',
 }
 
-function table(ids: readonly string[]) {
+function table(ids: readonly SettingId[]) {
   const rows = ids.map((id) => {
-    const descriptor = descriptorFor(id as never)
+    const descriptor = descriptorFor(id)
     const flags = [
       descriptor.requiresRestart ? 'restart' : '',
       descriptor.readOnlyReason ? 'read-only' : '',
@@ -65,7 +65,7 @@ function pad(cell: string, width: number, delimiter: boolean): string {
   return ` ${cell.padEnd(width)} `
 }
 
-const byCategory = new Map<string, string[]>()
+const byCategory = new Map<string, SettingId[]>()
 for (const id of SETTING_IDS) {
   const category = descriptorFor(id).category
   byCategory.set(category, [...(byCategory.get(category) ?? []), id])

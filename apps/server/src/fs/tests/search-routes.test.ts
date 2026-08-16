@@ -3,13 +3,14 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { createApp } from '../../app'
+import { closeTestApps, createTestApp } from '../../../test/server'
 import { testSettingsOptions } from '../../settings/testing'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
 const roots: string[] = []
 
 afterEach(async () => {
+  await closeTestApps()
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
 
@@ -99,7 +100,7 @@ describe('GET /fs/search/events', () => {
 type SseEvent = { type: string } & Record<string, unknown>
 
 async function search(root: string, query: Record<string, string>) {
-  const app = createApp({
+  const app = createTestApp({
     auth: { allowedOrigins: [TRUSTED_ORIGIN] },
     settings: testSettingsOptions(root),
     watch: false,

@@ -4,7 +4,8 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Query } from '@anthropic-ai/claude-agent-sdk'
 import type { ProviderAuthResult, ProviderLoginAttempt } from '@workspace/contracts'
-import { closeApp, createApp } from '../../app'
+import type { App } from '../../app'
+import { closeTestApps, createTestApp } from '../../../test/server'
 import { ClaudeProviderAdapter } from '../adapters/claude'
 import { MockProviderAdapter } from '../adapters/mock'
 import {
@@ -21,11 +22,10 @@ const TRUSTED_ORIGIN = 'http://localhost:5173'
 /** Account the fake SDK probe reports; only email/subscription decoration. */
 const PROBE_ACCOUNT = { email: 'dev@example.com', subscriptionType: 'max' }
 
-const apps: Array<ReturnType<typeof createApp>> = []
 const roots: string[] = []
 
 afterEach(async () => {
-  await Promise.all(apps.splice(0).map((app) => closeApp(app)))
+  await closeTestApps()
   await Promise.all(roots.splice(0).map((root) => rm(root, { force: true, recursive: true })))
 })
 
@@ -100,7 +100,7 @@ async function testHarness() {
     auth: new ClaudeAuthRunner({ spawn: cli.spawn }),
     createQuery: fakeProbeQuery,
   })
-  const app = createApp({
+  const app = createTestApp({
     auth: { allowedOrigins: [TRUSTED_ORIGIN] },
     orchestration: {
       providerAdapterRegistry: new ProviderAdapterRegistry([claude, new MockProviderAdapter()]),
@@ -109,17 +109,11 @@ async function testHarness() {
     watch: false,
     workspaceRoot: root,
   })
-  apps.push(app)
 
   return { app, cli }
 }
 
-async function call(
-  app: ReturnType<typeof createApp>,
-  method: 'GET' | 'POST',
-  route: string,
-  body?: unknown,
-) {
+async function call(app: App, method: 'GET' | 'POST', route: string, body?: unknown) {
   const response = await app.handle(
     new Request(`http://local${route}`, {
       headers: { 'content-type': 'application/json', origin: TRUSTED_ORIGIN },
@@ -235,7 +229,7 @@ describe('provider auth routes', () => {
   })
 })
 
-async function pollAttempt(app: ReturnType<typeof createApp>, attemptId: string) {
+async function pollAttempt(app: App, attemptId: string) {
   for (let poll = 0; poll < 50; poll += 1) {
     const result = await call(app, 'GET', `/providers/claude/auth/login/${attemptId}`)
     const attempt = result.body as ProviderLoginAttempt

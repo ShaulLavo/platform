@@ -2,15 +2,14 @@ import { mkdir, mkdtemp, lstat, readFile, rm, symlink, truncate, writeFile } fro
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { closeApp, createApp } from '../app'
+import { closeTestApps, createTestApp } from '../../test/server'
 import { testSettingsOptions } from '../settings/testing'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
-const apps: Array<ReturnType<typeof createApp>> = []
 const roots: string[] = []
 
 afterEach(async () => {
-  await Promise.all(apps.splice(0).map((app) => closeApp(app)))
+  await closeTestApps()
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
 
@@ -283,7 +282,7 @@ describe('fs rpc filesystem limits', () => {
 
   it('keeps workspace indexing off for system-root browsing without a configured workspace', async () => {
     const root = await fixtureRoot()
-    const app = createApp({
+    const app = createTestApp({
       auth: {
         allowedOrigins: [TRUSTED_ORIGIN],
       },
@@ -291,7 +290,6 @@ describe('fs rpc filesystem limits', () => {
       settings: testSettingsOptions(root),
       systemRoot: root,
     })
-    apps.push(app)
 
     const health = await app.handle(
       new Request('http://local/health', {
@@ -1000,7 +998,7 @@ function testApp(
     watchBackend?: 'auto' | 'node'
   } = {},
 ) {
-  const app = createApp({
+  const app = createTestApp({
     auth: {
       allowedOrigins: [TRUSTED_ORIGIN],
       sessionToken: options.sessionToken,
@@ -1013,7 +1011,6 @@ function testApp(
     watchBackend: options.watchBackend ?? 'node',
     workspaceRoot: root,
   })
-  apps.push(app)
   return app
 }
 

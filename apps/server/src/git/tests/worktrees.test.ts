@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { closeApp, createApp } from '../../app'
+import { closeTestApps, createTestApp } from '../../../test/server'
 import { createWorkspacePaths } from '../../fs/path'
 import { GitService } from '../service'
 import { gitWorktreeErrors } from '../utils/worktree-errors'
@@ -12,11 +12,10 @@ import { testSettingsOptions } from '../../settings/testing'
 const TRUSTED_ORIGIN = 'http://localhost:5173'
 const SESSION_ROOT = '.git/platform-worktrees'
 
-const apps: Array<ReturnType<typeof createApp>> = []
 const roots: string[] = []
 
 afterEach(async () => {
-  await Promise.all(apps.splice(0).map((app) => closeApp(app)))
+  await closeTestApps()
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
 
@@ -280,13 +279,12 @@ function worktreeService(root: string) {
 }
 
 function testApp(root: string) {
-  const app = createApp({
+  const app = createTestApp({
     auth: { allowedOrigins: [TRUSTED_ORIGIN] },
     settings: testSettingsOptions(root),
     watch: false,
     workspaceRoot: root,
   })
-  apps.push(app)
   return app
 }
 

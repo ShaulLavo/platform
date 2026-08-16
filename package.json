@@ -8,7 +8,8 @@
       "packages/contracts",
       "packages/observability",
       "packages/tree",
-      "packages/ui"
+      "packages/ui",
+      "scripts"
     ],
     "catalog": {
       "preact": "11.0.0-beta.0",

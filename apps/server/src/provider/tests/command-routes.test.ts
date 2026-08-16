@@ -4,7 +4,8 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { Query } from '@anthropic-ai/claude-agent-sdk'
 import type { ProviderCommandCatalog } from '@workspace/contracts'
-import { closeApp, createApp } from '../../app'
+import type { App } from '../../app'
+import { closeTestApps, createTestApp } from '../../../test/server'
 import { ClaudeProviderAdapter, type ClaudeCreateQuery } from '../adapters/claude'
 import { MockProviderAdapter } from '../adapters/mock'
 import { ClaudeAuthRunner, type ClaudeAuthProcess } from '../adapters/utils/claude-auth'
@@ -13,11 +14,10 @@ import { testSettingsOptions } from '../../settings/testing'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
 
-const apps: Array<ReturnType<typeof createApp>> = []
 const roots: string[] = []
 
 afterEach(async () => {
-  await Promise.all(apps.splice(0).map((app) => closeApp(app)))
+  await closeTestApps()
   await Promise.all(roots.splice(0).map((root) => rm(root, { force: true, recursive: true })))
 })
 
@@ -69,7 +69,7 @@ async function testHarness(createQuery?: ClaudeCreateQuery) {
     auth: neverSpawningAuth(),
     createQuery: createQuery ?? fakeClaudeCli(cwds),
   })
-  const app = createApp({
+  const app = createTestApp({
     auth: { allowedOrigins: [TRUSTED_ORIGIN] },
     orchestration: {
       providerAdapterRegistry: new ProviderAdapterRegistry([claude, new MockProviderAdapter()]),
@@ -78,12 +78,11 @@ async function testHarness(createQuery?: ClaudeCreateQuery) {
     watch: false,
     workspaceRoot: root,
   })
-  apps.push(app)
 
   return { app, cwds, root }
 }
 
-async function readCatalog(app: ReturnType<typeof createApp>, route: string) {
+async function readCatalog(app: App, route: string) {
   const response = await app.handle(
     new Request(`http://local${route}`, { headers: { origin: TRUSTED_ORIGIN } }),
   )
