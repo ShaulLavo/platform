@@ -1,6 +1,6 @@
 import { chromium, firefox, webkit } from 'playwright'
 import { statSync } from 'node:fs'
-import { relative, resolve, sep } from 'node:path'
+import { basename, relative, resolve, sep } from 'node:path'
 import { createBenchmarkError } from './structured-errors.mjs'
 
 export const browserTypes = { chromium, firefox, webkit }
