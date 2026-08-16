@@ -65,17 +65,21 @@ const WORK_LOG_SCALAR_FIELDS = [
 /**
  * Every turn's work is derived, not just the running one: scrolling back through a
  * finished thread must still show the tool calls, reasoning and approvals that produced it.
+ *
+ * The caller passes the store's order — `(sequence, createdAt, id)`, established
+ * once in `chat-projection-writers.ts`. Re-sorting here by `createdAt` alone used
+ * to be able to contradict it, so the rows and the transcript disagreed. The store
+ * is the authority; do not re-establish the order.
  */
 export function chatWorkLogEntries({
   activities,
 }: {
   activities: readonly OrchestrationThreadActivity[]
 }) {
-  const ordered = [...activities].toSorted(compareActivities)
-  const planRows = turnPlanRows(ordered)
+  const planRows = turnPlanRows(activities)
   const entries: DerivedChatWorkLogEntry[] = []
 
-  for (const activity of ordered) {
+  for (const activity of activities) {
     if (activity.kind === 'turn.plan.updated') {
       appendTurnPlanRow(entries, planRows, activity)
       continue
@@ -141,10 +145,6 @@ function stringListsEqual(left: readonly string[], right: readonly string[]) {
   if (left.length !== right.length) return false
 
   return left.every((value, index) => value === right[index])
-}
-
-function compareActivities(left: OrchestrationThreadActivity, right: OrchestrationThreadActivity) {
-  return left.createdAt.localeCompare(right.createdAt)
 }
 
 function isActivityForWorkLog(activity: OrchestrationThreadActivity) {

@@ -286,6 +286,32 @@ describe('chat work log entries', () => {
     })
     expect(chatActiveWorkLogPlan(entries, null)).toMatchObject({ currentStep: 'New work' })
   })
+
+  it("keeps the caller's order when createdAt disagrees with sequence", () => {
+    const entries = chatWorkLogEntries({
+      // Store order: `(sequence, createdAt, id)`. Here the first row has the
+      // later `createdAt` and the smaller `sequence`, so a `createdAt`-only
+      // re-sort would swap them.
+      activities: [
+        activity('later-clock', {
+          createdAt: timestamp(9),
+          kind: 'tool.completed',
+          payload: { detail: 'ran first', itemType: 'command_execution', status: 'completed' },
+          sequence: 5,
+          summary: 'First',
+        }),
+        activity('earlier-clock', {
+          createdAt: timestamp(1),
+          kind: 'tool.completed',
+          payload: { detail: 'ran second', itemType: 'command_execution', status: 'completed' },
+          sequence: 6,
+          summary: 'Second',
+        }),
+      ],
+    })
+
+    expect(entries.map((entry) => entry.id)).toEqual(['later-clock', 'earlier-clock'])
+  })
 })
 
 function planActivity(

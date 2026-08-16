@@ -1,6 +1,7 @@
 import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
+  type EventId,
   type OrchestrationCheckpointSummary,
   type OrchestrationEvent,
   type OrchestrationLatestTurn,
@@ -766,16 +767,24 @@ function applyThreadMessageSentEvent(
   const message = messageFromEvent(event)
   const currentIds = state.messageIdsByThreadId[threadId] ?? []
   const currentById = state.messageByThreadId[threadId] ?? {}
-  const nextMessage = mergeMessage(currentById[message.id], message)
-  const appendedIds = appendId(currentIds, message.id)
+  const heldMessage = currentById[message.id]
+  const nextMessage = mergeMessage(heldMessage, message)
+  // The id list and the by-id record are written together by every writer in
+  // this file, so record membership *is* the id-list membership test. A streamed
+  // delta re-sends an id that is already held, and this runs once per token: a
+  // linear `includes` over the retained transcript is the wrong instrument.
+  const appendedIds = heldMessage ? currentIds : [...currentIds, message.id]
   const nextIds = boundedTail(appendedIds, CHAT_MESSAGE_CACHE_LIMIT, currentIds.length)
-  const nextById = retainRecordKeys(
-    {
-      ...currentById,
-      [message.id]: nextMessage,
-    },
-    new Set(nextIds),
-  )
+  const grownById = {
+    ...currentById,
+    [message.id]: nextMessage,
+  }
+  // Only a trim can drop keys, and the steady-state delta never trims — so the
+  // record rebuild is paid on the rare append that crosses the cap, not per token.
+  const nextById =
+    nextIds.length === appendedIds.length
+      ? grownById
+      : retainRecordKeys(grownById, new Set(nextIds))
 
   const nextState = patchThreadShell(
     markTrimmedFront(
@@ -811,14 +820,14 @@ function applyThreadActivityAppendedEvent(
     sequence: event.payload.activity.sequence ?? event.sequence,
   }
   const threadId = event.payload.threadId
+  const currentIds = state.activityIdsByThreadId[threadId] ?? []
   const currentById = state.activityByThreadId[threadId] ?? {}
-  const activities = recordValues<OrchestrationThreadActivity>({
-    ...currentById,
-    [activity.id]: activity,
-  }).sort(compareActivities)
-  const heldCount = state.activityIdsByThreadId[threadId]?.length ?? 0
-  const cappedActivities = boundedTail(activities, CHAT_ACTIVITY_CACHE_LIMIT, heldCount)
-  const nextIds = cappedActivities.map((entry) => entry.id)
+  const appended = appendActivity(currentIds, currentById, activity)
+  const nextIds = boundedTail(appended.ids, CHAT_ACTIVITY_CACHE_LIMIT, currentIds.length)
+  const nextById =
+    nextIds.length === appended.ids.length
+      ? appended.byId
+      : retainRecordKeys(appended.byId, new Set(nextIds))
 
   return writeTurnFailureState(
     markTrimmedFront(
@@ -826,7 +835,7 @@ function applyThreadActivityAppendedEvent(
         ...patchThreadShell(state, threadId, { updatedAt: activity.createdAt }),
         activityByThreadId: {
           ...state.activityByThreadId,
-          [threadId]: recordById(cappedActivities, (entry) => entry.id),
+          [threadId]: nextById,
         },
         activityIdsByThreadId: {
           ...state.activityIdsByThreadId,
@@ -834,10 +843,46 @@ function applyThreadActivityAppendedEvent(
         },
       },
       threadId,
-      activities.length - cappedActivities.length,
+      appended.ids.length - nextIds.length,
     ),
     activity,
   )
+}
+
+/**
+ * Activities arrive in `sequence` order, so the append is a tail push. The full
+ * rebuild-and-sort is kept for the cases that are not a tail push — an id already
+ * held (a revision), an out-of-order replay, or a snapshot row carrying no
+ * `sequence` (which `compareActivities` sorts last) — so as long as the held
+ * slice is already sorted, the order this produces is identical to sorting every
+ * time. The slice is sorted by construction: every writer that builds it either
+ * sorts or takes the server's order.
+ */
+function appendActivity(
+  ids: readonly EventId[],
+  byId: Record<EventId, OrchestrationThreadActivity>,
+  activity: OrchestrationThreadActivity,
+): { byId: Record<EventId, OrchestrationThreadActivity>; ids: EventId[] } {
+  const lastId = ids.at(-1)
+  const last = lastId ? byId[lastId] : undefined
+  const isTailAppend =
+    byId[activity.id] === undefined && (!last || compareActivities(last, activity) < 0)
+  if (isTailAppend) {
+    return {
+      byId: { ...byId, [activity.id]: activity },
+      ids: [...ids, activity.id],
+    }
+  }
+
+  const ordered = recordValues<OrchestrationThreadActivity>({
+    ...byId,
+    [activity.id]: activity,
+  }).sort(compareActivities)
+
+  return {
+    byId: recordById(ordered, activityKey),
+    ids: ordered.map(activityKey),
+  }
 }
 
 function applyThreadProposedPlanUpsertedEvent(

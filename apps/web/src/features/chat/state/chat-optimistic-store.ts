@@ -21,7 +21,7 @@ type ChatOptimisticActions = {
   addOptimisticMessage: (commandId: CommandId, message: OrchestrationMessage) => void
   clearResolvedOptimisticMessages: (
     threadId: ThreadId,
-    resolvedMessageIds: ReadonlySet<MessageId>,
+    resolvedMessages: readonly OrchestrationMessage[],
   ) => void
   removeOptimisticMessage: (threadId: ThreadId, messageId: MessageId) => void
 }
@@ -36,7 +36,7 @@ const optimisticLogFlush = new Debouncer(flushOptimisticLogScope, {
   wait: CHAT_OPTIMISTIC_LOG_FLUSH_MS,
 })
 
-export const useChatOptimisticStore = create<ChatOptimisticStore>((set) => ({
+export const useChatOptimisticStore = create<ChatOptimisticStore>((set, get) => ({
   messagesByThreadId: {},
   addOptimisticMessage: (commandId, message) => {
     recordOptimisticMutation(
@@ -63,7 +63,15 @@ export const useChatOptimisticStore = create<ChatOptimisticStore>((set) => ({
       },
     }))
   },
-  clearResolvedOptimisticMessages: (threadId, resolvedMessageIds) => {
+  clearResolvedOptimisticMessages: (threadId, resolvedMessages) => {
+    // Runs once per streamed token delta. An optimistic message only exists in the
+    // window between send and the server's echo, and `replaceThreadMessages` drops
+    // the thread key when the last one resolves — so this bail is the common case,
+    // and it has to happen before the id set is built and before the log scope is
+    // touched, or a streaming turn drives the debouncer per token.
+    if (!get().messagesByThreadId[threadId]) return
+
+    const resolvedMessageIds = new Set(resolvedMessages.map((message) => message.id))
     recordOptimisticMutation('clearResolved', {
       resolvedMessageCount: resolvedMessageIds.size,
       threadId,

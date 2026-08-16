@@ -118,12 +118,7 @@ export function ChatView({
   useEffect(() => {
     if (!thread) return
 
-    useChatOptimisticStore
-      .getState()
-      .clearResolvedOptimisticMessages(
-        thread.id,
-        new Set(thread.messages.map((message) => message.id)),
-      )
+    useChatOptimisticStore.getState().clearResolvedOptimisticMessages(thread.id, thread.messages)
   }, [thread])
 
   if (!activeThreadId) {

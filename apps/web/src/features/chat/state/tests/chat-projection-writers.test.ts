@@ -589,6 +589,101 @@ function makeMessage(
   }
 }
 
+test('trims the oldest message when a streamed append crosses the cache limit', () => {
+  const threadId = parseThreadId('thread-trim-messages')
+  const turnId = parseTurnId('turn-trim-messages')
+  let state = createInitialChatProjectionState()
+
+  // Sequences start at 1: `applyThreadEventWithSequenceGuard` silently drops
+  // an event whose sequence is not greater than the thread's last one.
+  for (let index = 1; index <= CHAT_MESSAGE_CACHE_LIMIT; index += 1) {
+    state = applyChatProjectionEvent(
+      state,
+      assistantMessageEvent({
+        messageId: parseMessageId(`message-${index}`),
+        sequence: index,
+        streaming: false,
+        text: 'held',
+        threadId,
+        turnId,
+      }),
+    )
+  }
+  state = applyChatProjectionEvent(
+    state,
+    assistantMessageEvent({
+      messageId: parseMessageId('message-overflow'),
+      sequence: CHAT_MESSAGE_CACHE_LIMIT + 1,
+      streaming: false,
+      text: 'overflow',
+      threadId,
+      turnId,
+    }),
+  )
+
+  const firstId = parseMessageId('message-1')
+  expect(state.messageIdsByThreadId[threadId]).toHaveLength(CHAT_MESSAGE_CACHE_LIMIT)
+  expect(state.messageIdsByThreadId[threadId]).not.toContain(firstId)
+  expect(state.messageByThreadId[threadId]?.[firstId]).toBeUndefined()
+  expect(state.threadHasEarlierById[threadId]).toBe(true)
+}, 30_000)
+
+test('orders an out-of-sequence appended activity by sequence, not arrival', () => {
+  const threadId = parseThreadId('thread-activity-order')
+  let state = createInitialChatProjectionState()
+
+  for (const [eventSequence, activitySequence] of [
+    [1, 1],
+    [2, 3],
+    [3, 2],
+  ]) {
+    state = applyChatProjectionEvent(
+      state,
+      activityAppendedEvent(
+        threadId,
+        eventSequence,
+        makeActivity(activitySequence, threadId, { sequence: activitySequence }),
+      ),
+    )
+  }
+
+  expect(state.activityIdsByThreadId[threadId]).toEqual([
+    parseEventId('event-1'),
+    parseEventId('event-2'),
+    parseEventId('event-3'),
+  ])
+})
+
+test('trims the oldest activity when an appended activity crosses the cache limit', () => {
+  const threadId = parseThreadId('thread-trim-activities')
+  let state = createInitialChatProjectionState()
+
+  for (let index = 1; index <= CHAT_ACTIVITY_CACHE_LIMIT + 1; index += 1) {
+    state = applyChatProjectionEvent(
+      state,
+      activityAppendedEvent(threadId, index, makeActivity(index, threadId, { sequence: index })),
+    )
+  }
+
+  const firstId = parseEventId('event-1')
+  expect(state.activityIdsByThreadId[threadId]).toHaveLength(CHAT_ACTIVITY_CACHE_LIMIT)
+  expect(state.activityIdsByThreadId[threadId]).not.toContain(firstId)
+  expect(state.activityByThreadId[threadId]?.[firstId]).toBeUndefined()
+  expect(state.threadHasEarlierById[threadId]).toBe(true)
+}, 30_000)
+
+function activityAppendedEvent(
+  threadId: ReturnType<typeof parseThreadId>,
+  eventSequence: number,
+  activity: OrchestrationThreadActivity,
+): OrchestrationEvent {
+  return {
+    ...makeThreadEvent(threadId, eventSequence, `activity-${eventSequence}`),
+    payload: { activity, threadId },
+    type: 'thread.activity-appended',
+  }
+}
+
 function makeActivity(
   index: number,
   threadId: ReturnType<typeof parseThreadId>,
