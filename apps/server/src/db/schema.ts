@@ -196,6 +196,7 @@ export const projectionThreadActivities = sqliteTable(
   },
   (table) => [
     index('projection_thread_activities_thread_created_idx').on(table.threadId, table.createdAt),
+    index('projection_thread_activities_thread_kind_idx').on(table.threadId, table.kind),
   ],
 )
 

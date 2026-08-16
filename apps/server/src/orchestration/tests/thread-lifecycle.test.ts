@@ -40,6 +40,19 @@ describe('settle guards', () => {
     })
   })
 
+  it('keeps refusing to settle while unrelated activity traffic flows', async () => {
+    const { engine } = await createEngineWithThread()
+    await engine.dispatch(activityCommand('approval.requested', 'approval'))
+    for (let index = 0; index < 20; index += 1) {
+      await engine.dispatch(activityCommand('tool.started', 'tool', null))
+    }
+
+    await expect(engine.dispatch(settleCommand())).rejects.toMatchObject({
+      code: 'orchestration.THREAD_BLOCKING_REQUEST',
+      status: 409,
+    })
+  })
+
   it('settles once the request resolves', async () => {
     const { database, engine } = await createEngineWithThread()
     await engine.dispatch(activityCommand('approval.requested', 'approval'))

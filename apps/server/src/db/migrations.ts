@@ -35,6 +35,7 @@ export const platformMigrations: readonly Migration[] = [
   { version: 6, name: 'thread_plan_progress', up: applyThreadPlanProgress },
   { version: 7, name: 'project_scripts', up: applyProjectScripts },
   { version: 8, name: 'drop_app_settings', up: applyDropAppSettings },
+  { version: 9, name: 'thread_activity_kind_index', up: applyThreadActivityKindIndex },
 ]
 
 /**
@@ -499,6 +500,19 @@ function applyThreadPlanProgress(database: PlatformDatabase) {
 
 function applyProjectScripts(database: PlatformDatabase) {
   database.run(sql`ALTER TABLE projection_projects ADD COLUMN scripts_json TEXT`)
+}
+
+/**
+ * The pending-request counters read only six activity kinds out of a table that
+ * holds every tool call a thread ever made. Without this index the kind filter
+ * still visits every row of the thread — `(thread_id, created_at)` can only
+ * seek on the thread.
+ */
+function applyThreadActivityKindIndex(database: PlatformDatabase) {
+  database.run(sql`
+		CREATE INDEX IF NOT EXISTS projection_thread_activities_thread_kind_idx
+		ON projection_thread_activities (thread_id, kind)
+	`)
 }
 
 function createProviderRuntimeTables(database: PlatformDatabase) {

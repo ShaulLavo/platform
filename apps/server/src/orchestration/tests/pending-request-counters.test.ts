@@ -104,6 +104,32 @@ describe('pending request counters', () => {
     expectCounts(projected.memory, 1, 0)
     expectCounts(projected.sqlThread, 1, 0)
   })
+
+  it('survives a storm of unrelated activities and still closes on resolve', () => {
+    const noise = Array.from({ length: 50 }, (_, index) =>
+      activityAppendedEvent({ id: `activity-tool-${index}` }),
+    )
+    const open = project([
+      ...threadBootstrapEvents(),
+      turnStartEvent('turn-1', requestedAt),
+      approvalRequested('req-1'),
+      ...noise,
+    ])
+
+    expectCounts(open.memory, 1, 0)
+    expectCounts(open.sqlThread, 1, 0)
+
+    const closed = project([
+      ...threadBootstrapEvents(),
+      turnStartEvent('turn-1', requestedAt),
+      approvalRequested('req-1'),
+      ...noise,
+      requestActivity('approval.resolved', 'activity-resolve-1', 'req-1'),
+    ])
+
+    expectCounts(closed.memory, 0, 0)
+    expectCounts(closed.sqlThread, 0, 0)
+  })
 })
 
 function project(events: PendingOrchestrationEvent[]) {

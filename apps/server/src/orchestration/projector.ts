@@ -1,6 +1,6 @@
 import type { OrchestrationEvent, OrchestrationMessage } from './schemas'
 import type { OrchestrationSession } from '@workspace/contracts'
-import { pendingRequestCounts } from './pending-requests'
+import { isPendingRequestActivityKind, pendingRequestCounts } from './pending-requests'
 import {
   appendBounded,
   boundCheckpoints,
@@ -75,21 +75,7 @@ function applyEvent(event: OrchestrationEvent, model: OrchestrationReadModel) {
       )
       return
     case 'thread.activity-appended':
-      updateThread(model, event.payload.threadId, (thread) => {
-        upsertActivity(thread.activities, event)
-        // The counters are a fold over the retained activities, recomputed
-        // rather than incremented: a replayed batch or a reverted turn can
-        // never leave them drifted from the request state they describe.
-        const counts = pendingRequestCounts(thread.activities)
-
-        return {
-          ...thread,
-          latestTurn: latestTurnAfterActivity(thread.latestTurn, event),
-          pendingApprovalCount: counts.approvals,
-          pendingUserInputCount: counts.userInputs,
-          updatedAt: event.payload.activity.createdAt,
-        }
-      })
+      updateThread(model, event.payload.threadId, (thread) => threadAfterActivity(thread, event))
       return
     case 'thread.meta-updated':
       updateThreadMeta(event, model)
@@ -400,6 +386,42 @@ function updateThreadMeta(
     updatedAt: event.payload.updatedAt,
     worktreePath: event.payload.worktreePath,
   })
+}
+
+function threadAfterActivity(
+  thread: OrchestrationProjectedThread,
+  event: Extract<OrchestrationEvent, { type: 'thread.activity-appended' }>,
+) {
+  upsertActivity(thread.activities, event)
+  const counts = pendingRequestCountsAfterActivity(thread, event)
+
+  return {
+    ...thread,
+    latestTurn: latestTurnAfterActivity(thread.latestTurn, event),
+    pendingApprovalCount: counts.approvals,
+    pendingUserInputCount: counts.userInputs,
+    updatedAt: event.payload.activity.createdAt,
+  }
+}
+
+/**
+ * Only a request-relevant activity can move the counters, so the streaming
+ * storm of tool-call activities never pays for the fold — the same gate the SQL
+ * projection applies in `refreshPendingRequestCountsForActivity`.
+ *
+ * When it does fold, it folds the retained activities rather than incrementing:
+ * a replayed batch or a revised activity can then never leave the counters
+ * drifted from the request state they describe.
+ */
+function pendingRequestCountsAfterActivity(
+  thread: OrchestrationProjectedThread,
+  event: Extract<OrchestrationEvent, { type: 'thread.activity-appended' }>,
+) {
+  if (!isPendingRequestActivityKind(event.payload.activity.kind)) {
+    return { approvals: thread.pendingApprovalCount, userInputs: thread.pendingUserInputCount }
+  }
+
+  return pendingRequestCounts(thread.activities)
 }
 
 function threadAfterSessionSet(

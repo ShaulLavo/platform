@@ -28,7 +28,11 @@ import {
   threadPlanProgress,
   type ThreadPlanProgress,
 } from './read-model'
-import { isPendingRequestActivityKind, pendingRequestCounts } from './pending-requests'
+import {
+  isPendingRequestActivityKind,
+  PENDING_REQUEST_ACTIVITY_KINDS,
+  pendingRequestCounts,
+} from './pending-requests'
 
 export const ORCHESTRATION_PROJECTOR_NAME = 'orchestration'
 
@@ -759,9 +763,8 @@ export class OrchestrationProjectionPipeline {
   }
 
   /**
-   * Filtered by kind in SQL rather than folded over the whole history: unlike
-   * the request counters, plan snapshots are a handful of rows in a thread that
-   * can hold thousands.
+   * Filtered by kind in SQL rather than folded over the whole history: a plan
+   * snapshot is a handful of rows in a thread that can hold thousands.
    */
   private planActivities(threadId: string) {
     const rows = this.database
@@ -793,6 +796,12 @@ export class OrchestrationProjectionPipeline {
     }))
   }
 
+  /**
+   * Filtered by kind in SQL, exactly like `planActivities`: the fold reacts to
+   * six kinds, and a thread's activity table holds every tool call it ever made
+   * with its diff in the payload. Reading and parsing those to ignore them is
+   * what made an approval cost more the longer the thread ran.
+   */
   private requestActivities(threadId: string) {
     const rows = this.database
       .select({
@@ -800,7 +809,12 @@ export class OrchestrationProjectionPipeline {
         payloadJson: projectionThreadActivities.payloadJson,
       })
       .from(projectionThreadActivities)
-      .where(eq(projectionThreadActivities.threadId, threadId))
+      .where(
+        and(
+          eq(projectionThreadActivities.threadId, threadId),
+          inArray(projectionThreadActivities.kind, PENDING_REQUEST_ACTIVITY_KINDS),
+        ),
+      )
       .orderBy(
         asc(projectionThreadActivities.sequence),
         asc(projectionThreadActivities.createdAt),

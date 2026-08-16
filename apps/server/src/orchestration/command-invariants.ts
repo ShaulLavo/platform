@@ -1,7 +1,6 @@
 import { defineErrorCatalog } from 'evlog'
 import { isValidOrderKey } from '@workspace/contracts'
 import { orchestrationErrors } from '../observability'
-import { pendingRequestCounts } from './pending-requests'
 import type { OrchestrationProjectedThread, OrchestrationReadModel } from './read-model'
 
 /**
@@ -235,16 +234,15 @@ export function requirePinned(thread: OrchestrationProjectedThread) {
 }
 
 /**
- * Blocked-on-you work derived from the thread's retained activities: a request
- * with no later resolution for the same `requestId`. The read model caps
- * activities at the most recent few hundred, which is safe here — an open
- * request blocks its turn, so a thread cannot pile up hundreds of later
- * activities while one is outstanding.
+ * Blocked-on-you work read off the counters both projections maintain: a
+ * request with no later resolution for the same `requestId`. Reading the stored
+ * counts rather than refolding `thread.activities` is also what makes the answer
+ * independent of the read model's activity cap — a thread whose open request has
+ * aged out of the retained window still reports as blocked, because the counter
+ * was written when the request opened.
  */
 export function hasOpenBlockingRequest(thread: OrchestrationProjectedThread) {
-  const counts = pendingRequestCounts(thread.activities)
-
-  return counts.approvals + counts.userInputs > 0
+  return thread.pendingApprovalCount + thread.pendingUserInputCount > 0
 }
 
 /**

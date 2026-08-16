@@ -75,20 +75,35 @@ function foldActivity(openRequestKinds: Map<string, RequestKind>, activity: Requ
   openRequestKinds.delete(requestId)
 }
 
-function openedRequestKind(kind: string): RequestKind | null {
-  if (kind === 'approval.requested') return 'approval'
-  if (kind === 'user-input.requested') return 'user-input'
+const OPENED_REQUEST_KINDS = new Map<string, RequestKind>([
+  ['approval.requested', 'approval'],
+  ['user-input.requested', 'user-input'],
+])
 
-  return null
+const BLOCKING_REQUEST_CLOSE_KINDS = new Set([
+  'approval.resolved',
+  'user-input.resolved',
+  'provider.approval.respond.failed',
+  'provider.user-input.respond.failed',
+])
+
+/**
+ * The only kinds the fold reacts to — every other activity is a no-op for it.
+ * The SQL projection filters its read on this list, so the filtered read and
+ * the whole-history read produce the same counts by construction rather than by
+ * two lists agreeing.
+ */
+export const PENDING_REQUEST_ACTIVITY_KINDS: readonly string[] = [
+  ...OPENED_REQUEST_KINDS.keys(),
+  ...BLOCKING_REQUEST_CLOSE_KINDS,
+]
+
+function openedRequestKind(kind: string) {
+  return OPENED_REQUEST_KINDS.get(kind) ?? null
 }
 
 function isBlockingRequestCloseKind(kind: string) {
-  return (
-    kind === 'approval.resolved' ||
-    kind === 'user-input.resolved' ||
-    kind === 'provider.approval.respond.failed' ||
-    kind === 'provider.user-input.respond.failed'
-  )
+  return BLOCKING_REQUEST_CLOSE_KINDS.has(kind)
 }
 
 function isBlockingRequestClosed(kind: string, payload: unknown) {

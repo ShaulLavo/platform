@@ -96,6 +96,19 @@ describe('platform migration ledger', () => {
     expect(columnInfo(handle, 'provider_session_runtime', 'provider_instance_id')?.not_null).toBe(1)
   })
 
+  it('creates the activity kind index the pending-request fold reads through', () => {
+    const handle = openTempDatabase()
+
+    migratePlatformDatabase(handle.db)
+
+    expect(indexNames(handle, 'projection_thread_activities')).toEqual(
+      expect.arrayContaining([
+        'projection_thread_activities_thread_created_idx',
+        'projection_thread_activities_thread_kind_idx',
+      ]),
+    )
+  })
+
   it('adds the thread lifecycle columns and their pinned lookup index', () => {
     const handle = openTempDatabase()
 
