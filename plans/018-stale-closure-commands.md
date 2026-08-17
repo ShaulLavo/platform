@@ -1,5 +1,46 @@
 # Plan 018: Fix `toggleWallpaper` and `toggleDiffViewMode` reading frozen settings
 
+> **⚠️ CORRECTION — this plan's premise was wrong. Read this before anything below.**
+>
+> An executor ran Step 1, could not reproduce the bug, and stopped. It was right.
+>
+> The plan claims the incomplete dependency array freezes `diffViewMode` and
+> `wallpaperEnabled` in a stale closure. **It does not**, because
+> `openFileAtRef` — which _is_ in the array — is not stable.
+> `apps/web/src/features/git/hooks/use-open-file-at-ref.ts:21` returns a bare
+> `async function openFileAtRef(...)` with no `useCallback` wrapper, so it gets a
+> fresh identity on every render. That changes the dependency array every render,
+> so the `useCallback` **never holds**, the callback is rebuilt every render, and
+> both settings values are captured fresh. The toggles work.
+>
+> The author of this plan read the dependency array and reasoned from it without
+> running the toggle. Step 1 existed precisely to catch that, and did.
+>
+> **What is actually true, and is still worth fixing — as a different, smaller job:**
+>
+> 1. The `useCallback` at `commands.ts:124` is **inert**: a memo that never
+>    memoizes, because one of its own dependencies defeats it every render.
+>    `AGENTS.md` says to use `useCallback` "only for measured performance issues,
+>    required stable identity, or correctness". This qualifies as none of them.
+>    Deleting it is the honest change.
+> 2. The dependency array **is** genuinely incomplete — `diffViewMode`,
+>    `wallpaperEnabled`, `setDiffViewMode`, `setWallpaperEnabled` and `setSetting`
+>    are all absent. Harmless today, but it is a **latent bug armed by a future
+>    fix**: the day someone wraps `openFileAtRef` in a `useCallback` — an obvious,
+>    well-intentioned cleanup — the memo starts holding and the stale-closure bug
+>    this plan describes becomes real, with no test to catch it.
+>
+> So the rescoped job is: **delete the inert `useCallback`, or complete its
+> dependency array — and add the regression tests below either way.** The tests
+> in the test plan are still correct and still worth writing; they pin behavior
+> that is currently right by accident. Case 4 (the toggle reflects an
+> externally-changed setting) is the one that would fail if the memo ever starts
+> holding.
+>
+> Everything below describes the mechanism accurately; only its claimed
+> _consequence_ is wrong. Read "Why this matters" as a description of the trap,
+> not of a live defect.
+
 > **Executor instructions**: Follow this plan step by step. Run every
 > verification command and confirm the expected result before moving to the
 > next step. If anything in the "STOP conditions" section occurs, stop and
