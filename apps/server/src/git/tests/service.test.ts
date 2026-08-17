@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { closeTestApps, createTestApp } from '../../../test/server'
+import { DEFAULT_MAX_TEXT_FILE_BYTES } from '../../fs/limits'
 import { createWorkspacePaths } from '../../fs/path'
 import { GitService } from '../service'
 import { testSettingsOptions } from '../../settings/testing'
@@ -373,7 +374,9 @@ describe('git rpc patches and file content', () => {
 describe('git service refs', () => {
   it('reports whether a ref exists', async () => {
     const root = await fixtureRepo()
-    const service = new GitService(createWorkspacePaths(root))
+    const service = new GitService(createWorkspacePaths(root), {
+      maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES,
+    })
 
     expect(await service.hasRef({ path: '', ref: 'refs/checkpoints/a' })).toBe(false)
 
@@ -385,7 +388,9 @@ describe('git service refs', () => {
 
   it('restores the worktree, index, and untracked files to the ref', async () => {
     const root = await fixtureRepo()
-    const service = new GitService(createWorkspacePaths(root))
+    const service = new GitService(createWorkspacePaths(root), {
+      maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES,
+    })
     const head = (await runGit(root, ['rev-parse', 'HEAD'])).stdout.trim()
     await runGit(root, ['update-ref', 'refs/checkpoints/snap', head])
     await writeFile(path.join(root, 'tracked.txt'), 'dirty\n')
@@ -403,7 +408,9 @@ describe('git service refs', () => {
 
   it('returns false for a missing ref without fallback', async () => {
     const root = await fixtureRepo()
-    const service = new GitService(createWorkspacePaths(root))
+    const service = new GitService(createWorkspacePaths(root), {
+      maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES,
+    })
     await writeFile(path.join(root, 'tracked.txt'), 'dirty\n')
 
     const restored = await service.restoreRef({ path: '', ref: 'refs/checkpoints/missing' })
@@ -414,7 +421,9 @@ describe('git service refs', () => {
 
   it('falls back to HEAD when the ref is missing and fallback is requested', async () => {
     const root = await fixtureRepo()
-    const service = new GitService(createWorkspacePaths(root))
+    const service = new GitService(createWorkspacePaths(root), {
+      maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES,
+    })
     await writeFile(path.join(root, 'tracked.txt'), 'dirty\n')
 
     const restored = await service.restoreRef({
@@ -429,7 +438,9 @@ describe('git service refs', () => {
 
   it('deletes refs and ignores missing ones', async () => {
     const root = await fixtureRepo()
-    const service = new GitService(createWorkspacePaths(root))
+    const service = new GitService(createWorkspacePaths(root), {
+      maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES,
+    })
     const head = (await runGit(root, ['rev-parse', 'HEAD'])).stdout.trim()
     await runGit(root, ['update-ref', 'refs/checkpoints/a', head])
     await runGit(root, ['update-ref', 'refs/checkpoints/b', head])
@@ -453,7 +464,9 @@ describe('git upstream fetch', () => {
     await writeFile(path.join(origin, 'tracked.txt'), 'two\n')
     await runGit(origin, ['commit', '-am', 'second'])
     const expected = (await runGit(origin, ['rev-parse', 'HEAD'])).stdout.trim()
-    const service = new GitService(createWorkspacePaths(root))
+    const service = new GitService(createWorkspacePaths(root), {
+      maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES,
+    })
 
     const status = await service.status('')
 

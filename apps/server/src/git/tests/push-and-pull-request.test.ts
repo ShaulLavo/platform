@@ -4,6 +4,7 @@ import path from 'node:path'
 import { writeFile } from 'node:fs/promises'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { DEFAULT_MAX_TEXT_FILE_BYTES } from '../../fs/limits'
 import { createWorkspacePaths } from '../../fs/path'
 import { GitService } from '../service'
 
@@ -89,7 +90,9 @@ describe('branch remote state', () => {
 })
 
 function gitService(root: string) {
-  return new GitService(createWorkspacePaths(root))
+  return new GitService(createWorkspacePaths(root), {
+    maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES,
+  })
 }
 
 async function clonedRepo() {

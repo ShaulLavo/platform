@@ -2,6 +2,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { DEFAULT_MAX_TEXT_FILE_BYTES } from '../../fs/limits'
 import { createWorkspacePaths } from '../../fs/path'
 import { GitCheckpointStore } from '../checkpoint-store'
 import { GitService } from '../service'
@@ -223,7 +224,9 @@ const REF = 'refs/platform/checkpoints/turn/0'
 const LATER_REF = 'refs/platform/checkpoints/turn/1'
 
 function checkpointStore(root: string) {
-  return new GitCheckpointStore(new GitService(createWorkspacePaths(root)))
+  return new GitCheckpointStore(
+    new GitService(createWorkspacePaths(root), { maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES }),
+  )
 }
 
 async function porcelain(root: string) {

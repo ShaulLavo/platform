@@ -72,7 +72,7 @@ type GitRepositoryRoot = {
 type GitServiceOptions = {
   diffConcurrency?: number
   maxCommandOutputBytes?: number
-  maxTextFileBytes?: number
+  maxTextFileBytes: number
   now?: () => number
   repositoryCacheTtlMs?: number
   statusCacheTtlMs?: number
@@ -107,7 +107,6 @@ export type GitRepositoryRunner = {
 }
 
 const DEFAULT_DIFF_CONCURRENCY = 4
-const DEFAULT_MAX_TEXT_FILE_BYTES = 209_715_200
 
 /**
  * Status is polled by every open pane and re-read after every mutation, so the
@@ -152,11 +151,11 @@ export class GitService {
   private readonly statuses: BoundedTtlCache<GitStatusResult>
   private readonly upstreamFetch: UpstreamFetchScheduler
 
-  constructor(paths: WorkspacePaths, options: GitServiceOptions = {}) {
+  constructor(paths: WorkspacePaths, options: GitServiceOptions) {
     this.paths = paths
     this.diffConcurrency = positiveInteger(options.diffConcurrency, DEFAULT_DIFF_CONCURRENCY)
     this.maxCommandOutputBytes = positiveInteger(options.maxCommandOutputBytes, MAX_OUTPUT_BYTES)
-    this.maxTextFileBytes = positiveInteger(options.maxTextFileBytes, DEFAULT_MAX_TEXT_FILE_BYTES)
+    this.maxTextFileBytes = options.maxTextFileBytes
     this.repositoryRoots = new BoundedTtlCache({
       capacity: REPOSITORY_CACHE_CAPACITY,
       now: options.now,

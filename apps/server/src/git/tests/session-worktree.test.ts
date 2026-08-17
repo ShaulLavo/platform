@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { DEFAULT_MAX_TEXT_FILE_BYTES } from '../../fs/limits'
 import { createWorkspacePaths } from '../../fs/path'
 import { GitService } from '../service'
 import { GitWorktreeService } from '../worktrees'
@@ -86,7 +87,9 @@ describe('session worktrees', () => {
 })
 
 function worktreeService(root: string) {
-  return new GitWorktreeService(new GitService(createWorkspacePaths(root)))
+  return new GitWorktreeService(
+    new GitService(createWorkspacePaths(root), { maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES }),
+  )
 }
 
 async function fileExists(target: string) {

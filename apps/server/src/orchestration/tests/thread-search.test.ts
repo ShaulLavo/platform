@@ -6,6 +6,7 @@ import {
   ORCHESTRATION_THREAD_SEARCH_SNIPPET_MAX_LENGTH,
   type OrchestrationSearchThreadsResult,
 } from '@workspace/contracts'
+import { DEFAULT_MAX_TEXT_FILE_BYTES } from '../../fs/limits'
 import { createWorkspacePaths } from '../../fs/path'
 import { GitService } from '../../git/service'
 import { OrchestrationCheckpointDiffQuery } from '../checkpoint-diff-query'
@@ -128,7 +129,10 @@ function createSearchApp(
   return new Elysia().use(
     orchestrationRoutes(
       new OrchestrationEngine(database),
-      new OrchestrationCheckpointDiffQuery(database, new GitService(createWorkspacePaths())),
+      new OrchestrationCheckpointDiffQuery(
+        database,
+        new GitService(createWorkspacePaths(), { maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES }),
+      ),
       threadSearch,
     ),
   )

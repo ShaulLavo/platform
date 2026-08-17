@@ -16,6 +16,7 @@ import {
 
 import * as schema from '../../db/schema'
 import { migrateOrchestrationDatabase } from '../../db/migrations'
+import { DEFAULT_MAX_TEXT_FILE_BYTES } from '../../fs/limits'
 import { createWorkspacePaths } from '../../fs/path'
 import { GitService } from '../../git/service'
 import { OrchestrationEngine } from '../engine'
@@ -44,7 +45,7 @@ describe('orchestration checkpoint diff query', () => {
     migrateOrchestrationDatabase(database)
     const checkpointDiff = new OrchestrationCheckpointDiffQuery(
       database,
-      new GitService(createWorkspacePaths(root)),
+      new GitService(createWorkspacePaths(root), { maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES }),
     )
 
     try {
@@ -80,7 +81,7 @@ describe('orchestration checkpoint diff query', () => {
     const engine = new OrchestrationEngine(database)
     const checkpointDiff = new OrchestrationCheckpointDiffQuery(
       database,
-      new GitService(createWorkspacePaths(root)),
+      new GitService(createWorkspacePaths(root), { maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES }),
     )
 
     try {
@@ -132,7 +133,7 @@ describe('orchestration checkpoint diff query', () => {
     const engine = new OrchestrationEngine(database)
     const checkpointDiff = new OrchestrationCheckpointDiffQuery(
       database,
-      new GitService(createWorkspacePaths(root)),
+      new GitService(createWorkspacePaths(root), { maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES }),
     )
 
     try {

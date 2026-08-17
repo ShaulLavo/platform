@@ -1,7 +1,6 @@
 import parcelWatcher from '@parcel/watcher'
 import { watch } from 'node:fs'
 import path from 'node:path'
-import type { FileSystemEntryMetadata } from '@workspace/contracts'
 import { errorSummary, recordRequestWarning, runDetached } from '../observability'
 import { FsError } from './errors'
 import {
@@ -11,6 +10,7 @@ import {
   toPosix,
   type WorkspacePaths,
 } from './path'
+import { entryFromStat } from './entry'
 import { statPath } from './stat'
 import type { TreeEntry, WatchServerMessage } from './contracts'
 
@@ -499,24 +499,6 @@ async function nativeEventEntry(
   } catch {
     return undefined
   }
-}
-
-function entryFromStat(stat: FileSystemEntryMetadata): TreeEntry {
-  return {
-    path: stat.path,
-    name: pathBasename(stat.path),
-    type: stat.type,
-    targetType: stat.targetType,
-    size: stat.size,
-    mtimeMs: stat.mtimeMs,
-    birthtimeMs: stat.birthtimeMs,
-    version: stat.version,
-  }
-}
-
-function pathBasename(input: string) {
-  const parts = input.split('/').filter(Boolean)
-  return parts.at(-1) ?? 'Root'
 }
 
 function watchError(error: unknown, path: string): WatchServerMessage {

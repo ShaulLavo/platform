@@ -3,6 +3,7 @@ import * as v from 'valibot'
 import { threadIdSchema, turnIdSchema } from '@workspace/contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { PendingOrchestrationEvent } from '../event-store'
+import { DEFAULT_MAX_TEXT_FILE_BYTES } from '../../fs/limits'
 import { createWorkspacePaths } from '../../fs/path'
 import { GitService } from '../../git/service'
 import { OrchestrationCheckpointDiffQuery } from '../checkpoint-diff-query'
@@ -187,7 +188,9 @@ function memoryThread(fixture: ReturnType<typeof createProjectionFixture>) {
 function diffQuery(fixture: ReturnType<typeof createProjectionFixture>) {
   return new OrchestrationCheckpointDiffQuery(
     fixture.database,
-    new GitService(createWorkspacePaths(process.cwd())),
+    new GitService(createWorkspacePaths(process.cwd()), {
+      maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES,
+    }),
   )
 }
 

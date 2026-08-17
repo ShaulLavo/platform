@@ -1,8 +1,10 @@
 import { homedir } from 'node:os'
 import path from 'node:path'
-import { effectiveEntryType, type FileSystemEntryMetadata } from '@workspace/contracts'
+import { effectiveEntryType } from '@workspace/contracts'
 import { createWorkspacePaths } from './path'
 import { FileChangeHub, type WatchBackend } from './watch'
+import { entryFromStat } from './entry'
+import { DEFAULT_MAX_TEXT_FILE_BYTES, MAX_TEXT_FILE_BYTES_UPPER_BOUND } from './limits'
 import { statPath } from './stat'
 import { readTree } from './tree'
 import { getBlobFile, readTextFile } from './read'
@@ -62,10 +64,6 @@ export type FileSystemServiceOptions = {
 }
 
 const DEFAULT_TREE_CONCURRENCY = 32
-
-const DEFAULT_MAX_TEXT_FILE_BYTES = 209_715_200
-
-const MAX_TEXT_FILE_BYTES_UPPER_BOUND = 2_147_483_647
 
 function resolveMaxTextFileBytes(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.MAX_TEXT_FILE_BYTES
@@ -461,19 +459,6 @@ async function startWorkspaceIndex(
   }
 }
 
-function entryFromStat(stat: FileSystemEntryMetadata): TreeEntry {
-  return {
-    path: stat.path,
-    name: pathBasename(stat.path),
-    type: stat.type,
-    targetType: stat.targetType,
-    size: stat.size,
-    mtimeMs: stat.mtimeMs,
-    birthtimeMs: stat.birthtimeMs,
-    version: stat.version,
-  }
-}
-
 async function* observedSearchEvents(
   events: AsyncGenerator<SearchStreamEvent>,
   options: FileSystemSearchOptions,
@@ -635,9 +620,4 @@ function resolveHomePath(paths: ReturnType<typeof createWorkspacePaths>, homeDir
   } catch {
     return ''
   }
-}
-
-function pathBasename(input: string) {
-  const parts = input.split('/').filter(Boolean)
-  return parts.at(-1) ?? 'Root'
 }

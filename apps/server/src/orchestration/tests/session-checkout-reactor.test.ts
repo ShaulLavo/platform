@@ -9,6 +9,7 @@ import { orchestrationCommandSchema, type OrchestrationCommand } from '@workspac
 
 import { migrateOrchestrationDatabase } from '../../db/migrations'
 import * as schema from '../../db/schema'
+import { DEFAULT_MAX_TEXT_FILE_BYTES } from '../../fs/limits'
 import { createWorkspacePaths } from '../../fs/path'
 import { GitService } from '../../git/service'
 import { OrchestrationEngine } from '../engine'
@@ -111,7 +112,9 @@ function createEngine(workspaceRoot: string) {
   return new OrchestrationEngine(database, {
     providerRuntime: {
       adapterRegistry: new ProviderAdapterRegistry([new MockProviderAdapter()]),
-      checkpointGit: new GitService(createWorkspacePaths(workspaceRoot)),
+      checkpointGit: new GitService(createWorkspacePaths(workspaceRoot), {
+        maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES,
+      }),
     },
   })
 }
