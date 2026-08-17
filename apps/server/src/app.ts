@@ -10,6 +10,7 @@ import { fsRoutes } from './fs/routes'
 import { FileSystemService, type FileSystemServiceOptions } from './fs/service'
 import { gitRoutes } from './git/routes'
 import { GitService } from './git/service'
+import { LspSessionPool } from './lsp/proxy-session'
 import { lspMatchQuerySchema, lspRouteMatch, lspRoutes } from './lsp/routes'
 import {
   applyObservability,
@@ -51,6 +52,13 @@ export type AppOptions = FileSystemServiceOptions & {
     database?: OrchestrationDatabase
     providerAdapterRegistry?: ProviderAdapterRegistry
     providerRuntime?: boolean
+  }
+  lsp?: {
+    /**
+     * Test seam: inject a pool so a test can put a fake backend in it and
+     * assert `closeApp` killed it. Production always builds its own.
+     */
+    pool?: LspSessionPool
   }
   /**
    * Required in practice. `settingsPaths` throws `settings.FILE_PATH_UNSET`
@@ -132,7 +140,8 @@ export function createApp(options: AppOptions) {
   const checkpointDiff = new OrchestrationCheckpointDiffQuery(database, git)
   const threadSearch = new OrchestrationThreadSearchQuery(database)
   const auth = createAuthConfig(options.auth)
-  const cleanup = appCleanup(terminal, fs, settings)
+  const lspPool = options.lsp?.pool ?? new LspSessionPool()
+  const cleanup = appCleanup(terminal, fs, settings, lspPool)
 
   const app = new Elysia({ name: 'platform' })
   applyObservability(app)
@@ -166,7 +175,7 @@ export function createApp(options: AppOptions) {
     .get('/lsp/match', ({ query }) => lspRouteMatch(fs.paths, query), {
       query: lspMatchQuerySchema,
     })
-    .ws('/lsp', lspRoutes(fs, auth))
+    .ws('/lsp', lspRoutes(fs, auth, { pool: lspPool }))
     .ws('/terminal', terminal.routes(auth))
     .use(providerRoutes(providerAdapterRegistry))
     .use(orchestrationWsRoutes(orchestration, auth))
@@ -188,7 +197,12 @@ export async function closeApp(app: App) {
   await appCleanups.get(app)?.()
 }
 
-function appCleanup(terminal: TerminalService, fs: FileSystemService, settings: SettingsStore) {
+function appCleanup(
+  terminal: TerminalService,
+  fs: FileSystemService,
+  settings: SettingsStore,
+  lspPool: LspSessionPool,
+) {
   let closed = false
 
   return async () => {
@@ -196,6 +210,10 @@ function appCleanup(terminal: TerminalService, fs: FileSystemService, settings: 
 
     closed = true
     terminal.dispose()
+    // Language servers are child processes. Without this, jdtls, gopls and
+    // rust-analyzer outlive the server and idle on the machine until someone
+    // notices and kills them by hand.
+    lspPool.disposeAll()
     // Releases the settings file watchers; without this a test run leaks a
     // native handle per app it builds.
     settings.close()

@@ -58,12 +58,14 @@ function bufferedLspDeps(root: string, createdSessions: FakeLspProxySession[]): 
       await Bun.sleep(25)
       return { root, server: { id: 'buffered-lsp' } }
     }) as unknown as LspRouteDeps['matchServer'],
-    createSession: (async () => {
-      await Bun.sleep(25)
-      const session = new FakeLspProxySession()
-      createdSessions.push(session)
-      return session
-    }) as unknown as LspRouteDeps['createSession'],
+    pool: {
+      acquire: async () => {
+        await Bun.sleep(25)
+        const session = new FakeLspProxySession()
+        createdSessions.push(session)
+        return session
+      },
+    },
   }
 }
 

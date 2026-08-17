@@ -64,7 +64,7 @@ type TextDocumentContentChange = {
   readonly text?: string
 }
 
-type LspProxySocket = {
+export type LspProxySocket = {
   close(): unknown
   send(message: string): unknown
 }
@@ -74,20 +74,109 @@ export type LspProxyClientSession = {
   dispose(): void
 }
 
-const pooledSessions = new Map<string, PooledLspProxySession>()
-const startingSessions = new Map<string, Promise<PooledLspProxySession | null>>()
 const DEFAULT_IDLE_TIMEOUT_MS = 120_000
 
-export class LspProxySession {
-  static async create(
+/**
+ * The seam `lspRoutes` depends on. `LspSessionPool` satisfies it structurally,
+ * so a route test can hand in a stub without spawning a fake child process.
+ */
+export type LspSessionSource = {
+  acquire(
+    socket: LspProxySocket,
+    match: LspServerMatch,
+    rootPath: string,
+  ): Promise<LspProxyClientSession | null>
+}
+
+/**
+ * Owns every pooled language-server child process belonging to one app.
+ *
+ * This was two module-level Maps. `createApp` had no handle on them, so
+ * `closeApp()` left jdtls/gopls/rust-analyzer running on the developer's
+ * machine, and the pool key — server id plus root, no app identity — handed two
+ * apps in one process each other's backends. The pool is now constructed in
+ * `createApp` and torn down by `appCleanup`.
+ */
+export class LspSessionPool implements LspSessionSource {
+  private readonly sessions = new Map<string, PooledLspProxySession>()
+  private readonly starting = new Map<string, Promise<PooledLspProxySession | null>>()
+  private disposed = false
+
+  /** Live pooled backends. Read by teardown assertions. */
+  get size(): number {
+    return this.sessions.size
+  }
+
+  async acquire(
     socket: LspProxySocket,
     match: LspServerMatch,
     rootPath: string,
   ): Promise<LspProxyClientSession | null> {
-    const session = await pooledLspProxySession(match, rootPath)
+    if (this.disposed) return null
+
+    const session = await this.pooledSession(match, rootPath)
     if (!session) return null
+    // `pooledSession` is async, so shutdown can land in the await gap.
+    if (this.disposed || session.isDisposed) return null
 
     return session.connect(socket)
+  }
+
+  /**
+   * Kills every backend and closes every client socket.
+   *
+   * Idempotent on purpose: Elysia's `.onStop` and an explicit `closeApp()` can
+   * both fire for the same app, and a second kill would log a second session
+   * event for a process that is already gone.
+   */
+  disposeAll(): void {
+    if (this.disposed) return
+
+    this.disposed = true
+    // Array copy: `dispose` calls back into `remove` and mutates the map.
+    for (const session of Array.from(this.sessions.values())) session.dispose('app_shutdown')
+    this.sessions.clear()
+  }
+
+  remove(session: PooledLspProxySession): void {
+    if (this.sessions.get(session.key) !== session) return
+
+    this.sessions.delete(session.key)
+  }
+
+  private async pooledSession(match: LspServerMatch, rootPath: string) {
+    const key = lspProxySessionKey(match)
+    const existing = this.sessions.get(key)
+    if (existing && !existing.isDisposed) return existing
+    if (existing) this.sessions.delete(key)
+
+    const starting = this.starting.get(key)
+    if (starting) return starting
+
+    return this.startSession(key, match, rootPath)
+  }
+
+  private startSession(key: string, match: LspServerMatch, rootPath: string) {
+    const created = PooledLspProxySession.spawn(key, match, rootPath, this)
+      .then((session) => this.adoptSession(key, session))
+      .finally(() => this.starting.delete(key))
+    this.starting.set(key, created)
+    return created
+  }
+
+  /**
+   * A spawn still in flight when the app shuts down would otherwise land in the
+   * map after teardown and orphan the child process. Kill it on arrival.
+   */
+  private adoptSession(key: string, session: PooledLspProxySession | null) {
+    if (!session) return null
+    if (this.disposed) {
+      session.dispose('pool_disposed')
+      return null
+    }
+
+    this.sessions.set(key, session)
+    return session
   }
 }
 
@@ -97,6 +186,7 @@ class PooledLspProxySession {
   readonly key: string
   private readonly match: LspServerMatch
   private readonly pendingRequests = new Map<JsonRpcId, PendingBackendRequest>()
+  private readonly pool: LspSessionPool
   private readonly process: ChildProcessWithoutNullStreams
   private readonly reader: LspStdioMessageReader
   private readonly rootPath: string
@@ -124,20 +214,22 @@ class PooledLspProxySession {
     match: LspServerMatch,
     process: ChildProcessWithoutNullStreams,
     rootPath: string,
+    pool: LspSessionPool,
   ) {
     this.key = key
     this.match = match
+    this.pool = pool
     this.process = process
     this.rootPath = rootPath
     this.reader = new LspStdioMessageReader((message) => this.handleServerMessage(message))
     this.bindProcess()
   }
 
-  static async spawn(key: string, match: LspServerMatch, rootPath: string) {
+  static async spawn(key: string, match: LspServerMatch, rootPath: string, pool: LspSessionPool) {
     const handle = await match.server.spawn(match.root)
     if (!handle) return null
 
-    return new PooledLspProxySession(key, match, handle.process, rootPath)
+    return new PooledLspProxySession(key, match, handle.process, rootPath, pool)
   }
 
   get isDisposed() {
@@ -550,7 +642,10 @@ class PooledLspProxySession {
 
   private scheduleIdleDisposal(): void {
     this.clearIdleTimer()
-    this.idleTimer = setTimeout(() => this.dispose('idle_timeout'), lspIdleTimeoutMs())
+    const timer = setTimeout(() => this.dispose('idle_timeout'), lspIdleTimeoutMs())
+    // A 120-second handle must not be the reason the process refuses to exit.
+    timer.unref()
+    this.idleTimer = timer
   }
 
   private clearIdleTimer(): void {
@@ -564,22 +659,37 @@ class PooledLspProxySession {
     if (this.disposed) return
 
     this.disposed = true
-    removePooledSession(this)
+    this.clearIdleTimer()
+    this.pool.remove(this)
     this.rejectPendingRequests(createInternalError(`LSP process closed: ${outcome}`))
     this.recordSession(outcome)
-    for (const connection of this.connections) connection.closeSocket()
-    this.connections.clear()
+    this.closeConnections()
   }
 
-  private dispose(outcome: string): void {
+  /**
+   * Public because the pool disposes its sessions on app shutdown; before that,
+   * only the idle timer could reach it.
+   */
+  dispose(outcome: string): void {
     if (this.disposed) return
 
     this.disposed = true
     this.clearIdleTimer()
-    removePooledSession(this)
+    this.pool.remove(this)
+    // Rejected before the sockets close so an in-flight `initialize` can still
+    // deliver its JSON-RPC error. Ordinary forwarded requests carry no reject
+    // handler: their client learns the turn is over from the socket closing.
     this.rejectPendingRequests(createInternalError(`LSP session disposed: ${outcome}`))
     this.process.kill()
+    // Before `closeConnections`, so `activeConnectionCount` reports how many
+    // clients shutdown actually cut off.
     this.recordSession(outcome)
+    this.closeConnections()
+  }
+
+  private closeConnections(): void {
+    for (const connection of this.connections) connection.closeSocket()
+    this.connections.clear()
   }
 
   private rejectPendingRequests(error: Error): void {
@@ -689,31 +799,6 @@ class LspProxyConnection implements LspProxyClientSession {
   backendRequestIdFor(clientId: JsonRpcId): JsonRpcId | null {
     return this.requestIds.get(clientId) ?? null
   }
-}
-
-async function pooledLspProxySession(match: LspServerMatch, rootPath: string) {
-  const key = lspProxySessionKey(match)
-  const existing = pooledSessions.get(key)
-  if (existing && !existing.isDisposed) return existing
-  if (existing) pooledSessions.delete(key)
-
-  const starting = startingSessions.get(key)
-  if (starting) return starting
-
-  const created = PooledLspProxySession.spawn(key, match, rootPath)
-    .then((session) => {
-      if (session) pooledSessions.set(key, session)
-      return session
-    })
-    .finally(() => startingSessions.delete(key))
-  startingSessions.set(key, created)
-  return created
-}
-
-function removePooledSession(session: PooledLspProxySession): void {
-  if (pooledSessions.get(session.key) !== session) return
-
-  pooledSessions.delete(session.key)
 }
 
 function lspProxySessionKey(match: LspServerMatch): string {

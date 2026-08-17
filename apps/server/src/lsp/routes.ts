@@ -5,7 +5,7 @@ import { authenticateWebSocketData, type AuthConfig } from '../auth'
 import { pathSchema } from '../fs/contracts'
 import type { WorkspacePaths } from '../fs/path'
 import { matchLspServer } from './registry'
-import { LspProxySession, type LspProxyClientSession } from './proxy-session'
+import type { LspProxyClientSession, LspSessionSource } from './proxy-session'
 import { recordProcessWarning } from '../observability'
 
 type LspRouteFileSystem = {
@@ -37,13 +37,16 @@ export async function lspRouteMatch(
 
 export type LspRouteDeps = {
   readonly matchServer?: typeof matchLspServer
-  readonly createSession?: typeof LspProxySession.create
+  /**
+   * Required: the app owns the pool so `appCleanup` can tear it down. There is
+   * deliberately no module-global fallback — that was the bug.
+   */
+  readonly pool: LspSessionSource
 }
 
-export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig, deps: LspRouteDeps = {}) {
+export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig, deps: LspRouteDeps) {
   const sessions = new WeakMap<object, PendingLspSession>()
   const matchServer = deps.matchServer ?? matchLspServer
-  const createSession = deps.createSession ?? LspProxySession.create
 
   return {
     async open(ws: unknown) {
@@ -81,7 +84,7 @@ export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig, deps: LspRou
         return
       }
 
-      const session = await createSession(socket, match, fs.paths.toRelative(match.root))
+      const session = await deps.pool.acquire(socket, match, fs.paths.toRelative(match.root))
       if (!session) {
         rejectPendingLspSession(sessions, socket, pending)
         recordProcessWarning('lsp.session.rejected', {

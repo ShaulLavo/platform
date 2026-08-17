@@ -3,30 +3,33 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { PassThrough } from 'node:stream'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 
 import type { LspServerMatch } from '../registry'
 import { encodeLspStdioMessage, LspStdioMessageReader } from '../stdio-rpc'
-import { LspProxySession } from '../proxy-session'
+import { LspSessionPool } from '../proxy-session'
+import { closeApp, createApp } from '../../app'
+import { createMetadataDatabase } from '../../db/client'
+import { testSettingsOptions } from '../../settings/testing'
 
+const databases: { close: () => void }[] = []
+const pools: LspSessionPool[] = []
 const roots: string[] = []
-const previousIdleTimeout = process.env.PLATFORM_LSP_IDLE_TIMEOUT_MS
-
-beforeEach(() => {
-  process.env.PLATFORM_LSP_IDLE_TIMEOUT_MS = '0'
-})
 
 afterEach(async () => {
-  process.env.PLATFORM_LSP_IDLE_TIMEOUT_MS = previousIdleTimeout
+  for (const pool of pools.splice(0)) pool.disposeAll()
+  // Same reason `appCleanup` closes the settings store: an unclosed SQLite
+  // handle per app the file builds is a leaked native handle per test run.
+  for (const database of databases.splice(0)) database.close()
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
 
-describe('LspProxySession pooling', () => {
+describe('LspSessionPool pooling', () => {
   it('reuses one backend process and synthesizes later initialize responses', async () => {
     const fixture = await lspFixture()
-    const first = await LspProxySession.create(fixture.firstSocket, fixture.match, '')
-    const second = await LspProxySession.create(fixture.secondSocket, fixture.match, '')
+    const first = await fixture.pool.acquire(fixture.firstSocket, fixture.match, '')
+    const second = await fixture.pool.acquire(fixture.secondSocket, fixture.match, '')
 
     expect(fixture.spawn).toHaveBeenCalledTimes(1)
     expect(first).not.toBeNull()
@@ -46,10 +49,6 @@ describe('LspProxySession pooling', () => {
     expect(fixture.initializeMessages()).toHaveLength(1)
     expect(fixture.firstSocket.sent[0]).toMatchObject({ id: 1, result: initializeResult() })
     expect(fixture.secondSocket.sent[0]).toMatchObject({ id: 2, result: initializeResult() })
-
-    first!.dispose()
-    second!.dispose()
-    await Bun.sleep(1)
   })
 
   it('routes pooled backend responses back to the originating socket', async () => {
@@ -73,10 +72,6 @@ describe('LspProxySession pooling', () => {
       id: 10,
       result: hoverResult('second'),
     })
-
-    fixture.first!.dispose()
-    fixture.second!.dispose()
-    await Bun.sleep(1)
   })
 
   it('opens a shared document once and closes it after the last owner disconnects', async () => {
@@ -100,17 +95,121 @@ describe('LspProxySession pooling', () => {
     expect(
       fixture.serverMessages.filter((message) => message.method === 'textDocument/didClose'),
     ).toHaveLength(1)
-
-    fixture.first!.dispose()
-    fixture.second!.dispose()
-    await Bun.sleep(1)
   })
 })
 
+describe('LspSessionPool ownership', () => {
+  it('kills the backend and closes client sockets on disposeAll', async () => {
+    const fixture = await lspFixture()
+    await fixture.pool.acquire(fixture.firstSocket, fixture.match, '')
+    await fixture.pool.acquire(fixture.secondSocket, fixture.match, '')
+
+    fixture.pool.disposeAll()
+
+    expect(fixture.kill).toHaveBeenCalledTimes(1)
+    expect(fixture.pool.size).toBe(0)
+    expect(fixture.firstSocket.closed).toBe(true)
+    expect(fixture.secondSocket.closed).toBe(true)
+  })
+
+  it('is idempotent — a second disposeAll kills nothing twice', async () => {
+    const fixture = await lspFixture()
+    await fixture.pool.acquire(fixture.firstSocket, fixture.match, '')
+
+    fixture.pool.disposeAll()
+    fixture.pool.disposeAll()
+
+    expect(fixture.kill).toHaveBeenCalledTimes(1)
+    expect(fixture.pool.size).toBe(0)
+  })
+
+  it('leaves an in-flight request unanswered and closes the socket instead', async () => {
+    const fixture = await initializedFixture()
+    const sentBefore = fixture.firstSocket.sent.length
+    await fixture.first.handleClientMessage(json(hoverRequest(10, 'file:///repo/a.ts')))
+
+    fixture.pool.disposeAll()
+
+    expect(fixture.firstSocket.sent).toHaveLength(sentBefore)
+    expect(fixture.firstSocket.closed).toBe(true)
+  })
+
+  it('refuses to spawn a backend after disposeAll', async () => {
+    const fixture = await lspFixture()
+    fixture.pool.disposeAll()
+
+    const session = await fixture.pool.acquire(fixture.firstSocket, fixture.match, '')
+
+    expect(session).toBeNull()
+    expect(fixture.spawn).not.toHaveBeenCalled()
+  })
+
+  it('kills a backend whose spawn lands after disposeAll', async () => {
+    const fixture = await lspFixture()
+    fixture.holdSpawn()
+    const acquired = fixture.pool.acquire(fixture.firstSocket, fixture.match, '')
+
+    fixture.pool.disposeAll()
+    fixture.releaseSpawn()
+
+    expect(await acquired).toBeNull()
+    expect(fixture.kill).toHaveBeenCalledTimes(1)
+    expect(fixture.pool.size).toBe(0)
+  })
+
+  // The negative case for step 1d. `disposeAll` shuts the pool for good, but a
+  // backend that dies on its own must NOT shut the pool — it must be evicted so
+  // the next client spawns a fresh one. Without this, tightening disposal could
+  // silently wedge a live pool on the first language-server crash.
+  it('evicts a backend that exits on its own and respawns for the next client', async () => {
+    const fixture = await lspFixture()
+    await fixture.pool.acquire(fixture.firstSocket, fixture.match, '')
+
+    fixture.process.process.emit('exit', 0, null)
+
+    expect(fixture.pool.size).toBe(0)
+    expect(fixture.firstSocket.closed).toBe(true)
+
+    const next = await fixture.pool.acquire(fixture.secondSocket, fixture.match, '')
+
+    expect(next).not.toBeNull()
+    expect(fixture.spawn).toHaveBeenCalledTimes(2)
+    expect(fixture.pool.size).toBe(1)
+  })
+
+  it('closeApp disposes the pooled LSP sessions', async () => {
+    const fixture = await lspFixture()
+    const app = lspTestApp(await fixtureRoot('platform-lsp-app-'), fixture.pool)
+    await fixture.pool.acquire(fixture.firstSocket, fixture.match, '')
+
+    await closeApp(app)
+
+    expect(fixture.kill).toHaveBeenCalledTimes(1)
+    expect(fixture.pool.size).toBe(0)
+  })
+})
+
+// An in-memory database and a settings file inside the test's own temp root:
+// `createApp` otherwise opens the developer's real ~/.platform SQLite and
+// settings.json, and this repo keeps no healing code for either.
+function lspTestApp(root: string, pool: LspSessionPool) {
+  const database = createMetadataDatabase({ databasePath: ':memory:' })
+  databases.push(database)
+  return createApp({
+    auth: { allowedOrigins: ['http://localhost:5173'] },
+    lsp: { pool },
+    metadataDatabase: database,
+    orchestration: { database: database.db },
+    settings: testSettingsOptions(root),
+    watch: false,
+    workspaceRoot: root,
+  })
+}
+
 async function initializedFixture() {
   const fixture = await lspFixture()
-  const first = await LspProxySession.create(fixture.firstSocket, fixture.match, '')
-  const second = await LspProxySession.create(fixture.secondSocket, fixture.match, '')
+  const first = await fixture.pool.acquire(fixture.firstSocket, fixture.match, '')
+  const second = await fixture.pool.acquire(fixture.secondSocket, fixture.match, '')
   if (!first || !second) throw new Error('expected pooled LSP sessions')
 
   const initialize = first.handleClientMessage(json(initializeRequest(1)))
@@ -122,8 +221,9 @@ async function initializedFixture() {
 }
 
 async function lspFixture() {
-  const root = await mkdtemp(path.join(tmpdir(), 'platform-lsp-pool-'))
-  roots.push(root)
+  const root = await fixtureRoot('platform-lsp-pool-')
+  const pool = new LspSessionPool()
+  pools.push(pool)
 
   const process = fakeProcess()
   const serverMessages: Record<string, unknown>[] = []
@@ -132,12 +232,19 @@ async function lspFixture() {
   })
   process.stdin.on('data', (chunk) => reader.push(chunk))
 
-  const spawn = vi.fn(async () => ({ process: process.process }))
+  // A spawn the test can hold open, to exercise a backend that lands *after*
+  // the pool was disposed.
+  let spawnGate: Promise<void> | null = null
+  let openSpawnGate: (() => void) | null = null
+  const spawn = vi.fn(async () => {
+    if (spawnGate) await spawnGate
+    return { process: process.process }
+  })
   const match = {
     root,
     server: {
       extensions: ['.ts'],
-      id: `typescript-${path.basename(root)}`,
+      id: 'typescript',
       root: async () => root,
       spawn,
     },
@@ -145,18 +252,32 @@ async function lspFixture() {
 
   return {
     firstSocket: new FakeSocket(),
+    kill: process.kill,
     match,
+    pool,
     process,
     secondSocket: new FakeSocket(),
     serverMessages,
     spawn,
+    holdSpawn: () => {
+      spawnGate = new Promise<void>((resolve) => {
+        openSpawnGate = resolve
+      })
+    },
     initializeMessages: () => serverMessages.filter((message) => message.method === 'initialize'),
+    releaseSpawn: () => openSpawnGate?.(),
     respond: (message: unknown) => {
       process.stdout.write(encodeLspStdioMessage(JSON.stringify(message)))
     },
     waitForServerMessageCount: (count: number) =>
       waitFor(() => serverMessages.length >= count, `expected ${count} server messages`),
   }
+}
+
+async function fixtureRoot(prefix: string) {
+  const root = await mkdtemp(path.join(tmpdir(), prefix))
+  roots.push(root)
+  return root
 }
 
 class FakeSocket {
