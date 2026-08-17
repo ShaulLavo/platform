@@ -17,6 +17,10 @@ import { getDefaultPlatformDatabase } from '../db/client'
 import { providerSessionRuntime, type ProviderSessionRuntimeRow } from '../db/schema'
 import type { OrchestrationDatabase } from '../orchestration/event-store'
 import {
+  providerSessionRuntimePayloadSchema,
+  type ProviderSessionRuntimePayload,
+} from './session-payload'
+import {
   recordChatPipelineInfo,
   recordChatPipelineWarning,
 } from '../orchestration/orchestration-logging'
@@ -48,7 +52,7 @@ export type ProviderRuntimeBinding = {
   providerSessionId?: string | null
   resumeCursor?: unknown | null
   runtimeMode?: RuntimeMode
-  runtimePayload?: unknown | null
+  runtimePayload?: ProviderSessionRuntimePayload | null
   status?: ProviderRuntimeBindingStatus
   threadId: ThreadId
 }
@@ -61,7 +65,7 @@ export type ProviderRuntimeBindingWithMetadata = {
   providerSessionId: string | null
   resumeCursor: unknown | null
   runtimeMode: RuntimeMode
-  runtimePayload: unknown | null
+  runtimePayload: ProviderSessionRuntimePayload | null
   status: ProviderRuntimeBindingStatus
   threadId: ThreadId
 }
@@ -254,7 +258,7 @@ function resolveBindingForWrite(
   const providerChanged =
     existing !== undefined && existing.providerDriverKind !== binding.providerDriverKind
   const providerInstanceId = resolveProviderInstanceId(binding, existing, providerChanged)
-  const existingRuntimePayload = parseNullableJson(existing?.runtimePayloadJson)
+  const existingRuntimePayload = parseRuntimePayload(existing?.runtimePayloadJson, binding.threadId)
 
   return {
     adapterKey: resolveAdapterKey(binding, existing, providerChanged),
@@ -326,7 +330,7 @@ function rowToBinding(row: ProviderSessionRuntimeRow): ProviderRuntimeBindingWit
     providerSessionId: row.providerSessionId,
     resumeCursor: parseNullableJson(row.resumeCursorJson),
     runtimeMode: v.parse(runtimeModeSchema, row.runtimeMode),
-    runtimePayload: parseNullableJson(row.runtimePayloadJson),
+    runtimePayload: parseRuntimePayload(row.runtimePayloadJson, row.threadId),
     status: parseRuntimeStatus(row.status),
     threadId: v.parse(threadIdSchema, row.threadId),
   }
@@ -346,11 +350,41 @@ function parseRuntimeStatus(status: string): ProviderRuntimeBindingStatus {
   }
 }
 
-function mergeRuntimePayload(existing: unknown | null, next: unknown | null | undefined) {
-  if (next === undefined) return existing ?? null
-  if (isRecord(existing) && isRecord(next)) return { ...existing, ...next }
+function mergeRuntimePayload(
+  existing: ProviderSessionRuntimePayload | null,
+  next: ProviderSessionRuntimePayload | null | undefined,
+): ProviderSessionRuntimePayload | null {
+  if (next === undefined) return existing
+  if (next === null) return null
+  if (!existing) return next
 
-  return next
+  return { ...existing, ...next }
+}
+
+/**
+ * The one place the payload is validated. A row that fails the schema is a row
+ * our own writer could not have produced — a stale developer database, or a
+ * hand-edited one. It degrades to "no payload", which is what every reader
+ * already handles, and it says so loudly rather than making the next session
+ * reuse fail for no visible reason. (Syntactically broken JSON still throws out
+ * of `parseNullableJson`, exactly as it did before.)
+ */
+function parseRuntimePayload(
+  value: string | null | undefined,
+  threadId: string,
+): ProviderSessionRuntimePayload | null {
+  const parsed = parseNullableJson(value)
+  if (parsed === null) return null
+
+  const result = v.safeParse(providerSessionRuntimePayloadSchema, parsed)
+  if (result.success) return result.output
+
+  recordChatPipelineWarning('chat.pipeline.provider_session_directory.runtime_payload.invalid', {
+    issues: result.issues.map((issue) => issue.message),
+    threadId,
+  })
+
+  return null
 }
 
 function parseNullableJson(value: string | null | undefined) {
@@ -378,8 +412,4 @@ function bindingToRowValues(binding: ProviderRuntimeBindingWithMetadata) {
     status: binding.status,
     threadId: binding.threadId,
   }
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
 }

@@ -293,9 +293,8 @@ export class CheckpointReactor implements OrchestrationDomainEventReactor {
    */
   private workspacePathForThread(thread: OrchestrationProjectedThread, workspaceRoot: string) {
     const payload = this.providerService.bindingForThread(thread.id)?.runtimePayload
-    if (isRecord(payload) && typeof payload.cwd === 'string') return payload.cwd
 
-    return thread.worktreePath ?? workspaceRoot
+    return payload?.cwd ?? thread.worktreePath ?? workspaceRoot
   }
 }
 
@@ -333,13 +332,6 @@ function checkpointTimestamp(event: OrchestrationEvent) {
 
 function checkpointCommandId(eventId: string) {
   return v.parse(commandIdSchema, `checkpoint:${eventId}:turn-diff-complete`)
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  if (value === null) return false
-  if (typeof value !== 'object') return false
-
-  return !Array.isArray(value)
 }
 
 function elapsedMs(startedAt: number) {

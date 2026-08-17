@@ -1,16 +1,15 @@
 import { createInternalError } from '../observability/structured-errors'
 
 import type {
-  InteractionMode,
   ModelSelection,
   ProviderInstanceId,
   ProviderSnapshot,
   RuntimeMode,
   ThreadId,
-  TurnId,
 } from '@workspace/contracts'
 import { DEFAULT_RUNTIME_MODE } from '@workspace/contracts'
 import { providerContinuationKey } from './driver'
+import type { ProviderSessionStartPayload } from './session-payload'
 import type {
   ProviderAdapterRegistry,
   ProviderInstanceRoutingInfo,
@@ -53,25 +52,15 @@ export type ProviderStartSessionInput = {
   providerSessionId?: string | null
   resumeCursor?: unknown | null
   runtimeMode: RuntimeMode
-  runtimePayload?: unknown | null
+  runtimePayload: ProviderSessionStartPayload
   status?: ProviderRuntimeBindingStatus
   threadId: ThreadId
-}
-
-export type ProviderSessionRuntimePayload = {
-  activeTurnId?: TurnId | null
-  cwd?: string
-  interactionMode?: InteractionMode
-  lastError?: string | null
-  lastRuntimeEvent?: string
-  modelSelection?: ModelSelection
-  runtimeMode?: RuntimeMode
 }
 
 export type ProviderEnsureSessionInput = {
   providerInstanceId: ProviderInstanceId
   runtimeMode: RuntimeMode
-  runtimePayload: ProviderSessionRuntimePayload
+  runtimePayload: ProviderSessionStartPayload
   status?: ProviderRuntimeBindingStatus
   threadId: ThreadId
 }
@@ -135,7 +124,7 @@ export class ProviderService {
     })
     const adapter = this.adapterRegistry.getByInstance(input.providerInstanceId)
     const session = await adapter.startSession(
-      providerSessionStartInput(input, runtimePayloadRecord(input.runtimePayload)),
+      providerSessionStartInput(input, input.runtimePayload),
     )
     const binding = this.sessionDirectory.upsert({
       adapterKey: adapter.adapterKey,
@@ -145,7 +134,7 @@ export class ProviderService {
       resumeCursor: session.resumeCursor ?? input.resumeCursor ?? null,
       runtimeMode: input.runtimeMode,
       runtimePayload: {
-        ...runtimePayloadRecord(input.runtimePayload),
+        ...input.runtimePayload,
         providerThreadId: session.providerThreadId ?? null,
       },
       status: providerBindingStatusFromSession(session.status, input.status),
@@ -196,7 +185,7 @@ export class ProviderService {
       modelChanged: bindingModelChanged(existing, input.runtimePayload.modelSelection),
     })
     const session = await adapter.startSession(
-      providerSessionStartInput(input, runtimePayloadRecord(input.runtimePayload), continuation),
+      providerSessionStartInput(input, input.runtimePayload, continuation),
     )
     const binding = this.sessionDirectory.upsert({
       adapterKey: adapter.adapterKey,
@@ -589,30 +578,18 @@ function bindingModelChanged(
 ) {
   if (!binding) return false
 
-  const payload = runtimePayloadRecord(binding.runtimePayload)
-
-  return !modelSelectionsEqual(payload.modelSelection, modelSelection)
+  return !modelSelectionsEqual(binding.runtimePayload?.modelSelection, modelSelection)
 }
 
 function providerSessionStartInput(
   input: ProviderStartSessionInput | ProviderEnsureSessionInput,
-  payload: Record<string, unknown>,
+  payload: ProviderSessionStartPayload,
   reusableBinding?: ProviderRuntimeBindingWithMetadata | null,
 ): ProviderSessionStartInput {
-  const cwd = payload.cwd
-  if (typeof cwd !== 'string' || cwd.trim().length === 0) {
-    throw createInternalError(`Provider session ${input.threadId} is missing a cwd.`)
-  }
-
-  const modelSelection = payload.modelSelection
-  if (!isModelSelectionLike(modelSelection)) {
-    throw createInternalError(`Provider session ${input.threadId} is missing a model selection.`)
-  }
-
   return {
-    cwd,
-    interactionMode: interactionModeFromPayload(payload.interactionMode),
-    modelSelection,
+    cwd: payload.cwd,
+    interactionMode: payload.interactionMode,
+    modelSelection: payload.modelSelection,
     providerInstanceId: input.providerInstanceId,
     resumeCursor: reusableBinding?.resumeCursor ?? startInputResumeCursor(input),
     runtimeMode: input.runtimeMode,
@@ -624,12 +601,6 @@ function startInputResumeCursor(input: ProviderStartSessionInput | ProviderEnsur
   if ('resumeCursor' in input) return input.resumeCursor ?? null
 
   return null
-}
-
-function interactionModeFromPayload(value: unknown): InteractionMode | undefined {
-  if (value === 'default' || value === 'plan') return value
-
-  return undefined
 }
 
 function providerBindingStatusFromSession(
@@ -792,40 +763,20 @@ function canReuseProviderBinding(
   if (binding.providerInstanceId !== input.providerInstanceId) return false
   if (binding.runtimeMode !== input.runtimeMode) return false
 
-  const payload = runtimePayloadRecord(binding.runtimePayload)
-  if (payload.cwd !== input.runtimePayload.cwd) return false
-  if (payload.runtimeMode && payload.runtimeMode !== input.runtimeMode) return false
+  const payload = binding.runtimePayload
+  if (payload?.cwd !== input.runtimePayload.cwd) return false
+  if (payload?.runtimeMode && payload.runtimeMode !== input.runtimeMode) return false
 
-  return modelSelectionsEqual(payload.modelSelection, input.runtimePayload.modelSelection)
+  return modelSelectionsEqual(payload?.modelSelection, input.runtimePayload.modelSelection)
 }
 
-function runtimePayloadRecord(value: unknown): Record<string, unknown> {
-  if (isRecord(value)) return value
-
-  return {}
-}
-
-function modelSelectionsEqual(left: unknown, right: ModelSelection | undefined) {
+function modelSelectionsEqual(left: ModelSelection | undefined, right: ModelSelection | undefined) {
+  if (!left) return false
   if (!right) return false
-  if (!isModelSelectionLike(left)) return false
   if (left.providerInstanceId !== right.providerInstanceId) return false
   if (left.model !== right.model) return false
 
   return jsonEqual(left.options ?? null, right.options ?? null)
-}
-
-function isModelSelectionLike(value: unknown): value is ModelSelection {
-  if (!isRecord(value)) return false
-  if (typeof value.providerInstanceId !== 'string') return false
-
-  return typeof value.model === 'string'
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  if (value === null) return false
-  if (typeof value !== 'object') return false
-
-  return !Array.isArray(value)
 }
 
 function jsonEqual(left: unknown, right: unknown) {

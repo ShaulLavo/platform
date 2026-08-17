@@ -1,12 +1,14 @@
 import { Database } from 'bun:sqlite'
 import { describe, expect, it } from 'vitest'
 import { drizzle } from 'drizzle-orm/bun-sqlite'
+import { eq } from 'drizzle-orm'
 import * as v from 'valibot'
 import {
   DEFAULT_PROVIDER_DRIVER_KIND,
   DEFAULT_PROVIDER_INSTANCE_ID,
   DEFAULT_RUNTIME_MODE,
   threadIdSchema,
+  turnIdSchema,
 } from '@workspace/contracts'
 import { migrateOrchestrationDatabase } from '../../db/migrations'
 import * as schema from '../../db/schema'
@@ -24,14 +26,20 @@ describe('ProviderSessionDirectory', () => {
       providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
       resumeCursor: { cursor: 'cursor-1' },
       runtimeMode: DEFAULT_RUNTIME_MODE,
-      runtimePayload: { cwd: '/workspace', model: 'gpt-5-codex' },
+      runtimePayload: {
+        cwd: '/workspace',
+        modelSelection: {
+          model: 'gpt-5-codex',
+          providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
+        },
+      },
       status: 'running',
       threadId,
     })
     directory.upsert({
       providerDriverKind: DEFAULT_PROVIDER_DRIVER_KIND,
       providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
-      runtimePayload: { activeTurnId: 'turn-1' },
+      runtimePayload: { activeTurnId: v.parse(turnIdSchema, 'turn-1') },
       threadId,
     })
 
@@ -41,8 +49,35 @@ describe('ProviderSessionDirectory', () => {
     expect(binding?.runtimePayload).toEqual({
       activeTurnId: 'turn-1',
       cwd: '/workspace',
-      model: 'gpt-5-codex',
+      modelSelection: {
+        model: 'gpt-5-codex',
+        providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
+      },
     })
+    fixture.close()
+  })
+
+  it('drops payload keys that are not part of the runtime payload schema', () => {
+    const fixture = createFixture()
+    const directory = new ProviderSessionDirectory(fixture.database)
+    const threadId = v.parse(threadIdSchema, 'thread-2')
+
+    directory.upsert({
+      providerDriverKind: DEFAULT_PROVIDER_DRIVER_KIND,
+      providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
+      runtimeMode: DEFAULT_RUNTIME_MODE,
+      runtimePayload: { cwd: '/workspace' },
+      status: 'running',
+      threadId,
+    })
+    // A key nothing declares — what a typo looks like once it reaches SQLite.
+    fixture.database
+      .update(schema.providerSessionRuntime)
+      .set({ runtimePayloadJson: JSON.stringify({ cwd: '/workspace', modelSelction: 'oops' }) })
+      .where(eq(schema.providerSessionRuntime.threadId, threadId))
+      .run()
+
+    expect(directory.getBinding(threadId)?.runtimePayload).toEqual({ cwd: '/workspace' })
     fixture.close()
   })
 })

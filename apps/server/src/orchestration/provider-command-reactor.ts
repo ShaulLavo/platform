@@ -18,7 +18,11 @@ import {
   DEFAULT_CODEX_PROVIDER_SETTINGS,
   DEFAULT_RUNTIME_MODE,
 } from '@workspace/contracts'
-import type { ProviderService, ProviderSessionRuntimePayload } from '../provider/provider-service'
+import type { ProviderService } from '../provider/provider-service'
+import type {
+  ProviderSessionRuntimePayload,
+  ProviderSessionStartPayload,
+} from '../provider/session-payload'
 import type { ProviderRuntimeEvent } from '../provider/types'
 import type { GitService } from '../git/service'
 import { checkpointRefForThreadTurn } from './checkpoint-refs'
@@ -790,7 +794,7 @@ function turnIdForProviderFailure(event: ProviderIntentEvent) {
 function runtimePayloadFromSessionContext(
   context: ProviderSessionContext,
   turnId: TurnId | null,
-): ProviderSessionRuntimePayload {
+): ProviderSessionStartPayload {
   return {
     activeTurnId: turnId,
     cwd: context.thread.worktreePath ?? context.project.workspaceRoot,
@@ -838,20 +842,9 @@ function checkpointRefForTurnCount(
 
 function workspacePathForCheckpointRevert(input: {
   fallbackWorkspacePath: string
-  providerPayload: unknown
+  providerPayload: ProviderSessionRuntimePayload | null | undefined
 }) {
-  if (!isRecord(input.providerPayload)) return input.fallbackWorkspacePath
-
-  return typeof input.providerPayload.cwd === 'string'
-    ? input.providerPayload.cwd
-    : input.fallbackWorkspacePath
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  if (value === null) return false
-  if (typeof value !== 'object') return false
-
-  return !Array.isArray(value)
+  return input.providerPayload?.cwd ?? input.fallbackWorkspacePath
 }
 
 function turnStartKeyForEvent(
