@@ -25,7 +25,11 @@ test('selects the first available non-server port', async () => {
 test('builds exact origins for the selected web port', () => {
   expect(
     allowedOriginsForWebPort('http://custom.local:4000,http://127.0.0.1:3000', '127.0.0.1', 3000),
-  ).toBe('http://127.0.0.1:3000,http://custom.local:4000')
+  ).toBe('http://127.0.0.1:3000,http://localhost:3000,http://custom.local:4000')
+})
+
+test('keeps a non-loopback web host exact', () => {
+  expect(allowedOriginsForWebPort(undefined, 'custom.local', 4000)).toBe('http://custom.local:4000')
 })
 
 test('reads validated ports from runtime environment', () => {

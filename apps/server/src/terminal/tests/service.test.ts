@@ -20,6 +20,20 @@ afterEach(async () => {
 })
 
 describe('terminal service', () => {
+  // The WS transport shares the origin predicate with HTTP, so it has to reject
+  // an off-allowlist loopback origin too - and reject it before spawning a PTY.
+  it('closes a websocket opened from an untrusted loopback origin', async () => {
+    const root = await fixtureRoot()
+    const pty = createFakePtyFactory()
+    const service = testService(root, { env: {}, ptyFactory: pty.factory })
+    const ws = fakeSocket('', undefined, 'http://localhost:9999')
+
+    service.routes(auth()).open(ws)
+
+    expect(ws.closed).toBe(true)
+    expect(pty.spawns).toEqual([])
+  })
+
   it('spawns the user shell in the resolved workspace cwd', async () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, 'project'))
@@ -228,13 +242,13 @@ function auth() {
   return createAuthConfig({ allowedOrigins: [TRUSTED_ORIGIN] })
 }
 
-function fakeSocket(root: string, session?: string) {
+function fakeSocket(root: string, session?: string, origin: string = TRUSTED_ORIGIN) {
   const messages: TerminalServerMessage[] = []
   const raw = {}
   return {
     closed: false,
     data: {
-      headers: { origin: TRUSTED_ORIGIN },
+      headers: { origin },
       query: { root, session },
     },
     messages,

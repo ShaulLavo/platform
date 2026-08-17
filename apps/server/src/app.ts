@@ -185,7 +185,6 @@ export function createApp(options: AppOptions) {
     .use(observabilityRoutes())
     .get('/health', () => ({
       ok: true,
-      authMode: auth.mode,
       ...fs.info(),
     }))
     .get('/lsp/match', ({ query }) => lspRouteMatch(fs.paths, query, lspSettings()), {

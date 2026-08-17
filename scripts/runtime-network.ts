@@ -4,6 +4,8 @@ import { createScriptError } from './structured-errors'
 
 const MAX_PORT_ATTEMPTS = 100
 
+const LOOPBACK_HOSTS = ['127.0.0.1', 'localhost'] as const
+
 type RuntimeEnv = Readonly<Record<string, string | undefined>>
 
 type AvailablePortOptions = {
@@ -49,16 +51,34 @@ export function runtimeUrl(host: string, port: number) {
   return `http://${urlHost(host)}:${port}`
 }
 
+// Exact origins are the whole guard (apps/server/src/auth.ts), so the launcher
+// owes the server every spelling a browser can actually send for the resolved
+// web port: `localhost` and `127.0.0.1` are different origins even though they
+// reach the same socket.
 export function allowedOriginsForWebPort(
   configuredOrigins: string | undefined,
   webHost: string,
   webPort: number,
 ) {
-  return unique([runtimeUrl(webHost, webPort), ...originsFromEnv(configuredOrigins)]).join(',')
+  return unique([
+    ...browserOriginsForWebPort(webHost, webPort),
+    ...originsFromEnv(configuredOrigins),
+  ]).join(',')
 }
 
 function closePortProbe(server: net.Server, resolve: (available: boolean) => void) {
   server.close(() => resolve(true))
+}
+
+function browserOriginsForWebPort(webHost: string, webPort: number) {
+  const configured = runtimeUrl(webHost, webPort)
+  if (!isLoopbackHost(webHost)) return [configured]
+
+  return [configured, ...LOOPBACK_HOSTS.map((host) => runtimeUrl(host, webPort))]
+}
+
+function isLoopbackHost(host: string) {
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1'
 }
 
 function originsFromEnv(value: string | undefined) {

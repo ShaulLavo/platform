@@ -46,10 +46,12 @@ export default defineConfig({
     },
     host: devServerHost,
     port: devServerPort,
-    // Port-agnostic dev: if the preferred port is taken, vite moves to the next
-    // free one. The dev server trusts any loopback origin (see auth.ts), so the
-    // fallback port needs no allowlist plumbing.
-    strictPort: false,
+    // The port is authoritative, not a preference: the server's origin
+    // allowlist is exact (apps/server/src/auth.ts) and the launcher computed
+    // this port with `selectAvailablePort` before spawning us. Silently moving
+    // to another port would produce an app that loads and then 403s on every
+    // request; failing to bind is the honest outcome.
+    strictPort: true,
   },
   worker: {
     format: 'es',

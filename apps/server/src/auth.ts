@@ -12,14 +12,11 @@ type AuthPrincipal = {
 
 export type AuthOptions = {
   allowedOrigins?: readonly string[]
-  sessionToken?: string
 }
 
 export type AuthConfig = {
   allowedOrigins: readonly string[]
-  mode: 'dev-origin' | 'session-token'
   principal: AuthPrincipal
-  sessionToken?: string
 }
 
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -39,19 +36,16 @@ const localAuthPrincipal: AuthPrincipal = {
 export function createAuthConfig(options: AuthOptions = {}): AuthConfig {
   return {
     allowedOrigins: options.allowedOrigins ?? DEFAULT_ALLOWED_ORIGINS,
-    mode: options.sessionToken ? 'session-token' : 'dev-origin',
     principal: localAuthPrincipal,
-    sessionToken: options.sessionToken,
   }
 }
 
 export function authGuard(auth: AuthConfig) {
   return ({ request, set }: { request: Request; set: { status?: number | string } }) => {
-    const error = authenticateRequest(request, auth, {
-      allowMissingSessionToken: isClientLogIngestRequest(request),
-    })
+    const origin = request.headers.get('origin')
+    const error = localBrowserOriginError(auth, origin)
     if (!error) {
-      recordRequestContext({ auth: { mode: auth.mode, outcome: 'success' } })
+      recordRequestContext({ auth: { outcome: 'success' } })
       return undefined
     }
 
@@ -60,7 +54,7 @@ export function authGuard(auth: AuthConfig) {
       area: 'auth',
       auth: {
         errorCode: error.code,
-        mode: auth.mode,
+        origin,
         outcome: 'denied',
       },
       operation: 'authenticate',
@@ -70,29 +64,8 @@ export function authGuard(auth: AuthConfig) {
   }
 }
 
-function authenticateRequest(
-  request: Request,
-  auth: AuthConfig,
-  options: { allowMissingSessionToken?: boolean } = {},
-): FsError | null {
-  const originError = localBrowserOriginError(auth, request.headers.get('origin'))
-  if (originError) return originError
-  if (options.allowMissingSessionToken) return null
-
-  const tokenError = sessionTokenError(auth, request.headers.get('authorization'))
-  if (tokenError) return tokenError
-
-  return null
-}
-
 export function authenticateWebSocketData(data: unknown, auth: AuthConfig): FsError | null {
-  const originError = localBrowserOriginError(auth, originFromWebSocketData(data))
-  if (originError) return originError
-
-  const tokenError = sessionTokenError(auth, authorizationFromWebSocketData(data))
-  if (tokenError) return tokenError
-
-  return null
+  return localBrowserOriginError(auth, originFromWebSocketData(data))
 }
 
 export function isCorsOriginAllowed(auth: AuthConfig, origin: string | null) {
@@ -108,37 +81,8 @@ function localBrowserOriginError(auth: AuthConfig, origin: string | null) {
 
 function hasTrustedOrigin(auth: AuthConfig, origin: string | null) {
   if (!origin) return false
-  if (auth.allowedOrigins.includes(origin)) return true
-  if (auth.mode === 'dev-origin') return isLoopbackOrigin(origin)
 
-  return false
-}
-
-// In dev-origin mode the web port is a moving target (vite falls to the next
-// free port when the preferred one is taken), so trust any loopback origin
-// rather than an exact port list. Session-token mode stays exact.
-function isLoopbackOrigin(origin: string) {
-  try {
-    const url = new URL(origin)
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false
-
-    return url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]'
-  } catch {
-    return false
-  }
-}
-
-function sessionTokenError(auth: AuthConfig, authorization: string | null) {
-  if (!auth.sessionToken) return null
-  if (authorization === `Bearer ${auth.sessionToken}`) return null
-
-  return new FsError('UNAUTHORIZED', 'missing or invalid session token')
-}
-
-function isClientLogIngestRequest(request: Request) {
-  if (request.method !== 'POST') return false
-
-  return new URL(request.url).pathname === '/_log/ingest'
+  return auth.allowedOrigins.includes(origin)
 }
 
 function originFromWebSocketData(data: unknown) {
@@ -149,38 +93,11 @@ function originFromWebSocketData(data: unknown) {
   return typeof origin === 'string' ? origin : null
 }
 
-function authorizationFromWebSocketData(data: unknown) {
-  const header = authorizationHeaderFromWebSocketData(data)
-  if (header) return header
-  const token = queryTokenFromWebSocketData(data)
-  if (token) return `Bearer ${token}`
-
-  return null
-}
-
-function authorizationHeaderFromWebSocketData(data: unknown) {
-  if (!isRecord(data)) return null
-  if (!isRecord(data.headers)) return null
-
-  const authorization = data.headers.authorization ?? data.headers.Authorization
-  return typeof authorization === 'string' ? authorization : null
-}
-
-function queryTokenFromWebSocketData(data: unknown) {
-  if (!isRecord(data)) return null
-  if (isRecord(data.query)) {
-    const token = data.query.token ?? data.query.authToken
-    if (typeof token === 'string') return token
-  }
-  if (typeof data.url !== 'string') return null
-
-  try {
-    const url = new URL(data.url)
-    return url.searchParams.get('token') ?? url.searchParams.get('authToken')
-  } catch {
-    return null
-  }
-}
-
-// TODO(auth): This guard intentionally supports only today's local browser app:
-// TODO(auth): If we add remote/browser sessions later, mount Better Auth or a
+// This guard is the origin allowlist and nothing else, and it is exact. The
+// launcher owes the server every origin the app can be reached at
+// (`allowedOriginsForWebPort` in scripts/runtime-network.ts), and
+// `assertLoopbackHost` (index.ts) keeps the socket on loopback — those two
+// facts are what make an origin-only guard adequate for a local dev tool.
+// There is no token mode: the previous env-var one could not be satisfied by
+// any shipping client and was deleted. Real, revocable sessions are milestone
+// M4 in docs/environments-and-remote-plan.md.

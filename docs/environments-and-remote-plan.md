@@ -84,12 +84,12 @@ Two endpoints, deliberately split by trust level.
 
 Nothing else. This exists only so a client can learn an id _before_ it has a credential, which is what makes "add this machine" idempotent. The reference serves OS, arch, server version and the machine's friendly hostname here with no auth (`refrences/t3code/apps/server/src/http.ts:61-70`), so any LAN scanner learns "Shaul's MacBook Pro, darwin/arm64" from an unauthenticated probe. We refuse that.
 
-**`GET /health` — authenticated, rich.** It already returns `{ ok, authMode, ...fs.info() }` including `workspaceRoot`, `systemRoot`, `maxTextFileBytes` (`apps/server/src/app.ts:103-107`). Grow it into the real descriptor rather than adding a third endpoint:
+**`GET /health` — authenticated, rich.** It already returns `{ ok, ...fs.info() }` including `workspaceRoot`, `systemRoot`, `maxTextFileBytes` (`apps/server/src/app.ts:103-107`). Grow it into the real descriptor rather than adding a third endpoint:
 
 ```ts
 {
   ok, environmentId, label,            // label resolved like ServerEnvironmentLabel.ts:66-103
-  authMode, protocolVersion, serverVersion,
+  protocolVersion, serverVersion,
   platform: { os, arch },
   roots: { systemRoot, workspaceRoot, maxTextFileBytes },
   capabilities: { terminal, lsp, git, wallpaper, providers: string[] },
@@ -239,12 +239,10 @@ There is no capability partition to hide behind: our one principal holds `['file
 
 ### 4.3 Today's baseline, stated honestly
 
-- Two modes, chosen only by whether `FS_SESSION_TOKEN` was in the environment (`apps/server/src/auth.ts:39-46`).
-- `session-token` mode compares a static shared secret with `===` — not timing-safe (`auth.ts:131-136`) — and **is unreachable from the real app**: the web client never sends an `Authorization` header anywhere. Set the env var today and everything 401s. The "production" auth mode has never run end to end.
-- `dev-origin` mode trusts any loopback origin regardless of port (`auth.ts:110-129`), which is deliberate and correct given the bind guard.
+- One mode: an exact origin allowlist (`apps/server/src/auth.ts`). There is no token mode.
+- The allowlist is exact; the launcher (`scripts/runtime-network.ts` `allowedOriginsForWebPort`) hands the server both loopback spellings of the resolved web port, and `apps/web/vite.config.ts` pins that port with `strictPort`.
 - Every request and WS upgrade requires an `Origin` header to exist at all (`auth.ts:102-107`).
 - `assertLoopbackHost` refuses any non-loopback bind (`apps/server/src/index.ts:24,97-101`).
-- The only recorded plan for this is a TODO comment truncated mid-sentence at EOF: `auth.ts:185-186` ends with "mount Better Auth or a".
 
 The loopback assertion is what makes all of the above acceptable. **It is the last line we change, not the first.**
 
@@ -385,13 +383,13 @@ Each is independently shippable. Nothing touches the network before M5.
 
 ### M4 — Real sessions, still loopback
 
-- Replace the static `FS_SESSION_TOKEN` `===` compare (`auth.ts:131-136`) with issued sessions: signed opaque token, timing-safe verify, DB row, instant revoke.
+- Introduce issued sessions: signed opaque token, timing-safe verify, DB row, instant revoke. There is no static token to replace — the origin allowlist is the whole guard today.
 - Pairing credential table with atomic one-time consume, 5-minute TTL, 12-char alphabet.
-- Short-lived WS token replaces the static token on `?token=` (`auth.ts:150-183`).
+- Short-lived WS token on `?token=`, alongside the origin check.
 - Desktop bootstrap token over fd 3 into `spawnServer()` (`apps/desktop/src/bun/index.ts:87`).
 - Rate limit the consume endpoint. Ship the log-hygiene test.
 
-**Done when** a user can run the desktop app with `FS_SESSION_TOKEN` unset and still be authenticated end to end, and can revoke a session from Settings and watch that browser tab lose access on its next request. (This also makes `session-token` mode reachable for the first time — it is dead code today.)
+**Done when** a user can run the desktop app and be authenticated end to end, and can revoke a session from Settings and watch that browser tab lose access on its next request.
 
 ### M5 — Remote, over a trusted network only
 
@@ -436,7 +434,7 @@ Only if someone asks twice. Requires: repository identity on the server (we have
 
 Found while tracing, each independently true today:
 
-- `session-token` auth mode has never worked end to end — the client sends no `Authorization` header anywhere (`apps/server/src/auth.ts:131-136`).
+- `session-token` auth mode never worked end to end — the client sent no `Authorization` header anywhere — and was deleted; the guard is now the exact origin allowlist alone.
 - The shared secret is compared with `===`, not `timingSafeEqual` (`auth.ts:134`).
 - The only recorded design note for remote sessions is truncated mid-sentence at EOF (`auth.ts:185-186`). Replace it with a pointer to this document rather than guessing what it meant.
 - `isUnauthorizedClose` will misread any proxy or tunnel and park chat forever (`orchestration-rpc-client.ts:740-747` + `use-chat-shell-subscription.ts:109-114`).

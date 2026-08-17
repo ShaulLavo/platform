@@ -58,30 +58,34 @@ describe('fs rpc auth', () => {
     expect(response.headers.get('access-control-allow-origin')).toBe(TRUSTED_ORIGIN)
   })
 
-  it('requires the bootstrap session token when configured', async () => {
-    const app = testApp(await fixtureRoot(), { sessionToken: 'secret' })
-    const missing = await app.handle(
+  // The regression gate: before the exact-origin collapse this returned 200,
+  // because dev-origin mode widened the allowlist to any loopback port.
+  it('rejects a loopback origin that is not on the allowlist', async () => {
+    const app = testApp(await fixtureRoot())
+    const response = await app.handle(
       new Request('http://local/health', {
-        headers: trustedOriginHeaders(),
-      }),
-    )
-    const invalid = await app.handle(
-      new Request('http://local/health', {
-        headers: trustedOriginHeaders({ authorization: 'Bearer wrong' }),
-      }),
-    )
-    const valid = await app.handle(
-      new Request('http://local/health', {
-        headers: trustedOriginHeaders({ authorization: 'Bearer secret' }),
+        headers: { origin: 'http://localhost:9999' },
       }),
     )
 
-    expect(missing.status).toBe(401)
-    expect(await errorCode(missing)).toBe('UNAUTHORIZED')
-    expect(invalid.status).toBe(401)
-    expect(await errorCode(invalid)).toBe('UNAUTHORIZED')
-    expect(valid.status).toBe(200)
-    expect(await valid.json()).toMatchObject({ authMode: 'session-token' })
+    expect(response.status).toBe(403)
+    expect(await errorCode(response)).toBe('FORBIDDEN_ORIGIN')
+    expect(response.headers.get('access-control-allow-origin')).toBeNull()
+  })
+
+  // localhost and 127.0.0.1 are different origins for the same socket, which is
+  // why the launcher has to emit both spellings.
+  it('accepts every launcher-listed spelling of the web origin', async () => {
+    const app = testApp(await fixtureRoot(), {
+      allowedOrigins: ['http://127.0.0.1:5173', 'http://localhost:5173'],
+    })
+
+    for (const origin of ['http://127.0.0.1:5173', 'http://localhost:5173']) {
+      const response = await app.handle(new Request('http://local/health', { headers: { origin } }))
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('access-control-allow-origin')).toBe(origin)
+    }
   })
 })
 
@@ -992,7 +996,7 @@ function testApp(
   options: {
     homeDirectory?: string
     maxTextFileBytes?: number
-    sessionToken?: string
+    allowedOrigins?: readonly string[]
     treeConcurrency?: number
     watch?: boolean
     watchBackend?: 'auto' | 'node'
@@ -1000,8 +1004,7 @@ function testApp(
 ) {
   const app = createTestApp({
     auth: {
-      allowedOrigins: [TRUSTED_ORIGIN],
-      sessionToken: options.sessionToken,
+      allowedOrigins: options.allowedOrigins ?? [TRUSTED_ORIGIN],
     },
     homeDirectory: options.homeDirectory,
     maxTextFileBytes: options.maxTextFileBytes,

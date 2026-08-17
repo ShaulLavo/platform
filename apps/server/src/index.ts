@@ -21,7 +21,6 @@ const configuredWorkspaceRoot = Bun.env.FS_WORKSPACE_ROOT
 const workspaceRoot = configuredWorkspaceRoot ?? systemRoot
 const watch = Bun.env.FS_WATCH !== 'false'
 const allowedOrigins = allowedOriginsFromEnv(Bun.env.SERVER_ALLOWED_ORIGINS)
-const sessionToken = Bun.env.FS_SESSION_TOKEN
 const maxTextFileBytes = numberFromEnv(Bun.env.FS_DEV_MAX_TEXT_FILE_BYTES)
 const treeConcurrency = numberFromEnv(Bun.env.FS_TREE_CONCURRENCY)
 
@@ -30,7 +29,7 @@ initializeObservability(Bun.env)
 installCrashHandlers()
 
 export const app = createApp({
-  auth: { allowedOrigins, sessionToken },
+  auth: { allowedOrigins },
   homeDirectory,
   maxTextFileBytes,
   orchestration: { providerRuntime: true },

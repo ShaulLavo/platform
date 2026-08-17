@@ -141,12 +141,12 @@ describe('observability runtime', () => {
     expect(serialized).not.toContain(path.join(root, 'missing.txt'))
   })
 
-  it('does not persist authorization secrets', async () => {
+  it('does not persist authorization headers', async () => {
     const root = await fixtureRoot()
     const logDir = await fixtureRoot()
-    const token = 'secret-session-token'
+    const token = 'secret-bearer-value'
     initializeObservability(testObservabilityEnv(logDir))
-    const app = testApp(root, { sessionToken: token })
+    const app = testApp(root)
 
     const response = await app.handle(
       new Request('http://local/fs/tree?path=&depth=1', {
@@ -229,11 +229,11 @@ describe('observability runtime', () => {
     expect(events.map((event) => event.path)).not.toContain('/_log/dashboard/events')
   })
 
-  it('accepts batched client drain payloads without a session token', async () => {
+  it('accepts batched client drain payloads', async () => {
     const root = await fixtureRoot()
     const logDir = await fixtureRoot()
     initializeObservability(testObservabilityEnv(logDir))
-    const app = testApp(root, { sessionToken: 'secret-session-token' })
+    const app = testApp(root)
 
     const response = await app.handle(
       new Request('http://local/_log/ingest', {
@@ -322,11 +322,10 @@ describe('observability runtime', () => {
   })
 })
 
-function testApp(root: string, options: { sessionToken?: string } = {}) {
+function testApp(root: string) {
   return createTestApp({
     auth: {
       allowedOrigins: [TRUSTED_ORIGIN],
-      sessionToken: options.sessionToken,
     },
     settings: testSettingsOptions(root),
     watch: false,
