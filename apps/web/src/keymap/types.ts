@@ -2,6 +2,10 @@ import type { FocusArea } from '@/components/workspace/focus/providers/focus-sta
 import type { EditorCommandId } from '@singapor/core'
 import type { HotkeyMeta, ParsedHotkey, RegisterableHotkey } from '@tanstack/react-hotkeys'
 
+// `import type` on purpose: it is erased, so the command table can keep reading
+// `SESSION_JUMP_POSITIONS` from here without a runtime cycle.
+import type { WorkspaceCommandId } from './workspace-commands'
+
 /** `user` bindings come from the settings document and stand in for a default. */
 export type KeyBindingSource = 'default' | 'user'
 
@@ -20,52 +24,7 @@ export function sessionJumpCommandId(position: SessionJumpPosition): SessionJump
   return `workspace.jumpToSession${position}`
 }
 
-export type WorkspaceCommandId =
-  | SessionJumpCommandId
-  | 'workspace.newSession'
-  | 'workspace.nextSession'
-  | 'workspace.previousSession'
-  | 'workspace.toggleSessionRail'
-  | 'workspace.showQuickAccess'
-  | 'workspace.showCommandPalette'
-  | 'workspace.showSettings'
-  | 'workspace.openFilePicker'
-  | 'workspace.openSearchEditor'
-  | 'workspace.quickOpenPreviousEditor'
-  | 'workspace.quickOpenView'
-  | 'workspace.gotoSymbol'
-  | 'workspace.showAllEditors'
-  | 'workspace.saveFile'
-  | 'workspace.saveAllFiles'
-  | 'workspace.compareWithSaved'
-  | 'workspace.openFileAtHead'
-  | 'workspace.revertFile'
-  | 'workspace.reopenClosedEditor'
-  | 'workspace.toggleSidebarVisibility'
-  | 'workspace.togglePanel'
-  | 'workspace.focusFirstEditorGroup'
-  | 'workspace.focusSecondEditorGroup'
-  | 'workspace.focusThirdEditorGroup'
-  | 'workspace.focusEditor'
-  | 'workspace.focusFileTree'
-  | 'workspace.focusGit'
-  | 'workspace.copyAddress'
-  | 'workspace.navigateBack'
-  | 'workspace.navigateForward'
-  | 'workspace.revealChat'
-  | 'workspace.revealTerminal'
-  | 'workspace.newIsolatedSession'
-  | 'workspace.closeCurrentTab'
-  | 'workspace.toggleDiffViewMode'
-  | 'workspace.toggleUiMode'
-  | 'workspace.showChatMode'
-  | 'workspace.showWorkbenchMode'
-  | 'workspace.selectColorMode'
-  | 'workspace.selectColorTheme'
-  | 'workspace.setLightTheme'
-  | 'workspace.setDarkTheme'
-  | 'workspace.setSystemTheme'
-  | 'workspace.toggleWallpaper'
+export type { WorkspaceCommandId }
 
 export type EditorPlatformCommandId = `editor.${EditorCommandId}`
 

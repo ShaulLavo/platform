@@ -25,8 +25,9 @@ needed to enable it safely.
 - The active binding model is still pane-scoped. `activePlatformKeyBindings()`
   filters by the current workspace focus area and lets focused-pane bindings
   override global bindings with the same key.
-- `command-registry.ts` is the command metadata source for command palette rows,
-  shortcut labels, and VS Code command aliases.
+- `workspace-commands.ts` and `editor-commands.ts` are the one command table.
+  `command-registry.ts`, `default-bindings.ts`, the palette gating sets and the
+  icon map are all projections of it.
 - Only the built-in default source exists. Built-in no-op reservations can block
   browser-hostile desktop shortcuts, but there is no user keymap file, keymap
   editor, targeted unbind, or user disabled/no-op binding support yet.

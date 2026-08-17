@@ -1,44 +1,18 @@
+import {
+  hiddenPaletteCommandIds,
+  paletteModeCommandIds,
+  workspaceOptionalCommandIds,
+} from '@/keymap/table'
 import type { PlatformCommandId } from '@/keymap/types'
 
 import type { ColorModePaletteItem, ViewPaletteItem } from './command-palette-types'
 
-export const paletteModeCommands: ReadonlySet<PlatformCommandId> = new Set([
-  'workspace.gotoSymbol',
-  'workspace.quickOpenView',
-  'workspace.selectColorMode',
-  'workspace.selectColorTheme',
-  'workspace.showAllEditors',
-  'workspace.showCommandPalette',
-  'workspace.showQuickAccess',
-])
-
-export const selectedFileCommands: ReadonlySet<PlatformCommandId> = new Set([
-  'workspace.closeCurrentTab',
-  'workspace.compareWithSaved',
-  'workspace.openFileAtHead',
-  'workspace.gotoSymbol',
-  'workspace.revertFile',
-  'workspace.saveFile',
-])
-
-export const hiddenCommandPaletteCommands: ReadonlySet<PlatformCommandId> = new Set([
-  'workspace.setDarkTheme',
-  'workspace.setLightTheme',
-  'workspace.setSystemTheme',
-  'workspace.showCommandPalette',
-])
-
-export const workspaceOptionalCommands: ReadonlySet<PlatformCommandId> = new Set([
-  'workspace.openFilePicker',
-  'workspace.selectColorMode',
-  'workspace.selectColorTheme',
-  'workspace.setDarkTheme',
-  'workspace.setLightTheme',
-  'workspace.setSystemTheme',
-  'workspace.showCommandPalette',
-  'workspace.showSettings',
-  'workspace.toggleWallpaper',
-])
+// The palette's names for three projections of the command table. Each set used
+// to be written out by hand here, which is how a command could be listed as
+// palette-mode in one file and not in the other.
+export const paletteModeCommands: ReadonlySet<PlatformCommandId> = paletteModeCommandIds
+export const hiddenCommandPaletteCommands: ReadonlySet<PlatformCommandId> = hiddenPaletteCommandIds
+export const workspaceOptionalCommands: ReadonlySet<PlatformCommandId> = workspaceOptionalCommandIds
 
 export const viewPaletteItems: readonly ViewPaletteItem[] = [
   {

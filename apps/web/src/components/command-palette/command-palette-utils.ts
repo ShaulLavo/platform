@@ -10,8 +10,8 @@ import { isFileEntry } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
 import { basename, displayPath, toTreePath } from '@/lib/path-formatters'
 import type { TreeModel } from '@/lib/tree-model'
-import { isEditorPlatformCommandId } from '@/keymap/editor-keymap'
 import type { CommandSpec } from '@/keymap/command-registry'
+import { commandRequirement } from '@/keymap/table'
 import type { PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
 import { fuzzyRankScore } from '@workspace/contracts'
 
@@ -19,8 +19,6 @@ import {
   colorModePaletteItems,
   hiddenCommandPaletteCommands,
   paletteModeCommands,
-  selectedFileCommands,
-  workspaceOptionalCommands,
 } from './command-palette-data'
 import type {
   ColorModePaletteItem,
@@ -286,17 +284,12 @@ export function isCommandDisabled(command: PlatformCommandId, context: CommandDi
 }
 
 export function commandDisabledReason(command: PlatformCommandId, context: CommandDisabledContext) {
-  if (workspaceOptionalCommands.has(command)) return null
+  const requires = commandRequirement(command)
+  if (requires === 'nothing') return null
   if (!context.hasWorkspace) return 'No workspace open.'
+  if (requires === 'workspace') return null
 
-  if (selectedFileCommands.has(command)) {
-    return fileBackedPath(context.activeFilePath) ? null : 'No file-backed surface is active.'
-  }
-  if (isEditorPlatformCommandId(command)) {
-    return fileBackedPath(context.activeFilePath) ? null : 'No file-backed surface is active.'
-  }
-
-  return null
+  return fileBackedPath(context.activeFilePath) ? null : 'No file-backed surface is active.'
 }
 
 export function fileBackedPath(path: string | null) {

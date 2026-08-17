@@ -12,7 +12,8 @@ import type { KeybindingOverrides } from '@workspace/contracts'
 
 import type { FocusArea } from '@/components/workspace/focus/providers/focus-state'
 
-import { commandHotkeyMeta, platformCommandSpecs } from './command-registry'
+import { commandHotkeyMeta } from './command-registry'
+import { platformCommands } from './table'
 import type {
   CommandKeyBinding,
   KeyBindingKeyboardEvent,
@@ -118,7 +119,7 @@ export function commandKeyBindings(
   platform: PlatformName = detectPlatform(),
 ): readonly CommandKeyBindingRow[] {
   const { bindings, shadowedBy } = keyBindingResolution(defaults, overrides, platform)
-  const applied = new Map(appliedOverrides(overrides, defaults))
+  const applied = new Map(appliedOverrides(overrides))
   const live = liveBindingsByCommand(bindings)
   const defaultKeys = defaultKeysByCommand(defaults)
 
@@ -163,7 +164,7 @@ function keyBindingResolution(
   overrides: KeybindingOverrides,
   platform: PlatformName,
 ): KeyBindingResolution {
-  const entries = appliedOverrides(overrides, defaults)
+  const entries = appliedOverrides(overrides)
   if (entries.length === 0) return { bindings: defaults, shadowedBy: NO_SHADOWED_COMMANDS }
 
   const overridden = new Set(entries.map(([command]) => command))
@@ -273,9 +274,8 @@ function bindingPriority(binding: PlatformKeyBinding, focusedPane: FocusArea) {
 
 function appliedOverrides(
   overrides: KeybindingOverrides,
-  defaults: readonly PlatformKeyBinding[],
 ): readonly (readonly [PlatformCommandId, string | null])[] {
-  const known = knownCommands(defaults)
+  const known = knownCommands()
   const entries: (readonly [PlatformCommandId, string | null])[] = []
 
   for (const [command, keys] of Object.entries(overrides)) {
@@ -288,21 +288,9 @@ function appliedOverrides(
   return entries
 }
 
-/**
- * The registry and the default table each know commands the other does not —
- * the session commands ship a binding without a palette entry — so a command is
- * real if either one names it.
- */
-function knownCommands(defaults: readonly PlatformKeyBinding[]): ReadonlySet<string> {
-  const known = new Set<string>(platformCommandSpecs.map((spec) => spec.id))
-
-  for (const binding of defaults) {
-    if (!binding.command) continue
-
-    known.add(binding.command)
-  }
-
-  return known
+/** The table is the only place a command exists, so it is the only list to check. */
+function knownCommands(): ReadonlySet<string> {
+  return new Set(platformCommands.map((command) => command.id))
 }
 
 function isPlatformCommandId(
