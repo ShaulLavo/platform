@@ -8,6 +8,7 @@ import {
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
 
+import { notifyChatCommandError } from '@/features/chat/notify-command-error'
 import { errorMessage } from '@/lib/error-message'
 import type { ChatEnvironment } from '../environment/chat-environment'
 import { useSessionIsolationStore } from '@/features/chat-mode/state/session-isolation-store'
@@ -72,12 +73,16 @@ export function ChatDraftView({
     (next: ModelSelection) => {
       if (!project) return
 
-      void environment.dispatchCommand(
-        createProjectDefaultModelCommand({
-          defaultModelSelection: next,
-          projectId: project.id,
-        }),
-      )
+      void environment
+        .dispatchCommand(
+          createProjectDefaultModelCommand({
+            defaultModelSelection: next,
+            projectId: project.id,
+          }),
+        )
+        .catch((error: unknown) =>
+          notifyChatCommandError(error, 'Could not save the default model'),
+        )
     },
     [environment, project],
   )

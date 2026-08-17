@@ -1,6 +1,7 @@
 import type { OrchestrationProjectScript } from '@workspace/contracts'
 
 import { createProjectScriptsCommand } from '@/features/chat/lib/chat-command-builders'
+import { notifyChatCommandError } from '@/features/chat/notify-command-error'
 import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { useOptionalChatModeSession } from '@/features/chat-mode/providers/session-context'
@@ -41,11 +42,13 @@ export function useSaveProjectScript() {
 
     const remaining = project.scripts.filter((saved) => saved.command !== script.command)
 
-    void environment.dispatchCommand(
-      createProjectScriptsCommand({
-        projectId: project.id,
-        scripts: [script, ...remaining],
-      }),
-    )
+    void environment
+      .dispatchCommand(
+        createProjectScriptsCommand({
+          projectId: project.id,
+          scripts: [script, ...remaining],
+        }),
+      )
+      .catch((error: unknown) => notifyChatCommandError(error, 'Could not save the project script'))
   }
 }

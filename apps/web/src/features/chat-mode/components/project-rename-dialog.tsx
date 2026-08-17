@@ -10,6 +10,7 @@ import { Input } from '@workspace/ui/components/input'
 import { useState } from 'react'
 
 import { createProjectMetaCommand } from '@/features/chat/lib/chat-command-builders'
+import { notifyChatCommandError } from '@/features/chat/notify-command-error'
 import { useChatModeSession } from '@/features/chat-mode/providers/session-context'
 import { useProjectRenameRequestStore } from '@/features/chat-mode/state/project-rename-request-store'
 
@@ -26,6 +27,7 @@ export function ProjectRenameDialog() {
   // that project's name rather than the previous one's edited text.
   const [title, setTitle] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
   if (request && editingId !== request.projectId) {
     setEditingId(request.projectId)
     setTitle(request.title)
@@ -34,13 +36,23 @@ export function ProjectRenameDialog() {
   const trimmed = title.trim()
   const canSave = trimmed.length > 0 && trimmed !== request?.title
 
-  function save() {
-    if (!request || !canSave) return
+  async function save() {
+    if (!request || !canSave || saving) return
 
-    void environment.dispatchCommand(
-      createProjectMetaCommand({ projectId: request.projectId, title: trimmed }),
-    )
-    dismissRename()
+    setSaving(true)
+    try {
+      await environment.dispatchCommand(
+        createProjectMetaCommand({ projectId: request.projectId, title: trimmed }),
+      )
+      dismissRename()
+    } catch (error) {
+      // Closing on dispatch rather than on the result told the user the rename
+      // landed; the old name then came back on the next projection sync with no
+      // explanation.
+      notifyChatCommandError(error, 'Could not rename the project')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -60,7 +72,7 @@ export function ProjectRenameDialog() {
             if (event.key !== 'Enter') return
 
             event.preventDefault()
-            save()
+            void save()
           }}
           value={title}
         />
@@ -68,7 +80,7 @@ export function ProjectRenameDialog() {
           <Button onClick={() => dismissRename()} type='button' variant='outline'>
             Cancel
           </Button>
-          <Button disabled={!canSave} onClick={() => save()} type='button'>
+          <Button disabled={!canSave || saving} onClick={() => void save()} type='button'>
             Rename
           </Button>
         </DialogFooter>

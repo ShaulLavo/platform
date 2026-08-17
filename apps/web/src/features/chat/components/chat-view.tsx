@@ -1,6 +1,7 @@
 import type { ModelSelection, ThreadId } from '@workspace/contracts'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { notifyChatCommandError } from '@/features/chat/notify-command-error'
 import { errorMessage } from '@/lib/error-message'
 import type { ChatEnvironment } from '../environment/chat-environment'
 import {
@@ -99,12 +100,16 @@ export function ChatView({
     (next: ModelSelection) => {
       if (!projectId) return
 
-      void environment.dispatchCommand(
-        createProjectDefaultModelCommand({
-          defaultModelSelection: next,
-          projectId,
-        }),
-      )
+      void environment
+        .dispatchCommand(
+          createProjectDefaultModelCommand({
+            defaultModelSelection: next,
+            projectId,
+          }),
+        )
+        .catch((error: unknown) =>
+          notifyChatCommandError(error, 'Could not save the default model'),
+        )
     },
     [environment, projectId],
   )
