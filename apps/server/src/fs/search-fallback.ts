@@ -9,7 +9,6 @@ import {
   type WorkspaceSearchMatcher,
 } from '@workspace/contracts'
 
-import type { EntryTypeFilter } from './contracts'
 import { SEARCH_LINE_BUFFER_BYTES, streamLines } from './search-line-decoder'
 import {
   contentMatch,
@@ -22,47 +21,35 @@ import {
   shouldSearchNames,
   type FindContext,
   type FindMatch,
-  type FindOptions,
 } from './search-shared'
 import type { FsEntryStats } from './stat'
 import { recordRequestWarning } from '../observability'
 
-export async function* searchWithFallback(context: FindContext) {
-  const matches: FindMatch[] = []
-  await searchDirectory(
-    context.root.absolutePath,
-    context.root.relativePath,
-    context,
-    context.options,
-    matches,
-    1,
-  )
-
-  for (const match of matches) yield match
+// The walker yields as it goes rather than collecting into an array: the caller
+// enforces `options.limit` and stops pulling, and an abandoned query aborts
+// mid-walk. A generator parked in an `await` can do neither — `.return()` on it
+// only lands at the next `yield`.
+export async function* searchWithFallback(
+  context: FindContext,
+  signal?: AbortSignal,
+): AsyncGenerator<FindMatch> {
+  yield* searchDirectory(context.root.absolutePath, context.root.relativePath, context, signal, 1)
 }
 
-async function searchDirectory(
+async function* searchDirectory(
   absoluteDirectory: string,
   relativeDirectory: string,
   context: FindContext,
-  options: FindOptions,
-  matches: FindMatch[],
+  signal: AbortSignal | undefined,
   depth: number,
-) {
-  if (matches.length >= options.limit) return
+): AsyncGenerator<FindMatch> {
+  if (signal?.aborted) return
 
   const dirents = await readdir(absoluteDirectory, { withFileTypes: true })
   for (const dirent of sortedDirents(dirents)) {
-    if (matches.length >= options.limit) return
-    await searchEntry(
-      absoluteDirectory,
-      relativeDirectory,
-      dirent.name,
-      context,
-      options,
-      matches,
-      depth,
-    )
+    if (signal?.aborted) return
+
+    yield* searchEntry(absoluteDirectory, relativeDirectory, dirent.name, context, signal, depth)
   }
 }
 
@@ -70,15 +57,14 @@ function sortedDirents<T extends { name: string }>(dirents: T[]) {
   return dirents.sort((left, right) => left.name.localeCompare(right.name))
 }
 
-async function searchEntry(
+async function* searchEntry(
   absoluteDirectory: string,
   relativeDirectory: string,
   name: string,
   context: FindContext,
-  options: FindOptions,
-  matches: FindMatch[],
+  signal: AbortSignal | undefined,
   depth: number,
-) {
+): AsyncGenerator<FindMatch> {
   const relativePath = joinRelative(relativeDirectory, name)
   if (isIgnoredSearchPath(context, relativePath)) return
 
@@ -91,39 +77,21 @@ async function searchEntry(
   )
   if (!entryStats) return
 
-  if (shouldSearchNames(options)) {
-    addNameMatch(relativePath, name, entryStats, context, matches, options.entryType)
+  if (shouldSearchNames(context.options)) {
+    const match = nameMatch(relativePath, name, entryStats, context)
+    if (match) yield match
   }
 
   if (isDirectoryEntry(entryStats)) {
-    await searchChildDirectory(absolutePath, relativePath, context, options, matches, depth)
+    if (!canSearchChildren(depth, context.options.maxDepth)) return
+
+    yield* searchDirectory(absolutePath, relativePath, context, signal, depth + 1)
     return
   }
 
-  if (!canSearchFileContent(relativePath, entryStats, context, options)) return
+  if (!canSearchFileContent(relativePath, entryStats, context)) return
 
-  await addContentMatch(
-    absolutePath,
-    relativePath,
-    entryStats,
-    context.matcher,
-    matches,
-    options.limit,
-    options.maxContentBytes,
-  )
-}
-
-async function searchChildDirectory(
-  absolutePath: string,
-  relativePath: string,
-  context: FindContext,
-  options: FindOptions,
-  matches: FindMatch[],
-  depth: number,
-) {
-  if (!canSearchChildren(depth, options.maxDepth)) return
-
-  await searchDirectory(absolutePath, relativePath, context, options, matches, depth + 1)
+  yield* fileContentMatches(absolutePath, relativePath, entryStats, context, signal)
 }
 
 function canSearchChildren(depth: number, maxDepth?: number) {
@@ -136,8 +104,8 @@ function canSearchFileContent(
   relativePath: string,
   entryStats: FsEntryStats,
   context: FindContext,
-  options: FindOptions,
 ) {
+  const options = context.options
   if (!matchesEntryType(entryStats, options.entryType)) return false
   if (!context.matcher.pathMatches(globMatchPath(context, relativePath))) return false
   if (!options.includeContent) return false
@@ -147,37 +115,33 @@ function canSearchFileContent(
   return true
 }
 
-function addNameMatch(
+function nameMatch(
   relativePath: string,
   name: string,
   entry: FsEntryStats,
   context: FindContext,
-  matches: FindMatch[],
-  entryType?: EntryTypeFilter,
-) {
-  if (!matchesEntryType(entry, entryType)) return
-  if (!context.matcher.pathMatches(globMatchPath(context, relativePath))) return
-  if (!nameSearchMatches(context, relativePath, name)) return
+): FindMatch | null {
+  if (!matchesEntryType(entry, context.options.entryType)) return null
+  if (!context.matcher.pathMatches(globMatchPath(context, relativePath))) return null
+  if (!nameSearchMatches(context, relativePath, name)) return null
 
-  matches.push({
+  return {
     ...searchMatchMetadata(entry),
     kind: 'name',
     path: relativePath,
     source: 'disk',
     targetType: entry.targetType,
     type: entry.type,
-  })
+  }
 }
 
-async function addContentMatch(
+async function* fileContentMatches(
   absolutePath: string,
   relativePath: string,
   entry: FsEntryStats,
-  matcher: WorkspaceSearchMatcher,
-  matches: FindMatch[],
-  limit: number,
-  maxContentBytes: number,
-) {
+  context: FindContext,
+  signal: AbortSignal | undefined,
+): AsyncGenerator<FindMatch> {
   const stream = createReadStream(absolutePath, {
     highWaterMark: SEARCH_LINE_BUFFER_BYTES,
   })
@@ -187,12 +151,11 @@ async function addContentMatch(
   try {
     for await (const line of streamLines(stream, SEARCH_LINE_BUFFER_BYTES)) {
       bytesRead += line.byteLength + line.terminatorLength
-      if (bytesRead > maxContentBytes) break
+      if (bytesRead > context.options.maxContentBytes) break
+      if (signal?.aborted) break
 
-      addLineMatch(relativePath, entry, line.text, lineIndex, matcher, matches, limit)
+      yield* contentLineMatches(relativePath, entry, line.text, lineIndex, context.matcher)
       lineIndex += 1
-
-      if (matches.length >= limit) break
     }
   } catch (error) {
     reportSearchContentError(relativePath, error)
@@ -211,26 +174,21 @@ function reportSearchContentError(relativePath: string, error: unknown) {
   })
 }
 
-function addLineMatch(
+function* contentLineMatches(
   relativePath: string,
   entry: FsEntryStats,
   line: string,
   index: number,
   matcher: WorkspaceSearchMatcher,
-  matches: FindMatch[],
-  limit: number,
-) {
+): Generator<FindMatch> {
   for (const match of matcher.lineMatches(line)) {
-    if (matches.length >= limit) return
-    matches.push(
-      contentMatch({
-        columnIndex: match.start,
-        endColumnIndex: match.end,
-        entry,
-        line,
-        lineNumber: index + 1,
-        relativePath,
-      }),
-    )
+    yield contentMatch({
+      columnIndex: match.start,
+      endColumnIndex: match.end,
+      entry,
+      line,
+      lineNumber: index + 1,
+      relativePath,
+    })
   }
 }

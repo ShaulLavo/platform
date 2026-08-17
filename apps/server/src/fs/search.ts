@@ -274,7 +274,7 @@ async function* searchWorkspaceWithDiskTools(
   }
 }
 
-async function createFindContext(
+export async function createFindContext(
   paths: WorkspacePaths,
   options: FindOptions,
 ): Promise<FindContext> {
@@ -330,7 +330,7 @@ async function* searchWithTools(
   if (!(await canUseTools({ content: searchContent, names: needsFd }))) {
     // TODO: remove this fallback after fd/rg installation or tool discovery is guaranteed.
     recordRequestContext({ search: { provider: 'fallback' } })
-    yield* measureProvider(context, 'fallback', searchWithFallback(context))
+    yield* measureProvider(context, 'fallback', searchWithFallback(context, signal))
     return
   }
 
