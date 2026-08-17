@@ -9,7 +9,6 @@ import { useQuery } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
 
 import { notifyChatCommandError } from '@/features/chat/notify-command-error'
-import { errorMessage } from '@/lib/error-message'
 import type { ChatEnvironment } from '../environment/chat-environment'
 import { useSessionIsolationStore } from '@/features/chat-mode/state/session-isolation-store'
 import {
@@ -18,16 +17,9 @@ import {
 } from '../lib/chat-command-builders'
 import { providerListQueryOptions } from '../lib/provider-query'
 import { resolveChatModelSelection } from '../lib/resolve-model-selection'
-import {
-  replayAfterDraftTurnDispatch,
-  scheduleThreadProjectionSyncAfterDispatch,
-} from '../lib/chat-command-sync'
-import {
-  chatCommandSummary,
-  createChatPipelineScope,
-  type ChatPipelineScope,
-  optimisticMessageSummary,
-} from '../lib/chat-pipeline-logging'
+import { dispatchChatCommand, replayAfterDispatch } from '../lib/chat-command-dispatch'
+import { scheduleThreadProjectionSyncAfterDispatch } from '../lib/chat-command-sync'
+import { optimisticMessageSummary } from '../lib/chat-pipeline-logging'
 import { ChatComposerModesProvider } from '../providers/composer-modes-provider'
 import { useChatOptimisticStore } from '../state/chat-optimistic-store'
 import type { ChatInputDraftTarget } from '../state/chat-input-draft-store'
@@ -73,16 +65,15 @@ export function ChatDraftView({
     (next: ModelSelection) => {
       if (!project) return
 
-      void environment
-        .dispatchCommand(
-          createProjectDefaultModelCommand({
-            defaultModelSelection: next,
-            projectId: project.id,
-          }),
-        )
-        .catch((error: unknown) =>
-          notifyChatCommandError(error, 'Could not save the default model'),
-        )
+      void dispatchChatCommand({
+        action: 'chat.project.default_model.set',
+        command: createProjectDefaultModelCommand({
+          defaultModelSelection: next,
+          projectId: project.id,
+        }),
+        dispatchCommand: environment.dispatchCommand,
+        onFailed: (error) => notifyChatCommandError(error, 'Could not save the default model'),
+      })
     },
     [environment, project],
   )
@@ -116,33 +107,50 @@ export function ChatDraftView({
         text,
         ...(requestWorktree ? { requestWorktree } : {}),
       })
-      const scope = createChatPipelineScope('chat.draft.dispatch.summary', {
-        ...chatCommandSummary(submission.command),
-        attachmentCount: attachments.length,
-        interactionMode,
-        model: modelSelection.model,
-        projectId: project.id,
-        providerInstanceId: modelSelection.providerInstanceId,
-        runtimeMode,
-        terminalContextCount: terminalContexts.length,
-        textLength: text.length,
+      const outcome = await dispatchChatCommand({
+        action: 'chat.draft.dispatch.summary',
+        beforeDispatch: (scope) => {
+          scope.increment('command.submitCount')
+          addOptimisticMessage(submission.command.commandId, submission.optimisticMessage)
+          scope.increment('command.optimisticAddedCount')
+          scope.set({
+            optimistic: optimisticMessageSummary({
+              commandId: submission.command.commandId,
+              messageId: submission.optimisticMessage.id,
+              textLength: submission.optimisticMessage.text.length,
+              threadId: submission.optimisticMessage.threadId,
+            }),
+          })
+        },
+        command: submission.command,
+        context: {
+          attachmentCount: attachments.length,
+          interactionMode,
+          model: modelSelection.model,
+          projectId: project.id,
+          providerInstanceId: modelSelection.providerInstanceId,
+          runtimeMode,
+          terminalContextCount: terminalContexts.length,
+          textLength: text.length,
+        },
+        dispatchCommand: environment.dispatchCommand,
+        onAccepted: (result) =>
+          scheduleThreadProjectionSyncAfterDispatch({
+            environment,
+            replayAfterSequence: replayAfterDispatch(submission.command, result),
+            threadId: submission.command.threadId,
+          }),
+        onFailed: () => removeOptimisticMessage(submission.optimisticMessage),
       })
-      const startedAt = performance.now()
-
-      try {
-        scope.increment('command.submitCount')
-        const result = await dispatchDraftSubmission(environment, submission, scope)
-        if (!result.ok) {
-          setSendError(result.error)
-          return false
-        }
-
-        setSendError(null)
-        onThreadCreated(submission.command.threadId)
-        return true
-      } finally {
-        scope.end({ durationMs: elapsedMs(startedAt) })
+      if (!outcome.ok) {
+        setSendError(outcome.message)
+        return false
       }
+
+      setSendError(null)
+      onThreadCreated(submission.command.threadId)
+
+      return true
     },
     [consumeIsolation, environment, onThreadCreated, project, rootPath],
   )
@@ -175,53 +183,10 @@ export function ChatDraftView({
   )
 }
 
-async function dispatchDraftSubmission(
-  environment: ChatEnvironment,
-  submission: ReturnType<typeof createDraftThreadSubmission>,
-  scope: ChatPipelineScope,
-) {
-  try {
-    addOptimisticMessage(submission.command.commandId, submission.optimisticMessage)
-    scope.increment('command.optimisticAddedCount')
-    scope.set({
-      optimistic: optimisticMessageSummary({
-        commandId: submission.command.commandId,
-        messageId: submission.optimisticMessage.id,
-        textLength: submission.optimisticMessage.text.length,
-        threadId: submission.optimisticMessage.threadId,
-      }),
-    })
-    scope.increment('command.dispatchStartCount')
-    const turnResult = await environment.dispatchCommand(submission.command)
-    scope.increment('command.dispatchAcceptedCount')
-    scope.set({
-      deduped: turnResult.deduped,
-      outcome: 'ok',
-      sequence: turnResult.sequence,
-    })
-    scheduleThreadProjectionSyncAfterDispatch({
-      environment,
-      replayAfterSequence: replayAfterDraftTurnDispatch(turnResult),
-      threadId: submission.command.threadId,
-    })
-    return { ok: true as const }
-  } catch (error) {
-    removeOptimisticMessage(submission.optimisticMessage)
-    scope.increment('command.dispatchFailedCount')
-    scope.warn('Draft command dispatch failed.', { error })
-    scope.set({ outcome: 'error' })
-    return { error: errorMessage(error, 'Chat command failed.'), ok: false as const }
-  }
-}
-
 function addOptimisticMessage(commandId: CommandId, message: OrchestrationMessage) {
   useChatOptimisticStore.getState().addOptimisticMessage(commandId, message)
 }
 
 function removeOptimisticMessage(message: OrchestrationMessage) {
   useChatOptimisticStore.getState().removeOptimisticMessage(message.threadId, message.id)
-}
-
-function elapsedMs(startedAt: number) {
-  return Math.round((performance.now() - startedAt) * 100) / 100
 }

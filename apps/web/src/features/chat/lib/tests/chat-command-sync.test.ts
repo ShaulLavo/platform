@@ -18,11 +18,7 @@ import * as v from 'valibot'
 
 import type { ChatEnvironment } from '../../environment/chat-environment'
 import { useChatProjectionStore } from '../../state/chat-projection-store'
-import {
-  replayAfterDraftTurnDispatch,
-  replayAfterTurnDispatch,
-  syncThreadProjectionAfterDispatch,
-} from '../chat-command-sync'
+import { syncThreadProjectionAfterDispatch } from '../chat-command-sync'
 
 describe('chat command sync', () => {
   it('replays accepted thread events into the projection store', async () => {
@@ -82,11 +78,6 @@ describe('chat command sync', () => {
       id: messageId,
       text: 'Hello',
     })
-  })
-
-  it('computes replay windows for turn and draft-thread dispatches', () => {
-    expect(replayAfterTurnDispatch({ deduped: false, sequence: 12 })).toBe(10)
-    expect(replayAfterDraftTurnDispatch({ deduped: false, sequence: 12 })).toBe(9)
   })
 })
 

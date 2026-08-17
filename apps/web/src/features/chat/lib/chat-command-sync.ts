@@ -1,7 +1,8 @@
-import type { OrchestrationDispatchResult, ThreadId } from '@workspace/contracts'
+import type { ThreadId } from '@workspace/contracts'
 
 import type { ChatEnvironment } from '../environment/chat-environment'
 import { useChatProjectionStore } from '../state/chat-projection-store'
+import { elapsedMs } from '../utils/elapsed-ms'
 import {
   chatThreadSnapshotSummary,
   createChatPipelineScope,
@@ -37,9 +38,7 @@ export async function syncThreadProjectionAfterDispatch({
     applyReplaySyncResult(scope, store, replay, replayAfterSequence)
     applySnapshotSyncResult(scope, store, snapshot)
   } finally {
-    scope.end({
-      durationMs: Math.round((performance.now() - startedAt) * 100) / 100,
-    })
+    scope.end({ durationMs: elapsedMs(startedAt) })
   }
 }
 
@@ -65,14 +64,6 @@ export function scheduleThreadProjectionSyncAfterDispatch({
       })
     },
   )
-}
-
-export function replayAfterTurnDispatch(result: OrchestrationDispatchResult) {
-  return Math.max(0, result.sequence - 2)
-}
-
-export function replayAfterDraftTurnDispatch(result: OrchestrationDispatchResult) {
-  return Math.max(0, result.sequence - 3)
 }
 
 function applyReplaySyncResult(

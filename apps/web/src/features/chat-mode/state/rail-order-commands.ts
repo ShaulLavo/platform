@@ -6,6 +6,7 @@ import {
   createSessionPlaceCommand,
   createSessionReorderCommand,
 } from '@/features/chat/lib/chat-command-builders'
+import { dispatchChatCommand } from '@/features/chat/lib/chat-command-dispatch'
 import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import {
@@ -18,7 +19,6 @@ import { railReorderIntent, type RailOrderRow } from '@/features/chat-mode/utils
 import { sessionRailModel } from '@/features/chat-mode/utils/session-rail-model'
 import { sessionThreads } from '@/features/chat-mode/utils/session-threads'
 import { log } from '@/lib/client-logging'
-import { errorMessage } from '@/lib/error-message'
 
 /**
  * A drop on the project band. The key is minted from the neighbours the project
@@ -126,35 +126,16 @@ async function dispatchRailOrder({
   readonly release: () => void
   readonly settle: () => void
 }) {
-  try {
-    const result = await environment.dispatchCommand(command)
-    settle()
-    log.info({
-      action: 'chat.rail.reorder',
-      area: 'chat',
-      commandType: command.type,
-      deduped: result.deduped,
-      kind,
-      orderKey: 'orderKey' in command ? command.orderKey : null,
-      outcome: 'ok',
-      rowId: id,
-      sequence: result.sequence,
-    })
-  } catch (error) {
+  await dispatchChatCommand({
+    action: 'chat.rail.reorder',
+    command,
+    context: { kind, orderKey: 'orderKey' in command ? command.orderKey : null, rowId: id },
+    dispatchCommand: environment.dispatchCommand,
+    onAccepted: settle,
     // The optimistic key was the only thing holding the row in its new slot, so
     // dropping it is what puts the list back on the server's order.
-    release()
-    log.warn({
-      action: 'chat.rail.reorder',
-      area: 'chat',
-      commandType: command.type,
-      kind,
-      orderKey: 'orderKey' in command ? command.orderKey : null,
-      outcome: 'error',
-      reason: errorMessage(error, 'Reorder failed.'),
-      rowId: id,
-    })
-  }
+    onFailed: release,
+  })
 }
 
 function logReorderBlocked({

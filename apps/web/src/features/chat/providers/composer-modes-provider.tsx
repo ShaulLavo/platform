@@ -10,10 +10,7 @@ import {
   createInteractionModeSetCommand,
   createRuntimeModeSetCommand,
 } from '@/features/chat/lib/chat-command-builders'
-import {
-  chatCommandSummary,
-  createChatPipelineScope,
-} from '@/features/chat/lib/chat-pipeline-logging'
+import { dispatchChatCommand } from '@/features/chat/lib/chat-command-dispatch'
 import {
   ChatComposerModesContext,
   type ChatComposerModes,
@@ -101,26 +98,14 @@ async function dispatchModeSet({
   context: Record<string, unknown>
   dispatchCommand: DispatchCommand
 }): Promise<boolean> {
-  const startedAt = performance.now()
-  const scope = createChatPipelineScope('chat.thread_mode.set.summary', {
-    ...chatCommandSummary(command),
-    ...context,
+  // Nothing is rolled back: the draft override keeps the next turn correct
+  // even when the thread-level sync never lands.
+  const outcome = await dispatchChatCommand({
+    action: 'chat.thread_mode.set.summary',
+    command,
+    context,
+    dispatchCommand,
   })
 
-  try {
-    scope.increment('command.dispatchStartCount')
-    const result = await dispatchCommand(command)
-    scope.increment('command.dispatchAcceptedCount')
-    scope.set({ deduped: result.deduped, outcome: 'ok', sequence: result.sequence })
-    return true
-  } catch (error) {
-    // Nothing is rolled back: the draft override keeps the next turn correct
-    // even when the thread-level sync never lands.
-    scope.increment('command.dispatchFailedCount')
-    scope.warn('Thread mode set dispatch failed.', { error })
-    scope.set({ outcome: 'error' })
-    return false
-  } finally {
-    scope.end({ durationMs: Math.round((performance.now() - startedAt) * 100) / 100 })
-  }
+  return outcome.ok
 }

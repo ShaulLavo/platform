@@ -1,7 +1,7 @@
 import type { ProjectId } from '@workspace/contracts'
 
-import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
 import { createProjectDeleteCommand } from '@/features/chat/lib/chat-command-builders'
+import { dispatchChatCommand } from '@/features/chat/lib/chat-command-dispatch'
 import { selectChatSidebarThreadsForProject } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { useSessionActions } from '@/features/chat-mode/hooks/use-session-actions'
@@ -13,8 +13,6 @@ import {
 import { clearSessionMultiSelect } from '@/features/chat-mode/state/session-commands'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
 import type { SessionRailProject } from '@/features/chat-mode/utils/session-rail-model'
-import { log } from '@/lib/client-logging'
-import { errorMessage } from '@/lib/error-message'
 
 /**
  * The only place chat mode mutates a project's whole band. Deleting drops every
@@ -50,7 +48,11 @@ export function useProjectActions() {
         releaseSession(threadId, [])
       }
       clearSessionMultiSelect()
-      void dispatchProjectDelete(environment, request.projectId)
+      void dispatchChatCommand({
+        action: 'chat.project.delete',
+        command: createProjectDeleteCommand({ projectId: request.projectId }),
+        dispatchCommand: environment.dispatchCommand,
+      })
     },
     /** Deleting cascades onto every session in the project, so it always asks first. */
     deleteProject(project: SessionRailProject) {
@@ -66,29 +68,4 @@ export function useProjectActions() {
 /** Every live thread, archived included — the cascade does not spare the archive. */
 function projectThreadIds(projectId: ProjectId) {
   return useChatProjectionStore.getState().threadIdsByProjectId[projectId] ?? []
-}
-
-async function dispatchProjectDelete(environment: ChatEnvironment, projectId: ProjectId) {
-  const command = createProjectDeleteCommand({ projectId })
-  try {
-    const result = await environment.dispatchCommand(command)
-    log.info({
-      action: 'chat.project.delete',
-      area: 'chat',
-      commandType: command.type,
-      deduped: result.deduped,
-      outcome: 'ok',
-      projectId,
-      sequence: result.sequence,
-    })
-  } catch (error) {
-    log.warn({
-      action: 'chat.project.delete',
-      area: 'chat',
-      commandType: command.type,
-      outcome: 'error',
-      projectId,
-      reason: errorMessage(error, 'Chat command failed.'),
-    })
-  }
 }

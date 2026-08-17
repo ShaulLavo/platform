@@ -10,6 +10,7 @@ import { Input } from '@workspace/ui/components/input'
 import { useState } from 'react'
 
 import { createProjectMetaCommand } from '@/features/chat/lib/chat-command-builders'
+import { dispatchChatCommand } from '@/features/chat/lib/chat-command-dispatch'
 import { notifyChatCommandError } from '@/features/chat/notify-command-error'
 import { useChatModeSession } from '@/features/chat-mode/providers/session-context'
 import { useProjectRenameRequestStore } from '@/features/chat-mode/state/project-rename-request-store'
@@ -41,15 +42,20 @@ export function ProjectRenameDialog() {
 
     setSaving(true)
     try {
-      await environment.dispatchCommand(
-        createProjectMetaCommand({ projectId: request.projectId, title: trimmed }),
-      )
+      const outcome = await dispatchChatCommand({
+        action: 'chat.project.rename',
+        command: createProjectMetaCommand({ projectId: request.projectId, title: trimmed }),
+        dispatchCommand: environment.dispatchCommand,
+      })
+      if (!outcome.ok) {
+        // Closing on dispatch rather than on the result told the user the rename
+        // landed; the old name then came back on the next projection sync with no
+        // explanation.
+        notifyChatCommandError(outcome.error, 'Could not rename the project')
+        return
+      }
+
       dismissRename()
-    } catch (error) {
-      // Closing on dispatch rather than on the result told the user the rename
-      // landed; the old name then came back on the next projection sync with no
-      // explanation.
-      notifyChatCommandError(error, 'Could not rename the project')
     } finally {
       setSaving(false)
     }

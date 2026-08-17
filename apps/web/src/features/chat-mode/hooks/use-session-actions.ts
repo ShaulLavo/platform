@@ -1,7 +1,7 @@
 import type { ClientOrchestrationCommand, ThreadId } from '@workspace/contracts'
 import { toast } from 'sonner'
 
-import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
+import { dispatchChatCommand } from '@/features/chat/lib/chat-command-dispatch'
 import {
   createThreadArchiveCommand,
   createThreadDeleteCommand,
@@ -24,7 +24,6 @@ import { useSessionSelectionStore } from '@/features/chat-mode/state/session-sel
 import { compareSessionsForRail } from '@/features/chat-mode/utils/session-order'
 import { hasRunningTurn } from '@/features/chat-mode/utils/running-turn'
 import { log } from '@/lib/client-logging'
-import { errorMessage } from '@/lib/error-message'
 
 /**
  * The only place chat mode mutates a thread. Every action is fire-and-forget:
@@ -37,8 +36,8 @@ export function useSessionActions() {
   const requestDelete = useSessionDeleteRequestStore((state) => state.requestDelete)
   const dismissDelete = useSessionDeleteRequestStore((state) => state.dismissDelete)
 
-  function dispatch(action: string, threadId: ThreadId, command: ClientOrchestrationCommand) {
-    void dispatchSessionCommand({ action, command, environment, threadId })
+  function dispatch(action: string, command: ClientOrchestrationCommand) {
+    void dispatchChatCommand({ action, command, dispatchCommand: environment.dispatchCommand })
   }
 
   function archive(threadId: ThreadId) {
@@ -66,7 +65,7 @@ export function useSessionActions() {
     // The rail hides archived sessions, so the stage must let go of this one
     // before it vanishes from the list.
     releaseSession(threadId, railOrderThreadIds(thread))
-    dispatch('chat.session.archive', threadId, createThreadArchiveCommand({ threadId }))
+    dispatch('chat.session.archive', createThreadArchiveCommand({ threadId }))
   }
 
   return {
@@ -86,7 +85,7 @@ export function useSessionActions() {
       dismissDelete()
       for (const threadId of request.threadIds) {
         releaseSession(threadId, railOrderThreadIds(threadSummary(threadId)))
-        dispatch('chat.session.delete', threadId, createThreadDeleteCommand({ threadId }))
+        dispatch('chat.session.delete', createThreadDeleteCommand({ threadId }))
       }
       clearSessionMultiSelect()
     },
@@ -102,13 +101,13 @@ export function useSessionActions() {
     },
     /** `title` must already be trimmed and non-empty — the server rejects blanks. */
     rename(threadId: ThreadId, title: string) {
-      dispatch('chat.session.rename', threadId, createThreadRenameCommand({ threadId, title }))
+      dispatch('chat.session.rename', createThreadRenameCommand({ threadId, title }))
     },
     stopAgent(threadId: ThreadId) {
-      dispatch('chat.session.stopAgent', threadId, createThreadSessionStopCommand({ threadId }))
+      dispatch('chat.session.stopAgent', createThreadSessionStopCommand({ threadId }))
     },
     unarchive(threadId: ThreadId) {
-      dispatch('chat.session.unarchive', threadId, createThreadUnarchiveCommand({ threadId }))
+      dispatch('chat.session.unarchive', createThreadUnarchiveCommand({ threadId }))
     },
   }
 }
@@ -128,38 +127,4 @@ function railOrderThreadIds(thread: ChatSidebarThreadSummary | undefined) {
   return selectChatSidebarThreadsForProject(useChatProjectionStore.getState(), thread.projectId)
     .toSorted(compareSessionsForRail)
     .map((entry) => entry.id)
-}
-
-async function dispatchSessionCommand({
-  action,
-  command,
-  environment,
-  threadId,
-}: {
-  action: string
-  command: ClientOrchestrationCommand
-  environment: ChatEnvironment
-  threadId: ThreadId
-}) {
-  try {
-    const result = await environment.dispatchCommand(command)
-    log.info({
-      action,
-      area: 'chat',
-      commandType: command.type,
-      deduped: result.deduped,
-      outcome: 'ok',
-      sequence: result.sequence,
-      threadId,
-    })
-  } catch (error) {
-    log.warn({
-      action,
-      area: 'chat',
-      commandType: command.type,
-      outcome: 'error',
-      reason: errorMessage(error, 'Chat command failed.'),
-      threadId,
-    })
-  }
 }

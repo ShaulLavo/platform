@@ -12,10 +12,7 @@ import {
   createApprovalRespondCommand,
   createUserInputRespondCommand,
 } from '@/features/chat/lib/chat-command-builders'
-import {
-  chatCommandSummary,
-  createChatPipelineScope,
-} from '@/features/chat/lib/chat-pipeline-logging'
+import { dispatchChatCommand } from '@/features/chat/lib/chat-command-dispatch'
 import {
   ChatPendingRequestsContext,
   type ChatPendingRequests,
@@ -108,30 +105,17 @@ async function dispatchPendingRequestResponse({
   setResponding: SetResponding
 }): Promise<boolean> {
   setResponding((current) => withRequestId(current, requestId))
-  const startedAt = performance.now()
-  const scope = createChatPipelineScope('chat.pending_request.respond.summary', {
-    ...chatCommandSummary(command),
-    ...context,
-    requestId,
-  })
-
-  try {
-    scope.increment('command.dispatchStartCount')
-    const result = await dispatchCommand(command)
-    scope.increment('command.dispatchAcceptedCount')
-    scope.set({ deduped: result.deduped, outcome: 'ok', sequence: result.sequence })
-    return true
-  } catch (error) {
+  const outcome = await dispatchChatCommand({
+    action: 'chat.pending_request.respond.summary',
+    command,
+    context: { ...context, requestId },
+    dispatchCommand,
     // A dropped command leaves the agent blocked, so the row has to come back
     // enabled. A success stays disabled until the resolved activity drops it.
-    setResponding((current) => withoutRequestId(current, requestId))
-    scope.increment('command.dispatchFailedCount')
-    scope.warn('Pending request response dispatch failed.', { error })
-    scope.set({ outcome: 'error' })
-    return false
-  } finally {
-    scope.end({ durationMs: Math.round((performance.now() - startedAt) * 100) / 100 })
-  }
+    onFailed: () => setResponding((current) => withoutRequestId(current, requestId)),
+  })
+
+  return outcome.ok
 }
 
 function withRequestId(current: RespondingRequestIds, requestId: ApprovalRequestId) {
