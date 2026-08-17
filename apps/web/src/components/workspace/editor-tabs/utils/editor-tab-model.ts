@@ -22,7 +22,7 @@ import type { FileStatus } from '@/features/git/types'
 import {
   parseSearchBufferDocumentId,
   searchBufferDocumentTitle,
-} from '@/features/search/search-buffer-document'
+} from '@/features/search/utils/buffer-document'
 import { iconForEntry } from '@/lib/file-icons'
 import { basename, displayPath } from '@/lib/path-formatters'
 

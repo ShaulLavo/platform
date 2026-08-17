@@ -4,7 +4,7 @@ import { conflictDiffDocumentId } from '@/features/editor/conflict-diff-document
 import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
 import { snapshotDiffDocumentId } from '@/features/git/diff-document'
 import type { FileDiff } from '@/features/git/types'
-import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { searchBufferDocumentId } from '@/features/search/utils/buffer-document'
 
 describe('fileBackedDocumentPath', () => {
   it('returns ordinary filesystem paths', () => {

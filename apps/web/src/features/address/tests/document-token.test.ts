@@ -8,7 +8,7 @@ import { compareSavedDocumentId } from '@/features/editor/compare-saved-document
 import { conflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import { checkpointDiffDocumentId, snapshotDiffDocumentId } from '@/features/git/diff-document'
 import { refDocumentId } from '@/features/git/ref-document'
-import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { searchBufferDocumentId } from '@/features/search/utils/buffer-document'
 import { settingsDocumentId } from '@/features/settings/settings-document'
 import type { ThreadId } from '@workspace/contracts'
 

@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { createSearchResultVirtualListMetrics } from '@/features/search/search-result-virtual-list'
+import { createSearchResultVirtualListMetrics } from '@/features/search/utils/result-virtual-list'
 import {
   SearchResultVirtualWindowStore,
   type SearchResultVirtualWindow,
   type SearchResultVirtualWindowScheduler,
-} from '@/features/search/search-result-virtual-window-store'
+} from '@/features/search/state/result-virtual-window-store'
 
 describe('search result virtual window store', () => {
   it('does not publish raw scroll changes while the visible window is unchanged', () => {

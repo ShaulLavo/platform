@@ -8,7 +8,7 @@ import {
   replaceWorkspaceSearchMatches,
   workspaceSearchReplaceSummary,
   type WorkspaceSearchReplaceContext,
-} from '../search-replace-runner'
+} from '@/features/search/utils/replace-runner'
 
 const QUERY: WorkspaceSearchQuery = {
   includeContent: true,

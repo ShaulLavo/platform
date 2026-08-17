@@ -38,11 +38,11 @@ import {
   selectEditorTabInWorkbenchPanels,
   type WorkbenchPanels,
 } from '@/features/workbench/utils/workbench-panels'
-import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { searchBufferDocumentId } from '@/features/search/utils/buffer-document'
 import {
   useSearchBufferStoreApi,
   type SearchBufferStoreApi,
-} from '@/features/search/search-buffer-state'
+} from '@/features/search/state/buffer-state'
 import { log } from '@/lib/client-logging'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { LanguageServerDefinitionTarget } from '@singapor/lsp-plugin'

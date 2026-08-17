@@ -1,9 +1,9 @@
 import { createContext } from 'react'
 import type { WorkspaceSearchMatch } from '@workspace/contracts'
 
-import type { WorkspaceSearchFileGroup } from '@/features/search/search-buffer-state'
-import type { SearchResultId } from '@/features/search/search-result-items'
-import type { SearchResultOpenTarget } from '@/features/search/search-result-view-model'
+import type { WorkspaceSearchFileGroup } from '@/features/search/state/buffer-state'
+import type { SearchResultId } from '@/features/search/utils/result-items'
+import type { SearchResultOpenTarget } from '@/features/search/utils/result-view-model'
 
 export type SearchResultActions = {
   readonly openMatch: (match: WorkspaceSearchMatch) => void

@@ -6,8 +6,8 @@ import { createEditorCommands } from '@/features/editor/state/editor-commands'
 import { createEditorDocumentStore } from '@/features/editor/state/editor-document-state'
 import { createEditorUiStore } from '@/features/editor/state/editor-ui-state'
 import { createEditorWorkspaceStore } from '@/features/editor/state/editor-workspace-state'
-import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
-import { createSearchBufferStore } from '@/features/search/search-buffer-state'
+import { searchBufferDocumentId } from '@/features/search/utils/buffer-document'
+import { createSearchBufferStore } from '@/features/search/state/buffer-state'
 import {
   createDefaultWorkbenchPanels,
   openEditorPathInWorkbenchPanels,

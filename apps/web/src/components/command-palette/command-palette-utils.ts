@@ -4,7 +4,7 @@ import {
   parseSearchBufferDocumentId,
   searchBufferDocumentLabel,
   searchBufferDocumentTitle,
-} from '@/features/search/search-buffer-document'
+} from '@/features/search/utils/buffer-document'
 import { commandShortcut } from '@/features/menus/utils/shortcut'
 import { isFileEntry } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'

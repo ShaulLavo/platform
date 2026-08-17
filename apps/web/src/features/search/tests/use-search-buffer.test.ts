@@ -3,15 +3,18 @@ import { createEditorTextBuffer } from '@singapor/core'
 import type { WorkspaceSearchEvent } from '@workspace/contracts'
 
 import type { LiveEditorDocument } from '@/features/editor/state/editor-document-state'
-import { dirtySearchRevisionKey } from '../search-buffer-dirty-documents'
-import { workspaceSearchQuery } from '../search-buffer-query'
+import { dirtySearchRevisionKey } from '@/features/search/utils/buffer-dirty-documents'
+import { workspaceSearchQuery } from '@/features/search/utils/buffer-query'
 import {
   clientOnlyWorkspaceSearchProvider,
   createFirstPaintSearchEventBatcher,
   runSearch,
-} from '../search-buffer-runner'
-import { createSearchBufferStore, type SearchBufferStoreApi } from '../search-buffer-state'
-import { shouldStartWorkspaceSearch } from '../search-run-state'
+} from '@/features/search/utils/buffer-runner'
+import {
+  createSearchBufferStore,
+  type SearchBufferStoreApi,
+} from '@/features/search/state/buffer-state'
+import { shouldStartWorkspaceSearch } from '@/features/search/utils/run-state'
 
 describe('workspace search buffer query', () => {
   it('uses content-only workspace search by default', () => {

@@ -1,7 +1,7 @@
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
-import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { parseSearchBufferDocumentId } from '@/features/search/utils/buffer-document'
 import {
   createDefaultChatModePanels,
   isChatModeToolTab,

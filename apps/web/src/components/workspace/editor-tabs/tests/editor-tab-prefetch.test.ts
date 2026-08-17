@@ -7,7 +7,7 @@ import {
 import { conflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import { snapshotDiffDocumentId } from '@/features/git/diff-document'
 import type { FileDiff } from '@/features/git/types'
-import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { searchBufferDocumentId } from '@/features/search/utils/buffer-document'
 
 describe('editor tab prefetch helpers', () => {
   it('creates stable registration keys from tab ids and paths', () => {

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createEditorWorkspaceStore } from '@/features/editor/state/editor-workspace-state'
 import { createEditorDocumentStore } from '@/features/editor/state/editor-document-state'
-import { createSearchBufferStore } from '@/features/search/search-buffer-state'
+import { createSearchBufferStore } from '@/features/search/state/buffer-state'
 import {
   createDefaultWorkbenchPanels,
   openEditorPathInWorkbenchPanels,

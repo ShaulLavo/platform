@@ -11,7 +11,7 @@ import {
   RECENTLY_USED_COMMANDS_HEADING,
   quickAccessQuery,
 } from '@/components/command-palette/command-palette-utils'
-import { searchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { searchBufferDocumentId } from '@/features/search/utils/buffer-document'
 import { platformCommandSpecs } from '@/keymap/command-registry'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
 

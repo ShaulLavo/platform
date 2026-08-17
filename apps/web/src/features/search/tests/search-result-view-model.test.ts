@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { WorkspaceSearchMatch } from '@workspace/contracts'
 
-import type { WorkspaceSearchFileGroup } from '../search-buffer-state'
-import { expandedSearchResultItems, searchResultItems } from '../search-result-items'
+import type { WorkspaceSearchFileGroup } from '@/features/search/state/buffer-state'
+import { expandedSearchResultItems, searchResultItems } from '@/features/search/utils/result-items'
 import {
   firstSearchResultExcerptId,
   firstSearchResultVirtualRowId,
@@ -19,7 +19,7 @@ import {
   searchResultVirtualRowId,
   searchResultVirtualRowIdByOffset,
   searchResultVirtualRows,
-} from '../search-result-view-model'
+} from '@/features/search/utils/result-view-model'
 
 describe('search result view model', () => {
   it('builds file blocks and excerpts with stable result ids', () => {

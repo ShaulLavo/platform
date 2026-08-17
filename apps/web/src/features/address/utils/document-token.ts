@@ -12,7 +12,7 @@ import { parseRefDocumentId, refDocumentId } from '@/features/git/ref-document'
 import {
   parseSearchBufferDocumentId,
   searchBufferDocumentId,
-} from '@/features/search/search-buffer-document'
+} from '@/features/search/utils/buffer-document'
 import { isSettingsDocumentId } from '@/features/settings/settings-document'
 import { toWorkspaceAbsolute, toWorkspaceRelative } from '@/lib/workspace-path'
 import type { ThreadId } from '@workspace/contracts'

@@ -7,17 +7,17 @@ import {
   SearchResultActionsContext,
   type SearchResultActions,
 } from '@/features/search/providers/result-actions-context'
-import { openWorkspaceSearchMatch } from '@/features/search/open-search-match'
-import { SearchResultsView } from '@/features/search/search-results-view'
-import { SearchResultEditorSurface } from '@/features/search/search-result-editor-surface'
-import { SearchBufferStatus } from '@/features/search/search-buffer-status'
+import { openWorkspaceSearchMatch } from '@/features/search/utils/open-match'
+import { SearchResultsView } from '@/features/search/components/results-view'
+import { SearchResultEditorSurface } from '@/features/search/components/result-editor-surface'
+import { SearchBufferStatus } from '@/features/search/components/buffer-status'
 import {
   useSearchBufferState,
   type WorkspaceSearchFileGroup,
-} from '@/features/search/search-buffer-state'
-import { useSearchBufferResults } from '@/features/search/use-search-buffer-results'
-import { useWorkspaceSearchReplace } from '@/features/search/use-search-replace'
-import type { SearchResultOpenTarget } from '@/features/search/search-result-view-model'
+} from '@/features/search/state/buffer-state'
+import { useSearchBufferResults } from '@/features/search/hooks/use-buffer-results'
+import { useWorkspaceSearchReplace } from '@/features/search/hooks/use-replace'
+import type { SearchResultOpenTarget } from '@/features/search/utils/result-view-model'
 
 export function SearchResults({
   compact = true,

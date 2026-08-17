@@ -1,6 +1,6 @@
 import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
 import { parseDiffDocumentId } from '@/features/git/diff-document'
-import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { parseSearchBufferDocumentId } from '@/features/search/utils/buffer-document'
 import { parseCompareSavedDocumentId } from '@/features/editor/compare-saved-document'
 import { parseRefDocumentId } from '@/features/git/ref-document'
 

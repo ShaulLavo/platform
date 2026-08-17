@@ -16,7 +16,7 @@ import {
   type EditorSurfaceActions,
 } from '@/features/workbench/providers/editor-surface-actions-context'
 import { parseRefDocumentId } from '@/features/git/ref-document'
-import { parseSearchBufferDocumentId } from '@/features/search/search-buffer-document'
+import { parseSearchBufferDocumentId } from '@/features/search/utils/buffer-document'
 import { SettingsPage } from '@/features/settings/components/page'
 import { isSettingsDocumentId } from '@/features/settings/settings-document'
 import { useSelectedFile } from '@/hooks/use-selected-file'

@@ -17,7 +17,7 @@ import {
   type SearchBufferStore,
   type SearchBufferStoreApi,
   useSearchBufferStoreApi,
-} from '@/features/search/search-buffer-state'
+} from '@/features/search/state/buffer-state'
 import {
   type CachedSearchBufferState,
   type CachedWorkspaceSlice,

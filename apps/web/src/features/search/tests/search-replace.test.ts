@@ -5,7 +5,7 @@ import {
   applyWorkspaceSearchReplaceEdits,
   workspaceSearchReplacementPreview,
   workspaceSearchReplacePlan,
-} from '../search-replace'
+} from '@/features/search/utils/replace'
 
 const QUERY: WorkspaceSearchQuery = {
   includeContent: true,

@@ -5,7 +5,7 @@ import {
   searchBufferDocumentId,
   searchBufferDocumentLabel,
   searchBufferDocumentTitle,
-} from '../search-buffer-document'
+} from '@/features/search/utils/buffer-document'
 
 describe('search buffer document ids', () => {
   it('round-trips root paths', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { searchMatchDisplay } from '../search-match-display'
+import { searchMatchDisplay } from '@/features/search/utils/match-display'
 
 describe('search match row display text', () => {
   it('keeps filename match highlights inside the visible row text', () => {

@@ -10,7 +10,7 @@ import {
   DiskSearchProvider,
   OpenBufferSearchProvider,
   type SearchProvider,
-} from '../search-providers'
+} from '@/features/search/utils/providers'
 
 const QUERY: WorkspaceSearchQuery = {
   entryType: 'file',

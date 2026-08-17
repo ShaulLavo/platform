@@ -1,5 +1,5 @@
 import { searchRuntimeEnabled } from '@/components/workspace/search/utils/search-runtime-state'
-import { useSearchBufferRuntime } from '@/features/search/use-search-buffer-runtime'
+import { useSearchBufferRuntime } from '@/features/search/hooks/use-buffer-runtime'
 
 export function SearchRuntime({ rootPath }: { rootPath: string }) {
   const enabled = searchRuntimeEnabled(rootPath)

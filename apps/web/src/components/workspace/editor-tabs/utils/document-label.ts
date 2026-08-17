@@ -3,7 +3,7 @@ import { diffDocumentLabel, parseDiffDocumentId } from '@/features/git/diff-docu
 import {
   parseSearchBufferDocumentId,
   searchBufferDocumentLabel,
-} from '@/features/search/search-buffer-document'
+} from '@/features/search/utils/buffer-document'
 import {
   compareSavedDocumentLabel,
   parseCompareSavedDocumentId,

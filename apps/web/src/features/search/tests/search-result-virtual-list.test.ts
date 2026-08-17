@@ -6,7 +6,7 @@ import {
   searchResultVirtualListItemsEqual,
   scrollTopForSearchResultVirtualListItem,
   visibleSearchResultVirtualListItems,
-} from '../search-result-virtual-list'
+} from '@/features/search/utils/result-virtual-list'
 
 describe('search result virtual list', () => {
   it('builds deterministic row offsets', () => {

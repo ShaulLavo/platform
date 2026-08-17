@@ -1,6 +1,6 @@
 import type { ThreadId } from '@workspace/contracts'
 
-import { HighlightedPreview } from '@/features/search/search-highlight'
+import { HighlightedPreview } from '@/features/search/components/highlight'
 import { useSessionSearchStore } from '@/features/chat-mode/state/session-search-store'
 
 /**

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { compareSearchFileNames, compareSearchPaths } from '../search-sort'
+import { compareSearchFileNames, compareSearchPaths } from '@/features/search/utils/sort'
 
 describe('search sort', () => {
   it('sorts file names with numeric chunks', () => {

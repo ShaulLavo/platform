@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { LanguageServerDefinitionTarget } from '@singapor/lsp-plugin'
 
-import { openWorkspaceSearchMatch } from '../open-search-match'
+import { openWorkspaceSearchMatch } from '@/features/search/utils/open-match'
 
 describe('openWorkspaceSearchMatch', () => {
   it('opens file matches through the file surface command', () => {

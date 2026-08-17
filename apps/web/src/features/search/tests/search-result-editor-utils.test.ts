@@ -8,7 +8,7 @@ import {
   SEARCH_RESULT_FILE_EDITOR_ROW_GAP,
   SEARCH_RESULT_STATIC_EDITOR_LINE_LIMIT,
   SEARCH_RESULT_VIRTUAL_ROW_OFFSET,
-} from '@/features/search/search-result-editor-constants'
+} from '@/features/search/utils/result-editor-constants'
 import {
   searchResultFileDocumentWindow,
   searchResultFileDocumentRevision,
@@ -19,11 +19,11 @@ import {
   searchResultFileEditorStyle,
   searchResultFileEditorVisibleLineCount,
   searchResultFileDocumentVisibleLines,
-} from '@/features/search/search-result-editor-utils'
+} from '@/features/search/utils/result-editor'
 import type {
   SearchResultFileBlock,
   SearchResultFileDocument,
-} from '@/features/search/search-result-view-model'
+} from '@/features/search/utils/result-view-model'
 
 describe('search result editor utils', () => {
   it('uses static editor mode for normal file result groups', () => {

@@ -12,7 +12,7 @@ import {
   type LiveEditorDocument,
 } from '@/features/editor/state/editor-document-state'
 import { textLineAt } from '@/features/editor/utils/editor-position'
-import { compareSearchPaths } from '@/features/search/search-sort'
+import { compareSearchPaths } from '@/features/search/utils/sort'
 import { basename, toTreePath } from '@/lib/path-formatters'
 import { colorForFileIcon, iconForEntry, type ResolvedFileIcon } from '@/lib/file-icons'
 import { Button } from '@workspace/ui/components/button'

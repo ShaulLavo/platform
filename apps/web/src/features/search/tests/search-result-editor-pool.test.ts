@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import type { SearchResultRenderedFileResultItem } from '@/features/search/search-result-editor-types'
+import type { SearchResultRenderedFileResultItem } from '@/features/search/utils/result-editor-types'
 
 import {
   createSearchResultFileEditorPoolState,
   nextSearchResultFileEditorPoolKeys,
   syncSearchResultFileEditorPoolEntries,
-} from '../search-result-editor-pool'
+} from '@/features/search/state/result-editor-pool'
 
 describe('search result editor pool', () => {
   it('keeps visible file slots keyed by file id and preserves current slot order', () => {

@@ -6,7 +6,7 @@ import {
   createSearchBufferStore,
   searchGroupsForSnapshot,
   type SearchBufferSnapshot,
-} from '../search-buffer-state'
+} from '@/features/search/state/buffer-state'
 import {
   expandedSearchResultItems,
   firstSearchResultChildId,
@@ -17,7 +17,7 @@ import {
   searchResultItemById,
   searchResultIdByOffset,
   searchResultItems,
-} from '../search-result-items'
+} from '@/features/search/utils/result-items'
 
 describe('search buffer store', () => {
   it('tracks loading, matches, completion, and grouping', () => {

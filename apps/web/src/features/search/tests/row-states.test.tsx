@@ -1,4 +1,4 @@
-import { SearchMatchRow, SearchNameMatchRow } from '@/features/search/search-match-row'
+import { SearchMatchRow, SearchNameMatchRow } from '@/features/search/components/match-row'
 import { expect, test } from '../../../../test/fixtures'
 import { renderWithProviders } from '../../../../test/render'
 

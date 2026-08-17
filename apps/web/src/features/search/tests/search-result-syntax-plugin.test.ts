@@ -11,7 +11,7 @@ import {
 } from '@singapor/core'
 import { describe, expect, it } from 'vitest'
 
-import { createSearchResultSyntaxProvider } from '@/features/search/search-result-syntax-plugin'
+import { createSearchResultSyntaxProvider } from '@/features/search/utils/result-syntax-plugin'
 
 type RecordingSyntaxState = {
   documentIds: string[]

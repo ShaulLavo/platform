@@ -1,4 +1,4 @@
-import { SearchBufferSummary } from '@/features/search/search-buffer-summary'
+import { SearchBufferSummary } from '@/features/search/components/buffer-summary'
 
 export function SearchSummary({ rootPath }: { rootPath: string }) {
   return (
