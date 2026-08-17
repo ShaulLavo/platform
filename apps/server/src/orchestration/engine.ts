@@ -6,6 +6,7 @@ import { orchestrationErrors } from '../observability'
 import {
   clientOrchestrationCommandSchema,
   type OrchestrationCommand,
+  type OrchestrationDispatchResult,
   type OrchestrationEvent,
   type OrchestrationThreadDetailPageInput,
 } from './schemas'
@@ -43,12 +44,6 @@ import {
   type OrchestrationDomainEventReactor,
   type OrchestrationStreamOptions,
 } from './streams'
-
-export type OrchestrationDispatchResult = {
-  deduped: boolean
-  receipt: ReturnType<OrchestrationCommandReceipts['find']>
-  sequence: number
-}
 
 export type OrchestrationEngineOptions = {
   attachmentsDir?: string
@@ -206,7 +201,6 @@ export class OrchestrationEngine {
 
     return {
       deduped: false,
-      receipt: committed.receipt,
       sequence: committed.sequence,
     }
   }
@@ -503,10 +497,9 @@ function elapsedMs(startedAt: number) {
 
 function dedupedDispatchResult(
   receipt: NonNullable<ReturnType<OrchestrationCommandReceipts['find']>>,
-) {
+): OrchestrationDispatchResult {
   return {
     deduped: true,
-    receipt,
     sequence: receipt.resultSequence ?? 0,
   }
 }

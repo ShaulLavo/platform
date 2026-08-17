@@ -2,13 +2,13 @@ import {
   orchestrationWsServerMessageSchema,
   type ClientOrchestrationCommand,
   type OrchestrationReplayEventsInput,
-  type OrchestrationReplayEventsResult,
   type OrchestrationShellStreamItem,
-  type OrchestrationThreadDetailPage,
   type OrchestrationThreadStreamItem,
   type OrchestrationWsClientMessage,
   type OrchestrationWsError,
   type OrchestrationWsRequest,
+  type OrchestrationWsRequestOf,
+  type OrchestrationWsResult,
   type OrchestrationWsServerMessage,
   type OrchestrationWsSubscribe,
   type OrchestrationWsSubscriptionId,
@@ -83,14 +83,14 @@ export class OrchestrationRpcClient {
         ...chatCommandSummary(command),
       },
       async () => {
-        const request: OrchestrationWsRequest = {
+        const request: OrchestrationWsRequestOf<'dispatchCommand'> = {
           command,
           kind: 'request',
           method: 'dispatchCommand',
           requestId: this.nextRequestId('dispatchCommand'),
         }
 
-        return this.sendRequest<{ deduped: boolean; sequence: number }>(request)
+        return this.sendRequest(request)
       },
       (result) => ({
         deduped: result.deduped,
@@ -111,14 +111,14 @@ export class OrchestrationRpcClient {
         threadId: input.threadId,
       },
       async () => {
-        const request: OrchestrationWsRequest = {
+        const request: OrchestrationWsRequestOf<'threadDetailPage'> = {
           input,
           kind: 'request',
           method: 'threadDetailPage',
           requestId: this.nextRequestId('threadDetailPage'),
         }
 
-        return this.sendRequest<OrchestrationThreadDetailPage>(request)
+        return this.sendRequest(request)
       },
       (page) => ({
         activityCount: page.activities.length,
@@ -137,14 +137,14 @@ export class OrchestrationRpcClient {
         ...chatReplaySummary(input),
       },
       async () => {
-        const request: OrchestrationWsRequest = {
+        const request: OrchestrationWsRequestOf<'replayEvents'> = {
           input,
           kind: 'request',
           method: 'replayEvents',
           requestId: this.nextRequestId('replayEvents'),
         }
 
-        return this.sendRequest<OrchestrationReplayEventsResult>(request)
+        return this.sendRequest(request)
       },
       (result) => ({
         eventCount: result.events.length,
@@ -181,10 +181,20 @@ export class OrchestrationRpcClient {
     yield* guardOrchestrationStreamSequence(stream, streamGuardSequence(input.afterSequence))
   }
 
-  private async sendRequest<T>(message: OrchestrationWsRequest): Promise<T> {
+  /**
+   * The response envelope carries no method, so the result type is read off
+   * `ORCHESTRATION_WS_RESULTS` by the method that was sent. The parameter is
+   * spelled as an intersection rather than `OrchestrationWsRequestOf<M>`
+   * because `M` is still generic here: property access on a deferred
+   * conditional type is fragile, and `message.requestId` / `message.method`
+   * below must keep resolving.
+   */
+  private async sendRequest<M extends OrchestrationWsRequest['method']>(
+    message: OrchestrationWsRequest & { method: M },
+  ): Promise<OrchestrationWsResult<M>> {
     const socket = await this.connect()
 
-    return new Promise<T>((resolve, reject) => {
+    return new Promise<OrchestrationWsResult<M>>((resolve, reject) => {
       const timeoutId = setTimeout(() => {
         this.settlePendingRequest(message.requestId)
         reject(createOrchestrationRpcTimeoutError(message.method))
@@ -199,7 +209,7 @@ export class OrchestrationRpcClient {
       this.pendingRequests.set(message.requestId, {
         method: message.method,
         reject,
-        resolve: (value) => resolve(value as T),
+        resolve: (value) => resolve(value as OrchestrationWsResult<M>),
         slowTimeoutId,
         startedAt: performance.now(),
         timeoutId,

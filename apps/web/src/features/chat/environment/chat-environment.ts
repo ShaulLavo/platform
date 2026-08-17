@@ -1,5 +1,6 @@
 import type {
   ClientOrchestrationCommand,
+  OrchestrationDispatchResult,
   OrchestrationReplayEventsInput,
   OrchestrationReplayEventsResult,
   OrchestrationShellStreamItem,
@@ -13,9 +14,7 @@ import type {
 import type { OrchestrationStreamInput } from '../transport/orchestration-streams'
 
 export type ChatEnvironment = {
-  dispatchCommand: (
-    command: ClientOrchestrationCommand,
-  ) => Promise<{ deduped: boolean; sequence: number }>
+  dispatchCommand: (command: ClientOrchestrationCommand) => Promise<OrchestrationDispatchResult>
   replayEvents: (input: OrchestrationReplayEventsInput) => Promise<OrchestrationReplayEventsResult>
   shellStream: (input?: OrchestrationStreamInput) => AsyncIterable<OrchestrationShellStreamItem>
   /** One page of rows older than the boundary the caller holds. */

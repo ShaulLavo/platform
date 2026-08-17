@@ -65,6 +65,12 @@ describe('orchestration engine', () => {
 
     expect(first).toMatchObject({ deduped: false, sequence: 1 })
     expect(duplicate).toMatchObject({ deduped: true, sequence: 1 })
+    // Both dispatch paths — fresh and deduped — return the wire contract and
+    // nothing more. `toMatchObject` above would not notice a re-added field.
+    expect([Object.keys(first).sort(), Object.keys(duplicate).sort()]).toEqual([
+      ['deduped', 'sequence'],
+      ['deduped', 'sequence'],
+    ])
     expect(replay.events).toHaveLength(1)
     fixture.close()
   })

@@ -1,4 +1,5 @@
 import type {
+  OrchestrationDispatchResult,
   OrchestrationMessage,
   OrchestrationProposedPlan,
   ThreadId,
@@ -16,7 +17,6 @@ import {
   replayAfterDraftTurnDispatch,
   replayAfterTurnDispatch,
   scheduleThreadProjectionSyncAfterDispatch,
-  type ThreadCommandDispatchResult,
 } from '@/features/chat/lib/chat-command-sync'
 import { chatInputUploadAttachments } from '@/features/chat/lib/chat-input-attachments'
 import {
@@ -236,7 +236,7 @@ async function dispatchPlanTurn({
   optimisticMessage: OrchestrationMessage
   /** The thread the plan lives on, which is not always the one running the turn. */
   planThreadId: ThreadId
-  replayAfterSequence: (result: ThreadCommandDispatchResult) => number
+  replayAfterSequence: (result: OrchestrationDispatchResult) => number
   scope: ChatPipelineScope
 }): Promise<boolean> {
   const startedAt = performance.now()
@@ -246,7 +246,7 @@ async function dispatchPlanTurn({
   useChatOptimisticStore.getState().addOptimisticMessage(command.commandId, optimisticMessage)
   scope.increment('command.dispatchStartCount')
 
-  let result: ThreadCommandDispatchResult
+  let result: OrchestrationDispatchResult
   try {
     result = await environment.dispatchCommand(command)
   } catch (error) {

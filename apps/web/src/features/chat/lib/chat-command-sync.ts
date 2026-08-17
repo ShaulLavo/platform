@@ -1,4 +1,4 @@
-import type { ThreadId } from '@workspace/contracts'
+import type { OrchestrationDispatchResult, ThreadId } from '@workspace/contracts'
 
 import type { ChatEnvironment } from '../environment/chat-environment'
 import { useChatProjectionStore } from '../state/chat-projection-store'
@@ -8,11 +8,6 @@ import {
   logChatPipelineInfo,
   logChatPipelineWarn,
 } from './chat-pipeline-logging'
-
-export type ThreadCommandDispatchResult = {
-  deduped: boolean
-  sequence: number
-}
 
 export async function syncThreadProjectionAfterDispatch({
   environment,
@@ -72,11 +67,11 @@ export function scheduleThreadProjectionSyncAfterDispatch({
   )
 }
 
-export function replayAfterTurnDispatch(result: ThreadCommandDispatchResult) {
+export function replayAfterTurnDispatch(result: OrchestrationDispatchResult) {
   return Math.max(0, result.sequence - 2)
 }
 
-export function replayAfterDraftTurnDispatch(result: ThreadCommandDispatchResult) {
+export function replayAfterDraftTurnDispatch(result: OrchestrationDispatchResult) {
   return Math.max(0, result.sequence - 3)
 }
 

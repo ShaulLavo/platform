@@ -3,8 +3,10 @@ import * as v from 'valibot'
 import {
   clientOrchestrationCommandSchema,
   DEFAULT_CODEX_PROVIDER_SETTINGS,
+  ORCHESTRATION_WS_RESULTS,
   modelSelectionSchema,
   orchestrationCommandReceiptSchema,
+  orchestrationDispatchResultSchema,
   orchestrationEventSchema,
   orchestrationEventTypes,
   providerListResultSchema,
@@ -14,6 +16,9 @@ import {
   orchestrationWsServerMessageSchema,
   threadTurnStartCommandSchema,
 } from '../index'
+// Not re-exported by the barrel: it has no consumer outside this package, and
+// the request variant is reachable there through `orchestrationWsClientMessageSchema`.
+import { orchestrationWsRequestSchema } from '../orchestration-ws'
 
 const now = '2026-05-24T00:00:00.000Z'
 const modelSelection = {
@@ -446,5 +451,30 @@ describe('thread lifecycle contracts', () => {
 
       expect(parsed.payload).toEqual(payload)
     }
+  })
+
+  it('types the dispatch result the wire actually carries', () => {
+    const result = v.parse(orchestrationDispatchResultSchema, {
+      deduped: false,
+      sequence: 8,
+    } as unknown)
+
+    expect(result.deduped).toBe(false)
+    expect(result.sequence).toBe(8)
+    expect(() =>
+      v.parse(orchestrationDispatchResultSchema, { deduped: false, sequence: -1 } as unknown),
+    ).toThrow()
+    expect(() => v.parse(orchestrationDispatchResultSchema, { sequence: 8 } as unknown)).toThrow()
+  })
+
+  it('has exactly one result schema per request method', () => {
+    // The response envelope carries no method, so this map is the only place
+    // the payload shape is pinned. A method added to the request variant
+    // without an entry here would ship an unchecked `data` again.
+    const methods = orchestrationWsRequestSchema.options.map(
+      (option) => option.entries.method.literal,
+    )
+
+    expect([...methods].sort()).toEqual(Object.keys(ORCHESTRATION_WS_RESULTS).sort())
   })
 })

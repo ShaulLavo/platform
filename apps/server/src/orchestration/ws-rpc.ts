@@ -25,6 +25,8 @@ import {
   type OrchestrationThreadDetailPage,
   type OrchestrationWsClientMessage,
   type OrchestrationWsRequest,
+  type OrchestrationWsRequestOf,
+  type OrchestrationWsResult,
   type OrchestrationWsServerMessage,
   type OrchestrationWsSubscribe,
   type OrchestrationWsSubscriptionId,
@@ -194,15 +196,41 @@ async function handleOrchestrationRpcRequest(
   }
 }
 
+/**
+ * One handler per method, declared against the contract's result map. The
+ * record is what makes each handler's return type checkable: inside an
+ * `if (message.method === …)` chain the branch's type is whatever the engine
+ * happens to return, and nothing compares it to the wire contract.
+ */
+type OrchestrationRpcHandlers = {
+  [M in OrchestrationWsRequest['method']]: (
+    engine: OrchestrationEngine,
+    message: OrchestrationWsRequestOf<M>,
+  ) => OrchestrationWsResult<M> | Promise<OrchestrationWsResult<M>>
+}
+
+const orchestrationRpcHandlers: OrchestrationRpcHandlers = {
+  dispatchCommand: (engine, message) => engine.dispatchClientCommand(message.command),
+  replayEvents: (engine, message) => engine.replay(message.input),
+  serverConfig: () => orchestrationWsServerConfig(),
+  threadDetailPage: (engine, message) => engine.threadDetailPage(message.input),
+}
+
 function resolveOrchestrationRpcRequest(
   engine: OrchestrationEngine,
   message: OrchestrationWsRequest,
 ) {
-  if (message.method === 'dispatchCommand') return engine.dispatchClientCommand(message.command)
-  if (message.method === 'serverConfig') return orchestrationWsServerConfig()
-  if (message.method === 'threadDetailPage') return engine.threadDetailPage(message.input)
+  if (message.method === 'dispatchCommand') {
+    return orchestrationRpcHandlers.dispatchCommand(engine, message)
+  }
+  if (message.method === 'serverConfig') {
+    return orchestrationRpcHandlers.serverConfig(engine, message)
+  }
+  if (message.method === 'threadDetailPage') {
+    return orchestrationRpcHandlers.threadDetailPage(engine, message)
+  }
 
-  return engine.replay(message.input)
+  return orchestrationRpcHandlers.replayEvents(engine, message)
 }
 
 function handleOrchestrationRpcSubscribe(

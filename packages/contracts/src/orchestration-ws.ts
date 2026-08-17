@@ -9,8 +9,10 @@ import { clientOrchestrationCommandSchema } from './orchestration-commands'
 import {
   ORCHESTRATION_THREAD_DETAIL_MAX_PAGE_SIZE,
   orchestrationReplayEventsInputSchema,
+  orchestrationReplayEventsResultSchema,
   orchestrationShellStreamItemSchema,
   orchestrationThreadDetailAnchorSchema,
+  orchestrationThreadDetailPageSchema,
   orchestrationThreadStreamItemSchema,
 } from './orchestration-snapshots'
 
@@ -254,6 +256,32 @@ export const orchestrationWsResponseMessageSchema = v.variant('ok', [
   }),
 ])
 
+/**
+ * The wire form of what dispatching a command returns. `sequence` is the stream
+ * position the command's events landed at; `deduped` says the command id had
+ * already been accepted, so nothing new was appended and `sequence` is the
+ * earlier attempt's. Both are what a caller needs to know where to resume its
+ * projection from — nothing else about the command's receipt crosses the wire.
+ */
+export const orchestrationDispatchResultSchema = v.object({
+  deduped: v.boolean(),
+  sequence: nonNegativeIntegerSchema,
+})
+
+/**
+ * One result schema per request method. The response envelope carries no method
+ * — `requestId` is what pairs a response with its request — so without this map
+ * a result shape exists only in whatever each caller happened to assert, and
+ * client and server agree by coincidence. Keyed here, both sides read the same
+ * entry and a change to one is a build error in the other.
+ */
+export const ORCHESTRATION_WS_RESULTS = {
+  dispatchCommand: orchestrationDispatchResultSchema,
+  replayEvents: orchestrationReplayEventsResultSchema,
+  serverConfig: orchestrationWsServerConfigSchema,
+  threadDetailPage: orchestrationThreadDetailPageSchema,
+} satisfies Record<OrchestrationWsRequest['method'], v.GenericSchema>
+
 export const orchestrationWsSubscriptionItemSchema = v.union([
   orchestrationShellStreamItemSchema,
   orchestrationThreadStreamItemSchema,
@@ -323,6 +351,22 @@ export type OrchestrationWsThreadDetailPageInput = v.InferOutput<
 >
 export type OrchestrationWsRequest = v.InferOutput<typeof orchestrationWsRequestSchema>
 export type OrchestrationWsRequestId = v.InferOutput<typeof orchestrationWsRequestIdSchema>
+export type OrchestrationDispatchResult = v.InferOutput<typeof orchestrationDispatchResultSchema>
+/** The single request variant for one method — what a caller builds and sends. */
+export type OrchestrationWsRequestOf<M extends OrchestrationWsRequest['method']> = Extract<
+  OrchestrationWsRequest,
+  { method: M }
+>
+/**
+ * Mapped rather than a bare indexed access on purpose: written this way, a
+ * method added to `orchestrationWsRequestSchema` without an entry in
+ * `ORCHESTRATION_WS_RESULTS` is a compile error here.
+ */
+type OrchestrationWsResults = {
+  [M in OrchestrationWsRequest['method']]: v.InferOutput<(typeof ORCHESTRATION_WS_RESULTS)[M]>
+}
+export type OrchestrationWsResult<M extends OrchestrationWsRequest['method']> =
+  OrchestrationWsResults[M]
 export type OrchestrationWsResponseMessage = v.InferOutput<
   typeof orchestrationWsResponseMessageSchema
 >
