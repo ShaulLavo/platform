@@ -12,9 +12,9 @@ export function LogsTimelineMetric({ label, tone, value }: LogsTimelineMetricPro
       <div
         className={cn(
           'truncate font-mono text-[13px] leading-4 text-foreground tabular-nums',
-          tone === 'error' && 'text-red-500',
-          tone === 'warn' && 'text-amber-500',
-          tone === 'slow' && 'text-sky-500',
+          tone === 'error' && 'text-destructive',
+          tone === 'warn' && 'text-warning',
+          tone === 'slow' && 'text-info',
         )}
       >
         {value.toLocaleString()}

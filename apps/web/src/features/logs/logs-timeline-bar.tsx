@@ -16,10 +16,10 @@ export function LogsTimelineBar({ bucket, maxTotal }: LogsTimelineBarProps) {
       <div
         className={cn(
           'w-full border-t transition-colors',
-          tone === 'error' && 'border-red-400 bg-red-500/45',
-          tone === 'warn' && 'border-amber-400 bg-amber-500/45',
-          tone === 'slow' && 'border-sky-400 bg-sky-500/45',
-          tone === 'ok' && 'border-emerald-400/70 bg-emerald-500/30',
+          tone === 'error' && 'border-destructive bg-destructive/45',
+          tone === 'warn' && 'border-warning bg-warning/45',
+          tone === 'slow' && 'border-info bg-info/45',
+          tone === 'ok' && 'border-success/70 bg-success/30',
         )}
         style={{ height }}
       />
