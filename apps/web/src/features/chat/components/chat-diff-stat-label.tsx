@@ -1,4 +1,4 @@
-import { formatCompactDiffCount } from '../lib/chat-changed-files-presentation'
+import { formatCompactDiffCount } from '@/features/chat/utils/changed-files-presentation'
 
 export function ChatDiffStatLabel({
   additions,

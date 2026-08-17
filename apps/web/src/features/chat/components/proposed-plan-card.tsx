@@ -12,7 +12,7 @@ import { CaretDownIcon, CaretUpIcon, DotsThreeIcon } from '@phosphor-icons/react
 import { useState } from 'react'
 import { toast } from 'sonner'
 
-import { formatChatTimestamp } from '../lib/chat-formatters'
+import { formatChatTimestamp } from '@/features/chat/utils/formatters'
 import {
   canCollapseProposedPlan,
   collapsedProposedPlanMarkdown,
@@ -20,7 +20,7 @@ import {
   proposedPlanExportMarkdown,
   proposedPlanTitle,
   stripDisplayedPlanMarkdown,
-} from '../lib/chat-proposed-plan'
+} from '@/features/chat/utils/proposed-plan'
 import { AssistantMarkdown } from './assistant-markdown'
 
 export function ProposedPlanCard({ plan }: { plan: OrchestrationProposedPlan }) {

@@ -16,13 +16,13 @@ import {
   insertChatInputMention,
   readChatInputText,
   replaceChatInputEditorRange,
-} from '../lib/chat-input-editor-actions'
+} from '@/features/chat/utils/input-editor-actions'
 import { composerDropCarriesFiles, composerDropMentionPath } from '../utils/composer-drop'
 import {
   chatInputUploadAttachments,
   imageFilesFromTransfer,
   stageChatInputImageFiles,
-} from '../lib/chat-input-attachments'
+} from '@/features/chat/utils/input-attachments'
 import {
   activeChatInputCommandItem,
   chatInputCommandItemByOffset,
@@ -30,12 +30,12 @@ import {
   chatInputCommandMenuEmptyLabel,
   type ChatInputCommandItem,
   type ChatInputTrigger,
-} from '../lib/chat-input-logic'
+} from '@/features/chat/utils/input-logic'
 import { useProjectEntrySearch } from '../hooks/use-project-entry-search'
-import { providerCommandCatalogQueryOptions } from '../lib/composer-skills'
+import { providerCommandCatalogQueryOptions } from '@/features/chat/utils/composer-skills'
 import { useComposerInbox } from '../hooks/use-composer-inbox'
 import { ChatModelPickerProvider } from '../providers/model-picker-provider'
-import type { TerminalContextSelection } from '../lib/terminal-context'
+import type { TerminalContextSelection } from '@/features/chat/utils/terminal-context'
 import {
   readChatInputDraftPrompt,
   selectChatInputDraftImages,

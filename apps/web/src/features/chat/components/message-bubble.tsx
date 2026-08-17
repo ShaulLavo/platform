@@ -5,9 +5,9 @@ import type { MouseEvent, ReactNode } from 'react'
 
 import { useContextMenu } from '@/features/menus/hooks/use-context-menu'
 
-import { formatChatTimestamp } from '../lib/chat-formatters'
-import { resolveAssistantMessageChromeState } from '../lib/chat-message-metadata'
-import { extractTerminalContexts } from '../lib/terminal-context'
+import { formatChatTimestamp } from '@/features/chat/utils/formatters'
+import { resolveAssistantMessageChromeState } from '@/features/chat/utils/message-metadata'
+import { extractTerminalContexts } from '@/features/chat/utils/terminal-context'
 import type { OptimisticChatMessage } from '../state/chat-optimistic-store'
 import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
 import { allowsMessageContextMenu } from '../utils/message-menu'

@@ -18,7 +18,7 @@ import {
 import {
   $readChatInputTextSnapshot,
   $setChatInputText,
-} from '@/features/chat/lib/chat-input-editor-actions'
+} from '@/features/chat/utils/input-editor-actions'
 import { expect, test } from '../../../../../test/fixtures'
 import { renderWithProviders } from '../../../../../test/render'
 

@@ -2,7 +2,7 @@ import { FileCodeIcon } from '@phosphor-icons/react'
 import { cn } from '@workspace/ui/lib/utils'
 import { use, type MouseEvent } from 'react'
 
-import type { MarkdownFileReference } from '@/features/chat/lib/markdown-file-links'
+import type { MarkdownFileReference } from '@/features/chat/utils/markdown-file-links'
 import { MarkdownFileLinkContext } from '@/features/chat/providers/markdown-file-link-context'
 import { clientErrors } from '@/lib/structured-errors'
 

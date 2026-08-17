@@ -1,8 +1,8 @@
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { useEffect } from 'react'
 
-import { surroundChatInputSelection } from '../lib/chat-input-editor-actions'
-import { chatInputSurroundClose } from '../lib/chat-input-logic'
+import { surroundChatInputSelection } from '@/features/chat/utils/input-editor-actions'
+import { chatInputSurroundClose } from '@/features/chat/utils/input-logic'
 
 /**
  * Typing a bracket or quote over a selection wraps it instead of replacing it.

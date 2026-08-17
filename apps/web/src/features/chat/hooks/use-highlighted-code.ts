@@ -5,7 +5,7 @@ import { MarkdownCodeHighlighterContext } from '@/features/chat/providers/markdo
 import {
   estimateHighlightBytes,
   markdownHighlightCacheKey,
-} from '@/features/chat/lib/markdown-highlight'
+} from '@/features/chat/utils/markdown-highlight'
 import { markdownHighlightCache } from '@/features/chat/state/markdown-highlight-cache'
 
 type HighlightState = {

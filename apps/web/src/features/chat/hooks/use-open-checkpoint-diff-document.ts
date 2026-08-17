@@ -14,7 +14,7 @@ import {
   checkpointTurnDiffDocumentInput,
   fetchCheckpointDiff,
   matchingCheckpointDiff,
-} from '../lib/checkpoint-diff-query'
+} from '@/features/chat/utils/checkpoint-diff-query'
 import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
 import { useThreadDiffScopeStore } from '../state/thread-diff-scope-store'
 

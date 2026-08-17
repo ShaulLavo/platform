@@ -5,8 +5,8 @@ import {
   createProjectReorderCommand,
   createSessionPlaceCommand,
   createSessionReorderCommand,
-} from '@/features/chat/lib/chat-command-builders'
-import { dispatchChatCommand } from '@/features/chat/lib/chat-command-dispatch'
+} from '@/features/chat/utils/command-builders'
+import { dispatchChatCommand } from '@/features/chat/utils/command-dispatch'
 import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import {

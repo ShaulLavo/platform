@@ -1,7 +1,7 @@
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core'
 import { CaretDownIcon, CaretRightIcon } from '@phosphor-icons/react'
 
-import { threadStatusDotClass, threadStatusLabel } from '@/features/chat/lib/thread-status'
+import { threadStatusDotClass, threadStatusLabel } from '@/features/chat/utils/thread-status'
 import { ProjectMenu } from '@/features/chat-mode/components/project-menu'
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
 import type { SessionRailGroup } from '@/features/chat-mode/utils/session-rail-model'

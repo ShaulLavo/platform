@@ -1,7 +1,7 @@
 import type { LexicalEditor } from 'lexical'
 import { useEffect, type RefObject } from 'react'
 
-import { insertChatInputText, readChatInputText } from '../lib/chat-input-editor-actions'
+import { insertChatInputText, readChatInputText } from '@/features/chat/utils/input-editor-actions'
 import { useChatInputDraftStore, type ChatInputDraftTarget } from '../state/chat-input-draft-store'
 import { useComposerInboxStore, type ComposerInboxEntry } from '../state/composer-inbox-store'
 

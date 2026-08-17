@@ -1,4 +1,4 @@
-import { projectQualifiers } from '@/features/chat/lib/project-qualifiers'
+import { projectQualifiers } from '@/features/chat/utils/project-qualifiers'
 
 export type ProjectMenuEntry = {
   /** Parent-path hint, set only when another entry shares this title. */

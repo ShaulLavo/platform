@@ -3,7 +3,7 @@ import { Button } from '@workspace/ui/components/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@workspace/ui/components/tooltip'
 import { useRef, type ChangeEvent } from 'react'
 
-import { CHAT_IMAGE_MIME_ALLOWLIST } from '../lib/chat-input-attachment-limits'
+import { CHAT_IMAGE_MIME_ALLOWLIST } from '@/features/chat/utils/input-attachment-limits'
 
 // Filters the OS picker to what the composer can actually stage. It is a hint,
 // not a gate: every picked file still goes through the same classifier as a

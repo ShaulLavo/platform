@@ -7,9 +7,9 @@ import { cn } from '@workspace/ui/lib/utils'
 
 import { ProviderGlyph } from '@/features/chat/components/provider-glyph'
 import { useModelPicker } from '@/features/chat/hooks/use-model-picker'
-import { providerModelDisplayLabel, providerStatusLabel } from '@/features/chat/lib/chat-formatters'
-import { providerRequiresSignIn } from '@/features/chat/lib/provider-auth'
-import { providerListQueryOptions } from '@/features/chat/lib/provider-query'
+import { providerModelDisplayLabel, providerStatusLabel } from '@/features/chat/utils/formatters'
+import { providerRequiresSignIn } from '@/features/chat/utils/provider-auth'
+import { providerListQueryOptions } from '@/features/chat/utils/provider-query'
 
 /**
  * Composer control that opens the model picker. Stays interactive while the

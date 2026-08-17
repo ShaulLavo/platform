@@ -1,4 +1,4 @@
-import type { ChatTimelineItem } from '../lib/chat-timeline-items'
+import type { ChatTimelineItem } from '@/features/chat/utils/timeline-items'
 import { useChatWorkLogExpansionStore } from '../state/chat-work-log-expansion-store'
 import { ActivityGroupRow } from './activity-group-row'
 import { AssistantMessageCopyButton } from './assistant-message-copy-button'

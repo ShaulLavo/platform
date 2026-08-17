@@ -2,7 +2,7 @@ import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext
 import { COMMAND_PRIORITY_HIGH, KEY_DOWN_COMMAND, type LexicalEditor } from 'lexical'
 import { useEffect } from 'react'
 
-import { moveChatInputCaretToLineBoundary } from '../lib/chat-input-editor-actions'
+import { moveChatInputCaretToLineBoundary } from '@/features/chat/utils/input-editor-actions'
 
 /**
  * Home/End in the composer. macOS browsers scroll the page for these keys and

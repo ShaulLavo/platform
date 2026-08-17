@@ -1,7 +1,7 @@
 import type { ProviderDriverKind } from '@workspace/contracts'
 import { cn } from '@workspace/ui/lib/utils'
 
-import { providerBrandMark } from '@/features/chat/lib/provider-brand-marks'
+import { providerBrandMark } from '@/features/chat/utils/provider-brand-marks'
 import { ProviderMonogram } from '@/features/chat/components/provider-monogram'
 
 /**

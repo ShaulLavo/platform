@@ -11,7 +11,7 @@ import {
   chatStreamItemSummary,
   createChatPipelineScope,
   type ChatPipelineScope,
-} from '../lib/chat-pipeline-logging'
+} from '@/features/chat/utils/pipeline-logging'
 import { isBlockedStreamError, streamReconnectDelayMs } from '../utils/stream-reconnect'
 import {
   MAX_CACHED_THREAD_DETAIL_SUBSCRIPTIONS,

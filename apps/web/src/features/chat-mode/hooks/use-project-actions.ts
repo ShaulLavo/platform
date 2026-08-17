@@ -1,7 +1,7 @@
 import type { ProjectId } from '@workspace/contracts'
 
-import { createProjectDeleteCommand } from '@/features/chat/lib/chat-command-builders'
-import { dispatchChatCommand } from '@/features/chat/lib/chat-command-dispatch'
+import { createProjectDeleteCommand } from '@/features/chat/utils/command-builders'
+import { dispatchChatCommand } from '@/features/chat/utils/command-dispatch'
 import { selectChatSidebarThreadsForProject } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { useSessionActions } from '@/features/chat-mode/hooks/use-session-actions'

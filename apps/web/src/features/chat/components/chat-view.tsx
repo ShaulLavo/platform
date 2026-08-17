@@ -8,11 +8,11 @@ import {
   createProjectDefaultModelCommand,
   createThreadInterruptCommand,
   createTurnSubmission,
-} from '../lib/chat-command-builders'
-import { dispatchChatCommand, replayAfterDispatch } from '../lib/chat-command-dispatch'
-import { scheduleThreadProjectionSyncAfterDispatch } from '../lib/chat-command-sync'
-import { optimisticMessageSummary } from '../lib/chat-pipeline-logging'
-import { isChatThreadBusy } from '../lib/chat-thread-status'
+} from '@/features/chat/utils/command-builders'
+import { dispatchChatCommand, replayAfterDispatch } from '@/features/chat/utils/command-dispatch'
+import { scheduleThreadProjectionSyncAfterDispatch } from '@/features/chat/utils/command-sync'
+import { optimisticMessageSummary } from '@/features/chat/utils/pipeline-logging'
+import { isChatThreadBusy } from '@/features/chat/utils/thread-busy'
 import { createChatThreadSelector } from '../state/chat-projection-selectors'
 import {
   createOptimisticMessagesForThreadSelector,

@@ -7,9 +7,9 @@ import {
   sessionItemValue,
   sessionPaletteKeywords,
 } from '@/components/command-palette/command-palette-utils'
-import { formatChatRelativeTime } from '@/features/chat/lib/chat-formatters'
+import { formatChatRelativeTime } from '@/features/chat/utils/formatters'
 import { useCoarseNow } from '@/features/chat/hooks/use-coarse-now'
-import { threadStatusDotClass, threadStatusLabel } from '@/features/chat/lib/thread-status'
+import { threadStatusDotClass, threadStatusLabel } from '@/features/chat/utils/thread-status'
 import type { SessionRailItem } from '@/features/chat-mode/utils/session-rail-model'
 
 export function SessionPaletteRow({ session }: { readonly session: SessionRailItem }) {

@@ -8,15 +8,15 @@ import { useMemo, type ClipboardEvent, type ComponentProps } from 'react'
 import { defaultRemarkPlugins, Streamdown, type Components } from 'streamdown'
 
 import { useOpenFileReference } from '../hooks/use-open-file-reference'
-import { normalizeAgentMarkdown } from '../lib/agent-markdown'
-import { chatMarkdownClipboardPayload } from '../lib/markdown-clipboard'
-import { remarkFileLinkChips } from '../lib/markdown-file-link-chips'
-import { remarkNormalizeListItemIndentation } from '../lib/markdown-list-indentation'
+import { normalizeAgentMarkdown } from '@/features/chat/utils/agent-markdown'
+import { chatMarkdownClipboardPayload } from '@/features/chat/utils/markdown-clipboard'
+import { remarkFileLinkChips } from '@/features/chat/utils/markdown-file-link-chips'
+import { remarkNormalizeListItemIndentation } from '@/features/chat/utils/markdown-list-indentation'
 import {
   createStreamdownEditorCodePlugin,
   streamdownEditorThemeKey,
   streamdownThemesForEditorTheme,
-} from '../lib/streamdown-editor-theme'
+} from '@/features/chat/utils/streamdown-editor-theme'
 import { MarkdownCodeHighlighterContext } from '../providers/markdown-code-highlighter-context'
 import { MarkdownFileLinkContext } from '../providers/markdown-file-link-context'
 import { AssistantMarkdownCodeBlock } from './assistant-markdown-code-block'

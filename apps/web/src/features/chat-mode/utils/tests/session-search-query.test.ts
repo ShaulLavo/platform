@@ -6,7 +6,7 @@ import {
   createDraftThreadSubmission,
   createWorkspaceProjectCommand,
   workspaceProjectId,
-} from '@/features/chat/lib/chat-command-builders'
+} from '@/features/chat/utils/command-builders'
 import {
   isSessionSearchQuery,
   sessionSearchQueryOptions,

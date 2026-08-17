@@ -9,8 +9,8 @@ import {
 import { Input } from '@workspace/ui/components/input'
 import { useState } from 'react'
 
-import { createProjectMetaCommand } from '@/features/chat/lib/chat-command-builders'
-import { dispatchChatCommand } from '@/features/chat/lib/chat-command-dispatch'
+import { createProjectMetaCommand } from '@/features/chat/utils/command-builders'
+import { dispatchChatCommand } from '@/features/chat/utils/command-dispatch'
 import { notifyChatCommandError } from '@/features/chat/notify-command-error'
 import { useChatModeSession } from '@/features/chat-mode/providers/session-context'
 import { useProjectRenameRequestStore } from '@/features/chat-mode/state/project-rename-request-store'

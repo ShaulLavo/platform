@@ -1,7 +1,7 @@
 import type { ModelSelection } from '@workspace/contracts'
 import { useMemo, type ReactNode } from 'react'
 
-import { reconcileModelEffort } from '@/features/chat/lib/model-effort'
+import { reconcileModelEffort } from '@/features/chat/utils/model-effort'
 import {
   ChatModelPickerContext,
   type ChatModelPicker,

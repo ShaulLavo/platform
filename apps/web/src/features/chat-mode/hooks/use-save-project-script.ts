@@ -1,7 +1,7 @@
 import type { OrchestrationProjectScript } from '@workspace/contracts'
 
-import { createProjectScriptsCommand } from '@/features/chat/lib/chat-command-builders'
-import { dispatchChatCommand } from '@/features/chat/lib/chat-command-dispatch'
+import { createProjectScriptsCommand } from '@/features/chat/utils/command-builders'
+import { dispatchChatCommand } from '@/features/chat/utils/command-dispatch'
 import { notifyChatCommandError } from '@/features/chat/notify-command-error'
 import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'

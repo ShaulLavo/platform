@@ -12,7 +12,7 @@ import {
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
 import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/layout'
 import { AssistantMarkdown } from '@/features/chat/components/assistant-markdown'
-import { serializeRenderedMarkdownFragment } from '@/features/chat/lib/markdown-clipboard'
+import { serializeRenderedMarkdownFragment } from '@/features/chat/utils/markdown-clipboard'
 import { markdownHighlightCache } from '@/features/chat/state/markdown-highlight-cache'
 import { expect, test } from '../../../../../test/fixtures'
 import { renderWithProviders } from '../../../../../test/render'

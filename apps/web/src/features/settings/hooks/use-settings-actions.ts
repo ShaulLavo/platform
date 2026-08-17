@@ -16,7 +16,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import type { PlatformCommandId } from '@/keymap/types'
 
-import { providerQueryKeys } from '@/features/chat/lib/provider-query'
+import { providerQueryKeys } from '@/features/chat/utils/provider-query'
 
 import { saveSettings } from '@/features/settings/utils/api'
 import { notifySaveError } from '@/features/settings/utils/notify-save-error'

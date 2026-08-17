@@ -1,7 +1,7 @@
 import {
   resolveInlineCodeFileReference,
   type MarkdownFileReference,
-} from '@/features/chat/lib/markdown-file-links'
+} from '@/features/chat/utils/markdown-file-links'
 
 /**
  * The slice of ghostty's `IBufferLine` link detection reads — the cell-level

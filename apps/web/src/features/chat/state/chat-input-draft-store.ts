@@ -14,8 +14,8 @@ import {
   writePersistedChatInputDrafts,
   type PersistedChatInputDraft,
   type PersistedChatInputDraftStorage,
-} from '../lib/chat-draft-storage'
-import type { TerminalContextSelection } from '../lib/terminal-context'
+} from '@/features/chat/utils/draft-storage'
+import type { TerminalContextSelection } from '@/features/chat/utils/terminal-context'
 
 const CHAT_INPUT_DRAFT_PERSIST_DEBOUNCE_MS = 300
 const CHAT_INPUT_DRAFT_PERSISTENCE_ERROR = 'Chat draft could not be saved locally.'

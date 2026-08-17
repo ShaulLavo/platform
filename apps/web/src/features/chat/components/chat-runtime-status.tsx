@@ -10,10 +10,10 @@ import {
   type ChatCommandState,
   type ChatRuntimeAlert,
   type ChatRuntimeAlertTone,
-} from '../lib/chat-runtime-state'
+} from '@/features/chat/utils/runtime-state'
 import { errorMessage } from '@/lib/error-message'
 import { useProviderSignInDialog } from '../hooks/use-provider-sign-in-dialog'
-import { providerListQueryOptions } from '../lib/provider-query'
+import { providerListQueryOptions } from '@/features/chat/utils/provider-query'
 import type { ChatThread } from '../state/chat-projection-store'
 
 /**

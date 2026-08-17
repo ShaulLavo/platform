@@ -1,6 +1,6 @@
 import { cn } from '@workspace/ui/lib/utils'
 
-import { providerMonogram } from '@/features/chat/lib/provider-brand-marks'
+import { providerMonogram } from '@/features/chat/utils/provider-brand-marks'
 
 /**
  * Stand-in for a provider we ship no brand mark for. Set as a deliberate tile

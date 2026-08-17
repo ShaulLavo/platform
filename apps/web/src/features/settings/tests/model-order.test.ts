@@ -1,8 +1,8 @@
 import type { ProviderSnapshot } from '@workspace/contracts'
 import { describe, expect, it } from 'vitest'
 
-import { applyModelPreferences, modelPreferenceRows } from '@/features/chat/lib/model-preferences'
-import { providerModelOptions } from '@/features/chat/lib/provider-model-options'
+import { applyModelPreferences, modelPreferenceRows } from '@/features/chat/utils/model-preferences'
+import { providerModelOptions } from '@/features/chat/utils/provider-model-options'
 
 import { withMovedModel } from '../utils/patch'
 

@@ -5,7 +5,7 @@ import {
   formatTerminalContextRange,
   terminalContextPreview,
   type TerminalContextSelection,
-} from '@/features/chat/lib/terminal-context'
+} from '@/features/chat/utils/terminal-context'
 
 /**
  * Attached terminal output, shown the way the composer showed it: which

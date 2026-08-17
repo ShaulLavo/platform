@@ -30,7 +30,7 @@ import {
   providerSignInCommand,
   providerSignInPhaseCopy,
   PROVIDER_AUTH_METHODS,
-} from '@/features/chat/lib/provider-auth'
+} from '@/features/chat/utils/provider-auth'
 
 const COPIED_RESET_MS = 1_200
 const SUCCESS_CLOSE_DELAY_MS = 1_400

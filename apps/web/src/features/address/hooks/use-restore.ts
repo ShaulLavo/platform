@@ -10,7 +10,7 @@ import { useThreadDiffScopeStore } from '@/features/chat/state/thread-diff-scope
 import { diffScopeFor } from '@/features/address/utils/diff-scope'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
 import { showChatModeToolTab, isChatModeToolTab } from '@/features/chat-mode/utils/panels'
-import { workspaceProjectId } from '@/features/chat/lib/chat-command-builders'
+import { workspaceProjectId } from '@/features/chat/utils/command-builders'
 import { settingsCategoryForSlug } from '@/features/address/utils/settings-category'
 import { isSettingsDocumentId } from '@/features/settings/utils/document'
 import { selectSettingsCategory } from '@/features/settings/state/category-store'

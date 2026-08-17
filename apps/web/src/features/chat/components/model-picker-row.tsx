@@ -4,11 +4,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@workspace/ui/component
 import { cn } from '@workspace/ui/lib/utils'
 
 import { ProviderGlyph } from '@/features/chat/components/provider-glyph'
-import { isNewProviderModel, modelPickerRowBadges } from '@/features/chat/lib/model-picker-badges'
+import { isNewProviderModel, modelPickerRowBadges } from '@/features/chat/utils/model-picker-badges'
 import type {
   ProviderModelDisabledKind,
   ProviderModelOption,
-} from '@/features/chat/lib/provider-model-options'
+} from '@/features/chat/utils/provider-model-options'
 
 /**
  * One model in the picker list: name over a provider line, with metadata chips

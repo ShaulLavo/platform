@@ -11,17 +11,17 @@ import {
   createDraftThreadSubmission,
   createTurnSubmission,
   type SourceProposedPlanReference,
-} from '@/features/chat/lib/chat-command-builders'
-import { dispatchChatCommand, replayAfterDispatch } from '@/features/chat/lib/chat-command-dispatch'
-import { scheduleThreadProjectionSyncAfterDispatch } from '@/features/chat/lib/chat-command-sync'
-import { chatInputUploadAttachments } from '@/features/chat/lib/chat-input-attachments'
+} from '@/features/chat/utils/command-builders'
+import { dispatchChatCommand, replayAfterDispatch } from '@/features/chat/utils/command-dispatch'
+import { scheduleThreadProjectionSyncAfterDispatch } from '@/features/chat/utils/command-sync'
+import { chatInputUploadAttachments } from '@/features/chat/utils/input-attachments'
 import {
   actionableProposedPlan,
   planImplementationPrompt,
   planImplementationThreadTitle,
   resolvePlanFollowUpSubmission,
-} from '@/features/chat/lib/chat-proposed-plan'
-import { isChatThreadBusy } from '@/features/chat/lib/chat-thread-status'
+} from '@/features/chat/utils/proposed-plan'
+import { isChatThreadBusy } from '@/features/chat/utils/thread-busy'
 import {
   ChatPlanFollowUpContext,
   type ChatPlanFollowUp,

@@ -3,7 +3,7 @@ import { SparkleIcon, TerminalWindowIcon } from '@phosphor-icons/react'
 import { fileIconStyle } from '@/lib/file-icon-style'
 import { iconForEntry } from '@/lib/file-icons'
 
-import type { ChatInputCommandItem } from '../lib/chat-input-logic'
+import type { ChatInputCommandItem } from '@/features/chat/utils/input-logic'
 
 export function ChatInputCommandItemIcon({ item }: { item: ChatInputCommandItem }) {
   if (item.type === 'skill') {

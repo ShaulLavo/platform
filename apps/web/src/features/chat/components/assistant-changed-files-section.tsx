@@ -8,9 +8,12 @@ import {
   selectChangedFilePreview,
   shouldAutoExpandChangedFiles,
   summarizeChangedFileScopes,
-} from '../lib/chat-changed-files-presentation'
-import { canOpenCheckpointDiff } from '../lib/checkpoint-diff-query'
-import { hasNonZeroChatTurnDiffStat, summarizeChatTurnDiffStats } from '../lib/chat-turn-diff-tree'
+} from '@/features/chat/utils/changed-files-presentation'
+import { canOpenCheckpointDiff } from '@/features/chat/utils/checkpoint-diff-query'
+import {
+  hasNonZeroChatTurnDiffStat,
+  summarizeChatTurnDiffStats,
+} from '@/features/chat/utils/turn-diff-tree'
 import { useChatTimelineActions } from '../hooks/use-chat-timeline-actions'
 import {
   chatChangedFilesExpansionKey,

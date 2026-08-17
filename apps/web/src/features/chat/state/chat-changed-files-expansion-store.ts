@@ -6,7 +6,7 @@ import {
   readPersistedChatChangedFilesExpansion,
   writePersistedChatChangedFilesExpansion,
   type PersistedChatChangedFilesExpansion,
-} from '../lib/chat-changed-files-expansion-storage'
+} from '@/features/chat/utils/changed-files-expansion-storage'
 import type { ChatTurnDiffSummary } from './chat-projection-store'
 
 export type ChatChangedFilesExpansion = PersistedChatChangedFilesExpansion

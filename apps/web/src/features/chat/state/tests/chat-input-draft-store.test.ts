@@ -5,7 +5,7 @@ import { expect, test } from '../../../../../test/fixtures'
 import {
   CHAT_INPUT_DRAFT_STORAGE_KEY,
   chatInputDraftStorageId,
-} from '@/features/chat/lib/chat-draft-storage'
+} from '@/features/chat/utils/draft-storage'
 import {
   flushChatInputDraftStorage,
   hydrateChatInputDraftStoreFromStorage,

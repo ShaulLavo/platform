@@ -4,7 +4,7 @@ import { useDebouncedValue } from '@tanstack/react-pacer/debouncer'
 import {
   PROJECT_ENTRY_SEARCH_DEBOUNCE_MS,
   projectEntrySearchQueryOptions,
-} from '../lib/project-entry-query'
+} from '@/features/chat/utils/project-entry-query'
 
 /**
  * Mention suggestions for the composer. Every keystroke used to open its own

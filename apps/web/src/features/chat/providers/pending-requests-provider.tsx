@@ -11,8 +11,8 @@ import type { ChatEnvironment } from '@/features/chat/environment/chat-environme
 import {
   createApprovalRespondCommand,
   createUserInputRespondCommand,
-} from '@/features/chat/lib/chat-command-builders'
-import { dispatchChatCommand } from '@/features/chat/lib/chat-command-dispatch'
+} from '@/features/chat/utils/command-builders'
+import { dispatchChatCommand } from '@/features/chat/utils/command-dispatch'
 import {
   ChatPendingRequestsContext,
   type ChatPendingRequests,

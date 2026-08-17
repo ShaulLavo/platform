@@ -1,6 +1,6 @@
 import type { OrchestrationLatestTurn } from '@workspace/contracts'
 
-import type { ChatWorkLogPlan } from '../lib/chat-work-log'
+import type { ChatWorkLogPlan } from '@/features/chat/utils/work-log'
 import { WorkingTimer } from './working-timer'
 
 export function WorkingRow({

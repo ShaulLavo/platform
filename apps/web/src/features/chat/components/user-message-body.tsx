@@ -2,7 +2,7 @@ import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 import { useState } from 'react'
 
-import { shouldCollapseUserMessage } from '../lib/user-message-collapse'
+import { shouldCollapseUserMessage } from '@/features/chat/utils/user-message-collapse'
 import { AssistantMarkdown } from './assistant-markdown'
 
 /**

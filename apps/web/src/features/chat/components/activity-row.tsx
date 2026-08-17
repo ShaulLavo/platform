@@ -18,8 +18,12 @@ import type {
   ChatActivityIconKey,
   ChatActivityOutcome,
   ChatActivityPlanStep,
-} from '../lib/chat-activity-presentation'
-import type { ChatWorkLogEntry, ChatWorkLogPlan, ChatWorkLogTone } from '../lib/chat-work-log'
+} from '@/features/chat/utils/activity-presentation'
+import type {
+  ChatWorkLogEntry,
+  ChatWorkLogPlan,
+  ChatWorkLogTone,
+} from '@/features/chat/utils/work-log'
 import { useChatWorkLogExpansionStore } from '../state/chat-work-log-expansion-store'
 
 export function ActivityRow({ activity }: { activity: ChatWorkLogEntry }) {

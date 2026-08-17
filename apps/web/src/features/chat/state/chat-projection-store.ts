@@ -31,7 +31,7 @@ import {
   chatThreadSnapshotSummary,
   createChatPipelineScope,
   type ChatPipelineScope,
-} from '../lib/chat-pipeline-logging'
+} from '@/features/chat/utils/pipeline-logging'
 import { CHAT_PROJECTION_CACHE_PERSIST_MS } from './chat-cache-constants'
 import {
   chatProjectionCacheFromState,

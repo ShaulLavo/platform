@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
-import { createWorkspaceProjectCommand } from '@/features/chat/lib/chat-command-builders'
+import { createWorkspaceProjectCommand } from '@/features/chat/utils/command-builders'
 import { log } from '@/lib/client-logging'
 import { errorMessage } from '@/lib/error-message'
 

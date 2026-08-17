@@ -14,12 +14,12 @@ import { useSessionIsolationStore } from '@/features/chat-mode/state/session-iso
 import {
   createDraftThreadSubmission,
   createProjectDefaultModelCommand,
-} from '../lib/chat-command-builders'
-import { providerListQueryOptions } from '../lib/provider-query'
-import { resolveChatModelSelection } from '../lib/resolve-model-selection'
-import { dispatchChatCommand, replayAfterDispatch } from '../lib/chat-command-dispatch'
-import { scheduleThreadProjectionSyncAfterDispatch } from '../lib/chat-command-sync'
-import { optimisticMessageSummary } from '../lib/chat-pipeline-logging'
+} from '@/features/chat/utils/command-builders'
+import { providerListQueryOptions } from '@/features/chat/utils/provider-query'
+import { resolveChatModelSelection } from '@/features/chat/utils/resolve-model-selection'
+import { dispatchChatCommand, replayAfterDispatch } from '@/features/chat/utils/command-dispatch'
+import { scheduleThreadProjectionSyncAfterDispatch } from '@/features/chat/utils/command-sync'
+import { optimisticMessageSummary } from '@/features/chat/utils/pipeline-logging'
 import { ChatComposerModesProvider } from '../providers/composer-modes-provider'
 import { useChatOptimisticStore } from '../state/chat-optimistic-store'
 import type { ChatInputDraftTarget } from '../state/chat-input-draft-store'

@@ -9,7 +9,7 @@ import {
   buildChatTurnDiffTree,
   hasNonZeroChatTurnDiffStat,
   type ChatTurnDiffTreeNode,
-} from '../lib/chat-turn-diff-tree'
+} from '@/features/chat/utils/turn-diff-tree'
 import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
 import { ChatDiffStatLabel } from './chat-diff-stat-label'
 

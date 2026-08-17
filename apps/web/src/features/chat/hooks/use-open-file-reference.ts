@@ -1,6 +1,6 @@
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
-import type { MarkdownFileReference } from '@/features/chat/lib/markdown-file-links'
+import type { MarkdownFileReference } from '@/features/chat/utils/markdown-file-links'
 import { log } from '@/lib/client-logging'
 
 /**

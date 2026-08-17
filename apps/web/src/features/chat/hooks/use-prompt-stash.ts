@@ -2,7 +2,7 @@ import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext
 import type { LexicalEditor } from 'lexical'
 import { useEffect, useState } from 'react'
 
-import { $setChatInputText } from '@/features/chat/lib/chat-input-editor-actions'
+import { $setChatInputText } from '@/features/chat/utils/input-editor-actions'
 import {
   readChatInputDraftPrompt,
   useChatInputDraftStore,

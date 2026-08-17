@@ -18,8 +18,8 @@ import {
   modelSelectionOptionValue,
   withModelOption,
   type ModelOptionDescriptor,
-} from '@/features/chat/lib/model-effort'
-import { providerListQueryOptions } from '@/features/chat/lib/provider-query'
+} from '@/features/chat/utils/model-effort'
+import { providerListQueryOptions } from '@/features/chat/utils/provider-query'
 import {
   useChatInputDraftStore,
   type ChatInputDraftTarget,

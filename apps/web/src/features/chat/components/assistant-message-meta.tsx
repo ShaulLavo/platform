@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { formatAssistantMessageMeta, formatChatElapsed } from '../lib/chat-formatters'
+import { formatAssistantMessageMeta, formatChatElapsed } from '@/features/chat/utils/formatters'
 
 export function AssistantMessageMeta({
   createdAt,

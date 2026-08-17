@@ -1,4 +1,4 @@
-import type { ThreadStatus } from '@/features/chat/lib/thread-status'
+import type { ThreadStatus } from '@/features/chat/utils/thread-status'
 
 /**
  * Most urgent first. A project header answers one question — is anything in here

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   CHAT_CHANGED_FILES_EXPANSION_LIMIT,
   CHAT_CHANGED_FILES_EXPANSION_STORAGE_KEY,
-} from '@/features/chat/lib/chat-changed-files-expansion-storage'
+} from '@/features/chat/utils/changed-files-expansion-storage'
 import {
   hydrateChatChangedFilesExpansionStoreFromStorage,
   resetChatChangedFilesExpansionStore,

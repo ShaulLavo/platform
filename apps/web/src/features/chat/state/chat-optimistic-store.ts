@@ -6,7 +6,7 @@ import {
   createChatPipelineScope,
   optimisticMessageSummary,
   type ChatPipelineScope,
-} from '../lib/chat-pipeline-logging'
+} from '@/features/chat/utils/pipeline-logging'
 
 export type OptimisticChatMessage = OrchestrationMessage & {
   commandId: CommandId

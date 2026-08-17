@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { formatWorkingTimer } from '../lib/chat-formatters'
+import { formatWorkingTimer } from '@/features/chat/utils/formatters'
 
 export function WorkingTimer({ startedAt }: { startedAt: string }) {
   const [nowMs, setNowMs] = useState(() => Date.now())

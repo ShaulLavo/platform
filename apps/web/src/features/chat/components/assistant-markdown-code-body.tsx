@@ -2,7 +2,7 @@ import type { HighlightResult } from '@streamdown/code'
 import type { CSSProperties } from 'react'
 
 import { useHighlightedCode } from '@/features/chat/hooks/use-highlighted-code'
-import { completedCodePrefix } from '@/features/chat/lib/markdown-highlight'
+import { completedCodePrefix } from '@/features/chat/utils/markdown-highlight'
 
 type HighlightToken = HighlightResult['tokens'][number][number]
 

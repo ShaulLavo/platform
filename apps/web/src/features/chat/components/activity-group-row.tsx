@@ -1,5 +1,5 @@
-import { visibleActivityGroupRows } from '../lib/chat-activity-visibility'
-import type { ChatWorkLogEntry } from '../lib/chat-work-log'
+import { visibleActivityGroupRows } from '@/features/chat/utils/activity-visibility'
+import type { ChatWorkLogEntry } from '@/features/chat/utils/work-log'
 import { useChatWorkLogExpansionStore } from '../state/chat-work-log-expansion-store'
 import { ActivityRow } from './activity-row'
 

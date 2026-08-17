@@ -1,6 +1,6 @@
 import { createContext } from 'react'
 
-import type { MarkdownFileReference } from '@/features/chat/lib/markdown-file-links'
+import type { MarkdownFileReference } from '@/features/chat/utils/markdown-file-links'
 
 export type MarkdownFileLinkActions = {
   readonly openFileReference: (reference: MarkdownFileReference) => void

@@ -7,7 +7,7 @@ import { CodeBlockCopyButton } from 'streamdown'
 import { fileIconStyle } from '@/lib/file-icon-style'
 import { iconForEntry } from '@/lib/file-icons'
 
-import { fenceIconFileName, fenceTitle } from '../lib/markdown-fence'
+import { fenceIconFileName, fenceTitle } from '@/features/chat/utils/markdown-fence'
 import { AssistantMarkdownCodeBody } from './assistant-markdown-code-body'
 import { MarkdownRenderErrorBoundary } from './markdown-render-error-boundary'
 

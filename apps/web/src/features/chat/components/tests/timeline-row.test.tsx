@@ -10,7 +10,7 @@ import {
 import * as v from 'valibot'
 
 import { TimelineRow } from '@/features/chat/components/timeline-row'
-import { chatTimelineItems, type ChatTimelineItem } from '@/features/chat/lib/chat-timeline-items'
+import { chatTimelineItems, type ChatTimelineItem } from '@/features/chat/utils/timeline-items'
 import { useChatWorkLogExpansionStore } from '@/features/chat/state/chat-work-log-expansion-store'
 import { expect, test } from '../../../../../test/fixtures'
 import { chatMessage, threadActivity } from '../../../../../test/factories/chat'

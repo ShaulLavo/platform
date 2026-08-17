@@ -5,7 +5,7 @@ import { ChatInputCommandMenu } from '@/features/chat/components/chat-input-comm
 import {
   chatInputMentionCommandItems,
   type ChatInputCommandItem,
-} from '@/features/chat/lib/chat-input-logic'
+} from '@/features/chat/utils/input-logic'
 import { expect, test } from '../../../../../test/fixtures'
 import { renderWithProviders } from '../../../../../test/render'
 

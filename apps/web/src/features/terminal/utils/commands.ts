@@ -1,6 +1,6 @@
 import type { Terminal } from 'ghostty-web'
 
-import type { TerminalContextSelection } from '@/features/chat/lib/terminal-context'
+import type { TerminalContextSelection } from '@/features/chat/utils/terminal-context'
 
 import { captureTerminalSelection } from './capture'
 import { readClipboardText } from './clipboard'

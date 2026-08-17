@@ -1,7 +1,7 @@
 import { BookmarkSimpleIcon, XIcon } from '@phosphor-icons/react'
 import { Button } from '@workspace/ui/components/button'
 
-import { formatChatTimestamp } from '@/features/chat/lib/chat-formatters'
+import { formatChatTimestamp } from '@/features/chat/utils/formatters'
 import type { PromptStashEntry } from '@/features/chat/state/prompt-stash-store'
 
 const SNIPPET_MAX_CHARS = 90

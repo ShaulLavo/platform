@@ -5,12 +5,12 @@ import type {
   ThreadId,
 } from '@workspace/contracts'
 
-import { projectQualifiers } from '@/features/chat/lib/project-qualifiers'
+import { projectQualifiers } from '@/features/chat/utils/project-qualifiers'
 import {
   threadPlanProgressLabel,
   threadStatus,
   type ThreadStatus,
-} from '@/features/chat/lib/thread-status'
+} from '@/features/chat/utils/thread-status'
 import type { ChatSidebarThreadSummary } from '@/features/chat/state/chat-projection-store'
 import {
   compareProjectsForRail,

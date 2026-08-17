@@ -9,7 +9,7 @@ import type { LexicalEditor } from 'lexical'
 import { useEffect } from 'react'
 
 import { PromptStashBadge } from '@/features/chat/components/prompt-stash-badge'
-import { $setChatInputText, readChatInputText } from '@/features/chat/lib/chat-input-editor-actions'
+import { $setChatInputText, readChatInputText } from '@/features/chat/utils/input-editor-actions'
 import {
   resetChatInputDraftStore,
   useChatInputDraftStore,

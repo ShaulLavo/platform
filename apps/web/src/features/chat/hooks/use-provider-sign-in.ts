@@ -11,7 +11,7 @@ import {
   DEFAULT_PROVIDER_AUTH_METHOD,
   providerSignInPhase,
   type ProviderSignInPhase,
-} from '@/features/chat/lib/provider-auth'
+} from '@/features/chat/utils/provider-auth'
 import {
   cancelProviderLoginAttempt,
   providerAuthKeys,
@@ -19,8 +19,8 @@ import {
   providerLoginAttemptQueryOptions,
   signOutProvider,
   startProviderLogin,
-} from '@/features/chat/lib/provider-auth-query'
-import { providerListQueryOptions } from '@/features/chat/lib/provider-query'
+} from '@/features/chat/utils/provider-auth-query'
+import { providerListQueryOptions } from '@/features/chat/utils/provider-query'
 import { errorMessage } from '@/lib/error-message'
 
 export type ProviderSignIn = {

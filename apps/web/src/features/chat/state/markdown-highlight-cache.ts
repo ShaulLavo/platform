@@ -1,6 +1,6 @@
 import type { HighlightResult } from '@streamdown/code'
 
-import { ByteBoundedLru } from '../lib/byte-bounded-lru'
+import { ByteBoundedLru } from '@/features/chat/utils/byte-bounded-lru'
 
 /**
  * App-level because the same code block is highlighted again every time the

@@ -6,8 +6,8 @@ import { cn } from '@workspace/ui/lib/utils'
 import { ArrowDownIcon } from '@phosphor-icons/react'
 import { useEffect, useLayoutEffect, useMemo, useReducer, useState, type Dispatch } from 'react'
 
-import { chatTimelineItemEstimate, chatTimelineItems } from '../lib/chat-timeline-items'
-import type { ChatTimelineItem } from '../lib/chat-timeline-items'
+import { chatTimelineItemEstimate, chatTimelineItems } from '@/features/chat/utils/timeline-items'
+import type { ChatTimelineItem } from '@/features/chat/utils/timeline-items'
 import type { ChatThread } from '../state/chat-projection-store'
 import type { OptimisticChatMessage } from '../state/chat-optimistic-store'
 import {

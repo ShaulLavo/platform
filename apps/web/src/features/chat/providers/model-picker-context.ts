@@ -1,7 +1,7 @@
 import type { ModelSelection } from '@workspace/contracts'
 import { createContext } from 'react'
 
-import type { ProviderModelOption } from '@/features/chat/lib/provider-model-options'
+import type { ProviderModelOption } from '@/features/chat/utils/provider-model-options'
 
 export type ChatModelPicker = {
   /** True while the thread pins its provider and model, so the picker is read-only. */

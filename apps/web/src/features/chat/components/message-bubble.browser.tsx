@@ -223,11 +223,11 @@ describe('MessageBubble browser rendering', () => {
       expect(openCheckpointDiff).toHaveBeenCalledWith(assistantChangedFilesSummary, undefined)
     })
 
-    changedFileButton('src/features/chat/lib/chat-timeline-items.ts').click()
+    changedFileButton('src/features/chat/utils/timeline-items.ts').click()
     await vi.waitFor(() => {
       expect(openCheckpointDiff).toHaveBeenCalledWith(
         assistantChangedFilesSummary,
-        'src/features/chat/lib/chat-timeline-items.ts',
+        'src/features/chat/utils/timeline-items.ts',
       )
     })
   })
@@ -260,7 +260,7 @@ describe('MessageBubble browser rendering', () => {
     await vi.waitFor(() => {
       expect(document.body.textContent).toContain('Checkpoint missing')
       expect(buttonByText('View diff')).toBeNull()
-      expect(changedFileButtonOrNull('src/features/chat/lib/chat-timeline-items.ts')).toBeNull()
+      expect(changedFileButtonOrNull('src/features/chat/utils/timeline-items.ts')).toBeNull()
     })
   })
 
@@ -400,13 +400,13 @@ const assistantChangedFilesSummary = {
       additions: 6,
       deletions: 0,
       kind: 'modified',
-      path: 'src/features/chat/lib/chat-timeline-items.ts',
+      path: 'src/features/chat/utils/timeline-items.ts',
     },
     {
       additions: 2,
       deletions: 0,
       kind: 'added',
-      path: 'src/features/chat/lib/chat-turn-diff-tree.ts',
+      path: 'src/features/chat/utils/turn-diff-tree.ts',
     },
   ],
   status: 'ready',

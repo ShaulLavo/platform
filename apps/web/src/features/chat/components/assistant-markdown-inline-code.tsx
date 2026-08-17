@@ -1,7 +1,7 @@
 import { cn } from '@workspace/ui/lib/utils'
 import { use, type ComponentProps, type ReactNode } from 'react'
 
-import { resolveInlineCodeFileReference } from '@/features/chat/lib/markdown-file-links'
+import { resolveInlineCodeFileReference } from '@/features/chat/utils/markdown-file-links'
 import { MarkdownFileLinkContext } from '@/features/chat/providers/markdown-file-link-context'
 import { AssistantMarkdownFileLink } from './assistant-markdown-file-link'
 

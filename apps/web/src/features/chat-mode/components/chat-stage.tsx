@@ -2,7 +2,7 @@ import type { ThreadId } from '@workspace/contracts'
 
 import { ChatDraftView } from '@/features/chat/components/chat-draft-view'
 import { ChatView } from '@/features/chat/components/chat-view'
-import { contextUsageForActivities } from '@/features/chat/lib/context-usage'
+import { contextUsageForActivities } from '@/features/chat/utils/context-usage'
 import { selectChatThreadById } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { SessionMissingState } from '@/features/chat-mode/components/session-missing-state'

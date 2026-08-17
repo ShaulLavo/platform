@@ -7,7 +7,7 @@ import {
   groupChatInputCommandItems,
   type ChatInputCommandItem,
   type ChatInputTriggerKind,
-} from '../lib/chat-input-logic'
+} from '@/features/chat/utils/input-logic'
 import { ChatInputCommandItemIcon } from './chat-input-command-item-icon'
 
 /**

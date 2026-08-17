@@ -4,8 +4,8 @@ import type { ComponentProps, MouseEvent } from 'react'
 
 import { useContextMenu } from '@/features/menus/hooks/use-context-menu'
 
-import { externalLinkHost } from '../lib/markdown-external-links'
-import { findMarkdownFragmentTarget } from '../lib/markdown-fragment-links'
+import { externalLinkHost } from '@/features/chat/utils/markdown-external-links'
+import { findMarkdownFragmentTarget } from '@/features/chat/utils/markdown-fragment-links'
 import { MarkdownLinkFavicon } from './markdown-link-favicon'
 import { MarkdownLinkMenu } from './markdown-link-menu'
 

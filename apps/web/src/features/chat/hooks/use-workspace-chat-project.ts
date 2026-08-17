@@ -3,7 +3,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { errorMessage } from '@/lib/error-message'
 import type { ChatEnvironment } from '../environment/chat-environment'
-import { createWorkspaceProjectCommand, workspaceProjectId } from '../lib/chat-command-builders'
+import {
+  createWorkspaceProjectCommand,
+  workspaceProjectId,
+} from '@/features/chat/utils/command-builders'
 import { selectChatProjects } from '../state/chat-projection-selectors'
 import { useChatProjectionStore } from '../state/chat-projection-store'
 

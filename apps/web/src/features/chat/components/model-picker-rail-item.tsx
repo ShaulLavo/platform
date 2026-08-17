@@ -4,7 +4,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@workspace/ui/component
 import { cn } from '@workspace/ui/lib/utils'
 
 import { ProviderGlyph } from '@/features/chat/components/provider-glyph'
-import type { ProviderModelOptionGroup } from '@/features/chat/lib/provider-model-options'
+import type { ProviderModelOptionGroup } from '@/features/chat/utils/provider-model-options'
 
 /**
  * One provider button in the rail, with the active marker riding its right edge.

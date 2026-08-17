@@ -1,13 +1,13 @@
 import { CaretRightIcon, GitBranchIcon } from '@phosphor-icons/react'
 
 import { ContextUsageRing } from '@/features/chat/components/context-usage-ring'
-import type { ContextUsage } from '@/features/chat/lib/context-usage'
+import type { ContextUsage } from '@/features/chat/utils/context-usage'
 import {
   threadStatusDotClass,
   threadStatusLabel,
   threadStatusTextClass,
   type ThreadStatus,
-} from '@/features/chat/lib/thread-status'
+} from '@/features/chat/utils/thread-status'
 import { BranchActions } from '@/features/git/components/branch-actions'
 import { SessionRename } from '@/features/chat-mode/components/session-rename'
 import { StageSessionMenu } from '@/features/chat-mode/components/stage-session-menu'

@@ -11,15 +11,15 @@ import { useState } from 'react'
 
 import { useModelPicker } from '@/features/chat/hooks/use-model-picker'
 import { useProviderSignInDialog } from '@/features/chat/hooks/use-provider-sign-in-dialog'
-import { rankModelPickerOptions } from '@/features/chat/lib/model-picker-search'
-import type { ProviderSignInTarget } from '@/features/chat/lib/provider-auth'
+import { rankModelPickerOptions } from '@/features/chat/utils/model-picker-search'
+import type { ProviderSignInTarget } from '@/features/chat/utils/provider-auth'
 import {
   providerModelOptionGroups,
   providerModelSelectionKey,
   type ProviderModelOption,
   type ProviderModelOptionGroup,
-} from '@/features/chat/lib/provider-model-options'
-import { providerListQueryOptions } from '@/features/chat/lib/provider-query'
+} from '@/features/chat/utils/provider-model-options'
+import { providerListQueryOptions } from '@/features/chat/utils/provider-query'
 import { ModelPickerRail } from '@/features/chat/components/model-picker-rail'
 import { ModelPickerRow } from '@/features/chat/components/model-picker-row'
 import { ModelPickerSignInItem } from '@/features/chat/components/model-picker-sign-in-item'

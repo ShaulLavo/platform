@@ -1,7 +1,7 @@
 import { GlobeIcon } from '@phosphor-icons/react'
 import { useState } from 'react'
 
-import { faviconUrlForHost } from '../lib/markdown-external-links'
+import { faviconUrlForHost } from '@/features/chat/utils/markdown-external-links'
 
 const GLYPH_CLASS_NAME = 'mr-1 inline-block size-3.5 shrink-0 rounded-[2px] align-[-0.15em]'
 

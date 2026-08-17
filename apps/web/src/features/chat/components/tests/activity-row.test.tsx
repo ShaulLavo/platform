@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { ActivityRow } from '@/features/chat/components/activity-row'
-import type { ChatWorkLogEntry } from '@/features/chat/lib/chat-work-log'
+import type { ChatWorkLogEntry } from '@/features/chat/utils/work-log'
 import { useChatWorkLogExpansionStore } from '@/features/chat/state/chat-work-log-expansion-store'
 import { expect, test } from '../../../../../test/fixtures'
 import { renderWithProviders } from '../../../../../test/render'

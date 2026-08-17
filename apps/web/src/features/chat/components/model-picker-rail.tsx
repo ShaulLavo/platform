@@ -1,7 +1,7 @@
 import type { ProviderInstanceId } from '@workspace/contracts'
 
 import { ModelPickerRailItem } from '@/features/chat/components/model-picker-rail-item'
-import type { ProviderModelOptionGroup } from '@/features/chat/lib/provider-model-options'
+import type { ProviderModelOptionGroup } from '@/features/chat/utils/provider-model-options'
 
 /**
  * Provider switcher down the left edge of the picker panel. Only worth showing

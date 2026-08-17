@@ -1,14 +1,14 @@
 import type { ClientOrchestrationCommand, ThreadId } from '@workspace/contracts'
 import { toast } from 'sonner'
 
-import { dispatchChatCommand } from '@/features/chat/lib/chat-command-dispatch'
+import { dispatchChatCommand } from '@/features/chat/utils/command-dispatch'
 import {
   createThreadArchiveCommand,
   createThreadDeleteCommand,
   createThreadRenameCommand,
   createThreadSessionStopCommand,
   createThreadUnarchiveCommand,
-} from '@/features/chat/lib/chat-command-builders'
+} from '@/features/chat/utils/command-builders'
 import { selectChatSidebarThreadsForProject } from '@/features/chat/state/chat-projection-selectors'
 import {
   useChatProjectionStore,

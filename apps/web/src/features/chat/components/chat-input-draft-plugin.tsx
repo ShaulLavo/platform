@@ -3,8 +3,8 @@ import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin'
 import type { EditorState, LexicalEditor } from 'lexical'
 import { useCallback, useEffect, type RefObject } from 'react'
 
-import { detectChatInputTrigger, type ChatInputTrigger } from '../lib/chat-input-logic'
-import { $readChatInputTextSnapshot } from '../lib/chat-input-editor-actions'
+import { detectChatInputTrigger, type ChatInputTrigger } from '@/features/chat/utils/input-logic'
+import { $readChatInputTextSnapshot } from '@/features/chat/utils/input-editor-actions'
 import { useChatInputDraftStore } from '../state/chat-input-draft-store'
 
 export function ChatInputDraftPlugin({

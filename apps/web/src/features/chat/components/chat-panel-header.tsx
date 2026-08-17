@@ -9,7 +9,7 @@ import {
 } from '@workspace/ui/components/dropdown-menu'
 import { ChatCircleIcon, ClockCounterClockwiseIcon, PlusIcon } from '@phosphor-icons/react'
 
-import { chatThreadPreview, formatChatDateLabel } from '../lib/chat-formatters'
+import { chatThreadPreview, formatChatDateLabel } from '@/features/chat/utils/formatters'
 import type { ChatSidebarThreadSummary } from '../state/chat-projection-store'
 
 export function ChatPanelHeader({
