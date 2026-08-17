@@ -151,6 +151,36 @@ export function extractProviderSecrets(instances: unknown): {
   return { instances: stripped, secrets }
 }
 
+/**
+ * The same split for the raw JSON hatch, with one rule reversed.
+ *
+ * `extractProviderSecrets` reads `''` as "the user cleared this variable" and
+ * deletes the stored secret. That is right for the keyed path, where the client
+ * holds the mask for every variable that is set, so an empty value can only have
+ * been typed. The document on disk holds `''` for *both* "set, stored
+ * elsewhere" and "never set" — that is the whole point of the split — so in raw
+ * text an empty value says nothing. Deleting on it would wipe every provider
+ * credential the first time someone opened the raw editor and changed an
+ * unrelated key.
+ *
+ * So: a value that is actually there is absorbed into the secret store and
+ * blanked in the document, and anything else is left alone. There are no
+ * deletions from this path.
+ */
+export function extractRawProviderSecrets(instances: unknown): {
+  readonly instances: unknown
+  readonly secrets: Map<SecretRef, string>
+} {
+  const secrets = new Map<SecretRef, string>()
+  const stripped = mapEnvironment(instances, (ref, value) => {
+    if (value !== '' && value !== REDACTED_SETTINGS_VALUE) secrets.set(ref, value)
+
+    return ''
+  })
+
+  return { instances: stripped, secrets }
+}
+
 /** Puts stored values back on their variables, for the spawn path only. */
 export function applyProviderSecrets<T>(instances: T, secrets: ReadonlyMap<SecretRef, string>): T {
   return mapEnvironment(instances, (ref) => secrets.get(ref) ?? '') as T

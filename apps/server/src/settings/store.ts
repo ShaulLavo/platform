@@ -14,11 +14,12 @@ import {
 import * as v from 'valibot'
 import { errorSummary, recordRequestContext, recordRequestWarning } from '../observability'
 import { SettingsFileLayer } from './layer'
-import type { DocumentEdit } from './json-document'
+import { editSettingsText, parseSettingsDocument, type DocumentEdit } from './json-document'
 import { settingsPaths, type SettingsPathOptions } from './paths'
 import {
   applyProviderSecrets,
   extractProviderSecrets,
+  extractRawProviderSecrets,
   maskProviderSecrets,
   SecretStore,
   type SecretRef,
@@ -208,13 +209,45 @@ export class SettingsStore {
     return { text: contents.text, revision: contents.revision ?? '' }
   }
 
+  /**
+   * Whole-text replace, for the JSON escape hatch.
+   *
+   * Runs the same secret split the keyed path runs. Without it this is the one
+   * route that can land a provider credential in the settings document, where it
+   * would sit in cleartext in the very file `GET /settings/raw`, the JSON tab and
+   * export all serve — and then be replaced by an empty string at spawn, because
+   * `applyProviderSecrets` reads every environment value from the secret store.
+   * The file says the variable is set, the provider starts without it, and
+   * nothing anywhere says why.
+   *
+   * Unknown, out-of-scope and policy-controlled keys are deliberately *not*
+   * refused here the way `write` refuses them: the resolver reports each as a
+   * diagnostic and drops it, and keeping another build's keys in the file is
+   * this hatch's job.
+   */
   async writeRaw(
     target: SettingsWriteTarget,
     text: string,
     baseRevision?: string,
   ): Promise<SettingsSnapshot> {
-    await this.layerFor(target).writeText(text, baseRevision)
+    const document = this.splitRawSecrets(target, text)
+
+    // Secrets first, for the reason `write` gives: a document naming a variable
+    // whose value never landed is recoverable, the reverse is not.
+    await this.secretStore.write(document.secrets)
+    await this.layerFor(target).writeText(document.text, baseRevision)
     this.invalidate()
+    recordRequestContext({
+      area: 'settings',
+      operation: 'write-raw',
+      settings: {
+        // Ids and counts only. This route carries the whole document, so a value
+        // in the log would be the exact leak the split exists to prevent.
+        target,
+        settingIds: document.settingIds,
+        secretsChanged: document.secrets.size,
+      },
+    })
 
     return this.snapshot()
   }
@@ -284,6 +317,57 @@ export class SettingsStore {
     for (const [ref, secret] of split.secrets) secretEdits.set(ref, secret)
 
     return { key, value: split.instances }
+  }
+
+  /**
+   * Takes any provider credential out of incoming raw text before it reaches
+   * disk, and returns the text to actually write.
+   *
+   * A malformed document is handed straight back: `writeText` raises the typed
+   * FILE_MALFORMED for it, and storing a secret for a document that is about to
+   * be refused would leave a value with nothing referencing it.
+   */
+  private splitRawSecrets(
+    target: SettingsWriteTarget,
+    text: string,
+  ): { text: string; secrets: Map<SecretRef, string>; settingIds: string[] } {
+    const parsed = parseSettingsDocument(text)
+    if (parsed.parseErrors.length > 0) return { text, secrets: new Map(), settingIds: [] }
+
+    const settingIds = Object.keys(parsed.values)
+    if (!Object.hasOwn(parsed.values, PROVIDER_INSTANCES)) {
+      return { text, secrets: new Map(), settingIds }
+    }
+
+    const split = extractRawProviderSecrets(parsed.values[PROVIDER_INSTANCES])
+    // Nothing to absorb: hand the user's bytes straight back. `editSettingsText`
+    // re-serializes the subtree it touches, so rewriting on every save would
+    // reformat `providers.instances` and drop any comment inside it — on a save
+    // that changed nothing. Byte fidelity is the hatch's whole job.
+    if (split.secrets.size === 0) return { text, secrets: split.secrets, settingIds }
+
+    // `providers.instances` is application-scoped precisely because it reaches
+    // process spawn, and a workspace file ships inside a cloned repository. The
+    // resolver already refuses to *apply* it from there — but that happens after
+    // the bytes are on disk, which for this key means a credential committed to
+    // someone's repo. Naming the key from a workspace file stays legal, because
+    // "set here, not applied" is a diagnostic the page is built to show; only
+    // carrying a value is not.
+    if (target !== 'user') {
+      throw settingsErrors.SCOPE_NOT_ALLOWED({
+        key: PROVIDER_INSTANCES,
+        scope: 'application',
+        target,
+      })
+    }
+
+    return {
+      // `editSettingsText`, not a re-serialize: the hatch has to hand the user's
+      // comments and key order back unchanged.
+      text: editSettingsText(text, [{ key: PROVIDER_INSTANCES, value: split.instances }]),
+      secrets: split.secrets,
+      settingIds,
+    }
   }
 
   private assertWritable(key: SettingId, target: SettingsWriteTarget) {
