@@ -1,6 +1,6 @@
 import type { EditorKeymapLayer } from '@singapor/core'
 
-import { EMPTY_GIT_FILES } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
+import { EMPTY_GIT_FILES } from '@/features/workspace/utils/tab-model'
 import { ChatModeLayout } from '@/features/chat-mode/components/layout'
 import { useRevealOpenedEditors } from '@/features/chat-mode/hooks/use-reveal-opened-editors'
 import { ChatModeSessionProvider } from '@/features/chat-mode/providers/session-provider'

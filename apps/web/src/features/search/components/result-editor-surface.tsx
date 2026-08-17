@@ -10,7 +10,7 @@ import {
   type KeyboardEvent,
 } from 'react'
 
-import { useFocus } from '@/components/workspace/focus/providers/focus-state'
+import { useFocus } from '@/features/workspace/providers/focus-state'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import type { WorkspaceSearchFileGroup } from '@/features/search/state/buffer-state'
 import { useSearchResultActions } from '@/features/search/hooks/use-result-actions'

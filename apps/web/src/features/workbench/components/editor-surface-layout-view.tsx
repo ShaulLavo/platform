@@ -1,4 +1,4 @@
-import { EMPTY_GIT_FILES } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
+import { EMPTY_GIT_FILES } from '@/features/workspace/utils/tab-model'
 import { useEditorConflictState } from '@/features/editor/state/conflict-state'
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import { useStatus } from '@/features/git/hooks'

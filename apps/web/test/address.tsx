@@ -27,7 +27,7 @@ import {
   writeUiModeCache,
   writeWorkbenchLayoutCache,
   writeChatModePanelsCache,
-} from '@/lib/workspace-cache'
+} from '@/features/workspace/state/cache'
 
 import { renderWithProviders } from './render'
 

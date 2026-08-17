@@ -1,7 +1,7 @@
 import type { InteractionMode, RuntimeMode, ThreadId } from '@workspace/contracts'
 import { useRef, type RefObject } from 'react'
 
-import { useElementWidth } from '@/components/workspace/shared/hooks/use-element-width'
+import { useElementWidth } from '@/features/workspace/hooks/use-element-width'
 import { contextUsageForActivities } from '@/features/chat/utils/context-usage'
 import { selectChatThreadById } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'

@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 
-import { useFocus } from '@/components/workspace/focus/providers/focus-state'
+import { useFocus } from '@/features/workspace/providers/focus-state'
 import { useTheme } from '@/components/theme-context'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useEditorCommands } from '@/features/editor/state/commands'

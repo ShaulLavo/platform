@@ -3,7 +3,10 @@ import { create } from 'zustand'
 
 import type { SessionSelection } from '@/features/chat-mode/utils/active-session'
 import { neighbourThreadId } from '@/features/chat-mode/utils/session-neighbour'
-import { readSessionSelectionCache, writeSessionSelectionCache } from '@/lib/workspace-cache'
+import {
+  readSessionSelectionCache,
+  writeSessionSelectionCache,
+} from '@/features/workspace/state/cache'
 
 /**
  * Which session the stage is showing. Selection lives outside the chat surface because

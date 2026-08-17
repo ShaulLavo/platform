@@ -10,7 +10,7 @@ import type {
 } from '@/lib/file-system-types'
 import { clientErrorMessage } from '@/lib/client-error-taxonomy'
 import { log, observeClientOperation } from '@/lib/client-logging'
-import { createCoalescedLogQueue } from '@/lib/coalesced-log'
+import { createCoalescedLogQueue } from '@/features/workspace/utils/coalesced-log'
 import { omitNullish } from '@/lib/objects'
 import { createRpcError } from '@/lib/structured-errors'
 import { collectWorkspaceSearch } from '@/lib/workspace-search-client'

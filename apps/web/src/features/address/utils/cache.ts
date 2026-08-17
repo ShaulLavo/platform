@@ -8,7 +8,7 @@ import {
   setWorkbenchSidebarTab,
   type WorkbenchPanels,
 } from '@/features/workbench/utils/panels'
-import type { CachedWorkspaceState } from '@/lib/workspace-cache'
+import type { CachedWorkspaceState } from '@/features/workspace/state/cache'
 
 /**
  * The address, folded into the cache before the stores are built.

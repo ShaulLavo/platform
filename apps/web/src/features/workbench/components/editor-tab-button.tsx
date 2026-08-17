@@ -1,9 +1,9 @@
 import type { DraggableAttributes, DraggableSyntheticListeners } from '@dnd-kit/core'
 import { useCallback, type CSSProperties, type Ref } from 'react'
 
-import { useEditorTabIntentPrefetch } from '@/components/workspace/editor-tabs/hooks/use-editor-tab-intent-prefetch'
-import type { EditorTabCloseTarget } from '@/components/workspace/editor-tabs/utils/editor-tab-close-targets'
-import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
+import { useEditorTabIntentPrefetch } from '@/features/workspace/hooks/use-tab-intent-prefetch'
+import type { EditorTabCloseTarget } from '@/features/workspace/utils/tab-close-targets'
+import type { EditorTabModel } from '@/features/workspace/utils/tab-types'
 import { useEditorTabActions } from '@/features/editor/hooks/use-editor-tab-actions'
 import { EditorTabMenu } from '@/features/workbench/components/editor-tab-menu'
 import { TabTrailingSlot } from '@/features/workbench/components/tab-trailing-slot'

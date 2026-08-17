@@ -15,7 +15,7 @@ import {
   type PointerEvent,
 } from 'react'
 
-import { useFocus } from '@/components/workspace/focus/providers/focus-state'
+import { useFocus } from '@/features/workspace/providers/focus-state'
 import {
   createPlatformSearchResultEditorLoggingPlugin,
   editorTreeSitterSyntaxProvider,

@@ -1,8 +1,8 @@
 import type { EditorKeymapLayer } from '@singapor/core'
 import { Button } from '@workspace/ui/components/button'
 
-import { SearchPane } from '@/components/workspace/search/components/search-pane'
-import type { EditorTabConflictMap } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
+import { SearchPane } from '@/features/workspace/components/search-pane'
+import type { EditorTabConflictMap } from '@/features/workspace/utils/tab-types'
 import { ChatDiffStatLabel } from '@/features/chat/components/chat-diff-stat-label'
 import { useSessionTerminalId } from '@/features/chat-mode/hooks/use-session-terminal-id'
 import { useSessionToolRoot } from '@/features/chat-mode/hooks/use-session-tool-root'

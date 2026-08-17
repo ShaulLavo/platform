@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react'
 import { detectPlatform } from '@tanstack/react-hotkeys'
 
-import type { FocusArea } from '@/components/workspace/focus/providers/focus-state'
+import type { FocusArea } from '@/features/workspace/providers/focus-state'
 
 import {
   activePlatformKeyBindings,

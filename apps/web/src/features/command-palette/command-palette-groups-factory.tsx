@@ -1,0 +1,109 @@
+import type { Theme } from '@/components/theme-context'
+import type { FlatDocumentSymbol } from '@/features/command-palette/document-symbols'
+import { GotoLineGroups } from '@/features/command-palette/goto-line-groups'
+
+import { ColorModeGroups } from '@/features/command-palette/color-mode-groups'
+import { ColorThemeGroups } from '@/features/command-palette/color-theme-groups'
+import { CommandGroups } from '@/features/command-palette/command-groups'
+import type {
+  CommandPaletteItem,
+  EditorPaletteItem,
+  FilePaletteItem,
+  QuickAccessMode,
+} from '@/features/command-palette/command-palette-types'
+import { EditorGroups } from '@/features/command-palette/editor-groups'
+import { QuickOpenGroups } from '@/features/command-palette/quick-open-groups'
+import { ScriptGroups } from '@/features/command-palette/script-groups'
+import { SessionGroups } from '@/features/command-palette/session-groups'
+import { SymbolGroups } from '@/features/command-palette/symbol-groups'
+import { ViewGroups } from '@/features/command-palette/view-groups'
+import type { ProjectScriptSuggestion } from '@/features/chat-mode/utils/project-scripts'
+import type {
+  SessionRailItem,
+  SessionRailProject,
+} from '@/features/chat-mode/utils/session-rail-model'
+
+type CommandPaletteGroupsFactoryProps = {
+  readonly activeFilePath: string | null
+  readonly commandGroups: readonly (readonly [string, readonly CommandPaletteItem[]])[]
+  readonly currentTheme: Theme
+  readonly editorItems: readonly EditorPaletteItem[]
+  readonly fileItems: readonly FilePaletteItem[]
+  readonly fileQuery: string
+  readonly fileSearchError: boolean
+  readonly hasWorkspace: boolean
+  readonly mode: QuickAccessMode
+  readonly scriptItems: readonly ProjectScriptSuggestion[]
+  readonly sessionItems: readonly SessionRailItem[]
+  readonly sessionProjects: readonly SessionRailProject[]
+  readonly symbolItems: readonly FlatDocumentSymbol[]
+  readonly symbolsPending: boolean
+}
+
+export function CommandPaletteGroupsFactory({
+  activeFilePath,
+  commandGroups,
+  currentTheme,
+  editorItems,
+  fileItems,
+  fileQuery,
+  fileSearchError,
+  hasWorkspace,
+  mode,
+  scriptItems,
+  sessionItems,
+  sessionProjects,
+  symbolItems,
+  symbolsPending,
+}: CommandPaletteGroupsFactoryProps) {
+  if (mode === 'commands') {
+    return (
+      <CommandGroups
+        groups={commandGroups}
+        activeFilePath={activeFilePath}
+        hasWorkspace={hasWorkspace}
+      />
+    )
+  }
+
+  if (mode === 'views') {
+    return <ViewGroups hasWorkspace={hasWorkspace} />
+  }
+
+  if (mode === 'colorMode') {
+    return <ColorModeGroups currentTheme={currentTheme} />
+  }
+
+  if (mode === 'colorTheme') {
+    return <ColorThemeGroups />
+  }
+
+  if (mode === 'editors') {
+    return <EditorGroups items={editorItems} />
+  }
+
+  if (mode === 'scripts') {
+    return <ScriptGroups scripts={scriptItems} />
+  }
+
+  if (mode === 'sessions') {
+    return <SessionGroups projects={sessionProjects} sessions={sessionItems} />
+  }
+
+  if (mode === 'symbols') {
+    return <SymbolGroups isPending={symbolsPending} items={symbolItems} />
+  }
+
+  if (mode === 'gotoLine') {
+    return <GotoLineGroups query={fileQuery} />
+  }
+
+  return (
+    <QuickOpenGroups
+      files={fileItems}
+      hasWorkspace={hasWorkspace}
+      query={fileQuery}
+      searchError={fileSearchError}
+    />
+  )
+}

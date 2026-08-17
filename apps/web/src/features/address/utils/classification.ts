@@ -1,4 +1,4 @@
-import { WORKSPACE_CACHE_STORAGE_KEYS } from '@/lib/workspace-cache'
+import { WORKSPACE_CACHE_STORAGE_KEYS } from '@/features/workspace/state/cache'
 
 /**
  * Which state is a place, which is a preference, and which must never be replayed.

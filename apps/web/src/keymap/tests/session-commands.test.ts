@@ -11,7 +11,7 @@ import {
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
 import { resetSessionReadStore } from '@/features/chat-mode/state/session-read-store'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
-import { useActiveProjectStore } from '@/state/active-project-store'
+import { useActiveProjectStore } from '@/features/workspace/state/active-project'
 import { chatProject, shellSnapshot, threadShell } from '../../../test/factories/chat'
 import { expect, test } from '../../../test/fixtures'
 import { defaultPlatformKeyBindings } from '../default-bindings'

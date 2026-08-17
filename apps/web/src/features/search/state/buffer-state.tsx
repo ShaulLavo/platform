@@ -9,7 +9,7 @@ import { useStore } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { createStore, type Mutate, type StoreApi } from 'zustand/vanilla'
 
-import type { CachedSearchBufferState } from '@/lib/workspace-cache'
+import type { CachedSearchBufferState } from '@/features/workspace/state/cache'
 import { basename, toTreePath } from '@/lib/path-formatters'
 import { clientErrors } from '@/lib/structured-errors'
 import { searchBufferDocumentId } from '@/features/search/utils/buffer-document'

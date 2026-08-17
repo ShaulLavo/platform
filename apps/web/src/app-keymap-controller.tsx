@@ -1,4 +1,4 @@
-import { useFocus } from '@/components/workspace/focus/providers/focus-state'
+import { useFocus } from '@/features/workspace/providers/focus-state'
 import { useAppKeymap, type PlatformCommandDispatch } from '@/keymap/use-app-keymap'
 import type { PlatformKeyBinding } from '@/keymap/types'
 

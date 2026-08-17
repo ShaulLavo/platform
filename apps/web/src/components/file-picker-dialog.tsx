@@ -26,17 +26,17 @@ import {
   useRecentEntries,
   useRecordRecentMutation,
   useServerInfoForOpen,
-} from './file-picker/data'
-import { IconTooltip } from './file-picker/icon-tooltip'
-import { FileList, ListHeader } from './file-picker/list'
-import { Breadcrumbs } from './file-picker/navigation/breadcrumbs'
-import { MobileLocations } from './file-picker/navigation/mobile-locations'
-import { PlacesSidebar } from './file-picker/navigation/places-sidebar'
-import { PreviewPane, SelectedSummary } from './file-picker/preview'
+} from '@/features/file-picker/data'
+import { IconTooltip } from '@/features/file-picker/icon-tooltip'
+import { FileList, ListHeader } from '@/features/file-picker/list'
+import { Breadcrumbs } from '@/features/file-picker/navigation/breadcrumbs'
+import { MobileLocations } from '@/features/file-picker/navigation/mobile-locations'
+import { PlacesSidebar } from '@/features/file-picker/navigation/places-sidebar'
+import { PreviewPane, SelectedSummary } from '@/features/file-picker/preview'
 import {
   FilePickerSessionActionsContext,
   type FilePickerSessionActions,
-} from './file-picker/providers/session-actions-context'
+} from '@/features/file-picker/providers/session-actions-context'
 import {
   ROOT_PATH,
   currentPickableEntry,
@@ -49,8 +49,8 @@ import {
   type EntriesLoadState,
   type FilePickerIconMode,
   type FilePickerMode,
-} from './file-picker/model'
-import { useFilePickerSession } from './file-picker/state'
+} from '@/features/file-picker/model'
+import { useFilePickerSession } from '@/features/file-picker/state'
 
 type FilePickerDialogProps = {
   accept?: readonly string[]

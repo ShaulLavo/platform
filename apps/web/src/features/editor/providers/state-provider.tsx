@@ -17,7 +17,7 @@ import {
 } from '@/features/search/state/buffer-state'
 import { addressedWorkspaceCache } from '@/features/address/utils/cache'
 import { parseAddress } from '@/features/address/utils/grammar'
-import { readWorkspaceCache } from '@/lib/workspace-cache'
+import { readWorkspaceCache } from '@/features/workspace/state/cache'
 import { useEffect, useState, type ReactNode } from 'react'
 
 export function EditorStateProvider({ children }: { children: ReactNode }) {

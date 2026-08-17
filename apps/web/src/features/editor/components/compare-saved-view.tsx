@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import { editorTreeSitterSyntaxProvider } from '@/features/editor/utils/plugins'
 import { useEditorDocumentState } from '@/features/editor/state/document-state'
-import { useSelectedFile } from '@/hooks/use-selected-file'
+import { useSelectedFile } from '@/features/workspace/hooks/use-selected-file'
 import { languageIdForFilePath } from '@/features/editor/utils/file-path'
 import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 

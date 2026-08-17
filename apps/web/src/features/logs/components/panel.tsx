@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 
-import { useFocus } from '@/components/workspace/focus/providers/focus-state'
+import { useFocus } from '@/features/workspace/providers/focus-state'
 import { logsKeys } from '@/lib/query-keys'
 import { logDashboardFilters } from '@/features/logs/utils/filter-params'
 import { logFilterQuery, logToolbarOptionFilters } from '@/features/logs/utils/filter-params'

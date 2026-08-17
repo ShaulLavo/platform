@@ -382,7 +382,7 @@ operating on a caller-supplied object, `utils/` is correct instead.
 **Verify**:
 
 ```bash
-find apps/web/src/lib -maxdepth 1 -name "*.ts" | wc -l   # → 45-ish, NOT near zero
+find apps/web/src/lib -maxdepth 1 -name "*.ts" | wc -l   # → 29 (34 before this step); the point is that lib/ keeps its shared core, not a particular number
 grep -rn "lib/workspace-cache\|lib/workspace-path\|lib/workspace-event-model\|lib/directory-churn\|lib/coalesced-log" apps/web/src | wc -l   # → 0 after Step 7
 ```
 
@@ -513,8 +513,15 @@ ALL must hold:
 - [ ] `ls apps/web/src` → `App.tsx app-keymap-controller.tsx components features keymap lib main.tsx`
 - [ ] `ls apps/web/src/features/workspace` → only kind directories
       (`components hooks providers state tests utils`)
-- [ ] `find apps/web/src/lib -maxdepth 1 -name "*.ts" | wc -l` → **≥ 40**
-      (the shared infrastructure was NOT moved)
+- [ ] `lib/` lost **exactly** the five files Step 4 names and nothing else:
+      `git diff -M --name-status ace313f -- apps/web/src/lib | grep "^R"` lists
+      `workspace-cache.ts`, `workspace-event-model.ts`, `workspace-path.ts`,
+      `directory-churn.ts`, `coalesced-log.ts` (plus their tests), and no other
+      module left `lib/` in this plan.
+      **Corrected 2026-08-17.** This gate used to read `→ **≥ 40**`, which Step 4
+      makes unsatisfiable: `lib/` held ~45 root `.ts` files at `ace313f`, plans
+      022 and 043 took it to 34, and Step 4 mandates removing five more — 29.
+      Per this README's own rule, never assert an absolute count; compare a delta.
 - [ ] `grep -rn "@/components/workspace\|@/components/command-palette\|@/components/file-picker\|@/hooks/\|@/state/" apps/web/src --include="*.ts" --include="*.tsx" | wc -l` → `0`
 - [ ] `cd apps/web && bun run typecheck` exits 0
 - [ ] `cd apps/web && bun run test` exits 0, same count as baseline

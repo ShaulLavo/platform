@@ -1,7 +1,7 @@
 import type { ReactElement } from 'react'
 
-import type { EditorTabCloseTarget } from '@/components/workspace/editor-tabs/utils/editor-tab-close-targets'
-import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
+import type { EditorTabCloseTarget } from '@/features/workspace/utils/tab-close-targets'
+import type { EditorTabModel } from '@/features/workspace/utils/tab-types'
 import { MenuSurface } from '@/features/menus/components/surface'
 import { useEditorTabMenu } from '@/features/workbench/hooks/use-editor-tab-menu'
 

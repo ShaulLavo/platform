@@ -1,4 +1,4 @@
-import { documentLabel } from '@/components/workspace/editor-tabs/utils/document-label'
+import { documentLabel } from '@/features/workspace/utils/document-label'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import {
   activeEditorTabForWorkbenchPanels,

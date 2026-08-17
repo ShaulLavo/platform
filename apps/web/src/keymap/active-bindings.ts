@@ -10,7 +10,7 @@ import {
 } from '@tanstack/react-hotkeys'
 import type { KeybindingOverrides } from '@workspace/contracts'
 
-import type { FocusArea } from '@/components/workspace/focus/providers/focus-state'
+import type { FocusArea } from '@/features/workspace/providers/focus-state'
 
 import { commandHotkeyMeta } from './command-registry'
 import { platformCommands } from './table'

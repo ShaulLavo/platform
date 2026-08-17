@@ -3,7 +3,7 @@ import { LoadingState } from '@workspace/ui/components/loading-state'
 import { cn } from '@workspace/ui/lib/utils'
 import { memo, useMemo, type ComponentProps } from 'react'
 
-import { useFocus } from '@/components/workspace/focus/providers/focus-state'
+import { useFocus } from '@/features/workspace/providers/focus-state'
 import { errorMessage } from '@/lib/file-server'
 import { useStatus } from '@/features/git/hooks'
 import { useGitState } from '@/features/git/state/store'

@@ -8,8 +8,8 @@ import {
 import type { EditorKeymapLayer } from '@singapor/core'
 import type { ReactNode } from 'react'
 
-import { useFocus } from '@/components/workspace/focus/providers/focus-state'
-import { SearchPane } from '@/components/workspace/search/components/search-pane'
+import { useFocus } from '@/features/workspace/providers/focus-state'
+import { SearchPane } from '@/features/workspace/components/search-pane'
 import { ChatSidePanel } from '@/features/chat/components/chat-side-panel'
 import { LogsPanel } from '@/features/logs/components/panel'
 import { FileNavigatorPanel } from '@/features/workbench/components/file-navigator-panel'

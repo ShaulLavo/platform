@@ -1,7 +1,7 @@
 import { fireEvent, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 
-import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
+import type { EditorTabModel } from '@/features/workspace/utils/tab-types'
 import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import { EditorTabActionsContext } from '@/features/editor/providers/tab-actions-context'
 import { EditorTabBar } from '@/features/workbench/components/editor-tab-bar'

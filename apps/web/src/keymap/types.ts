@@ -1,4 +1,4 @@
-import type { FocusArea } from '@/components/workspace/focus/providers/focus-state'
+import type { FocusArea } from '@/features/workspace/providers/focus-state'
 import type { EditorCommandId } from '@singapor/core'
 import type { HotkeyMeta, ParsedHotkey, RegisterableHotkey } from '@tanstack/react-hotkeys'
 

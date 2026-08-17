@@ -42,7 +42,7 @@ import {
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
-import { workspacePathLeaf } from '@/lib/workspace-path'
+import { workspacePathLeaf } from '@/features/workspace/utils/path'
 import { stablePathHash } from '@/lib/stable-path-hash'
 
 import {

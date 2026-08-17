@@ -11,8 +11,8 @@ import {
   editorTabCloseTargetIds,
   type EditorTabCloseTarget,
   type EditorTabCloseTargetKind,
-} from '@/components/workspace/editor-tabs/utils/editor-tab-close-targets'
-import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
+} from '@/features/workspace/utils/tab-close-targets'
+import type { EditorTabModel } from '@/features/workspace/utils/tab-types'
 import { actionItem, section, type Menu } from '@/features/menus/utils/model'
 
 export type EditorTabMenuContext = {

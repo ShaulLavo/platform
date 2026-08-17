@@ -14,7 +14,7 @@ import {
   searchBufferDocumentId,
 } from '@/features/search/utils/buffer-document'
 import { isSettingsDocumentId } from '@/features/settings/utils/document'
-import { toWorkspaceAbsolute, toWorkspaceRelative } from '@/lib/workspace-path'
+import { toWorkspaceAbsolute, toWorkspaceRelative } from '@/features/workspace/utils/path'
 import type { ThreadId } from '@workspace/contracts'
 
 /**

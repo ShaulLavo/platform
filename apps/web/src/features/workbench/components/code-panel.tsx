@@ -2,14 +2,11 @@ import type { EditorKeymapLayer } from '@singapor/core'
 import { FileDashedIcon } from '@phosphor-icons/react'
 import { EmptyState } from '@workspace/ui/components/empty-state'
 
-import {
-  EMPTY_GIT_FILES,
-  editorTabModel,
-} from '@/components/workspace/editor-tabs/utils/editor-tab-model'
+import { EMPTY_GIT_FILES, editorTabModel } from '@/features/workspace/utils/tab-model'
 import { EditorSurfaceTabBody } from '@/features/workbench/components/editor-surface-tab-body'
 import { EditorTabBar } from '@/features/workbench/components/editor-tab-bar'
 import type { FileStatus } from '@/features/git/utils/types'
-import type { EditorTabConflictMap } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
+import type { EditorTabConflictMap } from '@/features/workspace/utils/tab-types'
 import type { WorkbenchPanels } from '@/features/workbench/utils/panels'
 
 export function CodePanel({

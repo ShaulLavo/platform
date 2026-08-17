@@ -12,7 +12,7 @@ import {
 } from 'react'
 
 import { useTheme } from '@/components/theme-context'
-import { useFocus } from '@/components/workspace/focus/providers/focus-state'
+import { useFocus } from '@/features/workspace/providers/focus-state'
 import { useContextMenu } from '@/features/menus/hooks/use-context-menu'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { DEFAULT_MONO_FONT_STACK } from '@/lib/default-nerd-font'

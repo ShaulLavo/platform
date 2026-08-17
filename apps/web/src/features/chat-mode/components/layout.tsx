@@ -6,7 +6,7 @@ import {
 } from '@workspace/ui/components/resizable'
 import { cn } from '@workspace/ui/lib/utils'
 
-import type { EditorTabConflictMap } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
+import type { EditorTabConflictMap } from '@/features/workspace/utils/tab-types'
 import { ChatStage } from '@/features/chat-mode/components/chat-stage'
 import { SessionRail } from '@/features/chat-mode/components/session-rail'
 import { ToolPane } from '@/features/chat-mode/components/tool-pane'

@@ -1,8 +1,8 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 
-import type { EditorTabCloseTarget } from '@/components/workspace/editor-tabs/utils/editor-tab-close-targets'
-import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
+import type { EditorTabCloseTarget } from '@/features/workspace/utils/tab-close-targets'
+import type { EditorTabModel } from '@/features/workspace/utils/tab-types'
 import { EditorTabButton } from '@/features/workbench/components/editor-tab-button'
 
 export function SortableEditorTabButton({

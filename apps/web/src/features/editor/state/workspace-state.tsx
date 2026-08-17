@@ -8,8 +8,8 @@ import {
   normalizeWorkbenchPanels,
   type WorkbenchPanels,
 } from '@/features/workbench/utils/panels'
-import type { CachedWorkspaceSlice, CachedWorkspaceState } from '@/lib/workspace-cache'
-import { emptyWorkspaceSlice, readWorkspaceCache } from '@/lib/workspace-cache'
+import type { CachedWorkspaceSlice, CachedWorkspaceState } from '@/features/workspace/state/cache'
+import { emptyWorkspaceSlice, readWorkspaceCache } from '@/features/workspace/state/cache'
 import { clientErrors } from '@/lib/structured-errors'
 import type { EditorScrollPosition } from '@singapor/core'
 import { createContext, use } from 'react'

@@ -1,5 +1,5 @@
 import { stablePathHash } from '@/lib/stable-path-hash'
-import { normalizeWorkspaceRoot, workspacePathLeaf } from '@/lib/workspace-path'
+import { normalizeWorkspaceRoot, workspacePathLeaf } from '@/features/workspace/utils/path'
 
 /**
  * A workspace is named in an address by a slug, never by a `ProjectId` and never by an

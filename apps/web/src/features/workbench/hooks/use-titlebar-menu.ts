@@ -7,7 +7,7 @@ import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state
 import { useMenuCommand } from '@/features/menus/providers/command-context'
 import { projectMenuModel } from '@/features/workbench/utils/project-menu-model'
 import { titlebarMenu } from '@/features/workbench/utils/titlebar-menu'
-import { useOpenWorkspaceRoot } from '@/hooks/use-open-workspace-root'
+import { useOpenWorkspaceRoot } from '@/features/workspace/hooks/use-open-root'
 import { copyTextToClipboard } from '@/lib/clipboard'
 import { recentFoldersQueryOptions } from '@/lib/recent-folders-query'
 

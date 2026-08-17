@@ -1,7 +1,4 @@
-import {
-  createEditorTabRecord,
-  type EditorTabRecord,
-} from '@/components/workspace/editor-tabs/utils/editor-tab-model'
+import { createEditorTabRecord, type EditorTabRecord } from '@/features/workspace/utils/tab-model'
 
 export type WorkbenchSidebarTab = 'chat' | 'files' | 'git' | 'logs' | 'search'
 export type WorkbenchBottomTab = 'terminal' | 'problems'

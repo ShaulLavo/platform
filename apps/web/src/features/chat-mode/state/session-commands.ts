@@ -14,7 +14,7 @@ import {
   type SessionRailItem,
 } from '@/features/chat-mode/utils/session-rail-model'
 import { sessionThreads } from '@/features/chat-mode/utils/session-threads'
-import { useActiveProjectStore } from '@/state/active-project-store'
+import { useActiveProjectStore } from '@/features/workspace/state/active-project'
 
 export type SessionTraversalDirection = 'next' | 'previous'
 

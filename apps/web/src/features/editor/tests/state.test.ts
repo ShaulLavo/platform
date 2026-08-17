@@ -13,7 +13,7 @@ import {
   openEditorPathInWorkbenchPanels,
 } from '@/features/workbench/utils/panels'
 import type { PickedFsEntry } from '@/lib/file-system-types'
-import type { CachedWorkspaceSlice, CachedWorkspaceState } from '@/lib/workspace-cache'
+import type { CachedWorkspaceSlice, CachedWorkspaceState } from '@/features/workspace/state/cache'
 
 describe('editor workspace state', () => {
   it('opens files as flat editor tabs and records history', () => {

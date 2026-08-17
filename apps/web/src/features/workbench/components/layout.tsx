@@ -5,7 +5,7 @@ import {
   ResizablePanelGroup,
 } from '@workspace/ui/components/resizable'
 
-import type { EditorTabConflictMap } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
+import type { EditorTabConflictMap } from '@/features/workspace/utils/tab-types'
 import type { FileStatus } from '@/features/git/utils/types'
 import { BottomPanel } from '@/features/workbench/components/bottom-panel'
 import { CodePanel } from '@/features/workbench/components/code-panel'

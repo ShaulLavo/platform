@@ -24,7 +24,7 @@ import {
   readSettingsCategory,
   subscribe as subscribeSettingsCategory,
 } from '@/features/settings/state/category-store'
-import { WORKSPACE_SLICE_LIMIT } from '@/lib/workspace-cache'
+import { WORKSPACE_SLICE_LIMIT } from '@/features/workspace/state/cache'
 import { settingsCategorySlug } from '@/features/address/utils/settings-category'
 import { useEditorUiStoreApi } from '@/features/editor/state/ui-state'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'

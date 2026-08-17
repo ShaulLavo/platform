@@ -25,7 +25,7 @@ import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import { documentTokenForPath } from '@/features/address/utils/document-token'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
-import { useOpenWorkspaceRoot } from '@/hooks/use-open-workspace-root'
+import { useOpenWorkspaceRoot } from '@/features/workspace/hooks/use-open-root'
 import {
   createDefaultWorkbenchPanels,
   setWorkbenchBottomTab,
@@ -36,7 +36,7 @@ import { toast } from 'sonner'
 
 import { log } from '@/lib/client-logging'
 import { fetchRecentEntries } from '@/lib/file-server'
-import { readWorkspaceOrder } from '@/lib/workspace-cache'
+import { readWorkspaceOrder } from '@/features/workspace/state/cache'
 
 /**
  * The inbound edge for everything `addressedWorkspaceCache` could not decide.

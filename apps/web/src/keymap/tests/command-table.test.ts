@@ -1,7 +1,7 @@
 import { commandDisabledReason } from '@/keymap/command-enablement'
 import { describe, expect, it } from 'vitest'
 
-import { commandPaletteItems } from '@/components/command-palette/command-palette-utils'
+import { commandPaletteItems } from '@/features/command-palette/command-palette-utils'
 import { platformCommandSpecs } from '@/keymap/command-registry'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
 import { commandRequirement, platformCommands } from '@/keymap/table'

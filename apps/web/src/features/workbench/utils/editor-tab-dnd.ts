@@ -1,6 +1,6 @@
 import type { UniqueIdentifier } from '@dnd-kit/core'
 
-import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
+import type { EditorTabModel } from '@/features/workspace/utils/tab-types'
 
 export type EditorTabReorderIntent = {
   readonly tabId: string

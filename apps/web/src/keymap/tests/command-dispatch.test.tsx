@@ -2,7 +2,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 
-import { FocusProvider } from '@/components/workspace/focus/providers/focus-provider'
+import { FocusProvider } from '@/features/workspace/providers/focus-provider'
 import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import { fetchSettings, saveSettings } from '@/features/settings/utils/api'
 import { settingsKeys } from '@/features/settings/utils/query-keys'

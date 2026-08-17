@@ -1,7 +1,7 @@
 import { TerminalIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 
-import { useFocus } from '@/components/workspace/focus/providers/focus-state'
+import { useFocus } from '@/features/workspace/providers/focus-state'
 import { TerminalPanel } from '@/features/terminal/components/panel'
 import { DiagnosticsPanel } from '@/features/workbench/components/diagnostics-panel'
 import {

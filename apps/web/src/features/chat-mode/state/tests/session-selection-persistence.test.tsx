@@ -5,7 +5,7 @@ import {
   createSessionSelectionStore,
   resetSessionSelectionStore,
 } from '@/features/chat-mode/state/session-selection-store'
-import { readSessionSelectionCache } from '@/lib/workspace-cache'
+import { readSessionSelectionCache } from '@/features/workspace/state/cache'
 import { expect, test } from '../../../../../test/fixtures'
 
 // A DOM test on purpose: the durability being proved here is localStorage, and the node

@@ -19,8 +19,8 @@ import { setSessionProjectOpener } from '@/features/chat-mode/state/session-comm
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
 import { activeSession } from '@/features/chat-mode/utils/active-session'
 import { compareSessionsForRail } from '@/features/chat-mode/utils/session-order'
-import { useOpenWorkspaceRoot } from '@/hooks/use-open-workspace-root'
-import { useActiveProjectStore } from '@/state/active-project-store'
+import { useOpenWorkspaceRoot } from '@/features/workspace/hooks/use-open-root'
+import { useActiveProjectStore } from '@/features/workspace/state/active-project'
 
 const NO_PROJECT_THREAD_IDS: readonly never[] = []
 

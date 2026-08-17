@@ -3,7 +3,7 @@ import type {
   EditorSnapZone,
   EditorSplitDirection,
   EditorSplitScope,
-} from '@/components/workspace/editor-tabs/utils/editor-tab-model'
+} from '@/features/workspace/utils/tab-model'
 import {
   useEditorDocumentStoreApi,
   type EditorDocumentStoreApi,

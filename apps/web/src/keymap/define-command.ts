@@ -4,7 +4,7 @@ import type { RegisterableHotkey } from '@tanstack/react-hotkeys'
 import type { QueryClient } from '@tanstack/react-query'
 
 import type { Theme } from '@/components/theme-context'
-import type { FocusArea } from '@/components/workspace/focus/providers/focus-state'
+import type { FocusArea } from '@/features/workspace/providers/focus-state'
 import type { ChatModePanels } from '@/features/chat-mode/utils/panels'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import type { EditorDocumentStoreApi } from '@/features/editor/state/document-state'

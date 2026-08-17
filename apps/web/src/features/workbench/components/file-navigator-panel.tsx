@@ -1,13 +1,13 @@
 import { useCallback, useMemo, useState } from 'react'
 
-import { FilesPane } from '@/components/workspace/file-tree/components/files-pane'
+import { FilesPane } from '@/features/workspace/components/files-pane'
 import {
   FileTreeActionsContext,
   type FileTreeActions,
-} from '@/components/workspace/file-tree/providers/actions-context'
+} from '@/features/workspace/providers/actions-context'
 import { FileNavigatorHeader } from '@/features/workbench/components/file-navigator-header'
 import { createVisibleTreeItemCountStore } from '@/features/workbench/utils/visible-tree-item-count-store'
-import { useWorkspaceTreeForRootPath } from '@/hooks/use-workspace-tree'
+import { useWorkspaceTreeForRootPath } from '@/features/workspace/hooks/use-tree'
 
 export function FileNavigatorPanel({ rootPath }: { readonly rootPath: string }) {
   const { loadTreeDirectory, prefetchTreeDirectory, treeState } =
