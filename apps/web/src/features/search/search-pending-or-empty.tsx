@@ -1,8 +1,8 @@
-import { CircleNotchIcon } from '@phosphor-icons/react'
+import { MagnifyingGlassIcon } from '@phosphor-icons/react'
+import { EmptyState } from '@workspace/ui/components/empty-state'
+import { LoadingState } from '@workspace/ui/components/loading-state'
 
 import type { SearchBufferStatus } from '@/features/search/search-buffer-state'
-import { SearchCenteredState } from '@/features/search/search-centered-state'
-import { SearchEmptyState } from '@/features/search/search-empty-state'
 
 export function SearchPendingOrEmpty({
   className,
@@ -12,18 +12,14 @@ export function SearchPendingOrEmpty({
   status: SearchBufferStatus
 }) {
   if (status === 'loading') {
-    return (
-      <SearchCenteredState className={className}>
-        <CircleNotchIcon className='size-4 animate-spin' />
-        Searching
-      </SearchCenteredState>
-    )
+    return <LoadingState className={className} label='Searching' rows={5} />
   }
 
   return (
-    <SearchEmptyState
+    <EmptyState
       className={className}
       description='Try a different query.'
+      icon={<MagnifyingGlassIcon className='size-5' />}
       title='No matches'
     />
   )

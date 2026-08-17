@@ -1,5 +1,6 @@
 import type { EditorKeymapLayer } from '@singapor/core'
 import { FileDashedIcon } from '@phosphor-icons/react'
+import { EmptyState } from '@workspace/ui/components/empty-state'
 
 import {
   EMPTY_GIT_FILES,
@@ -48,18 +49,19 @@ export function CodePanel({
             tabId={activeTab.id}
           />
         ) : (
-          <div className='grid h-full place-items-center'>
-            <div className='flex flex-col items-center gap-3'>
-              <FileDashedIcon className='text-muted-foreground/50 size-8' />
-              <p className='text-muted-foreground text-sm'>No file selected</p>
-              <p className='text-muted-foreground/70 flex items-center gap-2 text-xs'>
+          <EmptyState
+            className='h-full'
+            hint={
+              <>
                 <kbd className='border-border bg-muted text-muted-foreground rounded border px-1.5 py-0.5 font-mono text-[10px]'>
                   ⌘P
                 </kbd>
                 Quick access
-              </p>
-            </div>
-          </div>
+              </>
+            }
+            icon={<FileDashedIcon className='size-8' />}
+            title='No file selected'
+          />
         )}
       </div>
     </section>

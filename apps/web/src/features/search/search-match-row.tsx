@@ -54,7 +54,8 @@ export const SearchMatchRow = memo(
         className={cn(
           'group grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 overflow-hidden px-2 py-1.5 text-left text-xs',
           compact && 'h-6 gap-1 px-1.5 py-0',
-          active && 'bg-muted/60',
+          active && 'bg-row-selected',
+          !active && 'hover:bg-row-hover',
           className,
         )}
       >
@@ -152,8 +153,8 @@ export const SearchNameMatchRow = memo(
         className={cn(
           'grid w-full min-w-0 grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-1.5 overflow-hidden px-2 py-1.5 text-left outline-none focus-visible:ring-1 focus-visible:ring-ring/50',
           compact && 'h-6 grid-cols-[14px_minmax(0,1fr)_auto] gap-1 px-1.5 py-0',
-          active && 'bg-muted/60',
-          !active && 'hover:bg-muted/55',
+          active && 'bg-row-selected',
+          !active && 'hover:bg-row-hover',
           className,
         )}
         tabIndex={-1}

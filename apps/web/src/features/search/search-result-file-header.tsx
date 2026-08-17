@@ -28,8 +28,8 @@ export const SearchResultFileHeader = memo(
       <div
         className={cn(
           'grid w-full grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-1.5 rounded-sm border-l border-transparent px-2 py-1.5 text-left',
-          active && 'bg-accent',
-          !active && 'hover:bg-muted',
+          active && 'bg-row-selected',
+          !active && 'hover:bg-row-hover',
         )}
       >
         <button

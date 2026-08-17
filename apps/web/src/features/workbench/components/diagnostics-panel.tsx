@@ -3,6 +3,8 @@ import type {
   LanguageServerDiagnosticSummary,
   LanguageServerStatus,
 } from '@singapor/lsp-plugin'
+import { EmptyState } from '@workspace/ui/components/empty-state'
+import { LoadingState } from '@workspace/ui/components/loading-state'
 import { cn } from '@workspace/ui/lib/utils'
 
 import { useEditorLanguageServerStatus } from '@/features/editor/hooks/use-editor-language-server-status'
@@ -27,14 +29,20 @@ export function DiagnosticsPanel() {
 
   return (
     <section className='flex h-full min-h-0 min-w-0 flex-col overflow-hidden'>
-      {statusBarSource
-        ? renderDiagnosticsStatus({
-            languageServerStatus,
-            onOpenDiagnostic: commands.openDefinition,
-            onPreviewDiagnostic: previewDiagnostic,
-            source: statusBarSource,
-          })
-        : renderDiagnosticsEmpty('No active editor diagnostics')}
+      {statusBarSource ? (
+        renderDiagnosticsStatus({
+          languageServerStatus,
+          onOpenDiagnostic: commands.openDefinition,
+          onPreviewDiagnostic: previewDiagnostic,
+          source: statusBarSource,
+        })
+      ) : (
+        <EmptyState
+          className='min-h-0 flex-1'
+          description='Open a file to see its diagnostics.'
+          title='No active editor'
+        />
+      )}
     </section>
   )
 }
@@ -52,7 +60,7 @@ function renderDiagnosticsStatus({
 }) {
   const { diagnostics, status } = languageServerStatus
   if (!diagnostics || diagnostics.counts.total === 0) {
-    return renderDiagnosticsEmpty(emptyDiagnosticsMessage(status))
+    return renderDiagnosticsState(status)
   }
 
   return (
@@ -128,7 +136,7 @@ function renderDiagnosticList({
             key={diagnosticKey(diagnostic, index)}
           >
             <button
-              className='hover:bg-muted/55 focus-visible:ring-ring/50 block w-full rounded px-2 py-2 text-left outline-none focus-visible:ring-1'
+              className='hover:bg-row-hover focus-visible:ring-ring/50 block w-full rounded px-2 py-2 text-left outline-none focus-visible:ring-1'
               type='button'
               onClick={() => onOpenDiagnostic(target)}
               onFocus={() => onPreviewDiagnostic(target)}
@@ -146,19 +154,15 @@ function renderDiagnosticList({
   )
 }
 
-function renderDiagnosticsEmpty(message: string) {
-  return (
-    <div className='text-muted-foreground grid min-h-0 flex-1 place-items-center p-4 text-xs'>
-      {message}
-    </div>
-  )
-}
+function renderDiagnosticsState(status: LanguageServerStatus) {
+  if (status === 'loading') {
+    return <LoadingState className='flex-1' label='Loading diagnostics' rows={3} />
+  }
+  if (status === 'error') {
+    return <EmptyState className='min-h-0 flex-1' title='Diagnostics unavailable' tone='error' />
+  }
 
-function emptyDiagnosticsMessage(status: LanguageServerStatus) {
-  if (status === 'loading') return 'Diagnostics loading'
-  if (status === 'error') return 'Diagnostics unavailable'
-
-  return 'No problems reported'
+  return <EmptyState className='min-h-0 flex-1' title='No problems reported' />
 }
 
 /**

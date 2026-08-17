@@ -71,7 +71,7 @@ export const LogsEventRow = memo(
         <Accordion className='block' value={value}>
           <AccordionItem className='border-b-0' value={event.id}>
             <div
-              className='hover:bg-muted/35 grid min-h-[54px] w-full cursor-pointer grid-cols-[64px_minmax(0,1fr)_auto] items-center gap-2 px-2 py-2 transition-colors'
+              className='hover:bg-row-hover grid min-h-[54px] w-full cursor-pointer grid-cols-[64px_minmax(0,1fr)_auto] items-center gap-2 px-2 py-2 transition-colors'
               aria-expanded={expanded}
               aria-label={expanded ? 'Collapse log event' : 'Expand log event'}
               data-log-row-summary=''

@@ -16,6 +16,7 @@ import { compareSearchPaths } from '@/features/search/search-sort'
 import { basename, toTreePath } from '@/lib/path-formatters'
 import { colorForFileIcon, iconForEntry, type ResolvedFileIcon } from '@/lib/file-icons'
 import { Button } from '@workspace/ui/components/button'
+import { EmptyState } from '@workspace/ui/components/empty-state'
 import { cn } from '@workspace/ui/lib/utils'
 
 type LanguageServerReferencesPaneProps = {
@@ -88,7 +89,7 @@ export function LanguageServerReferencesPane({
       </div>
       <div className='min-h-0 overflow-y-auto py-1'>
         {groups.length === 0 ? (
-          <div className='text-muted-foreground px-3 py-4 text-xs'>No references found</div>
+          <EmptyState align='start' className='px-3 py-4' title='No references found' />
         ) : (
           groups.map((group) => {
             const collapsed = collapsedPaths.has(group.path)
@@ -129,7 +130,7 @@ function ReferenceGroupHeader({
 
   return (
     <button
-      className='hover:bg-muted/55 focus-visible:ring-ring/50 grid h-7 w-full grid-cols-[14px_14px_minmax(0,1fr)_auto] items-center gap-1.5 px-2 text-left text-xs outline-none focus-visible:ring-1'
+      className='hover:bg-row-hover focus-visible:ring-ring/50 grid h-7 w-full grid-cols-[14px_14px_minmax(0,1fr)_auto] items-center gap-1.5 px-2 text-left text-xs outline-none focus-visible:ring-1'
       type='button'
       onClick={() => onToggle(group.path)}
     >
@@ -171,7 +172,7 @@ function ReferenceRow({
 
   return (
     <button
-      className='group hover:bg-muted/55 focus-visible:ring-ring/50 grid h-6 w-full grid-cols-[38px_minmax(0,1fr)] items-center gap-2 px-2 pl-7 text-left text-xs outline-none focus-visible:ring-1'
+      className='group hover:bg-row-hover focus-visible:ring-ring/50 grid h-6 w-full grid-cols-[38px_minmax(0,1fr)] items-center gap-2 px-2 pl-7 text-left text-xs outline-none focus-visible:ring-1'
       type='button'
       onClick={() => onOpenReference(target)}
       onFocus={() => onPreviewReference(target)}

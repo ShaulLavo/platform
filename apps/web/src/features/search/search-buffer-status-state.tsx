@@ -1,5 +1,7 @@
+import { WarningCircleIcon } from '@phosphor-icons/react'
+import { EmptyState } from '@workspace/ui/components/empty-state'
+
 import type { SearchBufferStatus } from '@/features/search/search-buffer-state'
-import { SearchErrorState } from '@/features/search/search-error-state'
 import { SearchIdleState } from '@/features/search/search-idle-state'
 import { SearchPendingOrEmpty } from '@/features/search/search-pending-or-empty'
 
@@ -14,7 +16,14 @@ export function SearchBufferStatusState({
     return <SearchIdleState />
   }
   if (status === 'error') {
-    return <SearchErrorState message={error} />
+    return (
+      <EmptyState
+        description={error ?? 'Search failed.'}
+        icon={<WarningCircleIcon className='size-6' weight='duotone' />}
+        title='Search failed'
+        tone='error'
+      />
+    )
   }
 
   return <SearchPendingOrEmpty status={status} />

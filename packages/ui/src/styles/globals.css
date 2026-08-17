@@ -64,6 +64,9 @@
   --color-popover-solid: var(--popover-solid);
   --color-muted-solid: var(--muted-solid);
   --color-accent-solid: var(--accent-solid);
+  /* Row interaction states. Overlay tints, not surfaces — see :root. */
+  --color-row-hover: var(--row-hover);
+  --color-row-selected: var(--row-selected);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -137,6 +140,18 @@
   --success-foreground: oklch(0.985 0.006 70);
   --warning: oklch(0.7 0.155 92);
   --warning-foreground: oklch(0.205 0.006 70);
+  /* One vocabulary for list-row interaction. These are OVERLAY TINTS, not
+     surfaces: they are painted on top of a pane that has already resolved
+     --surface-opacity, so they carry their own fixed alpha and are defined
+     in full in both :root and .dark rather than deriving from a -solid input.
+     Mixing --foreground rather than --muted is what makes them visible in
+     light mode: --muted at /60 over a white pane is a 1.4% lightness change,
+     and the /55 hover it was paired with was 0.12% away from it.
+     Selected must always outrank hover — keep the ratio at roughly 2.5x.
+     Do NOT apply an opacity modifier to these (no `bg-row-hover/50`); the
+     alpha is the design. */
+  --row-hover: color-mix(in oklch, var(--foreground) 5%, transparent);
+  --row-selected: color-mix(in oklch, var(--foreground) 12%, transparent);
   /* "new / recently added" marker. Violet is the one hue left unclaimed by the
      other status families (destructive 18, warning 92, success 165, info 230),
      so it never reads as a state the user has to act on. Same L/C register as
@@ -294,6 +309,11 @@
   --success-foreground: oklch(0.205 0.006 70);
   --warning: oklch(0.82 0.14 92);
   --warning-foreground: oklch(0.205 0.006 70);
+  /* Dark needs slightly more alpha for the same perceived step. These land the
+     hovered row on roughly --card-solid (L 0.205) and the selected row on
+     roughly --muted-solid (L 0.269), so rows sit in the existing dark ramp. */
+  --row-hover: color-mix(in oklch, var(--foreground) 7%, transparent);
+  --row-selected: color-mix(in oklch, var(--foreground) 14%, transparent);
   --update: oklch(0.74 0.145 300);
   --update-foreground: oklch(0.205 0.006 70);
   /* Same rust hue and chroma, lifted in lightness so the glyph keeps its

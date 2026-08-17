@@ -7,6 +7,7 @@ import {
   WarningCircleIcon,
 } from '@phosphor-icons/react'
 import { Button } from '@workspace/ui/components/button'
+import { EmptyState } from '@workspace/ui/components/empty-state'
 import { cn } from '@workspace/ui/lib/utils'
 import { useMemo, useRef, useState, type KeyboardEvent, type UIEvent } from 'react'
 
@@ -75,10 +76,31 @@ export function FileList({
   )
 
   if (loadState.status === 'error') {
-    return <ErrorState message={loadState.message} onRetry={onRetry} />
+    return (
+      <EmptyState
+        action={
+          <Button onClick={onRetry} size='sm' type='button' variant='outline'>
+            <ArrowClockwiseIcon data-icon='inline-start' />
+            Retry
+          </Button>
+        }
+        className='min-h-80 p-6'
+        description={loadState.message}
+        icon={<WarningCircleIcon className='size-8' weight='duotone' />}
+        title='Could not load this folder'
+        tone='error'
+      />
+    )
   }
   if (entries.length === 0) {
-    return <EmptyState mode={mode} />
+    return (
+      <EmptyState
+        className='min-h-80 p-6'
+        description={pickerCopy(mode).emptyDescription}
+        icon={<FolderOpenIcon className='size-8' weight='duotone' />}
+        title='Nothing here'
+      />
+    )
   }
 
   return (
@@ -306,8 +328,8 @@ function FileRow({
       className={cn(
         'grid h-11 w-full grid-cols-[minmax(0,1fr)_80px_116px_74px] items-center gap-3 rounded-md px-1.5 text-left text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring/50 max-sm:grid-cols-[minmax(0,1fr)_68px]',
         'active:scale-[0.995] motion-reduce:active:scale-100',
-        selected && 'bg-info/10 text-foreground',
-        !selected && interactive && 'hover:bg-muted/70',
+        selected && 'bg-row-selected text-foreground',
+        !selected && interactive && 'hover:bg-row-hover',
         !interactive && 'cursor-not-allowed text-muted-foreground/60',
         interactive && !pickable && 'text-muted-foreground/75',
       )}
@@ -336,39 +358,5 @@ function FileRow({
         {formatSizeLabel(entry)}
       </div>
     </button>
-  )
-}
-
-function ErrorState({ message, onRetry }: { message: string; onRetry: () => void }) {
-  return (
-    <div className='flex min-h-80 items-center justify-center p-6'>
-      <div className='flex max-w-sm flex-col items-center gap-3 text-center'>
-        <WarningCircleIcon className='text-destructive size-8' weight='duotone' />
-        <div>
-          <div className='font-medium'>Could not load this folder</div>
-          <p className='text-muted-foreground mt-1 text-xs'>{message}</p>
-        </div>
-        <Button onClick={onRetry} size='sm' type='button' variant='outline'>
-          <ArrowClockwiseIcon data-icon='inline-start' />
-          Retry
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-function EmptyState({ mode }: { mode: FilePickerMode }) {
-  const copy = pickerCopy(mode)
-
-  return (
-    <div className='flex min-h-80 items-center justify-center p-6'>
-      <div className='flex max-w-sm flex-col items-center gap-3 text-center'>
-        <FolderOpenIcon className='text-muted-foreground size-8' weight='duotone' />
-        <div>
-          <div className='font-medium'>Nothing here</div>
-          <p className='text-muted-foreground mt-1 text-xs'>{copy.emptyDescription}</p>
-        </div>
-      </div>
-    </div>
   )
 }

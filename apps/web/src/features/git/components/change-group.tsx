@@ -47,7 +47,7 @@ export function ChangeGroup({
       onOpenChange={(nextOpen) => setSectionOpen(section, nextOpen)}
     >
       <div
-        className='group/group hover:bg-muted/70 flex h-7 w-full items-center px-2 text-xs font-medium transition-colors'
+        className='group/group hover:bg-row-hover flex h-7 w-full items-center px-2 text-xs font-medium transition-colors'
         onContextMenu={handleContextMenu}
         onKeyDown={handleHeaderKeyDown}
       >

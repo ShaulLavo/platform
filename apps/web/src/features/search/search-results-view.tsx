@@ -30,9 +30,10 @@ import {
   type SearchResultItem,
   type SearchResultId,
 } from '@/features/search/search-result-items'
-import { SearchErrorState } from '@/features/search/search-error-state'
 import { SearchIdleState } from '@/features/search/search-idle-state'
 import { SearchPendingOrEmpty } from '@/features/search/search-pending-or-empty'
+import { WarningCircleIcon } from '@phosphor-icons/react'
+import { EmptyState } from '@workspace/ui/components/empty-state'
 import { cn } from '@workspace/ui/lib/utils'
 
 const SEARCH_PREVIEW_MAX_CHARACTERS = 96
@@ -117,7 +118,15 @@ export function SearchResultsView({
     return <SearchIdleState className={className} />
   }
   if (status === 'error' && groups.length === 0) {
-    return <SearchErrorState className={className} message={error} />
+    return (
+      <EmptyState
+        className={className}
+        description={error ?? 'Search failed.'}
+        icon={<WarningCircleIcon className='size-6' weight='duotone' />}
+        title='Search failed'
+        tone='error'
+      />
+    )
   }
   if (groups.length === 0) {
     return <SearchPendingOrEmpty className={className} status={status} />

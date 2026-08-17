@@ -35,8 +35,8 @@ export const SearchFileGroupHeader = memo(
         className={cn(
           'grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-1.5 px-2 py-1.5 text-left',
           compact && 'h-6 gap-1 overflow-hidden px-1.5 py-0',
-          active && 'bg-muted/60',
-          !active && 'hover:bg-muted/55',
+          active && 'bg-row-selected',
+          !active && 'hover:bg-row-hover',
           className,
         )}
       >

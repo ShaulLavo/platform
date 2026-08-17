@@ -39,7 +39,7 @@ export function FileRow({ rootPath, row }: { rootPath: string; row: ChangeRow })
   return (
     <>
       <div
-        className='group/row hover:bg-muted/70 focus-visible:ring-ring/50 grid h-6 cursor-pointer grid-cols-[22px_minmax(0,1fr)_auto_28px] items-center px-2 text-xs leading-4 outline-none focus-visible:ring-1'
+        className='group/row hover:bg-row-hover focus-visible:ring-ring/50 grid h-6 cursor-pointer grid-cols-[22px_minmax(0,1fr)_auto_28px] items-center px-2 text-xs leading-4 outline-none focus-visible:ring-1'
         role='button'
         tabIndex={0}
         onClick={handleOpen}

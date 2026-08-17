@@ -1,3 +1,5 @@
+import { EmptyState } from '@workspace/ui/components/empty-state'
+import { LoadingState } from '@workspace/ui/components/loading-state'
 import { cn } from '@workspace/ui/lib/utils'
 import { memo, useMemo, type ComponentProps } from 'react'
 
@@ -10,7 +12,6 @@ import { changeRows } from './utils/change-rows'
 import { ChangeGroup } from './components/change-group'
 import { CommitControls } from './components/commit-controls'
 import { Header } from './components/header'
-import { PanelShell } from './components/panel-shell'
 
 const EMPTY_FILES: readonly FileStatus[] = []
 
@@ -30,13 +31,21 @@ function PanelContent({ className, rootPath }: ComponentProps<'section'> & { roo
   const setFocusArea = useFocus((state) => state.setFocusArea)
 
   if (status.isPending) {
-    return <PanelShell className={className} label='Loading Git' />
+    return <LoadingState className={className} label='Loading Git' rows={4} />
   }
   if (status.isError) {
-    return <PanelShell className={className} label={errorMessage(status.error)} tone='error' />
+    return (
+      <EmptyState
+        align='start'
+        className={className}
+        description={errorMessage(status.error)}
+        title='Git is unavailable'
+        tone='error'
+      />
+    )
   }
   if (!repository) {
-    return <PanelShell className={className} label='No Git repository' />
+    return <EmptyState align='start' className={className} title='No Git repository' />
   }
 
   return (
