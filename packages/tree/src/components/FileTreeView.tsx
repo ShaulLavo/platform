@@ -17,6 +17,16 @@ import {
   HEADER_SLOT_NAME,
 } from '@workspace/tree/utils/constants'
 import { FileTreeController } from '@workspace/tree/utils/model/FileTreeController'
+import {
+  getStickyKeyboardFocusPath,
+  getStickyKeyboardScrollTopEntry,
+  getStickyKeyboardViewportOffsetEntry,
+  NO_STICKY_KEYBOARD_FOCUS,
+  preserveStickyKeyboardFocusAtScrollTop,
+  restoreStickyKeyboardViewportOffset,
+  settleStickyKeyboardFocus,
+  type StickyKeyboardFocusMode,
+} from '@workspace/tree/utils/render/stickyFocusMode'
 import type {
   FileTreeStickyRowCandidate,
   FileTreeViewProps,
@@ -1193,36 +1203,8 @@ export function FileTreeView({
   contextMenuStateRef.current = contextMenuState
 
   const pendingStickyFocusPathRef = useRef<string | null>(null)
-  const pendingStickyKeyboardFocusPathRef = useRef<string | null>(null)
-  const pendingStickyKeyboardViewportOffsetRef = useRef<{
-    path: string
-    viewportOffset: number
-  } | null>(null)
-  const pendingStickyKeyboardScrollTopRef = useRef<{
-    path: string
-    scrollTop: number
-  } | null>(null)
+  const stickyKeyboardFocusRef = useRef<StickyKeyboardFocusMode>(NO_STICKY_KEYBOARD_FOCUS)
   const pointerFocusScrollPathRef = useRef<string | null>(null)
-
-  // Keep the coupled sticky-keyboard refs moving together so each transition
-  // leaves exactly one preservation mode active.
-  const clearPendingStickyKeyboardState = (): void => {
-    pendingStickyKeyboardFocusPathRef.current = null
-    pendingStickyKeyboardViewportOffsetRef.current = null
-    pendingStickyKeyboardScrollTopRef.current = null
-  }
-
-  const preserveStickyKeyboardFocusAtScrollTop = (path: string, scrollTop: number | null): void => {
-    pendingStickyKeyboardFocusPathRef.current = path
-    pendingStickyKeyboardViewportOffsetRef.current = null
-    pendingStickyKeyboardScrollTopRef.current = scrollTop == null ? null : { path, scrollTop }
-  }
-
-  const restoreStickyKeyboardViewportOffset = (path: string, viewportOffset: number): void => {
-    pendingStickyKeyboardFocusPathRef.current = null
-    pendingStickyKeyboardViewportOffsetRef.current = { path, viewportOffset }
-    pendingStickyKeyboardScrollTopRef.current = null
-  }
 
   // Trees that mount with an already-open search session (because a caller
   // passed `initialSearchQuery`) should not steal focus from sibling trees
@@ -1413,7 +1395,10 @@ export function FileTreeView({
       const anchorButton = getTriggerAnchorButton(targetPath)
       if (anchorButton?.dataset.fileTreeStickyRow === 'true') {
         const scrollElement = scrollRef.current
-        preserveStickyKeyboardFocusAtScrollTop(targetPath, scrollElement?.scrollTop ?? null)
+        stickyKeyboardFocusRef.current = preserveStickyKeyboardFocusAtScrollTop(
+          targetPath,
+          scrollElement?.scrollTop ?? null,
+        )
         domFocusOwnerRef.current = true
         setActiveItemPath((previousPath) =>
           previousPath === targetPath ? previousPath : targetPath,
@@ -2002,7 +1987,7 @@ export function FileTreeView({
       // Shift+F10 may also be followed by a native contextmenu event, so this
       // preservation has to be in place before the controller emits.
       const scrollElement = scrollRef.current
-      preserveStickyKeyboardFocusAtScrollTop(
+      stickyKeyboardFocusRef.current = preserveStickyKeyboardFocusAtScrollTop(
         activeStickyFocusPath,
         scrollElement?.scrollTop ?? null,
       )
@@ -2118,7 +2103,10 @@ export function FileTreeView({
       nextFocusedPath != null &&
       shouldPreserveStickyKeyboardFocusPath
     ) {
-      preserveStickyKeyboardFocusAtScrollTop(nextFocusedPath, scrollElement?.scrollTop ?? null)
+      stickyKeyboardFocusRef.current = preserveStickyKeyboardFocusAtScrollTop(
+        nextFocusedPath,
+        scrollElement?.scrollTop ?? null,
+      )
       domFocusOwnerRef.current = true
       setActiveItemPath((previousPath) =>
         previousPath === nextFocusedPath ? previousPath : nextFocusedPath,
@@ -2129,7 +2117,7 @@ export function FileTreeView({
       const stickyCollapseStaysOnRow =
         shouldRestoreCollapsedStickyFocusViewport && nextFocusedPath === effectiveFocusedPath
       if (nextFocusedPath != null && (stickyArrowUpExitsStack || stickyCollapseStaysOnRow)) {
-        restoreStickyKeyboardViewportOffset(
+        stickyKeyboardFocusRef.current = restoreStickyKeyboardViewportOffset(
           nextFocusedPath,
           getStickyKeyboardViewportOffset(
             rootRef.current,
@@ -2146,7 +2134,7 @@ export function FileTreeView({
           previousPath === nextFocusedPath ? previousPath : nextFocusedPath,
         )
       } else {
-        clearPendingStickyKeyboardState()
+        stickyKeyboardFocusRef.current = NO_STICKY_KEYBOARD_FOCUS
       }
     }
 
@@ -2689,16 +2677,15 @@ export function FileTreeView({
       restoreTreeFocusAfterSearchCloseRef.current && !isSearchOpen
     const preservedViewportOffset = restoreTreeFocusViewportOffsetRef.current ?? 0
     const pendingStickyFocusPath = pendingStickyFocusPathRef.current
-    const pendingStickyKeyboardFocusPath = pendingStickyKeyboardFocusPathRef.current
-    const pendingStickyKeyboardViewportOffset = pendingStickyKeyboardViewportOffsetRef.current
-    const pendingStickyKeyboardScrollTop = pendingStickyKeyboardScrollTopRef.current
+    const stickyKeyboardFocus = stickyKeyboardFocusRef.current
+    const stickyFocusPath = getStickyKeyboardFocusPath(stickyKeyboardFocus)
+    const stickyViewportEntry = getStickyKeyboardViewportOffsetEntry(stickyKeyboardFocus)
+    const stickyScrollTopEntry = getStickyKeyboardScrollTopEntry(stickyKeyboardFocus)
     const focusWithinTree = activeTreeElement != null
     const shouldOwnDomFocus = domFocusOwnerRef.current || focusWithinTree
     const focusedPathChanged = previousFocusedPathRef.current !== focusedPath
     const shouldPreserveStickyKeyboardFocusViewport =
-      pendingStickyKeyboardFocusPath != null &&
-      pendingStickyKeyboardFocusPath === focusedPath &&
-      focusedPath != null
+      stickyFocusPath != null && stickyFocusPath === focusedPath && focusedPath != null
     const pointerFocusScrollPath = pointerFocusScrollPathRef.current
     const shouldSuppressPointerFocusScroll =
       pointerFocusScrollPath != null && pointerFocusScrollPath === focusedPath
@@ -2761,23 +2748,23 @@ export function FileTreeView({
       )
     const shouldRestoreStickyKeyboardViewportOffset =
       !shouldSuppressDomFocusForScrollRequest &&
-      pendingStickyKeyboardViewportOffset != null &&
-      pendingStickyKeyboardViewportOffset.path === focusedPath &&
+      stickyViewportEntry != null &&
+      stickyViewportEntry.path === focusedPath &&
       scrollFocusedRowToViewportOffset(
         scrollElement,
         focusedIndex,
         itemHeight,
         resolvedViewportHeight,
         totalScrollableHeight,
-        pendingStickyKeyboardViewportOffset.viewportOffset,
+        stickyViewportEntry.viewportOffset,
       )
     const shouldRestoreStickyKeyboardScrollTop =
       !shouldSuppressDomFocusForScrollRequest &&
-      pendingStickyKeyboardScrollTop != null &&
-      pendingStickyKeyboardScrollTop.path === focusedPath &&
-      scrollElement.scrollTop !== pendingStickyKeyboardScrollTop.scrollTop
+      stickyScrollTopEntry != null &&
+      stickyScrollTopEntry.path === focusedPath &&
+      scrollElement.scrollTop !== stickyScrollTopEntry.scrollTop
     if (shouldRestoreStickyKeyboardScrollTop) {
-      scrollElement.scrollTop = pendingStickyKeyboardScrollTop.scrollTop
+      scrollElement.scrollTop = stickyScrollTopEntry.scrollTop
     }
 
     if (
@@ -2842,9 +2829,9 @@ export function FileTreeView({
       focusedPathChanged ||
       shouldRestoreTreeFocusAfterSearchClose ||
       pendingStickyFocusPath === focusedPath ||
-      pendingStickyKeyboardFocusPath === focusedPath ||
-      pendingStickyKeyboardViewportOffset?.path === focusedPath ||
-      pendingStickyKeyboardScrollTop?.path === focusedPath ||
+      stickyFocusPath === focusedPath ||
+      stickyViewportEntry?.path === focusedPath ||
+      stickyScrollTopEntry?.path === focusedPath ||
       activeTreeElementPath == null ||
       activeTreeElementPath !== focusedPath
     ) {
@@ -2852,15 +2839,10 @@ export function FileTreeView({
       if (pendingStickyFocusPath === focusedPath) {
         pendingStickyFocusPathRef.current = null
       }
-      if (pendingStickyKeyboardFocusPath === focusedPath) {
-        pendingStickyKeyboardFocusPathRef.current = null
-      }
-      if (pendingStickyKeyboardViewportOffset?.path === focusedPath) {
-        pendingStickyKeyboardViewportOffsetRef.current = null
-      }
-      if (pendingStickyKeyboardScrollTop?.path === focusedPath) {
-        pendingStickyKeyboardScrollTopRef.current = null
-      }
+      stickyKeyboardFocusRef.current = settleStickyKeyboardFocus(
+        stickyKeyboardFocusRef.current,
+        focusedPath,
+      )
       restoreTreeFocusAfterSearchCloseRef.current = false
       restoreTreeFocusViewportOffsetRef.current = null
     }
