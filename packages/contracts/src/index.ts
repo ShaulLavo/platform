@@ -308,11 +308,15 @@ export {
   type LogLiveStreamItem,
 } from './log-dashboard'
 export {
+  lspServerOverrideSchema,
+  lspServerOverridesSchema,
   modelRefKey,
   providerInstanceConfigSchema,
   providerInstanceConfigsSchema,
   REDACTED_SETTINGS_VALUE,
   type KeybindingOverrides,
+  type LspServerOverride,
+  type LspServerOverrides,
   type ModelRef,
   type ProviderEnvironmentVariable,
   type ProviderInstanceConfig,

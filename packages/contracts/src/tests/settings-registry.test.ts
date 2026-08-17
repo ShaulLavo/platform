@@ -10,7 +10,11 @@ import {
   type SettingsValues,
 } from '../settings/keys'
 import { defineSetting, registryProblems } from '../settings/registry'
-import { modelRefListSchema, providerInstanceConfigsSchema } from '../settings'
+import {
+  lspServerOverridesSchema,
+  modelRefListSchema,
+  providerInstanceConfigsSchema,
+} from '../settings'
 
 /**
  * Type-derivation gate.
@@ -29,6 +33,10 @@ const _instancesAreProviderConfigs: SettingsValues['providers.instances'] = v.pa
 const _hiddenIsModelRefList: SettingsValues['models.hidden'] = v.parse(modelRefListSchema, [
   { providerInstanceId: 'codex-personal', model: 'gpt-5' },
 ])
+const _serversAreOverrides: SettingsValues['lsp.servers'] = v.parse(lspServerOverridesSchema, {
+  typescript: { disabled: true },
+  'custom-lsp': { command: ['custom-lsp-server', '--stdio'], extensions: ['.custom'] },
+})
 const _overridesAreNullableStrings: SettingsValues['keybindings.overrides'] = {
   'workspace.saveFile': 'Mod+S',
   'workspace.saveAllFiles': null,
@@ -44,6 +52,7 @@ const _unknownKeyHasNoType: SettingsValues['editor.notRegistered'] = 13
 void _instancesAreProviderConfigs
 void _overridesAreNullableStrings
 void _hiddenIsModelRefList
+void _serversAreOverrides
 void _overrideRejectsNumber
 void _instancesRejectObject
 void _unknownKeyHasNoType
@@ -181,6 +190,10 @@ describe('settings registry', () => {
     const executionReaching = [
       'providers.instances',
       'keybindings.overrides',
+      'lsp.servers',
+      'lsp.experimental.tyForPython',
+      'lsp.idleTimeoutMs',
+      'lsp.downloadRuntimes',
     ] as const satisfies readonly (keyof typeof SETTINGS_REGISTRY)[]
 
     for (const id of executionReaching) {

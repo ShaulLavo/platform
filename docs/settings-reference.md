@@ -64,6 +64,15 @@ stays safe to read, share and export.
 | ----------------------- | ------- | ----------- | -------------------------------------------------------------------------------------------- |
 | `keybindings.overrides` | `{}`    | application | Command id to hotkey. A missing key keeps the default; an explicit null unbinds the command. |
 
+## Language servers
+
+| Setting                        | Default  | Scope   | What it does                                                                                                                                                                                   |
+| ------------------------------ | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `lsp.experimental.tyForPython` | `false`  | machine | Use ty instead of pyright for Python. Files already open keep their current server until reopened.                                                                                             |
+| `lsp.idleTimeoutMs`            | `120000` | machine | Milliseconds an unused language server stays alive after the last editor disconnects. 0 shuts it down immediately.                                                                             |
+| `lsp.downloadRuntimes`         | `true`   | machine | Download missing language servers on demand. Off means only servers already on PATH are used.                                                                                                  |
+| `lsp.servers`                  | `{}`     | machine | Per-server overrides: command, env, extensions, initialization, or disabled. Applies the next time a server starts; one already running for a folder keeps its old command until it idles out. |
+
 ## Logs
 
 | Setting                 | Default | Scope  | What it does                                      |

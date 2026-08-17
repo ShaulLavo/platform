@@ -1,3 +1,4 @@
+import { DEFAULT_SETTING_VALUES } from '@workspace/contracts'
 import { createHash } from 'node:crypto'
 import { accessSync, constants } from 'node:fs'
 import { access, chmod, mkdir, readdir, rm, writeFile } from 'node:fs/promises'
@@ -40,7 +41,30 @@ const lspRoot = platformHomePath('lsp')
 const nodePackageRoot = path.join(lspRoot, 'node')
 const toolRoot = path.join(lspRoot, 'bin')
 const nodePackageBin = path.join(nodePackageRoot, 'node_modules', '.bin')
-const disableDownloads = truthy(process.env.FS_DISABLE_LSP_DOWNLOAD)
+/**
+ * Whether missing language servers may be downloaded.
+ *
+ * Module-level rather than a parameter because the check sits eleven frames
+ * deep behind twenty `spawn` closures in `registry.ts`, none of which carry
+ * settings. Held as a *getter* so a settings write takes effect without a
+ * restart, and defaulted from the registry so a test that never calls
+ * `setLspDownloadPolicy` behaves like a default install.
+ */
+let readDownloadRuntimes: () => boolean = () => DEFAULT_SETTING_VALUES['lsp.downloadRuntimes']
+
+export function setLspDownloadPolicy(read: () => boolean): void {
+  readDownloadRuntimes = read
+}
+
+/**
+ * Exported for the polarity test only. The setting reads "may download"; every
+ * one of the eleven call sites asks "must not download", and a missing `!` here
+ * would silently stop the product downloading any language server with every
+ * other gate still green.
+ */
+export function downloadsDisabled(): boolean {
+  return !readDownloadRuntimes()
+}
 
 export async function spawnNodePackageBin(
   packageName: string,
@@ -82,7 +106,7 @@ export async function spawnClangd(root: string) {
 export async function spawnDotnetTool(toolName: string, commandName: string, root: string) {
   const bin = which(commandName, [toolRoot])
   if (bin) return spawnCommand([bin], { cwd: root })
-  if (!which('dotnet') || disableDownloads) return null
+  if (!which('dotnet') || downloadsDisabled()) return null
 
   const exit = await runCommand(['dotnet', 'tool', 'install', toolName, '--tool-path', toolRoot], {
     cwd: root,
@@ -95,7 +119,7 @@ export async function spawnDotnetTool(toolName: string, commandName: string, roo
 export async function spawnElixirLs(root: string) {
   const bin = which('elixir-ls', [toolRoot])
   if (bin) return spawnCommand([bin], { cwd: root })
-  if (!which('elixir') || !which('mix') || disableDownloads) return null
+  if (!which('elixir') || !which('mix') || downloadsDisabled()) return null
 
   const script = await downloadElixirLs()
   if (!script) return null
@@ -111,7 +135,7 @@ export async function spawnGemTool(
 ) {
   const bin = which(commandName, [toolRoot])
   if (bin) return spawnCommand([bin].concat(args), { cwd: root })
-  if (!which('ruby') || !which('gem') || disableDownloads) return null
+  if (!which('ruby') || !which('gem') || downloadsDisabled()) return null
 
   const exit = await runCommand(['gem', 'install', gemName, '--bindir', toolRoot], { cwd: root })
   if (exit !== 0) return null
@@ -122,7 +146,7 @@ export async function spawnGemTool(
 export async function spawnGoTool(commandName: string, packageName: string, root: string) {
   const bin = which(commandName, [toolRoot])
   if (bin) return spawnCommand([bin], { cwd: root })
-  if (!which('go') || disableDownloads) return null
+  if (!which('go') || downloadsDisabled()) return null
 
   const exit = await runCommand(['go', 'install', packageName], {
     cwd: root,
@@ -301,7 +325,7 @@ async function resolvePackageBinary(packageName: string, commandName: string) {
 
   const global = which(commandName)
   if (global) return global
-  if (disableDownloads) return null
+  if (downloadsDisabled()) return null
 
   await ensureNodePackage(packageName)
   return resolveLocalBinary(commandName)
@@ -341,7 +365,7 @@ async function ensurePackageJson() {
 async function downloadClangd() {
   const existing = await firstClangdInstall()
   if (existing) return existing
-  if (disableDownloads) return null
+  if (downloadsDisabled()) return null
 
   const release = await githubRelease('https://api.github.com/repos/clangd/clangd/releases/latest')
   const tag = release?.tag_name
@@ -368,7 +392,7 @@ async function downloadClangd() {
 }
 
 async function downloadJdtls(distPath: string) {
-  if (disableDownloads) return false
+  if (downloadsDisabled()) return false
 
   await mkdir(distPath, { recursive: true })
   const url =
@@ -415,7 +439,7 @@ async function downloadElixirLs() {
 }
 
 async function downloadLuaLs() {
-  if (disableDownloads) return null
+  if (downloadsDisabled()) return null
 
   const release = await githubRelease(
     'https://api.github.com/repos/LuaLS/lua-language-server/releases/latest',
@@ -443,7 +467,7 @@ async function downloadLuaLs() {
 }
 
 async function downloadTerraformLs() {
-  if (disableDownloads) return null
+  if (downloadsDisabled()) return null
 
   const response = await fetch('https://api.releases.hashicorp.com/v1/releases/terraform-ls/latest')
   if (!response.ok) return null
@@ -465,7 +489,7 @@ async function downloadTerraformLs() {
 }
 
 async function downloadPinnedRuntimeBinary(id: PinnedLspRuntimeId) {
-  if (disableDownloads) return null
+  if (downloadsDisabled()) return null
 
   const manifest: PinnedLspRuntimeManifestEntry = pinnedLspRuntimeManifest[id]
   const asset = manifest.platforms[process.platform]?.[process.arch]
@@ -488,7 +512,7 @@ async function kotlinLauncher() {
     process.platform === 'win32' ? 'kotlin-lsp.cmd' : 'kotlin-lsp.sh',
   )
   if (await exists(launcher)) return launcher
-  if (disableDownloads) return null
+  if (downloadsDisabled()) return null
 
   const release = await githubRelease(
     'https://api.github.com/repos/Kotlin/kotlin-lsp/releases/latest',
@@ -721,10 +745,4 @@ function platformToken(tokens: {
 
 function sha256ForBuffer(buffer: Buffer) {
   return createHash('sha256').update(buffer).digest('hex')
-}
-
-function truthy(value: string | undefined) {
-  if (!value) return false
-
-  return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase())
 }

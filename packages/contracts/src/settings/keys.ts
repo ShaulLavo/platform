@@ -1,6 +1,7 @@
 import * as v from 'valibot'
 import {
   keybindingOverridesSchema,
+  lspServerOverridesSchema,
   modelRefListSchema,
   providerInstanceConfigsSchema,
 } from '../settings'
@@ -339,6 +340,70 @@ export const SETTINGS_REGISTRY = {
     category: 'Files',
     description: 'Milliseconds of quiet before an automatic save, when saving after a delay.',
     keywords: ['autosave', 'delay', 'debounce', 'files'],
+  }),
+  'lsp.experimental.tyForPython': defineSetting({
+    schema: v.boolean(),
+    default: false,
+    // Machine scope, and not negotiable: this picks which Python binary spawns —
+    // `spawnTy` or pyright's `pyright-langserver`. A cloned repository choosing
+    // the language server that runs against its own source is exactly what the
+    // execution rule forbids.
+    scope: 'machine',
+    widget: 'boolean',
+    category: 'Language servers',
+    // Honest about the pooling: matching is re-run per file, but a language
+    // server already running for a folder is reused by key, so an open Python
+    // file keeps whichever server it started with.
+    description:
+      'Use ty instead of pyright for Python. Files already open keep their current server until reopened.',
+    visibility: 'advanced',
+    keywords: ['lsp', 'python', 'ty', 'pyright', 'experimental'],
+  }),
+  'lsp.idleTimeoutMs': defineSetting({
+    // Clamped at an hour: the timer governs how long an idle language-server
+    // child process stays resident, and an unbounded value is a memory leak
+    // with a settings key in front of it.
+    schema: v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(3_600_000)),
+    default: 120_000,
+    // Machine scope: this is a per-box RAM tradeoff and it governs child-process
+    // lifetime.
+    scope: 'machine',
+    widget: 'number',
+    category: 'Language servers',
+    description:
+      'Milliseconds an unused language server stays alive after the last editor disconnects. 0 shuts it down immediately.',
+    visibility: 'advanced',
+    keywords: ['lsp', 'idle', 'timeout', 'memory', 'process'],
+  }),
+  'lsp.downloadRuntimes': defineSetting({
+    schema: v.boolean(),
+    default: true,
+    // Machine scope: this decides whether a binary is fetched onto this machine
+    // and then executed.
+    scope: 'machine',
+    widget: 'boolean',
+    category: 'Language servers',
+    description:
+      'Download missing language servers on demand. Off means only servers already on PATH are used.',
+    visibility: 'advanced',
+    keywords: ['lsp', 'download', 'install', 'offline', 'network'],
+  }),
+  'lsp.servers': defineSetting({
+    schema: lspServerOverridesSchema,
+    default: {},
+    // The strongest case for machine scope in the whole table: `command` becomes
+    // argv and `env` is spread over the child's environment, so a workspace file
+    // that could set this would be arbitrary code execution on clone.
+    scope: 'machine',
+    // No widget can edit a record of objects, so this is reachable through the
+    // raw JSON view only — which is what `internal` means. Registering it
+    // anyway is the point: it replaces an env var nobody could discover.
+    widget: 'complex',
+    visibility: 'internal',
+    category: 'Language servers',
+    description:
+      'Per-server overrides: command, env, extensions, initialization, or disabled. Applies the next time a server starts; one already running for a folder keeps its old command until it idles out.',
+    keywords: ['lsp', 'language server', 'command', 'override', 'disable'],
   }),
   'providers.instances': defineSetting({
     schema: providerInstanceConfigsSchema,

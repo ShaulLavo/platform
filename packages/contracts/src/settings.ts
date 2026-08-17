@@ -102,6 +102,41 @@ export const keybindingOverridesSchema = v.record(
   v.nullable(trimmedNonEmptyStringSchema),
 )
 
+/**
+ * One entry of the LSP server override table.
+ *
+ * Every field is optional because an entry may either replace a built-in
+ * server's command or only adjust it: `{ disabled: true }` removes a bundled
+ * server, `{ extensions: ['.foo'] }` widens one, and a `command` with no
+ * matching built-in id registers a new server outright.
+ *
+ * `env` is stored in the clear — this is for `PATH`-style knobs, not
+ * credentials. Anything secret belongs in the secret store, which is what keeps
+ * the settings document safe to read, export and hand to an agent.
+ */
+export const lspServerOverrideSchema = v.object({
+  /** argv, binary first. An empty array is rejected: it would spawn nothing. */
+  command: v.optional(v.pipe(v.array(trimmedNonEmptyStringSchema), v.minLength(1))),
+  disabled: v.optional(v.boolean(), false),
+  env: v.optional(
+    v.record(v.pipe(v.string(), v.regex(ENVIRONMENT_VARIABLE_NAME_PATTERN)), v.string()),
+  ),
+  extensions: v.optional(v.array(trimmedNonEmptyStringSchema)),
+  initialization: v.optional(v.record(v.string(), v.unknown())),
+})
+
+/**
+ * Server id → override. Keyed rather than a list because the id is what the
+ * registry merges on, and two entries claiming one id would make the result
+ * depend on iteration order.
+ */
+export const lspServerOverridesSchema = v.record(
+  trimmedNonEmptyStringSchema,
+  lspServerOverrideSchema,
+)
+
+export type LspServerOverride = v.InferOutput<typeof lspServerOverrideSchema>
+export type LspServerOverrides = v.InferOutput<typeof lspServerOverridesSchema>
 export type ProviderEnvironmentVariable = v.InferOutput<typeof providerEnvironmentVariableSchema>
 export type ProviderInstanceConfig = v.InferOutput<typeof providerInstanceConfigSchema>
 export type ModelRef = v.InferOutput<typeof modelRefSchema>

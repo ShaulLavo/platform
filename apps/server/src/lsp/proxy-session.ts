@@ -1,6 +1,6 @@
 import { createInternalError } from '../observability/structured-errors'
 
-import { isRecord } from '@workspace/contracts'
+import { DEFAULT_SETTING_VALUES, isRecord } from '@workspace/contracts'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 
 import type { LspServerMatch } from './registry'
@@ -74,8 +74,6 @@ export type LspProxyClientSession = {
   dispose(): void
 }
 
-const DEFAULT_IDLE_TIMEOUT_MS = 120_000
-
 /**
  * The seam `lspRoutes` depends on. `LspSessionPool` satisfies it structurally,
  * so a route test can hand in a stub without spawning a fake child process.
@@ -101,6 +99,16 @@ export class LspSessionPool implements LspSessionSource {
   private readonly sessions = new Map<string, PooledLspProxySession>()
   private readonly starting = new Map<string, Promise<PooledLspProxySession | null>>()
   private disposed = false
+  /**
+   * A getter, not a number: a pooled session outlives many settings writes, and
+   * reading it when the idle timer is armed is what makes `lsp.idleTimeoutMs`
+   * take effect without restarting the server.
+   */
+  private readonly idleTimeoutMs: () => number
+
+  constructor(idleTimeoutMs: () => number = () => DEFAULT_SETTING_VALUES['lsp.idleTimeoutMs']) {
+    this.idleTimeoutMs = idleTimeoutMs
+  }
 
   /** Live pooled backends. Read by teardown assertions. */
   get size(): number {
@@ -157,7 +165,7 @@ export class LspSessionPool implements LspSessionSource {
   }
 
   private startSession(key: string, match: LspServerMatch, rootPath: string) {
-    const created = PooledLspProxySession.spawn(key, match, rootPath, this)
+    const created = PooledLspProxySession.spawn(key, match, rootPath, this, this.idleTimeoutMs)
       .then((session) => this.adoptSession(key, session))
       .finally(() => this.starting.delete(key))
     this.starting.set(key, created)
@@ -186,6 +194,7 @@ class PooledLspProxySession {
   readonly key: string
   private readonly match: LspServerMatch
   private readonly pendingRequests = new Map<JsonRpcId, PendingBackendRequest>()
+  private readonly idleTimeoutMs: () => number
   private readonly pool: LspSessionPool
   private readonly process: ChildProcessWithoutNullStreams
   private readonly reader: LspStdioMessageReader
@@ -215,7 +224,9 @@ class PooledLspProxySession {
     process: ChildProcessWithoutNullStreams,
     rootPath: string,
     pool: LspSessionPool,
+    idleTimeoutMs: () => number,
   ) {
+    this.idleTimeoutMs = idleTimeoutMs
     this.key = key
     this.match = match
     this.pool = pool
@@ -225,11 +236,17 @@ class PooledLspProxySession {
     this.bindProcess()
   }
 
-  static async spawn(key: string, match: LspServerMatch, rootPath: string, pool: LspSessionPool) {
+  static async spawn(
+    key: string,
+    match: LspServerMatch,
+    rootPath: string,
+    pool: LspSessionPool,
+    idleTimeoutMs: () => number,
+  ) {
     const handle = await match.server.spawn(match.root)
     if (!handle) return null
 
-    return new PooledLspProxySession(key, match, handle.process, rootPath, pool)
+    return new PooledLspProxySession(key, match, handle.process, rootPath, pool, idleTimeoutMs)
   }
 
   get isDisposed() {
@@ -642,7 +659,7 @@ class PooledLspProxySession {
 
   private scheduleIdleDisposal(): void {
     this.clearIdleTimer()
-    const timer = setTimeout(() => this.dispose('idle_timeout'), lspIdleTimeoutMs())
+    const timer = setTimeout(() => this.dispose('idle_timeout'), this.idleTimeoutMs())
     // A 120-second handle must not be the reason the process refuses to exit.
     timer.unref()
     this.idleTimer = timer
@@ -1009,14 +1026,6 @@ function byteLength(value: string | ArrayBuffer | Uint8Array): number {
   if (value instanceof ArrayBuffer) return value.byteLength
 
   return value.byteLength
-}
-
-function lspIdleTimeoutMs(): number {
-  const raw = process.env.PLATFORM_LSP_IDLE_TIMEOUT_MS ?? process.env.FS_LSP_IDLE_TIMEOUT_MS
-  const parsed = Number(raw)
-  if (Number.isFinite(parsed) && parsed >= 0) return parsed
-
-  return DEFAULT_IDLE_TIMEOUT_MS
 }
 
 function errorMessage(error: unknown): string {

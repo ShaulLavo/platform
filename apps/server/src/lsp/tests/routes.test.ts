@@ -58,6 +58,7 @@ function bufferedLspDeps(root: string, createdSessions: FakeLspProxySession[]): 
       await Bun.sleep(25)
       return { root, server: { id: 'buffered-lsp' } }
     }) as unknown as LspRouteDeps['matchServer'],
+    settings: () => ({ servers: {}, tyForPython: false }),
     pool: {
       acquire: async () => {
         await Bun.sleep(25)

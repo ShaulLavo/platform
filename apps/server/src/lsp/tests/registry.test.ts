@@ -4,7 +4,9 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { pinnedLspRuntimeManifest, type PinnedLspRuntimeManifestEntry } from '../installer-manifest'
-import { lspServersForEnvironment, matchLspServer } from '../registry'
+import { lspServersFor, matchLspServer } from '../registry'
+
+const NO_OVERRIDES = { servers: {}, tyForPython: false } as const
 
 const roots: string[] = []
 
@@ -14,7 +16,7 @@ afterEach(async () => {
 
 describe('LSP server registry', () => {
   it('exposes the full built-in server set', () => {
-    const ids = lspServersForEnvironment()
+    const ids = lspServersFor(NO_OVERRIDES)
       .map((server) => server.id)
       .toSorted()
 
@@ -61,9 +63,7 @@ describe('LSP server registry', () => {
   })
 
   it('switches python support to ty when enabled', () => {
-    const ids = lspServersForEnvironment({
-      FS_EXPERIMENTAL_LSP_TY: 'true',
-    }).map((server) => server.id)
+    const ids = lspServersFor({ servers: {}, tyForPython: true }).map((server) => server.id)
 
     expect(ids).toContain('ty')
     expect(ids).not.toContain('pyright')
@@ -76,6 +76,7 @@ describe('LSP server registry', () => {
     })
 
     const match = await matchLspServer({
+      settings: NO_OVERRIDES,
       filePath: path.join(root, 'src/index.ts'),
       workspaceRoot: root,
     })
@@ -93,6 +94,7 @@ describe('LSP server registry', () => {
     })
 
     const match = await matchLspServer({
+      settings: NO_OVERRIDES,
       filePath: path.join(root, 'src/index.ts'),
       workspaceRoot: root,
     })
@@ -109,6 +111,7 @@ describe('LSP server registry', () => {
     })
 
     const match = await matchLspServer({
+      settings: NO_OVERRIDES,
       filePath: path.join(root, 'notes.custom'),
       workspaceRoot: root,
     })
@@ -116,17 +119,17 @@ describe('LSP server registry', () => {
     expect(match).toBeNull()
   })
 
-  it('loads custom server definitions from PLATFORM_LSP_CONFIG', () => {
-    const servers = lspServersForEnvironment({
-      PLATFORM_LSP_CONFIG: JSON.stringify({
+  it('applies per-server overrides from settings', () => {
+    const servers = lspServersFor({
+      servers: {
         'custom-lsp': {
           command: ['custom-lsp-server', '--stdio'],
+          disabled: false,
           extensions: ['.custom'],
         },
-        typescript: {
-          disabled: true,
-        },
-      }),
+        typescript: { disabled: true },
+      },
+      tyForPython: false,
     })
 
     expect(servers.some((server) => server.id === 'typescript')).toBe(false)
@@ -136,6 +139,25 @@ describe('LSP server registry', () => {
         id: 'custom-lsp',
       }),
     )
+  })
+
+  it('turns ty off again through the setting, whatever the old env var says', () => {
+    // The bug this replaces: `truthy(process.env.FS_EXPERIMENTAL_LSP_TY)` was
+    // snapshotted at module load and ORed into every call, so the flag could be
+    // turned on and never off, and this suite passed only on machines that did
+    // not export it.
+    process.env.FS_EXPERIMENTAL_LSP_TY = 'true'
+    try {
+      const on = lspServersFor({ servers: {}, tyForPython: true }).map((server) => server.id)
+      const off = lspServersFor({ servers: {}, tyForPython: false }).map((server) => server.id)
+
+      expect(on).toContain('ty')
+      expect(on).not.toContain('pyright')
+      expect(off).toContain('pyright')
+      expect(off).not.toContain('ty')
+    } finally {
+      delete process.env.FS_EXPERIMENTAL_LSP_TY
+    }
   })
 
   it('pins runtime release downloads with checksums', () => {

@@ -10,6 +10,7 @@ import { fsRoutes } from './fs/routes'
 import { FileSystemService, type FileSystemServiceOptions } from './fs/service'
 import { gitRoutes } from './git/routes'
 import { GitService } from './git/service'
+import { setLspDownloadPolicy } from './lsp/installers'
 import { LspSessionPool } from './lsp/proxy-session'
 import { lspMatchQuerySchema, lspRouteMatch, lspRoutes } from './lsp/routes'
 import {
@@ -140,7 +141,22 @@ export function createApp(options: AppOptions) {
   const checkpointDiff = new OrchestrationCheckpointDiffQuery(database, git)
   const threadSearch = new OrchestrationThreadSearchQuery(database)
   const auth = createAuthConfig(options.auth)
-  const lspPool = options.lsp?.pool ?? new LspSessionPool()
+  // Read through the store on every call rather than captured once: a language
+  // server that only picked up a settings change on restart would be a knob the
+  // page claims is live and is not.
+  const lspSettings = () => {
+    // One snapshot per call: `snapshot()` re-resolves every layer, so reading
+    // two keys through two calls would resolve the whole document twice per
+    // `/lsp/match` request.
+    const { values } = settings.snapshot()
+
+    return { servers: values['lsp.servers'], tyForPython: values['lsp.experimental.tyForPython'] }
+  }
+  // The one knob that cannot be threaded as a parameter — see the comment on
+  // `setLspDownloadPolicy`.
+  setLspDownloadPolicy(() => settings.snapshot().values['lsp.downloadRuntimes'])
+  const lspPool =
+    options.lsp?.pool ?? new LspSessionPool(() => settings.snapshot().values['lsp.idleTimeoutMs'])
   const cleanup = appCleanup(terminal, fs, settings, lspPool)
 
   const app = new Elysia({ name: 'platform' })
@@ -172,10 +188,10 @@ export function createApp(options: AppOptions) {
       authMode: auth.mode,
       ...fs.info(),
     }))
-    .get('/lsp/match', ({ query }) => lspRouteMatch(fs.paths, query), {
+    .get('/lsp/match', ({ query }) => lspRouteMatch(fs.paths, query, lspSettings()), {
       query: lspMatchQuerySchema,
     })
-    .ws('/lsp', lspRoutes(fs, auth, { pool: lspPool }))
+    .ws('/lsp', lspRoutes(fs, auth, { pool: lspPool, settings: lspSettings }))
     .ws('/terminal', terminal.routes(auth))
     .use(providerRoutes(providerAdapterRegistry))
     .use(orchestrationWsRoutes(orchestration, auth))

@@ -4,7 +4,7 @@ import * as v from 'valibot'
 import { authenticateWebSocketData, type AuthConfig } from '../auth'
 import { pathSchema } from '../fs/contracts'
 import type { WorkspacePaths } from '../fs/path'
-import { matchLspServer } from './registry'
+import { matchLspServer, type LspSettings } from './registry'
 import type { LspProxyClientSession, LspSessionSource } from './proxy-session'
 import { recordProcessWarning } from '../observability'
 
@@ -21,12 +21,17 @@ export const lspMatchQuerySchema = v.object({
 export async function lspRouteMatch(
   paths: WorkspacePaths,
   query: v.InferOutput<typeof lspMatchQuerySchema>,
+  settings: LspSettings,
 ) {
-  const match = await resolveLspRouteMatch(paths, {
-    path: query.path,
-    root: query.root,
-    serverId: query.server ?? null,
-  })
+  const match = await resolveLspRouteMatch(
+    paths,
+    {
+      path: query.path,
+      root: query.root,
+      serverId: query.server ?? null,
+    },
+    settings,
+  )
   if (!match) return null
 
   return {
@@ -42,6 +47,12 @@ export type LspRouteDeps = {
    * deliberately no module-global fallback — that was the bug.
    */
   readonly pool: LspSessionSource
+  /**
+   * A getter, not a value: `/lsp/match` and the websocket outlive any one
+   * settings snapshot, and a knob that only applied at boot would be a knob the
+   * user has to restart the server to use.
+   */
+  readonly settings: () => LspSettings
 }
 
 export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig, deps: LspRouteDeps) {
@@ -70,7 +81,7 @@ export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig, deps: LspRou
         return
       }
 
-      const match = await resolveLspRouteMatch(fs.paths, socket, matchServer)
+      const match = await resolveLspRouteMatch(fs.paths, socket, deps.settings(), matchServer)
       if (!match) {
         rejectPendingLspSession(sessions, socket, pending)
         recordProcessWarning('lsp.session.rejected', {
@@ -196,6 +207,7 @@ async function flushPendingLspMessages(pending: PendingLspSession) {
 async function resolveLspRouteMatch(
   paths: WorkspacePaths,
   input: LspRouteMatchInput,
+  settings: LspSettings,
   match: typeof matchLspServer = matchLspServer,
 ) {
   try {
@@ -205,6 +217,7 @@ async function resolveLspRouteMatch(
     return match({
       filePath: file.absolutePath,
       serverId: input.serverId,
+      settings,
       workspaceRoot: paths.resolve(input.root).absolutePath,
     })
   } catch {

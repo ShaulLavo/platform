@@ -1,3 +1,4 @@
+import type { LspServerOverride, LspServerOverrides } from '@workspace/contracts'
 import { access, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
@@ -41,18 +42,18 @@ export type LspServerMatch = {
   readonly server: LspServerDefinition
 }
 
-type LspConfig = Record<
-  string,
-  {
-    readonly command?: readonly string[]
-    readonly disabled?: boolean
-    readonly env?: Record<string, string>
-    readonly extensions?: readonly string[]
-    readonly initialization?: Record<string, unknown>
-  }
->
+/**
+ * What the registry needs from settings, resolved by the caller.
+ *
+ * Passed in rather than read here: the module used to snapshot `process.env` at
+ * import, which made the experimental flag a one-way latch no test could clear.
+ * A plain value parameter is the property that bug cost us.
+ */
+export type LspSettings = {
+  readonly servers: LspServerOverrides
+  readonly tyForPython: boolean
+}
 
-const useTyForPython = truthy(process.env.FS_EXPERIMENTAL_LSP_TY)
 const serverPriority = ['deno', 'typescript', 'vue', 'eslint', 'oxlint', 'biome'] as const
 
 const jsProjectMarkers = [
@@ -469,10 +470,11 @@ const lspServers: readonly LspServerDefinition[] = [
 export async function matchLspServer(input: {
   filePath: string
   serverId?: string | null
+  settings: LspSettings
   workspaceRoot: string
 }) {
   const extension = fileExtension(input.filePath)
-  const candidates = lspServersForEnvironment()
+  const candidates = lspServersFor(input.settings)
     .filter((server) => serverMatches(server, extension, input.serverId))
     .sort(compareServerPriority)
 
@@ -486,13 +488,13 @@ export async function matchLspServer(input: {
   return null
 }
 
-export function lspServersForEnvironment(env: NodeJS.ProcessEnv = process.env) {
-  const configured = lspConfigFromEnvironment(env)
-  const base = experimentalFilteredServers(env)
-  if (!configured) return base
+export function lspServersFor(settings: LspSettings) {
+  const base = experimentalFilteredServers(settings.tyForPython)
+  const overrides = Object.entries(settings.servers)
+  if (overrides.length === 0) return base
 
   const servers = new Map(base.map((server) => [server.id, server]))
-  for (const [id, config] of Object.entries(configured)) {
+  for (const [id, config] of overrides) {
     if (config.disabled) {
       servers.delete(id)
       continue
@@ -507,9 +509,8 @@ export function lspServersForEnvironment(env: NodeJS.ProcessEnv = process.env) {
   return Array.from(servers.values())
 }
 
-function experimentalFilteredServers(env: NodeJS.ProcessEnv) {
-  const tyEnabled = truthy(env.FS_EXPERIMENTAL_LSP_TY) || useTyForPython
-  if (tyEnabled) return lspServers.filter((server) => server.id !== 'pyright')
+function experimentalFilteredServers(tyForPython: boolean) {
+  if (tyForPython) return lspServers.filter((server) => server.id !== 'pyright')
 
   return lspServers.filter((server) => server.id !== 'ty')
 }
@@ -574,7 +575,7 @@ async function existingMarker(directory: string, marker: string) {
 
 function configuredServer(
   id: string,
-  config: LspConfig[string],
+  config: LspServerOverride,
   existing: LspServerDefinition | undefined,
 ): LspServerDefinition {
   const command = config.command
@@ -603,50 +604,12 @@ function configuredServer(
 }
 
 function configuredInitialization(
-  config: LspConfig[string],
+  config: LspServerOverride,
   existing: LspServerDefinition | undefined,
 ) {
   if (!config.initialization) return existing?.initializationOptions
 
   return async () => config.initialization
-}
-
-function lspConfigFromEnvironment(env: NodeJS.ProcessEnv): LspConfig | null {
-  const raw = env.PLATFORM_LSP_CONFIG ?? env.FS_LSP_CONFIG
-  if (!raw) return null
-
-  try {
-    return lspConfigFromValue(JSON.parse(raw) as unknown)
-  } catch {
-    return null
-  }
-}
-
-function lspConfigFromValue(value: unknown): LspConfig | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-
-  const result: LspConfig = {}
-  for (const [id, config] of Object.entries(value)) {
-    const normalized = lspServerConfigFromValue(config)
-    if (!normalized) continue
-
-    result[id] = normalized
-  }
-
-  return result
-}
-
-function lspServerConfigFromValue(value: unknown): LspConfig[string] | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
-
-  const record = value as Record<string, unknown>
-  return {
-    command: stringArray(record.command),
-    disabled: record.disabled === true,
-    env: stringRecord(record.env),
-    extensions: stringArray(record.extensions),
-    initialization: unknownRecord(record.initialization),
-  }
 }
 
 async function pythonInitializationOptions(root: string) {
@@ -717,36 +680,4 @@ function isInsideOrEqual(root: string, candidate: string) {
 function globMarkerRegex(marker: string) {
   const escaped = marker.replace(/[.+?^${}()|[\]\\]/gu, '\\$&')
   return new RegExp(`^${escaped.replaceAll('\\*', '.*')}$`, 'u')
-}
-
-function stringArray(value: unknown) {
-  if (!Array.isArray(value)) return undefined
-  const strings = value.filter((item): item is string => typeof item === 'string')
-
-  return strings.length === value.length ? strings : undefined
-}
-
-function stringRecord(value: unknown) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
-
-  const result: Record<string, string> = {}
-  for (const [key, item] of Object.entries(value)) {
-    if (typeof item !== 'string') return undefined
-
-    result[key] = item
-  }
-
-  return result
-}
-
-function unknownRecord(value: unknown) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined
-
-  return value as Record<string, unknown>
-}
-
-function truthy(value: string | undefined) {
-  if (!value) return false
-
-  return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase())
 }
