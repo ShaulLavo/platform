@@ -1,17 +1,15 @@
-import { parseCompareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'
-import { parseRefDocumentId } from '@/features/git/utils/ref-document'
 import {
   parseSearchBufferDocumentId,
   searchBufferDocumentLabel,
   searchBufferDocumentTitle,
 } from '@/features/search/utils/buffer-document'
+import { commandDisabledReason, type CommandDisabledContext } from '@/keymap/command-enablement'
 import { commandShortcut } from '@/features/menus/utils/shortcut'
 import { isFileEntry } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
 import { basename, displayPath, toTreePath } from '@/lib/path-formatters'
 import type { TreeModel } from '@/lib/tree-model'
 import type { CommandSpec } from '@/keymap/command-registry'
-import { commandRequirement } from '@/keymap/table'
 import type { PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
 import { fuzzyRankScore } from '@workspace/contracts'
 
@@ -267,38 +265,11 @@ function commandKeywords(spec: CommandSpec) {
   ]
 }
 
-export type CommandDisabledContext = {
-  readonly activeFilePath: string | null
-  readonly hasWorkspace: boolean
-}
-
 export function commandPaletteItemDisabledReason(
   item: CommandPaletteItem,
   context: CommandDisabledContext,
 ) {
   return commandDisabledReason(item.command.command, context)
-}
-
-export function isCommandDisabled(command: PlatformCommandId, context: CommandDisabledContext) {
-  return commandDisabledReason(command, context) !== null
-}
-
-export function commandDisabledReason(command: PlatformCommandId, context: CommandDisabledContext) {
-  const requires = commandRequirement(command)
-  if (requires === 'nothing') return null
-  if (!context.hasWorkspace) return 'No workspace open.'
-  if (requires === 'workspace') return null
-
-  return fileBackedPath(context.activeFilePath) ? null : 'No file-backed surface is active.'
-}
-
-export function fileBackedPath(path: string | null) {
-  if (!path) return null
-  if (parseSearchBufferDocumentId(path)) return null
-  if (parseCompareSavedDocumentId(path)) return null
-  if (parseRefDocumentId(path)) return null
-
-  return path
 }
 
 export function quickAccessMode(search: string): QuickAccessMode {

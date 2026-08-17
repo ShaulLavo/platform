@@ -2,7 +2,7 @@ import type { EditorPlugin, EditorScrollPosition, EditorViewSnapshot } from '@si
 import { useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 
 import type { EditorRenderDocument } from '@/features/editor/utils/render-document'
-import { editorPerformanceFeatureDisabled } from '@/lib/editor-performance-trace'
+import { editorPerformanceFeatureDisabled } from '@/features/editor/state/performance-trace'
 
 type UseScrollPersistencePluginOptions = {
   document: Pick<EditorRenderDocument, 'path'>

@@ -2,12 +2,12 @@ import {
   useEditorDocumentState,
   useEditorDocumentStoreApi,
 } from '@/features/editor/state/document-state'
-import { fetchDocumentSymbols } from '@/lib/document-symbols'
+import { fetchDocumentSymbols } from '@/components/command-palette/document-symbols'
 import { documentSymbolKeys } from '@/lib/query-keys'
 import { useQuery } from '@tanstack/react-query'
 
 import type { QuickAccessMode } from './command-palette-types'
-import { fileBackedPath } from './command-palette-utils'
+import { fileBackedPath } from '@/keymap/command-enablement'
 
 type UseCommandPaletteSymbolsOptions = {
   readonly mode: QuickAccessMode

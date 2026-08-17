@@ -21,7 +21,7 @@ import {
   useScrollPersistencePlugin,
 } from '@/features/editor/hooks/use-scroll-persistence-plugin'
 import { useLanguageServerPlugin } from '@/features/editor/hooks/use-lsp-plugin'
-import { editorPerformanceLayoutVariant } from '@/lib/editor-performance-trace'
+import { editorPerformanceLayoutVariant } from '@/features/editor/state/performance-trace'
 import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import type {
   DocumentSessionChange,

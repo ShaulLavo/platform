@@ -12,6 +12,10 @@
 - Do not create empty folders.
 - Import exact files through `@/`. Do not add barrel `index.ts` files.
 - Barrel files are allowed only at package entry points such as `packages/*/src/index.ts` that back the package's `"."` export. Do not add feature, folder, or utility barrels.
+- `apps/web/src/lib/` is the app-level shared layer. It is not a kind directory and it is not a junk drawer. **A module belongs in `lib/` only if two or more consumers outside `lib/` import it** — counting `features/*` (each feature counts once), `components/`, `hooks/`, `keymap/`, and `main.tsx` — **or if it is a dependency of a `lib/` module that qualifies.** A module with a single outside consumer lives inside that consumer instead.
+- The rule runs both ways. When a `lib/` module drops to one consumer, move it into that consumer. When a feature-local module gains a second feature consumer, move it up to `lib/` in the same pass — do not import across features to reach it.
+- `lib/` sits below `features/`: a `lib/` module should not import from `@/features/*`. Shared policy that genuinely needs feature knowledge belongs in the layer that already owns the domain — command enablement lives in `keymap/`, next to the command registry, not in `lib/` and not in `components/`.
+- Two implementations of the same-sounding helper are not automatically duplicates. Before merging them, diff their _behaviour_ — the six `basename` variants in `apps/web/src` have three different empty-path fallbacks (`'Root'`, `''`, and the whole path) and one of them lowercases its result, yet all six share the signature `(string) => string`, so a wrong merge typechecks. Merge only with a test per call site, or leave a comment saying why they differ.
 
 ## Control Flow
 

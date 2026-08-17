@@ -1,7 +1,6 @@
 import type { Icon } from '@phosphor-icons/react'
 
-import type { CommandDisabledContext } from '@/components/command-palette/command-palette-utils'
-import { commandDisabledReason } from '@/components/command-palette/command-palette-utils'
+import { commandDisabledReason, type CommandDisabledContext } from '@/keymap/command-enablement'
 import { platformCommandSpec } from '@/keymap/command-registry'
 import type { PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
 

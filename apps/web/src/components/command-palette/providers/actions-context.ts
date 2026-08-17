@@ -4,7 +4,7 @@ import type { OrchestrationProjectScript, ProjectId } from '@workspace/contracts
 import type { CommandPaletteItem } from '@/components/command-palette/command-palette-types'
 import type { GotoLineTarget } from '@/components/command-palette/goto-line-target'
 import type { SessionRailItem } from '@/features/chat-mode/utils/session-rail-model'
-import type { FlatDocumentSymbol } from '@/lib/document-symbols'
+import type { FlatDocumentSymbol } from '@/components/command-palette/document-symbols'
 import type { PlatformCommandId } from '@/keymap/types'
 
 export type CommandPaletteActions = {

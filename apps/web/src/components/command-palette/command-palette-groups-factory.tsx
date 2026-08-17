@@ -1,5 +1,5 @@
 import type { Theme } from '@/components/theme-context'
-import type { FlatDocumentSymbol } from '@/lib/document-symbols'
+import type { FlatDocumentSymbol } from '@/components/command-palette/document-symbols'
 import { GotoLineGroups } from './goto-line-groups'
 
 import { ColorModeGroups } from './color-mode-groups'

@@ -1,10 +1,8 @@
 import { expect, test } from '../../../../test/fixtures'
 
 import {
-  commandDisabledReason,
   commandPaletteItems,
   editorPaletteItems,
-  fileBackedPath,
   groupedCommandItems,
   OTHER_COMMANDS_HEADING,
   quickAccessMode,
@@ -118,48 +116,6 @@ test('recents that do not match the query are not dragged into the results', () 
   expect(groups.flatMap(([, groupItems]) => groupItems.map((item) => item.id))).not.toContain(
     'workspace.toggleSidebarVisibility',
   )
-})
-
-test('workspace commands require a workspace unless explicitly optional', () => {
-  expect(
-    commandDisabledReason('workspace.focusEditor', {
-      activeFilePath: null,
-      hasWorkspace: false,
-    }),
-  ).toBe('No workspace open.')
-  expect(
-    commandDisabledReason('workspace.showCommandPalette', {
-      activeFilePath: null,
-      hasWorkspace: false,
-    }),
-  ).toBeNull()
-})
-
-test('selected-file commands require a file-backed active editor', () => {
-  expect(
-    commandDisabledReason('workspace.saveFile', {
-      activeFilePath: null,
-      hasWorkspace: true,
-    }),
-  ).toBe('No file-backed surface is active.')
-  expect(
-    commandDisabledReason('workspace.saveFile', {
-      activeFilePath: searchBufferDocumentId('/repo'),
-      hasWorkspace: true,
-    }),
-  ).toBe('No file-backed surface is active.')
-  expect(
-    commandDisabledReason('workspace.saveFile', {
-      activeFilePath: '/repo/src/app.ts',
-      hasWorkspace: true,
-    }),
-  ).toBeNull()
-})
-
-test('file-backed paths exclude transient search buffers', () => {
-  expect(fileBackedPath(null)).toBeNull()
-  expect(fileBackedPath(searchBufferDocumentId('/repo'))).toBeNull()
-  expect(fileBackedPath('/repo/src/app.ts')).toBe('/repo/src/app.ts')
 })
 
 test('open editor items format search buffers as search tabs', () => {

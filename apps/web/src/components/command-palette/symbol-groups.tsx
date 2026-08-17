@@ -1,4 +1,4 @@
-import type { FlatDocumentSymbol } from '@/lib/document-symbols'
+import type { FlatDocumentSymbol } from '@/components/command-palette/document-symbols'
 import { TextTIcon } from '@phosphor-icons/react'
 import { CommandGroup, CommandItem, CommandShortcut } from '@workspace/ui/components/command'
 

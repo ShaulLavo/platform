@@ -1,3 +1,4 @@
+import { isCommandDisabled } from '@/keymap/command-enablement'
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import { useWorkspaceTreeState } from '@/hooks/use-workspace-tree'
@@ -31,7 +32,6 @@ import {
   fileUriForPath,
   groupedCommandItems,
   isColorPreviewMode,
-  isCommandDisabled,
   paletteOwnsItemOrder,
   placeholderForMode,
   quickAccessFilter,

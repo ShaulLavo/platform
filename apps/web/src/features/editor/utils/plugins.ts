@@ -52,7 +52,7 @@ import {
 } from '@/features/editor/utils/shiki-languages'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
-import { editorPerformanceFeatureDisabled } from '@/lib/editor-performance-trace'
+import { editorPerformanceFeatureDisabled } from '@/features/editor/state/performance-trace'
 import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
 import type { DecodeMode } from '@singapor/decode'
 

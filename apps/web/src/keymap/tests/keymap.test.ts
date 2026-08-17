@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { commandDisabledReason } from '@/components/command-palette/command-palette-utils'
+import { commandDisabledReason } from '@/keymap/command-enablement'
 
 import {
   activePlatformKeyBindings,

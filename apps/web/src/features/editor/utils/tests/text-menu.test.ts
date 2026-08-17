@@ -1,6 +1,6 @@
 import { editorTextMenu } from '@/features/editor/utils/text-menu'
 import type { MenuCommandItem } from '@/features/menus/utils/model'
-import { commandDisabledReason } from '@/components/command-palette/command-palette-utils'
+import { commandDisabledReason } from '@/keymap/command-enablement'
 import { expect, test } from '../../../../../test/fixtures'
 
 test('sections run navigate, edit, file, then palette', () => {
