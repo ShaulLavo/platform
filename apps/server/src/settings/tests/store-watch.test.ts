@@ -188,31 +188,44 @@ describe('the settings file itself', () => {
 })
 
 describe('a secrets file that cannot be read', () => {
-  it('does not take the process down during a watch-driven reload', async () => {
+  it('still delivers the change that was in flight during a watch-driven reload', async () => {
     const root = await tempRoot()
     // Construct the store *before* the bad directory exists: `SettingsStore`'s
-    // constructor also calls `secretStore.readSync()`, so creating the directory
-    // first would throw here instead of on the reload path under test.
+    // constructor also calls `secretStore.readSync()`, and that one refuses to
+    // start rather than degrading — so creating the directory first would throw
+    // there instead of on the reload path under test.
     const store = createStore(root)
     const secretsPath = path.join(root, 'secrets.json')
     // A directory where the file should be: `readFileSync` throws EISDIR, which
     // is not ENOENT, so `readSettingsFileSync` rethrows out of `invalidate()` —
     // straight into the detached reload. Before `runDetached` this killed Bun.
     await mkdir(secretsPath)
+    // Assert on what listeners *receive*, not on `store.snapshot()`. The cached
+    // snapshot is cleared before the failing read, so a later `snapshot()` call
+    // recomputes from the layer and reports the new value whether or not the
+    // notification ever happened — it cannot tell a delivered change from a
+    // dropped one.
+    const delivered: SettingsSnapshot[] = []
+    store.onChange((snapshot) => delivered.push(snapshot))
 
-    await writeFile(path.join(root, 'settings.json'), '{ "models.hidden": ["alpha"] }', 'utf8')
+    await writeFile(
+      path.join(root, 'settings.json'),
+      '{ "keybindings.overrides": { "a.one": "Mod+1" } }',
+      'utf8',
+    )
     await new Promise((resolve) => setTimeout(resolve, 400))
+
+    expect(delivered.at(-1)?.values['keybindings.overrides']).toEqual({ 'a.one': 'Mod+1' })
+
+    // And the store recovers on its own once the file is readable again.
     await rm(secretsPath, { recursive: true })
-
-    // The process is still here, and the store still answers. What it does NOT
-    // do is deliver the change that was in flight when the secrets read threw:
-    // `invalidate()` clears `cachedSnapshot` and then reads secrets *before*
-    // notifying, so the throw drops the notification. That is the honest state
-    // after this fix — the crash is closed, the dropped change is not, and
-    // closing it means deciding what stale `secretRefs` mean for redaction.
-    await writeFile(path.join(root, 'settings.json'), '{ "models.hidden": ["beta"] }', 'utf8')
+    await writeFile(
+      path.join(root, 'settings.json'),
+      '{ "keybindings.overrides": { "a.two": "Mod+2" } }',
+      'utf8',
+    )
     await new Promise((resolve) => setTimeout(resolve, 400))
 
-    expect(store.snapshot()).toBeDefined()
+    expect(delivered.at(-1)?.values['keybindings.overrides']).toEqual({ 'a.two': 'Mod+2' })
   })
 })

@@ -35,6 +35,13 @@ export const settingsErrors = defineErrorCatalog('settings', {
     why: 'Editing a document the parser could not fully read would compute the edit against a broken tree and corrupt the parts it did understand.',
     fix: 'Fix the JSON syntax in the named file, or delete the file to start from defaults.',
   },
+  SECRETS_UNREADABLE: {
+    status: 500,
+    message: ({ file, detail }: { file: string; detail: string }) =>
+      `Secret store cannot be read: ${file} (${detail})`,
+    why: 'Starting with an unreadable secret store would hand every provider spawn an empty credential, which fails later and far from this cause. A reload degrades instead; construction has nothing to keep serving.',
+    fix: 'Repair or delete the named file. A secret store that does not exist is the normal empty case and starts fine.',
+  },
   REVISION_STALE: {
     status: 409,
     message: ({ file }: { file: string }) => `Settings file changed since it was read: ${file}`,

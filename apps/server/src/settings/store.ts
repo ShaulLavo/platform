@@ -12,7 +12,7 @@ import {
   type SettingsWriteTarget,
 } from '@workspace/contracts'
 import * as v from 'valibot'
-import { recordRequestContext } from '../observability'
+import { errorSummary, recordRequestContext, recordRequestWarning } from '../observability'
 import { SettingsFileLayer } from './layer'
 import type { DocumentEdit } from './json-document'
 import { settingsPaths, type SettingsPathOptions } from './paths'
@@ -28,6 +28,15 @@ import { settingsErrors } from './structured-errors'
 // `as const` matters: annotating this as `SettingId` widens the key and turns
 // every `values[PROVIDER_INSTANCES]` lookup into a union of every setting type.
 const PROVIDER_INSTANCES = 'providers.instances' as const
+
+/**
+ * A ref set that answers "yes" for every ref, so the mask can be driven to its
+ * safe direction through the one existing masking call rather than a second one.
+ *
+ * `has` is the only member `maskProviderSecrets` touches; the cast is what lets
+ * a predicate stand in for a `Set` without widening that function's contract.
+ */
+const EVERY_SECRET_REF = { has: () => true } as unknown as ReadonlySet<SecretRef>
 
 export type SettingsStoreOptions = SettingsPathOptions & {
   /** Parsed strictly by the caller: a malformed policy is an operator error, not a user's. */
@@ -46,6 +55,7 @@ export class SettingsStore {
   private readonly user: SettingsFileLayer
   private readonly workspace: SettingsFileLayer | null
   private readonly secretStore: SecretStore
+  private readonly secretsPath: string
   private readonly policy: Record<string, unknown>
   private readonly listeners = new Set<(snapshot: SettingsSnapshot) => void>()
 
@@ -56,9 +66,16 @@ export class SettingsStore {
    * Only the refs are held — never the values.
    */
   private secretRefs: ReadonlySet<SecretRef> = new Set()
+  /**
+   * Set when a reload could not read the secret store, which makes `secretRefs`
+   * a stale answer to "which variables are set". While it is set the snapshot
+   * masks every variable rather than trusting those refs — see `maskingRefs`.
+   */
+  private secretRefsStale = false
 
   constructor(options: SettingsStoreOptions) {
     const paths = settingsPaths(options)
+    this.secretsPath = paths.secrets
     this.user = new SettingsFileLayer('user', paths.user)
     this.workspace = paths.workspace ? new SettingsFileLayer('workspace', paths.workspace) : null
     this.secretStore = new SecretStore(paths.secrets)
@@ -67,7 +84,20 @@ export class SettingsStore {
     // Read synchronously at construction: the provider registry is built from
     // these values inside the same synchronous `createApp` call.
     for (const layer of this.fileLayers()) layer.loadSync()
-    this.secretRefs = new Set(this.secretStore.readSync().keys())
+    // Deliberately *not* the tolerant treatment `invalidate()` gets. A reload
+    // has a running app to keep serving; construction has nothing yet, and
+    // starting with an unreadable secret store hands every provider spawn an
+    // empty credential — a failure that shows up far from its cause. Refusing to
+    // start is better, as long as it names the file instead of raising EISDIR.
+    try {
+      this.secretRefs = new Set(this.secretStore.readSync().keys())
+    } catch (error) {
+      throw settingsErrors.SECRETS_UNREADABLE({
+        file: paths.secrets,
+        detail: error instanceof Error ? error.message : String(error),
+        cause: error instanceof Error ? error : undefined,
+      })
+    }
 
     if (options.watch === false) return
     for (const layer of this.fileLayers()) {
@@ -87,7 +117,7 @@ export class SettingsStore {
         // provider environment can leave the process and it is the safe one.
         [PROVIDER_INSTANCES]: maskProviderSecrets(
           resolution.values[PROVIDER_INSTANCES],
-          this.secretRefs,
+          this.maskingRefs(),
         ),
       },
       diagnostics: [...resolution.diagnostics],
@@ -302,13 +332,53 @@ export class SettingsStore {
     return [...files, { id: 'policy' as SettingsLayerId, present: true, raw: this.policy }]
   }
 
+  /**
+   * Which refs the mask treats as set.
+   *
+   * While the read is stale the honest answer is "unknown", and the two ways of
+   * saying that are not equivalent on the way back in: `REDACTED` round-trips
+   * through `extractProviderSecrets` as *leave the stored secret alone*, `''` as
+   * *delete it*. So an unknown answer masks everything rather than trusting refs
+   * that may no longer match the file.
+   */
+  private maskingRefs(): ReadonlySet<SecretRef> {
+    return this.secretRefsStale ? EVERY_SECRET_REF : this.secretRefs
+  }
+
+  /**
+   * Re-read on every invalidation, not only when *we* wrote a secret. The secret
+   * file has no watcher, so a hand-edit is otherwise invisible: the page would
+   * show a set variable as empty, and the next save of that row sends `''` back,
+   * which the write path reads as "delete it".
+   *
+   * A failed read must not abort the invalidation: the settings file is already
+   * on disk by then, so unwinding here leaves the change written and nobody
+   * told. It degrades instead — flag the refs stale, keep going, recover on the
+   * next read that works.
+   */
+  private reloadSecretRefs() {
+    try {
+      this.secretRefs = new Set(this.secretStore.readSync().keys())
+      this.secretRefsStale = false
+    } catch (error) {
+      this.secretRefsStale = true
+      recordRequestWarning('settings.secrets.unreadable', {
+        area: 'settings',
+        operation: 'invalidate',
+        settings: {
+          // The path only. Nothing from inside the file reaches a log — this
+          // recorder does not redact, and its contents are credentials.
+          secretsPath: this.secretsPath,
+          secretRefsStale: true,
+        },
+        error: errorSummary(error),
+      })
+    }
+  }
+
   private invalidate() {
     this.cachedSnapshot = null
-    // Re-read on every invalidation, not only when *we* wrote a secret. The
-    // secret file has no watcher, so a hand-edit is otherwise invisible: the
-    // page would show a set variable as empty, and the next save of that row
-    // sends `''` back, which the write path reads as "delete it".
-    this.secretRefs = new Set(this.secretStore.readSync().keys())
+    this.reloadSecretRefs()
     const snapshot = this.snapshot()
 
     for (const listener of this.listeners) {
