@@ -34,40 +34,6 @@ import {
   runtimeModeSchema,
 } from './orchestration-runtime'
 
-export const orchestrationEventTypes = [
-  'project.created',
-  'project.meta-updated',
-  'project.reordered',
-  'project.deleted',
-  'thread.created',
-  'thread.meta-updated',
-  'thread.deleted',
-  'thread.archived',
-  'thread.unarchived',
-  'thread.settled',
-  'thread.unsettled',
-  'thread.snoozed',
-  'thread.unsnoozed',
-  'thread.pinned',
-  'thread.unpinned',
-  'thread.pin-reordered',
-  'thread.runtime-mode-set',
-  'thread.interaction-mode-set',
-  'thread.message-sent',
-  'thread.turn-start-requested',
-  'thread.turn-interrupt-requested',
-  'thread.session-stop-requested',
-  'thread.session-set',
-  'thread.activity-appended',
-  'thread.proposed-plan-upserted',
-  'thread.turn-diff-completed',
-  'thread.checkpoint-revert-requested',
-  'thread.reverted',
-  'thread.approval-response-requested',
-  'thread.user-input-response-requested',
-] as const
-
-export const orchestrationEventTypeSchema = v.picklist(orchestrationEventTypes)
 export const orchestrationAggregateKindSchema = v.picklist(['project', 'thread'])
 export const orchestrationActorKindSchema = v.picklist(['client', 'server', 'provider'])
 
@@ -316,160 +282,83 @@ const eventBaseSchema = {
   metadata: orchestrationEventMetadataSchema,
 } as const
 
-export const orchestrationEventSchema = v.variant('type', [
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('project.created'),
-    payload: projectCreatedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('project.meta-updated'),
-    payload: projectMetaUpdatedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('project.reordered'),
-    payload: projectReorderedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('project.deleted'),
-    payload: projectDeletedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.created'),
-    payload: threadCreatedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.meta-updated'),
-    payload: threadMetaUpdatedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.deleted'),
-    payload: threadDeletedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.archived'),
-    payload: threadArchivedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.unarchived'),
-    payload: threadUnarchivedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.settled'),
-    payload: threadSettledPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.unsettled'),
-    payload: threadUnsettledPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.snoozed'),
-    payload: threadSnoozedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.unsnoozed'),
-    payload: threadUnsnoozedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.pinned'),
-    payload: threadPinnedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.unpinned'),
-    payload: threadUnpinnedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.pin-reordered'),
-    payload: threadPinReorderedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.runtime-mode-set'),
-    payload: threadRuntimeModeSetPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.interaction-mode-set'),
-    payload: threadInteractionModeSetPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.message-sent'),
-    payload: threadMessageSentPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.turn-start-requested'),
-    payload: threadTurnStartRequestedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.turn-interrupt-requested'),
-    payload: threadTurnInterruptRequestedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.session-stop-requested'),
-    payload: threadSessionStopRequestedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.session-set'),
-    payload: threadSessionSetPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.activity-appended'),
-    payload: threadActivityAppendedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.proposed-plan-upserted'),
-    payload: threadProposedPlanUpsertedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.turn-diff-completed'),
-    payload: threadTurnDiffCompletedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.checkpoint-revert-requested'),
-    payload: threadCheckpointRevertRequestedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.reverted'),
-    payload: threadRevertedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.approval-response-requested'),
-    payload: threadApprovalResponseRequestedPayloadSchema,
-  }),
-  v.object({
-    ...eventBaseSchema,
-    type: v.literal('thread.user-input-response-requested'),
-    payload: threadUserInputResponseRequestedPayloadSchema,
-  }),
-])
+/**
+ * The event catalog: one row per orchestration event, mapping the wire `type` to
+ * the schema its `payload` must satisfy.
+ *
+ * This record is the only hand-written list. The parser variant below and the
+ * `OrchestrationEventType` union are both derived from it, so an event cannot
+ * half-exist — there is no state where a type is nameable but unparseable, or
+ * parseable but absent from the union. Adding an event is a payload schema plus
+ * one row here.
+ *
+ * The order below is the order the catalog has always been read in (project
+ * lifecycle, thread lifecycle, then turn traffic). valibot dispatches on the
+ * discriminator, not on position, so the order is documentation — but do not
+ * alphabetise it.
+ */
+export const ORCHESTRATION_EVENT_PAYLOADS = {
+  'project.created': projectCreatedPayloadSchema,
+  'project.meta-updated': projectMetaUpdatedPayloadSchema,
+  'project.reordered': projectReorderedPayloadSchema,
+  'project.deleted': projectDeletedPayloadSchema,
+  'thread.created': threadCreatedPayloadSchema,
+  'thread.meta-updated': threadMetaUpdatedPayloadSchema,
+  'thread.deleted': threadDeletedPayloadSchema,
+  'thread.archived': threadArchivedPayloadSchema,
+  'thread.unarchived': threadUnarchivedPayloadSchema,
+  'thread.settled': threadSettledPayloadSchema,
+  'thread.unsettled': threadUnsettledPayloadSchema,
+  'thread.snoozed': threadSnoozedPayloadSchema,
+  'thread.unsnoozed': threadUnsnoozedPayloadSchema,
+  'thread.pinned': threadPinnedPayloadSchema,
+  'thread.unpinned': threadUnpinnedPayloadSchema,
+  'thread.pin-reordered': threadPinReorderedPayloadSchema,
+  'thread.runtime-mode-set': threadRuntimeModeSetPayloadSchema,
+  'thread.interaction-mode-set': threadInteractionModeSetPayloadSchema,
+  'thread.message-sent': threadMessageSentPayloadSchema,
+  'thread.turn-start-requested': threadTurnStartRequestedPayloadSchema,
+  'thread.turn-interrupt-requested': threadTurnInterruptRequestedPayloadSchema,
+  'thread.session-stop-requested': threadSessionStopRequestedPayloadSchema,
+  'thread.session-set': threadSessionSetPayloadSchema,
+  'thread.activity-appended': threadActivityAppendedPayloadSchema,
+  'thread.proposed-plan-upserted': threadProposedPlanUpsertedPayloadSchema,
+  'thread.turn-diff-completed': threadTurnDiffCompletedPayloadSchema,
+  'thread.checkpoint-revert-requested': threadCheckpointRevertRequestedPayloadSchema,
+  'thread.reverted': threadRevertedPayloadSchema,
+  'thread.approval-response-requested': threadApprovalResponseRequestedPayloadSchema,
+  'thread.user-input-response-requested': threadUserInputResponseRequestedPayloadSchema,
+}
 
-export type OrchestrationEventType = v.InferOutput<typeof orchestrationEventTypeSchema>
+export type OrchestrationEventType = keyof typeof ORCHESTRATION_EVENT_PAYLOADS
+
+/**
+ * One variant member. Generic on purpose: instantiated with a single literal
+ * type it returns the exact `ObjectSchema` for that event, which is what
+ * `OrchestrationEventVariantOption` maps over to rebuild the discriminated union.
+ */
+const eventVariantOption = <TType extends OrchestrationEventType>(
+  type: TType,
+  payload: (typeof ORCHESTRATION_EVENT_PAYLOADS)[TType],
+) => v.object({ ...eventBaseSchema, type: v.literal(type), payload })
+
+type OrchestrationEventVariantOption = {
+  [TType in OrchestrationEventType]: ReturnType<typeof eventVariantOption<TType>>
+}[OrchestrationEventType]
+
+/**
+ * `Object.entries` erases the key→payload correlation — it hands back
+ * `[string, <union of every payload schema>]` — so rebuilding the discriminated
+ * union costs exactly one assertion. The three type-derivation gates at the top
+ * of `tests/orchestration.test.ts` are what keep it honest: they stop compiling
+ * the moment `OrchestrationEvent` widens or decorrelates.
+ */
+const orchestrationEventVariantOptions = Object.entries(ORCHESTRATION_EVENT_PAYLOADS).map(
+  ([type, payload]) => eventVariantOption(type as OrchestrationEventType, payload),
+) as OrchestrationEventVariantOption[]
+
+export const orchestrationEventSchema = v.variant('type', orchestrationEventVariantOptions)
+
 export type OrchestrationAggregateKind = v.InferOutput<typeof orchestrationAggregateKindSchema>
 export type OrchestrationActorKind = v.InferOutput<typeof orchestrationActorKindSchema>
 export type ProjectCreatedPayload = v.InferOutput<typeof projectCreatedPayloadSchema>

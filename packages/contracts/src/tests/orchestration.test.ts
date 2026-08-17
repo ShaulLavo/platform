@@ -8,7 +8,6 @@ import {
   orchestrationCommandReceiptSchema,
   orchestrationDispatchResultSchema,
   orchestrationEventSchema,
-  orchestrationEventTypes,
   providerListResultSchema,
   orchestrationReplayEventsInputSchema,
   orchestrationShellSnapshotSchema,
@@ -19,6 +18,49 @@ import {
 // Not re-exported by the barrel: it has no consumer outside this package, and
 // the request variant is reachable there through `orchestrationWsClientMessageSchema`.
 import { orchestrationWsRequestSchema } from '../orchestration-ws'
+import {
+  ORCHESTRATION_EVENT_PAYLOADS,
+  type OrchestrationEvent,
+  type OrchestrationEventType,
+} from '../orchestration-events'
+
+/**
+ * Type-derivation gate for the event catalog.
+ *
+ * These are declarations, not assertions: `tsgo --noEmit` is what enforces them.
+ * They exist because `orchestrationEventSchema` is derived from
+ * `ORCHESTRATION_EVENT_PAYLOADS` through one assertion on an `Object.entries`
+ * map, and that assertion is only honest while the union it rebuilds stays
+ * discriminated. The 51 `Extract<OrchestrationEvent, { type: '…' }>` narrowings
+ * in `apps/server` and `apps/web` are what would silently rot otherwise.
+ */
+type TypeEquals<TLeft, TRight> = [TLeft] extends [TRight]
+  ? [TRight] extends [TLeft]
+    ? true
+    : false
+  : false
+
+// The parsed union's discriminator is exactly the catalog's key set.
+const _catalogCoversTheUnion: TypeEquals<OrchestrationEvent['type'], OrchestrationEventType> = true
+
+// …and it is still a union of literals, not `string`. If it widened, this
+// assignment would start succeeding and tsgo would report an unused directive.
+// @ts-expect-error 'thread.turn-started' is deliberately not an event
+const _rejectsSyntheticTurnEvent: OrchestrationEventType = 'thread.turn-started'
+
+// Every member still carries the payload its own catalog row names — decorrelate
+// them and `PayloadCorrelation` picks up `false`.
+type PayloadCorrelation = {
+  [TType in OrchestrationEventType]: TypeEquals<
+    Extract<OrchestrationEvent, { type: TType }>['payload'],
+    v.InferOutput<(typeof ORCHESTRATION_EVENT_PAYLOADS)[TType]>
+  >
+}[OrchestrationEventType]
+const _payloadsStayCorrelated: TypeEquals<PayloadCorrelation, true> = true
+
+void _catalogCoversTheUnion
+void _rejectsSyntheticTurnEvent
+void _payloadsStayCorrelated
 
 const now = '2026-05-24T00:00:00.000Z'
 const modelSelection = {
@@ -153,42 +195,25 @@ describe('orchestration contracts', () => {
     ).toThrow()
   })
 
-  it('keeps the locked Phase 1 event list without synthetic turn lifecycle events', () => {
-    expect(orchestrationEventTypes).toEqual([
-      'project.created',
-      'project.meta-updated',
-      'project.reordered',
-      'project.deleted',
-      'thread.created',
-      'thread.meta-updated',
-      'thread.deleted',
-      'thread.archived',
-      'thread.unarchived',
-      'thread.settled',
-      'thread.unsettled',
-      'thread.snoozed',
-      'thread.unsnoozed',
-      'thread.pinned',
-      'thread.unpinned',
-      'thread.pin-reordered',
-      'thread.runtime-mode-set',
-      'thread.interaction-mode-set',
-      'thread.message-sent',
-      'thread.turn-start-requested',
-      'thread.turn-interrupt-requested',
-      'thread.session-stop-requested',
-      'thread.session-set',
-      'thread.activity-appended',
-      'thread.proposed-plan-upserted',
-      'thread.turn-diff-completed',
-      'thread.checkpoint-revert-requested',
-      'thread.reverted',
-      'thread.approval-response-requested',
-      'thread.user-input-response-requested',
-    ])
-    expect(orchestrationEventTypes).not.toContain('thread.turn-started')
-    expect(orchestrationEventTypes).not.toContain('thread.turn-completed')
-    expect(orchestrationEventTypes).not.toContain('thread.turn-failed')
+  it('builds one variant member per catalog row, in catalog order', () => {
+    const catalog = Object.entries(ORCHESTRATION_EVENT_PAYLOADS)
+    const options = orchestrationEventSchema.options
+
+    expect(options).toHaveLength(catalog.length)
+
+    for (const [index, [type, payload]] of catalog.entries()) {
+      expect(options[index]?.entries.type.literal).toBe(type)
+      // Identity, not shape: the row's schema object is the one the parser runs.
+      expect(options[index]?.entries.payload).toBe(payload)
+    }
+  })
+
+  it('keeps the catalog free of synthetic turn lifecycle events', () => {
+    const eventTypes = Object.keys(ORCHESTRATION_EVENT_PAYLOADS)
+
+    expect(eventTypes).not.toContain('thread.turn-started')
+    expect(eventTypes).not.toContain('thread.turn-completed')
+    expect(eventTypes).not.toContain('thread.turn-failed')
   })
 
   it('round-trips domain events through JSON and contract validation', () => {

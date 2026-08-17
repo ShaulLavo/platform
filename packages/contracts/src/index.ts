@@ -224,7 +224,6 @@ export {
 } from './orchestration-commands'
 export {
   orchestrationEventSchema,
-  orchestrationEventTypes,
   type OrchestrationAggregateKind,
   type OrchestrationEvent,
   type OrchestrationEventMetadata,
