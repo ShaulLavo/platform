@@ -75,6 +75,17 @@
     'JetBrains Mono Nerd Font', 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, monospace;
   --animate-accordion-down: app-accordion-down 150ms ease-out;
   --animate-accordion-up: app-accordion-up 150ms ease-out;
+  /* Motion. Built-in CSS easings are too weak to read as intentional; these are
+     the stronger variants. Entering and exiting UI uses --ease-out-strong;
+     things that move or morph on screen use --ease-in-out-strong. Never ease-in
+     for UI — it delays the first frame, which is exactly when the user is
+     looking. */
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
+  /* Enter is the system arriving; exit is the system getting out of the way
+     after the user already decided. Exit is therefore faster. */
+  --duration-enter: 140ms;
+  --duration-exit: 100ms;
 }
 
 :root {
@@ -485,6 +496,29 @@ html[data-wallpaper-hidden] {
   }
   body {
     @apply bg-background text-foreground;
+  }
+  /* Reduced motion means fewer and gentler animations, not zero. Opacity still
+     carries the state change — what goes away is movement: the zoom, the slide,
+     and the transform transitions. tw-animate-css drives its enter/exit
+     keyframes entirely from these custom properties, so neutralizing scale and
+     translate leaves --tw-enter-opacity / --tw-exit-opacity untouched. */
+  @media (prefers-reduced-motion: reduce) {
+    [data-slot='dialog-content'],
+    [data-slot='dialog-overlay'],
+    [data-slot='popover-content'],
+    [data-slot='dropdown-menu-content'],
+    [data-slot='dropdown-menu-sub-content'],
+    [data-slot='context-menu-content'],
+    [data-slot='context-menu-sub-content'],
+    [data-slot='select-content'],
+    [data-slot='tooltip-content'] {
+      --tw-enter-scale: 1;
+      --tw-exit-scale: 1;
+      --tw-enter-translate-x: 0;
+      --tw-enter-translate-y: 0;
+      --tw-exit-translate-x: 0;
+      --tw-exit-translate-y: 0;
+    }
   }
 }
 
