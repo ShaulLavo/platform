@@ -348,6 +348,29 @@ test('a shell resnapshot preserves the pending source proposed plan', () => {
   })
 })
 
+// The shell carries no pin state, so a resnapshot is the only thing that can drop the
+// slot the user dragged this session into. It must survive.
+test('a shell resnapshot preserves the arranged pin slot', () => {
+  const threadId = parseThreadId('thread-1')
+  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionState(), {
+    projects: [makeProject()],
+    snapshotSequence: 1,
+    threads: [makeThreadShell({ id: threadId })],
+    updatedAt: timestamp(1),
+  })
+
+  state = applyChatProjectionEvent(state, threadPinnedEvent(threadId, 'm'))
+
+  state = syncChatProjectionShellSnapshot(state, {
+    projects: [makeProject()],
+    snapshotSequence: 3,
+    threads: [makeThreadShell({ id: threadId, updatedAt: timestamp(2) })],
+    updatedAt: timestamp(2),
+  })
+
+  expect(state.sidebarThreadSummaryById[threadId]?.pinOrderKey).toBe('m')
+})
+
 test('keeps sidebar summaries shell-owned while detail events update local turn state', () => {
   const threadId = parseThreadId('thread-1')
   const turnId = parseTurnId('turn-1')
@@ -700,6 +723,22 @@ function makeActivity(
     tone: 'tool',
     turnId: null,
     ...overrides,
+  }
+}
+
+function threadPinnedEvent(
+  threadId: ReturnType<typeof parseThreadId>,
+  pinOrderKey: string,
+): OrchestrationEvent {
+  return {
+    ...makeThreadEvent(threadId, 2, 'pinned'),
+    payload: {
+      pinOrderKey,
+      pinnedAt: timestamp(2),
+      threadId,
+      updatedAt: timestamp(2),
+    },
+    type: 'thread.pinned',
   }
 }
 

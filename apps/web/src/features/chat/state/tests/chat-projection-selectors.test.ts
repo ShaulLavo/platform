@@ -111,6 +111,66 @@ test('a thread the shell has not delivered yet still resolves from its detail sn
   })
 })
 
+// `null` is a real session value — "the session stopped" — so the merge decides by
+// presence, not truthiness. A shell that published a stopped session must outrank a
+// detail snapshot that still remembers a running one, or the composer offers to
+// interrupt a session that is already gone.
+test('a published null session outranks a detail snapshot that still carries one', () => {
+  const threadId = v.parse(threadIdSchema, 'thread-1')
+  const shell = threadShell({ id: threadId, projectId, session: null })
+  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionState(), {
+    projects: [],
+    snapshotSequence: 1,
+    threads: [shell],
+    updatedAt: timestamp(2),
+  })
+
+  state = syncChatProjectionThreadDetailSnapshot(state, {
+    checkpoints: [],
+    proposedPlans: [],
+    snapshotSequence: 2,
+    thread: { ...staleDetailThread(threadId), session: threadShell().session },
+  })
+
+  expect(selectChatThreadById(state, threadId)?.session).toBeNull()
+})
+
+// The turn falls back by *value*, not by presence: a thread the shell delivered with
+// no turn at all still shows the turn its detail snapshot carried, which is what a
+// cold open of an idle-looking thread depends on.
+test('a thread with no published turn still shows the turn its detail snapshot carried', () => {
+  const threadId = v.parse(threadIdSchema, 'thread-1')
+  const turnId = v.parse(turnIdSchema, 'turn-1')
+  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionState(), {
+    projects: [],
+    snapshotSequence: 1,
+    threads: [threadShell({ id: threadId, latestTurn: null, projectId, session: null })],
+    updatedAt: timestamp(2),
+  })
+
+  state = syncChatProjectionThreadDetailSnapshot(state, {
+    checkpoints: [],
+    proposedPlans: [],
+    snapshotSequence: 2,
+    thread: {
+      ...staleDetailThread(threadId),
+      latestTurn: {
+        assistantMessageId: null,
+        completedAt: timestamp(3),
+        requestedAt: timestamp(1),
+        startedAt: timestamp(2),
+        state: 'completed',
+        turnId,
+      },
+    },
+  })
+
+  expect(selectChatThreadById(state, threadId)?.latestTurn).toMatchObject({
+    state: 'completed',
+    turnId,
+  })
+})
+
 function staleDetailThread(threadId: ThreadId): OrchestrationThread {
   const source = threadShell({ id: threadId, projectId })
 
