@@ -1,5 +1,6 @@
 import * as v from 'valibot'
 import { isRecord } from '../is-record'
+import type { ModelRef, ProviderInstanceConfig } from '../settings'
 
 /**
  * A dotted key, lowercase-ish, with no empty segments. Deliberately rejects the
@@ -50,6 +51,34 @@ export type SettingWidget =
  * can be overridable and greppable without cluttering the page.
  */
 export type SettingVisibility = 'user' | 'advanced' | 'internal'
+
+/**
+ * Which widget kinds can render a value of type `TValue`.
+ *
+ * The registry types `default` against `schema`; this does the same for the
+ * control, so `{ schema: v.boolean(), widget: 'font' }` stops being a legal
+ * entry that ships a control unable to render its own value.
+ *
+ * `complex` is always allowed. It is the escape hatch — the page renders the
+ * "edit in settings.json" hint for it — and a type that cannot say "none of
+ * these fit" is a cage rather than a contract.
+ *
+ * `unknown extends TValue` is the fallback for the unparameterised
+ * `SettingDescriptor`, whose `v.InferOutput<v.GenericSchema>` is `unknown`.
+ * Without it `SettingsRegistryShape` would admit no widget at all.
+ */
+export type WidgetFor<TValue> = unknown extends TValue
+  ? SettingWidget
+  : 'complex' | ValueWidget<TValue>
+
+type ValueWidget<TValue> =
+  | (TValue extends boolean ? 'boolean' : never)
+  | (TValue extends number ? 'number' : never)
+  | (TValue extends string ? 'string' | 'multiline' | 'font' | 'enum' : never)
+  | (TValue extends readonly unknown[] ? 'list' : never)
+  | (TValue extends readonly ProviderInstanceConfig[] ? 'providers' : never)
+  | (TValue extends readonly ModelRef[] ? 'models' : never)
+  | (TValue extends Readonly<Record<string, string | null>> ? 'record' : never)
 
 /**
  * How two layers combine for one key.
@@ -114,15 +143,23 @@ export type SettingDescriptor<TSchema extends v.GenericSchema = v.GenericSchema>
 }
 
 /**
- * Identity function whose only job is to bind `default` to `schema`.
+ * Identity function whose only job is to bind `default` and `widget` to `schema`.
  *
  * Written as a per-entry generic rather than a constraint on the whole table:
  * a whole-map `Record<string, SettingDescriptor<unknown>>` constraint widens
  * `default` to `unknown` and then accepts `{ schema: v.boolean(), default: 3 }`
  * without complaint. Per-entry, that is a type error at the call site.
+ *
+ * The widget binding lives on the *parameter* rather than on
+ * `SettingDescriptor.widget`. A conditional type is unmeasurable for variance,
+ * so putting `WidgetFor<v.InferOutput<TSchema>>` on the field makes `TSchema`
+ * invariant and every entry stops satisfying
+ * `Readonly<Record<string, SettingDescriptor>>`. Constraining the argument
+ * catches the same mistake at the same place and leaves the descriptor type
+ * assignable.
  */
 export function defineSetting<TSchema extends v.GenericSchema>(
-  descriptor: SettingDescriptor<TSchema>,
+  descriptor: SettingDescriptor<TSchema> & { readonly widget: WidgetFor<v.InferOutput<TSchema>> },
 ): SettingDescriptor<TSchema> {
   return descriptor
 }

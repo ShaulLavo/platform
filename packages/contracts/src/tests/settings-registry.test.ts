@@ -48,6 +48,50 @@ void _overrideRejectsNumber
 void _instancesRejectObject
 void _unknownKeyHasNoType
 
+// The widget tag is bound to the schema the same way `default` is, so a control
+// that cannot render its key's value is a compile error at the entry rather
+// than a settings row that misbehaves at runtime.
+const _fontTakesAString = defineSetting({
+  schema: v.string(),
+  default: '',
+  scope: 'window',
+  widget: 'font',
+  category: 'X',
+  description: 'x',
+})
+const _fontRejectsABoolean = defineSetting({
+  schema: v.boolean(),
+  default: true,
+  scope: 'window',
+  // @ts-expect-error a boolean cannot render a font picker
+  widget: 'font',
+  category: 'X',
+  description: 'x',
+})
+const _modelsRejectProviders = defineSetting({
+  schema: modelRefListSchema,
+  default: [],
+  scope: 'application',
+  // @ts-expect-error a model list is not a provider list
+  widget: 'providers',
+  category: 'X',
+  description: 'x',
+})
+const _providersRejectModels = defineSetting({
+  schema: providerInstanceConfigsSchema,
+  default: [],
+  scope: 'application',
+  // @ts-expect-error a provider list is not a model list
+  widget: 'models',
+  category: 'X',
+  description: 'x',
+})
+
+void _fontTakesAString
+void _fontRejectsABoolean
+void _modelsRejectProviders
+void _providersRejectModels
+
 describe('settings registry', () => {
   it('registers no malformed id and no default that fails its own schema', () => {
     expect(registryProblems(SETTINGS_REGISTRY)).toEqual([])

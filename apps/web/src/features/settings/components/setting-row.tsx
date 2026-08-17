@@ -1,8 +1,10 @@
 import {
   descriptorFor,
+  settingControl,
   settingRowIds,
   type SettingId,
   type SettingsSnapshot,
+  type SettingValue,
 } from '@workspace/contracts'
 
 import { useSettingsActions } from '../hooks/use-settings-actions'
@@ -100,99 +102,67 @@ function SettingControl({
 }: {
   disabled: boolean
   id: SettingId
-  onChange: (next: never) => void
-  value: unknown
+  // Every registered value type, not `never`. A handler that accepts nothing is
+  // assignable to no widget — which is what forced a cast at every branch —
+  // where one that accepts all of them is assignable to each in turn.
+  onChange: (next: SettingValue<SettingId>) => void
+  value: SettingValue<SettingId>
 }) {
-  const descriptor = descriptorFor(id)
+  const control = settingControl(id, value)
 
-  if (descriptor.widget === 'boolean') {
-    return (
-      <BooleanWidget
-        checked={value === true}
-        disabled={disabled}
-        id={id}
-        onChange={onChange as (next: boolean) => void}
-      />
-    )
+  if (control.widget === 'boolean') {
+    return <BooleanWidget checked={control.value} disabled={disabled} id={id} onChange={onChange} />
   }
 
-  if (descriptor.widget === 'number') {
-    return (
-      <NumberWidget
-        disabled={disabled}
-        id={id}
-        onCommit={onChange as (next: number) => void}
-        value={Number(value)}
-      />
-    )
+  if (control.widget === 'number') {
+    return <NumberWidget disabled={disabled} id={id} onCommit={onChange} value={control.value} />
   }
 
   // The two keys whose value is a whole domain object rather than a scalar. They
   // render the editors that already know how to source their rows — providers
   // from the running snapshots, models from the provider catalogue — because
   // neither list lives in the settings document.
-  if (descriptor.widget === 'providers') {
-    return <ProviderSection saved={value as never} />
+  if (control.widget === 'providers') {
+    return <ProviderSection saved={control.value} />
   }
 
-  if (descriptor.widget === 'models') {
+  if (control.widget === 'models') {
     return <ModelSection />
   }
 
-  if (descriptor.widget === 'record') {
+  if (control.widget === 'record') {
     return (
       <RecordWidget
         disabled={disabled}
         id={id}
-        onChange={onChange as (next: Record<string, string | null>) => void}
+        onChange={onChange}
         recorder={id === 'keybindings.overrides'}
-        value={(value ?? {}) as Record<string, string | null>}
+        value={control.value}
       />
     )
   }
 
-  if (descriptor.widget === 'font') {
-    return (
-      <FontWidget
-        disabled={disabled}
-        id={id}
-        onChange={onChange as (next: string) => void}
-        value={String(value)}
-      />
-    )
+  if (control.widget === 'font') {
+    return <FontWidget disabled={disabled} id={id} onChange={onChange} value={control.value} />
   }
 
-  if (descriptor.widget === 'string' || descriptor.widget === 'multiline') {
-    return (
-      <StringWidget
-        disabled={disabled}
-        id={id}
-        onCommit={onChange as (next: string) => void}
-        value={String(value)}
-      />
-    )
+  if (control.widget === 'string' || control.widget === 'multiline') {
+    return <StringWidget disabled={disabled} id={id} onCommit={onChange} value={control.value} />
   }
 
-  if (descriptor.widget === 'enum') {
+  if (control.widget === 'enum') {
     return (
       <EnumWidget
         disabled={disabled}
         id={id}
-        onChange={onChange as (next: string) => void}
-        options={enumOptions(descriptor.schema)}
-        value={String(value)}
+        onChange={onChange}
+        options={control.options}
+        value={control.value}
       />
     )
   }
 
-  // Lists, records and provider config get real editors in a later phase. Saying
-  // so beats rendering a control that cannot represent the value.
+  // `list`, `complex`, and any value whose shape does not match its widget.
+  // Saying so beats rendering a control that cannot represent the value.
   return <span className='text-muted-foreground text-xs'>Edit in settings.json</span>
-}
-
-function enumOptions(schema: unknown): readonly string[] {
-  if (!schema || typeof schema !== 'object') return []
-  const options = (schema as { options?: unknown }).options
-
-  return Array.isArray(options) ? options.map(String) : []
 }

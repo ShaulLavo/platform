@@ -279,6 +279,21 @@ test('renders a record editor for keybindings rather than raw JSON', async ({ cl
   expect(await screen.findByRole('button', { name: 'Remove workspace.saveFile' })).toBeDefined()
 })
 
+test('every registered widget resolves a real control, not the JSON escape hatch', async ({
+  client,
+}) => {
+  expect(client).toBeDefined()
+  renderWithProviders(<SettingsPage />)
+
+  // A row has to be on screen before the absence of the hint means anything.
+  await screen.findByRole('switch', { name: 'Wallpaper enabled' })
+
+  // The hint is the dispatch's fallback for `list`, `complex` and a value whose
+  // shape does not match its widget — none of which any registered key
+  // produces. One on the page means a widget kind lost its branch.
+  expect(screen.queryAllByText('Edit in settings.json')).toEqual([])
+})
+
 test('Escape from a row returns focus to the search box', async ({ client }) => {
   expect(client).toBeDefined()
   renderWithProviders(<SettingsPage />)

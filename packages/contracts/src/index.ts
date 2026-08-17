@@ -330,7 +330,9 @@ export {
   settingsValuesSchema,
   type SettingId,
   type SettingsValues,
+  type SettingValue,
 } from './settings/keys'
+export { settingControl, type SettingControl } from './settings/control'
 export {
   deriveWriteTarget,
   inspectSetting,
