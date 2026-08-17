@@ -1,5 +1,61 @@
 # Plan 039: Split FileTreeView and FileTreeController along their real seams
 
+> ## CORRECTION — 2026-08-17: the plan author rules on the Step 3 contradiction
+>
+> **Read this before anything else. Where it disagrees with the older text
+> below, this block wins.** Steps 0–2 of this plan landed green; the plan then
+> blocked at Step 3 on a contradiction between two of its own rules — not on
+> anything in the code. Three things change.
+>
+> **1. Steps 0, 1 and 2 are DONE. Resume at Step 3.** On `main`:
+> `3ce5231` (`refactor(tree): drop the FILE_TREE_RENAME_VIEW symbol alias`) and
+> `a7adf9f` (`refactor(tree): one union replaces the three coupled sticky-keyboard
+refs`). Measured after them, at `b467b3f`: the `packages/tree` suite went from
+> 5 files / 78 tests to **6 files / 85 tests**, all passing;
+> `grep -c 'pendingStickyKeyboard' …/FileTreeView.tsx` → **0**;
+> `grep -c 'pendingStickyFocusPathRef' …/FileTreeView.tsx` → **5**, unchanged;
+> `wc -l …/FileTreeView.tsx` → **3475**. Do not redo Steps 1 and 2. Do run
+> Step 0's baseline capture (rewritten below) — you need your own snapshot.
+>
+> **2. Dependency arrays may now gain ref objects — and nothing else.** Step 3
+> used to say "Nothing may be added to or removed from any effect's dependency
+> array." Bundling the seven element refs into `useFileTreeRowDom` costs **16 new
+> `react-hooks(exhaustive-deps)` warnings** — measured, with both spellings tried
+> (`dom.root.current` and `*Ref`-suffixed destructured aliases), 16 either way —
+> because oxlint exempts only refs declared by `useRef` _in the same scope_, and a
+> returned bundle loses that exemption. The only route back to zero warnings is
+> listing those refs in the dependency arrays, which the old constraint forbade.
+> The criterion and the constraint could not both hold; the executor correctly
+> reverted Step 3 rather than ship 16 warnings, and escalated.
+>
+> The author's ruling: **adding a `useRef` object (the object itself, e.g.
+> `dom.root` or `rowsRef`) to a dependency array is behaviour-neutral and is
+> PERMITTED.** `useRef` returns the same object for the component's entire
+> lifetime — verified in this very file, where `pendingStickyFocusPathRef` is
+> minted by `useRef` at `FileTreeView.tsx:1204`, one of 41 `useRef` calls — so the
+> array's value is identical on every render either way and the effect can never
+> run an extra time. Nothing else may be added: not `.current` reads, not state
+> values, not derived values, not callbacks. The narrowed constraint is written
+> into Step 3 below, and the STOP condition and Maintenance note that stated the
+> old blanket rule are amended to match.
+>
+> **3. Absolute counts are gone from every gate.** This plan was authored at
+> `ace313f`; plans 013–035 have since changed every count it hardcoded, and
+> `bun run verify` is a whole-monorepo, short-circuiting script — requiring it to
+> exit 0 held this plan hostage to failures in code it never touches, and proved
+> nothing about the change. Every gate is now a **delta against a Step 0 snapshot
+> you capture yourself**: no test that passed before may fail after, and no new
+> lint error or warning may appear. A failure already recorded in your snapshot is
+> not yours to fix and must not block you.
+>
+> Measured at `b467b3f`, for orientation only — never as an assertion:
+> `packages/tree` lint is **0 errors / 4 warnings** (all `unicorn(no-new-array)`:
+> one in `src/utils/renameFileTreePaths.ts:103`, three in
+> `src/utils/path-store/projection.ts` at 563, 592, 696). **4 is the number to
+> return to.** The older text below names three warnings in
+> `src/utils/path-store/static-store.ts` — that is stale; they moved. The
+> `packages/tree` suite is **6 files / 85 tests**.
+
 > **GATE NOTE (fresh-context review, 2026-08-16; resolved)**: a cold review
 > flagged that `plans/014-tree-path-store-characterization-tests.md` did not
 > exist. **It now does.** This plan is still hard-gated on 014 being executed and
@@ -501,19 +557,27 @@ add an `index.ts` barrel and do **not** restructure the exports map.
 
 ## Commands you will need
 
-Run all of these from the repo root unless the command says otherwise. Measured
-at `ace313f` on 2026-08-16 — these are observed outputs, not guesses.
+Run all of these from the repo root unless the command says otherwise. The
+"expected" column describes the **shape** of a passing run. Absolute counts in it
+are orientation readings at `b467b3f`, not assertions — compare against your own
+Step 0 snapshot, never against a number printed in this plan.
 
-| Purpose                 | Command                                                                                               | Expected on success                                                                                                                                                                                                                                       |
-| ----------------------- | ----------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tree tests (node + dom) | `bun run --filter '@workspace/tree' test`                                                             | `Test Files 2 passed (2)`, `Tests 7 passed (7)`, `Exited with code 0` **at `ace313f`** — plan 014 raises both numbers, so use your own Step 0c reading as the baseline                                                                                    |
-| Tree browser tests      | `bun run --filter '@workspace/tree' test:browser`                                                     | 2 tests pass — **see the hang warning below**                                                                                                                                                                                                             |
-| Tree typecheck          | `bun run --filter '@workspace/tree' typecheck`                                                        | `Exited with code 0`, no diagnostics                                                                                                                                                                                                                      |
-| Tree lint               | `bun run --filter '@workspace/tree' lint`                                                             | `Exited with code 0`. **Three pre-existing `unicorn(no-new-array)` warnings in `src/utils/path-store/static-store.ts` (lines 72, 308, 776) are expected and out of scope — do not fix them.** Any warning or error naming a file you touched is a failure |
-| Tree format check       | `bun run --filter '@workspace/tree' format:check`                                                     | `All matched files use the correct format.`, exit 0                                                                                                                                                                                                       |
-| App consumer tests      | `cd apps/web && bun --bun vitest run --project node --project dom src/components/workspace/file-tree` | `Test Files 4 passed (4)`, `Tests 60 passed (60)` at `ace313f`                                                                                                                                                                                            |
-| Whole repo              | `bun run verify`                                                                                      | = `typecheck && lint && format:check && test` across every workspace. Takes minutes and covers code this plan never touches — **see the note under Step 0c before treating a failure as yours**                                                           |
-| Line count              | `wc -l packages/tree/src/components/FileTreeView.tsx`                                                 | `3555` at `ace313f`; tracked per step                                                                                                                                                                                                                     |
+| Purpose                 | Command                                                                                               | Expected on success                                                                                                                                                                                                                                               |
+| ----------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tree tests (node + dom) | `bun run --filter '@workspace/tree' test`                                                             | Exit 0, zero failures, and `Test Files`/`Tests` no lower than your Step 0 snapshot. Reads `Test Files 6 passed (6)`, `Tests 85 passed (85)` at `b467b3f`                                                                                                          |
+| Tree browser tests      | `bun run --filter '@workspace/tree' test:browser`                                                     | 2 tests pass — **see the hang warning below**                                                                                                                                                                                                                     |
+| Tree typecheck          | `bun run --filter '@workspace/tree' typecheck`                                                        | `Exited with code 0`, no diagnostics                                                                                                                                                                                                                              |
+| Tree lint               | `bun run --filter '@workspace/tree' lint`                                                             | Exit 0, **0 errors, and no warning beyond the ones in your Step 0 snapshot**. That snapshot is 4 `unicorn(no-new-array)` warnings at `b467b3f` (`utils/renameFileTreePaths.ts:103`, `utils/path-store/projection.ts:563,592,696`) — out of scope, do not fix them |
+| Tree format check       | `bun run --filter '@workspace/tree' format:check`                                                     | `All matched files use the correct format.`, exit 0                                                                                                                                                                                                               |
+| App consumer tests      | `cd apps/web && bun --bun vitest run --project node --project dom src/components/workspace/file-tree` | Exit 0, zero failures, `Test Files`/`Tests` no lower than your Step 0 snapshot                                                                                                                                                                                    |
+| Line count              | `wc -l packages/tree/src/components/FileTreeView.tsx`                                                 | `3475` at `b467b3f` (was 3555 when this plan was written, before Steps 1–2 landed); tracked per step                                                                                                                                                              |
+
+**Do not use `bun run verify` as a gate.** It runs `typecheck && lint &&
+format:check && test` across every workspace and short-circuits, so a single
+failure anywhere in the monorepo — including workspaces this plan never touches —
+makes it unreachable while telling you nothing about your change. Use the
+per-workspace scripts above, compared against your Step 0 snapshot. You may run
+`verify` for information; it is never a pass/fail condition here.
 
 If `apps/web/src/components/workspace/file-tree/` does not exist, plans 009–012
 have moved it. Find its new home with
@@ -576,8 +640,12 @@ do not report it as either.
   you finish — that is expected and is **not** a reason to add a step. Keyboard
   nav straddles the sticky-focus machine and the context menu; it can only be
   extracted after both of this plan's hooks exist and have settled.
-- `packages/tree/src/utils/path-store/static-store.ts` — its three
-  `unicorn(no-new-array)` lint warnings are pre-existing and belong to plan 014.
+- Whatever files carry the pre-existing `unicorn(no-new-array)` warnings in your
+  Step 0c lint snapshot. At `b467b3f` that is `utils/renameFileTreePaths.ts:103`
+  and `utils/path-store/projection.ts:563,592,696` — 4 warnings, not the 3 in
+  `utils/path-store/static-store.ts` this plan named when it was written. They are
+  pre-existing, they belong to the path-store layer, and fixing them here would
+  make your lint delta unreadable.
 - Repo-wide formatting (`bun run format` at the root). Scoped
   `--filter '@workspace/tree' format` only.
 - `packages/tree/src/utils/render/FileTree.ts` and `render/runtime.ts` — they
@@ -612,6 +680,15 @@ sticky-keyboard refs`, `refactor(tree): drag and touch move into their own hook`
 ## Steps
 
 ### Step 0: Confirm the two prerequisites, then record the real baseline
+
+> **Both gates are already open — verified at `b467b3f`.** Plan 014 is `DONE`
+> (`5774dc6`); `packages/tree/src/utils/tests/` holds `controller.test.ts`,
+> `visible-rows.test.ts`, `visible-rows-fuzz.test.ts` and `stickyFocusMode.test.ts`.
+> Plan 022 has landed: `grep -c 'debugDisableScrollSuppressionRef'
+packages/tree/src/components/FileTreeView.tsx` → 0, so the "if 022 has not
+> landed" branches in Steps 4 and 5 are dead text you can ignore. Re-run 0a and 0b
+> to confirm nothing regressed, then **do 0c properly — you need your own
+> snapshot, and it is the only thing every later gate compares against.**
 
 This plan is gated on two other plans. Verify both, in this order.
 
@@ -666,40 +743,65 @@ grep -c 'debugDisableScrollSuppressionRef' packages/tree/src/components/FileTree
 - Returns anything else → the file has drifted from this plan. Treat it as a
   STOP condition.
 
-**0c — record the baseline.** Every later step compares against these numbers.
+**0c — capture the baseline as files on disk.** Every later gate is a **delta
+against this snapshot**, never against a number written in this plan. Absolute
+counts are forbidden as done criteria: this plan was authored at one commit and
+sibling plans have already moved every count it once hardcoded.
 
 ```bash
-git status --porcelain > /tmp/plan-039-baseline-status.txt   # the tree is NOT clean; see below
-wc -l packages/tree/src/components/FileTreeView.tsx
-bun run --filter '@workspace/tree' typecheck
-bun run --filter '@workspace/tree' lint
-bun run --filter '@workspace/tree' format:check
-bun run --filter '@workspace/tree' test
-(cd apps/web && bun --bun vitest run --project node --project dom src/components/workspace/file-tree)
+git status --porcelain > /tmp/plan-039-baseline-status.txt   # the tree may be dirty; see below
+wc -l packages/tree/src/components/FileTreeView.tsx > /tmp/plan-039-lines-before.txt
+
+cd packages/tree && bun run test  2>&1 | tail -5 > /tmp/plan-039-tree-test-before.txt
+cd packages/tree && bun run lint  2>&1 | tail -5 > /tmp/plan-039-tree-lint-before.txt
+cd packages/tree && bun run typecheck    2>&1 | tail -5 > /tmp/plan-039-tree-typecheck-before.txt
+cd packages/tree && bun run format:check 2>&1 | tail -5 > /tmp/plan-039-tree-format-before.txt
+
+cd apps/web && bun --bun vitest run --project node --project dom src/components/workspace/file-tree \
+  2>&1 | tail -5 > /tmp/plan-039-web-test-before.txt
 ```
 
-Write down: the line count, the tree test counts (`Test Files N`, `Tests N`), and
-the app test counts. **If any of the five `@workspace/tree` / `apps/web` commands
-is red before you change anything, STOP and report the pre-existing failure.**
-You cannot refactor against a red baseline.
+> **`tail -5`, not `tail -2`.** The Step 3 investigation first reported "1 new
+> warning" and had to correct itself to 16 because a `tail -2` had truncated the
+> oxlint output. When you compare warning counts, count the whole warning block,
+> not the summary tail.
 
-Two things that are normal and are **not** failures:
+Read the four `tail` files back and write down, in your report: the tree
+`Test Files`/`Tests` line, the tree lint error and warning counts **with the file
+and rule of each warning**, and the app-consumer counts. At `b467b3f` the tree
+readings are 6 files / 85 tests and 0 errors / 4 warnings — if yours differ,
+**yours are correct** and the ones in this plan are stale.
 
-- **The working tree is dirty at `ace313f`** — there is uncommitted work in
-  `apps/web` and `packages/contracts` that is not yours. That is why you snapshot
-  `git status` here: the Done criterion is "no file outside the in-scope list
-  changed _relative to this snapshot_", not "git status is empty".
-- **`bun run verify` may already be red** for reasons outside `packages/tree`
-  (plan 013 exists to repair the repo-wide test baseline and is `TODO`). Run it
-  once now and record the result. If it is red at baseline, the Done criterion
-  becomes "`bun run verify` fails in exactly the same places as the Step 0c
-  recording, and in no new ones" — report the recorded baseline alongside it.
-  Do not fix unrelated failures.
+Three things that are normal and are **not** failures:
 
-**Verify**: the five package/app commands exit 0; `/tmp/plan-039-baseline-status.txt`
-exists; you have written down the line count and the test-count numbers.
+- **The working tree may be dirty**, with uncommitted work in other workspaces
+  that is not yours. That is why you snapshot `git status`: the Done criterion is
+  "no file outside the in-scope list changed _relative to this snapshot_", not
+  "git status is empty".
+- **A pre-existing test failure in your snapshot is not your problem.** Record it
+  and proceed; the gate is that nothing which passed before fails after. Do not
+  fix unrelated failures, and do not let one block this plan. (Known at
+  `b467b3f`: `apps/web` has exactly one failing test,
+  `src/features/settings/tests/page.test.tsx > refuses an application-scoped key
+from the workspace tab, and says why` — a one-line test-query defect tracked
+  separately, unrelated to `packages/tree` and outside the file-tree path filter
+  this plan runs.)
+- **`bun run verify` may be red** for reasons outside `packages/tree`. It is not a
+  gate for this plan — see the note under the commands table. Do not run it as a
+  pass condition.
+
+**Verify**: the four `@workspace/tree` commands and the `apps/web` file-tree run
+have each been captured to a `/tmp/plan-039-*-before.txt` file;
+`/tmp/plan-039-baseline-status.txt` exists; you have written down the line count,
+the test counts, and the per-file lint warning list. A red reading here does not
+stop you — an unrecorded one does, because you then cannot tell your breakage from
+what was already broken.
 
 ### Step 1: Delete the `FILE_TREE_RENAME_VIEW` symbol alias
+
+> **LANDED — commit `3ce5231`. Do not redo this step.** `grep -rn
+'FILE_TREE_RENAME_VIEW' packages apps` returns no matches at `b467b3f`. The
+> instructions below are kept as the record of what was done; skip to Step 3.
 
 Smallest possible change, run first to prove the toolchain works end to end.
 
@@ -734,6 +836,14 @@ bun run --filter '@workspace/tree' test           # → same counts as Step 0c
 ```
 
 ### Step 2: Replace the three sticky-keyboard refs with one pure-reducer union
+
+> **LANDED — commit `a7adf9f`. Do not redo this step.** At `b467b3f`:
+> `packages/tree/src/utils/render/stickyFocusMode.ts` and
+> `utils/tests/stickyFocusMode.test.ts` exist, `grep -c 'pendingStickyKeyboard'`
+> → 0, `grep -c 'pendingStickyFocusPathRef'` → 5 (unchanged), and the suite went
+> 5 files / 78 tests → **6 files / 85 tests**, all green, with the plan-014
+> characterization suite green alongside. The instructions below are kept as the
+> record of what was done; skip to Step 3.
 
 Create `packages/tree/src/utils/render/stickyFocusMode.ts`. No React import
 (`AGENTS.md`: `utils/` is "pure, stateless, non-React code only"). Target shape:
@@ -819,8 +929,8 @@ Write `packages/tree/src/utils/tests/stickyFocusMode.test.ts` (see Test plan).
 grep -c 'pendingStickyKeyboard' packages/tree/src/components/FileTreeView.tsx     # → 0
 grep -c 'pendingStickyFocusPathRef' packages/tree/src/components/FileTreeView.tsx # → 5, UNCHANGED
 bun run --filter '@workspace/tree' typecheck    # → exit 0
-bun run --filter '@workspace/tree' test         # → Step 0c count + 7, all pass
-bun run --filter '@workspace/tree' lint         # → 0 errors (the 3 path-store warnings stay)
+bun run --filter '@workspace/tree' test         # → Step 0c snapshot + 1 file / + 7 tests, all pass
+bun run --filter '@workspace/tree' lint         # → 0 errors, no warning beyond the Step 0c snapshot
 ```
 
 The second grep is the negative check: `pendingStickyFocusPathRef` is the ref
@@ -833,6 +943,12 @@ sticky keyboard focus is the behaviour with the thinnest automated coverage in
 the package.
 
 ### Step 3: Bundle the DOM refs into one registry hook
+
+> **START HERE.** Steps 0–2 are done (`3ce5231`, `a7adf9f`). This is the step that
+> blocked, and the block was a contradiction in this plan, not a problem in the
+> code — read the CORRECTION block at the top before you begin. The short version:
+> bundling the refs adds 16 `react-hooks(exhaustive-deps)` warnings, the fix is to
+> put the ref objects in the dependency arrays, and that is now permitted.
 
 Create `packages/tree/src/hooks/useFileTreeRowDom.ts`. Preact, one hook per file:
 
@@ -884,17 +1000,62 @@ Occurrence counts at `ace313f`, so you can confirm you got them all:
 clusters: `contextMenuAnchorRef`, `contextMenuTriggerRef` (Step 5 owns them),
 `isScrollingRef`, `updateViewportRef`, `measuredViewportHeightRef`.
 
-This step is **pure renaming — zero behaviour change**. Nothing may be added to
-or removed from any effect's dependency array.
+This step is **pure renaming — zero behaviour change** in what any effect does or
+when it runs.
+
+#### The dependency-array rule for this step, narrowed (AMENDED 2026-08-17)
+
+The original rule was "Nothing may be added to or removed from any effect's
+dependency array." Measured consequence: `useFileTreeRowDom` adds **16 new
+`react-hooks(exhaustive-deps)` warnings** — oxlint exempts a ref from the
+exhaustive-deps check only when it was declared by `useRef` _in the same scope_,
+and a ref reached through a returned bundle loses that exemption. Both spellings
+were tried (`dom.root.current`, and `*Ref`-suffixed aliases destructured out of
+the bundle); 16 warnings either way. The only route to zero is listing the refs in
+the dependency arrays — which the old rule forbade. So the rule and the lint
+criterion could not both hold, and the step was correctly reverted rather than
+shipped with 16 warnings.
+
+The rule is now:
+
+> **Dependency arrays may gain _ref objects_ (the object itself, e.g. `dom.root`,
+> `dom.rowButtons`, `rowsRef`) and nothing else. They must NOT gain `.current`
+> reads, state values, derived values, or callbacks — those change identity
+> between renders and would change when the effect runs.**
+
+Why refs are the exception, and why this is not a licence to touch dependency
+arrays in general: `useRef` returns **the same object for the component's entire
+lifetime**. Listing it in a dependency array therefore cannot cause an additional
+effect run — the array's value is identical on every render whether the ref is
+in it or not. It is provably a no-op. (Verified in this file:
+`pendingStickyFocusPathRef` is minted by `useRef` at `FileTreeView.tsx:1204`, one
+of 41 `useRef` calls.) Everything the original rule was written to prevent —
+silently changing effect _semantics_ by "tidying" a dependency — still applies in
+full to every non-ref value. That instinct was right; it just over-fired on refs.
+
+Nothing may be **removed** from any dependency array.
 
 **Verify**:
 
 ```bash
 grep -cE '\b(rootRef|scrollRef|listRef|renameInputRef|searchInputRef|rowButtonRefs|stickyRowButtonRefs)\b' packages/tree/src/components/FileTreeView.tsx  # → 0
-bun run --filter '@workspace/tree' typecheck && bun run --filter '@workspace/tree' lint
-bun run --filter '@workspace/tree' test         # → identical counts to Step 2
-(cd apps/web && bun --bun vitest run --project node --project dom src/components/workspace/file-tree)   # → same counts as Step 0c
+bun run --filter '@workspace/tree' typecheck
+bun run --filter '@workspace/tree' lint 2>&1 | tail -40   # → 0 errors, and the warning list is back to your Step 0c snapshot (4 at b467b3f)
+bun run --filter '@workspace/tree' test         # → no lower than Step 2, zero failures
+(cd apps/web && bun --bun vitest run --project node --project dom src/components/workspace/file-tree)   # → no lower than the Step 0c snapshot, zero failures
 ```
+
+Read the **whole** lint output, not `tail -2`. Truncated output is what made the
+first investigation report 1 warning instead of 16.
+
+> **STOP condition for this step.** Add the ref objects to the dependency arrays
+> that need them, then re-run lint. If the warning count does **not** return to
+> your Step 0c snapshot, **stop and report the residual warnings verbatim** — file,
+> line, rule, count. It would mean something other than the lost `useRef`-in-scope
+> exemption is generating them, and the analysis above is incomplete. Do not
+> suppress warnings with `eslint-disable`/`oxlint-disable` comments, do not edit
+> `.oxlintrc.json`, and do not add non-ref values to a dependency array to quiet
+> the rule.
 
 ### Step 4: Extract drag and touch
 
@@ -1158,7 +1319,8 @@ wc -l packages/tree/src/components/FileTreeView.tsx
 ```
 
 Expected after all six steps: **`FileTreeView.tsx` between about 1,800 and 2,200
-lines**, down from 3,555. The arithmetic: drag ≈ 570 lines, context menu ≈ 550,
+lines**, down from 3,555 as authored — 3,475 once Steps 1–2 landed, which is the
+figure your Step 0c `wc -l` will show. The arithmetic: drag ≈ 570 lines, context menu ≈ 550,
 row renderers ≈ 450, sticky focus ≈ 35, minus roughly 50 lines of new imports and
 hook call sites. Keyboard navigation (~260 lines) and the virtualization/focus
 effects stay by design.
@@ -1168,7 +1330,7 @@ effects stay by design.
 - Over 2,200 → one extraction left more behind than intended. Report it; do not
   invent a seventh step, and do not start on keyboard navigation.
 
-### Step 7: Verify in the real app, then run the full repo gate
+### Step 7: Verify in the real app, then close the per-workspace gates
 
 A dev server is **already running** at `http://localhost:5173`. Do not start one.
 Open the file-tree pane and confirm, by hand:
@@ -1196,12 +1358,29 @@ Then:
 
 ```bash
 bun run --filter '@workspace/tree' test:browser   # 2 tests pass, or the known hang → record it
-bun run verify                                    # compare against the Step 0c recording
+
+# The closing gate: the same four commands as Step 0c, diffed against the snapshot.
+cd packages/tree && bun run typecheck
+cd packages/tree && bun run lint         2>&1 | tail -5 > /tmp/plan-039-tree-lint-after.txt
+cd packages/tree && bun run format:check
+cd packages/tree && bun run test         2>&1 | tail -5 > /tmp/plan-039-tree-test-after.txt
+cd apps/web && bun --bun vitest run --project node --project dom src/components/workspace/file-tree \
+  2>&1 | tail -5 > /tmp/plan-039-web-test-after.txt
+
+diff /tmp/plan-039-tree-lint-before.txt /tmp/plan-039-tree-lint-after.txt
+diff /tmp/plan-039-tree-test-before.txt /tmp/plan-039-tree-test-after.txt
+diff /tmp/plan-039-web-test-before.txt  /tmp/plan-039-web-test-after.txt
 ```
 
+**Do not run `bun run verify` as the gate.** It is whole-monorepo and
+short-circuits; a failure in a workspace this plan never touches would block a
+correct change while proving nothing. The per-workspace scripts above are the gate.
+
 **Verify**: every manual check you were able to run behaves as described, and the
-ones you could not run are named in your report; `bun run verify` exits 0, or
-fails in exactly the places Step 0c recorded and no others.
+ones you could not run are named in your report. The three `diff`s show only the
+expected direction of change: tests **up** by the Step 2 additions and never down,
+zero failures apart from any already in the `before` snapshot, and the lint
+warning list identical to the snapshot with 0 errors.
 
 ## Test plan
 
@@ -1234,24 +1413,39 @@ behaviour, and would have to be rewritten by the next person who moves a line.
 **Do not** add tests that `vi.mock` or `mock.module` anything in this package —
 `AGENTS.md` forbids mocking our own modules.
 
-**Verification**: `bun run --filter '@workspace/tree' test` → the Step 0c count
-plus 7, all passing.
+**Verification**: `bun run --filter '@workspace/tree' test` → one more file and
+seven more tests than the Step 0c snapshot, zero failures. (Already satisfied:
+Step 2 landed in `a7adf9f` and took the suite from 5 files / 78 tests to 6 files /
+85 tests. Those readings are history, not a target — compare against your own
+snapshot.)
 
 ## Done criteria
 
-Machine-checkable. ALL must hold:
+Machine-checkable, and every gate is a **delta against the Step 0c snapshot**.
+Absolute test, file and warning counts are **not** valid done criteria in this
+plan — a count asserted at authoring time is invalidated by the next sibling plan
+that lands, which is exactly how this plan blocked once already. ALL must hold:
 
 - [ ] `bun run --filter '@workspace/tree' typecheck` exits 0
-- [ ] `bun run --filter '@workspace/tree' lint` exits 0 with 0 errors and no new
-      warnings (the 3 pre-existing `static-store.ts` warnings are still there)
+- [ ] `bun run --filter '@workspace/tree' lint` exits **0 errors and no new
+      warnings** — the warning list is identical to
+      `/tmp/plan-039-tree-lint-before.txt`, file for file and rule for rule. The
+      Step 0c snapshot is the number to return to (**4** `unicorn(no-new-array)`
+      warnings at `b467b3f`; they live in `utils/renameFileTreePaths.ts` and
+      `utils/path-store/projection.ts`, are out of scope, and must not be fixed).
+      This is achievable now: Step 3's ref bundle may put its ref objects into the
+      dependency arrays, which is what removes the 16 `exhaustive-deps` warnings
 - [ ] `bun run --filter '@workspace/tree' format:check` exits 0
-- [ ] `bun run --filter '@workspace/tree' test` exits 0, with 7 new
-      `stickyFocusMode` cases and every pre-existing case still passing
-      (`Test Files` = Step 0c + 1, `Tests` = Step 0c + 7)
-- [ ] `cd apps/web && bun --bun vitest run --project node --project dom src/components/workspace/file-tree` exits 0 with the same counts as Step 0c
-- [ ] `bun run verify` exits 0 — **or**, if it was already red in Step 0c, fails
-      in exactly the same places and no new ones (attach both outputs)
+- [ ] `bun run --filter '@workspace/tree' test` exits 0 with **no test that
+      passed in the Step 0c snapshot failing afterwards**, and `Test Files` /
+      `Tests` no lower than that snapshot. Step 2's 7 `stickyFocusMode` cases are
+      part of the suite and stay green
+- [ ] `cd apps/web && bun --bun vitest run --project node --project dom src/components/workspace/file-tree`
+      exits 0 with `Test Files` / `Tests` no lower than the Step 0c snapshot and
+      no newly-failing test. A failure already recorded in the snapshot does not
+      block this plan
 - [ ] `grep -rn 'FILE_TREE_RENAME_VIEW' packages apps` returns no matches
+      (already true — Step 1 landed in `3ce5231`)
 - [ ] `grep -c 'pendingStickyKeyboard' packages/tree/src/components/FileTreeView.tsx` returns 0
 - [ ] `grep -c 'pendingStickyFocusPathRef' packages/tree/src/components/FileTreeView.tsx` still returns 5
 - [ ] `wc -l packages/tree/src/components/FileTreeView.tsx` is under 2,200
@@ -1272,16 +1466,30 @@ Stop and report — do not improvise — if any of these happens:
 
 - **Plan 014 has not landed** (Step 0a). This is not negotiable: without those
   characterization tests, six of these seven steps have no detector.
-- **The baseline in Step 0c is already red.** You cannot distinguish your
-  breakage from pre-existing breakage.
+- **You skipped the Step 0c snapshot.** A red reading at baseline does _not_ stop
+  you — an **unrecorded** one does, because you then cannot distinguish your
+  breakage from what was already broken. Capture the snapshot files, record any
+  pre-existing failure in your report, and proceed.
 - **The `packages/tree` test count goes down at any point.** A disappearing test
   means a file stopped being collected — that is a silent loss of coverage, not
   a pass.
 - **You need to touch `apps/web` to make it compile.** That means an extraction
   changed `FileTreeView`'s public prop contract, which it must not.
-- **You need to add or remove an entry in any `useLayoutEffect` dependency
-  array** to make a step work. Every step here is behaviour-preserving; a
-  dependency-array change is a behaviour change and needs its own decision.
+- **You need to add a non-ref value to, or remove anything from, any
+  `useLayoutEffect` dependency array** to make a step work. Every step here is
+  behaviour-preserving; changing when an effect fires is a behaviour change and
+  needs its own decision. **Ref objects are the one exception, decided
+  2026-08-17** — a `useRef` object has stable identity for the component's whole
+  lifetime, so adding it is provably a no-op and is permitted (see Step 3). State
+  values, derived values, `.current` reads and callbacks are still forbidden, and
+  nothing may be removed.
+- **Adding the ref objects to the dependency arrays does not bring the
+  `packages/tree` warning count back to the Step 0c snapshot.** Stop and report
+  the residual warnings verbatim — file, line, rule, count. The 16
+  `exhaustive-deps` warnings are attributed to refs losing oxlint's
+  `useRef`-in-same-scope exemption when they move into a returned bundle; a
+  residual means that analysis is incomplete and something else is generating
+  them. Do not suppress with disable comments and do not edit `.oxlintrc.json`.
 - **The sticky-keyboard proof fails**: if you find any write to
   `pendingStickyKeyboardScrollTopRef` or
   `pendingStickyKeyboardViewportOffsetRef` carrying a _different_ `path` than the
@@ -1302,9 +1510,13 @@ Stop and report — do not improvise — if any of these happens:
   wrong. Stop and report rather than exporting setters.
 - **`FileTreeView.tsx` is still over 2,200 lines after Step 6.** Report it. Do
   not open the keyboard-navigation cluster to hit a number.
-- **A lint warning appears in a file you edited.** The only warnings this repo
-  tolerates in `packages/tree` are the three `unicorn(no-new-array)` ones in
-  `utils/path-store/static-store.ts`, which you must not touch.
+- **A lint warning that is not in your Step 0c snapshot survives to the end of a
+  step.** The tolerated set is exactly what that snapshot recorded — 4
+  `unicorn(no-new-array)` warnings at `b467b3f`, in
+  `utils/renameFileTreePaths.ts` and `utils/path-store/projection.ts`, which you
+  must not touch. Any other warning is a failure of that step, with one worked
+  path out of it: Step 3's `exhaustive-deps` warnings, which are cleared by adding
+  the ref objects to the dependency arrays.
 
 ## Deferred, and why
 
@@ -1345,12 +1557,17 @@ For whoever owns this code next:
 - **What a reviewer should scrutinize, in order**: (1) that Step 2's union is
   genuinely equivalent to the three refs — read the settle block diff first;
   (2) that `activeContextMenuKey` is still a derived string and its effect is
-  still keyed on it; (3) that no `useLayoutEffect` dependency array changed;
-  (4) that `FileTreeViewProps` is byte-identical.
+  still keyed on it; (3) that no `useLayoutEffect` dependency array gained
+  anything other than a **ref object**, and lost nothing; (4) that
+  `FileTreeViewProps` is byte-identical.
 - **The dependency arrays are the fragile part.** Several effects list a dozen
-  values. When code moves into a hook, it is very easy to "tidy" a dependency
-  and change when an effect fires. That is why the Done criteria include a
-  no-dependency-change check.
+  values. When code moves into a hook, it is very easy to "tidy" a dependency and
+  change when an effect fires. Reviewing a dependency-array diff, the question is
+  therefore not "did it change" but "is every addition a `useRef` object". A ref
+  object is the same object on every render, so listing it cannot make the effect
+  run again; anything else can. This is the amendment of 2026-08-17 — the original
+  blanket ban made Step 3 unshippable, because bundling refs into a hook costs 16
+  `exhaustive-deps` warnings that only a dependency-array entry can clear.
 - **Later work that interacts with this**: plans 009–012 (the folder reorg,
   Phase 4) will move files around `apps/web`; they do not touch `packages/tree`,
   but the new `hooks/useFileTree*.ts` files become public exports the moment they
@@ -1359,8 +1576,9 @@ For whoever owns this code next:
   exported because the package uses wildcard exports.
 - **If `packages/tree` ever gains a real browser-test story**, the manual checks
   in Step 7 are the exact five scenarios to automate first; they are the
-  behaviours this refactor put at risk and the ones the current 9-case suite does
-  not cover.
+  behaviours this refactor put at risk and the ones the suite does not cover — not
+  at the 9 cases this plan was written against, and not at the 85 that plans 014
+  and 039's Step 2 have since built.
 - **The file's TODO must be rewritten, not deleted** (Done criteria). Leaving the
   original list in place would send the next agent back at the already-extracted
   rename cluster.

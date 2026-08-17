@@ -30,6 +30,63 @@
 > other in-scope file changed, compare the "Current state" excerpts against the
 > live code before proceeding; on a mismatch, treat it as a STOP condition.
 
+## CORRECTION 2026-08-17 — read this before anything else
+
+This plan was **BLOCKED by its own Done criteria, not by the code.** Two things
+were wrong and are now fixed. If you read an earlier version of this file,
+these override it:
+
+1. **The `bun run verify` gate is gone.** The old Done criteria required
+   `bun run verify` (repo root) to exit 0, with no fallback. `verify` runs the
+   whole monorepo and short-circuits, so one unrelated failure anywhere makes
+   the gate unreachable and it proves nothing about this change. It is replaced
+   by per-workspace gates — `cd apps/web && bun run typecheck` / `bun run lint`
+   / `bun run test` — each **diffed against a Step 0 snapshot**. This plan
+   touches `apps/web` only, so those are the only workspaces that matter. Do
+   not run `bun run verify` at any point in this plan.
+2. **Absolute test counts are gone.** Counts like "`Tests 844 passed (844)`"
+   and "`Tests 847 passed (847)`" were measured at commit `ace313f`. Plans
+   013-047 have landed since and moved every one of them. **Absolute counts are
+   forbidden as done criteria**: a plan authored at one commit cannot assert a
+   number a sibling plan will change. Every count in this file is now a
+   **baseline delta** — no test that passed in your Step 0 snapshot may fail
+   after, and no new lint error may appear. Any number still quoted below is
+   historical context, never a gate.
+
+**Known pre-existing failure — it must NOT block this plan.** At HEAD `b467b3f`,
+`cd apps/web && bun run test` reports **1 failed | 1795 passed (1796)** across
+**1 failed | 249 passed (250)** files. The single failure is:
+
+```
+src/features/settings/tests/page.test.tsx > refuses an application-scoped key from the workspace tab, and says why
+```
+
+It is a one-line test-query defect with **nothing to do with the chat
+projection**: `getByText(/can only be set in User settings/)` now matches two
+elements because a second scope-restricted row became visible; the fix is
+`getAllByText` or a more specific query, and it is tracked separately. It must
+appear in your Step 0 snapshot, it is **out of scope for this plan**, and it
+does not block completion. Do not fix it here — that would put a file outside
+the in-scope list into your diff.
+
+**Step 2 has already landed — do not redo it.** Commit `57d956c`
+(_"test(chat): pin the three thread-merge precedence rules before
+normalizing"_) added all three step-2 characterization tests, +99 lines across
+exactly two files:
+
+- `apps/web/src/features/chat/state/tests/chat-projection-selectors.test.ts`
+  (+60) — _"a published null session outranks a detail snapshot that still
+  carries one"_ and _"a thread with no published turn still shows the turn its
+  detail snapshot carried"_
+- `apps/web/src/features/chat/state/tests/chat-projection-writers.test.ts`
+  (+39) — _"a shell resnapshot preserves the arranged pin slot"_ plus its
+  `threadPinnedEvent` builder
+
+All three pass against unmodified source. **Consequence for a resuming
+executor**: your Step 0 snapshot already contains those three tests, so the
+end-state target is **baseline + 0 new tests**, not baseline + 3. Read step 2,
+confirm the three tests are present and green, then go straight to step 3.
+
 ## Status
 
 - **Priority**: P3
@@ -478,18 +535,28 @@ rename (`ChatSidebarThreadSummary` → `ProjectionThread`).
 
 ## Commands you will need
 
-| Purpose                  | Command                                                                                                                                                                                                                                        | Expected on success                                                                                                                          |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
-| Projection tests         | `cd apps/web && bun --bun vitest run --project node src/features/chat/state/tests/`                                                                                                                                                            | at baseline: `Test Files 13 passed (13)` — the directory holds 13 `*.test.ts` files, of which the three projection files contribute 23 tests |
-| The three key files only | `cd apps/web && bun --bun vitest run --project node src/features/chat/state/tests/chat-projection-writers.test.ts src/features/chat/state/tests/chat-projection-selectors.test.ts src/features/chat/state/tests/chat-projection-cache.test.ts` | baseline `Tests 23 passed (23)`                                                                                                              |
-| Full blast radius        | `cd apps/web && bun --bun vitest run --project node --project dom src/features/chat src/features/chat-mode src/components/command-palette`                                                                                                     | baseline `Test Files 112 passed (112)`, `Tests 844 passed (844)`                                                                             |
-| Typecheck                | `cd apps/web && bun run typecheck`                                                                                                                                                                                                             | exit 0, no output                                                                                                                            |
-| Lint                     | `cd apps/web && bun run lint`                                                                                                                                                                                                                  | exit 0                                                                                                                                       |
-| Format                   | `cd apps/web && bun run format` then `bun run format:check`                                                                                                                                                                                    | exit 0                                                                                                                                       |
-| Whole app suite          | `cd apps/web && bun run test`                                                                                                                                                                                                                  | all pass                                                                                                                                     |
-| Repo gate                | `bun run verify` (from repo root)                                                                                                                                                                                                              | exit 0                                                                                                                                       |
+| Purpose | Command | Expected on success |
+| ------- | ------- | ------------------- |
 
-Notes on the toolchain, verified at `ace313f`:
+Every expectation below is **relative to your own Step 0 snapshot**. Record the
+numbers you actually see; never assert the ones quoted here.
+
+| Purpose                  | Command                                                                                                                                                                                                                                        | Expected on success                                                                                        |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Projection tests         | `cd apps/web && bun --bun vitest run --project node src/features/chat/state/tests/`                                                                                                                                                            | 0 failures; file/test counts equal to your Step 0 snapshot for the same glob                               |
+| The three key files only | `cd apps/web && bun --bun vitest run --project node src/features/chat/state/tests/chat-projection-writers.test.ts src/features/chat/state/tests/chat-projection-selectors.test.ts src/features/chat/state/tests/chat-projection-cache.test.ts` | 0 failures; test count equal to your Step 0 snapshot for the same three files                              |
+| Full blast radius        | `cd apps/web && bun --bun vitest run --project node --project dom src/features/chat src/features/chat-mode src/components/command-palette`                                                                                                     | 0 failures; test count equal to your Step 0 snapshot for the same glob                                     |
+| Typecheck                | `cd apps/web && bun run typecheck`                                                                                                                                                                                                             | exit 0, no output                                                                                          |
+| Lint                     | `cd apps/web && bun run lint`                                                                                                                                                                                                                  | no error that is not already in `/tmp/037-lint-before.txt`                                                 |
+| Format                   | `cd apps/web && bun run format` then `bun run format:check`                                                                                                                                                                                    | exit 0                                                                                                     |
+| Whole app suite          | `cd apps/web && bun run test`                                                                                                                                                                                                                  | no test that passed in `/tmp/037-test-before.txt` fails; the one snapshotted pre-existing failure may stay |
+
+**There is no repo-root gate.** The old table row `bun run verify` → exit 0 is
+deleted; see the correction block at the top. `verify` is whole-monorepo and
+short-circuits, so it cannot report anything about `apps/web` specifically.
+
+Notes on the toolchain (the counts once quoted here were measured at `ace313f`
+and are stale; the commands themselves are still correct):
 
 - A benign `error: ECONNREFUSED` line is printed by the dom project during the
   full run and does **not** fail it. Judge by the `Test Files … passed` summary.
@@ -616,24 +683,67 @@ thread`.
 > compatibility shim, and `AGENTS.md` forbids shims. Do not treat a typecheck
 > failure inside steps 3-6 as a STOP condition; it must pass at the end of step 7.
 
-### Step 1: Record the baseline
+### Step 1 (= Step 0): Capture the baseline snapshot, before touching anything
+
+**Do this first, before any edit.** These four files are the only gate this plan
+has. Every later check is a diff against them.
 
 ```bash
+cd apps/web && bun run test           2>&1 | tail -5 > /tmp/037-test-before.txt
+cd apps/web && bun run lint           2>&1 | tail -5 > /tmp/037-lint-before.txt
+cd apps/web && bun run typecheck      2>&1 | tail -5 > /tmp/037-typecheck-before.txt
 cd apps/web && bun --bun vitest run --project node --project dom \
-  src/features/chat src/features/chat-mode src/components/command-palette
+  src/features/chat src/features/chat-mode src/components/command-palette \
+                                      2>&1 | tail -5 > /tmp/037-blast-before.txt
 ```
 
-→ Expect `Test Files 112 passed (112)`, `Tests 844 passed (844)`. Write the two
-numbers down; they are the target for step 8 (plus the three tests added in
-step 2, so the target becomes 847).
+Read all four back and write the numbers down. They are **your** baseline; the
+numbers this plan once quoted (`Test Files 112 passed (112)`, `Tests 844 passed
+(844)`) were measured at `ace313f` and are stale.
 
-If the numbers differ from 112/844, plan 023 (or something else) has already
-moved them. That is fine — record what you actually see and use it as _your_
-baseline. Only a **failing** test is a STOP condition.
+**A pre-existing failure in the snapshot is not your problem.** `bun run test`
+is expected to show one failure —
+`src/features/settings/tests/page.test.tsx > refuses an application-scoped key
+from the workspace tab, and says why` — a known unrelated test-query defect (see
+the correction block at the top). Confirm it is the only failure and that it is
+in `/tmp/037-test-before.txt`, then carry on. The blast-radius glob does **not**
+include `features/settings`, so `/tmp/037-blast-before.txt` should be fully
+green; a failure there **is** a STOP condition.
 
-**Verify**: the command above exits 0.
+Also snapshot the one structural count a later criterion diffs against:
+
+```bash
+cd apps/web && rg -c "Record<ThreadId" src/features/chat/state/chat-projection-store.ts \
+  > /tmp/037-threadrecords-before.txt
+```
+
+**Verify**: all four snapshot files exist and are non-empty, and the only
+failing test anywhere is the snapshotted `page.test.tsx` one.
 
 ### Step 2: Add the three missing characterization tests — before touching any source
+
+> **ALREADY LANDED in commit `57d956c`** — _"test(chat): pin the three
+> thread-merge precedence rules before normalizing"_, +99 lines across exactly
+> two files:
+> `apps/web/src/features/chat/state/tests/chat-projection-selectors.test.ts`
+> (+60, the two selector tests) and
+> `apps/web/src/features/chat/state/tests/chat-projection-writers.test.ts`
+> (+39, the pin-slot test plus its `threadPinnedEvent` builder). All three pass
+> against unmodified source.
+>
+> **Do not write them again.** Confirm they are present and green:
+>
+> ```bash
+> cd apps/web && rg -n "a published null session outranks|no published turn still shows|preserves the arranged pin slot" \
+>   src/features/chat/state/tests/
+> ```
+>
+> → three matches. Then skip to step 3. The rest of this step is retained as the
+> record of what those tests must assert and why — step 7d refers back to it.
+>
+> Because step 2 is already in the tree, your Step 0 snapshot **already
+> contains** these three tests. The end-state target is therefore **baseline +
+> 0**, not baseline + 3. Every "+3" below is historical.
 
 The existing suite already covers the headline ordering rule in two places, and
 you must not lose that coverage:
@@ -794,10 +904,14 @@ cd apps/web && bun --bun vitest run --project node \
   src/features/chat/state/tests/chat-projection-cache.test.ts
 ```
 
-→ `Tests 26 passed (26)` (23 baseline + 3 new). **All three new tests must pass
-against the unmodified source.** If any fails, your test encodes the wrong
-expectation — fix the test, not the source. If you cannot make one pass, STOP
-and report which rule you could not reproduce.
+→ **0 failures, and a test count equal to your Step 0 snapshot for these three
+files.** (Historically this read `Tests 26 passed (26)` = 23 + 3; that absolute
+number is stale and is not a gate.) Since `57d956c` already landed the three
+tests, this run should simply match the snapshot with nothing added.
+
+**All three tests must pass against the unmodified source.** If any fails, the
+test encodes the wrong expectation — fix the test, not the source. If you cannot
+make one pass, STOP and report which rule you could not reproduce.
 
 ### Step 3: Define `ProjectionThread` and the new state shape
 
@@ -1773,26 +1887,47 @@ cd apps/web && bun --bun vitest run --project node --project dom \
   src/features/chat src/features/chat-mode src/components/command-palette
 ```
 
-→ `Tests 847 passed (847)` (your step-1 baseline plus the three tests from
-step 2). Any failure here is a behaviour regression — fix the source, not the
-test, unless the test was one of the three rewritten in step 7d.
+→ **0 failures, and a test count equal to `/tmp/037-blast-before.txt`.** Step 2
+already landed in `57d956c`, so the snapshot includes those three tests and
+nothing is added here. (This line historically read `Tests 847 passed (847)`;
+that absolute number was measured at `ace313f` and is not a gate.) Any failure
+here is a behaviour regression — fix the source, not the test, unless the test
+was one of the three rewritten in step 7d.
+
+Now the per-workspace gates. Capture each and diff it against the Step 0
+snapshot:
 
 ```bash
-cd apps/web && bun run test
-cd apps/web && bun run lint
+cd apps/web && bun run typecheck 2>&1 | tail -5 > /tmp/037-typecheck-after.txt
+cd apps/web && bun run lint      2>&1 | tail -5 > /tmp/037-lint-after.txt
 cd apps/web && bun run format && bun run format:check
-cd apps/web && bun run typecheck
+cd apps/web && bun run test      2>&1 | tail -5 > /tmp/037-test-after.txt
+
+diff /tmp/037-typecheck-before.txt /tmp/037-typecheck-after.txt
+diff /tmp/037-lint-before.txt      /tmp/037-lint-after.txt
+diff /tmp/037-test-before.txt      /tmp/037-test-after.txt
 ```
 
-→ all exit 0.
+The pass condition is a **delta**, not an absolute:
 
-Finally, from the repo root:
+- `typecheck` exits 0 (it was already 0 at Step 0, so any output is new and is a
+  failure).
+- `format:check` exits 0.
+- `lint` shows **no error that is not already** in
+  `/tmp/037-lint-before.txt`. Warning counts may move; new errors may not.
+- `test` shows **no test that passed at Step 0 now failing**, and no reduction in
+  passing count. The one snapshotted pre-existing failure —
+  `features/settings/tests/page.test.tsx > refuses an application-scoped key from
+the workspace tab, and says why` — **is expected to still be there and does not
+  block this plan.** It is unrelated to the chat projection and is tracked
+  separately; fixing it here would put an out-of-scope file in your diff.
 
-```bash
-bun run verify
-```
-
-→ exit 0.
+**Do not run `bun run verify`.** The old version of this step ended with
+`bun run verify` from the repo root → exit 0. That gate is deleted: it runs the
+whole monorepo and short-circuits, so the unrelated `page.test.tsx` failure above
+makes it permanently red while telling you nothing about `apps/web`. The four
+per-workspace commands here are the complete gate. This plan touches `apps/web`
+only, so no other workspace needs checking.
 
 **Live check.** A dev server is already running at `http://localhost:5173` —
 **do not start one**. Open it and confirm, in order:
@@ -1820,7 +1955,8 @@ and then report it, because a shape change means something in step 6 diverged.
 
 **Three new tests, written in step 2 against the unmodified source** (this is
 deliberate: a characterization test written after the refactor documents the
-refactor, not the behaviour):
+refactor, not the behaviour). **All three already landed in commit `57d956c`** —
+do not write them again; verify and move on:
 
 | File                                | Test                                                                               | Covers                                                      |
 | ----------------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------- |
@@ -1852,18 +1988,27 @@ not the behaviour.
 
 ## Done criteria
 
-Machine-checkable. ALL must hold:
+Machine-checkable. ALL must hold. Every count is a **delta against the Step 0
+snapshot** — no absolute test count is a gate here, because a number measured
+when this plan was written cannot survive the sibling plans that landed since.
 
 - [ ] `cd apps/web && bun run typecheck` exits 0
-- [ ] `cd apps/web && bun run lint` exits 0
 - [ ] `cd apps/web && bun run format:check` exits 0
-- [ ] `bun run verify` from the repo root exits 0
-- [ ] `cd apps/web && bun --bun vitest run --project node --project dom src/features/chat src/features/chat-mode src/components/command-palette` reports the step-1 baseline plus exactly 3 tests, all passing
+- [ ] `cd apps/web && bun run lint` introduces **no error that is not already in `/tmp/037-lint-before.txt`** (warning counts may move; new errors may not)
+- [ ] `cd apps/web && bun run test` shows **no test that passed in `/tmp/037-test-before.txt` now failing**, and no drop in passing count. The pre-existing `src/features/settings/tests/page.test.tsx > refuses an application-scoped key from the workspace tab, and says why` failure recorded in that snapshot is **out of scope and does not block this plan**
+- [ ] `cd apps/web && bun --bun vitest run --project node --project dom src/features/chat src/features/chat-mode src/components/command-palette` reports **0 failures and a test count equal to `/tmp/037-blast-before.txt`** (step 2 landed in `57d956c`, so those three tests are already inside the baseline — the target is baseline + 0, not baseline + 3)
 - [ ] `rg -n "ChatSidebarThreadSummary|ChatProjectionThreadShell|ChatProjectionThreadDetailMeta|ChatProjectionThreadTurnState" apps/web/src apps/web/test` returns no matches
 - [ ] `rg -n "sidebarThreadSummaryById|threadShellById|threadDetailMetaById|threadSessionById|threadTurnStateById" apps/web/src apps/web/test` returns no matches
 - [ ] `rg -n "patchThreadShellAndSummary|pickSummaryPatch|selectSessionForThread|writeThreadLatestTurn" apps/web/src` returns no matches
-- [ ] `rg -c "Record<ThreadId" apps/web/src/features/chat/state/chat-projection-store.ts` returns `11` (15 today, minus 5, plus 1)
-- [ ] `removeThreadState` in `chat-projection-writers.ts` is 13 lines of body or fewer (17 today)
+- [ ] `rg -c "Record<ThreadId" apps/web/src/features/chat/state/chat-projection-store.ts` returns exactly **four fewer** than `/tmp/037-threadrecords-before.txt` (five records deleted, one added). Diff against your snapshot rather than the literal `11` this criterion used to demand — that figure assumed 15 at `ace313f`
+- [ ] `removeThreadState` in `chat-projection-writers.ts` is 13 lines of body or fewer (17 at the time of writing)
+
+**No `bun run verify` criterion.** It was the sole reason this plan came back
+BLOCKED after step 2 landed green. `verify` is whole-monorepo and
+short-circuits, so an unrelated failure in another feature makes it unreachable
+while proving nothing about the chat projection. The per-workspace gates above
+replace it in full.
+
 - [ ] The five live checks in step 8 pass in the running app at `http://localhost:5173`
 - [ ] No files outside the in-scope list are modified (`git status`)
 - [ ] `plans/README.md` row for plan 037 updated
@@ -1893,9 +2038,16 @@ Stop and report back (do not improvise) if:
 - The live check in step 8 shows the rail reordering itself while a turn streams,
   or a session's arranged slot jumping. Either means a write reached the record
   the rail sorts by that did not reach it before.
-- The step 8 blast-radius run reports **fewer** tests than your step-1 baseline
-  plus 3, even with everything green. A test that vanished is a test you deleted
-  or renamed out of the include glob, not a test that passed.
+- The step 8 blast-radius run reports **fewer** tests than
+  `/tmp/037-blast-before.txt`, even with everything green. A test that vanished is
+  a test you deleted or renamed out of the include glob, not a test that passed.
+  (The target is baseline + 0: step 2's three tests landed in `57d956c` and are
+  already inside your Step 0 snapshot.)
+- A gate you cannot clear turns out to be a **pre-existing failure recorded in
+  your Step 0 snapshot**. That is not a STOP condition and not your problem —
+  note it and proceed. In particular the known
+  `features/settings/tests/page.test.tsx` scope-message query defect must not
+  block this plan, and must not be fixed inside it.
 - `src/features/chat/state/tests/thread-detail-subscriptions.test.ts` or
   `src/features/chat-mode/utils/tests/archived-auto-pick.test.ts` needs an edit
   to pass. Both are out of scope and drive only public writers and shared

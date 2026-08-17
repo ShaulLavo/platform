@@ -7,15 +7,71 @@
 > in `plans/README.md` — unless a reviewer dispatched you and told you they
 > maintain the index.
 >
-> **Drift check (run first)**:
+> **Drift check (run first — informational, not a gate)**:
 >
 > ```
 > git diff --stat ace313f..HEAD -- apps/server/src/orchestration apps/server/src/provider
 > ```
 >
-> Expected: empty output. If any in-scope file changed since this plan was
-> written, compare the "Current state" excerpts against the live code before
-> proceeding; on a mismatch, treat it as a STOP condition.
+> This output is **expected to be non-empty**: plans 013–047 landed after this
+> plan was authored and moved these files around. Do not treat a non-empty diff
+> as a STOP condition. What matters is that the _shapes_ quoted under "Current
+> state" still exist. Confirm that by symbol, not by line number — every line
+> number in this plan is from `ace313f` and most have shifted:
+>
+> ```
+> grep -rn "settleAdapterRuntimeEvents\|streamEvents" apps/server/src
+> grep -rn "DrainableProviderIntentWorker\|DrainableCheckpointWorker" apps/server/src
+> grep -n "drain()" apps/server/src/orchestration/provider-runtime-ingestion.ts
+> ```
+>
+> Verified at `b467b3f`: `settleAdapterRuntimeEvents` still exists (now
+> `provider-service.ts:227` call / `:769` definition), `streamEvents` is still the
+> SPI (`types.ts:498`) with the three adapter delegations and two test collectors,
+> and `ProviderRuntimeIngestion.drain()` still returns the chain tail. STOP only
+> if one of those constructs is **gone** — then the work is already done or was
+> done differently, and this plan needs re-planning, not execution.
+
+## CORRECTION — 2026-08-17, at `b467b3f` (read this if you read an earlier version)
+
+This plan was authored at `ace313f`. Its **Done criteria were unsatisfiable** and
+have been repaired. The engineering substance below is unchanged — only the gates
+are different.
+
+What was wrong:
+
+1. **It required the `apps/server` suite to still be red.** The old baseline and
+   Done criteria asserted `Tests 1 failed | 772 passed (773)`, with the failure
+   being `src/tests/app.test.ts > fs rpc events > reports external file updates
+from the native watcher`. **Plan 047 fixed that bug** (commits `f93dd1d`,
+   `1f8eb0d`). `apps/server` is now **fully green: 819 tests, 0 failures, 88
+   files**. An executor could not satisfy the old criterion without breaking
+   working code. Every mention of a "pre-existing failure" in `apps/server` is
+   deleted: **any failure this plan sees is its own.**
+2. **It hardcoded absolute test counts.** `773`, `778`, `391`, `396`, `397`, and
+   file counts `37`/`38`/`81`/`82` were all measured at `ace313f`. Plans 013–047
+   changed every one of them. A plan cannot assert a count a sibling plan will
+   move.
+
+What changed:
+
+- A new **Step 0** captures the baseline into `/tmp/040-*-before.txt` before
+  anything is touched.
+- Every absolute count is replaced by a **baseline delta**: no test that passed at
+  Step 0 may fail at the end, and no new lint finding may appear. The focused
+  suite (`src/orchestration src/provider`) must be fully green both before and
+  after; the full suite is compared pass-set to pass-set.
+- The counts this plan may still state are **its own additions**: the 5 cases in
+  the new `serial-worker.test.ts` and the 1 case added to
+  `provider-runtime-ingestion.test.ts` — 6 net new tests. That is a delta, not a
+  total.
+- Root `bun run verify` is **not** a gate anywhere. It runs the whole monorepo and
+  short-circuits, so one unrelated failure elsewhere makes it unreachable and it
+  proves nothing about this change. The per-workspace `typecheck` / `lint` /
+  `format:check` / `test` scripts in `apps/server` are the gate.
+- The drift check above is informational. It will be non-empty; that is fine.
+
+---
 
 ## Status
 
@@ -25,6 +81,8 @@
 - **Depends on**: none
 - **Category**: complexity (tech-debt)
 - **Planned at**: commit `ace313f`, 2026-08-16
+- **Criteria repaired at**: commit `b467b3f`, 2026-08-17 — see CORRECTION above.
+  Line numbers throughout are still `ace313f`'s; locate code by symbol.
 
 **What this closes**: five hand-rolled async work queues, each with its own
 notion of "drained", plus a sixth idleness notion assembled by hand at two call
@@ -613,45 +671,44 @@ try to use it here.
 
 ## Commands you will need
 
-| Purpose               | Command                                                                         | Expected on success                                               |
-| --------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
-| Typecheck (server)    | `cd apps/server && bun run typecheck`                                           | exit 0, only the `$ tsgo --noEmit` echo                           |
-| Lint (server)         | `cd apps/server && bun run lint`                                                | exit 0; `oxlint` prints nothing when clean                        |
-| Format check (server) | `cd apps/server && bun run format:check`                                        | exit 0, `All matched files use the correct format.`               |
-| Format (server)       | `cd apps/server && bun run format`                                              | rewrites files; run before `format:check`                         |
-| Full server suite     | `cd apps/server && bun --bun vitest run`                                        | see baseline below — **not** all-green                            |
-| Focused suite         | `cd apps/server && bun --bun vitest run src/orchestration src/provider`         | `Test Files 37 passed (37)`, `Tests 391 passed (391)` at baseline |
-| Single file           | `cd apps/server && bun --bun vitest run src/orchestration/tests/engine.test.ts` | all pass                                                          |
+| Purpose               | Command                                                                         | Expected on success                                   |
+| --------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Typecheck (server)    | `cd apps/server && bun run typecheck`                                           | exit 0, only the `$ tsgo --noEmit` echo               |
+| Lint (server)         | `cd apps/server && bun run lint`                                                | exit 0; `oxlint` prints nothing when clean            |
+| Format check (server) | `cd apps/server && bun run format:check`                                        | exit 0, `All matched files use the correct format.`   |
+| Format (server)       | `cd apps/server && bun run format`                                              | rewrites files; run before `format:check`             |
+| Full server suite     | `cd apps/server && bun run test` (= `bun --bun vitest run`)                     | 0 failures, and no test from the Step 0 snapshot lost |
+| Focused suite         | `cd apps/server && bun --bun vitest run src/orchestration src/provider`         | fully green (0 failures) before and after             |
+| Single file           | `cd apps/server && bun --bun vitest run src/orchestration/tests/engine.test.ts` | all pass                                              |
 
 `--reporter=basic` is **not** a valid reporter in this Vitest version — it errors
 at startup. Do not pass it.
 
-### Baselines, re-measured on this machine at `ace313f`
+### Baseline: measure it, do not read it from this plan
 
-- **Focused suite** (`src/orchestration src/provider`): `Test Files 37 passed (37)`,
-  `Tests 391 passed (391)`. Fully green.
-- **Full server suite**: `Test Files 1 failed | 80 passed (81)`,
-  `Tests 1 failed | 772 passed (773)`.
+**`apps/server` is fully green at `b467b3f`.** Measured: **819 tests, 0 failures,
+88 files**. The native `@parcel/watcher` failure that was red when this plan was
+authored (`src/tests/app.test.ts > fs rpc events > reports external file updates
+from the native watcher`) was a real event-classification bug and **plan 047 fixed
+it** (commits `f93dd1d`, `1f8eb0d`). There is nothing left to excuse.
 
-**The full suite is red before you touch anything.** The single failure is:
+So: **any failing test you see is yours.** There is no allowance, no
+known-failure carve-out, and no "second failure is your regression" arithmetic in
+this plan any more.
 
-```
-src/tests/app.test.ts > fs rpc events > reports external file updates from the native watcher
-Error: timed out waiting for matching filesystem event   (app.test.ts:1125 / :540)
-```
+Those two numbers are stated here for orientation only. **Do not assert them.**
+They will drift as other plans land, exactly as `773` did. The gate is a delta
+against a snapshot you take yourself in Step 0:
 
-It is a native `@parcel/watcher` timing failure, it is reproducible in isolation
-(`cd apps/server && bun --bun vitest run src/tests/app.test.ts` → 1 failed | 29
-passed), and it is **out of scope for this plan** — nothing in `src/tests/` is in
-the Scope list. Do not try to fix it, and do not treat it as a regression.
+- no test that passed at Step 0 may fail at the end;
+- no new lint finding may appear;
+- the focused suite (`src/orchestration src/provider`) is green at Step 0 and must
+  be green at the end.
 
-Because of it, **`bun run verify` from the repo root cannot exit 0** (root
-`verify` = `typecheck && lint && format:check && test`, and `test` runs that
-file). Do not run it as a gate; the per-package commands above are the gate.
-
-Every "Tests N passed" figure later in this plan is stated as
-**`passed` count only, with that one pre-existing failure still failing**. If a
-_second_ test starts failing, that is your regression.
+Never gate on root `bun run verify`. It runs the whole monorepo and
+short-circuits, so an unrelated failure in any other workspace makes it
+unreachable while proving nothing about this change. The per-workspace commands in
+the table above are the gate.
 
 ---
 
@@ -704,8 +761,9 @@ _second_ test starts failing, that is your regression.
   hops, ~10 call sites in that file). It settles the _adapter's own internal_ CLI
   pump, not the stream buffer, and is still needed. Leave it, and leave its call
   sites. (`claude.test.ts` has no such helper — do not add one.)
-- `apps/server/src/tests/app.test.ts` — contains the one pre-existing failing
-  test. Not yours to fix, and not in scope.
+- `apps/server/src/tests/app.test.ts` — nothing in `src/tests/` is in scope. It is
+  green as of plan 047, and it must stay green: if this plan makes it fail, that is
+  a regression from this plan, not a pre-existing condition.
 - `apps/server/src/provider/provider-session-reaper.ts` — timer-driven idle
   session reaping. It looks like "another scheduler" and is not: it has no drain
   contract, no queue, and reaps on a wall-clock deadline. Do not register it as
@@ -734,6 +792,33 @@ _second_ test starts failing, that is your regression.
 ---
 
 ## Steps
+
+### Step 0: Capture the baseline (do this before touching anything)
+
+Every later gate is a comparison against these files. Run from the repo root:
+
+```
+cd apps/server && bun run test 2>&1 | tail -30 > /tmp/040-server-test-before.txt
+cd apps/server && bun run lint 2>&1 | tail -20 > /tmp/040-server-lint-before.txt
+cd apps/server && bun --bun vitest run src/orchestration src/provider 2>&1 | tail -20 > /tmp/040-focused-test-before.txt
+```
+
+Then read all three and record in your report:
+
+- the full-suite pass/fail counts and, **if anything failed, the name of every
+  failing test**;
+- the lint finding count;
+- the focused-suite counts.
+
+Expected at `b467b3f`: full suite 0 failures, lint clean, focused suite 0
+failures. If the full suite is **not** 0 failures, that is a surprise — plan 047
+made it green. Report the failing test names before you start; a failure you
+recorded here is not yours, but a failure that appears later is.
+
+Do **not** copy any of these numbers into a Done criterion. They are the left-hand
+side of a comparison, nothing else.
+
+---
 
 ### Step 1: Add `SerialWorker<Task>`
 
@@ -871,10 +956,13 @@ exactly these five cases (import `{ describe, expect, it }` from `'vitest'`):
 cd apps/server && bun run typecheck && bun --bun vitest run src/orchestration/tests/serial-worker.test.ts
 ```
 
-→ typecheck exit 0; `Test Files 1 passed (1)`, `Tests 5 passed (5)`.
+→ typecheck exit 0; `Test Files 1 passed (1)`, `Tests 5 passed (5)`. This one count
+is safe to assert: it is a file you just created with exactly the five cases listed
+above, and no other plan can move it.
 
-From here on the focused-suite baseline is **38 files / 396 tests** (37 + this
-file, 391 + these 5).
+From here on, the focused suite must gain exactly **+1 file and +5 tests** against
+`/tmp/040-focused-test-before.txt` — and stay at 0 failures. Compare the delta; do
+not assert a total.
 
 ---
 
@@ -914,8 +1002,9 @@ that is what proves it covers the real hole.
 cd apps/server && bun run typecheck && bun --bun vitest run src/orchestration src/provider
 ```
 
-→ typecheck exit 0; `Test Files 38 passed (38)`, `Tests 397 passed (397)`
-(391 baseline + 5 from Step 1 + 1 here).
+→ typecheck exit 0; focused suite **0 failures**, and against
+`/tmp/040-focused-test-before.txt` exactly **+1 file / +6 tests** (5 from Step 1,
+1 here). Assert the delta and the zero-failure property, not a total.
 
 ---
 
@@ -1324,11 +1413,16 @@ adapter.subscribeEvents((event) => {
 cd apps/server && bun run typecheck && bun run lint && bun --bun vitest run
 ```
 
-→ typecheck exit 0; lint prints nothing. Suite:
-`Test Files 1 failed | 81 passed (82)`, `Tests 1 failed | 778 passed (779)` —
-779 = 773 baseline + 5 (Step 1) + 1 (Step 2); the one failure is the
-pre-existing `src/tests/app.test.ts` native-watcher test described under
-"Baselines". **Any second failure is your regression.**
+→ typecheck exit 0; lint prints nothing, and no finding that was not already in
+`/tmp/040-server-lint-before.txt`. Full suite: **0 failures**, with exactly
+**+1 file / +6 tests** against `/tmp/040-server-test-before.txt` (5 from Step 1, 1
+from Step 2). No test that passed in the snapshot may fail here.
+
+This is the riskiest step in the plan, so be precise about what a failure means:
+there is **no known-failure allowance**. `apps/server` was green at Step 0
+(plan 047 fixed the last outstanding failure), so any red test after this step was
+caused by this step. Diff the failing names against the snapshot before you form a
+theory.
 
 ```
 grep -rn "settleAdapterRuntimeEvents\|streamEvents" apps/server/src
@@ -1458,7 +1552,8 @@ is still a valid assertion.
 cd apps/server && bun run typecheck && bun --bun vitest run src/orchestration src/provider
 ```
 
-→ typecheck exit 0; `Test Files 38 passed (38)`, `Tests 397 passed (397)`.
+→ typecheck exit 0; focused suite **0 failures**, still **+1 file / +6 tests**
+against `/tmp/040-focused-test-before.txt` (this step adds no tests of its own).
 
 ```
 grep -n "Reactor?.drain()" apps/server/src/orchestration/engine.ts
@@ -1503,7 +1598,9 @@ sweep did not make entries immortal, and it must still pass:
 cd apps/server && bun --bun vitest run src/orchestration/tests/engine.test.ts -t "expires provider turn-start dedupe keys"
 ```
 
-→ `Tests 1 passed`, `21 skipped` (or similar skip count).
+→ `Tests 1 passed`, rest skipped. Do not assert the skip count — it is the size of
+`engine.test.ts` and other plans change it. The only thing that matters is that the
+one selected test passes.
 
 **8b.** Stop copying the `Set` on every assistant delta. In
 `rememberAssistantMessageId` and `forgetAssistantMessageId` (lines 114-131),
@@ -1553,17 +1650,33 @@ cd apps/server && bun --bun vitest run src/orchestration && bun run typecheck
 ### Step 9: Full gate
 
 ```
-cd apps/server && bun run format && bun run format:check && bun run lint && bun run typecheck && bun --bun vitest run
+cd apps/server && bun run format && bun run format:check && bun run lint && bun run typecheck
+cd apps/server && bun run test 2>&1 | tail -30 > /tmp/040-server-test-after.txt
+cd apps/server && bun run lint 2>&1 | tail -20 > /tmp/040-server-lint-after.txt
+diff /tmp/040-server-test-before.txt /tmp/040-server-test-after.txt
+diff /tmp/040-server-lint-before.txt /tmp/040-server-lint-after.txt
 ```
 
 → `format:check` prints `All matched files use the correct format.`; `lint`
-prints nothing; typecheck exit 0; suite reports
-`Test Files 1 failed | 81 passed (82)`, `Tests 1 failed | 778 passed (779)`,
-where the single failure is the pre-existing
-`src/tests/app.test.ts > reports external file updates from the native watcher`.
+prints nothing; typecheck exit 0.
 
-Do **not** run root `bun run verify` as a gate — it is red at baseline for the
-same reason (see "Baselines").
+The suite gate is the **delta**, not a number:
+
+- **0 failures.** Not "one allowed failure" — `apps/server` was green at Step 0.
+- Every test name that passed in `/tmp/040-server-test-before.txt` still passes.
+- Totals up by exactly **+1 file / +6 tests** (Steps 1 and 2). No other step in
+  this plan adds or deletes a test.
+- No lint finding present in the after-snapshot that is absent from the
+  before-snapshot.
+
+Do **not** run root `bun run verify` as a gate. It is whole-monorepo and
+short-circuits: a failure in `apps/web` or any package would mask this change
+entirely, and a pass would not tell you anything more than the commands above.
+`apps/web` in particular has one known unrelated failure
+(`src/features/settings/tests/page.test.tsx > refuses an application-scoped key
+from the workspace tab, and says why` — a `getByText` query that now matches two
+elements, tracked separately), which is nothing to do with this plan and must not
+block it.
 
 Optional live check, only if you can drive a browser: the dev server is already
 running at `http://localhost:5173` (do **not** start one). Open a chat thread,
@@ -1625,13 +1738,18 @@ Vitest project. Every command in this plan is `bun --bun vitest run` in
 
 ## Done criteria
 
-Machine-checkable. ALL must hold:
+Machine-checkable. ALL must hold. **No criterion states an absolute test count** —
+each suite criterion is a delta against the Step 0 snapshot, because a total
+measured at authoring time is invalidated by every sibling plan that lands.
 
 - [ ] `cd apps/server && bun run typecheck` exits 0
-- [ ] `cd apps/server && bun run lint` exits 0 and prints no findings
+- [ ] `cd apps/server && bun run lint` exits 0, and reports no finding absent from `/tmp/040-server-lint-before.txt`
 - [ ] `cd apps/server && bun run format:check` exits 0
-- [ ] `cd apps/server && bun --bun vitest run` reports `Test Files 1 failed | 81 passed (82)` and `Tests 1 failed | 778 passed (779)`, and the one failure is `src/tests/app.test.ts > reports external file updates from the native watcher` (pre-existing at `ace313f`)
-- [ ] `cd apps/server && bun --bun vitest run src/orchestration src/provider` is fully green: `Test Files 38 passed (38)`, `Tests 397 passed (397)`
+- [ ] `cd apps/server && bun run test` reports **0 failures**
+- [ ] Every test that passed in `/tmp/040-server-test-before.txt` still passes
+- [ ] Full-suite totals are exactly **+1 test file and +6 tests** vs. `/tmp/040-server-test-before.txt` — the new `serial-worker.test.ts` (5 cases) and the one case added to `provider-runtime-ingestion.test.ts`. No other test is added, renamed, or deleted
+- [ ] `cd apps/server && bun --bun vitest run src/orchestration src/provider` reports **0 failures**, with the same **+1 file / +6 tests** delta vs. `/tmp/040-focused-test-before.txt`
+- [ ] Root `bun run verify` was **not** used as a gate (it is whole-monorepo and short-circuits; `apps/web` has one unrelated known failure)
 - [ ] `grep -rn "settleAdapterRuntimeEvents" apps/server/src` → no matches
 - [ ] `grep -rn "streamEvents" apps/server/src` → no matches
 - [ ] `grep -rn "DrainableProviderIntentWorker\|DrainableCheckpointWorker" apps/server/src` → no matches
@@ -1640,7 +1758,7 @@ Machine-checkable. ALL must hold:
 - [ ] `grep -rn "new SerialWorker" apps/server/src --include=*.ts | grep -v "/tests/"` → exactly 6 matches (ingestion, checkpoint, session-checkout, thread-deletion, provider-command intent worker, provider-service runtime pump). Do **not** drop the `grep -v` — `tests/serial-worker.test.ts` constructs several of its own.
 - [ ] `grep -n "providerRuntimeIdle" apps/server/src/orchestration/engine.ts` → exactly one match, whose body is `return this.reactors.idle()`
 - [ ] `git status --porcelain` shows no modified file outside the in-scope list
-- [ ] `plans/README.md` row for 040 (line 86) updated from `TODO`
+- [ ] `plans/README.md` row for 040 updated from its current `BLOCKED` status (find the row by `grep -n "^| 040" plans/README.md`; the line number moves)
 
 ---
 
@@ -1648,8 +1766,12 @@ Machine-checkable. ALL must hold:
 
 Stop and report back (do not improvise) if:
 
-- **The drift check is non-empty** and the "Current state" excerpts no longer
-  match the live code.
+- **A construct this plan exists to remove is already gone.** A non-empty drift
+  diff is expected and is not a STOP — plans 013–047 shifted every line number
+  here. STOP only if `settleAdapterRuntimeEvents`, `streamEvents`, one of the five
+  queues, or `ProviderRuntimeIngestion.drain()`-returns-the-tail cannot be found at
+  all, or if a quoted "Current state" excerpt has changed in _shape_ (not merely in
+  line number). Then the premise moved and the plan needs re-planning.
 - **You are tempted to route `turnPrerequisitesSettled()` through the
   `ReactorScheduler`.** It is called from `beforeTurnStart`, which runs _inside_
   the provider intent worker's own task. Draining that worker from inside itself
@@ -1685,9 +1807,12 @@ Stop and report back (do not improvise) if:
   third behavior change beyond the two this plan sanctions: report it with the
   test name and the extra event's `type`, do not silence it by deferring the
   subscribe.
-- **A step's verification fails twice after a reasonable fix attempt** — with the
-  exception of the pre-existing `src/tests/app.test.ts` native-watcher failure
-  described under "Baselines", which is red before you start and is not yours.
+- **A step's verification fails twice after a reasonable fix attempt.** There is no
+  carve-out. `apps/server` is green at Step 0 — plan 047 fixed the native-watcher
+  classification bug (`f93dd1d`, `1f8eb0d`) that used to be the one excused
+  failure. Any red test after Step 0 is caused by this plan. The only exception is
+  a failure you **recorded by name** in the Step 0 snapshot; if you did not record
+  it, it is yours.
 - **The fix appears to require touching an out-of-scope file** — in particular
   `engine.ts`'s own `dispatch` queue, or any `apps/web` file.
 

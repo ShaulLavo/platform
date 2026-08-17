@@ -26,6 +26,61 @@ names. Explicitly healthy and needing no work: `git/service.ts` (1,264 lines but
 coherent), the settings registry's scope rule, focus-visible coverage,
 popover/menu motion, `packages/contracts/src/settings/`.
 
+### 🔴 Authoring defect: absolute counts are forbidden as done criteria
+
+**Four of the six Phase 3 plans came back BLOCKED, and not one was blocked by the
+code.** All four were blocked by their own Done criteria. This is a defect in how
+the plans were written, not in the repo.
+
+Three distinct causes, all the same root:
+
+1. **An unattainable gate** — 037 required a bare `bun run verify` exits 0.
+   `verify` is whole-monorepo and short-circuits, so one unrelated failure
+   anywhere makes it unreachable _and_ proves nothing about the change.
+2. **Baselines that drifted** — 038 demanded `244 passed (244)`; the tree reports
+   250 files / 1796 tests. 040 asserted a watcher failure that plan 047 had
+   already fixed. Both were authored at `ace313f`, then plans 013–035 landed and
+   invalidated every fixture they assert on.
+3. **A criterion contradicted by its own step** — 039 required "no new lint
+   warnings" while separately forbidding the only change that avoids them.
+
+**The durable rule, now applied to all four plans:**
+
+> **Never assert an absolute test count.** Capture a baseline at Step 0 and
+> compare deltas:
+>
+> ```bash
+> cd <workspace> && bun run test 2>&1 | tail -5 > /tmp/<plan>-test-before.txt
+> ```
+>
+> The gate is _no previously-passing test may fail_ — never a number. A failure
+> already present in the Step 0 snapshot is not the executor's problem and must
+> not block the plan. **Never gate on `bun run verify`**; use the per-workspace
+> `typecheck` / `lint` / `test` scripts.
+
+A plan authored against one commit cannot assert a count that a sibling plan will
+change. That is not a detail — it cost four of six executions.
+
+### 🟡 One known web-test failure, and where it came from
+
+`apps/web/src/features/settings/tests/page.test.tsx > refuses an
+application-scoped key from the workspace tab, and says why` fails.
+`getByText(/can only be set in User settings/)` now matches **two** elements —
+"application settings…" and "machine settings…" — because a second
+scope-restricted row became visible. One-line fix: make the query specific or use
+`getAllByText`. **A test-query defect, not a product bug.**
+
+Provenance, recorded because it matters for trust: it arrived red in commit
+`8807fb8`, which committed in-progress settings work. The pre-commit hook runs
+format/lint/typecheck but deliberately not tests, so nothing caught it, and the
+commit was described as leaving a green baseline — true of `format:check`, not of
+the suite. Verified red at `8807fb8` itself.
+
+Web baseline is therefore **1 failed | 1795 passed (1796)**. It blocks nothing
+once the plans use delta gates, but **fixing it is the single highest-leverage
+action available** — it is one line and it clears the noise from every future
+Step 0 snapshot.
+
 ### ⚠️ Sequencing correction (read this before picking up 009–012)
 
 The four folder-reorganization plans (009, 010, 011, 012) were written **first**

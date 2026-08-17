@@ -1,5 +1,57 @@
 # Plan 038: Collapse the editor document layer
 
+## CORRECTION — 2026-08-17, at `b467b3f` (read this before anything else)
+
+**This plan was previously dispatched and came back BLOCKED without doing any
+work.** It was not blocked by the code. It was blocked by its own Step 0 gate,
+which demanded the literal summary lines `Test Files 244 passed (244)` /
+`Tests 1764 passed (1764)`. Those numbers were measured at `ace313f`; plans
+013–035 then landed and changed every one of them. The executor hit the Step 0
+STOP on the first command and never reached the refactor. Nothing about the
+analysis below was wrong — the arithmetic assertion was.
+
+What changed in this revision:
+
+1. **Absolute test counts are no longer done criteria — anywhere.** Step 0 now
+   captures a **baseline snapshot** to `/tmp/`, and every later gate is a
+   **delta** against that snapshot: _no test that passed before may fail after,
+   and no new lint error may appear._ A count you read in this document is
+   context, never a gate.
+2. **`bun run verify` is no longer a gate.** It runs the whole monorepo and
+   short-circuits, so one unrelated failure anywhere makes it unreachable and it
+   proves nothing about this change. Use the per-workspace `typecheck` / `lint` /
+   `format:check` / `test` scripts in `apps/web`, compared to the Step 0
+   snapshot.
+3. **Known pre-existing failure — expect it, do not fix it, do not let it block
+   you.** At `b467b3f`, `cd apps/web && bun run test` reports
+   `1 failed | 1795 passed (1796)`. The single failure is
+   `src/features/settings/tests/page.test.tsx > refuses an application-scoped key from the workspace tab, and says why`.
+   It is a one-line test-query defect with no relation to this plan:
+   `getByText(/can only be set in User settings/)` now matches **two** elements
+   ("application settings can only be set in User settings" and "machine
+   settings can only be set in User settings") because a second scope-restricted
+   row became visible. It is tracked separately. It must appear in your Step 0
+   snapshot, and it must still be the **only** failure at the end. Do not touch
+   `apps/web/src/features/settings/**` — it is out of scope.
+4. **One file in scope moved.** `apps/web/src/keymap/commands.ts` was split after
+   `ace313f`; the single 2-argument `forceReplaceLiveEditorDocument` call site
+   this plan edits now lives at
+   **`apps/web/src/keymap/workspace-commands.ts:97`**, inside the same
+   `revertSelectedEditorDocument` function (the `const path` it must keep is on
+   line 91, and `fetchFile(path, …)` on line 94). Substitute that path wherever
+   this plan says `keymap/commands.ts`. Re-verified at `b467b3f`: the other seven
+   in-scope files are byte-identical to `ace313f`, `fallbackDocumentPath` is
+   still confined to the three files named in Fact 3, and
+   `editor-dirty-paths.ts` still has zero importers.
+5. **The working tree is now clean.** The "~19 modified files" note below was
+   true at `ace313f` and is not true at `b467b3f`. The snapshot-diff mechanic in
+   the Done criteria still works unchanged — it just starts from an empty
+   snapshot.
+6. **Line numbers and counts throughout this document were measured at
+   `ace313f`.** Every one that is still load-bearing now comes with the command
+   that re-derives it. Treat any bare number as approximate and re-derive before
+   relying on it.
+
 > **Executor instructions**: Follow this plan step by step. Run every
 > verification command and confirm the expected result before moving to the next
 > step. If anything in the "STOP conditions" section occurs, stop and report —
@@ -18,18 +70,21 @@
 >   apps/web/src/features/editor/state/editor-fallback-path.ts \
 >   apps/web/src/features/editor/tests/editor-document-state.test.ts \
 >   apps/web/src/hooks/use-workspace-events.ts \
->   apps/web/src/keymap/commands.ts
+>   apps/web/src/keymap/workspace-commands.ts
 > ```
 >
-> Expected output: **nothing** (no file in the list has changed since `ace313f`).
-> If any of those files changed since this plan was written, compare the
-> "Current state" excerpts below against the live code before proceeding; on a
-> mismatch, treat it as a STOP condition.
+> Expected output at `b467b3f`: **nothing.** (The eighth file this plan touches,
+> `apps/web/src/keymap/commands.ts`, _did_ change — it was split, and the call
+> site moved to `keymap/workspace-commands.ts`, which is why the path above is
+> already corrected. See correction item 4.) If any file in the list above has
+> changed since you read this, compare the "Current state" excerpts below against
+> the live code before proceeding; on a mismatch, treat it as a STOP condition.
 >
-> **The working tree is not clean, and that is expected.** At `ace313f` there are
-> already ~19 modified files and 2 untracked files from unrelated in-progress
-> settings work. Do **not** revert, stash, commit, or format them. Record the
-> starting state before you touch anything:
+> **The working tree should be clean at `b467b3f`** (it was not at `ace313f`, when
+> this plan was written — hence the snapshot mechanic below, which is harmless
+> either way). If the tree is dirty, do **not** revert, stash, commit, or format
+> anything you did not create. Record the starting state before you touch
+> anything:
 >
 > ```bash
 > git status --porcelain > /tmp/plan-038-before.txt
@@ -49,9 +104,14 @@
 
 **Effort note, so you can plan your time honestly**: the mechanical work here is
 closer to M — roughly 170 net lines removed across 8 files, all of it
-typecheck-guided. The L rating is about _blast radius_, not typing: 32 modules
-import `editor-document-state.tsx`, and the store's action surface is the API
-that all of them use. Every step below is designed to keep the tree green, so
+typecheck-guided. The L rating is about _blast radius_, not typing: several dozen
+modules import `editor-document-state.tsx`, and the store's action surface is the
+API that all of them use. Re-derive the importer count yourself rather than
+trusting a number in this document — it drifts with every plan that lands:
+
+````bash
+grep -rln "features/editor/state/editor-document-state" apps/web/src apps/web/test --exclude-dir=dist | wc -l
+``` Every step below is designed to keep the tree green, so
 you can stop after any step and the app still builds.
 
 ## Why this matters
@@ -97,7 +157,8 @@ store to the line-22 shape. It does **not** attempt the `CommandBus`,
 
 **This is an absorption, not a demolition.** Do not delete
 `editor-document-state.tsx` or its zustand store. It is the React subscription
-surface for 32 importers, and `subscribeWithSelector` is what
+surface for several dozen importers (32 at `ace313f` — approximate, re-derive with
+the `grep -rln … | wc -l` in the effort note), and `subscribeWithSelector` is what
 `use-workspace-cache-persistence.ts` uses to persist scroll positions. The store
 stays; what leaves it is state ownership.
 
@@ -105,15 +166,19 @@ stays; what leaves it is state ownership.
 
 ### The files
 
-| File                                                                           | Role                                                                                                            |
-| ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `apps/web/src/features/editor/state/workspace-document-service.ts` (647 lines) | Owns the documents. Contains the duplicate record types and the two `WeakMap` projection caches.                |
-| `apps/web/src/features/editor/state/editor-document-state.tsx` (216 lines)     | The zustand store: 19 actions, 17 of them thin wrappers over the service; owns the dead `fallbackDocumentPath`. |
-| `apps/web/src/features/editor/state/editor-commands.ts` (511 lines)            | The only reader/writer of `fallbackDocumentPath` outside the store.                                             |
-| `apps/web/src/features/editor/state/editor-dirty-paths.ts` (26 lines)          | Zero importers. Duplicated privately inside the service.                                                        |
-| `apps/web/src/features/editor/state/editor-fallback-path.ts` (14 lines)        | Only imported by `editor-commands.ts`, only to feed the dead loop.                                              |
-| `apps/web/src/hooks/use-workspace-events.ts`                                   | Two call sites pass `selectedFilePath` into `forceReplaceLiveEditorDocument`.                                   |
-| `apps/web/src/keymap/commands.ts`                                              | One call site does the same.                                                                                    |
+Line counts and action counts below were measured at `ace313f` and confirmed
+unchanged at `b467b3f` for these seven files; the eighth row's path is corrected.
+They are orientation, not assertions — `wc -l` on the list is the source of truth.
+
+| File                                                                           | Role                                                                                                             |
+| ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `apps/web/src/features/editor/state/workspace-document-service.ts` (647 lines) | Owns the documents. Contains the duplicate record types and the two `WeakMap` projection caches.                 |
+| `apps/web/src/features/editor/state/editor-document-state.tsx` (216 lines)     | The zustand store: ~19 actions, most of them thin wrappers over the service; owns the dead `fallbackDocumentPath`. |
+| `apps/web/src/features/editor/state/editor-commands.ts` (511 lines)            | The only reader/writer of `fallbackDocumentPath` outside the store.                                              |
+| `apps/web/src/features/editor/state/editor-dirty-paths.ts` (26 lines)          | Zero importers. Duplicated privately inside the service.                                                         |
+| `apps/web/src/features/editor/state/editor-fallback-path.ts` (14 lines)        | Only imported by `editor-commands.ts`, only to feed the dead loop.                                               |
+| `apps/web/src/hooks/use-workspace-events.ts`                                   | Two call sites pass `selectedFilePath` into `forceReplaceLiveEditorDocument`.                                    |
+| `apps/web/src/keymap/workspace-commands.ts` (was `keymap/commands.ts` at `ace313f`) | One call site does the same, at `:97`.                                                                       |
 
 ### Fact 1 — the record types are field-identical to the public types
 
@@ -135,7 +200,7 @@ export type EditorDocumentView = {
   tabId: string
   view: EditorViewSession
 }
-```
+````
 
 `workspace-document-service.ts:66-80` (private — same fields, plus `readonly`):
 
@@ -348,14 +413,27 @@ parameter that exists **only** to feed `fallbackDocumentPath`. Callers:
   ```
 
 - `apps/web/src/hooks/use-workspace-events.ts:131-134` — byte-identical to the above.
-- `apps/web/src/keymap/commands.ts:477`
+- `apps/web/src/keymap/workspace-commands.ts:97` (this was `keymap/commands.ts:477`
+  at `ace313f`; the file was split, the function was not changed)
 
   ```ts
   documentStore.getState().forceReplaceLiveEditorDocument(file, path)
   ```
 
+Re-derive the full call-site list before you edit, since a later plan may split a
+file again:
+
+```bash
+grep -rn "forceReplaceLiveEditorDocument(file, \|forceReplaceLiveEditorDocument(\s*file,\|ensureLiveEditorDocument(file, " apps/web/src apps/web/test --exclude-dir=dist
+```
+
+Three 2-argument sites were present at both `ace313f` and `b467b3f`; if you find a
+fourth, that is a STOP condition.
+
 `ensureLiveEditorDocument`'s second parameter has **no** caller that passes it —
-the only call sites are `file-sync-service.test.ts:13` and `:49`, both 1-argument.
+at `ace313f` the only call sites were `file-sync-service.test.ts:13` and `:49`,
+both 1-argument. Confirm with the grep above rather than trusting those line
+numbers.
 
 ### Repo conventions that apply here
 
@@ -405,30 +483,45 @@ the declaration a hard error. That is the feature you will lean on in step 3 —
 
 Run these from the repo root unless the command says otherwise.
 
-| Purpose                          | Command                                                                                | Expected on success                                                                        |
-| -------------------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| Typecheck the web app            | `cd apps/web && bun run typecheck`                                                     | exit 0, no output after the `$ tsgo --build` echo                                          |
-| Editor tests (fast loop)         | `cd apps/web && bun --bun vitest run --project node --project dom src/features/editor` | **baseline: 15 files, 88 tests passed**; after step 7: 15 files, **91** tests passed       |
-| Full web tests                   | `cd apps/web && bun --bun vitest run --project node --project dom`                     | **baseline: 244 files, 1764 tests passed**; after step 7: 244 files, **1767** tests passed |
-| Lint                             | `cd apps/web && bun run lint`                                                          | exit 0                                                                                     |
-| Format check                     | `cd apps/web && bun run format:check`                                                  | exit 0                                                                                     |
-| Format (only if the check fails) | `../../node_modules/.bin/oxfmt --write <the files you edited>`                         | rewrites only those files                                                                  |
-| Whole-repo gate (last)           | `bun run verify`                                                                       | exit 0                                                                                     |
+| Purpose                          | Command                                                                                | Expected on success                                                                                         |
+| -------------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Typecheck the web app            | `cd apps/web && bun run typecheck`                                                     | exit 0, no output after the `$ tsgo --build` echo                                                           |
+| Editor tests (fast loop)         | `cd apps/web && bun --bun vitest run --project node --project dom src/features/editor` | every test that passed in your Step 0 editor-filter snapshot still passes; after step 7 the total is **+3** |
+| Full web tests                   | `cd apps/web && bun run test`                                                          | same failures as your Step 0 snapshot and no others; after step 7 the passing total is **+3**               |
+| Lint                             | `cd apps/web && bun run lint`                                                          | no error that is not already in your Step 0 lint snapshot                                                   |
+| Format check                     | `cd apps/web && bun run format:check`                                                  | exit 0                                                                                                      |
+| Format (only if the check fails) | `../../node_modules/.bin/oxfmt --write <the files you edited>`                         | rewrites only those files                                                                                   |
+
+`bun run test` in `apps/web` is `bun --bun vitest run --project node --project dom`
+— the two spellings are interchangeable; use `bun run test` so the projects can
+never drift out of sync with this document.
+
+**There is no whole-repo gate in this plan.** Do **not** run `bun run verify` as a
+gate: it typechecks, lints and tests every workspace and short-circuits on the
+first failure, so an unrelated red elsewhere in the monorepo makes it unreachable
+while proving nothing about this change. The `apps/web` scripts above are the
+gate, and they are judged as deltas against Step 0.
 
 **Do not run `bun run format` (`oxfmt --write .`) in `apps/web`, and never run it
 from the repo root.** The working tree already carries unrelated in-progress
 settings edits; a directory-wide rewrite would reformat those files too and blow
 past this plan's scope. Format the specific files you edited, by path.
 
-Notes on the test commands, all four numbers below re-measured at `ace313f`
-with the current (dirty) working tree, so they are the numbers you will actually
-see:
+Notes on the test commands:
 
+- **Absolute totals are not gates.** Any count in this document was measured at
+  `ace313f`; plans 013–035 changed all of them, and the next plan to land will
+  change them again. The only valid gate is the delta against the Step 0 snapshot
+  you take on your own machine.
 - The `--bun` flag is mandatory. Without it `bun:sqlite` and `Bun.spawn` do not
-  resolve and unrelated suites fail.
+  resolve and unrelated suites fail. (`bun run test` already includes it.)
 - The full run prints some `error: ECONNREFUSED` noise from MSW-adjacent
-  teardown. That is pre-existing at `ace313f` and is **not** a failure — judge by
+  teardown. That is pre-existing and is **not** a failure — judge by
   the `Test Files … passed` / `Tests … passed` summary lines only.
+- The full run also has **one real pre-existing failure** at `b467b3f`:
+  `src/features/settings/tests/page.test.tsx > refuses an application-scoped key from the workspace tab, and says why`.
+  See correction item 3. Capture it in Step 0 and ignore it thereafter; fixing it
+  is out of scope.
 - The full run takes ~100s. Use the `src/features/editor` filter for the inner
   loop and run the full suite at the gates listed below.
 - Do **not** run `bun run test:browser`. No file in scope is a `*.browser.tsx`
@@ -445,12 +538,17 @@ see:
 - `apps/web/src/features/editor/state/editor-dirty-paths.ts` — **delete**
 - `apps/web/src/features/editor/state/editor-fallback-path.ts` — **delete**
 - `apps/web/src/hooks/use-workspace-events.ts` — modify (2 call sites only)
-- `apps/web/src/keymap/commands.ts` — modify (1 call site only)
+- `apps/web/src/keymap/workspace-commands.ts` — modify (1 call site only, `:97`; this
+  was `apps/web/src/keymap/commands.ts:477` at `ace313f`)
 - `apps/web/src/features/editor/tests/editor-document-state.test.ts` — modify (add 3 tests)
 - `plans/README.md` — the status row for 038, at the very end
 
 **Out of scope** (do NOT touch, even though they look related):
 
+- `apps/web/src/features/settings/**`, and in particular
+  `tests/page.test.tsx`. Its one failing case is the known pre-existing defect in
+  correction item 3. It is tracked separately. Fixing it here would put a
+  settings-feature file in this plan's diff and trip the scope check.
 - `packages/editor-*` — these are symlinks into a sibling `../../Editor` checkout,
   not part of this repo's workspaces. Editing them edits someone else's tree.
 - `apps/web/src/features/editor/state/editor-workspace-state.tsx`,
@@ -509,22 +607,43 @@ A fitting subject for this work: `refactor(editor): one representation per docum
 
 ## Steps
 
-### Step 0: Calibrate the baseline before changing anything
+### Step 0: Capture the baseline before changing anything
 
-Every later step compares against these numbers, so prove they are real on _your_
-machine before you edit a line. Nothing is modified in this step.
+Every later step compares against **your own** snapshot, not against a number
+printed in this document. Nothing is modified in this step.
 
 ```bash
-cd apps/web && bun run typecheck && bun --bun vitest run --project node --project dom
+cd apps/web && bun run typecheck
+cd apps/web && bun run test 2>&1 | tail -40 > /tmp/plan-038-test-before.txt
+cd apps/web && bun --bun vitest run --project node --project dom src/features/editor 2>&1 | tail -20 > /tmp/plan-038-editor-test-before.txt
+cd apps/web && bun run lint 2>&1 | tail -20 > /tmp/plan-038-lint-before.txt
+cd apps/web && bun run format:check 2>&1 | tail -20 > /tmp/plan-038-format-before.txt
 ```
 
-→ typecheck exits 0; the summary lines read `Test Files  244 passed (244)` and
-`Tests  1764 passed (1764)`. Ignore the `error: ECONNREFUSED` blocks printed
-above the summary — they are pre-existing teardown noise, not failures.
+Read all four snapshots and write down, for yourself:
 
-**If the baseline does not match, STOP and report.** Do not start the refactor
-against numbers you cannot reproduce; every "expected" count in this plan is
-derived from these two.
+- the `Test Files …` / `Tests …` summary lines from each test snapshot;
+- **the full name of every failing test**, so you can tell a pre-existing failure
+  from one you caused;
+- the lint error and warning counts.
+
+**The gate is a delta, never a total:**
+
+- `bun run typecheck` must exit 0 **now**. If it does not, that is a real blocker
+  — STOP and report, because this whole refactor is typecheck-guided.
+- Any test that **passes** in the snapshot must still pass at every later gate.
+- Any test that **fails** in the snapshot is not yours and must not block you. At
+  `b467b3f` there is exactly one, the settings `page.test.tsx` case in correction
+  item 3. **Do not fix it. Do not let it stop you. Confirm it is in your snapshot
+  and move on.**
+- No lint **error** may appear that is not already in the lint snapshot.
+- After step 7 the passing test total should be exactly **+3** (the three new
+  invariant tests), with no other movement. Compute that against your snapshot;
+  do not compare it to any number written in this plan.
+
+**Do not STOP on a count mismatch against this document.** The counts here were
+measured at `ace313f` and are stale by construction. Your snapshot is the
+baseline.
 
 ### Step 1: Delete the orphaned dirty-path module
 
@@ -638,14 +757,15 @@ Three sub-steps. Do them in order; the compiler drives the last one.
   this member as a 1-argument function — `workspace-event-conflict-adapter.ts:26` —
   so no type edits are needed.)
 
-- `apps/web/src/keymap/commands.ts:477`, inside `revertSelectedEditorDocument` —
+- `apps/web/src/keymap/workspace-commands.ts:97`, inside
+  `revertSelectedEditorDocument` (this was `keymap/commands.ts:477` at `ace313f`) —
 
   ```ts
   documentStore.getState().forceReplaceLiveEditorDocument(file)
   ```
 
-  Only the second argument is dropped. The local `const path` on **line 472**
-  stays: it is still used by `fetchFile(path, …)` on line 475.
+  Only the second argument is dropped. The local `const path` (line **91** at
+  `b467b3f`) stays: it is still used by `fetchFile(path, …)` on line **94**.
 
 **3c — delete the loop in `editor-commands.ts` and let the compiler unwind it**:
 
@@ -701,10 +821,13 @@ grep -rn "fallbackDocumentPath" apps packages scripts --exclude-dir=node_modules
 → zero output.
 
 ```bash
-cd apps/web && bun --bun vitest run --project node --project dom
+cd apps/web && bun run test 2>&1 | tail -40
 ```
 
-→ 244 files, 1764 tests passed.
+→ compare against `/tmp/plan-038-test-before.txt`: **no test that passed there may
+fail here, and no new failing test name may appear.** No test has been added yet,
+so the passing total should equal the snapshot's. The known settings
+`page.test.tsx` failure is expected to still be there; it is not yours.
 
 ### Step 4: Collapse the record/projection layer inside the service
 
@@ -891,7 +1014,8 @@ grep -n "LiveEditorDocumentRecord\|EditorDocumentViewRecord\|liveDocumentProject
 cd apps/web && bun --bun vitest run --project node --project dom src/features/editor
 ```
 
-→ 15 files, 88 tests passed. **The four identity assertions in
+→ matches `/tmp/plan-038-editor-test-before.txt` exactly: same file count, same
+passing total, no new failure. **The four identity assertions in
 `tests/editor-document-state.test.ts` are the real gate here — if any of them
 fails, the `WeakMap`s were load-bearing after all; STOP and report.**
 
@@ -1103,10 +1227,12 @@ grep -rn "getEditorViewDocument\|EditorDocumentStoreState" apps/web/src apps/web
 → zero output.
 
 ```bash
-cd apps/web && bun --bun vitest run --project node --project dom
+cd apps/web && bun run test 2>&1 | tail -40
 ```
 
-→ 244 files, 1764 tests passed.
+→ same delta rule as step 3: no previously-passing test may fail, no new failing
+test name may appear, and the passing total is still the snapshot's (no test added
+yet).
 
 ### Step 6: Rename the three now-misnamed private helpers
 
@@ -1136,7 +1262,8 @@ locals do not match this grep and are meant to stay.)
 cd apps/web && bun run typecheck && bun --bun vitest run --project node --project dom src/features/editor
 ```
 
-→ exit 0; 15 files, 88 tests passed.
+→ typecheck exits 0; the editor run still matches
+`/tmp/plan-038-editor-test-before.txt` (no test added yet).
 
 ### Step 7: Lock the single-representation invariant with three tests
 
@@ -1191,15 +1318,20 @@ it('exposes one document object at the new path after a rename', () => {
 cd apps/web && bun --bun vitest run --project node --project dom src/features/editor
 ```
 
-→ 15 files, **91** tests passed.
+→ same file count as `/tmp/plan-038-editor-test-before.txt`, passing total **+3**,
+and the three new test names are the only additions. (At `ace313f` that read
+`15 files, 88 → 91 tests`; those totals are stale — use your snapshot.)
 
-### Step 8: Format, lint, full verify, and one look at the running app
+### Step 8: Format, lint, delta-check, and one look at the running app
 
 ```bash
 cd apps/web && bun run format:check && bun run lint
 ```
 
-→ both exit 0. **If `format:check` fails, format only the files you edited** —
+→ `format:check` exits 0, and `lint` reports **no error that is not already in
+`/tmp/plan-038-lint-before.txt`**. A pre-existing lint error or warning recorded in
+that snapshot is not yours to fix and does not block this plan; a **new** error
+does. **If `format:check` fails, format only the files you edited** —
 never the whole directory, because the tree carries unrelated in-progress edits:
 
 ```bash
@@ -1209,23 +1341,27 @@ cd apps/web && ../../node_modules/.bin/oxfmt --write \
   src/features/editor/state/editor-commands.ts \
   src/features/editor/tests/editor-document-state.test.ts \
   src/hooks/use-workspace-events.ts \
-  src/keymap/commands.ts
+  src/keymap/workspace-commands.ts
 ```
 
 Then re-run `bun run format:check` → exit 0.
 
 ```bash
-cd apps/web && bun --bun vitest run --project node --project dom
+cd apps/web && bun run typecheck
+cd apps/web && bun run test 2>&1 | tail -40 > /tmp/plan-038-test-after.txt
+diff /tmp/plan-038-test-before.txt /tmp/plan-038-test-after.txt
 ```
 
-→ 244 files, **1767** tests passed.
+→ typecheck exits 0. The final delta rule:
 
-```bash
-bun run verify
-```
+- Every test that passed in `/tmp/plan-038-test-before.txt` still passes.
+- The set of **failing test names** is unchanged — at `b467b3f` that means the one
+  known settings `page.test.tsx` case and nothing else.
+- The passing total is exactly **+3** over the snapshot, and the file count is
+  unchanged (the three tests go into an existing file).
 
-→ exit 0. (This runs typecheck + lint + format:check + tests across every
-workspace. It takes several minutes.)
+The `diff` will also show the totals moving by 3; that is the expected difference,
+not a failure. **Do not run `bun run verify`** — see correction item 2.
 
 Finally, a manual smoke test against the dev server that is **already running** —
 do not start one:
@@ -1271,19 +1407,25 @@ AGENTS.md: "Do not redefine per-file factories."
 
 ## Done criteria
 
-Machine-checkable. ALL must hold:
+Machine-checkable. ALL must hold. **Every test and lint criterion is a delta
+against the Step 0 snapshot — no absolute count appears here, deliberately.**
 
 - [ ] `cd apps/web && bun run typecheck` exits 0
-- [ ] `cd apps/web && bun --bun vitest run --project node --project dom` reports **244 files, 1767 tests passed**
-- [ ] `cd apps/web && bun run lint` exits 0 and `bun run format:check` exits 0
-- [ ] `bun run verify` exits 0
+- [ ] `cd apps/web && bun run test`: no test that passed in
+      `/tmp/plan-038-test-before.txt` fails, the set of failing test names is
+      unchanged from that snapshot, and the passing total is exactly **+3**
+- [ ] `cd apps/web && bun run format:check` exits 0, and `bun run lint` reports no
+      error absent from `/tmp/plan-038-lint-before.txt`
+- [ ] The known pre-existing failure
+      (`src/features/settings/tests/page.test.tsx > refuses an application-scoped key from the workspace tab, and says why`)
+      is present in the Step 0 snapshot, still present at the end, and **untouched**.
+      It does not block this plan.
 - [ ] `grep -rn "fallbackDocumentPath" apps packages scripts --exclude-dir=node_modules --exclude-dir=dist` → zero output
 - [ ] `grep -rn "LiveEditorDocumentRecord\|EditorDocumentViewRecord\|liveDocumentProjection\|viewProjection\b\|WeakMap" apps/web/src/features/editor` → zero output
 - [ ] `grep -rn "getEditorViewDocument\|EditorDocumentStoreState\|projectedRecord" apps/web/src apps/web/test` → zero output
 - [ ] `test ! -e apps/web/src/features/editor/state/editor-dirty-paths.ts && test ! -e apps/web/src/features/editor/state/editor-fallback-path.ts` → exit 0
-- [ ] You changed **no file outside the in-scope list**. The tree was already dirty
-      before you started (unrelated settings work), so diff against the snapshot
-      from the drift check rather than expecting a clean `git status`:
+- [ ] You changed **no file outside the in-scope list**. Diff against the snapshot
+      you took in the drift check rather than assuming the tree started clean:
 
       ```bash
       git status --porcelain | diff /tmp/plan-038-before.txt - | grep '^>'
@@ -1297,7 +1439,7 @@ Machine-checkable. ALL must hold:
       `apps/web/src/features/editor/state/editor-fallback-path.ts` (deleted),
       `apps/web/src/features/editor/tests/editor-document-state.test.ts`,
       `apps/web/src/hooks/use-workspace-events.ts`,
-      `apps/web/src/keymap/commands.ts`,
+      `apps/web/src/keymap/workspace-commands.ts`,
       `plans/README.md`.
       **If any other path appears, STOP** — you have edited something out of scope,
       or a directory-wide formatter ran.
@@ -1335,9 +1477,18 @@ Stop and report back (do not improvise) if:
 - **You are tempted to prefix a parameter with `_` to silence
   `noUnusedParameters`.** Don't; report instead — the parameter is either genuinely
   dead (delete it and its arguments) or the plan is wrong about the cascade.
-- **Step 0's baseline is not `244 files / 1764 tests` and typecheck-clean.** Every
-  expected count downstream is that number plus three; if the starting point
-  differs, report the numbers you saw instead of guessing at deltas.
+- **`cd apps/web && bun run typecheck` does not exit 0 at Step 0.** This refactor
+  is entirely typecheck-guided; a red baseline there means you cannot tell your
+  errors from the existing ones. Report and stop.
+- **A test that passed in your Step 0 snapshot fails after any step.** That is a
+  regression you caused. (A test that was _already_ failing in the snapshot — at
+  `b467b3f`, the settings `page.test.tsx` case — is **not** a stop condition and
+  must not be treated as one. This is the exact mistake that blocked the previous
+  dispatch of this plan: it stopped on a count, not on a defect.)
+- **A lint error appears that is not in `/tmp/plan-038-lint-before.txt`.**
+- **NOT a stop condition:** a test or file total that differs from any number
+  written in this document. Those were measured at `ace313f` and are stale by
+  design. Your Step 0 snapshot is the baseline; keep going.
 - **`git status --porcelain` shows a file you did not intend to touch** — most
   likely a directory-wide `oxfmt --write` or `bun run format` reformatted the
   unrelated settings work already in the tree. Revert those files
@@ -1386,7 +1537,8 @@ For whoever owns this code next:
     oversight; do not let a dead-code sweep delete it without replacing the
     invariant check.
   - _Making the service itself the zustand store_ (i.e. deleting
-    `editor-document-state.tsx`) was considered and rejected: 32 modules depend on
+    `editor-document-state.tsx`) was considered and rejected: dozens of modules
+    (32 at `ace313f` — approximate) depend on
     the store's action names and on `useEditorDocumentState` selectors, and the
     React subscription surface has to live somewhere. The store staying as a thin
     adapter is the shape `PLAN.md:22` asks for.
