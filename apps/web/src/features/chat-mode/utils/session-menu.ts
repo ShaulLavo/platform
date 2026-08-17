@@ -23,6 +23,7 @@ const STOPPABLE_SESSION_STATUSES: readonly OrchestrationSessionStatus[] = [
   'idle',
   'starting',
   'running',
+  'waiting',
   'ready',
   'interrupted',
 ]

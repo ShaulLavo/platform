@@ -18,6 +18,7 @@ import {
   DEFAULT_CODEX_PROVIDER_SETTINGS,
   DEFAULT_RUNTIME_MODE,
 } from '@workspace/contracts'
+import type { OrchestrationSessionStatus } from '@workspace/contracts'
 import type { ProviderService } from '../provider/provider-service'
 import type {
   ProviderSessionRuntimePayload,
@@ -577,7 +578,7 @@ export class ProviderCommandReactor {
     providerInstanceId: ModelSelection['providerInstanceId']
     providerSessionId: string | null
     runtimeMode?: RuntimeMode
-    status: 'starting' | 'running' | 'ready' | 'interrupted' | 'stopped' | 'error'
+    status: OrchestrationSessionStatus
     threadId: ThreadId
     turnId: TurnId | null
   }) {

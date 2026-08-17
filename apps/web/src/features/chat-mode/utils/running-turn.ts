@@ -8,7 +8,7 @@ import type { ChatSidebarThreadSummary } from '@/features/chat/state/chat-projec
 export function hasRunningTurn(thread: ChatSidebarThreadSummary | undefined | null) {
   if (!thread) return false
   if (thread.latestTurn?.state === 'running') return true
-  if (thread.session?.status !== 'running') return false
+  if (thread.session?.status !== 'running' && thread.session?.status !== 'waiting') return false
 
   return thread.session.activeTurnId !== null
 }

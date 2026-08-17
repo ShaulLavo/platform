@@ -549,7 +549,8 @@ function sessionSet(
     session: command.session,
     threadId: command.threadId,
   })
-  const alive = command.session.status === 'starting' || command.session.status === 'running'
+  const status = command.session.status
+  const alive = status === 'starting' || status === 'running' || status === 'waiting'
   if (!alive || thread.settledOverride == null) return [sessionSetEvent]
 
   return [autoUnsettled(command, at, command.threadId, command.createdAt), sessionSetEvent]

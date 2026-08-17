@@ -11,9 +11,10 @@ import * as v from 'valibot'
 import { isBusyChatSession } from '../chat-thread-status'
 
 describe('chat thread status', () => {
-  it('treats only starting and running sessions as busy', () => {
+  it('treats starting, running and waiting sessions as busy', () => {
     expect(isBusyChatSession(makeSession('starting'))).toBe(true)
     expect(isBusyChatSession(makeSession('running'))).toBe(true)
+    expect(isBusyChatSession(makeSession('waiting'))).toBe(true)
     expect(isBusyChatSession(makeSession('ready'))).toBe(false)
     expect(isBusyChatSession(makeSession('interrupted'))).toBe(false)
     expect(isBusyChatSession(makeSession('stopped'))).toBe(false)

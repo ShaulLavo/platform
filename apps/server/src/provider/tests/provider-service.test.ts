@@ -124,6 +124,44 @@ describe('ProviderService', () => {
     fixture.close()
   })
 
+  it('keeps a session parked on an approval reusable and listed', async () => {
+    const fixture = createFixture()
+    const adapter = new MockProviderAdapter()
+    const directory = new ProviderSessionDirectory(fixture.database)
+    const service = new ProviderService({
+      adapterRegistry: new ProviderAdapterRegistry([adapter]),
+      sessionDirectory: directory,
+    })
+    const input = providerTurnInput()
+    const ensureInput = {
+      providerInstanceId: input.providerInstanceId,
+      runtimeMode: input.runtimeMode,
+      runtimePayload: providerSessionPayload(input),
+      threadId: input.thread.id,
+    }
+
+    await service.ensureSession(ensureInput)
+    // Compaction, or an approval nobody has answered: the process is alive and
+    // holding real state that dies with it.
+    directory.markStatus(input.thread.id, 'waiting')
+
+    // Listed while parked. The reuse call below writes the binding again, so
+    // this is asserted before it rather than after.
+    expect(service.listSessions()).toContainEqual(
+      expect.objectContaining({ status: 'waiting', threadId: input.thread.id }),
+    )
+    expect(await service.ensureSession(ensureInput)).toMatchObject({ reused: true })
+
+    // The negative: inverting the predicate must not make every status active.
+    for (const dead of ['stopped', 'error', 'idle'] as const) {
+      directory.markStatus(input.thread.id, dead)
+      expect(service.listSessions()).not.toContainEqual(
+        expect.objectContaining({ threadId: input.thread.id }),
+      )
+    }
+    fixture.close()
+  })
+
   it('drops the cursor when a thread is repointed at another provider instance', async () => {
     const fixture = createFixture()
     const codex = new MockProviderAdapter()

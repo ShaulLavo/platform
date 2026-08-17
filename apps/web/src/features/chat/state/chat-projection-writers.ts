@@ -732,7 +732,8 @@ function applyThreadSessionSetEvent(
 ): ChatProjectionState {
   const nextState = writeThreadSession(state, event.payload.threadId, event.payload.session)
 
-  if (event.payload.session.status !== 'running') return nextState
+  const status = event.payload.session.status
+  if (status !== 'running' && status !== 'waiting') return nextState
   if (event.payload.session.activeTurnId === null) return nextState
 
   const currentTurn = nextState.threadTurnStateById[event.payload.threadId]?.latestTurn

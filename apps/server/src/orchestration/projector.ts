@@ -259,7 +259,7 @@ function threadAfterCheckpoint(
 }
 
 function isSessionRunningTurn(session: OrchestrationSession | null, turnId: string) {
-  if (session?.status !== 'running') return false
+  if (session?.status !== 'running' && session?.status !== 'waiting') return false
 
   return session.activeTurnId === turnId
 }

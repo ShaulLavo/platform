@@ -56,16 +56,19 @@ describe('orchestration projection convergence', () => {
     expect(projected.sqlThread.latestTurn).toEqual(projected.memory.latestTurn)
   })
 
-  it.each(['starting', 'running'])('leaves the turn running while the session is %s', (status) => {
-    const projected = project([
-      ...threadBootstrapEvents(),
-      turnStartEvent('turn-1', requestedAt),
-      sessionSetEvent({ activeTurnId: 'turn-1', status, updatedAt: startedAt }),
-    ])
+  it.each(['starting', 'running', 'waiting'])(
+    'leaves the turn running while the session is %s',
+    (status) => {
+      const projected = project([
+        ...threadBootstrapEvents(),
+        turnStartEvent('turn-1', requestedAt),
+        sessionSetEvent({ activeTurnId: 'turn-1', status, updatedAt: startedAt }),
+      ])
 
-    expect(projected.memory.latestTurn).toMatchObject({ completedAt: null, state: 'running' })
-    expect(projected.sqlThread.latestTurn).toEqual(projected.memory.latestTurn)
-  })
+      expect(projected.memory.latestTurn).toMatchObject({ completedAt: null, state: 'running' })
+      expect(projected.sqlThread.latestTurn).toEqual(projected.memory.latestTurn)
+    },
+  )
 
   it('settles a turn that produced no assistant message at all', () => {
     const projected = project([

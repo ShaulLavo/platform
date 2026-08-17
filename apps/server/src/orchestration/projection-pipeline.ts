@@ -606,7 +606,7 @@ export class OrchestrationProjectionPipeline {
       .from(projectionThreadSessions)
       .where(eq(projectionThreadSessions.threadId, threadId))
       .get()
-    if (session?.status !== 'running') return false
+    if (session?.status !== 'running' && session?.status !== 'waiting') return false
 
     return session.activeTurnId === turnId
   }

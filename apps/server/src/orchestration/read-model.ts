@@ -108,8 +108,8 @@ export function settleRunningTurn(
 
 /**
  * Turn state to settle a still-running turn with when its session leaves the
- * "running" status, or null while the session is (re)starting or running and
- * the turn must stay unsettled. Leaving "running" is the authoritative turn
+ * "running" status, or null while the session is (re)starting, running, or
+ * parked mid-work (`waiting`) and the turn must stay unsettled. Leaving "running" is the authoritative turn
  * end: a turn that produced no assistant message has no other end signal, and
  * without one the thread spins forever.
  */
@@ -125,6 +125,7 @@ export function settledTurnStateForSessionStatus(status: OrchestrationSessionSta
       return 'interrupted' as const
     case 'starting':
     case 'running':
+    case 'waiting':
       return null
   }
 }

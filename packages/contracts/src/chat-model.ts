@@ -220,10 +220,20 @@ export const orchestrationProposedPlanSchema = v.object({
   updatedAt: isoDateTimeSchema,
 })
 
+/**
+ * One vocabulary for a session's liveness, shared by the projection, the
+ * provider binding row and the adapter event stream — the three used to spell
+ * it separately and `waiting` meant a different thing in each.
+ *
+ * `waiting` is the agent mid-work with the turn parked: compaction, or an
+ * approval nobody has answered. It is live state that dies with the process,
+ * which is why it counts as active everywhere and is never reclaimable.
+ */
 export const orchestrationSessionStatusSchema = v.picklist([
   'idle',
   'starting',
   'running',
+  'waiting',
   'ready',
   'interrupted',
   'stopped',

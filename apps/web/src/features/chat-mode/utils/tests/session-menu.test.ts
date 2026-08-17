@@ -71,11 +71,13 @@ test('a live agent session can be stopped in every state that still holds a proc
     'idle',
     'starting',
     'running',
+    'waiting',
     'ready',
     'interrupted',
   ]
 
   expect(stoppable.map((status) => canStopAgentSession(session(status)))).toEqual([
+    true,
     true,
     true,
     true,

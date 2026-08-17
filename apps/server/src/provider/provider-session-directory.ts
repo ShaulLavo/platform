@@ -4,10 +4,12 @@ import { and, asc, eq, lt } from 'drizzle-orm'
 import {
   DEFAULT_RUNTIME_MODE,
   providerDriverKindSchema,
+  orchestrationSessionStatusSchema,
   providerInstanceIdSchema,
   runtimeModeSchema,
   threadIdSchema,
   type ProviderDriverKind,
+  type OrchestrationSessionStatus,
   type ProviderInstanceId,
   type RuntimeMode,
   type ThreadId,
@@ -25,24 +27,30 @@ import {
   recordChatPipelineWarning,
 } from '../orchestration/orchestration-logging'
 
-export type ProviderRuntimeBindingStatus =
-  | 'starting'
-  | 'ready'
-  | 'running'
-  | 'waiting'
-  | 'stopped'
-  | 'error'
-
 /**
- * A binding that still has a turn behind it.
+ * A binding that may still have a process behind it.
  *
  * Rows are never deleted — `markStatus` writes `stopped`, it does not remove —
  * so "a row exists" means "this instance was used once", not "it is busy". Every
  * liveness question has to go through this predicate or it answers `true`
  * forever.
+ *
+ * Stated as the dead set rather than the live set on purpose. The previous
+ * allowlist silently excluded `waiting`, so a session parked on an approval
+ * stopped being reusable, vanished from `listSessions`, and — the real cost —
+ * was never torn down when its thread was repointed at another provider
+ * instance, leaking the child process. A status nobody classified must default
+ * to "there may be a process here": `ensureSession` re-checks with
+ * `adapter.hasSession`, so a false positive costs one probe, while a false
+ * negative leaks a CLI child.
  */
-export function isActiveBinding(binding: { status?: ProviderRuntimeBindingStatus }) {
-  return binding.status === 'starting' || binding.status === 'ready' || binding.status === 'running'
+export function isActiveBinding(binding: { status?: OrchestrationSessionStatus }) {
+  if (!binding.status) return false
+  if (binding.status === 'idle') return false
+  if (binding.status === 'stopped') return false
+  if (binding.status === 'error') return false
+
+  return true
 }
 
 export type ProviderRuntimeBinding = {
@@ -53,7 +61,7 @@ export type ProviderRuntimeBinding = {
   resumeCursor?: unknown | null
   runtimeMode?: RuntimeMode
   runtimePayload?: ProviderSessionRuntimePayload | null
-  status?: ProviderRuntimeBindingStatus
+  status?: OrchestrationSessionStatus
   threadId: ThreadId
 }
 
@@ -66,7 +74,7 @@ export type ProviderRuntimeBindingWithMetadata = {
   resumeCursor: unknown | null
   runtimeMode: RuntimeMode
   runtimePayload: ProviderSessionRuntimePayload | null
-  status: ProviderRuntimeBindingStatus
+  status: OrchestrationSessionStatus
   threadId: ThreadId
 }
 
@@ -185,7 +193,7 @@ export class ProviderSessionDirectory {
    * runs on the way into every turn, and that one scans the table and puts
    * every thread id on a wide event for an answer that is almost always empty.
    */
-  listIdleSince(cutoffIso: string, status: ProviderRuntimeBindingStatus) {
+  listIdleSince(cutoffIso: string, status: OrchestrationSessionStatus) {
     return this.database
       .select()
       .from(providerSessionRuntime)
@@ -213,7 +221,7 @@ export class ProviderSessionDirectory {
       .run()
   }
 
-  markStatus(threadId: ThreadId, status: ProviderRuntimeBindingStatus) {
+  markStatus(threadId: ThreadId, status: OrchestrationSessionStatus) {
     recordChatPipelineInfo('chat.pipeline.provider_session_directory.mark_status', {
       status,
       threadId,
@@ -331,22 +339,8 @@ function rowToBinding(row: ProviderSessionRuntimeRow): ProviderRuntimeBindingWit
     resumeCursor: parseNullableJson(row.resumeCursorJson),
     runtimeMode: v.parse(runtimeModeSchema, row.runtimeMode),
     runtimePayload: parseRuntimePayload(row.runtimePayloadJson, row.threadId),
-    status: parseRuntimeStatus(row.status),
+    status: v.parse(orchestrationSessionStatusSchema, row.status),
     threadId: v.parse(threadIdSchema, row.threadId),
-  }
-}
-
-function parseRuntimeStatus(status: string): ProviderRuntimeBindingStatus {
-  switch (status) {
-    case 'starting':
-    case 'ready':
-    case 'running':
-    case 'waiting':
-    case 'stopped':
-    case 'error':
-      return status
-    default:
-      throw createInternalError(`Unknown provider runtime status: ${status}`)
   }
 }
 

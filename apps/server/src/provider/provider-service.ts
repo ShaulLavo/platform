@@ -2,6 +2,7 @@ import { createInternalError } from '../observability/structured-errors'
 
 import type {
   ModelSelection,
+  OrchestrationSessionStatus,
   ProviderInstanceId,
   ProviderSnapshot,
   RuntimeMode,
@@ -18,7 +19,6 @@ import { createDefaultProviderAdapterRegistry } from './provider-adapter-registr
 import {
   isActiveBinding,
   ProviderSessionDirectory,
-  type ProviderRuntimeBindingStatus,
   type ProviderRuntimeBindingWithMetadata,
 } from './provider-session-directory'
 import { ProviderSessionReaper } from './provider-session-reaper'
@@ -32,7 +32,6 @@ import {
 } from '../orchestration/orchestration-logging'
 import type {
   ProviderApprovalResponseInput,
-  ProviderAdapterSession,
   ProviderRuntimeEvent,
   ProviderSessionStartInput,
   ProviderTurnControlInput,
@@ -53,7 +52,7 @@ export type ProviderStartSessionInput = {
   resumeCursor?: unknown | null
   runtimeMode: RuntimeMode
   runtimePayload: ProviderSessionStartPayload
-  status?: ProviderRuntimeBindingStatus
+  status?: OrchestrationSessionStatus
   threadId: ThreadId
 }
 
@@ -61,7 +60,7 @@ export type ProviderEnsureSessionInput = {
   providerInstanceId: ProviderInstanceId
   runtimeMode: RuntimeMode
   runtimePayload: ProviderSessionStartPayload
-  status?: ProviderRuntimeBindingStatus
+  status?: OrchestrationSessionStatus
   threadId: ThreadId
 }
 
@@ -137,7 +136,7 @@ export class ProviderService {
         ...input.runtimePayload,
         providerThreadId: session.providerThreadId ?? null,
       },
-      status: providerBindingStatusFromSession(session.status, input.status),
+      status: input.status ?? session.status,
       threadId: input.threadId,
     })
     recordChatPipelineInfo('chat.pipeline.provider_service.start_session.complete', {
@@ -198,7 +197,7 @@ export class ProviderService {
         ...input.runtimePayload,
         providerThreadId: session.providerThreadId ?? null,
       },
-      status: providerBindingStatusFromSession(session.status, input.status),
+      status: input.status ?? session.status,
       threadId: input.threadId,
     })
 
@@ -603,20 +602,6 @@ function startInputResumeCursor(input: ProviderStartSessionInput | ProviderEnsur
   return null
 }
 
-function providerBindingStatusFromSession(
-  status: ProviderAdapterSession['status'],
-  override: ProviderRuntimeBindingStatus | undefined,
-): ProviderRuntimeBindingStatus {
-  if (override) return override
-  if (status === 'waiting') return 'waiting'
-  if (status === 'running') return 'running'
-  if (status === 'starting') return 'starting'
-  if (status === 'error') return 'error'
-  if (status === 'stopped') return 'stopped'
-
-  return 'ready'
-}
-
 function bindingUpdateFromRuntimeEvent(event: ProviderRuntimeEvent) {
   if (event.type === 'session.set') return bindingUpdateFromSessionSet(event)
   const providerInstanceId = providerInstanceIdFromEvent(event)
@@ -672,33 +657,27 @@ function bindingUpdateFromSessionSet(
   }
 }
 
-function bindingStatusFromSessionSet(
-  status: Extract<ProviderRuntimeEvent, { type: 'session.set' }>['status'],
-): ProviderRuntimeBindingStatus {
-  switch (status) {
-    case 'starting':
-    case 'running':
-      return status
-    case 'ready':
-      return 'ready'
-    case 'error':
-      return 'error'
-    case 'interrupted':
-      return 'ready'
-    case 'stopped':
-      return 'stopped'
-  }
+/**
+ * The one rule left between a session status and the binding row it writes:
+ * `interrupted` describes the turn that just ended, and the process behind it
+ * is idle and reclaimable — which is exactly what `ready` means to the reaper,
+ * the only status it may touch. Everything else is copied through.
+ */
+function bindingStatusFromSessionSet(status: OrchestrationSessionStatus) {
+  if (status === 'interrupted') return 'ready' as const
+
+  return status
 }
 
 function bindingStatusFromRuntimeEvent(
   event: Exclude<ProviderRuntimeEvent, { type: 'session.set' }>,
-): ProviderRuntimeBindingStatus | null {
+): OrchestrationSessionStatus | null {
   switch (event.type) {
     case 'session.started':
     case 'thread.started':
       return 'ready'
     case 'session.state.changed':
-      return bindingStatusFromSessionState(event.payload.state)
+      return event.payload.state
     case 'turn.started':
       return 'running'
     case 'turn.completed':
@@ -710,14 +689,6 @@ function bindingStatusFromRuntimeEvent(
     default:
       return null
   }
-}
-
-function bindingStatusFromSessionState(
-  state: Extract<ProviderRuntimeEvent, { type: 'session.state.changed' }>['payload']['state'],
-): ProviderRuntimeBindingStatus {
-  if (state === 'waiting') return 'waiting'
-
-  return state
 }
 
 function activeTurnIdFromRuntimeEvent(event: ProviderRuntimeEvent) {

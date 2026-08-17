@@ -13,6 +13,7 @@ import type {
   ProviderSignInMethod,
   ProviderSkill,
   ProviderSlashCommand,
+  OrchestrationSessionStatus,
   ProviderSnapshot,
   ProviderUserInputAnswers,
   RuntimeMode,
@@ -117,14 +118,6 @@ type ProviderRuntimeContentStreamKind =
 
 type ProviderRuntimeItemStatus = 'inProgress' | 'completed' | 'failed' | 'declined'
 
-type ProviderRuntimeSessionState =
-  | 'starting'
-  | 'ready'
-  | 'running'
-  | 'waiting'
-  | 'stopped'
-  | 'error'
-
 type ProviderRuntimeThreadState = 'active' | 'idle' | 'archived' | 'closed' | 'compacted' | 'error'
 
 type ProviderRuntimeTurnState = 'completed' | 'failed' | 'interrupted' | 'cancelled'
@@ -139,7 +132,7 @@ export type ProviderRuntimeEvent =
       providerName?: string
       providerSessionId: string | null
       runtimeMode?: RuntimeMode
-      status: 'starting' | 'running' | 'ready' | 'interrupted' | 'stopped' | 'error'
+      status: OrchestrationSessionStatus
       threadId: ThreadId
       turnId: TurnId | null
       type: 'session.set'
@@ -287,7 +280,7 @@ export type ProviderRuntimeEvent =
     })
   | (ProviderRuntimeBaseEvent & {
       type: 'session.state.changed'
-      payload: { detail?: unknown; reason?: string; state: ProviderRuntimeSessionState }
+      payload: { detail?: unknown; reason?: string; state: OrchestrationSessionStatus }
     })
   | (ProviderRuntimeBaseEvent & {
       type: 'session.exited'
@@ -467,7 +460,7 @@ export type ProviderAdapterSession = {
   providerThreadId?: string
   resumeCursor?: unknown | null
   runtimeMode: RuntimeMode
-  status: ProviderRuntimeSessionState
+  status: OrchestrationSessionStatus
   threadId: ThreadId
 }
 

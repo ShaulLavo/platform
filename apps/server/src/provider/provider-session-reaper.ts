@@ -1,11 +1,10 @@
-import type { ThreadId } from '@workspace/contracts'
+import type { OrchestrationSessionStatus, ThreadId } from '@workspace/contracts'
 
 import {
   recordChatPipelineInfo,
   recordChatPipelineWarning,
 } from '../orchestration/orchestration-logging'
 import type {
-  ProviderRuntimeBindingStatus,
   ProviderRuntimeBindingWithMetadata,
   ProviderSessionDirectory,
 } from './provider-session-directory'
@@ -19,7 +18,7 @@ export const IDLE_PROVIDER_SESSION_DEADLINE_MS = 30 * 60 * 1000
  * which lose real state if the process dies. `starting` has not reported yet,
  * and `stopped`/`error` have no process left to reclaim.
  */
-const REAPABLE_STATUS: ProviderRuntimeBindingStatus = 'ready'
+const REAPABLE_STATUS: OrchestrationSessionStatus = 'ready'
 
 type StopSession = (input: { threadId: ThreadId }) => Promise<unknown>
 

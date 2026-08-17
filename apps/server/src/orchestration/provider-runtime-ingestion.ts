@@ -573,7 +573,7 @@ function lifecycleSessionStatus(
     case 'session.exited':
       return 'stopped'
     case 'session.state.changed':
-      return sessionStatusFromRuntimeState(event.payload.state)
+      return event.payload.state
   }
 }
 
@@ -601,14 +601,6 @@ function isLifecycleSessionEvent(
     default:
       return false
   }
-}
-
-function sessionStatusFromRuntimeState(
-  state: 'error' | 'ready' | 'running' | 'starting' | 'stopped' | 'waiting',
-) {
-  if (state === 'waiting') return 'running'
-
-  return state
 }
 
 function assistantDeltaCommand(

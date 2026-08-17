@@ -23,6 +23,9 @@ export function threadStatus(thread: ThreadStatusSource): ThreadStatus {
   if (thread.latestTurn?.state === 'running') return 'working'
   if (thread.session?.status === 'starting') return 'working'
   if (thread.session?.status === 'running') return 'working'
+  // A parked session (compaction, or an approval already counted above) is the
+  // agent mid-work, not a question for the user.
+  if (thread.session?.status === 'waiting') return 'working'
   if (thread.latestTurn?.state === 'error') return 'failed'
   if (thread.session?.status === 'error') return 'failed'
 

@@ -12,5 +12,8 @@ export function isChatThreadBusy(thread: ChatThread | undefined) {
 export function isBusyChatSession(session: OrchestrationSession | null) {
   if (!session) return false
 
-  return session.status === 'starting' || session.status === 'running'
+  if (session.status === 'starting') return true
+  if (session.status === 'waiting') return true
+
+  return session.status === 'running'
 }

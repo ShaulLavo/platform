@@ -273,7 +273,9 @@ export function hasQueuedTurnStart(thread: OrchestrationProjectedThread, at: str
 }
 
 export function isSessionAlive(thread: OrchestrationProjectedThread) {
-  return thread.session?.status === 'starting' || thread.session?.status === 'running'
+  const status = thread.session?.status
+
+  return status === 'starting' || status === 'running' || status === 'waiting'
 }
 
 export function requireExpectedBranch(

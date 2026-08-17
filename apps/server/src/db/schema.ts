@@ -1,3 +1,4 @@
+import { orchestrationSessionStatusSchema } from '@workspace/contracts'
 import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 /**
@@ -205,7 +206,7 @@ export const projectionThreadSessions = sqliteTable(
   {
     threadId: text('thread_id').primaryKey(),
     status: text('status', {
-      enum: ['idle', 'starting', 'running', 'ready', 'interrupted', 'stopped', 'error'],
+      enum: orchestrationSessionStatusSchema.options,
     }).notNull(),
     providerName: text('provider_name'),
     providerInstanceId: text('provider_instance_id').notNull(),
@@ -303,7 +304,7 @@ export const providerSessionRuntime = sqliteTable(
       enum: ['full-access', 'approval-required', 'auto-accept-edits'],
     }).notNull(),
     status: text('status', {
-      enum: ['starting', 'ready', 'running', 'waiting', 'stopped', 'error'],
+      enum: orchestrationSessionStatusSchema.options,
     }).notNull(),
     lastSeenAt: text('last_seen_at').notNull(),
     resumeCursorJson: text('resume_cursor_json'),

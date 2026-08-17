@@ -125,6 +125,7 @@ export {
   orchestrationSessionSchema,
   orchestrationThreadActivitySchema,
   orchestrationThreadSchema,
+  orchestrationSessionStatusSchema,
   trimmedNonEmptyStringSchema,
   type ChatAttachment,
   type ChatAttachmentUpload,
