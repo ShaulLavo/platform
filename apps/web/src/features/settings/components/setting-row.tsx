@@ -11,6 +11,7 @@ import { useSettingsActions } from '../hooks/use-settings-actions'
 import { settingInspection } from '../hooks/use-setting-inspection'
 import { useSettingsScope } from '../state/scope-store'
 import { settingRowTitle } from '../utils/humanize'
+import { KeybindingSection } from './keybinding-section'
 import { ModelSection } from './model-section'
 import { ProviderSection } from './provider-section'
 import { RowActions } from './row-actions'
@@ -18,7 +19,6 @@ import { BooleanWidget } from './widgets/boolean-widget'
 import { EnumWidget } from './widgets/enum-widget'
 import { FontWidget } from './widgets/font-widget'
 import { NumberWidget } from './widgets/number-widget'
-import { RecordWidget } from './widgets/record-widget'
 import { StringWidget } from './widgets/string-widget'
 
 export function SettingRow({ id, snapshot }: { id: SettingId; snapshot: SettingsSnapshot }) {
@@ -130,16 +130,10 @@ function SettingControl({
     return <ModelSection />
   }
 
-  if (control.widget === 'record') {
-    return (
-      <RecordWidget
-        disabled={disabled}
-        id={id}
-        onChange={onChange}
-        recorder={id === 'keybindings.overrides'}
-        value={control.value}
-      />
-    )
+  // Every bindable command by name. The generic record editor this replaces
+  // required the user to type a raw command id before it would show a recorder.
+  if (control.widget === 'keybindings') {
+    return <KeybindingSection />
   }
 
   if (control.widget === 'font') {

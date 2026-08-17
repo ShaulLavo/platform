@@ -41,6 +41,7 @@ export type SettingWidget =
   | 'enum'
   | 'list'
   | 'record'
+  | 'keybindings'
   | 'providers'
   | 'models'
   | 'complex'
@@ -78,7 +79,7 @@ type ValueWidget<TValue> =
   | (TValue extends readonly unknown[] ? 'list' : never)
   | (TValue extends readonly ProviderInstanceConfig[] ? 'providers' : never)
   | (TValue extends readonly ModelRef[] ? 'models' : never)
-  | (TValue extends Readonly<Record<string, string | null>> ? 'record' : never)
+  | (TValue extends Readonly<Record<string, string | null>> ? 'record' | 'keybindings' : never)
 
 /**
  * How two layers combine for one key.

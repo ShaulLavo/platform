@@ -34,6 +34,7 @@ export type SettingControl =
   | { readonly widget: 'font'; readonly value: string }
   | { readonly widget: 'enum'; readonly value: string; readonly options: readonly string[] }
   | { readonly widget: 'record'; readonly value: Record<string, string | null> }
+  | { readonly widget: 'keybindings' }
   | { readonly widget: 'providers'; readonly value: readonly ProviderInstanceConfig[] }
   | { readonly widget: 'models' }
   | { readonly widget: 'unsupported' }
@@ -61,6 +62,10 @@ export function settingControl(id: SettingId, value: SettingValue<SettingId>): S
 
     return parsed.success ? { widget, value: parsed.output } : { widget: 'unsupported' }
   }
+  // Like `models`: the keybinding list resolves every command against the live
+  // keymap and reads the overrides itself, so a parsed copy of the stored record
+  // here would be a second representation nothing reads.
+  if (widget === 'keybindings') return { widget }
   if (widget === 'providers') {
     const parsed = v.safeParse(providerInstanceConfigsSchema, value)
 

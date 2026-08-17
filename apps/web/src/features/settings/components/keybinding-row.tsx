@@ -1,0 +1,74 @@
+import { ArrowCounterClockwiseIcon, ProhibitIcon } from '@phosphor-icons/react'
+import { Badge } from '@workspace/ui/components/badge'
+import { Button } from '@workspace/ui/components/button'
+
+import type { CommandKeyBindingRow } from '@/keymap/active-bindings'
+import { platformCommandSpec } from '@/keymap/command-registry'
+
+import { useSettingsActions } from '../hooks/use-settings-actions'
+import { ChordRecorder } from './widgets/chord-recorder'
+
+export function KeybindingRow({
+  binding,
+  claimedFrom,
+}: {
+  binding: CommandKeyBindingRow
+  /** How many other commands lost this chord to this one. */
+  claimedFrom: number
+}) {
+  const { isSaving, resetKeybinding, setKeybinding } = useSettingsActions()
+  // A command the registry carries no spec for falls back to its id, and
+  // repeating the id underneath would print the same string twice.
+  const spec = platformCommandSpec(binding.command)
+  const title = spec?.title ?? binding.command
+
+  return (
+    <div className='border-border flex items-center gap-2 border-b px-3 py-2 last:border-b-0'>
+      <div className='flex min-w-0 flex-1 flex-col'>
+        <span className='text-foreground truncate text-sm'>{title}</span>
+        {spec ? (
+          <span className='text-muted-foreground truncate text-xs'>{binding.command}</span>
+        ) : null}
+        {binding.shadowedBy ? (
+          // The chord is still shown beside this: together they read as "this
+          // shortcut exists on paper and another command answers it".
+          <span className='text-warning truncate text-xs'>
+            Shadowed by {platformCommandSpec(binding.shadowedBy)?.title ?? binding.shadowedBy}
+          </span>
+        ) : null}
+      </div>
+
+      {binding.source === 'user' ? <Badge variant='secondary'>Custom</Badge> : null}
+
+      <ChordRecorder
+        conflictCount={claimedFrom}
+        disabled={isSaving}
+        id={binding.command}
+        onChange={(next) => setKeybinding(binding.command, next)}
+        value={binding.keys ?? ''}
+      />
+
+      {/* Unbind and Reset are different documents: `null` is "this command has
+          no shortcut", an absent key is "use the default". One button cannot
+          say both. */}
+      <Button
+        aria-label={`Unbind ${title}`}
+        disabled={isSaving || binding.keys === null}
+        onClick={() => setKeybinding(binding.command, null)}
+        size='icon-sm'
+        variant='ghost'
+      >
+        <ProhibitIcon />
+      </Button>
+      <Button
+        aria-label={`Reset ${title}`}
+        disabled={isSaving || binding.source !== 'user'}
+        onClick={() => resetKeybinding(binding.command)}
+        size='icon-sm'
+        variant='ghost'
+      >
+        <ArrowCounterClockwiseIcon />
+      </Button>
+    </div>
+  )
+}

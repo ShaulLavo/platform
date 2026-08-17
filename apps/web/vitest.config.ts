@@ -46,6 +46,11 @@ export default defineConfig({
           include: ['src/**/*.test.tsx', 'test/**/*.test.tsx'],
           exclude: ['src/**/*.browser.tsx'],
           setupFiles: ['./test/env/msw.ts', './test/env/dom.ts'],
+          // Some suites render a full settings surface - the keybinding list is
+          // ~90 rows - against the real in-process server. Under a parallel
+          // monorepo run that clears 5s on a cold worker, and the failure is a
+          // timeout rather than an assertion, which says nothing about the code.
+          testTimeout: 20_000,
         },
       },
       {

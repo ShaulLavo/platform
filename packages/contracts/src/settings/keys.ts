@@ -453,7 +453,7 @@ export const SETTINGS_REGISTRY = {
     // A binding can invoke any app command, which puts this on the execution
     // side of the scope rule despite looking like pure preference.
     scope: 'application',
-    widget: 'record',
+    widget: 'keybindings',
     category: 'Keyboard shortcuts',
     description:
       'Command id to hotkey. A missing key keeps the default; an explicit null unbinds the command.',

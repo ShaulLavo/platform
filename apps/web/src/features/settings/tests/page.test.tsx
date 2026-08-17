@@ -5,14 +5,14 @@ import { getClient } from '@/lib/client'
 
 import { renderWithProviders } from '../../../../test/render'
 import { expect, test } from '../../../../test/fixtures'
-import { fetchSettings, saveSettings } from '../api'
+import { fetchSettings, saveSettings } from '@/features/settings/utils/api'
 import { SettingsPage } from '../components/page'
 import { matchingSettingIds } from '../utils/search'
 import {
   createEditorWorkspaceStore,
   EditorWorkspaceStateContext,
-} from '@/features/editor/state/editor-workspace-state'
-import { readWorkspaceCache } from '@/lib/workspace-cache'
+} from '@/features/editor/state/workspace-state'
+import { readWorkspaceCache } from '@/features/workspace/state/cache'
 
 test('renders a row per user-visible setting and writes a toggle through', async ({ client }) => {
   expect(client).toBeDefined()
@@ -154,7 +154,9 @@ test('refuses an application-scoped key from the workspace tab, and says why', a
   await userEvent.type(await screen.findByLabelText('Search settings'), 'runtime')
   // The scope rule surfaces where the user meets it rather than only as a
   // server error after a failed save.
-  expect(await screen.findByText(/can only be set in User settings/)).toBeDefined()
+  expect(
+    await screen.findByText(/^application settings can only be set in User settings$/),
+  ).toBeDefined()
 })
 
 test('renders a real providers editor rather than a JSON escape hatch', async ({ client }) => {
@@ -257,26 +259,6 @@ test('a collection edited back to empty leaves no key behind to look modified', 
     )
   })
   expect(screen.queryByLabelText('Modified')).toBeNull()
-})
-
-test('renders a record editor for keybindings rather than raw JSON', async ({ client }) => {
-  expect(client).toBeDefined()
-  await saveSettings({
-    edits: [
-      { key: 'keybindings.overrides', target: 'user', value: { 'workspace.saveFile': 'Mod+S' } },
-    ],
-  })
-  renderWithProviders(<SettingsPage />)
-
-  await userEvent.type(await screen.findByLabelText('Search settings'), 'keybinding')
-
-  // A chord recorder, not a text field: the value is a keystroke, and typing the
-  // notation wrong produces a binding that silently never fires.
-  const recorder = await screen.findByRole('button', {
-    name: 'Record a shortcut for keybindings.overrides.workspace.saveFile',
-  })
-  expect(recorder).toHaveTextContent('Mod+S')
-  expect(await screen.findByRole('button', { name: 'Remove workspace.saveFile' })).toBeDefined()
 })
 
 test('every registered widget resolves a real control, not the JSON escape hatch', async ({
