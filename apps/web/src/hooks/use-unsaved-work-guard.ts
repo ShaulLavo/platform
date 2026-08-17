@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-import { useEditorDocumentStoreApi } from '@/features/editor/state/editor-document-state'
+import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
 
 /**
  * Switching projects discards nothing — buffers are parked, not wiped — and history

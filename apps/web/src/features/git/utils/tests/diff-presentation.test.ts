@@ -1,5 +1,5 @@
 import { expect, test } from '../../../../../test/fixtures'
-import type { DiffDocumentInfo } from '../../diff-document'
+import type { DiffDocumentInfo } from '@/features/git/utils/diff-document'
 import { emptyDiffNotice } from '../diff-presentation'
 
 const ROOT = '/repo/platform'

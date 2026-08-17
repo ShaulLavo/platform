@@ -1,6 +1,6 @@
 import { Button } from '@workspace/ui/components/button'
 
-import type { FilesystemConflict } from '@/features/editor/state/editor-conflict-state'
+import type { FilesystemConflict } from '@/features/editor/state/conflict-state'
 import { displayPath } from '@/lib/path-formatters'
 
 type FilesystemConflictToastProps = {

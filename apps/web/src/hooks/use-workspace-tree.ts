@@ -2,7 +2,7 @@ import type { PickedFsEntry } from '@/lib/file-system-types'
 import { errorMessage, fetchTree } from '@/lib/file-server'
 import type { TreeEntry, TreeResult } from '@/lib/file-system-types'
 import { isDirectoryEntry } from '@/lib/file-system-types'
-import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
+import { useEditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
 import {
   FILE_TREE_PREFETCH_STALE_MS,
   treeDirectoryPrefetchKey,

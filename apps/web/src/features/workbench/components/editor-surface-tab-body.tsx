@@ -6,19 +6,19 @@ import {
 } from '@/components/workspace/diff/utils/editor-render-document-utils'
 import { useConflictEditorResolution } from '@/components/workspace/diff/hooks/use-conflict-editor-resolution'
 import { SearchPane } from '@/components/workspace/search/components/search-pane'
-import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
-import { useEditorCommands } from '@/features/editor/state/editor-commands'
-import { useEditorDocumentState } from '@/features/editor/state/editor-document-state'
-import { useEditorUiState, useEditorUiStoreApi } from '@/features/editor/state/editor-ui-state'
+import { parseConflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
+import { useEditorCommands } from '@/features/editor/state/commands'
+import { useEditorDocumentState } from '@/features/editor/state/document-state'
+import { useEditorUiState, useEditorUiStoreApi } from '@/features/editor/state/ui-state'
 import { FileEditorBody } from '@/features/workbench/components/file-editor-body'
 import {
   EditorSurfaceActionsContext,
   type EditorSurfaceActions,
 } from '@/features/workbench/providers/editor-surface-actions-context'
-import { parseRefDocumentId } from '@/features/git/ref-document'
+import { parseRefDocumentId } from '@/features/git/utils/ref-document'
 import { parseSearchBufferDocumentId } from '@/features/search/utils/buffer-document'
 import { SettingsPage } from '@/features/settings/components/page'
-import { isSettingsDocumentId } from '@/features/settings/settings-document'
+import { isSettingsDocumentId } from '@/features/settings/utils/document'
 import { useSelectedFile } from '@/hooks/use-selected-file'
 import type { DocumentSessionChange, EditorKeymapLayer } from '@singapor/core'
 import type {

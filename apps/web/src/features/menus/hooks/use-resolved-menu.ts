@@ -1,4 +1,4 @@
-import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import { useMenuCommand } from '@/features/menus/providers/command-context'
 import { resolveMenu, type ResolvedMenu } from '@/features/menus/utils/resolve'
 import type { Menu } from '@/features/menus/utils/model'

@@ -9,7 +9,7 @@
  */
 import { useSyncExternalStore } from 'react'
 
-import { defaultLogsFilterState, type LogsFilterState } from '@/features/logs/log-filter-params'
+import { defaultLogsFilterState, type LogsFilterState } from '@/features/logs/utils/filter-params'
 
 /**
  * `null` means "nobody has touched the filters", which is NOT the same as a snapshot of

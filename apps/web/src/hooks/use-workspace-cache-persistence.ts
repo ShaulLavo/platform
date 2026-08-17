@@ -5,12 +5,12 @@ import type { EditorScrollPosition } from '@singapor/core'
 import {
   type EditorDocumentStoreApi,
   useEditorDocumentStoreApi,
-} from '@/features/editor/state/editor-document-state'
+} from '@/features/editor/state/document-state'
 import {
   type EditorWorkspaceStore,
   type EditorWorkspaceStoreApi,
   useEditorWorkspaceStoreApi,
-} from '@/features/editor/state/editor-workspace-state'
+} from '@/features/editor/state/workspace-state'
 import {
   cachedSearchBufferState,
   type SearchBufferSnapshot,

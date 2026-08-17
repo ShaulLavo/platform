@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useRef } from 'react'
 
-import { useEditorDocumentStoreApi } from '@/features/editor/state/editor-document-state'
+import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import type {
   SearchBufferSnapshot,
   WorkspaceSearchFileGroup,

@@ -1,5 +1,5 @@
-import { useEditorCommands } from '@/features/editor/state/editor-commands'
-import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { useEditorCommands } from '@/features/editor/state/commands'
+import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import type { MarkdownFileReference } from '@/features/chat/lib/markdown-file-links'
 import { log } from '@/lib/client-logging'
 

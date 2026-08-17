@@ -1,5 +1,5 @@
-import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
-import { diffDocumentLabel, parseDiffDocumentId } from '@/features/git/diff-document'
+import { parseConflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
+import { diffDocumentLabel, parseDiffDocumentId } from '@/features/git/utils/diff-document'
 import {
   parseSearchBufferDocumentId,
   searchBufferDocumentLabel,
@@ -7,8 +7,8 @@ import {
 import {
   compareSavedDocumentLabel,
   parseCompareSavedDocumentId,
-} from '@/features/editor/compare-saved-document'
-import { parseRefDocumentId, refDocumentLabel } from '@/features/git/ref-document'
+} from '@/features/editor/utils/compare-saved-document'
+import { parseRefDocumentId, refDocumentLabel } from '@/features/git/utils/ref-document'
 import { basename } from '@/lib/path-formatters'
 
 /**

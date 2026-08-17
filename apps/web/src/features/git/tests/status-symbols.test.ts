@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { gitStatusSymbol } from '../status-symbols'
+import { gitStatusSymbol } from '@/features/git/utils/status-symbols'
 
 describe('git status symbols', () => {
   it('prefixes live staged and worktree status letters', () => {

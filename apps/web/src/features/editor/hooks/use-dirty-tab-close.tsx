@@ -6,15 +6,15 @@ import {
   fileBackedEditorPath,
   isDirtyLiveEditorDocument,
   saveEditorDocumentByPath,
-} from '@/features/editor/editor-save'
-import { useEditorCommands } from '@/features/editor/state/editor-commands'
-import { useEditorDocumentStoreApi } from '@/features/editor/state/editor-document-state'
-import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
+} from '@/features/editor/utils/save'
+import { useEditorCommands } from '@/features/editor/state/commands'
+import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
+import { useEditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
 import {
   editorPathCountsForWorkbenchPanels,
   editorTabRecordsForWorkbenchPanels,
   type WorkbenchPanels,
-} from '@/features/workbench/utils/workbench-panels'
+} from '@/features/workbench/utils/panels'
 import { errorMessage } from '@/lib/file-server'
 
 export type RequestCloseTab = (tabId: string) => boolean

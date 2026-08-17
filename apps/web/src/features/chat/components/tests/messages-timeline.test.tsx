@@ -13,7 +13,7 @@ import {
   useChatProjectionStore,
   type ChatThread,
 } from '@/features/chat/state/chat-projection-store'
-import { EditorStateProvider } from '@/features/editor/editor-state-provider'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import { TIMELINE_ANCHOR_OFFSET_PX } from '@/features/chat/utils/timeline-scroll-anchoring'
 import { expect, test } from '../../../../../test/fixtures'
 import { chatMessage, thread as threadFactory } from '../../../../../test/factories/chat'

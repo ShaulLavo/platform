@@ -8,8 +8,8 @@ import {
   diffDocumentShortHash,
   diffDocumentTitle,
   parseDiffDocumentId,
-} from '../diff-document'
-import type { SnapshotDiffDocumentInput } from '../diff-document'
+} from '@/features/git/utils/diff-document'
+import type { SnapshotDiffDocumentInput } from '@/features/git/utils/diff-document'
 
 describe('git diff document ids', () => {
   const threadId = v.parse(threadIdSchema, 'thread-1')

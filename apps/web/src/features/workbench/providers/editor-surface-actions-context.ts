@@ -1,6 +1,6 @@
 import { createContext } from 'react'
 
-import type { EditorStatusBarSource } from '@/features/editor/state/editor-status-bar-source'
+import type { EditorStatusBarSource } from '@/features/editor/state/status-bar-source'
 import type { DocumentSessionChange, EditorScrollPosition } from '@singapor/core'
 import type {
   LanguageServerDefinitionTarget,

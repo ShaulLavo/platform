@@ -1,6 +1,6 @@
 import { render } from '@testing-library/react'
 
-import { useTerminalCommandInbox } from '@/features/terminal/hooks/use-terminal-command-inbox'
+import { useTerminalCommandInbox } from '@/features/terminal/hooks/use-command-inbox'
 import {
   resetTerminalCommandInboxStore,
   useTerminalCommandInboxStore,

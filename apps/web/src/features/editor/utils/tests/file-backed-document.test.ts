@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { conflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
+import { conflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
 import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
-import { snapshotDiffDocumentId } from '@/features/git/diff-document'
-import type { FileDiff } from '@/features/git/types'
+import { snapshotDiffDocumentId } from '@/features/git/utils/diff-document'
+import type { FileDiff } from '@/features/git/utils/types'
 import { searchBufferDocumentId } from '@/features/search/utils/buffer-document'
 
 describe('fileBackedDocumentPath', () => {

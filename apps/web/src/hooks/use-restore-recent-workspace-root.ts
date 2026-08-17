@@ -5,7 +5,7 @@ import { useAddressRootClaimed } from '@/features/address/state/root-claim'
 import {
   useEditorWorkspaceState,
   useEditorWorkspaceStoreApi,
-} from '@/features/editor/state/editor-workspace-state'
+} from '@/features/editor/state/workspace-state'
 import { useOpenWorkspaceRoot, type OpenWorkspaceRootResult } from '@/hooks/use-open-workspace-root'
 import { log } from '@/lib/client-logging'
 import { recentFoldersQueryOptions } from '@/lib/recent-folders-query'

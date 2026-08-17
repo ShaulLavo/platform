@@ -1,5 +1,8 @@
-import { createEditorDocumentStore } from '@/features/editor/state/editor-document-state'
-import { FileSyncService, type FileSyncWriteFileContent } from '@/features/editor/file-sync-service'
+import { createEditorDocumentStore } from '@/features/editor/state/document-state'
+import {
+  FileSyncService,
+  type FileSyncWriteFileContent,
+} from '@/features/editor/state/file-sync-service'
 import type { FileResult, TreeEntry } from '@/lib/file-system-types'
 import { fileSystemKeys } from '@/lib/query-keys'
 import { createEditorBufferSession } from '@singapor/core'

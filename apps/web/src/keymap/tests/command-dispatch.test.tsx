@@ -3,9 +3,9 @@ import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 
 import { FocusProvider } from '@/components/workspace/focus/providers/focus-provider'
-import { EditorStateProvider } from '@/features/editor/editor-state-provider'
-import { fetchSettings, saveSettings } from '@/features/settings/api'
-import { settingsKeys } from '@/features/settings/query-keys'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { fetchSettings, saveSettings } from '@/features/settings/utils/api'
+import { settingsKeys } from '@/features/settings/utils/query-keys'
 import { usePlatformCommandDispatch } from '@/keymap/commands'
 
 import { expect, test } from '../../../test/fixtures'

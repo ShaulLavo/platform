@@ -5,7 +5,7 @@ import { useChatShellSubscription } from '@/features/chat/hooks/use-chat-shell-s
 import { useWorkspaceChatProject } from '@/features/chat/hooks/use-workspace-chat-project'
 import { selectChatSidebarThreadsForProject } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
-import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import { ProjectDeleteDialog } from '@/features/chat-mode/components/project-delete-dialog'
 import { ProjectRenameDialog } from '@/features/chat-mode/components/project-rename-dialog'
 import { SessionDeleteDialog } from '@/features/chat-mode/components/session-delete-dialog'

@@ -12,25 +12,25 @@ import { useSessionSelectionStore } from '@/features/chat-mode/state/session-sel
 import { showChatModeToolTab, isChatModeToolTab } from '@/features/chat-mode/utils/panels'
 import { workspaceProjectId } from '@/features/chat/lib/chat-command-builders'
 import { settingsCategoryForSlug } from '@/features/address/utils/settings-category'
-import { isSettingsDocumentId } from '@/features/settings/settings-document'
+import { isSettingsDocumentId } from '@/features/settings/utils/document'
 import { selectSettingsCategory } from '@/features/settings/state/category-store'
 import { SETTING_IDS, descriptorFor } from '@workspace/contracts'
 import { searchStateFor } from '@/features/address/utils/search-params'
 import { logsFiltersFor } from '@/features/address/utils/logs-params'
-import { defaultLogsFilterState } from '@/features/logs/log-filter-params'
+import { defaultLogsFilterState } from '@/features/logs/utils/filter-params'
 import { resetLogsFilters, setLogsFilters } from '@/features/logs/state/filter-store'
 import { useSearchBufferStoreApi } from '@/features/search/state/buffer-state'
 import type { SearchBufferStoreApi } from '@/features/search/state/buffer-state'
-import { useEditorCommands } from '@/features/editor/state/editor-commands'
-import { useEditorDocumentStoreApi } from '@/features/editor/state/editor-document-state'
+import { useEditorCommands } from '@/features/editor/state/commands'
+import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import { documentTokenForPath } from '@/features/address/utils/document-token'
-import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
+import { useEditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
 import { useOpenWorkspaceRoot } from '@/hooks/use-open-workspace-root'
 import {
   createDefaultWorkbenchPanels,
   setWorkbenchBottomTab,
   setWorkbenchSidebarTab,
-} from '@/features/workbench/utils/workbench-panels'
+} from '@/features/workbench/utils/panels'
 import { isDirectoryEntry } from '@workspace/contracts'
 import { toast } from 'sonner'
 

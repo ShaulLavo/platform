@@ -13,16 +13,19 @@ import {
 import {
   EditorWorkspaceStateContext,
   createEditorWorkspaceStore,
-} from '@/features/editor/state/editor-workspace-state'
-import { fetchDiff } from '@/features/git/api'
+} from '@/features/editor/state/workspace-state'
+import { fetchDiff } from '@/features/git/utils/api'
 import { DiffView } from '@/features/git/components/diff-view'
-import { parseDiffDocumentId, snapshotDiffDocumentId } from '@/features/git/diff-document'
-import type { DiffDocumentInfo, SnapshotDiffDocumentInput } from '@/features/git/diff-document'
-import type { FileDiff } from '@/features/git/types'
+import { parseDiffDocumentId, snapshotDiffDocumentId } from '@/features/git/utils/diff-document'
+import type {
+  DiffDocumentInfo,
+  SnapshotDiffDocumentInput,
+} from '@/features/git/utils/diff-document'
+import type { FileDiff } from '@/features/git/utils/types'
 import { expect, test } from '../../../../../test/fixtures'
 import { createTestQueryClient, renderWithProviders } from '../../../../../test/render'
 import { DEFAULT_SETTING_VALUES } from '@workspace/contracts'
-import { settingsKeys } from '@/features/settings/query-keys'
+import { settingsKeys } from '@/features/settings/utils/query-keys'
 
 // Real git, real routes, and the editor's real diff view: its rows are ordinary
 // elements carrying `data-editor-virtual-row`, which is the only thing the

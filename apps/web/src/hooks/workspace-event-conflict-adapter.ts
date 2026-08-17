@@ -1,13 +1,13 @@
 import { FilesystemConflictToast } from '@/features/editor/components/filesystem-conflict-toast'
-import { conflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
+import { conflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
 import type {
   EditorConflictStoreApi,
   FilesystemConflict,
-} from '@/features/editor/state/editor-conflict-state'
+} from '@/features/editor/state/conflict-state'
 import type {
   LiveEditorDocument,
   UnsyncedLiveEditorDocumentInput,
-} from '@/features/editor/state/editor-document-state'
+} from '@/features/editor/state/document-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'
 import { createFileContent, ensureFolderPath, writeFileContent } from '@/lib/file-server'

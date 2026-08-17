@@ -2,7 +2,7 @@ import { MenuSurface } from '@/features/menus/components/surface'
 import type { MenuAnchor } from '@/features/menus/utils/virtual-anchor'
 
 import { useFileMenu } from '../hooks/use-file-menu'
-import type { ChangeRow } from '../types'
+import type { ChangeRow } from '@/features/git/utils/types'
 
 /**
  * Mounted by the row only while its menu is open, so the mutation hooks bind

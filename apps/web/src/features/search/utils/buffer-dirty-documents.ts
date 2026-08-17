@@ -1,4 +1,4 @@
-import type { LiveEditorDocument } from '@/features/editor/state/editor-document-state'
+import type { LiveEditorDocument } from '@/features/editor/state/document-state'
 import type { OpenBufferSearchDocument } from '@/features/search/utils/providers'
 import { compareSearchPaths } from '@/features/search/utils/sort'
 

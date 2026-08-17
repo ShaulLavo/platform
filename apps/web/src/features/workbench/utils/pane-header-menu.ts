@@ -8,7 +8,7 @@ import {
   type MenuRadioGroupItem,
   type MenuRadioItem,
 } from '@/features/menus/utils/model'
-import type { WorkbenchSidebarTab } from '@/features/workbench/utils/workbench-panels'
+import type { WorkbenchSidebarTab } from '@/features/workbench/utils/panels'
 
 /**
  * Which container the header is sitting in. The two hosts differ in what they

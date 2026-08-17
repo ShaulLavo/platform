@@ -1,7 +1,7 @@
 import { ArrowSquareOutIcon } from '@phosphor-icons/react'
 
 import { SearchSummary } from '@/components/workspace/search/components/search-summary'
-import { useEditorCommands } from '@/features/editor/state/editor-commands'
+import { useEditorCommands } from '@/features/editor/state/commands'
 import { SearchFilterFields } from '@/features/search/components/filter-fields'
 import { SearchHistoryInput } from '@/features/search/components/history-input'
 import { SearchModeButtons } from '@/features/search/components/mode-buttons'

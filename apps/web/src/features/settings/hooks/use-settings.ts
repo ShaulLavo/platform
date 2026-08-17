@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 
-import { fetchSettings } from '../api'
-import { settingsKeys } from '../query-keys'
+import { fetchSettings } from '@/features/settings/utils/api'
+import { settingsKeys } from '@/features/settings/utils/query-keys'
 
 /**
  * The whole resolved settings snapshot, as the server sees it. Every consumer

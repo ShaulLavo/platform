@@ -2,14 +2,14 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
-import { EditorStateProvider } from '@/features/editor/editor-state-provider'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import {
   createEditorWorkspaceStore,
   EditorWorkspaceStateContext,
-} from '@/features/editor/state/editor-workspace-state'
+} from '@/features/editor/state/workspace-state'
 import { useOpenWorkspaceRoot } from '@/hooks/use-open-workspace-root'
 import { ensureFolderPath, fetchRecentEntries } from '@/lib/file-server'
-import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
+import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/layout'
 import { expect, test } from '../../../test/fixtures'
 import { renderWithProviders } from '../../../test/render'
 

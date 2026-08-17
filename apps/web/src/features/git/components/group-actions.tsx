@@ -8,7 +8,7 @@ import {
   useStagePathsMutation,
   useUnstagePathsMutation,
 } from '../hooks'
-import type { ChangeRow, PanelSection } from '../types'
+import type { ChangeRow, PanelSection } from '@/features/git/utils/types'
 import { RowActionButton } from './row-action-button'
 
 export function GroupActions({

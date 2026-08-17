@@ -7,7 +7,7 @@ import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-th
 import {
   prepareEditorThemeSwitching,
   preloadVscodeThemeRegistrations,
-} from '@/features/editor/state/editor-color-theme-store'
+} from '@/features/editor/state/color-theme-store'
 import { editorThemeOptions, type EditorThemeOption } from '@/features/editor/utils/theme-catalog'
 import { colorThemeItemValue } from './command-palette-utils'
 import { RowLabel } from './row-label'

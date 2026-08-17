@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { OrchestrationProposedPlan } from '@workspace/contracts'
 
 import { ProposedPlanCard } from '@/features/chat/components/proposed-plan-card'
-import { EditorStateProvider } from '@/features/editor/editor-state-provider'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import { expect, test } from '../../../../../test/fixtures'
 import { renderWithProviders } from '../../../../../test/render'
 

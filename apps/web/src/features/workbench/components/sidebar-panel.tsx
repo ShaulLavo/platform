@@ -11,14 +11,14 @@ import type { ReactNode } from 'react'
 import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { SearchPane } from '@/components/workspace/search/components/search-pane'
 import { ChatSidePanel } from '@/features/chat/components/chat-side-panel'
-import { LogsPanel } from '@/features/logs/panel'
+import { LogsPanel } from '@/features/logs/components/panel'
 import { FileNavigatorPanel } from '@/features/workbench/components/file-navigator-panel'
 import { GitChangesPanel } from '@/features/workbench/components/git-changes-panel'
 import {
   setWorkbenchSidebarTab,
   type WorkbenchPanels,
   type WorkbenchSidebarTab,
-} from '@/features/workbench/utils/workbench-panels'
+} from '@/features/workbench/utils/panels'
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 

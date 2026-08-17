@@ -1,16 +1,16 @@
 import { waitFor } from '@testing-library/react'
 
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
-import { EditorStateProvider } from '@/features/editor/editor-state-provider'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import {
   createEditorWorkspaceStore,
   EditorWorkspaceStateContext,
-} from '@/features/editor/state/editor-workspace-state'
+} from '@/features/editor/state/workspace-state'
 import { useRestoreRecentWorkspaceRoot } from '@/hooks/use-restore-recent-workspace-root'
 import { useWorkspaceCachePersistence } from '@/hooks/use-workspace-cache-persistence'
 import { ensureFolderPath, recordRecentEntry } from '@/lib/file-server'
 import { WORKSPACE_CACHE_STORAGE_KEYS, readWorkspaceCache } from '@/lib/workspace-cache'
-import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
+import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/layout'
 import { expect, test } from '../../../test/fixtures'
 import { renderWithProviders } from '../../../test/render'
 

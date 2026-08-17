@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { mutationKeys } from '../mutation-keys'
+import { mutationKeys } from '@/features/git/utils/mutation-keys'
 
 describe('mutationKeys', () => {
   it('uses stable keys for repository-wide git mutations', () => {

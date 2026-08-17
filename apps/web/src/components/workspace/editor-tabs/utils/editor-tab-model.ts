@@ -7,18 +7,18 @@ import {
   conflictDiffDocumentLabel,
   conflictDiffDocumentTitle,
   parseConflictDiffDocumentId,
-} from '@/features/editor/conflict-diff-document'
-import { parseCompareSavedDocumentId } from '@/features/editor/compare-saved-document'
-import { parseRefDocumentId } from '@/features/git/ref-document'
+} from '@/features/editor/utils/conflict-diff-document'
+import { parseCompareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'
+import { parseRefDocumentId } from '@/features/git/utils/ref-document'
 import { documentLabel } from '@/components/workspace/editor-tabs/utils/document-label'
 import {
   diffDocumentShortHash,
   diffDocumentTitle,
   parseDiffDocumentId,
   type DiffDocumentInfo,
-} from '@/features/git/diff-document'
-import { gitStatusSymbol, type GitSymbolSource } from '@/features/git/status-symbols'
-import type { FileStatus } from '@/features/git/types'
+} from '@/features/git/utils/diff-document'
+import { gitStatusSymbol, type GitSymbolSource } from '@/features/git/utils/status-symbols'
+import type { FileStatus } from '@/features/git/utils/types'
 import {
   parseSearchBufferDocumentId,
   searchBufferDocumentTitle,

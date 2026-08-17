@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import {
   useEditorWorkspaceState,
   useEditorWorkspaceStoreApi,
-} from '@/features/editor/state/editor-workspace-state'
+} from '@/features/editor/state/workspace-state'
 import { toClientError, type ErrorCategory } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
 import { statPath } from '@/lib/file-server'

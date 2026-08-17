@@ -4,9 +4,9 @@ import { createElement, type ReactNode } from 'react'
 import { QueryClientProvider } from '@tanstack/react-query'
 
 import { expect, test } from '../../../../test/fixtures'
-import { saveSettings } from '../api'
+import { saveSettings } from '@/features/settings/utils/api'
 import { useSettingsStream } from '../hooks/use-settings-stream'
-import { settingsKeys } from '../query-keys'
+import { settingsKeys } from '@/features/settings/utils/query-keys'
 
 function wrapper(queryClient: QueryClient) {
   return ({ children }: { children: ReactNode }) =>

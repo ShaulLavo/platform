@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import {
   useEditorDocumentStoreApi,
   useEditorDocumentState,
-} from '@/features/editor/state/editor-document-state'
+} from '@/features/editor/state/document-state'
 import {
   dirtySearchDocuments,
   dirtySearchRevisionKey,

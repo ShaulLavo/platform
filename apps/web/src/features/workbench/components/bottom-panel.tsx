@@ -2,13 +2,13 @@ import { TerminalIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 
 import { useFocus } from '@/components/workspace/focus/providers/focus-state'
-import { TerminalPanel } from '@/features/terminal/terminal-panel'
+import { TerminalPanel } from '@/features/terminal/components/panel'
 import { DiagnosticsPanel } from '@/features/workbench/components/diagnostics-panel'
 import {
   setWorkbenchBottomTab,
   type WorkbenchBottomTab,
   type WorkbenchPanels,
-} from '@/features/workbench/utils/workbench-panels'
+} from '@/features/workbench/utils/panels'
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 

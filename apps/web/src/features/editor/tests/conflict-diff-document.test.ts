@@ -5,7 +5,7 @@ import {
   conflictDiffDocumentLabel,
   conflictDiffDocumentTitle,
   parseConflictDiffDocumentId,
-} from '../conflict-diff-document'
+} from '@/features/editor/utils/conflict-diff-document'
 
 describe('conflict diff document ids', () => {
   it('round-trips conflict ids without embedding file text', () => {

@@ -1,5 +1,5 @@
-import { parseCompareSavedDocumentId } from '@/features/editor/compare-saved-document'
-import { parseRefDocumentId } from '@/features/git/ref-document'
+import { parseCompareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'
+import { parseRefDocumentId } from '@/features/git/utils/ref-document'
 import {
   parseSearchBufferDocumentId,
   searchBufferDocumentLabel,

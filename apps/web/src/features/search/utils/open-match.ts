@@ -1,7 +1,7 @@
 import type { WorkspaceSearchMatch } from '@workspace/contracts'
 import type { LanguageServerDefinitionTarget } from '@singapor/lsp-plugin'
 
-import type { EditorCommands } from '@/features/editor/state/editor-commands'
+import type { EditorCommands } from '@/features/editor/state/commands'
 
 export function openWorkspaceSearchMatch(
   match: WorkspaceSearchMatch,

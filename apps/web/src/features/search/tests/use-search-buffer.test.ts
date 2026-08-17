@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { createEditorTextBuffer } from '@singapor/core'
 import type { WorkspaceSearchEvent } from '@workspace/contracts'
 
-import type { LiveEditorDocument } from '@/features/editor/state/editor-document-state'
+import type { LiveEditorDocument } from '@/features/editor/state/document-state'
 import { dirtySearchRevisionKey } from '@/features/search/utils/buffer-dirty-documents'
 import { workspaceSearchQuery } from '@/features/search/utils/buffer-query'
 import {

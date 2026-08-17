@@ -1,4 +1,4 @@
-import type { EditorRenderDocument } from '@/features/editor/editor-render-document'
+import type { EditorRenderDocument } from '@/features/editor/utils/render-document'
 import type { FileResult } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
 

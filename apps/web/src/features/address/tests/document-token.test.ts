@@ -4,12 +4,15 @@ import { expect, test } from '../../../../test/fixtures'
 
 import { documentTokenForPath, pathForDocumentToken } from '@/features/address/utils/document-token'
 import { emptyAddress, formatAddress, parseAddress } from '@/features/address/utils/grammar'
-import { compareSavedDocumentId } from '@/features/editor/compare-saved-document'
-import { conflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
-import { checkpointDiffDocumentId, snapshotDiffDocumentId } from '@/features/git/diff-document'
-import { refDocumentId } from '@/features/git/ref-document'
+import { compareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'
+import { conflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
+import {
+  checkpointDiffDocumentId,
+  snapshotDiffDocumentId,
+} from '@/features/git/utils/diff-document'
+import { refDocumentId } from '@/features/git/utils/ref-document'
 import { searchBufferDocumentId } from '@/features/search/utils/buffer-document'
-import { settingsDocumentId } from '@/features/settings/settings-document'
+import { settingsDocumentId } from '@/features/settings/utils/document'
 import type { ThreadId } from '@workspace/contracts'
 
 const ROOT = '/repo'

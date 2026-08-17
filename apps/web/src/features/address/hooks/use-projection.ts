@@ -16,21 +16,21 @@ import { useSearchBufferStoreApi } from '@/features/search/state/buffer-state'
 import { searchParamsFor } from '@/features/address/utils/search-params'
 import type { SearchBufferStoreApi } from '@/features/search/state/buffer-state'
 import { readLogsFilters, subscribeLogsFilters } from '@/features/logs/state/filter-store'
-import { defaultLogsFilterState } from '@/features/logs/log-filter-params'
+import { defaultLogsFilterState } from '@/features/logs/utils/filter-params'
 import { logsParamsFor } from '@/features/address/utils/logs-params'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
-import { createDefaultWorkbenchPanels } from '@/features/workbench/utils/workbench-panels'
+import { createDefaultWorkbenchPanels } from '@/features/workbench/utils/panels'
 import {
   readSettingsCategory,
   subscribe as subscribeSettingsCategory,
 } from '@/features/settings/state/category-store'
 import { WORKSPACE_SLICE_LIMIT } from '@/lib/workspace-cache'
 import { settingsCategorySlug } from '@/features/address/utils/settings-category'
-import { useEditorUiStoreApi } from '@/features/editor/state/editor-ui-state'
-import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
-import { activeEditorTabForWorkbenchPanels } from '@/features/workbench/utils/workbench-panels'
-import type { EditorUiStoreApi } from '@/features/editor/state/editor-ui-state'
-import type { EditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
+import { useEditorUiStoreApi } from '@/features/editor/state/ui-state'
+import { useEditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
+import { activeEditorTabForWorkbenchPanels } from '@/features/workbench/utils/panels'
+import type { EditorUiStoreApi } from '@/features/editor/state/ui-state'
+import type { EditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
 
 /**
  * Mounted once, beside the cache persistence it renders alongside.

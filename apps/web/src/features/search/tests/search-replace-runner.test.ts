@@ -2,7 +2,7 @@ import { createEditorTextBuffer } from '@singapor/core'
 import { describe, expect, it } from 'vitest'
 import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
 
-import type { LiveEditorDocument } from '@/features/editor/state/editor-document-state'
+import type { LiveEditorDocument } from '@/features/editor/state/document-state'
 import type { FileResult, TreeEntry } from '@/lib/file-system-types'
 import {
   replaceWorkspaceSearchMatches,

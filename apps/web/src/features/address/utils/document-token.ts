@@ -1,19 +1,19 @@
 import {
   parseCompareSavedDocumentId,
   compareSavedDocumentId,
-} from '@/features/editor/compare-saved-document'
-import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
+} from '@/features/editor/utils/compare-saved-document'
+import { parseConflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
 import {
   checkpointDiffDocumentId,
   parseDiffDocumentId,
   snapshotDiffDocumentId,
-} from '@/features/git/diff-document'
-import { parseRefDocumentId, refDocumentId } from '@/features/git/ref-document'
+} from '@/features/git/utils/diff-document'
+import { parseRefDocumentId, refDocumentId } from '@/features/git/utils/ref-document'
 import {
   parseSearchBufferDocumentId,
   searchBufferDocumentId,
 } from '@/features/search/utils/buffer-document'
-import { isSettingsDocumentId } from '@/features/settings/settings-document'
+import { isSettingsDocumentId } from '@/features/settings/utils/document'
 import { toWorkspaceAbsolute, toWorkspaceRelative } from '@/lib/workspace-path'
 import type { ThreadId } from '@workspace/contracts'
 

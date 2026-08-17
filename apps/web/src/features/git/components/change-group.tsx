@@ -9,8 +9,8 @@ import type { KeyboardEvent, MouseEvent } from 'react'
 
 import { useContextMenu } from '@/features/menus/hooks/use-context-menu'
 
-import { useGitState } from '../state'
-import type { ChangeRow, PanelSection } from '../types'
+import { useGitState } from '@/features/git/state/store'
+import type { ChangeRow, PanelSection } from '@/features/git/utils/types'
 import { FileRow } from './file-row'
 import { GroupActions } from './group-actions'
 import { GroupMenu } from './group-menu'

@@ -3,9 +3,12 @@ import {
   editorTabModel,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
 import type { EditorTabConflictMap } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
-import { conflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
-import { checkpointDiffDocumentId, snapshotDiffDocumentId } from '@/features/git/diff-document'
-import type { FileStatus } from '@/features/git/types'
+import { conflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
+import {
+  checkpointDiffDocumentId,
+  snapshotDiffDocumentId,
+} from '@/features/git/utils/diff-document'
+import type { FileStatus } from '@/features/git/utils/types'
 import type { GitFileDiff, ThreadId } from '@workspace/contracts'
 import { expect, test } from '../../../../../test/fixtures'
 import { gitFileDiff } from '../../../../../test/factories/git-diff'

@@ -3,8 +3,8 @@ import type { PickedFsEntry } from '@/lib/file-system-types'
 import {
   activeEditorTabForWorkbenchPanels,
   type WorkbenchPanels,
-} from '@/features/workbench/utils/workbench-panels'
-import type { WorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
+} from '@/features/workbench/utils/panels'
+import type { WorkbenchLayout } from '@/features/workbench/utils/layout'
 import type { WorkspaceUiMode } from '@/lib/ui-mode'
 
 export type TitlebarModel = {

@@ -15,7 +15,7 @@ import {
 } from '@dnd-kit/sortable'
 
 import type { EditorTabModel } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
-import { useEditorDocumentState } from '@/features/editor/state/editor-document-state'
+import { useEditorDocumentState } from '@/features/editor/state/document-state'
 import type { EditorTabCloseTarget } from '@/components/workspace/editor-tabs/utils/editor-tab-close-targets'
 import { useEditorTabActions } from '@/features/editor/hooks/use-editor-tab-actions'
 import { SortableEditorTabButton } from '@/features/workbench/components/sortable-editor-tab-button'

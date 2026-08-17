@@ -1,21 +1,21 @@
 import type { PickedFsEntry } from '@/lib/file-system-types'
-import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
-import { useEditorCommands } from '@/features/editor/state/editor-commands'
+import { parseConflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
+import { useEditorCommands } from '@/features/editor/state/commands'
 import {
   useEditorConflictStoreApi,
   type EditorConflictStoreApi,
-} from '@/features/editor/state/editor-conflict-state'
+} from '@/features/editor/state/conflict-state'
 import {
   useEditorDocumentStoreApi,
   type LiveEditorDocument,
-} from '@/features/editor/state/editor-document-state'
-import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
+} from '@/features/editor/state/document-state'
+import { useEditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { fileSnapshotQueryOptions, setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'
 import { fetchFile, fetchTree } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
 import { getClient } from '@/lib/client'
-import { parseDiffDocumentId } from '@/features/git/diff-document'
+import { parseDiffDocumentId } from '@/features/git/utils/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/utils/buffer-document'
 import { createDirectoryChurn, type DirectoryChurn } from '@/lib/directory-churn'
 import { fileSystemKeys, gitKeys } from '@/lib/query-keys'

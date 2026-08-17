@@ -6,20 +6,20 @@ import { useAddressProjection } from '@/features/address/hooks/use-projection'
 import { PROJECTION_DEBOUNCE_MS } from '@/features/address/state/projection'
 import { useAddressRestore } from '@/features/address/hooks/use-restore'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
-import { EditorStateProvider } from '@/features/editor/editor-state-provider'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import {
   useEditorWorkspaceStoreApi,
   type EditorWorkspaceStoreApi,
-} from '@/features/editor/state/editor-workspace-state'
+} from '@/features/editor/state/workspace-state'
 import {
   useEditorDocumentStoreApi,
   type EditorDocumentStoreApi,
-} from '@/features/editor/state/editor-document-state'
-import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
+} from '@/features/editor/state/document-state'
+import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/layout'
 import {
   createDefaultWorkbenchPanels,
   openEditorPathInWorkbenchPanels,
-} from '@/features/workbench/utils/workbench-panels'
+} from '@/features/workbench/utils/panels'
 import {
   writeRootFolderCache,
   writeWorkspaceIndexCache,

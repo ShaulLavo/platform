@@ -1,6 +1,6 @@
 import type { PickedFsEntry } from '@/lib/file-system-types'
-import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
-import { parseDiffDocumentId } from '@/features/git/diff-document'
+import { parseConflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
+import { parseDiffDocumentId } from '@/features/git/utils/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/utils/buffer-document'
 import {
   createDefaultChatModePanels,
@@ -13,13 +13,13 @@ import {
   createDefaultWorkbenchLayout,
   normalizeWorkbenchLayout,
   type WorkbenchLayout,
-} from '@/features/workbench/utils/workbench-layout'
+} from '@/features/workbench/utils/layout'
 import { DEFAULT_WORKSPACE_UI_MODE, isWorkspaceUiMode, type WorkspaceUiMode } from '@/lib/ui-mode'
 import {
   createDefaultWorkbenchPanels,
   normalizeWorkbenchPanels,
   type WorkbenchPanels,
-} from '@/features/workbench/utils/workbench-panels'
+} from '@/features/workbench/utils/panels'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
 import { isPathInWorkspace, toWorkspaceAbsolute, toWorkspaceRelative } from '@/lib/workspace-path'

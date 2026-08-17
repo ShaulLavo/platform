@@ -1,7 +1,7 @@
 import {
   useEditorDocumentState,
   useEditorDocumentStoreApi,
-} from '@/features/editor/state/editor-document-state'
+} from '@/features/editor/state/document-state'
 import { fetchDocumentSymbols } from '@/lib/document-symbols'
 import { documentSymbolKeys } from '@/lib/query-keys'
 import { useQuery } from '@tanstack/react-query'

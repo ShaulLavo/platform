@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 
-import { invalidateWorkspace } from '../invalidate-workspace'
+import { invalidateWorkspace } from '@/features/git/utils/invalidate-workspace'
 
 export function useWorkspaceInvalidation() {
   const queryClient = useQueryClient()

@@ -1,10 +1,10 @@
 import type { RefObject } from 'react'
 
-import type { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
+import type { parseConflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
 import type {
   EditorConflictStoreApi,
   FilesystemConflict,
-} from '@/features/editor/state/editor-conflict-state'
+} from '@/features/editor/state/conflict-state'
 import { parseMergeConflicts, type TextSnapshot } from '@singapor/core'
 import { Debouncer } from '@tanstack/react-pacer/debouncer'
 import type { QueryClient } from '@tanstack/react-query'

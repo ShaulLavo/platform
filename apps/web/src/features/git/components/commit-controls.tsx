@@ -5,7 +5,7 @@ import type { KeyboardEvent } from 'react'
 
 import { useCommitAction, useSyncChangesMutation } from '../hooks'
 import { CommitProgress } from './commit-progress'
-import type { RepositoryInfo } from '../types'
+import type { RepositoryInfo } from '@/features/git/utils/types'
 import { canSyncChanges, syncChangesLabel } from '../utils/repository'
 
 export function CommitControls({

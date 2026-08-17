@@ -5,15 +5,15 @@ import type {
 } from '@singapor/lsp-plugin'
 import { useCallback, useEffect, useLayoutEffect, useMemo } from 'react'
 
-import { EditorFrame } from '@/features/editor/components/editor-frame'
+import { EditorFrame } from '@/features/editor/components/frame'
 import {
   createCriticalEditorCorePlugins,
   createNonCriticalEditorPluginsLoaderPlugin,
-} from '@/features/editor/editor-plugins'
-import { selectionForDefinition } from '@/features/editor/utils/editor-position'
+} from '@/features/editor/utils/plugins'
+import { selectionForDefinition } from '@/features/editor/utils/position'
 import { languageIdForFilePath } from '@/features/editor/utils/file-path'
-import type { EditorStatusBarSource } from '@/features/editor/state/editor-status-bar-source'
-import type { EditorRenderDocument } from '@/features/editor/editor-render-document'
+import type { EditorStatusBarSource } from '@/features/editor/state/status-bar-source'
+import type { EditorRenderDocument } from '@/features/editor/utils/render-document'
 import { useCommitMessageEditorFocus } from '@/features/editor/hooks/use-commit-message-editor-focus'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import {

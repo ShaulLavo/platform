@@ -8,10 +8,10 @@ import { LoadingState } from '@workspace/ui/components/loading-state'
 import { cn } from '@workspace/ui/lib/utils'
 
 import { useEditorLanguageServerStatus } from '@/features/editor/hooks/use-editor-language-server-status'
-import { useEditorCommands } from '@/features/editor/state/editor-commands'
-import { createEditorLanguageServerStatusSource } from '@/features/editor/state/editor-language-server-status-source'
-import type { EditorStatusBarSource } from '@/features/editor/state/editor-status-bar-source'
-import { useEditorUiState, useEditorUiStoreApi } from '@/features/editor/state/editor-ui-state'
+import { useEditorCommands } from '@/features/editor/state/commands'
+import { createEditorLanguageServerStatusSource } from '@/features/editor/state/language-server-status-source'
+import type { EditorStatusBarSource } from '@/features/editor/state/status-bar-source'
+import { useEditorUiState, useEditorUiStoreApi } from '@/features/editor/state/ui-state'
 
 const idleLanguageServerStatusSource = createEditorLanguageServerStatusSource()
 

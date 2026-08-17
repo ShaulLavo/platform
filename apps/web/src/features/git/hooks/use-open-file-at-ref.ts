@@ -1,9 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query'
 
-import { fetchGitFile } from '@/features/git/api'
-import { refDocumentId } from '@/features/git/ref-document'
-import { useEditorCommands } from '@/features/editor/state/editor-commands'
-import { useEditorDocumentStoreApi } from '@/features/editor/state/editor-document-state'
+import { fetchGitFile } from '@/features/git/utils/api'
+import { refDocumentId } from '@/features/git/utils/ref-document'
+import { useEditorCommands } from '@/features/editor/state/commands'
+import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import { gitKeys } from '@/lib/query-keys'
 
 /**

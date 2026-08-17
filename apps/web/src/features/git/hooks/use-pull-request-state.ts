@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { gitKeys } from '@/lib/query-keys'
-import { fetchPullRequestState } from '../api'
+import { fetchPullRequestState } from '@/features/git/utils/api'
 
 /**
  * Polled rather than pushed: a pull request changes on GitHub, where nothing

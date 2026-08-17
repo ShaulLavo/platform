@@ -19,7 +19,7 @@ import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import {
   createPlatformSearchResultEditorLoggingPlugin,
   editorTreeSitterSyntaxProvider,
-} from '@/features/editor/editor-plugins'
+} from '@/features/editor/utils/plugins'
 import { useSearchResultActions } from '@/features/search/hooks/use-result-actions'
 import { SearchResultFileLineActions } from '@/features/search/components/result-file-line-actions'
 import { SearchResultSourceLineGutter } from '@/features/search/components/result-source-line-gutter'

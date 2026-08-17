@@ -10,8 +10,8 @@ import { usePlatformCommandDispatch } from '@/keymap/commands'
 import type { PlatformKeyBinding } from '@/keymap/types'
 import { DEFAULT_SETTING_VALUES } from '@workspace/contracts'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useEditorCommands } from '@/features/editor/state/editor-commands'
-import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { useEditorCommands } from '@/features/editor/state/commands'
+import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 
 type AppCommandSurfaceProps = {
   /** The default key table. Overrides are folded in here, once, for everyone. */

@@ -2,7 +2,7 @@ import { ArrowBendUpLeftIcon, GitDiffIcon, MinusIcon, PlusIcon } from '@phosphor
 
 import { actionItem, section, type Menu } from '@/features/menus/utils/model'
 
-import type { PanelSection } from '../types'
+import type { PanelSection } from '@/features/git/utils/types'
 
 export type GroupMenuContext = {
   /** Unstage-then-discard for the staged group, a plain discard for the worktree one. */

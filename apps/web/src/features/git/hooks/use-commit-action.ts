@@ -1,5 +1,5 @@
-import { useEditorCommands } from '@/features/editor/state/editor-commands'
-import { useGitState } from '../state'
+import { useEditorCommands } from '@/features/editor/state/commands'
+import { useGitState } from '@/features/git/state/store'
 import { useCommitMutation } from './use-commit-mutation'
 import { useCommitPending } from './use-commit-pending'
 

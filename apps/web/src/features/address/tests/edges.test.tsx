@@ -1,6 +1,6 @@
 import { MAX_APPLIED_TABS } from '@/features/address/utils/grammar'
 import { readSettingsCategory } from '@/features/settings/state/category-store'
-import { settingsDocumentId } from '@/features/settings/settings-document'
+import { settingsDocumentId } from '@/features/settings/utils/document'
 
 import { expect, test } from '../../../../test/fixtures'
 import {

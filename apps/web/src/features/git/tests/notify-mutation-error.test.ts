@@ -1,7 +1,7 @@
 import { initLogger } from 'evlog'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { notifyMutationError } from '../notify-mutation-error'
+import { notifyMutationError } from '@/features/git/utils/notify-mutation-error'
 
 const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }))
 

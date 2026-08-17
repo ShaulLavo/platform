@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import type { PickedFsEntry } from '@/lib/file-system-types'
-import { conflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
-import { snapshotDiffDocumentId } from '@/features/git/diff-document'
-import type { FileDiff } from '@/features/git/types'
+import { conflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
+import { snapshotDiffDocumentId } from '@/features/git/utils/diff-document'
+import type { FileDiff } from '@/features/git/utils/types'
 import { searchBufferDocumentId } from '@/features/search/utils/buffer-document'
 import {
   createDefaultWorkbenchPanels,
   openEditorPathInWorkbenchPanels,
   setWorkbenchBottomTab,
   setWorkbenchSidebarTab,
-} from '@/features/workbench/utils/workbench-panels'
+} from '@/features/workbench/utils/panels'
 import {
   WORKSPACE_CACHE_STORAGE_KEYS,
   WORKSPACE_SLICE_LIMIT,
@@ -30,7 +30,7 @@ import {
   writeWorkspaceSliceCache,
 } from '@/lib/workspace-cache'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
-import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
+import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/layout'
 import { DEFAULT_WORKSPACE_UI_MODE } from '@/lib/ui-mode'
 
 const STORE = new Map<string, string>()

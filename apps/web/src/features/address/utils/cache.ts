@@ -7,7 +7,7 @@ import {
   setWorkbenchBottomTab,
   setWorkbenchSidebarTab,
   type WorkbenchPanels,
-} from '@/features/workbench/utils/workbench-panels'
+} from '@/features/workbench/utils/panels'
 import type { CachedWorkspaceState } from '@/lib/workspace-cache'
 
 /**

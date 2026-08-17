@@ -2,7 +2,7 @@ import type { GitFileDiff } from '@workspace/contracts'
 
 import { toTreePath } from '@/lib/path-formatters'
 
-import type { DiffDocumentInfo } from '../diff-document'
+import type { DiffDocumentInfo } from '@/features/git/utils/diff-document'
 
 /**
  * Shown when the diff request came back with no file entries at all. Headings,

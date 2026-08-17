@@ -2,15 +2,15 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 
-import { EditorStateProvider } from '@/features/editor/editor-state-provider'
-import { useEditorUiState } from '@/features/editor/state/editor-ui-state'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { useEditorUiState } from '@/features/editor/state/ui-state'
 import {
   createEditorWorkspaceStore,
   EditorWorkspaceStateContext,
   useEditorWorkspaceState,
-} from '@/features/editor/state/editor-workspace-state'
+} from '@/features/editor/state/workspace-state'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
-import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
+import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/layout'
 import { AssistantMarkdown } from '@/features/chat/components/assistant-markdown'
 import { serializeRenderedMarkdownFragment } from '@/features/chat/lib/markdown-clipboard'
 import { markdownHighlightCache } from '@/features/chat/state/markdown-highlight-cache'

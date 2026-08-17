@@ -3,13 +3,13 @@ import userEvent from '@testing-library/user-event'
 
 import { WorkspaceProjectMenu } from '@/components/workspace-project-menu'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
-import { EditorStateProvider } from '@/features/editor/editor-state-provider'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import {
   createEditorWorkspaceStore,
   EditorWorkspaceStateContext,
-} from '@/features/editor/state/editor-workspace-state'
-import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
-import { createDefaultWorkbenchPanels } from '@/features/workbench/utils/workbench-panels'
+} from '@/features/editor/state/workspace-state'
+import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/layout'
+import { createDefaultWorkbenchPanels } from '@/features/workbench/utils/panels'
 import { expect, test } from '../../../test/fixtures'
 import { renderWithProviders } from '../../../test/render'
 

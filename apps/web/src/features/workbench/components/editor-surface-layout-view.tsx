@@ -1,8 +1,8 @@
 import { EMPTY_GIT_FILES } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
-import { useEditorConflictState } from '@/features/editor/state/editor-conflict-state'
-import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { useEditorConflictState } from '@/features/editor/state/conflict-state'
+import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import { useStatus } from '@/features/git/hooks'
-import { WorkbenchLayout } from '@/features/workbench/components/workbench-layout'
+import { WorkbenchLayout } from '@/features/workbench/components/layout'
 import type { EditorKeymapLayer } from '@singapor/core'
 
 export function EditorSurfaceLayoutView({

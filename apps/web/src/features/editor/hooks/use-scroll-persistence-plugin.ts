@@ -1,7 +1,7 @@
 import type { EditorPlugin, EditorScrollPosition, EditorViewSnapshot } from '@singapor/core'
 import { useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 
-import type { EditorRenderDocument } from '@/features/editor/editor-render-document'
+import type { EditorRenderDocument } from '@/features/editor/utils/render-document'
 import { editorPerformanceFeatureDisabled } from '@/lib/editor-performance-trace'
 
 type UseScrollPersistencePluginOptions = {

@@ -3,14 +3,14 @@ import { useCallback } from 'react'
 import { useFocus } from '@/components/workspace/focus/providers/focus-state'
 import { useTheme } from '@/components/theme-context'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
-import { useEditorCommands } from '@/features/editor/state/editor-commands'
+import { useEditorCommands } from '@/features/editor/state/commands'
 import { useOpenFileAtRef } from '@/features/git/hooks/use-open-file-at-ref'
-import { useEditorDocumentStoreApi } from '@/features/editor/state/editor-document-state'
-import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
+import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
+import { useEditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
 import {
   activeEditorPathForWorkbenchPanels,
   activeEditorTabForWorkbenchPanels,
-} from '@/features/workbench/utils/workbench-panels'
+} from '@/features/workbench/utils/panels'
 import { log } from '@/lib/client-logging'
 import { useQueryClient } from '@tanstack/react-query'
 

@@ -1,6 +1,6 @@
 import { AppContent } from '@/components/app-content'
 import { ChatProviderSignInProvider } from '@/features/chat/providers/provider-sign-in-provider'
-import { EditorStateProvider } from '@/features/editor/editor-state-provider'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import { FocusProvider } from '@/components/workspace/focus/providers/focus-provider'
 import { HotkeysProvider } from '@tanstack/react-hotkeys'
 

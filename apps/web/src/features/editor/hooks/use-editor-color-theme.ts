@@ -21,7 +21,7 @@ import {
   subscribeEditorColorTheme,
   type EditorColorMode,
   type LoadedEditorColorTheme,
-} from '@/features/editor/state/editor-color-theme-store'
+} from '@/features/editor/state/color-theme-store'
 import { clientErrors } from '@/lib/structured-errors'
 
 type EditorColorThemeState = {

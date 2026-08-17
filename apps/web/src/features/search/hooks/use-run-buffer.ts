@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-import { useEditorDocumentStoreApi } from '@/features/editor/state/editor-document-state'
+import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import { dirtySearchDocuments } from '@/features/search/utils/buffer-dirty-documents'
 import type { WorkspaceSearchQueryOptions } from '@/features/search/utils/buffer-query'
 import { workspaceSearchQuery } from '@/features/search/utils/buffer-query'

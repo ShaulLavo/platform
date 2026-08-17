@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 
-import { useEditorCommands } from '@/features/editor/state/editor-commands'
-import { checkpointDiffDocumentId } from '@/features/git/diff-document'
+import { useEditorCommands } from '@/features/editor/state/commands'
+import { checkpointDiffDocumentId } from '@/features/git/utils/diff-document'
 import {
   canOpenCheckpointDiff,
   checkpointDiffDocumentInput,

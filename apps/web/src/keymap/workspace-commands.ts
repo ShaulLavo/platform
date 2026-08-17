@@ -33,20 +33,20 @@ import {
 } from '@/features/chat-mode/state/session-commands'
 import { useSessionIsolationStore } from '@/features/chat-mode/state/session-isolation-store'
 import { setChatModeSessionRailOpen } from '@/features/chat-mode/utils/panels'
-import { compareSavedDocumentId } from '@/features/editor/compare-saved-document'
+import { compareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'
 import {
   fileBackedEditorPath,
   saveAllEditorDocuments,
   saveSelectedEditorDocument,
-} from '@/features/editor/editor-save'
+} from '@/features/editor/utils/save'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
-import type { EditorDocumentStoreApi } from '@/features/editor/state/editor-document-state'
+import type { EditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import { nextEditorDiffViewMode } from '@/features/editor/utils/diff-view-mode'
 import {
   openEditorPathInWorkbenchPanels,
   setWorkbenchBottomTab,
   setWorkbenchSidebarTab,
-} from '@/features/workbench/utils/workbench-panels'
+} from '@/features/workbench/utils/panels'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { fetchFile } from '@/lib/file-server'
 import { setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'

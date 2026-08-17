@@ -8,12 +8,15 @@ import type { ReactElement } from 'react'
 import {
   EditorWorkspaceStateContext,
   createEditorWorkspaceStore,
-} from '@/features/editor/state/editor-workspace-state'
-import { fetchDiff } from '@/features/git/api'
+} from '@/features/editor/state/workspace-state'
+import { fetchDiff } from '@/features/git/utils/api'
 import { DiffView } from '@/features/git/components/diff-view'
-import { parseDiffDocumentId, snapshotDiffDocumentId } from '@/features/git/diff-document'
-import type { DiffDocumentInfo, SnapshotDiffDocumentInput } from '@/features/git/diff-document'
-import type { FileDiff } from '@/features/git/types'
+import { parseDiffDocumentId, snapshotDiffDocumentId } from '@/features/git/utils/diff-document'
+import type {
+  DiffDocumentInfo,
+  SnapshotDiffDocumentInput,
+} from '@/features/git/utils/diff-document'
+import type { FileDiff } from '@/features/git/utils/types'
 import { editorDiffFiles } from '@/features/git/utils/editor-diff-files'
 import { gitFileDiff } from '../../../../../test/factories/git-diff'
 import { expect, test } from '../../../../../test/fixtures'

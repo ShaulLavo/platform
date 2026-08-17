@@ -13,7 +13,7 @@ import * as v from 'valibot'
 import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { SessionRail } from '@/features/chat-mode/components/session-rail'
-import { EditorStateProvider } from '@/features/editor/editor-state-provider'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import { ChatRailOrderProvider } from '@/features/chat-mode/providers/rail-order-provider'
 import {
   ChatModeSessionContext,

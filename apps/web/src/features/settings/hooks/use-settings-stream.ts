@@ -6,7 +6,7 @@ import * as v from 'valibot'
 import { getClient } from '@/lib/client'
 import { parseEdenSseStream } from '@/lib/eden-events'
 
-import { settingsKeys } from '../query-keys'
+import { settingsKeys } from '@/features/settings/utils/query-keys'
 
 /**
  * Keeps this tab's settings in step with the file on disk.

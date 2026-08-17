@@ -17,7 +17,7 @@ import { useSessionDeleteRequestStore } from '@/features/chat-mode/state/session
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
 import { resetSessionReadStore } from '@/features/chat-mode/state/session-read-store'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
-import { EditorStateProvider } from '@/features/editor/editor-state-provider'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import { chatProject, shellSnapshot, threadShell } from '../../../../../test/factories/chat'
 import { expect, test } from '../../../../../test/fixtures'
 import { renderWithProviders } from '../../../../../test/render'

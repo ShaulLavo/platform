@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { gitKeys } from '@/lib/query-keys'
-import { fetchBranchRemoteState } from '../api'
+import { fetchBranchRemoteState } from '@/features/git/utils/api'
 
 /**
  * Local git, so it is cheap and it is allowed to be fresh: a commit made in the

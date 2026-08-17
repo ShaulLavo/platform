@@ -12,8 +12,8 @@ import {
   usePullRemoteMutation,
   usePushRemoteMutation,
 } from '../hooks'
-import { useGitState } from '../state'
-import type { RepositoryInfo } from '../types'
+import { useGitState } from '@/features/git/state/store'
+import type { RepositoryInfo } from '@/features/git/utils/types'
 import { aheadBehindLabel } from '../utils/repository'
 import { ToolbarButton } from './toolbar-button'
 

@@ -2,7 +2,7 @@ import { FileIcon } from '@phosphor-icons/react'
 
 import { UiModeToggle } from '@/components/ui-mode-toggle'
 import { WorkspaceProjectMenu } from '@/components/workspace-project-menu'
-import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import { TitlebarMenu } from '@/features/workbench/components/titlebar-menu'
 import { titlebarModel } from '@/features/workbench/utils/titlebar-model'
 import { isDesktop } from '@/lib/platform/bridge'

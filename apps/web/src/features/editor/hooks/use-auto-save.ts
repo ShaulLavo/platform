@@ -6,8 +6,8 @@ import {
   fileBackedEditorPath,
   isDirtyLiveEditorDocument,
   saveEditorDocumentByPath,
-} from '@/features/editor/editor-save'
-import { useEditorDocumentStoreApi } from '@/features/editor/state/editor-document-state'
+} from '@/features/editor/utils/save'
+import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 
 /**

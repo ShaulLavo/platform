@@ -3,9 +3,9 @@ import {
   showChatModeToolTab,
   toggleChatModeToolTab,
 } from '@/features/chat-mode/utils/panels'
-import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import { isWorkbenchSidebarView, paneHeaderMenu } from '@/features/workbench/utils/pane-header-menu'
-import { setWorkbenchSidebarTab } from '@/features/workbench/utils/workbench-panels'
+import { setWorkbenchSidebarTab } from '@/features/workbench/utils/panels'
 
 /**
  * The header renders in both layouts, and the UI mode is what decides which one

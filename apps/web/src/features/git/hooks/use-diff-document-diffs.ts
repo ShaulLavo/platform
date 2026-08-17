@@ -8,9 +8,9 @@ import {
 } from '@/features/chat/lib/checkpoint-diff-query'
 import { errorMessage } from '@/lib/error-message'
 
-import { blobDiffQueryKey, fetchBlobDiff } from '../blob-diff-query'
-import type { DiffDocumentInfo } from '../diff-document'
-import type { FileDiff } from '../types'
+import { blobDiffQueryKey, fetchBlobDiff } from '@/features/git/utils/blob-diff-query'
+import type { DiffDocumentInfo } from '@/features/git/utils/diff-document'
+import type { FileDiff } from '@/features/git/utils/types'
 
 type DiffList = readonly FileDiff[]
 type DiffQueryOptions = UseQueryOptions<DiffList, Error, DiffList, readonly unknown[]>

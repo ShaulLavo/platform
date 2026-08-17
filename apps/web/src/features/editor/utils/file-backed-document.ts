@@ -1,8 +1,8 @@
-import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
-import { parseDiffDocumentId } from '@/features/git/diff-document'
+import { parseConflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
+import { parseDiffDocumentId } from '@/features/git/utils/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/utils/buffer-document'
-import { parseCompareSavedDocumentId } from '@/features/editor/compare-saved-document'
-import { parseRefDocumentId } from '@/features/git/ref-document'
+import { parseCompareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'
+import { parseRefDocumentId } from '@/features/git/utils/ref-document'
 
 export function fileBackedDocumentPath(path: string | null | undefined) {
   if (!path) return null

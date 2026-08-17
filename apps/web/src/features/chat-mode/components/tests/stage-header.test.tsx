@@ -18,7 +18,7 @@ import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-sto
 import { resetSessionReadStore } from '@/features/chat-mode/state/session-read-store'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
 import { sessionRailItem } from '@/features/chat-mode/utils/session-rail-model'
-import { EditorStateProvider } from '@/features/editor/editor-state-provider'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import {
   chatProject,
   shellSnapshot,

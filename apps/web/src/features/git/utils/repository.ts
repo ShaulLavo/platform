@@ -1,4 +1,4 @@
-import type { RepositoryInfo } from '../types'
+import type { RepositoryInfo } from '@/features/git/utils/types'
 
 export function aheadBehindLabel(repository: RepositoryInfo) {
   const parts: string[] = []

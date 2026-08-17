@@ -8,7 +8,7 @@ import {
   TAB_SEPARATOR,
 } from '@/features/address/utils/grammar'
 import { NO_WORKSPACE_SLUG, workspaceSlug } from '@/features/address/utils/slug'
-import { isSettingsDocumentId } from '@/features/settings/settings-document'
+import { isSettingsDocumentId } from '@/features/settings/utils/document'
 
 /**
  * The narrow record the encoder takes, instead of a store.

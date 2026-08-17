@@ -4,8 +4,8 @@ import { getClient } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
 import { unwrapEdenResponse } from '@/lib/eden-events'
 import { gitKeys } from '@/lib/query-keys'
-import type { CheckpointDiffDocumentInput } from '@/features/git/diff-document'
-import type { FileDiff, FileStatus } from '@/features/git/types'
+import type { CheckpointDiffDocumentInput } from '@/features/git/utils/diff-document'
+import type { FileDiff, FileStatus } from '@/features/git/utils/types'
 import type { ChatTurnDiffSummary } from '../state/chat-projection-store'
 
 export type CheckpointDiffQueryInput = {

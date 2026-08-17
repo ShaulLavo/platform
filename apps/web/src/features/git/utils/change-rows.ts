@@ -1,4 +1,4 @@
-import type { ChangeRow, FileStatus } from '../types'
+import type { ChangeRow, FileStatus } from '@/features/git/utils/types'
 
 /**
  * One status entry can produce two rows: a file staged and then edited again

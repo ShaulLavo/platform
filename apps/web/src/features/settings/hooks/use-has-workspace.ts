@@ -5,7 +5,7 @@ import {
   EditorWorkspaceStateContext,
   type EditorWorkspaceStore,
   type EditorWorkspaceStoreApi,
-} from '@/features/editor/state/editor-workspace-state'
+} from '@/features/editor/state/workspace-state'
 
 /**
  * Whether a folder is open, without requiring the workspace provider.

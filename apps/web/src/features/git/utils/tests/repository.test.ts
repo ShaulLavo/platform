@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { RepositoryInfo } from '../../types'
+import type { RepositoryInfo } from '@/features/git/utils/types'
 import { canSyncChanges, syncChangesLabel } from '../repository'
 
 describe('git repository labels', () => {

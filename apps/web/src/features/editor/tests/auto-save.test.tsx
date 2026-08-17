@@ -5,10 +5,10 @@ import { createElement, type ReactNode } from 'react'
 import { DEFAULT_SETTING_VALUES, type SettingId, type SettingsValues } from '@workspace/contracts'
 
 import { expect, test } from '../../../../test/fixtures'
-import { EditorDocumentStateContext } from '@/features/editor/state/editor-document-state'
-import { createEditorDocumentStore } from '@/features/editor/state/editor-document-state'
+import { EditorDocumentStateContext } from '@/features/editor/state/document-state'
+import { createEditorDocumentStore } from '@/features/editor/state/document-state'
 import { useAutoSave } from '@/features/editor/hooks/use-auto-save'
-import { settingsKeys } from '@/features/settings/query-keys'
+import { settingsKeys } from '@/features/settings/utils/query-keys'
 
 function harness(overrides: Partial<SettingsValues>) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })

@@ -4,7 +4,7 @@ import path from 'node:path'
 import { describe } from 'vitest'
 
 import { expect, test } from '../../../../test/fixtures'
-import * as api from '../api'
+import * as api from '@/features/git/utils/api'
 
 // Drives the real git server in-process through the api.ts wrappers — the same
 // `getClient()` the app uses, pointed at the test server by the `client` fixture.

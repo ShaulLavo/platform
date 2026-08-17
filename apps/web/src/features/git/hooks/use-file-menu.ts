@@ -1,8 +1,8 @@
-import { useEditorCommands } from '@/features/editor/state/editor-commands'
+import { useEditorCommands } from '@/features/editor/state/commands'
 import { copyTextToClipboard } from '@/lib/clipboard'
 import { toTreePath } from '@/lib/path-formatters'
 
-import type { ChangeRow } from '../types'
+import type { ChangeRow } from '@/features/git/utils/types'
 import { fileMenu } from '../utils/file-menu'
 import { useDiscardPathMutation } from './use-discard-path-mutation'
 import { useDiscardStagedPathsMutation } from './use-discard-staged-paths-mutation'

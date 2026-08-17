@@ -1,7 +1,7 @@
 import { DEFAULT_SETTING_VALUES } from '@workspace/contracts'
 
 import { expect, test } from '../../../../test/fixtures'
-import { fetchSettings, saveSettings } from '../api'
+import { fetchSettings, saveSettings } from '@/features/settings/utils/api'
 
 test('reads registry defaults from an untouched server', async ({ client }) => {
   expect(client).toBeDefined()

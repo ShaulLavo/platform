@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseRefDocumentId, refDocumentId, refDocumentLabel } from '../ref-document'
+import {
+  parseRefDocumentId,
+  refDocumentId,
+  refDocumentLabel,
+} from '@/features/git/utils/ref-document'
 
 describe('git ref document ids', () => {
   it('round-trips a path and ref', () => {

@@ -1,4 +1,4 @@
-import type { ChangeRow, PanelSection } from '../types'
+import type { ChangeRow, PanelSection } from '@/features/git/utils/types'
 import { groupMenu } from '../utils/group-menu'
 import { useDiscardPathsMutation } from './use-discard-paths-mutation'
 import { useDiscardStagedPathsMutation } from './use-discard-staged-paths-mutation'

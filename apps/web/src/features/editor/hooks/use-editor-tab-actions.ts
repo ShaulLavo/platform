@@ -1,6 +1,6 @@
 import { use } from 'react'
 
-import { EditorTabActionsContext } from '@/features/editor/providers/editor-tab-actions-context'
+import { EditorTabActionsContext } from '@/features/editor/providers/tab-actions-context'
 import { clientErrors } from '@/lib/structured-errors'
 
 export function useEditorTabActions() {

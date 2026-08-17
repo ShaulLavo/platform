@@ -1,4 +1,4 @@
-import type { StatusPresentation } from '@/features/git/types'
+import type { StatusPresentation } from '@/features/git/utils/types'
 import type { ResolvedFileIcon } from '@/lib/file-icons'
 
 export type EditorTabConflictMap = Readonly<Record<string, { remotePath: string }>>

@@ -1,4 +1,4 @@
-import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
+import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/layout'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
@@ -7,7 +7,7 @@ import { expect, test } from '../../../test/fixtures'
 import {
   createEditorWorkspaceStore,
   EditorWorkspaceStateContext,
-} from '@/features/editor/state/editor-workspace-state'
+} from '@/features/editor/state/workspace-state'
 import { useValidateRootFolder } from '@/hooks/use-validate-root-folder'
 import { createFileContent, ensureFolderPath } from '@/lib/file-server'
 import type { PickedFsEntry } from '@/lib/file-system-types'

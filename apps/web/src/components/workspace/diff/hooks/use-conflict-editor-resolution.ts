@@ -6,8 +6,8 @@ import {
   resolveConflictEditorSnapshot,
   type ConflictResolutionDebouncers,
 } from '@/components/workspace/diff/utils/conflict-editor-resolution-utils'
-import { parseConflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
-import { useEditorConflictStoreApi } from '@/features/editor/state/editor-conflict-state'
+import { parseConflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
+import { useEditorConflictStoreApi } from '@/features/editor/state/conflict-state'
 import type { FileResult } from '@/lib/file-system-types'
 import type { TextSnapshot } from '@singapor/core'
 import { useQueryClient } from '@tanstack/react-query'

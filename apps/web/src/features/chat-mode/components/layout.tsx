@@ -22,9 +22,9 @@ import {
   type ChatModePanels,
   type ChatModeToolTab,
 } from '@/features/chat-mode/utils/panels'
-import type { FileStatus } from '@/features/git/types'
+import type { FileStatus } from '@/features/git/utils/types'
 import { Wallpaper } from '@/features/workbench/components/wallpaper'
-import type { WorkbenchPanels } from '@/features/workbench/utils/workbench-panels'
+import type { WorkbenchPanels } from '@/features/workbench/utils/panels'
 
 export function ChatModeLayout({
   conflicts,

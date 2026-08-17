@@ -1,7 +1,7 @@
 import { ArrowBendUpLeftIcon, MinusIcon, PlusIcon } from '@phosphor-icons/react'
 
 import { useDiscardPathMutation, useStagePathMutation, useUnstagePathMutation } from '../hooks'
-import type { PanelSection } from '../types'
+import type { PanelSection } from '@/features/git/utils/types'
 import { RowActionButton } from './row-action-button'
 
 export function FileActions({ path, section }: { path: string; section: PanelSection }) {

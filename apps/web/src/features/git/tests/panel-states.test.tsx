@@ -5,9 +5,9 @@ import path from 'node:path'
 import { screen, waitFor } from '@testing-library/react'
 
 import { FocusProvider } from '@/components/workspace/focus/providers/focus-provider'
-import { EditorStateProvider } from '@/features/editor/editor-state-provider'
-import { Panel } from '@/features/git/panel'
-import { GitStoreProvider } from '@/features/git/providers/git-store-provider'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { Panel } from '@/features/git/components/panel'
+import { GitStoreProvider } from '@/features/git/providers/store-provider'
 import { expect, test } from '../../../../test/fixtures'
 import { renderWithProviders } from '../../../../test/render'
 

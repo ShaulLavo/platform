@@ -1,9 +1,9 @@
 import { DiffView as EditorDiffView } from '@singapor/diff'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { editorTreeSitterSyntaxProvider } from '@/features/editor/editor-plugins'
+import { editorTreeSitterSyntaxProvider } from '@/features/editor/utils/plugins'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
-import type { DiffDocumentInfo } from '../diff-document'
+import type { DiffDocumentInfo } from '@/features/git/utils/diff-document'
 import { useDiffDocumentDiffs } from '../hooks/use-diff-document-diffs'
 import { emptyDiffNotice, unrenderableDiffNotice } from '../utils/diff-presentation'
 import { editorDiffFiles } from '../utils/editor-diff-files'

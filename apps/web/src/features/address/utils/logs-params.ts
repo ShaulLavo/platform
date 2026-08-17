@@ -1,4 +1,4 @@
-import type { LogsFilterState } from '@/features/logs/log-filter-params'
+import type { LogsFilterState } from '@/features/logs/utils/filter-params'
 
 /**
  * `log.*` — the dashboard's filters.

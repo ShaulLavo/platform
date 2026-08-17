@@ -4,7 +4,7 @@ import {
   compareSavedDocumentId,
   compareSavedDocumentLabel,
   parseCompareSavedDocumentId,
-} from '../compare-saved-document'
+} from '@/features/editor/utils/compare-saved-document'
 
 describe('compare-saved document ids', () => {
   it('round-trips a path', () => {

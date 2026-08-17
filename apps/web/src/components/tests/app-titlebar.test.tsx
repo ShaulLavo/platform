@@ -1,17 +1,17 @@
-import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
+import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/layout'
 import { screen } from '@testing-library/react'
 
 import { AppTitlebar } from '@/components/app-titlebar'
-import { EditorStateProvider } from '@/features/editor/editor-state-provider'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import {
   createEditorWorkspaceStore,
   EditorWorkspaceStateContext,
-} from '@/features/editor/state/editor-workspace-state'
+} from '@/features/editor/state/workspace-state'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
 import {
   createDefaultWorkbenchPanels,
   openEditorPathInWorkbenchPanels,
-} from '@/features/workbench/utils/workbench-panels'
+} from '@/features/workbench/utils/panels'
 import { NATIVE_WINDOW_DRAG_CLASS } from '@/lib/platform/window-drag'
 import { expect, test } from '../../../test/fixtures'
 import { renderWithProviders } from '../../../test/render'

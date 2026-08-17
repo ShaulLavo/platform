@@ -2,7 +2,7 @@ import { MenuSurface } from '@/features/menus/components/surface'
 import type { MenuAnchor } from '@/features/menus/utils/virtual-anchor'
 
 import { useGroupMenu } from '../hooks/use-group-menu'
-import type { ChangeRow, PanelSection } from '../types'
+import type { ChangeRow, PanelSection } from '@/features/git/utils/types'
 
 /**
  * Mounted by the group header only while its menu is open, so the bulk

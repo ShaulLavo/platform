@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-import { useEditorWorkspaceStoreApi } from '@/features/editor/state/editor-workspace-state'
+import { useEditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
 import { showChatModeToolTab } from '@/features/chat-mode/utils/panels'
 
 /**

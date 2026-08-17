@@ -1,5 +1,5 @@
-import { useEditorCommands } from '@/features/editor/state/editor-commands'
-import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { useEditorCommands } from '@/features/editor/state/commands'
+import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import { useWorkspaceTreeState } from '@/hooks/use-workspace-tree'
 import { platformCommandSpecs } from '@/keymap/command-registry'
 import {
@@ -46,7 +46,7 @@ import {
   clearEditorThemePreview,
   previewEditorTheme,
   setSelectedEditorThemeId,
-} from '@/features/editor/state/editor-color-theme-store'
+} from '@/features/editor/state/color-theme-store'
 import { useOpenWorkspaceRoot } from '@/hooks/use-open-workspace-root'
 import {
   CommandPaletteActionsContext,

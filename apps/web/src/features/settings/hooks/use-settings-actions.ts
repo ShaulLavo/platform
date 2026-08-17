@@ -18,9 +18,9 @@ import type { PlatformCommandId } from '@/keymap/types'
 
 import { providerQueryKeys } from '@/features/chat/lib/provider-query'
 
-import { saveSettings } from '../api'
-import { notifySaveError } from '../notify-save-error'
-import { settingsKeys } from '../query-keys'
+import { saveSettings } from '@/features/settings/utils/api'
+import { notifySaveError } from '@/features/settings/utils/notify-save-error'
+import { settingsKeys } from '@/features/settings/utils/query-keys'
 import { isDefaultValue } from '../utils/default-value'
 import {
   withMovedModel,

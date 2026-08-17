@@ -8,9 +8,9 @@ import {
 } from '@/components/workspace/editor-tabs/utils/editor-tab-model'
 import { EditorSurfaceTabBody } from '@/features/workbench/components/editor-surface-tab-body'
 import { EditorTabBar } from '@/features/workbench/components/editor-tab-bar'
-import type { FileStatus } from '@/features/git/types'
+import type { FileStatus } from '@/features/git/utils/types'
 import type { EditorTabConflictMap } from '@/components/workspace/editor-tabs/utils/editor-tab-types'
-import type { WorkbenchPanels } from '@/features/workbench/utils/workbench-panels'
+import type { WorkbenchPanels } from '@/features/workbench/utils/panels'
 
 export function CodePanel({
   conflicts,

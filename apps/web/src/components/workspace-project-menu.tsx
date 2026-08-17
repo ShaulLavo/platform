@@ -4,7 +4,7 @@ import { useState } from 'react'
 
 import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
-import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import { projectMenuModel } from '@/features/workbench/utils/project-menu-model'
 import { useOpenWorkspaceRoot } from '@/hooks/use-open-workspace-root'
 import { NATIVE_WINDOW_NO_DRAG_CLASS } from '@/lib/platform/window-drag'

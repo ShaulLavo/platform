@@ -1,7 +1,7 @@
 import { ChatCircleIcon, SidebarSimpleIcon, SquaresFourIcon } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 
-import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import { setChatModeSessionRailOpen } from '@/features/chat-mode/utils/panels'
 import { NATIVE_WINDOW_NO_DRAG_CLASS } from '@/lib/platform/window-drag'
 import { workspaceUiModeLabel } from '@/lib/ui-mode'

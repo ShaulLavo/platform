@@ -8,8 +8,8 @@ import {
   createMatchedLanguageServerPlugin,
   languageServerMatch,
   type LanguageServerMatch,
-} from '@/features/editor/editor-language-server-plugin'
-import { createEditorLanguageServerStatusSource } from '@/features/editor/state/editor-language-server-status-source'
+} from '@/features/editor/utils/language-server-plugin'
+import { createEditorLanguageServerStatusSource } from '@/features/editor/state/language-server-status-source'
 import { getClient } from '@/lib/client'
 
 type UseLanguageServerPluginOptions = {

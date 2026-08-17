@@ -1,8 +1,8 @@
 import type { ReactEditorController } from '@singapor/react'
 import { useEffect, useRef } from 'react'
 
-import type { EditorRenderDocument } from '@/features/editor/editor-render-document'
-import { rowStartOffset } from '@/features/editor/utils/editor-position'
+import type { EditorRenderDocument } from '@/features/editor/utils/render-document'
+import { rowStartOffset } from '@/features/editor/utils/position'
 
 type UseCommitMessageEditorFocusOptions = {
   controller: ReactEditorController

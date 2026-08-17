@@ -1,14 +1,14 @@
-import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
+import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/layout'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createEditorWorkspaceStore } from '@/features/editor/state/editor-workspace-state'
-import { createEditorDocumentStore } from '@/features/editor/state/editor-document-state'
+import { createEditorWorkspaceStore } from '@/features/editor/state/workspace-state'
+import { createEditorDocumentStore } from '@/features/editor/state/document-state'
 import { createSearchBufferStore } from '@/features/search/state/buffer-state'
 import {
   createDefaultWorkbenchPanels,
   openEditorPathInWorkbenchPanels,
-} from '@/features/workbench/utils/workbench-panels'
+} from '@/features/workbench/utils/panels'
 import type { FileResult, PickedFsEntry } from '@/lib/file-system-types'
 import type {
   CachedSearchBufferState,

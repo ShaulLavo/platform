@@ -10,8 +10,8 @@ import {
   useEditorDocumentState,
   useEditorDocumentStoreApi,
   type LiveEditorDocument,
-} from '@/features/editor/state/editor-document-state'
-import { textLineAt } from '@/features/editor/utils/editor-position'
+} from '@/features/editor/state/document-state'
+import { textLineAt } from '@/features/editor/utils/position'
 import { compareSearchPaths } from '@/features/search/utils/sort'
 import { basename, toTreePath } from '@/lib/path-formatters'
 import { colorForFileIcon, iconForEntry, type ResolvedFileIcon } from '@/lib/file-icons'

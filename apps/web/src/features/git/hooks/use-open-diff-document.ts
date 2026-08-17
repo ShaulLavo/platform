@@ -1,9 +1,9 @@
-import { useEditorCommands } from '@/features/editor/state/editor-commands'
+import { useEditorCommands } from '@/features/editor/state/commands'
 import { gitKeys } from '@/lib/query-keys'
 import { useQueryClient } from '@tanstack/react-query'
-import { fetchDiff } from '../api'
-import { snapshotDiffDocumentId, hasDiffDocumentSnapshot } from '../diff-document'
-import type { ChangeRow, FileDiff } from '../types'
+import { fetchDiff } from '@/features/git/utils/api'
+import { snapshotDiffDocumentId, hasDiffDocumentSnapshot } from '@/features/git/utils/diff-document'
+import type { ChangeRow, FileDiff } from '@/features/git/utils/types'
 
 export function useOpenDiffDocument() {
   const queryClient = useQueryClient()

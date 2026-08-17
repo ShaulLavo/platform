@@ -9,7 +9,7 @@ import {
 
 import { actionItem, section, type Menu } from '@/features/menus/utils/model'
 
-import type { PanelSection } from '../types'
+import type { PanelSection } from '@/features/git/utils/types'
 
 export type FileMenuContext = {
   readonly copyPath: (value: string, label: string) => void

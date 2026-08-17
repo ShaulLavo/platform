@@ -5,15 +5,15 @@ import path from 'node:path'
 import { useEffect, useEffectEvent, type ReactNode } from 'react'
 
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
-import { EditorStateProvider } from '@/features/editor/editor-state-provider'
-import { useEditorUiState } from '@/features/editor/state/editor-ui-state'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { useEditorUiState } from '@/features/editor/state/ui-state'
 import {
   createEditorWorkspaceStore,
   EditorWorkspaceStateContext,
   useEditorWorkspaceState,
-} from '@/features/editor/state/editor-workspace-state'
-import { useTerminalLinks } from '@/features/terminal/hooks/use-terminal-links'
-import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/workbench-layout'
+} from '@/features/editor/state/workspace-state'
+import { useTerminalLinks } from '@/features/terminal/hooks/use-links'
+import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/layout'
 import { expect, test } from '../../../../../test/fixtures'
 import { renderWithProviders } from '../../../../../test/render'
 

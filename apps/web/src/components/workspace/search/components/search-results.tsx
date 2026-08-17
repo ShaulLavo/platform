@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react'
 import type { WorkspaceSearchMatch } from '@workspace/contracts'
 import type { EditorKeymapLayer } from '@singapor/core'
 
-import { useEditorCommands } from '@/features/editor/state/editor-commands'
+import { useEditorCommands } from '@/features/editor/state/commands'
 import {
   SearchResultActionsContext,
   type SearchResultActions,

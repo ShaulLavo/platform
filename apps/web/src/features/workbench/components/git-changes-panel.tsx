@@ -1,4 +1,4 @@
-import { Panel as GitPanel } from '@/features/git/panel'
+import { Panel as GitPanel } from '@/features/git/components/panel'
 import { ToolPaneHeader } from '@/features/workbench/components/tool-pane-header'
 
 export function GitChangesPanel({ rootPath }: { readonly rootPath: string }) {

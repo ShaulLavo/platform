@@ -4,8 +4,8 @@ import { EMPTY_GIT_FILES } from '@/components/workspace/editor-tabs/utils/editor
 import { ChatModeLayout } from '@/features/chat-mode/components/layout'
 import { useRevealOpenedEditors } from '@/features/chat-mode/hooks/use-reveal-opened-editors'
 import { ChatModeSessionProvider } from '@/features/chat-mode/providers/session-provider'
-import { useEditorConflictState } from '@/features/editor/state/editor-conflict-state'
-import { useEditorWorkspaceState } from '@/features/editor/state/editor-workspace-state'
+import { useEditorConflictState } from '@/features/editor/state/conflict-state'
+import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import { useStatus } from '@/features/git/hooks'
 
 export function ChatModeSurfaceView({

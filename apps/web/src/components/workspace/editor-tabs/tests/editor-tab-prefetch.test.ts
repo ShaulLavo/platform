@@ -4,9 +4,9 @@ import {
   editorTabPrefetchRegistrationKey,
   editorTabPrefetchTarget,
 } from '@/components/workspace/editor-tabs/utils/editor-tab-prefetch'
-import { conflictDiffDocumentId } from '@/features/editor/conflict-diff-document'
-import { snapshotDiffDocumentId } from '@/features/git/diff-document'
-import type { FileDiff } from '@/features/git/types'
+import { conflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
+import { snapshotDiffDocumentId } from '@/features/git/utils/diff-document'
+import type { FileDiff } from '@/features/git/utils/types'
 import { searchBufferDocumentId } from '@/features/search/utils/buffer-document'
 
 describe('editor tab prefetch helpers', () => {

@@ -1,4 +1,4 @@
-import type { LiveEditorDocument } from '@/features/editor/state/editor-document-state'
+import type { LiveEditorDocument } from '@/features/editor/state/document-state'
 import type { WriteFileContentOptions } from '@/lib/file-server'
 import type { FileResult, TreeEntry } from '@/lib/file-system-types'
 import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
