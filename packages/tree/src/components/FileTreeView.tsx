@@ -16,10 +16,7 @@ import {
   CONTEXT_MENU_TRIGGER_TYPE,
   HEADER_SLOT_NAME,
 } from '@workspace/tree/utils/constants'
-import {
-  FILE_TREE_RENAME_VIEW,
-  FileTreeController,
-} from '@workspace/tree/utils/model/FileTreeController'
+import { FileTreeController } from '@workspace/tree/utils/model/FileTreeController'
 import type {
   FileTreeStickyRowCandidate,
   FileTreeViewProps,
@@ -854,7 +851,7 @@ type FileTreeRenderedRowMode = FileTreeRowClickMode
 // with a different `registerButton` target.
 type FileTreeRenderRowFrame = {
   controller: FileTreeController
-  renameView: ReturnType<FileTreeController[typeof FILE_TREE_RENAME_VIEW]>
+  renameView: ReturnType<FileTreeController['getRenameView']>
   visualFocusPath: string | null
   contextHoverPath: string | null
   draggedPathSet: ReadonlySet<string> | null
@@ -1303,7 +1300,7 @@ export function FileTreeView({
   const gitLaneActive =
     gitStatusByPath != null || ignoredGitDirectories != null || directoriesWithGitChanges != null
   const { resolveIcon } = useMemo(() => createFileTreeIconResolver(icons), [icons])
-  const renameView = controller[FILE_TREE_RENAME_VIEW]()
+  const renameView = controller.getRenameView()
   const renamingPath = renameView.getPath()
   const isRenaming = renamingPath != null
   const isSearchOpen = controller.isSearchOpen()

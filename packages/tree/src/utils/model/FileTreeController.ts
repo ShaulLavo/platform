@@ -91,8 +91,6 @@ interface FileTreeStartRenamingOptions {
   removeIfCanceled?: boolean
 }
 
-export const FILE_TREE_RENAME_VIEW: unique symbol = Symbol('FILE_TREE_RENAME_VIEW')
-
 // Initial render only mounts a tiny viewport slice, so controller startup can
 // cap its first projection build and defer the full 494k-row metadata walk
 // until the user actually navigates outside that initial window.
@@ -2006,9 +2004,3 @@ export class FileTreeController implements FileTreeMutationHandle, FileTreeSearc
     this.#expandDirectory(path)
   }
 }
-
-export interface FileTreeController {
-  [FILE_TREE_RENAME_VIEW](): FileTreeRenameViewState
-}
-
-FileTreeController.prototype[FILE_TREE_RENAME_VIEW] = FileTreeController.prototype.getRenameView
