@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { PendingOrchestrationEvent } from '../event-store'
-import { projectEvents } from '../projector'
 import type { OrchestrationProjectedThread, OrchestrationReadModel } from '../read-model'
 import {
   activityAppendedEvent,
+  applyIncrementally,
   createProjectionFixture,
   pendingEvent,
   threadBootstrapEvents,
@@ -136,11 +136,10 @@ function project(events: PendingOrchestrationEvent[]) {
   const fixture = createProjectionFixture()
   fixtures.push(fixture)
 
-  const appended = fixture.append(events)
-  fixture.pipeline.applyEvents(appended)
+  const model = applyIncrementally(fixture, events)
 
   return {
-    memory: projectedThread(projectEvents(appended)),
+    memory: projectedThread(model),
     sqlThread: projectedThread(fixture.snapshots.fullReadModel()),
   }
 }

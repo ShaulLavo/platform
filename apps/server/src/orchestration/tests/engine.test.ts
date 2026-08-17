@@ -23,8 +23,6 @@ import { OrchestrationEngine } from '../engine'
 import { OrchestrationProjectionPipeline } from '../projection-pipeline'
 import { ProviderCommandReactor } from '../provider-command-reactor'
 import { ProviderRuntimeIngestion } from '../provider-runtime-ingestion'
-import { projectEvents } from '../projector'
-import { createEmptyReadModel } from '../read-model'
 import { OrchestrationSnapshotQuery } from '../snapshot-query'
 import { MockProviderAdapter } from '../../provider/adapters/mock'
 import { ProviderAdapterRegistry } from '../../provider/provider-adapter-registry'
@@ -216,18 +214,18 @@ describe('orchestration engine', () => {
     fixture.close()
   })
 
-  it('projects replayed events into the same read model shape', async () => {
+  it('rebuilds the same read model from the projection rows', async () => {
     const fixture = createFixture()
     const engine = new OrchestrationEngine(fixture.database)
 
     await dispatchFirstThread(engine)
-    const replayed = engine.replay({ afterSequence: 0 }).events
-    const model = projectEvents(replayed, createEmptyReadModel())
-    const thread = model.threads.get('thread-1')
+    const rebuilt = new OrchestrationSnapshotQuery(fixture.database).fullReadModel()
+    const thread = rebuilt.threads.get('thread-1')
 
-    expect(model.projects.get('project-1')?.title).toBe('Platform')
+    expect(rebuilt.projects.get('project-1')?.title).toBe('Platform')
     expect(thread?.latestTurn?.turnId as string).toBe('turn-1')
     expect(thread?.messages[0]?.text).toBe('Build the first slice')
+    expect(thread).toEqual(engine.readModelSnapshot().threads.get('thread-1'))
     fixture.close()
   })
 

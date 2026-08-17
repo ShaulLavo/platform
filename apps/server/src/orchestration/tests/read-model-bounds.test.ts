@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE } from '@workspace/contracts'
-import { projectEvents } from '../projector'
 import {
   MAX_THREAD_ACTIVITIES,
   MAX_THREAD_MESSAGES,
@@ -9,10 +8,10 @@ import {
 } from '../read-model'
 import {
   activityAppendedEvent,
+  applyIncrementally,
   createProjectionFixture,
   messageSentEvent,
   threadBootstrapEvents,
-  withSequences,
   THREAD_ID,
 } from './factories/projection'
 
@@ -26,18 +25,20 @@ afterEach(() => {
 
 describe('in-memory read model bounds', () => {
   it('keeps only the newest messages and activities', () => {
-    const filled = projectMessages(
-      projectEvents(withSequences(threadBootstrapEvents())),
+    const fixture = createProjectionFixture()
+    fixtures.push(fixture)
+
+    let model = projectMessages(
+      fixture,
+      applyIncrementally(fixture, threadBootstrapEvents()),
       0,
       MAX_THREAD_MESSAGES + 500,
     )
-    let model = filled.model
 
     for (let index = 0; index < MAX_THREAD_ACTIVITIES + 100; index += 1) {
-      model = projectEvents(
-        withSequences([activityAppendedEvent({ id: `event-activity-${index}` })]),
-        model,
-      )
+      const batch = fixture.append([activityAppendedEvent({ id: `event-activity-${index}` })])
+      fixture.pipeline.applyEvents(batch)
+      model = fixture.snapshots.refreshReadModel(model, batch)
     }
 
     const thread = projectedThread(model)
@@ -48,14 +49,14 @@ describe('in-memory read model bounds', () => {
     expect(thread.activities.at(-1)?.id).toBe(`event-activity-${MAX_THREAD_ACTIVITIES + 99}`)
   })
 
-  it('projects into the caller model instead of cloning it per event', () => {
-    const model = projectEvents(withSequences(threadBootstrapEvents()))
+  it('refreshes the caller model in place instead of rebuilding it', () => {
+    const fixture = createProjectionFixture()
+    fixtures.push(fixture)
+
+    const model = applyIncrementally(fixture, threadBootstrapEvents())
     const messages = projectedThread(model).messages
 
-    const next = projectEvents(
-      withSequences([messageSentEvent({ messageId: 'message-1', streaming: false, text: 'hi' })]),
-      model,
-    )
+    const next = projectMessages(fixture, model, 1, 1)
 
     expect(next).toBe(model)
     expect(projectedThread(next).messages).toBe(messages)
@@ -75,8 +76,16 @@ describe('in-memory read model bounds', () => {
    * fails on the actual defect rather than on a proxy for it.
    */
   it('does not copy the retained messages to project one more', () => {
-    const filled = projectMessages(projectEvents(withSequences(threadBootstrapEvents())), 0, 400)
-    const before = projectedThread(filled.model).messages
+    const fixture = createProjectionFixture()
+    fixtures.push(fixture)
+
+    const filled = projectMessages(
+      fixture,
+      applyIncrementally(fixture, threadBootstrapEvents()),
+      0,
+      400,
+    )
+    const before = projectedThread(filled).messages
     // Snapshotted as values: the projector appends in place, so the array
     // reference itself is not a stable "before" and asserting on its length
     // later would be reading the "after".
@@ -84,8 +93,8 @@ describe('in-memory read model bounds', () => {
     const beforeHead = before.at(0)
     const beforeTail = before.at(-1)
 
-    const after = projectMessages(filled.model, 400, 1)
-    const afterMessages = projectedThread(after.model).messages
+    const after = projectMessages(fixture, filled, 400, 1)
+    const afterMessages = projectedThread(after).messages
 
     // The same objects, not merely equal ones — `toBe` is the whole point.
     // Whether the array is reused or rebuilt is an implementation detail worth
@@ -125,21 +134,24 @@ describe('in-memory read model bounds', () => {
   })
 })
 
-/** Threads the returned model so the measurement holds whatever projection semantics ship. */
-function projectMessages(model: OrchestrationReadModel, offset: number, count: number) {
-  const events = Array.from({ length: count }, (_, index) =>
-    withSequences([
-      messageSentEvent({ messageId: `message-${offset + index}`, streaming: false, text: 'hi' }),
-    ]),
-  )
-  const startedAt = performance.now()
+/** One committed batch per message, which is the shape production dispatches. */
+function projectMessages(
+  fixture: ReturnType<typeof createProjectionFixture>,
+  model: OrchestrationReadModel,
+  offset: number,
+  count: number,
+) {
   let next = model
 
-  for (const batch of events) {
-    next = projectEvents(batch, next)
+  for (let index = 0; index < count; index += 1) {
+    const batch = fixture.append([
+      messageSentEvent({ messageId: `message-${offset + index}`, streaming: false, text: 'hi' }),
+    ])
+    fixture.pipeline.applyEvents(batch)
+    next = fixture.snapshots.refreshReadModel(next, batch)
   }
 
-  return { averageMs: (performance.now() - startedAt) / count, model: next }
+  return next
 }
 
 function messageCreatedAt(index: number) {

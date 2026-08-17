@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { PendingOrchestrationEvent } from '../event-store'
-import { projectEvents } from '../projector'
 import { OrchestrationSnapshotQuery } from '../snapshot-query'
 import {
   createProjectionFixture,
@@ -96,7 +95,7 @@ function shellThread(fixture: ReturnType<typeof createProjectionFixture>) {
 }
 
 function memoryThread(fixture: ReturnType<typeof createProjectionFixture>) {
-  const model = projectEvents(fixture.eventStore.readAfter({ afterSequence: 0 }))
+  const model = fixture.snapshots.fullReadModel()
   const thread = model.threads.get(THREAD_ID)
   if (!thread) return expect.unreachable('read model is missing the thread')
 

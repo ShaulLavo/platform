@@ -6,7 +6,6 @@ import type { PendingOrchestrationEvent } from '../event-store'
 import { createWorkspacePaths } from '../../fs/path'
 import { GitService } from '../../git/service'
 import { OrchestrationCheckpointDiffQuery } from '../checkpoint-diff-query'
-import { projectEvents } from '../projector'
 import {
   createProjectionFixture,
   pendingEvent,
@@ -178,7 +177,7 @@ function revertedEvent(turnCount: number, revertedAt = '2026-05-24T00:06:00.000Z
 }
 
 function memoryThread(fixture: ReturnType<typeof createProjectionFixture>) {
-  const model = projectEvents(fixture.eventStore.readAfter({ afterSequence: 0 }))
+  const model = fixture.snapshots.fullReadModel()
   const thread = model.threads.get(THREAD_ID)
   if (!thread) return expect.unreachable('read model is missing the thread')
 

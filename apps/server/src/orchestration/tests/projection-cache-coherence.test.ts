@@ -1,7 +1,6 @@
 import { sql } from 'drizzle-orm'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { PendingOrchestrationEvent } from '../event-store'
-import { projectEvents } from '../projector'
 import {
   threadPlanProgress,
   type OrchestrationProjectedThread,
@@ -10,13 +9,17 @@ import {
 import { createShellRowReader } from '../shell-row-reader'
 import {
   activityAppendedEvent,
+  applyIncrementally,
   createProjectionFixture,
   messageSentEvent,
   pendingEvent,
+  proposedPlanUpsertedEvent,
   sessionSetEvent,
   threadBootstrapEvents,
+  threadCreatedEvent,
   turnDiffCompletedEvent,
   turnStartEvent,
+  turnStartEventOnThread,
   PROJECT_ID,
   THREAD_ID,
 } from './factories/projection'
@@ -33,7 +36,7 @@ afterEach(() => {
   }
 })
 
-describe('orchestration projection convergence', () => {
+describe('orchestration read-model cache coherence', () => {
   it.each([
     { settledState: 'completed', status: 'idle' },
     { settledState: 'completed', status: 'ready' },
@@ -209,9 +212,9 @@ describe('orchestration projection convergence', () => {
       }),
     ])
 
-    // Both read models fold the same events, so a revision that only one of
-    // them applies is a divergence that surfaces as the timeline and the rail
-    // disagreeing about what a tool call did.
+    // The incremental cache and a cold rebuild read the same rows, so a
+    // revision only one of them lands is a divergence that surfaces as the
+    // timeline and the rail disagreeing about what a tool call did.
     for (const activities of [projected.sqlThread.activities, projected.memory.activities]) {
       expect(activities).toHaveLength(1)
       expect(activities[0]).toMatchObject({
@@ -223,7 +226,7 @@ describe('orchestration projection convergence', () => {
     }
   })
 
-  it('leaves a revised activity where the first frame put it, in both read models', () => {
+  it('leaves a revised activity where the first frame put it, in the cache and the rebuild', () => {
     const projected = project([
       ...threadBootstrapEvents(),
       activityAppendedEvent({ id: 'event-activity-1', summary: 'Read started' }),
@@ -266,7 +269,7 @@ describe('orchestration projection convergence', () => {
     }
   })
 
-  it('projects the plan step the thread is on, and both read models agree on it', () => {
+  it('projects the plan step the thread is on, and the cache agrees with the rebuild', () => {
     const projected = project([
       ...threadBootstrapEvents(),
       turnStartEvent('turn-1', requestedAt),
@@ -402,7 +405,7 @@ describe('orchestration projection convergence', () => {
     const thread = projectedThread(fixture.snapshots.fullReadModel())
     expect(thread.messages[0]?.text).toBe('Hello')
   })
-  it('carries project scripts through both read models, and lets an empty list clear them', () => {
+  it('carries project scripts into the cache, and lets an empty list clear them', () => {
     const scripts = [
       { command: 'bun run dev', name: 'dev' },
       { command: 'bun --bun vitest run', name: 'test' },
@@ -435,6 +438,34 @@ describe('orchestration projection convergence', () => {
     expect(rescripted.shell?.title).toBe('Renamed')
     expect(projectScripts(rescripted)).toEqual({ memory: scripts, sql: scripts })
   })
+
+  /**
+   * A plan can be proposed on one thread and implemented on another, and the
+   * projection clears the actionable flag on the *proposing* thread. The cache
+   * refresh has to know that a turn-start touches two threads; if it only ever
+   * refreshed the event's own aggregate, the proposing thread would keep
+   * offering "Implement" forever.
+   */
+  it('clears the plan flag on the proposing thread when another thread implements it', () => {
+    const fixture = createProjectionFixture()
+    fixtures.push(fixture)
+    const implementerId = 'thread-2'
+
+    const model = applyIncrementally(fixture, [
+      ...threadBootstrapEvents(),
+      proposedPlanUpsertedEvent({ planId: 'plan-1', planMarkdown: '# Plan' }),
+      threadCreatedEvent(implementerId),
+      turnStartEventOnThread(implementerId, 'turn-1', requestedAt, {
+        planId: 'plan-1',
+        threadId: THREAD_ID,
+      }),
+    ])
+
+    expect(model.threads.get(THREAD_ID)?.hasActionableProposedPlan).toBe(false)
+    expect(model.threads.get(THREAD_ID)).toEqual(
+      fixture.snapshots.fullReadModel().threads.get(THREAD_ID),
+    )
+  })
 })
 
 /** One or more `project.meta-updated` events over a bootstrapped project. */
@@ -463,13 +494,12 @@ function projectProject(events: PendingOrchestrationEvent[]) {
   const fixture = createProjectionFixture()
   fixtures.push(fixture)
 
-  const appended = fixture.append(events)
-  fixture.pipeline.applyEvents(appended)
+  const model = applyIncrementally(fixture, events)
   const reader = createShellRowReader(fixture.snapshots, fixture.database)
   reader.beginWindow()
 
   return {
-    memory: projectEvents(appended).projects.get(PROJECT_ID),
+    memory: model.projects.get(PROJECT_ID),
     shell: reader.projectShell(PROJECT_ID),
   }
 }
@@ -478,24 +508,23 @@ function project(events: PendingOrchestrationEvent[]) {
   const fixture = createProjectionFixture()
   fixtures.push(fixture)
 
-  const appended = fixture.append(events)
-  fixture.pipeline.applyEvents(appended)
+  const model = applyIncrementally(fixture, events)
   // The production reader, not a hand-read column: a projected field only counts
   // once the delta a rail row actually receives carries it.
   const reader = createShellRowReader(fixture.snapshots, fixture.database)
   reader.beginWindow()
 
   return {
-    memory: projectedThread(projectEvents(appended)),
+    memory: projectedThread(model),
     shell: reader.threadShell(THREAD_ID),
     sqlThread: projectedThread(fixture.snapshots.fullReadModel()),
   }
 }
 
 /**
- * The projected column against the same fold run over each read model's own
- * retained activities. Asserting only the column is how a projection that
- * forgets to refold — after a revert, say — ships looking correct.
+ * The projected column against the same fold run over the cache's own retained
+ * activities. Asserting only the column is how a projection that forgets to
+ * refold — after a revert, say — ships looking correct.
  */
 function expectPlanProgressConverges(projected: ReturnType<typeof project>) {
   expect(projected.shell?.planProgress ?? null).toEqual(

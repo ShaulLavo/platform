@@ -35,7 +35,6 @@ import {
   recordChatPipelineWarning,
   type CommandAttachmentIngest,
 } from './orchestration-logging'
-import { projectEvents } from './projector'
 import type { OrchestrationReadModel } from './read-model'
 import { OrchestrationSnapshotQuery } from './snapshot-query'
 import {
@@ -214,7 +213,7 @@ export class OrchestrationEngine {
         eventTypes: pendingEvents.map((event) => event.type),
       })
       const committed = this.commitCommand(command, pendingEvents)
-      this.readModel = projectEvents(committed.events, this.readModel)
+      this.readModel = this.snapshotQuery.refreshReadModel(this.readModel, committed.events)
 
       return { ...committed, published: this.publishCommitted(committed.events) }
     } catch (error) {
@@ -248,16 +247,23 @@ export class OrchestrationEngine {
   }
 
   /**
-   * Re-derives the command read model from the event log. Without this a
-   * dispatch that threw after its events were durable leaves the engine
-   * deciding later commands against a read model that is missing them.
+   * Re-derives the command read model from durable truth. Without this a
+   * dispatch that threw after its events were durable leaves the engine deciding
+   * later commands against a read model that is missing them.
+   *
+   * The catch-up comes first and is not optional: the model is a cache of the
+   * projection rows, so an event the projection has not applied is an event the
+   * refresh cannot see. `catchUp()` is a no-op when the cursor is already
+   * current, which is the overwhelmingly common case — the commit transaction
+   * projects before it returns.
    */
   private reconcileReadModel() {
     try {
+      this.projectionPipeline.catchUp()
       const events = this.eventStore.readAfter({ afterSequence: this.readModel.sequence })
       if (events.length === 0) return { reconciledEventCount: 0 }
 
-      this.readModel = projectEvents(events, this.readModel)
+      this.readModel = this.snapshotQuery.refreshReadModel(this.readModel, events)
       const published = this.publishCommitted(events)
 
       return {

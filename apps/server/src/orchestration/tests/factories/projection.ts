@@ -1,12 +1,11 @@
 import { Database } from 'bun:sqlite'
 import { drizzle } from 'drizzle-orm/bun-sqlite'
-import * as v from 'valibot'
 import { migrateOrchestrationDatabase } from '../../../db/migrations'
 import * as schema from '../../../db/schema'
 import { OrchestrationEventStore, type PendingOrchestrationEvent } from '../../event-store'
 import { OrchestrationProjectionPipeline } from '../../projection-pipeline'
 import { OrchestrationSnapshotQuery } from '../../snapshot-query'
-import { orchestrationEventSchema, type OrchestrationEvent } from '../../schemas'
+import { createEmptyReadModel, type OrchestrationReadModel } from '../../read-model'
 
 export const PROJECT_ID = 'project-1'
 export const THREAD_ID = 'thread-1'
@@ -35,8 +34,9 @@ export function pendingEvent(
 ) {
   const pending = {
     actorKind: 'client',
-    aggregateId: type.startsWith('project.') ? PROJECT_ID : THREAD_ID,
-    aggregateKind: type.startsWith('project.') ? 'project' : 'thread',
+    // The aggregate follows the payload, exactly as the decider does it, so a
+    // fixture can name a thread other than the default one.
+    ...aggregate(payload),
     causationEventId: null,
     commandId: null,
     correlationId: null,
@@ -50,10 +50,50 @@ export function pendingEvent(
   return pending as PendingOrchestrationEvent
 }
 
-/** Stamps sequences for tests that drive the in-memory projector without SQL. */
-export function withSequences(events: PendingOrchestrationEvent[]): OrchestrationEvent[] {
-  return events.map((event, index) =>
-    v.parse(orchestrationEventSchema, { ...event, sequence: index + 1 }),
+function aggregate(payload: unknown) {
+  const record = payload as { projectId?: string; threadId?: string }
+  if (record.threadId) return { aggregateId: record.threadId, aggregateKind: 'thread' } as const
+
+  return { aggregateId: record.projectId ?? PROJECT_ID, aggregateKind: 'project' } as const
+}
+
+/**
+ * Drives the pipeline and the read-model cache exactly as the engine does: one
+ * committed batch at a time, SQL first, then the cache refresh over the same
+ * events. Tests that assert on the in-memory model must go through this and not
+ * through a hand-rolled loop, or they stop testing the path production runs.
+ */
+export function applyIncrementally(
+  fixture: ReturnType<typeof createProjectionFixture>,
+  events: PendingOrchestrationEvent[],
+): OrchestrationReadModel {
+  let model = createEmptyReadModel()
+
+  for (const pending of events) {
+    const batch = fixture.append([pending])
+    fixture.pipeline.applyEvents(batch)
+    model = fixture.snapshots.refreshReadModel(model, batch)
+  }
+
+  return model
+}
+
+export function threadCreatedEvent(threadId: string, createdAt = '2026-05-24T00:00:00.000Z') {
+  return pendingEvent(
+    'thread.created',
+    {
+      branch: null,
+      createdAt,
+      interactionMode: 'default',
+      modelSelection: { model: 'gpt-5-codex', providerInstanceId: 'codex' },
+      projectId: PROJECT_ID,
+      runtimeMode: 'full-access',
+      threadId,
+      title: 'Projection',
+      updatedAt: createdAt,
+      worktreePath: null,
+    },
+    createdAt,
   )
 }
 
@@ -71,26 +111,12 @@ export function threadBootstrapEvents(createdAt = '2026-05-24T00:00:00.000Z') {
       },
       createdAt,
     ),
-    pendingEvent(
-      'thread.created',
-      {
-        branch: null,
-        createdAt,
-        interactionMode: 'default',
-        modelSelection: { model: 'gpt-5-codex', providerInstanceId: 'codex' },
-        projectId: PROJECT_ID,
-        runtimeMode: 'full-access',
-        threadId: THREAD_ID,
-        title: 'Projection',
-        updatedAt: createdAt,
-        worktreePath: null,
-      },
-      createdAt,
-    ),
+    threadCreatedEvent(THREAD_ID, createdAt),
   ]
 }
 
-export function turnStartEvent(
+export function turnStartEventOnThread(
+  threadId: string,
   turnId: string,
   requestedAt: string,
   sourceProposedPlan?: { planId: string; threadId: string },
@@ -103,11 +129,19 @@ export function turnStartEvent(
       messageId: `message-user-${turnId}`,
       runtimeMode: 'full-access',
       sourceProposedPlan,
-      threadId: THREAD_ID,
+      threadId,
       turnId,
     },
     requestedAt,
   )
+}
+
+export function turnStartEvent(
+  turnId: string,
+  requestedAt: string,
+  sourceProposedPlan?: { planId: string; threadId: string },
+) {
+  return turnStartEventOnThread(THREAD_ID, turnId, requestedAt, sourceProposedPlan)
 }
 
 export function proposedPlanUpsertedEvent(input: {
