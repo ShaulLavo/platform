@@ -1,112 +1,52 @@
-import { watch } from 'node:fs'
-import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import type { SettingsSnapshot } from '@workspace/contracts'
 import { describe, expect, it } from 'vitest'
 
-import type { WatchServerMessage } from '../contracts'
-import { createWorkspacePaths } from '../path'
-import { FileChangeHub } from '../watch'
+import { SettingsStore } from '../../settings/store'
 
-// TEMPORARY PROBE. Records what the platform actually does rather than
-// asserting an expectation, so one CI run answers why two writes to the same
-// file produce one event on Linux and two on macOS. Reports through
-// `expect.fail` because Vitest's console interception does not surface
-// `console.log` from a passing test. Delete once the real fix lands.
+// TEMPORARY PROBE. Answers one question about the settings store on Linux: is
+// the in-flight change delivered late, or never? The failing test sleeps a flat
+// 400ms; this watches for 4s and records when each change actually lands.
+// Reports through `expect.fail` because Vitest's console interception does not
+// surface `console.log` from a passing test. Delete once the real fix lands.
 function delay(ms: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, ms))
 }
 
-async function probeRoot() {
-  return mkdtemp(path.join(tmpdir(), 'linux-watch-probe-'))
-}
-
-async function stamps(target: string) {
-  const info = await stat(target)
-  return { mtimeMs: info.mtimeMs, birthtimeMs: info.birthtimeMs }
-}
-
-describe('linux watch probe', () => {
-  it('reports raw fs.watch events for two consecutive writes', async () => {
-    const root = await probeRoot()
-    const file = path.join(root, 'edited.txt')
-    await writeFile(file, 'one')
-    await delay(2)
-
-    const started = Date.now()
-    const seen: string[] = []
-    const watcher = watch(root, { recursive: true }, (eventType, filename) => {
-      seen.push(`+${Date.now() - started}ms ${eventType}:${filename}`)
+describe('linux settings watch probe', () => {
+  it('reports when a change lands during a failing secret read', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'settings-watch-probe-'))
+    const store = new SettingsStore({
+      userFilePath: path.join(root, 'settings.json'),
+      watch: true,
     })
-    const attachedAtMs = Date.now()
-    await delay(50)
-
-    await writeFile(file, 'two')
-    const afterFirst = await stamps(file)
-    await delay(500)
-    const seenAfterFirst = [...seen]
-
-    await writeFile(file, 'three three three')
-    const afterSecond = await stamps(file)
-    await delay(1500)
-
-    watcher.close()
-    await rm(root, { recursive: true, force: true })
-
-    expect.fail(
-      `RAW ${JSON.stringify({
-        platform: process.platform,
-        attachedAtMs,
-        afterFirst,
-        afterSecond,
-        seenAfterFirst,
-        seenAfterSecond: seen,
-      })}`,
-    )
-  })
-
-  it('reports FileChangeHub events for two consecutive writes', async () => {
-    const root = await probeRoot()
-    const file = path.join(root, 'edited.txt')
-    await writeFile(file, 'one')
-    await delay(2)
-
-    const hub = new FileChangeHub(createWorkspacePaths(root), { backend: 'node', enabled: true })
-    const abort = new AbortController()
-    const stream = hub.stream([''], abort.signal)[Symbol.asyncIterator]()
 
     const started = Date.now()
-    const received: string[] = []
-    const pump = (async () => {
-      while (true) {
-        const next = await stream.next()
-        if (next.done) return
+    const delivered: string[] = []
+    store.onChange((snapshot: SettingsSnapshot) => {
+      delivered.push(
+        `+${Date.now() - started}ms ${JSON.stringify(snapshot.values['keybindings.overrides'])}`,
+      )
+    })
 
-        const event = next.value as WatchServerMessage & { path?: string }
-        received.push(`+${Date.now() - started}ms ${event.type}:${event.path ?? ''}`)
-      }
-    })()
+    await mkdir(path.join(root, 'secrets.json'))
+    await writeFile(
+      path.join(root, 'settings.json'),
+      '{ "keybindings.overrides": { "a.one": "Mod+1" } }',
+      'utf8',
+    )
 
-    await delay(100)
-    await writeFile(file, 'two')
-    await delay(600)
-    const receivedAfterFirst = [...received]
-
-    await writeFile(file, 'three three three')
-    await delay(1500)
-
-    abort.abort()
-    await stream.return?.()
-    await hub.close()
-    await pump.catch(() => {})
-    await rm(root, { recursive: true, force: true })
+    await delay(400)
+    const atFourHundred = [...delivered]
+    await delay(3_600)
 
     expect.fail(
-      `HUB ${JSON.stringify({
+      `SETTINGS ${JSON.stringify({
         platform: process.platform,
-        info: hub.info(),
-        receivedAfterFirst,
-        receivedAfterSecond: received,
+        atFourHundred,
+        atFourSeconds: delivered,
       })}`,
     )
   })
