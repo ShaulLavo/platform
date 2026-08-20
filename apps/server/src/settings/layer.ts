@@ -225,8 +225,14 @@ export class SettingsFileLayer {
 
     try {
       this.directoryWatcher = watch(directory, (_event, filename) => {
-        // Some platforms report a null filename; re-reading is the safe answer.
-        if (filename !== null && filename !== basename) return
+        // Some platforms report a null filename, and some hand back a Buffer
+        // rather than a string; re-reading is the safe answer to the first, and
+        // normalizing is the only way the second ever equals `basename`.
+        // Comparing the raw value left this watcher deaf for the process's life
+        // wherever it is not already a string -- the workspace FileChangeHub
+        // normalizes for the same reason.
+        const name = filename?.toString() ?? null
+        if (name !== null && name !== basename) return
         this.scheduleReload()
       })
     } catch {
