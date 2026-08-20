@@ -23,12 +23,15 @@ export function TabTrailingSlot({
         orientation === 'vertical' && 'mt-1',
       )}
     >
+      {/* Non-native button: the tab trigger around this slot is already a
+          <button>, and nested <button> tags are invalid HTML. */}
       <Button
         aria-label={`Close ${title}`}
         className={cn('size-5', closeButtonVisibilityClassName({ active, dirty }))}
         draggable={false}
+        nativeButton={false}
+        render={<span />}
         size='icon-xs'
-        type='button'
         variant='ghost'
         onClick={(event) => {
           event.stopPropagation()

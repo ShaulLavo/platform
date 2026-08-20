@@ -222,7 +222,6 @@ export function TerminalPanel({
       aria-label='Terminal'
       {...sectionProps}
       className={cn('flex min-h-0 min-w-0 flex-col overflow-hidden', className)}
-      style={{ background: 'var(--terminal-background)' }}
       onBlurCapture={handleTerminalBlur}
       onContextMenuCapture={handleTerminalContextMenu}
       onFocusCapture={handleTerminalFocus}

@@ -34,7 +34,7 @@ export function CodePanel({
   const activeTab = panels.editorTabs.find((tab) => tab.id === panels.activeEditorTabId) ?? null
 
   return (
-    <section className='bg-card-solid/95 border-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden'>
+    <section className='bg-content-well border-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden'>
       <EditorTabBar tabs={tabModels} />
       <div className='min-h-0 min-w-0 flex-1 overflow-hidden'>
         {activeTab ? (

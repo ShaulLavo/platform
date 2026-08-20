@@ -18,7 +18,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "evlog": "^2.19.1"
+    "evlog": "^2.22.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

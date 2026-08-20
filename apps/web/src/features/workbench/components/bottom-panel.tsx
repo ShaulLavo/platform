@@ -29,7 +29,7 @@ export function BottomPanel({
   }
 
   return (
-    <section className='bg-card-solid/95 border-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-t'>
+    <section className='bg-content-well border-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-t'>
       <header className='border-border flex h-9 shrink-0 items-center gap-1 border-b px-2'>
         {bottomTabButton({
           active: panels.activeBottomTab === 'terminal',
