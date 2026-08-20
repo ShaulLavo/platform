@@ -21,7 +21,7 @@ env:
 jobs:
   quality:
     name: Format, lint, typecheck, test
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -51,7 +51,7 @@ jobs:
 
   browser:
     name: Browser tests
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
     steps:
       - name: Checkout
