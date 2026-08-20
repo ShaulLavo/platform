@@ -71,6 +71,10 @@ describe('native watcher event classification', () => {
     await writeFile(path.join(root, 'edited.txt'), 'two')
     await expectEventForPath(events, 'edited.txt', 'changed')
 
+    // inotify coalesces successive identical events for a path into one, so a
+    // second write landing in the same batch as the first is not a second
+    // event to observe. Separate the batches to make "later" actually later.
+    await delay(batchSeparationMs)
     await writeFile(path.join(root, 'edited.txt'), 'three three three')
 
     await expectEventForPath(events, 'edited.txt', 'changed')
