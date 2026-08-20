@@ -25,7 +25,7 @@ stays safe to read, share and export.
 | ---------------------------------- | ---------- | ------ | ---------------------------------------------------------------------------------------- |
 | `workbench.colorTheme`             | `"system"` | window | Light or dark, or follow the operating system.                                           |
 | `workbench.surface.opacity`        | `80`       | window | How opaque panels and sidebars are over the wallpaper. 100 turns the glass material off. |
-| `workbench.surface.contentOpacity` | `95`       | window | How opaque the terminal background is.                                                   |
+| `workbench.surface.contentOpacity` | `95`       | window | How opaque the editor and terminal background is.                                        |
 | `workbench.surface.blur`           | `12`       | window | Backdrop blur radius, in pixels, behind translucent surfaces.                            |
 | `workbench.surface.saturation`     | `160`      | window | Backdrop saturation, as a percentage, behind translucent surfaces.                       |
 | `workbench.wallpaper.enabled`      | `true`     | window | Show the desktop wallpaper behind the workbench.                                         |

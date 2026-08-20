@@ -56,6 +56,9 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /* Single ground for content wells (editor, terminal) — the pane paints it
+     once and the content surface stays transparent on top. */
+  --color-content-well: var(--content-well);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
   /* Opaque escape hatches — deliberately ignore --surface-opacity. */
@@ -119,6 +122,7 @@
   --foreground: oklch(0.145 0.006 70);
   --card-solid: oklch(1 0.006 70);
   --card: color-mix(in oklch, var(--card-solid) var(--surface-opacity), transparent);
+  --content-well: color-mix(in oklch, var(--card-solid) var(--content-opacity), transparent);
   --card-foreground: oklch(0.145 0.006 70);
   --popover-solid: oklch(1 0.006 70);
   --popover: color-mix(in oklch, var(--popover-solid) var(--surface-opacity), transparent);
@@ -246,18 +250,13 @@
   --editor-bracket-match-background: oklch(0.55 0.02 260 / 0.22);
   --editor-occurrence-highlight-background: oklch(0.55 0.02 260 / 0.15);
 
-  /* Terminal surface — light (matches --background) */
-  --terminal-background-solid: #ffffff;
-  --terminal-background: color-mix(
-    in oklch,
-    var(--terminal-background-solid) var(--surface-opacity),
-    transparent
-  );
+  /* Terminal surface — light. The pane already paints the content well, so the
+     terminal section paints no background of its own (a second translucent
+     ground would stack and darken). */
   /* Read by readTerminalTheme via getComputedStyle and fed to ghostty's color
      parser, which cannot parse color-mix() — keep this a plain color. Transparent
-     so the canvas paints only glyphs and the section's --terminal-background
-     provides the translucent material; an opaque value makes the terminal an
-     opaque box that hides the pane. */
+     so the canvas paints only glyphs and the pane's content well shows through;
+     an opaque value makes the terminal an opaque box that hides the pane. */
   --terminal-canvas-background: rgba(0, 0, 0, 0);
   --terminal-foreground: #3c3c3c;
   --terminal-cursor: #1a1a1a;
@@ -397,8 +396,7 @@
   --editor-bracket-match-background: oklch(0.78 0.02 260 / 0.26);
   --editor-occurrence-highlight-background: oklch(0.78 0.02 260 / 0.18);
 
-  /* Terminal surface — dark (matches --background) */
-  --terminal-background-solid: #0a0a0a;
+  /* Terminal surface — dark */
   --terminal-foreground: #d7dde5;
   --terminal-cursor: #f4f7fb;
   --terminal-cursor-accent: #0a0a0a;
@@ -422,9 +420,10 @@
   --terminal-ansi-bright-white: #ffffff;
 }
 
-/* Both shells give the editor a pane that already paints the content well, so
-   the editor surface and its minimap stay transparent instead of stacking a
-   second (and darker) ground on top of it. */
+/* Both shells give the editor and terminal a pane that already paints the
+   content well (--content-well), so the editor surface, its minimap and the
+   terminal section all stay transparent instead of stacking a second (and
+   darker) ground on top of it. */
 [data-workbench],
 [data-chat-mode] {
   --workbench-editor-minimap-background: transparent;
@@ -436,11 +435,6 @@
 
 [data-workbench] {
   --border: transparent;
-  --terminal-background: color-mix(
-    in oklch,
-    var(--terminal-background-solid) var(--content-opacity),
-    transparent
-  );
 }
 
 @media (forced-colors: active) {

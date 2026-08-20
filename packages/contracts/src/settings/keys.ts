@@ -52,11 +52,10 @@ export const SETTINGS_REGISTRY = {
     scope: 'window',
     widget: 'number',
     category: 'Appearance',
-    // Narrower than it sounds: `--content-opacity` has exactly one consumer,
-    // the terminal background. Claiming it covers the editor too would be a
-    // slider that visibly does nothing there.
-    description: 'How opaque the terminal background is.',
-    keywords: ['transparency', 'opacity', 'terminal', 'content'],
+    // Drives --content-opacity, the opacity of the single content well
+    // (--content-well) that panes paint under the editor and terminal.
+    description: 'How opaque the editor and terminal background is.',
+    keywords: ['transparency', 'opacity', 'editor', 'terminal', 'content'],
   }),
   'workbench.surface.blur': defineSetting({
     // Clamped rather than open: at `window` scope a cloned repository can set
