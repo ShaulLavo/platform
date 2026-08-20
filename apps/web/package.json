@@ -58,7 +58,7 @@
     "@workspace/observability": "workspace:*",
     "@workspace/tree": "workspace:*",
     "@workspace/ui": "workspace:*",
-    "evlog": "^2.19.1",
+    "evlog": "^2.22.3",
     "ghostty-web": "^0.4.0",
     "js.foresight": "^4.2.0",
     "lexical": "^0.45.0",
