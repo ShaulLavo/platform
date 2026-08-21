@@ -2,11 +2,8 @@ import { useCallback, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { UnsavedChangesDialog } from '@/features/editor/components/unsaved-changes-dialog'
-import {
-  fileBackedEditorPath,
-  isDirtyLiveEditorDocument,
-  saveEditorDocumentByPath,
-} from '@/features/editor/utils/save'
+import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
+import { isDirtyLiveEditorDocument, saveEditorDocumentByPath } from '@/features/editor/utils/save'
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
@@ -37,7 +34,7 @@ export function useDirtyTabCloseRequest() {
   const pendingPath = pendingClose?.path ?? null
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const canSavePendingPath = fileBackedEditorPath(pendingPath) !== null
+  const canSavePendingPath = fileBackedDocumentPath(pendingPath) !== null
 
   const clearPendingClose = useCallback(() => {
     setPendingCloses(emptyPendingCloses)

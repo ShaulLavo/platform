@@ -1,7 +1,5 @@
 // What has to be true before a command can run — shared by the palette, the menus, and the keymap tests.
-import { parseCompareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'
-import { parseRefDocumentId } from '@/features/git/utils/ref-document'
-import { parseSearchBufferDocumentId } from '@/features/search/utils/buffer-document'
+import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
 import { commandRequirement } from '@/keymap/table'
 import type { PlatformCommandId } from '@/keymap/types'
 
@@ -20,14 +18,5 @@ export function commandDisabledReason(command: PlatformCommandId, context: Comma
   if (!context.hasWorkspace) return 'No workspace open.'
   if (requires === 'workspace') return null
 
-  return fileBackedPath(context.activeFilePath) ? null : 'No file-backed surface is active.'
-}
-
-export function fileBackedPath(path: string | null) {
-  if (!path) return null
-  if (parseSearchBufferDocumentId(path)) return null
-  if (parseCompareSavedDocumentId(path)) return null
-  if (parseRefDocumentId(path)) return null
-
-  return path
+  return fileBackedDocumentPath(context.activeFilePath) ? null : 'No file-backed surface is active.'
 }

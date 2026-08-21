@@ -2,11 +2,8 @@ import { Debouncer } from '@tanstack/react-pacer/debouncer'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
-import {
-  fileBackedEditorPath,
-  isDirtyLiveEditorDocument,
-  saveEditorDocumentByPath,
-} from '@/features/editor/utils/save'
+import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
+import { isDirtyLiveEditorDocument, saveEditorDocumentByPath } from '@/features/editor/utils/save'
 import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 
@@ -36,7 +33,7 @@ export function useAutoSave() {
       for (const document of Object.values(state.liveDocumentsById)) {
         if (document.sync.kind !== 'file') continue
 
-        const path = fileBackedEditorPath(document.sync.path)
+        const path = fileBackedDocumentPath(document.sync.path)
         if (!path || !isDirtyLiveEditorDocument(state, path)) continue
 
         void saveEditorDocumentByPath(documentStore, queryClient, path)

@@ -3,11 +3,11 @@ import {
   useEditorDocumentStoreApi,
 } from '@/features/editor/state/document-state'
 import { fetchDocumentSymbols } from '@/features/command-palette/document-symbols'
+import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
 import { documentSymbolKeys } from '@/lib/query-keys'
 import { useQuery } from '@tanstack/react-query'
 
 import type { QuickAccessMode } from '@/features/command-palette/command-palette-types'
-import { fileBackedPath } from '@/keymap/command-enablement'
 
 type UseCommandPaletteSymbolsOptions = {
   readonly mode: QuickAccessMode
@@ -21,7 +21,7 @@ export function useCommandPaletteSymbols({
   selectedFilePath,
 }: UseCommandPaletteSymbolsOptions) {
   const documentStore = useEditorDocumentStoreApi()
-  const selectedFileBackedPath = fileBackedPath(selectedFilePath)
+  const selectedFileBackedPath = fileBackedDocumentPath(selectedFilePath)
   const symbolsEnabled = mode === 'symbols' && Boolean(rootPath && selectedFileBackedPath)
   const selectedDocumentContentRevision = useEditorDocumentState((state) =>
     symbolsEnabled && selectedFileBackedPath

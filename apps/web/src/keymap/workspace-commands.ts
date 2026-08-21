@@ -34,11 +34,8 @@ import {
 import { useSessionIsolationStore } from '@/features/chat-mode/state/session-isolation-store'
 import { setChatModeSessionRailOpen } from '@/features/chat-mode/utils/panels'
 import { compareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'
-import {
-  fileBackedEditorPath,
-  saveAllEditorDocuments,
-  saveSelectedEditorDocument,
-} from '@/features/editor/utils/save'
+import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
+import { saveAllEditorDocuments, saveSelectedEditorDocument } from '@/features/editor/utils/save'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import type { EditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import { nextEditorDiffViewMode } from '@/features/editor/utils/diff-view-mode'
@@ -78,7 +75,7 @@ function closeSelectedTab(activeTabId: string | null, requestCloseTab: RequestCl
 }
 
 function runFileLifecycle(activeFilePath: string | null, operation: () => Promise<boolean>) {
-  if (!fileBackedEditorPath(activeFilePath)) return false
+  if (!fileBackedDocumentPath(activeFilePath)) return false
 
   void operation().catch(reportCommandError)
   return true
@@ -89,7 +86,7 @@ async function revertSelectedEditorDocument(
   queryClient: QueryClient,
   activeFilePath: string | null,
 ) {
-  const path = fileBackedEditorPath(activeFilePath)
+  const path = fileBackedDocumentPath(activeFilePath)
   if (!path) return false
 
   const file = await fetchFile(path, new AbortController().signal)
@@ -273,7 +270,7 @@ export const workspaceCommands = [
     ],
     requires: 'file',
     run: ({ activeFilePath, showCommandPalette }) => {
-      if (!fileBackedEditorPath(activeFilePath)) return false
+      if (!fileBackedDocumentPath(activeFilePath)) return false
 
       showCommandPalette('@')
       return true
@@ -330,7 +327,7 @@ export const workspaceCommands = [
     id: 'workspace.compareWithSaved',
     requires: 'file',
     run: ({ activeFilePath, requestEditorFocus, setWorkbenchPanels, workbenchPanels }) => {
-      const path = fileBackedEditorPath(activeFilePath)
+      const path = fileBackedDocumentPath(activeFilePath)
       if (!path) return false
 
       setWorkbenchPanels(
@@ -348,7 +345,7 @@ export const workspaceCommands = [
     id: 'workspace.openFileAtHead',
     requires: 'file',
     run: ({ activeFilePath, openFileAtRef }) => {
-      const path = fileBackedEditorPath(activeFilePath)
+      const path = fileBackedDocumentPath(activeFilePath)
       if (!path) return false
 
       void openFileAtRef(path, 'HEAD').catch(reportCommandError)
