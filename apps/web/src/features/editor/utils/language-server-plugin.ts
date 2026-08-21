@@ -14,6 +14,7 @@ import {
   LANGUAGE_SERVER_CLIENT_INFO,
   semanticTokensCapabilityForServer,
 } from '@/features/editor/utils/semantic-token-capability'
+import { registerLanguageServerClient } from '@/features/editor/state/language-server-clients'
 import { serverUrl } from '@/lib/client'
 import { EdenLanguageServerWebSocket } from '@/lib/server-sockets'
 
@@ -84,7 +85,17 @@ export function createMatchedLanguageServerPlugin({
     },
     onConnectionCreated: (context) => {
       semanticTokens.attachConnection(context)
-      return { dispose: () => semanticTokens.detachConnection() }
+      // Published so a read-only surface — a diff — can ask THIS connection about the document
+      // this editor owns, rather than opening one of its own and becoming a second owner of it.
+      // See `state/language-server-clients.ts`.
+      const unregister = registerLanguageServerClient(match.root, filePath, context.client)
+
+      return {
+        dispose: () => {
+          unregister()
+          semanticTokens.detachConnection()
+        },
+      }
     },
     // The same context again once `initialize` has answered. The first demand
     // almost always arrives before that, and the layer never repeats a question,
