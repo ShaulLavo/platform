@@ -617,6 +617,9 @@ html[data-wallpaper-hidden] {
   --editor-diff-added: var(--diff-added) !important;
   --editor-diff-deleted: var(--diff-removed) !important;
   --editor-diff-modified: var(--info) !important;
+  /* The separator label and the hunk gutter lane. Left unbound it falls through to the
+     package literal `#9cdcfe`, which is around 1.5:1 on our light background. */
+  --editor-diff-hunk-foreground: var(--info) !important;
   --editor-diff-background: transparent !important;
   --editor-diff-foreground: var(--foreground) !important;
   --editor-diff-border: var(--border) !important;
@@ -630,6 +633,16 @@ html[data-wallpaper-hidden] {
     var(--muted-foreground) 5%,
     transparent
   ) !important;
+}
+
+/* A diff pane deliberately does not carry `.app-editor-host`: that class forces
+   `--editor-background` and `--editor-gutter-background` with `!important` at the
+   same specificity as the diff package's own overrides of the same two variables,
+   so which one wins would come down to stylesheet order. Only the typography is
+   wanted here, and it collides with nothing. */
+.editor-diff-view .editor-virtualized {
+  font-family: var(--font-mono);
+  font-size: var(--editor-font-size, 13px);
 }
 
 [data-workbench] .app-editor-host .editor-minimap,

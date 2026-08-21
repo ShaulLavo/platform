@@ -1,5 +1,5 @@
 import { ChatCircleIcon, XIcon } from '@phosphor-icons/react'
-import type { DiffFile, DiffRenderRow } from '@singapor/diff'
+import type { DiffFile, DiffRegionStore, DiffRenderRow } from '@singapor/diff'
 import { Button } from '@workspace/ui/components/button'
 import { useEffect, useRef, useState, type RefObject } from 'react'
 
@@ -10,9 +10,7 @@ import {
   diffLineSelectionText,
   diffPaneRows,
   diffRowsForAddress,
-  diffRowTypeClassName,
   selectedDiffRows,
-  toggleExpandedHunk,
   type DiffLineAddress,
   type DiffPaneSide,
 } from '../utils/diff-line-selection'
@@ -26,47 +24,37 @@ type RowTarget = {
  * Turns a line range dragged out in the diff into something the agent can act
  * on, and hands it to the composer.
  *
- * The diff view draws its rows itself and keeps its selection private, so what
- * is read back from it is the one thing it does publish: the row index on each
- * mounted row element. Everything after that — which side of the diff a row is
- * on, which lines it is — is derived from the same projection the view rendered,
- * and cross-checked against the row's own type class before it is trusted.
+ * What is read back from the panes is the one thing they publish: the row index
+ * on each mounted row element. Everything after that — which side of the diff a
+ * row is on, which lines it is — is derived from the same projection the panes
+ * rendered, over the same expansion state, which the diff plugin owns and this
+ * only reads.
  */
 export function DiffLineCommentAction({
   file,
   hostRef,
+  regions,
 }: {
   file: DiffFile
   hostRef: RefObject<HTMLElement | null>
+  regions: DiffRegionStore
 }) {
   const { attachText } = useAttachToComposer()
   const [address, setAddress] = useState<DiffLineAddress | null>(null)
-  // Neither belongs in state: the expansion mirror never changes what is drawn,
-  // and re-rendering mid-drag on the anchor would only throw the drag away.
-  const expandedHunks = useRef<ReadonlySet<number>>(new Set())
+  // Not state: re-rendering mid-drag on the anchor would only throw the drag away.
   const anchor = useRef<RowTarget | null>(null)
 
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
 
-    const rowsFor = (side: DiffPaneSide) => diffPaneRows(file, side, expandedHunks.current)
+    const rowsFor = (side: DiffPaneSide) => diffPaneRows(file, side, regions.getExpandedRegions())
 
     const onMouseDown = (event: MouseEvent) => {
       if (event.button !== 0) return
 
       setAddress(null)
-      anchor.current = verifiedRowTarget(event, rowsFor)
-    }
-
-    // Capture, so this reads the row under the pointer before the diff view's
-    // own click handler re-projects the pane and recycles the row elements.
-    const onClick = (event: MouseEvent) => {
-      const target = verifiedRowTarget(event, rowsFor)
-      if (!target) return
-
-      const row = rowsFor(target.side)[target.rowIndex]
-      expandedHunks.current = toggleExpandedHunk(expandedHunks.current, row)
+      anchor.current = rowTargetAt(event, rowsFor)
     }
 
     // On the document because a drag that runs past the last row releases
@@ -76,29 +64,30 @@ export function DiffLineCommentAction({
       anchor.current = null
       if (!start) return
 
-      const head = verifiedRowTarget(event, rowsFor)
+      const head = rowTargetAt(event, rowsFor)
       const headRow = head?.side === start.side ? head.rowIndex : start.rowIndex
       const dragged = selectedDiffRows(rowsFor(start.side), start.rowIndex, headRow)
       setAddress(canonicalAddress(diffLineAddress(dragged), rowsFor('stacked')))
     }
 
-    host.addEventListener('click', onClick, true)
     host.addEventListener('mousedown', onMouseDown, true)
     host.ownerDocument.addEventListener('mouseup', onMouseUp)
 
     return () => {
-      host.removeEventListener('click', onClick, true)
       host.removeEventListener('mousedown', onMouseDown, true)
       host.ownerDocument.removeEventListener('mouseup', onMouseUp)
     }
-  }, [file, hostRef])
+  }, [file, hostRef, regions])
 
   if (!address) return null
 
   const ask = () => {
     // Resolved against the stacked projection so the agent gets both sides of
     // the change even when the range was dragged out in one split pane.
-    const rows = diffRowsForAddress(diffPaneRows(file, 'stacked', expandedHunks.current), address)
+    const rows = diffRowsForAddress(
+      diffPaneRows(file, 'stacked', regions.getExpandedRegions()),
+      address,
+    )
     if (rows.length === 0) return
     if (!attachText('git-diff', diffLineSelectionText(file.path, address, rows))) return
 
@@ -142,7 +131,7 @@ function canonicalAddress(
   return diffLineAddress(diffRowsForAddress(stackedRows, address))
 }
 
-function verifiedRowTarget(
+function rowTargetAt(
   event: MouseEvent,
   rowsFor: (side: DiffPaneSide) => readonly DiffRenderRow[],
 ): RowTarget | null {
@@ -154,12 +143,7 @@ function verifiedRowTarget(
   if (!element || !side) return null
 
   const rowIndex = Number(element.dataset.editorVirtualRow)
-  const row = rowsFor(side)[rowIndex]
-  // A projection that no longer describes the pane would address the wrong
-  // line, which is worse than offering nothing.
-  if (!row || !element.classList.contains(diffRowTypeClassName(row))) return null
-
-  return { rowIndex, side }
+  return rowsFor(side)[rowIndex] ? { rowIndex, side } : null
 }
 
 function paneSide(pane: Element | null | undefined): DiffPaneSide | null {

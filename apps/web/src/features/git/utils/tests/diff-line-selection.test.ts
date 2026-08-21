@@ -1,12 +1,12 @@
+import { createDiffPlugin } from '@singapor/diff'
+
 import {
   diffLineAddress,
   diffLineAddressLabel,
   diffLineSelectionText,
   diffPaneRows,
   diffRowsForAddress,
-  diffRowTypeClassName,
   selectedDiffRows,
-  toggleExpandedHunk,
 } from '@/features/git/utils/diff-line-selection'
 import { editorDiffFiles } from '@/features/git/utils/editor-diff-files'
 import { gitFileDiff } from '../../../../../test/factories/git-diff'
@@ -109,26 +109,32 @@ test('a selected line that contains a fence gets an outer fence that outruns it'
   expect(text.endsWith('\n````')).toBe(true)
 })
 
-test('mirroring a hunk expansion keeps a row index addressing the same line', () => {
+test('the projection follows the expansion the plugin owns, and only that', () => {
   const file = textDiffFile(numberedText(), numberedText({ 2: 'two changed', 35: 'thirty five' }))
-  const collapsed = diffPaneRows(file, 'new', new Set())
+  const plugin = createDiffPlugin({ mode: 'document', side: 'new', syntaxHighlight: false })
+  plugin.setFile(file)
+  const collapsed = plugin.getRows()
   const separator = collapsed.findIndex((row) => row.type === 'hunk' && row.expandable)
   expect(separator).toBeGreaterThan(0)
 
-  const expanded = toggleExpandedHunk(new Set(), collapsed[separator])
-  const rows = diffPaneRows(file, 'new', expanded)
+  plugin.toggleRegion(collapsed[separator]!.expandKey!)
+  const rows = plugin.getRows()
 
-  expect([...expanded]).toEqual([collapsed[separator]?.hunkIndex])
+  // The projection built here is the one the pane is showing, because it is
+  // built from the plugin's own expansion set rather than a copy of it.
+  expect(diffPaneRows(file, 'new', plugin.getExpandedRegions())).toEqual(rows)
   expect(rows.length).toBeGreaterThan(collapsed.length)
   // The row just past the separator is a different line once the skipped range
   // is spliced in. Reading it off the collapsed projection is the silent
-  // wrong-line failure the mirror exists to prevent.
+  // wrong-line failure that sharing the expansion state prevents.
   const probe = separator + 1
   expect(diffLineAddress(selectedDiffRows(rows, probe, probe))).not.toEqual(
     diffLineAddress(selectedDiffRows(collapsed, probe, probe)),
   )
-  // Toggling the same separator back off returns the projection to where it was.
-  expect([...toggleExpandedHunk(expanded, rows[separator])]).toEqual([])
+  // Toggling the same region back off returns the projection to where it was.
+  plugin.toggleRegion(collapsed[separator]!.expandKey!)
+  expect(plugin.getExpandedRegions().size).toBe(0)
+  expect(diffPaneRows(file, 'new', plugin.getExpandedRegions())).toEqual(collapsed)
 })
 
 test('rows that stand for no line on either side never enter a selection', () => {
@@ -140,15 +146,6 @@ test('rows that stand for no line on either side never enter a selection', () =>
   expect(
     selectedDiffRows(oldRows, 0, oldRows.length - 1).every((row) => row.type !== 'placeholder'),
   ).toBe(true)
-})
-
-test('a row publishes the type class the pane decorates it with', () => {
-  const file = textDiffFile(OLD_TEXT, NEW_TEXT)
-  const rows = diffPaneRows(file, 'stacked', new Set())
-
-  expect(diffRowTypeClassName(rows.find((row) => row.type === 'deletion')!)).toBe(
-    'editor-diff-row-deletion',
-  )
 })
 
 function textDiffFile(oldText: string, newText: string) {

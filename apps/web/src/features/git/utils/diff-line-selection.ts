@@ -24,19 +24,28 @@ export type DiffLineAddress = {
 }
 
 /**
- * The rows a pane renders, projected the same way the diff view projects them,
+ * The rows a pane renders, projected the same way the diff plugin projects them,
  * so a row index read off `data-editor-virtual-row` addresses the same row here.
  * The side comes from the pane element rather than from the view mode, so there
  * is no second copy of "which pane am I in" to fall out of step.
+ *
+ * `expandedRegions` comes from the plugin's own region store rather than a
+ * mirror of it. Region keys are `"{oldStart}:{newStart}"`, which is why the
+ * mirror this replaced could never work: it keyed off `hunkIndex`, and a
+ * trailing-tail region carries none.
+ *
+ * The stacked projection is still built here even when the panes on screen are
+ * split — an address is resolved against both sides of the change, and in split
+ * mode no plugin instance is holding a stacked projection to ask.
  */
 export function diffPaneRows(
   file: DiffFile,
   side: DiffPaneSide,
-  expandedHunks: ReadonlySet<number>,
+  expandedRegions: ReadonlySet<string>,
 ): readonly DiffRenderRow[] {
-  if (side === 'stacked') return createStackedProjection(file, { expandedHunks }).rows
+  if (side === 'stacked') return createStackedProjection(file, { expandedRegions }).rows
 
-  const projection = createSplitProjection(file, { expandedHunks })
+  const projection = createSplitProjection(file, { expandedRegions })
   return side === 'old' ? projection.leftRows : projection.rightRows
 }
 
@@ -122,35 +131,6 @@ export function diffLineSelectionText(
     ...body,
     fence,
   ].join('\n')
-}
-
-/**
- * Mirrors the expansion the diff view keeps to itself: clicking an expandable
- * `@@` row splices context rows in, and every row index after it shifts. Holding
- * the same set is what keeps a row index read off the DOM meaning the same row
- * here.
- */
-export function toggleExpandedHunk(
-  expandedHunks: ReadonlySet<number>,
-  row: DiffRenderRow | undefined,
-): ReadonlySet<number> {
-  if (row?.type !== 'hunk') return expandedHunks
-  if (!row.expandable) return expandedHunks
-  if (row.hunkIndex === undefined) return expandedHunks
-
-  const next = new Set(expandedHunks)
-  if (!next.delete(row.hunkIndex)) next.add(row.hunkIndex)
-
-  return next
-}
-
-/**
- * The class the diff view decorates a row of this type with. Comparing it to the
- * element under the pointer is how a projection that has drifted from the pane
- * is caught, rather than silently addressing the wrong line.
- */
-export function diffRowTypeClassName(row: DiffRenderRow): string {
-  return `editor-diff-row-${row.type}`
 }
 
 function isCodeRow(row: DiffRenderRow): boolean {
