@@ -16,6 +16,10 @@ import { createWorkspacePaths, defaultIgnoredNames } from '../path'
 import { readLines } from '../search-line-decoder'
 import { WorkspaceIndex, buildWorkspaceIndex } from '../workspace-index'
 
+// Tests must not depend on whatever the developer has in their global git
+// excludes file, which production deliberately does read.
+const TEST_INDEX_OPTIONS = { ignore: { globalExcludes: false } } as const
+
 const roots: string[] = []
 
 afterEach(async () => {
@@ -760,7 +764,7 @@ describe('workspace disk search provider', () => {
     await mkdir(path.join(root, 'src'), { recursive: true })
     await writeFile(path.join(root, 'src', 'needle.txt'), '')
     const paths = createWorkspacePaths(root)
-    const index = await buildWorkspaceIndex(paths)
+    const index = await buildWorkspaceIndex(paths, TEST_INDEX_OPTIONS)
 
     const events = await collectEvents(
       findInWorkspaceStream(
@@ -805,7 +809,7 @@ describe('workspace disk search provider', () => {
     await mkdir(path.join(root, 'src'), { recursive: true })
     await writeFile(path.join(root, 'src', 'needle.txt'), '')
     const paths = createWorkspacePaths(root)
-    const index = new WorkspaceIndex(paths)
+    const index = new WorkspaceIndex(paths, TEST_INDEX_OPTIONS)
 
     const events = await collectEvents(
       findInWorkspaceStream(
@@ -832,7 +836,7 @@ describe('workspace disk search provider', () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, 'src'), { recursive: true })
     const paths = createWorkspacePaths(root)
-    const index = await buildWorkspaceIndex(paths)
+    const index = await buildWorkspaceIndex(paths, TEST_INDEX_OPTIONS)
 
     await writeFile(path.join(root, 'src', 'new-file.txt'), '')
     index.markCreatedPathPending('src/new-file.txt')
@@ -870,7 +874,7 @@ describe('workspace disk search provider', () => {
     await mkdir(path.join(root, 'src'), { recursive: true })
     await writeFile(path.join(root, 'src', 'needle.txt'), '')
     const paths = createWorkspacePaths(root)
-    const index = await buildWorkspaceIndex(paths)
+    const index = await buildWorkspaceIndex(paths, TEST_INDEX_OPTIONS)
 
     const events = await collectEvents(
       findInWorkspaceStream(
@@ -899,7 +903,7 @@ describe('workspace disk search provider', () => {
     await mkdir(path.join(root, 'src'), { recursive: true })
     await writeFile(path.join(root, 'src', 'app.ts'), '')
     const paths = createWorkspacePaths(root)
-    const index = await buildWorkspaceIndex(paths)
+    const index = await buildWorkspaceIndex(paths, TEST_INDEX_OPTIONS)
 
     const events = await collectEvents(
       findInWorkspaceStream(
@@ -925,7 +929,7 @@ describe('workspace disk search provider', () => {
     const root = await fixtureRoot()
     await writeFile(path.join(root, 'needle.txt'), '')
     const paths = createWorkspacePaths(root)
-    const index = await buildWorkspaceIndex(paths)
+    const index = await buildWorkspaceIndex(paths, TEST_INDEX_OPTIONS)
     const events: SearchStreamEvent[] = []
     let error: unknown
 
@@ -961,7 +965,7 @@ describe('workspace disk search provider', () => {
     const root = await fixtureRoot()
     await writeFile(path.join(root, 'needle.txt'), '')
     const paths = createWorkspacePaths(root)
-    const index = await buildWorkspaceIndex(paths)
+    const index = await buildWorkspaceIndex(paths, TEST_INDEX_OPTIONS)
 
     const events = await collectEvents(
       findInWorkspaceStream(
@@ -1013,7 +1017,7 @@ describe('workspace disk search provider', () => {
     const baselineDone = doneEvent(baselineEvents)
     if (!baselineDone?.measurement?.providerSources.includes('fd')) return
 
-    const index = await buildWorkspaceIndex(paths)
+    const index = await buildWorkspaceIndex(paths, TEST_INDEX_OPTIONS)
     const indexedEvents = await collectEvents(
       findInWorkspaceStream(paths, options, undefined, { workspaceIndex: index }),
     )
@@ -1093,7 +1097,7 @@ describe('workspace disk search provider', () => {
     await writeFile(path.join(root, 'pixel.png'), 'needle')
     await symlink('pixel.png', path.join(root, 'linked.png'))
     const paths = createWorkspacePaths(root)
-    const index = await buildWorkspaceIndex(paths)
+    const index = await buildWorkspaceIndex(paths, TEST_INDEX_OPTIONS)
 
     const events = await collectEvents(
       findInWorkspaceStream(
@@ -1131,7 +1135,7 @@ describe('workspace disk search provider', () => {
     const root = await fixtureRoot()
     await writeFile(path.join(root, 'ansi.log'), '\u001b[31mneedle\u001b[0m\n')
     const paths = createWorkspacePaths(root)
-    const index = await buildWorkspaceIndex(paths)
+    const index = await buildWorkspaceIndex(paths, TEST_INDEX_OPTIONS)
 
     const events = await collectEvents(
       findInWorkspaceStream(

@@ -9,9 +9,9 @@ import {
   DropdownMenuTrigger,
 } from '@workspace/ui/components/dropdown-menu'
 
-import { useOpenSettingsJson } from '../hooks/use-open-settings-json'
 import { useSettingsActions } from '../hooks/use-settings-actions'
 import { useSettingsScope } from '../state/scope-store'
+import { selectSettingsView } from '../state/view-store'
 
 /**
  * The per-row menu VS Code puts behind the gear.
@@ -31,7 +31,6 @@ export function RowActions({
 }) {
   const scope = useSettingsScope()
   const { resetSetting } = useSettingsActions()
-  const openSettingsJson = useOpenSettingsJson()
 
   return (
     <DropdownMenu>
@@ -58,13 +57,9 @@ export function RowActions({
           Copy setting as JSON
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        {/* Hidden rather than disabled where there is no workbench: the folderless
-            shell has no tab to open, and a greyed row there explains nothing. */}
-        {openSettingsJson ? (
-          <DropdownMenuItem onClick={() => openSettingsJson(scope)}>
-            Edit in settings.json
-          </DropdownMenuItem>
-        ) : null}
+        <DropdownMenuItem onClick={() => selectSettingsView('json')}>
+          Edit in settings.json
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )

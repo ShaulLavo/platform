@@ -9,10 +9,7 @@ import {
   parseCompareSavedDocumentId,
 } from '@/features/editor/utils/compare-saved-document'
 import { parseRefDocumentId, refDocumentLabel } from '@/features/git/utils/ref-document'
-import {
-  parseSettingsJsonDocumentId,
-  settingsJsonDocumentLabel,
-} from '@/features/settings/utils/json-document'
+import { isSettingsDocumentId } from '@/features/settings/utils/document'
 import { basename } from '@/lib/path-formatters'
 
 /**
@@ -30,7 +27,9 @@ export function documentLabel(path: string) {
   if (parseConflictDiffDocumentId(path)) return 'Conflict'
   if (parseCompareSavedDocumentId(path)) return compareSavedDocumentLabel(path)
   if (parseRefDocumentId(path)) return refDocumentLabel(path)
-  if (parseSettingsJsonDocumentId(path)) return settingsJsonDocumentLabel(path)
+  // The settings tab shows the settings document, in a form or as text. Without
+  // this it renders its own id, because `settings:` has no path segment to take.
+  if (isSettingsDocumentId(path)) return 'settings.json'
 
   return basename(path)
 }

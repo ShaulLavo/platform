@@ -68,6 +68,8 @@ type EditorDocumentStoreActions = {
   }) => boolean
   /** Re-seeds a synthetic buffer from text the server rewrote; see the service. */
   replaceUnsyncedEditorDocumentText: (documentId: string, text: string) => boolean
+  /** Brings a clean settings buffer back in step with the file; see the service. */
+  reconcileSettingsDocument: (documentId: string, text: string, revision: string) => boolean
   recordLiveEditorDocumentTextChange: (documentId: string) => void
   removeEditorView: (tabId: string) => boolean
   renameLiveEditorDocumentPath: (from: string, to: string) => { wasDirty: boolean }
@@ -187,6 +189,11 @@ export function createEditorDocumentStore(options: CreateEditorDocumentStoreOpti
         const replaced = service.replaceUnsyncedDocumentText(documentId, text)
         if (replaced) set({ ...service.state() })
         return replaced
+      },
+      reconcileSettingsDocument: (documentId, text, revision) => {
+        const reconciled = service.reconcileSettingsDocument(documentId, text, revision)
+        if (reconciled) set({ ...service.state() })
+        return reconciled
       },
       recordLiveEditorDocumentTextChange: (documentId) => {
         service.recordTextChange(documentId)

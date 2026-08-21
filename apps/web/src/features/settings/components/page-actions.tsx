@@ -8,9 +8,9 @@ import {
   DropdownMenuTrigger,
 } from '@workspace/ui/components/dropdown-menu'
 
-import { useOpenSettingsJson } from '../hooks/use-open-settings-json'
 import { useSettingsActions } from '../hooks/use-settings-actions'
 import type { SettingsScope } from '../state/scope-store'
+import { selectSettingsView } from '../state/view-store'
 
 /**
  * The page-level actions.
@@ -23,7 +23,6 @@ import type { SettingsScope } from '../state/scope-store'
  */
 export function PageActions({ scope }: { scope: SettingsScope }) {
   const { resetAll } = useSettingsActions()
-  const openSettingsJson = useOpenSettingsJson()
 
   return (
     <DropdownMenu>
@@ -35,13 +34,9 @@ export function PageActions({ scope }: { scope: SettingsScope }) {
         }
       />
       <DropdownMenuContent align='end' className='w-60'>
-        {/* Hidden rather than disabled where there is no workbench: the folderless
-            shell has no tab to open, and a greyed row there explains nothing. */}
-        {openSettingsJson ? (
-          <DropdownMenuItem onClick={() => openSettingsJson(scope)}>
-            Open settings.json
-          </DropdownMenuItem>
-        ) : null}
+        <DropdownMenuItem onClick={() => selectSettingsView('json')}>
+          Open settings.json
+        </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => resetAll(scope)}>
           Reset all {scope} settings

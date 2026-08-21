@@ -13,7 +13,7 @@ export type SettingsScope = 'user' | 'workspace'
 let scope: SettingsScope = 'user'
 const listeners = new Set<() => void>()
 
-function settingsScope(): SettingsScope {
+export function settingsScope(): SettingsScope {
   return scope
 }
 

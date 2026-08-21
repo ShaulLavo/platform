@@ -38,6 +38,7 @@ import {
   fileBackedDocumentPath,
   savableDocumentPath,
 } from '@/features/editor/utils/file-backed-document'
+import { activeSettingsBufferId } from '@/features/settings/state/active-buffer'
 import { saveAllEditorDocuments, saveSelectedEditorDocument } from '@/features/editor/utils/save'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import type { EditorDocumentStoreApi } from '@/features/editor/state/document-state'
@@ -314,10 +315,16 @@ export const workspaceCommands = [
     // Not `file`: the raw settings.json buffer has no path on disk and is saved
     // through the settings route, which is a save the user expects Mod+S to do.
     requires: 'saveable',
-    run: ({ activeFilePath, documentStore, queryClient }) =>
-      runSaveLifecycle(activeFilePath, () =>
-        saveSelectedEditorDocument(documentStore, queryClient, activeFilePath),
-      ),
+    run: ({ activeFilePath, documentStore, queryClient }) => {
+      // The settings tab is one document with two views, and only the JSON view
+      // has a buffer. Resolving here rather than in `save.ts` keeps the fact
+      // that the settings page has modes inside the feature that owns them.
+      const path = activeSettingsBufferId(activeFilePath) ?? activeFilePath
+
+      return runSaveLifecycle(path, () =>
+        saveSelectedEditorDocument(documentStore, queryClient, path),
+      )
+    },
     title: 'Save',
     vscodeCommandIds: ['workbench.action.files.save'],
   }),

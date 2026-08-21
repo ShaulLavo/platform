@@ -4,7 +4,11 @@ import path from 'node:path'
 
 import type { EntryTypeFilter, WatchServerMessage } from './contracts'
 import { defaultIgnoredNames, isIgnoredPath, toPosix, type WorkspacePaths } from './path'
-import { workspaceGitIgnoreMatcher, type GitIgnoreMatcher } from './search-gitignore'
+import {
+  workspaceGitIgnoreMatcher,
+  type GitIgnoreMatcher,
+  type GitIgnoreMatcherOptions,
+} from './search-gitignore'
 import { readEntryStats, type FsEntryStats } from './stat'
 import { fileVersion } from './version'
 
@@ -58,6 +62,10 @@ export type WorkspaceIndexBuildOptions = {
   reason?: string
 }
 
+export type WorkspaceIndexOptions = {
+  ignore?: GitIgnoreMatcherOptions
+}
+
 export type WorkspaceIndexWatchOptions = {
   coalesceMs?: number
   rebuildEventLimit?: number
@@ -103,12 +111,14 @@ export class WorkspaceIndex {
   private entriesByPath = new Map<string, WorkspaceIndexEntry>()
   private fileEntryCount = 0
   private pendingCreatedPaths = new Set<string>()
+  private readonly options: WorkspaceIndexOptions
   private readonly paths: WorkspacePaths
   private rebuildSequence = 0
   private staleEntryCount = 0
   private state: WorkspaceIndexMutableStatus
 
-  constructor(paths: WorkspacePaths) {
+  constructor(paths: WorkspacePaths, options: WorkspaceIndexOptions = {}) {
+    this.options = options
     this.paths = paths
     this.state = emptyStatus(paths.workspaceRoot)
   }
@@ -142,7 +152,7 @@ export class WorkspaceIndex {
     }
 
     try {
-      const result = await scanWorkspaceIndex(this.paths)
+      const result = await scanWorkspaceIndex(this.paths, this.options)
       if (!this.isCurrentRebuild(rebuildId)) return this.status()
 
       this.replaceEntries(result.entries)
@@ -197,7 +207,7 @@ export class WorkspaceIndex {
     if (!normalized) return this.rebuild({ reason: 'incremental-root-refresh' })
 
     const scanPath = this.refreshScanPath(normalized)
-    const result = await scanWorkspaceIndexPath(this.paths, scanPath)
+    const result = await scanWorkspaceIndexPath(this.paths, scanPath, this.options)
 
     return this.commitScannedEntries(scanPath, result, updateId)
   }
@@ -306,7 +316,7 @@ export class WorkspaceIndex {
     }
 
     const scanPath = this.refreshScanPath(normalized)
-    const result = await scanWorkspaceIndexPath(this.paths, scanPath)
+    const result = await scanWorkspaceIndexPath(this.paths, scanPath, this.options)
 
     this.commitScannedEntries(scanPath, result, updateId, [event.oldPath])
   }
@@ -474,9 +484,9 @@ export class WorkspaceIndex {
 
 export async function buildWorkspaceIndex(
   paths: WorkspacePaths,
-  options: WorkspaceIndexBuildOptions = {},
+  options: WorkspaceIndexBuildOptions & WorkspaceIndexOptions = {},
 ) {
-  const index = new WorkspaceIndex(paths)
+  const index = new WorkspaceIndex(paths, { ignore: options.ignore })
   await index.rebuild(options)
   return index
 }
@@ -651,26 +661,33 @@ class WorkspaceIndexEventWatcher implements WorkspaceIndexWatchSubscription {
   }
 }
 
-async function scanWorkspaceIndex(paths: WorkspacePaths) {
-  const context = await createScanContext(paths)
+async function scanWorkspaceIndex(paths: WorkspacePaths, options: WorkspaceIndexOptions) {
+  const context = await createScanContext(paths, options)
 
   await scanEntry(context, paths.workspaceRoot, '')
   return scanResult(context)
 }
 
-async function scanWorkspaceIndexPath(paths: WorkspacePaths, relativePath: string) {
+async function scanWorkspaceIndexPath(
+  paths: WorkspacePaths,
+  relativePath: string,
+  options: WorkspaceIndexOptions,
+) {
   const target = paths.resolve(relativePath)
-  const context = await createScanContext(paths)
+  const context = await createScanContext(paths, options)
   if (shouldSkipTargetedScan(context, target.relativePath)) return scanResult(context)
 
   await scanEntry(context, target.absolutePath, target.relativePath)
   return scanResult(context)
 }
 
-async function createScanContext(paths: WorkspacePaths): Promise<ScanContext> {
+async function createScanContext(
+  paths: WorkspacePaths,
+  options: WorkspaceIndexOptions,
+): Promise<ScanContext> {
   return {
     entries: new Map(),
-    gitIgnore: await workspaceGitIgnoreMatcher(paths),
+    gitIgnore: await workspaceGitIgnoreMatcher(paths, options.ignore),
     paths,
     scanWarningCount: 0,
     skippedEntryCount: 0,
@@ -745,8 +762,8 @@ async function indexEntry(
 ): Promise<WorkspaceIndexEntry> {
   const basename = path.posix.basename(relativePath)
   const defaultIgnored = isIgnoredPath(relativePath, defaultIgnoredNames)
-  const gitIgnored = context.gitIgnore.ignores(relativePath)
   const effectiveType = entryEffectiveType(stats)
+  const gitIgnored = context.gitIgnore.ignores(relativePath, effectiveType === 'directory')
   const extension = entryExtension(relativePath, effectiveType)
   const contentKind = await entryContentKind(context.paths, relativePath, stats, extension)
   const fileKind = entryFileKind(effectiveType, basename, extension, contentKind)
@@ -1015,7 +1032,7 @@ function hasGitIgnoredAncestor(gitIgnore: GitIgnoreMatcher, relativePath: string
 
   for (let index = 1; index < parts.length; index += 1) {
     const ancestor = parts.slice(0, index).join('/')
-    if (gitIgnore.ignores(ancestor)) return true
+    if (gitIgnore.ignores(ancestor, true)) return true
   }
 
   return false

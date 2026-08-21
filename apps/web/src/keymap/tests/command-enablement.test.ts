@@ -62,10 +62,12 @@ test.each([
   ['search buffer', searchBufferDocumentId('/repo'), NO_FILE, NO_SAVE, NO_EDITOR, null],
   ['compare-saved', compareSavedDocumentId('/repo/src/app.ts'), NO_FILE, NO_SAVE, NO_EDITOR, null],
   ['git diff', gitDiffDocumentId(), NO_FILE, NO_SAVE, NO_EDITOR, null],
-  ['settings', settingsDocumentId(), NO_FILE, NO_SAVE, NO_EDITOR, null],
+  // The settings tab holds a real editor whenever its JSON view is showing, and
+  // the id cannot say which view that is — so it answers yes to both.
+  ['settings', settingsDocumentId(), NO_FILE, null, null, null],
   ['git ref', refDocumentId({ path: 'src/app.ts', ref: 'HEAD' }), NO_FILE, NO_SAVE, null, null],
   ['conflict diff', conflictDiffDocumentId('conflict-1'), NO_FILE, NO_SAVE, null, null],
-  ['settings json', settingsJsonDocumentId('user'), NO_FILE, null, null, null],
+  ['settings json buffer', settingsJsonDocumentId('user'), NO_FILE, null, null, null],
 ])(
   'a %s tab: what the palette shows for file, save, editor and tab commands',
   (_label, activeFilePath, file, save, editor, tab) => {

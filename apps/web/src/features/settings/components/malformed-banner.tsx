@@ -1,7 +1,8 @@
 import type { SettingsLayerSnapshot } from '@workspace/contracts'
 import { Button } from '@workspace/ui/components/button'
 
-import { useOpenSettingsJson } from '../hooks/use-open-settings-json'
+import { selectSettingsScope } from '../state/scope-store'
+import { selectSettingsView } from '../state/view-store'
 
 /**
  * Says that a settings file cannot be parsed, and that it does not matter yet.
@@ -17,7 +18,6 @@ import { useOpenSettingsJson } from '../hooks/use-open-settings-json'
  * did not apply, this is a whole file that did not.
  */
 export function MalformedBanner({ layers }: { layers: readonly SettingsLayerSnapshot[] }) {
-  const openSettingsJson = useOpenSettingsJson()
   // `policy` carries no file, so it is filtered out here rather than cast away
   // below — it is an environment variable and there is nothing to open.
   const broken = layers.flatMap((layer) => {
@@ -42,11 +42,17 @@ export function MalformedBanner({ layers }: { layers: readonly SettingsLayerSnap
               file parses.
             </p>
           </div>
-          {openSettingsJson ? (
-            <Button onClick={() => openSettingsJson(target)} size='sm' variant='secondary'>
-              Fix in settings.json
-            </Button>
-          ) : null}
+          {/* Both, in order: the broken file may not be the scope on screen. */}
+          <Button
+            onClick={() => {
+              selectSettingsScope(target)
+              selectSettingsView('json')
+            }}
+            size='sm'
+            variant='secondary'
+          >
+            Fix in settings.json
+          </Button>
         </div>
       ))}
     </div>

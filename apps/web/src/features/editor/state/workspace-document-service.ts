@@ -367,6 +367,42 @@ export class WorkspaceDocumentService {
     return true
   }
 
+  /**
+   * Brings a settings buffer back in step with the file.
+   *
+   * The buffer guards its save on the revision it was seeded from, and only a
+   * successful save advances that. Without this, any other write to the same
+   * layer — a toggle on the settings form, another window, a hand-edit — leaves
+   * the buffer holding a revision the server has moved past, and every save from
+   * then on refuses itself as stale with no way back. Documents also outlive
+   * their tab (`retain` only evicts file-backed ones), so a reopened settings tab
+   * would otherwise show whatever the bytes were when it was last opened.
+   *
+   * A dirty buffer is left alone on purpose: the user is mid-edit, and replacing
+   * their text is worse than the conflict they get on save, which at least says
+   * what happened.
+   */
+  reconcileSettingsDocument(documentId: string, text: string, revision: string): boolean {
+    const document = this.liveDocumentsById.get(documentId)
+    if (!document) return false
+    if (document.sync.kind !== 'settings') return false
+    if (document.sync.revision === revision) return false
+    if (document.buffer.isDirty()) return false
+
+    const buffer = createEditorTextBuffer(text)
+    buffer.markClean()
+    this.liveDocumentsById.set(documentId, {
+      ...document,
+      buffer,
+      contentRevision: contentRevisionForText(text),
+      localRevision: buffer.getRevision(),
+      sync: { ...document.sync, revision },
+    })
+    this.deleteDirtyPath(document.path)
+    this.rebindViewsForDocument(documentId)
+    return true
+  }
+
   private applySaved(
     document: LiveEditorDocumentRecord,
     sync: LiveDocumentSync,

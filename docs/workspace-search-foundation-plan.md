@@ -17,7 +17,9 @@ In scope:
 
 Out of scope:
 
-- Replacing ripgrep with `ngi`, `trigrep`, Zoekt, or another indexed content engine.
+- Replacing ripgrep with `ngi`, `trigrep`, Zoekt, `fff`, or another indexed content
+  engine. See `docs/workspace-content-engine-evaluation-plan.md`; `fff` is the one
+  candidate that would also challenge this plan's own path index, noted below.
 - Whole-filesystem file picker search.
 - Current-file editor find.
 - AST search, semantic search, vector search, or agent retrieval.
@@ -236,6 +238,32 @@ Phase 6 integration notes:
 - `/health` exposes `workspaceIndex` status for debugging: readiness, counts, scan root, scan timings, stale entry count, warning/skipped counts, rebuild reason, and any failure message.
 - Rebuilds are controlled by the server-owned index lifecycle. The index rebuilds at startup for configured workspace roots, rebuilds when the root `.gitignore` changes, rebuilds after too many coalesced watcher events, and rebuilds/marks failed after watcher or incremental-update failures. Search remains usable through `fd` or fallback while the index is cold, building, stale, or failed.
 
+## Revisit: `fff`
+
+Added 2026-08-21. This plan argues for an app-owned path index because nothing
+off-the-shelf covered the shape we need — gitignore semantics matching `fd`/`rg`,
+watcher-driven invalidation, readiness states with safe fallback, and candidates
+rankable by the `fuzzy-rank.ts` the client already shares.
+
+`dmtrKovalenko/fff` is the first candidate that plausibly does cover it: a resident
+engine with frecency-ranked fuzzy path matching, a background watcher with
+incremental re-indexing, git status caching, and a Node/Bun SDK. Its framing is the
+same as this plan's — that forking a process per query is the cost worth removing —
+which makes it the sharpest available challenge to building this ourselves.
+
+It is evaluated in the content-engine plan rather than here, because it spans both
+layers and should be judged once, against one harness. Two things to settle before
+that evaluation means anything:
+
+- Does `@ff-labs/fff-node` load under Bun? It binds through `ffi-rs`, an N-API FFI
+  layer, and our server is Bun. If not, the integration surface is the C FFI or the
+  MCP server instead.
+- Would we adopt its ranking, or keep `fuzzy-rank.ts`? Ours is shared through the
+  contracts package and also drives the command palette.
+
+Until then this plan stands: the index is built, and the open work is giving it a
+scope that follows the open folder rather than a boot-time env var.
+
 ## Acceptance Criteria
 
 - Workspace name/path search does not spawn `fd` when the index is ready.
@@ -263,3 +291,5 @@ Phase 6 integration notes:
 - Zed worktree snapshot: `/Users/shaul/Desktop/D/Editors/zed/crates/worktree/src/worktree.rs`
 - Zed fuzzy path matching: `/Users/shaul/Desktop/D/Editors/zed/crates/fuzzy/src/paths.rs`
 - VS Code ripgrep text search: `/Users/shaul/Desktop/D/Editors/vscode/src/vs/workbench/services/search/node/ripgrepTextSearchEngine.ts`
+- `fff`: https://github.com/dmtrKovalenko/fff
+- Content engine evaluation: `docs/workspace-content-engine-evaluation-plan.md`

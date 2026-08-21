@@ -4,7 +4,7 @@ import {
   type LiveEditorDocument,
 } from '@/features/editor/state/document-state'
 import { FileSyncService } from '@/features/editor/state/file-sync-service'
-import { SettingsSyncService } from '@/features/settings/utils/sync-service'
+import { SettingsSyncService } from '@/features/settings/state/sync-service'
 import type { QueryClient } from '@tanstack/react-query'
 
 /**

@@ -12,12 +12,14 @@ Primary candidates:
 - `erogol/ngi`: trigram-indexed regex search that prefilters candidate files and delegates exact matching to ripgrep when useful.
 - `PythonicNinja/trigrep`: disk-backed trigram / sparse n-gram indexed regex search.
 - `sourcegraph/zoekt`: mature trigram-based code search engine with query language, service mode, ranking, and local directory/repo indexing.
+- `dmtrKovalenko/fff`: resident file/content search engine with a background watcher and incremental re-indexing, shipping a Node/Bun SDK. Unlike the others it spans **both** layers — path search and content search — so it is the first candidate that questions the workspace path index as well as ripgrep.
 
 Candidate URLs:
 
 - https://github.com/erogol/ngi
 - https://github.com/PythonicNinja/trigrep
 - https://github.com/sourcegraph/zoekt
+- https://github.com/dmtrKovalenko/fff
 
 ## Scope
 
@@ -67,6 +69,7 @@ Expected implementations:
 - `NgiContentSearchEngine`.
 - `TrigrepContentSearchEngine`.
 - `ZoektContentSearchEngine`.
+- `FffContentSearchEngine`.
 
 The engine interface should sit below the current disk provider. Open-buffer overlay should remain outside it.
 
@@ -201,6 +204,52 @@ Best use:
 
 - Serious long-term content-search backend candidate if lightweight engines are not enough.
 
+### `fff`
+
+Added 2026-08-21. Every number below is the project's own claim and none of it has
+been reproduced here; that is what the benchmark harness is for.
+
+Strengths:
+
+- Attacks the cost we actually pay. Our disk provider spawns `fd` and `rg` per
+  query; `fff` is built around the opposite model, and the README puts it as: on a
+  500k-file Chromium checkout, the difference between 3-9 seconds per ripgrep
+  spawn and sub-10ms per query. That is the same insight the workspace index was
+  built on, taken further and applied to content as well as paths.
+- Spans both layers. Frecency-ranked fuzzy path matching _and_ three-mode content
+  search (plain / regex / fuzzy), plus a background watcher with incremental
+  re-indexing, git status caching, and definition-line classification. Those map
+  onto `workspace-index.ts`, `fuzzy-rank.ts`, our `fd`/`rg` spawning, and parts of
+  the git feature.
+- Real Node/Bun SDK: `@ff-labs/fff-node`, MIT, prebuilt binaries for
+  darwin/linux/win32 x64+arm64, so no Rust toolchain at install time.
+- Claimed footprint is modest: ~26 MB resident for a 100k-file repo, ~360 bytes
+  per file of content index.
+- Active and widely used — ~10k stars, and it reportedly backs file search in
+  nushell and opencode.
+
+Concerns:
+
+- Version 0.10.x with a very high release cadence. The API is moving.
+- The SDK binds through `ffi-rs`, a Node N-API FFI layer. Our server runs under
+  Bun, which has its own `bun:ffi`. **Whether `ffi-rs` loads under Bun at all is
+  the first thing to check** — if it does not, the C FFI (`libfff_c`) or the MCP
+  server become the integration surface instead, with very different costs.
+- A resident engine owns process lifecycle, memory, and index storage. We would
+  need workspace open/close/switch semantics for it, which is the same problem the
+  Zoekt service-mode experiment raises.
+- Ranking is its own. Our `fuzzy-rank.ts` is shared through the contracts package
+  and also serves the command palette, so adopting `fff` ranking for paths means
+  either two rankers or a wider migration.
+- Correctness parity still has to be proven against `rg` like any other candidate.
+  Fuzzy content search in particular has no `rg` equivalent to check against.
+
+Best use:
+
+- The strongest single candidate to evaluate first, because it is the only one
+  that could collapse `fd` + `rg` + `workspace-index.ts` into one dependency. If
+  the Bun/FFI question answers well, spike it before the trigram engines.
+
 ## Integration Experiments
 
 ### Experiment 1: External CLI Adapters
@@ -286,6 +335,8 @@ A candidate can replace ripgrep as default only after:
 
 - Benchmark harness.
 - Normalized result comparator against ripgrep.
+- Bun/FFI feasibility answer for `@ff-labs/fff-node`.
+- Engine adapter spike for `fff`, covering both path and content search.
 - Engine adapter spike for `ngi`.
 - Engine adapter spike for `trigrep`.
 - Engine adapter spike for Zoekt command mode.
@@ -296,15 +347,20 @@ A candidate can replace ripgrep as default only after:
 
 1. Build the engine interface using `rg`.
 2. Add the correctness harness.
-3. Spike `ngi`.
-4. Spike `trigrep`.
-5. Spike Zoekt command mode.
-6. Evaluate Zoekt service mode only if command mode results justify deeper work.
+3. Answer the cheap blocking question for `fff`: does `@ff-labs/fff-node` load
+   under Bun? A few minutes of work that decides whether step 4 is possible.
+4. Spike `fff`, for both path and content search.
+5. Spike `ngi`.
+6. Spike `trigrep`.
+7. Spike Zoekt command mode.
+8. Evaluate Zoekt service mode only if command mode results justify deeper work.
 
 ## References
 
 - Current server search: `apps/server/src/fs/search.ts`
 - Current search tool runner: `apps/server/src/fs/search-tool-runner.ts`
+- `fff`: https://github.com/dmtrKovalenko/fff
+- `fff` Node SDK: https://www.npmjs.com/package/@ff-labs/fff-node
 - `ngi`: https://github.com/erogol/ngi
 - `trigrep`: https://github.com/PythonicNinja/trigrep
 - Zoekt: https://github.com/sourcegraph/zoekt

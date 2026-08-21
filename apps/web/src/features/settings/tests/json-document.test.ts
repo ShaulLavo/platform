@@ -6,6 +6,7 @@ import {
   settingsJsonDocumentLabel,
 } from '@/features/settings/utils/json-document'
 import { documentLabel } from '@/features/workspace/utils/document-label'
+import { settingsDocumentId } from '@/features/settings/utils/document'
 import {
   editorBackedDocumentPath,
   fileBackedDocumentPath,
@@ -25,10 +26,16 @@ test('a settings json id round-trips its layer and refuses anything else', () =>
   expect(parseSettingsJsonDocumentId(null)).toBe(null)
 })
 
-// Both layers are called settings.json, so the layer has to survive into the tab.
-test('the tab names which settings.json it is', () => {
-  expect(documentLabel(settingsJsonDocumentId('user'))).toBe('settings.json (user)')
-  expect(documentLabel(settingsJsonDocumentId('workspace'))).toBe('settings.json (workspace)')
+// One tab, two views, one name. Without a branch it renders its own id, because
+// `settings:` has no path segment for `basename` to take.
+test('the settings tab is called settings.json', () => {
+  expect(documentLabel(settingsDocumentId())).toBe('settings.json')
+})
+
+// The buffers are per scope and never tabs, so their labels only ever show up in
+// diagnostics — but they still have to name which file they are.
+test('a settings buffer names its scope', () => {
+  expect(settingsJsonDocumentLabel(settingsJsonDocumentId('user'))).toBe('settings.json (user)')
   expect(settingsJsonDocumentLabel('settings-json:nonsense')).toBe('settings.json')
 })
 
@@ -36,7 +43,7 @@ test('the tab names which settings.json it is', () => {
  * The three questions the command gates ask, and the one tab that answers them
  * differently from every other surface: it is savable without being a file.
  */
-test('a raw settings tab is savable and editable but is not a file', () => {
+test('a raw settings buffer is savable and editable but is not a file', () => {
   const id = settingsJsonDocumentId('user')
 
   expect(savableDocumentPath(id)).toBe(id)

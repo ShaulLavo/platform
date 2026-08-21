@@ -42,8 +42,8 @@ export function EditorSurfaceTabBody({
   rootPath: string
   tabId: string
 }) {
-  // Above every early exit, like the rest of the hooks here. It no-ops for any
-  // path that is not a raw settings document.
+  // Above every early exit, like the rest of the hooks here. No-ops unless this
+  // is the settings tab showing its JSON view.
   useSettingsJsonDocument(tabId, path)
   const selectedConflictDiff = useMemo(() => parseConflictDiffDocumentId(path), [path])
   const selectedSearchBuffer = useMemo(() => parseSearchBufferDocumentId(path), [path])
@@ -189,7 +189,16 @@ export function EditorSurfaceTabBody({
   // Before the file paths: a settings tab has no document, no language server
   // and nothing to save, so falling through to the editor machinery would only
   // give it a spinner for a file that does not exist.
-  if (isSettingsDocumentId(path)) return <SettingsPage />
+  if (isSettingsDocumentId(path)) {
+    return (
+      <SettingsPage
+        editorKeymapLayers={editorKeymapLayers}
+        liveDocument={selectedLiveDocument}
+        rootPath={rootPath}
+        tabId={tabId}
+      />
+    )
+  }
 
   if (selectedSearchBuffer) {
     return (

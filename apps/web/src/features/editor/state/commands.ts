@@ -47,10 +47,7 @@ import { log } from '@/lib/client-logging'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { LanguageServerDefinitionTarget } from '@singapor/lsp-plugin'
 import { useMemo } from 'react'
-import type { SettingsWriteTarget } from '@workspace/contracts'
-
 import { settingsDocumentId } from '@/features/settings/utils/document'
-import { settingsJsonDocumentId } from '@/features/settings/utils/json-document'
 
 export type EditorCommands = {
   closeTab: (tabId: string) => void
@@ -67,7 +64,6 @@ export type EditorCommands = {
   openFileSurface: (path: string) => void
   openSearchEditor: (rootPath: string) => void
   openSettingsEditor: () => void
-  openSettingsJsonEditor: (target: SettingsWriteTarget) => void
   reopenClosedEditor: () => boolean
   renameLiveEditorDocument: (from: string, to: string) => { wasDirty: boolean }
   reorderTab: (paneId: string, tabId: string, targetIndex: number) => boolean
@@ -121,9 +117,6 @@ export function createEditorCommands({
     // singleton without any bookkeeping of its own.
     openSettingsEditor: () =>
       openEditorPathSurface(settingsDocumentId(), workspaceStore, documentStore),
-    // One tab per layer, and a singleton per layer for the same reason.
-    openSettingsJsonEditor: (target) =>
-      openEditorPathSurface(settingsJsonDocumentId(target), workspaceStore, documentStore),
     reopenClosedEditor: () => reopenClosedEditor(workspaceStore, documentStore),
     renameLiveEditorDocument: (from, to) =>
       renameLiveEditorDocument(from, to, workspaceStore, documentStore, uiStore),

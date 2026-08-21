@@ -1,5 +1,5 @@
 import type { PickedFsEntry } from '@/lib/file-system-types'
-import { parseConflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
+import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
 import { useEditorCommands } from '@/features/editor/state/commands'
 import {
   useEditorConflictStoreApi,
@@ -15,8 +15,6 @@ import { fileSnapshotQueryOptions, setFileSnapshotQueryData } from '@/lib/file-s
 import { fetchFile, fetchTree } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
 import { getClient } from '@/lib/client'
-import { parseDiffDocumentId } from '@/features/git/utils/diff-document'
-import { parseSearchBufferDocumentId } from '@/features/search/utils/buffer-document'
 import {
   createDirectoryChurn,
   type DirectoryChurn,
@@ -593,13 +591,14 @@ async function applyOpenFileOperations({
   }
 }
 
+/**
+ * Through the shared answer, not a fourth copy of the scheme list: this one had
+ * drifted three schemes behind — `compare-saved:`, `git-ref:` and the settings
+ * ids all reached it — so an open settings tab had every workspace-ready event
+ * schedule a retrying fs fetch for a path that cannot exist.
+ */
 function fileBackedOpenPaths(openFilePaths: readonly string[]) {
-  return openFilePaths.filter(
-    (path) =>
-      !parseDiffDocumentId(path) &&
-      !parseConflictDiffDocumentId(path) &&
-      !parseSearchBufferDocumentId(path),
-  )
+  return openFilePaths.filter((path) => fileBackedDocumentPath(path) !== null)
 }
 
 function openFileSnapshots(

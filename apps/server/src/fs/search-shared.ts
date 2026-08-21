@@ -59,11 +59,15 @@ export function shouldSearchNames(options: FindOptions) {
   return options.includeNames !== false
 }
 
-export function isIgnoredSearchPath(context: FindContext, relativePath: string) {
+export function isIgnoredSearchPath(
+  context: FindContext,
+  relativePath: string,
+  isDirectory?: boolean,
+) {
   if (!relativePath) return false
   if (isIgnoredPath(relativePath)) return true
 
-  return context.gitIgnore.ignores(relativePath)
+  return context.gitIgnore.ignores(relativePath, isDirectory)
 }
 
 export function nameSearchMatches(

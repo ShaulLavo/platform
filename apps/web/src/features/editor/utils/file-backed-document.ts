@@ -50,6 +50,10 @@ export function editorBackedDocumentPath(path: string | null | undefined) {
   if (path.startsWith(CONFLICT_DIFF_DOCUMENT_PREFIX)) return path
   if (path.startsWith(REF_DOCUMENT_PREFIX)) return path
   if (path.startsWith(SETTINGS_JSON_DOCUMENT_PREFIX)) return path
+  // The settings tab holds a real editor whenever its JSON view is showing. The
+  // id cannot say which view that is, so it answers yes and the commands are a
+  // no-op over the form — the same thing VS Code's settings tab does.
+  if (isSettingsDocumentId(path)) return path
 
   return fileBackedDocumentPath(path)
 }
@@ -69,6 +73,7 @@ export function editorBackedDocumentPath(path: string | null | undefined) {
 export function savableDocumentPath(path: string | null | undefined) {
   if (!path) return null
   if (path.startsWith(SETTINGS_JSON_DOCUMENT_PREFIX)) return path
+  if (isSettingsDocumentId(path)) return path
 
   return fileBackedDocumentPath(path)
 }

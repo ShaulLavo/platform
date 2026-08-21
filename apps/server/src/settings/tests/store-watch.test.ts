@@ -134,6 +134,27 @@ describe('a broken file does not change what is in force', () => {
     expect(snapshot.layers.find((entry) => entry.id === 'user')?.file?.parseErrors).toEqual([])
   })
 
+  // Retention holds the *previous* values, and on the first read of a process
+  // there are none. Publishing an empty document there would be a worse version
+  // of the bug this branch exists to fix — a stray BOM never stops being a parse
+  // error, so the drop would be permanent rather than mid-edit.
+  it('falls back to what the parser recovered when it boots onto a broken file', async () => {
+    const root = await tempRoot()
+    await writeFile(
+      path.join(root, 'settings.json'),
+      '\ufeff{\n  "editor.fontSize": 21\n}\n',
+      'utf8',
+    )
+
+    const store = createStore(root, { watch: false })
+    const snapshot = store.snapshot()
+
+    expect(snapshot.values['editor.fontSize']).toBe(21)
+    expect(
+      snapshot.layers.find((entry) => entry.id === 'user')?.file?.parseErrors.length,
+    ).toBeGreaterThan(0)
+  })
+
   // Deleting the file is a decision, not a syntax error. Holding the old values
   // through a delete would make the delete look ignored.
   it('does not hold values through a deleted file', async () => {

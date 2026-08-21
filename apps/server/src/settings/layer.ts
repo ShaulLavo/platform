@@ -242,7 +242,12 @@ export class SettingsFileLayer {
     const parsed = parseSettingsDocument(text)
     if (parsed.parseErrors.length > 0) {
       return {
-        raw: this.contents.raw,
+        // Only if there is something to hold. On the first read of the process
+        // there is not, and publishing `{}` there would be worse than what this
+        // branch exists to prevent: booting onto a file with a stray BOM would
+        // drop every key `jsonc-parser` recovered, permanently, because the
+        // errors never clear on their own.
+        raw: this.contents.present ? this.contents.raw : parsed.values,
         parseErrors: parsed.parseErrors,
         revision,
         text,
@@ -395,7 +400,12 @@ export class SettingsFileLayer {
   private async reload() {
     // Before the generation is captured, so a write that lands first is read as
     // the current state rather than as a change to publish.
-    await this.writing
+    //
+    // The loop, not a single await, for the same reason `beginWrite` has one:
+    // writes now queue behind each other, and one await only clears the write
+    // that happened to be in flight. A reload parked on write A would otherwise
+    // wake in the same turn write B is admitted and read across B's rename.
+    while (this.writing) await this.writing
     const generation = this.generation
     const next = await this.read().catch(() => null)
     if (!next) return

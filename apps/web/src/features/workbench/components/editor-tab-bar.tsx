@@ -7,6 +7,7 @@ import {
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
+import { isEditorTabDirty } from '@/features/workspace/utils/tab-dirty'
 import { restrictToHorizontalAxis } from '@dnd-kit/modifiers'
 import {
   horizontalListSortingStrategy,
@@ -65,7 +66,7 @@ export function EditorTabBar({ tabs }: { readonly tabs: readonly EditorTabModel[
             return (
               <SortableEditorTabButton
                 closeTargets={closeTargets}
-                dirty={dirtyFilePaths.has(tab.path)}
+                dirty={isEditorTabDirty(tab.path, dirtyFilePaths)}
                 key={tab.id}
                 tab={tab}
               />
@@ -82,7 +83,7 @@ function editorTabCloseTargets(
   dirtyFilePaths: ReadonlySet<string>,
 ): EditorTabCloseTarget[] {
   return tabs.map((tab) => ({
-    dirty: dirtyFilePaths.has(tab.path),
+    dirty: isEditorTabDirty(tab.path, dirtyFilePaths),
     id: tab.id,
     path: tab.path,
   }))

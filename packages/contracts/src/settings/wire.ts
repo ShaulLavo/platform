@@ -51,9 +51,15 @@ export const settingsLayerSnapshotSchema = v.object({
   present: v.boolean(),
   raw: v.record(v.string(), v.unknown()),
   /**
-   * Absent for `policy`, which is an environment variable and has no file. An
-   * empty `text` would be indistinguishable from an empty file, and the JSON
-   * view would offer to edit something that cannot be written.
+   * Absent only for `policy`, which is an environment variable and has no file
+   * to edit.
+   *
+   * Present for a writable layer whose file does not exist yet, with an empty
+   * `text` and an empty `revision` — that is not a missing value, it is the
+   * state a fresh install is in, and it is exactly when the JSON view has to be
+   * able to open a blank document and create the file. `present` above is what
+   * distinguishes "no file" from "a file someone emptied"; this field answers
+   * the different question of what the bytes are.
    */
   file: v.optional(settingsLayerFileSchema),
 })

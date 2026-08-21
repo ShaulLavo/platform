@@ -6,11 +6,14 @@ import type {
 } from '@/features/editor/state/document-state'
 import { createClientInvariantError } from '@/lib/structured-errors'
 
-import { saveSettingsText } from './api'
-import { settingsKeys } from './query-keys'
+import { saveSettingsText } from '../utils/api'
+import { settingsKeys } from '../utils/query-keys'
 
 /**
  * Saves a raw settings.json buffer.
+ *
+ * In `state/` beside its sibling `FileSyncService`, not in `utils/`: it holds the
+ * document store and the query client and writes through both.
  *
  * The sibling of `FileSyncService` for the one document that is editable text
  * without being a file: the fs routes take workspace-relative paths and the

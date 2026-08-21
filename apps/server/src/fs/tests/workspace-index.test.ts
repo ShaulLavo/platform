@@ -10,6 +10,10 @@ import type { WatchServerMessage } from '../contracts'
 import { FileSystemService } from '../service'
 import { WorkspaceIndex, buildWorkspaceIndex, watchWorkspaceIndex } from '../workspace-index'
 
+// Tests must not depend on whatever the developer has in their global git
+// excludes file, which production deliberately does read.
+const TEST_INDEX_OPTIONS = { ignore: { globalExcludes: false } } as const
+
 const roots: string[] = []
 const execFileAsync = promisify(execFile)
 
@@ -23,7 +27,10 @@ describe('workspace index', () => {
     await mkdir(path.join(root, 'src'), { recursive: true })
     await writeFile(path.join(root, 'src', 'app.ts'), 'export const app = true\n')
 
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root), { reason: 'test' })
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), {
+      ...TEST_INDEX_OPTIONS,
+      reason: 'test',
+    })
     const entry = index.get('src/app.ts')
     const status = index.status()
 
@@ -64,7 +71,7 @@ describe('workspace index', () => {
     await writeFile(path.join(root, 'ignored-dir', 'secret.ts'), 'ignored git\n')
     await writeFile(path.join(root, 'notes.tmp'), 'ignored file\n')
 
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
     expect(index.get('node_modules')).toMatchObject({
       defaultIgnored: true,
@@ -92,7 +99,7 @@ describe('workspace index', () => {
     await symlink('target-dir', path.join(root, 'linked-dir'))
     await symlink('target-file.ts', path.join(root, 'linked-file.ts'))
 
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
     expect(index.get('linked-dir')).toMatchObject({
       targetType: 'directory',
@@ -118,7 +125,7 @@ describe('workspace index', () => {
     await writeFile(path.join(root, 'pixel.png'), pngBytes)
     await symlink('pixel.png', path.join(root, 'linked.png'))
 
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
     expect(index.get('plain')).toMatchObject({
       contentKind: 'text',
@@ -158,7 +165,7 @@ describe('workspace index', () => {
     await writeFile(path.join(root, '.env'), 'TOKEN=value\n')
     await writeFile(path.join(root, '.env.local'), 'LOCAL=value\n')
 
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
     expect(index.get('.editorconfig')).toMatchObject({
       extension: '',
@@ -185,7 +192,7 @@ describe('workspace index', () => {
     await chmod(lockedPath, 0)
 
     try {
-      const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+      const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
       expect(index.status()).toMatchObject({ readiness: 'ready' })
       expect(index.get('locked')).toMatchObject({ type: 'directory' })
@@ -199,7 +206,7 @@ describe('workspace index', () => {
     const root = await fixtureRoot()
     await execFileAsync('mkfifo', [path.join(root, 'events.pipe')])
 
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
     expect(index.get('events.pipe')).toMatchObject({
       contentKind: 'unknown',
@@ -214,7 +221,7 @@ describe('workspace index', () => {
     await mkdir(path.join(root, 'src'), { recursive: true })
     await writeFile(path.join(root, 'src', 'app.ts'), 'export const app = true\n')
 
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
     const entry = requireEntry(index.get('src/app.ts'))
 
     entry.stale = true
@@ -228,7 +235,7 @@ describe('workspace index', () => {
     await mkdir(path.join(root, 'src'), { recursive: true })
     await writeFile(path.join(root, 'src', 'app.ts'), 'export const app = true\n')
 
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
     expect(index.get('./src//app.ts')).toMatchObject({
       path: 'src/app.ts',
@@ -242,7 +249,7 @@ describe('workspace index', () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, 'src'), { recursive: true })
     await writeFile(path.join(root, 'src', 'app.ts'), 'export const app = true\n')
-    const index = new WorkspaceIndex(createWorkspacePaths(root))
+    const index = new WorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
     expect(index.status()).toMatchObject({ readiness: 'cold' })
     await index.rebuild({ reason: 'initial' })
@@ -259,7 +266,7 @@ describe('workspace index', () => {
   it('applies create, change, delete, and rename watch events', async () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, 'src'), { recursive: true })
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
     await writeFile(path.join(root, 'src', 'created.ts'), 'export const created = true\n')
     await index.applyWatchEvents([{ type: 'created', path: 'src/created.ts' }])
@@ -294,7 +301,7 @@ describe('workspace index', () => {
   it('keeps status counts in step with the entry map across watch events', async () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, 'src'), { recursive: true })
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
     expect(index.status()).toMatchObject(derivedCounts(index))
 
     await writeFile(path.join(root, 'src', 'created.ts'), 'export const created = true\n')
@@ -324,7 +331,7 @@ describe('workspace index', () => {
     await writeFile(path.join(root, 'src', 'nested', 'b.ts'), 'export const b = true\n')
     await writeFile(path.join(root, 'src', 'nested', 'deep', 'c.ts'), 'export const c = true\n')
     await writeFile(path.join(root, 'keep.ts'), 'export const keep = true\n')
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
     await rm(path.join(root, 'src'), { recursive: true, force: true })
     await index.applyWatchEvents([{ type: 'deleted', path: 'src' }])
@@ -344,7 +351,7 @@ describe('workspace index', () => {
     await mkdir(path.join(root, 'other'), { recursive: true })
     await writeFile(path.join(root, 'src', 'nested', 'b.ts'), 'export const b = true\n')
     await writeFile(path.join(root, 'other', 'c.ts'), 'export const c = true\n')
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
     index.markSubtreeStale('src')
     // src, src/nested, src/nested/b.ts
@@ -370,7 +377,7 @@ describe('workspace index', () => {
     await mkdir(path.join(root, 'src', 'nested'), { recursive: true })
     await writeFile(path.join(root, 'src', 'nested', 'b.ts'), 'export const b = true\n')
     await writeFile(path.join(root, 'keep.ts'), 'export const keep = true\n')
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
     const totalEntries = index.entryMap().size
 
     expect(totalEntries).toBeGreaterThan(3)
@@ -434,7 +441,7 @@ describe('workspace index', () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, 'src'), { recursive: true })
     await writeFile(path.join(root, 'src', 'created.ts'), 'export const created = true\n')
-    const index = new WorkspaceIndex(createWorkspacePaths(root))
+    const index = new WorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
     await index.applyWatchEvents([{ type: 'created', path: 'src/created.ts' }])
 
@@ -449,7 +456,7 @@ describe('workspace index', () => {
   it('keeps watch failure status from being overwritten by an in-flight rebuild', async () => {
     const root = await fixtureRoot()
     await writeFile(path.join(root, 'indexed.ts'), 'export const indexed = true\n')
-    const index = new WorkspaceIndex(createWorkspacePaths(root))
+    const index = new WorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
     const startup = index.rebuild({ reason: 'startup' })
     const failure = index.rebuildAndMarkFailed('watch-error', 'watch failed')
@@ -466,7 +473,7 @@ describe('workspace index', () => {
   it('keeps failure status after later filesystem events', async () => {
     const root = await fixtureRoot()
     await writeFile(path.join(root, 'indexed.ts'), 'export const indexed = true\n')
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
     await index.rebuildAndMarkFailed('watch-error', 'watch failed')
     await writeFile(path.join(root, 'late.ts'), 'export const late = true\n')
@@ -484,7 +491,7 @@ describe('workspace index', () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, 'src'), { recursive: true })
     await writeFile(path.join(root, 'src', 'app.ts'), 'export const app = true\n')
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
     await writeFile(path.join(root, 'src', 'late.ts'), 'export const late = true\n')
     const refresh = index.refresh('src/late.ts')
@@ -504,7 +511,7 @@ describe('workspace index', () => {
     await mkdir(path.join(root, 'src'), { recursive: true })
     await writeFile(path.join(root, 'src', 'a.ts'), 'export const a = true\n')
     await writeFile(path.join(root, 'src', 'b.ts'), 'export const b = true\n')
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
     index.markSubtreeStale('src/a.ts')
     index.markSubtreeStale('src/b.ts')
@@ -523,11 +530,41 @@ describe('workspace index', () => {
     })
   })
 
+  it('honours a nested gitignore the way fd does', async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, 'packages', 'app'), { recursive: true })
+    await writeFile(path.join(root, 'packages', '.gitignore'), 'generated.ts\n')
+    await writeFile(
+      path.join(root, 'packages', 'app', 'generated.ts'),
+      'export const generated = 1\n',
+    )
+    await writeFile(path.join(root, 'packages', 'app', 'kept.ts'), 'export const kept = 1\n')
+
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
+
+    expect(index.get('packages/app/generated.ts')).toMatchObject({ gitIgnored: true })
+    expect(index.get('packages/app/kept.ts')).toMatchObject({ gitIgnored: false })
+  })
+
+  it('applies a directory-only ignore rule to directories and not to files', async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, '.gitignore'), 'dist/\n')
+    // A *file* named `dist`: `dist/` must not match it, which is the whole point
+    // of the trailing slash.
+    await writeFile(path.join(root, 'dist'), 'not a directory\n')
+    await mkdir(path.join(root, 'nested', 'dist'), { recursive: true })
+
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
+
+    expect(index.get('dist')).toMatchObject({ gitIgnored: false, type: 'file' })
+    expect(index.get('nested/dist')).toMatchObject({ gitIgnored: true, type: 'directory' })
+  })
+
   it('does not add children under gitignored directories from watch events', async () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, 'ignored'), { recursive: true })
     await writeFile(path.join(root, '.gitignore'), 'ignored/\n')
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
     await writeFile(path.join(root, 'ignored', 'secret.ts'), 'export const secret = true\n')
     await index.applyWatchEvents([{ type: 'created', path: 'ignored/secret.ts' }])
@@ -542,7 +579,7 @@ describe('workspace index', () => {
 
   it('indexes a missing parent directory from a leaf create event', async () => {
     const root = await fixtureRoot()
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
     await mkdir(path.join(root, 'src'), { recursive: true })
     await writeFile(path.join(root, 'src', 'app.ts'), 'export const app = true\n')
@@ -556,7 +593,7 @@ describe('workspace index', () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, 'node_modules', 'pkg'), { recursive: true })
     await writeFile(path.join(root, 'node_modules', 'pkg', 'index.js'), 'ignored default\n')
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
     expect(index.get('node_modules')).toMatchObject({
       defaultIgnored: true,
@@ -584,7 +621,7 @@ describe('workspace index', () => {
     await mkdir(path.join(root, 'ignored'), { recursive: true })
     await writeFile(path.join(root, '.gitignore'), '')
     await writeFile(path.join(root, 'ignored', 'secret.ts'), 'export const secret = true\n')
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
 
     expect(index.get('ignored/secret.ts')).toMatchObject({ type: 'file' })
 
@@ -605,7 +642,7 @@ describe('workspace index', () => {
   it('coalesces watch stream events before applying incremental updates', async () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, 'src'), { recursive: true })
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
     const events = controlledWatchEvents()
     const subscription = watchWorkspaceIndex(index, events.stream, { coalesceMs: 1 })
 
@@ -625,7 +662,7 @@ describe('workspace index', () => {
 
   it('rebuilds when coalesced event count exceeds the limit', async () => {
     const root = await fixtureRoot()
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
     const events = controlledWatchEvents()
     const subscription = watchWorkspaceIndex(index, events.stream, {
       coalesceMs: 10_000,
@@ -652,7 +689,7 @@ describe('workspace index', () => {
   it('collapses ignored child event bursts before applying the rebuild limit', async () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, 'node_modules'), { recursive: true })
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
     const previousUpdate = index.status().lastIncrementalUpdateAtMs ?? 0
     const events = controlledWatchEvents()
     const subscription = watchWorkspaceIndex(index, events.stream, {
@@ -685,7 +722,7 @@ describe('workspace index', () => {
     await mkdir(path.join(root, 'src', 'nested'), { recursive: true })
     await writeFile(path.join(root, 'src', 'a.ts'), 'export const a = true\n')
     await writeFile(path.join(root, 'src', 'nested', 'b.ts'), 'export const b = true\n')
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
     const events = controlledWatchEvents()
     const subscription = watchWorkspaceIndex(index, events.stream, { coalesceMs: 10_000 })
 
@@ -705,7 +742,7 @@ describe('workspace index', () => {
   it('marks ready status stale while missing create events are coalescing', async () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, 'src'), { recursive: true })
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
     const events = controlledWatchEvents()
     const subscription = watchWorkspaceIndex(index, events.stream, { coalesceMs: 10_000 })
 
@@ -724,7 +761,7 @@ describe('workspace index', () => {
   it('rebuilds and marks the live index failed after watcher errors', async () => {
     const root = await fixtureRoot()
     await writeFile(path.join(root, 'indexed.ts'), 'export const indexed = true\n')
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
     const events = controlledWatchEvents()
     const subscription = watchWorkspaceIndex(index, events.stream, { coalesceMs: 1 })
 
@@ -753,7 +790,7 @@ describe('workspace index', () => {
   it('marks the live index failed after terminal watch stream errors', async () => {
     const root = await fixtureRoot()
     await writeFile(path.join(root, 'indexed.ts'), 'export const indexed = true\n')
-    const index = await buildWorkspaceIndex(createWorkspacePaths(root))
+    const index = await buildWorkspaceIndex(createWorkspacePaths(root), TEST_INDEX_OPTIONS)
     const subscription = watchWorkspaceIndex(index, throwingWatchEvents)
 
     try {
