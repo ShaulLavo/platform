@@ -65,6 +65,36 @@ test('a real wheel over the other pane carries the first one back', async () => 
   await expect.poll(() => left.scrollTop).toBe(right.scrollTop)
 })
 
+test('the panes are never seen at different offsets while a wheel is turning', async () => {
+  // Ending up equal is not the same as staying equal, and the difference is the whole complaint.
+  // The virtualizer suppresses a scroll frame whose mounted row window does not change, deferring
+  // to one trailing emit once scrolling stops — so a mirror driven only by that signal sat SEVEN
+  // frames behind the pane being driven, measured with this same sampling. Sampling per frame is
+  // the only way to see it; both panes settle on the same number either way.
+  mountSplitDiff()
+  const left = await paneScroller('old')
+  const right = await paneScroller('new')
+
+  const samples: string[] = []
+  let sampling = true
+  const sample = () => {
+    if (!sampling) return
+
+    samples.push(`${left.scrollTop}/${right.scrollTop}`)
+    requestAnimationFrame(sample)
+  }
+  requestAnimationFrame(sample)
+
+  await commands.diffMouseWheel({ deltaY: 120, selector: '.editor-diff-pane-old' })
+  await new Promise((resolve) => setTimeout(resolve, 120))
+  await commands.diffMouseWheel({ deltaY: 120, selector: '.editor-diff-pane-old' })
+  await new Promise((resolve) => setTimeout(resolve, 400))
+  sampling = false
+
+  expect(samples.length).toBeGreaterThan(20)
+  expect(samples.filter((pair) => pair.split('/')[0] !== pair.split('/')[1])).toEqual([])
+})
+
 function mountSplitDiff() {
   seedBootMirrorTheme('dark')
   const text = (replacements: Record<number, string> = {}) =>

@@ -13,20 +13,27 @@ const SCROLL_KINDS = new Set<EditorViewContributionUpdateKind>(['viewport', 'lay
  *
  * Split-pane scroll sync is host work: `EditorViewContributionContext.setScrollTop` is
  * vertical-only, and a diff has to mirror both axes, which only `Editor.setScrollPosition` can do.
- * The host still needs to hear about a scroll, and a view contribution's `update` hook is where the
- * editor already announces one — `Editor.handleViewportChange` drives it on every scroll frame.
+ * Getting the pane's position out promptly AND correctly takes both halves below, and neither
+ * alone is enough.
  *
- * It has to be that hook and not a `scroll` listener on the element, which is the obvious thing to
- * reach for and is wrong twice over. The virtualizer redefines `scrollTop` on the scroll element to
- * return its own *logical* offset, and it updates that offset in a `requestAnimationFrame` it
- * schedules from the very same scroll event — so a listener reads the offset from before the scroll
- * it is being told about. `Editor.getScrollPosition()` reads the same field and is stale in exactly
- * the same way. The pane would then be mirrored one frame behind, and any gesture whose whole delta
- * arrives in a single event — a click on the scrollbar track, a keyboard page — would move one pane
- * and never the other, leaving the two silently out of step until the next gesture.
+ * **Why not read the scroll element.** The virtualizer redefines `scrollTop` on it to return its
+ * own logical offset, and folds a scroll into that offset in a `requestAnimationFrame` it schedules
+ * from the very same event — so a `scroll` listener reading the element sees the offset from before
+ * the scroll it is being told about. `Editor.getScrollPosition()` reads the same field and is stale
+ * in the same way. A mirror driven from either is a frame behind and, worse, misses entirely any
+ * gesture whose whole delta lands in one event.
  *
- * `snapshot.viewport` is folded in before contributions are updated, so it is the one reading that
- * is true at the time we are told.
+ * **Why not the `update` hook alone.** It carries the folded offset and is the authoritative
+ * signal, but it is deliberately throttled: `shouldEmitImmediately` suppresses a scroll frame whose
+ * mounted row window does not change, deferring to one trailing emit "once scrolling stops"
+ * (fixedRowVirtualizer.ts). Measured against a real wheel, that left the mirror **seven frames**
+ * behind the pane being driven — which is the jank.
+ *
+ * So: the `scroll` event for promptness, one rAF later for correctness. The virtualizer registers
+ * its own listener when the scroll element is attached, before any plugin exists, so its fold is
+ * scheduled first and has already run by the time ours does. `getSnapshot()` builds a fresh
+ * snapshot per call (`Editor.createViewSnapshot`), so what we read there is the folded truth, one
+ * frame after the scroll rather than a hundred milliseconds after it stops.
  */
 export function createDiffScrollBridgePlugin(
   onScroll: (position: DiffScrollPosition) => void,
@@ -35,14 +42,39 @@ export function createDiffScrollBridgePlugin(
     name: 'platform-diff-scroll-bridge',
     activate: (context) =>
       context.registerViewContribution({
-        createContribution: () => ({
-          update: (snapshot, kind) => {
-            if (!SCROLL_KINDS.has(kind)) return
+        createContribution: (viewContext) => {
+          const element = viewContext.scrollElement
+          let frame = 0
 
-            onScroll({ left: snapshot.viewport.scrollLeft, top: snapshot.viewport.scrollTop })
-          },
-          dispose: () => undefined,
-        }),
+          const report = () => {
+            const { viewport } = viewContext.getSnapshot()
+            onScroll({ left: viewport.scrollLeft, top: viewport.scrollTop })
+          }
+
+          // Coalesced: a wheel delivers scroll events faster than frames, and every one of them
+          // would otherwise queue another read of the same folded value.
+          const handleScroll = () => {
+            if (frame !== 0) return
+
+            frame = requestAnimationFrame(() => {
+              frame = 0
+              report()
+            })
+          }
+          element.addEventListener('scroll', handleScroll, { passive: true })
+
+          return {
+            update: (_snapshot, kind) => {
+              // Still needed: a programmatic move, a layout change or a clamp produces no scroll
+              // event of its own on some paths, and this is the signal that carries those.
+              if (SCROLL_KINDS.has(kind)) report()
+            },
+            dispose: () => {
+              if (frame !== 0) cancelAnimationFrame(frame)
+              element.removeEventListener('scroll', handleScroll)
+            },
+          }
+        },
       }),
   }
 }
