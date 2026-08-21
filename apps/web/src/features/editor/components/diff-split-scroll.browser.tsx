@@ -97,11 +97,22 @@ test('the panes are never seen at different offsets while a wheel is turning', a
 
 function mountSplitDiff() {
   seedBootMirrorTheme('dark')
-  const text = (replacements: Record<number, string> = {}) =>
-    `${Array.from({ length: LINE_COUNT }, (_, index) => replacements[index + 1] ?? `line ${index + 1}`).join('\n')}\n`
+  // Changed in one long block on purpose. Two scattered edits over 400 lines project to about
+  // SIXTEEN rows — everything between them collapses into `Show N unmodified lines` — and with
+  // overscan 12 no row is ever recycled and the mounted window never shifts, so the regime this
+  // file exists to test is never entered. A contiguous block keeps the rows.
+  const line = (index: number) => `line ${index + 1}`
+  const changed = (index: number) =>
+    index > 40 && index < 260 ? `${line(index)} changed` : line(index)
   const file = createTextDiff({
-    newFile: { path: 'repo/a.ts', text: text({ 4: 'four changed', 300: 'three hundred' }) },
-    oldFile: { path: 'repo/a.ts', text: text() },
+    newFile: {
+      path: 'repo/a.ts',
+      text: `${Array.from({ length: LINE_COUNT }, (_, index) => changed(index)).join('\n')}\n`,
+    },
+    oldFile: {
+      path: 'repo/a.ts',
+      text: `${Array.from({ length: LINE_COUNT }, (_, index) => line(index)).join('\n')}\n`,
+    },
   })
   const host = document.createElement('div')
   host.style.height = '400px'

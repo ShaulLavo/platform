@@ -21,6 +21,9 @@ export type DiffPanesController = {
  */
 export function useDiffPanes(): DiffPanesController {
   const editors = useRef(new Map<DiffGutterSide, Editor>())
+  // The last position each side reported, so a sync can tell which AXIS actually moved. `from`
+  // alone cannot: it is a position, not a delta.
+  const lastSeen = useRef(new Map<DiffGutterSide, DiffScrollPosition>())
   // Where our own last write left the mirrored pane, so its answering scroll can be told apart
   // from a reader scrolling it. Without this the mirror mirrors back, and a pane that clamps — a
   // shorter longest line, so less room to scroll horizontally — drags the pane the reader is
@@ -38,6 +41,7 @@ export function useDiffPanes(): DiffPanesController {
     }
 
     editors.current.delete(side)
+    lastSeen.current.delete(side)
     if (echo.current?.side === side) echo.current = null
   }, [])
 
@@ -57,17 +61,31 @@ export function useDiffPanes(): DiffPanesController {
     const mirror = editors.current.get(target)
     if (!mirror) return
 
+    // Per axis, and this is the part that is easy to get wrong. Horizontal extent is per-pane —
+    // each side's content width is its own longest line — so the two can legitimately sit at
+    // different `scrollLeft`, one of them clamped at its maximum. Mirroring both axes whenever
+    // either moved then means a purely VERTICAL scroll over the clamped pane writes its stale
+    // `left` onto the other one, and the wide pane snaps sideways while the reader is scrolling
+    // down. Only the axis that actually moved is carried across.
+    const previous = lastSeen.current.get(side)
+    lastSeen.current.set(side, from)
     const to = mirror.getScrollPosition()
-    if (from.top === to.top && from.left === to.left) return
+    const top = !previous || previous.top !== from.top ? from.top : to.top
+    const left = !previous || previous.left !== from.left ? from.left : to.left
+    if (top === to.top && left === to.left) return
 
-    // Verbatim, with no compensation for a pane that cannot scroll as far — the same contract the
-    // old view had. The panes silently desynchronise horizontally until the driving one scrolls
-    // back into the other's range.
-    mirror.setScrollPosition({ left: from.left, top: from.top })
+    // Verbatim on the axis that moved, with no compensation for a pane that cannot scroll as far —
+    // the same contract the old view had. The panes silently desynchronise horizontally until the
+    // driving one scrolls back into the other's range.
+    mirror.setScrollPosition({ left, top })
     // Read back rather than remembering what was asked for: `setScrollPosition` clamps, and it is
     // where the pane *landed* that its own scroll event will report.
     const landed = mirror.getScrollPosition()
     echo.current = { left: landed.left, side: target, top: landed.top }
+    // Remember where we put it, so when the reader later scrolls THAT pane we can still tell which
+    // axis they moved. Without this the first event from a pane has no previous to compare against
+    // and carries both axes — which is the yank above, just one gesture later.
+    lastSeen.current.set(target, landed)
   }, [])
 
   const handleFocus = useCallback((side: DiffGutterSide) => {

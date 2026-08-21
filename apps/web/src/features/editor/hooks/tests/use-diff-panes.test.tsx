@@ -81,6 +81,30 @@ test('an unanswered mirror write does not swallow a later scroll that lands on i
   expect(left.position).toEqual({ left: 0, top: 300 })
 })
 
+test('a vertical scroll does not drag the other pane sideways', () => {
+  // Horizontal extent is per-pane — each side's content width is its own longest line — so the two
+  // legitimately end up at different `scrollLeft`, one of them clamped at its maximum. Mirroring
+  // both axes whenever either moved then means scrolling DOWN over the clamped pane writes its
+  // stale `left` onto the wide one, which snaps sideways under the reader.
+  //
+  // Note which pane is which: the yank lands on the pane with room, driven from the pane without.
+  const { panes, old: wide, new: narrow } = mountPanes({ newMaxLeft: 0 })
+
+  // The reader scrolls the wide pane right. `handleScroll` only REPORTS a position, so put the
+  // pane where the browser would have put it first — otherwise the driver never actually moves and
+  // the assertion below passes for the wrong reason.
+  wide.setScrollPosition({ left: 150, top: 0 })
+  panes.handleScroll('old', { left: 150, top: 0 })
+  // The narrow pane cannot follow, so the two diverge — legitimately.
+  expect(narrow.position).toEqual({ left: 0, top: 0 })
+
+  // Now they scroll the narrow pane DOWN. Its `left` was already 0 and has not moved.
+  panes.handleScroll('new', { left: 0, top: 90 })
+
+  // The wide pane follows vertically and holds its horizontal position.
+  expect(wide.position).toEqual({ left: 150, top: 90 })
+})
+
 test('focusing one pane collapses the other pane selection without scrolling it', () => {
   const { panes, new: right } = mountPanes()
 
