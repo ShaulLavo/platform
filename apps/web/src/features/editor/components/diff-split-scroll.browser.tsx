@@ -1,0 +1,96 @@
+import '@workspace/ui/globals.css'
+import { createDiffRegionStore, createTextDiff } from '@singapor/diff'
+import { commands } from 'vitest/browser'
+import { StrictMode } from 'react'
+import { flushSync } from 'react-dom'
+import { createRoot, type Root } from 'react-dom/client'
+import { afterEach, expect, test } from 'vitest'
+
+import { DiffEditor } from '@/features/editor/components/diff-editor'
+import { AppProviders, createTestQueryClient, seedBootMirrorTheme } from '../../../../test/render'
+
+// Registered in `vitest.config.ts` under `browser.commands`, which is a runtime registry with no
+// types of its own — a caller has to say what it accepts.
+declare module 'vitest/browser' {
+  interface BrowserCommands {
+    diffMouseWheel: (input: {
+      readonly deltaX?: number
+      readonly deltaY?: number
+      readonly selector: string
+    }) => Promise<void>
+  }
+}
+
+// A real browser, because this is the one behaviour in the diff that cheaper environments cannot
+// reach. Split panes are kept readable by mirroring one pane's scroll onto the other, and the
+// offsets travel oddly: the virtualizer redefines `scrollTop` on the scroll element to return its
+// own logical value and folds a scroll into it in a `requestAnimationFrame` scheduled by the very
+// same event. So assigning `scrollTop` from a test — which is all happy-dom can do — goes through
+// the setter and folds synchronously, exercising a path no wheel ever takes. Only a CDP-level
+// wheel behaves like a finger, and only with real layout is there anything to scroll.
+
+const LINE_COUNT = 400
+
+let root: Root | null = null
+
+afterEach(() => {
+  if (root) flushSync(() => root?.unmount())
+  root = null
+  document.body.replaceChildren()
+})
+
+test('a real wheel over one split pane carries the other with it', async () => {
+  mountSplitDiff()
+  const left = await paneScroller('old')
+  const right = await paneScroller('new')
+  expect(left.scrollTop).toBe(0)
+  expect(right.scrollTop).toBe(0)
+
+  await commands.diffMouseWheel({ deltaY: 400, selector: '.editor-diff-pane-old' })
+
+  await expect.poll(() => left.scrollTop).toBeGreaterThan(0)
+  await expect.poll(() => right.scrollTop).toBe(left.scrollTop)
+})
+
+test('a real wheel over the other pane carries the first one back', async () => {
+  mountSplitDiff()
+  const left = await paneScroller('old')
+  const right = await paneScroller('new')
+  await commands.diffMouseWheel({ deltaY: 400, selector: '.editor-diff-pane-old' })
+  await expect.poll(() => right.scrollTop).toBeGreaterThan(0)
+
+  await commands.diffMouseWheel({ deltaY: -200, selector: '.editor-diff-pane-new' })
+
+  await expect.poll(() => right.scrollTop).toBeLessThan(400)
+  await expect.poll(() => left.scrollTop).toBe(right.scrollTop)
+})
+
+function mountSplitDiff() {
+  seedBootMirrorTheme('dark')
+  const text = (replacements: Record<number, string> = {}) =>
+    `${Array.from({ length: LINE_COUNT }, (_, index) => replacements[index + 1] ?? `line ${index + 1}`).join('\n')}\n`
+  const file = createTextDiff({
+    newFile: { path: 'repo/a.ts', text: text({ 4: 'four changed', 300: 'three hundred' }) },
+    oldFile: { path: 'repo/a.ts', text: text() },
+  })
+  const host = document.createElement('div')
+  host.style.height = '400px'
+  document.body.append(host)
+  root = createRoot(host)
+  flushSync(() =>
+    root?.render(
+      <StrictMode>
+        <AppProviders queryClient={createTestQueryClient()}>
+          <DiffEditor file={file} mode='split' regions={createDiffRegionStore()} />
+        </AppProviders>
+      </StrictMode>,
+    ),
+  )
+}
+
+async function paneScroller(side: 'new' | 'old') {
+  const selector = `.editor-diff-pane-${side} .editor-virtualized`
+  await expect.poll(() => document.querySelector(selector)).not.toBeNull()
+
+  return document.querySelector<HTMLElement>(selector)!
+}

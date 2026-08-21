@@ -42,10 +42,14 @@ export function useDiffPanes(): DiffPanesController {
   }, [])
 
   const handleScroll = useCallback((side: DiffGutterSide, from: DiffScrollPosition) => {
-    if (isEcho(echo.current, side, from)) {
-      echo.current = null
-      return
-    }
+    const pending = echo.current
+    // Spent by the FIRST update from that side, whether or not it is the one we were waiting for.
+    // Clearing it only on an exact match leaves it armed whenever the update we get instead exits
+    // early below — a reader scrolling the mirrored pane onto the position the other one already
+    // holds does exactly that — and the stale entry then swallows a later scroll that happens to
+    // land where our write did.
+    if (pending?.side === side) echo.current = null
+    if (isEcho(pending, side, from)) return
 
     const target = otherSide(side)
     if (!target) return

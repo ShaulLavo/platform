@@ -6,6 +6,7 @@ import { createDiffRegionStore, createTextDiff } from '@singapor/diff'
 
 import { DiffPane } from '@/features/editor/components/diff-pane'
 import { expect, test } from '../../../../../test/fixtures'
+import { stubHighlightApi } from '../../../../../test/env/highlight-api'
 
 // Expanding a collapsed region rewrites the whole buffer. The reader is somewhere in it, and the
 // two ways of pushing text back in do not agree about that: `openDocument` takes no scroll position
@@ -67,10 +68,4 @@ async function mountStackedDiff() {
       ),
     ],
   }
-}
-
-function stubHighlightApi() {
-  class HighlightStub extends Set<unknown> {}
-  Object.assign(globalThis, { Highlight: HighlightStub })
-  Object.assign(globalThis.CSS ?? {}, { highlights: new Map() })
 }

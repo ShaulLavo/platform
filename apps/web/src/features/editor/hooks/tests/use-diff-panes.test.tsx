@@ -66,6 +66,21 @@ test('a write that moves the mirror nowhere does not swallow the reader scrollin
   expect(left.position).toEqual({ left: 0, top: 250 })
 })
 
+test('an unanswered mirror write does not swallow a later scroll that lands on it', () => {
+  // The write to `new` is answered by a reader scroll of `new` onto the position `old` already
+  // holds, which exits early — so the entry is never matched. If it stayed armed, the next scroll
+  // of `new` that happened to land where the write did would be read as the echo and dropped.
+  const { panes, old: left, new: right } = mountPanes()
+
+  panes.handleScroll('old', { left: 0, top: 300 })
+  expect(right.position).toEqual({ left: 0, top: 300 })
+  panes.handleScroll('new', { left: 0, top: 0 })
+
+  panes.handleScroll('new', { left: 0, top: 300 })
+
+  expect(left.position).toEqual({ left: 0, top: 300 })
+})
+
 test('focusing one pane collapses the other pane selection without scrolling it', () => {
   const { panes, new: right } = mountPanes()
 
@@ -98,7 +113,6 @@ function fakeEditor(maxLeft: number): FakeEditor & Editor {
   const state: FakeEditor = { position: { left: 0, top: 0 }, setSelection: vi.fn() }
 
   return {
-    ...state,
     getScrollPosition: () => state.position,
     setScrollPosition: (next: { left?: number; top?: number }) => {
       state.position = {

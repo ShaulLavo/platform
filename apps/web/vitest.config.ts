@@ -77,6 +77,7 @@ export default defineConfig({
             // list (built from this port) matches the real test origin.
             api: { host: '127.0.0.1', port: Number(browserTestPort) },
             commands: {
+              diffMouseWheel,
               proofMouseDrag,
               proofMouseUp,
             },
@@ -103,8 +104,15 @@ type ProofMouseCommandContext = {
       readonly down: () => Promise<void>
       readonly move: (x: number, y: number, options?: { readonly steps?: number }) => Promise<void>
       readonly up: () => Promise<void>
+      readonly wheel: (deltaX: number, deltaY: number) => Promise<void>
     }
   }
+}
+
+type DiffMouseWheelInput = {
+  readonly deltaX?: number
+  readonly deltaY?: number
+  readonly selector: string
 }
 
 type ProofMouseFrame = {
@@ -163,6 +171,23 @@ type ProofMouseDragStep =
       readonly kind: 'pause'
       readonly ms?: number
     }
+
+/**
+ * A real wheel over an element, which nothing reachable from the test page can produce.
+ *
+ * Split-pane scroll sync exists to be driven by a wheel, and every cheaper way of standing in for
+ * one takes a different code path: assigning `element.scrollTop` goes through the property the
+ * virtualizer redefines, which folds the offset synchronously, and a synthetic `WheelEvent` is
+ * untrusted so the browser refuses to scroll on it. Only the CDP-level wheel behaves like a finger.
+ */
+async function diffMouseWheel(context: ProofMouseCommandContext, input: DiffMouseWheelInput) {
+  const frame = await context.frame()
+  const transform = await proofMouseFrameTransform(frame)
+  const point = await pointForSelector(frame, transform, input.selector)
+
+  await context.page.mouse.move(point.x, point.y)
+  await context.page.mouse.wheel(input.deltaX ?? 0, input.deltaY ?? 0)
+}
 
 async function proofMouseDrag(context: ProofMouseCommandContext, input: ProofMouseDragInput) {
   const frame = await context.frame()

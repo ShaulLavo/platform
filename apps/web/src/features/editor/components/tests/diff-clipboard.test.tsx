@@ -10,6 +10,7 @@ import {
 
 import { DiffPane } from '@/features/editor/components/diff-pane'
 import { expect, test } from '../../../../../test/fixtures'
+import { stubHighlightApi } from '../../../../../test/env/highlight-api'
 
 // The point of holding the diff in a real document rather than as injected rows: a deletion is an
 // ordinary buffer line, so it selects and copies like any other text. Nothing here mocks the
@@ -74,14 +75,13 @@ async function mountStackedDiff() {
 
 /** Where a row of this type starts and ends in the buffer the host pushed in. */
 function rowOffsets(rows: readonly DiffRenderRow[], type: DiffRenderRow['type']) {
-  let start = 0
-  for (const row of rows) {
-    if (row.type === type) return { end: start + row.text.length, start }
+  const index = rows.findIndex((row) => row.type === type)
+  // An `expect` rather than a throw: the house rule forbids bare `new Error`, and a missing fixture
+  // row is a broken test rather than a structured failure worth a code and a fix.
+  expect(index, `no ${type} row in the projection`).toBeGreaterThanOrEqual(0)
 
-    start += row.text.length + 1
-  }
-
-  throw new Error(`no ${type} row in the projection`)
+  const start = rows.slice(0, index).reduce((offset, row) => offset + row.text.length + 1, 0)
+  return { end: start + rows[index]!.text.length, start }
 }
 
 /** The editor installs its copy handler on the scroll element; this is the event it would see. */
@@ -98,10 +98,4 @@ function copyPlainText() {
   document.querySelector('.editor-diff-pane-stacked .editor-virtualized')!.dispatchEvent(event)
 
   return values.get('text/plain') ?? ''
-}
-
-function stubHighlightApi() {
-  class HighlightStub extends Set<unknown> {}
-  Object.assign(globalThis, { Highlight: HighlightStub })
-  Object.assign(globalThis.CSS ?? {}, { highlights: new Map() })
 }

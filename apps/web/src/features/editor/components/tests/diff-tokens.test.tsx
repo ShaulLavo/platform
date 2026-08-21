@@ -12,6 +12,7 @@ import { createDiffRegionStore, createTextDiff, type DiffSyntaxBackend } from '@
 
 import { DiffPane } from '@/features/editor/components/diff-pane'
 import { expect, test } from '../../../../../test/fixtures'
+import { stubHighlightApi } from '../../../../../test/env/highlight-api'
 
 // The plugin parses per side and publishes projected tokens; the host is what puts them on the
 // editor. `setText` clears tokens on its way through, and the parse lands after the first push —
@@ -83,10 +84,4 @@ function result(options: EditorSyntaxSessionOptions) {
     }),
     tokens,
   }
-}
-
-function stubHighlightApi() {
-  class HighlightStub extends Set<unknown> {}
-  Object.assign(globalThis, { Highlight: HighlightStub })
-  Object.assign(globalThis.CSS ?? {}, { highlights: new Map() })
 }
