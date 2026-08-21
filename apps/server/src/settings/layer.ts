@@ -20,6 +20,23 @@ import { settingsErrors } from './structured-errors'
  */
 const RELOAD_DEBOUNCE_MS = 100
 
+/**
+ * `fs.watch` under Bun is not live when it returns: a change landing in the
+ * window between arming and the watcher actually attaching is never reported,
+ * and the layer then serves the file's old contents for the life of the process.
+ *
+ * Measured on darwin/Bun 1.3.10, arming a directory watcher and writing the
+ * watched file immediately, with the machine saturated: 15/200 events lost at
+ * +0ms, 4/200 at +1ms, 1/200 at +5ms, none from +25ms on. The same probe under
+ * Node loses nothing at any offset, so this is not something the call site can
+ * detect -- `watch()` returns an `FSWatcher` either way.
+ *
+ * The window is milliseconds and it closes for good, so one catch-up read past
+ * it is the whole fix. This is that offset, with two orders of magnitude of
+ * margin over the measurement, spent once per layer per process.
+ */
+const ARMING_CATCHUP_MS = 250
+
 export type LayerContents = {
   readonly raw: Readonly<Record<string, unknown>>
   readonly parseErrors: readonly SettingsParseError[]
@@ -52,7 +69,15 @@ export class SettingsFileLayer {
   private watcher: FSWatcher | null = null
   private directoryWatcher: FSWatcher | null = null
   private debounce: ReturnType<typeof setTimeout> | null = null
+  private catchUpTimer: ReturnType<typeof setTimeout> | null = null
   private onChange: (() => void) | null = null
+  /**
+   * Bumped on every applied change to `contents`, so a reload can tell whether
+   * the layer moved underneath its own `await`.
+   */
+  private generation = 0
+  /** Held for the duration of a write, so a reload does not read across it. */
+  private writing: Promise<void> | null = null
 
   /**
    * The hash of the last text we wrote, so the watch event our own rename
@@ -70,11 +95,11 @@ export class SettingsFileLayer {
   }
 
   async load(): Promise<void> {
-    this.contents = await this.read()
+    this.apply(await this.read())
   }
 
   loadSync(): void {
-    this.contents = this.toContents(readSettingsFileSync(this.filePath))
+    this.apply(this.toContents(readSettingsFileSync(this.filePath)))
   }
 
   /**
@@ -92,32 +117,38 @@ export class SettingsFileLayer {
    * user's other keybinding, not a merge conflict.
    */
   async write(edits: readonly DocumentEdit[], baseRevision?: string | null): Promise<void> {
-    const current = await this.read()
-    if (current.parseErrors.length > 0) {
-      throw settingsErrors.FILE_MALFORMED({
-        file: this.filePath,
-        detail: current.parseErrors[0].message,
+    const done = this.beginWrite()
+
+    try {
+      const current = await this.read()
+      if (current.parseErrors.length > 0) {
+        throw settingsErrors.FILE_MALFORMED({
+          file: this.filePath,
+          detail: current.parseErrors[0].message,
+        })
+      }
+
+      const text = editSettingsText(current.text, edits)
+      const revision = await writeSettingsFile(this.filePath, text, {
+        expectedRevision: baseRevision === undefined ? current.revision : baseRevision,
+        onRevisionMismatch: () => {
+          throw settingsErrors.REVISION_STALE({ file: this.filePath })
+        },
       })
-    }
 
-    const text = editSettingsText(current.text, edits)
-    const revision = await writeSettingsFile(this.filePath, text, {
-      expectedRevision: baseRevision === undefined ? current.revision : baseRevision,
-      onRevisionMismatch: () => {
-        throw settingsErrors.REVISION_STALE({ file: this.filePath })
-      },
-    })
-
-    this.selfWrittenRevision = revision
-    const parsed = parseSettingsDocument(text)
-    this.contents = {
-      raw: parsed.values,
-      parseErrors: parsed.parseErrors,
-      revision,
-      text,
-      present: true,
+      this.selfWrittenRevision = revision
+      const parsed = parseSettingsDocument(text)
+      this.apply({
+        raw: parsed.values,
+        parseErrors: parsed.parseErrors,
+        revision,
+        text,
+        present: true,
+      })
+      this.rearmWatchers()
+    } finally {
+      done()
     }
-    this.rearmWatchers()
   }
 
   /**
@@ -137,33 +168,41 @@ export class SettingsFileLayer {
       })
     }
 
-    const revision = await writeSettingsFile(this.filePath, text, {
-      expectedRevision: baseRevision ?? (await this.read()).revision,
-      onRevisionMismatch: () => {
-        throw settingsErrors.REVISION_STALE({ file: this.filePath })
-      },
-    })
+    const done = this.beginWrite()
 
-    this.selfWrittenRevision = revision
-    this.contents = {
-      raw: incoming.values,
-      parseErrors: [],
-      revision,
-      text,
-      present: true,
+    try {
+      const revision = await writeSettingsFile(this.filePath, text, {
+        expectedRevision: baseRevision ?? (await this.read()).revision,
+        onRevisionMismatch: () => {
+          throw settingsErrors.REVISION_STALE({ file: this.filePath })
+        },
+      })
+
+      this.selfWrittenRevision = revision
+      this.apply({
+        raw: incoming.values,
+        parseErrors: [],
+        revision,
+        text,
+        present: true,
+      })
+      this.rearmWatchers()
+    } finally {
+      done()
     }
-    this.rearmWatchers()
   }
 
   watch(onChange: () => void): void {
     this.onChange = onChange
     this.watchFile()
     this.watchDirectory()
+    this.catchUpOnArming()
   }
 
   close(): void {
     if (this.debounce) clearTimeout(this.debounce)
     this.debounce = null
+    this.stopCatchUp()
     this.watcher?.close()
     this.directoryWatcher?.close()
     this.watcher = null
@@ -211,6 +250,7 @@ export class SettingsFileLayer {
     this.directoryWatcher = null
     this.watchFile()
     this.watchDirectory()
+    this.catchUpOnArming()
   }
 
   /**
@@ -240,17 +280,92 @@ export class SettingsFileLayer {
     }
   }
 
+  private apply(next: LayerContents) {
+    this.contents = next
+    this.generation += 1
+  }
+
+  /**
+   * Marks a write in flight, and returns its release.
+   *
+   * A reload waits this out rather than reading across the rename: mid-write it
+   * cannot tell the pre- from the post-rename bytes, and the pre-rename ones
+   * would be published as an external edit of content the file no longer holds,
+   * consuming the echo hash on the way so the write's own event lands as a
+   * second one. The debounce alone does not settle it -- it delays a reload, it
+   * does not order one against a write -- and the arming catch-up below puts a
+   * second reload into the same window, so this is worth naming rather than
+   * leaving to luck.
+   */
+  private beginWrite(): () => void {
+    let release = () => {}
+    const writing = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    this.writing = writing
+
+    return () => {
+      // Only if this write is still the current one: two overlapping writes
+      // would otherwise have the first clear the second's marker.
+      if (this.writing === writing) this.writing = null
+      release()
+    }
+  }
+
+  /** Covers the window in which the freshly armed watcher is not yet delivering. */
+  private catchUpOnArming() {
+    this.stopCatchUp()
+    if (!this.onChange) return
+
+    const armedRevision = this.contents.revision
+    this.catchUpTimer = setTimeout(() => this.catchUp(armedRevision), ARMING_CATCHUP_MS)
+  }
+
+  private catchUp(armedRevision: string | null) {
+    this.catchUpTimer = null
+    // Anything that moved the layer -- a delivered watch event, or our own
+    // write -- proves the window is behind us and there is nothing to catch.
+    if (this.contents.revision !== armedRevision) return
+
+    // Through the debounce rather than straight into `reload`: an atomic save is
+    // a delete and a create, and a read that lands between them publishes an
+    // empty document the file never held. Coalescing is what the watch path uses
+    // against exactly that, and this is not a second way to notice a change --
+    // only another reason to look.
+    this.scheduleReload()
+  }
+
+  private stopCatchUp() {
+    if (this.catchUpTimer) clearTimeout(this.catchUpTimer)
+    this.catchUpTimer = null
+  }
+
   private scheduleReload() {
     if (this.debounce) clearTimeout(this.debounce)
     this.debounce = setTimeout(() => {
       this.debounce = null
-      runDetached(() => this.reload(), { area: 'settings', layer: this.id, operation: 'reload' })
+      runDetached(() => this.reload(), {
+        area: 'settings',
+        layer: this.id,
+        operation: 'reload',
+      })
     }, RELOAD_DEBOUNCE_MS)
   }
 
   private async reload() {
+    // Before the generation is captured, so a write that lands first is read as
+    // the current state rather than as a change to publish.
+    await this.writing
+    const generation = this.generation
     const next = await this.read().catch(() => null)
     if (!next) return
+
+    // Discard a read the layer outran. `write` re-reads, edits and renames, so a
+    // reload that started before it can resolve holding the pre-write bytes --
+    // and would then hand listeners content the file no longer holds, having
+    // consumed the echo hash on the way, which delivers the write's own event as
+    // an external edit right after it.
+    if (generation !== this.generation) return
 
     // Suppress exactly one event: the one our own rename produced.
     //
@@ -264,7 +379,7 @@ export class SettingsFileLayer {
 
     if (next.revision === this.contents.revision) return
 
-    this.contents = next
+    this.apply(next)
     this.onChange?.()
   }
 }

@@ -3,9 +3,11 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { SettingsSnapshot } from '@workspace/contracts'
 import { afterEach, describe, expect, it } from 'vitest'
+import { SettingsFileLayer } from '../layer'
 import { SettingsStore } from '../store'
 
 const stores: SettingsStore[] = []
+const layers: SettingsFileLayer[] = []
 const roots: string[] = []
 
 async function tempRoot() {
@@ -29,8 +31,17 @@ function createStore(
   return store
 }
 
-/** Resolves on the store's next change event, or rejects if it never comes. */
-function nextChange(store: SettingsStore, timeoutMs = 2_000): Promise<SettingsSnapshot> {
+/**
+ * Resolves on the store's next change event, or rejects if it never comes.
+ *
+ * The ceiling is not a latency budget — it is the point past which a watch event
+ * is not late but lost, which is a bug in the layer rather than a slow machine.
+ * A tight one made this suite flaky on CI for a different case each run, and
+ * raising it only converted lost events into slower failures; the layer's
+ * arming catch-up is what actually fixed them. Kept well under the project's
+ * 30s `testTimeout` so the failure still names what did not happen.
+ */
+function nextChange(store: SettingsStore, timeoutMs = 10_000): Promise<SettingsSnapshot> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       stop()
@@ -46,6 +57,7 @@ function nextChange(store: SettingsStore, timeoutMs = 2_000): Promise<SettingsSn
 
 afterEach(async () => {
   for (const store of stores.splice(0)) store.close()
+  for (const layer of layers.splice(0)) layer.close()
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
 
@@ -65,6 +77,45 @@ describe('external edits', () => {
     expect(snapshot.values['keybindings.overrides']).toEqual({
       'workspace.saveFile': 'Mod+Alt+S',
     })
+  })
+
+  it('delivers an edit that landed between the read and the watcher', async () => {
+    const root = await tempRoot()
+    const filePath = path.join(root, 'settings.json')
+    await writeFile(filePath, '{ "keybindings.overrides": { "a.one": "Mod+1" } }', 'utf8')
+
+    // Driven through the layer because `SettingsStore`'s constructor reads and
+    // arms in one synchronous breath, so this window cannot be opened from
+    // outside it — but every boot has it, and `fs.watch` under Bun widens it by
+    // returning before its watcher is live: measured, up to 7.5% of writes in
+    // the first millisecond after arming are never reported, and the layer then
+    // serves the old file for the life of the process.
+    const layer = new SettingsFileLayer('user', filePath)
+    layer.loadSync()
+    layers.push(layer)
+
+    // Finished before the watcher exists, so no filesystem event can carry it.
+    // The change below is the arming catch-up or it is nothing.
+    await writeFile(filePath, '{ "keybindings.overrides": { "a.two": "Mod+2" } }', 'utf8')
+    // Bun's watcher is fuzzy at both ends of its arming window: it drops events
+    // that land just after, and sometimes replays ones from just before. This
+    // wait is the second of those, and it only ever makes the test stricter —
+    // long enough and the edit above is unambiguously history no event will
+    // mention.
+    await new Promise((resolve) => setTimeout(resolve, 250))
+
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error('settings layer never reported a change')),
+        10_000,
+      )
+      layer.watch(() => {
+        clearTimeout(timer)
+        resolve()
+      })
+    })
+
+    expect(layer.snapshot().raw).toEqual({ 'keybindings.overrides': { 'a.two': 'Mod+2' } })
   })
 
   it('survives the file being replaced rather than modified in place', async () => {
@@ -200,32 +251,32 @@ describe('a secrets file that cannot be read', () => {
     // is not ENOENT, so `readSettingsFileSync` rethrows out of `invalidate()` —
     // straight into the detached reload. Before `runDetached` this killed Bun.
     await mkdir(secretsPath)
-    // Assert on what listeners *receive*, not on `store.snapshot()`. The cached
-    // snapshot is cleared before the failing read, so a later `snapshot()` call
-    // recomputes from the layer and reports the new value whether or not the
-    // notification ever happened — it cannot tell a delivered change from a
-    // dropped one.
-    const delivered: SettingsSnapshot[] = []
-    store.onChange((snapshot) => delivered.push(snapshot))
+    // Assert on what a listener *receives*, not on `store.snapshot()`. The
+    // cached snapshot is cleared before the failing read, so a later
+    // `snapshot()` call recomputes from the layer and reports the new value
+    // whether or not the notification ever happened — it cannot tell a
+    // delivered change from a dropped one. `nextChange` is a listener, so it
+    // makes the same distinction while waiting for the event instead of
+    // guessing at how long it takes.
+    const degraded = nextChange(store)
 
     await writeFile(
       path.join(root, 'settings.json'),
       '{ "keybindings.overrides": { "a.one": "Mod+1" } }',
       'utf8',
     )
-    await new Promise((resolve) => setTimeout(resolve, 400))
 
-    expect(delivered.at(-1)?.values['keybindings.overrides']).toEqual({ 'a.one': 'Mod+1' })
+    expect((await degraded).values['keybindings.overrides']).toEqual({ 'a.one': 'Mod+1' })
 
     // And the store recovers on its own once the file is readable again.
     await rm(secretsPath, { recursive: true })
+    const recovered = nextChange(store)
     await writeFile(
       path.join(root, 'settings.json'),
       '{ "keybindings.overrides": { "a.two": "Mod+2" } }',
       'utf8',
     )
-    await new Promise((resolve) => setTimeout(resolve, 400))
 
-    expect(delivered.at(-1)?.values['keybindings.overrides']).toEqual({ 'a.two': 'Mod+2' })
+    expect((await recovered).values['keybindings.overrides']).toEqual({ 'a.two': 'Mod+2' })
   })
 })
