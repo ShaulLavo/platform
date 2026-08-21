@@ -4,6 +4,8 @@ import {
   contentRevisionForText,
   textSnapshotEqualsText,
 } from '@/features/editor/utils/text-snapshot'
+import type { SettingsWriteTarget } from '@workspace/contracts'
+
 import type { FileResult } from '@/lib/file-system-types'
 import {
   createEditorTextBuffer,
@@ -15,6 +17,17 @@ import {
 
 type LiveDocumentSyncState = 'idle' | 'saving' | 'conflict'
 
+/**
+ * Where a document's contents came from, and therefore where a save sends them.
+ *
+ * `settings` exists because "can this be saved" and "is this a path on disk" are
+ * different questions. A raw settings.json buffer is written through
+ * `POST /settings/raw` — the fs routes only take workspace-relative paths, and
+ * the settings file is addressed by layer rather than by path — so it is savable
+ * without ever being file-backed. Keeping that on the document rather than in a
+ * predicate over the id is what stops the save path from growing a second
+ * spelling of the same question.
+ */
 type LiveDocumentSync =
   | {
       fileVersion: string
@@ -22,6 +35,13 @@ type LiveDocumentSync =
       mtimeMs: number
       path: string
       state: LiveDocumentSyncState
+    }
+  | {
+      kind: 'settings'
+      /** The revision the buffer was seeded from; the raw write guards on it. */
+      revision: string
+      state: LiveDocumentSyncState
+      target: SettingsWriteTarget
     }
   | {
       kind: 'none'
@@ -52,6 +72,8 @@ export type LiveEditorViewDocument = LiveEditorDocument & {
 export type UnsyncedLiveEditorDocumentInput = {
   content: string
   id: string
+  /** Omitted for a buffer nothing can write back, such as a conflict snapshot. */
+  sync?: Exclude<LiveDocumentSync, { kind: 'file' }>
 }
 
 export type WorkspaceDocumentServiceState = {
@@ -281,18 +303,85 @@ export class WorkspaceDocumentService {
     if (!document) return false
     if (document.sync.kind !== 'file') return false
 
+    return this.applySaved(
+      document,
+      { ...document.sync, fileVersion, mtimeMs, state: 'idle' },
+      savedContentRevision,
+      savedText,
+    )
+  }
+
+  /**
+   * The raw settings write landed. `revision` is the file's new hash, which the
+   * next save guards on — without advancing it every subsequent save of the same
+   * buffer refuses itself as stale.
+   */
+  markSettingsSaved({
+    documentId,
+    revision,
+    savedContentRevision,
+    savedText,
+  }: {
+    documentId: string
+    revision: string
+    savedContentRevision: string
+    savedText: string
+  }): boolean {
+    const document = this.liveDocumentsById.get(documentId)
+    if (!document) return false
+    if (document.sync.kind !== 'settings') return false
+
+    return this.applySaved(
+      document,
+      { ...document.sync, revision, state: 'idle' },
+      savedContentRevision,
+      savedText,
+    )
+  }
+
+  /**
+   * Re-seeds an unsynced buffer from text it did not produce.
+   *
+   * A raw settings save is not always byte-preserving: the server lifts a
+   * provider credential out of the document into the secret store and rewrites
+   * that subtree, so what is on disk afterwards is not what was posted. Leaving
+   * the buffer holding the old text would show a secret that is no longer in the
+   * file, and the next save would put it back.
+   */
+  replaceUnsyncedDocumentText(documentId: string, text: string): boolean {
+    const document = this.liveDocumentsById.get(documentId)
+    if (!document) return false
+    if (document.sync.kind === 'file') return false
+    if (textSnapshotEqualsText(document.buffer.getTextSnapshot(), text)) return false
+
+    const buffer = createEditorTextBuffer(text)
+    buffer.markClean()
+    this.liveDocumentsById.set(documentId, {
+      ...document,
+      buffer,
+      contentRevision: contentRevisionForText(text),
+      localRevision: buffer.getRevision(),
+    })
+    this.deleteDirtyPath(document.path)
+    this.rebindViewsForDocument(documentId)
+    return true
+  }
+
+  private applySaved(
+    document: LiveEditorDocumentRecord,
+    sync: LiveDocumentSync,
+    savedContentRevision: string,
+    savedText: string,
+  ): boolean {
     // The write already landed on disk, so the sync metadata advances even
     // when in-flight edits make the content checks below fail.
-    const synced: LiveEditorDocumentRecord = {
-      ...document,
-      sync: { ...document.sync, fileVersion, mtimeMs, state: 'idle' },
-    }
-    this.liveDocumentsById.set(documentId, synced)
+    const synced: LiveEditorDocumentRecord = { ...document, sync }
+    this.liveDocumentsById.set(document.id, synced)
     if (document.contentRevision !== savedContentRevision) return false
     if (!textSnapshotEqualsText(document.buffer.getTextSnapshot(), savedText)) return false
 
     document.buffer.markClean()
-    this.liveDocumentsById.set(documentId, {
+    this.liveDocumentsById.set(document.id, {
       ...synced,
       localRevision: document.buffer.getRevision(),
     })
@@ -464,7 +553,7 @@ export class WorkspaceDocumentService {
       id: input.id,
       localRevision: buffer.getRevision(),
       path: input.id,
-      sync: { kind: 'none' },
+      sync: input.sync ?? { kind: 'none' },
     }
   }
 

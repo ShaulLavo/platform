@@ -78,6 +78,7 @@ export const SearchMatchRow = memo(
               )}
             >
               <HighlightedPreview
+                active={active}
                 preview={display.text}
                 query={query}
                 range={display.range}

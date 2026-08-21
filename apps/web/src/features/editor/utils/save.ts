@@ -3,19 +3,32 @@ import {
   type EditorDocumentStoreApi,
   type LiveEditorDocument,
 } from '@/features/editor/state/document-state'
-import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
 import { FileSyncService } from '@/features/editor/state/file-sync-service'
+import { SettingsSyncService } from '@/features/settings/utils/sync-service'
 import type { QueryClient } from '@tanstack/react-query'
+
+/**
+ * Whether this document has somewhere to be written back to.
+ *
+ * Asked of the document rather than of its id. "Is this a path on disk" is a
+ * narrower question that used to stand in for this one, and it was wrong in both
+ * directions: a raw settings buffer is savable without being a file, and the
+ * check had to be restated at every entry point to keep a diff document out.
+ * A document that was never seeded from something writable carries
+ * `sync.kind === 'none'` and answers no here once.
+ */
+function savableDocument(document: LiveEditorDocument) {
+  return document.sync.kind !== 'none'
+}
 
 export async function saveSelectedEditorDocument(
   documentStore: EditorDocumentStoreApi,
   queryClient: QueryClient,
   selectedFilePath: string | null,
 ) {
-  const path = fileBackedDocumentPath(selectedFilePath)
-  if (!path) return false
+  if (!selectedFilePath) return false
 
-  return saveEditorDocumentByPath(documentStore, queryClient, path)
+  return saveEditorDocumentByPath(documentStore, queryClient, selectedFilePath)
 }
 
 export async function saveEditorDocumentByPath(
@@ -23,11 +36,10 @@ export async function saveEditorDocumentByPath(
   queryClient: QueryClient,
   path: string,
 ) {
-  if (!fileBackedDocumentPath(path)) return false
-
   const state = documentStore.getState()
   const liveDocument = state.getLiveEditorDocument(path)
   if (!liveDocument) return false
+  if (!savableDocument(liveDocument)) return false
   if (!isDirtyLiveEditorDocument(state, path)) return true
 
   await saveLiveEditorDocument(documentStore, queryClient, liveDocument)
@@ -53,6 +65,11 @@ async function saveLiveEditorDocument(
   queryClient: QueryClient,
   document: LiveEditorDocument,
 ) {
+  if (document.sync.kind === 'settings') {
+    await new SettingsSyncService(documentStore, queryClient).save(document)
+    return
+  }
+
   await new FileSyncService(documentStore, queryClient).save(document)
 }
 
@@ -67,8 +84,7 @@ function shouldSaveDocument(
   state: Pick<EditorDocumentStore, 'dirtyFilePaths' | 'liveDocumentsById'>,
   document: LiveEditorDocument,
 ) {
-  if (document.sync.kind !== 'file') return false
-  if (!fileBackedDocumentPath(document.sync.path)) return false
+  if (!savableDocument(document)) return false
 
-  return isDirtyLiveEditorDocument(state, document.sync.path)
+  return isDirtyLiveEditorDocument(state, document.id)
 }

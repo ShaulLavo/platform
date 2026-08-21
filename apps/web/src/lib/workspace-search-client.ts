@@ -8,6 +8,8 @@ import type {
   WorkspaceSearchProviderSource,
   WorkspaceSearchStatPathCount,
   WorkspaceSearchQuery,
+  WorkspaceSearchWarningCode,
+  WorkspaceSearchWarningEvent,
 } from '@workspace/contracts'
 
 import { getClient } from '@/lib/client'
@@ -16,11 +18,13 @@ import { clientErrors } from '@/lib/structured-errors'
 
 export type WorkspaceSearchResult = {
   count: number
+  fileCount?: number
   matches: WorkspaceSearchMatch[]
   measurement?: WorkspaceSearchMeasurement
   path: string
   query: string
   truncated: boolean
+  warnings: WorkspaceSearchWarningEvent[]
 }
 
 export async function collectWorkspaceSearch(
@@ -28,6 +32,7 @@ export async function collectWorkspaceSearch(
   signal?: AbortSignal,
 ): Promise<WorkspaceSearchResult> {
   const matches: WorkspaceSearchMatch[] = []
+  const warnings: WorkspaceSearchWarningEvent[] = []
   let done: WorkspaceSearchDoneEvent | null = null
 
   for await (const event of streamWorkspaceSearch(query, signal)) {
@@ -36,16 +41,23 @@ export async function collectWorkspaceSearch(
       continue
     }
 
+    if (event.type === 'warning') {
+      warnings.push(event)
+      continue
+    }
+
     if (event.type === 'done') done = event
   }
 
   return {
     count: done?.count ?? matches.length,
+    fileCount: done?.fileCount,
     matches,
     measurement: done?.measurement,
     path: done?.path ?? query.path,
     query: done?.query ?? query.query,
     truncated: done?.truncated ?? false,
+    warnings,
   }
 }
 
@@ -72,6 +84,7 @@ function workspaceSearchRequestQuery(query: WorkspaceSearchQuery) {
     caseSensitive: query.caseSensitive === true,
     entryType: query.entryType,
     excludeGlobs: query.excludeGlobs ? Array.from(query.excludeGlobs) : undefined,
+    fileLimit: query.fileLimit,
     includeContent: query.includeContent === true,
     includeGlobs: query.includeGlobs ? Array.from(query.includeGlobs) : undefined,
     includeNames: query.includeNames ?? true,
@@ -88,6 +101,7 @@ function workspaceSearchRequestQuery(query: WorkspaceSearchQuery) {
 
 function workspaceSearchEventFromSse(event: EdenSseEvent): WorkspaceSearchEvent {
   if (event.event === 'match') return matchEvent(event.data)
+  if (event.event === 'warning') return warningEventFromData(event.data)
   if (event.event === 'done') return doneEventFromData(event.data)
   if (event.event === 'error') {
     throw clientErrors.SEARCH_EVENT_ERROR({ message: searchEventError(event.data) })
@@ -110,6 +124,30 @@ function searchEventMatch(data: unknown): WorkspaceSearchMatch | null {
   return data.match
 }
 
+function warningEventFromData(data: unknown): WorkspaceSearchWarningEvent {
+  if (!isRecord(data)) return unknownWarningEvent('Search results may be incomplete.')
+
+  const message = propertyString(data, 'message')
+
+  return {
+    code: warningCode(data.code),
+    detail: optionalString(data.detail),
+    message: message || 'Search results may be incomplete.',
+    type: 'warning',
+  }
+}
+
+function unknownWarningEvent(message: string): WorkspaceSearchWarningEvent {
+  return { code: 'content-tool-partial-failure', message, type: 'warning' }
+}
+
+function warningCode(value: unknown): WorkspaceSearchWarningCode {
+  if (value === 'file-limit-reached') return value
+  if (value === 'multiline-query-unsupported') return value
+
+  return 'content-tool-partial-failure'
+}
+
 function doneEventFromData(data: unknown): WorkspaceSearchDoneEvent {
   if (!isRecord(data)) {
     return { count: 0, path: '', query: '', truncated: false, type: 'done' }
@@ -117,6 +155,7 @@ function doneEventFromData(data: unknown): WorkspaceSearchDoneEvent {
 
   return {
     count: propertyNumber(data, 'count'),
+    fileCount: optionalNumber(data.fileCount),
     measurement: searchMeasurement(data.measurement),
     path: propertyString(data, 'path'),
     query: propertyString(data, 'query'),
@@ -241,6 +280,13 @@ function isOptionalString(value: unknown) {
 
 function optionalNumber(value: unknown) {
   if (typeof value !== 'number') return undefined
+
+  return value
+}
+
+function optionalString(value: unknown) {
+  if (typeof value !== 'string') return undefined
+  if (!value) return undefined
 
   return value
 }

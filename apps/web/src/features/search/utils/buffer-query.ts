@@ -22,6 +22,7 @@ export function workspaceSearchQuery(
     caseSensitive: options.caseSensitive === true,
     excludeGlobs: filtersVisible ? workspaceSearchGlobPatterns(options.excludeGlobText) : [],
     entryType: 'file',
+    fileLimit: readSettingsMirror()['search.maxResultFiles'],
     includeContent: true,
     includeGlobs: filtersVisible ? workspaceSearchGlobPatterns(options.includeGlobText) : [],
     includeNames: false,

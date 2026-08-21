@@ -52,7 +52,7 @@ export type CheckpointDiffDocumentInput = Omit<CheckpointPayload, 'version'>
 export type SnapshotDiffDocumentInput = FileDiff &
   ({ newObjectId: string } | { oldObjectId: string })
 
-const DIFF_DOCUMENT_PREFIX = 'git-diff:'
+export const DIFF_DOCUMENT_PREFIX = 'git-diff:'
 const SNAPSHOT_SCOPE = 'v2'
 const CHECKPOINT_SCOPE = 'checkpoint-v1'
 

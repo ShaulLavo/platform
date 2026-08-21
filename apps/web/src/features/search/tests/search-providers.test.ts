@@ -419,6 +419,118 @@ describe('composite search provider', () => {
     expect(events.at(-1)).toMatchObject({ count: 2, type: 'done' })
   })
 
+  it('forwards a disk warning without spending result budget', async () => {
+    const disk = new StaticSearchProvider([
+      {
+        code: 'content-tool-partial-failure',
+        message: 'rg could not read part of this workspace.',
+        type: 'warning',
+      },
+      {
+        match: {
+          kind: 'content',
+          path: 'repo/src/app.ts',
+          source: 'disk',
+          type: 'file',
+        },
+        type: 'match',
+      },
+      {
+        count: 1,
+        path: 'repo',
+        query: 'needle',
+        truncated: false,
+        type: 'done',
+      },
+    ])
+    const provider = new CompositeSearchProvider({
+      disk,
+      openBufferPaths: new Set(),
+      openBuffers: new OpenBufferSearchProvider([]),
+    })
+
+    const events = await collectEvents(provider.search({ ...QUERY, limit: 1 }))
+
+    expect(events).toContainEqual({
+      code: 'content-tool-partial-failure',
+      message: 'rg could not read part of this workspace.',
+      type: 'warning',
+    })
+    expect(events.at(-1)).toMatchObject({ count: 1, fileCount: 1, type: 'done' })
+  })
+
+  it('spends one file budget across dirty buffers and disk', async () => {
+    const disk = new StaticSearchProvider([
+      {
+        match: {
+          kind: 'content',
+          path: 'repo/src/other.ts',
+          source: 'disk',
+          type: 'file',
+        },
+        type: 'match',
+      },
+      {
+        count: 1,
+        path: 'repo',
+        query: 'needle',
+        truncated: false,
+        type: 'done',
+      },
+    ])
+    const provider = new CompositeSearchProvider({
+      disk,
+      openBufferPaths: new Set(['repo/src/dirty.ts']),
+      openBuffers: new OpenBufferSearchProvider([
+        {
+          path: 'repo/src/dirty.ts',
+          text: 'needle from dirty editor',
+        },
+      ]),
+    })
+
+    const events = await collectEvents(provider.search({ ...QUERY, fileLimit: 1 }))
+    const matches = events.filter((event) => event.type === 'match').map((event) => event.match)
+
+    expect(matches).toEqual([
+      expect.objectContaining({ path: 'repo/src/dirty.ts', source: 'open-buffer' }),
+    ])
+    expect(events.at(-1)).toMatchObject({ fileCount: 1, truncated: true, type: 'done' })
+  })
+
+  it('keeps every match inside a file that already fits the file budget', async () => {
+    const disk = new StaticSearchProvider([
+      {
+        count: 0,
+        path: 'repo',
+        query: 'needle',
+        truncated: false,
+        type: 'done',
+      },
+    ])
+    const provider = new CompositeSearchProvider({
+      disk,
+      openBufferPaths: new Set(['repo/src/dirty.ts']),
+      openBuffers: new OpenBufferSearchProvider([
+        {
+          path: 'repo/src/dirty.ts',
+          text: 'needle\nneedle\nneedle',
+        },
+        {
+          path: 'repo/src/second.ts',
+          text: 'needle',
+        },
+      ]),
+    })
+
+    const events = await collectEvents(provider.search({ ...QUERY, fileLimit: 1 }))
+    const matches = events.filter((event) => event.type === 'match').map((event) => event.match)
+
+    expect(matches).toHaveLength(3)
+    expect(new Set(matches.map((match) => match.path))).toEqual(new Set(['repo/src/dirty.ts']))
+    expect(events.at(-1)).toMatchObject({ fileCount: 1, truncated: true, type: 'done' })
+  })
+
   it('preserves disk search measurement on the composite done event', async () => {
     const measurement: WorkspaceSearchMeasurement = {
       durationMs: 12,

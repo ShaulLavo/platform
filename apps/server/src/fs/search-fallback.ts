@@ -18,6 +18,7 @@ import {
   nameSearchMatches,
   safeEntryStats,
   searchMatchMetadata,
+  shouldSearchContent,
   shouldSearchNames,
   type FindContext,
   type FindMatch,
@@ -108,7 +109,7 @@ function canSearchFileContent(
   const options = context.options
   if (!matchesEntryType(entryStats, options.entryType)) return false
   if (!context.matcher.pathMatches(globMatchPath(context, relativePath))) return false
-  if (!options.includeContent) return false
+  if (!shouldSearchContent(options)) return false
   if (!isFileEntry(entryStats)) return false
   if (entryStats.targetStats.size > options.maxContentBytes) return false
 

@@ -368,6 +368,7 @@ function emptySearchBuffer(rootPath: string): CachedSearchBufferState {
     rootPath,
     totalCount: 0,
     truncated: false,
+    warnings: [],
     wholeWord: false,
   }
 }

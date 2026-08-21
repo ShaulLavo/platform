@@ -8,6 +8,9 @@ export type PlatformPickOptions = {
 }
 
 export type PlatformBridge = {
+  // Whether macOS composites the desktop behind the window, so the web layer
+  // knows to skip drawing a wallpaper of its own.
+  hasNativeVibrancy: boolean
   pickEntry(options: PlatformPickOptions): Promise<string[]>
 }
 

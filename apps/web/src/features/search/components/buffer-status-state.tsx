@@ -1,6 +1,8 @@
 import { WarningCircleIcon } from '@phosphor-icons/react'
 import { EmptyState } from '@workspace/ui/components/empty-state'
 
+import type { WorkspaceSearchWarningEvent } from '@workspace/contracts'
+
 import type { SearchBufferStatus } from '@/features/search/state/buffer-state'
 import { SearchIdleState } from '@/features/search/components/idle-state'
 import { SearchPendingOrEmpty } from '@/features/search/components/pending-or-empty'
@@ -8,9 +10,11 @@ import { SearchPendingOrEmpty } from '@/features/search/components/pending-or-em
 export function SearchBufferStatusState({
   error,
   status,
+  warnings = [],
 }: {
   error: string | null
   status: SearchBufferStatus
+  warnings?: readonly WorkspaceSearchWarningEvent[]
 }) {
   if (status === 'idle') {
     return <SearchIdleState />
@@ -26,5 +30,5 @@ export function SearchBufferStatusState({
     )
   }
 
-  return <SearchPendingOrEmpty status={status} />
+  return <SearchPendingOrEmpty status={status} warnings={warnings} />
 }

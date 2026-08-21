@@ -9,6 +9,7 @@ import { useSettings } from '../hooks/use-settings'
 import { useSettingsScope } from '../state/scope-store'
 import { matchingSettingIds } from '../utils/search'
 import { DiagnosticsBanner } from './diagnostics-banner'
+import { MalformedBanner } from './malformed-banner'
 import { PageActions } from './page-actions'
 import { ScopeTabs } from './scope-tabs'
 import { SettingRow } from './setting-row'
@@ -97,6 +98,7 @@ export function SettingsPage() {
           searchRef.current?.focus()
         }}
       >
+        <MalformedBanner layers={settings.data.layers} />
         <DiagnosticsBanner diagnostics={settings.data.diagnostics} />
         {shown.length === 0 ? (
           <Status>{emptySettingsMessage(query, selectedCategory)}</Status>

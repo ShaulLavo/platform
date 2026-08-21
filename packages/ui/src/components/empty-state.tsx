@@ -12,6 +12,18 @@ import { cn } from '@workspace/ui/lib/utils'
  * pane, a sidebar section); `align='center'` is for a state that owns a whole
  * pane.
  */
+const emptyStateIconTone = {
+  error: 'text-destructive',
+  muted: 'text-muted-foreground',
+  warning: 'text-warning',
+} as const
+
+const emptyStateTitleTone = {
+  error: 'text-destructive',
+  muted: 'text-foreground',
+  warning: 'text-foreground',
+} as const
+
 function EmptyState({
   action,
   align = 'center',
@@ -29,7 +41,7 @@ function EmptyState({
   hint?: ReactNode
   icon?: ReactNode
   title: string
-  tone?: 'error' | 'muted'
+  tone?: 'error' | 'muted' | 'warning'
 }) {
   return (
     <div
@@ -42,21 +54,11 @@ function EmptyState({
     >
       <div className={cn('flex flex-col gap-2', align === 'center' && 'items-center text-center')}>
         {icon ? (
-          <span
-            aria-hidden='true'
-            className={cn(
-              '[&>svg]:size-6',
-              tone === 'error' ? 'text-destructive' : 'text-muted-foreground',
-            )}
-          >
+          <span aria-hidden='true' className={cn('[&>svg]:size-6', emptyStateIconTone[tone])}>
             {icon}
           </span>
         ) : null}
-        <span
-          className={cn('font-medium', tone === 'error' ? 'text-destructive' : 'text-foreground')}
-        >
-          {title}
-        </span>
+        <span className={cn('font-medium', emptyStateTitleTone[tone])}>{title}</span>
         {description ? (
           <span className='text-muted-foreground max-w-64 text-[11px]'>{description}</span>
         ) : null}

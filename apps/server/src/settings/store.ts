@@ -235,7 +235,15 @@ export class SettingsStore {
     // Secrets first, for the reason `write` gives: a document naming a variable
     // whose value never landed is recoverable, the reverse is not.
     await this.secretStore.write(document.secrets)
-    await this.layerFor(target).writeText(document.text, baseRevision)
+    // Same `''`-is-not-a-revision normalization `write` does, for the same
+    // reason: the snapshot reports `''` for a file that does not exist and the
+    // disk reports `null`, so without this the first raw save on a fresh
+    // install refuses itself — which is exactly the save that repairs a
+    // document the keyed path will not touch.
+    await this.layerFor(target).writeText(
+      document.text,
+      baseRevision === undefined ? undefined : baseRevision || null,
+    )
     this.invalidate()
     recordRequestContext({
       area: 'settings',
@@ -406,11 +414,20 @@ export class SettingsStore {
   }
 
   private layerSnapshots() {
-    const files = this.fileLayers().map((layer) => ({
-      id: layer.id as SettingsLayerId,
-      present: layer.snapshot().present,
-      raw: layer.snapshot().raw as Record<string, unknown>,
-    }))
+    const files = this.fileLayers().map((layer) => {
+      const contents = layer.snapshot()
+
+      return {
+        id: layer.id as SettingsLayerId,
+        present: contents.present,
+        raw: contents.raw as Record<string, unknown>,
+        file: {
+          text: contents.text,
+          revision: contents.revision ?? '',
+          parseErrors: [...contents.parseErrors],
+        },
+      }
+    })
     if (Object.keys(this.policy).length === 0) return files
 
     return [...files, { id: 'policy' as SettingsLayerId, present: true, raw: this.policy }]

@@ -18,7 +18,7 @@ import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-col
 import { installServerRestartInvalidation } from '@/features/chat/state/server-restart-invalidation.ts'
 import { initializeClientLogging, log } from '@/lib/client-logging.ts'
 import { loadNerdFont } from '@/lib/default-nerd-font.ts'
-import { isDesktop } from '@/lib/platform/bridge.ts'
+import { hasNativeVibrancyShell, isDesktop } from '@/lib/platform/bridge.ts'
 import { applyNativeVibrancy } from '@/lib/platform/native-vibrancy.ts'
 import { installEditorPerformanceTraceFromUrl } from '@/features/editor/state/performance-trace.ts'
 import { queryClient } from '@/lib/query-client.ts'
@@ -28,7 +28,7 @@ import { TooltipProvider } from '@workspace/ui/components/tooltip'
 installEditorPerformanceTraceFromUrl()
 initializeClientLogging()
 installServerRestartInvalidation(queryClient)
-applyNativeVibrancy(isDesktop())
+applyNativeVibrancy(hasNativeVibrancyShell())
 // Before `createRoot`, deliberately. React runs child effects before parent
 // effects, so an effect near the root would land after descendants that read
 // computed styles — the terminal snapshots CSS variables when it is built. The

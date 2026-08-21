@@ -1,5 +1,9 @@
 import { expect, test } from '../../../../../test/fixtures'
 import { languageIdForFilePath } from '@/features/editor/utils/file-path'
+import {
+  EDITOR_SHIKI_LANGUAGE_MAP,
+  EDITOR_SHIKI_PRELOAD_LANGUAGES,
+} from '@/features/editor/utils/shiki-languages'
 
 test('keeps the tree-sitter-backed language ids stable', () => {
   expect(languageIdForFilePath('/repo/src/app.ts')).toBe('typescript')
@@ -48,6 +52,99 @@ test('maps common extensions to their shiki language ids', () => {
   expect(languageIdForFilePath('/repo/app.ini')).toBe('ini')
   expect(languageIdForFilePath('/repo/deploy.ps1')).toBe('powershell')
   expect(languageIdForFilePath('/repo/main.tf')).toBe('terraform')
+})
+
+/**
+ * The rows that unblock a language server, not just colour.
+ *
+ * A document with a null language id is never opened on its server at all —
+ * document sync refuses it before `didOpen` — so every extension missing here
+ * meant zls, nixd, hls, ocaml-lsp, tinymist, clojure-lsp, fsautocomplete and
+ * texlab would spawn, initialize, and then sit idle forever. Each of these has a
+ * server in the registry that claims the extension.
+ */
+test('gives every registry extension a language id, so its server is reachable', () => {
+  expect(languageIdForFilePath('/repo/main.zig')).toBe('zig')
+  expect(languageIdForFilePath('/repo/build.zon')).toBe('zig')
+  expect(languageIdForFilePath('/repo/flake.nix')).toBe('nix')
+  expect(languageIdForFilePath('/repo/Main.hs')).toBe('haskell')
+  expect(languageIdForFilePath('/repo/Main.lhs')).toBe('haskell')
+  expect(languageIdForFilePath('/repo/main.ml')).toBe('ocaml')
+  expect(languageIdForFilePath('/repo/main.mli')).toBe('ocaml')
+  expect(languageIdForFilePath('/repo/core.clj')).toBe('clojure')
+  expect(languageIdForFilePath('/repo/core.cljs')).toBe('clojure')
+  expect(languageIdForFilePath('/repo/core.cljc')).toBe('clojure')
+  expect(languageIdForFilePath('/repo/deps.edn')).toBe('clojure')
+  expect(languageIdForFilePath('/repo/main.typ')).toBe('typst')
+  expect(languageIdForFilePath('/repo/main.typc')).toBe('typst')
+  expect(languageIdForFilePath('/repo/Program.fs')).toBe('fsharp')
+  expect(languageIdForFilePath('/repo/Program.fsi')).toBe('fsharp')
+  expect(languageIdForFilePath('/repo/Program.fsx')).toBe('fsharp')
+  expect(languageIdForFilePath('/repo/main.jl')).toBe('julia')
+  expect(languageIdForFilePath('/repo/paper.tex')).toBe('latex')
+  expect(languageIdForFilePath('/repo/refs.bib')).toBe('bibtex')
+  expect(languageIdForFilePath('/repo/main.gleam')).toBe('gleam')
+  expect(languageIdForFilePath('/repo/schema.prisma')).toBe('prisma')
+  expect(languageIdForFilePath('/repo/Page.astro')).toBe('astro')
+  expect(languageIdForFilePath('/repo/types.pyi')).toBe('python')
+  expect(languageIdForFilePath('/repo/vars.tfvars')).toBe('terraform')
+  expect(languageIdForFilePath('/repo/tasks.rake')).toBe('ruby')
+  expect(languageIdForFilePath('/repo/gem.gemspec')).toBe('ruby')
+  expect(languageIdForFilePath('/repo/config.ru')).toBe('ruby')
+  expect(languageIdForFilePath('/repo/View.objc')).toBe('objective-c')
+  expect(languageIdForFilePath('/repo/View.objcpp')).toBe('objective-cpp')
+  expect(languageIdForFilePath('/repo/run.ksh')).toBe('shellscript')
+  expect(languageIdForFilePath('/repo/app.dockerfile')).toBe('dockerfile')
+})
+
+test('covers the clangd extensions the table was missing', () => {
+  expect(languageIdForFilePath('/repo/main.c++')).toBe('cpp')
+  expect(languageIdForFilePath('/repo/main.hxx')).toBe('cpp')
+  expect(languageIdForFilePath('/repo/main.h++')).toBe('cpp')
+})
+
+/**
+ * Every value must be a language the shiki highlighter can actually build, or
+ * the session is created, tree-sitter's own highlights are suppressed by it, and
+ * the file renders as plain text after the worker rejects — which is strictly
+ * worse than having no row at all.
+ */
+test('resolves every language id to a registered shiki grammar', () => {
+  const paths = [
+    '/repo/main.zig',
+    '/repo/flake.nix',
+    '/repo/Main.hs',
+    '/repo/main.ml',
+    '/repo/core.clj',
+    '/repo/main.typ',
+    '/repo/Program.fs',
+    '/repo/main.jl',
+    '/repo/paper.tex',
+    '/repo/refs.bib',
+    '/repo/main.gleam',
+    '/repo/schema.prisma',
+    '/repo/Page.astro',
+    '/repo/View.objc',
+    '/repo/View.objcpp',
+  ]
+
+  for (const path of paths) {
+    const languageId = languageIdForFilePath(path)
+    expect(languageId).not.toBeNull()
+    expect(EDITOR_SHIKI_LANGUAGE_MAP).toHaveProperty(languageId!)
+  }
+})
+
+/**
+ * A language in the map but not in the preload list gets its own highlighter:
+ * the worker keys one on its language set, and the set is `[lang, ...preload]`
+ * deduplicated. Fifteen new languages outside the preload list would be fifteen
+ * more highlighters, each carrying every other grammar too.
+ */
+test('preloads every language it can produce, so one highlighter serves them all', () => {
+  for (const languageId of Object.keys(EDITOR_SHIKI_LANGUAGE_MAP)) {
+    expect(EDITOR_SHIKI_PRELOAD_LANGUAGES).toContain(languageId)
+  }
 })
 
 test('maps extensionless dockerfile and makefile basenames', () => {

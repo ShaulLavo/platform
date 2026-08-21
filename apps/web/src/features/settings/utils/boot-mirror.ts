@@ -32,9 +32,15 @@ const MIRRORED_KEYS = [
   'editor.tabSize',
   'logs.defaultTimeRange',
   'logs.slowThresholdMs',
+  // The semantic-token controller is a plain object hanging off an LSP
+  // connection, not a component, and it re-reads these on every request so the
+  // switch takes effect without reconnecting. That is the second job above.
+  'lsp.semanticTokens.enabled',
+  'lsp.semanticTokens.servers',
   'search.caseSensitive',
   'search.defaultMatchMode',
   'search.maxResults',
+  'search.maxResultFiles',
   'search.quickOpenLimit',
   'search.wholeWord',
   'workbench.colorTheme',

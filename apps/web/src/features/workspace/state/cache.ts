@@ -33,6 +33,7 @@ import {
   type WorkspaceSearchMatch,
   type WorkspaceSearchMatchMode,
   type WorkspaceSearchQuery,
+  type WorkspaceSearchWarningEvent,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 import type { EditorScrollPosition } from '@singapor/core'
@@ -93,6 +94,7 @@ export type CachedSearchBufferState = {
   rootPath: string
   totalCount: number
   truncated: boolean
+  warnings: WorkspaceSearchWarningEvent[]
   wholeWord: boolean
 }
 
@@ -145,10 +147,21 @@ const workspaceSearchMatchSchema = v.object({
   targetType: v.optional(entryTypeSchema),
   type: entryTypeSchema,
 })
+const searchWarningSchema = v.object({
+  code: v.union([
+    v.literal('content-tool-partial-failure'),
+    v.literal('file-limit-reached'),
+    v.literal('multiline-query-unsupported'),
+  ]),
+  detail: v.optional(v.string()),
+  message: v.string(),
+  type: v.literal('warning'),
+})
 const workspaceSearchQuerySchema = v.object({
   caseSensitive: v.optional(v.boolean()),
   entryType: v.optional(entryTypeSchema),
   excludeGlobs: v.optional(v.array(v.string())),
+  fileLimit: v.optional(v.number()),
   includeContent: v.boolean(),
   includeGlobs: v.optional(v.array(v.string())),
   includeNames: v.optional(v.boolean()),
@@ -178,6 +191,9 @@ const cachedSearchBufferStateSchema = v.strictObject({
   rootPath: v.string(),
   totalCount: v.number(),
   truncated: v.boolean(),
+  // Restored results carry their warnings: cached matches from a partial run are
+  // still partial, and `truncated` is persisted for the same reason.
+  warnings: v.optional(v.array(searchWarningSchema), []),
   wholeWord: v.boolean(),
 })
 const sidebarTabSchema = v.union([

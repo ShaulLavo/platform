@@ -117,7 +117,7 @@ export class SettingsFileLayer {
    * user's other keybinding, not a merge conflict.
    */
   async write(edits: readonly DocumentEdit[], baseRevision?: string | null): Promise<void> {
-    const done = this.beginWrite()
+    const done = await this.beginWrite()
 
     try {
       const current = await this.read()
@@ -159,7 +159,7 @@ export class SettingsFileLayer {
    * refused is malformed *incoming* text, so the hatch cannot be the way a
    * broken document gets saved.
    */
-  async writeText(text: string, baseRevision?: string): Promise<void> {
+  async writeText(text: string, baseRevision?: string | null): Promise<void> {
     const incoming = parseSettingsDocument(text)
     if (incoming.parseErrors.length > 0) {
       throw settingsErrors.FILE_MALFORMED({
@@ -168,11 +168,15 @@ export class SettingsFileLayer {
       })
     }
 
-    const done = this.beginWrite()
+    const done = await this.beginWrite()
 
     try {
       const revision = await writeSettingsFile(this.filePath, text, {
-        expectedRevision: baseRevision ?? (await this.read()).revision,
+        // `??` treated the `''` a fresh install reports as a real revision, so
+        // the first raw save on a machine with no settings file compared `''`
+        // against the disk's `null` and refused itself. Only an *omitted*
+        // revision means "no guard requested"; see `write` above for the rest.
+        expectedRevision: baseRevision === undefined ? (await this.read()).revision : baseRevision,
         onRevisionMismatch: () => {
           throw settingsErrors.REVISION_STALE({ file: this.filePath })
         },
@@ -214,10 +218,37 @@ export class SettingsFileLayer {
     return this.toContents(await readSettingsFile(this.filePath))
   }
 
+  /**
+   * The bytes are always news. What they *mean* is only news when they parse.
+   *
+   * `jsonc-parser` recovers what it can from a broken document, but "what it can"
+   * is not a subset of the user's configuration — one unterminated quote in a key
+   * name near the top recovers zero keys — and every absent key resolves to its
+   * registry default (`combine` in `resolve.ts`), not to its previous value. So
+   * publishing a partial parse does not degrade the configuration, it replaces it
+   * with the factory one: theme, fonts, wallpaper and the whole keymap, for as
+   * long as the file is mid-edit. Holding the last good `raw` is what makes an
+   * external hand-edit survivable, and it is what VS Code does.
+   *
+   * The file's own state — text, revision, parseErrors — still updates, so the
+   * page can say the document is broken while the app keeps running on what it
+   * last understood.
+   */
   private toContents({ text, revision }: { text: string; revision: string | null }): LayerContents {
+    // A deleted file is a decision, not a syntax error: there are no settings
+    // here now, and holding the old ones would make the delete look ignored.
     if (revision === null) return EMPTY
 
     const parsed = parseSettingsDocument(text)
+    if (parsed.parseErrors.length > 0) {
+      return {
+        raw: this.contents.raw,
+        parseErrors: parsed.parseErrors,
+        revision,
+        text,
+        present: true,
+      }
+    }
 
     return { raw: parsed.values, parseErrors: parsed.parseErrors, revision, text, present: true }
   }
@@ -295,9 +326,18 @@ export class SettingsFileLayer {
    * second one. The debounce alone does not settle it -- it delays a reload, it
    * does not order one against a write -- and the arming catch-up below puts a
    * second reload into the same window, so this is worth naming rather than
-   * leaving to luck.
+   * leaving to luck. It is also what serializes writes against each other; see
+   * the wait at the top.
    */
-  private beginWrite(): () => void {
+  private async beginWrite(): Promise<() => void> {
+    // A write also waits out the write before it. Ordering reloads against a
+    // write is not enough on its own: two writes that overlap each read the same
+    // revision, each find it unchanged, and each rename over the other, so
+    // `expectedRevision` passes twice and one edit is gone with a 200 on both.
+    // The loop rather than a single await because several callers can be parked
+    // here at once, and only the first to wake gets to install the next marker.
+    while (this.writing) await this.writing
+
     let release = () => {}
     const writing = new Promise<void>((resolve) => {
       release = resolve

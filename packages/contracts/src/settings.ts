@@ -135,8 +135,20 @@ export const lspServerOverridesSchema = v.record(
   lspServerOverrideSchema,
 )
 
+/**
+ * Server id → whether that server's semantic tokens are requested.
+ *
+ * Deliberately a separate table from `lspServerOverridesSchema` rather than a
+ * field on it: an override entry replaces how a server *starts*, and a stopped
+ * server keeps its entry, whereas this decides only whether a request is issued
+ * to a server that is already running. Merging them would make turning colour
+ * off for one server look like reconfiguring its command.
+ */
+export const semanticTokenServerOverridesSchema = v.record(trimmedNonEmptyStringSchema, v.boolean())
+
 export type LspServerOverride = v.InferOutput<typeof lspServerOverrideSchema>
 export type LspServerOverrides = v.InferOutput<typeof lspServerOverridesSchema>
+export type SemanticTokenServerOverrides = v.InferOutput<typeof semanticTokenServerOverridesSchema>
 export type ProviderEnvironmentVariable = v.InferOutput<typeof providerEnvironmentVariableSchema>
 export type ProviderInstanceConfig = v.InferOutput<typeof providerInstanceConfigSchema>
 export type ModelRef = v.InferOutput<typeof modelRefSchema>

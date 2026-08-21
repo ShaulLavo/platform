@@ -30,10 +30,12 @@ type BenchmarkConfig = {
 type BenchmarkRun = {
   count: number
   durationMs: number
+  fileCount: number
   iteration: number
   measurement?: WorkspaceSearchMeasurement
   query: string
   truncated: boolean
+  warningCodes: string[]
 }
 
 type BenchmarkSummary = {
@@ -116,6 +118,8 @@ async function runBenchmarkQuery(
   let count = 0
   let measurement: WorkspaceSearchMeasurement | undefined
   let truncated = false
+  let fileCount = 0
+  const warningCodes: string[] = []
 
   for await (const event of context.modules.findInWorkspaceStream(
     context.paths,
@@ -128,7 +132,13 @@ async function runBenchmarkQuery(
       continue
     }
 
+    if (event.type === 'warning') {
+      warningCodes.push(event.code)
+      continue
+    }
+
     count = event.count
+    fileCount = event.fileCount ?? 0
     measurement = event.measurement
     truncated = event.truncated
   }
@@ -136,10 +146,12 @@ async function runBenchmarkQuery(
   return {
     count,
     durationMs: elapsedMs(startedAt),
+    fileCount,
     iteration,
     measurement,
     query,
     truncated,
+    warningCodes,
   }
 }
 

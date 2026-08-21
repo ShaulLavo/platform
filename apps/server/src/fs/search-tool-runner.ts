@@ -9,8 +9,15 @@ type SearchToolRequirements = {
   names: boolean
 }
 
+export type SearchToolWarning = {
+  code: number
+  command: string
+  stderrTail: string
+}
+
 type SearchToolRunOptions = {
   cwd?: string
+  onWarning?: (warning: SearchToolWarning) => void
 }
 
 const commandAvailability = new Map<string, Promise<boolean>>()
@@ -57,7 +64,7 @@ export async function* runToolLines(
   if (successCodes.includes(code)) return
   if (signal?.aborted) return
   if (toleratedFailureCodes.includes(code)) {
-    reportToolWarning(command, code, stderr())
+    reportToolWarning(command, code, stderr(), options.onWarning)
     return
   }
 
@@ -81,14 +88,27 @@ function checkCommand(command: string) {
   })
 }
 
-function reportToolWarning(command: string, code: number, stderr: string) {
+function reportToolWarning(
+  command: string,
+  code: number,
+  stderr: string,
+  onWarning?: (warning: SearchToolWarning) => void,
+) {
+  const stderrTail = stderr ? limitText(stderr, 500) : ''
+
   recordRequestWarning('search tool exited with tolerated failure', {
     area: 'search',
     code,
     command,
     operation: 'tool',
-    stderrTail: stderr ? limitText(stderr, 500) : undefined,
+    stderrTail: stderrTail || undefined,
   })
+
+  // The log line above is for us; the callback is how the user finds out their
+  // results are incomplete. A tolerated exit means `rg` printed real matches and
+  // also failed to read part of the tree, so a silent `done` would report a
+  // partial result set as a complete one.
+  onWarning?.({ code, command, stderrTail })
 }
 
 function toolErrorMessage(command: string, code: number, stderr: string) {

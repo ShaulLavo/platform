@@ -42,6 +42,9 @@
   --color-update-foreground: var(--update-foreground);
   --color-diff-added: var(--diff-added);
   --color-diff-removed: var(--diff-removed);
+  --color-search-match: var(--search-result-match-background);
+  --color-search-match-active: var(--search-result-match-active-background);
+  --color-search-match-active-decoration: var(--search-result-match-active-decoration);
   --color-brand-anthropic: var(--brand-anthropic);
   --color-brand-openai: var(--brand-openai);
   --color-accent-foreground: var(--accent-foreground);
@@ -502,7 +505,7 @@ html[data-wallpaper-hidden] {
        canvas, whatever --surface-opacity is set to. */
     background-color: var(--background-solid);
   }
-  /* Except in the desktop shell, where the window is transparent over a real
+  /* Except when the desktop shell runs a transparent window over a real
      NSVisualEffectView. There the floor is the macOS compositor's blur of the
      live desktop, and painting over it would hide the thing we want. */
   html[data-native-vibrancy] {

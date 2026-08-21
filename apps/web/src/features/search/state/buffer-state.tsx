@@ -3,6 +3,7 @@ import type {
   WorkspaceSearchMatch,
   WorkspaceSearchMatchMode,
   WorkspaceSearchQuery,
+  WorkspaceSearchWarningEvent,
 } from '@workspace/contracts'
 import { createContext, use } from 'react'
 import { useStore } from 'zustand'
@@ -86,6 +87,7 @@ export type SearchBufferSnapshot = {
   streamBaseMatches: readonly WorkspaceSearchMatch[]
   totalCount: number
   truncated: boolean
+  warnings: readonly WorkspaceSearchWarningEvent[]
   wholeWord: boolean
 }
 
@@ -314,6 +316,7 @@ export function cachedSearchBufferState(
     rootPath: snapshot.rootPath,
     totalCount: resultMetadata.totalCount,
     truncated: resultMetadata.truncated,
+    warnings: Array.from(resultMetadata.warnings),
     wholeWord: snapshot.wholeWord,
   }
 }
@@ -327,6 +330,7 @@ function cachedSearchResultMetadata(snapshot: SearchBufferSnapshot) {
       resultsSearchQuery: null,
       totalCount: 0,
       truncated: false,
+      warnings: [],
     }
   }
   if (
@@ -340,6 +344,7 @@ function cachedSearchResultMetadata(snapshot: SearchBufferSnapshot) {
       resultsSearchQuery: null,
       totalCount: 0,
       truncated: false,
+      warnings: [],
     }
   }
 
@@ -350,6 +355,7 @@ function cachedSearchResultMetadata(snapshot: SearchBufferSnapshot) {
     resultsSearchQuery: snapshot.resultsSearchQuery,
     totalCount: snapshot.totalCount,
     truncated: snapshot.truncated,
+    warnings: snapshot.warnings,
   }
 }
 
@@ -396,6 +402,7 @@ function searchBufferSnapshotFromCache(
     streamBaseMatches: [],
     totalCount: cached.totalCount,
     truncated: cached.truncated,
+    warnings: cached.warnings,
     wholeWord: cached.wholeWord,
   })
 }
@@ -479,6 +486,7 @@ function clearedSearchBuffer(current: SearchBufferSnapshot) {
     streamBaseMatches: [],
     totalCount: 0,
     truncated: false,
+    warnings: [],
   }
 }
 
@@ -521,6 +529,9 @@ function appendSearchEvent(
 
   const active = activeRun(state.active, runId)
   if (!active) return state
+  if (event.type === 'warning') {
+    return { active: { ...active, warnings: appendSearchWarning(active.warnings, event) } }
+  }
   if (event.type === 'done') {
     const query = active.runningQuery ?? event.query
     const searchQuery = active.runningSearchQuery
@@ -543,11 +554,23 @@ function appendSearchEvent(
         streamBaseMatches: [],
         totalCount: event.count,
         truncated: event.truncated,
+        warnings: active.warnings,
       }),
     }
   }
 
   return failSearchBuffer(state, runId, event.message)
+}
+
+// One warning per code: a tolerated tool failure can be reported by both the
+// disk provider and the composite, and the user only needs to be told once.
+function appendSearchWarning(
+  warnings: readonly WorkspaceSearchWarningEvent[],
+  event: WorkspaceSearchWarningEvent,
+) {
+  if (warnings.some((warning) => warning.code === event.code)) return warnings
+
+  return warnings.concat(event)
 }
 
 function appendSearchMatches(
@@ -590,6 +613,7 @@ function appendSearchMatches(
     status: 'loading' as const,
     totalCount: contentSearchMatchCount(runningMatches),
     truncated: false,
+    warnings: active.warnings,
   }
 
   return {
@@ -757,6 +781,7 @@ function emptySearchBuffer(rootPath: string): SearchBufferSnapshot {
     streamBaseMatches: [],
     totalCount: 0,
     truncated: false,
+    warnings: [],
     wholeWord: settings['search.wholeWord'],
   }
 }
@@ -810,6 +835,7 @@ function loadingSearchBuffer(
     streamBaseMatches,
     totalCount: previous?.totalCount ?? 0,
     truncated: previous?.truncated ?? false,
+    warnings: [],
     wholeWord: query.wholeWord ?? previous?.wholeWord ?? false,
   }
 }

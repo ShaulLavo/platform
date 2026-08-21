@@ -1,10 +1,10 @@
-import { isRecord } from '@workspace/contracts'
+import { isRecord, LSP_SERVER_EXITED, type LspNegotiatedSemanticTokens } from '@workspace/contracts'
 import * as v from 'valibot'
 
 import { authenticateWebSocketData, type AuthConfig } from '../auth'
 import { pathSchema } from '../fs/contracts'
 import type { WorkspacePaths } from '../fs/path'
-import { matchLspServer, type LspSettings } from './registry'
+import { matchLspServer, type LspServerMatch, type LspSettings } from './registry'
 import type { LspProxyClientSession, LspSessionSource } from './proxy-session'
 import { recordProcessWarning } from '../observability'
 
@@ -38,6 +38,46 @@ export async function lspRouteMatch(
     root: match.root,
     serverId: match.server.id,
   }
+}
+
+/**
+ * What the matched server actually agreed to, for a developer and for the
+ * browser's own diagnostics.
+ *
+ * `negotiated` is `null` until a backend for this root has answered
+ * `initialize` — which is the ordinary state when the page asks, because
+ * `/lsp/match` runs *before* the websocket opens. That is reported rather than
+ * papered over: the alternative is spawning a language server to answer a
+ * question about language servers.
+ *
+ * The browser's semantic-token controller does not read this. It reads the same
+ * capabilities off its own `LspClient`, which the proxy fed from the same cached
+ * `initialize` result — same bytes, no round trip, and no race against the
+ * connection it would be describing.
+ */
+export async function lspRouteSemanticTokens(
+  paths: WorkspacePaths,
+  query: v.InferOutput<typeof lspMatchQuerySchema>,
+  settings: LspSettings,
+  pool: LspNegotiationSource,
+) {
+  const match = await resolveLspRouteMatch(
+    paths,
+    { path: query.path, root: query.root, serverId: query.server ?? null },
+    settings,
+  )
+  if (!match) return null
+
+  return {
+    negotiated: pool.negotiatedSemanticTokens(match),
+    root: match.root,
+    serverId: match.server.id,
+  }
+}
+
+/** The one method `lspRouteSemanticTokens` needs; `LspSessionPool` satisfies it. */
+export type LspNegotiationSource = {
+  negotiatedSemanticTokens(match: LspServerMatch): LspNegotiatedSemanticTokens | null
 }
 
 export type LspRouteDeps = {
@@ -91,7 +131,7 @@ export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig, deps: LspRou
           path: socket.path,
           serverId: socket.serverId,
         })
-        socket.close()
+        closeWithReason(socket, 'no_server_match', socket.serverId ?? 'unknown')
         return
       }
 
@@ -105,7 +145,7 @@ export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig, deps: LspRou
           rootPath: fs.paths.toRelative(match.root),
           serverId: match.server.id,
         })
-        socket.close()
+        closeWithReason(socket, 'spawn_failed', match.server.id)
         return
       }
 
@@ -130,6 +170,26 @@ export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig, deps: LspRou
       sessions.delete(socket.key)
     },
   }
+}
+
+/**
+ * Says why before closing, for the two rejections that happen after auth.
+ *
+ * Without it these are bare closes, and a bare close is the failure mode §7.1
+ * describes: the browser's transport clears its handlers and reports nothing, so
+ * a language server that never started looks exactly like one that is fine. An
+ * auth rejection deliberately gets no reason — that one is answering a client
+ * that has not proved it should be told anything.
+ */
+function closeWithReason(socket: LspWebSocket, outcome: string, serverId: string) {
+  socket.send(
+    JSON.stringify({
+      jsonrpc: '2.0',
+      method: LSP_SERVER_EXITED,
+      params: { exitCode: null, exitSignal: null, outcome, serverId },
+    }),
+  )
+  socket.close()
 }
 
 type LspClientMessage = string | ArrayBuffer | Uint8Array

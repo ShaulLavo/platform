@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { UnsavedChangesDialog } from '@/features/editor/components/unsaved-changes-dialog'
-import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
+import { savableDocumentPath } from '@/features/editor/utils/file-backed-document'
 import { isDirtyLiveEditorDocument, saveEditorDocumentByPath } from '@/features/editor/utils/save'
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
@@ -34,7 +34,9 @@ export function useDirtyTabCloseRequest() {
   const pendingPath = pendingClose?.path ?? null
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  const canSavePendingPath = fileBackedDocumentPath(pendingPath) !== null
+  // Savable, not file-backed: closing a dirty settings.json tab has to offer
+  // Save, and that save goes to the settings route rather than the fs one.
+  const canSavePendingPath = savableDocumentPath(pendingPath) !== null
 
   const clearPendingClose = useCallback(() => {
     setPendingCloses(emptyPendingCloses)

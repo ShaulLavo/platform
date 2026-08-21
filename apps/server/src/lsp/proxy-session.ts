@@ -1,6 +1,12 @@
 import { createInternalError } from '../observability/structured-errors'
 
-import { DEFAULT_SETTING_VALUES, isRecord } from '@workspace/contracts'
+import {
+  DEFAULT_SETTING_VALUES,
+  isRecord,
+  LSP_SEMANTIC_TOKENS_REFRESH,
+  LSP_SERVER_EXITED,
+  type LspNegotiatedSemanticTokens,
+} from '@workspace/contracts'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 
 import type { LspServerMatch } from './registry'
@@ -33,8 +39,49 @@ type PendingBackendRequest = {
   readonly clientId: JsonRpcId
   readonly connection: LspProxyConnection | null
   readonly method: string
+  /** Set only for a token request, so its response can be reassembled and fanned out. */
+  readonly semanticTokens?: SemanticTokenRequest
   reject?: (error: unknown) => void
   resolve?: (response: JsonRpcResponse) => void
+}
+
+/** One backend token request, and every client waiting on its answer. */
+type SemanticTokenRequest = {
+  readonly uri: string
+  /** True when the outbound method was rewritten to `full/delta`. */
+  readonly delta: boolean
+  /**
+   * The baseline this request was actually diffed against, or null for a whole
+   * file. Recorded rather than re-read at response time: the map can have moved
+   * on, and splicing a delta into a baseline the server never saw produces an
+   * array that matches no version of the text.
+   */
+  readonly previousResultId: string | null
+  /**
+   * The document version the request went out against, so a later request that
+   * straddles a `didChange` starts its own rather than coalescing onto an answer
+   * that describes text the user has already replaced.
+   */
+  readonly backendVersion: number
+  /** Whether this is the one retry a rejected `previousResultId` is allowed. */
+  readonly retried: boolean
+  readonly waiters: { readonly connection: LspProxyConnection; readonly clientId: JsonRpcId }[]
+}
+
+/**
+ * A delta baseline, and nothing else.
+ *
+ * Never served to a client as a response — it exists only so the *next* request
+ * for this uri can be sent as a delta. It lives here rather than in a browser
+ * because a `resultId` is per backend document, not per tab, and this backend is
+ * shared by every tab in a root: two browsers each holding their own baseline
+ * would take turns invalidating each other's, and a server that does not
+ * validate would diff against the wrong one and answer spans matching no version
+ * of the text.
+ */
+type SemanticTokenBaseline = {
+  resultId: string
+  data: number[]
 }
 
 type SharedDocument = {
@@ -106,8 +153,19 @@ export class LspSessionPool implements LspSessionSource {
    */
   private readonly idleTimeoutMs: () => number
 
-  constructor(idleTimeoutMs: () => number = () => DEFAULT_SETTING_VALUES['lsp.idleTimeoutMs']) {
+  /**
+   * A getter for the same reason `idleTimeoutMs` is one: a pooled session
+   * outlives many settings writes, and reading it per request is what lets the
+   * delta branch be turned off without restarting anything.
+   */
+  private readonly deltaEnabled: () => boolean
+
+  constructor(
+    idleTimeoutMs: () => number = () => DEFAULT_SETTING_VALUES['lsp.idleTimeoutMs'],
+    deltaEnabled: () => boolean = () => DEFAULT_SETTING_VALUES['lsp.semanticTokens.delta'],
+  ) {
     this.idleTimeoutMs = idleTimeoutMs
+    this.deltaEnabled = deltaEnabled
   }
 
   /** Live pooled backends. Read by teardown assertions. */
@@ -152,6 +210,20 @@ export class LspSessionPool implements LspSessionSource {
     this.sessions.delete(session.key)
   }
 
+  /**
+   * What the backend for this match agreed to, or `null` when none exists yet.
+   *
+   * Deliberately does not spawn one. `/lsp/match` runs before the socket opens,
+   * so a caller asking early gets `null` and asks again — which is honest, where
+   * spawning a language server to answer a diagnostic question would not be.
+   */
+  negotiatedSemanticTokens(match: LspServerMatch): LspNegotiatedSemanticTokens | null {
+    const session = this.sessions.get(lspProxySessionKey(match))
+    if (!session || session.isDisposed) return null
+
+    return session.negotiatedSemanticTokens
+  }
+
   private async pooledSession(match: LspServerMatch, rootPath: string) {
     const key = lspProxySessionKey(match)
     const existing = this.sessions.get(key)
@@ -165,7 +237,14 @@ export class LspSessionPool implements LspSessionSource {
   }
 
   private startSession(key: string, match: LspServerMatch, rootPath: string) {
-    const created = PooledLspProxySession.spawn(key, match, rootPath, this, this.idleTimeoutMs)
+    const created = PooledLspProxySession.spawn(
+      key,
+      match,
+      rootPath,
+      this,
+      this.idleTimeoutMs,
+      this.deltaEnabled,
+    )
       .then((session) => this.adoptSession(key, session))
       .finally(() => this.starting.delete(key))
     this.starting.set(key, created)
@@ -191,10 +270,16 @@ export class LspSessionPool implements LspSessionSource {
 class PooledLspProxySession {
   private readonly connections = new Set<LspProxyConnection>()
   private readonly documents = new Map<string, SharedDocument>()
+  /** Delta baselines, per uri. See SemanticTokenBaseline. */
+  private readonly semanticTokenBaselines = new Map<string, SemanticTokenBaseline>()
+  /** Backend request id per uri, so two tabs asking at once ask the backend once. */
+  private readonly semanticTokenInFlight = new Map<string, JsonRpcId>()
+  private semanticTokenDeltaRejections = 0
   readonly key: string
   private readonly match: LspServerMatch
   private readonly pendingRequests = new Map<JsonRpcId, PendingBackendRequest>()
   private readonly idleTimeoutMs: () => number
+  private readonly deltaEnabled: () => boolean
   private readonly pool: LspSessionPool
   private readonly process: ChildProcessWithoutNullStreams
   private readonly reader: LspStdioMessageReader
@@ -225,7 +310,9 @@ class PooledLspProxySession {
     rootPath: string,
     pool: LspSessionPool,
     idleTimeoutMs: () => number,
+    deltaEnabled: () => boolean,
   ) {
+    this.deltaEnabled = deltaEnabled
     this.idleTimeoutMs = idleTimeoutMs
     this.key = key
     this.match = match
@@ -242,15 +329,28 @@ class PooledLspProxySession {
     rootPath: string,
     pool: LspSessionPool,
     idleTimeoutMs: () => number,
+    deltaEnabled: () => boolean,
   ) {
     const handle = await match.server.spawn(match.root)
     if (!handle) return null
 
-    return new PooledLspProxySession(key, match, handle.process, rootPath, pool, idleTimeoutMs)
+    return new PooledLspProxySession(
+      key,
+      match,
+      handle.process,
+      rootPath,
+      pool,
+      idleTimeoutMs,
+      deltaEnabled,
+    )
   }
 
   get isDisposed() {
     return this.disposed
+  }
+
+  get negotiatedSemanticTokens(): LspNegotiatedSemanticTokens | null {
+    return negotiatedSemanticTokens(this.initializeResult?.result)
   }
 
   connect(socket: LspProxySocket): LspProxyClientSession {
@@ -311,8 +411,258 @@ class PooledLspProxySession {
       connection.send(jsonRpcResult(message.id, null))
       return
     }
+    if (message.method === SEMANTIC_TOKENS_FULL) {
+      return this.handleSemanticTokensFull(connection, message)
+    }
 
     this.forwardClientRequest(connection, message)
+  }
+
+  /**
+   * Turns a whole-file token request into a delta against the baseline this
+   * session already holds, and turns the answer back into a whole file.
+   *
+   * **The client's request and the client's response are unchanged.** No
+   * `full/delta` request and no `SemanticTokensDelta` ever crosses the
+   * WebSocket — the browser never holds a `resultId` and does not know this
+   * happened. That is not a detail: a `resultId` is per backend document, and
+   * this backend is shared by every tab in a root, so a browser holding one
+   * would be holding a fact about a resource it does not own.
+   *
+   * Requests for one uri are also **serialized**. Two concurrent `full/delta`
+   * requests carrying the same `previousResultId` make the server issue two new
+   * result ids and the cache can only follow one; while one is in flight, later
+   * requests for the same uri attach to it and receive the same reassembled
+   * answer — which is a straight win when three tabs show the same file.
+   */
+  private handleSemanticTokensFull(connection: LspProxyConnection, message: JsonRpcRequest): void {
+    const uri = textDocumentUri(message.params)
+    if (!uri) {
+      this.forwardClientRequest(connection, message)
+      return
+    }
+
+    const inFlight = this.semanticTokenInFlight.get(uri)
+    const pending = inFlight === undefined ? null : this.pendingRequests.get(inFlight)
+    // Same file *and* same text. Coalescing is justified by three tabs showing
+    // one document, which is a claim about content; a request that went out
+    // before a `didChange` describes text the user has already replaced, and
+    // handing that answer to a client that asked after the edit is how a tab ends
+    // up painted from a version it never asked about.
+    if (
+      pending?.semanticTokens &&
+      pending.semanticTokens.backendVersion === this.documentVersion(uri)
+    ) {
+      pending.semanticTokens.waiters.push({ clientId: message.id, connection })
+      connection.trackRequest(message.id, inFlight as JsonRpcId)
+      return
+    }
+
+    this.sendSemanticTokenRequest(uri, [{ clientId: message.id, connection }], false)
+  }
+
+  private documentVersion(uri: string): number {
+    return this.documents.get(uri)?.backendVersion ?? -1
+  }
+
+  private sendSemanticTokenRequest(
+    uri: string,
+    waiters: { readonly connection: LspProxyConnection; readonly clientId: JsonRpcId }[],
+    retried: boolean,
+  ): void {
+    const baseline = this.deltaEnabled() ? this.semanticTokenBaselines.get(uri) : undefined
+    const delta = Boolean(baseline) && this.backendSupportsSemanticTokenDelta()
+    const backendId = this.nextBackendRequestId()
+
+    this.pendingRequests.set(backendId, {
+      clientId: waiters[0]?.clientId ?? null,
+      connection: waiters[0]?.connection ?? null,
+      method: delta ? SEMANTIC_TOKENS_DELTA : SEMANTIC_TOKENS_FULL,
+      semanticTokens: {
+        backendVersion: this.documentVersion(uri),
+        delta,
+        previousResultId: delta ? (baseline?.resultId ?? null) : null,
+        retried,
+        uri,
+        waiters,
+      },
+    })
+    this.semanticTokenInFlight.set(uri, backendId)
+    for (const waiter of waiters) waiter.connection.trackRequest(waiter.clientId, backendId)
+
+    this.writeToServer(
+      JSON.stringify({
+        id: backendId,
+        jsonrpc: '2.0',
+        method: delta ? SEMANTIC_TOKENS_DELTA : SEMANTIC_TOKENS_FULL,
+        params: delta
+          ? { previousResultId: baseline?.resultId, textDocument: { uri } }
+          : { textDocument: { uri } },
+      }),
+    )
+  }
+
+  private backendSupportsSemanticTokenDelta(): boolean {
+    return this.negotiatedSemanticTokens?.delta === true
+  }
+
+  /**
+   * Answers every waiter with a whole `SemanticTokens`, whatever the backend sent.
+   *
+   * A delta is applied to the baseline here and never forwarded. A response that
+   * cannot be reassembled — an unknown `previousResultId`, or edits that do not
+   * fit the array — drops the baseline and retries **once** as a plain `full`,
+   * because the alternative is answering a client with spans that match no
+   * version of its text.
+   */
+  private handleSemanticTokenResponse(
+    backendId: JsonRpcId,
+    request: SemanticTokenRequest,
+    message: JsonRpcResponse,
+  ): void {
+    // Only if it is still this request's marker: `releaseDocumentOwner` and a
+    // straddling edit can both start a second request for the same uri, and
+    // deleting by uri alone would clear the newer one's claim.
+    if (this.semanticTokenInFlight.get(request.uri) === backendId) {
+      this.semanticTokenInFlight.delete(request.uri)
+    }
+
+    // An error that is not about the baseline is not evidence about the baseline.
+    // `-32800 RequestCancelled` is the *normal* path while typing — the browser
+    // cancels an in-flight request on every keystroke — and `-32801
+    // ContentModified` is the ordinary answer to asking about text that has since
+    // moved. Treating either as a rejected `previousResultId` would throw away a
+    // good baseline on every keystroke, poison the counter that decides whether a
+    // server is dropped from the delta set, and re-issue a whole-file request the
+    // client explicitly told us to stop working on.
+    if (message.error !== undefined && !isRejectedBaselineError(request, message.error)) {
+      this.answerSemanticTokenWaiters(request, message)
+      return
+    }
+
+    const reassembled = this.reassembleSemanticTokens(request, message)
+    if (reassembled === null) {
+      this.semanticTokenBaselines.delete(request.uri)
+      this.semanticTokenDeltaRejections += 1
+      if (!request.retried) {
+        recordProcessWarning('lsp.semanticTokens.delta_rejected', {
+          area: 'lsp',
+          operation: 'semantic_tokens',
+          outcome: 'baseline_dropped',
+          rejections: this.semanticTokenDeltaRejections,
+          rootPath: this.rootPath,
+          serverId: this.match.server.id,
+        })
+        this.sendSemanticTokenRequest(request.uri, request.waiters, true)
+        return
+      }
+
+      // Retried already. Hand the backend's own answer through untouched rather
+      // than inventing one; a client that gets an error asks again on its own
+      // schedule, which is better than a loop here.
+      this.answerSemanticTokenWaiters(request, message)
+      return
+    }
+
+    const full = { data: reassembled.data, resultId: reassembled.resultId }
+    for (const waiter of request.waiters) {
+      waiter.connection.untrackRequest(waiter.clientId)
+      waiter.connection.send(jsonRpcResult(waiter.clientId, full))
+    }
+  }
+
+  /** Forwards the backend's own response to every waiter, under each one's id. */
+  private answerSemanticTokenWaiters(
+    request: SemanticTokenRequest,
+    message: JsonRpcResponse,
+  ): void {
+    for (const waiter of request.waiters) {
+      waiter.connection.untrackRequest(waiter.clientId)
+      waiter.connection.send(JSON.stringify(responseForClient(message, waiter.clientId)))
+    }
+  }
+
+  /**
+   * The reassembled array, or `null` when this answer cannot be trusted.
+   *
+   * `null` is deliberately the answer for every doubtful case — an error
+   * response, a missing baseline, an edit that runs past the end of the array —
+   * because the failure mode of guessing is spans painted over unrelated text
+   * with nothing reporting it.
+   */
+  private reassembleSemanticTokens(
+    request: SemanticTokenRequest,
+    message: JsonRpcResponse,
+  ): SemanticTokenBaseline | null {
+    if (message.error !== undefined) return null
+    if (!isRecord(message.result)) return null
+
+    const resultId = typeof message.result.resultId === 'string' ? message.result.resultId : ''
+    const data = message.result.data
+    if (Array.isArray(data)) {
+      const next = { data: data as number[], resultId }
+      if (resultId) this.semanticTokenBaselines.set(request.uri, next)
+      return next
+    }
+
+    const edits = message.result.edits
+    if (!Array.isArray(edits)) return null
+
+    const baseline = this.semanticTokenBaselines.get(request.uri)
+    if (!baseline) return null
+    // The one the server diffed against, not merely the one that happens to be
+    // here now. Another request for this uri can have completed in the gap and
+    // replaced it, and splicing these edits into a different array produces a
+    // token stream that describes no version of anything.
+    if (request.previousResultId !== null && baseline.resultId !== request.previousResultId) {
+      return null
+    }
+
+    const applied = applySemanticTokenEdits(baseline.data, edits)
+    if (!applied) return null
+    // The check that makes this branch safe to ship. Everything above validates
+    // the *edits*; this validates the *result*, against the text this session is
+    // holding for the same uri — and it is the only thing standing between a
+    // mis-reassembled array and spans painted over unrelated code with every
+    // drop counter reading zero.
+    if (!this.semanticTokensFitDocument(request.uri, applied)) return null
+
+    const next = { data: applied, resultId: resultId || baseline.resultId }
+    this.semanticTokenBaselines.set(request.uri, next)
+    return next
+  }
+
+  /**
+   * Does this token stream describe a document this session actually has?
+   *
+   * A 5-tuple stream is a cumulative walk: each tuple's `deltaLine` advances a
+   * line cursor that never goes backwards. So a stream that has been shifted,
+   * truncated or spliced wrong overwhelmingly walks *past the last line* — which
+   * is one integer comparison per tuple to detect, against a line count that
+   * costs a single scan of text this session already holds in memory.
+   *
+   * Not gated on a dev build. It is roughly 0.1 ms against a 200 KB file, on a
+   * path that exists to save 14 ms of `JSON.parse` per twelve keystrokes, and the
+   * failure it catches is silent in production and nowhere else.
+   */
+  private semanticTokensFitDocument(uri: string, data: readonly number[]): boolean {
+    const document = this.documents.get(uri)
+    // Nothing to check against is not evidence of a problem: a token request can
+    // outlive the `didClose` that removed the shared document.
+    if (!document) return true
+
+    let lineCount = 1
+    for (let index = 0; index < document.text.length; index += 1) {
+      if (document.text[index] === '\n') lineCount += 1
+    }
+
+    let line = 0
+    for (let index = 0; index + 5 <= data.length; index += 5) {
+      line += data[index] as number
+      if (line >= lineCount) return false
+    }
+
+    return true
   }
 
   private async handleInitializeRequest(
@@ -352,12 +702,37 @@ class PooledLspProxySession {
     return response
       .then((result) => {
         this.initializeResult = result
+        this.recordNegotiatedSemanticTokens()
         return result
       })
       .catch((error: unknown) => {
         this.initializePromise = null
         throw error
       })
+  }
+
+  /**
+   * Logged once per pooled backend, at the only moment the answer is decided.
+   *
+   * `initialize` is sent once per backend and its result is replayed to every
+   * later client, so this is the whole negotiation for every tab in this root —
+   * and it is the one record that survives a server upgrade silently dropping a
+   * capability or reshaping its legend.
+   */
+  private recordNegotiatedSemanticTokens(): void {
+    const negotiated = this.negotiatedSemanticTokens
+    recordProcessInfo('lsp.semanticTokens.negotiated', {
+      area: 'lsp',
+      delta: negotiated?.delta ?? false,
+      full: negotiated?.full ?? false,
+      modifierCount: negotiated?.legend.tokenModifiers.length ?? 0,
+      operation: 'initialize',
+      outcome: negotiated ? 'advertised' : 'absent',
+      range: negotiated?.range ?? false,
+      rootPath: this.rootPath,
+      serverId: this.match.server.id,
+      typeCount: negotiated?.legend.tokenTypes.length ?? 0,
+    })
   }
 
   private async initializeRequest(message: JsonRpcRequest): Promise<JsonRpcRequest> {
@@ -409,6 +784,19 @@ class PooledLspProxySession {
     const clientId = cancellationRequestId(message.params)
     const backendId = clientId === null ? null : connection.backendRequestIdFor(clientId)
     if (backendId === null) return
+
+    // A token request is shared, so one client's cancel is not the request's
+    // cancel. `dropSemanticTokenWaiter` already knows how to retire one waiter
+    // and only cancel when the last one leaves; the teardown path got that right
+    // and this path did not, which left the very hazard that function exists to
+    // prevent open on the route clients actually take — the browser cancels an
+    // in-flight token request on every keystroke.
+    const pending = this.pendingRequests.get(backendId)
+    if (pending?.semanticTokens) {
+      connection.untrackRequest(clientId as JsonRpcId)
+      this.dropSemanticTokenWaiter(backendId, pending.semanticTokens, connection)
+      return
+    }
 
     this.writeToServer(
       JSON.stringify({
@@ -508,6 +896,15 @@ class PooledLspProxySession {
     if (document.owners.size > 0) return
 
     this.documents.delete(uri)
+    // The server's own cache for this document dies with the `didClose`, so a
+    // baseline kept past it would be a `previousResultId` nothing can diff.
+    this.semanticTokenBaselines.delete(uri)
+    // And the request in flight for it has to be retired rather than merely
+    // forgotten: clearing only the marker leaves a live pending request whose
+    // answer would re-seed a baseline for a document the backend has closed,
+    // while a second request starts alongside it — two concurrent token requests
+    // for one uri, which is the thing serialization exists to prevent.
+    this.retireSemanticTokenRequest(uri)
     this.writeToServer(
       JSON.stringify({
         jsonrpc: '2.0',
@@ -565,6 +962,11 @@ class PooledLspProxySession {
     if (!pending) return
 
     this.pendingRequests.delete(message.id)
+    if (pending.semanticTokens) {
+      this.handleSemanticTokenResponse(message.id, pending.semanticTokens, message)
+      return
+    }
+
     pending.connection?.untrackRequest(pending.clientId)
     if (pending.resolve) {
       pending.resolve(message)
@@ -586,7 +988,7 @@ class PooledLspProxySession {
 
   private handleServerRequest(message: JsonRpcRequest): boolean {
     if (message.method === 'workspace/configuration') {
-      this.respondToServer(message.id, [{}])
+      this.respondToServer(message.id, this.workspaceConfiguration(message.params))
       return true
     }
     if (message.method === 'workspace/workspaceFolders') {
@@ -610,8 +1012,59 @@ class PooledLspProxySession {
       this.respondToServer(message.id, null)
       return true
     }
+    if (message.method === LSP_SEMANTIC_TOKENS_REFRESH) {
+      this.refreshSemanticTokens(message.id)
+      return true
+    }
 
     return false
+  }
+
+  /**
+   * Answers the server itself, then re-emits the method to every connection as a
+   * **notification**.
+   *
+   * A downgrade rather than a forward, and the difference is load-bearing. *N*
+   * pooled clients cannot answer one request id — whichever answered first would
+   * decide for the rest — so the proxy has to answer. And a forwarded request
+   * would draw a client *response*, which `routeClientMessage` falls through to
+   * `writeToServer` verbatim with an unremapped id; that path is dead today only
+   * because nothing ever asks a browser to respond, and a notification has no id
+   * and draws no response, so it stays dead.
+   *
+   * The name is the same method name with no `id`. That is a convention between
+   * this proxy and the browser code it serves rather than anything LSP defines,
+   * which is exactly why it is written down here: a host registers a handler for
+   * it by name.
+   */
+  private refreshSemanticTokens(id: JsonRpcId): void {
+    this.respondToServer(id, null)
+    this.broadcastServerMessage(
+      JSON.stringify({ jsonrpc: '2.0', method: LSP_SEMANTIC_TOKENS_REFRESH }),
+    )
+  }
+
+  /**
+   * One value per requested item, in the order the server asked.
+   *
+   * The old reply was a fixed `[{}]` for every request, which was wrong twice
+   * over. It ignored `items[].section` — a server asking for three sections got
+   * one object back and had to guess — and an empty object is not a neutral
+   * answer to a server that reads feature flags out of it (see
+   * `LspServerDefinition.configuration`).
+   *
+   * A request with no `items` array is answered `[{}]` still: that is a
+   * malformed request rather than a request for everything, and inventing a
+   * length for it would be worse than the shape the server already tolerated.
+   */
+  private workspaceConfiguration(params: unknown): unknown[] {
+    const items = isRecord(params) && Array.isArray(params.items) ? params.items : null
+    if (!items) return [{}]
+
+    const configuration = this.match.server.configuration ?? {}
+    return items.map((item) =>
+      configurationSection(configuration, isRecord(item) ? item.section : null),
+    )
   }
 
   private respondToServer(id: JsonRpcId, result: unknown): void {
@@ -644,17 +1097,64 @@ class PooledLspProxySession {
 
   private cancelPendingRequestsForConnection(connection: LspProxyConnection): void {
     for (const [backendId, pending] of Array.from(this.pendingRequests)) {
+      // A token request is shared: several tabs showing one file wait on a single
+      // backend request, and `pending.connection` is only whichever of them asked
+      // first. Cancelling on that name would let the first tab to close take the
+      // answer away from every other tab still waiting for it.
+      if (pending.semanticTokens) {
+        this.dropSemanticTokenWaiter(backendId, pending.semanticTokens, connection)
+        continue
+      }
       if (pending.connection !== connection) continue
 
       this.pendingRequests.delete(backendId)
-      this.writeToServer(
-        JSON.stringify({
-          jsonrpc: '2.0',
-          method: '$/cancelRequest',
-          params: { id: backendId },
-        }),
-      )
+      this.cancelBackendRequest(backendId)
     }
+  }
+
+  private dropSemanticTokenWaiter(
+    backendId: JsonRpcId,
+    request: SemanticTokenRequest,
+    connection: LspProxyConnection,
+  ): void {
+    const remaining = request.waiters.filter((waiter) => waiter.connection !== connection)
+    if (remaining.length === request.waiters.length) return
+    if (remaining.length > 0) {
+      request.waiters.splice(0, request.waiters.length, ...remaining)
+      return
+    }
+
+    // Nobody is listening any more, so the backend can stop working on it — and
+    // the baseline must not be updated by an answer nothing will read.
+    this.pendingRequests.delete(backendId)
+    this.semanticTokenInFlight.delete(request.uri)
+    this.cancelBackendRequest(backendId)
+  }
+
+  /** Cancels and forgets whatever token request is in flight for this uri. */
+  private retireSemanticTokenRequest(uri: string): void {
+    const backendId = this.semanticTokenInFlight.get(uri)
+    this.semanticTokenInFlight.delete(uri)
+    if (backendId === undefined) return
+
+    const pending = this.pendingRequests.get(backendId)
+    if (!pending?.semanticTokens) return
+
+    for (const waiter of pending.semanticTokens.waiters) {
+      waiter.connection.untrackRequest(waiter.clientId)
+    }
+    this.pendingRequests.delete(backendId)
+    this.cancelBackendRequest(backendId)
+  }
+
+  private cancelBackendRequest(backendId: JsonRpcId): void {
+    this.writeToServer(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        method: '$/cancelRequest',
+        params: { id: backendId },
+      }),
+    )
   }
 
   private scheduleIdleDisposal(): void {
@@ -680,7 +1180,7 @@ class PooledLspProxySession {
     this.pool.remove(this)
     this.rejectPendingRequests(createInternalError(`LSP process closed: ${outcome}`))
     this.recordSession(outcome)
-    this.closeConnections()
+    this.closeConnections(outcome)
   }
 
   /**
@@ -701,11 +1201,35 @@ class PooledLspProxySession {
     // Before `closeConnections`, so `activeConnectionCount` reports how many
     // clients shutdown actually cut off.
     this.recordSession(outcome)
-    this.closeConnections()
+    this.closeConnections(outcome)
   }
 
-  private closeConnections(): void {
-    for (const connection of this.connections) connection.closeSocket()
+  /**
+   * Says why, then closes.
+   *
+   * A bare close is what made a dead backend invisible: the browser's transport
+   * clears its handlers and `LspConnection` has no close callback, so the status
+   * indicator stays `'ready'` over a server that exited — confident colour plus a
+   * green light reads as working software. The exit is broadcast as a
+   * notification first, on the socket that is about to close, because that is the
+   * one channel this proxy shares with a browser that has no other way to hear it.
+   */
+  private closeConnections(outcome: string): void {
+    const exit = JSON.stringify({
+      jsonrpc: '2.0',
+      method: LSP_SERVER_EXITED,
+      params: {
+        exitCode: this.exitCode,
+        exitSignal: this.exitSignal,
+        outcome,
+        serverId: this.match.server.id,
+        stderrTail: this.stderrTail || undefined,
+      },
+    })
+    for (const connection of this.connections) {
+      connection.send(exit)
+      connection.closeSocket()
+    }
     this.connections.clear()
   }
 
@@ -816,6 +1340,158 @@ class LspProxyConnection implements LspProxyClientSession {
   backendRequestIdFor(clientId: JsonRpcId): JsonRpcId | null {
     return this.requestIds.get(clientId) ?? null
   }
+}
+
+/**
+ * The value at a dotted `section`, or the whole tree when the item names none.
+ *
+ * `{}` rather than `null` for a section the registry says nothing about: LSP
+ * lets a client answer either, and a server that reads a field off the result
+ * without checking is common enough that the shape a bare `[{}]` already gave it
+ * is the safer of the two.
+ */
+/**
+ * Reads a `semanticTokensProvider` out of an `initialize` result.
+ *
+ * `full` may be `true` or `{ delta }`, and only the object form's `delta` counts:
+ * gopls returns a `resultId` on every response and then rejects `full/delta`
+ * outright, so a `resultId` in a response says nothing about delta support and
+ * `full.delta === true` is the only thing that does.
+ */
+function negotiatedSemanticTokens(result: unknown): LspNegotiatedSemanticTokens | null {
+  if (!isRecord(result)) return null
+  if (!isRecord(result.capabilities)) return null
+
+  const provider = result.capabilities.semanticTokensProvider
+  if (!isRecord(provider)) return null
+
+  const full = provider.full
+  const legend = isRecord(provider.legend) ? provider.legend : {}
+  return {
+    delta: isRecord(full) && full.delta === true,
+    full: full === true || isRecord(full),
+    legend: {
+      tokenModifiers: stringArray(legend.tokenModifiers),
+      tokenTypes: stringArray(legend.tokenTypes),
+    },
+    range: provider.range === true || isRecord(provider.range),
+  }
+}
+
+function stringArray(value: unknown): readonly string[] {
+  if (!Array.isArray(value)) return []
+
+  return value.filter((entry): entry is string => typeof entry === 'string')
+}
+
+function configurationSection(configuration: Readonly<Record<string, unknown>>, section: unknown) {
+  if (typeof section !== 'string' || section.length === 0) return configuration
+
+  let value: unknown = configuration
+  for (const key of section.split('.')) {
+    // A section that does not resolve is answered `{}`, never the whole tree.
+    // Handing back everything would tell a server asking about *itself* what
+    // some other server was configured with, and would make an unknown section
+    // indistinguishable from a request that named none.
+    if (!isRecord(value)) return {}
+
+    value = value[key]
+  }
+
+  return value ?? {}
+}
+
+/** LSP's own codes for "you cancelled this" and "the text moved under it". */
+const REQUEST_CANCELLED_CODE = -32800
+const CONTENT_MODIFIED_CODE = -32801
+
+const SEMANTIC_TOKENS_FULL = 'textDocument/semanticTokens/full'
+const SEMANTIC_TOKENS_DELTA = 'textDocument/semanticTokens/full/delta'
+
+/**
+ * Applies a `SemanticTokensDelta`'s edits to a baseline array.
+ *
+ * Returns `null` rather than a best effort for anything malformed. Every edit is
+ * `{ start, deleteCount, data? }` over the flat uint32 array, and the spec gives
+ * them in **descending** order of `start` so earlier edits do not move later
+ * ones — but a server is not obliged to, so they are sorted here rather than
+ * trusted. An edit whose range runs past the array is refused outright: applying
+ * it would silently shift every 5-tuple after it, and a shifted tuple stream
+ * decodes to plausible spans over the wrong text.
+ */
+/**
+ * Is this error the server saying it cannot honour our `previousResultId`?
+ *
+ * Only a delta request can get that answer, and only that answer justifies
+ * throwing the baseline away. The two codes that dominate the hot path —
+ * `-32800 RequestCancelled`, which is what every keystroke produces because the
+ * browser cancels its in-flight request, and `-32801 ContentModified`, the
+ * ordinary answer to asking about text that has moved — are explicitly *not*
+ * evidence about the baseline. Treating them as such threw away a good baseline
+ * on every keystroke and counted each one against the server.
+ */
+function isRejectedBaselineError(request: SemanticTokenRequest, error: unknown): boolean {
+  if (!request.delta) return false
+  if (!isRecord(error)) return false
+  if (error.code === REQUEST_CANCELLED_CODE || error.code === CONTENT_MODIFIED_CODE) return false
+
+  return true
+}
+
+/**
+ * Applies a `SemanticTokensDelta`'s edits to a baseline array.
+ *
+ * Returns `null` rather than a best effort for anything malformed. Every edit is
+ * `{ start, deleteCount, data? }` over the flat uint32 array, and **every one of
+ * those offsets indexes the array the server diffed against** — the previous
+ * result — not the array as it is being rewritten. So the edits are validated
+ * against the baseline's own length, checked for overlap, and then applied in
+ * descending order of `start` so that each splice leaves every lower offset
+ * exactly where the server computed it.
+ *
+ * Sorting rather than trusting the order given: the spec does not oblige a
+ * server to emit them in any particular one, and applying two edits in the wrong
+ * order silently shifts every 5-tuple after them into a stream that still decodes
+ * — into plausible spans over the wrong text.
+ */
+function applySemanticTokenEdits(baseline: readonly number[], edits: readonly unknown[]) {
+  const parsed: { start: number; deleteCount: number; data: number[] }[] = []
+  for (const edit of edits) {
+    if (!isRecord(edit)) return null
+    if (!Number.isInteger(edit.start) || !Number.isInteger(edit.deleteCount)) return null
+
+    const data = edit.data === undefined ? [] : edit.data
+    if (!Array.isArray(data)) return null
+    if (data.some((value) => !Number.isInteger(value) || (value as number) < 0)) return null
+
+    const start = edit.start as number
+    const deleteCount = edit.deleteCount as number
+    // Against the BASELINE, before anything has been spliced. Checking the
+    // running array instead would let a later edit pass because an earlier one
+    // had already grown it — the bound would be measuring the wrong array.
+    if (start < 0 || deleteCount < 0) return null
+    if (start + deleteCount > baseline.length) return null
+
+    parsed.push({ data: data as number[], deleteCount, start })
+  }
+
+  const ordered = parsed.toSorted((left, right) => right.start - left.start)
+  for (let index = 1; index < ordered.length; index += 1) {
+    const later = ordered[index - 1]
+    const earlier = ordered[index]
+    if (!later || !earlier) return null
+    // Two edits claiming the same region describe an array that cannot be built.
+    if (earlier.start + earlier.deleteCount > later.start) return null
+  }
+
+  const next = [...baseline]
+  for (const edit of ordered) next.splice(edit.start, edit.deleteCount, ...edit.data)
+
+  // A token stream is 5-tuples. Anything else means the edits did not describe
+  // the array we held, and the client must not be told otherwise.
+  if (next.length % 5 !== 0) return null
+
+  return next
 }
 
 function lspProxySessionKey(match: LspServerMatch): string {

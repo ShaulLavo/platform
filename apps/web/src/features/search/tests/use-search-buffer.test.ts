@@ -193,6 +193,7 @@ describe('workspace search run state', () => {
           rootPath: 'repo',
           totalCount: 0,
           truncated: false,
+          warnings: [],
           wholeWord: false,
         },
       },

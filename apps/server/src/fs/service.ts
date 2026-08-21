@@ -459,20 +459,31 @@ async function startWorkspaceIndex(
   }
 }
 
+type SearchStreamState = {
+  completed: boolean
+  fileCount: number
+  matchCount: number
+  truncated: boolean
+  warningCodes: string[]
+}
+
 async function* observedSearchEvents(
   events: AsyncGenerator<SearchStreamEvent>,
   options: FileSystemSearchOptions,
 ) {
   const startedAt = performance.now()
-  const state = {
+  const state: SearchStreamState = {
     completed: false,
+    fileCount: 0,
     matchCount: 0,
     truncated: false,
+    warningCodes: [],
   }
   recordRequestContext({
     area: 'fs',
     operation: 'search_events',
     search: {
+      fileLimit: options.fileLimit,
       includeContent: options.includeContent,
       includeNames: options.includeNames,
       limit: options.limit,
@@ -533,20 +544,19 @@ async function* observedWatchEvents(
   recordStreamSummary(watchStreamSummary(paths, startedAt, state, 'ok'))
 }
 
-function updateSearchState(
-  state: {
-    completed: boolean
-    matchCount: number
-    truncated: boolean
-  },
-  event: SearchStreamEvent,
-) {
+function updateSearchState(state: SearchStreamState, event: SearchStreamEvent) {
   if (event.type === 'match') {
     state.matchCount += 1
     return
   }
 
+  if (event.type === 'warning') {
+    state.warningCodes.push(event.code)
+    return
+  }
+
   state.completed = true
+  state.fileCount = event.fileCount ?? state.fileCount
   state.matchCount = event.count
   state.truncated = event.truncated
 }
@@ -565,11 +575,7 @@ function updateWatchState(
 function searchStreamSummary(
   options: FileSystemSearchOptions,
   startedAt: number,
-  state: {
-    completed: boolean
-    matchCount: number
-    truncated: boolean
-  },
+  state: SearchStreamState,
   status: 'error' | 'ok',
 ) {
   return {
@@ -581,10 +587,12 @@ function searchStreamSummary(
     operation: 'search_events',
     path: options.path,
     search: {
+      fileCount: state.fileCount,
       matchCount: state.matchCount,
       queryLength: options.query.length,
       streamNameMatchesEarly: options.streamNameMatchesEarly,
       truncated: state.truncated,
+      warningCodes: state.warningCodes.length > 0 ? state.warningCodes : undefined,
     },
     status,
     truncated: state.truncated,

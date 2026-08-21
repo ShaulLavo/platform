@@ -19,6 +19,7 @@ import { parseRefDocumentId } from '@/features/git/utils/ref-document'
 import { parseSearchBufferDocumentId } from '@/features/search/utils/buffer-document'
 import { SettingsPage } from '@/features/settings/components/page'
 import { isSettingsDocumentId } from '@/features/settings/utils/document'
+import { useSettingsJsonDocument } from '@/features/settings/hooks/use-settings-json-document'
 import { useSelectedFile } from '@/features/workspace/hooks/use-selected-file'
 import type { DocumentSessionChange, EditorKeymapLayer } from '@singapor/core'
 import type {
@@ -41,6 +42,9 @@ export function EditorSurfaceTabBody({
   rootPath: string
   tabId: string
 }) {
+  // Above every early exit, like the rest of the hooks here. It no-ops for any
+  // path that is not a raw settings document.
+  useSettingsJsonDocument(tabId, path)
   const selectedConflictDiff = useMemo(() => parseConflictDiffDocumentId(path), [path])
   const selectedSearchBuffer = useMemo(() => parseSearchBufferDocumentId(path), [path])
   const selectedRefDocument = useMemo(() => parseRefDocumentId(path), [path])

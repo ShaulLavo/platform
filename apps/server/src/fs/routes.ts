@@ -100,11 +100,15 @@ async function fileResponse(result: BlobFile) {
 
 function searchEventData(event: SearchStreamEvent) {
   if (event.type === 'match') return { match: event.match }
+  if (event.type === 'warning') {
+    return { code: event.code, detail: event.detail, message: event.message }
+  }
 
   return {
     query: event.query,
     path: event.path,
     count: event.count,
+    fileCount: event.fileCount,
     measurement: event.measurement,
     truncated: event.truncated,
   }

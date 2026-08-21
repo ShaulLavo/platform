@@ -10,6 +10,7 @@ import {
   type WorkspaceSearchIndexFallbackReason,
   type WorkspaceSearchIndexMeasurement,
   type WorkspaceSearchProviderSource,
+  type WorkspaceSearchWarningEvent,
 } from '@workspace/contracts'
 
 import { FsError, mapNodeError } from './errors'
@@ -24,6 +25,7 @@ import {
   isIgnoredSearchPath,
   nameSearchMatches,
   nameSearchRankTarget,
+  queryHasLineBreak,
   resultPath,
   safeEntryStats,
   searchMatchMetadata,
@@ -34,7 +36,7 @@ import {
   type FindMatch,
   type FindOptions,
 } from './search-shared'
-import { canUseSearchTools, runToolLines } from './search-tool-runner'
+import { canUseSearchTools, runToolLines, type SearchToolWarning } from './search-tool-runner'
 import { assertDirectory } from './stat'
 import { recordRequestContext } from '../observability'
 import type { EntryTypeFilter } from './contracts'
@@ -54,6 +56,7 @@ export type SearchStreamEvent =
       match: FindMatch
     }
   | WorkspaceSearchDoneEvent
+  | WorkspaceSearchWarningEvent
 
 type SearchProvider = {
   search(query: FindOptions, signal?: AbortSignal): AsyncIterable<SearchStreamEvent>
@@ -65,6 +68,8 @@ export type SearchProviderOptions = {
 
 type SearchState = {
   count: number
+  fileLimitReached: boolean
+  paths: Set<string>
   truncated: boolean
 }
 
@@ -249,28 +254,86 @@ async function* searchWorkspaceWithDiskTools(
 
   const context = await createFindContext(paths, options)
   const matches = searchWithTools(paths, context, signal, runtime, providerOptions)
-  const state: SearchState = { count: 0, truncated: false }
+  const state = createSearchState()
 
   for await (const match of matches) {
-    if (state.count >= options.limit) {
-      state.truncated = true
-      break
-    }
+    if (!admitSearchMatch(state, match, options)) break
 
-    state.count += 1
     yield { type: 'match', match }
   }
+
+  yield* searchWarnings(context, state, options)
 
   const measurement = context.measurement.snapshot()
   recordRequestContext({ search: { measurement } })
 
   yield {
     count: state.count,
+    fileCount: state.paths.size,
     measurement,
     path: context.root.relativePath,
     query: context.query,
     truncated: state.truncated,
     type: 'done',
+  }
+}
+
+function createSearchState(): SearchState {
+  return { count: 0, fileLimitReached: false, paths: new Set(), truncated: false }
+}
+
+function admitSearchMatch(state: SearchState, match: FindMatch, options: FindOptions) {
+  if (state.count >= options.limit) {
+    state.truncated = true
+    return false
+  }
+
+  if (exceedsSearchFileLimit(state, match, options)) {
+    state.fileLimitReached = true
+    state.truncated = true
+    return false
+  }
+
+  state.count += 1
+  state.paths.add(match.path)
+  return true
+}
+
+function exceedsSearchFileLimit(state: SearchState, match: FindMatch, options: FindOptions) {
+  if (options.fileLimit === undefined) return false
+  if (state.paths.has(match.path)) return false
+
+  return state.paths.size >= options.fileLimit
+}
+
+// Warnings are drained after the match loop because a tolerated tool failure is
+// only known once the tool exits, and the file limit is only known once the
+// stream stops. Both land before `done` so the client can attach them to the run
+// that produced them.
+function* searchWarnings(
+  context: FindContext,
+  state: SearchState,
+  options: FindOptions,
+): Generator<WorkspaceSearchWarningEvent> {
+  if (state.fileLimitReached) yield fileLimitWarning(options.fileLimit ?? state.paths.size)
+
+  yield* context.warnings
+}
+
+function fileLimitWarning(fileLimit: number): WorkspaceSearchWarningEvent {
+  return {
+    code: 'file-limit-reached',
+    message: `Stopped after ${fileLimit} ${fileLimit === 1 ? 'file' : 'files'}.`,
+    type: 'warning',
+  }
+}
+
+function contentToolWarning(warning: SearchToolWarning): WorkspaceSearchWarningEvent {
+  return {
+    code: 'content-tool-partial-failure',
+    detail: warning.stderrTail || undefined,
+    message: `${warning.command} could not read part of this workspace, so results may be incomplete.`,
+    type: 'warning',
   }
 }
 
@@ -282,9 +345,6 @@ export async function createFindContext(
   const measurement = new SearchMeasurementRecorder()
 
   if (!options.query) throw new FsError('INVALID_PATH', 'query is required')
-  if (shouldSearchContent(options) && queryHasLineBreak(options.query)) {
-    throw new FsError('INVALID_PATH', 'multiline content search is not supported')
-  }
 
   try {
     const stats = await measurement.measureStat(root.relativePath || '.', () =>
@@ -300,11 +360,28 @@ export async function createFindContext(
       options,
       root,
       statCache: new Map(),
+      warnings: initialSearchWarnings(options),
     }
   } catch (error) {
     if (error instanceof FsError) throw error
     throw mapNodeError(error)
   }
+}
+
+// A multiline query used to fail the whole request. It is an unsupported feature,
+// not a broken search: content search is skipped, name search still runs, and the
+// user is told why instead of seeing "Search failed".
+function initialSearchWarnings(options: FindOptions): WorkspaceSearchWarningEvent[] {
+  if (!options.includeContent) return []
+  if (!queryHasLineBreak(options.query)) return []
+
+  return [
+    {
+      code: 'multiline-query-unsupported',
+      message: 'Multiline search is not supported, so file contents were not searched.',
+      type: 'warning',
+    },
+  ]
 }
 
 async function* searchWithTools(
@@ -669,6 +746,7 @@ async function* searchContentWithRg(
 
   for await (const line of runToolLines('rg', args, signal, [0, 1], [2], {
     cwd: context.root.absolutePath,
+    onWarning: (warning) => context.warnings.push(contentToolWarning(warning)),
   })) {
     const matches = await contentMatchesFromJson(paths, context, line, contentIndexFilter)
     for (const match of matches) yield match
@@ -780,10 +858,6 @@ function globArgs(glob: string, prefix: string) {
   if (glob.includes('/')) return [`${prefix}${glob}`]
 
   return [`${prefix}${glob}`, `${prefix}**/${glob}`]
-}
-
-function queryHasLineBreak(query: string) {
-  return query.includes('\n') || query.includes('\r')
 }
 
 function ignoredDirectoryGlobArgs(name: string) {

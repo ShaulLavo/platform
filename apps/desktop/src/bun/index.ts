@@ -11,6 +11,7 @@ import {
   runtimeUrl,
 } from '../../../../scripts/runtime-network'
 import type { DesktopRPC, PlatformPickOptions } from '../shared/rpc'
+import { WINDOW_TRANSPARENT } from '../shared/window'
 import {
   flushDesktopObservability,
   initializeDesktopObservability,
@@ -143,16 +144,13 @@ function openMainWindow() {
     trafficLightOffset: { x: 0, y: 9 },
     titleBarStyle: 'hiddenInset',
     // The NSVisualEffectView attached below only shows through once this is
-    // true — but Electrobun's CEF renderer implements window transparency by
-    // switching to offscreen rendering (osr_enabled=1), which blits the whole
-    // 1440x960 surface through a CPU memcpy on every paint instead of letting
-    // the GPU composite it. Measured: transparent:false produces zero OnPaint
-    // events, transparent:true produces a 5.5MB copy per paint. For an editor
-    // that trade is worse than the wallpaper video it would replace, so this
-    // stays off until the shell can be transparent without OSR.
-    transparent: false,
+    // true; see WINDOW_TRANSPARENT for why it currently is not.
+    transparent: WINDOW_TRANSPARENT,
     url: WEB_URL,
   })
+
+  // Pointless behind an opaque window: the view would be attached, and invisible.
+  if (!WINDOW_TRANSPARENT) return
 
   void attachWindowVibrancy(MAIN_WINDOW_TITLE, ROOT_DIR)
 }

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { createAuthConfig } from '../../auth'
 import { createWorkspacePaths } from '../../fs/path'
-import { lspRoutes, type LspRouteDeps } from '../routes'
+import { lspRouteSemanticTokens, lspRoutes, type LspRouteDeps } from '../routes'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
 const roots: string[] = []
@@ -104,3 +104,72 @@ function initializeRequest(id: number) {
     params: {},
   }
 }
+
+/**
+ * What a developer reads to find out why a language is uncoloured.
+ *
+ * Every per-server fact this app relies on came out of one version of one
+ * binary, and the negotiated result is the only thing that reports the truth
+ * after a server upgrade. It deliberately reports `null` rather than spawning:
+ * this endpoint is asked before the websocket opens, and starting a language
+ * server to answer a question about language servers would be worse than saying
+ * "not yet".
+ */
+describe('negotiated semantic tokens', () => {
+  it('reports what a live backend agreed to', async () => {
+    const root = await fixtureRoot()
+    await Bun.write(path.join(root, 'main.go'), 'package main\n')
+    await Bun.write(path.join(root, 'go.mod'), 'module probe\n')
+    const negotiated = {
+      delta: false,
+      full: true,
+      legend: { tokenModifiers: ['readonly'], tokenTypes: ['variable', 'type'] },
+      range: true,
+    }
+
+    const result = await lspRouteSemanticTokens(
+      createWorkspacePaths(root),
+      { path: 'main.go', root: '' },
+      { servers: {}, tyForPython: false },
+      { negotiatedSemanticTokens: () => negotiated },
+    )
+
+    expect(result).toMatchObject({ negotiated, serverId: 'gopls' })
+  })
+
+  it('says so rather than spawning when no backend has initialized', async () => {
+    const root = await fixtureRoot()
+    await Bun.write(path.join(root, 'main.go'), 'package main\n')
+    await Bun.write(path.join(root, 'go.mod'), 'module probe\n')
+    let asked = 0
+
+    const result = await lspRouteSemanticTokens(
+      createWorkspacePaths(root),
+      { path: 'main.go', root: '' },
+      { servers: {}, tyForPython: false },
+      {
+        negotiatedSemanticTokens: () => {
+          asked += 1
+          return null
+        },
+      },
+    )
+
+    expect(result).toMatchObject({ negotiated: null, serverId: 'gopls' })
+    expect(asked).toBe(1)
+  })
+
+  it('answers null for a path no server claims', async () => {
+    const root = await fixtureRoot()
+    await Bun.write(path.join(root, 'notes.txt'), 'hello\n')
+
+    const result = await lspRouteSemanticTokens(
+      createWorkspacePaths(root),
+      { path: 'notes.txt', root: '' },
+      { servers: {}, tyForPython: false },
+      { negotiatedSemanticTokens: () => null },
+    )
+
+    expect(result).toBeNull()
+  })
+})

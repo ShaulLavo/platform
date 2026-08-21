@@ -58,13 +58,15 @@ export const workspaceOptionalCommandIds = idsWhere((command) => command.require
 /**
  * `EditorPlatformCommandId` is wider than the editor half of the table — it
  * covers every command `@singapor/core` implements, registered here or not — so
- * an unregistered `editor.*` id keeps the file gate it had when this was
- * `isEditorPlatformCommandId(command)`.
+ * an unregistered `editor.*` id gets the same `editor` gate `defineEditorCommand`
+ * stamps on the registered ones. The editor text menu leans on this: its
+ * `editor.editor.action.*` items are handled by the language-server plugin and
+ * are not in the table at all.
  */
 export function commandRequirement(id: PlatformCommandId): CommandRequirement {
   const command = byId.get(id)
   if (command) return command.requires
-  if (id.startsWith('editor.')) return 'file'
+  if (id.startsWith('editor.')) return 'editor'
 
   return 'workspace'
 }

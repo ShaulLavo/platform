@@ -194,6 +194,13 @@ describe('settings registry', () => {
       'lsp.experimental.tyForPython',
       'lsp.idleTimeoutMs',
       'lsp.downloadRuntimes',
+      // Not binary selection, but the same rule by the same reading as
+      // `lsp.idleTimeoutMs`: all three decide how much work a language-server
+      // child process on this machine performs, and a cloned repository must not
+      // be able to turn that up.
+      'lsp.semanticTokens.enabled',
+      'lsp.semanticTokens.servers',
+      'lsp.semanticTokens.delta',
     ] as const satisfies readonly (keyof typeof SETTINGS_REGISTRY)[]
 
     for (const id of executionReaching) {

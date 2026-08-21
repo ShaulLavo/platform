@@ -102,13 +102,19 @@ export class CompositeSearchProvider implements SearchProvider {
       yield* this.searchOpenBuffers(query, state, signal)
       if (shouldStopCompositeSearch(query, state, signal)) {
         logSearchCompleted(query, state, true, startedAt)
-        yield doneEvent(query, state.emittedCount, true, state.measurement)
+        yield doneEvent(query, state.emittedCount, true, state.measurement, state.paths.size)
         return
       }
 
       yield* this.searchDisk(query, state, signal)
       logSearchCompleted(query, state, state.truncated, startedAt)
-      yield doneEvent(query, state.emittedCount, state.truncated, state.measurement)
+      yield doneEvent(
+        query,
+        state.emittedCount,
+        state.truncated,
+        state.measurement,
+        state.paths.size,
+      )
     } catch (error) {
       if (!signal?.aborted) logSearchFailed(query, error, startedAt)
 
@@ -122,8 +128,8 @@ export class CompositeSearchProvider implements SearchProvider {
     signal?: AbortSignal,
   ) {
     for await (const event of this.openBuffers.search(query, signal)) {
-      if (appendCompositeEvent(event, state, query.limit)) yield event
-      if (state.emittedCount >= query.limit) return
+      if (appendCompositeEvent(event, state, query)) yield event
+      if (compositeSearchExhausted(query, state)) return
     }
   }
 
@@ -140,7 +146,7 @@ export class CompositeSearchProvider implements SearchProvider {
     for await (const event of this.disk.search(diskQuery, signal)) {
       if (!shouldEmitDiskEvent(event, this.openBufferPaths)) continue
 
-      if (appendCompositeEvent(event, state, query.limit)) yield event
+      if (appendCompositeEvent(event, state, query)) yield event
       if (event.type === 'done') return
     }
   }
@@ -148,12 +154,21 @@ export class CompositeSearchProvider implements SearchProvider {
 
 type CompositeSearchState = {
   emittedCount: number
+  fileLimitReached: boolean
   measurement?: WorkspaceSearchMeasurement
+  paths: Set<string>
   truncated: boolean
+  warningCodes: string[]
 }
 
 function createCompositeState(): CompositeSearchState {
-  return { emittedCount: 0, truncated: false }
+  return {
+    emittedCount: 0,
+    fileLimitReached: false,
+    paths: new Set(),
+    truncated: false,
+    warningCodes: [],
+  }
 }
 
 function logSearchCompleted(
@@ -165,9 +180,11 @@ function logSearchCompleted(
   log.info({
     ...searchLogContext(query, startedAt),
     action: 'search.query',
+    fileCount: state.paths.size,
     matchCount: state.emittedCount,
     outcome: 'ok',
     truncated,
+    warningCodes: state.warningCodes.length > 0 ? state.warningCodes : undefined,
   })
 }
 
@@ -233,7 +250,7 @@ function diskSearchLimit(queryLimit: number, emittedCount: number, dirtyPathCoun
 function appendCompositeEvent(
   event: WorkspaceSearchEvent,
   state: CompositeSearchState,
-  limit: number,
+  query: WorkspaceSearchQuery,
 ) {
   if (event.type === 'done') {
     state.measurement = event.measurement ?? state.measurement
@@ -241,9 +258,46 @@ function appendCompositeEvent(
     return false
   }
 
-  if (state.emittedCount >= limit) return false
+  // Warnings pass straight through: they describe the run, not a result, so they
+  // do not consume result budget.
+  if (event.type === 'warning') {
+    state.warningCodes.push(event.code)
+    return true
+  }
+
+  if (event.type === 'error') return true
+  if (state.emittedCount >= query.limit) return false
+  if (exceedsCompositeFileLimit(event.match.path, state, query)) return false
+
   state.emittedCount += 1
+  state.paths.add(event.match.path)
   return true
+}
+
+// The file limit is enforced here rather than per provider so open buffers and
+// disk draw from one budget: two providers each honouring the same limit would
+// return up to twice as many files.
+function exceedsCompositeFileLimit(
+  path: string,
+  state: CompositeSearchState,
+  query: WorkspaceSearchQuery,
+) {
+  if (query.fileLimit === undefined) return false
+  if (state.paths.has(path)) return false
+  if (state.paths.size < query.fileLimit) return false
+
+  state.fileLimitReached = true
+  state.truncated = true
+  return true
+}
+
+// Reaching the file budget is not the same as exceeding it: the remaining
+// matches inside an already-admitted file still belong in the results, so the
+// stage only stops once a *new* file was actually turned away.
+function compositeSearchExhausted(query: WorkspaceSearchQuery, state: CompositeSearchState) {
+  if (state.emittedCount >= query.limit) return true
+
+  return state.fileLimitReached
 }
 
 function shouldEmitDiskEvent(event: WorkspaceSearchEvent, openBufferPaths: ReadonlySet<string>) {
@@ -259,9 +313,11 @@ function doneEvent(
   count: number,
   truncated: boolean,
   measurement?: WorkspaceSearchMeasurement,
+  fileCount?: number,
 ): WorkspaceSearchDoneEvent {
   return {
     count,
+    fileCount,
     measurement,
     path: query.path,
     query: query.query,

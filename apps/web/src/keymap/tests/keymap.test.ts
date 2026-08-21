@@ -648,13 +648,13 @@ describe('defaultPlatformKeyBindings', () => {
 })
 
 describe('command palette command availability', () => {
-  it('uses file-backed editor state for editor-sensitive commands', () => {
+  it('uses editor state for editor-sensitive commands', () => {
     expect(
       commandDisabledReason('workspace.saveFile', {
         activeFilePath: null,
         hasWorkspace: true,
       }),
-    ).toBe('No file-backed surface is active.')
+    ).toBe('Nothing here can be saved.')
     expect(
       commandDisabledReason('workspace.saveFile', {
         activeFilePath: '/repo/src/app.ts',

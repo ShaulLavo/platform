@@ -20,6 +20,7 @@ import {
   spawnTerraformLs,
   spawnTexlab,
   spawnTinymist,
+  spawnRustAnalyzer,
   spawnTy,
   spawnZls,
 } from './installers'
@@ -35,6 +36,23 @@ export type LspServerDefinition = {
   readonly root: (filePath: string, workspaceRoot: string) => Promise<string | null>
   readonly spawn: (root: string) => Promise<LspServerHandle | null>
   readonly initializationOptions?: (root: string) => Promise<Record<string, unknown> | undefined>
+  /**
+   * What this server gets back when it asks `workspace/configuration`.
+   *
+   * A settings tree, resolved per requested `section` by dotted path. Static
+   * data rather than a function because a configuration reply is a statement
+   * about the *server*, not about the root or the client: every tab sharing a
+   * pooled backend must see the same answer, and the proxy answers this request
+   * on the backend's behalf without any client involved.
+   *
+   * It exists because the blanket `[{}]` this proxy used to send is not a
+   * neutral answer. gopls reads `semanticTokens` out of it, so an empty object
+   * meant gopls advertised `semanticTokensProvider: { full: true, range: true }`
+   * and then returned **zero** tokens for every file — a capability that is
+   * advertised and then answers empty, which is indistinguishable from a boring
+   * file. The same request with `{ semanticTokens: true }` returned 3 818.
+   */
+  readonly configuration?: Readonly<Record<string, unknown>>
 }
 
 export type LspServerMatch = {
@@ -192,6 +210,11 @@ const lspServers: readonly LspServerDefinition[] = [
         fallback: false,
       })) ?? nearestRoot(filePath, workspaceRoot, ['go.mod', 'go.sum']),
     spawn: (root) => spawnGoTool('gopls', 'golang.org/x/tools/gopls@latest', root),
+    // gopls asks under its own section name and reads `semanticTokens` from the
+    // answer. Measured on v0.21.0 against `net/http/request.go` (50.4 KB): with
+    // the old blanket `[{}]`, 0 tokens for both `full` and `range`; with this,
+    // 3 818.
+    configuration: { gopls: { semanticTokens: true } },
   },
   {
     id: 'haskell-language-server',
@@ -356,7 +379,7 @@ const lspServers: readonly LspServerDefinition[] = [
     extensions: ['.rs'],
     root: (filePath, workspaceRoot) =>
       nearestRoot(filePath, workspaceRoot, ['Cargo.toml', 'Cargo.lock']),
-    spawn: (root) => spawnCommand(['rust-analyzer'], { cwd: root }),
+    spawn: (root) => spawnRustAnalyzer(root),
   },
   {
     id: 'sourcekit-lsp',
@@ -600,6 +623,10 @@ function configuredServer(
         },
       }),
     initializationOptions: configuredInitialization(config, existing),
+    // Carried across a command override on purpose: pointing `gopls` at a
+    // different binary does not stop it being gopls, and dropping the reply here
+    // would silently turn its semantic tokens back off.
+    configuration: existing?.configuration,
   }
 }
 

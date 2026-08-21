@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Readable } from 'node:stream'
@@ -451,12 +451,12 @@ describe('workspace disk search provider', () => {
     ])
   })
 
-  it('rejects multiline content searches explicitly', async () => {
+  it('warns instead of failing when the query spans lines', async () => {
     const root = await fixtureRoot()
     await writeFile(path.join(root, 'match.txt'), 'needle\nagain')
 
-    await expect(
-      findInWorkspace(createWorkspacePaths(root), {
+    const events = await collectEvents(
+      findInWorkspaceStream(createWorkspacePaths(root), {
         includeContent: true,
         includeNames: false,
         limit: 20,
@@ -464,10 +464,107 @@ describe('workspace disk search provider', () => {
         path: '',
         query: 'needle\nagain',
       }),
-    ).rejects.toMatchObject({
-      code: 'INVALID_PATH',
-      message: 'multiline content search is not supported',
-    })
+    )
+
+    expect(warningCodes(events)).toEqual(['multiline-query-unsupported'])
+    expect(events.filter((event) => event.type === 'match')).toEqual([])
+    expect(doneEvent(events)).toMatchObject({ count: 0 })
+  })
+
+  it('does not fail a name-and-content search when the query spans lines', async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, 'needle.txt'), 'unrelated')
+
+    const events = await collectEvents(
+      findInWorkspaceStream(createWorkspacePaths(root), {
+        includeContent: true,
+        limit: 20,
+        maxContentBytes: 1_000_000,
+        path: '',
+        query: 'needle\nagain',
+      }),
+    )
+
+    expect(warningCodes(events)).toEqual(['multiline-query-unsupported'])
+    expect(nameMatchPaths(events)).toEqual([])
+  })
+
+  // Running as root makes every path readable, so the failure this covers cannot
+  // be produced. Skipping beats a test that silently proves nothing.
+  it.skipIf(process.getuid?.() === 0)(
+    'warns that content results are incomplete when ripgrep cannot read part of the tree',
+    async () => {
+      const root = await fixtureRoot()
+      await mkdir(path.join(root, 'locked'), { recursive: true })
+      await writeFile(path.join(root, 'locked', 'hidden.txt'), 'needle')
+      await writeFile(path.join(root, 'visible.txt'), 'needle')
+      await chmod(path.join(root, 'locked'), 0o000)
+
+      try {
+        const events = await collectEvents(
+          findInWorkspaceStream(createWorkspacePaths(root), {
+            includeContent: true,
+            includeNames: false,
+            limit: 20,
+            maxContentBytes: 1_000_000,
+            path: '',
+            query: 'needle',
+          }),
+        )
+
+        expect(contentMatchPaths(events)).toEqual(['visible.txt'])
+        expect(warningCodes(events)).toEqual(['content-tool-partial-failure'])
+      } finally {
+        await chmod(path.join(root, 'locked'), 0o700)
+      }
+    },
+  )
+
+  it('stops at the file limit and says so', async () => {
+    const root = await fixtureRoot()
+    await Promise.all(
+      Array.from({ length: 5 }, (_, index) =>
+        writeFile(path.join(root, `file-${index}.txt`), 'needle\nneedle'),
+      ),
+    )
+
+    const events = await collectEvents(
+      findInWorkspaceStream(createWorkspacePaths(root), {
+        fileLimit: 2,
+        includeContent: true,
+        includeNames: false,
+        limit: 100,
+        maxContentBytes: 1_000_000,
+        path: '',
+        query: 'needle',
+      }),
+    )
+
+    const done = doneEvent(events)
+    expect(done).toMatchObject({ fileCount: 2, truncated: true })
+    expect(warningCodes(events)).toEqual(['file-limit-reached'])
+    expect(new Set(contentMatchPaths(events)).size).toBe(2)
+  })
+
+  it('reports every match in a file that is already inside the file limit', async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, 'only.txt'), 'needle\nneedle\nneedle')
+
+    const events = await collectEvents(
+      findInWorkspaceStream(createWorkspacePaths(root), {
+        fileLimit: 1,
+        includeContent: true,
+        includeNames: false,
+        limit: 100,
+        maxContentBytes: 1_000_000,
+        path: '',
+        query: 'needle',
+      }),
+    )
+
+    expect(contentMatchPaths(events)).toEqual(['only.txt', 'only.txt', 'only.txt'])
+    expect(warningCodes(events)).toEqual([])
+    expect(doneEvent(events)).toMatchObject({ fileCount: 1, truncated: false })
   })
 
   it('respects project gitignore files for content search', async () => {
@@ -1300,6 +1397,19 @@ async function collectEvents<T>(events: AsyncIterable<T>) {
 
 function doneEvent(events: readonly SearchStreamEvent[]) {
   return events.find((event) => event.type === 'done')
+}
+
+function warningCodes(events: readonly SearchStreamEvent[]) {
+  return events.flatMap((event) => (event.type === 'warning' ? [event.code] : []))
+}
+
+function contentMatchPaths(events: readonly SearchStreamEvent[]) {
+  return events.flatMap((event) => {
+    if (event.type !== 'match') return []
+    if (event.match.kind !== 'content') return []
+
+    return [event.match.path]
+  })
 }
 
 function nameMatchPaths(events: readonly SearchStreamEvent[]) {

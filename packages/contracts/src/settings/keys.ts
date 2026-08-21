@@ -4,6 +4,7 @@ import {
   lspServerOverridesSchema,
   modelRefListSchema,
   providerInstanceConfigsSchema,
+  semanticTokenServerOverridesSchema,
 } from '../settings'
 import { defineSetting, type SettingDescriptor } from './registry'
 
@@ -252,6 +253,20 @@ export const SETTINGS_REGISTRY = {
     description: 'How many matches a workspace search returns.',
     keywords: ['search', 'results', 'limit'],
   }),
+  'search.maxResultFiles': defineSetting({
+    schema: v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(200)),
+    default: 100,
+    scope: 'window',
+    widget: 'number',
+    category: 'Search',
+    // Separate from `search.maxResults`: one pathological file can hold every
+    // match in the budget, so bounding matches alone still yields a one-file
+    // result set. The route caps this at 200 for the same reason as the match
+    // limit.
+    description: 'How many files a workspace search returns matches from.',
+    visibility: 'advanced',
+    keywords: ['search', 'results', 'files', 'limit'],
+  }),
   'search.quickOpenLimit': defineSetting({
     schema: v.pipe(v.number(), v.integer(), v.minValue(1), v.maxValue(200)),
     default: 80,
@@ -403,6 +418,56 @@ export const SETTINGS_REGISTRY = {
     description:
       'Per-server overrides: command, env, extensions, initialization, or disabled. Applies the next time a server starts; one already running for a folder keeps its old command until it idles out.',
     keywords: ['lsp', 'language server', 'command', 'override', 'disable'],
+  }),
+  'lsp.semanticTokens.enabled': defineSetting({
+    schema: v.boolean(),
+    default: false,
+    // Machine scope for the same reason as `lsp.idleTimeoutMs`: it governs how
+    // much work a child process on this box does. It gates *requests* only —
+    // the declared capability block stays a pure function of the server id, so
+    // that a pooled backend's advertised legend cannot depend on which tab
+    // connected first.
+    scope: 'machine',
+    widget: 'boolean',
+    category: 'Language servers',
+    description:
+      'Ask language servers to colour identifiers they have actually resolved. Off means no token request is ever sent.',
+    visibility: 'advanced',
+    keywords: ['lsp', 'semantic', 'tokens', 'highlighting', 'colour', 'color'],
+  }),
+  'lsp.semanticTokens.delta': defineSetting({
+    schema: v.boolean(),
+    // Off until a user has repeated the measurement on their own repository.
+    // Measured here on hashbrown 0.15.5 (`src/map.rs`, 197 KB, 11 978 tokens),
+    // twelve keystrokes 60 ms apart against rust-analyzer 1.88.0: whole-file
+    // answers cost 1.60 MB over the pipe, 14.1 ms of `JSON.parse` and 9.0 MB of
+    // heap churn; deltas cost 1.9 KB, 0.1 ms and 2.0 MB. Same latency either way
+    // — the server computes the full set and then diffs it — so this buys
+    // allocation pressure and main-thread parse time, not speed.
+    default: false,
+    // Machine scope: it governs how much a child process on this box is asked to
+    // serialize, and how much garbage this box's proxy makes per keystroke.
+    scope: 'machine',
+    widget: 'boolean',
+    category: 'Language servers',
+    description:
+      'Let the proxy re-ask a delta-capable server for token deltas instead of whole files. Saves bandwidth and garbage per keystroke, not latency.',
+    visibility: 'advanced',
+    keywords: ['lsp', 'semantic', 'tokens', 'delta', 'bandwidth', 'memory'],
+  }),
+  'lsp.semanticTokens.servers': defineSetting({
+    schema: semanticTokenServerOverridesSchema,
+    default: {},
+    scope: 'machine',
+    // A record of booleans has no editable widget — `record` is typed for
+    // `string | null` values — so this is the JSON view only, exactly like
+    // `lsp.servers`.
+    widget: 'complex',
+    visibility: 'internal',
+    category: 'Language servers',
+    description:
+      'Server id to true or false, overriding the per-server default. Lets one misbehaving server be turned off without turning the feature off.',
+    keywords: ['lsp', 'semantic', 'tokens', 'server', 'override'],
   }),
   'providers.instances': defineSetting({
     schema: providerInstanceConfigsSchema,

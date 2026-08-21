@@ -60,6 +60,14 @@ type EditorDocumentStoreActions = {
     savedContentRevision: string
     savedText: string
   }) => boolean
+  markSettingsDocumentSaved: (input: {
+    documentId: string
+    revision: string
+    savedContentRevision: string
+    savedText: string
+  }) => boolean
+  /** Re-seeds a synthetic buffer from text the server rewrote; see the service. */
+  replaceUnsyncedEditorDocumentText: (documentId: string, text: string) => boolean
   recordLiveEditorDocumentTextChange: (documentId: string) => void
   removeEditorView: (tabId: string) => boolean
   renameLiveEditorDocumentPath: (from: string, to: string) => { wasDirty: boolean }
@@ -169,6 +177,16 @@ export function createEditorDocumentStore(options: CreateEditorDocumentStoreOpti
         const marked = service.markSaved(input)
         set({ ...service.state() })
         return marked
+      },
+      markSettingsDocumentSaved: (input) => {
+        const marked = service.markSettingsSaved(input)
+        set({ ...service.state() })
+        return marked
+      },
+      replaceUnsyncedEditorDocumentText: (documentId, text) => {
+        const replaced = service.replaceUnsyncedDocumentText(documentId, text)
+        if (replaced) set({ ...service.state() })
+        return replaced
       },
       recordLiveEditorDocumentTextChange: (documentId) => {
         service.recordTextChange(documentId)

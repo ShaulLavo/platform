@@ -18,8 +18,18 @@ type CommandPlatformName = 'linux' | 'mac' | 'windows'
  * What has to be true before a command can run. `commandDisabledReason` is a
  * lookup on this and nothing else, so the gate lives on the command instead of
  * in a set of ids kept somewhere else.
+ *
+ * `tab`, `editor`, `saveable` and `file` are four different questions, and a
+ * command that asks a wider one than it needs is wrong in the palette and the
+ * menus even when its handler is right: `closeCurrentTab` needs only a tab to
+ * close, `editor.*` needs a text editor to act on, `saveFile` needs somewhere to
+ * write the bytes back to, and `revertFile` needs an actual path on disk.
+ *
+ * They nest: `file` implies `saveable` implies `tab`, and `file` implies
+ * `editor` implies `tab`. `saveable` and `editor` do not imply each other —
+ * a raw settings buffer is both, a conflict buffer is only an editor.
  */
-export type CommandRequirement = 'file' | 'nothing' | 'workspace'
+export type CommandRequirement = 'editor' | 'file' | 'nothing' | 'saveable' | 'tab' | 'workspace'
 
 /** One default key for a command. `vscodeCommandId` is per key, not per command. */
 export type CommandKeyDefault = {
@@ -97,8 +107,10 @@ export function defineCommand<const Id extends `workspace.${string}`>(
 /**
  * Takes the bare `EditorCommandId` and prefixes it, so an editor command can
  * only be declared for something `@singapor/core` actually implements. Every
- * editor command needs a file-backed surface, and every one of its keys belongs
- * to the editor pane, so neither is worth restating 80 times.
+ * editor command needs a text editor to act on — not a file on disk, which is
+ * the narrower thing: a conflict tab is unsaved and unsavable and still takes
+ * all of these. Every one of its keys belongs to the editor pane. Neither is
+ * worth restating 80 times.
  */
 export function defineEditorCommand<const Id extends EditorCommandId>(
   command: Omit<EditorCommand<`editor.${Id}`>, 'category' | 'id' | 'kind' | 'requires'> & {
@@ -111,6 +123,6 @@ export function defineEditorCommand<const Id extends EditorCommandId>(
     id: `editor.${command.id}`,
     keys: command.keys?.map((key) => ({ pane: 'editor', ...key })),
     kind: 'editor',
-    requires: 'file',
+    requires: 'editor',
   }
 }

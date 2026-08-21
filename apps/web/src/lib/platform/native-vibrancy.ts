@@ -1,8 +1,9 @@
-// In the desktop shell the window is transparent and macOS paints an
-// NSVisualEffectView behind it, so the compositor supplies the blurred desktop
+// When the desktop shell's window is transparent, macOS paints an
+// NSVisualEffectView behind it and the compositor supplies the blurred desktop
 // for free. The web layer then has to stay out of the way: no opaque floor
-// under the translucent surfaces, and no wallpaper of its own. In a browser
-// there is nothing behind the page, so both stay.
+// under the translucent surfaces, and no wallpaper of its own. Otherwise —
+// in a browser, or in an opaque shell window — there is nothing behind the
+// page, so both stay.
 export const NATIVE_VIBRANCY_ATTRIBUTE = 'data-native-vibrancy'
 
 export function applyNativeVibrancy(isNativeShell: boolean) {

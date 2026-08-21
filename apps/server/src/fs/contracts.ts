@@ -52,6 +52,7 @@ export const searchQuerySchema = v.object({
   limit: v.optional(limitQueryValueSchema, '50'),
   caseSensitive: v.optional(booleanQueryValueSchema, 'false'),
   excludeGlobs: v.optional(globQueryValueSchema),
+  fileLimit: v.optional(limitQueryValueSchema),
   includeContent: v.optional(booleanQueryValueSchema, 'false'),
   includeGlobs: v.optional(globQueryValueSchema),
   includeNames: v.optional(booleanQueryValueSchema, 'true'),

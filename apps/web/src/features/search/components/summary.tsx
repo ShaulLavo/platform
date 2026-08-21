@@ -4,7 +4,9 @@ import {
   ArrowsOutLineVerticalIcon,
   CaretDownIcon,
   CaretUpIcon,
+  WarningCircleIcon,
 } from '@phosphor-icons/react'
+import type { WorkspaceSearchWarningEvent } from '@workspace/contracts'
 
 import {
   searchGroupsForSnapshot,
@@ -162,6 +164,32 @@ function emptySummary(text: string) {
   }
 }
 
+// Warnings ride the summary line rather than a separate banner: they qualify the
+// counts sitting right next to them ("40 matches" *that we could reach*), and a
+// banner would push results down on every partial run.
+function searchWarningNotice(warnings: readonly WorkspaceSearchWarningEvent[]) {
+  const warning = warnings[0]
+  if (!warning) return { content: null, title: '' }
+
+  const detail = warnings.map((entry) => warningTitleText(entry)).join(' ')
+
+  return {
+    content: (
+      <span className='text-warning ml-1 inline-flex items-center gap-1 align-bottom'>
+        <WarningCircleIcon aria-hidden='true' className='size-3.5 shrink-0' weight='duotone' />
+        {warning.message}
+      </span>
+    ),
+    title: ` · ${detail}`,
+  }
+}
+
+function warningTitleText(warning: WorkspaceSearchWarningEvent) {
+  if (!warning.detail) return warning.message
+
+  return `${warning.message} (${warning.detail})`
+}
+
 function summaryWithControls(
   content: ReactNode,
   snapshot: SearchBufferSnapshot,
@@ -187,6 +215,7 @@ function summaryWithControls(
     </>
   ) : null
   const trailingTitle = options.trailingText ? ` · ${options.trailingText}` : ''
+  const warning = searchWarningNotice(snapshot.warnings)
 
   return {
     canCollapse: groups.some((group) => group.count > 0 && !group.collapsed),
@@ -197,10 +226,11 @@ function summaryWithControls(
         {content}
         {activeContent}
         {trailingContent}
+        {warning.content}
       </>
     ),
     showControls: groups.some((group) => group.count > 0),
-    title: `${title}${activeTitle}${trailingTitle}`,
+    title: `${title}${activeTitle}${trailingTitle}${warning.title}`,
   }
 }
 

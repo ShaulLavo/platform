@@ -2,6 +2,7 @@ import { DEFAULT_SETTING_VALUES } from '@workspace/contracts'
 import { createHash } from 'node:crypto'
 import { accessSync, constants } from 'node:fs'
 import { access, chmod, mkdir, readdir, rm, writeFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import path from 'node:path'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 
@@ -287,6 +288,107 @@ export async function spawnTinymist(root: string) {
   if (!downloaded) return null
 
   return spawnCommand([downloaded], { cwd: root })
+}
+
+/**
+ * rust-analyzer, resolved past the rustup shim.
+ *
+ * `which('rust-analyzer')` finds `~/.cargo/bin/rust-analyzer` on any machine
+ * with rustup, and that file is a **proxy, not the server**. Unless the
+ * component happens to be installed for the active toolchain it prints
+ * `error: 'rust-analyzer' is not installed for the toolchain '<tc>'` and exits
+ * immediately — which reaches the browser as a socket closing with no message,
+ * because nothing in this stack reports a backend death. The real binary lives
+ * inside the toolchain at `~/.rustup/toolchains/<tc>/bin/rust-analyzer`.
+ *
+ * `rustup which` is asked first and asked **from the project root**, not with a
+ * pinned `--toolchain stable`: a crate with a `rust-toolchain.toml` wants the
+ * server its own toolchain ships, and asking for `stable` there would hand it a
+ * different compiler's analysis. `--toolchain stable` is the fallback for a root
+ * that pins nothing, and the toolchain directory scan is the fallback for a
+ * machine with no `rustup` on PATH at all.
+ */
+export async function spawnRustAnalyzer(root: string) {
+  const resolved =
+    (await rustupRustAnalyzer(root)) ??
+    (await installedToolchainRustAnalyzer()) ??
+    pathRustAnalyzer()
+  if (!resolved) return null
+
+  return spawnCommand([resolved], { cwd: root })
+}
+
+async function rustupRustAnalyzer(root: string) {
+  if (!which('rustup')) return null
+
+  /**
+   * Asking rustup must never *install* anything.
+   *
+   * `rustup which` is run from the project root so a crate's own
+   * `rust-toolchain.toml` is honoured — and that file ships inside a cloned
+   * repository. A repo naming a toolchain this machine does not have would
+   * otherwise make opening one `.rs` file download a whole toolchain: hundreds of
+   * megabytes, no progress anywhere in this stack, and the spawn blocked until it
+   * finished. `RUSTUP_AUTO_INSTALL=0` turns that into an error, which falls
+   * through to the installed-toolchain scan below.
+   */
+  const env = { ...process.env, RUSTUP_AUTO_INSTALL: '0' }
+  // Trimmed because `commandOutput` hands back raw stdout: rustup prints the
+  // path with a trailing newline, and every `access` check after this would fail
+  // on it while looking like a missing binary.
+  const active = trimmedPath(
+    await commandOutput(['rustup', 'which', 'rust-analyzer'], { cwd: root, env }),
+  )
+  const stable = active
+    ? null
+    : trimmedPath(
+        await commandOutput(['rustup', 'which', '--toolchain', 'stable', 'rust-analyzer'], {
+          cwd: root,
+          env,
+        }),
+      )
+
+  return executableRustAnalyzer(active ?? stable)
+}
+
+async function installedToolchainRustAnalyzer() {
+  const toolchains = path.join(homedir(), '.rustup', 'toolchains')
+  const entries = await readdir(toolchains).catch(() => [])
+  // Sorted so a machine with several toolchains resolves the same binary on
+  // every spawn; an arbitrary readdir order would make a pooled backend's
+  // capabilities depend on the filesystem.
+  for (const entry of entries.toSorted()) {
+    const candidate = executableRustAnalyzer(path.join(toolchains, entry, 'bin', 'rust-analyzer'))
+    if (candidate) return candidate
+  }
+
+  return null
+}
+
+function pathRustAnalyzer() {
+  const found = which('rust-analyzer', [toolRoot])
+  // The shim again, reached the long way round. Spawning it would produce the
+  // silent death this function exists to avoid, so refusing is the honest answer.
+  if (found && isRustupShim(found)) return null
+
+  return found
+}
+
+function executableRustAnalyzer(candidate: string | null) {
+  if (!candidate) return null
+  if (isRustupShim(candidate)) return null
+  if (!existsSyncExecutable(candidate)) return null
+
+  return candidate
+}
+
+function trimmedPath(output: string | null) {
+  return output?.trim() || null
+}
+
+/** Every rustup proxy lives in the cargo bin directory; the real servers do not. */
+function isRustupShim(candidate: string) {
+  return path.dirname(candidate) === path.join(homedir(), '.cargo', 'bin')
 }
 
 export async function spawnZls(root: string) {

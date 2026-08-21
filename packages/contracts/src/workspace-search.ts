@@ -4,6 +4,10 @@ export type WorkspaceSearchSource = 'disk' | 'open-buffer'
 export type WorkspaceSearchMatchMode = 'literal' | 'regex' | 'fuzzy'
 export type WorkspaceSearchProviderSource = 'fallback' | 'fd' | 'index' | 'rg'
 export type WorkspaceSearchIndexReadiness = 'cold' | 'building' | 'ready' | 'stale' | 'failed'
+export type WorkspaceSearchWarningCode =
+  | 'content-tool-partial-failure'
+  | 'file-limit-reached'
+  | 'multiline-query-unsupported'
 export type WorkspaceSearchIndexFallbackReason =
   | 'building'
   | 'cold'
@@ -16,6 +20,7 @@ export type WorkspaceSearchQuery = {
   caseSensitive?: boolean
   entryType?: EntryTypeFilter
   excludeGlobs?: readonly string[]
+  fileLimit?: number
   includeContent: boolean
   includeGlobs?: readonly string[]
   includeNames?: boolean
@@ -81,8 +86,16 @@ export type WorkspaceSearchMeasurement = {
   workspaceIndex?: WorkspaceSearchIndexMeasurement
 }
 
+export type WorkspaceSearchWarningEvent = {
+  code: WorkspaceSearchWarningCode
+  detail?: string
+  message: string
+  type: 'warning'
+}
+
 export type WorkspaceSearchDoneEvent = {
   count: number
+  fileCount?: number
   measurement?: WorkspaceSearchMeasurement
   path: string
   query: string
@@ -96,6 +109,7 @@ export type WorkspaceSearchEvent =
       type: 'match'
     }
   | WorkspaceSearchDoneEvent
+  | WorkspaceSearchWarningEvent
   | {
       code: string
       message: string

@@ -66,6 +66,8 @@ export type {
   WorkspaceSearchProviderSource,
   WorkspaceSearchQuery,
   WorkspaceSearchStatPathCount,
+  WorkspaceSearchWarningCode,
+  WorkspaceSearchWarningEvent,
 } from './workspace-search'
 export {
   workspaceSearchPreview,
@@ -308,18 +310,26 @@ export {
   type LogLiveStreamItem,
 } from './log-dashboard'
 export {
+  LSP_SEMANTIC_TOKENS_REFRESH,
+  LSP_SERVER_EXITED,
+  type LspNegotiatedSemanticTokens,
+  type LspServerExitedParams,
+} from './lsp-protocol'
+export {
   lspServerOverrideSchema,
   lspServerOverridesSchema,
   modelRefKey,
   providerInstanceConfigSchema,
   providerInstanceConfigsSchema,
   REDACTED_SETTINGS_VALUE,
+  semanticTokenServerOverridesSchema,
   type KeybindingOverrides,
   type LspServerOverride,
   type LspServerOverrides,
   type ModelRef,
   type ProviderEnvironmentVariable,
   type ProviderInstanceConfig,
+  type SemanticTokenServerOverrides,
 } from './settings'
 export {
   defineSetting,
@@ -358,6 +368,9 @@ export {
   settingsSnapshotSchema,
   settingsWriteRequestSchema,
   type SettingsEdit,
+  type SettingsLayerFile,
+  type SettingsLayerSnapshot,
+  type SettingsParseError,
   type SettingsSnapshot,
   type SettingsWriteRequest,
   type SettingsWriteTarget,

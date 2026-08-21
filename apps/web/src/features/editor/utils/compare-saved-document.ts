@@ -1,6 +1,6 @@
 import { basename } from '@/lib/path-formatters'
 
-const COMPARE_SAVED_PREFIX = 'compare-saved:'
+export const COMPARE_SAVED_PREFIX = 'compare-saved:'
 
 /**
  * Document id for "compare the active editor with what is on disk".

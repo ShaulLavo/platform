@@ -4,6 +4,7 @@ import type {
   WorkspaceSearchMatcher,
   WorkspaceSearchMatch,
   WorkspaceSearchQuery,
+  WorkspaceSearchWarningEvent,
 } from '@workspace/contracts'
 import { fuzzyRank, workspaceSearchPreview } from '@workspace/contracts'
 
@@ -29,6 +30,7 @@ export type FindContext = {
   options: FindOptions
   gitIgnore: GitIgnoreMatcher
   statCache: SearchStatCache
+  warnings: WorkspaceSearchWarningEvent[]
 }
 
 export type SearchStatCache = Map<string, Promise<FsEntryStats | null>>
@@ -40,9 +42,17 @@ export function searchMatchMode(options: FindOptions) {
 export function shouldSearchContent(options: FindOptions) {
   if (searchMatchMode(options) === 'fuzzy') return false
   if (!options.includeContent) return false
+  if (queryHasLineBreak(options.query)) return false
   if (options.entryType && options.entryType !== 'file') return false
 
   return true
+}
+
+// `rg` is invoked line-oriented and every fallback matcher works one line at a
+// time, so a query spanning lines cannot match anything anywhere. Callers turn
+// this into a warning rather than an empty result set.
+export function queryHasLineBreak(query: string) {
+  return query.includes('\n') || query.includes('\r')
 }
 
 export function shouldSearchNames(options: FindOptions) {

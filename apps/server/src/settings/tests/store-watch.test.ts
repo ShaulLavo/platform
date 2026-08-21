@@ -61,6 +61,97 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
 
+/**
+ * A hand-edit is not atomic. Between the first keystroke and a valid document the
+ * file spends most of its time unparseable, and every key absent from a parse
+ * resolves to its registry default rather than to its previous value — so without
+ * retention the app does not degrade while you type, it resets: theme, fonts,
+ * wallpaper and the whole keymap, on every intermediate save.
+ */
+describe('a broken file does not change what is in force', () => {
+  it('holds the last good values while the document is unparseable', async () => {
+    const root = await tempRoot()
+    const file = path.join(root, 'settings.json')
+    await writeFile(
+      file,
+      '{\n  "workbench.colorTheme": "dark",\n  "editor.fontSize": 18\n}\n',
+      'utf8',
+    )
+
+    const store = createStore(root)
+    expect(store.snapshot().values['workbench.colorTheme']).toBe('dark')
+
+    // One unterminated quote in a key name, which recovers zero keys.
+    const broken = nextChange(store)
+    await writeFile(
+      file,
+      '{\n  "workbench.colorThem: "dark",\n  "editor.fontSize": 18\n}\n',
+      'utf8',
+    )
+    const snapshot = await broken
+
+    expect(snapshot.values['workbench.colorTheme']).toBe('dark')
+    expect(snapshot.values['editor.fontSize']).toBe(18)
+  })
+
+  // The bytes are always news even when their meaning is not: this is what lets
+  // the page say the document is broken, and the JSON view show what to fix.
+  it('still reports the broken bytes and where they broke', async () => {
+    const root = await tempRoot()
+    const file = path.join(root, 'settings.json')
+    await writeFile(file, '{ "editor.fontSize": 18 }\n', 'utf8')
+
+    const store = createStore(root)
+    const broken = nextChange(store)
+    // The partial parse recovers `99` here, so this fails if `raw` follows the
+    // recovery rather than the last document that parsed cleanly.
+    await writeFile(file, '{ "editor.fontSize": 99, "oops" }\n', 'utf8')
+    const snapshot = await broken
+
+    const layer = snapshot.layers.find((entry) => entry.id === 'user')
+    expect(layer?.file?.text).toBe('{ "editor.fontSize": 99, "oops" }\n')
+    expect(layer?.file?.parseErrors.length).toBeGreaterThan(0)
+    // Disagreeing with `text` is the point: `raw` is the last parse that worked.
+    expect(layer?.raw).toEqual({ 'editor.fontSize': 18 })
+    expect(snapshot.values['editor.fontSize']).toBe(18)
+  })
+
+  it('takes the repaired document as soon as it parses again', async () => {
+    const root = await tempRoot()
+    const file = path.join(root, 'settings.json')
+    await writeFile(file, '{ "workbench.colorTheme": "dark" }\n', 'utf8')
+
+    const store = createStore(root)
+    const broken = nextChange(store)
+    await writeFile(file, '{ "workbench.colorTheme": "dar }\n', 'utf8')
+    await broken
+
+    const repaired = nextChange(store)
+    await writeFile(file, '{ "workbench.colorTheme": "light" }\n', 'utf8')
+    const snapshot = await repaired
+
+    expect(snapshot.values['workbench.colorTheme']).toBe('light')
+    expect(snapshot.layers.find((entry) => entry.id === 'user')?.file?.parseErrors).toEqual([])
+  })
+
+  // Deleting the file is a decision, not a syntax error. Holding the old values
+  // through a delete would make the delete look ignored.
+  it('does not hold values through a deleted file', async () => {
+    const root = await tempRoot()
+    const file = path.join(root, 'settings.json')
+    await writeFile(file, '{ "editor.fontSize": 21 }\n', 'utf8')
+
+    const store = createStore(root)
+    expect(store.snapshot().values['editor.fontSize']).toBe(21)
+
+    const removed = nextChange(store)
+    await rm(file)
+    const snapshot = await removed
+
+    expect(snapshot.values['editor.fontSize']).toBe(13)
+  })
+})
+
 describe('external edits', () => {
   it('picks up a hand-edited file the store never wrote', async () => {
     const root = await tempRoot()

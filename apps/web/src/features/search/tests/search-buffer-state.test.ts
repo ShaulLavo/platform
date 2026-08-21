@@ -20,6 +20,94 @@ import {
 } from '@/features/search/utils/result-items'
 
 describe('search buffer store', () => {
+  it('keeps a warning attached to the run instead of failing it', () => {
+    const store = createSearchBufferStore()
+    const runId = store.getState().startSearch({
+      includeContent: true,
+      limit: 20,
+      path: 'repo',
+      query: 'needle',
+    })
+
+    store.getState().appendEvent(runId, {
+      match: {
+        kind: 'content',
+        path: 'repo/src/app.ts',
+        source: 'disk',
+        type: 'file',
+      },
+      type: 'match',
+    })
+    store.getState().appendEvent(runId, {
+      code: 'content-tool-partial-failure',
+      message: 'rg could not read part of this workspace.',
+      type: 'warning',
+    })
+    store.getState().appendEvent(runId, {
+      count: 1,
+      path: 'repo',
+      query: 'needle',
+      truncated: false,
+      type: 'done',
+    })
+
+    const snapshot = store.getState().active
+    expect(snapshot?.status).toBe('ready')
+    expect(snapshot?.error).toBeNull()
+    expect(snapshot?.totalCount).toBe(1)
+    expect(snapshot?.warnings).toEqual([
+      {
+        code: 'content-tool-partial-failure',
+        message: 'rg could not read part of this workspace.',
+        type: 'warning',
+      },
+    ])
+  })
+
+  it('reports one warning per code when providers repeat it', () => {
+    const store = createSearchBufferStore()
+    const runId = store.getState().startSearch({
+      includeContent: true,
+      limit: 20,
+      path: 'repo',
+      query: 'needle',
+    })
+    const warning = {
+      code: 'content-tool-partial-failure',
+      message: 'rg could not read part of this workspace.',
+      type: 'warning',
+    } as const
+
+    store.getState().appendEvent(runId, warning)
+    store.getState().appendEvent(runId, warning)
+
+    expect(store.getState().active?.warnings).toHaveLength(1)
+  })
+
+  it('drops warnings from the previous run when a new search starts', () => {
+    const store = createSearchBufferStore()
+    const firstRun = store.getState().startSearch({
+      includeContent: true,
+      limit: 20,
+      path: 'repo',
+      query: 'needle',
+    })
+    store.getState().appendEvent(firstRun, {
+      code: 'file-limit-reached',
+      message: 'Stopped after 2 files.',
+      type: 'warning',
+    })
+
+    store.getState().startSearch({
+      includeContent: true,
+      limit: 20,
+      path: 'repo',
+      query: 'other',
+    })
+
+    expect(store.getState().active?.warnings).toEqual([])
+  })
+
   it('tracks loading, matches, completion, and grouping', () => {
     const store = createSearchBufferStore()
     const runId = store.getState().startSearch({

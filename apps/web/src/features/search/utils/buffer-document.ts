@@ -1,6 +1,6 @@
 import { displayPath } from '@/lib/path-formatters'
 
-const SEARCH_BUFFER_DOCUMENT_PREFIX = 'search-buffer:'
+export const SEARCH_BUFFER_DOCUMENT_PREFIX = 'search-buffer:'
 
 export type SearchBufferDocumentInfo = {
   id: string

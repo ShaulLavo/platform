@@ -34,7 +34,10 @@ import {
 import { useSessionIsolationStore } from '@/features/chat-mode/state/session-isolation-store'
 import { setChatModeSessionRailOpen } from '@/features/chat-mode/utils/panels'
 import { compareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'
-import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
+import {
+  fileBackedDocumentPath,
+  savableDocumentPath,
+} from '@/features/editor/utils/file-backed-document'
 import { saveAllEditorDocuments, saveSelectedEditorDocument } from '@/features/editor/utils/save'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import type { EditorDocumentStoreApi } from '@/features/editor/state/document-state'
@@ -76,6 +79,14 @@ function closeSelectedTab(activeTabId: string | null, requestCloseTab: RequestCl
 
 function runFileLifecycle(activeFilePath: string | null, operation: () => Promise<boolean>) {
   if (!fileBackedDocumentPath(activeFilePath)) return false
+
+  void operation().catch(reportCommandError)
+  return true
+}
+
+/** The same shape as `runFileLifecycle`, for the wider `saveable` gate. */
+function runSaveLifecycle(activeFilePath: string | null, operation: () => Promise<boolean>) {
+  if (!savableDocumentPath(activeFilePath)) return false
 
   void operation().catch(reportCommandError)
   return true
@@ -300,9 +311,11 @@ export const workspaceCommands = [
     keys: [
       { hotkey: 'Mod+S', preventDefault: true, vscodeCommandId: 'workbench.action.files.save' },
     ],
-    requires: 'file',
+    // Not `file`: the raw settings.json buffer has no path on disk and is saved
+    // through the settings route, which is a save the user expects Mod+S to do.
+    requires: 'saveable',
     run: ({ activeFilePath, documentStore, queryClient }) =>
-      runFileLifecycle(activeFilePath, () =>
+      runSaveLifecycle(activeFilePath, () =>
         saveSelectedEditorDocument(documentStore, queryClient, activeFilePath),
       ),
     title: 'Save',
@@ -594,7 +607,10 @@ export const workspaceCommands = [
     description: 'Close the selected editor tab.',
     icon: XIcon,
     id: 'workspace.closeCurrentTab',
-    requires: 'file',
+    // A tab, not a file: this runs on `activeTabId` and never looks at a path,
+    // and a diff, a settings page and a search buffer all close exactly like a
+    // file does.
+    requires: 'tab',
     run: ({ activeTabId, requestCloseTab }) => closeSelectedTab(activeTabId, requestCloseTab),
     title: 'Close current tab',
     vscodeCommandIds: ['workbench.action.closeActiveEditor'],

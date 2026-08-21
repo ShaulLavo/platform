@@ -1,80 +1,44 @@
-# Platform
+# platform
 
-Platform is a Bun monorepo for a local-first code editing workspace. It combines a Vite React client, an Elysia file/Git/LSP server, shared contract types, a reusable UI package, and the Singapor editor packages from npm.
+a local-first code editing workspace, all in one bun monorepo
 
-## Workspace Layout
+a vite react client talking to an elysia server that does the actual filesystem, git and lsp work, with a shared contracts package so both sides agree on the shapes. there's also an electrobun desktop shell that wraps the same client. the editor itself is the `@singapor/*` packages, developed in a sibling repo
 
-- `apps/web`: React application for the editor shell, workspace tree, Git views, file picker, and client-side state.
-- `apps/server`: Elysia RPC server for filesystem access, Git operations, file watching, auth, and TypeScript LSP websocket sessions.
-- `packages/contracts`: shared server/web DTOs and runtime schemas that define stable cross-package boundaries.
-- `packages/ui`: shared React UI components, styles, and utility primitives consumed by apps.
-- `docs` and `scripts`: operational notes and repository maintenance scripts.
+## what's where
 
-## Ownership Boundaries
+- `apps/web` — the editor shell, workspace tree, git views, file picker, client state
+- `apps/server` — elysia rpc: filesystem, git, file watching, auth, typescript lsp websockets
+- `apps/desktop` — electrobun native shell (bun main process + preload bridge)
+- `packages/contracts` — shared server/web DTOs, runtime schemas, the settings registry
+- `packages/ui` — shared react components, styles, primitives
+- `packages/tree` — the file tree: components, hooks, path store, render utils
+- `packages/observability` — structured logging + telemetry config, used everywhere
+- `docs`, `scripts` — plans and notes, repo tooling
 
-The server owns side effects and host integration: filesystem reads/writes, Git commands, watchers, auth checks, and LSP session lifecycle. Shared request and response shapes should live in `packages/contracts` when both server and web need to understand them.
+rough rule: anything with side effects lives on the server, product workflows and ui state live in web. web talks to the server through `apps/web/src/lib` helpers or feature-local api modules, never by re-declaring DTOs in a component. the ui package stays app-agnostic, react is a peer dep there
 
-The web app owns product workflows and UI state. It should talk to server APIs through the shared client helpers in `apps/web/src/lib` or feature-local API modules, not by duplicating server DTOs in component files.
+user-facing knobs are registry entries in `packages/contracts/src/settings/keys.ts`, never a stray localStorage key. `docs/settings-reference.md` is generated, rerun `bun run settings:reference` after you touch the registry
 
-The UI package should stay reusable and app-agnostic. React is provided by consuming apps as a peer dependency, while the package keeps React in dev dependencies for local typechecking and development.
+## the editor packages
 
-## Editor Packages
+you need a sibling checkout of the editor repo at `../Editor` — there's no npm fallback right now, `@singapor/decode` isn't published. the root `overrides` map points every `@singapor/*` at it via bun's `link:` protocol (`"@singapor/core": "link:@singapor/core"`), backed by `bun link` global links. so: run `bun link` inside each `../Editor/packages/*` once, then `bun install` here, and local editor changes show up in typecheck, tests and the dev server. ci does the same thing by cloning `ShaulLavo/singapor` as a sibling and linking each package
 
-The editor runtime resolves in one of two modes:
+they're deliberately not bun workspaces btw — turbo won't touch a workspace package whose realpath is outside the repo root, so a `"../Editor/packages/*"` glob (or the `packages/editor-*` symlinks) just breaks `bun run dev`. `overrides` + `link:` gets you live source without workspace membership
 
-- **Default (standalone)**: the editor packages are consumed from public npm
-  packages under the `@singapor/*` scope. A fresh clone plus `bun install` is
-  intended to work without any sibling checkout.
-- **Editor development (hybrid)**: the root `package.json` `overrides` map
-  redirects every `@singapor/*` package to a sibling checkout of the separate
-  `Editor` monorepo via bun's `link:` protocol (`"@singapor/core":
-"link:@singapor/core"`, etc.), backed by `bun link` global links created from
-  `../Editor/packages/*`. With the sibling present, local editor changes are
-  picked up directly — by typecheck, tests, and the dev server alike — so both
-  repos can be developed in tandem.
-
-  The editor packages are deliberately **not** bun workspaces: turbo refuses to
-  discover any workspace package whose realpath is outside the repository root,
-  so a `"../Editor/packages/*"` workspace glob (or the `packages/editor-*`
-  symlinks) breaks `bun run dev`. The `overrides` + `link:` approach links the
-  live source without making the packages workspace members, keeping turbo
-  happy. To enable it, run `bun link` inside each `../Editor/packages/*` once,
-  then `bun install` here.
-
-If you are not working on the editor itself, drop the `@singapor/*` entries from
-`overrides` (standalone mode) — a fresh clone plus `bun install` then resolves
-the published packages without any sibling checkout.
-
-## Common Commands
+## running it
 
 ```bash
 bun install
 bun run dev
-bun run build
-bun run start
-bun run prod
-bun run typecheck
-bun run test
-bun run lint
-bun run format
 ```
 
-Use `bun --filter <workspace> <script>` to run a command for one package, for example `bun --filter web test` or `bun --filter server typecheck`.
+`dev` brings up web + server + desktop. `bun run dev:web` skips the desktop app, `bun run desktop:dev` runs just it. `.env` at the root is optional, it's only read for overrides like `PORT`, `WEB_PORT` and the `OBSERVABILITY_*` knobs
 
-## Verify Your Setup
+`bun run verify` is the full gate: typecheck, lint, format:check, test. lint is oxlint, formatting is oxfmt. scope anything to one package with `bun --filter web test` or `bun --filter server typecheck`
 
-After `bun install`, confirm everything works:
+open the url dev prints and you should land on the workspace shell with the file tree and editor
 
-```bash
-cp .env.example .env   # bun run dev loads env from .env via --env-file
-bun run typecheck && bun run lint && bun run format:check && bun run test
-bun run dev
-```
-
-Open the local URL that `bun run dev` prints — you should see the workspace
-shell with the file tree and editor.
-
-Optionally install the git hooks (lefthook) so pre-commit checks run locally:
+optional lefthook hooks — oxfmt and oxlint over staged files, then a repo typecheck, on every commit:
 
 ```bash
 bun run hooks:install

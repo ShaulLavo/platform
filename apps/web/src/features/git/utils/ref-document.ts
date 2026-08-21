@@ -1,6 +1,6 @@
 import { basename } from '@/lib/path-formatters'
 
-const REF_DOCUMENT_PREFIX = 'git-ref:'
+export const REF_DOCUMENT_PREFIX = 'git-ref:'
 
 export type RefDocumentInfo = {
   readonly path: string

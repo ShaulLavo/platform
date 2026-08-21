@@ -1,5 +1,5 @@
 > [!IMPORTANT]
-> **STATUS: 🟡 NEEDS UPDATE (reviewed 2026-06-06).** Refresh Done/open status. (Reference paths repaired 2026-06-12: platform paths are repo-relative, VS Code paths point at the vendored `references/vscode/`, and `zed:` paths are upstream-relative — the zed checkout is not vendored; see https://github.com/zed-industries/zed.)
+> **STATUS: 🟢 CURRENT (audited against the code 2026-08-21).** Every bullet below was checked against the implementation; sections 1-9 are Done. What remains is section 10's UI-level test coverage. (Reference paths repaired 2026-06-12: platform paths are repo-relative, VS Code paths point at the vendored `references/vscode/`, and `zed:` paths are upstream-relative — the zed checkout is not vendored; see https://github.com/zed-industries/zed.)
 
 # Workspace Search Next Steps
 
@@ -14,18 +14,40 @@ Priority rule for every item:
 ## Current Local Implementation
 
 - Shared contract: `packages/contracts/src/workspace-search.ts`
+- Shared matcher and glob policy: `packages/contracts/src/workspace-search-match.ts`
 - Server disk provider: `apps/server/src/fs/search.ts`
-- Server endpoint adapter: `apps/server/src/app.ts`
-- Web providers: `apps/web/src/features/search/search-providers.ts`
-- Search buffer state: `apps/web/src/features/search/search-buffer-state.tsx`
-- Search runtime/batching/dirty overlay: `apps/web/src/features/search/use-search-buffer.ts`
-- Virtualized results view: `apps/web/src/features/search/search-results-view.tsx`
-- Result row display/highlighting: `apps/web/src/features/search/search-match-row.tsx`
-- Match display window helper: `apps/web/src/features/search/search-match-display.ts`
-- Search editor tab shell: `apps/web/src/components/workspace/search/components/` (formerly `features/search/search-buffer-editor.tsx`, removed in the search-preview refactor)
-- Sidebar controller: `apps/web/src/components/workspace/search/components/search-pane.tsx`
+- Server tool runner (`fd`/`rg` spawn, tolerated-failure warnings): `apps/server/src/fs/search-tool-runner.ts`
+- Server workspace path/metadata index: `apps/server/src/fs/workspace-index.ts`
+- Server endpoint: `apps/server/src/fs/routes.ts` (`GET /fs/search/events`)
+- Web SSE client: `apps/web/src/lib/workspace-search-client.ts`
+- Web providers: `apps/web/src/features/search/utils/providers.ts`
+- Search buffer state: `apps/web/src/features/search/state/buffer-state.tsx`
+- Search runtime/batching: `apps/web/src/features/search/utils/buffer-runner.ts`
+- Dirty overlay: `apps/web/src/features/search/hooks/use-run-dirty-buffer-overlay.ts`
+- Virtualized results view: `apps/web/src/features/search/components/results-view.tsx`
+- Result row display/highlighting: `apps/web/src/features/search/components/match-row.tsx`
+- Match display window helper: `apps/web/src/features/search/utils/match-display.ts`
+- Search editor tab surface: `apps/web/src/features/search/components/result-editor-surface.tsx`
+- Sidebar controller: `apps/web/src/features/workspace/components/search-results.tsx`
 
-## Product Behavior Still Missing
+## Settled Product Decisions
+
+These were open questions in earlier revisions of this document. They are settled
+by construction, and are recorded here so they are not reopened by accident.
+
+- **Result tabs are live, not snapshots.** There is exactly one search buffer per
+  workspace root, keyed `search-buffer:<root>`, and it tracks the active search.
+  Multiple saved result tabs are therefore not supported and are not planned.
+- **Open-buffer matches come before disk matches**, not merged into disk order.
+  The composite provider searches dirty buffers first, then disk with the dirty
+  paths suppressed.
+- **One result row per match, not per line.** A line with several matches yields
+  several rows; `rg` reports one submatch per match and we keep that granularity.
+- **Multiline queries are an unsupported feature, not an error.** Content search
+  is skipped and a `multiline-query-unsupported` warning is emitted; name search
+  still runs.
+
+## Behavior By Section
 
 ### 1. Separate Text Search From File Search
 
@@ -130,11 +152,11 @@ References:
 
 ### 5. Search Result Editor Fidelity
 
-Zed renders project search results as an editor-like multibuffer with excerpts. This is a primary Zed-parity item. Our virtual search buffer is editor-like only at the tab level.
+Zed renders project search results as an editor-like multibuffer with excerpts. Our search-buffer tabs render results through real editor instances.
 
 Product choice: keep the sidebar as the compact result tree, and render search-buffer tabs as readonly editor-backed virtual result documents.
 
-Status: Partially done for the Zed-first search-buffer tab baseline.
+Status: Done for the Zed-first search-buffer tab baseline.
 
 Completed:
 
@@ -145,15 +167,14 @@ Completed:
 - Editor find and native selection/copy behavior are available inside result tabs.
 - Destructive edit keybindings and text input are blocked for the generated result document.
 
-Remaining work:
+Status: Done. The structured result editor shipped (the refactor plan was deleted
+in `a92f810`); result files render through a pooled editor with a virtual window.
+"Live vs snapshot" and "multiple saved tabs" are answered under Settled Product
+Decisions above.
 
-- Use the structured result editor refactor plan as the canonical path for
-  replacing the current temporary mega-document renderer
-  (`docs/search-result-editor-refactor-plan.md` — since removed; the refactor
-  shipped and the doc was deleted in commit `a92f810`)
-- Add richer multibuffer styling for file headers and excerpts if the plain text projection feels too flat.
-- Decide whether result tabs should be live views of the active search or saved snapshots.
-- Support multiple saved search result tabs if needed.
+Optional polish, not blocking:
+
+- Richer multibuffer styling for file headers and excerpts if the plain text projection ever feels too flat.
 
 References:
 
@@ -163,15 +184,24 @@ References:
 
 ### 6. Ordering, Batching, And Limits
 
-We batch events now, but ordering and limits are still simple. Match Zed’s ordering, merge, and limit behavior first; use VS Code for warning/count presentation details after that.
+Ordering, limits, and progress reporting now follow Zed’s shape, with VS Code’s count presentation.
 
-Remaining work:
+Status: Done.
 
-- Preserve stable file ordering while streaming content and dirty-buffer overlays.
-- Define whether open-buffer matches should appear before disk matches or merge into disk order.
-- Track both match-count and file-count limits.
-- Surface partial result warnings without replacing the result state.
-- Add per-provider timing/progress stats.
+Completed:
+
+- Stable file ordering while streaming, through `compareSearchPaths` (natural
+  ordering with ASCII fast paths and bounded caches).
+- Open-buffer matches come before disk matches; see Settled Product Decisions.
+- Both limits are tracked: `search.maxResults` bounds matches and
+  `search.maxResultFiles` bounds distinct files. The file budget is spent once
+  across dirty buffers and disk, and tripping it emits a `file-limit-reached`
+  warning. The `done` event reports `fileCount`.
+- Partial-result warnings arrive as their own event and attach to the run, so
+  results stay on screen (section 8).
+- Per-provider timing lands in `WorkspaceSearchMeasurement`: per-provider
+  duration, first-result latency, result count, stat count and duration, plus
+  workspace-index readiness and fallback reason.
 
 References:
 
@@ -182,15 +212,24 @@ References:
 
 ### 7. Dirty Buffer Overlay Robustness
 
-Current dirty overlay scans dirty cached editor text and suppresses stale disk content hits for the same path. Use Zed’s project-search/open-buffer behavior as the baseline, then compare VS Code for additional range and lifecycle edge cases.
+The dirty overlay scans dirty cached editor text and suppresses stale disk content hits for the same path, following Zed’s project-search/open-buffer behavior.
 
-Remaining work:
+Status: Done.
 
-- Add tests for dirty buffer changes while a disk search is still streaming.
-- Add explicit behavior for clean open buffers whose disk content changes during search.
-- Add behavior for renamed/deleted dirty buffers during active search.
-- Confirm match range correctness for CRLF, Unicode, tabs, and long lines.
-- Consider using a unified document snapshot contract so disk and open-buffer providers return identical preview/range semantics.
+Completed:
+
+- A path that stops being dirty invalidates the overlay. The client-only overlay
+  replays the previous disk run's matches for non-dirty paths, which is only
+  sound while the dirty set grows; once a path leaves it — saved, renamed away,
+  or deleted — what is on disk there is unknown, so the disk search re-runs
+  instead (`utils/dirty-overlay-refresh.ts`).
+- Match range correctness: `rg` reports submatch offsets in UTF-8 bytes and the
+  server converts them to JS string indices, so multibyte lines highlight
+  correctly. CRLF, long-line preview anchoring, and Unicode are covered by tests.
+- Disk and open-buffer providers already share preview and range semantics: both
+  build matches through `workspaceSearchPreview` and the same
+  `createWorkspaceSearchMatcher`. A separate snapshot contract would add a layer
+  without changing behavior.
 
 References:
 
@@ -200,14 +239,29 @@ References:
 
 ### 8. Error And Warning Model
 
-We now tolerate `rg` exit code `2` as partial success, but the product model still needs warning support. Use Zed as the first behavioral baseline, then VS Code for secondary distinctions and wording.
+A tolerated `rg` exit code `2` is partial success, and the product model now reports it. Zed is the behavioral baseline, with VS Code’s wording for the secondary distinctions.
 
-Remaining work:
+Status: Done.
 
-- Extend `WorkspaceSearchEvent` with a `warning` event.
-- Show nonfatal provider warnings in the summary area or a small details popover.
-- Preserve prior results on fatal errors when useful, with clear status.
-- Distinguish cancellation, no results, truncated results, partial results, and hard failure.
+Completed:
+
+- `WorkspaceSearchEvent` has a `warning` variant carrying `code`, `message`, and
+  an optional `detail`. Codes: `content-tool-partial-failure`,
+  `file-limit-reached`, `multiline-query-unsupported`.
+- A tolerated `rg` exit (code 2 — it printed matches _and_ failed to read part of
+  the tree) reaches the user instead of only the server log. Previously this was
+  logged and dropped, so a partial result set was reported as a complete one.
+- Warnings render on the summary line next to the counts they qualify, in the
+  `warning` token, with the full text and any stderr tail in the row title. The
+  empty state carries the warning too, so a zero-result partial run explains
+  itself. One warning per code per run.
+- Prior results survive a fatal error, with `"<error> · Showing previous results"`.
+- All five states are distinct: cancellation (aborted run, no state change),
+  no results (`No matches`), truncated (`N shown, limit reached`), partial
+  (warning next to the counts), and hard failure (error status).
+- Warnings ride the run: they are cleared when a new search starts, and are
+  persisted with cached results, because cached matches from a partial run are
+  still partial.
 
 References:
 
@@ -217,15 +271,21 @@ References:
 
 ### 9. Preview And Highlight Fidelity
 
-We added `previewStartColumn` and match-centered display windows, but the preview model is still minimal. Match Zed’s excerpt/result-buffer display first; use VS Code’s preview object model when it fills in missing range/highlight detail.
+Previews carry `previewStartColumn` and match-centred display windows, matching Zed’s excerpt display with VS Code’s range/highlight detail.
 
-Remaining work:
+Status: Done.
 
-- Match Zed excerpt display first, then move closer to VS Code’s preview object model where useful: full preview text plus range-in-preview.
-- Support multiple ranges in one preview line as one row if desired, or intentionally keep one row per match.
-- Handle multi-line matches when regex support lands.
-- Add high-contrast-safe highlight styling.
-- Add active match highlight distinct from passive match highlight.
+Completed:
+
+- Preview carries full text plus `previewStartColumn`, so a match-centred window
+  keeps exact ranges.
+- One row per match; see Settled Product Decisions.
+- Multiline queries degrade to a warning rather than an error (section 8).
+- The active match is distinct from passive matches on both surfaces, and both
+  paint from the same `--search-result-match*` tokens.
+- High-contrast safe: the tokens remap to system `Highlight`/`HighlightText`
+  under `@media (forced-colors: active)`, where every background collapses to one
+  color — so the active match also carries an underline, which survives.
 
 References:
 
@@ -235,18 +295,30 @@ References:
 
 ### 10. Test Coverage Still Needed
 
-Tests should verify Zed-first behavior before adding VS Code-specific parity cases.
+Tests verify Zed-first behavior before adding VS Code-specific parity cases.
 
-Remaining work:
+Status: Mostly done. This is the only section with open work.
 
-- UI smoke tests for large result sets and virtualization.
-- Search editor/sidebar shared state tests.
-- Keyboard navigation tests.
-- Collapse-all and per-file collapse tests.
-- Include/exclude glob tests once implemented.
-- Regex/case/whole-word parity tests across disk and open-buffer providers.
-- Error/warning stream tests for partial `rg` failures.
-- Dirty-buffer rename/delete tests.
+Covered:
+
+- Virtualization and result windowing (`search-result-virtual-list`,
+  `search-result-virtual-window-store`, `search-result-editor-pool`).
+- Shared state across the editor surface and sidebar (`search-buffer-state`,
+  `use-search-buffer`).
+- Keyboard navigation and collapse behavior.
+- Include/exclude globs, on the server and both client providers.
+- Regex, case, and whole-word parity across disk and open-buffer providers.
+- Partial `rg` failures, both as a unit test of the tool runner's warning sink
+  and end-to-end against real `rg` over an unreadable directory (skipped when
+  running as root, where the failure cannot be produced).
+- Dirty buffers that are saved, renamed away, or deleted.
+- File-limit behavior, including that a file already inside the budget keeps all
+  of its matches.
+
+Still open:
+
+- Real-browser smoke tests for very large result sets, where virtualization and
+  paint cost are the thing under test rather than the view model.
 
 References:
 

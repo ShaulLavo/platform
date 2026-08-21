@@ -1,9 +1,13 @@
+import { cn } from '@workspace/ui/lib/utils'
+
 export function HighlightedPreview({
+  active,
   preview,
   query,
   range,
   replacementText,
 }: {
+  active?: boolean
   preview: string
   query: string
   range?: { end: number; start: number } | null
@@ -36,7 +40,19 @@ export function HighlightedPreview({
   return (
     <span className='block max-w-full overflow-hidden text-ellipsis whitespace-nowrap'>
       {highlight.before}
-      <mark className='bg-warning/25 text-foreground inline-block max-w-full overflow-hidden rounded-sm px-0.5 align-bottom text-ellipsis whitespace-nowrap'>
+      <mark
+        className={cn(
+          'text-foreground inline-block max-w-full overflow-hidden rounded-sm px-0.5 align-bottom text-ellipsis whitespace-nowrap',
+          // Same tokens the editor-backed result tabs paint with, so a match
+          // looks the same in the sidebar and in a result tab — including the
+          // forced-colors mapping, where every background collapses to the
+          // system Highlight color and only the underline separates the active
+          // match from the rest.
+          active
+            ? 'bg-search-match-active decoration-search-match-active-decoration underline decoration-2 underline-offset-2'
+            : 'bg-search-match',
+        )}
+      >
         {highlight.match}
       </mark>
       {highlight.after}

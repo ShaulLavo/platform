@@ -1,6 +1,7 @@
 import { commandDisabledReason } from '@/keymap/command-enablement'
 import { describe, expect, it } from 'vitest'
 
+import { conflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
 import { commandPaletteItems } from '@/features/command-palette/command-palette-utils'
 import { platformCommandSpecs } from '@/keymap/command-registry'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
@@ -39,13 +40,21 @@ describe('command table', () => {
     expect(platformCommands).toHaveLength(133)
   })
 
-  it('still requires a file-backed surface for an editor command with no table entry', () => {
+  // The editor text menu is built entirely from ids the language-server plugin handles and the
+  // table never sees, so this fallback is what gates that whole menu.
+  it('gives an editor command with no table entry the same gate as a registered one', () => {
     const unregistered = 'editor.someUnregisteredCommand' as PlatformCommandId
 
-    expect(commandRequirement(unregistered)).toBe('file')
+    expect(commandRequirement(unregistered)).toBe('editor')
     expect(commandDisabledReason(unregistered, { activeFilePath: null, hasWorkspace: true })).toBe(
-      'No file-backed surface is active.',
+      'No text editor is active.',
     )
+    expect(
+      commandDisabledReason(unregistered, {
+        activeFilePath: conflictDiffDocumentId('conflict-1'),
+        hasWorkspace: true,
+      }),
+    ).toBeNull()
   })
 
   it('keeps the browser-hostile chords reserved', () => {

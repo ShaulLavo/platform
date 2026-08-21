@@ -9,6 +9,10 @@ import {
   parseCompareSavedDocumentId,
 } from '@/features/editor/utils/compare-saved-document'
 import { parseRefDocumentId, refDocumentLabel } from '@/features/git/utils/ref-document'
+import {
+  parseSettingsJsonDocumentId,
+  settingsJsonDocumentLabel,
+} from '@/features/settings/utils/json-document'
 import { basename } from '@/lib/path-formatters'
 
 /**
@@ -26,6 +30,7 @@ export function documentLabel(path: string) {
   if (parseConflictDiffDocumentId(path)) return 'Conflict'
   if (parseCompareSavedDocumentId(path)) return compareSavedDocumentLabel(path)
   if (parseRefDocumentId(path)) return refDocumentLabel(path)
+  if (parseSettingsJsonDocumentId(path)) return settingsJsonDocumentLabel(path)
 
   return basename(path)
 }

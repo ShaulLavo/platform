@@ -11,6 +11,7 @@ import {
 import { parseCompareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'
 import { parseRefDocumentId } from '@/features/git/utils/ref-document'
 import { documentLabel } from '@/features/workspace/utils/document-label'
+import { parseSettingsJsonDocumentId } from '@/features/settings/utils/json-document'
 import {
   diffDocumentShortHash,
   diffDocumentTitle,
@@ -93,6 +94,7 @@ function iconName(path: string, conflicts: EditorTabConflictMap) {
   const conflict = conflictForDocument(path, conflicts)
   if (conflict) return basename(conflict.remotePath)
   if (parseConflictDiffDocumentId(path)) return 'conflict.txt'
+  if (parseSettingsJsonDocumentId(path)) return 'settings.json'
   const compared = parseCompareSavedDocumentId(path)
   if (compared) return basename(compared)
   const atRef = parseRefDocumentId(path)
@@ -119,6 +121,8 @@ function tabTitle(path: string, conflicts: EditorTabConflictMap) {
   if (comparedTitle) return `${displayPath(comparedTitle)} — working tree vs saved`
   const atRefTitle = parseRefDocumentId(path)
   if (atRefTitle) return `${displayPath(atRefTitle.path)} at ${atRefTitle.ref}`
+  const settingsTarget = parseSettingsJsonDocumentId(path)
+  if (settingsTarget) return `${settingsTarget} settings.json`
 
   return displayPath(path)
 }

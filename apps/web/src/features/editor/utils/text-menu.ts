@@ -23,8 +23,8 @@ import { commandItem, section, type Menu } from '@/features/menus/utils/model'
  *
  * Every item is a registered editor command, so availability comes from the
  * same rule the command palette uses: `editor.*` commands are disabled unless a
- * file-backed surface is active, which drops the whole menu to disabled on
- * search-result buffers and other synthetic documents.
+ * text editor is active, which drops the whole menu to disabled on diffs,
+ * search-result buffers and other surfaces that hold no dispatchable editor.
  *
  * These commands act on the caret and selection, not on the point that was
  * right-clicked — the editor ignores non-primary mouse buttons when it maps a

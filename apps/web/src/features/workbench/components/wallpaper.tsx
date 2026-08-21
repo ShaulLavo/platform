@@ -3,11 +3,12 @@ import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
 import { WebWallpaper } from '@/features/workbench/components/web-wallpaper'
 import { hasNativeVibrancy } from '@/lib/platform/native-vibrancy'
 
-// The desktop shell is a transparent window over an NSVisualEffectView, so macOS
-// composites the live desktop behind the UI for free. Drawing a wallpaper here
-// too would only cover it up — and the animated case cost a permanent
-// full-screen video decode. In a browser there is nothing behind the page, so
-// the web layer still has to draw it.
+// When the desktop shell runs as a transparent window over an NSVisualEffectView,
+// macOS composites the live desktop behind the UI for free, and drawing a
+// wallpaper here would only cover it up — the animated case at the cost of a
+// permanent full-screen video decode. Whether the shell is actually transparent
+// is the shell's to report; in a browser, and in an opaque shell window, nothing
+// is behind the page and the web layer has to draw the wallpaper itself.
 export function Wallpaper({ className }: { readonly className?: string }) {
   // The `data-wallpaper-hidden` attribute that switches off the popover vibrancy
   // layer is written by `applyAppearance`, alongside the other appearance

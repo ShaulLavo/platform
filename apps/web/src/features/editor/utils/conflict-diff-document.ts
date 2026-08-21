@@ -1,6 +1,6 @@
 import { basename, displayPath } from '@/lib/path-formatters'
 
-const CONFLICT_DIFF_DOCUMENT_PREFIX = 'conflict-diff:'
+export const CONFLICT_DIFF_DOCUMENT_PREFIX = 'conflict-diff:'
 
 export type ConflictDiffDocumentInfo = {
   id: string

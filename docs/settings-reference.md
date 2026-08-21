@@ -72,6 +72,9 @@ stays safe to read, share and export.
 | `lsp.idleTimeoutMs`            | `120000` | machine | Milliseconds an unused language server stays alive after the last editor disconnects. 0 shuts it down immediately.                                                                             |
 | `lsp.downloadRuntimes`         | `true`   | machine | Download missing language servers on demand. Off means only servers already on PATH are used.                                                                                                  |
 | `lsp.servers`                  | `{}`     | machine | Per-server overrides: command, env, extensions, initialization, or disabled. Applies the next time a server starts; one already running for a folder keeps its old command until it idles out. |
+| `lsp.semanticTokens.enabled`   | `false`  | machine | Ask language servers to colour identifiers they have actually resolved. Off means no token request is ever sent.                                                                               |
+| `lsp.semanticTokens.delta`     | `false`  | machine | Let the proxy re-ask a delta-capable server for token deltas instead of whole files. Saves bandwidth and garbage per keystroke, not latency.                                                   |
+| `lsp.semanticTokens.servers`   | `{}`     | machine | Server id to true or false, overriding the per-server default. Lets one misbehaving server be turned off without turning the feature off.                                                      |
 
 ## Logs
 
@@ -95,13 +98,14 @@ stays safe to read, share and export.
 
 ## Search
 
-| Setting                   | Default     | Scope  | What it does                                 |
-| ------------------------- | ----------- | ------ | -------------------------------------------- |
-| `search.defaultMatchMode` | `"literal"` | window | How a new search interprets the query.       |
-| `search.caseSensitive`    | `false`     | window | Match case by default.                       |
-| `search.wholeWord`        | `false`     | window | Match whole words by default.                |
-| `search.maxResults`       | `200`       | window | How many matches a workspace search returns. |
-| `search.quickOpenLimit`   | `80`        | window | How many files the file picker lists.        |
+| Setting                   | Default     | Scope  | What it does                                            |
+| ------------------------- | ----------- | ------ | ------------------------------------------------------- |
+| `search.defaultMatchMode` | `"literal"` | window | How a new search interprets the query.                  |
+| `search.caseSensitive`    | `false`     | window | Match case by default.                                  |
+| `search.wholeWord`        | `false`     | window | Match whole words by default.                           |
+| `search.maxResults`       | `200`       | window | How many matches a workspace search returns.            |
+| `search.maxResultFiles`   | `100`       | window | How many files a workspace search returns matches from. |
+| `search.quickOpenLimit`   | `80`        | window | How many files the file picker lists.                   |
 
 ## Terminal
 

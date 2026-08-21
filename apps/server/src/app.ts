@@ -12,7 +12,7 @@ import { gitRoutes } from './git/routes'
 import { GitService } from './git/service'
 import { setLspDownloadPolicy } from './lsp/installers'
 import { LspSessionPool } from './lsp/proxy-session'
-import { lspMatchQuerySchema, lspRouteMatch, lspRoutes } from './lsp/routes'
+import { lspMatchQuerySchema, lspRouteMatch, lspRouteSemanticTokens, lspRoutes } from './lsp/routes'
 import {
   applyObservability,
   flushObservability,
@@ -156,7 +156,11 @@ export function createApp(options: AppOptions) {
   // `setLspDownloadPolicy`.
   setLspDownloadPolicy(() => settings.snapshot().values['lsp.downloadRuntimes'])
   const lspPool =
-    options.lsp?.pool ?? new LspSessionPool(() => settings.snapshot().values['lsp.idleTimeoutMs'])
+    options.lsp?.pool ??
+    new LspSessionPool(
+      () => settings.snapshot().values['lsp.idleTimeoutMs'],
+      () => settings.snapshot().values['lsp.semanticTokens.delta'],
+    )
   const cleanup = appCleanup(terminal, fs, settings, lspPool)
 
   const app = new Elysia({ name: 'platform' })
@@ -190,6 +194,11 @@ export function createApp(options: AppOptions) {
     .get('/lsp/match', ({ query }) => lspRouteMatch(fs.paths, query, lspSettings()), {
       query: lspMatchQuerySchema,
     })
+    .get(
+      '/lsp/semantic-tokens',
+      ({ query }) => lspRouteSemanticTokens(fs.paths, query, lspSettings(), lspPool),
+      { query: lspMatchQuerySchema },
+    )
     .ws('/lsp', lspRoutes(fs, auth, { pool: lspPool, settings: lspSettings }))
     .ws('/terminal', terminal.routes(auth))
     .use(providerRoutes(providerAdapterRegistry))

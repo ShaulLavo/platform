@@ -16,6 +16,31 @@ export const settingsDiagnosticSchema = v.object({
   detail: v.optional(v.string()),
 })
 
+/** Where a syntax error is, so the JSON view can put a squiggle on it. */
+export const settingsParseErrorSchema = v.object({
+  message: v.string(),
+  offset: v.number(),
+  length: v.number(),
+})
+
+/**
+ * The layer's file, as bytes.
+ *
+ * Carried on the snapshot rather than fetched separately so that the JSON view
+ * and the page agree by construction: one broadcast, one revision, one answer to
+ * "is this document broken". A second round trip could land either side of a
+ * write and show a document that never existed.
+ *
+ * `parseErrors` being non-empty is also what says `raw` above is the *last good*
+ * parse rather than what these bytes mean — the two disagree exactly while the
+ * file is broken, which is the state the banner exists to explain.
+ */
+export const settingsLayerFileSchema = v.object({
+  text: v.string(),
+  revision: v.string(),
+  parseErrors: v.array(settingsParseErrorSchema),
+})
+
 /**
  * One layer as the client sees it: the unfiltered contents, so the page can
  * render "set here but not applied" without a second round trip.
@@ -25,6 +50,12 @@ export const settingsLayerSnapshotSchema = v.object({
   /** Absent when the layer has no file — no workspace open, no policy configured. */
   present: v.boolean(),
   raw: v.record(v.string(), v.unknown()),
+  /**
+   * Absent for `policy`, which is an environment variable and has no file. An
+   * empty `text` would be indistinguishable from an empty file, and the JSON
+   * view would offer to edit something that cannot be written.
+   */
+  file: v.optional(settingsLayerFileSchema),
 })
 
 /**
@@ -63,7 +94,9 @@ export const settingsWriteRequestSchema = v.object({
   baseRevision: v.optional(v.string()),
 })
 
+export type SettingsLayerFile = v.InferOutput<typeof settingsLayerFileSchema>
 export type SettingsLayerSnapshot = v.InferOutput<typeof settingsLayerSnapshotSchema>
+export type SettingsParseError = v.InferOutput<typeof settingsParseErrorSchema>
 export type SettingsSnapshot = v.InferOutput<typeof settingsSnapshotSchema>
 export type SettingsEdit = v.InferOutput<typeof settingsEditSchema>
 export type SettingsWriteRequest = v.InferOutput<typeof settingsWriteRequestSchema>
