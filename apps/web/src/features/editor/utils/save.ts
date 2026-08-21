@@ -1,13 +1,9 @@
-import { parseConflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
 import {
   type EditorDocumentStore,
   type EditorDocumentStoreApi,
   type LiveEditorDocument,
 } from '@/features/editor/state/document-state'
-import { parseDiffDocumentId } from '@/features/git/utils/diff-document'
-import { parseSearchBufferDocumentId } from '@/features/search/utils/buffer-document'
-import { parseCompareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'
-import { parseRefDocumentId } from '@/features/git/utils/ref-document'
+import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
 import { FileSyncService } from '@/features/editor/state/file-sync-service'
 import type { QueryClient } from '@tanstack/react-query'
 
@@ -16,7 +12,7 @@ export async function saveSelectedEditorDocument(
   queryClient: QueryClient,
   selectedFilePath: string | null,
 ) {
-  const path = fileBackedEditorPath(selectedFilePath)
+  const path = fileBackedDocumentPath(selectedFilePath)
   if (!path) return false
 
   return saveEditorDocumentByPath(documentStore, queryClient, path)
@@ -27,7 +23,7 @@ export async function saveEditorDocumentByPath(
   queryClient: QueryClient,
   path: string,
 ) {
-  if (!fileBackedEditorPath(path)) return false
+  if (!fileBackedDocumentPath(path)) return false
 
   const state = documentStore.getState()
   const liveDocument = state.getLiveEditorDocument(path)
@@ -67,23 +63,12 @@ export function isDirtyLiveEditorDocument(
   return state.dirtyFilePaths.has(path) || state.liveDocumentsById[path]?.buffer.isDirty() === true
 }
 
-export function fileBackedEditorPath(path: string | null | undefined) {
-  if (!path) return null
-  if (parseDiffDocumentId(path)) return null
-  if (parseConflictDiffDocumentId(path)) return null
-  if (parseSearchBufferDocumentId(path)) return null
-  if (parseCompareSavedDocumentId(path)) return null
-  if (parseRefDocumentId(path)) return null
-
-  return path
-}
-
 function shouldSaveDocument(
   state: Pick<EditorDocumentStore, 'dirtyFilePaths' | 'liveDocumentsById'>,
   document: LiveEditorDocument,
 ) {
   if (document.sync.kind !== 'file') return false
-  if (!fileBackedEditorPath(document.sync.path)) return false
+  if (!fileBackedDocumentPath(document.sync.path)) return false
 
   return isDirtyLiveEditorDocument(state, document.sync.path)
 }
