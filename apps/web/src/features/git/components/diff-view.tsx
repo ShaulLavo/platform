@@ -2,6 +2,7 @@ import { createDiffRegionStore } from '@singapor/diff'
 import { useMemo, useRef, useState } from 'react'
 
 import { DiffEditor } from '@/features/editor/components/diff-editor'
+import { useDiffOwnedText } from '@/features/editor/hooks/use-diff-owned-text'
 import type { DiffDocumentInfo } from '@/features/git/utils/diff-document'
 import { useDiffDocumentDiffs } from '../hooks/use-diff-document-diffs'
 import { emptyDiffNotice, unrenderableDiffNotice } from '../utils/diff-presentation'
@@ -44,6 +45,11 @@ export function DiffView({
   // closed rather than a bug being fixed. The file list is off either way, so a checkpoint diff
   // touching several files deliberately shows one.
   const file = files.find((entry) => entry.hunks.length > 0)
+  // What an editor tab currently holds for this path, if anything. That is the only text a
+  // language server can be asked about, and comparing it to the diff's new side is what makes an
+  // answer true — see `diffQueryTargetAt`. Called before the early returns below: hooks are not
+  // conditional.
+  const languageServer = useDiffOwnedText(file?.newPath || file?.path || null, rootPath)
 
   if (failure) return <DiffNotice message={failure} tone='error' />
   if (pending) return <DiffNotice message='Loading diff…' />
@@ -58,7 +64,7 @@ export function DiffView({
           comment layer listens for `mousedown` in capture, and a press on its own
           "Ask" button would otherwise clear the selection before the click landed. */}
       <div className='h-full min-h-0 w-full min-w-0' ref={containerRef}>
-        <DiffEditor file={file} mode={mode} regions={regions} />
+        <DiffEditor file={file} languageServer={languageServer} mode={mode} regions={regions} />
       </div>
       <DiffLineCommentAction file={file} hostRef={containerRef} key={file.path} regions={regions} />
     </div>

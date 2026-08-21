@@ -10,6 +10,10 @@ import { EditorHost, useEditor } from '@singapor/react'
 import type { Editor } from '@singapor/core'
 import { useEffect, useLayoutEffect, useMemo } from 'react'
 
+import {
+  useDiffHover,
+  type DiffLanguageServerContext,
+} from '@/features/editor/hooks/use-diff-hover'
 import { useDiffRows } from '@/features/editor/hooks/use-diff-rows'
 import {
   DIFF_CURSOR_LINE_HIGHLIGHT,
@@ -33,6 +37,7 @@ import { log } from '@/lib/client-logging'
  */
 export function DiffPane({
   file,
+  languageServer = null,
   regions,
   side,
   syntaxBackend,
@@ -42,6 +47,8 @@ export function DiffPane({
   onScroll,
 }: {
   file: DiffFile
+  /** Present only where a language server may safely be asked about this diff; see `useDiffHover`. */
+  languageServer?: DiffLanguageServerContext | null
   regions: DiffRegionStore
   side: DiffGutterSide
   syntaxBackend: DiffSyntaxBackend
@@ -61,14 +68,17 @@ export function DiffPane({
       }),
     [regions, side, syntaxBackend],
   )
+  const { rows, text, tokensRevision } = useDiffRows(plugin, file)
+  const hoverPlugin = useDiffHover(file, rows, theme, languageServer)
   const plugins = useMemo(
     () =>
-      onScroll
-        ? [plugin, createDiffScrollBridgePlugin((position) => onScroll(side, position))]
-        : [plugin],
-    [onScroll, plugin, side],
+      [
+        plugin,
+        onScroll ? createDiffScrollBridgePlugin((position) => onScroll(side, position)) : null,
+        hoverPlugin,
+      ].filter((entry) => entry !== null),
+    [hoverPlugin, onScroll, plugin, side],
   )
-  const { rows, text, tokensRevision } = useDiffRows(plugin, file)
   const controller = useEditor({
     cursorLineHighlight: DIFF_CURSOR_LINE_HIGHLIGHT,
     // No `document`: the React wrapper pushes text through `openDocument`, which takes no scroll

@@ -109,6 +109,31 @@ export function useEditorDocumentState<T>(selector: (state: EditorDocumentStore)
   return useStore(useEditorDocumentStoreApi(), selector)
 }
 
+/**
+ * The same read, for a surface that works with or without live documents.
+ *
+ * A diff renders in the git panel, in a checkpoint, in a test — and only wants to know whether some
+ * editor happens to hold a path open. Throwing at it for being mounted outside the editor's
+ * provider would turn an optional capability into a hard dependency, so an absent provider reads
+ * as "nothing is open" instead.
+ */
+export function useOptionalEditorDocumentState<T>(selector: (state: EditorDocumentStore) => T): T {
+  return useStore(use(EditorDocumentStateContext) ?? NO_LIVE_DOCUMENTS, selector)
+}
+
+/** Enough of the store to be read from, and never anything to read. */
+const EMPTY_DOCUMENT_STATE = {
+  documentContentRevisions: {},
+  liveDocumentsById: {},
+} as unknown as EditorDocumentStore
+
+const NO_LIVE_DOCUMENTS = {
+  getInitialState: () => EMPTY_DOCUMENT_STATE,
+  getState: () => EMPTY_DOCUMENT_STATE,
+  setState: () => undefined,
+  subscribe: () => () => undefined,
+} as unknown as EditorDocumentStoreApi
+
 export function createEditorDocumentStore(options: CreateEditorDocumentStoreOptions = {}) {
   const service = new WorkspaceDocumentService()
   if (options.scrollPositionSeeds) service.seedScrollPositions(options.scrollPositionSeeds)
