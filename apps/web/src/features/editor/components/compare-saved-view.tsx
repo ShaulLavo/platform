@@ -1,8 +1,7 @@
-import { DiffView as EditorDiffView, createTextDiff } from '@singapor/diff'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { createTextDiff } from '@singapor/diff'
+import { useMemo } from 'react'
 
-import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
-import { editorTreeSitterSyntaxProvider } from '@/features/editor/utils/plugins'
+import { DiffEditor } from '@/features/editor/components/diff-editor'
 import { useEditorDocumentState } from '@/features/editor/state/document-state'
 import { useSelectedFile } from '@/features/workspace/hooks/use-selected-file'
 import { languageIdForFilePath } from '@/features/editor/utils/file-path'
@@ -17,73 +16,38 @@ import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
  */
 export function CompareSavedView({ path, rootPath }: { path: string; rootPath: string }) {
   void rootPath
-  const { editorTheme } = useEditorColorTheme()
   const mode = useSettingValue('editor.diff.viewMode')
   const { fileState } = useSelectedFile(path)
   const buffer = useEditorDocumentState((state) => state.liveDocumentsById[path]?.buffer ?? null)
   // Revision, not the buffer object: the buffer is mutated in place, so its identity never changes
   // and would never re-run the diff.
   const revision = useEditorDocumentState((state) => state.documentContentRevisions[path] ?? '')
-  const containerRef = useRef<HTMLDivElement | null>(null)
-  const [view, setView] = useState<EditorDiffView | null>(null)
 
   const savedText = fileState.status === 'ready' ? fileState.data.content : null
-  const files = useMemo(() => {
-    if (savedText === null || !buffer) return []
+  const file = useMemo(() => {
+    if (savedText === null || !buffer) return null
 
     const languageId = languageIdForFilePath(path)
-    return [
-      createTextDiff({
-        newFile: { languageId, path, text: buffer.materializeFullText() },
-        oldFile: { languageId, path, text: savedText },
-      }),
-    ]
+    return createTextDiff({
+      newFile: { languageId, path, text: buffer.materializeFullText() },
+      oldFile: { languageId, path, text: savedText },
+    })
     // `revision` stands in for the buffer's contents; see the selector above.
   }, [buffer, path, revision, savedText])
-
-  const ready = files.length > 0
-
-  useEffect(() => {
-    const container = containerRef.current
-    if (!ready || !container) return
-
-    const next = new EditorDiffView(container, {
-      showFileList: false,
-      syntaxBackend: { kind: 'tree-sitter', provider: editorTreeSitterSyntaxProvider() },
-      syntaxHighlight: true,
-      theme: editorTheme,
-    })
-    setView(next)
-
-    return () => {
-      next.dispose()
-      setView(null)
-    }
-  }, [editorTheme, ready])
-
-  useEffect(() => {
-    view?.setFiles(files)
-  }, [files, view])
-
-  useEffect(() => {
-    view?.setMode(mode)
-  }, [mode, view])
 
   if (fileState.status === 'error') {
     return <CompareNotice message='Could not read the saved file.' tone='error' />
   }
-  if (!ready) {
+  if (!file) {
     return (
       <CompareNotice
         message={buffer ? 'Loading saved contents…' : 'Open the file to compare it with disk.'}
       />
     )
   }
-  if (files[0]?.hunks.length === 0) {
-    return <CompareNotice message='No unsaved changes.' />
-  }
+  if (file.hunks.length === 0) return <CompareNotice message='No unsaved changes.' />
 
-  return <div ref={containerRef} className='h-full min-h-0 min-w-0' />
+  return <DiffEditor file={file} mode={mode} />
 }
 
 function CompareNotice({ message, tone }: { message: string; tone?: 'error' }) {

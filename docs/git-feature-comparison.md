@@ -58,9 +58,10 @@ Status: implemented enough for a basic Git panel and diff review.
 - Rename and deletion diff snapshots.
 - Blob-backed snapshot diff documents, so an opened diff remains stable after
   the index or worktree changes.
-- Split/unified diff display through `@singapor/diff`.
+- Split/stacked diff display through `@singapor/diff`, drawn as real read-only
+  editors carrying the package's diff plugin.
 - Inline changed-word highlighting in diff rows through `annotateInlineChanges`.
-- Previous/next hunk navigation in opened diff views.
+- Line-range selection in an open diff, handed to the agent as a `@@` block.
 - Commit from the panel with a single-line message.
 - Empty-message commit request opens `COMMIT_EDITMSG`, but saving that file does
   not yet complete or abort the commit.
@@ -72,6 +73,8 @@ Status: implemented enough for a basic Git panel and diff review.
 Important current limits:
 
 - No hunk-level stage, unstage, or restore UI.
+- No previous/next hunk navigation. The diff package published one, nothing ever
+  called it, and it was removed with `DiffView`.
 - No blame, file history, commit graph, or timeline.
 - No stash support.
 - No branch delete/rename, remote management, tags, merge, rebase, or cherry-pick.
@@ -150,7 +153,7 @@ Important current limits:
 | Unstage and move to next hunk          | Yes | Missing  | Zed has `UnstageAndNext`.                                                 |
 | Restore and move to next hunk          | Yes | Missing  | Zed has `RestoreAndNext`.                                                 |
 | Stage/unstage selected ranges          | Yes | Missing  | VS Code also has this.                                                    |
-| Hunk navigation                        | Yes | Partial  | Platform supports previous/next hunk in the diff viewer.                  |
+| Hunk navigation                        | Yes | Missing  | The package's navigation API had no caller and went with `DiffView`.      |
 | Expand skipped unchanged context       | Yes | Yes      | `@singapor/diff` supports expandable hunk separators.                     |
 | Word diff highlighting                 | Yes | Partial  | Platform annotates inline changes, but lacks global/language settings.    |
 | Collapse untracked diff                | Yes | Missing  | Zed has a panel setting for this.                                         |
