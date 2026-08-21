@@ -1,0 +1,126 @@
+import { renderHook } from '@testing-library/react'
+import { vi } from 'vitest'
+import type { Editor } from '@singapor/core'
+
+import { useDiffPanes } from '@/features/editor/hooks/use-diff-panes'
+import { expect, test } from '../../../../../test/fixtures'
+
+// The two panes are two editors holding two documents, and nothing below the host keeps them
+// together. These are the behaviours that do — driven against a doubled `Editor` rather than a
+// mounted one, because the failures worth pinning are about ORDER and ARGUMENTS, and happy-dom
+// models neither scrolling nor layout well enough to produce them.
+
+test('a scroll in one pane is mirrored onto the other', () => {
+  const { panes, old: left, new: right } = mountPanes()
+
+  panes.handleScroll('old', { left: 0, top: 300 })
+
+  expect(right.position).toEqual({ left: 0, top: 300 })
+  expect(left.position).toEqual({ left: 0, top: 0 })
+})
+
+test('the horizontal axis is mirrored too, which is the whole reason this is host code', () => {
+  // `EditorViewContributionContext.setScrollTop` is vertical-only; a diff has to carry both axes,
+  // so a mirror that quietly dropped `left` would look fine on every vertical test.
+  const { panes, new: right } = mountPanes()
+
+  panes.handleScroll('old', { left: 140, top: 20 })
+
+  expect(right.position).toEqual({ left: 140, top: 20 })
+})
+
+test('the mirrored pane answering back does not move the pane the reader is driving', () => {
+  const { panes, old: left, new: right } = mountPanes()
+
+  panes.handleScroll('old', { left: 0, top: 300 })
+  // The mirror's own viewport update, reporting where it landed.
+  panes.handleScroll('new', right.position)
+
+  expect(left.position).toEqual({ left: 0, top: 0 })
+})
+
+test('a mirror that cannot scroll as far does not drag the driving pane back to where it stopped', () => {
+  // The old pane's longest line is longer, so it has more horizontal room. Mirroring 400 onto a
+  // pane that clamps at 150 and then believing the pane's answer would yank the reader back.
+  const { panes, old: left, new: right } = mountPanes({ newMaxLeft: 150 })
+
+  panes.handleScroll('old', { left: 400, top: 0 })
+  expect(right.position).toEqual({ left: 150, top: 0 })
+
+  panes.handleScroll('new', right.position)
+
+  expect(left.position).toEqual({ left: 0, top: 0 })
+})
+
+test('a write that moves the mirror nowhere does not swallow the reader scrolling it next', () => {
+  // The failure a one-shot "ignore that pane's next event" flag has: this write lands exactly where
+  // the mirror already was, so no answering update ever arrives to clear the flag, and the flag
+  // then eats the reader's own scroll of that pane.
+  const { panes, old: left, new: right } = mountPanes({ newMaxLeft: 0 })
+
+  panes.handleScroll('old', { left: 90, top: 0 })
+  expect(right.position).toEqual({ left: 0, top: 0 })
+
+  panes.handleScroll('new', { left: 0, top: 250 })
+
+  expect(left.position).toEqual({ left: 0, top: 250 })
+})
+
+test('focusing one pane collapses the other pane selection without scrolling it', () => {
+  const { panes, new: right } = mountPanes()
+
+  panes.handleFocus('old')
+
+  // `reveal: false` is the argument that matters: revealing offset 0 scrolls the idle pane to the
+  // top, and the next sync then takes the pane the reader is looking at with it.
+  expect(right.setSelection).toHaveBeenCalledWith(0, 0, { reveal: false })
+})
+
+test('a stacked pane has nothing to mirror or clear', () => {
+  const { panes, old: left, new: right } = mountPanes()
+
+  panes.handleScroll('stacked', { left: 10, top: 10 })
+  panes.handleFocus('stacked')
+
+  expect(left.position).toEqual({ left: 0, top: 0 })
+  expect(right.position).toEqual({ left: 0, top: 0 })
+  expect(right.setSelection).not.toHaveBeenCalled()
+})
+
+type FakeEditor = {
+  position: { left: number; top: number }
+  setSelection: ReturnType<typeof vi.fn>
+}
+
+/** An `Editor` reduced to the two methods this controller drives, plus a clamp to model a pane
+ *  that cannot scroll as far as its sibling. */
+function fakeEditor(maxLeft: number): FakeEditor & Editor {
+  const state: FakeEditor = { position: { left: 0, top: 0 }, setSelection: vi.fn() }
+
+  return {
+    ...state,
+    getScrollPosition: () => state.position,
+    setScrollPosition: (next: { left?: number; top?: number }) => {
+      state.position = {
+        left: Math.min(next.left ?? state.position.left, maxLeft),
+        top: next.top ?? state.position.top,
+      }
+    },
+    get setSelection() {
+      return state.setSelection
+    },
+    get position() {
+      return state.position
+    },
+  } as unknown as FakeEditor & Editor
+}
+
+function mountPanes({ newMaxLeft = Number.POSITIVE_INFINITY } = {}) {
+  const { result } = renderHook(() => useDiffPanes())
+  const left = fakeEditor(Number.POSITIVE_INFINITY)
+  const right = fakeEditor(newMaxLeft)
+  result.current.registerEditor('old', left)
+  result.current.registerEditor('new', right)
+
+  return { new: right, old: left, panes: result.current }
+}

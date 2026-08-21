@@ -1,0 +1,76 @@
+import { render, waitFor } from '@testing-library/react'
+import { StrictMode } from 'react'
+import userEvent from '@testing-library/user-event'
+import type { Editor } from '@singapor/core'
+import { createDiffRegionStore, createTextDiff } from '@singapor/diff'
+
+import { DiffPane } from '@/features/editor/components/diff-pane'
+import { expect, test } from '../../../../../test/fixtures'
+
+// Expanding a collapsed region rewrites the whole buffer. The reader is somewhere in it, and the
+// two ways of pushing text back in do not agree about that: `openDocument` takes no scroll position
+// from the host and lands at the top, `setText` carries the current one across.
+
+const LINE_COUNT = 60
+
+test('expanding a skipped range splices rows in without moving the reader', async () => {
+  const { editor, rowElements } = await mountStackedDiff()
+  editor.setScrollPosition({ top: 120 })
+  const scrolled = editor.getScrollPosition().top
+  // A scroll offset that clamped to zero would make the assertion below say nothing.
+  expect(scrolled).toBeGreaterThan(0)
+
+  const before = rowElements().length
+  const separator = rowElements().find((row) =>
+    row.classList.contains('editor-diff-row-expandable'),
+  )
+  expect(separator).toBeDefined()
+  await userEvent.click(separator!)
+
+  await waitFor(() => expect(rowElements().length).toBeGreaterThan(before))
+  expect(editor.getScrollPosition().top).toBe(scrolled)
+})
+
+async function mountStackedDiff() {
+  stubHighlightApi()
+  const text = (replacements: Record<number, string> = {}) =>
+    `${Array.from({ length: LINE_COUNT }, (_, index) => replacements[index + 1] ?? `line ${index + 1}`).join('\n')}\n`
+  const file = createTextDiff({
+    newFile: { path: 'repo/a.ts', text: text({ 2: 'two changed', 55: 'fifty five' }) },
+    oldFile: { path: 'repo/a.ts', text: text() },
+  })
+  let mounted: Editor | null = null
+  render(
+    // The app mounts under StrictMode, which mounts, tears down and remounts. Anything that only
+    // survives the first mount is invisible without it.
+    <StrictMode>
+      <DiffPane
+        file={file}
+        regions={createDiffRegionStore()}
+        side='stacked'
+        syntaxBackend={{ kind: 'tree-sitter', provider: null }}
+        theme={{}}
+        onRegisterEditor={(_side, editor) => {
+          mounted = editor
+        }}
+      />
+    </StrictMode>,
+  )
+
+  await waitFor(() => expect(mounted).not.toBeNull())
+
+  return {
+    editor: mounted as unknown as Editor,
+    rowElements: () => [
+      ...document.querySelectorAll<HTMLElement>(
+        '.editor-diff-pane-stacked [data-editor-virtual-row]',
+      ),
+    ],
+  }
+}
+
+function stubHighlightApi() {
+  class HighlightStub extends Set<unknown> {}
+  Object.assign(globalThis, { Highlight: HighlightStub })
+  Object.assign(globalThis.CSS ?? {}, { highlights: new Map() })
+}
