@@ -36,15 +36,19 @@ export function DiffView({
   const files = useMemo(() => editorDiffFiles(diffs), [diffs])
   // A binary file and a pure rename both come back as a file entry with no
   // hunks, so "we got diffs" is not the same as "there is something to draw".
-  const ready = !failure && !pending && files.some((file) => file.hunks.length > 0)
-  // `files[0]` rather than a selection of our own: the file list is off, so a
-  // checkpoint diff touching several files deliberately shows the first.
-  const file = files[0]
+  //
+  // One `find` rather than a `some` beside a `files[0]`: those are two decisions that have to agree
+  // and nothing made them. A first entry with no hunks and a second with some would have reported
+  // ready and then drawn the empty one. No route produces that today — the patch parser drops
+  // hunkless entries and the compare-saved path is single-file — so this is a latent mismatch being
+  // closed rather than a bug being fixed. The file list is off either way, so a checkpoint diff
+  // touching several files deliberately shows one.
+  const file = files.find((entry) => entry.hunks.length > 0)
 
   if (failure) return <DiffNotice message={failure} tone='error' />
   if (pending) return <DiffNotice message='Loading diff…' />
   if (diffs.length === 0) return <DiffNotice message={emptyDiffNotice(documentInfo, rootPath)} />
-  if (!ready || !file) {
+  if (!file) {
     return <DiffNotice message={unrenderableDiffNotice(diffs, documentInfo, rootPath)} />
   }
 
