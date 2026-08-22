@@ -40,7 +40,7 @@ refs`). Measured after them, at `b467b3f`: the `packages/tree` suite went from
 > old blanket rule are amended to match.
 >
 > **3. Absolute counts are gone from every gate.** This plan was authored at
-> `ace313f`; plans 013–035 have since changed every count it hardcoded, and
+> `ace313f`; later sibling work changed every count it hardcoded, and
 > `bun run verify` is a whole-monorepo, short-circuiting script — requiring it to
 > exit 0 held this plan hostage to failures in code it never touches, and proved
 > nothing about the change. Every gate is now a **delta against a Step 0 snapshot
@@ -56,13 +56,11 @@ refs`). Measured after them, at `b467b3f`: the `packages/tree` suite went from
 > `src/utils/path-store/static-store.ts` — that is stale; they moved. The
 > `packages/tree` suite is **6 files / 85 tests**.
 
-> **GATE NOTE (fresh-context review, 2026-08-16; resolved)**: a cold review
-> flagged that `plans/014-tree-path-store-characterization-tests.md` did not
-> exist. **It now does.** This plan is still hard-gated on 014 being executed and
-> marked `DONE` — not merely written. Step 0a checks for the file; you must also
-> confirm 014's row in `plans/README.md` reads `DONE` and that
-> `cd packages/tree && bun run test` is green with 014's suite present. If 014 is
-> still `TODO`, report **"blocked: plan 014 not executed"** and stop — do not
+> **GATE NOTE (fresh-context review, 2026-08-16; resolved)**: the characterization
+> work landed in `5774dc6`. This plan remains hard-gated on those tests being
+> present and green. Step 0a checks the actual suite rather than a historical
+> plan file. If the suite is absent, report **"blocked: characterization tests
+> missing"** and stop — do not
 > start this refactor against the 9-test baseline. Everything else in this plan
 > was checked against the live code at `ace313f`; the line numbers, greps and
 > expected command outputs below are the corrected ones.
@@ -84,10 +82,10 @@ refs`). Measured after them, at `b467b3f`: the `packages/tree` suite went from
 > `git diff --stat -- packages/tree` to see uncommitted drift the SHA range
 > misses. It should be empty; anything there is someone else's in-flight work.
 >
-> Files in this list are _expected_ to have changed if plan 022 has already run
-> (it deletes `hooks/useFileTreeSearch.ts`, `hooks/useFileTreeSelector.ts`, and
-> a 45-line debug effect from `FileTreeView.tsx`). Any change beyond what plans
-> 014 and 022 describe: compare the "Current state" excerpts below against the
+> The completed dead-code cleanup deleted `hooks/useFileTreeSearch.ts`,
+> `hooks/useFileTreeSelector.ts`, and a 45-line debug effect from
+> `FileTreeView.tsx`, so those changes are expected. For any additional drift,
+> compare the "Current state" excerpts below against the
 > live code before proceeding, and on a mismatch treat it as a STOP condition.
 >
 > **This plan is HIGH risk and its steps are not independent.** Every step ends
@@ -99,7 +97,8 @@ refs`). Measured after them, at `b467b3f`: the `packages/tree` suite went from
 - **Priority**: P2
 - **Effort**: L
 - **Risk**: HIGH
-- **Depends on**: `plans/014-tree-path-store-characterization-tests.md` (**MANDATORY** — see Step 0), then `plans/022-delete-unreachable-code.md`
+- **Depends on**: the path-store characterization suite (`5774dc6`, **MANDATORY**
+  — see Step 0) and the dead-code cleanup (landed; verified by source check)
 - **Category**: complexity
 - **Planned at**: commit `ace313f`, 2026-08-16
 
@@ -433,8 +432,8 @@ const triggerPath =
   contextHoverPath
 ```
 
-Note the `debugContextMenuTriggerPathRef` term — **plan 022 deletes it**. See
-Step 0.
+The completed dead-code cleanup removed the
+`debugContextMenuTriggerPathRef` term. Step 0 verifies that it stays absent.
 
 ### Cluster 5 — pure row renderers, ~430 lines (Step 6)
 
@@ -579,8 +578,8 @@ makes it unreachable while telling you nothing about your change. Use the
 per-workspace scripts above, compared against your Step 0 snapshot. You may run
 `verify` for information; it is never a pass/fail condition here.
 
-If `apps/web/src/components/workspace/file-tree/` does not exist, plans 009–012
-have moved it. Find its new home with
+If `apps/web/src/components/workspace/file-tree/` does not exist, the app layout
+has drifted. Find its new home with
 `grep -rl "@workspace/tree" apps/web/src --include='*.ts*' | head` and point the
 vitest path filter there — the tests to run are `tree-pane.test.ts` and
 `file-tree-prefetch.test.ts` plus the two under `utils/tests/`. Do not skip this
@@ -621,8 +620,8 @@ do not report it as either.
 
 **Out of scope** — do NOT touch, even though they look related:
 
-- `packages/tree/src/utils/path-store/**` — plan 014 owns its tests and it is
-  the layer _below_ this one. A change here invalidates 014's baseline.
+- `packages/tree/src/utils/path-store/**` — the characterization suite covers
+  this lower layer. A change here invalidates the baseline.
 - `packages/tree/src/utils/model/FileTreeController.ts` beyond the 3 lines in
   Step 1 — the search/rename/selection split is **deliberately deferred**; see
   "Deferred, and why". Splitting it here would make this plan unreviewable.
@@ -632,8 +631,8 @@ do not report it as either.
 - `packages/tree/src/hooks/useFileTree.ts` — the _React_ wrapper hook for app
   consumers. Different runtime, different audience, not part of this split.
 - `packages/tree/src/hooks/useFileTreeSearch.ts` and
-  `packages/tree/src/hooks/useFileTreeSelector.ts` — plan 022 **deletes** both.
-  Do not extract search into them, do not import them, do not delete them here.
+  `packages/tree/src/hooks/useFileTreeSelector.ts` — both were deleted by the
+  completed cleanup. Do not recreate or import them.
 - **Keyboard navigation.** `handleTreeKeyDown` (`FileTreeView.tsx:1948-2210`),
   `handleRowKeyDown`, and everything they dispatch stay in `FileTreeView.tsx`.
   The file's own TODO names "keyboard nav" and the file will still be large when
@@ -681,45 +680,40 @@ sticky-keyboard refs`, `refactor(tree): drag and touch move into their own hook`
 
 ### Step 0: Confirm the two prerequisites, then record the real baseline
 
-> **Both gates are already open — verified at `b467b3f`.** Plan 014 is `DONE`
-> (`5774dc6`); `packages/tree/src/utils/tests/` holds `controller.test.ts`,
+> **Both prerequisites are already present — verified at `b467b3f`.** The
+> characterization work landed in `5774dc6`; `packages/tree/src/utils/tests/` holds `controller.test.ts`,
 > `visible-rows.test.ts`, `visible-rows-fuzz.test.ts` and `stickyFocusMode.test.ts`.
-> Plan 022 has landed: `grep -c 'debugDisableScrollSuppressionRef'
-packages/tree/src/components/FileTreeView.tsx` → 0, so the "if 022 has not
-> landed" branches in Steps 4 and 5 are dead text you can ignore. Re-run 0a and 0b
+> The dead-code cleanup also landed: `grep -c 'debugDisableScrollSuppressionRef'
+packages/tree/src/components/FileTreeView.tsx` → 0, so the legacy-cleanup
+> branches in Steps 4 and 5 are dead text you can ignore. Re-run 0a and 0b
 > to confirm nothing regressed, then **do 0c properly — you need your own
 > snapshot, and it is the only thing every later gate compares against.**
 
-This plan is gated on two other plans. Verify both, in this order.
+Verify both landed prerequisites, in this order.
 
-**0a — plan 014 must have landed.** Its characterization tests over the path
+**0a — the characterization suite must be present.** Its tests over the path
 store and `getVisibleRows` are the only safety net this refactor has.
 
 ```bash
-ls plans/014-tree-path-store-characterization-tests.md
-grep -n '^| 014' plans/README.md
 ls packages/tree/src/utils/tests/
+cd packages/tree && bun run test
 ```
 
-Required, all three: the plan file exists; its README row reads `DONE`; and
-`packages/tree/src/utils/tests/` contains test files _beyond_ the single
-`controller.test.ts` that exists at `ace313f`.
+Required: the suite passes, and `packages/tree/src/utils/tests/` contains test
+files _beyond_ the single `controller.test.ts` that exists at `ace313f`.
 
-> **If any of the three is not satisfied, STOP and report — this is the end of
-> your run.** Two known ways it fails today:
+> **If either condition is not satisfied, STOP and report — this is the end of
+> your run.** A known failure mode is:
 >
-> - `ls` errors with "No such file or directory": plan 014 was never written
->   (that was the state at `ace313f`, even though `plans/README.md` lists it).
->   Report "blocked: plan 014 does not exist"; do not write it yourself, and do
->   not substitute your own characterization tests.
-> - The row exists but reads `TODO`: 014 is written but unexecuted. Report
->   "blocked: plan 014 not executed".
+> - The characterization files are absent or the suite fails. Report
+>   "blocked: characterization suite missing or red"; do not substitute an
+>   unreviewed test set.
 >
 > Do not start this refactor against 7 test cases. Every step below is verified
 > by that suite; without it you would be moving 1,500 lines of focus-and-scroll
 > logic with no detector.
 
-**0b — plan 022 should have landed.** It deletes, from this very file, a 44-line
+**0b — the dead-code cleanup must be present.** It deleted, from this file, a 44-line
 debug `useLayoutEffect` (`FileTreeView.tsx:1292-1335`) and the two refs
 `debugContextMenuTriggerPathRef` / `debugDisableScrollSuppressionRef`
 (declared `:1209-1210`), which makes four branches dead:
@@ -735,11 +729,10 @@ debug `useLayoutEffect` (`FileTreeView.tsx:1292-1335`) and the two refs
 grep -c 'debugDisableScrollSuppressionRef' packages/tree/src/components/FileTreeView.tsx
 ```
 
-- Returns `0` → plan 022 landed. Good, proceed.
-- Returns `5` (the count at `ace313f`) → plan 022 has **not** landed. You may
-  proceed, but **do not delete those refs yourself** — that is 022's job and
-  doing it here creates a merge conflict. Carry the dead branches and the debug
-  effect through your extractions unchanged, and note it in your report.
+- Returns `0` → the cleanup is present. Proceed.
+- Returns `5` (the count at `ace313f`) → the cleanup is absent. STOP and
+  reconcile the source state before executing this plan; do not carry legacy
+  branches into the extraction.
 - Returns anything else → the file has drifted from this plan. Treat it as a
   STOP condition.
 
@@ -1231,11 +1224,9 @@ these are the ones a naive extraction misses:
 | `anchorRef`, `triggerRef`                                                                                             | JSX `ref=` attachment                                   | `:3495`, `:3501`                                                                                          |
 | `openContextMenuForRow`, `closeContextMenu`, `handleTreePointerOver`, `handleTreePointerLeave`, `openMenuFromTrigger` | wired into JSX and row handlers                         | `:3367-3368` (both still guarded by `contextMenuEnabled ? … : undefined`), `:3519`, and the row frame     |
 
-If plan 022 has not landed, the debug effect at `:1292-1335` also calls
-`setContextHoverPath` and `setLastContextMenuInteraction` (`:1305-1306`). Leave
-that effect in the component and give the hook one extra action,
-`applyDebugTrigger(path: string | null)`, that performs both updates. Do not
-export the raw setters to work around it.
+The legacy debug effect at `:1292-1335` must be absent. If it exists, Step 0b
+should already have stopped the run; do not move it or export raw setters to
+work around it.
 
 **If a call site cannot be expressed as a named domain action and you find
 yourself returning `setContextMenuState` or another raw setter, STOP and
@@ -1248,8 +1239,8 @@ menu DOM out from under Playwright clicks and the inline rename input. **The
 effect must stay keyed on the derived string.** This is the single most likely
 thing to be broken by a careless move.
 
-If plan 022 has **not** landed, the `triggerPath` chain still contains
-`debugContextMenuTriggerPathRef.current ??` — carry it across unchanged.
+The `triggerPath` chain must not contain
+`debugContextMenuTriggerPathRef.current ??`; treat its presence as drift.
 
 **Verify**:
 
@@ -1405,7 +1396,7 @@ imports from `vitest`, no fixtures, no DOM. Cases:
 7. `settleStickyKeyboardFocus(NO_STICKY_KEYBOARD_FOCUS, 'a/')` → still `'none'`.
 
 **No other new tests.** Steps 1 and 3–6 are behaviour-preserving moves; the
-correct gate for them is the _existing_ suite plus plan 014's characterization
+correct gate for them is the _existing_ suite plus the path-store characterization
 tests running green after each step, plus the manual checks in Step 7. Writing
 new tests that assert the new file layout would test the refactor, not the
 behaviour, and would have to be rewritten by the next person who moves a line.
@@ -1464,7 +1455,7 @@ that lands, which is exactly how this plan blocked once already. ALL must hold:
 
 Stop and report — do not improvise — if any of these happens:
 
-- **Plan 014 has not landed** (Step 0a). This is not negotiable: without those
+- **The characterization suite is absent** (Step 0a). This is not negotiable: without those
   characterization tests, six of these seven steps have no detector.
 - **You skipped the Step 0c snapshot.** A red reading at baseline does _not_ stop
   you — an **unrecorded** one does, because you then cannot distinguish your
@@ -1568,17 +1559,17 @@ For whoever owns this code next:
   run again; anything else can. This is the amendment of 2026-08-17 — the original
   blanket ban made Step 3 unshippable, because bundling refs into a hook costs 16
   `exhaustive-deps` warnings that only a dependency-array entry can clear.
-- **Later work that interacts with this**: plans 009–012 (the folder reorg,
-  Phase 4) will move files around `apps/web`; they do not touch `packages/tree`,
-  but the new `hooks/useFileTree*.ts` files become public exports the moment they
+- **Layout work that interacts with this**: the app folder reorganization has
+  landed and does not touch `packages/tree`, but the new
+  `hooks/useFileTree*.ts` files become public exports the moment they
   exist, so a future `knip` run will list them if nothing outside the package
   imports them. That is expected — they are internal to the Preact view and only
   exported because the package uses wildcard exports.
 - **If `packages/tree` ever gains a real browser-test story**, the manual checks
   in Step 7 are the exact five scenarios to automate first; they are the
   behaviours this refactor put at risk and the ones the suite does not cover — not
-  at the 9 cases this plan was written against, and not at the 85 that plans 014
-  and 039's Step 2 have since built.
+  at the 9 cases this plan was written against, and not at the 85 that the
+  characterization work and this plan's Step 2 have since built.
 - **The file's TODO must be rewritten, not deleted** (Done criteria). Leaving the
   original list in place would send the next agent back at the already-extracted
   rename cluster.

@@ -25,8 +25,8 @@
 > ```
 >
 > At the time this plan was written that command printed **nothing** (no diff)
-> other than whatever `plans/023-chat-per-delta-work.md` legitimately landed in
-> `chat-projection-writers.ts` (see "Expected drift from plan 023" below). If any
+> other than the completed per-delta optimization in
+> `chat-projection-writers.ts` (see "Expected drift from the per-delta optimization" below). If any
 > other in-scope file changed, compare the "Current state" excerpts against the
 > live code before proceeding; on a mismatch, treat it as a STOP condition.
 
@@ -92,7 +92,8 @@ confirm the three tests are present and green, then go straight to step 3.
 - **Priority**: P3
 - **Effort**: L
 - **Risk**: MED
-- **Depends on**: `plans/023-chat-per-delta-work.md` (must land first)
+- **Depends on**: the per-delta projection optimization (landed; verify the
+  `appendActivity` path in the drift check below)
 - **Category**: architecture
 - **Planned at**: commit `ace313f`, 2026-08-16
 
@@ -103,15 +104,15 @@ representation must be derived, never maintained._ Here, one chat thread is
 maintained as **five parallel `Record<ThreadId, …>` slices** described by **four
 overlapping types**, and nothing in the type system links them.
 
-### Expected drift from plan 023
+### Expected drift from the completed per-delta optimization
 
-Plan 023 rewrites `applyThreadMessageSentEvent` and
+The completed optimization rewrote `applyThreadMessageSentEvent` and
 `applyThreadActivityAppendedEvent` in `chat-projection-writers.ts` and adds an
 `appendActivity` helper. Those functions are **not** rewritten by this plan —
 this plan only changes the three lines in each that call `patchThreadShell(...)`
-(they become `patchThread(...)`). If plan 023 has landed, expect those two
-functions to look different from any excerpt here; that is fine and expected.
-If plan 023 has **not** landed, STOP and report — see "STOP conditions".
+(they become `patchThread(...)`). Expect those two functions to look different
+from any older excerpt here; that is fine. If `appendActivity` is absent, STOP
+and report — see "STOP conditions".
 
 ## Why this matters
 
@@ -617,8 +618,8 @@ and are stale; the commands themselves are still correct):
   three deliberately different predicates (see the REFUTED section above). Type
   rename only.
 - `applyThreadMessageSentEvent` and `applyThreadActivityAppendedEvent` bodies —
-  plan 023 owns them. Change only their `patchThreadShell(` → `patchThread(`
-  call.
+  preserve the completed per-delta optimization. Change only their
+  `patchThreadShell(` → `patchThread(` call.
 - `chat-projection-cache.ts`'s `CHAT_PROJECTION_CACHE_VERSION` and the cached
   schema — the cache stores `OrchestrationThreadShell` values, which this plan
   does not change, so the persisted shape is untouched and no version bump is
@@ -631,8 +632,8 @@ and are stale; the commands themselves are still correct):
 - `apps/web/src/features/chat/lib/chat-timeline-items.ts` and the timeline
   derivation — a separate audit item, explicitly deferred (see `plans/README.md`
   "Findings considered and rejected").
-- Any file-or-folder move or rename beyond the identifier renames listed here —
-  plans 009-012 own the layout reorg and run last.
+- Any file-or-folder move or rename beyond the identifier renames listed here.
+  The feature-folder reorganization already landed; use the current layout.
 - `apps/web/src/features/chat/state/tests/thread-detail-subscriptions.test.ts`
   and `apps/web/src/features/chat-mode/utils/tests/archived-auto-pick.test.ts` —
   both drive the projection only through public writers and the shared
@@ -646,8 +647,8 @@ and are stale; the commands themselves are still correct):
   the record read, do not wrap it.
 - Adding an `index.ts` barrel to re-export `ProjectionThread` so the imports get
   shorter. `AGENTS.md` forbids feature barrels; import the exact file.
-- Any other `plans/*.md` file, including `plans/023-chat-per-delta-work.md`.
-  Only this plan's status row in `plans/README.md` may change.
+- Any other `plans/*.md` file. Only this plan's status row in
+  `plans/README.md` may change.
 
 ## Git workflow
 
@@ -666,12 +667,12 @@ thread`.
 
 ## Steps
 
-> **Before step 1, check the dependency gate.** This plan is blocked on plan 023.
+> **Before step 1, check the dependency gate.** The completed per-delta
+> optimization must still be present.
 > Run:
 >
 > ```bash
-> grep -n "^| 023 " plans/README.md
-> rg -c "appendActivity" apps/web/src/features/chat/state/chat-projection-writers.ts
+> rg -n "appendActivity" apps/web/src/features/chat/state/chat-projection-writers.ts
 > ```
 >
 > If the 023 row is not `DONE`, or the `rg` finds no `appendActivity`, **STOP and
@@ -1704,7 +1705,7 @@ it if one exists.
 
 In `chat-formatters.ts` also rename
 `compareChatSidebarThreads`'s parameter types only — leave the function name
-alone (it is the sidebar's comparator and `plans/011` owns that file's layout).
+alone because it is intentionally the sidebar's comparator.
 
 **7c — factories** (`apps/web/test/factories/chat.ts`). Today `threadShell()`
 derives from `sidebarThreadSummary()` which derives from `thread()`. Invert the
@@ -2017,10 +2018,9 @@ replace it in full.
 
 Stop and report back (do not improvise) if:
 
-- **`plans/023-chat-per-delta-work.md` has not landed** (its row in
-  `plans/README.md` is not `DONE`, and
-  `rg -n "appendActivity" apps/web/src/features/chat/state/chat-projection-writers.ts`
-  finds nothing). Doing this plan first means plan 023's optimization gets
+- **The completed per-delta projection optimization is absent**
+  (`rg -n "appendActivity" apps/web/src/features/chat/state/chat-projection-writers.ts`
+  finds nothing). Doing this plan first means that optimization gets
   written against records that no longer exist, and it has to be written twice.
 - Any of the three characterization tests you write in **step 2 fails against
   the unmodified source**. That means the precedence rule is not what this plan
@@ -2108,11 +2108,8 @@ reconnect" bug ever appears, this is the first place to look.
 
 **What interacts with this later:**
 
-- **Plan 011** (`collapse features/chat/lib/ into utils/`) moves
-  `thread-status.ts` and `chat-formatters.ts`, both of which import
-  `ProjectionThread`. Land this first; 011 is a pure move afterwards.
-- **Plans 009-012** (the folder reorg) are Phase 4 and must run after this. They
-  rename files this plan rewrites.
+- The feature-folder reorganization has already landed. Use current paths and
+  do not reintroduce any legacy layout named in older excerpts.
 - Adding a new thread-level field is now **one edit** to `ProjectionThread` plus
   whichever of `threadFromShell` / `threadFromDetail` produces it — and the
   compiler will demand both. If you find yourself adding a second record keyed by

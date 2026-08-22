@@ -510,7 +510,7 @@ past this plan's scope. Format the specific files you edited, by path.
 Notes on the test commands:
 
 - **Absolute totals are not gates.** Any count in this document was measured at
-  `ace313f`; plans 013–035 changed all of them, and the next plan to land will
+  `ace313f`; later sibling work changed all of them, and the next change will
   change them again. The only valid gate is the delta against the Step 0 snapshot
   you take on your own machine.
 - The `--bun` flag is mandatory. Without it `bun:sqlite` and `Bun.spawn` do not
@@ -564,14 +564,12 @@ Notes on the test commands:
 - `apps/web/src/features/editor/utils/document-retention.ts` and
   `tests/document-retention.test.ts` — retention _policy_, unrelated to
   representation. Leave alone.
-- Any file rename or folder move. `plans/010` owns the `state/` renames
-  (including the `editor-dirty-paths.ts` → `dirty-paths.ts` row); doing them here
-  guarantees a conflict.
+- Any file rename or folder move. The feature-folder reorganization already
+  established the current names; this plan changes representation only.
 - `PLAN.md` — a roadmap document, not something executors edit.
 - `docs/chat-and-logs-wiring-notes.md` (line 61 lists `editor-dirty-paths.ts` in
-  a dated knip-run record) and `docs/router-everything-linkable-plan.md`
-  (`editor-document-state.tsx:24-27` line refs, already stale at `ace313f`).
-  Both are historical records of a past run, not live pointers.
+  a dated knip-run record). It is a historical record of a past run, not a live
+  pointer.
 - `.claude/worktrees/**` — a separate git worktree with its own copy of these
   files. Never edit it.
 - `apps/web/dist/**` — build output committed in the tree; a grep for any symbol
@@ -1515,17 +1513,13 @@ For whoever owns this code next:
   added in `workspace-document-service.ts` and appears in the store for free. If a
   future change reintroduces a hand-written state type in
   `editor-document-state.tsx`, it has undone this plan.
-- **Interaction with `plans/010`.** That plan's rename table lists
-  `state/dirty-paths.ts` ← `state/editor-dirty-paths.ts` (line 376) and
-  `state/fallback-path.ts` ← `state/editor-fallback-path.ts` (line 378). This plan
-  deletes **both** files, so both rows become moot; whoever executes 010 should drop
-  them rather than recreate the files. Plan 010 also renames `editor-document-state.tsx` →
-  `document-state.tsx` and `editor-commands.ts` → `commands.ts`, which is why this
-  plan does no renames at all.
-- **Interaction with `plans/022`** (delete unreachable code). 022 does not list
-  either file this plan deletes, so there is no overlap; but 022 should be re-run
-  against `knip` **after** this lands, since `editor-dirty-paths.ts` is one of the
-  entries in its input snapshot.
+- **Interaction with the completed folder reorganization.** Use the current
+  `dirty-paths.ts`, `fallback-path.ts`, `document-state.tsx`, and `commands.ts`
+  names when reconciling this plan. Delete the first two as specified; do not
+  recreate their legacy `editor-*` names. This plan performs no renames.
+- **Interaction with the completed dead-code cleanup.** Its snapshot did not
+  list either file this plan deletes, so there is no overlap; re-run `knip`
+  **after** this lands because `editor-dirty-paths.ts` appeared in that snapshot.
 - **Deliberately deferred, with reasons.**
   - _The three sibling stores_ (`editor-workspace-state`, `editor-ui-state`,
     `editor-conflict-state`) have the same "store mirrors a service" shape in

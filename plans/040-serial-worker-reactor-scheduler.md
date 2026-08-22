@@ -13,7 +13,7 @@
 > git diff --stat ace313f..HEAD -- apps/server/src/orchestration apps/server/src/provider
 > ```
 >
-> This output is **expected to be non-empty**: plans 013–047 landed after this
+> This output is **expected to be non-empty**: substantial sibling work landed after this
 > plan was authored and moved these files around. Do not treat a non-empty diff
 > as a STOP condition. What matters is that the _shapes_ quoted under "Current
 > state" still exist. Confirm that by symbol, not by line number — every line
@@ -43,13 +43,13 @@ What was wrong:
 1. **It required the `apps/server` suite to still be red.** The old baseline and
    Done criteria asserted `Tests 1 failed | 772 passed (773)`, with the failure
    being `src/tests/app.test.ts > fs rpc events > reports external file updates
-from the native watcher`. **Plan 047 fixed that bug** (commits `f93dd1d`,
+from the native watcher`. **The watcher-classification fix resolved that bug** (commits `f93dd1d`,
    `1f8eb0d`). `apps/server` is now **fully green: 819 tests, 0 failures, 88
    files**. An executor could not satisfy the old criterion without breaking
    working code. Every mention of a "pre-existing failure" in `apps/server` is
    deleted: **any failure this plan sees is its own.**
 2. **It hardcoded absolute test counts.** `773`, `778`, `391`, `396`, `397`, and
-   file counts `37`/`38`/`81`/`82` were all measured at `ace313f`. Plans 013–047
+   file counts `37`/`38`/`81`/`82` were all measured at `ace313f`. Later sibling work
    changed every one of them. A plan cannot assert a count a sibling plan will
    move.
 
@@ -689,8 +689,9 @@ at startup. Do not pass it.
 **`apps/server` is fully green at `b467b3f`.** Measured: **819 tests, 0 failures,
 88 files**. The native `@parcel/watcher` failure that was red when this plan was
 authored (`src/tests/app.test.ts > fs rpc events > reports external file updates
-from the native watcher`) was a real event-classification bug and **plan 047 fixed
-it** (commits `f93dd1d`, `1f8eb0d`). There is nothing left to excuse.
+from the native watcher`) was a real event-classification bug and **the
+watcher-classification fix resolved it** (commits `f93dd1d`, `1f8eb0d`). There
+is nothing left to excuse.
 
 So: **any failing test you see is yours.** There is no allowance, no
 known-failure carve-out, and no "second failure is your regression" arithmetic in
@@ -739,8 +740,9 @@ the table above are the gate.
 
 **Out of scope** (do NOT touch, even though they look related):
 
-- `apps/server/src/orchestration/projector.ts` and `projection-pipeline.ts` — the
-  dual-projection collapse is plan 036; touching them here collides with it.
+- The current projection pipeline — the dual-projection collapse already
+  landed. Reconcile the live file names during the drift check and do not modify
+  that ownership here.
 - `apps/server/src/orchestration/decider.ts`, `command-invariants.ts`,
   `command-receipts.ts` — pure, synchronous, inside the command transaction. No
   queues, nothing to unify.
@@ -762,7 +764,7 @@ the table above are the gate.
   pump, not the stream buffer, and is still needed. Leave it, and leave its call
   sites. (`claude.test.ts` has no such helper — do not add one.)
 - `apps/server/src/tests/app.test.ts` — nothing in `src/tests/` is in scope. It is
-  green as of plan 047, and it must stay green: if this plan makes it fail, that is
+  green after the watcher-classification fix, and it must stay green: if this plan makes it fail, that is
   a regression from this plan, not a pre-existing condition.
 - `apps/server/src/provider/provider-session-reaper.ts` — timer-driven idle
   session reaping. It looks like "another scheduler" and is not: it has no drain
@@ -811,8 +813,8 @@ Then read all three and record in your report:
 - the focused-suite counts.
 
 Expected at `b467b3f`: full suite 0 failures, lint clean, focused suite 0
-failures. If the full suite is **not** 0 failures, that is a surprise — plan 047
-made it green. Report the failing test names before you start; a failure you
+failures. If the full suite is **not** 0 failures, that is a surprise — the
+watcher-classification fix made it green. Report the failing test names before you start; a failure you
 recorded here is not yours, but a failure that appears later is.
 
 Do **not** copy any of these numbers into a Done criterion. They are the left-hand
@@ -1420,7 +1422,7 @@ from Step 2). No test that passed in the snapshot may fail here.
 
 This is the riskiest step in the plan, so be precise about what a failure means:
 there is **no known-failure allowance**. `apps/server` was green at Step 0
-(plan 047 fixed the last outstanding failure), so any red test after this step was
+(the watcher-classification fix resolved the last outstanding failure), so any red test after this step was
 caused by this step. Diff the failing names against the snapshot before you form a
 theory.
 
@@ -1767,7 +1769,7 @@ measured at authoring time is invalidated by every sibling plan that lands.
 Stop and report back (do not improvise) if:
 
 - **A construct this plan exists to remove is already gone.** A non-empty drift
-  diff is expected and is not a STOP — plans 013–047 shifted every line number
+  diff is expected and is not a STOP — later sibling work shifted every line number
   here. STOP only if `settleAdapterRuntimeEvents`, `streamEvents`, one of the five
   queues, or `ProviderRuntimeIngestion.drain()`-returns-the-tail cannot be found at
   all, or if a quoted "Current state" excerpt has changed in _shape_ (not merely in
@@ -1808,7 +1810,7 @@ Stop and report back (do not improvise) if:
   test name and the extra event's `type`, do not silence it by deferring the
   subscribe.
 - **A step's verification fails twice after a reasonable fix attempt.** There is no
-  carve-out. `apps/server` is green at Step 0 — plan 047 fixed the native-watcher
+  carve-out. `apps/server` is green at Step 0 — the watcher-classification fix resolved the native-watcher
   classification bug (`f93dd1d`, `1f8eb0d`) that used to be the one excused
   failure. Any red test after Step 0 is caused by this plan. The only exception is
   a failure you **recorded by name** in the Step 0 snapshot; if you did not record
@@ -1845,13 +1847,10 @@ draining the runtime` (engine.test.ts:691), and it only covers the
   exactly the `ThreadDeletionReactor` bug this plan fixes. Consider making
   registration part of `subscribeDomainEvents` if a third un-registered reactor
   ever appears.
-- Plan 036 (collapse the dual projection) rewrites `projection-pipeline.ts` and
-  deletes `projector.ts`. It does not touch these queues, but it changes what
-  `dispatch` does inside the transaction, which is what feeds every reactor. Land
-  them in either order; they do not conflict on any file.
-- Plan 032 (one session status enum) touches `settledTurnStateForSessionStatus`,
-  which `CheckpointReactor.taskForEvent` calls. Same file, different method — a
-  small merge, not a conflict.
+- The completed projection collapse and session-status normalization both
+  landed after this plan was authored. Reconcile the current pipeline and
+  `settledTurnStateForSessionStatus` call during the drift check; neither changes
+  this plan's queue ownership.
 
 **Deliberately deferred:**
 
