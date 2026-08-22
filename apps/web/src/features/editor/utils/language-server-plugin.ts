@@ -136,6 +136,7 @@ function liveLanguageServerLane({
     onStatusChange: (status) => statusSource.setServerStatus(match.serverId, status),
     onDiagnostics: (diagnostics) => statusSource.setServerDiagnostics(match.serverId, diagnostics),
     onInteractiveReady: () => statusSource.setServerInteractiveReady(match.serverId),
+    onError: () => statusSource.setServerStatus(match.serverId, 'error'),
   }
 }
 

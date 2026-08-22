@@ -115,6 +115,26 @@ describe('createMatchedLanguageServerPlugin', () => {
 
     expect(source.getSnapshot().status).toBe('ready')
   })
+
+  test('marks a lane unavailable when a routed request fails', () => {
+    const source = createEditorLanguageServerStatusSource()
+    const plugin = createMatchedLanguageServerPlugin({
+      enabled: true,
+      matches: [match('typescript', '/repo', 0)],
+      rootPath: '/repo',
+      statusSource: source,
+      target: { matchPath: 'src/a.ts' },
+    })
+    plugin.activate({} as never)
+    const lane = createdServerSets[0]?.lanes[0]
+
+    lane?.onStatusChange?.('ready')
+    lane?.onInteractiveReady?.()
+    expect(source.getSnapshot().status).toBe('ready')
+
+    lane?.onError?.(new Error('request failed'))
+    expect(source.getSnapshot().status).toBe('error')
+  })
 })
 
 describe('semantic token ownership', () => {

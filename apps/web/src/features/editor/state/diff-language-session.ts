@@ -34,6 +34,7 @@ export function createDiffLanguageSession({
     documents.map((document) => [document.side, document.uri]),
   )
   const openedUris = new Set<string>()
+  const abort = new AbortController()
   let lease: AcquiredLanguageServerLane | null = null
   let ready: Promise<void> | null = null
   let disposed = false
@@ -68,12 +69,22 @@ export function createDiffLanguageSession({
     sideForUri: (uri) => documents.find((document) => document.uri === uri)?.side ?? null,
     request: async <TResult>(method: string, params: unknown) => {
       const acquired = await ensureReady()
-      return acquired.client.request<TResult | null>(method, params)
+      try {
+        const result = await acquired.client.request<TResult | null>(method, params, {
+          signal: abort.signal,
+        })
+        if (disposed) throw closedSessionError('disposed')
+        return result
+      } catch (error) {
+        if (disposed) throw closedSessionError('disposed')
+        throw error
+      }
     },
     dispose: () => {
       if (disposed) return
 
       disposed = true
+      abort.abort()
       const acquired = lease
       if (!acquired) return
 

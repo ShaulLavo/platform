@@ -42,6 +42,15 @@ test('does not expose a previous path result after the target changes', async ({
   await waitFor(() => expect(result.current).toEqual([]))
 })
 
+test('keeps the disabled result referentially stable', () => {
+  const { result, rerender } = renderHook(() => useLanguageServerMatches('', 'src/file.ts', false))
+  const first = result.current
+
+  rerender()
+
+  expect(result.current).toBe(first)
+})
+
 async function writeWorkspace(root: string, files: Readonly<Record<string, string>>) {
   for (const [relativePath, content] of Object.entries(files)) {
     const target = path.join(root, relativePath)

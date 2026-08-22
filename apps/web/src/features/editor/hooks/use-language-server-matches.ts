@@ -6,6 +6,8 @@ import {
 } from '@/features/editor/utils/language-server-plugin'
 import { getClient } from '@/lib/client'
 
+const NO_LANGUAGE_SERVER_MATCHES: readonly LanguageServerMatch[] = []
+
 export function useLanguageServerMatches(
   rootPath: string,
   matchPath: string,
@@ -40,7 +42,7 @@ export function useLanguageServerMatches(
     return () => controller.abort()
   }, [enabled, key, matchPath, rootPath])
 
-  if (!enabled) return []
+  if (!enabled) return NO_LANGUAGE_SERVER_MATCHES
   return state?.key === key ? state.matches : null
 }
 

@@ -123,10 +123,10 @@ function aggregateDiagnostics(
   const summaries = states.flatMap((state) => (state.diagnostics ? [state.diagnostics] : []))
   if (summaries.length === 0) return null
 
-  const first = summaries[0]
+  const metadata = summaries.find((summary) => summary.diagnostics.length > 0) ?? summaries[0]
   return summarizeDiagnostics(
-    first?.uri ?? null,
-    first?.version ?? null,
+    metadata?.uri ?? null,
+    metadata?.version ?? null,
     summaries.flatMap((summary) => summary.diagnostics),
   )
 }

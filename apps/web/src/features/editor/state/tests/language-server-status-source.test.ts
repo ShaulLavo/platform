@@ -33,8 +33,21 @@ test('reports error only after every eligible lane errors', () => {
   expect(source.getSnapshot().status).toBe('idle')
 })
 
-function summary(message: string) {
-  return summarizeDiagnostics('file:///test.ts', 1, [
+test('takes aggregate metadata from the first non-empty diagnostic batch', () => {
+  const source = createEditorLanguageServerStatusSource()
+  source.setServers(['closed', 'current'])
+  source.setServerDiagnostics('closed', summarizeDiagnostics('file:///closed.ts', 1, []))
+  source.setServerDiagnostics('current', summary('current', 'file:///current.ts', 2))
+
+  expect(source.getSnapshot().diagnostics).toMatchObject({
+    uri: 'file:///current.ts',
+    version: 2,
+  })
+  expect(messages(source)).toEqual(['current'])
+})
+
+function summary(message: string, uri = 'file:///test.ts', version = 1) {
+  return summarizeDiagnostics(uri, version, [
     {
       message,
       range: {

@@ -20,7 +20,11 @@ test('awaits the existing lane lease before opening documents or sending request
   harness.connect()
   await expect(request).resolves.toBe('answer')
   expect(harness.openDocument).toHaveBeenCalledTimes(2)
-  expect(harness.request).toHaveBeenCalledWith('textDocument/hover', { position: 1 })
+  expect(harness.request).toHaveBeenCalledWith(
+    'textDocument/hover',
+    { position: 1 },
+    { signal: expect.any(AbortSignal) },
+  )
 })
 
 test('closes only diff-owned documents and releases its dedicated lease', async () => {
@@ -39,11 +43,25 @@ test('closes only diff-owned documents and releases its dedicated lease', async 
   expect(harness.release).toHaveBeenCalledTimes(1)
 })
 
-function laneHarness() {
+test('rejects an in-flight response after the session is disposed', async () => {
+  const answer = deferred<string>()
+  const harness = laneHarness(() => answer.promise)
+  const session = createDiffLanguageSession({ documents: documents(), lane: harness.options })
+  const request = session.request<string>('textDocument/hover', {})
+  harness.connect()
+  await vi.waitFor(() => expect(harness.request).toHaveBeenCalledTimes(1))
+
+  session.dispose()
+  answer.resolve('late answer')
+
+  await expect(request).rejects.toThrow('Diff language session closed')
+})
+
+function laneHarness(requestResult: () => Promise<unknown> = async () => 'answer') {
   let callbacks: LspConnectionCallbacks | null = null
   const openDocument = vi.fn((document: { uri: string }) => ({ ...document, version: 1 }))
   const closeDocument = vi.fn()
-  const request = vi.fn(async () => 'answer')
+  const request = vi.fn(requestResult)
   const release = vi.fn()
   const client = {
     notify: vi.fn(async () => undefined),
@@ -73,6 +91,14 @@ function laneHarness() {
     request,
     connect: () => callbacks?.onConnected(),
   }
+}
+
+function deferred<T>(): { promise: Promise<T>; resolve(value: T): void } {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((settle) => {
+    resolve = settle
+  })
+  return { promise, resolve }
 }
 
 function documents() {
