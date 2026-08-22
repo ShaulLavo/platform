@@ -4,7 +4,12 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { pinnedLspRuntimeManifest, type PinnedLspRuntimeManifestEntry } from '../installer-manifest'
-import { lspServersFor, matchLspServer } from '../registry'
+import {
+  bestLspMatchForFeature,
+  lspServersFor,
+  matchLspServers,
+  resolveLspServer,
+} from '../registry'
 
 const NO_OVERRIDES = { servers: {}, tyForPython: false } as const
 
@@ -75,16 +80,19 @@ describe('LSP server registry', () => {
       'src/index.ts': 'export const value = 1\n',
     })
 
-    const match = await matchLspServer({
+    const matches = await matchLspServers({
       settings: NO_OVERRIDES,
       filePath: path.join(root, 'src/index.ts'),
       workspaceRoot: root,
     })
 
-    expect(match).toMatchObject({
-      root,
-      server: { id: 'typescript' },
-    })
+    expect(matches.map((match) => match.server.id)).toEqual([
+      'typescript',
+      'eslint',
+      'oxlint',
+      'biome',
+    ])
+    expect(matches.every((match) => match.root === root)).toBe(true)
   })
 
   it('prefers deno for TypeScript files inside a Deno project', async () => {
@@ -93,13 +101,13 @@ describe('LSP server registry', () => {
       'src/index.ts': 'export const value = 1\n',
     })
 
-    const match = await matchLspServer({
+    const matches = await matchLspServers({
       settings: NO_OVERRIDES,
       filePath: path.join(root, 'src/index.ts'),
       workspaceRoot: root,
     })
 
-    expect(match).toMatchObject({
+    expect(matches[0]).toMatchObject({
       root,
       server: { id: 'deno' },
     })
@@ -110,13 +118,82 @@ describe('LSP server registry', () => {
       'notes.custom': 'custom\n',
     })
 
-    const match = await matchLspServer({
+    const matches = await matchLspServers({
       settings: NO_OVERRIDES,
       filePath: path.join(root, 'notes.custom'),
       workspaceRoot: root,
     })
 
-    expect(match).toBeNull()
+    expect(matches).toEqual([])
+  })
+
+  it('orders feature owners by rank, then server priority and id', async () => {
+    const root = await fixtureRoot({
+      'package.json': '{}',
+      'src/index.ts': 'export const value = 1\n',
+    })
+    const matches = await matchLspServers({
+      settings: NO_OVERRIDES,
+      filePath: path.join(root, 'src/index.ts'),
+      workspaceRoot: root,
+    })
+
+    expect(bestLspMatchForFeature(matches, 'completion')?.server.id).toBe('typescript')
+    expect(bestLspMatchForFeature(matches, 'diagnostics')?.server.id).toBe('eslint')
+    expect(bestLspMatchForFeature(matches, 'formatting')?.server.id).toBe('eslint')
+  })
+
+  it('applies numeric feature ranks and null exclusions', () => {
+    const servers = lspServersFor({
+      servers: {
+        typescript: { disabled: false, features: { completion: 5, semanticTokens: null } },
+      },
+      tyForPython: false,
+    })
+    const typescript = servers.find((server) => server.id === 'typescript')
+
+    expect(typescript?.features?.completion).toBe(5)
+    expect(typescript?.features?.semanticTokens).toBeUndefined()
+  })
+
+  it('resolves only the requested eligible server for explicit transport', async () => {
+    const root = await fixtureRoot({
+      'package.json': '{}',
+      'src/index.ts': 'export const value = 1\n',
+    })
+
+    const match = await resolveLspServer({
+      settings: NO_OVERRIDES,
+      filePath: path.join(root, 'src/index.ts'),
+      serverId: 'biome',
+      workspaceRoot: root,
+    })
+    const unknown = await resolveLspServer({
+      settings: NO_OVERRIDES,
+      filePath: path.join(root, 'src/index.ts'),
+      serverId: 'unknown',
+      workspaceRoot: root,
+    })
+
+    expect(match?.server.id).toBe('biome')
+    expect(unknown).toBeNull()
+  })
+
+  it('keeps Biome eligible for JSON and JSONC', async () => {
+    const root = await fixtureRoot({
+      'biome.json': '{}',
+      'data.json': '{}',
+      'data.jsonc': '{}',
+    })
+
+    for (const file of ['data.json', 'data.jsonc']) {
+      const matches = await matchLspServers({
+        settings: NO_OVERRIDES,
+        filePath: path.join(root, file),
+        workspaceRoot: root,
+      })
+      expect(matches.map((match) => match.server.id)).toContain('biome')
+    }
   })
 
   it('applies per-server overrides from settings', () => {

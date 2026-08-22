@@ -1,4 +1,9 @@
-import type { LspServerOverride, LspServerOverrides } from '@workspace/contracts'
+import type {
+  LspFeatureId,
+  LspFeatureRanks,
+  LspServerOverride,
+  LspServerOverrides,
+} from '@workspace/contracts'
 import { access, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
@@ -33,6 +38,8 @@ export type LspServerHandle = {
 export type LspServerDefinition = {
   readonly id: string
   readonly extensions: readonly string[]
+  /** Registry definitions always provide this; transport-only test definitions need not. */
+  readonly features?: LspFeatureRanks
   readonly root: (filePath: string, workspaceRoot: string) => Promise<string | null>
   readonly spawn: (root: string) => Promise<LspServerHandle | null>
   readonly initializationOptions?: (root: string) => Promise<Record<string, unknown> | undefined>
@@ -85,7 +92,28 @@ const jsProjectMarkers = [
 
 const tsExtensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts'] as const
 
-const lspServers: readonly LspServerDefinition[] = [
+const LANGUAGE_SERVER_FEATURES = {
+  completion: 0,
+  hover: 0,
+  navigation: 0,
+  signatureHelp: 0,
+  diagnostics: 10,
+  codeActions: 10,
+  formatting: 10,
+  rename: 0,
+  documentHighlights: 0,
+  semanticTokens: 0,
+} as const satisfies LspFeatureRanks
+
+const LINTER_FORMATTER_FEATURES = {
+  diagnostics: 0,
+  codeActions: 0,
+  formatting: 0,
+} as const satisfies LspFeatureRanks
+
+const LINTER_FORMATTER_SERVER_IDS = new Set(['biome', 'eslint', 'oxlint'])
+
+const lspServers: readonly LspServerDefinition[] = withBuiltInFeatures([
   {
     id: 'astro',
     extensions: ['.astro'],
@@ -488,27 +516,65 @@ const lspServers: readonly LspServerDefinition[] = [
     root: (filePath, workspaceRoot) => nearestRoot(filePath, workspaceRoot, ['build.zig']),
     spawn: (root) => spawnZls(root),
   },
-]
+])
 
-export async function matchLspServer(input: {
+export async function matchLspServers(input: {
   filePath: string
-  serverId?: string | null
   settings: LspSettings
   workspaceRoot: string
-}) {
+}): Promise<readonly LspServerMatch[]> {
   const extension = fileExtension(input.filePath)
   const candidates = lspServersFor(input.settings)
-    .filter((server) => serverMatches(server, extension, input.serverId))
+    .filter((server) => serverMatches(server, extension))
     .sort(compareServerPriority)
+  const matches = await Promise.all(
+    candidates.map((server) => resolveServerRoot(server, input.filePath, input.workspaceRoot)),
+  )
 
-  for (const server of candidates) {
-    const root = await server.root(input.filePath, input.workspaceRoot)
-    if (!root) continue
+  return matches.filter((match): match is LspServerMatch => match !== null)
+}
 
-    return { root, server } satisfies LspServerMatch
+export async function resolveLspServer(input: {
+  filePath: string
+  serverId: string
+  settings: LspSettings
+  workspaceRoot: string
+}): Promise<LspServerMatch | null> {
+  const extension = fileExtension(input.filePath)
+  const server = lspServersFor(input.settings).find((candidate) => candidate.id === input.serverId)
+  if (!server || !serverMatches(server, extension)) return null
+
+  return resolveServerRoot(server, input.filePath, input.workspaceRoot)
+}
+
+export function matchDescriptor(match: LspServerMatch) {
+  return {
+    root: match.root,
+    serverId: match.server.id,
+    features: match.server.features ?? {},
   }
+}
 
-  return null
+export function bestLspMatchForFeature(
+  matches: readonly LspServerMatch[],
+  feature: LspFeatureId,
+): LspServerMatch | null {
+  return (
+    matches
+      .filter((match) => match.server.features?.[feature] !== undefined)
+      .toSorted((left, right) => compareFeatureRank(left, right, feature))[0] ?? null
+  )
+}
+
+async function resolveServerRoot(
+  server: LspServerDefinition,
+  filePath: string,
+  workspaceRoot: string,
+): Promise<LspServerMatch | null> {
+  const root = await server.root(filePath, workspaceRoot)
+  if (!root) return null
+
+  return { root, server }
 }
 
 export function lspServersFor(settings: LspSettings) {
@@ -606,6 +672,7 @@ function configuredServer(
     return {
       ...existing!,
       extensions: config.extensions ?? existing!.extensions,
+      features: configuredFeatures(config, existing!.features),
       initializationOptions: configuredInitialization(config, existing),
     }
   }
@@ -613,6 +680,7 @@ function configuredServer(
   return {
     id,
     extensions: config.extensions ?? existing?.extensions ?? [],
+    features: configuredFeatures(config, existing?.features),
     root: existing?.root ?? (async (_filePath, workspaceRoot) => workspaceRoot),
     spawn: (root) =>
       spawnCommand(command, {
@@ -639,6 +707,37 @@ function configuredInitialization(
   return async () => config.initialization
 }
 
+function configuredFeatures(
+  config: LspServerOverride,
+  inherited: LspFeatureRanks | undefined,
+): LspFeatureRanks {
+  const features: Partial<Record<LspFeatureId, number>> = { ...inherited }
+  for (const [feature, rank] of Object.entries(config.features ?? {}) as [
+    LspFeatureId,
+    number | null,
+  ][]) {
+    if (rank === null) {
+      delete features[feature]
+      continue
+    }
+
+    features[feature] = rank
+  }
+
+  return features
+}
+
+function withBuiltInFeatures(
+  servers: readonly Omit<LspServerDefinition, 'features'>[],
+): readonly LspServerDefinition[] {
+  return servers.map((server) => ({
+    ...server,
+    features: LINTER_FORMATTER_SERVER_IDS.has(server.id)
+      ? LINTER_FORMATTER_FEATURES
+      : LANGUAGE_SERVER_FEATURES,
+  }))
+}
+
 async function pythonInitializationOptions(root: string) {
   const pythonPath = await firstExistingPath(
     virtualEnvironmentPaths(root).map((venvPath) =>
@@ -652,18 +751,19 @@ async function pythonInitializationOptions(root: string) {
   return { pythonPath }
 }
 
-function serverMatches(
-  server: LspServerDefinition,
-  extension: string,
-  serverId: string | null | undefined,
-) {
-  if (serverId && server.id !== serverId) return false
-
+function serverMatches(server: LspServerDefinition, extension: string) {
   return server.extensions.includes(extension)
 }
 
 function compareServerPriority(left: LspServerDefinition, right: LspServerDefinition) {
-  return serverPriorityIndex(left.id) - serverPriorityIndex(right.id)
+  return (
+    serverPriorityIndex(left.id) - serverPriorityIndex(right.id) || left.id.localeCompare(right.id)
+  )
+}
+
+function compareFeatureRank(left: LspServerMatch, right: LspServerMatch, feature: LspFeatureId) {
+  const rank = (left.server.features?.[feature] ?? 0) - (right.server.features?.[feature] ?? 0)
+  return rank || compareServerPriority(left.server, right.server)
 }
 
 function serverPriorityIndex(id: string) {

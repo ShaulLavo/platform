@@ -416,7 +416,7 @@ export const SETTINGS_REGISTRY = {
     visibility: 'internal',
     category: 'Language servers',
     description:
-      'Per-server overrides: command, env, extensions, initialization, or disabled. Applies the next time a server starts; one already running for a folder keeps its old command until it idles out.',
+      'Per-server overrides: extensions and feature ranks apply when a document is matched; command, env, and initialization apply on the next backend start. Set a feature to null to exclude that server. A running backend keeps its old process options until it idles out.',
     keywords: ['lsp', 'language server', 'command', 'override', 'disable'],
   }),
   'lsp.semanticTokens.enabled': defineSetting({

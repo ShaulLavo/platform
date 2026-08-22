@@ -1,12 +1,19 @@
 import type {
-  LanguageServerDiagnosticSummary,
   LanguageServerDefinitionTarget,
+  LanguageServerFeatureRanks,
+  LanguageServerLaneOptions,
   LanguageServerPlugin,
   LanguageServerReferencesResult,
-  LanguageServerStatus,
+  LspConnectionProvider,
 } from '@singapor/lsp-plugin'
-import { createLanguageServerPlugin } from '@singapor/lsp-plugin/websocket'
-import { LSP_SEMANTIC_TOKENS_REFRESH, LSP_SERVER_EXITED } from '@workspace/contracts'
+import { createLanguageServerSetPlugin } from '@singapor/lsp-plugin/websocket'
+import {
+  LSP_FEATURE_IDS,
+  LSP_SEMANTIC_TOKENS_REFRESH,
+  LSP_SERVER_EXITED,
+  type LspFeatureId,
+  type LspMatch,
+} from '@workspace/contracts'
 
 import { languageServerConnectionProvider } from '@/features/editor/state/language-server-connection-pool'
 import type { EditorLanguageServerStatusSource } from '@/features/editor/state/language-server-status-source'
@@ -19,96 +26,189 @@ import {
 import { serverUrl } from '@/lib/client'
 import { EdenLanguageServerWebSocket } from '@/lib/server-sockets'
 
+export type LanguageServerMatch = LspMatch
+
+export type LanguageServerDocumentTarget = {
+  readonly matchPath: string
+  readonly disabledFeatures?: readonly LspFeatureId[]
+  readonly sharedNotificationsByServer?: Readonly<
+    Record<string, readonly { method: string; params: unknown }[]>
+  >
+}
+
 type MatchedLanguageServerPluginOptions = {
   enabled: boolean
-  filePath: string
-  match: LanguageServerMatch | null
+  matches: readonly LanguageServerMatch[] | null
   rootPath: string
   statusSource: EditorLanguageServerStatusSource
+  target: LanguageServerDocumentTarget
   onOpenDefinition?: (target: LanguageServerDefinitionTarget) => void | boolean
   onOpenReferences?: (result: LanguageServerReferencesResult) => void | boolean
 }
 
-export type LanguageServerMatch = {
-  readonly root: string
-  readonly serverId: string
-}
-
 export function createMatchedLanguageServerPlugin({
   enabled,
-  filePath,
-  match,
+  matches,
   rootPath,
   statusSource,
+  target,
   onOpenDefinition,
   onOpenReferences,
 }: MatchedLanguageServerPluginOptions): LanguageServerPlugin {
-  if (!enabled || !match) return createIdleLanguageServerPlugin(statusSource)
+  const eligible = enabled ? (matches ?? []) : []
+  if (eligible.length === 0) return createIdleLanguageServerPlugin(statusSource)
 
-  const readiness = createLanguageServerReadiness(statusSource)
-  const semanticTokens = new SemanticTokenController({ serverId: match.serverId })
-
-  return createLanguageServerPlugin({
-    // A pure function of the server id, and nothing else — see the builder for
-    // why the pooled backend makes that a requirement rather than a preference.
-    capabilities: semanticTokensCapabilityForServer(match.serverId),
-    clientInfo: LANGUAGE_SERVER_CLIENT_INFO,
-    notificationHandlers: {
-      [LSP_SEMANTIC_TOKENS_REFRESH]: () => {
-        semanticTokens.handleRefresh()
-        return true
-      },
-      [LSP_SERVER_EXITED]: () => {
-        // The proxy saying the backend is gone, on the socket that is closing
-        // behind it. Without this the transport clears its handlers silently and
-        // the indicator keeps reading `'ready'` over a dead server.
-        statusSource.setStatus('error')
-        return true
-      },
-    },
+  const descriptors = eligible.map((match) => ({
+    ...match,
+    features: withoutDisabledFeatures(match.features, target.disabledFeatures),
+  }))
+  const semanticOwner = highestRankedMatch(descriptors, 'semanticTokens')
+  const semanticTokens = semanticOwner
+    ? new SemanticTokenController({ serverId: semanticOwner.serverId })
+    : null
+  const lanes = descriptors.map((match) =>
+    liveLanguageServerLane({
+      match,
+      rootPath,
+      semanticOwner,
+      semanticTokens,
+      statusSource,
+      target,
+    }),
+  )
+  const plugin = createLanguageServerSetPlugin({
+    lanes,
     documentSync: {
       languageIdForDocument: (_languageId, uri) => lspLanguageIdForPath(uri),
     },
-    rootUri: fileUriForPath(rootPath),
-    // Outlives this plugin, shared with every surface on the same root and server.
-    connectionProvider: languageServerConnectionProvider({
-      rootPath: match.root,
-      serverId: match.serverId,
+    semanticTokens: semanticTokens ? semanticTokenLayerOptions(semanticTokens) : undefined,
+    onOpenDefinition,
+    onOpenReferences,
+  })
+
+  return initializeStatusOnActivation(plugin, statusSource, descriptors)
+}
+
+function liveLanguageServerLane({
+  match,
+  rootPath,
+  semanticOwner,
+  semanticTokens,
+  statusSource,
+  target,
+}: {
+  match: LanguageServerMatch
+  rootPath: string
+  semanticOwner: LanguageServerMatch | null
+  semanticTokens: SemanticTokenController | null
+  statusSource: EditorLanguageServerStatusSource
+  target: LanguageServerDocumentTarget
+}): LanguageServerLaneOptions {
+  const ownsSemanticTokens = semanticOwner?.serverId === match.serverId
+  return {
+    ...languageServerLaneOptions({
+      connectionProvider: languageServerConnectionProvider({
+        rootPath: match.root,
+        serverId: match.serverId,
+      }),
+      match,
+      rootPath,
+      target,
     }),
-    semanticTokens: {
-      onLayer: (layer, document) => {
-        semanticTokens.attachLayer(layer, document)
-      },
-      onRangeNeeded: (request) => semanticTokens.handleRangeNeeded(request),
-      onResyncRequired: (reason) => semanticTokens.handleResyncRequired(reason),
-      scopeAliases: semanticTokens.scopeAliases,
-      // Explicitly zero rather than left unset. The layer's delay has no default
-      // and unset already means zero, but writing it here is what keeps a later
-      // editor default — or a changed meaning for *unset* — from quietly adding a
-      // second debounce underneath the three this repo costed.
-      viewportDelayMs: 0,
-    },
-    webSocketRoute: languageServerRoute(rootPath, filePath, match.serverId),
+    notificationHandlers: laneNotificationHandlers(
+      match.serverId,
+      ownsSemanticTokens ? semanticTokens : null,
+      statusSource,
+    ),
+    onConnectionCreated:
+      ownsSemanticTokens && semanticTokens
+        ? (context) => {
+            semanticTokens.attachConnection(context)
+            return { dispose: () => semanticTokens.detachConnection() }
+          }
+        : undefined,
+    onConnected:
+      ownsSemanticTokens && semanticTokens
+        ? () => {
+            semanticTokens.handleConnected()
+          }
+        : undefined,
+    onStatusChange: (status) => statusSource.setServerStatus(match.serverId, status),
+    onDiagnostics: (diagnostics) => statusSource.setServerDiagnostics(match.serverId, diagnostics),
+    onInteractiveReady: () => statusSource.setServerInteractiveReady(match.serverId),
+  }
+}
+
+export function languageServerLaneOptions({
+  connectionProvider,
+  match,
+  rootPath,
+  target,
+}: {
+  connectionProvider: LspConnectionProvider
+  match: LanguageServerMatch
+  rootPath: string
+  target: LanguageServerDocumentTarget
+}): LanguageServerLaneOptions {
+  return {
+    id: match.serverId,
+    features: match.features as LanguageServerFeatureRanks,
+    capabilities: semanticTokensCapabilityForServer(match.serverId),
+    clientInfo: LANGUAGE_SERVER_CLIENT_INFO,
+    rootUri: fileUriForPath(match.root),
+    connectionProvider,
+    readyNotifications: target.sharedNotificationsByServer?.[match.serverId],
+    webSocketRoute: languageServerRoute(rootPath, target.matchPath, match.serverId),
     webSocketTransportOptions: {
       WebSocketCtor: EdenLanguageServerWebSocket,
     },
-    onConnectionCreated: (context) => {
-      semanticTokens.attachConnection(context)
+  }
+}
 
-      return { dispose: () => semanticTokens.detachConnection() }
+function laneNotificationHandlers(
+  serverId: string,
+  semanticTokens: SemanticTokenController | null,
+  statusSource: EditorLanguageServerStatusSource,
+) {
+  return {
+    [LSP_SEMANTIC_TOKENS_REFRESH]: () => {
+      semanticTokens?.handleRefresh()
+      return semanticTokens !== null
     },
-    // The same context again once `initialize` has answered. The first demand
-    // almost always arrives before that, and the layer never repeats a question,
-    // so without this hook a freshly opened file stays uncoloured until it is
-    // scrolled or typed into.
-    onConnected: () => semanticTokens.handleConnected(),
-    onStatusChange: readiness.setStatus,
-    onDiagnostics: readiness.setDiagnostics,
-    onInteractiveReady: readiness.setInteractiveReady,
-    onOpenDefinition,
-    onOpenReferences,
-    onError: () => statusSource.setStatus('error'),
-  })
+    [LSP_SERVER_EXITED]: () => {
+      statusSource.setServerStatus(serverId, 'error')
+      return true
+    },
+  }
+}
+
+function semanticTokenLayerOptions(semanticTokens: SemanticTokenController) {
+  return {
+    onLayer: (
+      layer: Parameters<SemanticTokenController['attachLayer']>[0],
+      document: Parameters<SemanticTokenController['attachLayer']>[1],
+    ) => {
+      semanticTokens.attachLayer(layer, document)
+    },
+    onRangeNeeded: semanticTokens.handleRangeNeeded.bind(semanticTokens),
+    onResyncRequired: semanticTokens.handleResyncRequired.bind(semanticTokens),
+    scopeAliases: semanticTokens.scopeAliases,
+    viewportDelayMs: 0,
+  }
+}
+
+function initializeStatusOnActivation(
+  plugin: LanguageServerPlugin,
+  statusSource: EditorLanguageServerStatusSource,
+  matches: readonly LanguageServerMatch[],
+): LanguageServerPlugin {
+  return {
+    name: plugin.name,
+    activate: (context) => {
+      statusSource.setServers(matches.map((match) => match.serverId))
+      return plugin.activate(context)
+    },
+  }
 }
 
 function createIdleLanguageServerPlugin(
@@ -117,59 +217,44 @@ function createIdleLanguageServerPlugin(
   return {
     name: 'editor.language-server.idle',
     activate: () => {
-      statusSource.reset()
+      statusSource.setServers([])
       return []
     },
   }
 }
 
-function createLanguageServerReadiness(statusSource: EditorLanguageServerStatusSource) {
-  let connected = false
-  let usable = false
-
-  return {
-    setStatus: (status: LanguageServerStatus) => {
-      if (status === 'idle') {
-        connected = false
-        usable = false
-        statusSource.reset()
-        return
-      }
-      if (status === 'loading') {
-        connected = false
-        usable = false
-        statusSource.setSnapshot({ diagnostics: null, status: 'loading' })
-        return
-      }
-      if (status === 'ready') {
-        connected = true
-        statusSource.setStatus(usable ? 'ready' : 'loading')
-        return
-      }
-
-      connected = false
-      statusSource.setStatus(status)
-    },
-    setDiagnostics: (diagnostics: LanguageServerDiagnosticSummary) => {
-      usable = true
-      statusSource.setSnapshot({
-        diagnostics,
-        status: connected ? 'ready' : statusSource.getSnapshot().status,
-      })
-    },
-    setInteractiveReady: () => {
-      usable = true
-      if (connected) statusSource.setStatus('ready')
-    },
-  }
+function highestRankedMatch(
+  matches: readonly LanguageServerMatch[],
+  feature: LspFeatureId,
+): LanguageServerMatch | null {
+  return (
+    matches
+      .filter((match) => match.features[feature] !== undefined)
+      .toSorted(
+        (left, right) =>
+          (left.features[feature] ?? 0) - (right.features[feature] ?? 0) ||
+          matches.indexOf(left) - matches.indexOf(right),
+      )[0] ?? null
+  )
 }
 
-function languageServerRoute(rootPath: string, filePath: string, serverId: string) {
+function withoutDisabledFeatures(
+  features: LanguageServerMatch['features'],
+  disabled: readonly LspFeatureId[] | undefined,
+): LanguageServerMatch['features'] {
+  if (!disabled || disabled.length === 0) return features
+
+  return Object.fromEntries(
+    Object.entries(features).filter(([feature]) => !disabled.includes(feature as LspFeatureId)),
+  )
+}
+
+function languageServerRoute(rootPath: string, matchPath: string, serverId: string) {
   const url = new URL('/lsp', serverUrl)
   if (url.protocol === 'http:') url.protocol = 'ws:'
   if (url.protocol === 'https:') url.protocol = 'wss:'
   url.searchParams.set('root', rootPath)
-  url.searchParams.set('path', filePath)
+  url.searchParams.set('path', matchPath)
   url.searchParams.set('server', serverId)
   return url
 }
@@ -179,12 +264,35 @@ function fileUriForPath(path: string) {
   return `file:///${normalized.split('/').map(encodeURIComponent).join('/')}`
 }
 
-export function languageServerMatch(value: unknown): LanguageServerMatch | null {
+export function languageServerMatches(value: unknown): readonly LanguageServerMatch[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    const match = languageServerMatch(item)
+    return match ? [match] : []
+  })
+}
+
+function languageServerMatch(value: unknown): LanguageServerMatch | null {
   if (!value || typeof value !== 'object') return null
 
   const match = value as Record<string, unknown>
   if (typeof match.root !== 'string') return null
   if (typeof match.serverId !== 'string') return null
+  const features = languageServerFeatures(match.features)
+  if (!features) return null
 
-  return { root: match.root, serverId: match.serverId }
+  return { root: match.root, serverId: match.serverId, features }
+}
+
+function languageServerFeatures(value: unknown): LanguageServerMatch['features'] | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+
+  const features: Partial<Record<LspFeatureId, number>> = {}
+  for (const [feature, rank] of Object.entries(value)) {
+    if (!LSP_FEATURE_IDS.includes(feature as LspFeatureId)) return null
+    if (typeof rank !== 'number' || !Number.isInteger(rank) || rank < 0) return null
+    features[feature as LspFeatureId] = rank
+  }
+
+  return features
 }

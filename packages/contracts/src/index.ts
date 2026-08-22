@@ -310,12 +310,17 @@ export {
   type LogLiveStreamItem,
 } from './log-dashboard'
 export {
+  LSP_FEATURE_IDS,
   LSP_SEMANTIC_TOKENS_REFRESH,
   LSP_SERVER_EXITED,
+  type LspFeatureId,
+  type LspFeatureRanks,
+  type LspMatch,
   type LspNegotiatedSemanticTokens,
   type LspServerExitedParams,
 } from './lsp-protocol'
 export {
+  lspFeatureRanksOverrideSchema,
   lspServerOverrideSchema,
   lspServerOverridesSchema,
   modelRefKey,

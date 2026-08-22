@@ -1,11 +1,11 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createAuthConfig } from '../../auth'
 import { createWorkspacePaths } from '../../fs/path'
-import { lspRouteSemanticTokens, lspRoutes, type LspRouteDeps } from '../routes'
+import { lspRouteMatch, lspRouteSemanticTokens, lspRoutes, type LspRouteDeps } from '../routes'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
 const roots: string[] = []
@@ -48,16 +48,54 @@ describe('LSP websocket routes', () => {
 
     expect(createdSessions[0]?.clientMessages).toEqual([initializeRequest(1)])
   })
+
+  it('rejects an unknown explicit server without acquiring a backend', async () => {
+    const root = await fixtureRoot()
+    const acquire = vi.fn()
+    const routes = lspRoutes({ paths: createWorkspacePaths(root) }, auth(), {
+      resolveServer: async () => null,
+      settings: () => ({ servers: {}, tyForPython: false }),
+      pool: { acquire },
+    })
+    const ws = fakeSocket({ path: 'src/file.fake', root: '', server: 'unknown' })
+
+    await routes.open(ws)
+
+    expect(ws.closed).toBe(true)
+    expect(acquire).not.toHaveBeenCalled()
+  })
+})
+
+describe('LSP match route', () => {
+  it('returns every descriptor with its independently resolved root', async () => {
+    const root = await fixtureRoot()
+    await Bun.write(path.join(root, 'package.json'), '{}')
+    await mkdir(path.join(root, 'nested'))
+    await Bun.write(path.join(root, 'nested', 'deno.json'), '{}')
+    await Bun.write(path.join(root, 'nested', 'file.ts'), 'export const value = 1\n')
+
+    const result = await lspRouteMatch(
+      createWorkspacePaths(root),
+      { path: 'nested/file.ts', root: '' },
+      { servers: {}, tyForPython: false },
+    )
+
+    expect(result.map((match) => match.serverId)).toEqual(['deno', 'eslint', 'oxlint', 'biome'])
+    expect(result[0]?.root).toBe(path.join(root, 'nested'))
+    expect(result.slice(1).every((match) => match.root === root)).toBe(true)
+    expect(result[0]?.features.completion).toBe(0)
+    expect(result[1]?.features.diagnostics).toBe(0)
+  })
 })
 
 // Inject fakes through lspRoutes' deps instead of mocking modules — Bun module
 // mocks are global and would leak the fake registry into other test files.
 function bufferedLspDeps(root: string, createdSessions: FakeLspProxySession[]): LspRouteDeps {
   return {
-    matchServer: (async () => {
+    resolveServer: (async () => {
       await Bun.sleep(25)
       return { root, server: { id: 'buffered-lsp' } }
-    }) as unknown as LspRouteDeps['matchServer'],
+    }) as unknown as LspRouteDeps['resolveServer'],
     settings: () => ({ servers: {}, tyForPython: false }),
     pool: {
       acquire: async () => {

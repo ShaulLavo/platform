@@ -22,6 +22,7 @@ import {
   scrollPositionFromSnapshot,
 } from '@/features/editor/utils/scroll-position'
 import { useLanguageServerPlugin } from '@/features/editor/hooks/use-lsp-plugin'
+import type { LanguageServerDocumentTarget } from '@/features/editor/utils/language-server-plugin'
 import { editorPerformanceLayoutVariant } from '@/features/editor/state/performance-trace'
 import { useFocus } from '@/features/workspace/providers/focus-state'
 import type {
@@ -38,6 +39,7 @@ type EditorProps = {
   active: boolean
   document: EditorRenderDocument
   keymapLayers: readonly EditorKeymapLayer[]
+  languageServerTarget?: LanguageServerDocumentTarget
   additionalPlugins?: readonly EditorPlugin[]
   rootPath: string
   tabId: string
@@ -56,6 +58,7 @@ export function Editor({
   definitionTarget,
   document: liveDocument,
   keymapLayers,
+  languageServerTarget,
   rootPath,
   tabId,
   onDirtyChange,
@@ -73,6 +76,7 @@ export function Editor({
   const { languageServer, languageServerStatusSource } = useLanguageServerPlugin({
     enabled: active,
     filePath: liveDocument.path,
+    languageServerTarget,
     rootPath,
     onOpenDefinition,
     onOpenReferences,

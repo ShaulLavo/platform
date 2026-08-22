@@ -35,6 +35,29 @@ export const LSP_SEMANTIC_TOKENS_REFRESH = 'workspace/semanticTokens/refresh'
  */
 export const LSP_SERVER_EXITED = '$/platform/serverExited'
 
+export const LSP_FEATURE_IDS = [
+  'completion',
+  'hover',
+  'navigation',
+  'signatureHelp',
+  'diagnostics',
+  'codeActions',
+  'formatting',
+  'rename',
+  'documentHighlights',
+  'semanticTokens',
+] as const
+
+export type LspFeatureId = (typeof LSP_FEATURE_IDS)[number]
+
+export type LspFeatureRanks = Partial<Readonly<Record<LspFeatureId, number>>>
+
+export type LspMatch = {
+  readonly root: string
+  readonly serverId: string
+  readonly features: LspFeatureRanks
+}
+
 /**
  * What a pooled backend actually agreed to, read out of the `initializeResult`
  * the proxy caches and replays.

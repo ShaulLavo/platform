@@ -4,21 +4,21 @@
 
 ## Status
 
-- **State:** Blocked on plan 050
+- **State:** Ready
 - **Priority:** P2
 - **Effort:** M
 - **Risk:** Medium
 - **Category:** Feature
-- **Depends on:** [Plan 050 — multi-server LSP composition](./050-multi-server-lsp.md), the shipped settings JSON editor, and the shipped settings diagnostics pipeline
-- **Planned against:** platform `a33a0abb`, Editor `42f07a7`, 2026-08-22
+- **Depends on:** the shipped multi-server LSP contracts, the shipped settings JSON editor, and the shipped settings diagnostics pipeline
+- **Planned against:** platform `bbe33820` plus the completed multi-server working tree, Editor `899b3f3` plus the completed server-set working tree, 2026-08-22
 
-## Ordering decision
+## Prerequisite disposition
 
-Implement [plan 050](./050-multi-server-lsp.md) first, then this plan.
+The multi-server prerequisite is implemented and verified. This plan is now the next executable LSP milestone.
 
-The existing process and browser pools can already maintain independent JSON and Biome connections for the same document. They do not decide which server owns completion, formatting, diagnostics, semantic tokens, or visible editor surfaces; the current registry, match route, web hook, plugin, and status source still select one server. JSON first would either displace Biome for ordinary `.json`/`.jsonc` files or introduce JSON-only routing, feature suppression, ready-time configuration, and diagnostics behavior.
+The existing process and browser pools could already maintain independent JSON and Biome connections for the same document. The completed milestone added the missing ordered matching, feature arbitration, composite presentation, feature suppression, ready-time notification, aggregate status, and aggregate diagnostics behavior without replacing either pool.
 
-Plan 050 owns those generic mechanisms. This plan is deliberately the narrow proving consumer:
+The shipped multi-server architecture owns those generic mechanisms. This plan is deliberately the narrow proving consumer:
 
 - register the JSON server and its feature ranks;
 - generate one authoritative settings JSON Schema;
@@ -26,7 +26,7 @@ Plan 050 owns those generic mechanisms. This plan is deliberately the narrow pro
 - exclude LSP diagnostics for settings documents because settings validation already owns them; and
 - verify schema-aware completion and hover without changing pool, routing, or aggregate presentation architecture.
 
-Do not begin this plan until plan 050's done criteria are met and its public contracts are reflected here.
+The public contracts used by this plan are now `LspMatch` and `LspFeatureRanks` in contracts, `matchLspServers` and `bestLspMatchForFeature` in the server registry, and `LanguageServerDocumentTarget` plus `createMatchedLanguageServerPlugin` in the web editor integration.
 
 ## Problem statement
 
@@ -46,13 +46,13 @@ The server registry has no JSON language server. Biome currently matches `.json`
 | Settings keys, scopes, defaults, descriptions, and Valibot validation                         | `packages/contracts/src/settings/keys.ts` and its registry helpers    |
 | Deterministic JSON Schema generation                                                          | The new settings-schema generator under `scripts/`                    |
 | Generated schema artifact and typed import                                                    | `packages/contracts/src/settings/schema.json` and `schema.ts`         |
-| JSON server command, extensions, and feature ranks                                            | Platform server LSP registry using plan 050's descriptor              |
-| Multi-match routing, feature arbitration, connection acquisition, lifecycle, aggregate status | Plan 050 architecture; unchanged by this plan                         |
-| Settings document match path, feature exclusions, and JSON notification payload               | Settings feature code using plan 050's `LanguageServerDocumentTarget` |
+| JSON server command, extensions, and feature ranks                                            | Platform server LSP registry using `LspFeatureRanks`                   |
+| Multi-match routing, feature arbitration, connection acquisition, lifecycle, aggregate status | Shipped multi-server architecture; unchanged by this plan             |
+| Settings document match path, feature exclusions, and JSON notification payload               | Settings feature code using `LanguageServerDocumentTarget`            |
 | Settings diagnostics                                                                          | Existing settings diagnostics plugin and server validation route      |
-| Ordinary JSON formatting/linting                                                              | Biome according to plan 050's ranks and runtime capabilities          |
+| Ordinary JSON formatting/linting                                                              | Biome according to shared ranks and runtime capabilities              |
 
-This plan must not add a connection owner, queue, URI router, reconnect hook, capability table, diagnostic presenter, status store, or special match endpoint. It may only populate the extension points delivered by plan 050.
+This plan must not add a connection owner, queue, URI router, reconnect hook, capability table, diagnostic presenter, status store, or special match endpoint. It may only populate the shipped multi-server extension points.
 
 ## Target design
 
@@ -99,7 +99,7 @@ spawnNodePackageBin('vscode-langservers-extracted', 'vscode-json-language-server
 })
 ```
 
-Register a `json-ls` definition for `.json` and `.jsonc`. Declare only its intended plan-050 feature ranks; do not alter the pool or invent a JSON-specific priority branch. JSON should rank first for schema-aware completion and hover. Biome should remain eligible and rank first for formatting. Diagnostics for ordinary JSON may participate through the composite diagnostics lane according to the shared policy and runtime capability.
+Register a `json-ls` definition for `.json` and `.jsonc`. Declare only its intended `LspFeatureRanks`; do not alter the pool or invent a JSON-specific priority branch. JSON should rank first for schema-aware completion and hover. Biome should remain eligible and rank first for formatting. Diagnostics for ordinary JSON may participate through the composite diagnostics lane according to the shared policy and runtime capability.
 
 Set the JSON server's initialization options to `{ provideFormatter: false }`. It must not advertise or dynamically register a second formatter when Biome owns that feature.
 
@@ -107,7 +107,7 @@ Do not pass schema associations through `initializationOptions`. The Microsoft s
 
 ### 3. Associate the schema with synthetic settings documents
 
-Create settings-owned target data using plan 050's generic `LanguageServerDocumentTarget`:
+Create settings-owned target data using the generic `LanguageServerDocumentTarget`:
 
 ```ts
 {
@@ -126,9 +126,9 @@ Create settings-owned target data using plan 050's generic `LanguageServerDocume
 }
 ```
 
-The exact relative `matchPath` may follow the final plan-050 naming contract, but it must remain inside the workspace boundary and end in `.json`. It is server-selection and root-resolution input for both the match request and the explicit JSON-server websocket; it does not need to exist. The synchronized document URI remains the stable `settings-json:user` or `settings-json:workspace` ID; `DocumentSync` already preserves non-file URI schemes.
+The exact relative `matchPath` must remain inside the workspace boundary and end in `.json`. It is server-selection and root-resolution input for both the collection match request and the explicit JSON-server websocket; it does not need to exist. The synchronized document URI remains the stable `settings-json:user` or `settings-json:workspace` ID; `DocumentSync` already preserves non-file URI schemes.
 
-Send the notification only to `json-ls`, after that lane initializes and before it serves settings document requests. `json/schemaAssociations` replaces backend-wide association state, and the backend is pooled, so every settings lease must send the same complete association containing both stable settings IDs. Re-sending that idempotent payload after a new pooled connection acquisition is plan 050 lifecycle behavior, not a new settings reconnect loop.
+Send the notification only to `json-ls`, after that lane initializes and before it serves settings document requests. `json/schemaAssociations` replaces backend-wide association state, and the backend is pooled, so every settings lease must send the same complete association containing both stable settings IDs. Re-sending that idempotent payload after a new pooled connection acquisition is the shared lane lifecycle, not a new settings reconnect loop.
 
 Disable LSP diagnostics for settings documents before lane construction. The existing settings diagnostics plugin remains the only diagnostic owner because it validates settings-specific scopes, values, and server semantics. Do not remove or weaken it, and do not merge its messages into an LSP-specific store.
 
@@ -140,7 +140,7 @@ Ordinary `.json` and `.jsonc` files use the default file-backed document target:
 - JSON LS provides schema-aware completion and hover when a schema is available;
 - Biome remains the preferred formatting lane;
 - no platform settings schema is associated with ordinary files; and
-- connection, status, diagnostics, and disposal behavior are exactly plan 050's generic behavior.
+- connection, status, diagnostics, and disposal behavior use the shipped generic behavior unchanged.
 
 Do not add filename exceptions for `package.json`, `tsconfig.json`, or settings buffers to the registry. Settings specialization belongs only in the settings target data.
 
@@ -155,18 +155,18 @@ Recheck the installed package declarations before implementation. If the notific
 
 ## Current-source evidence
 
-Before implementation, verify these invariants after plan 050 lands:
+Before implementation, verify these invariants against the shipped multi-server implementation:
 
 - `packages/contracts/src/settings/keys.ts` remains the sole setting descriptor registry.
 - `apps/web/src/features/settings/utils/json-document.ts` still creates stable `settings-json:<scope>` IDs.
 - `apps/web/src/features/editor/utils/file-path.ts` still recognizes those IDs as JSON syntax without treating them as filesystem paths.
 - `apps/web/src/features/settings/state/diagnostics-plugin.ts` still owns settings diagnostics.
 - `apps/server/src/fs/path.ts` still rejects absolute and escaping workspace paths.
-- `apps/server/src/lsp/registry.ts` exposes plan 050's feature-ranked collection matcher and still includes Biome for `.json`/`.jsonc`.
-- the web editor accepts plan 050's generic document target and named ready-time notifications.
+- `apps/server/src/lsp/registry.ts` exposes `matchLspServers` and `bestLspMatchForFeature` and still includes Biome for `.json`/`.jsonc`.
+- the web editor accepts `LanguageServerDocumentTarget` with `matchPath`, `disabledFeatures`, and `sharedNotificationsByServer`.
 - both shipped connection pools remain unchanged and are still keyed by root and server ID.
 
-If any invariant is false, stop and reconcile this plan with the actual completed 050 architecture. Do not revive the old single-winner ordering or add a JSON-only substitute.
+If any invariant is false, stop and reconcile this plan with the shipped multi-server architecture. Do not revive the old single-winner ordering or add a JSON-only substitute.
 
 ## Implementation scope
 
@@ -192,16 +192,16 @@ If any invariant is false, stop and reconcile this plan with the actual complete
 ### Explicitly out of scope
 
 - `apps/server/src/lsp/proxy-session.ts`
-- generic plan-050 match or route contracts
+- generic multi-server match or route contracts
 - `apps/web/src/features/editor/state/language-server-connection-pool.ts`
-- generic plan-050 hooks, plugin construction, status source, or diagnostics aggregation
+- generic multi-server hooks, plugin construction, status source, or diagnostics aggregation
 - `../Editor/packages/lsp-plugin/`
 - the existing settings diagnostics implementation
 - absolute-path relaxation or synthetic-ID-to-file-URI conversion
 - custom JSON content-provider requests
 - a second schema registry, hand-authored settings schema, or web-only key metadata
 
-If the JSON implementation needs an out-of-scope generic change, stop and amend plan 050 instead of placing that responsibility here.
+If the JSON implementation needs an out-of-scope generic change, stop and amend this plan before placing that responsibility anywhere.
 
 ## Git and drift checks
 
@@ -214,7 +214,7 @@ git -C ../Editor status --short
 git -C ../Editor rev-parse --short HEAD
 ```
 
-This plan was authored at platform `a33a0abb` and Editor `42f07a7`, before plan 050 implementation. Its executable baseline is the revision recorded when plan 050 completes. Update the planned revision, current-source evidence, and exact API names before beginning. Never reset or discard existing work.
+This plan was reconciled after the multi-server milestone at platform `bbe33820` and Editor `899b3f3`; the milestone remains in the current working trees because no commit was requested. Re-run the drift check before beginning and preserve every unrelated change. Never reset or discard existing work.
 
 ## Implementation steps and gates
 
@@ -235,7 +235,7 @@ Inspect the generated diff. It must be deterministic, contain every and only reg
 
 ### Step 2: Register and characterize JSON LS
 
-Add the test dependency, server definition, feature ranks, and registry tests. Assert that collection matching for `.json` and `.jsonc` includes both `json-ls` and Biome and that their feature owners follow plan 050's rank policy.
+Add the test dependency, server definition, feature ranks, and registry tests. Assert that `matchLspServers` includes both `json-ls` and Biome for `.json` and `.jsonc`, and that `bestLspMatchForFeature` selects their intended feature owners.
 
 **Gate:** Run:
 
@@ -301,7 +301,7 @@ Use the already-running development server for a manual settings JSON smoke chec
 
 - The generated draft-07 schema contains every and only registered setting keys and passes its drift check.
 - `json-ls` is installed through the existing runtime installer and is available deterministically to focused tests.
-- `.json` and `.jsonc` match JSON LS and Biome under plan 050's shared feature ranks.
+- `.json` and `.jsonc` match JSON LS and Biome under the shared feature ranks.
 - Settings completion and hover use the generated inline schema.
 - Settings document IDs remain `settings-json:user` and `settings-json:workspace` and never become absolute paths.
 - Settings LSP diagnostics are disabled; the existing settings diagnostics pipeline remains the only owner.
@@ -312,8 +312,8 @@ Use the already-running development server for a manual settings JSON smoke chec
 
 Stop and update the plan before continuing if:
 
-- plan 050 is incomplete or its contracts no longer match this plan;
-- JSON requires generic feature routing, status, diagnostics, reconnection, or match behavior not supplied by plan 050;
+- the shared multi-server contracts no longer match this plan;
+- JSON requires generic feature routing, status, diagnostics, reconnection, or match behavior not supplied by the shared architecture;
 - the schema cannot be generated from the setting descriptors without a parallel metadata registry;
 - the JSON server requires absolute file access or a content-provider protocol for the inline schema;
 - settings diagnostics would have more than one owner;
