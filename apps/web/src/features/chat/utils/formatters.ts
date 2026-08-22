@@ -1,6 +1,6 @@
 import type { ModelSelection, ProviderSnapshot } from '@workspace/contracts'
 
-import type { ProjectionThread } from '@/features/chat/state/chat-projection-store'
+import type { ChatThreadListProjection } from '@/features/chat/state/chat-projection-selectors'
 
 // Building an `Intl.DateTimeFormat` costs orders of magnitude more than formatting with
 // one, and these run once per row inside virtualized lists. One formatter per option set,
@@ -19,14 +19,17 @@ const HOUR_MS = 60 * MINUTE_MS
 const DAY_MS = 24 * HOUR_MS
 const WEEK_MS = 7 * DAY_MS
 
-export function compareChatSidebarThreads(left: ProjectionThread, right: ProjectionThread) {
+export function compareChatSidebarThreads(
+  left: ChatThreadListProjection,
+  right: ChatThreadListProjection,
+) {
   return (
     threadSortTimestamp(right).localeCompare(threadSortTimestamp(left)) ||
     left.id.localeCompare(right.id)
   )
 }
 
-export function chatThreadPreview(thread: ProjectionThread) {
+export function chatThreadPreview(thread: ChatThreadListProjection) {
   if (thread.latestTurn?.state === 'running') return 'Working'
   if (thread.session?.lastError) return thread.session.lastError
   if (thread.latestUserMessageAt)
@@ -152,8 +155,8 @@ export function formatWorkingTimer(startIso: string, endIso: string) {
   return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`
 }
 
-function threadSortTimestamp(thread: ProjectionThread) {
-  return thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt
+function threadSortTimestamp(thread: ChatThreadListProjection) {
+  return thread.activityAt
 }
 
 function calendarDateLabel(date: Date, now: Date) {

@@ -35,6 +35,27 @@ export type SessionRailScope = ProjectId | null
 export type SessionRailView = 'active' | 'archived'
 
 type ThreadPlanProgress = NonNullable<ReturnType<typeof threadPlanProgressLabel>>
+type SessionRailThreadSource = Pick<
+  ProjectionThread,
+  | 'archivedAt'
+  | 'branch'
+  | 'createdAt'
+  | 'hasActionableProposedPlan'
+  | 'id'
+  | 'latestTurn'
+  | 'latestUserMessageAt'
+  | 'pendingApprovalCount'
+  | 'pendingUserInputCount'
+  | 'pinOrderKey'
+  | 'planProgress'
+  | 'projectId'
+  | 'session'
+  | 'title'
+  | 'worktreePath'
+> & {
+  readonly activityAt?: string
+  readonly updatedAt?: string
+}
 
 export type SessionRailItem = {
   /** Last thing that happened here. For the row's date label only, never for order. */
@@ -144,7 +165,7 @@ export function sessionRailModel({
   readonly scope?: SessionRailScope
   readonly searchMatches?: SessionSearchMatches
   readonly seenByThreadId?: SessionSeenStamps
-  readonly threads: readonly ProjectionThread[]
+  readonly threads: readonly SessionRailThreadSource[]
   readonly view?: SessionRailView
 }): SessionRailModel {
   const titleByProjectId = new Map(projects.map((project) => [project.id, project.title]))
@@ -192,7 +213,7 @@ export function sessionRailModel({
 
 /** The stage builds one of these for the session it is showing, so header and row agree. */
 export function sessionRailItem(
-  thread: ProjectionThread,
+  thread: SessionRailThreadSource,
   projectTitle: string,
   seenAt: string | undefined,
   pendingOrderKey?: string,
@@ -200,7 +221,8 @@ export function sessionRailItem(
   const completedAt = sessionCompletedAt(thread)
 
   return {
-    activityAt: thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt,
+    activityAt:
+      thread.activityAt ?? thread.latestUserMessageAt ?? thread.updatedAt ?? thread.createdAt,
     archived: Boolean(thread.archivedAt),
     branch: thread.branch ?? null,
     createdAt: thread.createdAt,

@@ -122,7 +122,6 @@ function chatModeSession(dispatched: ClientOrchestrationCommand[]): ChatModeSess
     rootPath: '/repo/platform',
     selectSession: () => {},
     startDraft: () => {},
-    threads: [],
   }
 }
 

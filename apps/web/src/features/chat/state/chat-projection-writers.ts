@@ -809,12 +809,21 @@ function applyThreadMessageSentEvent(
       appendedIds.length - nextIds.length,
     ),
     threadId,
-    {
-      updatedAt: event.payload.updatedAt,
-    },
+    messageThreadPatch(event),
   )
 
   return writeAssistantMessageTurnState(nextState, event)
+}
+
+function messageThreadPatch(
+  event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
+): Partial<ProjectionThread> {
+  if (event.payload.role !== 'user') return { updatedAt: event.payload.updatedAt }
+
+  return {
+    latestUserMessageAt: event.payload.createdAt,
+    updatedAt: event.payload.updatedAt,
+  }
 }
 
 function applyThreadActivityAppendedEvent(
@@ -1279,7 +1288,8 @@ function threadFromDetail(
     return {
       ...previous,
       detailSynced: true,
-      liveTurn: previous.liveTurn ?? thread.latestTurn,
+      liveTurn: thread.latestTurn,
+      pendingSourceProposedPlan: carriedPendingSourcePlan(previous, thread.latestTurn),
     }
   }
 
@@ -1296,11 +1306,11 @@ function threadFromDetail(
     interactionMode: thread.interactionMode ?? DEFAULT_INTERACTION_MODE,
     latestTurn: thread.latestTurn,
     latestUserMessageAt: null,
-    liveTurn: previous?.liveTurn ?? thread.latestTurn,
+    liveTurn: thread.latestTurn,
     metaSource: 'detail',
     modelSelection: thread.modelSelection,
     pendingApprovalCount: 0,
-    pendingSourceProposedPlan: previous?.pendingSourceProposedPlan,
+    pendingSourceProposedPlan: carriedPendingSourcePlan(previous, thread.latestTurn),
     pendingUserInputCount: 0,
     pinOrderKey: previous?.pinOrderKey ?? null,
     planProgress: null,

@@ -480,6 +480,20 @@ test('projects streamed assistant deltas before completion without duplicating t
   })
 })
 
+test('projects the latest user message stamp before the next shell publish', () => {
+  const threadId = parseThreadId('thread-1')
+  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionState(), {
+    projects: [makeProject()],
+    snapshotSequence: 1,
+    threads: [makeThreadShell({ id: threadId })],
+    updatedAt: timestamp(1),
+  })
+
+  state = applyChatProjectionEvent(state, userMessageEvent(threadId))
+
+  expect(state.threadById[threadId]?.latestUserMessageAt).toBe(timestamp(2))
+})
+
 function makeDetailSnapshot({
   checkpoints = [],
   proposedPlans = [],
@@ -774,6 +788,24 @@ function assistantCompleteEvent(
       threadId,
       turnId,
       updatedAt: timestamp(4),
+    },
+    type: 'thread.message-sent',
+  }
+}
+
+function userMessageEvent(threadId: ReturnType<typeof parseThreadId>): OrchestrationEvent {
+  return {
+    ...makeThreadEvent(threadId, 2, 'user-message'),
+    payload: {
+      attachments: [],
+      createdAt: timestamp(2),
+      messageId: parseMessageId('message-user'),
+      role: 'user',
+      streaming: false,
+      text: 'Ship it',
+      threadId,
+      turnId: null,
+      updatedAt: timestamp(2),
     },
     type: 'thread.message-sent',
   }

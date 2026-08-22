@@ -212,7 +212,6 @@ function renderRail({
     rootPath: '/repo/platform',
     selectSession: () => {},
     startDraft: () => {},
-    threads: [],
   }
 
   renderWithProviders(

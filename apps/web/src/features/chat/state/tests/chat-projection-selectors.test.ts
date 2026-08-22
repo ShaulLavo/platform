@@ -2,9 +2,13 @@ import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_PROVIDER_INSTANCE_ID,
   DEFAULT_RUNTIME_MODE,
+  commandIdSchema,
+  eventIdSchema,
+  messageIdSchema,
   projectIdSchema,
   threadIdSchema,
   turnIdSchema,
+  type OrchestrationEvent,
   type OrchestrationThread,
   type OrchestrationThreadShell,
   type ThreadId,
@@ -13,12 +17,14 @@ import {
 import * as v from 'valibot'
 
 import {
+  createChatThreadListSelector,
   selectChatSidebarThreads,
   selectChatSidebarThreadsForProject,
   selectChatThreadById,
 } from '../chat-projection-selectors'
 import { createInitialChatProjectionState } from '../chat-projection-store'
 import {
+  applyChatProjectionEvent,
   syncChatProjectionShellSnapshot,
   syncChatProjectionThreadDetailSnapshot,
 } from '../chat-projection-writers'
@@ -170,6 +176,109 @@ test('a thread with no published turn still shows the turn its detail snapshot c
     turnId,
   })
 })
+
+test('a newer detail snapshot replaces the live turn from the previous snapshot', () => {
+  const threadId = v.parse(threadIdSchema, 'thread-1')
+  const firstTurnId = v.parse(turnIdSchema, 'turn-1')
+  const secondTurnId = v.parse(turnIdSchema, 'turn-2')
+  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionState(), {
+    projects: [],
+    snapshotSequence: 1,
+    threads: [threadShell({ id: threadId, latestTurn: null, projectId, session: null })],
+    updatedAt: timestamp(1),
+  })
+
+  state = syncChatProjectionThreadDetailSnapshot(state, {
+    checkpoints: [],
+    proposedPlans: [],
+    snapshotSequence: 2,
+    thread: { ...staleDetailThread(threadId), latestTurn: completedTurn(firstTurnId, 2) },
+  })
+  state = syncChatProjectionThreadDetailSnapshot(state, {
+    checkpoints: [],
+    proposedPlans: [],
+    snapshotSequence: 3,
+    thread: { ...staleDetailThread(threadId), latestTurn: completedTurn(secondTurnId, 3) },
+  })
+
+  expect(selectChatThreadById(state, threadId)?.latestTurn).toMatchObject({
+    completedAt: timestamp(3),
+    turnId: secondTurnId,
+  })
+})
+
+test('a populated list projection stays stable across streamed token deltas', () => {
+  const threadId = v.parse(threadIdSchema, 'thread-1')
+  const turnId = v.parse(turnIdSchema, 'turn-1')
+  const threads = Array.from({ length: 64 }, (_, index) =>
+    threadShell({
+      id: v.parse(threadIdSchema, `thread-${index + 1}`),
+      projectId,
+      title: `Thread ${index + 1}`,
+    }),
+  )
+  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionState(), {
+    projects: [],
+    snapshotSequence: 1,
+    threads,
+    updatedAt: timestamp(1),
+  })
+  const selectList = createChatThreadListSelector({ includeArchived: true })
+  const before = selectList(state)
+  const canonicalBefore = state.threadById[threadId]
+
+  for (let sequence = 2; sequence <= 20; sequence += 1) {
+    state = applyChatProjectionEvent(state, streamedAssistantDelta(threadId, turnId, sequence))
+  }
+
+  expect(state.threadById[threadId]).not.toBe(canonicalBefore)
+  expect(state.threadById[threadId]?.updatedAt).toBe(timestamp(20))
+  expect(selectList(state)).toBe(before)
+})
+
+function completedTurn(turnId: TurnId, completedAt: number) {
+  return {
+    assistantMessageId: null,
+    completedAt: timestamp(completedAt),
+    requestedAt: timestamp(completedAt - 1),
+    startedAt: timestamp(completedAt - 1),
+    state: 'completed' as const,
+    turnId,
+  }
+}
+
+function streamedAssistantDelta(
+  threadId: ThreadId,
+  turnId: TurnId,
+  sequence: number,
+): OrchestrationEvent {
+  const slug = `token-${sequence}`
+
+  return {
+    actorKind: 'provider',
+    aggregateId: threadId,
+    aggregateKind: 'thread',
+    causationEventId: null,
+    commandId: v.parse(commandIdSchema, `command-${slug}`),
+    correlationId: v.parse(commandIdSchema, `command-${slug}`),
+    eventId: v.parse(eventIdSchema, `event-${slug}`),
+    metadata: {},
+    occurredAt: timestamp(sequence),
+    payload: {
+      attachments: [],
+      createdAt: timestamp(2),
+      messageId: v.parse(messageIdSchema, 'message-streaming'),
+      role: 'assistant',
+      streaming: true,
+      text: 'x',
+      threadId,
+      turnId,
+      updatedAt: timestamp(sequence),
+    },
+    sequence,
+    type: 'thread.message-sent',
+  }
+}
 
 function staleDetailThread(threadId: ThreadId): OrchestrationThread {
   const source = threadShell({ id: threadId, projectId })

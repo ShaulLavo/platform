@@ -13,7 +13,7 @@ import {
   sessionRailModel,
   type SessionRailItem,
 } from '@/features/chat-mode/utils/session-rail-model'
-import { sessionThreads } from '@/features/chat-mode/utils/session-threads'
+import { selectChatSessionThreads } from '@/features/chat/state/chat-projection-selectors'
 import { useActiveProjectStore } from '@/features/workspace/state/active-project'
 
 export type SessionTraversalDirection = 'next' | 'previous'
@@ -140,7 +140,7 @@ function visibleSessions() {
     scope: rail.scope,
     searchMatches: useSessionSearchStore.getState().matchByThreadId,
     seenByThreadId: useSessionReadStore.getState().seenByThreadId,
-    threads: sessionThreads(projection.threadIds, projection.threadById),
+    threads: selectChatSessionThreads(projection),
     view: rail.view,
   }).sessions
 }

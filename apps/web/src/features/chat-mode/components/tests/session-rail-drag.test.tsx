@@ -319,7 +319,6 @@ function renderRail({ reject = false }: { reject?: boolean } = {}) {
     rootPath: '/repo/platform',
     selectSession: () => {},
     startDraft: () => {},
-    threads: [],
   }
 
   setSessionProjectOpener((workspaceRoot) => calls.openedProjects.push(workspaceRoot))

@@ -15,11 +15,10 @@ const EMPTY_MESSAGES: ChatThread['messages'] = []
 const EMPTY_ACTIVITIES: OrchestrationThreadActivity[] = []
 const EMPTY_PROJECTS: OrchestrationProjectShell[] = []
 const EMPTY_PROPOSED_PLANS: ChatThread['proposedPlans'] = []
-const EMPTY_THREADS: ProjectionThread[] = []
+const EMPTY_THREAD_LIST: ChatThreadListProjection[] = []
 const EMPTY_TURN_DIFF_SUMMARIES: ChatThread['turnDiffSummaries'] = []
 
 const collectedByIdsCache = new WeakMap<readonly string[], WeakMap<object, readonly unknown[]>>()
-const unarchivedThreadsCache = new WeakMap<object, ProjectionThread[]>()
 const threadCache = new WeakMap<
   ProjectionThread,
   {
@@ -31,43 +30,185 @@ const threadCache = new WeakMap<
   }
 >()
 
+/**
+ * The fields a list surface can observe from a canonical thread. `liveTurn` and raw
+ * `updatedAt` deliberately stay out: message deltas update both for every streamed
+ * token, while the rail reads the shell-published turn and a stable activity stamp.
+ */
+export type ChatThreadListProjection = Pick<
+  ProjectionThread,
+  | 'archivedAt'
+  | 'branch'
+  | 'createdAt'
+  | 'hasActionableProposedPlan'
+  | 'id'
+  | 'latestTurn'
+  | 'latestUserMessageAt'
+  | 'pendingApprovalCount'
+  | 'pendingUserInputCount'
+  | 'pinOrderKey'
+  | 'planProgress'
+  | 'projectId'
+  | 'session'
+  | 'title'
+  | 'worktreePath'
+> & {
+  readonly activityAt: string
+}
+
+type ChatThreadListSelector = (state: ChatProjectionState) => ChatThreadListProjection[]
+
+const selectAllSidebarThreads = createChatThreadListSelector({ includeArchived: false })
+const selectAllSessionThreads = createChatThreadListSelector({ includeArchived: true })
+const projectSidebarSelectors = new Map<ProjectId, ChatThreadListSelector>()
+const projectSessionSelectors = new Map<ProjectId, ChatThreadListSelector>()
+
 export function selectChatProjects(state: ChatProjectionState) {
   return collectByIds(state.projectIds, state.projectById, EMPTY_PROJECTS)
 }
 
-export function selectChatSidebarThreads(state: ChatProjectionState): ProjectionThread[] {
-  return unarchivedThreads(collectByIds(state.threadIds, state.threadById, EMPTY_THREADS))
+export function selectChatSidebarThreads(state: ChatProjectionState): ChatThreadListProjection[] {
+  return selectAllSidebarThreads(state)
 }
 
 export function selectChatSidebarThreadsForProject(
   state: ChatProjectionState,
   projectId: ProjectId | null | undefined,
-): ProjectionThread[] {
-  if (!projectId) return EMPTY_THREADS
+): ChatThreadListProjection[] {
+  if (!projectId) return EMPTY_THREAD_LIST
 
-  const threadIds = state.threadIdsByProjectId[projectId]
+  return projectThreadListSelector(projectSidebarSelectors, projectId, false)(state)
+}
 
-  return unarchivedThreads(collectByIds(threadIds, state.threadById, EMPTY_THREADS))
+/** Every registered thread, including archived rows, for the rail and command palette. */
+export function selectChatSessionThreads(state: ChatProjectionState): ChatThreadListProjection[] {
+  return selectAllSessionThreads(state)
+}
+
+export function selectChatSessionThreadsForProject(
+  state: ChatProjectionState,
+  projectId: ProjectId | null | undefined,
+): ChatThreadListProjection[] {
+  if (!projectId) return EMPTY_THREAD_LIST
+
+  return projectThreadListSelector(projectSessionSelectors, projectId, true)(state)
 }
 
 /**
- * Archiving means "leave the list", so an archived thread is not a sidebar thread at
- * all: every surface that picks one — the rail, the side panel, chat mode's auto-pick —
- * reads it out of here, which is the only way they can agree by construction. Cached on
- * the collected array's identity because these feed zustand selectors, and a fresh array
- * per read is a re-render loop.
+ * Creates a selector whose result changes only when a field a list can render changes.
+ * The canonical record remains the sole owner; this is a memoized read projection, not
+ * another store or synchronization path.
  */
-function unarchivedThreads(threads: ProjectionThread[]): ProjectionThread[] {
-  if (threads.length === 0) return EMPTY_THREADS
+export function createChatThreadListSelector({
+  includeArchived,
+  projectId,
+}: {
+  readonly includeArchived: boolean
+  readonly projectId?: ProjectId
+}): ChatThreadListSelector {
+  let previous = EMPTY_THREAD_LIST
 
-  const cached = unarchivedThreadsCache.get(threads)
-  if (cached) return cached
+  return (state) => {
+    const threadIds = projectId ? state.threadIdsByProjectId[projectId] : state.threadIds
+    const previousById = new Map(previous.map((thread) => [thread.id, thread]))
+    const next = (threadIds ?? []).flatMap((threadId) => {
+      const thread = state.threadById[threadId]
+      if (!thread) return []
+      if (!includeArchived && thread.archivedAt) return []
 
-  const visible = threads.filter((thread) => !thread.archivedAt)
-  const result = visible.length === threads.length ? threads : visible
-  unarchivedThreadsCache.set(threads, result)
+      return [threadListProjection(thread, previousById.get(threadId))]
+    })
 
-  return result
+    if (sameItems(previous, next)) return previous
+
+    previous = next
+    return next
+  }
+}
+
+function projectThreadListSelector(
+  selectors: Map<ProjectId, ChatThreadListSelector>,
+  projectId: ProjectId,
+  includeArchived: boolean,
+) {
+  const held = selectors.get(projectId)
+  if (held) return held
+
+  const created = createChatThreadListSelector({ includeArchived, projectId })
+  selectors.set(projectId, created)
+
+  return created
+}
+
+function threadListProjection(
+  thread: ProjectionThread,
+  previous: ChatThreadListProjection | undefined,
+): ChatThreadListProjection {
+  const activityAt = threadListActivityAt(thread)
+  if (previous && listProjectionMatches(previous, thread, activityAt)) return previous
+
+  return {
+    activityAt,
+    archivedAt: thread.archivedAt,
+    branch: thread.branch,
+    createdAt: thread.createdAt,
+    hasActionableProposedPlan: thread.hasActionableProposedPlan,
+    id: thread.id,
+    latestTurn: thread.latestTurn,
+    latestUserMessageAt: thread.latestUserMessageAt,
+    pendingApprovalCount: thread.pendingApprovalCount,
+    pendingUserInputCount: thread.pendingUserInputCount,
+    pinOrderKey: thread.pinOrderKey,
+    planProgress: thread.planProgress,
+    projectId: thread.projectId,
+    session: thread.session,
+    title: thread.title,
+    worktreePath: thread.worktreePath,
+  }
+}
+
+function listProjectionMatches(
+  previous: ChatThreadListProjection,
+  thread: ProjectionThread,
+  activityAt: string,
+) {
+  return (
+    previous.activityAt === activityAt &&
+    previous.archivedAt === thread.archivedAt &&
+    previous.branch === thread.branch &&
+    previous.createdAt === thread.createdAt &&
+    previous.hasActionableProposedPlan === thread.hasActionableProposedPlan &&
+    previous.id === thread.id &&
+    previous.latestTurn === thread.latestTurn &&
+    previous.latestUserMessageAt === thread.latestUserMessageAt &&
+    previous.pendingApprovalCount === thread.pendingApprovalCount &&
+    previous.pendingUserInputCount === thread.pendingUserInputCount &&
+    previous.pinOrderKey === thread.pinOrderKey &&
+    previous.planProgress === thread.planProgress &&
+    previous.projectId === thread.projectId &&
+    previous.session === thread.session &&
+    previous.title === thread.title &&
+    previous.worktreePath === thread.worktreePath
+  )
+}
+
+function threadListActivityAt(thread: ProjectionThread) {
+  return (
+    thread.latestUserMessageAt ??
+    thread.latestTurn?.completedAt ??
+    thread.latestTurn?.requestedAt ??
+    thread.updatedAt ??
+    thread.createdAt
+  )
+}
+
+function sameItems(
+  previous: readonly ChatThreadListProjection[],
+  next: readonly ChatThreadListProjection[],
+) {
+  if (previous.length !== next.length) return false
+
+  return previous.every((thread, index) => thread === next[index])
 }
 
 /**

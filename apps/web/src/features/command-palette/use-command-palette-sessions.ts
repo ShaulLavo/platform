@@ -1,8 +1,10 @@
-import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
+import {
+  selectChatProjects,
+  selectChatSessionThreads,
+} from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { useSessionReadStore } from '@/features/chat-mode/state/session-read-store'
 import { sessionRailModel } from '@/features/chat-mode/utils/session-rail-model'
-import { sessionThreads } from '@/features/chat-mode/utils/session-threads'
 
 /**
  * The palette's view of chat: every project's inbox in one list, built from the same
@@ -11,13 +13,12 @@ import { sessionThreads } from '@/features/chat-mode/utils/session-threads'
  */
 export function useCommandPaletteSessions() {
   const projects = useChatProjectionStore(selectChatProjects)
-  const threadIds = useChatProjectionStore((state) => state.threadIds)
-  const summaryById = useChatProjectionStore((state) => state.threadById)
+  const threads = useChatProjectionStore(selectChatSessionThreads)
   const seenByThreadId = useSessionReadStore((state) => state.seenByThreadId)
   const model = sessionRailModel({
     projects,
     seenByThreadId,
-    threads: sessionThreads(threadIds, summaryById),
+    threads,
     view: 'active',
   })
 

@@ -16,7 +16,10 @@ import {
 } from '@phosphor-icons/react'
 import { useState, type KeyboardEvent } from 'react'
 
-import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
+import {
+  selectChatProjects,
+  selectChatSessionThreads,
+} from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { SessionBulkBar } from '@/features/chat-mode/components/session-bulk-bar'
 import { SessionGroup } from '@/features/chat-mode/components/session-group'
@@ -42,7 +45,6 @@ import {
   sessionRailModel,
   type SessionRailView,
 } from '@/features/chat-mode/utils/session-rail-model'
-import { sessionThreads } from '@/features/chat-mode/utils/session-threads'
 import { Button } from '@workspace/ui/components/button'
 import { Input } from '@workspace/ui/components/input'
 import { cn } from '@workspace/ui/lib/utils'
@@ -56,8 +58,7 @@ export function SessionRail() {
   const projectOrderKeys = useRailOrderStore((state) => state.projectOrderKeys)
   const sessionOrderKeys = useRailOrderStore((state) => state.sessionOrderKeys)
   const projects = useChatProjectionStore(selectChatProjects)
-  const threadIds = useChatProjectionStore((state) => state.threadIds)
-  const summaryById = useChatProjectionStore((state) => state.threadById)
+  const threads = useChatProjectionStore(selectChatSessionThreads)
   const seenByThreadId = useSessionReadStore((state) => state.seenByThreadId)
   const collapsedProjectIds = useSessionRailStore((state) => state.collapsedProjectIds)
   const query = useSessionRailStore((state) => state.query)
@@ -81,7 +82,7 @@ export function SessionRail() {
     scope,
     searchMatches,
     seenByThreadId,
-    threads: sessionThreads(threadIds, summaryById),
+    threads,
     view,
   })
 

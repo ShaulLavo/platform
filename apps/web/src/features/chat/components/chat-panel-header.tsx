@@ -10,7 +10,7 @@ import {
 import { ChatCircleIcon, ClockCounterClockwiseIcon, PlusIcon } from '@phosphor-icons/react'
 
 import { chatThreadPreview, formatChatDateLabel } from '@/features/chat/utils/formatters'
-import type { ProjectionThread } from '../state/chat-projection-store'
+import type { ChatThreadListProjection } from '../state/chat-projection-selectors'
 
 export function ChatPanelHeader({
   activeThreadId,
@@ -25,7 +25,7 @@ export function ChatPanelHeader({
   disabled: boolean
   onNewChat: () => void
   onSelectThread: (threadId: ThreadId) => void
-  threads: readonly ProjectionThread[]
+  threads: readonly ChatThreadListProjection[]
 }) {
   const historyDisabled = threads.length === 0
   const activeThread = threads.find((thread) => thread.id === activeThreadId)
@@ -85,7 +85,7 @@ export function ChatPanelHeader({
                   {thread.title}
                 </span>
                 <span className='text-muted-foreground text-[11px] tabular-nums'>
-                  {formatChatDateLabel(thread.updatedAt)}
+                  {formatChatDateLabel(thread.activityAt)}
                 </span>
                 <span className='text-muted-foreground col-span-2 truncate text-[11px] tabular-nums'>
                   {chatThreadPreview(thread)}

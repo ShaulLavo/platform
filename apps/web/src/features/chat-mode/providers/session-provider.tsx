@@ -3,7 +3,7 @@ import { useEffect, useMemo, type ReactNode } from 'react'
 import { createLocalChatEnvironment } from '@/features/chat/environment/local-chat-environment'
 import { useChatShellSubscription } from '@/features/chat/hooks/use-chat-shell-subscription'
 import { useWorkspaceChatProject } from '@/features/chat/hooks/use-workspace-chat-project'
-import { selectChatSidebarThreadsForProject } from '@/features/chat/state/chat-projection-selectors'
+import { selectChatSessionThreadsForProject } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import { ProjectDeleteDialog } from '@/features/chat-mode/components/project-delete-dialog'
@@ -22,8 +22,6 @@ import { compareSessionsForRail } from '@/features/chat-mode/utils/session-order
 import { useOpenWorkspaceRoot } from '@/features/workspace/hooks/use-open-root'
 import { useActiveProjectStore } from '@/features/workspace/state/active-project'
 
-const NO_PROJECT_THREAD_IDS: readonly never[] = []
-
 export function ChatModeSessionProvider({
   children,
   editorRootPath,
@@ -40,19 +38,15 @@ export function ChatModeSessionProvider({
   const projectState = useWorkspaceChatProject({ environment, rootPath })
   const projectId = projectState.project?.id ?? null
   const projectThreads = useChatProjectionStore((state) =>
-    selectChatSidebarThreadsForProject(state, projectId),
+    selectChatSessionThreadsForProject(state, projectId),
   )
-  const projectThreadIds = useChatProjectionStore((state) =>
-    projectId
-      ? (state.threadIdsByProjectId[projectId] ?? NO_PROJECT_THREAD_IDS)
-      : NO_PROJECT_THREAD_IDS,
-  )
-  const summaryById = useChatProjectionStore((state) => state.threadById)
-  const threads = projectThreads.toSorted(compareSessionsForRail)
+  const threads = projectThreads
+    .filter((thread) => !thread.archivedAt)
+    .toSorted(compareSessionsForRail)
   const threadIds = threads.map((thread) => thread.id)
-  const archivedThreadIds = projectThreadIds.filter((threadId) =>
-    Boolean(summaryById[threadId]?.archivedAt),
-  )
+  const archivedThreadIds = projectThreads
+    .filter((thread) => Boolean(thread.archivedAt))
+    .map((thread) => thread.id)
   const restored = useSessionSelectionStore((state) => state.restored)
   const selection = useSessionSelectionStore((state) => state.selection)
   const selectSession = useSessionSelectionStore((state) => state.selectSession)
@@ -97,7 +91,6 @@ export function ChatModeSessionProvider({
     rootPath: projectState.project?.workspaceRoot ?? rootPath,
     selectSession,
     startDraft,
-    threads,
   }
 
   return (
