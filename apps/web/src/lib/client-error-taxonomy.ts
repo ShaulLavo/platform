@@ -83,6 +83,8 @@ export function clientErrorMessage(input: unknown): string {
 }
 
 export function reportError(error: ClientError): void {
+  if (isAbortError(error.cause)) return
+
   reportClientError({
     area: 'client-error-taxonomy',
     category: error.category,

@@ -87,3 +87,18 @@ test('reports connectivity below error and retains path and stack diagnostics', 
     token: '[redacted]',
   })
 })
+
+test('does not report aborted operations', () => {
+  const errorLog = vi.spyOn(log, 'error').mockImplementation(() => {})
+  const warn = vi.spyOn(log, 'warn').mockImplementation(() => {})
+
+  try {
+    reportError(toClientError(new DOMException('Aborted', 'AbortError')))
+
+    expect(errorLog).not.toHaveBeenCalled()
+    expect(warn).not.toHaveBeenCalled()
+  } finally {
+    errorLog.mockRestore()
+    warn.mockRestore()
+  }
+})
