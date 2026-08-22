@@ -11,10 +11,6 @@ export function wallpaperMediaKind(contentType: string | null): WallpaperMediaKi
   return 'image'
 }
 
-export function isAbortError(error: unknown): boolean {
-  return error instanceof DOMException && error.name === 'AbortError'
-}
-
 // An animated wallpaper is decorative motion behind translucent panes, so it is
 // exactly what "reduce motion" is asking us to drop. Skipping the video source
 // also skips a permanent full-screen decode loop.
