@@ -93,6 +93,12 @@ export const editorCommands = [
     vscodeCommandIds: ['editor.action.revealDefinition'],
   }),
   defineEditorCommand({
+    icon: ChatTextIcon,
+    id: 'editor.action.showHover',
+    title: 'Show hover',
+    vscodeCommandIds: ['editor.action.showHover'],
+  }),
+  defineEditorCommand({
     icon: LinkIcon,
     id: 'editor.action.goToReferences',
     keys: [
