@@ -1,3 +1,5 @@
+import type { FileTreeSearchBlurBehavior } from '@workspace/tree/utils/model/publicTypes'
+
 export type FileTreeRowClickMode = 'flow' | 'sticky'
 
 // A pure representation of what a mouse click on a file-tree row means. The
@@ -20,12 +22,13 @@ export type FileTreeRowClickPlanInput = {
   mode: FileTreeRowClickMode
   isSearchOpen: boolean
   isDirectory: boolean
+  searchBlurBehavior: FileTreeSearchBlurBehavior
 }
 
 export function computeFileTreeRowClickPlan(
   input: FileTreeRowClickPlanInput,
 ): FileTreeRowClickPlan {
-  const { event, mode, isSearchOpen, isDirectory } = input
+  const { event, mode, isSearchOpen, isDirectory, searchBlurBehavior } = input
   const additive = event.ctrlKey || event.metaKey
   const hasModifier = event.shiftKey || additive
 
@@ -38,7 +41,7 @@ export function computeFileTreeRowClickPlan(
   // Sticky rows are aria-hidden mirrors of in-flow rows, so every sticky click
   // must hand off to the canonical row even when modifiers suppress toggling.
   return {
-    closeSearch: isSearchOpen,
+    closeSearch: isSearchOpen && searchBlurBehavior === 'close',
     revealCanonical: mode === 'sticky',
     selection,
     toggleDirectory: !hasModifier && isDirectory,

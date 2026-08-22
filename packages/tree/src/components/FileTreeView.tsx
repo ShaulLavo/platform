@@ -73,6 +73,7 @@ import {
 } from '@workspace/tree/utils/render/focusHelpers'
 import { createFileTreeIconResolver } from '@workspace/tree/utils/render/iconResolver'
 import { classifyFileTreeRenameHandoff } from '@workspace/tree/utils/render/renameHandoff'
+import { transitionControllerSnapshotSubscription } from '@workspace/tree/utils/render/controllerSnapshotSubscription'
 import { RenameInput } from '@workspace/tree/components/RenameInput'
 import { computeFileTreeRowElementAttributes } from '@workspace/tree/utils/render/rowAttributes'
 import {
@@ -1186,6 +1187,7 @@ export function FileTreeView({
   const touchLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const ignoredInheritanceCache = useMemo(() => new Map<string, boolean>(), [])
   const [, setControllerRevision] = useState(0)
+  const hasSeenInitialControllerSnapshotRef = useRef(false)
   const [activeItemPath, setActiveItemPath] = useState<string | null>(null)
   const [contextHoverPath, setContextHoverPath] = useState<string | null>(null)
   const [contextMenuAnchorTop, setContextMenuAnchorTop] = useState<number | null>(null)
@@ -1879,6 +1881,30 @@ export function FileTreeView({
     }, TOUCH_LONG_PRESS_DELAY)
   }
 
+  const submitFocusedSearchResult = (): void => {
+    const currentFocusedPath = controller.getFocusedPath()
+    if (currentFocusedPath != null) {
+      controller.selectOnlyPath(currentFocusedPath)
+    }
+
+    if (searchBlurBehavior === 'retain') return
+
+    const scrollElement = scrollRef.current
+    const viewportHeight = readMeasuredViewportHeight(scrollElement, resolvedViewportHeight)
+    restoreTreeFocusViewportOffsetRef.current =
+      focusedIndex < 0 || scrollElement == null
+        ? null
+        : Math.max(
+            0,
+            Math.min(
+              focusedIndex * itemHeight - scrollElement.scrollTop,
+              Math.max(0, viewportHeight - itemHeight),
+            ),
+          )
+    restoreTreeFocusAfterSearchCloseRef.current = true
+    controller.closeSearch()
+  }
+
   const handleTreeKeyDown = (event: KeyboardEvent): void => {
     if (contextMenuState != null) {
       if (event.key === 'Escape') {
@@ -1896,6 +1922,10 @@ export function FileTreeView({
     }
 
     if (renameView.isActive()) {
+      if (event.isComposing || event.keyCode === 229) {
+        return
+      }
+
       if (event.key === 'Escape') {
         renameView.cancel()
       } else if (event.key === 'Enter') {
@@ -1924,24 +1954,7 @@ export function FileTreeView({
         restoreTreeFocusViewportOffsetRef.current = null
         controller.closeSearch()
       } else if (event.key === 'Enter') {
-        const currentFocusedPath = controller.getFocusedPath()
-        if (currentFocusedPath != null) {
-          controller.selectOnlyPath(currentFocusedPath)
-        }
-        const scrollElement = scrollRef.current
-        const viewportHeight = readMeasuredViewportHeight(scrollElement, resolvedViewportHeight)
-        restoreTreeFocusViewportOffsetRef.current =
-          focusedIndex < 0 || scrollElement == null
-            ? null
-            : Math.max(
-                0,
-                Math.min(
-                  focusedIndex * itemHeight - scrollElement.scrollTop,
-                  Math.max(0, viewportHeight - itemHeight),
-                ),
-              )
-        restoreTreeFocusAfterSearchCloseRef.current = true
-        controller.closeSearch()
+        submitFocusedSearchResult()
       } else if (event.key === 'ArrowDown') {
         controller.focusNextSearchMatch()
       } else if (event.key === 'ArrowUp') {
@@ -2361,12 +2374,13 @@ export function FileTreeView({
     }
 
     updateViewportRef.current = update
-    let hasSeenInitialControllerSnapshot = false
     const unsubscribe = controller.subscribe(() => {
-      if (hasSeenInitialControllerSnapshot) {
+      const transition = transitionControllerSnapshotSubscription(
+        hasSeenInitialControllerSnapshotRef.current,
+      )
+      hasSeenInitialControllerSnapshotRef.current = transition.hasSeenInitialSnapshot
+      if (transition.shouldBumpRevision) {
         setControllerRevision((revision) => revision + 1)
-      } else {
-        hasSeenInitialControllerSnapshot = true
       }
       update()
     })
@@ -3121,6 +3135,7 @@ export function FileTreeView({
         isDirectory: row.kind === 'directory',
         isSearchOpen,
         mode,
+        searchBlurBehavior,
       })
 
       const shouldToggleDirectory = plan.toggleDirectory && row.kind === 'directory'
@@ -3183,6 +3198,7 @@ export function FileTreeView({
       layoutSnapshot.visible.endIndex,
       layoutSnapshot.visible.startIndex,
       revealCanonicalRowAtStickyOffset,
+      searchBlurBehavior,
     ],
   )
 

@@ -424,6 +424,7 @@ export class PathStoreBuilder {
           })
           stackTop++
           dirStack[stackTop] = nodeId
+          segmentStart = endIndex + 1
         }
 
         const directoryId = dirStack[stackTop]

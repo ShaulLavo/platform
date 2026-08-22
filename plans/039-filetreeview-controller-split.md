@@ -1,13 +1,30 @@
 # Plan 039: Split FileTreeView and FileTreeController along their real seams
 
-> ## NEW PREREQUISITE — 2026-08-22: reconcile the copied package with Pierre first
+> ## PREREQUISITE SATISFIED — 2026-08-22: Pierre reconciliation is the baseline
 >
-> Do not resume Step 3 until Plan 036 (`036-reconcile-tree-with-pierre-upstream.md`) is complete.
-> `packages/tree` was copied from Pierre's Trees/path-store fork and upstream behavior has advanced
-> since the imported base. Plan 036 restores license/provenance, hand-ports applicable fixes, and
-> refreshes this plan's drift/line references. Verify `packages/tree/UPSTREAM.md` exists and the
-> upstream reconciliation gates are green. If it is absent, stop and report
-> `blocked: Plan 036 upstream reconciliation is not complete`.
+> The upstream reconciliation is complete: imported fork SHA
+> `89a601652175d1a79d3bd991b71ee6b9022a2884`, merge base
+> `af02e6ddbb4a9d327581942682493bcdf687857f`, and last-audited Pierre `main`
+> `55a941914056af44c78c4ba607b37130f189fb70` on 2026-08-22. The completed reconciliation plan and
+> its package-level documentation artifacts were deleted by repository cleanup. Before resuming
+> Step 3, capture a fresh Step 0 baseline.
+>
+> The post-reconciliation starting point is `FileTreeView.tsx` **3,491 lines** and
+> `FileTreeController.ts` **2,080 lines**. Tree node/DOM tests are **10 files / 109 tests**, browser
+> tests are **6 tests**, and lint remains **0 errors / 4 pre-existing warnings**. These counts are
+> orientation only; the baseline-delta rules below still govern. The reconciliation's controller search
+> behavior, path-store fix, and regression tests are now baseline, not scope for Steps 3–6. Since
+> this plan's Step 1 already landed, the remaining work must not modify `FileTreeController.ts`.
+>
+> Numeric `:line` references in the preserved historical/landed sections below describe the older
+> `b467b3f` layout. For active Steps 3–6, navigate by the named symbol and refresh with `rg -n`
+> before moving it. The authoritative post-reconciliation anchors are:
+>
+> - `FileTreeView` starts at line 1129; its component-lifetime refs/state span 1149–1209.
+> - `handleTreeKeyDown` starts at 1908 and remains deliberately deferred to Plan 051.
+> - context-menu derivation/hover handlers start at 2570, 2896, 2918, and 2953.
+> - the window drag cleanup and tree drag handlers span 2957–3019.
+> - row rendering helpers remain above the component at lines 115–1127.
 
 > ## CORRECTION — 2026-08-17: the plan author rules on the Step 3 contradiction
 >
@@ -57,13 +74,13 @@ refs`). Measured after them, at `b467b3f`: the `packages/tree` suite went from
 > lint error or warning may appear. A failure already recorded in your snapshot is
 > not yours to fix and must not block you.
 >
-> Measured at `b467b3f`, for orientation only — never as an assertion:
+> Measured after the upstream reconciliation, for orientation only — never as an assertion:
 > `packages/tree` lint is **0 errors / 4 warnings** (all `unicorn(no-new-array)`:
 > one in `src/utils/renameFileTreePaths.ts:103`, three in
 > `src/utils/path-store/projection.ts` at 563, 592, 696). **4 is the number to
 > return to.** The older text below names three warnings in
 > `src/utils/path-store/static-store.ts` — that is stale; they moved. The
-> `packages/tree` suite is **6 files / 85 tests**.
+> `packages/tree` suite is **10 files / 109 tests**, and its browser suite is **6 tests**.
 
 > **GATE NOTE (fresh-context review, 2026-08-16; resolved)**: the characterization
 > work landed in `5774dc6`. This plan remains hard-gated on those tests being
@@ -87,9 +104,10 @@ refs`). Measured after them, at `b467b3f`: the `packages/tree` suite went from
 > git diff --stat ace313f..HEAD -- packages/tree/src/components packages/tree/src/hooks packages/tree/src/utils/model/FileTreeController.ts packages/tree/src/utils/render packages/tree/src/utils/tests
 > ```
 >
-> The working tree is **not** clean at `ace313f`, so also run
-> `git diff --stat -- packages/tree` to see uncommitted drift the SHA range
-> misses. It should be empty; anything there is someone else's in-flight work.
+> Also run `git diff --stat -- packages/tree` to see uncommitted drift the SHA range misses. The
+> completed upstream-reconciliation source/tests may still be uncommitted; validate them against
+> the post-reconciliation baseline above, then preserve them. Any other active
+> overlap in the remaining Steps 3–6 files is a STOP condition until its owner reconciles it.
 >
 > The completed dead-code cleanup deleted `hooks/useFileTreeSearch.ts`,
 > `hooks/useFileTreeSelector.ts`, and a 45-line debug effect from
@@ -106,22 +124,21 @@ refs`). Measured after them, at `b467b3f`: the `packages/tree` suite went from
 - **Priority**: P2
 - **Effort**: L
 - **Risk**: HIGH
-- **Depends on**: Plan 036 upstream reconciliation (**MANDATORY**), the path-store characterization
-  suite (`5774dc6`, **MANDATORY** — see Step 0), and the dead-code cleanup (landed; verified by source
-  check)
+- **Depends on**: the completed Pierre reconciliation recorded at the top of this plan, the
+  path-store characterization suite (`5774dc6`, **MANDATORY** — see Step 0), and the dead-code
+  cleanup (landed; verified by source check)
 - **Category**: complexity
 - **Planned at**: commit `ace313f`, 2026-08-16
 
 ## Why this matters
 
-`packages/tree/src/components/FileTreeView.tsx` is **3,555 lines in one function
-scope**: 45 `useRef` declarations, 13 `useLayoutEffect` calls, 10 `useState`
-declarations, and five independent concerns (row rendering, keyboard navigation, drag/touch,
+`packages/tree/src/components/FileTreeView.tsx` is **3,491 lines after upstream reconciliation**,
+still dominated by one function scope: dozens of refs, layout effects, and state declarations,
+plus five independent concerns (row rendering, keyboard navigation, drag/touch,
 sticky-focus preservation, context menu) all mutating the same refs across the
-same effects. An audit of this repository found it is the **only file in the
-codebase that violates the nesting rule in `AGENTS.md`**, and the whole package
-has 9 test cases over 20K lines (7 in the `node`+`dom` projects, 2 in `browser`).
-Every bug fix here is a guess with a 3,555-line blast radius.
+same effects. The post-reconciliation package has 109 node/DOM cases and 6 browser cases, including
+the upstream behavior characterizations that now protect this split. Even with those gates, every
+structural edit still has a 3,491-line blast radius until these seams move.
 
 The file carries its own TODO proposing a split. **That TODO is wrong and this
 plan deliberately contradicts it** — see "The TODO is wrong" below. This plan
@@ -131,7 +148,7 @@ twelve.
 
 ## The TODO is wrong — read this before you plan your own order
 
-`packages/tree/src/components/FileTreeView.tsx:3-4`:
+The file-level TODO near the top of `packages/tree/src/components/FileTreeView.tsx` says:
 
 ```ts
 // TODO: split this up — at 3545 lines this component is far too large and should
@@ -147,8 +164,8 @@ Measured against the file, that list is wrong in **both** directions:
 - **The two largest clusters are missing from it.** Drag/touch (~600 lines) and
   the context menu (~500 lines) are not named at all.
 - **`keyboard nav` is named but is deliberately NOT extracted here.**
-  `handleTreeKeyDown` (`FileTreeView.tsx:1948`) and the ~260 lines it dispatches
-  through (`:1948-2210`) read and write _both_ the sticky-focus machine (Step 2)
+  `handleTreeKeyDown` (starting at post-reconciliation line 1908) and the navigation branches it
+  dispatches through read and write _both_ the sticky-focus machine (Step 2)
   and the context-menu state (Step 5). It can only be extracted cleanly after
   both land. Extracting it in this plan is **out of scope** — see the Scope
   section. Do not add a "Step 8" for it.
@@ -162,19 +179,19 @@ end up with a dozen ref parameters and the refactor makes the file worse.
 
 ### Files
 
-- `packages/tree/src/components/FileTreeView.tsx` — 3,555 lines. The Preact
+- `packages/tree/src/components/FileTreeView.tsx` — 3,491 lines at the post-reconciliation baseline. The Preact
   component that renders the whole tree. Everything this plan splits lives here.
-- `packages/tree/src/utils/model/FileTreeController.ts` — 2,014 lines. The model
-  the view drives. This plan touches exactly 3 lines of it (Step 1).
+- `packages/tree/src/utils/model/FileTreeController.ts` — 2,080 lines at the post-reconciliation baseline.
+  Step 1's three-line change already landed; Steps 3–6 do not modify this file.
 - `packages/tree/src/utils/render/focusHelpers.ts` — the exemplar for extracted
   pure DOM helpers. Match its shape when you create new `utils/render/*` files.
 - `packages/tree/src/utils/tests/controller.test.ts` — the exemplar for new node
   tests. Match its `describe`/`it` shape.
 - `packages/tree/src/components/FileTree.test.tsx` — dom-project tests.
-  `controller.test.ts` + this file are the 7 cases the `test` script runs.
+  It is part of the 109-case post-reconciliation node/DOM baseline.
 - `packages/tree/src/components/FileTree.browser.tsx` — browser-project tests
-  (2 cases), run only by `test:browser`.
-- `apps/web/src/components/workspace/file-tree/` — the app's consumer. Its tests
+  (6 cases after reconciliation), run only by `test:browser`.
+- `apps/web/src/features/workspace/` — the app's consumer. Its tests
   (`tests/tree-pane.test.ts`) drive `FileTree` from `@workspace/tree` and are a
   second gate for this work.
 
@@ -195,7 +212,7 @@ component and every hook you create import from `preact/hooks`, not `react`.
 (`packages/tree/src/hooks/useFileTree.ts` _does_ import from `react` — that is
 the React wrapper for app consumers, a different thing. Leave it alone.)
 
-`FileTreeView.tsx:1140` also carries `'use no memo'` at the top of the component
+`FileTreeView.tsx:1148` also carries `'use no memo'` at the top of the component
 body. Keep it.
 
 ### Cluster 1 — the sticky-keyboard 3-mode machine (Step 2)
@@ -567,19 +584,19 @@ add an `index.ts` barrel and do **not** restructure the exports map.
 ## Commands you will need
 
 Run all of these from the repo root unless the command says otherwise. The
-"expected" column describes the **shape** of a passing run. Absolute counts in it
-are orientation readings at `b467b3f`, not assertions — compare against your own
+"expected" column describes the **shape** of a passing run. Absolute counts are
+post-reconciliation orientation readings, not assertions — compare against your own
 Step 0 snapshot, never against a number printed in this plan.
 
-| Purpose                 | Command                                                                                               | Expected on success                                                                                                                                                                                                                                               |
-| ----------------------- | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tree tests (node + dom) | `bun run --filter '@workspace/tree' test`                                                             | Exit 0, zero failures, and `Test Files`/`Tests` no lower than your Step 0 snapshot. Reads `Test Files 6 passed (6)`, `Tests 85 passed (85)` at `b467b3f`                                                                                                          |
-| Tree browser tests      | `bun run --filter '@workspace/tree' test:browser`                                                     | 2 tests pass — **see the hang warning below**                                                                                                                                                                                                                     |
-| Tree typecheck          | `bun run --filter '@workspace/tree' typecheck`                                                        | `Exited with code 0`, no diagnostics                                                                                                                                                                                                                              |
-| Tree lint               | `bun run --filter '@workspace/tree' lint`                                                             | Exit 0, **0 errors, and no warning beyond the ones in your Step 0 snapshot**. That snapshot is 4 `unicorn(no-new-array)` warnings at `b467b3f` (`utils/renameFileTreePaths.ts:103`, `utils/path-store/projection.ts:563,592,696`) — out of scope, do not fix them |
-| Tree format check       | `bun run --filter '@workspace/tree' format:check`                                                     | `All matched files use the correct format.`, exit 0                                                                                                                                                                                                               |
-| App consumer tests      | `cd apps/web && bun --bun vitest run --project node --project dom src/components/workspace/file-tree` | Exit 0, zero failures, `Test Files`/`Tests` no lower than your Step 0 snapshot                                                                                                                                                                                    |
-| Line count              | `wc -l packages/tree/src/components/FileTreeView.tsx`                                                 | `3475` at `b467b3f` (was 3555 when this plan was written, before Steps 1–2 landed); tracked per step                                                                                                                                                              |
+| Purpose                 | Command                                                                                   | Expected on success                                                                                                                                                                                                                                               |
+| ----------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tree tests (node + dom) | `bun run --filter '@workspace/tree' test`                                                 | Exit 0, zero failures, and `Test Files`/`Tests` no lower than your Step 0 snapshot. The post-reconciliation reading is 10 files / 109 tests                                                                                                                       |
+| Tree browser tests      | `bun run --filter '@workspace/tree' test:browser`                                         | Exit 0 and no test lower than the Step 0 snapshot. The post-reconciliation reading is 6 tests                                                                                                                                                                     |
+| Tree typecheck          | `bun run --filter '@workspace/tree' typecheck`                                            | `Exited with code 0`, no diagnostics                                                                                                                                                                                                                              |
+| Tree lint               | `bun run --filter '@workspace/tree' lint`                                                 | Exit 0, **0 errors, and no warning beyond the ones in your Step 0 snapshot**. That snapshot is 4 `unicorn(no-new-array)` warnings at `b467b3f` (`utils/renameFileTreePaths.ts:103`, `utils/path-store/projection.ts:563,592,696`) — out of scope, do not fix them |
+| Tree format check       | `bun run --filter '@workspace/tree' format:check`                                         | `All matched files use the correct format.`, exit 0                                                                                                                                                                                                               |
+| App consumer tests      | `cd apps/web && bun --bun vitest run --project node --project dom src/features/workspace` | Exit 0, zero failures, `Test Files`/`Tests` no lower than your Step 0 snapshot                                                                                                                                                                                    |
+| Line count              | `wc -l packages/tree/src/components/FileTreeView.tsx`                                     | `3491` after reconciliation; tracked per step                                                                                                                                                                                                                     |
 
 **Do not use `bun run verify` as a gate.** It runs `typecheck && lint &&
 format:check && test` across every workspace and short-circuits, so a single
@@ -588,24 +605,19 @@ makes it unreachable while telling you nothing about your change. Use the
 per-workspace scripts above, compared against your Step 0 snapshot. You may run
 `verify` for information; it is never a pass/fail condition here.
 
-If `apps/web/src/components/workspace/file-tree/` does not exist, the app layout
-has drifted. Find its new home with
-`grep -rl "@workspace/tree" apps/web/src --include='*.ts*' | head` and point the
-vitest path filter there — the tests to run are `tree-pane.test.ts` and
-`file-tree-prefetch.test.ts` plus the two under `utils/tests/`. Do not skip this
-gate.
+The current app consumer lives under `apps/web/src/features/workspace`. If that directory or its
+tree tests move, find the exact current consumers with
+`rg -l "@workspace/tree" apps/web/src -g '*.ts' -g '*.tsx'` and update the focused Vitest filter;
+do not revive the deleted `src/components/workspace/file-tree` path or skip the gate.
 
 **Never run `bun run format` (repo root or `--filter '*'`).** It rewrites files
 across every workspace, including uncommitted work that is not yours. If
 `format:check` fails on a file you edited, run
 `bun run --filter '@workspace/tree' format` — that one is scoped.
 
-**Browser-test hang warning.** The Vitest `browser` project in this repo has a
-known failure mode where it hangs at the `RUN` banner and never starts. If
-`test:browser` produces no test output within ~120 seconds, kill it, record
-"browser project hung (known issue), verified manually instead", and fall back
-to the manual check in Step 7. A hang is **not** a pass and **not** a failure —
-do not report it as either.
+The browser suite passes at this baseline and is a required gate. A hang is neither a pass nor a
+manual-check substitute: terminate it before 60 seconds, make one reasonable in-scope correction,
+and apply the normal repeated-gate STOP rule if it still does not run.
 
 **Never start a dev server.** One is already running at `http://localhost:5173`.
 
@@ -623,8 +635,8 @@ do not report it as either.
 - `packages/tree/src/utils/render/contextMenuAnchor.ts` (create, Step 5)
 - `packages/tree/src/utils/render/rowIdentity.ts` (create, Step 5 — holds the two
   row-identity helpers that end up shared by three modules; see Step 5a)
-- `packages/tree/src/utils/model/FileTreeController.ts` (modify — **3 lines
-  only**, Step 1)
+- `packages/tree/src/utils/model/FileTreeController.ts` (historical Step 1 only; already landed and
+  not in the remaining Steps 3–6 scope)
 - `packages/tree/src/utils/tests/stickyFocusMode.test.ts` (create, Step 2)
 - `plans/README.md` (status row, at the end)
 
@@ -632,8 +644,8 @@ do not report it as either.
 
 - `packages/tree/src/utils/path-store/**` — the characterization suite covers
   this lower layer. A change here invalidates the baseline.
-- `packages/tree/src/utils/model/FileTreeController.ts` beyond the 3 lines in
-  Step 1 — the search/rename/selection split is **deliberately deferred**; see
+- `packages/tree/src/utils/model/FileTreeController.ts` in all remaining work — Step 1 landed, and
+  the search/rename/selection split is **deliberately deferred**; see
   "Deferred, and why". Splitting it here would make this plan unreviewable.
 - `packages/tree/src/utils/model/FileTreeController.ts` `getVisibleRows`
   (`:498-597`) — the hottest read path, no benchmark exists, and `AGENTS.md`
@@ -643,7 +655,7 @@ do not report it as either.
 - `packages/tree/src/hooks/useFileTreeSearch.ts` and
   `packages/tree/src/hooks/useFileTreeSelector.ts` — both were deleted by the
   completed cleanup. Do not recreate or import them.
-- **Keyboard navigation.** `handleTreeKeyDown` (`FileTreeView.tsx:1948-2210`),
+- **Keyboard navigation.** `handleTreeKeyDown` (starting at post-reconciliation line 1908),
   `handleRowKeyDown`, and everything they dispatch stay in `FileTreeView.tsx`.
   The file's own TODO names "keyboard nav" and the file will still be large when
   you finish — that is expected and is **not** a reason to add a step. Keyboard
@@ -688,18 +700,18 @@ sticky-keyboard refs`, `refactor(tree): drag and touch move into their own hook`
 
 ## Steps
 
-### Step 0: Confirm the two prerequisites, then record the real baseline
+### Step 0: Confirm the reconciled baseline and characterization suite
 
-> **Both prerequisites are already present — verified at `b467b3f`.** The
-> characterization work landed in `5774dc6`; `packages/tree/src/utils/tests/` holds `controller.test.ts`,
-> `visible-rows.test.ts`, `visible-rows-fuzz.test.ts` and `stickyFocusMode.test.ts`.
+> **Both prerequisites are present.** Pierre was audited through
+> `55a941914056af44c78c4ba607b37130f189fb70`. The characterization work landed in `5774dc6`;
+> `packages/tree/src/utils/tests/` holds `controller.test.ts`,
+> `visible-rows.test.ts`, `visible-rows-fuzz.test.ts`, `stickyFocusMode.test.ts`, and the upstream-reconciliation
+> behavior tests.
 > The dead-code cleanup also landed: `grep -c 'debugDisableScrollSuppressionRef'
 packages/tree/src/components/FileTreeView.tsx` → 0, so the legacy-cleanup
 > branches in Steps 4 and 5 are dead text you can ignore. Re-run 0a and 0b
 > to confirm nothing regressed, then **do 0c properly — you need your own
 > snapshot, and it is the only thing every later gate compares against.**
-
-Verify both landed prerequisites, in this order.
 
 **0a — the characterization suite must be present.** Its tests over the path
 store and `getVisibleRows` are the only safety net this refactor has.
@@ -760,7 +772,7 @@ cd packages/tree && bun run lint  2>&1 | tail -5 > /tmp/plan-039-tree-lint-befor
 cd packages/tree && bun run typecheck    2>&1 | tail -5 > /tmp/plan-039-tree-typecheck-before.txt
 cd packages/tree && bun run format:check 2>&1 | tail -5 > /tmp/plan-039-tree-format-before.txt
 
-cd apps/web && bun --bun vitest run --project node --project dom src/components/workspace/file-tree \
+cd apps/web && bun --bun vitest run --project node --project dom src/features/workspace \
   2>&1 | tail -5 > /tmp/plan-039-web-test-before.txt
 ```
 
@@ -771,8 +783,8 @@ cd apps/web && bun --bun vitest run --project node --project dom src/components/
 
 Read the four `tail` files back and write down, in your report: the tree
 `Test Files`/`Tests` line, the tree lint error and warning counts **with the file
-and rule of each warning**, and the app-consumer counts. At `b467b3f` the tree
-readings are 6 files / 85 tests and 0 errors / 4 warnings — if yours differ,
+and rule of each warning**, and the app-consumer counts. After the upstream reconciliation the tree
+readings are 10 files / 109 tests and 0 errors / 4 warnings — if yours differ,
 **yours are correct** and the ones in this plan are stale.
 
 Three things that are normal and are **not** failures:
@@ -1045,7 +1057,7 @@ grep -cE '\b(rootRef|scrollRef|listRef|renameInputRef|searchInputRef|rowButtonRe
 bun run --filter '@workspace/tree' typecheck
 bun run --filter '@workspace/tree' lint 2>&1 | tail -40   # → 0 errors, and the warning list is back to your Step 0c snapshot (4 at b467b3f)
 bun run --filter '@workspace/tree' test         # → no lower than Step 2, zero failures
-(cd apps/web && bun --bun vitest run --project node --project dom src/components/workspace/file-tree)   # → no lower than the Step 0c snapshot, zero failures
+(cd apps/web && bun --bun vitest run --project node --project dom src/features/workspace)   # → no lower than the Step 0c snapshot, zero failures
 ```
 
 Read the **whole** lint output, not `tail -2`. Truncated output is what made the
@@ -1158,7 +1170,7 @@ grep -cE '(dragAutoScrollFrameRef|dragHoverOpenKeyRef|dragPreviewRef|touchDragAc
 grep -c 'dragAndDropEnabled ?' packages/tree/src/components/FileTreeView.tsx   # → 3, UNCHANGED
 bun run --filter '@workspace/tree' typecheck && bun run --filter '@workspace/tree' lint && bun run --filter '@workspace/tree' format:check
 bun run --filter '@workspace/tree' test        # → identical counts to Step 3
-(cd apps/web && bun --bun vitest run --project node --project dom src/components/workspace/file-tree)
+(cd apps/web && bun --bun vitest run --project node --project dom src/features/workspace)
 wc -l packages/tree/src/components/FileTreeView.tsx   # → at least ~550 lines below the Step 0c baseline
 ```
 
@@ -1260,7 +1272,7 @@ grep -c 'useState' packages/tree/src/components/FileTreeView.tsx   # → 7 (11 l
 grep -n 'activeContextMenuKey' packages/tree/src/hooks/useFileTreeContextMenu.ts   # → the useMemo and the effect's dep array, nothing else
 bun run --filter '@workspace/tree' typecheck && bun run --filter '@workspace/tree' lint && bun run --filter '@workspace/tree' format:check
 bun run --filter '@workspace/tree' test
-(cd apps/web && bun --bun vitest run --project node --project dom src/components/workspace/file-tree)
+(cd apps/web && bun --bun vitest run --project node --project dom src/features/workspace)
 ```
 
 `contextMenuAnchorTop` and `lastContextMenuInteraction` **will still appear** in
@@ -1315,13 +1327,12 @@ Do **not** delete the comment outright, and do **not** touch the `NOTE:` about
 ```bash
 bun run --filter '@workspace/tree' typecheck && bun run --filter '@workspace/tree' lint && bun run --filter '@workspace/tree' format:check
 bun run --filter '@workspace/tree' test
-(cd apps/web && bun --bun vitest run --project node --project dom src/components/workspace/file-tree)
+(cd apps/web && bun --bun vitest run --project node --project dom src/features/workspace)
 wc -l packages/tree/src/components/FileTreeView.tsx
 ```
 
 Expected after all six steps: **`FileTreeView.tsx` between about 1,800 and 2,200
-lines**, down from 3,555 as authored — 3,475 once Steps 1–2 landed, which is the
-figure your Step 0c `wc -l` will show. The arithmetic: drag ≈ 570 lines, context menu ≈ 550,
+lines**, down from the 3,491-line post-reconciliation Step 0 baseline. The arithmetic: drag ≈ 570 lines, context menu ≈ 550,
 row renderers ≈ 450, sticky focus ≈ 35, minus roughly 50 lines of new imports and
 hook call sites. Keyboard navigation (~260 lines) and the virtualization/focus
 effects stay by design.
@@ -1358,14 +1369,14 @@ gap in the handoff, a falsely-reported one is a broken app.
 Then:
 
 ```bash
-bun run --filter '@workspace/tree' test:browser   # 2 tests pass, or the known hang → record it
+bun run --filter '@workspace/tree' test:browser   # no lower than the Step 0 snapshot; 6 tests after reconciliation
 
 # The closing gate: the same four commands as Step 0c, diffed against the snapshot.
 cd packages/tree && bun run typecheck
 cd packages/tree && bun run lint         2>&1 | tail -5 > /tmp/plan-039-tree-lint-after.txt
 cd packages/tree && bun run format:check
 cd packages/tree && bun run test         2>&1 | tail -5 > /tmp/plan-039-tree-test-after.txt
-cd apps/web && bun --bun vitest run --project node --project dom src/components/workspace/file-tree \
+cd apps/web && bun --bun vitest run --project node --project dom src/features/workspace \
   2>&1 | tail -5 > /tmp/plan-039-web-test-after.txt
 
 diff /tmp/plan-039-tree-lint-before.txt /tmp/plan-039-tree-lint-after.txt
@@ -1441,7 +1452,7 @@ that lands, which is exactly how this plan blocked once already. ALL must hold:
       passed in the Step 0c snapshot failing afterwards**, and `Test Files` /
       `Tests` no lower than that snapshot. Step 2's 7 `stickyFocusMode` cases are
       part of the suite and stay green
-- [ ] `cd apps/web && bun --bun vitest run --project node --project dom src/components/workspace/file-tree`
+- [ ] `cd apps/web && bun --bun vitest run --project node --project dom src/features/workspace`
       exits 0 with `Test Files` / `Tests` no lower than the Step 0c snapshot and
       no newly-failing test. A failure already recorded in the snapshot does not
       block this plan
@@ -1535,10 +1546,10 @@ were missed.
   object graph than the 47-field class. **Revisit only after a caller-driven
   reason to change search or rename behaviour appears**, and re-derive the seam
   from the code then.
-- **`getVisibleRows` (`FileTreeController.ts:498-597`) and its three
+- **`getVisibleRows` (starting at post-reconciliation `FileTreeController.ts:497`) and its three
   implementations.** Real complexity, but it is the hottest read path in the
   package, there is no benchmark, and `AGENTS.md` requires a measurement before
-  optimization work. Touching it in the same pass as a 3,555-line view refactor
+  optimization work. Touching it in the same pass as a 3,491-line view refactor
   would also make the diff unreviewable.
 - **The `useLayoutEffect` count itself.** This plan reduces the _file_ to five
   focused modules but does not merge or reorder effects. Effect merging changes

@@ -51,12 +51,40 @@ type AllowableContentGroups =
       children: string
     }
 
+function isWhitespace(character: string | undefined): boolean {
+  return character != null && /\s/.test(character)
+}
+
+function boundaryTouchesWhitespace(contents: string, index: number): boolean {
+  return isWhitespace(contents[index - 1]) || isWhitespace(contents[index])
+}
+
+function findNearestWhitespaceFreeBoundary(contents: string, centerIndex: number): number {
+  if (!boundaryTouchesWhitespace(contents, centerIndex)) {
+    return centerIndex
+  }
+
+  for (let offset = 1; offset < contents.length; offset += 1) {
+    const before = centerIndex - offset
+    if (before > 0 && !boundaryTouchesWhitespace(contents, before)) return before
+
+    const after = centerIndex + offset
+    if (after < contents.length && !boundaryTouchesWhitespace(contents, after)) return after
+  }
+
+  return centerIndex
+}
+
+function getCenterSplitIndex(contents: string): number {
+  return findNearestWhitespaceFreeBoundary(contents, Math.ceil(contents.length / 2))
+}
+
 // Split the contents into two equal segments
 export const splitCenter: CustomSplitFn = (contents) => {
   if (contents.length < 2) {
     return [contents, '']
   }
-  const splitIndex = Math.ceil(contents.length / 2)
+  const splitIndex = getCenterSplitIndex(contents)
   return [contents.slice(0, splitIndex), contents.slice(splitIndex)]
 }
 
@@ -72,7 +100,7 @@ export const splitExtension: CustomSplitFn = (contents) => {
   const isTooLong = impliedExtensionLength > maxExtensionLength
 
   const splitIndex =
-    extensionIndex >= 1 && !isTooLong ? extensionIndex : Math.ceil(contents.length / 2)
+    extensionIndex >= 1 && !isTooLong ? extensionIndex : getCenterSplitIndex(contents)
 
   return [contents.slice(0, splitIndex), contents.slice(splitIndex)]
 }

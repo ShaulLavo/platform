@@ -6,12 +6,14 @@
 > every done criterion is verified, delete this file and remove its row from `plans/README.md` in the
 > same change.
 >
-> **Mandatory prerequisites — Plans 036 and 039 must be complete**: Plan 036 must first reconcile
-> the copied package against Pierre upstream and leave `packages/tree/UPSTREAM.md`. Plan 039 must
-> then complete its behavioral split. This plan is deliberately written against the pre-036/pre-039
-> source at `b60c88de`, but it must execute against the reconciled post-039 shape. Do not infer
-> completion from the presence or absence of `plans/039-filetreeview-controller-split.md`; completed
-> plans are deleted. Before doing anything else, all four extracted files below must exist:
+> **Mandatory prerequisites — upstream reconciliation and Plan 039 must be complete**: The copied
+> package has been reconciled through Pierre `main` SHA
+> `55a941914056af44c78c4ba607b37130f189fb70` on 2026-08-22. Plan 039 must now
+> complete its behavioral split. This plan was initially written against the pre-reconciliation,
+> pre-039 source at `b60c88de`, but the instructions below are refreshed for the reconciled post-039
+> shape. Do not infer completion from the presence or absence of
+> `plans/039-filetreeview-controller-split.md`; completed plans are deleted. Before doing anything
+> else, all four extracted files below must exist:
 >
 > ```bash
 > test -f packages/tree/src/components/FileTreeRow.tsx
@@ -20,15 +22,17 @@
 > test -f packages/tree/src/hooks/useFileTreeContextMenu.ts
 > ```
 >
-> Before those checks, `test -f packages/tree/UPSTREAM.md` must exit 0 and its last-audited upstream
-> SHA must match completed Plan 036. Every command must exit 0. Also run Plan 039's final package and
-> app gates. If the ledger or an extracted file is absent, those gates are red, or
+> Every command must exit 0. Also run Plan 039's final package and app gates. If an extracted file
+> is absent, those gates are red, or
 > `FileTreeView.tsx` still owns the row/drag/context-menu clusters, stop and report
-> `blocked: Plan 036/039 prerequisite is not complete`.
+> `blocked: upstream reconciliation/Plan 039 prerequisite is not complete`.
 >
-> **Expected prerequisite drift**: Plan 036 is expected to change upstream-reconciled tree behavior,
-> tests, licensing, and provenance. Plan 039 then changes `FileTreeView.tsx` and creates the four
-> files above. Run both checks:
+> **Reconciled input shape**: Before Plan 039 resumes, `FileTreeView.tsx` is 3,491 lines,
+> `FileTreeController.ts` is 2,080 lines, tree node/DOM tests are 10 files / 109 tests, tree browser
+> tests are 6 tests, and lint is 0 errors / 4 pre-existing `unicorn(no-new-array)` warnings. The
+> reconciled search contract includes manual-collapse persistence/remapping and explicit
+> close-versus-retain submission/click behavior; the runtime migration must preserve it. Plan 039
+> then changes `FileTreeView.tsx` and creates the four files above. Run both drift checks:
 >
 > ```bash
 > git diff --stat b60c88de..HEAD -- .oxlintrc.json package.json bun.lock packages/tree
@@ -44,7 +48,9 @@
 - **Priority**: P2
 - **Effort**: L
 - **Risk**: HIGH
-- **Depends on**: Plan 036 complete; then Plan 039 complete, including its Steps 3–6 and final gates
+- **Depends on**: upstream reconciliation through
+  `55a941914056af44c78c4ba607b37130f189fb70`; then Plan 039 complete, including its Steps 3–6 and
+  final gates
 - **Category**: migration
 - **Planned at**: commit `b60c88de`, 2026-08-22
 
@@ -269,7 +275,7 @@ workspaces. Capture and compare the scoped baselines below.
 - `packages/tree/src/utils/render/overflowTextSplit.ts` (create)
 - `packages/tree/src/utils/render/runtime.ts` (delete)
 - `packages/tree/src/utils/tests/keyboard.test.ts` (create)
-- `packages/tree/src/utils/tests/overflowTextSplit.test.ts` (modify; created by Plan 036)
+- `packages/tree/src/utils/tests/overflowTextSplit.test.ts` (modify; created by the upstream reconciliation)
 - `packages/tree/src/components/FileTree.test.tsx`
 - `packages/tree/src/components/FileTree.browser.tsx`
 - `packages/tree/src/utils/render/FileTree.ts` — import path only
@@ -311,8 +317,6 @@ starting state and command results:
 
 ```bash
 git status --porcelain > /tmp/plan-051-status-before.txt
-test -f packages/tree/UPSTREAM.md
-rg -n "last audited upstream SHA" packages/tree/UPSTREAM.md
 rg -l "from ['\"]preact|jsxImportSource preact|preact/hooks" packages/tree/src | sort \
   > /tmp/plan-051-preact-files-before.txt
 wc -l packages/tree/src/components/FileTreeView.tsx > /tmp/plan-051-filetreeview-lines-before.txt
@@ -355,7 +359,7 @@ Extend `packages/tree/src/components/FileTree.test.tsx` using its existing real 
 3. `setComposition`, `setGitStatus`, and `setIcons` still update the mounted shadow DOM after the
    renderer commits. Reuse the existing setter tests rather than creating mock props.
 4. Mounting through `<FileTree>` and cleaning it up emits no React `console.error`/`console.warn`.
-5. The keyboard branch order: open-menu Escape/blocking, Plan 036's IME-safe rename Enter/Escape,
+5. The keyboard branch order: open-menu Escape/blocking, the reconciled IME-safe rename Enter/Escape,
    F2 rename, close/retain search behavior, Shift/Ctrl/Meta selection, Home/End, arrows, and
    left/right directory behavior.
 6. Sticky keyboard focus across ArrowUp/ArrowDown, collapse, and Shift+F10/context-menu open/close,
@@ -394,7 +398,7 @@ Do this structural move before the runtime cutover so behavior can be verified i
    to `OverflowText.tsx`; repository search shows no other consumer.
 5. Preserve markup, keys, attributes, marker behavior, empty-string behavior, and every split rule.
    Flatten the existing nested ternaries and `else` branches with named helpers and guard clauses.
-6. Extend Plan 036's `utils/tests/overflowTextSplit.test.ts` for leaf path, explicit index,
+6. Extend the reconciled `utils/tests/overflowTextSplit.test.ts` for leaf path, explicit index,
    first/last offset, and invalid offset fallback. Preserve its upstream whitespace cases and update
    its import to `utils/render/overflowTextSplit.ts`.
 
@@ -474,7 +478,7 @@ model/DOM actions out of this utility.
 
 Create `utils/tests/keyboard.test.ts` with a table for Space variants, printable search seeds,
 modifier exclusions, ContextMenu/Shift+F10, sticky-eligible arrows/menu keys, and blocked menu
-navigation. Preserve the IME policy applied by Plan 036 in the hook branch, not this classifier.
+navigation. Preserve the reconciled IME policy in the hook branch, not this classifier.
 
 **Verify**:
 
@@ -533,7 +537,7 @@ it as a new state machine. The hook accepts a named options object containing th
 Plan 039 DOM refs, Plan 039 context-menu state/actions, the Step 4b focus coordinator, rename/search
 policy and current render values. It returns one React `KeyboardEventHandler<HTMLDivElement>`.
 
-Preserve this order exactly: open context menu; active rename including Plan 036 IME guard; F2;
+Preserve this order exactly: open context menu; active rename including the reconciled IME guard; F2;
 active search and close/retain policy; printable search seed; sticky-row synchronization; modified
 selection; keyboard context menu; directional/home/end navigation; focus settlement/invalidation.
 Extract internal named helpers to keep nesting depth ≤3. Do not expose `setState`, reconstruct
@@ -680,7 +684,7 @@ All totals are compared to the Step 0 snapshots. Do not encode absolute test cou
 
 ALL must hold:
 
-- [ ] Plan 036's upstream ledger exists at its final audited SHA, then Plan 039's four extracted
+- [ ] The reconciled baseline is audited through `55a941914056af44c78c4ba607b37130f189fb70`, then Plan 039's four extracted
       files exist and its final package/app gates pass.
 - [ ] `rg -n "from ['\"]preact|jsxImportSource preact|preact/hooks" apps packages` prints nothing.
 - [ ] No manifest has a direct `preact` dependency or catalog entry; the frozen lockfile install is
@@ -711,7 +715,7 @@ ALL must hold:
 
 Stop and report back; do not improvise if:
 
-- Plan 036's ledger/audited SHA or Plan 039's extracted files/final behavior gates are missing/red.
+- Plan 039's extracted files or final behavior gates are missing/red.
 - The post-039 Preact inventory contains a file outside the expected tree component/hook surface.
 - Another workspace now imports or directly depends on Preact.
 - `hydrateRoot` or `fileTreeRenderer` has gained a real caller.
@@ -742,7 +746,7 @@ Stop and report back; do not improvise if:
 - Do not restore Preact, a compatibility alias, or a package-wide React Compiler exemption. If an
   exact function is temporarily compiler-incompatible, use the narrow documented directive policy
   from Step 5.
-- Future Pierre upstream reviews start from `packages/tree/UPSTREAM.md` and translate behavior into
+- Future Pierre upstream reviews start after `55a941914056af44c78c4ba607b37130f189fb70` and translate behavior into
   these React seams; do not compare/copy whole same-named files after the migration.
 - Plan 052 owns product wiring and Plan 053 owns the root-entry/dead-export sweep. Do not broaden or
   prune the public surface opportunistically during this runtime migration.

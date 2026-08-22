@@ -3,6 +3,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 
 import { FileTree } from '@workspace/tree/components/FileTree'
+import type { FileTreeSearchBlurBehavior } from '@workspace/tree/utils/model/publicTypes'
 import { FileTree as FileTreeModel } from '@workspace/tree/utils/render/FileTree'
 
 let root: Root | null = null
@@ -68,7 +69,135 @@ describe('FileTree browser behavior', () => {
     })
     expect(scrollElement.scrollTop).toBe(previousScrollTop)
   })
+
+  it('keeps rename active for composing keys and commits on ordinary Enter', async () => {
+    const { model: currentModel, shadowRoot } = await mountBrowserTree()
+    const input = await beginRename(currentModel, shadowRoot, 'src/features/a-3.ts')
+    setRenameValue(input, 'renamed.ts')
+
+    dispatchRenameKey(input, 'Enter', { isComposing: true })
+    await expectRenameToRemainActive(shadowRoot)
+
+    dispatchRenameKey(input, 'Escape', { legacyComposition: true })
+    await expectRenameToRemainActive(shadowRoot)
+
+    dispatchRenameKey(input, 'Enter')
+    await vi.waitFor(() => {
+      expect(shadowRoot.querySelector('[data-item-rename-input]')).toBeNull()
+      expect(currentModel.getItem('src/features/renamed.ts')).not.toBeNull()
+    })
+  })
+
+  it('keeps rename active for legacy composition and cancels on ordinary Escape', async () => {
+    const { model: currentModel, shadowRoot } = await mountBrowserTree()
+    const input = await beginRename(currentModel, shadowRoot, 'src/features/a-3.ts')
+    setRenameValue(input, 'should-not-land.ts')
+
+    dispatchRenameKey(input, 'Escape', { isComposing: true })
+    await expectRenameToRemainActive(shadowRoot)
+
+    dispatchRenameKey(input, 'Enter', { legacyComposition: true })
+    await expectRenameToRemainActive(shadowRoot)
+
+    dispatchRenameKey(input, 'Escape')
+    await vi.waitFor(() => {
+      expect(shadowRoot.querySelector('[data-item-rename-input]')).toBeNull()
+      expect(currentModel.getItem('src/features/a-3.ts')).not.toBeNull()
+      expect(currentModel.getItem('src/features/should-not-land.ts')).toBeNull()
+    })
+  })
+
+  it.each([
+    { keepsSearchOpen: false, searchBlurBehavior: 'close' as const },
+    { keepsSearchOpen: true, searchBlurBehavior: 'retain' as const },
+  ])(
+    'applies $searchBlurBehavior policy to search Enter, click, Escape, and focus',
+    async ({ keepsSearchOpen, searchBlurBehavior }) => {
+      const { model: currentModel, shadowRoot } = await mountSearchTree(searchBlurBehavior)
+      const searchInput = await openSearch(currentModel, shadowRoot, 'worker')
+      const focusedPathBeforeEnter = currentModel.getFocusedPath()
+      expect(focusedPathBeforeEnter).not.toBeNull()
+
+      dispatchSearchKey(searchInput, 'Enter')
+      await vi.waitFor(() => {
+        expect(currentModel.getSelectedPaths()).toEqual([focusedPathBeforeEnter])
+        expect(currentModel.isSearchOpen()).toBe(keepsSearchOpen)
+      })
+      if (keepsSearchOpen) {
+        expect(shadowRoot.activeElement).toBe(searchInput)
+      } else {
+        expect(activePath(shadowRoot)).toBe(focusedPathBeforeEnter)
+      }
+
+      const reopenedInput = await openSearch(currentModel, shadowRoot, 'worker')
+      const clickedResult = rowButton(shadowRoot, 'src/utils/worker-b.ts')
+      clickedResult.dispatchEvent(
+        new MouseEvent('mousedown', { bubbles: true, button: 0, detail: 1 }),
+      )
+      clickedResult.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }))
+
+      await vi.waitFor(() => {
+        expect(currentModel.getSelectedPaths()).toEqual(['src/utils/worker-b.ts'])
+        expect(currentModel.isSearchOpen()).toBe(keepsSearchOpen)
+      })
+      if (keepsSearchOpen) {
+        expect(shadowRoot.activeElement).toBe(reopenedInput)
+      }
+
+      const escapeInput = await openSearch(currentModel, shadowRoot, 'worker')
+      dispatchSearchKey(escapeInput, 'Escape')
+      await vi.waitFor(() => {
+        expect(currentModel.isSearchOpen()).toBe(false)
+      })
+    },
+  )
 })
+
+async function beginRename(
+  currentModel: FileTreeModel,
+  shadowRoot: ShadowRoot,
+  path: string,
+): Promise<HTMLInputElement> {
+  currentModel.startRenaming(path)
+  await vi.waitFor(() => {
+    expect(shadowRoot.querySelector('[data-item-rename-input]')).not.toBeNull()
+  })
+
+  const input = shadowRoot.querySelector<HTMLInputElement>('[data-item-rename-input]')
+  expect(input).not.toBeNull()
+  return input as HTMLInputElement
+}
+
+function setRenameValue(input: HTMLInputElement, value: string): void {
+  input.value = value
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
+function dispatchRenameKey(
+  input: HTMLInputElement,
+  key: 'Enter' | 'Escape',
+  options: { isComposing?: boolean; legacyComposition?: boolean } = {},
+): void {
+  const event = new KeyboardEvent('keydown', {
+    bubbles: true,
+    isComposing: options.isComposing,
+    key,
+  })
+  if (options.legacyComposition === true) {
+    Object.defineProperty(event, 'keyCode', { value: 229 })
+  }
+  input.dispatchEvent(event)
+}
+
+async function expectRenameToRemainActive(shadowRoot: ShadowRoot): Promise<void> {
+  await vi.waitFor(() => {
+    expect(shadowRoot.querySelector('[data-item-rename-input]')).not.toBeNull()
+  })
+}
+
+function dispatchSearchKey(input: HTMLInputElement, key: 'Enter' | 'Escape'): void {
+  input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key }))
+}
 
 async function mountBrowserTree() {
   const container = document.createElement('main')
@@ -98,6 +227,50 @@ async function mountBrowserTree() {
   })
 
   return { model: mountedModel, shadowRoot: await waitForShadowRoot() }
+}
+
+async function mountSearchTree(searchBlurBehavior: FileTreeSearchBlurBehavior) {
+  const container = document.createElement('main')
+  container.style.height = '240px'
+  container.style.width = '360px'
+  document.body.append(container)
+  root = createRoot(container)
+  const mountedModel = new FileTreeModel({
+    fileTreeSearchMode: 'hide-non-matches',
+    flattenEmptyDirectories: false,
+    initialExpansion: 'open',
+    initialVisibleRowCount: 10,
+    paths: ['README.md', 'src/utils/stream.ts', 'src/utils/worker-a.ts', 'src/utils/worker-b.ts'],
+    search: true,
+    searchBlurBehavior,
+  })
+  model = mountedModel
+
+  flushSync(() => {
+    root?.render(<FileTree aria-label='Search files' model={mountedModel} />)
+  })
+
+  return { model: mountedModel, shadowRoot: await waitForShadowRoot() }
+}
+
+async function openSearch(
+  currentModel: FileTreeModel,
+  shadowRoot: ShadowRoot,
+  query: string,
+): Promise<HTMLInputElement> {
+  if (!currentModel.isSearchOpen()) {
+    currentModel.openSearch(query)
+  }
+
+  const input = shadowRoot.querySelector<HTMLInputElement>('[data-file-tree-search-input]')
+  expect(input).not.toBeNull()
+  await vi.waitFor(() => {
+    expect(currentModel.isSearchOpen()).toBe(true)
+    expect(input?.value).toBe(query)
+    expect(shadowRoot.activeElement).toBe(input)
+  })
+
+  return input as HTMLInputElement
 }
 
 function browserPaths() {

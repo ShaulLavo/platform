@@ -7,8 +7,20 @@ import { FileTree } from '@workspace/tree/components/FileTree'
 import { useFileTree } from '@workspace/tree/hooks/useFileTree'
 import type { FileTreeIcons } from '@workspace/tree/utils/iconConfig'
 import type { GitStatusEntry } from '@workspace/tree/utils/publicTypes'
+import { FileTree as FileTreeModel } from '@workspace/tree/utils/render/FileTree'
 
 let root: Root | null = null
+
+const ICON_FALLBACK_CASES = [
+  {
+    expectedTypeScriptIcon: '#file-tree-builtin-typescript',
+    set: 'standard',
+  },
+  {
+    expectedTypeScriptIcon: '#test-generic-file',
+    set: 'minimal',
+  },
+] as const
 
 afterEach(() => {
   flushSync(() => root?.unmount())
@@ -133,6 +145,30 @@ describe('FileTree React integration', () => {
       expect(fileIconHref(shadowRoot, 'src/a.ts')).toBe('#second-file-icon')
     })
   })
+
+  it.each(ICON_FALLBACK_CASES)(
+    'uses the generic file remap as the $set fallback',
+    async ({ expectedTypeScriptIcon, set }) => {
+      const container = document.createElement('main')
+      document.body.append(container)
+      root = createRoot(container)
+      const treeModel = new FileTreeModel({
+        icons: {
+          remap: { 'file-tree-icon-file': 'test-generic-file' },
+          set,
+        },
+        initialExpansion: 'open',
+        paths: ['unknown.xyz', 'src/index.ts'],
+      })
+
+      flushSync(() => root?.render(<FileTree aria-label='Files' model={treeModel} />))
+      const shadowRoot = await waitForShadowRoot()
+
+      expect(fileIconHref(shadowRoot, 'unknown.xyz')).toBe('#test-generic-file')
+      expect(fileIconHref(shadowRoot, 'src/index.ts')).toBe(expectedTypeScriptIcon)
+      treeModel.cleanUp()
+    },
+  )
 })
 
 function fileIconRemap(iconName: string): FileTreeIcons {
