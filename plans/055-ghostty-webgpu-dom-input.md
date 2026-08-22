@@ -535,6 +535,13 @@ Expected: all selected tests pass; the existing idle assertions still report no 
    Prevent browser default only when the terminal consumes the event or for an explicitly handled
    terminal shortcut. Let Cmd/Ctrl+V reach the paste event. Cmd+C copies an active terminal
    selection; Ctrl+C without that platform-copy case reaches the encoder.
+   **Keymap seam (see `plans/056-multi-step-chord-keymap.md` D2):** the old `ghostty-web`
+   `stopPropagation`s every Ctrl/Meta key before document bubble, so the app keymap is dead in the
+   terminal today. This host must not reproduce that blanket swallow. When the platform adapter
+   lands, give the app keymap first refusal on a chord _arming_ stroke and register
+   `terminal.integrated.allowChords` (`application` scope, default `true`, matching VS Code) in the
+   same pass — not before, or it is an inert key. Note that on Linux/Windows `Mod+K` is readline's
+   `kill-line`, which is exactly what that knob exists to give back.
 7. Make textarea `input` the single commit path for IME/mobile text. During composition, key events
    carry `composing: true` but no committed UTF-8. On the one post-composition input, send the
    committed grapheme string once and clear the textarea. Add tests that fail on duplicate CJK,

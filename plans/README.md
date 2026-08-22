@@ -18,6 +18,7 @@ a bare root `bun run verify`.
 | [049b — JSON language server for settings](049b-json-language-server-for-settings.md) | **READY, reconcile first** |
 | [Editor BiDi geometry](../../Editor/docs/plan-bidi-geometry.md)                       | **TIER B OPEN**            |
 | [055 — ghostty-webgpu DOM/input](055-ghostty-webgpu-dom-input.md)                     | **READY**                  |
+| [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                       | **READY**                  |
 
 ## LSP foundation
 
