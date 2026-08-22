@@ -16,10 +16,11 @@ import type { EditorStatusBarSource } from '@/features/editor/state/status-bar-s
 import type { EditorRenderDocument } from '@/features/editor/utils/render-document'
 import { useCommitMessageEditorFocus } from '@/features/editor/hooks/use-commit-message-editor-focus'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
+import { useScrollPersistencePlugin } from '@/features/editor/hooks/use-scroll-persistence-plugin'
 import {
+  capOverscrollTop,
   scrollPositionFromSnapshot,
-  useScrollPersistencePlugin,
-} from '@/features/editor/hooks/use-scroll-persistence-plugin'
+} from '@/features/editor/utils/scroll-position'
 import { useLanguageServerPlugin } from '@/features/editor/hooks/use-lsp-plugin'
 import { editorPerformanceLayoutVariant } from '@/features/editor/state/performance-trace'
 import { useFocus } from '@/features/workspace/providers/focus-state'
@@ -151,12 +152,18 @@ export function Editor({
 
   useLayoutEffect(() => {
     return () => {
+      const snapshot = controller.getSnapshot()
       const scrollPosition =
-        controller.getEditor()?.getScrollPosition() ??
-        scrollPositionFromSnapshot(controller.getSnapshot())
+        controller.getEditor()?.getScrollPosition() ?? scrollPositionFromSnapshot(snapshot)
       if (!scrollPosition) return
 
-      onScrollPositionChange?.(liveDocument.path, scrollPosition)
+      onScrollPositionChange?.(liveDocument.path, {
+        left: scrollPosition.left,
+        top:
+          scrollPosition.top === undefined
+            ? undefined
+            : capOverscrollTop(scrollPosition.top, snapshot),
+      })
     }
   }, [controller, liveDocument.path, onScrollPositionChange])
 

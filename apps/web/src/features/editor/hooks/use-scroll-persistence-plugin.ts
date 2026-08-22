@@ -2,6 +2,7 @@ import type { EditorPlugin, EditorScrollPosition, EditorViewSnapshot } from '@si
 import { useLayoutEffect, useMemo, useRef, type RefObject } from 'react'
 
 import type { EditorRenderDocument } from '@/features/editor/utils/render-document'
+import { capOverscrollTop } from '@/features/editor/utils/scroll-position'
 import { editorPerformanceFeatureDisabled } from '@/features/editor/state/performance-trace'
 
 type UseScrollPersistencePluginOptions = {
@@ -51,17 +52,6 @@ export function useScrollPersistencePlugin({
   )
 }
 
-export function scrollPositionFromSnapshot(
-  snapshot: EditorViewSnapshot | null,
-): EditorScrollPosition | null {
-  if (!snapshot) return null
-
-  return {
-    left: snapshot.viewport.scrollLeft,
-    top: snapshot.viewport.scrollTop,
-  }
-}
-
 // Scroll offsets come from the snapshot (editor tracked state, never the
 // DOM), but the store write is flushed on the next animation frame: updates
 // arrive synchronously inside the editor's scroll render pass, and notifying
@@ -91,7 +81,7 @@ function createScrollPositionPersister(stateRef: RefObject<ScrollPersistenceStat
     persistSnapshot: (snapshot: EditorViewSnapshot) => {
       pendingPath = snapshot.documentId ?? stateRef.current.path
       pendingLeft = snapshot.viewport.scrollLeft
-      pendingTop = snapshot.viewport.scrollTop
+      pendingTop = capOverscrollTop(snapshot.viewport.scrollTop, snapshot)
       if (frame !== null) return
       if (pendingPath === lastPath && pendingLeft === lastLeft && pendingTop === lastTop) return
 
