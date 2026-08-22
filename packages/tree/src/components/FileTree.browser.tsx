@@ -70,6 +70,95 @@ describe('FileTree browser behavior', () => {
     expect(scrollElement.scrollTop).toBe(previousScrollTop)
   })
 
+  it('preserves keyboard branch order for rename, selection, and directional navigation', async () => {
+    const { model: currentModel, shadowRoot } = await mountBrowserTree()
+    const directoryRow = rowButton(shadowRoot, 'src/features/')
+    directoryRow.focus()
+
+    dispatchTreeKey(directoryRow, 'F2')
+    await vi.waitFor(() => {
+      expect(shadowRoot.querySelector<HTMLInputElement>('[data-item-rename-input]')?.value).toBe(
+        'features',
+      )
+    })
+    const renameInput = shadowRoot.querySelector<HTMLInputElement>('[data-item-rename-input]')
+    expect(renameInput).not.toBeNull()
+    dispatchRenameKey(renameInput as HTMLInputElement, 'Escape')
+
+    await vi.waitFor(() => {
+      expect(shadowRoot.querySelector('[data-item-rename-input]')).toBeNull()
+    })
+    const restoredDirectoryRow = rowButton(shadowRoot, 'src/features/')
+    dispatchTreeKey(restoredDirectoryRow, 'a', { ctrlKey: true })
+    await vi.waitFor(() => {
+      expect(currentModel.getSelectedPaths().length).toBeGreaterThan(2)
+    })
+    dispatchTreeKey(restoredDirectoryRow, ' ', { code: 'Space', ctrlKey: true })
+    await vi.waitFor(() => {
+      expect(currentModel.getSelectedPaths()).not.toContain('src/features/')
+    })
+
+    dispatchTreeKey(restoredDirectoryRow, 'End')
+    await vi.waitFor(() => {
+      expect(activePath(shadowRoot)).toBe('src/features/a-27.ts')
+    })
+    dispatchTreeKey(rowButton(shadowRoot, 'src/features/a-27.ts'), 'Home')
+    await vi.waitFor(() => {
+      expect(activePath(shadowRoot)).toBe('src/features/')
+    })
+
+    currentModel.focusPath('src/features/')
+    await vi.waitFor(() => {
+      expect(activePath(shadowRoot)).toBe('src/features/')
+    })
+    dispatchTreeKey(rowButton(shadowRoot, 'src/features/'), 'ArrowLeft')
+    await vi.waitFor(() => {
+      expect(rowButton(shadowRoot, 'src/features/').getAttribute('aria-expanded')).toBe('false')
+    })
+    dispatchTreeKey(rowButton(shadowRoot, 'src/features/'), 'ArrowRight')
+    await vi.waitFor(() => {
+      expect(rowButton(shadowRoot, 'src/features/').getAttribute('aria-expanded')).toBe('true')
+    })
+  })
+
+  it('settles controller scroll requests and opens search from a printable row key', async () => {
+    const { model: currentModel, shadowRoot } = await mountBrowserTree()
+    const directoryRow = rowButton(shadowRoot, 'src/features/')
+    directoryRow.focus()
+    const scrollElement = virtualScroll(shadowRoot)
+
+    currentModel.scrollToPath('src/features/a-20.ts', { focus: false, offset: 'center' })
+    await vi.waitFor(() => {
+      expect(scrollElement.scrollTop).toBeGreaterThan(0)
+    })
+    expect(currentModel.getFocusedPath()).toBe('src/features/')
+    expect(activePath(shadowRoot)).toBe('src/features/')
+
+    currentModel.scrollToPath('src/features/a-20.ts', { offset: 'nearest' })
+    await vi.waitFor(() => {
+      expect(currentModel.getFocusedPath()).toBe('src/features/a-20.ts')
+      expect(activePath(shadowRoot)).toBeNull()
+    })
+
+    currentModel.cleanUp()
+    model = null
+    flushSync(() => root?.unmount())
+    root = null
+    document.body.innerHTML = ''
+    const searchTree = await mountSearchTree('retain')
+    const searchRow = rowButton(searchTree.shadowRoot, 'README.md')
+    searchRow.focus()
+    dispatchTreeKey(searchRow, 'w')
+
+    await vi.waitFor(() => {
+      expect(searchTree.model.isSearchOpen()).toBe(true)
+      expect(searchTree.model.getSearchValue()).toBe('w')
+      expect(searchTree.shadowRoot.activeElement).toBe(
+        searchTree.shadowRoot.querySelector('[data-file-tree-search-input]'),
+      )
+    })
+  })
+
   it('keeps rename active for composing keys and commits on ordinary Enter', async () => {
     const { model: currentModel, shadowRoot } = await mountBrowserTree()
     const input = await beginRename(currentModel, shadowRoot, 'src/features/a-3.ts')
@@ -197,6 +286,23 @@ async function expectRenameToRemainActive(shadowRoot: ShadowRoot): Promise<void>
 
 function dispatchSearchKey(input: HTMLInputElement, key: 'Enter' | 'Escape'): void {
   input.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key }))
+}
+
+function dispatchTreeKey(
+  element: HTMLElement,
+  key: string,
+  options: { code?: string; ctrlKey?: boolean; metaKey?: boolean; shiftKey?: boolean } = {},
+): void {
+  element.dispatchEvent(
+    new KeyboardEvent('keydown', {
+      bubbles: true,
+      code: options.code,
+      ctrlKey: options.ctrlKey,
+      key,
+      metaKey: options.metaKey,
+      shiftKey: options.shiftKey,
+    }),
+  )
 }
 
 async function mountBrowserTree() {

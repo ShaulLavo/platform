@@ -6,10 +6,13 @@
 > every done criterion is verified, delete this file and remove its row from `plans/README.md` in the
 > same change.
 >
-> **Mandatory prerequisites**: Plans 036, 039, and 051 must be complete, in that order. The Pierre
-> ledger must exist, the behavioral split must have landed, the package must use React rather than
-> Preact, and all three plans' final tree/web gates must be green. Completed plan files may already
-> be deleted; their absence alone is not proof.
+> **Mandatory prerequisites — satisfied through Plan 051; re-verify before execution**: Plans 036,
+> 039, and 051 are complete. The tree now uses one state-owned React root per wrapper with queued,
+> token-checked cleanup; `FileTreeView.tsx` is decomposed into the row, drag, context-menu,
+> focus-sync, and keyboard seams; Preact, dead hydration/runtime APIs, and the package-wide React
+> Compiler exemption are gone. Before starting, re-run Plan 051's final tree/web gates and the
+> structural/source checks in Step 0. Completed plan files are deleted, so their absence alone is
+> not proof.
 >
 > **Drift check (run first)**:
 >
@@ -26,7 +29,8 @@
 - **Priority**: P2
 - **Effort**: L
 - **Risk**: HIGH
-- **Depends on**: Plan 036 complete, then Plan 039 complete, then Plan 051 complete
+- **State**: READY — Plans 036/039/051 are satisfied; reconcile live app drift before Step 0
+- **Depends on**: satisfied — Plans 036, 039, and 051 complete with final gates green
 - **Category**: direction
 - **Planned at**: commit `5afe83d1`, 2026-08-22
 
@@ -60,10 +64,10 @@ At the planned-at commit:
 | Dynamic icons              | `useFileTree` calls `setIcons` when `icons` changes                                 | Keep and characterize                                |
 | Full git status            | `useFileTree` calls `setGitStatus` for every new array                              | Keep as initial/fallback; use patches for updates    |
 | Density/layout host values | app requests `density: 'compact'`; React wrapper reads item height/factor           | Keep and characterize                                |
-| Render lifecycle           | React wrapper/hook call render, unmount, and cleanup                                | Keep and characterize                                |
+| Render lifecycle           | React wrapper/hook use the token-checked root owner in `state/renderer.ts`          | Keep and characterize                                |
 | General subscriptions      | tree pane and intent prefetch subscribe                                             | Keep                                                 |
 | Search session             | package implements open/close/query/matches/next/previous; app omits `search: true` | Wire toolbar, commands, retained state               |
-| Focus/scroll               | package exposes focused item/path, nearest focus, `focusPath`, and `scrollToPath`   | Wire real focus and reveal commands                  |
+| Focus/scroll               | model focus/scroll APIs preserve DOM focus only while the tree already owns it      | Add one-shot DOM-focus request; wire focus/reveal    |
 | Batch mutation             | package exposes `batch`; app loops over add/remove                                  | Use in incremental path sync                         |
 | Mutation events            | package exposes `onMutation`; app has no listener                                   | Use for one wide structured event per operation      |
 | Git patch                  | package exposes `applyGitStatusPatch`; app replaces whole state                     | Diff and apply incremental updates                   |
@@ -80,6 +84,13 @@ setFocusArea('file-tree')
 `setFocusArea` records where focus is supposed to be; it does not focus a row or the tree's search
 input. The existing editor uses an explicit request/consumer model for this reason. The tree needs
 its own narrow equivalent rather than prop-drilling a model into the global command table.
+
+Plan 051's real-browser characterization also proves that `focusPath` is model focus, while a
+controller scroll request deliberately suppresses DOM refocusing for that commit. A newly mounted
+tree does not own DOM focus, so sequencing `focusPath()` and `scrollToPath()` cannot implement the
+workspace focus command. Step 3 adds a one-shot `focus()` request to the rendered model and settles
+it inside the existing React focus coordinator; app code must not query the shadow root or change
+the preserved scroll-request semantics.
 
 `ReadyTreePane` currently constructs the model without enabling search:
 
@@ -183,15 +194,21 @@ running dev server for manual browser checks; do not start another server.
 - `apps/web/src/features/workspace/tests/tree-toolbar.test.tsx` (create)
 - `apps/web/src/features/workspace/tests/prepared-tree-input-cache.test.ts` (create)
 - `apps/web/scripts/file-tree-prepared-input-benchmark.ts` (create)
-- `packages/tree/src/components/FileTree.browser.tsx` — characterization only; no API redesign
-- `packages/tree/UPSTREAM.md` — note which reconciled capabilities the app now consumes
+- `packages/tree/src/components/FileTree.browser.tsx`
+- `packages/tree/src/components/FileTree.test.tsx`
+- `packages/tree/src/components/FileTreeView.tsx` — pass the narrow focus request to the coordinator
+- `packages/tree/src/hooks/useFileTreeFocusSync.ts` — settle the one-shot request only
+- `packages/tree/src/utils/model/FileTreeController.ts` — own the one-shot request id only
+- `packages/tree/src/utils/render/FileTree.ts` — expose `focus()` only
+- `packages/tree/UPSTREAM.md` (create) — note which reconciled capabilities the app now consumes
 - `plans/053-prune-tree-package-api.md` and `plans/README.md` — post-wiring drift/index update
 - this plan — completion cleanup
 
 **Out of scope**:
 
 - Reworking the post-051 React runtime, FileTreeView/controller decomposition, path-store algorithms,
-  or package exports. Plan 053 owns API-boundary pruning after this lands.
+  or package exports beyond Step 3's narrow focus request. Plan 053 owns API-boundary pruning after
+  this lands.
 - A second workspace-search implementation. Tree search filters currently loaded navigator rows;
   the Search sidebar/editor remains the content-search product.
 - Persisting tree filter text across application restarts or adding a setting. Retention lasts for
@@ -216,8 +233,13 @@ running dev server for manual browser checks; do not start another server.
 Run:
 
 ```bash
-test -f packages/tree/UPSTREAM.md
+test -f packages/tree/src/state/renderer.ts
+test -f packages/tree/src/hooks/useFileTreeFocusSync.ts
+test -f packages/tree/src/hooks/useFileTreeKeyboard.ts
 rg -n "from ['\"]preact|jsxImportSource preact|preact/hooks" packages/tree/src
+rg -n "hydrateRoot|fileTreeRenderer|utils/render/runtime" packages/tree/src packages/tree/package.json
+rg -n '"preact"\s*:' package.json packages/*/package.json apps/*/package.json
+rg -n '"files": \["packages/tree/\*\*"\]' .oxlintrc.json
 git status --porcelain > /tmp/plan-052-status-before.txt
 (cd packages/tree && bun run typecheck) > /tmp/plan-052-tree-typecheck-before.txt 2>&1
 (cd packages/tree && bun run lint) > /tmp/plan-052-tree-lint-before.txt 2>&1
@@ -229,10 +251,12 @@ git status --porcelain > /tmp/plan-052-status-before.txt
   > /tmp/plan-052-web-tests-before.txt 2>&1
 ```
 
-The Preact search must print nothing; typecheck/tests must pass; lint may contain only recorded
-existing warnings. Re-run the capability matrix with repository searches. If a gap listed above is
-already wired by prerequisite drift, preserve it and turn the corresponding step into
-characterization/refinement rather than adding a second path.
+All four searches must print nothing; the three React seam files must exist; typecheck/tests must
+pass; lint may contain only recorded existing warnings. Confirm `FileTreeView.tsx` remains at least
+300 lines below Plan 051's 1,994-line baseline and both focus/keyboard hooks remain below 500 lines.
+Re-run the capability matrix with repository searches. If a gap listed above is already wired by
+prerequisite drift, preserve it and turn the corresponding step into characterization/refinement
+rather than adding a second path.
 
 Before adding a cache, create the benchmark script. Generate deterministic 10k and 50k mixed
 directory/file paths and measure medians over warm iterations for:
@@ -312,19 +336,34 @@ Create pure decision helpers in `utils/tree-commands.ts`; DOM/model effects stay
 3. first current selected path;
 4. first visible/model path.
 
-For focus, resolve the nearest visible path, call `focusPath`, then call `scrollToPath` with
-`{ offset: 'nearest' }`; do not ask the scroll call to focus the same row a second time. For
-reveal-active, require an active editor path, use the same
-nearest-visible fallback while lazy ancestors load, and let existing selected-file sync continue
-loading/expanding ancestors. Do not query the shadow DOM for row geometry.
+Add one narrow, one-shot DOM-focus request to the package before wiring the app:
+
+- `FileTreeController` owns a monotonically increasing request id, exposes it to the view, and emits
+  when `requestFocus()` increments it. It does not store an element, callback, or app concern.
+- `FileTree.focus()` forwards to that controller request. This is distinct from `focusPath`, which
+  continues to mean model focus, and from `scrollToPath`, whose preserved commit still suppresses
+  DOM refocusing.
+- `useFileTreeFocusSync` tracks the last processed focus-request id. A new request claims DOM-focus
+  ownership and runs the existing canonical-row focus/nearest-scroll settlement; it must also work
+  when the requested path was already model-focused and when virtualization must mount the row.
+- Do not alter ordinary `focusPath`/`scrollToPath` semantics, query the shadow DOM from app code, or
+  add another focus effect/state machine.
+
+For focus, resolve the nearest visible path, call `focusPath`, then call `focus()`. For
+reveal-active, require an active editor path, use the same nearest-visible fallback while lazy
+ancestors load, and let existing selected-file sync continue loading/expanding ancestors. The focus
+coordinator already performs nearest scrolling when it mounts/focuses the canonical row, so do not
+pair this request with `scrollToPath` or duplicate its geometry in app code.
 
 For open-search, call `openSearch()` only after `search: true` is set in Step 4; the package owns
 input focus. TreePane observes the request through `use-tree-command-request.ts`, executes it once
 after the ready model mounts, updates the focus area through the existing capture path, and
 acknowledges it.
 
-**Verify**: pure decision tests plus the real browser test prove pane-unmounted request, real row
-focus, nearest-ancestor reveal, scroll settlement, and focused search input.
+**Verify**: package DOM/browser tests prove model focus alone does not steal DOM focus, one request
+focuses an already-focused or virtualized row exactly once, and ordinary scroll-request suppression
+is unchanged. Pure decision tests plus the app real-browser test prove pane-unmounted request, real
+row focus, nearest-ancestor reveal, scroll settlement, and focused search input.
 
 ### Step 4: Enable retained search and fill the header composition slot
 
@@ -460,8 +499,9 @@ git status --short
 ```
 
 Expected: every capability has a real app caller, all gates match baseline, and only in-scope files
-differ. Update Plan 053's live consumer/unused-export inventory, then delete this completed plan and
-its index row.
+differ. Create `packages/tree/UPSTREAM.md` with the reconciled upstream baseline and the capabilities
+now consumed by the app, update Plan 053's live consumer/unused-export inventory, then delete this
+completed plan and its index row.
 
 ## Test plan
 

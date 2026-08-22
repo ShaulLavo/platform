@@ -7,6 +7,10 @@ import { FileTree } from '@workspace/tree/components/FileTree'
 import { useFileTree } from '@workspace/tree/hooks/useFileTree'
 import type { FileTreeIcons } from '@workspace/tree/utils/iconConfig'
 import type { GitStatusEntry } from '@workspace/tree/utils/publicTypes'
+import type {
+  FileTreeContextMenuItem,
+  FileTreeContextMenuOpenContext,
+} from '@workspace/tree/utils/model/publicTypes'
 import { FileTree as FileTreeModel } from '@workspace/tree/utils/render/FileTree'
 
 let root: Root | null = null
@@ -169,6 +173,210 @@ describe('FileTree React integration', () => {
       treeModel.cleanUp()
     },
   )
+
+  it('reuses one mounted renderer and survives queued unmount/remount timing', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const host = document.createElement('file-tree-container')
+    document.body.append(host)
+    const treeModel = new FileTreeModel({
+      initialExpansion: 'open',
+      paths: ['src/', 'src/a.ts', 'src/b.ts'],
+    })
+
+    treeModel.render({ fileTreeContainer: host })
+    const shadowRoot = await waitForHostShadowRoot(host)
+    await vi.waitFor(() => {
+      expect(rowButton(shadowRoot, 'src/a.ts')).toBeTruthy()
+    })
+
+    treeModel.render({ fileTreeContainer: host })
+    treeModel.setComposition(treeModel.getComposition())
+    treeModel.setGitStatus([{ path: 'src/a.ts', status: 'modified' }])
+    treeModel.setIcons(fileIconRemap('updated-file-icon'))
+    await vi.waitFor(() => {
+      expect(rowButton(shadowRoot, 'src/a.ts').dataset.itemGitStatus).toBe('modified')
+      expect(fileIconHref(shadowRoot, 'src/a.ts')).toBe('#updated-file-icon')
+    })
+
+    treeModel.unmount()
+    treeModel.render({ fileTreeContainer: host })
+    await vi.waitFor(() => {
+      expect(rowButton(shadowRoot, 'src/b.ts')).toBeTruthy()
+    })
+
+    treeModel.unmount()
+    await Promise.resolve()
+    await vi.waitFor(() => {
+      expect(shadowRoot.querySelector('[role="tree"]')).toBeNull()
+    })
+
+    treeModel.render({ fileTreeContainer: host })
+    await vi.waitFor(() => {
+      expect(rowButton(shadowRoot, 'src/a.ts').dataset.itemGitStatus).toBe('modified')
+    })
+    expect(errorSpy).not.toHaveBeenCalled()
+    expect(warnSpy).not.toHaveBeenCalled()
+    treeModel.cleanUp()
+  })
+
+  it('mounts and cleans up through the public React wrapper without runtime warnings', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const container = document.createElement('main')
+    document.body.append(container)
+    root = createRoot(container)
+    const treeModel = new FileTreeModel({
+      initialExpansion: 'open',
+      paths: ['src/', 'src/a.ts'],
+    })
+
+    flushSync(() => root?.render(<FileTree aria-label='Files' model={treeModel} />))
+    const shadowRoot = await waitForShadowRoot()
+    await vi.waitFor(() => {
+      expect(rowButton(shadowRoot, 'src/a.ts')).toBeTruthy()
+    })
+
+    flushSync(() => root?.render(<FileTree aria-label='Files' model={treeModel} />))
+    flushSync(() => root?.unmount())
+    root = null
+    await Promise.resolve()
+
+    expect(errorSpy).not.toHaveBeenCalled()
+    expect(warnSpy).not.toHaveBeenCalled()
+    treeModel.cleanUp()
+  })
+
+  it('keeps a right-click context menu mounted across incidental controller renders', async () => {
+    const container = document.createElement('main')
+    document.body.append(container)
+    root = createRoot(container)
+    const openedItems: FileTreeContextMenuItem[] = []
+    const openedContexts: FileTreeContextMenuOpenContext[] = []
+    const renderMenu = vi.fn(
+      (item: FileTreeContextMenuItem, context: FileTreeContextMenuOpenContext) => {
+        const menu = document.createElement('div')
+        menu.dataset.fileTreeContextMenuRoot = 'true'
+        menu.textContent = item.path
+        openedItems.push(item)
+        openedContexts.push(context)
+        return menu
+      },
+    )
+    const treeModel = new FileTreeModel({
+      composition: {
+        contextMenu: {
+          enabled: true,
+          render: renderMenu,
+          triggerMode: 'both',
+        },
+      },
+      initialExpansion: 'open',
+      initialSelectedPaths: ['src/a.ts'],
+      paths: ['src/', 'src/a.ts', 'src/b.ts'],
+    })
+
+    flushSync(() => root?.render(<FileTree aria-label='Files' model={treeModel} />))
+    const shadowRoot = await waitForShadowRoot()
+    rowButton(shadowRoot, 'src/a.ts').dispatchEvent(
+      new MouseEvent('contextmenu', {
+        bubbles: true,
+        clientX: 37,
+        clientY: 53,
+        composed: true,
+      }),
+    )
+
+    await vi.waitFor(() => {
+      expect(renderMenu).toHaveBeenCalledTimes(1)
+    })
+    expect(openedItems).toEqual([{ kind: 'file', name: 'a.ts', path: 'src/a.ts' }])
+    expect(openedContexts[0]?.anchorRect).toEqual({
+      bottom: 53,
+      height: 0,
+      left: 37,
+      right: 37,
+      top: 53,
+      width: 0,
+      x: 37,
+      y: 53,
+    })
+
+    treeModel.getItem('src/b.ts')?.select()
+    await vi.waitFor(() => {
+      expect(rowButton(shadowRoot, 'src/b.ts').getAttribute('aria-selected')).toBe('true')
+    })
+    expect(renderMenu).toHaveBeenCalledTimes(1)
+    treeModel.cleanUp()
+  })
+
+  it('opens the focused row context menu from Shift+F10 and closes through its context', async () => {
+    const container = document.createElement('main')
+    document.body.append(container)
+    root = createRoot(container)
+    const onClose = vi.fn()
+    const openedContexts: FileTreeContextMenuOpenContext[] = []
+    let menuAction: HTMLButtonElement | null = null
+    const renderMenu = vi.fn(
+      (item: FileTreeContextMenuItem, context: FileTreeContextMenuOpenContext) => {
+        const menu = document.createElement('div')
+        const action = document.createElement('button')
+        action.textContent = item.path
+        menu.append(action)
+        menuAction = action
+        openedContexts.push(context)
+        return menu
+      },
+    )
+    const treeModel = new FileTreeModel({
+      composition: {
+        contextMenu: {
+          enabled: true,
+          onClose,
+          render: renderMenu,
+          triggerMode: 'both',
+        },
+      },
+      initialExpansion: 'open',
+      initialSelectedPaths: ['src/a.ts'],
+      paths: ['src/', 'src/a.ts'],
+    })
+
+    flushSync(() => root?.render(<FileTree aria-label='Files' model={treeModel} />))
+    const shadowRoot = await waitForShadowRoot()
+    const tree = shadowRoot.querySelector<HTMLElement>('[role="tree"]')
+    expect(tree).not.toBeNull()
+    tree?.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        bubbles: true,
+        composed: true,
+        key: 'F10',
+        shiftKey: true,
+      }),
+    )
+
+    await vi.waitFor(() => {
+      expect(renderMenu).toHaveBeenCalledTimes(1)
+    })
+    expect(renderMenu.mock.calls[0]?.[0]).toEqual({
+      kind: 'file',
+      name: 'a.ts',
+      path: 'src/a.ts',
+    })
+    expect(openedContexts[0]?.anchorElement.dataset.type).toBe('context-menu-trigger')
+    expect(document.activeElement).toBe(menuAction)
+
+    openedContexts[0]?.close({ restoreFocus: false })
+    await vi.waitFor(() => {
+      expect(onClose).toHaveBeenCalledTimes(1)
+      expect(
+        shadowRoot
+          .querySelector('[data-type="context-menu-trigger"]')
+          ?.getAttribute('aria-expanded'),
+      ).toBe('false')
+    })
+    treeModel.cleanUp()
+  })
 })
 
 function fileIconRemap(iconName: string): FileTreeIcons {
@@ -186,6 +394,17 @@ async function waitForShadowRoot() {
   })
 
   const shadowRoot = document.querySelector('file-tree-container')?.shadowRoot
+  if (!shadowRoot) throw new Error('missing file tree shadow root')
+
+  return shadowRoot
+}
+
+async function waitForHostShadowRoot(host: HTMLElement): Promise<ShadowRoot> {
+  await vi.waitFor(() => {
+    expect(host.shadowRoot).toBeTruthy()
+  })
+
+  const shadowRoot = host.shadowRoot
   if (!shadowRoot) throw new Error('missing file tree shadow root')
 
   return shadowRoot
