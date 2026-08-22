@@ -61,6 +61,38 @@ describe('editor document store state identity', () => {
 
     expect(reopened.scrollPosition).toEqual({ left: 0, top: 240 })
   })
+
+  it('hands back the same document object through both read paths', () => {
+    const store = createEditorDocumentStore()
+
+    const returned = store.getState().ensureLiveEditorDocument(fileResult('/repo/a.ts'))
+
+    expect(store.getState().getLiveEditorDocument('/repo/a.ts')).toBe(returned)
+    expect(store.getState().liveDocumentsById['/repo/a.ts']).toBe(returned)
+  })
+
+  it('hands back the same view object through both read paths', () => {
+    const store = createEditorDocumentStore()
+    store.getState().ensureEditorView('tab-1', fileResult('/repo/a.ts'))
+
+    const view = store.getState().getEditorView('tab-1')
+
+    expect(view).not.toBeNull()
+    expect(store.getState().viewsByTabId['tab-1']).toBe(view)
+  })
+
+  it('exposes one document object at the new path after a rename', () => {
+    const store = createEditorDocumentStore()
+    store.getState().ensureEditorView('tab-1', fileResult('/repo/a.ts'))
+
+    store.getState().renameLiveEditorDocumentPath('/repo/a.ts', '/repo/b.ts')
+
+    const renamed = store.getState().getLiveEditorDocument('/repo/b.ts')
+    expect(renamed?.path).toBe('/repo/b.ts')
+    expect(store.getState().liveDocumentsById['/repo/b.ts']).toBe(renamed)
+    expect(store.getState().getLiveEditorDocument('/repo/a.ts')).toBeNull()
+    expect(store.getState().hasLiveEditorDocument('/repo/a.ts')).toBe(false)
+  })
 })
 
 function fileResult(path: string): FileResult {

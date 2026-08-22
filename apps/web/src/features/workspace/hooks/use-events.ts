@@ -93,10 +93,7 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
         dirtyFilePaths: documentState.dirtyFilePaths,
         ensureUnsyncedEditorDocument: documentState.ensureUnsyncedEditorDocument,
         events,
-        forceReplaceLiveEditorDocument: (file) =>
-          documentStore
-            .getState()
-            .forceReplaceLiveEditorDocument(file, workspaceStore.getState().selectedFilePath),
+        forceReplaceLiveEditorDocument: documentState.forceReplaceLiveEditorDocument,
         getLiveEditorDocument: documentState.getLiveEditorDocument,
         openFilePaths: workspaceState.openFilePaths,
         queryClient,
@@ -129,10 +126,7 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
         discardLiveEditorDocument,
         dirtyFilePaths: documentState.dirtyFilePaths,
         ensureUnsyncedEditorDocument: documentState.ensureUnsyncedEditorDocument,
-        forceReplaceLiveEditorDocument: (file) =>
-          documentStore
-            .getState()
-            .forceReplaceLiveEditorDocument(file, workspaceStore.getState().selectedFilePath),
+        forceReplaceLiveEditorDocument: documentState.forceReplaceLiveEditorDocument,
         getLiveEditorDocument: documentState.getLiveEditorDocument,
         openFilePaths: workspaceState.openFilePaths,
         queryClient,

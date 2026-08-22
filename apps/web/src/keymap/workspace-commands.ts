@@ -103,7 +103,7 @@ async function revertSelectedEditorDocument(
 
   const file = await fetchFile(path, new AbortController().signal)
   setFileSnapshotQueryData(queryClient, file)
-  documentStore.getState().forceReplaceLiveEditorDocument(file, path)
+  documentStore.getState().forceReplaceLiveEditorDocument(file)
   return true
 }
 

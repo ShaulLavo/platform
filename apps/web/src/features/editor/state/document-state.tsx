@@ -12,6 +12,7 @@ import {
   type LiveEditorDocument,
   type LiveEditorViewDocument,
   type UnsyncedLiveEditorDocumentInput,
+  type WorkspaceDocumentServiceState,
 } from '@/features/editor/state/workspace-document-service'
 
 export type { LiveEditorDocument, UnsyncedLiveEditorDocumentInput }
@@ -26,31 +27,14 @@ type CreateEditorDocumentStoreOptions = {
   scrollPositionSeeds?: Readonly<Record<string, EditorScrollPosition>>
 }
 
-type EditorDocumentStoreState = {
-  documentContentRevisions: Readonly<Record<string, string>>
-  dirtyContentRevision: number
-  dirtyFilePaths: ReadonlySet<string>
-  fallbackDocumentPath: string | null
-  liveDocumentsById: Readonly<Record<string, LiveEditorDocument>>
-  scrollPositionByTabId: Readonly<Record<string, EditorScrollPosition>>
-  viewsByTabId: Readonly<Record<string, EditorDocumentView>>
-}
-
 type EditorDocumentStoreActions = {
   deleteLiveEditorDocument: (documentId: string) => DeleteLiveEditorDocumentResult
   ensureEditorView: (tabId: string, file: FileResult) => LiveEditorViewDocument
   ensureEditorViewForDocument: (tabId: string, documentId: string) => LiveEditorViewDocument
-  ensureLiveEditorDocument: (
-    file: FileResult,
-    selectedFilePath?: string | null,
-  ) => LiveEditorDocument
+  ensureLiveEditorDocument: (file: FileResult) => LiveEditorDocument
   ensureUnsyncedEditorDocument: (input: UnsyncedLiveEditorDocumentInput) => LiveEditorDocument
-  forceReplaceLiveEditorDocument: (
-    file: FileResult,
-    selectedFilePath?: string | null,
-  ) => { wasDirty: boolean }
+  forceReplaceLiveEditorDocument: (file: FileResult) => { wasDirty: boolean }
   getEditorView: (tabId: string) => EditorDocumentView | null
-  getEditorViewDocument: (tabId: string) => LiveEditorViewDocument | null
   getLiveEditorDocument: (documentId: string) => LiveEditorDocument | null
   hasLiveEditorDocument: (documentId: string) => boolean
   markLiveEditorDocumentSaved: (input: {
@@ -81,11 +65,17 @@ type EditorDocumentStoreActions = {
     evictedTabIds: string[]
   }
   setEditorViewScrollPosition: (tabId: string, scrollPosition: EditorScrollPosition) => void
-  setFallbackDocumentPath: (path: string | null) => void
   setLiveEditorDocumentDirty: (documentId: string, dirty: boolean) => void
 }
 
-export type EditorDocumentStore = EditorDocumentStoreState & EditorDocumentStoreActions
+/**
+ * The service owns every document fact; this store owns none. Its state type is
+ * the service's state type — so a field can only ever be declared once — and
+ * every action is "mutate the service, then publish its state". Reads go to the
+ * service rather than to the published copy, which is the same object either
+ * way: the service hands out the stored document, not a projection of it.
+ */
+export type EditorDocumentStore = WorkspaceDocumentServiceState & EditorDocumentStoreActions
 
 export type EditorDocumentStoreApi = Mutate<
   StoreApi<EditorDocumentStore>,
@@ -137,130 +127,98 @@ const NO_LIVE_DOCUMENTS = {
 export function createEditorDocumentStore(options: CreateEditorDocumentStoreOptions = {}) {
   const service = new WorkspaceDocumentService()
   if (options.scrollPositionSeeds) service.seedScrollPositions(options.scrollPositionSeeds)
-  const initialDocuments = service.state()
 
   return createStore<EditorDocumentStore>()(
-    subscribeWithSelector((set, get) => ({
-      ...initialDocuments,
-      fallbackDocumentPath: null,
-      deleteLiveEditorDocument: (documentId) => {
-        const result = service.deleteLiveDocument(documentId)
-        set({ ...service.state() })
-        return result
-      },
-      ensureEditorView: (tabId, file) => {
-        service.ensureView(tabId, file)
-        set({ ...service.state() })
-        return get().getEditorViewDocument(tabId)!
-      },
-      ensureEditorViewForDocument: (tabId, documentId) => {
-        service.ensureViewForDocument(tabId, documentId)
-        set({ ...service.state() })
-        return get().getEditorViewDocument(tabId)!
-      },
-      ensureLiveEditorDocument: (file, selectedFilePath = null) => {
-        service.ensureLiveDocument(file)
-        set((state) => ({
-          ...service.state(),
-          fallbackDocumentPath:
-            selectedFilePath === file.path ? file.path : state.fallbackDocumentPath,
-        }))
-        return get().liveDocumentsById[file.path]!
-      },
-      ensureUnsyncedEditorDocument: (input) => {
-        service.ensureUnsyncedDocument(input)
-        set({ ...service.state() })
-        return get().liveDocumentsById[input.id]!
-      },
-      forceReplaceLiveEditorDocument: (file, selectedFilePath = null) => {
-        const result = service.forceReplaceLiveDocument(file)
-        if (result.changed || selectedFilePath === file.path) {
-          set((state) => ({
-            ...service.state(),
-            fallbackDocumentPath:
-              selectedFilePath === file.path ? file.path : state.fallbackDocumentPath,
-          }))
-        }
-        return { wasDirty: result.wasDirty }
-      },
-      getEditorView: (tabId) => get().viewsByTabId[tabId] ?? null,
-      getEditorViewDocument: (tabId) => {
-        const view = get().viewsByTabId[tabId]
-        if (!view) return null
+    subscribeWithSelector((set) => {
+      const publish = () => set(service.state())
 
-        const document = get().liveDocumentsById[view.documentId]
-        if (!document) return null
-
-        return {
-          ...document,
-          scrollPosition: view.scrollPosition,
-          tabId,
-          view: view.view,
-        }
-      },
-      getLiveEditorDocument: (documentId) => get().liveDocumentsById[documentId] ?? null,
-      hasLiveEditorDocument: (documentId) => service.hasLiveDocument(documentId),
-      markLiveEditorDocumentSaved: (input) => {
-        const marked = service.markSaved(input)
-        set({ ...service.state() })
-        return marked
-      },
-      markSettingsDocumentSaved: (input) => {
-        const marked = service.markSettingsSaved(input)
-        set({ ...service.state() })
-        return marked
-      },
-      replaceUnsyncedEditorDocumentText: (documentId, text) => {
-        const replaced = service.replaceUnsyncedDocumentText(documentId, text)
-        if (replaced) set({ ...service.state() })
-        return replaced
-      },
-      reconcileSettingsDocument: (documentId, text, revision) => {
-        const reconciled = service.reconcileSettingsDocument(documentId, text, revision)
-        if (reconciled) set({ ...service.state() })
-        return reconciled
-      },
-      recordLiveEditorDocumentTextChange: (documentId) => {
-        service.recordTextChange(documentId)
-        set({ ...service.state() })
-      },
-      removeEditorView: (tabId) => {
-        const removed = service.removeView(tabId)
-        if (removed) set({ ...service.state() })
-        return removed
-      },
-      renameLiveEditorDocumentPath: (from, to) => {
-        const result = service.renameLiveDocument(from, to)
-        set((state) => ({
-          ...service.state(),
-          fallbackDocumentPath:
-            state.fallbackDocumentPath === from ? to : state.fallbackDocumentPath,
-        }))
-        return result
-      },
-      retainEditorDocuments: (keep) => {
-        const result = service.retain(keep)
-        set((state) => ({
-          ...service.state(),
-          fallbackDocumentPath: result.evictedDocumentIds.includes(state.fallbackDocumentPath ?? '')
-            ? null
-            : state.fallbackDocumentPath,
-        }))
-        return result
-      },
-      setEditorViewScrollPosition: (tabId, scrollPosition) => {
-        const changed = service.setViewScrollPosition(tabId, scrollPosition)
-        // Runs at scroll rate; service.state() keeps unchanged slices
-        // referentially stable, so this notify only re-renders subscribers of
-        // the scroll position itself.
-        if (changed) set({ ...service.state() })
-      },
-      setFallbackDocumentPath: (fallbackDocumentPath) => set({ fallbackDocumentPath }),
-      seedEditorScrollPositions: (byPath) => service.seedScrollPositions(byPath),
-      setLiveEditorDocumentDirty: (documentId, dirty) => {
-        service.setDirty(documentId, dirty)
-        set({ ...service.state() })
-      },
-    })),
+      return {
+        ...service.state(),
+        deleteLiveEditorDocument: (documentId) => {
+          const result = service.deleteLiveDocument(documentId)
+          publish()
+          return result
+        },
+        ensureEditorView: (tabId, file) => {
+          const viewDocument = service.ensureView(tabId, file)
+          publish()
+          return viewDocument
+        },
+        ensureEditorViewForDocument: (tabId, documentId) => {
+          const viewDocument = service.ensureViewForDocument(tabId, documentId)
+          publish()
+          return viewDocument
+        },
+        ensureLiveEditorDocument: (file) => {
+          const document = service.ensureLiveDocument(file)
+          publish()
+          return document
+        },
+        ensureUnsyncedEditorDocument: (input) => {
+          const document = service.ensureUnsyncedDocument(input)
+          publish()
+          return document
+        },
+        forceReplaceLiveEditorDocument: (file) => {
+          const result = service.forceReplaceLiveDocument(file)
+          if (result.changed) publish()
+          return { wasDirty: result.wasDirty }
+        },
+        getEditorView: (tabId) => service.getView(tabId),
+        getLiveEditorDocument: (documentId) => service.getLiveDocument(documentId),
+        hasLiveEditorDocument: (documentId) => service.hasLiveDocument(documentId),
+        markLiveEditorDocumentSaved: (input) => {
+          const marked = service.markSaved(input)
+          publish()
+          return marked
+        },
+        markSettingsDocumentSaved: (input) => {
+          const marked = service.markSettingsSaved(input)
+          publish()
+          return marked
+        },
+        replaceUnsyncedEditorDocumentText: (documentId, text) => {
+          const replaced = service.replaceUnsyncedDocumentText(documentId, text)
+          if (replaced) publish()
+          return replaced
+        },
+        reconcileSettingsDocument: (documentId, text, revision) => {
+          const reconciled = service.reconcileSettingsDocument(documentId, text, revision)
+          if (reconciled) publish()
+          return reconciled
+        },
+        recordLiveEditorDocumentTextChange: (documentId) => {
+          service.recordTextChange(documentId)
+          publish()
+        },
+        removeEditorView: (tabId) => {
+          const removed = service.removeView(tabId)
+          if (removed) publish()
+          return removed
+        },
+        renameLiveEditorDocumentPath: (from, to) => {
+          const result = service.renameLiveDocument(from, to)
+          publish()
+          return result
+        },
+        retainEditorDocuments: (keep) => {
+          const result = service.retain(keep)
+          publish()
+          return result
+        },
+        setEditorViewScrollPosition: (tabId, scrollPosition) => {
+          const changed = service.setViewScrollPosition(tabId, scrollPosition)
+          // Runs at scroll rate; service.state() keeps unchanged slices
+          // referentially stable, so this notify only re-renders subscribers of
+          // the scroll position itself.
+          if (changed) publish()
+        },
+        seedEditorScrollPositions: (byPath) => service.seedScrollPositions(byPath),
+        setLiveEditorDocumentDirty: (documentId, dirty) => {
+          service.setDirty(documentId, dirty)
+          publish()
+        },
+      }
+    }),
   )
 }

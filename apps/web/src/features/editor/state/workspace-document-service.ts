@@ -48,25 +48,25 @@ type LiveDocumentSync =
     }
 
 export type LiveEditorDocument = {
-  buffer: EditorTextBuffer
-  contentRevision: string
-  id: string
-  localRevision: number
-  path: string
-  sync: LiveDocumentSync
+  readonly buffer: EditorTextBuffer
+  readonly contentRevision: string
+  readonly id: string
+  readonly localRevision: number
+  readonly path: string
+  readonly sync: LiveDocumentSync
 }
 
 export type EditorDocumentView = {
-  documentId: string
-  scrollPosition?: EditorScrollPosition
-  tabId: string
-  view: EditorViewSession
+  readonly documentId: string
+  readonly scrollPosition?: EditorScrollPosition
+  readonly tabId: string
+  readonly view: EditorViewSession
 }
 
 export type LiveEditorViewDocument = LiveEditorDocument & {
-  scrollPosition?: EditorScrollPosition
-  tabId: string
-  view: EditorViewSession
+  readonly scrollPosition?: EditorScrollPosition
+  readonly tabId: string
+  readonly view: EditorViewSession
 }
 
 export type UnsyncedLiveEditorDocumentInput = {
@@ -85,39 +85,18 @@ export type WorkspaceDocumentServiceState = {
   viewsByTabId: Readonly<Record<string, EditorDocumentView>>
 }
 
-type LiveEditorDocumentRecord = {
-  readonly buffer: EditorTextBuffer
-  readonly contentRevision: string
-  readonly id: string
-  readonly localRevision: number
-  readonly path: string
-  readonly sync: LiveDocumentSync
-}
-
-type EditorDocumentViewRecord = {
-  readonly documentId: string
-  readonly scrollPosition?: EditorScrollPosition
-  readonly tabId: string
-  readonly view: EditorViewSession
-}
-
 export class WorkspaceDocumentService {
   private documentContentRevisions: Readonly<Record<string, string>> = {}
   private dirtyFilePaths: ReadonlySet<string> = new Set()
   private dirtyContentRevision = 0
-  private readonly liveDocumentsById = new Map<string, LiveEditorDocumentRecord>()
-  private readonly viewsByTabId = new Map<string, EditorDocumentViewRecord>()
+  private readonly liveDocumentsById = new Map<string, LiveEditorDocument>()
+  private readonly viewsByTabId = new Map<string, EditorDocumentView>()
   /**
    * Last known scroll position per document, seeded from the workspace cache.
    * Read when a view is created, so a reopened file (or a refreshed app)
    * lands where it was; updated on every scroll write.
    */
   private readonly scrollPositionSeeds = new Map<string, EditorScrollPosition>()
-  private readonly liveDocumentProjectionCache = new WeakMap<
-    LiveEditorDocumentRecord,
-    LiveEditorDocument
-  >()
-  private readonly viewProjectionCache = new WeakMap<EditorDocumentViewRecord, EditorDocumentView>()
   private cachedState: WorkspaceDocumentServiceState | null = null
 
   /**
@@ -181,17 +160,17 @@ export class WorkspaceDocumentService {
 
   ensureLiveDocument(file: FileResult): LiveEditorDocument {
     const existing = this.liveDocumentsById.get(file.path)
-    if (existing?.buffer.isDirty()) return this.liveDocumentProjection(existing)
+    if (existing?.buffer.isDirty()) return existing
     if (existing && fileSyncVersion(existing) === file.version) {
-      return this.liveDocumentProjection(existing)
+      return existing
     }
 
-    const record = this.createFileDocumentRecord(file)
+    const record = this.createFileDocument(file)
     this.liveDocumentsById.set(file.path, record)
     this.setContentRevision(file.path, record.contentRevision)
     this.deleteDirtyPath(file.path)
     this.rebindViewsForDocument(file.path)
-    return this.liveDocumentProjection(record)
+    return record
   }
 
   ensureView(tabId: string, file: FileResult): LiveEditorViewDocument {
@@ -201,16 +180,16 @@ export class WorkspaceDocumentService {
 
   ensureUnsyncedDocument(input: UnsyncedLiveEditorDocumentInput): LiveEditorDocument {
     const existing = this.liveDocumentsById.get(input.id)
-    if (existing?.buffer.isDirty()) return this.liveDocumentProjection(existing)
+    if (existing?.buffer.isDirty()) return existing
     if (existing && textSnapshotEqualsText(existing.buffer.getTextSnapshot(), input.content)) {
-      return this.liveDocumentProjection(existing)
+      return existing
     }
 
-    const record = this.createUnsyncedDocumentRecord(input)
+    const record = this.createUnsyncedDocument(input)
     this.liveDocumentsById.set(input.id, record)
     this.setContentRevision(input.id, record.contentRevision)
     this.rebindViewsForDocument(input.id)
-    return this.liveDocumentProjection(record)
+    return record
   }
 
   ensureViewForDocument(tabId: string, documentId: string): LiveEditorViewDocument {
@@ -223,14 +202,13 @@ export class WorkspaceDocumentService {
     const scrollPosition = existing?.scrollPosition ?? this.scrollPositionSeeds.get(document.id)
     const view = createEditorViewSession(document.buffer, `tab:${tabId}`)
     view.setScrollPosition(scrollPosition)
-    this.viewsByTabId.set(tabId, {
+    const nextView: EditorDocumentView = {
       documentId: document.id,
       scrollPosition,
       tabId,
       view,
-    })
-    const nextView = this.viewsByTabId.get(tabId)
-    if (!nextView) throw createClientInvariantError('editor view was not created')
+    }
+    this.viewsByTabId.set(tabId, nextView)
 
     return this.viewDocumentProjection(nextView)
   }
@@ -252,7 +230,7 @@ export class WorkspaceDocumentService {
       }
     }
 
-    const record = this.replacementRecord(file, existing)
+    const record = this.replacementDocument(file, existing)
 
     this.liveDocumentsById.set(file.path, record)
     this.setContentRevision(file.path, record.contentRevision)
@@ -262,17 +240,11 @@ export class WorkspaceDocumentService {
   }
 
   getLiveDocument(documentId: string): LiveEditorDocument | null {
-    const record = this.liveDocumentsById.get(documentId)
-    if (!record) return null
-
-    return this.liveDocumentProjection(record)
+    return this.liveDocumentsById.get(documentId) ?? null
   }
 
   getView(tabId: string): EditorDocumentView | null {
-    const record = this.viewsByTabId.get(tabId)
-    if (!record) return null
-
-    return this.viewProjection(record)
+    return this.viewsByTabId.get(tabId) ?? null
   }
 
   getViewDocument(tabId: string): LiveEditorViewDocument | null {
@@ -411,14 +383,14 @@ export class WorkspaceDocumentService {
   }
 
   private applySaved(
-    document: LiveEditorDocumentRecord,
+    document: LiveEditorDocument,
     sync: LiveDocumentSync,
     savedContentRevision: string,
     savedText: string,
   ): boolean {
     // The write already landed on disk, so the sync metadata advances even
     // when in-flight edits make the content checks below fail.
-    const synced: LiveEditorDocumentRecord = { ...document, sync }
+    const synced: LiveEditorDocument = { ...document, sync }
     this.liveDocumentsById.set(document.id, synced)
     if (document.contentRevision !== savedContentRevision) return false
     if (!textSnapshotEqualsText(document.buffer.getTextSnapshot(), savedText)) return false
@@ -507,20 +479,20 @@ export class WorkspaceDocumentService {
   }
 
   /**
-   * Records are replaced on write, never mutated in place, so unchanged
-   * entries keep their identity and projections memoize on the record object
-   * itself. A slice is reused wholesale when every entry survives, which lets
-   * high-frequency writes (per-frame scroll position updates) notify the
-   * store without re-rendering subscribers of unrelated slices.
+   * Documents and views are replaced on write, never mutated in place, so an
+   * unchanged entry keeps its identity for free and a slice is reused wholesale
+   * when every entry survives. That is what lets high-frequency writes
+   * (per-frame scroll position updates) notify the store without re-rendering
+   * subscribers of unrelated slices.
    */
   state(): WorkspaceDocumentServiceState {
     const previous = this.cachedState
-    const viewsByTabId = this.viewsState(previous?.viewsByTabId)
+    const viewsByTabId = recordFromMap(this.viewsByTabId, previous?.viewsByTabId)
     const next: WorkspaceDocumentServiceState = {
       documentContentRevisions: this.documentContentRevisions,
       dirtyContentRevision: this.dirtyContentRevision,
       dirtyFilePaths: this.dirtyFilePaths,
-      liveDocumentsById: this.liveDocumentsState(previous?.liveDocumentsById),
+      liveDocumentsById: recordFromMap(this.liveDocumentsById, previous?.liveDocumentsById),
       scrollPositionByTabId: this.scrollPositionsState(
         viewsByTabId,
         previous?.scrollPositionByTabId,
@@ -529,22 +501,6 @@ export class WorkspaceDocumentService {
     }
     this.cachedState = next
     return next
-  }
-
-  private liveDocumentsState(
-    previous: Readonly<Record<string, LiveEditorDocument>> | undefined,
-  ): Readonly<Record<string, LiveEditorDocument>> {
-    return projectedRecord(
-      this.liveDocumentsById,
-      (record) => this.liveDocumentProjection(record),
-      previous,
-    )
-  }
-
-  private viewsState(
-    previous: Readonly<Record<string, EditorDocumentView>> | undefined,
-  ): Readonly<Record<string, EditorDocumentView>> {
-    return projectedRecord(this.viewsByTabId, (record) => this.viewProjection(record), previous)
   }
 
   private scrollPositionsState(
@@ -564,7 +520,7 @@ export class WorkspaceDocumentService {
     return next
   }
 
-  private createFileDocumentRecord(file: FileResult): LiveEditorDocumentRecord {
+  private createFileDocument(file: FileResult): LiveEditorDocument {
     const buffer = createEditorTextBuffer(file.content)
     buffer.markClean()
 
@@ -584,9 +540,7 @@ export class WorkspaceDocumentService {
     }
   }
 
-  private createUnsyncedDocumentRecord(
-    input: UnsyncedLiveEditorDocumentInput,
-  ): LiveEditorDocumentRecord {
+  private createUnsyncedDocument(input: UnsyncedLiveEditorDocumentInput): LiveEditorDocument {
     const buffer = createEditorTextBuffer(input.content)
     buffer.markClean()
 
@@ -600,13 +554,13 @@ export class WorkspaceDocumentService {
     }
   }
 
-  private replacementRecord(
+  private replacementDocument(
     file: FileResult,
-    existing: LiveEditorDocumentRecord | undefined,
-  ): LiveEditorDocumentRecord {
-    if (!existing) return this.createFileDocumentRecord(file)
+    existing: LiveEditorDocument | undefined,
+  ): LiveEditorDocument {
+    if (!existing) return this.createFileDocument(file)
     if (!textSnapshotEqualsText(existing.buffer.getTextSnapshot(), file.content)) {
-      return this.createFileDocumentRecord(file)
+      return this.createFileDocument(file)
     }
 
     existing.buffer.markClean()
@@ -640,48 +594,18 @@ export class WorkspaceDocumentService {
     }
   }
 
-  private liveDocumentProjection(document: LiveEditorDocumentRecord): LiveEditorDocument {
-    const cached = this.liveDocumentProjectionCache.get(document)
-    if (cached) return cached
-
-    const projection: LiveEditorDocument = {
-      buffer: document.buffer,
-      contentRevision: document.contentRevision,
-      id: document.id,
-      localRevision: document.localRevision,
-      path: document.path,
-      sync: document.sync,
-    }
-    this.liveDocumentProjectionCache.set(document, projection)
-    return projection
-  }
-
-  private viewProjection(view: EditorDocumentViewRecord): EditorDocumentView {
-    const cached = this.viewProjectionCache.get(view)
-    if (cached) return cached
-
-    const projection: EditorDocumentView = {
-      documentId: view.documentId,
-      scrollPosition: view.scrollPosition,
-      tabId: view.tabId,
-      view: view.view,
-    }
-    this.viewProjectionCache.set(view, projection)
-    return projection
-  }
-
-  private viewDocumentProjection(view: EditorDocumentViewRecord): LiveEditorViewDocument {
+  private viewDocumentProjection(view: EditorDocumentView): LiveEditorViewDocument {
     const document = this.getRequiredLiveDocument(view.documentId)
 
     return {
-      ...this.liveDocumentProjection(document),
+      ...document,
       scrollPosition: view.scrollPosition,
       tabId: view.tabId,
       view: view.view,
     }
   }
 
-  private getRequiredLiveDocument(documentId: string): LiveEditorDocumentRecord {
+  private getRequiredLiveDocument(documentId: string): LiveEditorDocument {
     const document = this.liveDocumentsById.get(documentId)
     if (!document) {
       throw createClientInvariantError(`Missing live document ${documentId}`)
@@ -744,7 +668,7 @@ function scrollPositionsEqual(
   return current.left === next.left && current.top === next.top
 }
 
-function fileSyncVersion(document: LiveEditorDocumentRecord | undefined) {
+function fileSyncVersion(document: LiveEditorDocument | undefined) {
   if (!document) return null
   if (document.sync.kind !== 'file') return null
 
@@ -762,17 +686,22 @@ function omitKey(
   return next
 }
 
-function projectedRecord<RecordT, ProjectionT>(
-  source: Map<string, RecordT>,
-  project: (record: RecordT) => ProjectionT,
-  previous: Readonly<Record<string, ProjectionT>> | undefined,
-): Readonly<Record<string, ProjectionT>> {
+/**
+ * A Map rendered as a plain record for zustand selectors. Values are passed
+ * through untouched — the Map already holds the only representation — and the
+ * previous record is reused wholesale when every entry survived, so a
+ * high-frequency write (per-frame scroll position) does not invalidate
+ * subscribers of unrelated slices.
+ */
+function recordFromMap<T>(
+  source: Map<string, T>,
+  previous: Readonly<Record<string, T>> | undefined,
+): Readonly<Record<string, T>> {
   let unchanged = previous !== undefined && Object.keys(previous).length === source.size
-  const next: Record<string, ProjectionT> = {}
-  for (const [key, record] of source) {
-    const projection = project(record)
-    next[key] = projection
-    if (previous?.[key] !== projection) unchanged = false
+  const next: Record<string, T> = {}
+  for (const [key, value] of source) {
+    next[key] = value
+    if (previous?.[key] !== value) unchanged = false
   }
   if (unchanged && previous) return previous
   return next
