@@ -182,7 +182,6 @@ function finishTransaction(
   const batchEvent = createBatchEvent(frame, visibleCountDelta)
 
   emitEvent(state, batchEvent)
-  emitEvent(state, batchEvent)
 }
 
 function createBatchEvent(

@@ -3,6 +3,7 @@ import type {
   FileTreeDirectoryHandle,
   FileTreeFileHandle,
   FileTreeItemHandle,
+  FileTreeMutationEvent,
 } from '@workspace/tree/utils/model/publicTypes'
 import { FileTree } from '@workspace/tree/utils/render/FileTree'
 
@@ -12,6 +13,8 @@ import {
   visibleTreeItemCount,
 } from '@/features/workspace/utils/tree-pane-state'
 import { selectedFileEntryForTreeSelection } from '@/features/workspace/utils/tree-selection'
+import { preparedTreeInputForPaths } from '@/features/workspace/state/prepared-tree-input-cache'
+import { treeMutationLogContext } from '@/features/workspace/utils/tree-mutation-log'
 import type { TreeEntry, TreeResult } from '@/lib/file-system-types'
 import { mergeDirectoryLoad, treeModel } from '@/lib/tree-model'
 
@@ -369,6 +372,149 @@ describe('syncTreePaneState', () => {
     } finally {
       fileTree.cleanUp()
     }
+  })
+
+  it('reconciles multi-path changes through one ordered batch without losing tree state', () => {
+    const root = 'repo'
+    const initialModel = treeModel(
+      tree(root, [
+        directory('repo/old'),
+        file('repo/old/a.ts'),
+        directory('repo/src'),
+        file('repo/src/existing.ts'),
+        file('repo/keep.ts'),
+      ]),
+      root,
+    )
+    const nextModel = treeModel(
+      tree(root, [
+        directory('repo/src'),
+        file('repo/src/existing.ts'),
+        file('repo/src/new.ts'),
+        file('repo/keep.ts'),
+        file('repo/new-root.ts'),
+      ]),
+      root,
+    )
+    const fileTree = new FileTree({
+      flattenEmptyDirectories: true,
+      initialExpansion: 'closed',
+      paths: initialModel.paths,
+    })
+    const events: FileTreeMutationEvent[] = []
+    const unsubscribe = fileTree.onMutation('*', (event) => events.push(event))
+
+    try {
+      getDirectory(fileTree, 'src/').expand()
+      getFile(fileTree, 'keep.ts').select()
+      events.length = 0
+
+      syncTreePaneState({
+        loadExpandedDirectoriesForCurrentModel: () => {},
+        model: nextModel,
+        previousPaths: initialModel.paths,
+        rootPath: root,
+        selectedFilePath: null,
+        syncSelection: false,
+        tree: fileTree,
+      })
+
+      expect(events).toHaveLength(1)
+      expect(events[0]).toMatchObject({
+        events: [
+          { operation: 'remove', path: 'old/', recursive: true },
+          { operation: 'add', path: 'new-root.ts' },
+          { operation: 'add', path: 'src/new.ts' },
+        ],
+        operation: 'batch',
+      })
+      expect(fileTree.getItem('old/')).toBeNull()
+      expect(fileTree.getItem('src/new.ts')).not.toBeNull()
+      expect(fileTree.getSelectedPaths()).toEqual(['keep.ts'])
+      expect(getDirectory(fileTree, 'src/').isExpanded()).toBe(true)
+    } finally {
+      unsubscribe()
+      fileTree.cleanUp()
+    }
+  })
+
+  it('uses prepared input for the large-drift reset fallback', () => {
+    const root = 'repo'
+    const initialModel = treeModel(tree(root, []), root)
+    const nextModel = treeModel(
+      tree(
+        root,
+        Array.from({ length: 513 }, (_, index) => file(`repo/file-${String(index)}.ts`)),
+      ),
+      root,
+    )
+    const fileTree = new FileTree({ paths: initialModel.paths })
+    const events: FileTreeMutationEvent[] = []
+    const unsubscribe = fileTree.onMutation('*', (event) => events.push(event))
+
+    try {
+      syncTreePaneState({
+        loadExpandedDirectoriesForCurrentModel: () => {},
+        model: nextModel,
+        prepareInputForPaths: preparedTreeInputForPaths,
+        previousPaths: initialModel.paths,
+        rootPath: root,
+        selectedFilePath: null,
+        tree: fileTree,
+      })
+
+      expect(events).toEqual([
+        expect.objectContaining({ operation: 'reset', usedPreparedInput: true }),
+      ])
+      expect(fileTree.getItem('file-512.ts')).not.toBeNull()
+    } finally {
+      unsubscribe()
+      fileTree.cleanUp()
+    }
+  })
+})
+
+describe('treeMutationLogContext', () => {
+  it('maps every mutation shape into one bounded wide event', () => {
+    const invalidation = {
+      canonicalChanged: true,
+      projectionChanged: true,
+      visibleCountDelta: 1,
+    }
+    const add = { ...invalidation, operation: 'add', path: 'a.ts' } as const
+    const remove = {
+      ...invalidation,
+      operation: 'remove',
+      path: 'old/',
+      recursive: true,
+    } as const
+    const move = { ...invalidation, from: 'a.ts', operation: 'move', to: 'b.ts' } as const
+    const reset = {
+      ...invalidation,
+      operation: 'reset',
+      pathCountAfter: 2,
+      pathCountBefore: 1,
+      usedPreparedInput: true,
+    } as const
+    const batch = { ...invalidation, events: [remove, add, move], operation: 'batch' } as const
+
+    expect(treeMutationLogContext(add)).toMatchObject({ operation: 'add', paths: ['a.ts'] })
+    expect(treeMutationLogContext(remove)).toMatchObject({ operation: 'remove', paths: ['old/'] })
+    expect(treeMutationLogContext(move)).toMatchObject({
+      operation: 'move',
+      paths: ['a.ts', 'b.ts'],
+    })
+    expect(treeMutationLogContext(reset)).toMatchObject({
+      operation: 'reset',
+      pathCountAfter: 2,
+      pathCountBefore: 1,
+      usedPreparedInput: true,
+    })
+    expect(treeMutationLogContext(batch)).toMatchObject({
+      batchChildCount: 3,
+      operation: 'batch',
+      paths: ['old/', 'a.ts', 'a.ts', 'b.ts'],
+    })
   })
 })
 

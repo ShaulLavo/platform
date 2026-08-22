@@ -1,7 +1,9 @@
 import type {
+  FileTreeBatchOperation,
   FileTreeDirectoryHandle,
   FileTreeItemHandle,
 } from '@workspace/tree/utils/model/publicTypes'
+import type { FileTreePreparedInput } from '@workspace/tree/utils/preparedInput'
 import type { FileTree as FileTreeModel } from '@workspace/tree/utils/render/FileTree'
 
 import type { TreeEntry } from '@/lib/file-system-types'
@@ -18,6 +20,7 @@ export function syncTreePaneState({
   loadExpandedDirectoriesForCurrentModel,
   model,
   previousPaths,
+  prepareInputForPaths,
   rootPath,
   syncSelection = true,
   selectedFilePath,
@@ -26,12 +29,13 @@ export function syncTreePaneState({
   loadExpandedDirectoriesForCurrentModel: (tree: FileTreeModel) => void
   model: TreeModel
   previousPaths: readonly string[]
+  prepareInputForPaths?: (paths: readonly string[]) => FileTreePreparedInput
   rootPath: string
   syncSelection?: boolean
   selectedFilePath: string | null
   tree: FileTreeModel
 }) {
-  syncTreePaths(tree, previousPaths, model.paths, model)
+  syncTreePaths(tree, previousPaths, model.paths, model, prepareInputForPaths)
   if (syncSelection) syncSelectedFilePath(tree, rootPath, selectedFilePath)
   loadExpandedDirectoriesForCurrentModel(tree)
 
@@ -211,28 +215,26 @@ function syncTreePaths(
   previousPaths: readonly string[],
   nextPaths: readonly string[],
   model: TreeModel,
+  prepareInputForPaths?: (paths: readonly string[]) => FileTreePreparedInput,
 ) {
   const changes = treePathChanges(previousPaths, nextPaths)
   if (changes.added.length === 0 && changes.removed.length === 0) return
   const expandedPathsBeforeSync = expandedDirectoryPathSet(model, tree)
 
   if (shouldResetTreePaths(changes)) {
-    resetTreePaths(tree, nextPaths, model)
+    resetTreePaths(tree, nextPaths, model, prepareInputForPaths)
     return
   }
 
   if (treePathChangesDriftedFromLiveTree(tree, changes)) {
-    resetTreePaths(tree, nextPaths, model)
+    resetTreePaths(tree, nextPaths, model, prepareInputForPaths)
     return
   }
 
-  for (const path of topLevelRemovedPaths(changes.removed)) {
-    removeTreePath(tree, path)
-  }
+  const operations = treePathBatchOperations(changes)
+  if (operations.length === 0) return
 
-  for (const path of sortedTreePathsByDepth(changes.added)) {
-    tree.add(path)
-  }
+  tree.batch(operations)
 
   expandNewFlattenedDirectoryTerminals(tree, model, changes.added, expandedPathsBeforeSync)
 }
@@ -254,10 +256,34 @@ function shouldResetTreePaths({ added, removed }: TreePathChanges) {
   return added.length + removed.length > INCREMENTAL_TREE_SYNC_LIMIT
 }
 
-function resetTreePaths(tree: FileTreeModel, paths: readonly string[], model: TreeModel) {
-  tree.resetPaths(paths, {
-    initialExpandedPaths: expandedDirectoryPaths(model, tree),
-  })
+function resetTreePaths(
+  tree: FileTreeModel,
+  paths: readonly string[],
+  model: TreeModel,
+  prepareInputForPaths?: (paths: readonly string[]) => FileTreePreparedInput,
+) {
+  const initialExpandedPaths = expandedDirectoryPaths(model, tree)
+  const preparedInput = prepareInputForPaths?.(paths)
+  if (!preparedInput) {
+    tree.resetPaths(paths, { initialExpandedPaths })
+    return
+  }
+
+  tree.resetPaths(preparedInput.paths, { initialExpandedPaths, preparedInput })
+}
+
+function treePathBatchOperations(changes: TreePathChanges): readonly FileTreeBatchOperation[] {
+  const operations: FileTreeBatchOperation[] = []
+  for (const path of topLevelRemovedPaths(changes.removed)) {
+    operations.push(
+      path.endsWith('/') ? { path, recursive: true, type: 'remove' } : { path, type: 'remove' },
+    )
+  }
+  for (const path of sortedTreePathsByDepth(changes.added)) {
+    operations.push({ path, type: 'add' })
+  }
+
+  return operations
 }
 
 function treePathChangesDriftedFromLiveTree(tree: FileTreeModel, changes: TreePathChanges) {
@@ -292,17 +318,6 @@ function sortedTreePathsByDepth(paths: readonly string[]) {
 
 function treePathDepth(path: string) {
   return canonicalTreePath(path).split('/').filter(Boolean).length
-}
-
-function removeTreePath(tree: FileTreeModel, path: string) {
-  if (!treeHasPath(tree, path)) return
-
-  if (path.endsWith('/')) {
-    tree.remove(path, { recursive: true })
-    return
-  }
-
-  tree.remove(path)
 }
 
 function treeHasPath(tree: FileTreeModel, path: string) {

@@ -159,6 +159,54 @@ describe('FileTree browser behavior', () => {
     })
   })
 
+  it('moves DOM focus only for explicit focus requests, including virtualized rows', async () => {
+    const outsideButton = document.createElement('button')
+    outsideButton.type = 'button'
+    document.body.prepend(outsideButton)
+    const { model: currentModel, shadowRoot } = await mountBrowserTree()
+    const scrollElement = virtualScroll(shadowRoot)
+
+    outsideButton.focus()
+    currentModel.focusPath('src/features/a-20.ts')
+    await vi.waitFor(() => {
+      expect(currentModel.getFocusedPath()).toBe('src/features/a-20.ts')
+    })
+    expect(document.activeElement).toBe(outsideButton)
+
+    currentModel.focus()
+    await vi.waitFor(() => {
+      expect(activePath(shadowRoot)).toBe('src/features/a-20.ts')
+      expect(scrollElement.scrollTop).toBeGreaterThan(0)
+    })
+
+    outsideButton.focus()
+    currentModel.focus()
+    await vi.waitFor(() => {
+      expect(activePath(shadowRoot)).toBe('src/features/a-20.ts')
+    })
+  })
+
+  it('retains an engaged search across blur and refocuses it without clearing the query', async () => {
+    const outsideButton = document.createElement('button')
+    outsideButton.type = 'button'
+    document.body.prepend(outsideButton)
+    const { model: currentModel, shadowRoot } = await mountSearchTree('retain')
+    const searchInput = await openSearch(currentModel, shadowRoot, 'worker')
+
+    outsideButton.focus()
+    await vi.waitFor(() => {
+      expect(shadowRoot.activeElement).not.toBe(searchInput)
+    })
+    expect(currentModel.isSearchOpen()).toBe(true)
+    expect(currentModel.getSearchValue()).toBe('worker')
+
+    currentModel.openSearch()
+    await vi.waitFor(() => {
+      expect(shadowRoot.activeElement).toBe(searchInput)
+    })
+    expect(currentModel.getSearchValue()).toBe('worker')
+  })
+
   it('keeps rename active for composing keys and commits on ordinary Enter', async () => {
     const { model: currentModel, shadowRoot } = await mountBrowserTree()
     const input = await beginRename(currentModel, shadowRoot, 'src/features/a-3.ts')

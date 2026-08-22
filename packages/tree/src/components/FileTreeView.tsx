@@ -303,16 +303,7 @@ export function FileTreeView({
     }
   }, [searchFakeFocus])
 
-  // Tracks whether the user has ever interacted with the search input. With
-  // `searchBlurBehavior: 'retain'` we protect the initial query from being
-  // cleared by mount-time focus churn (e.g. sibling trees stealing focus), but
-  // once the user actually clicks or types, the normal blur-to-close behavior
-  // should resume so they can dismiss the filter with a blur like any other
-  // tree.
-  const searchInputUserInteractedRef = useRef(false)
-
   const markSearchInputInteracted = useCallback(() => {
-    searchInputUserInteractedRef.current = true
     setFakeSearchFocusActive((previous) => (previous ? false : previous))
   }, [])
 
@@ -347,7 +338,9 @@ export function FileTreeView({
   const searchValue = controller.getSearchValue()
   const focusedPath = controller.getFocusedPath()
   const focusedIndex = controller.getFocusedIndex()
+  const focusRequestId = controller.getFocusRequestId()
   const scrollRequest = controller.getScrollRequest()
+  const searchFocusRequestId = controller.getSearchFocusRequestId()
   const dragAndDropEnabled = controller.isDragAndDropEnabled()
   const dragSession = controller.getDragSession()
   const draggedPathSet = useMemo(
@@ -392,6 +385,7 @@ export function FileTreeView({
     focusedIndex,
     focusedPath,
     focusedRowIsMounted,
+    focusRequestId,
     isRenaming,
     isSearchOpen,
     itemHeight,
@@ -552,7 +546,7 @@ export function FileTreeView({
     }
 
     focusElement(getSearchInput())
-  }, [getSearchInput, isSearchOpen, searchEnabled])
+  }, [getSearchInput, isSearchOpen, searchEnabled, searchFocusRequestId])
 
   // Re-triggers on range / stickyRowPathSet changes so that once a sticky reveal
   // lands the canonical row inside the window, the follow-up render finds the
@@ -1334,14 +1328,8 @@ export function FileTreeView({
             data-file-tree-search-input-fake-focus={fakeSearchFocusActive ? 'true' : undefined}
             value={searchValue}
             onBlur={() => {
-              // With `retain`, only protect against blurs that happen before
-              // the user has engaged with the input (typically the mount-time
-              // focus cascade when multiple trees initialize). Once the user
-              // has focused or typed, the normal close-on-blur behavior
-              // resumes.
-              if (searchBlurBehavior === 'retain' && !searchInputUserInteractedRef.current) {
-                return
-              }
+              if (searchBlurBehavior === 'retain') return
+
               controller.closeSearch()
             }}
             onFocus={markSearchInputInteracted}

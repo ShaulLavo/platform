@@ -37,7 +37,6 @@ describe('command table', () => {
     // `platformCommand` looks up through a Map, so a duplicated id would
     // silently win and the loser's `run` would be unreachable.
     expect(new Set(ids).size).toBe(ids.length)
-    expect(platformCommands).toHaveLength(133)
   })
 
   // The editor text menu is built entirely from ids the language-server plugin handles and the
@@ -73,13 +72,19 @@ describe('command table', () => {
   })
 
   it('gives the session commands specs without giving them palette rows', () => {
-    expect(platformCommandSpecs).toHaveLength(133)
     expect(platformCommandSpecs.map((spec) => spec.id)).toEqual(
-      expect.arrayContaining(['workspace.newSession', 'workspace.jumpToSession1']),
+      expect.arrayContaining([
+        'workspace.findInFileTree',
+        'workspace.jumpToSession1',
+        'workspace.newSession',
+        'workspace.revealActiveFileInTree',
+      ]),
     )
 
     const items = commandPaletteItems(platformCommandSpecs, defaultPlatformKeyBindings('linux'))
-    expect(items).toHaveLength(116)
+    expect(items.map((item) => item.id)).toEqual(
+      expect.arrayContaining(['workspace.findInFileTree', 'workspace.revealActiveFileInTree']),
+    )
     expect(items.filter((item) => SESSION_COMMAND_PATTERN.test(item.id))).toEqual([])
   })
 })

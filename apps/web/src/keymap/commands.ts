@@ -1,6 +1,7 @@
-import { useCallback } from 'react'
+import { use, useCallback } from 'react'
 
 import { useFocus } from '@/features/workspace/providers/focus-state'
+import { TreeCommandsContext } from '@/features/workspace/providers/tree-commands-context'
 import { useTheme } from '@/components/theme-context'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useEditorCommands } from '@/features/editor/state/commands'
@@ -22,6 +23,7 @@ import type { PlatformCommandDispatch } from './use-app-keymap'
 import { DEFAULT_SETTING_VALUES } from '@workspace/contracts'
 import { useSettings } from '@/features/settings/hooks/use-settings'
 import { useSettingsActions } from '@/features/settings/hooks/use-settings-actions'
+import { clientErrors } from '@/lib/structured-errors'
 
 export function usePlatformCommandDispatch({
   requestCloseTab,
@@ -35,6 +37,12 @@ export function usePlatformCommandDispatch({
   const documentStore = useEditorDocumentStoreApi()
   const queryClient = useQueryClient()
   const workspaceStore = useEditorWorkspaceStoreApi()
+  const treeCommands = use(TreeCommandsContext)
+  if (!treeCommands) {
+    throw clientErrors.CONTEXT_MISSING({
+      message: 'usePlatformCommandDispatch must be used within TreeCommandsProvider',
+    })
+  }
   const { setTheme } = useTheme()
   const settings = useSettings()
   const { setSetting } = useSettingsActions()
@@ -84,6 +92,7 @@ export function usePlatformCommandDispatch({
         reopenClosedEditor,
         requestCloseTab: resolvedRequestCloseTab,
         requestEditorFocus,
+        requestFileTreeCommand: treeCommands.request,
         rootPath: workspace.rootFolder?.path ?? null,
         setChatModePanels: workspace.setChatModePanels,
         setDiffViewMode: (mode) => setSetting('editor.diff.viewMode', mode),
@@ -116,6 +125,7 @@ export function usePlatformCommandDispatch({
       setTheme,
       showCommandPalette,
       showSettings,
+      treeCommands,
       wallpaperEnabled,
       workspaceStore,
     ],

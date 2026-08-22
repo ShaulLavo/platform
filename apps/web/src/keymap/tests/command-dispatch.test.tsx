@@ -3,6 +3,9 @@ import { renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 
 import { FocusProvider } from '@/features/workspace/providers/focus-provider'
+import { TreeCommandsContext } from '@/features/workspace/providers/tree-commands-context'
+import { createTreeCommandStore } from '@/features/workspace/state/tree-command-store'
+import { writeRootFolderCache } from '@/features/workspace/state/cache'
 import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import { fetchSettings, saveSettings } from '@/features/settings/utils/api'
 import { settingsKeys } from '@/features/settings/utils/query-keys'
@@ -65,26 +68,61 @@ test('the toggle starts from a setting changed after mount, not the mounted valu
   await waitFor(async () => expect(await stored('workbench.wallpaper.enabled')).toBe(mounted))
 })
 
+test('dispatches durable file-tree requests while the Files pane is unmounted', async () => {
+  const { dispatch, treeCommandStore } = await mountDispatch({ rootPath: '/repo' })
+
+  dispatch.current('workspace.focusFileTree')
+  expect(treeCommandStore.getSnapshot()).toEqual({
+    id: 1,
+    kind: 'focus',
+    rootPath: '/repo',
+  })
+
+  dispatch.current('workspace.findInFileTree')
+  expect(treeCommandStore.getSnapshot()).toEqual({
+    id: 2,
+    kind: 'open-search',
+    rootPath: '/repo',
+  })
+})
+
 async function stored<K extends 'editor.diff.viewMode' | 'workbench.wallpaper.enabled'>(key: K) {
   return (await fetchSettings()).values[key]
 }
 
-async function mountDispatch() {
+async function mountDispatch({ rootPath }: { readonly rootPath?: string } = {}) {
   const queryClient = createTestQueryClient()
+  const treeCommandStore = createTreeCommandStore()
+  if (rootPath) writeRootFolderCache(pickedDirectory(rootPath))
 
   function Wrapper({ children }: { readonly children: ReactNode }) {
     return (
       <AppProviders queryClient={queryClient}>
         <EditorStateProvider>
-          <FocusProvider>{children}</FocusProvider>
+          <FocusProvider>
+            <TreeCommandsContext value={treeCommandStore}>{children}</TreeCommandsContext>
+          </FocusProvider>
         </EditorStateProvider>
       </AppProviders>
     )
   }
 
   const { result } = renderHook(() => usePlatformCommandDispatch(), { wrapper: Wrapper })
+  if (rootPath) writeRootFolderCache(null)
 
-  return { dispatch: result, hydrated: hydratedValue(queryClient), queryClient }
+  return { dispatch: result, hydrated: hydratedValue(queryClient), queryClient, treeCommandStore }
+}
+
+function pickedDirectory(path: string) {
+  return {
+    birthtimeMs: 0,
+    mtimeMs: 0,
+    name: path.split('/').at(-1) ?? path,
+    path,
+    size: 0,
+    type: 'directory' as const,
+    version: '',
+  }
 }
 
 /**
