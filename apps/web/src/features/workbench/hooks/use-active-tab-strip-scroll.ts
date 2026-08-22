@@ -1,5 +1,9 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 
+import {
+  createTabStripMetrics,
+  type TabStripMetrics,
+} from '@/features/workbench/state/tab-strip-metrics'
 import { tabStripScrollLeft } from '@/features/workbench/utils/tab-strip-scroll'
 
 /** Matches the strip's `px-2`, so a revealed tab never sits flush against the edge. */
@@ -12,29 +16,42 @@ const TAB_STRIP_GUTTER = 8
  */
 export function useActiveTabStripScroll(activeTabId: string | null) {
   const stripRef = useRef<HTMLDivElement>(null)
+  const metricsRef = useRef<TabStripMetrics | null>(null)
 
-  // Layout effect, not effect: scrolling after paint shows the old offset for a frame.
+  useEffect(() => {
+    const strip = stripRef.current
+    if (!strip) return
+
+    const metrics = createTabStripMetrics(strip)
+    metricsRef.current = metrics
+    return () => {
+      metricsRef.current = null
+      metrics.dispose()
+    }
+  }, [])
+
+  // Layout effect, not effect: starting the scroll after paint shows the old offset for a frame.
   useLayoutEffect(() => {
     const strip = stripRef.current
-    if (!strip || !activeTabId) return
+    const metrics = metricsRef.current
+    if (!strip || !metrics || !activeTabId) return
 
-    const tab = strip.querySelector(`[data-editor-tab-id="${activeTabId}"]`)
-    if (!tab) return
+    const bounds = metrics.boundsFor(activeTabId) ?? metrics.measure(activeTabId)
+    if (!bounds) return
 
-    const stripBox = strip.getBoundingClientRect()
-    const tabBox = tab.getBoundingClientRect()
-    const scrollLeft = tabStripScrollLeft({
-      gutter: TAB_STRIP_GUTTER,
-      scrollLeft: strip.scrollLeft,
-      stripLeft: stripBox.left,
-      stripRight: stripBox.right,
-      tabLeft: tabBox.left,
-      tabRight: tabBox.right,
-    })
-    if (scrollLeft === null) return
+    const left = tabStripScrollLeft({ gutter: TAB_STRIP_GUTTER, ...bounds })
+    if (left === null) return
 
-    strip.scrollLeft = scrollLeft
+    metrics.noteScrollTarget(left)
+    strip.scrollTo({ behavior: revealBehavior(), left })
   }, [activeTabId])
 
   return stripRef
+}
+
+/** Motion is the point, but not against the wishes of someone who asked the OS for less of it. */
+function revealBehavior(): ScrollBehavior {
+  if (typeof window.matchMedia !== 'function') return 'auto'
+
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
 }

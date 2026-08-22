@@ -13,7 +13,7 @@ import {
   type IntentPrefetchRow,
 } from '@/features/workspace/utils/intent-prefetch-registry'
 import { INTENT_PREFETCH_HIT_SLOP_PX } from '@/features/workspace/utils/intent-prefetch-options'
-import { createAnimationFrameScheduler } from '@/features/workspace/utils/intent-prefetch-scheduler'
+import { createIdleScheduler } from '@/features/workspace/utils/intent-prefetch-scheduler'
 import { FILE_SNAPSHOT_STALE_MS, prefetchFileSnapshotQuery } from '@/lib/file-snapshot-query-cache'
 import { isDirectoryEntry } from '@/lib/file-system-types'
 import { entryForTreePath, type TreeModel } from '@/lib/tree-model'
@@ -64,7 +64,7 @@ export function useFileTreeIntentPrefetch({ model, tree }: FileTreeIntentPrefetc
       resolveRow: resolveFileTreeRow,
     })
     let observer: MutationObserver | null = null
-    const schedule = createAnimationFrameScheduler(() => {
+    const schedule = createIdleScheduler(() => {
       observer ??= observeTreeRows(tree, schedule.request)
       syncRegistrations(registry)
     })

@@ -8,6 +8,7 @@ import type { EditorRenderDocument } from '@/features/editor/utils/render-docume
 import { DiffView } from '@/features/git/components/diff-view'
 import { parseDiffDocumentId } from '@/features/git/utils/diff-document'
 import { useEditorSurfaceActions } from '@/features/workbench/hooks/use-editor-surface-actions'
+import { useHeldLiveDocument } from '@/features/workbench/hooks/use-held-live-document'
 import type { FileResult } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
 import type { EditorKeymapLayer } from '@singapor/core'
@@ -38,18 +39,20 @@ export function FileEditorBody({
   tabId: string
 }) {
   const actions = useEditorSurfaceActions()
-  // A diff document is never file-backed, so it can never own a live editor
-  // document — claim it before the editor branch rather than after.
+  // Neither a diff nor a compare document is file-backed, so neither can own a live editor
+  // document. Both are parsed before the hook below, which has to run above every early exit.
   const diffDocument = parseDiffDocumentId(path)
+  const comparePath = parseCompareSavedDocumentId(path)
+  const editorDocument = useHeldLiveDocument(
+    liveDocument,
+    !diffDocument && !comparePath && isSettling(fileState),
+  )
 
   if (diffDocument) return <DiffView documentInfo={diffDocument} rootPath={rootPath} />
 
-  // Same reasoning as the diff branch: a compare document is not file-backed, so it never owns a
-  // live editor document and has to be claimed before the editor branch.
-  const comparePath = parseCompareSavedDocumentId(path)
   if (comparePath) return <CompareSavedView path={comparePath} rootPath={rootPath} />
 
-  if (liveDocument) {
+  if (editorDocument) {
     return (
       <div
         className={
@@ -61,7 +64,7 @@ export function FileEditorBody({
         <Editor
           active={active}
           definitionTarget={definitionTarget}
-          document={liveDocument}
+          document={editorDocument}
           keymapLayers={editorKeymapLayers}
           rootPath={rootPath}
           tabId={tabId}
@@ -97,4 +100,9 @@ export function FileEditorBody({
   }
 
   return null
+}
+
+/** A tab with a file on the way keeps the last document; an empty or failed one has nothing to wait for. */
+function isSettling(fileState: LoadState<FileResult>): boolean {
+  return fileState.status === 'loading' || fileState.status === 'ready'
 }

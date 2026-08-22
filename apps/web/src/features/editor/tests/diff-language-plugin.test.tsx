@@ -1,0 +1,87 @@
+import type { EditorPlugin, EditorViewContribution } from '@singapor/core'
+
+import {
+  createDiffLanguagePlugin,
+  type DiffLanguageOptions,
+} from '@/features/editor/utils/diff-language-plugin'
+import { expect, test } from '../../../../test/fixtures'
+
+type HitTest = { readonly x: number; readonly y: number }
+
+/** Everything the contribution reaches for, and a record of the hit tests it asked for. */
+function mountContribution(hits: HitTest[]) {
+  const element = document.createElement('div')
+  document.body.appendChild(element)
+
+  const options: DiffLanguageOptions = {
+    bufferOffsetAt: () => null,
+    definition: () => Promise.resolve({ kind: 'none' }),
+    hover: () => Promise.resolve(null),
+    resolve: () => ({ kind: 'unavailable', reason: 'not-a-file-line' }),
+    theme: () => null,
+  }
+
+  const viewContext = {
+    scrollElement: element,
+    focusEditor: () => undefined,
+    getRangeClientRect: () => null,
+    setSelection: () => undefined,
+    textOffsetFromPoint: (x: number, y: number) => {
+      hits.push({ x, y })
+      return null
+    },
+  }
+
+  let contribution: EditorViewContribution | null = null
+  const activate = createDiffLanguagePlugin(options).activate as EditorPlugin['activate']
+  activate({
+    registerViewContribution: ({
+      createContribution,
+    }: {
+      createContribution: (context: unknown) => EditorViewContribution
+    }) => {
+      contribution = createContribution(viewContext)
+      return { dispose: () => undefined }
+    },
+  } as never)
+
+  return { contribution: contribution as unknown as EditorViewContribution, element }
+}
+
+function moveTo(element: HTMLElement, clientX: number, clientY: number) {
+  element.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX, clientY }))
+}
+
+function nextFrame() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => resolve())
+  })
+}
+
+test('a burst of pointer movement costs one hit test, at the position it ended on', async () => {
+  const hits: HitTest[] = []
+  const { contribution, element } = mountContribution(hits)
+
+  for (let step = 0; step < 8; step += 1) moveTo(element, 10 + step, 20 + step)
+  expect(hits).toEqual([])
+
+  await nextFrame()
+  await nextFrame()
+
+  expect(hits).toEqual([{ x: 17, y: 27 }])
+  contribution.dispose()
+})
+
+test('leaving the diff drops a move that has not been answered yet', async () => {
+  const hits: HitTest[] = []
+  const { contribution, element } = mountContribution(hits)
+
+  moveTo(element, 40, 50)
+  element.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }))
+
+  await nextFrame()
+  await nextFrame()
+
+  expect(hits).toEqual([])
+  contribution.dispose()
+})
