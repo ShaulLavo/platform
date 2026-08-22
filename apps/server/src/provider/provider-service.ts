@@ -22,6 +22,7 @@ import {
   type ProviderRuntimeBindingWithMetadata,
 } from './provider-session-directory'
 import { ProviderSessionReaper } from './provider-session-reaper'
+import { SerialWorker } from '../orchestration/serial-worker'
 import {
   providerBindingSummary,
   providerRuntimeEventSummary,
@@ -71,12 +72,21 @@ export type ProviderEnsureSessionResult = {
 
 export type ProviderRuntimeEventListener = (event: ProviderRuntimeEvent) => Promise<void> | void
 
+type ProviderRuntimeEventTask = {
+  adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>
+  event: ProviderRuntimeEvent
+  providerInstanceId: ProviderInstanceId
+}
+
 export class ProviderService {
+  private readonly adapterSubscriptions = new Map<ProviderInstanceId, () => void>()
   private readonly adapterRegistry: ProviderAdapterRegistry
   private readonly reaper: ProviderSessionReaper
   private readonly runtimeEventListeners = new Set<ProviderRuntimeEventListener>()
+  private readonly runtimeEvents = new SerialWorker<ProviderRuntimeEventTask>((task) =>
+    this.handleRuntimeEvent(task),
+  )
   private readonly sessionDirectory: ProviderSessionDirectory
-  private readonly streamedProviderInstances = new Set<ProviderInstanceId>()
   private shuttingDown = false
   private unsubscribeRegistry: (() => void) | null = null
 
@@ -109,7 +119,10 @@ export class ProviderService {
     this.unsubscribeRegistry?.()
     this.unsubscribeRegistry = null
     this.runtimeEventListeners.clear()
-    this.streamedProviderInstances.clear()
+    for (const unsubscribe of this.adapterSubscriptions.values()) {
+      unsubscribe()
+    }
+    this.adapterSubscriptions.clear()
     await this.adapterRegistry.dispose()
     recordChatPipelineInfo('chat.pipeline.provider_service.shutdown.complete', {})
   }
@@ -224,7 +237,6 @@ export class ProviderService {
     try {
       this.sessionDirectory.markStatus(input.thread.id, 'running')
       await adapter.sendTurn(turn)
-      await settleAdapterRuntimeEvents()
       recordChatPipelineInfo('chat.pipeline.provider_service.send_turn.complete', {
         ...providerTurnSummary(input),
         durationMs: elapsedMs(startedAt),
@@ -360,6 +372,15 @@ export class ProviderService {
     return () => this.runtimeEventListeners.delete(listener)
   }
 
+  /** Every adapter event that has been published has been handed to the listeners. */
+  drainRuntimeEvents() {
+    return this.runtimeEvents.drain()
+  }
+
+  runtimeEventsIdle() {
+    return this.runtimeEvents.isIdle()
+  }
+
   bindingForThread(threadId: ThreadId) {
     return this.sessionDirectory.getBinding(threadId)
   }
@@ -405,48 +426,46 @@ export class ProviderService {
    */
   private forgetRemovedStreams(liveProviderInstanceIds: readonly ProviderInstanceId[]) {
     const live = new Set(liveProviderInstanceIds)
-    for (const providerInstanceId of this.streamedProviderInstances) {
+    for (const [providerInstanceId, unsubscribe] of this.adapterSubscriptions) {
       if (live.has(providerInstanceId)) continue
 
-      this.streamedProviderInstances.delete(providerInstanceId)
+      unsubscribe()
+      this.adapterSubscriptions.delete(providerInstanceId)
     }
   }
 
   private startAdapterEventStream(providerInstanceId: ProviderInstanceId) {
-    if (this.streamedProviderInstances.has(providerInstanceId)) return
+    if (this.adapterSubscriptions.has(providerInstanceId)) return
 
     const adapter = this.adapterRegistry.adapter(providerInstanceId)
     if (!adapter) return
 
-    this.streamedProviderInstances.add(providerInstanceId)
-    void this.consumeAdapterEvents(adapter, providerInstanceId).catch((error) => {
-      this.streamedProviderInstances.delete(providerInstanceId)
-      recordChatPipelineWarning('chat.pipeline.provider_service.runtime_stream.failed', {
-        adapterKey: adapter.adapterKey,
-        error,
-        providerInstanceId,
-      })
-    })
+    this.adapterSubscriptions.set(
+      providerInstanceId,
+      adapter.subscribeEvents((event) => {
+        void this.runtimeEvents.enqueue({ adapter, event, providerInstanceId }).catch((error) => {
+          recordChatPipelineWarning('chat.pipeline.provider_service.runtime_stream.failed', {
+            adapterKey: adapter.adapterKey,
+            error,
+            providerInstanceId,
+          })
+        })
+      }),
+    )
   }
 
   /**
-   * Ends on shutdown or when the instance leaves the registry. Both are checked
-   * on arrival rather than raced against the pending `next()`: racing inserts an
-   * extra microtask between an adapter event and the binding write, which is
+   * Both conditions are checked on arrival rather than raced against a pending
+   * read: an extra microtask between an adapter event and the binding write is
    * enough to let a later write (a session stop) be overwritten by an earlier
    * event.
    */
-  private async consumeAdapterEvents(
-    adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>,
-    providerInstanceId: ProviderInstanceId,
-  ) {
-    for await (const event of adapter.streamEvents()) {
-      if (this.shuttingDown) return
-      if (!this.streamedProviderInstances.has(providerInstanceId)) return
+  private async handleRuntimeEvent(task: ProviderRuntimeEventTask) {
+    if (this.shuttingDown) return
+    if (!this.adapterSubscriptions.has(task.providerInstanceId)) return
 
-      this.recordRuntimeEvent(event, adapter)
-      await this.emitRuntimeEvent(event)
-    }
+    this.recordRuntimeEvent(task.event, task.adapter)
+    await this.emitRuntimeEvent(task.event)
   }
 
   private async stopReplacedBinding(
@@ -764,10 +783,4 @@ function noop() {}
 
 function elapsedMs(startedAt: number) {
   return Math.round((performance.now() - startedAt) * 100) / 100
-}
-
-async function settleAdapterRuntimeEvents() {
-  await Promise.resolve()
-  await Promise.resolve()
-  await new Promise<void>((resolve) => setTimeout(resolve, 0))
 }

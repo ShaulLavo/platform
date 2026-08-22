@@ -308,8 +308,8 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
     throw createInternalError('Claude rollbackThread is not supported.')
   }
 
-  streamEvents() {
-    return this.events.stream()
+  subscribeEvents(subscriber: (event: ProviderRuntimeEvent) => void) {
+    return this.events.subscribe(subscriber)
   }
 
   async startSession(input: ProviderSessionStartInput) {

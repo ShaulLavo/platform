@@ -18,6 +18,7 @@ import {
   type OrchestrationReadModel,
 } from './read-model'
 import type { OrchestrationCommand, OrchestrationEvent } from './schemas'
+import { SerialWorker } from './serial-worker'
 import type { OrchestrationDomainEventReactor } from './streams'
 
 type CheckpointTask = {
@@ -62,7 +63,12 @@ export class CheckpointReactor implements OrchestrationDomainEventReactor {
   private readonly handledEventIds: BoundedTtlCache<string, true>
   private readonly providerService: ProviderService
   private readonly store: GitCheckpointStore
-  private readonly worker: DrainableCheckpointWorker
+  /**
+   * Captures run one at a time per process: two `git add --all` passes over the
+   * same worktree race on the object store, and the turn count a capture claims
+   * is read from the read model at the moment it runs.
+   */
+  private readonly worker: SerialWorker<CheckpointTask>
 
   constructor({
     dispatch,
@@ -86,7 +92,7 @@ export class CheckpointReactor implements OrchestrationDomainEventReactor {
     })
     this.providerService = providerService
     this.store = new GitCheckpointStore(git)
-    this.worker = new DrainableCheckpointWorker((task) => this.runTask(task))
+    this.worker = new SerialWorker((task) => this.runTask(task))
   }
 
   handleEvents(events: OrchestrationEvent[]) {
@@ -96,13 +102,17 @@ export class CheckpointReactor implements OrchestrationDomainEventReactor {
       if (this.handledEventIds.has(event.eventId)) continue
 
       this.handledEventIds.set(event.eventId, true)
-      this.worker.enqueue(task)
+      void this.worker.enqueue(task)
     }
   }
 
   /** Test/shutdown hook: settle every in-flight capture. */
   drain() {
     return this.worker.drain()
+  }
+
+  isIdle() {
+    return this.worker.isIdle()
   }
 
   /**
@@ -337,34 +347,3 @@ function checkpointCommandId(eventId: string) {
 function elapsedMs(startedAt: number) {
   return Math.round((performance.now() - startedAt) * 100) / 100
 }
-
-/**
- * Captures run one at a time per process: two `git add --all` passes over the
- * same worktree race on the object store, and the turn count a capture claims
- * is read from the read model at the moment it runs.
- */
-class DrainableCheckpointWorker {
-  private readonly handler: (task: CheckpointTask) => Promise<void>
-  private pending = 0
-  private queue = Promise.resolve()
-
-  constructor(handler: (task: CheckpointTask) => Promise<void>) {
-    this.handler = handler
-  }
-
-  enqueue(task: CheckpointTask) {
-    this.pending += 1
-    const next = this.queue.then(() => this.handler(task)).finally(() => (this.pending -= 1))
-    this.queue = next.then(noop, noop)
-  }
-
-  async drain() {
-    // Re-read `queue` each pass: a capture dispatches, and a dispatch can enqueue
-    // the next task behind the one being awaited.
-    while (this.pending > 0) {
-      await this.queue
-    }
-  }
-}
-
-function noop() {}
