@@ -1,10 +1,13 @@
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 
+import { createWallpaperSourceUnavailableError } from './structured-errors'
+
 // The wallpaper is a backdrop behind translucent panes, so a downscaled JPEG is
 // plenty and keeps the payload small.
 const WALLPAPER_MAX_DIMENSION = 1600
 const APNG_SAMPLE_BYTES = 64 * 1024
+const FILE_OPERATION_ATTEMPTS = 3
 const DYNAMIC_WALLPAPER_STILL_DIR = 'DesktopImage'
 const DYNAMIC_WALLPAPER_GIF_DIR = 'Gifs'
 const DYNAMIC_WALLPAPER_VIDEO_DIR = 'Videos'
@@ -236,9 +239,12 @@ async function isAnimatedStillSource(sourcePath: string): Promise<boolean> {
 
 async function isAnimatedPng(sourcePath: string): Promise<boolean> {
   const file = Bun.file(sourcePath)
-  if (!(await file.exists())) return false
+  const exists = await retryInterruptedFileOperation(sourcePath, () => file.exists())
+  if (!exists) return false
 
-  const sample = await file.slice(0, APNG_SAMPLE_BYTES).arrayBuffer()
+  const sample = await retryInterruptedFileOperation(sourcePath, () =>
+    file.slice(0, APNG_SAMPLE_BYTES).arrayBuffer(),
+  )
   return new TextDecoder('ascii').decode(sample).includes('acTL')
 }
 
@@ -246,7 +252,8 @@ async function existingMediaSource(
   mediaSource: WallpaperMediaSource,
 ): Promise<WallpaperMediaSource | null> {
   const file = Bun.file(mediaSource.path)
-  if (await file.exists()) return mediaSource
+  const exists = await retryInterruptedFileOperation(mediaSource.path, () => file.exists())
+  if (exists) return mediaSource
 
   return null
 }
@@ -255,9 +262,10 @@ async function readExistingMedia(
   mediaSource: WallpaperMediaSource,
 ): Promise<DesktopWallpaperMedia | null> {
   const file = Bun.file(mediaSource.path)
-  if (!(await file.exists())) return null
+  const exists = await retryInterruptedFileOperation(mediaSource.path, () => file.exists())
+  if (!exists) return null
 
-  const buffer = await file.arrayBuffer()
+  const buffer = await retryInterruptedFileOperation(mediaSource.path, () => file.arrayBuffer())
   if (buffer.byteLength === 0) return null
 
   return {
@@ -266,6 +274,45 @@ async function readExistingMedia(
     kind: mediaSource.kind,
     source: mediaSource.source,
   }
+}
+
+export async function retryInterruptedFileOperation<T>(
+  sourcePath: string,
+  operation: () => Promise<T>,
+): Promise<T> {
+  let interruption: Error | undefined
+
+  for (let attempt = 1; attempt <= FILE_OPERATION_ATTEMPTS; attempt += 1) {
+    const result = await attemptFileOperation(operation)
+    if (result.ok) return result.value
+    if (!isInterruptedSystemCall(result.error)) throw result.error
+
+    interruption = result.error
+  }
+
+  throw createWallpaperSourceUnavailableError({
+    attempts: FILE_OPERATION_ATTEMPTS,
+    cause: interruption,
+    sourcePath,
+  })
+}
+
+type FileOperationAttempt<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly error: unknown; readonly ok: false }
+
+async function attemptFileOperation<T>(
+  operation: () => Promise<T>,
+): Promise<FileOperationAttempt<T>> {
+  try {
+    return { ok: true, value: await operation() }
+  } catch (error) {
+    return { error, ok: false }
+  }
+}
+
+function isInterruptedSystemCall(error: unknown): error is Error & { readonly code: 'EINTR' } {
+  return error instanceof Error && 'code' in error && error.code === 'EINTR'
 }
 
 async function convertToJpeg(sourcePath: string): Promise<DesktopWallpaperMedia | null> {

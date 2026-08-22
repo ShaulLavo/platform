@@ -2,6 +2,7 @@ import { Elysia } from 'elysia'
 import { describe, expect, it } from 'vitest'
 
 import { wallpaperRoutes, type WallpaperService } from '../routes'
+import { createWallpaperSourceUnavailableError } from '../structured-errors'
 
 describe('wallpaperRoutes', () => {
   it('returns wallpaper media with its content type', async () => {
@@ -88,6 +89,26 @@ describe('wallpaperRoutes', () => {
     expect(response.headers.get('content-length')).toBe('15')
     expect(response.headers.get('content-type')).toBe('image/png')
     expect(await response.text()).toBe('still-wallpaper')
+  })
+
+  it('returns unavailable when wallpaper rotation keeps interrupting the read', async () => {
+    const app = testApp({
+      readDesktopWallpaperInfo: async () => null,
+      readDesktopWallpaperMedia: async () => null,
+      readDesktopWallpaperStillMedia: async () => {
+        throw createWallpaperSourceUnavailableError({
+          attempts: 3,
+          sourcePath: '/rotating/wallpaper.png',
+        })
+      },
+    })
+
+    const response = await app.handle(new Request('http://local/wallpaper/still'))
+
+    expect(response.status).toBe(404)
+    expect(await response.json()).toEqual({
+      error: { message: 'wallpaper still unavailable' },
+    })
   })
 })
 

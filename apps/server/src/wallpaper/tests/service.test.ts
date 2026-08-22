@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   readDesktopWallpaperMediaFromPath,
   readDesktopWallpaperStillMediaFromPath,
+  retryInterruptedFileOperation,
 } from '../service'
 
 const roots: string[] = []
@@ -89,6 +90,52 @@ describe('readDesktopWallpaperMediaFromPath', () => {
   })
 })
 
+describe('retryInterruptedFileOperation', () => {
+  it('retries interrupted file operations within the attempt bound', async () => {
+    const interruption = systemError('EINTR')
+    let attempts = 0
+
+    const result = await retryInterruptedFileOperation('/rotating/wallpaper.png', async () => {
+      attempts += 1
+      if (attempts < 3) throw interruption
+
+      return 'wallpaper'
+    })
+
+    expect(result).toBe('wallpaper')
+    expect(attempts).toBe(3)
+  })
+
+  it('does not retry other file errors', async () => {
+    const permissionDenied = systemError('EACCES')
+    let attempts = 0
+
+    const operation = retryInterruptedFileOperation('/private/wallpaper.png', async () => {
+      attempts += 1
+      throw permissionDenied
+    })
+
+    await expect(operation).rejects.toBe(permissionDenied)
+    expect(attempts).toBe(1)
+  })
+
+  it('reports exhausted interruptions as wallpaper unavailability', async () => {
+    const interruption = systemError('EINTR')
+    let attempts = 0
+
+    const operation = retryInterruptedFileOperation('/rotating/wallpaper.png', async () => {
+      attempts += 1
+      throw interruption
+    })
+
+    await expect(operation).rejects.toMatchObject({
+      code: 'WALLPAPER_SOURCE_UNAVAILABLE',
+      status: 404,
+    })
+    expect(attempts).toBe(3)
+  })
+})
+
 async function fixtureRoot() {
   const root = await mkdtemp(path.join(tmpdir(), 'platform-wallpaper-'))
   roots.push(root)
@@ -104,4 +151,8 @@ function bufferText(buffer: ArrayBuffer | undefined) {
   if (!buffer) return null
 
   return Buffer.from(buffer).toString()
+}
+
+function systemError(code: string) {
+  return Object.assign(Error(code), { code })
 }

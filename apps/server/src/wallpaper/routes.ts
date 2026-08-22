@@ -8,6 +8,7 @@ import {
   type DesktopWallpaperInfo,
   type DesktopWallpaperMedia,
 } from './service'
+import { isWallpaperSourceUnavailableError } from './structured-errors'
 
 const WALLPAPER_CACHE_CONTROL = 'public, max-age=60'
 
@@ -33,7 +34,7 @@ export function wallpaperRoutes(service: WallpaperService = defaultWallpaperServ
     .get('/wallpaper/info', async ({ set }) => {
       const info = await observeRequestOperation(
         { area: 'wallpaper', operation: 'info' },
-        () => service.readDesktopWallpaperInfo(),
+        () => readAvailableWallpaper(() => service.readDesktopWallpaperInfo()),
         summarizeWallpaperInfo,
       )
       if (!info) {
@@ -46,7 +47,7 @@ export function wallpaperRoutes(service: WallpaperService = defaultWallpaperServ
     .get('/wallpaper/still', async ({ set }) => {
       const media = await observeRequestOperation(
         { area: 'wallpaper', operation: 'still' },
-        () => service.readDesktopWallpaperStillMedia(),
+        () => readAvailableWallpaper(() => service.readDesktopWallpaperStillMedia()),
         summarizeWallpaperMedia,
       )
       if (!media) {
@@ -59,7 +60,7 @@ export function wallpaperRoutes(service: WallpaperService = defaultWallpaperServ
     .get('/wallpaper', async ({ set }) => {
       const media = await observeRequestOperation(
         { area: 'wallpaper', operation: 'read' },
-        () => service.readDesktopWallpaperMedia(),
+        () => readAvailableWallpaper(() => service.readDesktopWallpaperMedia()),
         summarizeWallpaperMedia,
       )
       if (!media) {
@@ -69,6 +70,16 @@ export function wallpaperRoutes(service: WallpaperService = defaultWallpaperServ
 
       return wallpaperMediaResponse(media)
     })
+}
+
+async function readAvailableWallpaper<T>(operation: () => Promise<T | null>): Promise<T | null> {
+  try {
+    return await operation()
+  } catch (error) {
+    if (isWallpaperSourceUnavailableError(error)) return null
+
+    throw error
+  }
 }
 
 function wallpaperMediaResponse(media: DesktopWallpaperMedia) {
