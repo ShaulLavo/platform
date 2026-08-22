@@ -254,20 +254,20 @@ const TERRAFORM_LS: SemanticTokenServerProfile = {
 /**
  * typescript-language-server — measured: `full: true`, `range: true`, **12 types
  * / 6 modifiers**, with `member` the one non-standard type and `local` a
- * non-standard modifier. Off by default, deliberately.
+ * non-standard modifier.
  *
- * Highest traffic and lowest gain: TypeScript is the one language whose
- * tree-sitter grammar is strongest here, so the incremental colour is smallest
- * and the risk of a visible regression is largest. It stays off until a human
- * has looked at it against a real theme, which is what
- * `lsp.semanticTokens.servers` exists to let them do.
+ * Shipped off pending a look against a real theme — highest traffic, smallest gain, largest
+ * regression risk. Looked at against rose-pine, so it is on.
  */
 const TYPESCRIPT_LANGUAGE_SERVER: SemanticTokenServerProfile = {
   augmentsSyntaxTokens: true,
-  enabledByDefault: false,
+  enabledByDefault: true,
   maxFullRequestBytes: null,
   requests: { full: { delta: false }, range: true },
-  scopeAliases: { member: 'property' },
+  // `member` is this server's name for a class member, and VS Code maps it to
+  // `entity.name.function.member` — the function colour. Aliasing it to `property` painted every
+  // method the field colour, overriding the yellow shiki had already given it.
+  scopeAliases: { member: 'method' },
   // `local` is a modifier here rather than a type, and a modifier the scope table
   // has no rule for resolves to exactly the base scope, so it needs nothing.
   uncovered: {},

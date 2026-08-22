@@ -421,6 +421,9 @@ export const SETTINGS_REGISTRY = {
   }),
   'lsp.semanticTokens.enabled': defineSetting({
     schema: v.boolean(),
+    // Off by default. The colour it adds is a refinement over the syntactic layer rather than a
+    // replacement, and a warm server routinely answers before the highlighter does, so a document
+    // can show identifier colour on otherwise-unpainted text for up to a second and a half.
     default: false,
     // Machine scope for the same reason as `lsp.idleTimeoutMs`: it governs how
     // much work a child process on this box does. It gates *requests* only —
@@ -431,7 +434,7 @@ export const SETTINGS_REGISTRY = {
     widget: 'boolean',
     category: 'Language servers',
     description:
-      'Ask language servers to colour identifiers they have actually resolved. Off means no token request is ever sent.',
+      'Ask language servers to colour identifiers they have actually resolved. Off means no token request is ever sent. Each server still has its own default under lsp.semanticTokens.servers.',
     visibility: 'advanced',
     keywords: ['lsp', 'semantic', 'tokens', 'highlighting', 'colour', 'color'],
   }),

@@ -248,3 +248,16 @@ describe('semantic token alias coverage', () => {
     }
   })
 })
+
+/**
+ * shiki already paints a method `entity.name.function.member` — yellow in Dark+ — and the semantic
+ * layer paints over it. An alias that resolved a method to the field colour turned every method in
+ * every file blue, which is the one way this feature can make a theme look worse than no feature.
+ */
+describe('typescript member scope', () => {
+  it('resolves a class member to the method scope, not the property scope', () => {
+    const profile = semanticTokenProfileFor('typescript')
+
+    expect(profile.scopeAliases.member).toBe('method')
+  })
+})

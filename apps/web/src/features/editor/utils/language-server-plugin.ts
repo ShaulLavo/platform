@@ -8,6 +8,7 @@ import type {
 import { createLanguageServerPlugin } from '@singapor/lsp-plugin/websocket'
 import { LSP_SEMANTIC_TOKENS_REFRESH, LSP_SERVER_EXITED } from '@workspace/contracts'
 
+import { languageServerConnectionProvider } from '@/features/editor/state/language-server-connection-pool'
 import type { EditorLanguageServerStatusSource } from '@/features/editor/state/language-server-status-source'
 import { SemanticTokenController } from '@/features/editor/state/semantic-token-controller'
 import {
@@ -65,6 +66,11 @@ export function createMatchedLanguageServerPlugin({
       },
     },
     rootUri: fileUriForPath(rootPath),
+    // Outlives this plugin, shared with every surface on the same root and server.
+    connectionProvider: languageServerConnectionProvider({
+      rootPath: match.root,
+      serverId: match.serverId,
+    }),
     semanticTokens: {
       onLayer: (layer, document) => {
         semanticTokens.attachLayer(layer, document)

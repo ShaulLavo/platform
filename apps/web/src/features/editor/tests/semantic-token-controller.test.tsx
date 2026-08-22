@@ -8,6 +8,7 @@ import { LspRequestCancelledError, LspWorkspace } from '@singapor/lsp'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SemanticTokenController } from '@/features/editor/state/semantic-token-controller'
+import { log } from '@/lib/client-logging'
 
 const DOCUMENT_ID = '/repo/src/lib.rs'
 const URI = 'file:///repo/src/lib.rs'
@@ -147,12 +148,30 @@ function attached(serverCapabilities: unknown, serverId = 'rust', text: string =
   return { connection, controller, layer }
 }
 
+/**
+ * The debug events the controller emitted, captured by spying on the one method
+ * rather than replacing the logging module: what is under test is which outcome
+ * it reported, and a stand-in module would let the real event shape drift.
+ */
+let debugEvents: Record<string, unknown>[] = []
+
+function loggedRequestOutcomes(): readonly unknown[] {
+  return debugEvents
+    .filter((event) => event.action === 'lsp.semanticTokens.request')
+    .map((event) => event.outcome)
+}
+
 beforeEach(() => {
   seedSettings({})
   vi.useFakeTimers()
+  debugEvents = []
+  vi.spyOn(log, 'debug').mockImplementation((event: unknown) => {
+    if (event && typeof event === 'object') debugEvents.push(event as Record<string, unknown>)
+  })
 })
 
 afterEach(() => {
+  vi.restoreAllMocks()
   vi.useRealTimers()
   localStorage.clear()
 })
@@ -320,12 +339,11 @@ describe('SemanticTokenController request policy', () => {
     expect(layer.pushes).toEqual([])
   })
 
-  it('turns a server on that its own row ships off', async () => {
-    // typescript-language-server is off by default — highest traffic, smallest
-    // gain, largest regression risk — so the `true` direction is the one a user
-    // actually reaches for, and it has to work.
-    seedSettings({ 'lsp.semanticTokens.servers': { typescript: true } })
-    const { connection, controller } = attached(RUST_LIKE, 'typescript')
+  it('turns a server on that has no row of its own', async () => {
+    // A server nobody has reviewed is off whatever the master switch says, so
+    // the `true` direction is the one a user reaches for, and it has to work.
+    seedSettings({ 'lsp.semanticTokens.servers': { unreviewed: true } })
+    const { connection, controller } = attached(RUST_LIKE, 'unreviewed')
 
     controller.handleRangeNeeded(demand())
     await vi.advanceTimersByTimeAsync(0)
@@ -333,13 +351,34 @@ describe('SemanticTokenController request policy', () => {
     expect(connection.requests).toHaveLength(1)
   })
 
-  it('leaves a server off when its own row ships it off and nothing overrides', async () => {
+  it('leaves a server with no row of its own off even with the feature on', async () => {
+    const { connection, controller } = attached(RUST_LIKE, 'unreviewed')
+
+    controller.handleRangeNeeded(demand())
+    await vi.advanceTimersByTimeAsync(500)
+
+    expect(connection.requests).toEqual([])
+  })
+
+  it('turns a reviewed server off when its own row is overridden', async () => {
+    // The direction that matters now that typescript ships on: one server whose
+    // colour a user dislikes has to be switchable without losing the feature.
+    seedSettings({ 'lsp.semanticTokens.servers': { typescript: false } })
     const { connection, controller } = attached(RUST_LIKE, 'typescript')
 
     controller.handleRangeNeeded(demand())
     await vi.advanceTimersByTimeAsync(500)
 
     expect(connection.requests).toEqual([])
+  })
+
+  it('asks a reviewed server without being told to', async () => {
+    const { connection, controller } = attached(RUST_LIKE, 'typescript')
+
+    controller.handleRangeNeeded(demand())
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(connection.requests).toHaveLength(1)
   })
 
   /**
@@ -376,6 +415,57 @@ describe('SemanticTokenController request policy', () => {
     await vi.advanceTimersByTimeAsync(500)
 
     expect(connection.requests).toEqual([])
+  })
+})
+
+/**
+ * Every one of these was a silent `return` before, and the difference between
+ * them is the difference between "you have it switched off", "your server does
+ * not offer it" and "this side has a bug". A 222 MB performance trace was needed
+ * to tell the first from the third once; that is what these events are for.
+ */
+describe('SemanticTokenController reported outcomes', () => {
+  it('says the feature is off rather than going quiet', async () => {
+    seedSettings({ 'lsp.semanticTokens.enabled': false })
+    const { controller } = attached(RUST_LIKE)
+
+    controller.handleRangeNeeded(demand())
+    await vi.advanceTimersByTimeAsync(500)
+
+    expect(loggedRequestOutcomes()).toEqual(['disabled'])
+  })
+
+  it('says the server offered no legend', async () => {
+    const { controller } = attached({})
+
+    controller.handleRangeNeeded(demand())
+    await vi.advanceTimersByTimeAsync(500)
+
+    expect(loggedRequestOutcomes()).toEqual(['no_legend'])
+  })
+
+  it('reports the first answer, so a working path is distinguishable from a quiet one', async () => {
+    const { connection, controller } = attached(RUST_LIKE)
+
+    controller.handleRangeNeeded(demand())
+    await vi.advanceTimersByTimeAsync(0)
+    connection.settle()
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(loggedRequestOutcomes()).toEqual(['answered'])
+  })
+
+  it('says a steady state once per document rather than once per demand', async () => {
+    seedSettings({ 'lsp.semanticTokens.enabled': false })
+    const { controller } = attached(RUST_LIKE)
+
+    controller.handleRangeNeeded(demand())
+    await vi.advanceTimersByTimeAsync(500)
+    controller.handleRangeNeeded(demand({ textVersion: 2 }))
+    await vi.advanceTimersByTimeAsync(500)
+
+    // A scroll fires this signal per frame; one line per document is the budget.
+    expect(loggedRequestOutcomes()).toEqual(['disabled'])
   })
 })
 

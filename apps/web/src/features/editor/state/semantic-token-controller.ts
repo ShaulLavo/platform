@@ -103,7 +103,19 @@ type PendingLayer = {
   resyncsSincePaint: number
   loggedOversizeDocument: boolean
   answered: boolean
+  /** Reported outcomes, keyed with the span. A scroll fires per frame; one line per span is the budget. */
+  readonly loggedOutcomes: Set<string>
 }
+
+/** Why one demand did or did not become a request. Each was a silent `return` before. */
+type SemanticTokenRequestOutcome =
+  | 'answered'
+  | 'disabled'
+  | 'no_client'
+  | 'no_document'
+  | 'no_legend'
+  | 'no_method'
+  | 'no_text_version'
 
 export type SemanticTokenControllerOptions = {
   readonly serverId: string
@@ -192,6 +204,7 @@ export class SemanticTokenController {
       lastDemand: null,
       layer,
       lastTextVersion: null,
+      loggedOutcomes: new Set(),
       loggedOversizeDocument: false,
       requestId: 0,
       // The document id *is* the path this app opened, and the plugin's own
@@ -306,7 +319,10 @@ export class SemanticTokenController {
 
   #schedule(pending: PendingLayer, request: SemanticTokenRangeRequest | null, delayMs: number) {
     this.#cancelInFlight(pending)
-    if (!this.#enabled()) return
+    if (!this.#enabled()) {
+      this.#reportOutcome(pending, 'disabled')
+      return
+    }
 
     if (delayMs <= 0) {
       void this.#request(pending, request)
@@ -388,8 +404,16 @@ export class SemanticTokenController {
 
   async #request(pending: PendingLayer, demand: SemanticTokenRangeRequest | null): Promise<void> {
     const client = this.#client
+    if (!client) {
+      this.#reportOutcome(pending, 'no_client')
+      return
+    }
+
     const legend = this.#legend()
-    if (!client || !legend) return
+    if (!legend) {
+      this.#reportOutcome(pending, 'no_legend')
+      return
+    }
 
     // No document means the plugin's own sync has not opened this uri yet, which
     // is reachable: the layer and the document sync are two contributions
@@ -398,7 +422,10 @@ export class SemanticTokenController {
     // the end of a zero-length document, and push an empty span set — which
     // reads as "this file has no symbols" and blanks whatever was painted.
     const document = client.workspace.getDocument(pending.uri)
-    if (!document) return
+    if (!document) {
+      this.#reportOutcome(pending, 'no_document')
+      return
+    }
 
     /**
      * The **editor's** version, never `LspDocument.version`.
@@ -418,10 +445,16 @@ export class SemanticTokenController {
      * as anything moves, and that one carries a real number.
      */
     const textVersion = demand?.textVersion ?? pending.lastTextVersion
-    if (textVersion === null) return
+    if (textVersion === null) {
+      this.#reportOutcome(pending, 'no_text_version')
+      return
+    }
 
     const method = this.#methodFor(pending, demand, document)
-    if (!method) return
+    if (!method) {
+      this.#reportOutcome(pending, 'no_method')
+      return
+    }
 
     const abort = new AbortController()
     const requestId = pending.requestId + 1
@@ -431,6 +464,7 @@ export class SemanticTokenController {
     // tuples describe the text as it was asked about, and the layer's own
     // projection is what carries them onto text that has moved since.
     const snapshot = documentSnapshot(document, textVersion)
+    const startedAt = performance.now()
 
     try {
       const response = await client.request<lsp.SemanticTokens | null>(
@@ -443,6 +477,13 @@ export class SemanticTokenController {
       )
       if (this.#stale(pending, requestId)) return
 
+      // Before `answered` flips, so the duration reported is the cold first answer.
+      this.#reportOutcome(pending, 'answered', {
+        durationMs: Math.round(performance.now() - startedAt),
+        method: method.method,
+        tupleCount: Math.floor((response?.data?.length ?? 0) / 5),
+        ...requestedSpan(method.params, document),
+      })
       pending.answered = true
       pending.consecutiveTimeouts = 0
       this.#paint(pending, response, legend, snapshot)
@@ -524,6 +565,27 @@ export class SemanticTokenController {
     }
 
     return true
+  }
+
+  /** The absence of colour has seven causes here and they look identical; this says which. */
+  #reportOutcome(
+    pending: PendingLayer,
+    outcome: SemanticTokenRequestOutcome,
+    fields?: Readonly<Record<string, unknown>>,
+  ): void {
+    // Keyed on the span too: deduping on the outcome alone hides every request after the first.
+    const key = `${outcome}:${fields?.requestedFromLine ?? '-'}:${fields?.requestedLines ?? '-'}`
+    if (pending.loggedOutcomes.has(key)) return
+
+    pending.loggedOutcomes.add(key)
+    log.debug({
+      action: 'lsp.semanticTokens.request',
+      area: 'lsp',
+      documentId: pending.documentId,
+      outcome,
+      serverId: this.options.serverId,
+      ...fields,
+    })
   }
 
   #stale(pending: PendingLayer, requestId: number): boolean {
@@ -660,6 +722,19 @@ function documentSnapshot(document: LspDocument, textVersion: number) {
     lineStarts: document.lineStarts.toArray(),
     textLength: document.textSnapshot.length,
     textVersion,
+  }
+}
+
+/** Lines rather than offsets: the question is "did this cover the screen", and a screen is lines. */
+function requestedSpan(params: unknown, document: LspDocument): Record<string, number> {
+  const documentLines = Math.max(document.lineStarts.length, 1)
+  const range = (params as { range?: lsp.Range } | undefined)?.range
+  if (!range) return { documentLines, requestedLines: documentLines }
+
+  return {
+    documentLines,
+    requestedFromLine: range.start.line,
+    requestedLines: Math.max(range.end.line - range.start.line + 1, 0),
   }
 }
 
