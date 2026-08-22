@@ -1,5 +1,6 @@
 import { toast } from 'sonner'
 import type { ErrorCategory } from '@workspace/contracts'
+import { clientErrorMetadata } from './client-error-context'
 import { reportClientError } from './client-error-reporting'
 
 export type { ErrorCategory }
@@ -8,6 +9,8 @@ export type ClientError = {
   readonly category: ErrorCategory
   readonly message: string
   readonly cause?: unknown
+  readonly context?: Readonly<Record<string, unknown>>
+  readonly operation?: string
 }
 
 const messagesByCategory: Record<ErrorCategory, string> = {
@@ -18,7 +21,8 @@ const messagesByCategory: Record<ErrorCategory, string> = {
   too_large: 'The file is larger than the workspace size limit.',
   invalid_path: 'The path is invalid or conflicts with an existing entry.',
   io_error: 'The file server could not complete the filesystem operation.',
-  unknown: 'Something went wrong while talking to the file server.',
+  connectivity: 'Could not reach the server.',
+  unknown: 'Something unexpected went wrong.',
 }
 
 type FsErrorCode =
@@ -56,35 +60,22 @@ const categoryByFsErrorCode: Record<FsErrorCode, ErrorCategory> = {
 
 export function toClientError(input: unknown): ClientError {
   if (isAbortError(input)) {
-    return {
-      category: 'unknown',
-      message: messagesByCategory.unknown,
-      cause: input,
-    }
+    return categorizedClientError('unknown', input)
   }
 
+  if (isConnectivityError(input)) return categorizedClientError('connectivity', input)
+
   const code = extractFsErrorCode(input)
-  if (code) {
-    const category = categoryByFsErrorCode[code]
-    return {
-      category,
-      message: messagesByCategory[category],
-      cause: input,
-    }
-  }
+  if (code) return categorizedClientError(categoryByFsErrorCode[code], input)
 
   // Structured errors from any non-fs catalog — settings, orchestration — carry
   // their own message, `why` and `fix`. Falling through to `unknown` here is
   // what made every rejected settings save silent: `notifySaveError` returns
   // before its toast on `unknown`, so the user saw nothing at all.
   const structured = structuredErrorMessage(input)
-  if (structured) return { category: 'io_error', message: structured, cause: input }
+  if (structured) return categorizedClientError('io_error', input, structured)
 
-  return {
-    category: 'unknown',
-    message: messagesByCategory.unknown,
-    cause: input,
-  }
+  return categorizedClientError('unknown', input)
 }
 
 export function clientErrorMessage(input: unknown): string {
@@ -96,8 +87,9 @@ export function reportError(error: ClientError): void {
     area: 'client-error-taxonomy',
     category: error.category,
     cause: error.cause,
+    context: error.context,
     message: error.message,
-    operation: 'report',
+    operation: error.operation ?? 'report',
   })
 
   if (!shouldToastCategory(error.category)) return
@@ -127,7 +119,39 @@ const titleByCategory: Record<ErrorCategory, string> = {
   too_large: 'File too large',
   invalid_path: 'Invalid path',
   io_error: 'Filesystem error',
+  connectivity: 'Connection failed',
   unknown: 'Unexpected error',
+}
+
+function categorizedClientError(
+  category: ErrorCategory,
+  cause: unknown,
+  message = messagesByCategory[category],
+): ClientError {
+  const metadata = clientErrorMetadata(cause)
+
+  return {
+    category,
+    cause,
+    context: metadata?.context,
+    message,
+    operation: metadata?.operation,
+  }
+}
+
+const connectivityErrorMessages = new Set([
+  'failed to fetch',
+  'fetch failed',
+  'load failed',
+  'network error',
+  'network request failed',
+  'networkerror when attempting to fetch resource.',
+])
+
+function isConnectivityError(input: unknown): boolean {
+  if (!(input instanceof TypeError)) return false
+
+  return connectivityErrorMessages.has(input.message.toLowerCase())
 }
 
 function isAbortError(input: unknown): boolean {

@@ -12,6 +12,8 @@ type ClientErrorReport = {
 }
 
 const redactedDiagnosticValue = '[redacted]'
+// Server events retain workspace paths and stacks in the same log. Keep client
+// diagnostics aligned while continuing to redact credentials.
 const sensitiveFields = new Set([
   'absolutePath',
   'authorization',
@@ -20,15 +22,14 @@ const sensitiveFields = new Set([
   'destination',
   'fileName',
   'filename',
-  'path',
-  'stack',
   'token',
 ])
 
 export function reportClientError(report: ClientErrorReport): void {
   const safeReport = safeClientErrorReport(report)
 
-  log.error({
+  const level = report.category === 'connectivity' ? 'warn' : 'error'
+  log[level]({
     action: 'client.error',
     area: report.area,
     category: report.category,
@@ -68,6 +69,7 @@ function sanitizeError(error: Error, seen: WeakSet<object>) {
     fix: errorStringField(error, 'fix'),
     message: error.message,
     name: error.name,
+    stack: error.stack,
     status: errorNumberField(error, 'statusCode') ?? errorNumberField(error, 'status'),
     why: errorStringField(error, 'why'),
   }

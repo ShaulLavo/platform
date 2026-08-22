@@ -3,6 +3,7 @@ import { createHttpLogDrain } from 'evlog/http'
 import { observabilityEnabledFromEnv } from '@workspace/observability/env'
 
 import { serverUrl } from './client'
+import { annotateClientError } from './client-error-context'
 import { clientInstanceId, instanceQueryParam } from './instance-id'
 
 export type ClientLogLevel = LogLevel
@@ -25,6 +26,8 @@ const serviceName = 'platform-web'
 const ingestPath = '/_log/ingest'
 const maxStringLength = 2_000
 const redactedDiagnosticValue = '[redacted]'
+// Server logs already retain stack traces, so the client keeps them for the
+// same diagnostic value while credentials and request payloads stay redacted.
 const sensitiveFields = new Set([
   'absolutePath',
   'authorization',
@@ -40,7 +43,6 @@ const sensitiveFields = new Set([
   'patch',
   'secret',
   'set-cookie',
-  'stack',
   'text',
   'token',
   'x-api-key',
@@ -99,6 +101,11 @@ export async function observeClientOperation<T>(
     })
     return result
   } catch (error) {
+    annotateClientError(error, {
+      context: clientErrorContext(baseEvent),
+      operation: baseEvent.action,
+    })
+
     // A failure after the caller aborted is cancellation, not an error —
     // Chromium surfaces mid-stream cancellation as TypeError ("Error in
     // input stream"), which no error-shape check can tell apart from a real
@@ -185,7 +192,14 @@ function sanitizeError(error: Error, seen: WeakSet<object>) {
     cause: sanitizeDiagnosticValue(error.cause, seen),
     message: limitString(error.message),
     name: error.name,
+    stack: error.stack,
   }
+}
+
+function clientErrorContext(event: ClientLogEvent): Record<string, unknown> {
+  const { action: _action, area: _area, ...context } = event
+
+  return context
 }
 
 export function sanitizeRecord(record: Record<string, unknown>, seen = new WeakSet<object>()) {

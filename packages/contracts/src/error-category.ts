@@ -6,4 +6,5 @@ export type ErrorCategory =
   | 'too_large'
   | 'invalid_path'
   | 'io_error'
+  | 'connectivity'
   | 'unknown'

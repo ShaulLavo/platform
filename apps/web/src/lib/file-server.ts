@@ -9,6 +9,7 @@ import type {
   TreeResult,
 } from '@/lib/file-system-types'
 import { clientErrorMessage } from '@/lib/client-error-taxonomy'
+import { annotateClientError } from '@/lib/client-error-context'
 import { log, observeClientOperation } from '@/lib/client-logging'
 import { createCoalescedLogQueue } from '@/features/workspace/utils/coalesced-log'
 import { omitNullish } from '@/lib/objects'
@@ -62,6 +63,10 @@ export async function fetchTree(path: string, signal: AbortSignal) {
     queueTreeSuccessLog(path, result, startedAt)
     return result
   } catch (error) {
+    annotateClientError(error, {
+      context: { method: 'GET', path, route: '/fs/tree' },
+      operation: 'fs.tree',
+    })
     logTreeError(path, error, startedAt, signal)
     throw error
   }
@@ -82,6 +87,10 @@ export async function fetchFile(path: string, signal: AbortSignal) {
     queueReadSuccessLog(path, result, startedAt)
     return result
   } catch (error) {
+    annotateClientError(error, {
+      context: { method: 'GET', path, route: '/fs/read' },
+      operation: 'fs.read',
+    })
     logReadError(path, error, startedAt, signal)
     throw error
   }
@@ -102,8 +111,10 @@ export async function fetchQuickOpenFiles({
     {
       action: 'fs.quick_open_files',
       area: 'fs',
+      method: 'GET',
       path,
       queryLength: query.length,
+      route: '/fs/search/events',
     },
     async () => {
       const result = await collectWorkspaceSearch(
@@ -146,7 +157,9 @@ export async function writeFileContent(
       contentBytes: new Blob([content]).size,
       hasExpectedMtime:
         writeOptions.expectedMtimeMs !== undefined && writeOptions.expectedMtimeMs !== null,
+      method: 'POST',
       path,
+      route: '/fs/write',
       writeId: writeOptions.writeId ?? undefined,
     },
     async () => {
@@ -190,7 +203,9 @@ export async function createFileContent(path: string, content: string) {
       action: 'fs.create_file',
       area: 'fs',
       contentBytes: new Blob([content]).size,
+      method: 'POST',
       path,
+      route: '/fs/create-file',
     },
     async () => {
       const response = await getClient().fs['create-file'].post({ content, path })
@@ -207,7 +222,14 @@ export async function ensureFolderPath(path: string) {
   if (!path) return null
 
   return observeClientOperation(
-    { action: 'fs.create_folder', area: 'fs', path, recursive: true },
+    {
+      action: 'fs.create_folder',
+      area: 'fs',
+      method: 'POST',
+      path,
+      recursive: true,
+      route: '/fs/create-folder',
+    },
     async () => {
       const response = await getClient().fs['create-folder'].post({
         path,
@@ -224,7 +246,7 @@ export async function ensureFolderPath(path: string) {
 
 export async function renamePath(from: string, to: string) {
   return observeClientOperation(
-    { action: 'fs.rename', area: 'fs', from, path: to },
+    { action: 'fs.rename', area: 'fs', from, method: 'POST', path: to, route: '/fs/rename' },
     async () => {
       const response = await getClient().fs.rename.post({ from, to })
 
@@ -238,7 +260,15 @@ export async function renamePath(from: string, to: string) {
 
 export async function copyPath(from: string, to: string) {
   return observeClientOperation(
-    { action: 'fs.copy', area: 'fs', from, path: to, recursive: true },
+    {
+      action: 'fs.copy',
+      area: 'fs',
+      from,
+      method: 'POST',
+      path: to,
+      recursive: true,
+      route: '/fs/copy',
+    },
     async () => {
       // Directories are the common case for a tree duplicate, and copying a
       // file with `recursive` set is a no-op flag on the server's `cp`.
@@ -254,7 +284,7 @@ export async function copyPath(from: string, to: string) {
 
 export async function deletePath(path: string, recursive: boolean) {
   return observeClientOperation(
-    { action: 'fs.delete', area: 'fs', path, recursive },
+    { action: 'fs.delete', area: 'fs', method: 'POST', path, recursive, route: '/fs/delete' },
     async () => {
       const response = await getClient().fs.delete.post({ path, recursive })
 
@@ -268,7 +298,7 @@ export async function deletePath(path: string, recursive: boolean) {
 
 export async function fetchServerInfo(signal: AbortSignal) {
   return observeClientOperation(
-    { action: 'fs.server_info', area: 'fs', signal },
+    { action: 'fs.server_info', area: 'fs', method: 'GET', route: '/health', signal },
     async () => {
       const response = await getClient().health.get({ fetch: { signal } })
 
@@ -285,7 +315,7 @@ export async function fetchServerInfo(signal: AbortSignal) {
 
 export async function statPath(path: string, signal: AbortSignal) {
   return observeClientOperation(
-    { action: 'fs.stat', area: 'fs', path, signal },
+    { action: 'fs.stat', area: 'fs', method: 'GET', path, route: '/fs/stat', signal },
     async () => {
       const response = await getClient().fs.stat.get({ query: { path }, fetch: { signal } })
 
@@ -299,7 +329,15 @@ export async function statPath(path: string, signal: AbortSignal) {
 
 export async function openWorkspaceRootPath(path: string, generation: number, signal: AbortSignal) {
   return observeClientOperation(
-    { action: 'fs.open_workspace_root', area: 'fs', generation, path, signal },
+    {
+      action: 'fs.open_workspace_root',
+      area: 'fs',
+      generation,
+      method: 'POST',
+      path,
+      route: '/fs/workspace-root',
+      signal,
+    },
     async () => {
       const response = await getClient().fs['workspace-root'].post(
         { generation, path },
@@ -321,7 +359,7 @@ export async function openWorkspaceRootPath(path: string, generation: number, si
 /** `signal` is optional: a caller with no lifecycle to hang it on must not fake one. */
 export async function fetchRecentEntries(limit: number, signal?: AbortSignal) {
   return observeClientOperation(
-    { action: 'fs.recents', area: 'fs', limit, signal },
+    { action: 'fs.recents', area: 'fs', limit, method: 'GET', route: '/fs/recents', signal },
     async () => {
       const response = await getClient().fs.recents.get({ query: { limit }, fetch: { signal } })
 
@@ -334,13 +372,16 @@ export async function fetchRecentEntries(limit: number, signal?: AbortSignal) {
 }
 
 export async function recordRecentEntry(path: string) {
-  return observeClientOperation({ action: 'fs.record_recent', area: 'fs', path }, async () => {
-    const response = await getClient().fs.recents.post({ path })
+  return observeClientOperation(
+    { action: 'fs.record_recent', area: 'fs', method: 'POST', path, route: '/fs/recents' },
+    async () => {
+      const response = await getClient().fs.recents.post({ path })
 
-    if (response.error) throw createRpcError(response.error)
+      if (response.error) throw createRpcError(response.error)
 
-    return null
-  })
+      return null
+    },
+  )
 }
 
 export function errorMessage(error: unknown) {
