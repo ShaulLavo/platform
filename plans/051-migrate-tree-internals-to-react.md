@@ -1,4 +1,4 @@
-# Plan 051: Migrate the tree internals from Preact to React
+# Plan 051: Migrate and further decompose the tree internals in React
 
 > **Executor instructions**: Follow this plan step by step. Run every verification command and
 > confirm the expected result before moving to the next step. If anything in the "STOP conditions"
@@ -6,8 +6,10 @@
 > every done criterion is verified, delete this file and remove its row from `plans/README.md` in the
 > same change.
 >
-> **Mandatory prerequisite — Plan 039 must be complete**: this plan is deliberately written against
-> the pre-039 source at `b60c88de`, but it must execute against the post-039 shape. Do not infer
+> **Mandatory prerequisites — Plans 036 and 039 must be complete**: Plan 036 must first reconcile
+> the copied package against Pierre upstream and leave `packages/tree/UPSTREAM.md`. Plan 039 must
+> then complete its behavioral split. This plan is deliberately written against the pre-036/pre-039
+> source at `b60c88de`, but it must execute against the reconciled post-039 shape. Do not infer
 > completion from the presence or absence of `plans/039-filetreeview-controller-split.md`; completed
 > plans are deleted. Before doing anything else, all four extracted files below must exist:
 >
@@ -18,13 +20,15 @@
 > test -f packages/tree/src/hooks/useFileTreeContextMenu.ts
 > ```
 >
-> Every command must exit 0. Also run Plan 039's final package and app gates. If an extracted file is
-> absent, those gates are red, or `FileTreeView.tsx` still owns the row/drag/context-menu clusters,
-> stop and report `blocked: Plan 039 is not complete`. Do not mix the behavioral split and runtime
-> migration into one change.
+> Before those checks, `test -f packages/tree/UPSTREAM.md` must exit 0 and its last-audited upstream
+> SHA must match completed Plan 036. Every command must exit 0. Also run Plan 039's final package and
+> app gates. If the ledger or an extracted file is absent, those gates are red, or
+> `FileTreeView.tsx` still owns the row/drag/context-menu clusters, stop and report
+> `blocked: Plan 036/039 prerequisite is not complete`.
 >
-> **Expected prerequisite drift**: Plan 039 is expected to change `FileTreeView.tsx` and create the
-> four files above after this plan's authored-at SHA. Run both checks:
+> **Expected prerequisite drift**: Plan 036 is expected to change upstream-reconciled tree behavior,
+> tests, licensing, and provenance. Plan 039 then changes `FileTreeView.tsx` and creates the four
+> files above. Run both checks:
 >
 > ```bash
 > git diff --stat b60c88de..HEAD -- .oxlintrc.json package.json bun.lock packages/tree
@@ -38,9 +42,9 @@
 ## Status
 
 - **Priority**: P2
-- **Effort**: M
-- **Risk**: MED
-- **Depends on**: Plan 039 complete, including its Steps 3–6 and final verification gates
+- **Effort**: L
+- **Risk**: HIGH
+- **Depends on**: Plan 036 complete; then Plan 039 complete, including its Steps 3–6 and final gates
 - **Category**: migration
 - **Planned at**: commit `b60c88de`, 2026-08-22
 
@@ -52,11 +56,12 @@ dependency, Preact-specific compiler escape directives, and a package-wide exemp
 React Compiler lint rule. It also makes event, ref, and update semantics easy to misread because the
 public wrapper and internal view use different hook and JSX contracts.
 
-After Plan 039 separates the view's behavioral clusters, this plan moves that smaller internal
-surface to the React 19 runtime already supplied by the package's peer dependencies. It removes the
-dead hydration API, gives each shadow-root container one owned React root in the package's state
-layer, removes the broad lint exemption, and preserves the tree's DOM, focus, drag, selection,
-rename, and composition behavior.
+After the upstream reconciliation and Plan 039's first decomposition, this plan moves the smaller
+internal surface to the React 19 runtime already supplied by the package's peer dependencies. It
+then extracts the remaining keyboard and focus/viewport coordination seams while React behavior is
+protected by real-browser tests. Finally it removes the dead hydration API, gives each shadow-root
+container one owned React root in the package's state layer, removes the broad lint exemption, and
+preserves the tree's DOM, focus, drag, selection, rename, and composition behavior.
 
 ## Current state and post-039 target
 
@@ -193,12 +198,29 @@ Because this plan must edit it, bring it into compliance while its behavior is s
 Preact tests: one component per file, exact imports, and pure split functions in
 `utils/render/overflowTextSplit.ts`.
 
+### Plan 039 intentionally leaves two large seams for this plan
+
+Plan 039 targets a post-split `FileTreeView.tsx` of roughly 1,800–2,200 lines and explicitly defers
+keyboard navigation until its sticky-focus and context-menu hooks exist. That dependency is resolved
+by the time this plan starts. The remaining two cohesive clusters are:
+
+- `handleTreeKeyDown`: menu escape/blocking, IME-safe rename keys, F2, search keys, sticky-row focus
+  preservation, selection modifiers, directional navigation, and controller invalidation.
+- The DOM focus/scroll synchronization effect: controller scroll requests, search-close restoration,
+  sticky/pointer suppression, canonical row focus, and settlement of the sticky-keyboard machine.
+
+After the React cutover, extract these into `useFileTreeKeyboard.ts` and
+`useFileTreeFocusSync.ts`. Do not split `FileTreeController` here: it is runtime-neutral, its search,
+rename, selection, and projection state cross one another, and upstream reconciliation already
+touches its behavior. A controller decomposition needs its own caller-driven plan and measurements,
+not opportunistic movement during a view-runtime migration.
+
 ## Commands you will need
 
 | Purpose               | Command                                                                                     | Expected on success                                                                  |
 | --------------------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | Tree typecheck        | `(cd packages/tree && bun run typecheck)`                                                   | exit 0                                                                               |
-| Tree lint             | `(cd packages/tree && bun run lint)`                                                        | no new errors or warnings versus Step 0; after Step 4, no React Compiler diagnostics |
+| Tree lint             | `(cd packages/tree && bun run lint)`                                                        | no new errors or warnings versus Step 0; after Step 5, no React Compiler diagnostics |
 | Tree format           | `(cd packages/tree && bun run format:check)`                                                | exit 0                                                                               |
 | Tree node + DOM tests | `(cd packages/tree && bun run test)`                                                        | every baseline test still passes, plus the new tests                                 |
 | Tree browser tests    | `(cd packages/tree && bun run test:browser)`                                                | every baseline browser test still passes                                             |
@@ -240,10 +262,14 @@ workspaces. Capture and compare the scoped baselines below.
 - `packages/tree/src/hooks/useFileTreeRowDom.ts` — expected from Plan 039
 - `packages/tree/src/hooks/useFileTreeDrag.ts` — expected from Plan 039
 - `packages/tree/src/hooks/useFileTreeContextMenu.ts` — expected from Plan 039
+- `packages/tree/src/hooks/useFileTreeFocusSync.ts` (create)
+- `packages/tree/src/hooks/useFileTreeKeyboard.ts` (create)
 - `packages/tree/src/state/renderer.ts` (create)
+- `packages/tree/src/utils/render/keyboard.ts` (create)
 - `packages/tree/src/utils/render/overflowTextSplit.ts` (create)
 - `packages/tree/src/utils/render/runtime.ts` (delete)
-- `packages/tree/src/utils/tests/overflowTextSplit.test.ts` (create)
+- `packages/tree/src/utils/tests/keyboard.test.ts` (create)
+- `packages/tree/src/utils/tests/overflowTextSplit.test.ts` (modify; created by Plan 036)
 - `packages/tree/src/components/FileTree.test.tsx`
 - `packages/tree/src/components/FileTree.browser.tsx`
 - `packages/tree/src/utils/render/FileTree.ts` — import path only
@@ -262,6 +288,10 @@ scope expansion is a STOP condition.
   focus, selection, drag/drop, rename, context-menu, or keyboard behavior.
 - Recombining or redesigning any extraction completed by Plan 039.
 - App source under `apps/web`; it is a verification consumer, not migration scope.
+- Wiring the dormant high-level tree capabilities into the app. Plan 052 does that against the
+  settled React model.
+- General package API pruning, wildcard-export removal, or consumer import consolidation. Plan 053
+  performs that cleanup after Plan 052 establishes the real consumer surface.
 - The linked Editor repository.
 - SSR or hydration support. There is no current hydration caller; deleting dead code is intentional.
 - New settings, compatibility aliases, barrel files, or a Preact compatibility layer.
@@ -281,8 +311,11 @@ starting state and command results:
 
 ```bash
 git status --porcelain > /tmp/plan-051-status-before.txt
+test -f packages/tree/UPSTREAM.md
+rg -n "last audited upstream SHA" packages/tree/UPSTREAM.md
 rg -l "from ['\"]preact|jsxImportSource preact|preact/hooks" packages/tree/src | sort \
   > /tmp/plan-051-preact-files-before.txt
+wc -l packages/tree/src/components/FileTreeView.tsx > /tmp/plan-051-filetreeview-lines-before.txt
 (cd packages/tree && bun run typecheck) > /tmp/plan-051-tree-typecheck-before.txt 2>&1
 (cd packages/tree && bun run lint) > /tmp/plan-051-tree-lint-before.txt 2>&1
 (cd packages/tree && bun run test) > /tmp/plan-051-tree-test-before.txt 2>&1
@@ -309,7 +342,7 @@ rg -n '"preact"\s*:' package.json packages/*/package.json apps/*/package.json
 Expected: the first two commands print nothing. The manifest search prints only the root catalog
 entry and `packages/tree/package.json`. If not, stop before editing.
 
-### Step 1: Add runtime-lifecycle characterization tests while Preact is still active
+### Step 1: Characterize runtime and remaining large-view seams while Preact is still active
 
 Extend `packages/tree/src/components/FileTree.test.tsx` using its existing real React root and real
 `FileTree` model; do not mock `runtime.ts`, React DOM, or package modules. Add coverage for:
@@ -322,6 +355,13 @@ Extend `packages/tree/src/components/FileTree.test.tsx` using its existing real 
 3. `setComposition`, `setGitStatus`, and `setIcons` still update the mounted shadow DOM after the
    renderer commits. Reuse the existing setter tests rather than creating mock props.
 4. Mounting through `<FileTree>` and cleaning it up emits no React `console.error`/`console.warn`.
+5. The keyboard branch order: open-menu Escape/blocking, Plan 036's IME-safe rename Enter/Escape,
+   F2 rename, close/retain search behavior, Shift/Ctrl/Meta selection, Home/End, arrows, and
+   left/right directory behavior.
+6. Sticky keyboard focus across ArrowUp/ArrowDown, collapse, and Shift+F10/context-menu open/close,
+   including preserved scroll position and focus restoration to the canonical row.
+7. Focus/viewport synchronization for controller scroll requests, search-close restoration,
+   pointer selection without scroll jumps, and unmounted/parked focused rows.
 
 Use `vi.waitFor` for DOM observations. Do not assert Preact's same-stack rendering accident and do
 not wrap model methods in `flushSync`; `flushSync` remains appropriate only for the outer test root's
@@ -334,7 +374,9 @@ explicit render/unmount calls.
 (cd packages/tree && bun run test:browser)
 ```
 
-Expected: every Step 0 test still passes and the new lifecycle tests pass under Preact.
+Expected: every Step 0 test still passes and the new lifecycle, keyboard, and focus cases pass under
+Preact. These are the behavior gates for the Step 4 decomposition; do not postpone them until after
+the extraction.
 
 ### Step 2: Split OverflowText by component while preserving the Preact runtime
 
@@ -352,8 +394,9 @@ Do this structural move before the runtime cutover so behavior can be verified i
    to `OverflowText.tsx`; repository search shows no other consumer.
 5. Preserve markup, keys, attributes, marker behavior, empty-string behavior, and every split rule.
    Flatten the existing nested ternaries and `else` branches with named helpers and guard clauses.
-6. Add table-driven node tests in `utils/tests/overflowTextSplit.test.ts` covering center, extension,
-   leaf path, explicit index, first/last offset, invalid offset fallback, and short inputs.
+6. Extend Plan 036's `utils/tests/overflowTextSplit.test.ts` for leaf path, explicit index,
+   first/last offset, and invalid offset fallback. Preserve its upstream whitespace cases and update
+   its import to `utils/render/overflowTextSplit.ts`.
 
 All component files remain Preact through the end of this step. This is temporary and keeps one
 runtime active between verification gates.
@@ -387,7 +430,7 @@ For each component and post-039 hook:
    DOM, attributes, event propagation, and post-039 component/hook boundaries. Do not perform a
    second behavioral refactor during type conversion.
 5. Remove every Preact-specific comment and `'use no memo'` explanation. Compiler decisions happen
-   in Step 4, after the runtime is genuinely React.
+   in Step 5, after the runtime is genuinely React and the remaining large seams are extracted.
 
 Replace `utils/render/runtime.ts` with `state/renderer.ts`:
 
@@ -416,7 +459,117 @@ rg -n "from ['\"]preact|jsxImportSource preact|preact/hooks" packages/tree/src
 Expected: the Preact search prints nothing; every command exits 0; all Step 0 and new tests pass;
 the console-warning assertions stay green.
 
-### Step 4: Remove the package-wide compiler exemption and resolve real React findings
+### Step 4: Extract the remaining keyboard and focus-sync seams from FileTreeView
+
+This is a behavior-preserving React refactor protected by Step 1. Execute the focus coordinator
+before the keyboard hook because keyboard navigation writes the sticky/search/pointer focus machine.
+
+#### 4a. Move pure keyboard classification out of the component
+
+Create `utils/render/keyboard.ts` and move the pure key/event classifiers still owned by
+`FileTreeView.tsx`, including the equivalents of `isSpaceSelectionKey`, `isSearchOpenSeedKey`,
+`isContextMenuOpenKey`, `canKeyUseStickyKeyboardState`, and the blocked context-menu key set. Use a
+minimal readonly event-like input type so node tests do not construct React synthetic events. Keep
+model/DOM actions out of this utility.
+
+Create `utils/tests/keyboard.test.ts` with a table for Space variants, printable search seeds,
+modifier exclusions, ContextMenu/Shift+F10, sticky-eligible arrows/menu keys, and blocked menu
+navigation. Preserve the IME policy applied by Plan 036 in the hook branch, not this classifier.
+
+**Verify**:
+
+```bash
+(cd packages/tree && bun run test -- src/utils/tests/keyboard.test.ts)
+(cd packages/tree && bun run typecheck)
+```
+
+#### 4b. Extract one focus/viewport synchronization hook
+
+Create `hooks/useFileTreeFocusSync.ts`. It owns the component-lifetime coordination currently spread
+across these post-039 equivalents:
+
+- DOM focus ownership and previous focused path;
+- pending canonical sticky focus and the `StickyKeyboardFocusMode` ref;
+- pointer-focus scroll suppression;
+- search-close focus/viewport restoration;
+- processed controller scroll-request id;
+- the long layout effect that restores offsets/scrollTop, calls `updateViewport`, focuses the
+  canonical row, and settles the sticky-keyboard state.
+
+The hook accepts one named options object containing `FileTreeController`, Plan 039's
+`FileTreeRowDom`, current focus/search/rename/layout values, scroll request, and the viewport update
+action. It returns a narrow `FileTreeFocusCoordinator` of domain actions/predicates—not raw refs or
+state setters. Use names equivalent to:
+
+- `claimDomFocus` / `releaseDomFocus` / `ownsDomFocus`;
+- `preserveStickyAtScrollTop` / `restoreStickyAtViewportOffset`;
+- `requestCanonicalStickyReveal`;
+- `suppressNextPointerFocusScroll`;
+- `requestSearchCloseFocusRestore` / `cancelSearchCloseFocusRestore` /
+  `shouldRestoreSearchCloseFocus`.
+
+Replace every direct read/write of the moved refs in `FileTreeView`, the context-menu hook call,
+row-click wiring, and later keyboard wiring with these named actions. Stable callback identity is
+allowed only where an effect or subscription requires it; add a short reason. Do not return a broad
+mutable ref bag, merge/reorder effects, change dependency semantics, or move the initial viewport
+measurement/subscription effect—it is a different cluster.
+
+**Verify**:
+
+```bash
+rg -n "domFocusOwnerRef|previousFocusedPathRef|restoreTreeFocusAfterSearchCloseRef|restoreTreeFocusViewportOffsetRef|processedScrollRequestIdRef|pointerFocusScrollPathRef|pendingStickyFocusPathRef|stickyKeyboardFocusRef" packages/tree/src/components/FileTreeView.tsx
+(cd packages/tree && bun run typecheck)
+(cd packages/tree && bun run lint)
+(cd packages/tree && bun run test)
+(cd packages/tree && bun run test:browser)
+```
+
+Expected: the ref search prints nothing; no baseline warning/test regresses.
+
+#### 4c. Extract keyboard navigation after focus/context seams exist
+
+Create `hooks/useFileTreeKeyboard.ts` and move `handleTreeKeyDown` in branch order, not by rewriting
+it as a new state machine. The hook accepts a named options object containing the controller,
+Plan 039 DOM refs, Plan 039 context-menu state/actions, the Step 4b focus coordinator, rename/search
+policy and current render values. It returns one React `KeyboardEventHandler<HTMLDivElement>`.
+
+Preserve this order exactly: open context menu; active rename including Plan 036 IME guard; F2;
+active search and close/retain policy; printable search seed; sticky-row synchronization; modified
+selection; keyboard context menu; directional/home/end navigation; focus settlement/invalidation.
+Extract internal named helpers to keep nesting depth ≤3. Do not expose `setState`, reconstruct
+context-menu logic, read a broad view-state blob, or change which handled events prevent default and
+stop propagation.
+
+**Verify**:
+
+```bash
+rg -n "handleTreeKeyDown" packages/tree/src/components/FileTreeView.tsx
+rg -n "handleTreeKeyDown" packages/tree/src/hooks/useFileTreeKeyboard.ts
+(cd packages/tree && bun run typecheck)
+(cd packages/tree && bun run lint)
+(cd packages/tree && bun run test)
+(cd packages/tree && bun run test:browser)
+```
+
+Expected: the first search prints nothing, the second finds the hook implementation, and all gates
+match baseline.
+
+#### 4d. Prove this was decomposition rather than relocation
+
+```bash
+before_lines=$(awk '{print $1}' /tmp/plan-051-filetreeview-lines-before.txt)
+after_lines=$(wc -l < packages/tree/src/components/FileTreeView.tsx)
+test "$after_lines" -le "$((before_lines - 300))"
+test "$(wc -l < packages/tree/src/hooks/useFileTreeFocusSync.ts)" -lt 500
+test "$(wc -l < packages/tree/src/hooks/useFileTreeKeyboard.ts)" -lt 500
+```
+
+Expected: `FileTreeView.tsx` is at least 300 lines below the post-039 baseline and neither new hook
+is another 500-line monolith. Do not hit these gates by moving JSX into a giant props frame, deleting
+comments/tests, combining statements, or pushing logic into an unrelated file. If the real seam
+cannot satisfy the structural gates, stop and report the measured counts and coupling.
+
+### Step 5: Remove the package-wide compiler exemption and resolve real React findings
 
 Delete the entire `packages/tree/**` override from `.oxlintrc.json`. Run tree lint and resolve every
 new `oxc-react-compiler/*`, hooks, and React diagnostic in the in-scope component/hook files.
@@ -450,7 +603,7 @@ Expected: the override search prints nothing. The directive search prints nothin
 documented function-local directives accepted by lint. Lint has no React Compiler diagnostics and
 no new warnings versus baseline; typecheck and tests exit 0.
 
-### Step 5: Remove the direct Preact dependency and refresh the Bun lockfile
+### Step 6: Remove the direct Preact dependency and refresh the Bun lockfile
 
 Only after the source search is empty:
 
@@ -474,7 +627,7 @@ bun install --frozen-lockfile
 
 Expected: both searches print nothing and the frozen install exits 0 without changing `bun.lock`.
 
-### Step 6: Run the complete scoped gates and clean up the plan
+### Step 7: Run the complete scoped gates and clean up the plan
 
 Run all final checks from the repository root:
 
@@ -494,8 +647,9 @@ Compare results to every Step 0 snapshot. No previously passing scoped test may 
 lint warning may appear. Inspect `git status` against `/tmp/plan-051-status-before.txt`; preserve
 pre-existing unrelated work and verify that every newly changed file is listed in Scope.
 
-After every done criterion holds, delete this plan and remove its row from `plans/README.md`. Do not
-leave a completed-plan ledger.
+After every done criterion holds, refresh Plan 052's prerequisite/drift inventory against the final
+React shape, then delete this plan and remove its row from `plans/README.md`. Do not leave a
+completed-plan ledger.
 
 ## Test plan
 
@@ -510,10 +664,12 @@ leave a completed-plan ledger.
   - short inputs and invalid offsets;
   - extension and leaf-path fallback thresholds;
   - explicit split indices.
+- `packages/tree/src/utils/tests/keyboard.test.ts`
+  - pure key classification for search, selection, menu, and sticky navigation.
 - `packages/tree/src/components/FileTree.browser.tsx`
-  - existing real-browser coverage remains the behavior gate for layout, scrolling, sticky rows,
-    pointer selection, keyboard focus, and rename. Add a case only if an event-boundary regression is
-    not already exercised.
+  - runtime lifecycle plus keyboard branch order, IME rename, close/retain search, sticky navigation,
+    context-menu focus restoration, controller scroll requests, parked rows, and pointer selection
+    without scroll jumps.
 - `apps/web/src/features/workspace/tests/tree-pane.test.ts`
   - unchanged consumer suite proves workspace integration; do not edit app tests to accept a
     migration regression.
@@ -524,7 +680,8 @@ All totals are compared to the Step 0 snapshots. Do not encode absolute test cou
 
 ALL must hold:
 
-- [ ] Plan 039's four extracted files exist and its final package/app gates pass.
+- [ ] Plan 036's upstream ledger exists at its final audited SHA, then Plan 039's four extracted
+      files exist and its final package/app gates pass.
 - [ ] `rg -n "from ['\"]preact|jsxImportSource preact|preact/hooks" apps packages` prints nothing.
 - [ ] No manifest has a direct `preact` dependency or catalog entry; the frozen lockfile install is
       clean. A transitive `@preact/signals-core` entry is allowed.
@@ -537,6 +694,11 @@ ALL must hold:
       React correctness boundary; no disable comment was added.
 - [ ] Overflow text has one render component per file, exact imports, and pure split logic under
       `utils/render/` with node tests.
+- [ ] Keyboard classification is pure/tested; keyboard navigation lives only in
+      `useFileTreeKeyboard.ts`; focus/viewport settlement lives in `useFileTreeFocusSync.ts` behind
+      named actions rather than raw ref/setter bags.
+- [ ] `FileTreeView.tsx` is at least 300 lines below its post-039 Step 0 baseline and neither new hook
+      reaches 500 lines.
 - [ ] React JSX events and native DOM events are typed at their actual boundaries without blanket
       casts.
 - [ ] Tree typecheck, format check, node/DOM tests, and browser tests all pass with no baseline
@@ -549,7 +711,7 @@ ALL must hold:
 
 Stop and report back; do not improvise if:
 
-- Plan 039's extracted files or final behavior gates are missing/red.
+- Plan 036's ledger/audited SHA or Plan 039's extracted files/final behavior gates are missing/red.
 - The post-039 Preact inventory contains a file outside the expected tree component/hook surface.
 - Another workspace now imports or directly depends on Preact.
 - `hydrateRoot` or `fileTreeRenderer` has gained a real caller.
@@ -561,6 +723,9 @@ Stop and report back; do not improvise if:
   identity, DOM structure, data attributes, or shadow-root ownership.
 - React Compiler lint can only be made green with a package/file override, disable comment, or a
   broad semantic refactor of the tree.
+- The keyboard/focus extraction requires merging/reordering effects, exposing raw state setters/ref
+  bags, changing controller behavior, or moving unrelated virtualization/render JSX to hit a size
+  gate.
 - A verification gate fails twice after one reasonable, in-scope correction.
 - Completion requires any source/config file outside Scope.
 
@@ -576,6 +741,10 @@ Stop and report back; do not improvise if:
   and touch hooks.
 - Do not restore Preact, a compatibility alias, or a package-wide React Compiler exemption. If an
   exact function is temporarily compiler-incompatible, use the narrow documented directive policy
-  from Step 4.
+  from Step 5.
+- Future Pierre upstream reviews start from `packages/tree/UPSTREAM.md` and translate behavior into
+  these React seams; do not compare/copy whole same-named files after the migration.
+- Plan 052 owns product wiring and Plan 053 owns the root-entry/dead-export sweep. Do not broaden or
+  prune the public surface opportunistically during this runtime migration.
 - Reviewers should scrutinize root reuse/unmount, console warnings, event boundaries, focus and
   pointer behavior, and any remaining compiler opt-out before approving the migration.

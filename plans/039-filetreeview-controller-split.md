@@ -1,5 +1,14 @@
 # Plan 039: Split FileTreeView and FileTreeController along their real seams
 
+> ## NEW PREREQUISITE — 2026-08-22: reconcile the copied package with Pierre first
+>
+> Do not resume Step 3 until Plan 036 (`036-reconcile-tree-with-pierre-upstream.md`) is complete.
+> `packages/tree` was copied from Pierre's Trees/path-store fork and upstream behavior has advanced
+> since the imported base. Plan 036 restores license/provenance, hand-ports applicable fixes, and
+> refreshes this plan's drift/line references. Verify `packages/tree/UPSTREAM.md` exists and the
+> upstream reconciliation gates are green. If it is absent, stop and report
+> `blocked: Plan 036 upstream reconciliation is not complete`.
+
 > ## CORRECTION — 2026-08-17: the plan author rules on the Step 3 contradiction
 >
 > **Read this before anything else. Where it disagrees with the older text
@@ -97,8 +106,9 @@ refs`). Measured after them, at `b467b3f`: the `packages/tree` suite went from
 - **Priority**: P2
 - **Effort**: L
 - **Risk**: HIGH
-- **Depends on**: the path-store characterization suite (`5774dc6`, **MANDATORY**
-  — see Step 0) and the dead-code cleanup (landed; verified by source check)
+- **Depends on**: Plan 036 upstream reconciliation (**MANDATORY**), the path-store characterization
+  suite (`5774dc6`, **MANDATORY** — see Step 0), and the dead-code cleanup (landed; verified by source
+  check)
 - **Category**: complexity
 - **Planned at**: commit `ace313f`, 2026-08-16
 
