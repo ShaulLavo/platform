@@ -21,7 +21,7 @@
     "format:check": "oxfmt --check .",
     "test": "bun --bun vitest run --project node --project dom",
     "test:watch": "bun --bun vitest --project node --project dom",
-    "test:browser": "vitest run --project browser",
+    "test:browser": "vitest run --config vitest.browser.config.ts",
     "typecheck": "tsgo --build",
     "preview": "bun --env-file=../../.env vite preview"
   },

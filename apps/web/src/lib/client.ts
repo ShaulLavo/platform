@@ -26,7 +26,3 @@ export function getClient(): Client {
 export function setClient(client: Client) {
   activeClient = client
 }
-
-export function resetClient() {
-  activeClient = productionClient
-}

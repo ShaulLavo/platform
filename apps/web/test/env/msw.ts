@@ -1,9 +1,10 @@
 import { afterAll, afterEach, beforeAll } from 'vitest'
 import { server } from '../msw/server'
 
-// Phase 1 uses `bypass` so the empty handler set is a no-op. Once real outbound
-// handlers land, this tightens to `error` so any unexpected hit on the outside
-// world fails the test loudly — the guarantee that "use the real thing" relies on.
-beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }))
+// `error`, not `bypass`: our own server is reached in-process, so anything that
+// makes it to a socket is a test talking to the outside world by accident. It
+// fails the test that caused it instead of printing a bare ECONNREFUSED stack
+// from deep in Bun's http client, attributable to nothing.
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
 afterEach(() => server.resetHandlers())
 afterAll(() => server.close())

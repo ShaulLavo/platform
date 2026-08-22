@@ -1,31 +1,11 @@
-import { treaty } from '@elysia/eden'
-import type { App } from 'server/testing'
 import { test as base } from 'vitest'
-import { resetClient, setClient } from '@/lib/client'
-import { makeTestServer, TEST_ORIGIN, type TestServer } from './server'
+
+import { getClient, setClient } from '@/lib/client'
+
+import { createInProcessClient } from './client'
+import { makeTestServer, type TestServer } from './server'
 
 type TestClient = ReturnType<typeof createInProcessClient>
-
-// Eden client that calls the real app directly — every request goes through
-// `app.handle`, so there is no socket, no port, and nothing mocked.
-function createInProcessClient(server: TestServer): ReturnType<typeof treaty<App>> {
-  return treaty<App>(TEST_ORIGIN, {
-    fetcher: ((input, init) =>
-      server.app.handle(withOrigin(new Request(input, init), server.origin))) as typeof fetch,
-    headers: { origin: server.origin },
-  })
-}
-
-// happy-dom's Request drops `origin` (a browser-forbidden header), which the
-// app's auth guard requires. Re-attach it so dom tests reach the real routes.
-function withOrigin(request: Request, origin: string) {
-  if (request.headers.get('origin') === origin) return request
-
-  const headers = new Headers(request.headers)
-  headers.set('origin', origin)
-  Object.defineProperty(request, 'headers', { value: headers })
-  return request
-}
 
 type Fixtures = {
   /** Real in-process server bound to an isolated temp workspace. */
@@ -44,12 +24,16 @@ export const test = base.extend<Fixtures>({
     await server.cleanup()
   },
   client: async ({ server }, provide) => {
+    // Point the app's RPC singleton at this test's server so code that calls
+    // `getClient()` (api.ts, hooks, components) hits the real server, not a
+    // mock. Restore whatever was there before rather than resetting to the
+    // production client: the dom project installs a file-wide in-process
+    // client, and resetting would hand every later test in the file a socket.
+    const previous = getClient()
     const client = createInProcessClient(server)
-    // Point the app's RPC singleton at the in-process server so code that calls
-    // `getClient()` (api.ts, hooks, components) hits the real server, not a mock.
     setClient(client)
     await provide(client)
-    resetClient()
+    setClient(previous)
   },
 })
 

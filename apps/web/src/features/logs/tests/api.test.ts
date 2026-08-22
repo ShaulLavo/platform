@@ -1,18 +1,25 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { type Client, resetClient, setClient } from '@/lib/client'
+import { type Client, getClient, setClient } from '@/lib/client'
 import * as api from '@/features/logs/utils/api'
 
 // Eden can hand back live `Date` objects for timestamp fields; the api layer must
 // normalize them to ISO strings before valibot validation. A real server returns
 // JSON strings and never exercises that branch, so we inject a crafted response
 // through the real client seam (`setClient`) — no `mock.module`.
+let previousClient: Client | undefined
+
 function clientWith(overrides: unknown) {
+  previousClient ??= getClient()
   setClient(overrides as unknown as Client)
 }
 
+// Restore whatever was installed before, never a fixed default: the dom project
+// hands every file an in-process client, and a reset-to-production would swap a
+// real server for a socket halfway through a file.
 afterEach(() => {
-  resetClient()
+  if (previousClient) setClient(previousClient)
+  previousClient = undefined
 })
 
 describe('logs api', () => {

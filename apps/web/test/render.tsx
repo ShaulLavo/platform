@@ -53,7 +53,22 @@ export function seedBootMirrorTheme(theme: 'dark' | 'light') {
     'platform.settings-boot-mirror.v1',
     JSON.stringify({ 'workbench.colorTheme': theme }),
   )
+  seedPrefersColorScheme(theme)
 }
+
+// The boot mirror only rules until the real settings snapshot lands, and the
+// shipped default for `workbench.colorTheme` is `system` - so the media query
+// decides from then on. happy-dom reports light unless the device is told
+// otherwise, which would flip the theme mid-test and re-run everything keyed on
+// it. No-op in the browser project, where the Playwright context sets the scheme.
+function seedPrefersColorScheme(theme: 'dark' | 'light') {
+  const happyDom = (window as Window & { happyDOM?: HappyDomDeviceApi }).happyDOM
+  if (!happyDom) return
+
+  happyDom.settings.device.prefersColorScheme = theme
+}
+
+type HappyDomDeviceApi = { settings: { device: { prefersColorScheme: string } } }
 
 // Returns the QueryClient for cache assertions.
 export function renderWithProviders(

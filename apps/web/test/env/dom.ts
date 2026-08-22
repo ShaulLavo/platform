@@ -1,6 +1,33 @@
 import { cleanup } from '@testing-library/react'
-import { afterEach } from 'vitest'
+import { afterAll, afterEach, beforeAll } from 'vitest'
+
+import { type Client, getClient, setClient } from '@/lib/client'
+
+import { createInProcessClient } from '../client'
+import { makeTestServer, type TestServer } from '../server'
 import './jest-dom'
+
+// Every provider stack these tests mount reads settings through `getClient()`.
+// Left at its production default that client opens a real socket to a port no
+// test run listens on, so each render spammed ECONNREFUSED and silently
+// exercised the settings failure path instead of the app's own behaviour. One
+// real in-process server per file is the honest default; tests that need their
+// own workspace still take the `client` fixture, which layers over this.
+let server: TestServer | undefined
+let productionClient: Client | undefined
+
+beforeAll(async () => {
+  server = await makeTestServer()
+  productionClient = getClient()
+  setClient(createInProcessClient(server))
+})
+
+afterAll(async () => {
+  if (productionClient) setClient(productionClient)
+  productionClient = undefined
+  await server?.cleanup()
+  server = undefined
+})
 
 // Unmount anything React Testing Library rendered between tests so the happy-dom
 // document never leaks state across cases.

@@ -127,6 +127,7 @@
   - `node` — pure logic and in-process server tests. Runs under `--bun`.
   - `dom` — hook and component tests in happy-dom. Runs under `--bun`.
   - `browser` — real layout/paint `*.browser.tsx` tests via Playwright. Runs under plain Node because Vitest browser orchestration breaks under `--bun`.
+- In `apps/web` the browser world lives in its own `vitest.browser.config.ts`. Vitest merges Vite-level options such as `define` across the projects of one config file, so a `define` written for the browser project silently rewrites the same constant for `node` and `dom`. Keep the two files separate.
 - The `--bun` flag is required for app tests. Without it, `bun:sqlite`, `Bun.spawn`, and other Bun APIs do not resolve. Coverage is the only casualty; we do not use it.
 
 ### Use Real App Code
@@ -134,7 +135,8 @@
 - Import `{ test, expect }` from `apps/web/test/fixtures.ts`, not from `vitest`, for app tests.
 - Drive the real in-process Elysia server. The `server` fixture builds `createApp` over a temp workspace. The `client` fixture is a real `treaty` client wired to `app.handle`.
 - Do not `mock.module` or `vi.mock` our server, client, or feature modules.
-- Production code calls `getClient()` from `@/lib/client`. Tests inject the real client with `setClient` and reset it with `resetClient`.
+- Production code calls `getClient()` from `@/lib/client`. Tests inject the real client with `setClient`, and restore whatever was installed before rather than resetting to a default — the `dom` project installs a real in-process client for every file in `test/env/dom.ts`, so a reset would hand later tests in the file a socket.
+- No test may open a socket to our own server. MSW runs with `onUnhandledRequest: 'error'`, so an escape fails the test that caused it instead of printing a bare `ECONNREFUSED` from Bun's http client.
 - Build real state. For example, `git init` a temp repo and write real files, then assert through real routes.
 
 ### Mock Boundaries Only
