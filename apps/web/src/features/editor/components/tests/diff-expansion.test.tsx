@@ -2,9 +2,11 @@ import { render, waitFor } from '@testing-library/react'
 import { StrictMode } from 'react'
 import userEvent from '@testing-library/user-event'
 import type { Editor } from '@singapor/core'
-import { createDiffRegionStore, createTextDiff } from '@singapor/diff'
+import { createDiffRegionStore, createStackedProjection, createTextDiff } from '@singapor/diff'
+import { vi } from 'vitest'
 
 import { DiffPane } from '@/features/editor/components/diff-pane'
+import { log } from '@/lib/client-logging'
 import { expect, test } from '../../../../../test/fixtures'
 import { stubHighlightApi } from '../../../../../test/env/highlight-api'
 
@@ -31,6 +33,29 @@ test('expanding a skipped range splices rows in without moving the reader', asyn
   await waitFor(() => expect(rowElements().length).toBeGreaterThan(before))
   expect(editor.getScrollPosition().top).toBe(scrolled)
 })
+
+test('does not report a transient stacked row-count mismatch', async () => {
+  const warn = vi.spyOn(log, 'warn').mockImplementation(() => {})
+  try {
+    const { editor, rowCount } = await mountStackedDiff()
+
+    await waitFor(() => expect(textLineCount(editor)).toBe(rowCount))
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'editor.diff.document_mode_violation',
+        documentId: 'repo/a.ts:stacked',
+        side: 'stacked',
+        violations: ['row-count-mismatch'],
+      }),
+    )
+  } finally {
+    warn.mockRestore()
+  }
+})
+
+function textLineCount(editor: Editor): number {
+  return editor.materializeFullText().split('\n').length
+}
 
 async function mountStackedDiff() {
   stubHighlightApi()
@@ -62,6 +87,7 @@ async function mountStackedDiff() {
 
   return {
     editor: mounted as unknown as Editor,
+    rowCount: createStackedProjection(file).rows.length,
     rowElements: () => [
       ...document.querySelectorAll<HTMLElement>(
         '.editor-diff-pane-stacked [data-editor-virtual-row]',

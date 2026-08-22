@@ -8,7 +8,7 @@ import {
 } from '@singapor/diff'
 import { EditorHost, useEditor } from '@singapor/react'
 import type { Editor } from '@singapor/core'
-import { useEffect, useLayoutEffect, useMemo } from 'react'
+import { useLayoutEffect, useMemo } from 'react'
 
 import {
   useDiffLanguage,
@@ -128,17 +128,22 @@ export function DiffPane({
   // `data-editor-virtual-row="i"`. The plugin checks the identity on the rows actually mounted;
   // anything that breaks it (word wrap, a fold map, block rows) would otherwise show up as line
   // comments quietly addressing the wrong line.
-  useEffect(() => {
-    const violations = plugin.getDocumentModeViolations()
+  useLayoutEffect(() => {
+    const { lineCount, rowCount, violations } = plugin.getDocumentModeStatus()
+    // The plugin can publish its next projection one layout pass before this host receives it.
+    if (rowCount !== rows.length) return
     if (violations.length === 0) return
 
     log.warn({
       action: 'editor.diff.document_mode_violation',
       area: 'editor',
+      documentId: `${file.cacheKey ?? file.path}:${side}`,
+      lineCount,
+      rowCount,
       side,
       violations,
     })
-  }, [plugin, rows, side])
+  }, [file.cacheKey, file.path, plugin, rows, side])
 
   return (
     <div
