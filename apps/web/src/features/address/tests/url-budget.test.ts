@@ -1,9 +1,10 @@
-import { describe } from 'vitest'
+import { afterEach, describe, vi } from 'vitest'
 
 import { expect, test } from '../../../../test/fixtures'
 
 import { formatAddress } from '@/features/address/utils/grammar'
 import { addressFromSnapshot, emptyAddressSnapshot } from '@/features/address/utils/snapshot'
+import { log } from '@/lib/client-logging'
 
 /**
  * Three slots carry whatever the user typed — or pasted: `s.q`, `s.in`/`s.x` and
@@ -14,6 +15,10 @@ import { addressFromSnapshot, emptyAddressSnapshot } from '@/features/address/ut
 
 const ROOT = '/repo'
 const BUDGET = 4000
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 function snapshotWith(extra: Partial<ReturnType<typeof emptyAddressSnapshot>>) {
   return addressFromSnapshot({
@@ -77,6 +82,27 @@ describe('the URL budget', () => {
     expect(formatAddress(address).length).toBeLessThanOrEqual(BUDGET)
     expect(address.search).toBeNull()
     expect(address.logs).toBeNull()
+  })
+
+  test('debug-logs each omitted tab signature once', () => {
+    const debug = vi.spyOn(log, 'debug').mockImplementation(() => {})
+    const warn = vi.spyOn(log, 'warn').mockImplementation(() => {})
+    const tabs = Array.from(
+      { length: 17 },
+      (_, index) => `${ROOT}/src/${'nested/'.repeat(12)}file-${index}.ts`,
+    )
+
+    snapshotWith({ editorTabPaths: tabs })
+    snapshotWith({ editorTabPaths: tabs, sidebarTab: 'search' })
+    snapshotWith({ editorTabPaths: [...tabs, `${ROOT}/src/another-file.ts`] })
+
+    expect(debug).toHaveBeenCalledTimes(2)
+    expect(debug).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'address.tabs_omitted', area: 'address' }),
+    )
+    expect(warn).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'address.tabs_omitted' }),
+    )
   })
 
   // A pathological path cannot be dropped — it IS the address — so the budget must not

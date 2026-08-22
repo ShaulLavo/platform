@@ -1,5 +1,6 @@
 import type { Address } from '@/features/address/utils/grammar'
 import { log } from '@/lib/client-logging'
+import { reportTabOmission } from '@/features/address/state/tab-omission-logging'
 import { documentTokenForPath } from '@/features/address/utils/document-token'
 import {
   emptyAddress,
@@ -202,14 +203,13 @@ function tabTokens(rootPath: string, paths: readonly string[]) {
   // discards whole — sixty-five short tokens sit far under the byte budget, so the byte
   // check alone let the two sides disagree. `TABS_BUDGET_BYTES` still catches the few
   // very long tokens that fit the count but not the URL.
-  const bytes = tokens.join(TAB_SEPARATOR).length
+  const signature = tokens.join(TAB_SEPARATOR)
+  const bytes = signature.length
   if (tokens.length <= MAX_APPLIED_TABS && bytes <= TABS_BUDGET_BYTES) return tokens
 
-  log.warn({
-    action: 'address.tabs_omitted',
-    area: 'address',
+  reportTabOmission({
     bytes,
-    maxAppliedTabs: MAX_APPLIED_TABS,
+    signature,
     tabCount: tokens.length,
   })
   return null
