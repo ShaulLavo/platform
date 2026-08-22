@@ -15,7 +15,6 @@ import { createEditorFindPlugin } from '@singapor/find'
 import { createFoldGutterPlugin, createLineGutterPlugin } from '@singapor/gutters'
 import type { FoldGutterIconContext } from '@singapor/gutters'
 import { createMarkdownPreviewPlugin } from '@singapor/markdown'
-import { CaretDownIcon } from '@phosphor-icons/react/ssr'
 import {
   createShikiHighlighterPlugin,
   createShikiWorkerOwner,
@@ -35,8 +34,6 @@ import {
   markdown,
   typeScript,
 } from '@singapor/tree-sitter-languages'
-import { createElement } from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
 import {
   activeEditorThemeUsesShiki,
   activeShikiThemeId,
@@ -55,14 +52,6 @@ import { log } from '@/lib/client-logging'
 import { editorPerformanceFeatureDisabled } from '@/features/editor/state/performance-trace'
 import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
 import type { DecodeMode } from '@singapor/decode'
-
-const FOLD_CHEVRON_ICON_MARKUP = renderToStaticMarkup(
-  createElement(CaretDownIcon, {
-    className: 'app-fold-chevron',
-    size: 12,
-    weight: 'bold',
-  }),
-)
 
 const NO_PRELOADED_THEMES: readonly string[] = []
 
@@ -378,16 +367,30 @@ async function loadPlugin(
   }
 }
 
-/** Parsed once per document, not once per row: `innerHTML` re-parsed this constant per fold icon. */
+/** Built once per document, not once per row: every fold icon is a clone of this prototype. */
 const foldChevronPrototypes = new WeakMap<Document, SVGSVGElement>()
+
+// CaretDown (bold, size 12) from @phosphor-icons/react 2.1.10, frozen as path
+// data: rendering the React icon to markup put react-dom/server and the full
+// icon barrel on the boot path for one constant glyph.
+const FOLD_CHEVRON_PATH =
+  'M216.49,104.49l-80,80a12,12,0,0,1-17,0l-80-80a12,12,0,0,1,17-17L128,159l71.51-71.52a12,12,0,0,1,17,17Z'
+
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg'
 
 function foldChevronPrototype(document: Document): SVGSVGElement {
   const cached = foldChevronPrototypes.get(document)
   if (cached) return cached
 
-  const template = document.createElement('template')
-  template.innerHTML = FOLD_CHEVRON_ICON_MARKUP
-  const prototype = template.content.firstElementChild as SVGSVGElement
+  const prototype = document.createElementNS(SVG_NAMESPACE, 'svg')
+  prototype.setAttribute('width', '12')
+  prototype.setAttribute('height', '12')
+  prototype.setAttribute('fill', 'currentColor')
+  prototype.setAttribute('viewBox', '0 0 256 256')
+  prototype.setAttribute('class', 'app-fold-chevron')
+  const path = document.createElementNS(SVG_NAMESPACE, 'path')
+  path.setAttribute('d', FOLD_CHEVRON_PATH)
+  prototype.appendChild(path)
   foldChevronPrototypes.set(document, prototype)
   return prototype
 }
