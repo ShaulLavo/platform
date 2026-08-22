@@ -425,9 +425,9 @@ export const SETTINGS_REGISTRY = {
     default: {},
     // Named entries may start matching tools, so cloned workspaces cannot set this.
     scope: 'machine',
-    // A record of lists has no widget; the JSON view is the editor for it.
+    // A record of lists has no widget, so the JSON view is its only editor.
     widget: 'complex',
-    visibility: 'advanced',
+    visibility: 'internal',
     category: 'Language servers',
     description:
       "Which language servers may serve a file type, keyed by extension ('.json'). Values are server ids in preference order, '!id' drops a server, and '...' keeps the rest. Naming a registered server explicitly enables it for matching file types even without its project marker. Open documents keep their current servers until reopened.",
