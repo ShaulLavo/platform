@@ -36,8 +36,17 @@ export function syncTreePaneState({
   tree: FileTreeModel
 }) {
   syncTreePaths(tree, previousPaths, model.paths, model, prepareInputForPaths)
-  if (syncSelection) syncSelectedFilePath(tree, rootPath, selectedFilePath)
+  const selectedTreePath = syncSelection
+    ? syncSelectedFilePath(tree, rootPath, selectedFilePath)
+    : null
   loadExpandedDirectoriesForCurrentModel(tree)
+  if (selectedTreePath) {
+    tree.scrollToPath(selectedTreePath, {
+      behavior: 'smooth',
+      focus: false,
+      offset: 'nearest',
+    })
+  }
 
   return model.paths
 }
@@ -81,19 +90,26 @@ function syncSelectedFilePath(
   rootPath: string,
   selectedFilePath: string | null,
 ) {
-  if (!selectedFilePath) return clearTreeSelection(tree)
+  if (!selectedFilePath) {
+    clearTreeSelection(tree)
+    return null
+  }
 
   const treePath = treePathForSelectedPath(rootPath, selectedFilePath)
-  if (!treePath) return clearTreeSelection(tree)
+  if (!treePath) {
+    clearTreeSelection(tree)
+    return null
+  }
 
   const canonicalPath = canonicalTreePath(treePath)
   expandKnownAncestorDirectories(tree, canonicalPath)
   const item = tree.getItem(canonicalPath)
-  if (!item || item.isDirectory()) return
-  if (tree.getSelectedPaths().includes(canonicalPath)) return
+  if (!item || item.isDirectory()) return null
+  if (tree.getSelectedPaths().includes(canonicalPath)) return canonicalPath
 
   clearTreeSelection(tree)
   item.select()
+  return canonicalPath
 }
 
 function clearTreeSelection(tree: FileTreeModel) {

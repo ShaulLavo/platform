@@ -125,6 +125,8 @@
 
 ## Testing
 
+- Do not run tests unless they are necessary. Before running one, identify the specific plausible failure it could catch; if there is none, skip it.
+- Prefer the narrowest relevant test. Do not run a package or repository-wide suite when a focused check, typecheck, lint, config inspection, or diff review proves the change.
 - Tests run on Vitest.
 - Apps run under Bun: `bun --bun vitest`.
 - Runtime-neutral `packages/*` run plain `vitest`.

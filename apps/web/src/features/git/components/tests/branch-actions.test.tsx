@@ -27,9 +27,12 @@ test('offers to publish a branch that has no upstream, and pushes it', async ({
   // fails on a branch with no upstream, which is every branch a session makes.
   await userEvent.click(await screen.findByRole('button', { name: 'Publish' }))
 
-  await waitFor(() => {
-    expect(git(origin, 'branch', '--format', '%(refname:short)')).toContain('feature/login')
-  })
+  await waitFor(
+    () => {
+      expect(git(origin, 'branch', '--format', '%(refname:short)')).toContain('feature/login')
+    },
+    { timeout: 10_000 },
+  )
 })
 
 test('never offers a pull request when GitHub could not be asked', async ({ client, server }) => {

@@ -65,7 +65,9 @@ export function initializeObservabilityRuntime(options: InitializeObservabilityO
         warn: 100,
       },
     },
-    silent: !config.consoleEnabled,
+    // `silent` only suppresses an enabled logger. Passing it alongside
+    // `enabled: false` makes older evlog versions warn that no drain exists.
+    silent: config.enabled && !config.consoleEnabled,
     stringify: true,
     plugins: [sourcePlugin(options.source)],
   })

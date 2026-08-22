@@ -5,6 +5,7 @@ import type {
   FileTreePublicId,
   FileTreeRenderOptions,
   FileTreeRowDecorationRenderer,
+  FileTreeScrollBehavior,
   FileTreeScrollOffset,
   FileTreeSearchBlurBehavior,
   FileTreeVisibleRow,
@@ -38,6 +39,7 @@ export interface FileTreeStickyWindowLayout {
 }
 
 export interface FileTreeScrollRequest {
+  behavior: FileTreeScrollBehavior
   id: number
   offset: FileTreeScrollOffset
   visibleIndex: number

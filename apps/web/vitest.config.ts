@@ -1,14 +1,12 @@
 import path from 'node:path'
-import babel from '@rolldown/plugin-babel'
-import react, { reactCompilerPreset } from '@vitejs/plugin-react'
+import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vitest/config'
 
 // Shared resolution so every project reads the same `@/` paths as the app.
 const alias = {
   '@': path.resolve(__dirname, './src'),
 }
-const reactPlugin = () => react()
-const reactCompilerPlugin = () => babel({ presets: [reactCompilerPreset()] })
+const reactPlugin = () => react({ compiler: true })
 
 // The two socket-free worlds. The real-browser project lives in
 // `vitest.browser.config.ts`: Vitest merges Vite-level options such as `define`
@@ -29,7 +27,7 @@ export default defineConfig({
       },
       {
         // Hooks + light component/render tests. happy-dom, not jsdom.
-        plugins: [reactPlugin(), reactCompilerPlugin()],
+        plugins: [reactPlugin()],
         resolve: { alias, dedupe: ['react', 'react-dom'] },
         test: {
           name: 'dom',

@@ -1,5 +1,5 @@
 import { Input } from '@workspace/ui/components/input'
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 
 /**
  * A text field with the same focus contract as the number one: commit on blur or
@@ -20,20 +20,14 @@ export function StringWidget({
   onCommit: (next: string) => void
   value: string
 }) {
-  const [draft, setDraft] = useState(value)
-  const focused = useRef(false)
+  const [draft, setDraft] = useState<string | null>(null)
+  const inputValue = draft ?? value
   const cancelled = useRef(false)
 
-  useEffect(() => {
-    if (focused.current) return
-
-    setDraft(value)
-  }, [value])
-
   const commit = () => {
-    const next = draft.trim()
+    const next = inputValue.trim()
     if (next === '' || next === value) {
-      setDraft(value)
+      setDraft(null)
 
       return
     }
@@ -47,19 +41,19 @@ export function StringWidget({
       disabled={disabled}
       id={id}
       onBlur={() => {
-        focused.current = false
         if (cancelled.current) {
           cancelled.current = false
-          setDraft(value)
+          setDraft(null)
 
           return
         }
 
         commit()
+        setDraft(null)
       }}
       onChange={(event) => setDraft(event.currentTarget.value)}
       onFocus={() => {
-        focused.current = true
+        setDraft(value)
       }}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
@@ -73,7 +67,7 @@ export function StringWidget({
         commit()
       }}
       type='text'
-      value={draft}
+      value={inputValue}
     />
   )
 }

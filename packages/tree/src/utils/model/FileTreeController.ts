@@ -57,6 +57,7 @@ import type {
   FileTreeRenamingConfig,
   FileTreeResetEvent,
   FileTreeResetOptions,
+  FileTreeScrollBehavior,
   FileTreeScrollOffset,
   FileTreeScrollToPathOptions,
   FileTreeSearchMode,
@@ -101,6 +102,12 @@ function normalizeScrollOffset(
   offset: FileTreeScrollToPathOptions['offset'],
 ): FileTreeScrollOffset {
   return offset === 'top' || offset === 'center' ? offset : 'nearest'
+}
+
+function normalizeScrollBehavior(
+  behavior: FileTreeScrollToPathOptions['behavior'],
+): FileTreeScrollBehavior {
+  return behavior === 'smooth' ? 'smooth' : 'auto'
 }
 
 function getFirstVisibleDescendantIndex(path: string, visiblePaths: readonly string[]): number {
@@ -405,6 +412,7 @@ export class FileTreeController implements FileTreeMutationHandle, FileTreeSearc
       this.#setFocusedIndex(targetIndex, false)
     }
     this.#scrollRequest = {
+      behavior: normalizeScrollBehavior(options?.behavior),
       id: (this.#scrollRequestId += 1),
       offset: normalizeScrollOffset(options?.offset),
       visibleIndex: targetIndex,

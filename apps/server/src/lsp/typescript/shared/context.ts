@@ -1,4 +1,4 @@
-import type ts from 'typescript'
+import type ts from 'typescript-language-service'
 import type * as lsp from 'vscode-languageserver-protocol'
 
 export type OpenDocument = {

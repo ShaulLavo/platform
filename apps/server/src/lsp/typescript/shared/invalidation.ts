@@ -1,4 +1,4 @@
-import type ts from 'typescript'
+import type ts from 'typescript-language-service'
 
 import { bumpScriptVersion, type ScriptVersionRegistry } from './script-versions'
 

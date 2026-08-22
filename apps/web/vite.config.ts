@@ -1,8 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import babel from '@rolldown/plugin-babel'
 import tailwindcss from '@tailwindcss/vite'
-import react, { reactCompilerPreset } from '@vitejs/plugin-react'
+import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
 import { portFromEnv } from '../../scripts/runtime-network'
 import { consumeAppSave } from '../server/src/fs/app-save-marker'
@@ -30,8 +29,7 @@ export default defineConfig({
   plugins: [
     editorSourcePlugin(editorSourceModules),
     platformSelfSaveHmrPlugin(),
-    react(),
-    babel({ presets: [reactCompilerPreset()] }),
+    react({ compiler: true }),
     tailwindcss(),
   ],
   resolve: {

@@ -38,17 +38,21 @@ export function useDiffOwnedText(
     documentId ? (state.documentContentRevisions[documentId] ?? '') : '',
   )
 
-  return useMemo(() => {
-    if (!path) return null
+  // Pair the materialized text with the revision that produced it. The buffer mutates in place,
+  // so its identity alone cannot invalidate this snapshot.
+  const snapshot = useMemo(
+    () => ({ revision, text: buffer?.materializeFullText() ?? null }),
+    [buffer, revision],
+  )
 
-    return {
-      documentPath: documentId,
-      newSideIsWorkingTree,
-      ownedText: buffer?.materializeFullText() ?? null,
-      rootPath,
-    }
-    // `revision` stands in for the buffer's contents; see the selector above.
-  }, [buffer, documentId, newSideIsWorkingTree, path, revision, rootPath])
+  if (!path) return null
+
+  return {
+    documentPath: documentId,
+    newSideIsWorkingTree,
+    ownedText: snapshot.text,
+    rootPath,
+  }
 }
 
 /**

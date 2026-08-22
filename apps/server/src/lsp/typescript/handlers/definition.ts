@@ -1,4 +1,4 @@
-import ts from 'typescript'
+import ts from 'typescript-language-service'
 import type * as lsp from 'vscode-languageserver-protocol'
 
 import {

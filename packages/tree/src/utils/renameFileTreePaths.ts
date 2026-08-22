@@ -100,7 +100,7 @@ export function renameFileTreePaths({
   }
 
   const destinationPath = joinPath(parentPath, trimmedBasename)
-  const nextFiles = new Array<string>(files.length)
+  const nextFiles = Array<string>(files.length)
   const seenPaths = new Set<string>()
 
   if (!isFolder) {

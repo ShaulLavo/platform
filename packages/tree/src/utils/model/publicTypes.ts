@@ -152,8 +152,10 @@ export interface FileTreeRenderOptions {
 }
 
 export type FileTreeScrollOffset = 'top' | 'center' | 'nearest'
+export type FileTreeScrollBehavior = 'auto' | 'smooth'
 
 export interface FileTreeScrollToPathOptions {
+  behavior?: FileTreeScrollBehavior
   focus?: boolean
   offset?: FileTreeScrollOffset
 }

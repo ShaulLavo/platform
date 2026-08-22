@@ -1,4 +1,7 @@
-import type { FileTreeScrollOffset } from '@workspace/tree/utils/model/publicTypes'
+import type {
+  FileTreeScrollBehavior,
+  FileTreeScrollOffset,
+} from '@workspace/tree/utils/model/publicTypes'
 import {
   computeFocusedRowScrollIntoView,
   computeFocusedRowScrollTopForOffset,
@@ -117,6 +120,7 @@ export function scrollFocusedRowToOffset(
   totalHeight: number,
   offset: FileTreeScrollOffset,
   topInset: number = 0,
+  behavior: FileTreeScrollBehavior = 'auto',
 ): boolean {
   const nextScrollTop = computeFocusedRowScrollTopForOffset({
     currentScrollTop: scrollElement.scrollTop,
@@ -131,8 +135,26 @@ export function scrollFocusedRowToOffset(
     return false
   }
 
-  scrollElement.scrollTop = nextScrollTop
+  applyScrollTop(scrollElement, nextScrollTop, behavior)
   return true
+}
+
+function applyScrollTop(
+  scrollElement: HTMLElement,
+  scrollTop: number,
+  behavior: FileTreeScrollBehavior,
+) {
+  if (behavior !== 'smooth' || prefersReducedMotion(scrollElement)) {
+    scrollElement.scrollTop = scrollTop
+    return
+  }
+
+  scrollElement.scrollTo({ behavior: 'smooth', top: scrollTop })
+}
+
+function prefersReducedMotion(element: HTMLElement) {
+  const view = element.ownerDocument.defaultView
+  return view?.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
 }
 
 // Thin imperative wrapper around `computeViewportOffsetScrollTop`. Used when a

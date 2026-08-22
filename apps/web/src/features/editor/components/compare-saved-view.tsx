@@ -27,16 +27,21 @@ export function CompareSavedView({ path, rootPath }: { path: string; rootPath: s
   const languageServer = useDiffOwnedText(path, rootPath, true)
 
   const savedText = fileState.status === 'ready' ? fileState.data.content : null
+  // Keep the text tied to the revision that materialized it. The mutable buffer object does not
+  // change identity as edits arrive.
+  const snapshot = useMemo(
+    () => ({ revision, text: buffer?.materializeFullText() ?? null }),
+    [buffer, revision],
+  )
   const file = useMemo(() => {
-    if (savedText === null || !buffer) return null
+    if (savedText === null || snapshot.text === null) return null
 
     const languageId = languageIdForFilePath(path)
     return createTextDiff({
-      newFile: { languageId, path, text: buffer.materializeFullText() },
+      newFile: { languageId, path, text: snapshot.text },
       oldFile: { languageId, path, text: savedText },
     })
-    // `revision` stands in for the buffer's contents; see the selector above.
-  }, [buffer, path, revision, savedText])
+  }, [path, savedText, snapshot])
 
   if (fileState.status === 'error') {
     return <CompareNotice message='Could not read the saved file.' tone='error' />

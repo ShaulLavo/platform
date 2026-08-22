@@ -7,7 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@workspace/ui/components/dropdown-menu'
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { useNerdFonts } from '../../hooks/use-nerd-fonts'
 import { FontPreview } from './font-preview'
@@ -34,20 +34,14 @@ export function FontWidget({
   value: string
 }) {
   const fonts = useNerdFonts()
-  const [draft, setDraft] = useState(value)
-  const focused = useRef(false)
+  const [draft, setDraft] = useState<string | null>(null)
+  const inputValue = draft ?? value
   const cancelled = useRef(false)
 
-  useEffect(() => {
-    if (focused.current) return
-
-    setDraft(value)
-  }, [value])
-
   const commit = () => {
-    const next = draft.trim()
+    const next = inputValue.trim()
     if (next === '' || next === value) {
-      setDraft(value)
+      setDraft(null)
 
       return
     }
@@ -63,19 +57,19 @@ export function FontWidget({
         disabled={disabled}
         id={id}
         onBlur={() => {
-          focused.current = false
           if (cancelled.current) {
             cancelled.current = false
-            setDraft(value)
+            setDraft(null)
 
             return
           }
 
           commit()
+          setDraft(null)
         }}
         onChange={(event) => setDraft(event.currentTarget.value)}
         onFocus={() => {
-          focused.current = true
+          setDraft(value)
         }}
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
@@ -89,7 +83,7 @@ export function FontWidget({
           commit()
         }}
         type='text'
-        value={draft}
+        value={inputValue}
       />
 
       <DropdownMenu>

@@ -120,18 +120,9 @@ export function createApp(options: AppOptions) {
   //
   // Secrets are resolved here rather than in the snapshot: the values a provider
   // spawns with never appear in anything a route can return.
+  const reconcileProviderSettings = providerSettingsReconciler(settings, providerAdapterRegistry)
   settings.onChange(() => {
-    runDetached(
-      () =>
-        settings
-          .providerInstancesForSpawn()
-          .then((instances) =>
-            providerAdapterRegistry.reconcile(
-              mergeProviderInstanceConfigs(DEFAULT_PROVIDER_INSTANCES, instances),
-            ),
-          ),
-      { area: 'provider', operation: 'reconcile' },
-    )
+    runDetached(reconcileProviderSettings, { area: 'provider', operation: 'reconcile' })
   })
   const orchestration = new OrchestrationEngine(database, {
     providerRuntime: options.orchestration?.providerRuntime
@@ -219,6 +210,30 @@ export type App = ReturnType<typeof createApp>
 
 export async function closeApp(app: App) {
   await appCleanups.get(app)?.()
+}
+
+function providerSettingsReconciler(
+  settings: SettingsStore,
+  providerAdapterRegistry: ProviderAdapterRegistry,
+) {
+  let current = settings.providerInstancesForSpawnSync()
+
+  return async () => {
+    const next = await settings.providerInstancesForSpawn()
+    if (providerInstancesEqual(current, next)) return
+
+    current = next
+    await providerAdapterRegistry.reconcile(
+      mergeProviderInstanceConfigs(DEFAULT_PROVIDER_INSTANCES, next),
+    )
+  }
+}
+
+function providerInstancesEqual(
+  left: ReturnType<SettingsStore['providerInstancesForSpawnSync']>,
+  right: ReturnType<SettingsStore['providerInstancesForSpawnSync']>,
+) {
+  return JSON.stringify(left) === JSON.stringify(right)
 }
 
 function appCleanup(

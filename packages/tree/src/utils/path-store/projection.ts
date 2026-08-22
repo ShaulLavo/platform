@@ -560,7 +560,7 @@ function createVisibleTreeProjectionFromData(
   projection: PathStoreVisibleTreeProjectionData,
 ): PathStoreVisibleTreeProjection {
   const rowCount = projection.paths.length
-  const projectionRows: PathStoreVisibleTreeProjectionRow[] = new Array(rowCount)
+  const projectionRows = Array<PathStoreVisibleTreeProjectionRow>(rowCount)
 
   for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
     const parentIndex = projection.getParentIndex(rowIndex)
@@ -589,7 +589,7 @@ function buildVisibleTreeProjectionDataDFS(
   state: PathStoreState,
   maxRows: number,
 ): PathStoreVisibleTreeProjectionData {
-  const paths = new Array<string>(maxRows)
+  const paths = Array<string>(maxRows)
   const parentRowIndex = new Int32Array(maxRows)
   const posInSetByIndex = new Int32Array(maxRows)
   const setSizeByIndex = new Int32Array(maxRows)
@@ -693,7 +693,7 @@ function buildVisibleTreeProjectionDataDFS(
 // walk up the tree to locate the next sibling.
 function collectVisibleRowsDFS(state: PathStoreState, maxRows: number): PathStoreVisibleRow[] {
   // Pre-allocate output array to avoid dynamic resizing from push().
-  const rows: PathStoreVisibleRow[] = new Array(maxRows)
+  const rows = Array<PathStoreVisibleRow>(maxRows)
   let rowCount = 0
   // Stack frame: [directoryChildIndex, childOffset, visibleDepth]
   // Caching the DirectoryChildIndex directly avoids a Map.get per child

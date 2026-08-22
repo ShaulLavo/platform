@@ -13,7 +13,6 @@ import {
   median,
   minimum,
   numberOption,
-  round,
   seedWorkspaceCache,
   traceUrl,
   waitForHighlightedEditor,

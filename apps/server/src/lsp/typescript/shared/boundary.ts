@@ -1,7 +1,7 @@
 import path from 'node:path'
 
 import { isRecord } from '@workspace/contracts'
-import ts from 'typescript'
+import ts from 'typescript-language-service'
 import type * as lsp from 'vscode-languageserver-protocol'
 
 import type { SessionContext } from './context'

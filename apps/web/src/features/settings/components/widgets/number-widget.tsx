@@ -1,5 +1,5 @@
 import { Input } from '@workspace/ui/components/input'
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 
 /**
  * A number field that is authoritative while it has focus.
@@ -26,26 +26,20 @@ export function NumberWidget({
   onCommit: (next: number) => void
   value: number
 }) {
-  const [draft, setDraft] = useState(String(value))
-  const focused = useRef(false)
+  const [draft, setDraft] = useState<string | null>(null)
+  const inputValue = draft ?? String(value)
   // Escape blurs the field, and blur commits — so cancelling has to say so out
   // of band. State would not do: it is not flushed by the time `onBlur` runs.
   const cancelled = useRef(false)
-
-  useEffect(() => {
-    if (focused.current) return
-
-    setDraft(String(value))
-  }, [value])
 
   const commit = () => {
     // `Number('')` is `0`, and `0` is finite — so an emptied field would commit
     // a zero the user never typed, and `type='number'` reports `''` for a
     // half-typed `-` or `1e` too. Blank means "left it alone", not "zero".
-    const next = draft.trim() === '' ? Number.NaN : Number(draft)
+    const next = inputValue.trim() === '' ? Number.NaN : Number(inputValue)
     if (!Number.isFinite(next) || next === value) {
       // Snap back rather than leave a value the server rejected on screen.
-      setDraft(String(value))
+      setDraft(null)
 
       return
     }
@@ -60,19 +54,19 @@ export function NumberWidget({
       id={id}
       inputMode='numeric'
       onBlur={() => {
-        focused.current = false
         if (cancelled.current) {
           cancelled.current = false
-          setDraft(String(value))
+          setDraft(null)
 
           return
         }
 
         commit()
+        setDraft(null)
       }}
       onChange={(event) => setDraft(event.currentTarget.value)}
       onFocus={() => {
-        focused.current = true
+        setDraft(String(value))
       }}
       onKeyDown={(event) => {
         if (event.key === 'Escape') {
@@ -86,7 +80,7 @@ export function NumberWidget({
         commit()
       }}
       type='number'
-      value={draft}
+      value={inputValue}
     />
   )
 }

@@ -7,7 +7,7 @@ import {
 } from '@singapor/typescript-lsp/ts-diagnostics'
 import type { PublishDiagnosticsNotificationParams } from '@singapor/lsp/types'
 import { isRecord } from '@workspace/contracts'
-import ts from 'typescript'
+import ts from 'typescript-language-service'
 import type * as lsp from 'vscode-languageserver-protocol'
 
 import { handleCodeAction } from './handlers/code-action'

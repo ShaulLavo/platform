@@ -9,6 +9,7 @@
 export { closeApp, createApp } from './app'
 export type { App, AppOptions } from './app'
 export { createMetadataDatabase } from './db/client'
+export { NerdFontService } from './fonts/service'
 export { MockProviderAdapter } from './provider/adapters/mock'
 export { ProviderAdapterRegistry } from './provider/provider-adapter-registry'
 export type { MetadataDatabaseHandle, PlatformDatabase } from './db/client'

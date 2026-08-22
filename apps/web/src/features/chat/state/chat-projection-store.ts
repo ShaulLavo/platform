@@ -21,7 +21,6 @@ import {
   type TurnId,
 } from '@workspace/contracts'
 import { Debouncer } from '@tanstack/react-pacer/debouncer'
-import { Throttler } from '@tanstack/react-pacer/throttler'
 import { create } from 'zustand'
 
 import {
@@ -296,22 +295,29 @@ function flushProjectionLogScope() {
  * the turn ended. Leading edge is off so the write costs one serialization per
  * window instead of one per burst start.
  */
-const projectionPersist = new Throttler(flushChatProjectionCache, {
-  leading: false,
-  trailing: true,
-  wait: CHAT_PROJECTION_CACHE_PERSIST_MS,
-})
+let projectionPersistTimer: ReturnType<typeof setTimeout> | null = null
 
 export function flushChatProjectionCache() {
   return writeChatProjectionCache(chatProjectionCacheFromState(useChatProjectionStore.getState()))
 }
 
 useChatProjectionStore.subscribe(() => {
-  projectionPersist.maybeExecute()
+  scheduleChatProjectionCachePersist()
 })
 
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
   window.addEventListener('beforeunload', () => {
     flushChatProjectionCache()
   })
+}
+
+function scheduleChatProjectionCachePersist() {
+  if (projectionPersistTimer) return
+
+  projectionPersistTimer = setTimeout(persistChatProjectionCache, CHAT_PROJECTION_CACHE_PERSIST_MS)
+}
+
+function persistChatProjectionCache() {
+  projectionPersistTimer = null
+  flushChatProjectionCache()
 }

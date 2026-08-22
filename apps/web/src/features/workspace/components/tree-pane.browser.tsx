@@ -22,6 +22,7 @@ import { AppProviders, createTestQueryClient, seedBootMirrorTheme } from '../../
 
 const ROOT_PATH = '/repo'
 const DEEP_FILE_PATH = `${ROOT_PATH}/src/file-79.ts`
+const SHALLOW_FILE_PATH = `${ROOT_PATH}/src/file-0.ts`
 const UNLOADED_FILE_PATH = `${ROOT_PATH}/src/unloaded/deep.ts`
 
 const fileTreeActions: FileTreeActions = {
@@ -126,11 +127,53 @@ test('the live navigator retains search, consumes queued focus, reveals, and cre
   await expect.poll(() => renameField(shadowRoot)).toBeNull()
 })
 
+test('selecting an editor tab expands and animates its file into view without stealing focus', async () => {
+  mountTreePane(createTreeCommandStore())
+
+  const shadowRoot = await fileTreeShadowRoot()
+  const scroller = treeScroller(shadowRoot)
+
+  clickToolbarButton('Select deep file')
+  await expect.poll(() => selectedFilePathText()).toBe(DEEP_FILE_PATH)
+  await expect.poll(() => scroller.scrollTop).toBeGreaterThan(0)
+
+  clickToolbarButton('Select shallow file')
+  await expect.poll(() => selectedFilePathText()).toBe(SHALLOW_FILE_PATH)
+  await expect.poll(() => scroller.scrollTop).toBeLessThanOrEqual(20)
+
+  const sourceDirectory = rowButton(shadowRoot, 'src/')
+  expect(sourceDirectory).not.toBeNull()
+  sourceDirectory!.focus()
+  sourceDirectory!.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowLeft' }))
+  await expect
+    .poll(() => rowButton(shadowRoot, 'src/')?.getAttribute('aria-expanded'))
+    .toBe('false')
+
+  const scrollPositions: number[] = []
+  const recordScrollPosition = () => scrollPositions.push(scroller.scrollTop)
+  scroller.addEventListener('scroll', recordScrollPosition)
+  const selectDeepTabButton = toolbarButton('Select deep tab')
+  selectDeepTabButton.focus()
+  selectDeepTabButton.click()
+
+  await expect.poll(() => selectedFilePathText()).toBe(DEEP_FILE_PATH)
+  await expect.poll(() => rowButton(shadowRoot, 'src/')?.getAttribute('aria-expanded')).toBe('true')
+  await expect.poll(() => scroller.scrollTop).toBeGreaterThan(0)
+  await expect.poll(() => new Set(scrollPositions.map(Math.round)).size).toBeGreaterThan(1)
+  await expect
+    .poll(() => rowIsVisibleInScroller(rowButton(shadowRoot, 'src/file-79.ts'), scroller))
+    .toBe(true)
+  expect(document.activeElement).toBe(selectDeepTabButton)
+  scroller.removeEventListener('scroll', recordScrollPosition)
+})
+
 function TreePaneHarness() {
-  const { selectFile } = useEditorCommands()
+  const { selectFile, selectTab } = useEditorCommands()
   const selectedFilePath = useEditorWorkspaceState((state) => state.selectedFilePath)
+  const workbenchPanels = useEditorWorkspaceState((state) => state.workbenchPanels)
   const [gitStatus, setGitStatus] = useState<readonly GitStatusEntry[]>([])
   const [model] = useState(navigatorModel)
+  const deepTab = workbenchPanels.editorTabs.find((tab) => tab.path === DEEP_FILE_PATH)
 
   return (
     <>
@@ -143,6 +186,25 @@ function TreePaneHarness() {
         onClick={() => selectFile(DEEP_FILE_PATH)}
       >
         Select deep file
+      </button>
+      <button
+        aria-label='Select shallow file'
+        type='button'
+        onClick={() => selectFile(SHALLOW_FILE_PATH)}
+      >
+        Select shallow file
+      </button>
+      <button
+        aria-label='Select deep tab'
+        disabled={!deepTab}
+        type='button'
+        onClick={() => {
+          if (!deepTab) return
+
+          selectTab('main', deepTab.id)
+        }}
+      >
+        Select deep tab
       </button>
       <button
         aria-label='Select unloaded file'
@@ -236,9 +298,15 @@ async function fileTreeShadowRoot() {
 }
 
 function clickToolbarButton(label: string) {
+  const button = toolbarButton(label)
+  button.click()
+}
+
+function toolbarButton(label: string) {
   const button = document.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)
   expect(button).not.toBeNull()
-  button?.click()
+
+  return button!
 }
 
 function searchField(shadowRoot: ShadowRoot) {
@@ -268,6 +336,14 @@ function searchContainer(shadowRoot: ShadowRoot) {
 
 function treeScroller(shadowRoot: ShadowRoot) {
   return shadowRoot.querySelector<HTMLElement>('[data-file-tree-virtualized-scroll="true"]')!
+}
+
+function rowIsVisibleInScroller(row: HTMLElement | null, scroller: HTMLElement) {
+  if (!row) return false
+
+  const rowBounds = row.getBoundingClientRect()
+  const scrollerBounds = scroller.getBoundingClientRect()
+  return rowBounds.top >= scrollerBounds.top && rowBounds.bottom <= scrollerBounds.bottom
 }
 
 function typeSearch(input: HTMLInputElement, value: string) {

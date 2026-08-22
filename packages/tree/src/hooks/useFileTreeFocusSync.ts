@@ -195,6 +195,7 @@ export function useFileTreeFocusSync(
           totalScrollableHeight,
           scrollRequest.offset,
           scrollRequestTopInset,
+          scrollRequest.behavior,
         )
       }
       controller.clearScrollRequest(scrollRequest.id)

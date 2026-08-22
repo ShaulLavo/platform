@@ -535,7 +535,7 @@ describe('fs rpc events', () => {
     )
     const events = createSseReader(stream)
 
-    expect(await events.next()).toMatchObject({ type: 'ready' })
+    await waitForNativeWatcher(events)
 
     await writeFile(path.join(root, 'external-create.txt'), 'ok')
     const event = await nextMatchingEvent(
@@ -572,7 +572,7 @@ describe('fs rpc events', () => {
     )
     const events = createSseReader(stream)
 
-    expect(await events.next()).toMatchObject({ type: 'ready' })
+    await waitForNativeWatcher(events)
 
     await writeFile(path.join(root, 'external-update.txt'), 'after')
     const event = await nextMatchingEvent(
@@ -604,7 +604,7 @@ describe('fs rpc events', () => {
     )
     const events = createSseReader(stream)
 
-    expect(await events.next()).toMatchObject({ type: 'ready' })
+    await waitForNativeWatcher(events)
 
     await rm(path.join(root, 'external-delete.txt'))
     const event = await nextMatchingEvent(
@@ -630,7 +630,7 @@ describe('fs rpc events', () => {
     )
     const events = createSseReader(stream)
 
-    expect(await events.next()).toMatchObject({ type: 'ready' })
+    await waitForNativeWatcher(events)
 
     await mkdir(path.join(root, 'node_modules'), { recursive: true })
     await writeFile(path.join(root, 'node_modules', 'ignored.txt'), 'ok')
@@ -1201,6 +1201,12 @@ async function nextMatchingEvent(
 // coalescing batch instead of being merged into the previous one.
 function settleWatcher() {
   return delay(250)
+}
+
+async function waitForNativeWatcher(events: ReturnType<typeof createSseReader>) {
+  expect(await events.next()).toMatchObject({ type: 'ready' })
+  // FSEvents can merge a mutation into the batch that attached the watcher.
+  await delay(50)
 }
 
 async function nextEvent(events: ReturnType<typeof createSseReader>) {

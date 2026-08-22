@@ -40,15 +40,15 @@
     "hooks:pre-commit": "lefthook run pre-commit"
   },
   "devDependencies": {
-    "@typescript/native-preview": "7.0.0-dev.20260613.1",
+    "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "evlog": "^2.19.1",
     "jscpd": "^5.0.9",
     "knip": "^6.16.1",
     "lefthook": "^2.1.9",
     "oxc-plugin-react-compiler": "^0.2.0",
-    "oxfmt": "0.55.0",
+    "oxfmt": "0.64.0",
     "oxlint": "1.70.0",
-    "typescript": "6.0.3",
+    "typescript": "7.0.2",
     "vitest": "catalog:"
   },
   "overrides": {

@@ -6,6 +6,7 @@ import {
   createApp,
   createMetadataDatabase,
   MockProviderAdapter,
+  NerdFontService,
   ProviderAdapterRegistry,
   testSettingsOptions,
   type MetadataDatabaseHandle,
@@ -32,6 +33,9 @@ export async function makeTestServer(): Promise<TestServer> {
   const database = createMetadataDatabase({ databasePath: ':memory:' })
   const app = createApp({
     auth: { allowedOrigins: [TEST_ORIGIN] },
+    // Keep the real parser/cache/route path, but pin its cache inside this
+    // fixture. MSW supplies the external downloads page.
+    fonts: new NerdFontService({ cacheRoot: path.join(root, '.platform-test', 'fonts') }),
     metadataDatabase: database,
     orchestration: {
       database: database.db,

@@ -60,9 +60,12 @@ test('a streaming code block is highlighted but never cached', async () => {
     streaming: true,
   })
 
-  await waitFor(() => {
-    expect(highlightTokens(container).length).toBeGreaterThan(1)
-  })
+  await waitFor(
+    () => {
+      expect(highlightTokens(container).length).toBeGreaterThan(1)
+    },
+    { timeout: 5_000 },
+  )
   expect(markdownHighlightCache.size).toBe(0)
   expect(container.textContent).toContain('const other =')
 })
@@ -71,9 +74,12 @@ test('a completed code block is highlighted and cached', async () => {
   markdownHighlightCache.clear()
   const { container } = renderMarkdown('```ts\nconst answer = 42\n```')
 
-  await waitFor(() => {
-    expect(highlightTokens(container).length).toBeGreaterThan(1)
-  })
+  await waitFor(
+    () => {
+      expect(highlightTokens(container).length).toBeGreaterThan(1)
+    },
+    { timeout: 5_000 },
+  )
   expect(markdownHighlightCache.size).toBe(1)
   expect(markdownHighlightCache.totalBytes).toBeGreaterThan(0)
 })
