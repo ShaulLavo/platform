@@ -3,6 +3,7 @@ import { createInternalError } from '../observability/structured-errors'
 import {
   DEFAULT_SETTING_VALUES,
   isRecord,
+  LSP_DIAGNOSTIC_REFRESH,
   LSP_SEMANTIC_TOKENS_REFRESH,
   LSP_SERVER_EXITED,
   type LspNegotiatedSemanticTokens,
@@ -10,6 +11,7 @@ import {
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 
 import type { LspServerMatch } from './registry'
+import { fileUriForPath } from './language'
 import { LspStdioMessageReader, writeLspStdioMessage } from './stdio-rpc'
 import { elapsedMs, limitText, recordProcessInfo, recordProcessWarning } from '../observability'
 
@@ -1027,7 +1029,11 @@ class PooledLspProxySession {
       return true
     }
     if (message.method === LSP_SEMANTIC_TOKENS_REFRESH) {
-      this.refreshSemanticTokens(message.id)
+      this.broadcastRefresh(message.id, LSP_SEMANTIC_TOKENS_REFRESH)
+      return true
+    }
+    if (message.method === LSP_DIAGNOSTIC_REFRESH) {
+      this.broadcastRefresh(message.id, LSP_DIAGNOSTIC_REFRESH)
       return true
     }
 
@@ -1051,11 +1057,9 @@ class PooledLspProxySession {
    * which is exactly why it is written down here: a host registers a handler for
    * it by name.
    */
-  private refreshSemanticTokens(id: JsonRpcId): void {
+  private broadcastRefresh(id: JsonRpcId, method: string): void {
     this.respondToServer(id, null)
-    this.broadcastServerMessage(
-      JSON.stringify({ jsonrpc: '2.0', method: LSP_SEMANTIC_TOKENS_REFRESH }),
-    )
+    this.broadcastServerMessage(JSON.stringify({ jsonrpc: '2.0', method }))
   }
 
   /**
@@ -1075,7 +1079,7 @@ class PooledLspProxySession {
     const items = isRecord(params) && Array.isArray(params.items) ? params.items : null
     if (!items) return [{}]
 
-    const configuration = this.match.server.configuration ?? {}
+    const configuration = this.match.server.configuration?.(this.match.root) ?? {}
     return items.map((item) =>
       configurationSection(configuration, isRecord(item) ? item.section : null),
     )
@@ -1704,11 +1708,6 @@ function offsetForPosition(
 
 function clampOffset(offset: number, text: string): number {
   return Math.min(text.length, Math.max(0, offset))
-}
-
-function fileUriForPath(filePath: string): string {
-  const normalized = filePath.replace(/^\/+/, '')
-  return `file:///${normalized.split('/').map(encodeURIComponent).join('/')}`
 }
 
 function byteLength(value: string | ArrayBuffer | Uint8Array): number {

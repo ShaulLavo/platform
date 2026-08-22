@@ -1,10 +1,10 @@
 /**
- * The two messages this app's LSP proxy sends a browser that LSP itself does not
+ * The messages this app's LSP proxy sends a browser that LSP itself does not
  * define as client-bound, named once so the two halves cannot drift.
  *
  * Everything else on that socket is ordinary JSON-RPC forwarded between a
- * browser and a language server. These two are the proxy speaking for itself,
- * and both exist because a backend is **pooled** — shared by every tab in a root
+ * browser and a language server. These are the proxy speaking for itself,
+ * and each exists because a backend is **pooled** — shared by every tab in a root
  * — so neither the server's request nor the socket's close can address one tab.
  */
 
@@ -22,6 +22,9 @@
  * issue one fresh non-delta request.
  */
 export const LSP_SEMANTIC_TOKENS_REFRESH = 'workspace/semanticTokens/refresh'
+
+/** The pooled equivalent of `workspace/semanticTokens/refresh` for pull diagnostics. */
+export const LSP_DIAGNOSTIC_REFRESH = 'workspace/diagnostic/refresh'
 
 /**
  * Why the socket is about to close.

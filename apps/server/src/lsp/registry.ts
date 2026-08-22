@@ -30,7 +30,7 @@ import {
   spawnTy,
   spawnZls,
 } from './installers'
-import { fileExtension } from './language'
+import { fileExtension, fileUriForPath } from './language'
 import { recordProcessInfo } from '../observability'
 
 export type LspServerHandle = {
@@ -51,11 +51,10 @@ export type LspServerDefinition = {
   /**
    * What this server gets back when it asks `workspace/configuration`.
    *
-   * A settings tree, resolved per requested `section` by dotted path. Static
-   * data rather than a function because a configuration reply is a statement
-   * about the *server*, not about the root or the client: every tab sharing a
-   * pooled backend must see the same answer, and the proxy answers this request
-   * on the backend's behalf without any client involved.
+   * A settings tree, resolved per requested `section` by dotted path. The root
+   * is the pooled backend's root, so every tab sharing that backend sees the
+   * same answer while servers such as ESLint still receive truthful workspace
+   * fields.
    *
    * It exists because the blanket `[{}]` this proxy used to send is not a
    * neutral answer. gopls reads `semanticTokens` out of it, so an empty object
@@ -64,7 +63,7 @@ export type LspServerDefinition = {
    * advertised and then answers empty, which is indistinguishable from a boring
    * file. The same request with `{ semanticTokens: true }` returned 3 818.
    */
-  readonly configuration?: Readonly<Record<string, unknown>>
+  readonly configuration?: (root: string) => Readonly<Record<string, unknown>>
 }
 
 export type LspServerMatch = {
@@ -128,6 +127,38 @@ const LINTER_FORMATTER_FEATURES = {
 } as const satisfies LspFeatureRanks
 
 const LINTER_FORMATTER_SERVER_IDS = new Set(['biome', 'eslint', 'oxlint'])
+
+function eslintConfiguration(root: string): Readonly<Record<string, unknown>> {
+  return {
+    validate: 'on',
+    packageManager: 'npm',
+    useESLintClass: false,
+    useRealpaths: false,
+    experimental: { useFlatConfig: false },
+    codeAction: {
+      disableRuleComment: {
+        enable: true,
+        location: 'separateLine',
+        commentStyle: 'line',
+      },
+      showDocumentation: { enable: true },
+    },
+    codeActionOnSave: { mode: 'all' },
+    format: false,
+    quiet: false,
+    onIgnoredFiles: 'off',
+    options: {},
+    rulesCustomizations: [],
+    run: 'onType',
+    problems: { shortenToSingleLine: false },
+    nodePath: null,
+    workingDirectory: { mode: 'location' },
+    workspaceFolder: {
+      name: path.basename(root) || root,
+      uri: fileUriForPath(root),
+    },
+  }
+}
 
 const lspServers: readonly LspServerDefinition[] = withBuiltInFeatures([
   {
@@ -250,6 +281,7 @@ const lspServers: readonly LspServerDefinition[] = withBuiltInFeatures([
           cwd: root,
         },
       ),
+    configuration: eslintConfiguration,
   },
   {
     id: 'fsharp',
@@ -276,7 +308,7 @@ const lspServers: readonly LspServerDefinition[] = withBuiltInFeatures([
     // answer. Measured on v0.21.0 against `net/http/request.go` (50.4 KB): with
     // the old blanket `[{}]`, 0 tokens for both `full` and `range`; with this,
     // 3 818.
-    configuration: { gopls: { semanticTokens: true } },
+    configuration: () => ({ gopls: { semanticTokens: true } }),
   },
   {
     id: 'haskell-language-server',

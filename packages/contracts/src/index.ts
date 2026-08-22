@@ -310,6 +310,7 @@ export {
   type LogLiveStreamItem,
 } from './log-dashboard'
 export {
+  LSP_DIAGNOSTIC_REFRESH,
   LSP_FEATURE_IDS,
   LSP_SEMANTIC_TOKENS_REFRESH,
   LSP_SERVER_EXITED,

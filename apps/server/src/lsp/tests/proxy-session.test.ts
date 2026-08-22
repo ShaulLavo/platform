@@ -250,7 +250,7 @@ describe('LspSessionPool server requests', () => {
 
   it('answers each configuration item by its own section', async () => {
     const fixture = await initializedFixture({
-      configuration: { gopls: { semanticTokens: true }, other: { verbose: 1 } },
+      configuration: () => ({ gopls: { semanticTokens: true }, other: { verbose: 1 } }),
     })
 
     fixture.respond({
@@ -275,7 +275,9 @@ describe('LspSessionPool server requests', () => {
   })
 
   it('answers a configuration request that names no section with the whole tree', async () => {
-    const fixture = await initializedFixture({ configuration: { gopls: { semanticTokens: true } } })
+    const fixture = await initializedFixture({
+      configuration: () => ({ gopls: { semanticTokens: true } }),
+    })
 
     fixture.respond({
       id: 'server-1',
@@ -335,6 +337,24 @@ describe('LspSessionPool server requests', () => {
     }
   })
 
+  it('downgrades a diagnostic refresh request into one notification per connection', async () => {
+    const fixture = await initializedFixture()
+    await fixture.second.handleClientMessage(json(initializeRequest(2)))
+    const firstBefore = fixture.firstSocket.sent.length
+    const secondBefore = fixture.secondSocket.sent.length
+
+    fixture.respond({ id: 'server-1', jsonrpc: '2.0', method: 'workspace/diagnostic/refresh' })
+    await fixture.waitForServerMessageCount(2)
+
+    expect(fixture.serverMessages.at(-1)).toMatchObject({ id: 'server-1', result: null })
+    for (const sent of [
+      fixture.firstSocket.sent.slice(firstBefore),
+      fixture.secondSocket.sent.slice(secondBefore),
+    ]) {
+      expect(sent).toEqual([{ jsonrpc: '2.0', method: 'workspace/diagnostic/refresh' }])
+    }
+  })
+
   it('forwards no inbound server request to any connection', async () => {
     const fixture = await initializedFixture()
     await fixture.second.handleClientMessage(json(initializeRequest(2)))
@@ -346,6 +366,7 @@ describe('LspSessionPool server requests', () => {
       'client/registerCapability',
       'window/workDoneProgress/create',
       'workspace/semanticTokens/refresh',
+      'workspace/diagnostic/refresh',
       'window/showMessageRequest',
     ]) {
       fixture.respond({ id: `server-${method}`, jsonrpc: '2.0', method, params: {} })

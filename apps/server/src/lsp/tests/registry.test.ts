@@ -90,6 +90,41 @@ describe('LSP server registry', () => {
     expect(overridden?.didChangeConfiguration).toEqual(expected)
   })
 
+  it('gives ESLint a complete root-aware workspace configuration', () => {
+    const root = '/workspace/packages/app'
+    const eslint = lspServersFor(NO_OVERRIDES).find((server) => server.id === 'eslint')
+
+    expect(eslint?.configuration?.(root)).toEqual({
+      validate: 'on',
+      packageManager: 'npm',
+      useESLintClass: false,
+      useRealpaths: false,
+      experimental: { useFlatConfig: false },
+      codeAction: {
+        disableRuleComment: {
+          enable: true,
+          location: 'separateLine',
+          commentStyle: 'line',
+        },
+        showDocumentation: { enable: true },
+      },
+      codeActionOnSave: { mode: 'all' },
+      format: false,
+      quiet: false,
+      onIgnoredFiles: 'off',
+      options: {},
+      rulesCustomizations: [],
+      run: 'onType',
+      problems: { shortenToSingleLine: false },
+      nodePath: null,
+      workingDirectory: { mode: 'location' },
+      workspaceFolder: {
+        name: 'app',
+        uri: 'file:///workspace/packages/app',
+      },
+    })
+  })
+
   it('switches python support to ty when enabled', () => {
     const ids = lspServersFor({ servers: {}, languageServers: {}, tyForPython: true }).map(
       (server) => server.id,
