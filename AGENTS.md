@@ -27,6 +27,12 @@
 - Do not use `else` after an early return.
 - Never use nested ternaries. Split the logic into `if` statements or a named helper.
 
+## Comments
+
+- Keep comments short. One or two lines. Three is already suspicious.
+- A comment earns its place by saying what the code cannot: a non-obvious constraint, the bug it prevents, why an obvious simplification is wrong. Everything else is noise.
+- No essays, no history lessons, no restating the next line in prose. If the explanation is long, the code or the name is wrong.
+
 ## React Code
 
 - One component per file. Do not export multiple components from one component file.
