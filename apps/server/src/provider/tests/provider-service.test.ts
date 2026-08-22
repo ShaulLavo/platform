@@ -1,3 +1,6 @@
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { Database } from 'bun:sqlite'
 import { describe, expect, it } from 'vitest'
 import { drizzle } from 'drizzle-orm/bun-sqlite'
@@ -14,6 +17,7 @@ import {
 import { migrateOrchestrationDatabase } from '../../db/migrations'
 import * as schema from '../../db/schema'
 import { MockProviderAdapter } from '../adapters/mock'
+import { MOCK_DRIVER_KIND, mockDriver } from '../drivers/mock'
 import { ProviderAdapterRegistry } from '../provider-adapter-registry'
 import { ProviderService } from '../provider-service'
 import { ProviderSessionDirectory } from '../provider-session-directory'
@@ -331,5 +335,60 @@ function createFixture() {
   return {
     close: () => sqlite.close(),
     database,
+  }
+}
+
+describe('ProviderService adapter streams', () => {
+  it('follows an instance whose adapter is replaced in place', async () => {
+    const fixture = createFixture()
+    const home = await mkdtemp(path.join(tmpdir(), 'provider-stream-'))
+    const registry = new ProviderAdapterRegistry({ drivers: [mockDriver] })
+    const service = new ProviderService({
+      adapterRegistry: registry,
+      sessionDirectory: new ProviderSessionDirectory(fixture.database),
+    })
+    const seen: ProviderRuntimeEvent[] = []
+    service.subscribeRuntimeEvents((event) => {
+      seen.push(event)
+    })
+
+    try {
+      await registry.reconcile([mockInstance({ credentialsPath: path.join(home, 'a.json') })])
+      const first = registry.getByInstance(MOCK_INSTANCE)
+
+      // A config change on an idle instance disposes its adapter and builds another under the
+      // same id, so the id never leaves the live set and nothing re-points the stream by id alone.
+      await registry.reconcile([mockInstance({ credentialsPath: path.join(home, 'b.json') })])
+      expect(registry.getByInstance(MOCK_INSTANCE)).not.toBe(first)
+
+      const input = providerTurnInput()
+      await service.ensureSession({
+        providerInstanceId: MOCK_INSTANCE,
+        runtimeMode: input.runtimeMode,
+        runtimePayload: {
+          ...providerSessionPayload(input),
+          modelSelection: { ...input.modelSelection, providerInstanceId: MOCK_INSTANCE },
+        },
+        threadId: input.thread.id,
+      })
+      await service.drainRuntimeEvents()
+
+      expect(seen.length).toBeGreaterThan(0)
+    } finally {
+      await service.shutdown()
+      await rm(home, { force: true, recursive: true })
+      fixture.close()
+    }
+  })
+})
+
+const MOCK_INSTANCE = v.parse(providerInstanceIdSchema, 'mock-work')
+
+function mockInstance(config: Record<string, unknown>) {
+  return {
+    config,
+    displayLabel: MOCK_INSTANCE,
+    driverKind: MOCK_DRIVER_KIND,
+    providerInstanceId: MOCK_INSTANCE,
   }
 }

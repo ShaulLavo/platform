@@ -9,7 +9,7 @@ import { expect, test } from '../../../../test/fixtures'
 type HitTest = { readonly x: number; readonly y: number }
 
 /** Everything the contribution reaches for, and a record of the hit tests it asked for. */
-function mountContribution(hits: HitTest[]) {
+function mountContribution(hits: HitTest[], askable = false) {
   const element = document.createElement('div')
   document.body.appendChild(element)
 
@@ -17,7 +17,10 @@ function mountContribution(hits: HitTest[]) {
     bufferOffsetAt: () => null,
     definition: () => Promise.resolve({ kind: 'none' }),
     hover: () => Promise.resolve(null),
-    resolve: () => ({ kind: 'unavailable', reason: 'not-a-file-line' }),
+    resolve: () =>
+      askable
+        ? { kind: 'ask', side: 'new', position: { line: 0, character: 0 } }
+        : { kind: 'unavailable', reason: 'not-a-file-line' },
     theme: () => null,
   }
 
@@ -28,7 +31,7 @@ function mountContribution(hits: HitTest[]) {
     setSelection: () => undefined,
     textOffsetFromPoint: (x: number, y: number) => {
       hits.push({ x, y })
-      return null
+      return askable ? 0 : null
     },
   }
 
@@ -69,6 +72,31 @@ test('a burst of pointer movement costs one hit test, at the position it ended o
   await nextFrame()
 
   expect(hits).toEqual([{ x: 17, y: 27 }])
+  contribution.dispose()
+})
+
+test('following a definition drops the move queued behind it', async () => {
+  const hits: HitTest[] = []
+  const { contribution, element } = mountContribution(hits, true)
+
+  moveTo(element, 40, 50)
+  element.dispatchEvent(
+    new MouseEvent('mousedown', {
+      bubbles: true,
+      button: 0,
+      clientX: 40,
+      clientY: 50,
+      metaKey: true,
+    }),
+  )
+  hits.length = 0
+
+  await nextFrame()
+  await nextFrame()
+
+  // The click already hid the tooltip and went to the definition; the frame queued behind it must
+  // not hit-test that stale position and put the tooltip back.
+  expect(hits).toEqual([])
   contribution.dispose()
 })
 

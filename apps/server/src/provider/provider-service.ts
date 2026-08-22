@@ -72,6 +72,12 @@ export type ProviderEnsureSessionResult = {
 
 export type ProviderRuntimeEventListener = (event: ProviderRuntimeEvent) => Promise<void> | void
 
+/** The adapter a stream belongs to, kept beside its teardown so a replacement can be spotted. */
+type AdapterSubscription = {
+  adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>
+  unsubscribe: () => void
+}
+
 type ProviderRuntimeEventTask = {
   adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>
   event: ProviderRuntimeEvent
@@ -79,7 +85,7 @@ type ProviderRuntimeEventTask = {
 }
 
 export class ProviderService {
-  private readonly adapterSubscriptions = new Map<ProviderInstanceId, () => void>()
+  private readonly adapterSubscriptions = new Map<ProviderInstanceId, AdapterSubscription>()
   private readonly adapterRegistry: ProviderAdapterRegistry
   private readonly reaper: ProviderSessionReaper
   private readonly runtimeEventListeners = new Set<ProviderRuntimeEventListener>()
@@ -119,7 +125,7 @@ export class ProviderService {
     this.unsubscribeRegistry?.()
     this.unsubscribeRegistry = null
     this.runtimeEventListeners.clear()
-    for (const unsubscribe of this.adapterSubscriptions.values()) {
+    for (const { unsubscribe } of this.adapterSubscriptions.values()) {
       unsubscribe()
     }
     this.adapterSubscriptions.clear()
@@ -426,23 +432,30 @@ export class ProviderService {
    */
   private forgetRemovedStreams(liveProviderInstanceIds: readonly ProviderInstanceId[]) {
     const live = new Set(liveProviderInstanceIds)
-    for (const [providerInstanceId, unsubscribe] of this.adapterSubscriptions) {
+    for (const [providerInstanceId, subscription] of this.adapterSubscriptions) {
       if (live.has(providerInstanceId)) continue
 
-      unsubscribe()
+      subscription.unsubscribe()
       this.adapterSubscriptions.delete(providerInstanceId)
     }
   }
 
+  /**
+   * Keyed by adapter as well as by id. A reconfigured *idle* instance is replaced in place — the
+   * registry disposes the old adapter and builds a new one under the same id, which never leaves
+   * the live set — so an id alone cannot tell a live stream from one pointed at a disposed adapter.
+   */
   private startAdapterEventStream(providerInstanceId: ProviderInstanceId) {
-    if (this.adapterSubscriptions.has(providerInstanceId)) return
-
     const adapter = this.adapterRegistry.adapter(providerInstanceId)
     if (!adapter) return
 
-    this.adapterSubscriptions.set(
-      providerInstanceId,
-      adapter.subscribeEvents((event) => {
+    const existing = this.adapterSubscriptions.get(providerInstanceId)
+    if (existing?.adapter === adapter) return
+
+    existing?.unsubscribe()
+    this.adapterSubscriptions.set(providerInstanceId, {
+      adapter,
+      unsubscribe: adapter.subscribeEvents((event) => {
         void this.runtimeEvents.enqueue({ adapter, event, providerInstanceId }).catch((error) => {
           recordChatPipelineWarning('chat.pipeline.provider_service.runtime_stream.failed', {
             adapterKey: adapter.adapterKey,
@@ -451,7 +464,7 @@ export class ProviderService {
           })
         })
       }),
-    )
+    })
   }
 
   /**
@@ -462,7 +475,9 @@ export class ProviderService {
    */
   private async handleRuntimeEvent(task: ProviderRuntimeEventTask) {
     if (this.shuttingDown) return
-    if (!this.adapterSubscriptions.has(task.providerInstanceId)) return
+    // The adapter too, not just the id: an event queued by an adapter the registry has since
+    // replaced belongs to a stream nothing is listening to any more.
+    if (this.adapterSubscriptions.get(task.providerInstanceId)?.adapter !== task.adapter) return
 
     this.recordRuntimeEvent(task.event, task.adapter)
     await this.emitRuntimeEvent(task.event)

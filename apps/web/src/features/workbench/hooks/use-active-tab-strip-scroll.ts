@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 
 import {
   createTabStripMetrics,
@@ -18,7 +18,9 @@ export function useActiveTabStripScroll(activeTabId: string | null) {
   const stripRef = useRef<HTMLDivElement>(null)
   const metricsRef = useRef<TabStripMetrics | null>(null)
 
-  useEffect(() => {
+  // A layout effect, and declared above the reveal so it runs first: metrics built in a passive
+  // effect do not exist yet on the mount that has to reveal an already-clipped active tab.
+  useLayoutEffect(() => {
     const strip = stripRef.current
     if (!strip) return
 

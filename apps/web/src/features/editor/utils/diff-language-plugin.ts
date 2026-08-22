@@ -154,6 +154,9 @@ function createContribution(context: EditorViewContributionContext, options: Dif
     event.preventDefault()
     event.stopImmediatePropagation()
     cancel()
+    // The frame queued by the mousemove that preceded this click would otherwise still run, and
+    // put the tooltip back over a definition the click has already navigated to.
+    cancelPendingMove()
     tooltip.hide()
     void followDefinition(target)
   }

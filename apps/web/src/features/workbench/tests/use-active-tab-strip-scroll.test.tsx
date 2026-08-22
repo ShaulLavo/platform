@@ -78,6 +78,23 @@ test('revealing a tab scrolls to it instead of jumping', () => {
   }
 })
 
+test('a tab that is already clipped on first mount is revealed', () => {
+  const restoreRects = stubClippedSecondTab()
+  const restoreMotion = stubReducedMotion(false)
+  const scrolls = recordScrollTo()
+
+  try {
+    render(<Strip activeTabId='b' />)
+
+    expect(scrolls.calls).toHaveLength(1)
+    expect(scrolls.calls[0]?.left).toBeGreaterThan(0)
+  } finally {
+    scrolls.restore()
+    restoreMotion()
+    restoreRects()
+  }
+})
+
 test('someone who asked the OS for less motion gets none', () => {
   const restoreRects = stubClippedSecondTab()
   const restoreMotion = stubReducedMotion(true)
