@@ -5,6 +5,7 @@ import type { QueryClient } from '@tanstack/react-query'
 
 import type { Theme } from '@/components/theme-context'
 import type { FocusArea } from '@/features/workspace/providers/focus-state'
+import type { TreeCommandKind } from '@/features/workspace/state/tree-command-store'
 import type { ChatModePanels } from '@/features/chat-mode/utils/panels'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import type { EditorDocumentStoreApi } from '@/features/editor/state/document-state'
@@ -54,6 +55,7 @@ export type WorkspaceCommandContext = {
   readonly reopenClosedEditor: () => boolean
   readonly requestCloseTab: RequestCloseTab
   readonly requestEditorFocus: () => void
+  readonly requestFileTreeCommand: (kind: TreeCommandKind, rootPath: string) => void
   readonly rootPath: string | null
   readonly setChatModePanels: (panels: ChatModePanels) => void
   readonly setDiffViewMode: (mode: EditorDiffViewMode) => void

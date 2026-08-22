@@ -227,6 +227,8 @@ export class FileTreeController implements FileTreeMutationHandle, FileTreeSearc
   #ancestorPathsByIndex = new Map<number, readonly string[]>()
   #focusedIndex = -1
   #focusedPath: string | null = null
+  #focusRequestId = 0
+  #pendingFocusRequestId: number | null = null
   #hasFullProjection = false
   #getParentIndexForVisibleRow = (_index: number): number => -1
   #itemHandles = new Map<string, FileTreeItemHandle>()
@@ -250,6 +252,7 @@ export class FileTreeController implements FileTreeMutationHandle, FileTreeSearc
   #searchMatchPathSet = new Set<string>()
   #searchMatchingPaths: readonly string[] = []
   #searchMode: FileTreeSearchMode
+  #searchFocusRequestId = 0
   #searchPreviousExpandedPaths: readonly string[] | null = null
   #searchValue: string | null = null
   #searchVisiblePathSet: Set<string> | null = null
@@ -372,6 +375,12 @@ export class FileTreeController implements FileTreeMutationHandle, FileTreeSearc
     }
   }
 
+  public requestFocus(): void {
+    this.#focusRequestId += 1
+    this.#pendingFocusRequestId = this.#focusRequestId
+    this.#emit()
+  }
+
   // Records a one-shot scroll request for the mounted view. By default the
   // target also becomes the model-focused row; callers can pass `focus: false`
   // to reveal a row without changing model focus or DOM focus.
@@ -446,6 +455,16 @@ export class FileTreeController implements FileTreeMutationHandle, FileTreeSearc
 
   public getFocusedPath(): string | null {
     return this.#focusedPath
+  }
+
+  public getFocusRequestId(): number | null {
+    return this.#pendingFocusRequestId
+  }
+
+  public clearFocusRequest(id: number): void {
+    if (this.#pendingFocusRequestId !== id) return
+
+    this.#pendingFocusRequestId = null
   }
 
   public getScrollRequest(): FileTreeScrollRequest | null {
@@ -1006,8 +1025,12 @@ export class FileTreeController implements FileTreeMutationHandle, FileTreeSearc
     this.#setSearchState(value, true)
   }
 
-  public openSearch(initialValue: string = ''): void {
-    this.#setSearchState(initialValue, true)
+  public openSearch(initialValue?: string): void {
+    const nextValue = initialValue ?? this.#searchValue ?? ''
+    const previousValue = this.#searchValue
+    this.#searchFocusRequestId += 1
+    this.#setSearchState(nextValue, true)
+    if (previousValue === this.#searchValue) this.#emit()
   }
 
   public closeSearch(): void {
@@ -1024,6 +1047,10 @@ export class FileTreeController implements FileTreeMutationHandle, FileTreeSearc
 
   public getSearchMatchingPaths(): readonly string[] {
     return this.#searchMatchingPaths
+  }
+
+  public getSearchFocusRequestId(): number {
+    return this.#searchFocusRequestId
   }
 
   public focusNextSearchMatch(): void {

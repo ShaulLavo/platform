@@ -159,6 +159,75 @@ describe('FileTree browser behavior', () => {
     })
   })
 
+  it('moves DOM focus only for explicit focus requests, including virtualized rows', async () => {
+    const outsideButton = document.createElement('button')
+    outsideButton.type = 'button'
+    document.body.prepend(outsideButton)
+    const { model: currentModel, shadowRoot } = await mountBrowserTree()
+    const scrollElement = virtualScroll(shadowRoot)
+
+    outsideButton.focus()
+    currentModel.focusPath('src/features/a-20.ts')
+    await vi.waitFor(() => {
+      expect(currentModel.getFocusedPath()).toBe('src/features/a-20.ts')
+    })
+    expect(document.activeElement).toBe(outsideButton)
+
+    currentModel.focus()
+    await vi.waitFor(() => {
+      expect(activePath(shadowRoot)).toBe('src/features/a-20.ts')
+      expect(scrollElement.scrollTop).toBeGreaterThan(0)
+    })
+
+    outsideButton.focus()
+    currentModel.focus()
+    await vi.waitFor(() => {
+      expect(activePath(shadowRoot)).toBe('src/features/a-20.ts')
+    })
+  })
+
+  it('does not replay a consumed focus request after remount', async () => {
+    const outsideButton = document.createElement('button')
+    outsideButton.type = 'button'
+    document.body.prepend(outsideButton)
+    const { model: currentModel, shadowRoot } = await mountBrowserTree()
+
+    currentModel.focusPath('src/features/a-3.ts')
+    currentModel.focus()
+    await vi.waitFor(() => {
+      expect(activePath(shadowRoot)).toBe('src/features/a-3.ts')
+    })
+
+    flushSync(() => root?.unmount())
+    root = null
+    outsideButton.focus()
+    const remountedShadowRoot = await renderBrowserTree(currentModel)
+
+    expect(document.activeElement).toBe(outsideButton)
+    expect(activePath(remountedShadowRoot)).toBeNull()
+  })
+
+  it('retains an engaged search across blur and refocuses it without clearing the query', async () => {
+    const outsideButton = document.createElement('button')
+    outsideButton.type = 'button'
+    document.body.prepend(outsideButton)
+    const { model: currentModel, shadowRoot } = await mountSearchTree('retain')
+    const searchInput = await openSearch(currentModel, shadowRoot, 'worker')
+
+    outsideButton.focus()
+    await vi.waitFor(() => {
+      expect(shadowRoot.activeElement).not.toBe(searchInput)
+    })
+    expect(currentModel.isSearchOpen()).toBe(true)
+    expect(currentModel.getSearchValue()).toBe('worker')
+
+    currentModel.openSearch()
+    await vi.waitFor(() => {
+      expect(shadowRoot.activeElement).toBe(searchInput)
+    })
+    expect(currentModel.getSearchValue()).toBe('worker')
+  })
+
   it('keeps rename active for composing keys and commits on ordinary Enter', async () => {
     const { model: currentModel, shadowRoot } = await mountBrowserTree()
     const input = await beginRename(currentModel, shadowRoot, 'src/features/a-3.ts')
@@ -306,11 +375,6 @@ function dispatchTreeKey(
 }
 
 async function mountBrowserTree() {
-  const container = document.createElement('main')
-  container.style.height = '180px'
-  container.style.width = '360px'
-  document.body.append(container)
-  root = createRoot(container)
   const mountedModel = new FileTreeModel({
     gitStatus: [{ path: 'src/features/a-3.ts', status: 'modified' }],
     initialExpansion: 'open',
@@ -322,6 +386,16 @@ async function mountBrowserTree() {
   })
   model = mountedModel
 
+  return { model: mountedModel, shadowRoot: await renderBrowserTree(mountedModel) }
+}
+
+async function renderBrowserTree(mountedModel: FileTreeModel) {
+  const container = document.createElement('main')
+  container.style.height = '180px'
+  container.style.width = '360px'
+  document.body.append(container)
+  root = createRoot(container)
+
   flushSync(() => {
     root?.render(
       <FileTree
@@ -332,7 +406,7 @@ async function mountBrowserTree() {
     )
   })
 
-  return { model: mountedModel, shadowRoot: await waitForShadowRoot() }
+  return await waitForShadowRoot()
 }
 
 async function mountSearchTree(searchBlurBehavior: FileTreeSearchBlurBehavior) {

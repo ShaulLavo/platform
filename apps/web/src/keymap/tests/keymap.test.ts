@@ -584,9 +584,7 @@ describe('defaultPlatformKeyBindings', () => {
   it('does not bind browser tab switching keys to pane focus commands', () => {
     const bindings = defaultPlatformKeyBindings('linux')
 
-    expect(commands(appKeyBindingsForPane(bindings, 'global'))).not.toContain(
-      'workspace.focusFileTree',
-    )
+    expect(keysFor(bindings, 'workspace.focusFileTree')).not.toContain('Mod+1')
     expect(commands(appKeyBindingsForPane(bindings, 'editor'))).not.toContain(
       'workspace.focusFirstEditorGroup',
     )
@@ -596,6 +594,19 @@ describe('defaultPlatformKeyBindings', () => {
         keys: 'Mod+1',
         vscodeCommandId: 'workbench.action.focusFirstEditorGroup',
       }),
+    )
+  })
+
+  it('binds file-tree focus globally and file filtering only inside the tree', () => {
+    const bindings = defaultPlatformKeyBindings('linux')
+
+    expect(keysFor(bindings, 'workspace.focusFileTree')).toEqual(['Mod+Shift+E'])
+    expect(keysFor(bindings, 'workspace.findInFileTree')).toEqual(['Mod+F'])
+    expect(commands(appKeyBindingsForPane(bindings, 'file-tree'))).toContain(
+      'workspace.findInFileTree',
+    )
+    expect(commands(appKeyBindingsForPane(bindings, 'editor'))).not.toContain(
+      'workspace.findInFileTree',
     )
   })
 

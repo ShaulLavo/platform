@@ -410,9 +410,18 @@ export const workspaceCommands = [
       },
     ],
     requires: 'workspace',
-    run: ({ setFocusArea, setWorkbenchPanels, workbenchPanels }) => {
+    run: ({
+      requestFileTreeCommand,
+      rootPath,
+      setFocusArea,
+      setWorkbenchPanels,
+      workbenchPanels,
+    }) => {
+      if (!rootPath) return false
+
       setWorkbenchPanels(setWorkbenchSidebarTab(workbenchPanels, 'files'))
       setFocusArea('file-tree')
+      requestFileTreeCommand('focus', rootPath)
       return true
     },
     title: 'Toggle Files pane',
@@ -488,13 +497,61 @@ export const workspaceCommands = [
     description: 'Move keyboard focus to the file tree.',
     icon: CrosshairIcon,
     id: 'workspace.focusFileTree',
+    keys: [{ hotkey: 'Mod+Shift+E', preventDefault: true }],
     requires: 'workspace',
-    run: ({ setFocusArea, setWorkbenchPanels, workbenchPanels }) => {
+    run: ({
+      requestFileTreeCommand,
+      rootPath,
+      setFocusArea,
+      setWorkbenchPanels,
+      workbenchPanels,
+    }) => {
+      if (!rootPath) return false
+
       setWorkbenchPanels(setWorkbenchSidebarTab(workbenchPanels, 'files'))
       setFocusArea('file-tree')
+      requestFileTreeCommand('focus', rootPath)
       return true
     },
     title: 'Focus file tree',
+  }),
+  defineCommand({
+    category: 'Workspace',
+    description: 'Filter the loaded files in the file tree.',
+    icon: FileMagnifyingGlassIcon,
+    id: 'workspace.findInFileTree',
+    keys: [{ hotkey: 'Mod+F', pane: 'file-tree', preventDefault: true }],
+    requires: 'workspace',
+    run: ({ requestFileTreeCommand, rootPath, setWorkbenchPanels, workbenchPanels }) => {
+      if (!rootPath) return false
+
+      setWorkbenchPanels(setWorkbenchSidebarTab(workbenchPanels, 'files'))
+      requestFileTreeCommand('open-search', rootPath)
+      return true
+    },
+    title: 'Filter files in tree',
+  }),
+  defineCommand({
+    category: 'Workspace',
+    description: 'Focus and reveal the active editor file in the file tree.',
+    icon: CrosshairIcon,
+    id: 'workspace.revealActiveFileInTree',
+    requires: 'file',
+    run: ({
+      activeFilePath,
+      requestFileTreeCommand,
+      rootPath,
+      setWorkbenchPanels,
+      workbenchPanels,
+    }) => {
+      if (!fileBackedDocumentPath(activeFilePath)) return false
+      if (!rootPath) return false
+
+      setWorkbenchPanels(setWorkbenchSidebarTab(workbenchPanels, 'files'))
+      requestFileTreeCommand('reveal-active', rootPath)
+      return true
+    },
+    title: 'Reveal active file in tree',
   }),
   defineCommand({
     category: 'Workspace',

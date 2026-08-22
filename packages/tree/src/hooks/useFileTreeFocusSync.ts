@@ -42,6 +42,7 @@ interface UseFileTreeFocusSyncOptions {
   readonly focusedIndex: number
   readonly focusedPath: string | null
   readonly focusedRowIsMounted: boolean
+  readonly focusRequestId: number | null
   readonly isRenaming: boolean
   readonly isSearchOpen: boolean
   readonly itemHeight: number
@@ -68,6 +69,7 @@ export function useFileTreeFocusSync(
     focusedIndex,
     focusedPath,
     focusedRowIsMounted,
+    focusRequestId,
     isRenaming,
     isSearchOpen,
     itemHeight,
@@ -86,6 +88,7 @@ export function useFileTreeFocusSync(
   const pendingStickyFocusPathRef = useRef<string | null>(null)
   const pointerFocusScrollPathRef = useRef<string | null>(null)
   const previousFocusedPathRef = useRef<string | null>(null)
+  const processedFocusRequestIdRef = useRef<number | null>(null)
   const processedScrollRequestIdRef = useRef(0)
   const restoreTreeFocusAfterSearchCloseRef = useRef(false)
   const restoreTreeFocusViewportOffsetRef = useRef<number | null>(null)
@@ -154,6 +157,9 @@ export function useFileTreeFocusSync(
     const stickyViewportEntry = getStickyKeyboardViewportOffsetEntry(stickyKeyboardFocus)
     const stickyScrollTopEntry = getStickyKeyboardScrollTopEntry(stickyKeyboardFocus)
     const focusWithinTree = activeTreeElement != null
+    const hasPendingFocusRequest =
+      focusRequestId != null && focusRequestId !== processedFocusRequestIdRef.current
+    if (hasPendingFocusRequest) domFocusOwnerRef.current = true
     const shouldOwnDomFocus = domFocusOwnerRef.current || focusWithinTree
     const focusedPathChanged = previousFocusedPathRef.current !== focusedPath
     const shouldPreserveStickyKeyboardFocusViewport =
@@ -245,7 +251,7 @@ export function useFileTreeFocusSync(
       shouldRestoreStickyKeyboardViewportOffset ||
       shouldRestoreFocusedRowViewportOffset ||
       (shouldOwnDomFocus &&
-        focusedPathChanged &&
+        (focusedPathChanged || hasPendingFocusRequest) &&
         pendingStickyFocusPath !== focusedPath &&
         !shouldSuppressPointerFocusScroll &&
         !shouldPreserveStickyKeyboardFocusViewport &&
@@ -262,7 +268,13 @@ export function useFileTreeFocusSync(
 
     previousFocusedPathRef.current = focusedPath
     if (shouldSuppressDomFocusForScrollRequest || !shouldOwnDomFocus || renameInputOwnsFocus) return
-    if (searchInputOwnsFocus && !shouldRestoreTreeFocusAfterSearchClose) return
+    if (
+      searchInputOwnsFocus &&
+      !shouldRestoreTreeFocusAfterSearchClose &&
+      !hasPendingFocusRequest
+    ) {
+      return
+    }
 
     if (focusedButton == null) {
       if (shouldRestoreTreeFocusAfterSearchClose && focusedIndex >= 0) {
@@ -280,6 +292,7 @@ export function useFileTreeFocusSync(
     }
 
     const shouldFocusCanonicalRow =
+      hasPendingFocusRequest ||
       focusedPathChanged ||
       shouldRestoreTreeFocusAfterSearchClose ||
       pendingStickyFocusPath === focusedPath ||
@@ -291,6 +304,10 @@ export function useFileTreeFocusSync(
     if (!shouldFocusCanonicalRow) return
 
     focusElement(focusedButton)
+    if (hasPendingFocusRequest && focusRequestId != null) {
+      processedFocusRequestIdRef.current = focusRequestId
+      controller.clearFocusRequest(focusRequestId)
+    }
     if (pendingStickyFocusPath === focusedPath) pendingStickyFocusPathRef.current = null
     stickyKeyboardFocusRef.current = settleStickyKeyboardFocus(
       stickyKeyboardFocusRef.current,
@@ -308,6 +325,7 @@ export function useFileTreeFocusSync(
     focusedIndex,
     focusedPath,
     focusedRowIsMounted,
+    focusRequestId,
     isRenaming,
     isSearchOpen,
     itemHeight,

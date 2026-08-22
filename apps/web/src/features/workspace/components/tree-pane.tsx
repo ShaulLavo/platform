@@ -19,12 +19,19 @@ import {
 } from '@/features/workspace/utils/tree-pane-state'
 import { selectedFileEntryForTreeSelection } from '@/features/workspace/utils/tree-selection'
 import { DeleteEntryDialog } from '@/features/workspace/components/delete-entry-dialog'
+import { TreeToolbar } from '@/features/workspace/components/tree-toolbar'
 import { useFileTreeActions } from '@/features/workspace/hooks/use-file-tree-actions'
 import { useFileTreeIntentPrefetch } from '@/features/workspace/hooks/use-file-tree-intent-prefetch'
+import { useFileTreeMutationEvents } from '@/features/workspace/hooks/use-file-tree-mutation-events'
 import { useFsActions } from '@/features/workspace/hooks/use-fs-actions'
+import { useTreeCommandRequest } from '@/features/workspace/hooks/use-tree-command-request'
+import { useTreeSearchSession } from '@/features/workspace/hooks/use-tree-search-session'
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import { useFocus } from '@/features/workspace/providers/focus-state'
+import { preparedTreeInputForPaths } from '@/features/workspace/state/prepared-tree-input-cache'
+import { treeCommandFocusCandidate } from '@/features/workspace/utils/tree-commands'
+import { treeGitStatusPatch } from '@/features/workspace/utils/tree-git-status-patch'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { fileTreeIconsForPaths } from '@/lib/file-icons'
 import { TreeRowMenu } from '@/features/workspace/components/row-menu'
@@ -46,6 +53,7 @@ import {
   memo,
   useMemo,
   useRef,
+  useState,
   type CSSProperties,
   type ReactNode,
 } from 'react'
@@ -65,7 +73,6 @@ export const TreePane = memo(
       return <TreeStatus icon={<WarningCircleIcon className='size-4' />} label={state.message} />
     }
     if (state.status !== 'ready') return <TreeStatus label='No files' />
-    if (state.data.paths.length === 0) return <TreeStatus label='No files' />
 
     return <ReadyTreePane gitStatus={gitStatus} model={state.data} rootPath={rootPath} />
   },
@@ -97,6 +104,9 @@ function ReadyTreePane({
     selectedFilePath: undefined,
   })
   const treeRef = useRef<FileTreeModel | null>(null)
+  const [initialGitStatus] = useState(() => gitStatus ?? EMPTY_GIT_STATUS)
+  const previousGitStatusRef = useRef(initialGitStatus)
+  const [initialPreparedInput] = useState(() => preparedTreeInputForPaths(model.paths))
   const icons = useMemo(() => fileTreeIconsForPaths(model.paths), [model.paths])
   const moveMutation = useMutation({
     mutationFn: moveDroppedTreePaths,
@@ -147,11 +157,13 @@ function ReadyTreePane({
     // ~17% more rows. itemHeight (not a CSS override) so virtualization agrees.
     itemHeight: 20,
     flattenEmptyDirectories: true,
-    gitStatus,
+    gitStatus: initialGitStatus,
     icons,
     initialExpansion: 'closed',
     initialSelectedPaths,
-    paths: model.paths,
+    preparedInput: initialPreparedInput,
+    search: true,
+    searchBlurBehavior: 'retain',
     dragAndDrop: {
       canDrag: (paths) => canDragTreePaths(modelRef.current, paths, movePendingRef.current),
       canDrop: (context) => canDropTreePaths(modelRef.current, context),
@@ -181,11 +193,45 @@ function ReadyTreePane({
     renderRowDecoration: (context) => treeRowDecoration(modelRef.current, context),
     unsafeCSS: treeUnsafeCss,
   })
+  const searchSession = useTreeSearchSession(tree)
+  const { acknowledge: acknowledgeTreeCommand, request: treeCommandRequest } =
+    useTreeCommandRequest(rootPath)
+
+  useFileTreeMutationEvents({ rootPath, tree })
 
   useFileTreeIntentPrefetch({
     model,
     tree,
   })
+
+  function focusTreeForCommand(revealActive: boolean) {
+    const activeTreePath = selectedTreePath(rootPath, selectedFilePath)
+    if (revealActive && !activeTreePath) return false
+    if (revealActive) tree.closeSearch()
+
+    const candidate = treeCommandFocusCandidate({
+      activeTreePath,
+      firstPath: model.paths[0] ?? null,
+      focusedPath: tree.getFocusedPath(),
+      selectedPaths: tree.getSelectedPaths(),
+    })
+    const focusedPath = tree.focusNearestPath(candidate)
+    if (!focusedPath) return false
+
+    tree.focus()
+    return true
+  }
+
+  const executePendingTreeCommand = useEffectEvent(
+    (kind: 'focus' | 'open-search' | 'reveal-active') => {
+      if (kind === 'open-search') {
+        tree.openSearch()
+        return
+      }
+
+      focusTreeForCommand(kind === 'reveal-active')
+    },
+  )
 
   // No dependency list: every value here is a fresh identity per render, and
   // the body only mirrors the latest render into refs that captured-once tree
@@ -209,6 +255,7 @@ function ReadyTreePane({
       loadExpandedDirectoriesForCurrentModel,
       model,
       previousPaths: pathsRef.current,
+      prepareInputForPaths: preparedTreeInputForPaths,
       rootPath,
       syncSelection: selectionSync.shouldSync,
       selectedFilePath,
@@ -220,6 +267,22 @@ function ReadyTreePane({
     // must plant its placeholder into an already-settled tree.
     resumeDeferredCreate()
   }, [model, rootPath, selectedFilePath, tree])
+
+  useEffect(() => {
+    const nextGitStatus = gitStatus ?? EMPTY_GIT_STATUS
+    const patch = treeGitStatusPatch(previousGitStatusRef.current, nextGitStatus)
+    previousGitStatusRef.current = nextGitStatus
+    if (!patch) return
+
+    tree.applyGitStatusPatch(patch)
+  }, [gitStatus, tree])
+
+  useEffect(() => {
+    if (!treeCommandRequest) return
+
+    executePendingTreeCommand(treeCommandRequest.kind)
+    acknowledgeTreeCommand(treeCommandRequest.id)
+  }, [acknowledgeTreeCommand, treeCommandRequest])
 
   useEffect(() => {
     return tree.subscribe(() => {
@@ -237,6 +300,24 @@ function ReadyTreePane({
       <FileTree
         aria-label='Folder tree'
         className='block h-full'
+        header={
+          <TreeToolbar
+            isSearchOpen={searchSession.isSearchOpen}
+            matchCount={searchSession.matchCount}
+            query={searchSession.query}
+            onClearSearch={() => {
+              tree.setSearch('')
+              tree.openSearch()
+            }}
+            onCloseSearch={() => tree.closeSearch()}
+            onNewFile={() => fsActions.actions.createEntry('', false)}
+            onNewFolder={() => fsActions.actions.createEntry('', true)}
+            onNextMatch={() => tree.focusNextSearchMatch()}
+            onOpenSearch={() => tree.openSearch()}
+            onPreviousMatch={() => tree.focusPreviousSearchMatch()}
+            onRevealActiveFile={() => focusTreeForCommand(true)}
+          />
+        }
         model={tree}
         renderContextMenu={(item, menuContext) => (
           <TreeRowMenu
@@ -254,6 +335,8 @@ function ReadyTreePane({
     </div>
   )
 }
+
+const EMPTY_GIT_STATUS: readonly GitStatusEntry[] = []
 
 function openSelectedTreeFile({
   model,

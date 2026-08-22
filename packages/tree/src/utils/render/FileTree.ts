@@ -265,6 +265,10 @@ export class FileTree implements FileTreeMutationHandle, FileTreeSearchSessionHa
     this.#controller.focusPath(path)
   }
 
+  public focus(): void {
+    this.#controller.requestFocus()
+  }
+
   public scrollToPath(path: FileTreePublicId, options?: FileTreeScrollToPathOptions): void {
     this.#controller.scrollToPath(path, options)
   }

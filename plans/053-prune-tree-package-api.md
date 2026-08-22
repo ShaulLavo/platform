@@ -25,6 +25,7 @@
 - **Priority**: P2
 - **Effort**: M
 - **Risk**: MED
+- **State**: READY — Plan 052 consumer wiring and performance gates are complete
 - **Depends on**: Plan 052 complete (which itself depends on 036, 039, and 051)
 - **Category**: tech-debt
 - **Planned at**: commit `5afe83d1`, 2026-08-22
@@ -60,11 +61,54 @@ The package tsconfig maps both `@/*` and `@workspace/tree/*` to its own source, 
 tests look like outside consumers. After this plan, package internals use exact `@/…` files; only
 code outside the package imports `@workspace/tree`.
 
-At the authored pre-052 shape, scoped production Knip reports 16 unused value-export groups and 7
-unused type-export groups, concentrated in overflow text, CSS wrappers, model/layout/virtualization,
-path-store helpers, prepared input, rename helpers, and render/web-component code. Plans
-036/039/051/052 change that list. It is evidence that the wildcard surface hides residue, not a
-delete manifest.
+The inventory was reconciled after Plan 052. There are 29 deep-import declarations across 18
+outside files: the file navigator and its tests, git-status projection, file-icon mapping, and the
+prepared-input benchmark. The benchmark is a real consumer of `FileTreeModel` and
+`prepareFileTreeInput`, not test-only residue. No other package or application consumes the tree.
+
+The reconciled production Knip audit reports 14 unused value-export groups:
+
+```text
+cssWrappers: escapeStyleTextForHtml
+dragAndDrop: normalizeDraggedPaths
+layout: EMPTY_FILE_TREE_LAYOUT_RANGE
+virtualization: EMPTY_RANGE, rangesEqual, computeVisibleRange, computeWindowRange,
+  computeStickyWindowLayout
+normalizeInputPath: forEachFolderInNormalizedPath
+path-store/canonical: findNodeIdBySegments
+path-store/internal-types: getNodeFlags
+path-store/path: splitCanonicalPath
+path-store/segments: ROOT_SEGMENT_VALUE
+path-store/sort: compareSegmentValues, compareCompareEntries
+path-store/state: resolveInitialExpansion
+preparedInput: preparePresortedFileTreeInput
+renameFileTreePaths: remapExpandedPathsForFolderRename
+render/web-components: ensureFileTreeStyles, adoptDeclarativeShadowDom
+```
+
+It reports 8 unused type-export groups:
+
+```text
+FileTreeRow: FileTreeRenderRowOptions
+OverflowText: CSSPropertiesWithVars, MarkerProps, TruncateMode
+layout: FileTreeLayoutRange
+model/publicTypes: FileTreeSortEntry, FileTreeInitialExpansion, FileTreeCollisionStrategy,
+  FileTreeVisibleSegment, FileTreeItemHandleBase, FileTreeSearchChangeListener,
+  FileTreeRenamingItem, FileTreeMutationEventInvalidation, FileTreeAddEvent,
+  FileTreeRemoveEvent, FileTreeMoveEvent, FileTreeHeaderCompositionOptions,
+  FileTreeContextMenuCompositionOptions, FileTreeRowDecorationText,
+  FileTreeRowDecorationIcon
+path-store/public-types: PathStoreChildPatch, PathStoreFlattenedRowSegment,
+  PathStoreEventInvalidation
+overflowTextSplit: OverflowTextSplitOptions
+rowAttributes: FileTreeRowStateFlags, FileTreeRowFeatureFlags
+scrollTarget: FileTreeScrollTargetInput
+```
+
+The reconciled unused-file audit is empty. These findings are inputs to the disposition ledger, not
+a delete manifest. In particular, `preparePresortedFileTreeInput` remains the explicit future fast
+path described below, and types required to name the final root contract remain public even when
+Knip's entry-export audit calls them unused.
 
 Commit `ed6675fb` is the repository precedent: delete truly unreachable implementations, remove
 exports that widen a contract for no reason, and let typecheck/tests identify real callers. Do not
@@ -138,6 +182,7 @@ FileTreeGitStatusPatch
 FileTreeMoveOptions
 FileTreeMutationEvent
 FileTreeMutationEventForType
+FileTreeMutationSemanticEvent
 FileTreeMutationEventType
 FileTreeMutationHandle
 FileTreeRemoveOptions
@@ -201,6 +246,7 @@ audit and disposition ledger, not as a zero-warning completion gate.
 - `packages/tree/src/tests/public-api.test.ts` (create; follow the post-051 test location if moved)
 - every outside `@workspace/tree/*` consumer found in Step 0 under `apps/web/src`, including the
   workspace, workbench, keymap, git status, and file-icons files touched by Plan 052
+- `apps/web/scripts/file-tree-prepared-input-benchmark.ts`, the measured non-DOM model consumer
 - `packages/tree/UPSTREAM.md`, API-boundary note only
 - this plan and `plans/README.md`
 
@@ -247,7 +293,8 @@ bunx knip --workspace @workspace/tree --production --files \
 ```
 
 All typecheck/test commands must pass; lint may have only recorded existing warnings. If an outside
-consumer exists beyond the reconciled web workspace, stop and update Scope/allowlist first.
+consumer exists beyond the reconciled web workspace and prepared-input benchmark, stop and update
+Scope/allowlist first.
 
 ### Step 1: Write the per-symbol disposition ledger
 
