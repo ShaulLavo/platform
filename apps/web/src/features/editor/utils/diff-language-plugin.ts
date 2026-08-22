@@ -28,6 +28,13 @@ export type DiffLanguageOptions = {
 
 export type DiffAskTarget = Extract<DiffQueryTarget, { kind: 'ask' }>
 
+/** Only what the cursor needs, so a coalesced move does not retain the event. */
+type PointerMove = {
+  readonly clientX: number
+  readonly clientY: number
+  readonly navigationModifier: boolean
+}
+
 /**
  * Hover and go-to-definition over a diff, answered by documents the diff itself opened.
  *
@@ -62,6 +69,8 @@ function createContribution(context: EditorViewContributionContext, options: Dif
   })
   let timer: ReturnType<typeof setTimeout> | null = null
   let generation = 0
+  let pendingMove: PointerMove | null = null
+  let moveFrame: number | null = null
 
   const cancel = (): void => {
     if (timer !== null) clearTimeout(timer)
@@ -95,16 +104,39 @@ function createContribution(context: EditorViewContributionContext, options: Dif
     }, HOVER_REQUEST_DEBOUNCE_MS)
   }
 
-  const handleMouseMove = (event: MouseEvent): void => {
-    cancel()
-    const offset = context.textOffsetFromPoint(event.clientX, event.clientY)
+  const cancelPendingMove = (): void => {
+    if (moveFrame !== null) cancelAnimationFrame(moveFrame)
+    moveFrame = null
+    pendingMove = null
+  }
+
+  const applyMove = (move: PointerMove): void => {
+    const offset = context.textOffsetFromPoint(move.clientX, move.clientY)
     if (offset === null) return tooltip.scheduleHide()
 
     const target = options.resolve(offset)
-    element.style.cursor = cursorFor(target, event)
+    element.style.cursor = cursorFor(target, move.navigationModifier)
     if (target.kind !== 'ask') return tooltip.scheduleHide()
 
     showHover(target, offset)
+  }
+
+  /** One hit test per frame: mousemove outruns the frame rate, and hit-testing forces a layout. */
+  const handleMouseMove = (event: MouseEvent): void => {
+    cancel()
+    pendingMove = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      navigationModifier: isNavigationModifier(event),
+    }
+    if (moveFrame !== null) return
+
+    moveFrame = requestAnimationFrame(() => {
+      moveFrame = null
+      const move = pendingMove
+      pendingMove = null
+      if (move) applyMove(move)
+    })
   }
 
   const handleMouseDown = (event: MouseEvent): void => {
@@ -122,6 +154,9 @@ function createContribution(context: EditorViewContributionContext, options: Dif
     event.preventDefault()
     event.stopImmediatePropagation()
     cancel()
+    // The frame queued by the mousemove that preceded this click would otherwise still run, and
+    // put the tooltip back over a definition the click has already navigated to.
+    cancelPendingMove()
     tooltip.hide()
     void followDefinition(target)
   }
@@ -144,6 +179,7 @@ function createContribution(context: EditorViewContributionContext, options: Dif
 
   const handleLeave = (): void => {
     cancel()
+    cancelPendingMove()
     element.style.cursor = ''
     tooltip.scheduleHide()
   }
@@ -156,6 +192,7 @@ function createContribution(context: EditorViewContributionContext, options: Dif
     update: () => undefined,
     dispose: () => {
       cancel()
+      cancelPendingMove()
       element.removeEventListener('mousemove', handleMouseMove)
       element.removeEventListener('mousedown', handleMouseDown, { capture: true })
       element.removeEventListener('mouseleave', handleLeave)
@@ -172,10 +209,10 @@ function createContribution(context: EditorViewContributionContext, options: Dif
  * it. A row that can be, held with the navigation modifier, gets the pointer every editor uses for
  * "this is a link".
  */
-function cursorFor(target: DiffQueryTarget, event: MouseEvent): string {
+function cursorFor(target: DiffQueryTarget, navigationModifier: boolean): string {
   if (target.kind !== 'ask') return 'default'
 
-  return isNavigationModifier(event) ? 'pointer' : ''
+  return navigationModifier ? 'pointer' : ''
 }
 
 /** Cmd on a Mac, Ctrl everywhere else — the same split the editor's own navigation uses. */

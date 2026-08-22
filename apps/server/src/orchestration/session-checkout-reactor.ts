@@ -3,8 +3,9 @@ import type { ThreadId } from '@workspace/contracts'
 import type { GitService } from '../git/service'
 import type { GitWorktreeService } from '../git/worktrees'
 import { recordChatPipelineInfo, recordChatPipelineWarning } from './orchestration-logging'
-import type { OrchestrationCommand, OrchestrationEvent } from './schemas'
 import type { OrchestrationReadModel } from './read-model'
+import type { OrchestrationCommand, OrchestrationEvent } from './schemas'
+import { SerialWorker } from './serial-worker'
 
 /**
  * Establishes where a session's work happens and what that place is called:
@@ -33,10 +34,17 @@ export class SessionCheckoutReactor {
   private readonly dispatch: (command: OrchestrationCommand) => Promise<unknown>
   private readonly getReadModel: () => OrchestrationReadModel
   private readonly git: GitService
-  private readonly chains = new Map<ThreadId, Promise<void>>()
-  private readonly pending = new Set<Promise<void>>()
   /** Null when the engine was built without git, same as the deletion reactor. */
   private readonly worktrees: GitWorktreeService | null
+  /**
+   * Serialized across every thread, not just within one. Per-thread order was
+   * the original requirement — `thread.created` and `thread.turn-start-requested`
+   * arrive in the same batch, and run concurrently the plain stamp reads the
+   * project root while the worktree is still being made. Going fully serial
+   * keeps that and adds the one this reactor never had: two `git worktree add`
+   * calls in the same repository contend on `index.lock`.
+   */
+  private readonly worker: SerialWorker<{ requestWorktree: boolean; threadId: ThreadId }>
 
   constructor(options: {
     dispatch: (command: OrchestrationCommand) => Promise<unknown>
@@ -48,6 +56,7 @@ export class SessionCheckoutReactor {
     this.getReadModel = options.getReadModel
     this.git = options.git
     this.worktrees = options.worktrees ?? null
+    this.worker = new SerialWorker((task) => this.establish(task.threadId, task.requestWorktree))
   }
 
   handleEvents(events: OrchestrationEvent[]) {
@@ -63,28 +72,16 @@ export class SessionCheckoutReactor {
   }
 
   /** Test and shutdown hook: settle every in-flight read. */
-  async drain() {
-    while (this.pending.size > 0) {
-      await Promise.all(Array.from(this.pending))
-    }
+  drain() {
+    return this.worker.drain()
   }
 
-  /**
-   * Serialized per thread, because `thread.created` and
-   * `thread.turn-start-requested` arrive in the same batch: run concurrently,
-   * the plain stamp reads the project root while the worktree is still being
-   * made and records the root's branch — the very race one reactor was supposed
-   * to remove. Chaining makes the second see the first's result.
-   */
+  isIdle() {
+    return this.worker.isIdle()
+  }
+
   private enqueue(threadId: ThreadId, requestWorktree: boolean) {
-    const previous = this.chains.get(threadId) ?? Promise.resolve()
-    const task = previous.then(() => this.establish(threadId, requestWorktree))
-    this.chains.set(threadId, task)
-    this.pending.add(task)
-    void task.finally(() => {
-      this.pending.delete(task)
-      if (this.chains.get(threadId) === task) this.chains.delete(threadId)
-    })
+    void this.worker.enqueue({ requestWorktree, threadId })
   }
 
   /**

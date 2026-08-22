@@ -90,6 +90,7 @@
         "@singapor/diff": "0.1.1",
         "@singapor/find": "0.1.1",
         "@singapor/gutters": "0.1.1",
+        "@singapor/lsp": "0.1.1",
         "@singapor/lsp-plugin": "0.1.1",
         "@singapor/markdown": "0.1.1",
         "@singapor/minimap": "0.1.1",

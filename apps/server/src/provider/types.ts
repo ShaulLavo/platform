@@ -495,7 +495,7 @@ export type ProviderAdapter = {
   snapshot: () => Promise<ProviderSnapshot>
   startSession: (input: ProviderSessionStartInput) => Promise<ProviderAdapterSession>
   sendTurn: (input: ProviderTurnInput) => Promise<void>
-  streamEvents: () => AsyncIterable<ProviderRuntimeEvent>
+  subscribeEvents: (subscriber: (event: ProviderRuntimeEvent) => void) => () => void
   stopAll: () => Promise<void>
   stopSession: (input: { threadId: ThreadId }) => Promise<void>
 }

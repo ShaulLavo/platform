@@ -262,8 +262,8 @@ export class CodexProviderAdapter implements ProviderAdapter {
     return this.requireSession(threadId, 'thread/rollback').rollbackThread(numTurns)
   }
 
-  streamEvents() {
-    return this.events.stream()
+  subscribeEvents(subscriber: (event: ProviderRuntimeEvent) => void) {
+    return this.events.subscribe(subscriber)
   }
 
   async startSession(input: ProviderSessionStartInput) {

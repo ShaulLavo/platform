@@ -36,7 +36,7 @@ export class BoundedTtlCache<Key, Value> {
   }
 
   get(key: Key) {
-    this.purgeExpired()
+    // Expiry is lazy per key; sweeping the whole cache made every streaming read O(n).
     const entry = this.entries.get(key)
     if (!entry) return undefined
     if (!this.isExpired(entry)) return entry.value
@@ -46,7 +46,6 @@ export class BoundedTtlCache<Key, Value> {
   }
 
   set(key: Key, value: Value) {
-    this.purgeExpired()
     this.entries.delete(key)
     this.entries.set(key, { expiresAt: this.now() + this.ttlMs, value })
     this.trimToCapacity()
@@ -113,14 +112,16 @@ export class ProviderRuntimeBuffers {
 
   rememberAssistantMessageId(threadId: ThreadId, turnId: TurnId, messageId: MessageId) {
     const key = turnCacheKey(threadId, turnId)
-    const messageIds = new Set(this.assistantMessageIdsByTurn.get(key) ?? [])
+    const messageIds = this.assistantMessageIdsByTurn.get(key) ?? new Set<MessageId>()
     messageIds.add(messageId)
     this.assistantMessageIdsByTurn.set(key, messageIds)
   }
 
   forgetAssistantMessageId(threadId: ThreadId, turnId: TurnId, messageId: MessageId) {
     const key = turnCacheKey(threadId, turnId)
-    const messageIds = new Set(this.assistantMessageIdsByTurn.get(key) ?? [])
+    const messageIds = this.assistantMessageIdsByTurn.get(key)
+    if (!messageIds) return
+
     messageIds.delete(messageId)
     if (messageIds.size === 0) {
       this.assistantMessageIdsByTurn.delete(key)

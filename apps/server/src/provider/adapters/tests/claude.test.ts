@@ -812,11 +812,9 @@ function claudeHarness(): ClaudeHarness {
       return query as unknown as Query
     },
   })
-  void (async () => {
-    for await (const event of adapter.streamEvents()) {
-      events.push(event)
-    }
-  })()
+  adapter.subscribeEvents((event) => {
+    events.push(event)
+  })
 
   return { adapter, events, options, prompts, queries }
 }

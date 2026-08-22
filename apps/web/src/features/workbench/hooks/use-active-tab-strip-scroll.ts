@@ -1,5 +1,9 @@
 import { useLayoutEffect, useRef } from 'react'
 
+import {
+  createTabStripMetrics,
+  type TabStripMetrics,
+} from '@/features/workbench/state/tab-strip-metrics'
 import { tabStripScrollLeft } from '@/features/workbench/utils/tab-strip-scroll'
 
 /** Matches the strip's `px-2`, so a revealed tab never sits flush against the edge. */
@@ -12,29 +16,44 @@ const TAB_STRIP_GUTTER = 8
  */
 export function useActiveTabStripScroll(activeTabId: string | null) {
   const stripRef = useRef<HTMLDivElement>(null)
+  const metricsRef = useRef<TabStripMetrics | null>(null)
 
-  // Layout effect, not effect: scrolling after paint shows the old offset for a frame.
+  // A layout effect, and declared above the reveal so it runs first: metrics built in a passive
+  // effect do not exist yet on the mount that has to reveal an already-clipped active tab.
   useLayoutEffect(() => {
     const strip = stripRef.current
-    if (!strip || !activeTabId) return
+    if (!strip) return
 
-    const tab = strip.querySelector(`[data-editor-tab-id="${activeTabId}"]`)
-    if (!tab) return
+    const metrics = createTabStripMetrics(strip)
+    metricsRef.current = metrics
+    return () => {
+      metricsRef.current = null
+      metrics.dispose()
+    }
+  }, [])
 
-    const stripBox = strip.getBoundingClientRect()
-    const tabBox = tab.getBoundingClientRect()
-    const scrollLeft = tabStripScrollLeft({
-      gutter: TAB_STRIP_GUTTER,
-      scrollLeft: strip.scrollLeft,
-      stripLeft: stripBox.left,
-      stripRight: stripBox.right,
-      tabLeft: tabBox.left,
-      tabRight: tabBox.right,
-    })
-    if (scrollLeft === null) return
+  // Layout effect, not effect: starting the scroll after paint shows the old offset for a frame.
+  useLayoutEffect(() => {
+    const strip = stripRef.current
+    const metrics = metricsRef.current
+    if (!strip || !metrics || !activeTabId) return
 
-    strip.scrollLeft = scrollLeft
+    const bounds = metrics.boundsFor(activeTabId) ?? metrics.measure(activeTabId)
+    if (!bounds) return
+
+    const left = tabStripScrollLeft({ gutter: TAB_STRIP_GUTTER, ...bounds })
+    if (left === null) return
+
+    metrics.noteScrollTarget(left)
+    strip.scrollTo({ behavior: revealBehavior(), left })
   }, [activeTabId])
 
   return stripRef
+}
+
+/** Motion is the point, but not against the wishes of someone who asked the OS for less of it. */
+function revealBehavior(): ScrollBehavior {
+  if (typeof window.matchMedia !== 'function') return 'auto'
+
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
 }

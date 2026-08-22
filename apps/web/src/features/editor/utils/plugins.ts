@@ -378,10 +378,22 @@ async function loadPlugin(
   }
 }
 
-function createFoldChevronIcon({ document }: FoldGutterIconContext): SVGSVGElement {
+/** Parsed once per document, not once per row: `innerHTML` re-parsed this constant per fold icon. */
+const foldChevronPrototypes = new WeakMap<Document, SVGSVGElement>()
+
+function foldChevronPrototype(document: Document): SVGSVGElement {
+  const cached = foldChevronPrototypes.get(document)
+  if (cached) return cached
+
   const template = document.createElement('template')
   template.innerHTML = FOLD_CHEVRON_ICON_MARKUP
-  return template.content.firstElementChild as SVGSVGElement
+  const prototype = template.content.firstElementChild as SVGSVGElement
+  foldChevronPrototypes.set(document, prototype)
+  return prototype
+}
+
+function createFoldChevronIcon({ document }: FoldGutterIconContext): SVGSVGElement {
+  return foldChevronPrototype(document).cloneNode(true) as SVGSVGElement
 }
 
 function createPlatformEditorConsoleLoggingPlugin(): EditorPlugin {

@@ -24,6 +24,9 @@ test('reads a file written to the real workspace', async ({ client, server }) =>
 })
 
 test('quick-open file search reuses the workspace search index', async ({ client }) => {
+  // The index is installed by opening a root, the same call the app makes when it restores one.
+  // Without it there is no index to reuse and names correctly fall back to fd.
+  await client.fs['workspace-root'].post({ generation: 1, path: '' })
   await client.fs['create-folder'].post({ path: 'src', recursive: true })
   await client.fs['create-file'].post({
     content: 'export const commandPalette = true\n',

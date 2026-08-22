@@ -27,6 +27,7 @@ import type {
 import type { ProviderRuntimeEvent } from '../provider/types'
 import type { GitService } from '../git/service'
 import { checkpointRefForThreadTurn } from './checkpoint-refs'
+import { BoundedTtlCache } from './provider-runtime-buffers'
 import type { OrchestrationReadModel } from './read-model'
 import { ProviderRuntimeIngestion } from './provider-runtime-ingestion'
 import {
@@ -36,6 +37,7 @@ import {
   recordChatPipelineInfo,
   recordChatPipelineWarning,
 } from './orchestration-logging'
+import { SerialWorker } from './serial-worker'
 
 type ProviderIntentEvent = Extract<
   OrchestrationEvent,
@@ -53,6 +55,7 @@ type ProviderIntentEvent = Extract<
 
 const HANDLED_TURN_START_KEY_MAX = 10_000
 const HANDLED_TURN_START_KEY_TTL_MS = 30 * 60 * 1000
+const MAX_DRAIN_PASSES = 1_000
 
 export class ProviderCommandReactor {
   /**
@@ -65,14 +68,12 @@ export class ProviderCommandReactor {
   private readonly checkpointGit: GitService | null
   private readonly dispatch: ((command: OrchestrationCommand) => Promise<unknown> | unknown) | null
   private readonly getReadModel: () => OrchestrationReadModel
+  private readonly handledTurnStarts: BoundedTtlCache<string, true>
   private readonly ingestion: ProviderRuntimeIngestion
-  private readonly now: () => number
   private readonly pendingProviderActions = new Set<Promise<void>>()
   private readonly providerService: ProviderService
   private readonly threadModelSelections = new Map<string, ModelSelection>()
-  private readonly turnStartKeyTtlMs: number
-  private readonly turnStartKeys = new Map<string, number>()
-  private readonly worker: DrainableProviderIntentWorker<ProviderIntentEvent>
+  private readonly worker: SerialWorker<ProviderIntentEvent>
 
   constructor({
     beforeTurnStart,
@@ -97,11 +98,14 @@ export class ProviderCommandReactor {
     this.checkpointGit = checkpointGit ?? null
     this.dispatch = dispatch ?? null
     this.getReadModel = getReadModel
+    this.handledTurnStarts = new BoundedTtlCache({
+      capacity: HANDLED_TURN_START_KEY_MAX,
+      now,
+      ttlMs: turnStartKeyTtlMs ?? HANDLED_TURN_START_KEY_TTL_MS,
+    })
     this.ingestion = ingestion
-    this.now = now ?? Date.now
     this.providerService = providerService
-    this.turnStartKeyTtlMs = turnStartKeyTtlMs ?? HANDLED_TURN_START_KEY_TTL_MS
-    this.worker = new DrainableProviderIntentWorker((event) => this.handleEventSafely(event))
+    this.worker = new SerialWorker((event) => this.handleEventSafely(event))
     this.providerService.subscribeRuntimeEvents((event) => this.ingestProviderRuntimeEvent(event))
   }
 
@@ -115,21 +119,37 @@ export class ProviderCommandReactor {
       recordChatPipelineInfo('chat.pipeline.provider_reactor.intent_enqueued', {
         ...orchestrationEventSummary(event),
       })
-      this.worker.enqueue(event)
+      void this.worker.enqueue(event)
     }
   }
 
+  /**
+   * Loops because each source feeds the next: an intent sends a turn, the turn
+   * publishes runtime events, ingestion turns those into commands, and a
+   * command can produce another intent. Idle is when all four are idle at the
+   * same moment, not when each has been drained once.
+   */
   async drain() {
-    for (;;) {
+    for (let pass = 0; pass < MAX_DRAIN_PASSES; pass += 1) {
       await this.worker.drain()
       await this.drainProviderActions()
+      await this.providerService.drainRuntimeEvents()
       await this.ingestion.drain()
       if (this.isIdle()) return
     }
+
+    throw createInternalError(
+      `Provider runtime did not settle within ${MAX_DRAIN_PASSES} drain passes.`,
+    )
   }
 
-  private isIdle() {
-    return this.worker.isIdle() && this.pendingProviderActions.size === 0
+  isIdle() {
+    return (
+      this.worker.isIdle() &&
+      this.pendingProviderActions.size === 0 &&
+      this.providerService.runtimeEventsIdle() &&
+      this.ingestion.isIdle()
+    )
   }
 
   private async drainProviderActions() {
@@ -615,31 +635,11 @@ export class ProviderCommandReactor {
   private hasHandledTurnStart(
     event: Extract<ProviderIntentEvent, { type: 'thread.turn-start-requested' }>,
   ) {
-    const now = this.now()
     const key = turnStartKeyForEvent(event)
-    this.pruneHandledTurnStartKeys(now)
-    const expiresAt = this.turnStartKeys.get(key)
-    this.turnStartKeys.set(key, now + this.turnStartKeyTtlMs)
-    this.pruneHandledTurnStartKeyCapacity()
+    const handled = this.handledTurnStarts.has(key)
+    this.handledTurnStarts.set(key, true)
 
-    return expiresAt !== undefined && expiresAt > now
-  }
-
-  private pruneHandledTurnStartKeys(now: number) {
-    for (const [key, expiresAt] of this.turnStartKeys) {
-      if (expiresAt > now) continue
-
-      this.turnStartKeys.delete(key)
-    }
-  }
-
-  private pruneHandledTurnStartKeyCapacity() {
-    while (this.turnStartKeys.size > HANDLED_TURN_START_KEY_MAX) {
-      const oldestKey = this.turnStartKeys.keys().next().value
-      if (!oldestKey) return
-
-      this.turnStartKeys.delete(oldestKey)
-    }
+    return handled
   }
 
   private rememberModelSelection(threadId: ThreadId, modelSelection: ModelSelection) {
@@ -899,59 +899,6 @@ function providerDisplayName(providerInstanceId: ModelSelection['providerInstanc
   }
 
   return providerInstanceId
-}
-
-class DrainableProviderIntentWorker<Event> {
-  private active = false
-  private readonly handler: (event: Event) => Promise<void>
-  private readonly queue: Event[] = []
-  private readonly waiters: Array<() => void> = []
-
-  constructor(handler: (event: Event) => Promise<void>) {
-    this.handler = handler
-  }
-
-  enqueue(event: Event) {
-    this.queue.push(event)
-    void this.run()
-  }
-
-  isIdle() {
-    return !this.active && this.queue.length === 0
-  }
-
-  drain() {
-    if (this.isIdle()) return Promise.resolve()
-
-    return new Promise<void>((resolve) => {
-      this.waiters.push(resolve)
-    })
-  }
-
-  private async run() {
-    if (this.active) return
-
-    this.active = true
-    try {
-      while (this.queue.length > 0) {
-        const event = this.queue.shift() as Event
-        await this.handler(event)
-      }
-    } finally {
-      this.active = false
-      this.resolveWaitersIfIdle()
-      if (this.queue.length > 0) void this.run()
-    }
-  }
-
-  private resolveWaitersIfIdle() {
-    if (!this.isIdle()) return
-
-    const waiters = this.waiters.splice(0)
-    for (const waiter of waiters) {
-      waiter()
-    }
-  }
 }
 
 type ProviderSessionContext = {

@@ -209,6 +209,16 @@ describe('provider runtime ingestion', () => {
     ])
   })
 
+  it('drains work enqueued after drain was called', async () => {
+    const { dispatched, ingestion } = fixture()
+
+    const drained = ingestion.drain()
+    void ingestion.ingest(assistantDelta('delta-1', 'late'))
+    await drained
+
+    expect(dispatched).toMatchObject([{ delta: 'late', type: 'thread.message.assistant.delta' }])
+  })
+
   it('normalizes tool lifecycle events into activities', async () => {
     const { dispatched, ingestion } = fixture()
 

@@ -27,6 +27,7 @@ import {
   PROVIDER_RUNTIME_BUFFER_TTL_MS,
   ProviderRuntimeBuffers,
 } from './provider-runtime-buffers'
+import { SerialWorker } from './serial-worker'
 
 export type ProviderRuntimeDispatch = (
   command: InternalOrchestrationCommand | OrchestrationCommand,
@@ -50,8 +51,8 @@ export class ProviderRuntimeIngestion {
   private readonly dispatch: ProviderRuntimeDispatch
   private readonly getReadModel: (() => OrchestrationReadModel) | null
   private readonly onLiveness: ((threadId: ThreadId) => void) | null
-  private queue = Promise.resolve()
   private readonly seenEventIds: BoundedTtlCache<string, true>
+  private readonly worker: SerialWorker<ProviderRuntimeEvent>
 
   constructor(
     dispatch: ProviderRuntimeDispatch,
@@ -79,16 +80,19 @@ export class ProviderRuntimeIngestion {
       now: options.now,
       ttlMs: PROVIDER_RUNTIME_BUFFER_TTL_MS,
     })
+    this.worker = new SerialWorker((event) => this.processEvent(event))
   }
 
   ingest(event: ProviderRuntimeEvent) {
-    const task = this.queue.then(() => this.processEvent(event))
-    this.queue = task.then(noop, noop)
-    return task
+    return this.worker.enqueue(event)
   }
 
   drain() {
-    return this.queue
+    return this.worker.drain()
+  }
+
+  isIdle() {
+    return this.worker.isIdle()
   }
 
   private async processEvent(event: ProviderRuntimeEvent) {
@@ -1256,5 +1260,3 @@ function truncateDetail(value: string | undefined, limit = 180) {
 
   return `${value.slice(0, limit - 3)}...`
 }
-
-function noop() {}

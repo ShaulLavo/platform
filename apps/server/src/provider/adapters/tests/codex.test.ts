@@ -1136,11 +1136,9 @@ async function readFakeCodexLog(spawnLogPath: string) {
 }
 
 function collectAdapterEvents(adapter: CodexProviderAdapter, events: ProviderRuntimeEvent[]) {
-  void (async () => {
-    for await (const event of adapter.streamEvents()) {
-      events.push(event)
-    }
-  })()
+  adapter.subscribeEvents((event) => {
+    events.push(event)
+  })
 }
 
 function echoedModeParams(events: ProviderRuntimeEvent[]) {

@@ -11,34 +11,16 @@ export class ProviderRuntimeEventStream {
     }
   }
 
-  stream(): AsyncIterable<ProviderRuntimeEvent> {
-    return this.iterator()
-  }
-
-  private async *iterator() {
-    const queue: ProviderRuntimeEvent[] = []
-    const wakeups: Array<() => void> = []
-    const subscriber = (event: ProviderRuntimeEvent) => {
-      queue.push(event)
-      wakeups.shift()?.()
-    }
-
+  /**
+   * Synchronous fan-out at publish time. The pull iterator this replaced parked
+   * events in a buffer only the generator could see, which is why draining the
+   * pipeline needed a timer to guess when they had been handed on.
+   */
+  subscribe(subscriber: ProviderRuntimeEventSubscriber) {
     this.subscribers.add(subscriber)
-    try {
-      for (;;) {
-        const event = queue.shift()
-        if (event) {
-          yield event
-          continue
-        }
 
-        await new Promise<void>((resolve) => {
-          wakeups.push(resolve)
-        })
-      }
-    } finally {
+    return () => {
       this.subscribers.delete(subscriber)
-      wakeups.splice(0)
     }
   }
 }

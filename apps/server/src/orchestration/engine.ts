@@ -36,6 +36,7 @@ import {
   type CommandAttachmentIngest,
 } from './orchestration-logging'
 import type { OrchestrationReadModel } from './read-model'
+import { ReactorScheduler } from './reactor-scheduler'
 import { OrchestrationSnapshotQuery } from './snapshot-query'
 import {
   OrchestrationDomainEventBus,
@@ -68,6 +69,7 @@ export class OrchestrationEngine {
   private readonly eventStore: OrchestrationEventStore
   private readonly projectionPipeline: OrchestrationProjectionPipeline
   private readonly providerCommandReactor: ProviderCommandReactor | null
+  private readonly reactors = new ReactorScheduler()
   private readonly snapshotQuery: OrchestrationSnapshotQuery
   private readonly streams: OrchestrationStreams
   private readModel: OrchestrationReadModel
@@ -154,14 +156,9 @@ export class OrchestrationEngine {
     return this.readModel
   }
 
-  /**
-   * Provider work first: ingestion is what settles a turn, and settling a turn
-   * is what gives the checkpoint reactor something to capture.
-   */
-  async providerRuntimeIdle() {
-    await this.providerCommandReactor?.drain()
-    await this.checkpointReactor?.drain()
-    await this.sessionCheckoutReactor?.drain()
+  /** Settles every registered reactor; the scheduler owns the ordering. */
+  providerRuntimeIdle() {
+    return this.reactors.idle()
   }
 
   private dispatchNow(
@@ -349,22 +346,34 @@ export class OrchestrationEngine {
   ) {
     if (!git) return
 
-    this.checkpointReactor = new CheckpointReactor({
+    const checkpointReactor = new CheckpointReactor({
       dispatch: (command) => this.dispatch(command),
       getReadModel: () => this.readModel,
       git,
       providerService,
     })
-    this.domainEvents.subscribe(this.checkpointReactor)
+    this.checkpointReactor = checkpointReactor
+    this.domainEvents.subscribe(checkpointReactor)
+    this.reactors.register({
+      drain: () => checkpointReactor.drain(),
+      isIdle: () => checkpointReactor.isIdle(),
+      name: checkpointReactor.name,
+    })
     // Rides the same git handle: without it `thread.branch` is null forever and
     // every branch-gated affordance is unreachable.
-    this.sessionCheckoutReactor = new SessionCheckoutReactor({
+    const sessionCheckoutReactor = new SessionCheckoutReactor({
       dispatch: (command) => this.dispatch(command),
       getReadModel: () => this.readModel,
       git,
       worktrees: new GitWorktreeService(git),
     })
-    this.domainEvents.subscribe(this.sessionCheckoutReactor)
+    this.sessionCheckoutReactor = sessionCheckoutReactor
+    this.domainEvents.subscribe(sessionCheckoutReactor)
+    this.reactors.register({
+      drain: () => sessionCheckoutReactor.drain(),
+      isIdle: () => sessionCheckoutReactor.isIdle(),
+      name: sessionCheckoutReactor.name,
+    })
   }
 
   private createProviderCommandReactor(options: OrchestrationEngineOptions) {
@@ -387,19 +396,23 @@ export class OrchestrationEngine {
 
     // Stopping a deleted thread's session is only meaningful where a runtime
     // exists to stop, so the deletion reactor attaches with this one.
-    this.domainEvents.subscribe(
-      new ThreadDeletionReactor({
-        attachmentsDir: this.attachmentsDir,
-        database: this.database,
-        providerService,
-        worktrees: providerRuntimeOptions?.checkpointGit
-          ? new GitWorktreeService(providerRuntimeOptions.checkpointGit)
-          : null,
-      }),
-    )
+    const deletionReactor = new ThreadDeletionReactor({
+      attachmentsDir: this.attachmentsDir,
+      database: this.database,
+      providerService,
+      worktrees: providerRuntimeOptions?.checkpointGit
+        ? new GitWorktreeService(providerRuntimeOptions.checkpointGit)
+        : null,
+    })
+    this.domainEvents.subscribe(deletionReactor)
+    this.reactors.register({
+      drain: () => deletionReactor.drain(),
+      isIdle: () => deletionReactor.isIdle(),
+      name: deletionReactor.name,
+    })
     this.subscribeCheckpointReactor(providerRuntimeOptions?.checkpointGit, providerService)
 
-    return new ProviderCommandReactor({
+    const providerCommandReactor = new ProviderCommandReactor({
       beforeTurnStart: () => this.turnPrerequisitesSettled(),
       checkpointGit: providerRuntimeOptions?.checkpointGit ?? null,
       dispatch: (command) => this.dispatch(command),
@@ -407,6 +420,13 @@ export class OrchestrationEngine {
       ingestion,
       providerService,
     })
+    this.reactors.register({
+      drain: () => providerCommandReactor.drain(),
+      isIdle: () => providerCommandReactor.isIdle(),
+      name: 'provider-command-reactor',
+    })
+
+    return providerCommandReactor
   }
 }
 

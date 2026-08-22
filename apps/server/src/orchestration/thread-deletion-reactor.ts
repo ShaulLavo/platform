@@ -13,6 +13,7 @@ import {
   recordChatPipelineWarning,
 } from './orchestration-logging'
 import type { OrchestrationEvent } from './schemas'
+import { SerialWorker } from './serial-worker'
 import type { OrchestrationDomainEventReactor } from './streams'
 
 type ThreadDeletedEvent = Extract<OrchestrationEvent, { type: 'thread.deleted' }>
@@ -35,13 +36,13 @@ type ThreadDeletedEvent = Extract<OrchestrationEvent, { type: 'thread.deleted' }
  */
 export class ThreadDeletionReactor implements OrchestrationDomainEventReactor {
   readonly name = 'thread-deletion-reactor'
-  private readonly cleanups = new Set<Promise<void>>()
   private readonly cleaningThreads = new Set<ThreadId>()
   private readonly attachmentsDir: string
   /** Null when the engine was built without git; reclamation is skipped rather than faked. */
   private readonly worktrees: GitWorktreeService | null
   private readonly database: OrchestrationDatabase
   private readonly providerService: ProviderService
+  private readonly worker: SerialWorker<ThreadDeletedEvent>
 
   constructor({
     attachmentsDir,
@@ -58,6 +59,7 @@ export class ThreadDeletionReactor implements OrchestrationDomainEventReactor {
     this.worktrees = worktrees ?? null
     this.database = database
     this.providerService = providerService
+    this.worker = new SerialWorker((event) => this.cleanupThread(event))
   }
 
   handleEvents(events: OrchestrationEvent[]) {
@@ -69,10 +71,12 @@ export class ThreadDeletionReactor implements OrchestrationDomainEventReactor {
   }
 
   /** Test/shutdown hook: settle every in-flight stop. */
-  async drain() {
-    while (this.cleanups.size > 0) {
-      await Promise.all(Array.from(this.cleanups))
-    }
+  drain() {
+    return this.worker.drain()
+  }
+
+  isIdle() {
+    return this.worker.isIdle()
   }
 
   private enqueueCleanup(event: ThreadDeletedEvent) {
@@ -82,12 +86,15 @@ export class ThreadDeletionReactor implements OrchestrationDomainEventReactor {
     if (this.cleaningThreads.has(threadId)) return
 
     this.cleaningThreads.add(threadId)
-    let cleanup: Promise<void>
-    cleanup = this.cleanupThread(event).finally(() => {
-      this.cleaningThreads.delete(threadId)
-      this.cleanups.delete(cleanup)
-    })
-    this.cleanups.add(cleanup)
+    void this.worker
+      .enqueue(event)
+      .catch((error) => {
+        recordChatPipelineWarning('chat.pipeline.thread_deletion_reactor.cleanup', {
+          ...orchestrationEventSummary(event),
+          error,
+        })
+      })
+      .finally(() => this.cleaningThreads.delete(threadId))
   }
 
   /**

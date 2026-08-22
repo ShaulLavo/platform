@@ -18,6 +18,7 @@ import type {
   ProviderAdapter,
   ProviderCommandCatalogInput,
   ProviderCommandCatalogResult,
+  ProviderRuntimeEvent,
   ProviderSessionStartInput,
   ProviderTurnInput,
 } from '../types'
@@ -163,8 +164,8 @@ export class MockProviderAdapter implements ProviderAdapter {
     return this.commandCatalog
   }
 
-  streamEvents() {
-    return this.events.stream()
+  subscribeEvents(subscriber: (event: ProviderRuntimeEvent) => void) {
+    return this.events.subscribe(subscriber)
   }
 
   async startSession(input: ProviderSessionStartInput) {
