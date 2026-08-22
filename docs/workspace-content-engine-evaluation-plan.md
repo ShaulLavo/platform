@@ -2,7 +2,7 @@
 
 Status: draft
 
-This plan covers evaluating indexed content-search engines for workspace search. It is intentionally separate from the workspace search foundation plan. The foundation plan keeps ripgrep as the content engine; this plan asks whether ripgrep should later be augmented or replaced for persisted workspace content search.
+This plan covers evaluating indexed content-search engines for workspace search. It is intentionally separate from the shipped path-index foundation summarized in [Workspace Search Next Steps](workspace-search-next-steps.md). That foundation keeps ripgrep as the content engine; this plan asks whether ripgrep should later be augmented or replaced for persisted workspace content search.
 
 ## Candidates
 

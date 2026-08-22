@@ -1,5 +1,4 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { isDirectoryEntry } from '@workspace/contracts'
 import { useCallback } from 'react'
 
 import { workspacePathLeaf } from '@/features/workspace/utils/path'
@@ -8,13 +7,14 @@ import { useEditorWorkspaceStoreApi } from '@/features/editor/state/workspace-st
 import { useResetWorkspaceTreeLoad } from '@/features/workspace/hooks/use-tree'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
-import { recordRecentEntry, statPath } from '@/lib/file-server'
+import { openWorkspaceRootPath, recordRecentEntry } from '@/lib/file-server'
 import { filePickerKeys } from '@/lib/query-keys'
 import { recentFolderKeys } from '@/lib/recent-folders-query'
 import {
   activateWorkspaceRoot,
   isActiveWorkspaceRoot,
 } from '@/features/workspace/state/active-project'
+import { claimWorkspaceOpenGeneration } from '@/features/workspace/state/open-generation'
 
 export type OpenWorkspaceRootResult = 'already-open' | 'failed' | 'opened' | 'superseded'
 
@@ -40,14 +40,14 @@ export function useOpenWorkspaceRoot() {
 
   return useCallback(
     async (workspaceRoot: string): Promise<OpenWorkspaceRootResult> => {
+      const generation = claimWorkspaceOpenGeneration()
       activateWorkspaceRoot(workspaceRoot)
-      if (workspaceStore.getState().rootFolder?.path === workspaceRoot) return 'already-open'
 
       const controller = new AbortController()
       try {
-        const entry = await statPath(workspaceRoot, controller.signal)
+        const result = await openWorkspaceRootPath(workspaceRoot, generation, controller.signal)
         // A later request already claimed the app; landing now would drag it back.
-        if (!isActiveWorkspaceRoot(workspaceRoot)) {
+        if (result.status === 'superseded' || !isActiveWorkspaceRoot(workspaceRoot)) {
           log.info({
             action: 'workspace.root_open_superseded',
             area: 'workspace',
@@ -55,15 +55,9 @@ export function useOpenWorkspaceRoot() {
           })
           return 'superseded'
         }
-        if (!isDirectoryEntry(entry)) {
-          log.warn({
-            action: 'workspace.root_open_rejected',
-            area: 'workspace',
-            entryType: entry.type,
-            path: workspaceRoot,
-          })
-          return 'failed'
-        }
+        const entry = result.entry
+        if (!entry) return 'superseded'
+        if (workspaceStore.getState().rootFolder?.path === workspaceRoot) return 'already-open'
 
         resetTreeLoad()
         switchRootFolder({ ...entry, name: workspacePathLeaf(workspaceRoot), type: 'directory' })
@@ -71,6 +65,7 @@ export function useOpenWorkspaceRoot() {
         void recordRootAsRecent(queryClient, workspaceRoot)
         return 'opened'
       } catch (error) {
+        log.warn({ action: 'workspace.root_open_rejected', area: 'workspace', path: workspaceRoot })
         reportError(toClientError(error))
         return 'failed'
       }

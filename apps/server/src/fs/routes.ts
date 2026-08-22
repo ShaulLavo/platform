@@ -5,6 +5,7 @@ import {
   createFolderBodySchema,
   deleteBodySchema,
   eventsQuerySchema,
+  openWorkspaceRootBodySchema,
   pathQuerySchema,
   recordRecentBodySchema,
   recentsQuerySchema,
@@ -61,6 +62,9 @@ export function fsRoutes(fs: FileSystemService) {
       })
       .post('/recents', ({ body }) => fs.recordRecent(body.path), {
         body: recordRecentBodySchema,
+      })
+      .post('/workspace-root', ({ body }) => fs.openWorkspaceRoot(body), {
+        body: openWorkspaceRootBodySchema,
       })
       .post('/write', ({ body }) => fs.write(body), {
         body: writeBodySchema,

@@ -1,6 +1,7 @@
 import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/layout'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
 import { renderHook, waitFor } from '@testing-library/react'
+import path from 'node:path'
 import type { ReactNode } from 'react'
 
 import { expect, test } from '../../../../test/fixtures'
@@ -9,7 +10,7 @@ import {
   EditorWorkspaceStateContext,
 } from '@/features/editor/state/workspace-state'
 import { useValidateRootFolder } from '@/features/workspace/hooks/use-validate-root-folder'
-import { createFileContent, ensureFolderPath } from '@/lib/file-server'
+import { createFileContent, ensureFolderPath, fetchServerInfo } from '@/lib/file-server'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 
 test('clears a cached root folder that no longer exists on disk', async ({ client }) => {
@@ -32,14 +33,20 @@ test('clears a cached root folder that points at a file', async ({ client }) => 
   await waitFor(() => expect(store.getState().rootFolder).toBeNull())
 })
 
-test('keeps a cached root folder that still exists', async ({ client }) => {
+test('keeps a cached root folder that still exists and makes it the index scope', async ({
+  client,
+  server,
+}) => {
   void client
   await ensureFolderPath('repo')
   const store = storeWithRoot(pickedDirectory('repo'))
 
   renderValidation(store)
 
-  await new Promise((resolve) => setTimeout(resolve, 50))
+  await waitFor(async () => {
+    const info = await fetchServerInfo(new AbortController().signal)
+    expect(info.workspaceIndex?.scanRoot).toBe(path.join(server.root, 'repo'))
+  })
   expect(store.getState().rootFolder?.path).toBe('repo')
 })
 

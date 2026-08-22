@@ -64,6 +64,33 @@ describe('workspace containment', () => {
     }
   })
 
+  it('does not let workspace index activation widen the filesystem boundary', async () => {
+    const root = await fixtureRoot()
+    const app = testApp(root)
+
+    for (const [generation, input] of [
+      [1, '../outside'],
+      [2, '/etc'],
+    ] as const) {
+      const response = await app.handle(
+        new Request('http://local/fs/workspace-root', {
+          body: JSON.stringify({ generation, path: input }),
+          headers: trustedOriginHeaders({ 'content-type': 'application/json' }),
+          method: 'POST',
+        }),
+      )
+
+      expect(response.status).toBe(403)
+    }
+
+    const health = await app.handle(
+      new Request('http://local/health', { headers: trustedOriginHeaders() }),
+    )
+    expect(await health.json()).toMatchObject({
+      workspaceIndex: { readiness: 'cold', scanRoot: null },
+    })
+  })
+
   it('classifies relative paths as inside or outside the root', () => {
     const outside = ['..', `..${path.sep}x`, path.resolve(path.sep, 'etc')]
     const inside = ['', '..foo', `a${path.sep}..b`, '...', 'a.txt']

@@ -2,17 +2,14 @@ import { AppCommandSurface } from '@/components/app-command-surface'
 import { EmptyWorkspace } from '@/components/empty-workspace'
 import { usePickEntry } from '@/components/use-pick-entry'
 import { WorkspaceView } from '@/features/workspace/components/view'
-import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
+import { useOpenWorkspaceRoot } from '@/features/workspace/hooks/use-open-root'
 import { useValidateRootFolder } from '@/features/workspace/hooks/use-validate-root-folder'
 import { useWorkspaceEvents } from '@/features/workspace/hooks/use-events'
-import { useResetWorkspaceTreeLoad } from '@/features/workspace/hooks/use-tree'
 import { log } from '@/lib/client-logging'
-import { activateWorkspaceRoot } from '@/features/workspace/state/active-project'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { PlatformKeyBinding } from '@/keymap/types'
 import type { EditorKeymapLayer } from '@singapor/core'
-import { useCallback } from 'react'
 
 type AppWorkspaceProps = {
   editorKeymapLayers: readonly EditorKeymapLayer[]
@@ -24,26 +21,14 @@ export function AppWorkspace({ editorKeymapLayers, keymapBindings }: AppWorkspac
   const rootFolder = useEditorWorkspaceState((state) => state.rootFolder)
   const openPicker = useEditorWorkspaceState((state) => state.openPicker)
   const setPickerOpen = useEditorWorkspaceState((state) => state.setPickerOpen)
-  const { switchRootFolder } = useEditorCommands()
-  const resetTreeLoad = useResetWorkspaceTreeLoad()
+  const openWorkspaceRoot = useOpenWorkspaceRoot()
 
   useValidateRootFolder()
   useWorkspaceEvents(rootFolder)
 
-  const handlePick = useCallback(
-    (entry: PickedFsEntry) => {
-      resetTreeLoad()
-      activateWorkspaceRoot(entry.path)
-      switchRootFolder(entry)
-      log.info({
-        action: 'workspace.root_selected',
-        area: 'workspace',
-        entryType: entry.type,
-        path: entry.path,
-      })
-    },
-    [resetTreeLoad, switchRootFolder],
-  )
+  const handlePick = (entry: PickedFsEntry) => {
+    void openPickedWorkspaceRoot(entry, openWorkspaceRoot)
+  }
   const picker = usePickEntry({
     mode: 'folder',
     onOpenChange: setPickerOpen,
@@ -65,4 +50,19 @@ export function AppWorkspace({ editorKeymapLayers, keymapBindings }: AppWorkspac
       {picker}
     </>
   )
+}
+
+async function openPickedWorkspaceRoot(
+  entry: PickedFsEntry,
+  openWorkspaceRoot: ReturnType<typeof useOpenWorkspaceRoot>,
+) {
+  const result = await openWorkspaceRoot(entry.path)
+  if (result !== 'opened' && result !== 'already-open') return
+
+  log.info({
+    action: 'workspace.root_selected',
+    area: 'workspace',
+    entryType: entry.type,
+    path: entry.path,
+  })
 }

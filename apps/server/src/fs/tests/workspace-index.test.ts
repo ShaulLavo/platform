@@ -408,10 +408,12 @@ describe('workspace index', () => {
     })
 
     try {
-      await waitForStatus(service.workspaceIndex, 'ready')
+      await service.openWorkspaceRoot({ generation: 1, path: '' })
+      const index = activeServiceIndex(service)
+      await waitForStatus(index, 'ready')
 
       await service.createFolder({ path: 'src', recursive: true })
-      expect(await waitForEntry(service.workspaceIndex, 'src')).toMatchObject({
+      expect(await waitForEntry(index, 'src')).toMatchObject({
         type: 'directory',
       })
 
@@ -419,19 +421,106 @@ describe('workspace index', () => {
         content: 'export const app = true\n',
         path: 'src/app.ts',
       })
-      expect(await waitForEntry(service.workspaceIndex, 'src/app.ts')).toMatchObject({
+      expect(await waitForEntry(index, 'src/app.ts')).toMatchObject({
         contentKind: 'text',
         type: 'file',
       })
 
       await service.rename({ from: 'src/app.ts', to: 'src/main.ts' })
-      await waitForMissingEntry(service.workspaceIndex, 'src/app.ts')
-      expect(await waitForEntry(service.workspaceIndex, 'src/main.ts')).toMatchObject({
+      await waitForMissingEntry(index, 'src/app.ts')
+      expect(await waitForEntry(index, 'src/main.ts')).toMatchObject({
         type: 'file',
       })
 
       await service.delete({ path: 'src/main.ts' })
-      await waitForMissingEntry(service.workspaceIndex, 'src/main.ts')
+      await waitForMissingEntry(index, 'src/main.ts')
+    } finally {
+      await service.close()
+    }
+  })
+
+  it('switches index roots and leaves queued events from the retired root behind', async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, 'a'), { recursive: true })
+    await mkdir(path.join(root, 'b'), { recursive: true })
+    await writeFile(path.join(root, 'a', 'only-a.ts'), 'export const a = true\n')
+    await writeFile(path.join(root, 'b', 'only-b.ts'), 'export const b = true\n')
+    const service = new FileSystemService({
+      metadataDatabasePath: ':memory:',
+      workspaceRoot: root,
+      watch: false,
+    })
+
+    try {
+      await service.openWorkspaceRoot({ generation: 1, path: 'a' })
+      const indexA = activeServiceIndex(service)
+      await waitForStatus(indexA, 'ready')
+      const baselineA = indexA.status()
+
+      await service.createFile({ content: 'queued\n', path: 'a/queued.ts' })
+      await service.openWorkspaceRoot({ generation: 2, path: 'b' })
+      const indexB = activeServiceIndex(service)
+      await waitForStatus(indexB, 'ready')
+      const baselineB = indexB.status()
+
+      expect(baselineA.scanRoot).toBe(path.join(root, 'a'))
+      expect(baselineB.scanRoot).toBe(path.join(root, 'b'))
+      expect(indexB.get('only-b.ts')).toMatchObject({ type: 'file' })
+      expect(indexB.get('only-a.ts')).toBeUndefined()
+      expect(indexB.get('queued.ts')).toBeUndefined()
+
+      await service.createFile({ content: 'live\n', path: 'b/live.ts' })
+      expect(await waitForEntry(indexB, 'live.ts')).toMatchObject({ type: 'file' })
+    } finally {
+      await service.close()
+    }
+  })
+
+  it('lets the latest rapid valid open win and rejects stale generations', async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, 'a'), { recursive: true })
+    await mkdir(path.join(root, 'b'), { recursive: true })
+    const service = new FileSystemService({
+      metadataDatabasePath: ':memory:',
+      workspaceRoot: root,
+      watch: false,
+    })
+
+    try {
+      const openA = service.openWorkspaceRoot({ generation: 1, path: 'a' })
+      const openB = service.openWorkspaceRoot({ generation: 2, path: 'b' })
+      const [resultA, resultB] = await Promise.all([openA, openB])
+
+      expect(resultA.status).toBe('superseded')
+      expect(resultB.status).toBe('opened')
+      expect(activeServiceIndex(service).status().scanRoot).toBe(path.join(root, 'b'))
+
+      const stale = await service.openWorkspaceRoot({ generation: 1, path: 'a' })
+      expect(stale.status).toBe('superseded')
+      expect(activeServiceIndex(service).status().scanRoot).toBe(path.join(root, 'b'))
+    } finally {
+      await service.close()
+    }
+  })
+
+  it('keeps the current index root when a newer open is rejected', async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, 'a'), { recursive: true })
+    await writeFile(path.join(root, 'not-a-folder.txt'), 'file\n')
+    const service = new FileSystemService({
+      metadataDatabasePath: ':memory:',
+      workspaceRoot: root,
+      watch: false,
+    })
+
+    try {
+      await service.openWorkspaceRoot({ generation: 1, path: 'a' })
+      const scanRoot = activeServiceIndex(service).status().scanRoot
+
+      await expect(
+        service.openWorkspaceRoot({ generation: 2, path: 'not-a-folder.txt' }),
+      ).rejects.toMatchObject({ code: 'NOT_A_DIRECTORY' })
+      expect(activeServiceIndex(service).status().scanRoot).toBe(scanRoot)
     } finally {
       await service.close()
     }
@@ -821,6 +910,11 @@ function derivedCounts(index: WorkspaceIndex) {
   }
 
   return { entryCount: index.entryMap().size, fileCount, staleEntryCount }
+}
+
+function activeServiceIndex(service: FileSystemService) {
+  expect(service.workspaceIndex).toBeDefined()
+  return service.workspaceIndex as WorkspaceIndex
 }
 
 function requireEntry<T>(entry: T | undefined): T {

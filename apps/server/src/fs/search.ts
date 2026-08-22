@@ -141,9 +141,10 @@ class PathIndexSearchProvider {
     this.index = index
   }
 
-  static ready(index: WorkspaceIndex | undefined) {
+  static ready(index: WorkspaceIndex | undefined, context: FindContext) {
     if (!index) return null
     if (index.status().readiness !== 'ready') return null
+    if (!workspaceIndexMatchesContextRoot(index, context)) return null
 
     return new PathIndexSearchProvider(index)
   }
@@ -154,9 +155,10 @@ class PathIndexSearchProvider {
     const emittedPaths = new Set<string>()
 
     for (const entry of entriesByPath.values()) {
-      if (!indexEntryMatchesContext(context, entry)) continue
+      const relativePath = resultPath(context.root.relativePath, entry.path)
+      if (!indexEntryMatchesContext(context, entry, relativePath)) continue
 
-      addNameCandidate(ranker, entry.path)
+      addNameCandidate(ranker, relativePath)
     }
 
     yield* takeRankedIndexNameMatches(
@@ -170,21 +172,30 @@ class PathIndexSearchProvider {
 }
 
 class ContentIndexFilter {
+  private context: FindContext
   private entriesByPath: ReadonlyMap<string, ReadonlyWorkspaceIndexEntry>
 
-  constructor(entriesByPath: ReadonlyMap<string, ReadonlyWorkspaceIndexEntry>) {
+  constructor(
+    context: FindContext,
+    entriesByPath: ReadonlyMap<string, ReadonlyWorkspaceIndexEntry>,
+  ) {
+    this.context = context
     this.entriesByPath = entriesByPath
   }
 
-  static ready(index: WorkspaceIndex | undefined) {
+  static ready(index: WorkspaceIndex | undefined, context: FindContext) {
     if (!index) return null
     if (index.status().readiness !== 'ready') return null
+    if (!workspaceIndexMatchesContextRoot(index, context)) return null
 
-    return new ContentIndexFilter(index.entryMap())
+    return new ContentIndexFilter(context, index.entryMap())
   }
 
   canSearchContent(relativePath: string) {
-    const entry = this.entriesByPath.get(relativePath)
+    const indexPath = globMatchPath(this.context, relativePath)
+    if (!indexPath) return true
+
+    const entry = this.entriesByPath.get(indexPath)
     if (!entry) return true
     if (entry.stale) return true
 
@@ -197,7 +208,8 @@ class ContentIndexFilter {
     for (const entry of this.entriesByPath.values()) {
       if (globs.length >= CONTENT_INDEX_RG_EXCLUDE_GLOB_LIMIT) break
 
-      const glob = rgExcludeGlobForIndexEntry(context, entry)
+      const relativePath = resultPath(context.root.relativePath, entry.path)
+      const glob = rgExcludeGlobForIndexEntry(context, entry, relativePath)
       if (!glob) continue
 
       globs.push(glob)
@@ -398,9 +410,11 @@ async function* searchWithTools(
   const workspaceIndex = workspaceIndexForQuery(context.options, providerOptions.workspaceIndex)
   const pathIndexProvider =
     searchNames && canUsePathIndexForQuery(context.options)
-      ? PathIndexSearchProvider.ready(workspaceIndex)
+      ? PathIndexSearchProvider.ready(workspaceIndex, context)
       : null
-  const contentIndexFilter = searchContent ? ContentIndexFilter.ready(workspaceIndex) : null
+  const contentIndexFilter = searchContent
+    ? ContentIndexFilter.ready(workspaceIndex, context)
+    : null
   const needsFd = searchNames && !pathIndexProvider
   recordWorkspaceIndexSearch(context, workspaceIndex, pathIndexProvider, contentIndexFilter)
 
@@ -488,7 +502,7 @@ function workspaceIndexMeasurement(
   const used = Boolean(pathIndexProvider || contentIndexFilter)
 
   return {
-    fallbackReason: workspaceIndexFallbackReason(context, status.readiness, used),
+    fallbackReason: workspaceIndexFallbackReason(context, index, status.readiness, used),
     pendingCreatedPathCount: status.pendingCreatedPathCount,
     readiness: status.readiness,
     staleEntryCount: status.staleEntryCount,
@@ -507,10 +521,12 @@ function disabledWorkspaceIndexMeasurement(): WorkspaceSearchIndexMeasurement {
 
 function workspaceIndexFallbackReason(
   context: FindContext,
+  index: WorkspaceIndex,
   readiness: WorkspaceSearchIndexMeasurement['readiness'],
   used: boolean,
 ): WorkspaceSearchIndexFallbackReason | undefined {
   if (readiness && readiness !== 'ready') return readiness
+  if (!workspaceIndexMatchesContextRoot(index, context)) return 'root-mismatch'
   if (workspaceIndexSkippedForRegexNameQuery(context, used)) return 'regex-name-query'
 
   return undefined
@@ -537,6 +553,13 @@ function workspaceIndexForQuery(options: FindOptions, index: WorkspaceIndex | un
   if (options.useWorkspaceIndex === false) return undefined
 
   return index
+}
+
+function workspaceIndexMatchesContextRoot(index: WorkspaceIndex, context: FindContext) {
+  const scanRoot = index.status().scanRoot
+  if (!scanRoot) return false
+
+  return path.resolve(scanRoot) === path.resolve(context.root.absolutePath)
 }
 
 async function* searchNamesWithFd(
@@ -702,10 +725,13 @@ function takeRankedIndexNameMatch(
     if (!relativePath) return null
     if (emittedPaths.has(relativePath)) continue
 
-    const entry = entriesByPath.get(relativePath)
+    const indexPath = globMatchPath(context, relativePath)
+    if (!indexPath) continue
+
+    const entry = entriesByPath.get(indexPath)
     if (!entry) continue
 
-    const match = nameMatchFromIndexEntry(entry, context)
+    const match = nameMatchFromIndexEntry(entry, relativePath, context)
     if (!match) continue
 
     emittedPaths.add(match.path)
@@ -905,6 +931,7 @@ async function nameMatchFromPath(
 
 function nameMatchFromIndexEntry(
   entry: ReadonlyWorkspaceIndexEntry,
+  relativePath: string,
   context: FindContext,
 ): FindMatch | null {
   if (entry.stale) return null
@@ -914,7 +941,7 @@ function nameMatchFromIndexEntry(
     birthtimeMs: entry.birthtimeMs,
     kind: 'name',
     mtimeMs: entry.mtimeMs,
-    path: entry.path,
+    path: relativePath,
     size: entry.size,
     source: 'disk',
     targetType: entry.targetType,
@@ -922,14 +949,18 @@ function nameMatchFromIndexEntry(
   }
 }
 
-function indexEntryMatchesContext(context: FindContext, entry: ReadonlyWorkspaceIndexEntry) {
+function indexEntryMatchesContext(
+  context: FindContext,
+  entry: ReadonlyWorkspaceIndexEntry,
+  relativePath: string,
+) {
   if (!indexEntryIsSearchCandidate(entry)) return false
-  if (!indexEntryIsInsideRoot(context, entry.path)) return false
-  if (!indexEntryMatchesDepth(context, entry.path)) return false
+  if (!indexEntryIsInsideRoot(context, relativePath)) return false
+  if (!indexEntryMatchesDepth(context, relativePath)) return false
   if (!matchesEntryType(entry, context.options.entryType)) return false
   if (!indexEntryCharBagMatches(context, entry)) return false
 
-  return nameCandidateMatchesContext(context, entry.path)
+  return nameCandidateMatchesContext(context, relativePath)
 }
 
 function indexEntryIsSearchCandidate(entry: ReadonlyWorkspaceIndexEntry) {
@@ -947,13 +978,17 @@ function isIndexBinaryContentCandidate(entry: ReadonlyWorkspaceIndexEntry) {
   return entry.fileKind === 'image'
 }
 
-function rgExcludeGlobForIndexEntry(context: FindContext, entry: ReadonlyWorkspaceIndexEntry) {
+function rgExcludeGlobForIndexEntry(
+  context: FindContext,
+  entry: ReadonlyWorkspaceIndexEntry,
+  relativePath: string,
+) {
   if (!isIndexBinaryContentCandidate(entry)) return null
   if (entry.stale) return null
-  if (!indexEntryIsInsideRoot(context, entry.path)) return null
-  if (!indexEntryMatchesDepth(context, entry.path)) return null
+  if (!indexEntryIsInsideRoot(context, relativePath)) return null
+  if (!indexEntryMatchesDepth(context, relativePath)) return null
 
-  const matchPath = globMatchPath(context, entry.path)
+  const matchPath = globMatchPath(context, relativePath)
   if (!matchPath) return null
   if (!context.matcher.pathMatches(matchPath)) return null
 

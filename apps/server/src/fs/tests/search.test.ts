@@ -804,6 +804,107 @@ describe('workspace disk search provider', () => {
     expect(done?.measurement?.statCallCount).toBe(1)
   })
 
+  it('uses an index scoped below the filesystem root and returns filesystem-relative paths', async () => {
+    const root = await fixtureRoot()
+    const workspaceRoot = path.join(root, 'workspace')
+    await mkdir(path.join(workspaceRoot, 'src'), { recursive: true })
+    await writeFile(path.join(workspaceRoot, 'src', 'needle.txt'), '')
+    const paths = createWorkspacePaths(root)
+    const index = await buildWorkspaceIndex(createWorkspacePaths(workspaceRoot), TEST_INDEX_OPTIONS)
+
+    const events = await collectEvents(
+      findInWorkspaceStream(
+        paths,
+        {
+          includeContent: false,
+          limit: 20,
+          maxContentBytes: 1_000_000,
+          path: 'workspace',
+          query: 'needle',
+        },
+        undefined,
+        { workspaceIndex: index },
+      ),
+    )
+
+    expect(nameMatchPaths(events)).toEqual(['workspace/src/needle.txt'])
+    expect(doneEvent(events)?.measurement?.providerSources).toEqual(['index'])
+  })
+
+  it('rejects a ready index for another root and matches the workspace fallback baseline', async () => {
+    const root = await fixtureRoot()
+    const workspaceA = path.join(root, 'a')
+    const workspaceB = path.join(root, 'b')
+    await mkdir(workspaceA, { recursive: true })
+    await mkdir(workspaceB, { recursive: true })
+    await writeFile(path.join(workspaceA, 'only-a.ts'), '')
+    await writeFile(path.join(workspaceB, 'only-b.ts'), '')
+    const paths = createWorkspacePaths(root)
+    const staleIndex = await buildWorkspaceIndex(
+      createWorkspacePaths(workspaceA),
+      TEST_INDEX_OPTIONS,
+    )
+    const options = {
+      includeContent: false,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: 'b',
+      query: 'only',
+    }
+    const baseline = await collectEvents(
+      findInWorkspaceStream(paths, { ...options, useWorkspaceIndex: false }),
+    )
+
+    const events = await collectEvents(
+      findInWorkspaceStream(paths, options, undefined, { workspaceIndex: staleIndex }),
+    )
+    const done = doneEvent(events)
+
+    expect(nameMatchPaths(events)).toEqual(nameMatchPaths(baseline))
+    expect(nameMatchPaths(events)).toEqual(['b/only-b.ts'])
+    expect(done?.measurement?.workspaceIndex).toMatchObject({
+      fallbackReason: 'root-mismatch',
+      readiness: 'ready',
+      used: false,
+    })
+    expect(done?.measurement?.providerSources).not.toContain('index')
+  })
+
+  it('keeps system-scope opt-out searches isolated from an active subfolder index', async () => {
+    const root = await fixtureRoot()
+    const workspaceRoot = path.join(root, 'workspace')
+    await mkdir(workspaceRoot, { recursive: true })
+    await writeFile(path.join(workspaceRoot, 'inside-target.ts'), '')
+    await writeFile(path.join(root, 'system-target.ts'), '')
+    const paths = createWorkspacePaths(root)
+    const workspaceIndex = await buildWorkspaceIndex(
+      createWorkspacePaths(workspaceRoot),
+      TEST_INDEX_OPTIONS,
+    )
+    const options = {
+      includeContent: false,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: '',
+      query: 'target',
+      useWorkspaceIndex: false,
+    }
+    const baseline = await collectEvents(findInWorkspaceStream(paths, options))
+
+    const events = await collectEvents(
+      findInWorkspaceStream(paths, options, undefined, { workspaceIndex }),
+    )
+    const done = doneEvent(events)
+
+    expect(nameMatchPaths(events)).toEqual(nameMatchPaths(baseline))
+    expect(nameMatchPaths(events)).toContain('system-target.ts')
+    expect(done?.measurement?.workspaceIndex).toMatchObject({
+      fallbackReason: 'disabled',
+      used: false,
+    })
+    expect(done?.measurement?.providerSources).not.toContain('index')
+  })
+
   it('keeps the existing filename search fallback while the workspace index is cold', async () => {
     const root = await fixtureRoot()
     await mkdir(path.join(root, 'src'), { recursive: true })
@@ -830,6 +931,44 @@ describe('workspace disk search provider', () => {
     expect(sources).not.toContain('index')
     expect(sources.some((source) => source === 'fd' || source === 'fallback')).toBe(true)
     expect(nameMatchPaths(events)).toContain('src/needle.txt')
+  })
+
+  it('matches the disk baseline while a ready index is rebuilding', async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, 'src'), { recursive: true })
+    await writeFile(path.join(root, 'src', 'needle.txt'), '')
+    await Promise.all(
+      Array.from({ length: 200 }, (_, index) =>
+        writeFile(path.join(root, 'src', `scan-${String(index).padStart(3, '0')}.txt`), ''),
+      ),
+    )
+    const paths = createWorkspacePaths(root)
+    const index = await buildWorkspaceIndex(paths, TEST_INDEX_OPTIONS)
+    const options = {
+      includeContent: false,
+      limit: 20,
+      maxContentBytes: 1_000_000,
+      path: '',
+      query: 'needle',
+    }
+    const baseline = await collectEvents(
+      findInWorkspaceStream(paths, { ...options, useWorkspaceIndex: false }),
+    )
+    const rebuild = index.rebuild({ reason: 'test-rebuild' })
+
+    expect(index.status().readiness).toBe('building')
+    const events = await collectEvents(
+      findInWorkspaceStream(paths, options, undefined, { workspaceIndex: index }),
+    )
+    await rebuild
+
+    expect(nameMatchPaths(events)).toEqual(nameMatchPaths(baseline))
+    expect(doneEvent(events)?.measurement?.workspaceIndex).toMatchObject({
+      fallbackReason: 'building',
+      readiness: 'building',
+      used: false,
+    })
+    expect(doneEvent(events)?.measurement?.providerSources).not.toContain('index')
   })
 
   it('falls back for filename search while created index paths are coalescing', async () => {

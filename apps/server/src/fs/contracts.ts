@@ -84,6 +84,7 @@ const workspaceSearchIndexFallbackReasonSchema = v.union([
   v.literal('disabled'),
   v.literal('failed'),
   v.literal('regex-name-query'),
+  v.literal('root-mismatch'),
   v.literal('stale'),
 ])
 
@@ -174,6 +175,11 @@ export const recordRecentBodySchema = v.object({
   path: pathSchema,
 })
 
+export const openWorkspaceRootBodySchema = v.object({
+  generation: v.pipe(v.number(), v.safeInteger(), v.minValue(1)),
+  path: pathSchema,
+})
+
 export const writeBodySchema = v.object({
   path: pathSchema,
   content: v.string(),
@@ -213,6 +219,7 @@ export const deleteBodySchema = v.object({
 })
 
 export type WriteBody = v.InferOutput<typeof writeBodySchema>
+export type OpenWorkspaceRootBody = v.InferOutput<typeof openWorkspaceRootBodySchema>
 export type CreateFileBody = v.InferOutput<typeof createFileBodySchema>
 export type CreateFolderBody = v.InferOutput<typeof createFolderBodySchema>
 export type RenameBody = v.InferOutput<typeof renameBodySchema>

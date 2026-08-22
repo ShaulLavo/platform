@@ -14,6 +14,7 @@ export type WorkspaceSearchIndexFallbackReason =
   | 'disabled'
   | 'failed'
   | 'regex-name-query'
+  | 'root-mismatch'
   | 'stale'
 
 export type WorkspaceSearchQuery = {

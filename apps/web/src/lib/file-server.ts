@@ -34,6 +34,12 @@ type DeleteResult = {
   path: string
 }
 
+type OpenWorkspaceRootResult = {
+  entry?: StatResult
+  status: 'opened' | 'superseded'
+  workspaceIndex: NonNullable<ServerInfo['workspaceIndex']>
+}
+
 export type WriteFileContentOptions = {
   baseVersion?: string | null
   expectedMtimeMs?: number | null
@@ -288,6 +294,27 @@ export async function statPath(path: string, signal: AbortSignal) {
       return response.data as StatResult
     },
     (entry) => ({ entryType: entry.type, size: entry.size }),
+  )
+}
+
+export async function openWorkspaceRootPath(path: string, generation: number, signal: AbortSignal) {
+  return observeClientOperation(
+    { action: 'fs.open_workspace_root', area: 'fs', generation, path, signal },
+    async () => {
+      const response = await getClient().fs['workspace-root'].post(
+        { generation, path },
+        { fetch: { signal } },
+      )
+
+      if (response.error) throw createRpcError(response.error)
+
+      return response.data as OpenWorkspaceRootResult
+    },
+    (result) => ({
+      openStatus: result.status,
+      scanRoot: result.workspaceIndex.scanRoot,
+      workspaceIndexReadiness: result.workspaceIndex.readiness,
+    }),
   )
 }
 

@@ -53,13 +53,14 @@ export type WorkspaceIndexStatus = {
   readiness: WorkspaceIndexReadiness
   rebuildReason?: string
   scanWarningCount: number
-  scanRoot: string
+  scanRoot: string | null
   skippedEntryCount: number
   staleEntryCount: number
 }
 
 export type WorkspaceIndexBuildOptions = {
   reason?: string
+  signal?: AbortSignal
 }
 
 export type WorkspaceIndexOptions = {
@@ -89,6 +90,7 @@ type ScanContext = {
   gitIgnore: GitIgnoreMatcher
   paths: WorkspacePaths
   scanWarningCount: number
+  signal?: AbortSignal
   skippedEntryCount: number
 }
 
@@ -152,7 +154,7 @@ export class WorkspaceIndex {
     }
 
     try {
-      const result = await scanWorkspaceIndex(this.paths, this.options)
+      const result = await scanWorkspaceIndex(this.paths, this.options, options.signal)
       if (!this.isCurrentRebuild(rebuildId)) return this.status()
 
       this.replaceEntries(result.entries)
@@ -540,8 +542,10 @@ class WorkspaceIndexEventWatcher implements WorkspaceIndexWatchSubscription {
     this.closed = true
     this.abort.abort()
     this.clearTimer()
-    await this.flushPending('close')
+    this.pending = []
+    this.pendingKeys.clear()
     await this.task
+    await this.flushChain
   }
 
   private async consumeEvents() {
@@ -565,7 +569,7 @@ class WorkspaceIndexEventWatcher implements WorkspaceIndexWatchSubscription {
   }
 
   private async finishConsumingEvents(streamFailed: boolean) {
-    if (streamFailed) {
+    if (streamFailed || this.closed) {
       this.pending = []
       this.pendingKeys.clear()
       return
@@ -661,8 +665,12 @@ class WorkspaceIndexEventWatcher implements WorkspaceIndexWatchSubscription {
   }
 }
 
-async function scanWorkspaceIndex(paths: WorkspacePaths, options: WorkspaceIndexOptions) {
-  const context = await createScanContext(paths, options)
+async function scanWorkspaceIndex(
+  paths: WorkspacePaths,
+  options: WorkspaceIndexOptions,
+  signal?: AbortSignal,
+) {
+  const context = await createScanContext(paths, options, signal)
 
   await scanEntry(context, paths.workspaceRoot, '')
   return scanResult(context)
@@ -684,17 +692,20 @@ async function scanWorkspaceIndexPath(
 async function createScanContext(
   paths: WorkspacePaths,
   options: WorkspaceIndexOptions,
+  signal?: AbortSignal,
 ): Promise<ScanContext> {
   return {
     entries: new Map(),
     gitIgnore: await workspaceGitIgnoreMatcher(paths, options.ignore),
     paths,
     scanWarningCount: 0,
+    signal,
     skippedEntryCount: 0,
   }
 }
 
 async function scanEntry(context: ScanContext, absolutePath: string, relativePath: string) {
+  context.signal?.throwIfAborted()
   const stats = await scanEntryStats(context, absolutePath, relativePath)
   if (!stats) return
 
@@ -1213,6 +1224,19 @@ function emptyStatus(scanRoot: string): WorkspaceIndexStatus {
     readiness: 'cold',
     scanWarningCount: 0,
     scanRoot,
+    skippedEntryCount: 0,
+    staleEntryCount: 0,
+  }
+}
+
+export function inactiveWorkspaceIndexStatus(): WorkspaceIndexStatus {
+  return {
+    entryCount: 0,
+    fileCount: 0,
+    pendingCreatedPathCount: 0,
+    readiness: 'cold',
+    scanRoot: null,
+    scanWarningCount: 0,
     skippedEntryCount: 0,
     staleEntryCount: 0,
   }

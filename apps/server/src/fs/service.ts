@@ -30,6 +30,7 @@ import type { MetadataDatabaseHandle } from '../db/client'
 import { FsMetadataStore, metadataRowToEntry, type FsMetadataEntry } from './metadata'
 import {
   WorkspaceIndex,
+  inactiveWorkspaceIndexStatus,
   watchWorkspaceIndex,
   type WorkspaceIndex as WorkspaceIndexInstance,
   type WorkspaceIndexWatchSubscription,
@@ -40,11 +41,13 @@ import type {
   CreateFolderBody,
   DeleteBody,
   EntryTypeFilter,
+  OpenWorkspaceRootBody,
   RenameBody,
   TreeEntry,
   WatchServerMessage,
   WriteBody,
 } from './contracts'
+import type { WorkspacePaths } from './path'
 
 export type FileSystemSearchOptions = Omit<FindOptions, 'maxContentBytes'>
 
@@ -64,6 +67,14 @@ export type FileSystemServiceOptions = {
 }
 
 const DEFAULT_TREE_CONCURRENCY = 32
+
+type WorkspaceIndexScope = {
+  abort: AbortController
+  index: WorkspaceIndex
+  paths: WorkspacePaths
+  startup: Promise<void>
+  watcher: WorkspaceIndexWatchSubscription
+}
 
 function resolveMaxTextFileBytes(env: NodeJS.ProcessEnv = process.env): number {
   const raw = env.MAX_TEXT_FILE_BYTES
@@ -89,12 +100,12 @@ export class FileSystemService {
   readonly systemRoot
   readonly defaultPath
   readonly metadata
-  readonly workspaceIndex
   private readonly maxSearchContentBytes
   private readonly maxTextFileBytes
+  private latestWorkspaceOpenGeneration = 0
+  private workspaceIndexScope: WorkspaceIndexScope | undefined
+  private readonly retiringWorkspaceIndexScopes = new Set<Promise<void>>()
   private readonly treeConcurrency
-  private readonly workspaceIndexStartup: Promise<void>
-  private readonly workspaceIndexWatcher: WorkspaceIndexWatchSubscription | undefined
 
   constructor(options: FileSystemServiceOptions = {}) {
     const homeDirectory = options.homeDirectory ?? homedir()
@@ -113,17 +124,10 @@ export class FileSystemService {
       backend: options.watchBackend,
       enabled: options.watch ?? true,
     })
-    this.workspaceIndex = new WorkspaceIndex(this.paths)
-    this.workspaceIndexWatcher = watchWorkspaceIndexIfEnabled(
-      this.workspaceIndex,
-      this.changes,
-      options,
-    )
-    this.workspaceIndexStartup = startWorkspaceIndexIfEnabled(
-      this.workspaceIndex,
-      this.workspaceIndexWatcher,
-      options,
-    )
+  }
+
+  get workspaceIndex() {
+    return this.workspaceIndexScope?.index
   }
 
   info() {
@@ -134,7 +138,7 @@ export class FileSystemService {
       defaultPath: this.defaultPath,
       metadataDbPath: this.metadata.databasePath,
       maxTextFileBytes: this.maxTextFileBytes,
-      workspaceIndex: this.workspaceIndex.status(),
+      workspaceIndex: this.workspaceIndex?.status() ?? inactiveWorkspaceIndexStatus(),
       ...this.changes.info(),
     }
   }
@@ -145,6 +149,38 @@ export class FileSystemService {
       () => statPath(this.paths, path),
       (result) => ({ entryType: result.type, size: result.size }),
     )
+  }
+
+  async openWorkspaceRoot(body: OpenWorkspaceRootBody) {
+    return observeRequestOperation(
+      {
+        area: 'fs',
+        generation: body.generation,
+        operation: 'open_workspace_root',
+        path: body.path,
+      },
+      () => this.openWorkspaceRootObserved(body),
+      (result) => ({
+        entryType: result.entry?.type,
+        openStatus: result.status,
+        scanRoot: result.workspaceIndex.scanRoot,
+      }),
+    )
+  }
+
+  private async openWorkspaceRootObserved(body: OpenWorkspaceRootBody) {
+    if (!this.claimWorkspaceOpen(body.generation)) return this.supersededWorkspaceOpen()
+
+    const entry = await statPath(this.paths, body.path)
+    if (effectiveEntryType(entry) !== 'directory') throw new FsError('NOT_A_DIRECTORY')
+    if (!this.isCurrentWorkspaceOpen(body.generation)) return this.supersededWorkspaceOpen()
+
+    this.installWorkspaceIndexScope(entry.path)
+    return {
+      entry,
+      status: 'opened' as const,
+      workspaceIndex: this.info().workspaceIndex,
+    }
   }
 
   tree(path: string, depth: number, entryType?: EntryTypeFilter) {
@@ -385,10 +421,55 @@ export class FileSystemService {
   }
 
   async close() {
-    await this.workspaceIndexWatcher?.close()
-    await this.workspaceIndexStartup
+    if (this.workspaceIndexScope) this.retireWorkspaceIndexScope(this.workspaceIndexScope)
+    this.workspaceIndexScope = undefined
+    await Promise.all(this.retiringWorkspaceIndexScopes)
     await this.changes.close()
     this.metadata.close()
+  }
+
+  private claimWorkspaceOpen(generation: number) {
+    if (generation <= this.latestWorkspaceOpenGeneration) return false
+
+    this.latestWorkspaceOpenGeneration = generation
+    return true
+  }
+
+  private isCurrentWorkspaceOpen(generation: number) {
+    return generation === this.latestWorkspaceOpenGeneration
+  }
+
+  private supersededWorkspaceOpen() {
+    return {
+      entry: undefined,
+      status: 'superseded' as const,
+      workspaceIndex: this.info().workspaceIndex,
+    }
+  }
+
+  private installWorkspaceIndexScope(relativeRoot: string) {
+    const absoluteRoot = this.paths.resolve(relativeRoot).absolutePath
+    if (this.workspaceIndexScope?.paths.workspaceRoot === absoluteRoot) return
+
+    const previous = this.workspaceIndexScope
+    const paths = createWorkspacePaths(absoluteRoot)
+    const index = new WorkspaceIndex(paths)
+    const abort = new AbortController()
+    const watcher = watchWorkspaceIndex(index, (signal) =>
+      scopedWorkspaceIndexEvents(this.changes, this.paths, paths, relativeRoot, signal),
+    )
+    const startup = startWorkspaceIndex(index, watcher, abort.signal)
+
+    this.workspaceIndexScope = { abort, index, paths, startup, watcher }
+    if (previous) this.retireWorkspaceIndexScope(previous)
+  }
+
+  private retireWorkspaceIndexScope(scope: WorkspaceIndexScope) {
+    scope.abort.abort()
+    const retirement = closeWorkspaceIndexScope(scope).finally(() => {
+      this.retiringWorkspaceIndexScopes.delete(retirement)
+    })
+    this.retiringWorkspaceIndexScopes.add(retirement)
   }
 
   private async refreshMetadataEntry(entry: FsMetadataEntry) {
@@ -415,33 +496,10 @@ export class FileSystemService {
   }
 }
 
-function startWorkspaceIndexIfEnabled(
-  index: WorkspaceIndex,
-  watcher: WorkspaceIndexWatchSubscription | undefined,
-  options: FileSystemServiceOptions,
+function workspaceIndexForSearch(
+  options: FileSystemSearchOptions,
+  index: WorkspaceIndexInstance | undefined,
 ) {
-  if (!workspaceIndexEnabled(options)) return Promise.resolve()
-
-  return startWorkspaceIndex(index, watcher)
-}
-
-function watchWorkspaceIndexIfEnabled(
-  index: WorkspaceIndex,
-  changes: FileChangeHub,
-  options: FileSystemServiceOptions,
-) {
-  if (!workspaceIndexEnabled(options)) return undefined
-
-  return watchWorkspaceIndex(index, (signal) =>
-    changes.stream([''], signal, { includeIgnored: true }),
-  )
-}
-
-function workspaceIndexEnabled(options: FileSystemServiceOptions) {
-  return options.workspaceRoot !== undefined
-}
-
-function workspaceIndexForSearch(options: FileSystemSearchOptions, index: WorkspaceIndexInstance) {
   if (options.useWorkspaceIndex === false) return undefined
 
   return index
@@ -449,14 +507,98 @@ function workspaceIndexForSearch(options: FileSystemSearchOptions, index: Worksp
 
 async function startWorkspaceIndex(
   index: WorkspaceIndex,
-  watcher: WorkspaceIndexWatchSubscription | undefined,
+  watcher: WorkspaceIndexWatchSubscription,
+  signal: AbortSignal,
 ) {
   try {
-    await watcher?.ready
-    await index.rebuild({ reason: 'startup' })
+    await watcher.ready
+    if (signal.aborted) return
+
+    await index.rebuild({ reason: 'workspace-root-opened', signal })
   } catch {
     // The index keeps failed status internally; search can continue through fallback paths.
   }
+}
+
+async function closeWorkspaceIndexScope(scope: WorkspaceIndexScope) {
+  await scope.watcher.close()
+  await scope.startup
+}
+
+async function* scopedWorkspaceIndexEvents(
+  changes: FileChangeHub,
+  servicePaths: WorkspacePaths,
+  indexPaths: WorkspacePaths,
+  relativeRoot: string,
+  signal: AbortSignal,
+): AsyncGenerator<WatchServerMessage> {
+  const events = changes.stream([relativeRoot], signal, { includeIgnored: true })
+
+  for await (const event of events) {
+    const scoped = scopeWorkspaceIndexEvent(event, servicePaths, indexPaths)
+    if (!scoped) continue
+
+    yield scoped
+  }
+}
+
+function scopeWorkspaceIndexEvent(
+  event: WatchServerMessage,
+  servicePaths: WorkspacePaths,
+  indexPaths: WorkspacePaths,
+): WatchServerMessage | null {
+  if (!isWorkspaceFilesystemEvent(event)) return scopeNonFilesystemEvent(event)
+  if (event.type === 'renamed')
+    return scopeRenamedWorkspaceIndexEvent(event, servicePaths, indexPaths)
+
+  const scopedPath = scopedIndexPath(event.path, servicePaths, indexPaths)
+  if (scopedPath === null) return null
+
+  return { ...event, path: scopedPath }
+}
+
+function scopeNonFilesystemEvent(event: WatchServerMessage): WatchServerMessage {
+  if (event.type !== 'ready') return event
+
+  return { ...event, root: '' }
+}
+
+function scopeRenamedWorkspaceIndexEvent(
+  event: Extract<WatchServerMessage, { type: 'renamed' }>,
+  servicePaths: WorkspacePaths,
+  indexPaths: WorkspacePaths,
+): WatchServerMessage | null {
+  const path = scopedIndexPath(event.path, servicePaths, indexPaths)
+  const oldPath = scopedIndexPath(event.oldPath, servicePaths, indexPaths)
+  if (path !== null && oldPath !== null) return { ...event, oldPath, path }
+  if (oldPath !== null) return { path: oldPath, sequence: event.sequence, type: 'deleted' }
+  if (path === null) return null
+
+  return { entry: event.entry, path, sequence: event.sequence, type: 'created' }
+}
+
+function scopedIndexPath(
+  relativePath: string,
+  servicePaths: WorkspacePaths,
+  indexPaths: WorkspacePaths,
+) {
+  const absolutePath = servicePaths.resolve(relativePath).absolutePath
+
+  try {
+    return indexPaths.toRelative(absolutePath)
+  } catch {
+    return null
+  }
+}
+
+function isWorkspaceFilesystemEvent(
+  event: WatchServerMessage,
+): event is Extract<WatchServerMessage, { type: 'changed' | 'created' | 'deleted' | 'renamed' }> {
+  if (event.type === 'changed') return true
+  if (event.type === 'created') return true
+  if (event.type === 'deleted') return true
+
+  return event.type === 'renamed'
 }
 
 type SearchStreamState = {

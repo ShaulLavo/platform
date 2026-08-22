@@ -118,6 +118,41 @@ describe('fs rpc filesystem limits', () => {
     expect(await tree.json()).toMatchObject({ path: '' })
   })
 
+  it('reports no boot-time index root, then the folder opened through the app', async () => {
+    const root = await fixtureRoot()
+    await mkdir(path.join(root, 'repo'), { recursive: true })
+    const app = testApp(root, { watch: false })
+    const before = await app.handle(
+      new Request('http://local/health', { headers: trustedOriginHeaders() }),
+    )
+
+    expect(await before.json()).toMatchObject({
+      workspaceIndex: {
+        readiness: 'cold',
+        scanRoot: null,
+      },
+    })
+
+    const opened = await app.handle(
+      new Request('http://local/fs/workspace-root', {
+        body: JSON.stringify({ generation: 1, path: 'repo' }),
+        headers: trustedOriginHeaders({ 'content-type': 'application/json' }),
+        method: 'POST',
+      }),
+    )
+    expect(opened.status).toBe(200)
+
+    const health = await app.handle(
+      new Request('http://local/health', { headers: trustedOriginHeaders() }),
+    )
+    const payload = (await health.json()) as {
+      workspaceIndex: { readiness: string; scanRoot: string | null }
+    }
+
+    expect(payload.workspaceIndex.scanRoot).toBe(path.join(root, 'repo'))
+    expect(['cold', 'building', 'ready']).toContain(payload.workspaceIndex.readiness)
+  })
+
   it('rejects text reads above the configured cap', async () => {
     const root = await fixtureRoot()
     await writeFile(path.join(root, 'large.txt'), '')
@@ -308,6 +343,7 @@ describe('fs rpc filesystem limits', () => {
       workspaceIndex: expect.objectContaining({
         entryCount: 0,
         readiness: 'cold',
+        scanRoot: null,
       }),
       workspaceRoot: root,
     })

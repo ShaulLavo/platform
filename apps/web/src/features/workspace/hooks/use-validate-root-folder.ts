@@ -6,8 +6,8 @@ import {
 } from '@/features/editor/state/workspace-state'
 import { toClientError, type ErrorCategory } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
-import { statPath } from '@/lib/file-server'
-import { isDirectoryEntry } from '@workspace/contracts'
+import { openWorkspaceRootPath } from '@/lib/file-server'
+import { claimWorkspaceOpenGeneration } from '@/features/workspace/state/open-generation'
 
 // Categories that prove the cached path can never be a workspace root again.
 // Transient failures (io_error, unknown, auth) keep the root so a flaky server
@@ -30,6 +30,7 @@ export function useValidateRootFolder() {
     if (path === null) return
 
     const controller = new AbortController()
+    const generation = claimWorkspaceOpenGeneration()
     const clearWhenStillCurrent = (reason: string) => {
       if (controller.signal.aborted) return
       if (store.getState().rootFolder?.path !== path) return
@@ -38,21 +39,19 @@ export function useValidateRootFolder() {
       store.getState().clearRootFolder()
     }
 
-    void validateRootPath(path, controller.signal, clearWhenStillCurrent)
+    void validateRootPath(path, generation, controller.signal, clearWhenStillCurrent)
     return () => controller.abort()
   }, [path, store])
 }
 
 async function validateRootPath(
   path: string,
+  generation: number,
   signal: AbortSignal,
   clear: (reason: string) => void,
 ) {
   try {
-    const entry = await statPath(path, signal)
-    if (isDirectoryEntry(entry)) return
-
-    clear('not_a_directory')
+    await openWorkspaceRootPath(path, generation, signal)
   } catch (error) {
     if (signal.aborted) return
 

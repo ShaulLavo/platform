@@ -26,7 +26,7 @@ type WorkspaceIndexStatus = {
   pendingCreatedPathCount: number
   readiness: 'cold' | 'building' | 'ready' | 'stale' | 'failed'
   rebuildReason?: string
-  scanRoot: string
+  scanRoot: string | null
   scanWarningCount: number
   skippedEntryCount: number
   staleEntryCount: number
