@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -135,10 +135,52 @@ describe('observability runtime', () => {
       error: {
         code: 'NOT_FOUND',
       },
+      level: 'warn',
       status: 404,
     })
     expect(serialized).not.toContain(root)
     expect(serialized).not.toContain(path.join(root, 'missing.txt'))
+  })
+
+  it('keeps successful requests at info when a nested operation fails', async () => {
+    const root = await fixtureRoot()
+    const logDir = await fixtureRoot()
+    const stalePath = path.join(root, 'stale')
+    await mkdir(stalePath)
+    initializeObservability(testObservabilityEnv(logDir))
+    const app = testApp(root)
+
+    const record = await app.handle(
+      new Request('http://local/fs/recents', {
+        body: JSON.stringify({ path: 'stale' }),
+        headers: trustedOriginHeaders({ 'content-type': 'application/json' }),
+        method: 'POST',
+      }),
+    )
+    expect(record.status).toBe(200)
+    await record.text()
+    await rm(stalePath, { recursive: true })
+
+    const response = await app.handle(
+      new Request('http://local/fs/recents?limit=40', {
+        headers: trustedOriginHeaders(),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    await response.text()
+    const event = eventForRequest(await flushedEvents(logDir), 'GET', '/fs/recents')
+
+    expect(event).toMatchObject({
+      fs: {
+        operations: expect.arrayContaining([
+          expect.objectContaining({ operation: 'stat', status: 'error' }),
+          expect.objectContaining({ operation: 'recents', status: 'ok' }),
+        ]),
+      },
+      level: 'info',
+      status: 200,
+    })
   })
 
   it('does not persist authorization headers', async () => {
@@ -317,6 +359,7 @@ describe('observability runtime', () => {
         exitCode: expect.any(Number),
       }),
     })
+    expect(gitEvent).toMatchObject({ level: 'error', status: 500 })
     expect(serialized).not.toContain('TOP_SECRET_CONTENT')
     expect(serialized).not.toContain('stdout')
   })
@@ -376,6 +419,13 @@ async function readEvents(logDir: string) {
 function eventForPath(events: readonly WideEvent[], path: string) {
   const event = events.find((candidate) => candidate.path === path)
   if (!event) throw new Error(`missing observability event for ${path}`)
+
+  return event as WideEvent & Record<string, unknown>
+}
+
+function eventForRequest(events: readonly WideEvent[], method: string, path: string) {
+  const event = events.find((candidate) => candidate.method === method && candidate.path === path)
+  if (!event) throw new Error(`missing observability event for ${method} ${path}`)
 
   return event as WideEvent & Record<string, unknown>
 }
