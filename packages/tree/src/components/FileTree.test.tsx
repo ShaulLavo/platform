@@ -247,6 +247,73 @@ describe('FileTree React integration', () => {
     treeModel.cleanUp()
   })
 
+  it('resets view hook state when the public wrapper replaces its model', async () => {
+    const container = document.createElement('main')
+    document.body.append(container)
+    root = createRoot(container)
+    const firstModel = new FileTreeModel({
+      initialSearchQuery: 'first',
+      paths: ['first.ts'],
+      search: true,
+      searchBlurBehavior: 'retain',
+    })
+    const nextModel = new FileTreeModel({
+      initialSearchQuery: 'second',
+      paths: ['second.ts'],
+      search: true,
+      searchBlurBehavior: 'retain',
+    })
+
+    flushSync(() =>
+      root?.render(
+        <>
+          <button data-testid='outside' type='button'>
+            Outside
+          </button>
+          <FileTree aria-label='Files' model={firstModel} />
+        </>,
+      ),
+    )
+    const firstHost = document.querySelector('file-tree-container')
+    const shadowRoot = await waitForShadowRoot()
+    await vi.waitFor(() => {
+      expect(
+        shadowRoot.querySelector<HTMLInputElement>('[data-file-tree-search-input]')?.value,
+      ).toBe('first')
+    })
+
+    const outsideButton = document.querySelector<HTMLButtonElement>('[data-testid="outside"]')
+    expect(outsideButton).not.toBeNull()
+    outsideButton?.focus()
+    firstModel.closeSearch()
+    await vi.waitFor(() => {
+      expect(
+        shadowRoot.querySelector('[data-file-tree-search-container]')?.getAttribute('data-open'),
+      ).toBe('false')
+    })
+
+    flushSync(() =>
+      root?.render(
+        <>
+          <button data-testid='outside' type='button'>
+            Outside
+          </button>
+          <FileTree aria-label='Files' model={nextModel} />
+        </>,
+      ),
+    )
+    await vi.waitFor(() => {
+      expect(document.querySelector('file-tree-container')).toBe(firstHost)
+      expect(
+        shadowRoot.querySelector<HTMLInputElement>('[data-file-tree-search-input]')?.value,
+      ).toBe('second')
+    })
+    expect(document.activeElement).toBe(outsideButton)
+
+    firstModel.cleanUp()
+    nextModel.cleanUp()
+  })
+
   it('keeps a right-click context menu mounted across incidental controller renders', async () => {
     const container = document.createElement('main')
     document.body.append(container)

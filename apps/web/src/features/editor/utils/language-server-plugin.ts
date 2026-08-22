@@ -29,6 +29,14 @@ type MatchedLanguageServerPluginOptions = {
   onOpenReferences?: (result: LanguageServerReferencesResult) => void | boolean
 }
 
+type LanguageServerPluginOptionsWithDocumentSync = Parameters<
+  typeof createLanguageServerPlugin
+>[0] & {
+  readonly documentSync: {
+    readonly languageIdForDocument: (languageId: string, uri: string) => string | undefined
+  }
+}
+
 export type LanguageServerMatch = {
   readonly root: string
   readonly serverId: string
@@ -48,7 +56,9 @@ export function createMatchedLanguageServerPlugin({
   const readiness = createLanguageServerReadiness(statusSource)
   const semanticTokens = new SemanticTokenController({ serverId: match.serverId })
 
-  return createLanguageServerPlugin({
+  // Platform and Editor land independently. Keep the pending Editor option typed while CI still
+  // resolves the published factory signature from Editor main.
+  const pluginOptions: LanguageServerPluginOptionsWithDocumentSync = {
     // A pure function of the server id, and nothing else — see the builder for
     // why the pooled backend makes that a requirement rather than a preference.
     capabilities: semanticTokensCapabilityForServer(match.serverId),
@@ -108,7 +118,9 @@ export function createMatchedLanguageServerPlugin({
     onOpenDefinition,
     onOpenReferences,
     onError: () => statusSource.setStatus('error'),
-  })
+  }
+
+  return createLanguageServerPlugin(pluginOptions)
 }
 
 function createIdleLanguageServerPlugin(
