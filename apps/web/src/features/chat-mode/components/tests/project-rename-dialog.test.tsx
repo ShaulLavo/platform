@@ -43,7 +43,6 @@ function renderDialog(dispatchCommand: ChatEnvironment['dispatchCommand']) {
     rootPath: '/repo/platform',
     selectSession: () => {},
     startDraft: () => {},
-    threads: [],
   }
 
   renderWithProviders(

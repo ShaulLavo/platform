@@ -16,9 +16,7 @@ export function useSessionMenu(session: SessionRailItem, surface: SessionRenameS
   const setScope = useSessionRailStore((state) => state.setScope)
   // The rail item is a view model and carries no provider session; that comes from
   // the summary the projection already holds.
-  const agentSession = useChatProjectionStore(
-    (state) => state.sidebarThreadSummaryById[session.id]?.session,
-  )
+  const agentSession = useChatProjectionStore((state) => state.threadById[session.id]?.session)
 
   return sessionMenu({
     archive: () => actions.archive(session.id),

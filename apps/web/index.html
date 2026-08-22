@@ -41,17 +41,14 @@
         let theme = 'system'
         try {
           const raw = localStorage.getItem('platform.settings-boot-mirror.v1')
-          const stored = raw
-            ? JSON.parse(raw)['workbench.colorTheme']
-            : undefined
+          const stored = raw ? JSON.parse(raw)['workbench.colorTheme'] : undefined
           if (stored === 'dark' || stored === 'light') theme = stored
         } catch {
           // An unreadable mirror costs a system-theme boot floor, nothing more.
         }
         const dark =
           theme === 'dark' ||
-          (theme === 'system' &&
-            matchMedia('(prefers-color-scheme: dark)').matches)
+          (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
         document.documentElement.classList.add(dark ? 'dark' : 'light')
       })()
     </script>

@@ -1,9 +1,9 @@
 import { threadIdSchema, turnIdSchema, type OrchestrationSessionStatus } from '@workspace/contracts'
 import * as v from 'valibot'
 
-import type { ChatSidebarThreadSummary } from '@/features/chat/state/chat-projection-store'
+import type { ProjectionThread } from '@/features/chat/state/chat-projection-store'
 import { hasRunningTurn } from '@/features/chat-mode/utils/running-turn'
-import { sidebarThreadSummary } from '../../../../../test/factories/chat'
+import { projectionThread } from '../../../../../test/factories/chat'
 import { expect, test } from '../../../../../test/fixtures'
 
 const threadId = v.parse(threadIdSchema, 'thread-1')
@@ -24,8 +24,8 @@ test('a settled session does not become running because the predicate loosened',
   expect(hasRunningTurn(thread('ready'))).toBe(false)
 })
 
-function thread(status: OrchestrationSessionStatus): ChatSidebarThreadSummary {
-  return sidebarThreadSummary({
+function thread(status: OrchestrationSessionStatus): ProjectionThread {
+  return projectionThread({
     // Null, so the assertion rests on the session status rather than on a turn
     // that already reports itself as running.
     latestTurn: null,

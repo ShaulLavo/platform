@@ -156,7 +156,7 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
   function handleProjectionChange(state: ChatProjectionStore) {
     // Copied: disposing a deleted thread mutates `entries` mid-iteration.
     for (const entry of Array.from(entries.values())) {
-      if (state.threadShellById[entry.threadId] !== undefined) {
+      if (state.threadById[entry.threadId]?.metaSource === 'shell') {
         entry.observedInProjection = true
         continue
       }
@@ -178,7 +178,7 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
       evictionTimeoutId: null,
       failureCount: 0,
       lastAccessedAt: now(),
-      observedInProjection: store.getState().threadShellById[threadId] !== undefined,
+      observedInProjection: store.getState().threadById[threadId]?.metaSource === 'shell',
       refCount: 0,
       scope: createChatPipelineScope('chat.thread_detail_subscription.summary', { threadId }),
       sync: IDLE_SYNC,
@@ -390,20 +390,16 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
   }
 
   function isProtectedThread(threadId: ThreadId) {
-    const state = store.getState()
-    const summary = state.sidebarThreadSummaryById[threadId]
+    const thread = store.getState().threadById[threadId]
+    if (!thread) return false
+    if (thread.hasActionableProposedPlan) return true
+    if (thread.pendingApprovalCount > 0) return true
+    if (thread.pendingUserInputCount > 0) return true
+    if (thread.latestTurn?.state === 'running') return true
+    if (thread.liveTurn?.state === 'running') return true
+    if (thread.pendingSourceProposedPlan !== undefined) return true
 
-    if (summary?.hasActionableProposedPlan) return true
-    if ((summary?.pendingApprovalCount ?? 0) > 0) return true
-    if ((summary?.pendingUserInputCount ?? 0) > 0) return true
-    if (summary?.latestTurn?.state === 'running') return true
-    if (isBusySession(summary?.session ?? null)) return true
-
-    const turnState = state.threadTurnStateById[threadId]
-    if (turnState?.latestTurn?.state === 'running') return true
-    if (turnState?.pendingSourceProposedPlan !== undefined) return true
-
-    return isBusySession(state.threadSessionById[threadId] ?? null)
+    return isBusySession(thread.session)
   }
 
   function disposeEntry(threadId: ThreadId, reason: DisposeReason) {

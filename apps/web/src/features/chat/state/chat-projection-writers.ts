@@ -31,11 +31,8 @@ import {
 } from './chat-cache-constants'
 import type {
   ChatProjectionState,
-  ChatProjectionThreadDetailMeta,
-  ChatProjectionThreadShell,
-  ChatProjectionThreadTurnState,
-  ChatSidebarThreadSummary,
   ChatTurnDiffSummary,
+  ProjectionThread,
 } from './chat-projection-store'
 
 const EMPTY_THREAD_IDS: ThreadId[] = []
@@ -52,25 +49,16 @@ export function syncChatProjectionShellSnapshot(
   let nextState: ChatProjectionState = {
     ...state,
     ...projectStateFromShell(snapshot.projects),
-    ...retainDetailSlices(state, nextThreadIds),
+    ...retainSurvivingThreadSlices(state, nextThreadIds),
     bootstrapComplete: true,
     lastAppliedShellSequence: snapshot.snapshotSequence,
     lastAppliedShellUpdatedAt: snapshot.updatedAt,
-    // Every surviving summary is rewritten by the loop below; the retained
-    // record exists only to carry `pinOrderKey`, which the shell does not send
-    // and a resnapshot would otherwise wipe out from under the arranged order.
-    sidebarThreadSummaryById: retainThreadScopedRecord(
-      state.sidebarThreadSummaryById,
-      nextThreadIds,
-    ),
     threadIds: [],
     threadIdsByProjectId: {},
-    threadSessionById: {},
-    threadShellById: {},
   }
 
   for (const thread of snapshot.threads) {
-    nextState = writeThreadShellState(nextState, thread)
+    nextState = writeThreadFromShell(nextState, thread)
   }
 
   return nextState
@@ -182,12 +170,13 @@ function writeThreadHasEarlier(
 }
 
 /**
- * Everything the detail subscription owns survives a shell resnapshot for threads that
- * still exist. `threadTurnStateById` is in here because it is event-derived: the
- * retained `afterSequence` cursor means a wiped `pendingSourceProposedPlan` would never
- * be replayed, so the plan-implementation banner would vanish until the next turn.
+ * Everything a surviving thread owns crosses a shell resnapshot; everything a thread
+ * the snapshot no longer lists owns is dropped. `threadById` is in here because the
+ * record carries facts no shell write can refresh — the arranged pin slot, and the
+ * `pendingSourceProposedPlan` whose event the retained detail cursor guarantees is
+ * never replayed, so wiping it would lose the plan banner until the next turn.
  */
-function retainDetailSlices(state: ChatProjectionState, threadIds: ReadonlySet<ThreadId>) {
+function retainSurvivingThreadSlices(state: ChatProjectionState, threadIds: ReadonlySet<ThreadId>) {
   return {
     activityByThreadId: retainThreadScopedRecord(state.activityByThreadId, threadIds),
     activityIdsByThreadId: retainThreadScopedRecord(state.activityIdsByThreadId, threadIds),
@@ -195,10 +184,9 @@ function retainDetailSlices(state: ChatProjectionState, threadIds: ReadonlySet<T
     messageIdsByThreadId: retainThreadScopedRecord(state.messageIdsByThreadId, threadIds),
     proposedPlanByThreadId: retainThreadScopedRecord(state.proposedPlanByThreadId, threadIds),
     proposedPlanIdsByThreadId: retainThreadScopedRecord(state.proposedPlanIdsByThreadId, threadIds),
-    threadDetailMetaById: retainThreadScopedRecord(state.threadDetailMetaById, threadIds),
+    threadById: retainThreadScopedRecord(state.threadById, threadIds),
     threadDetailSequenceById: retainThreadScopedRecord(state.threadDetailSequenceById, threadIds),
     threadHasEarlierById: retainThreadScopedRecord(state.threadHasEarlierById, threadIds),
-    threadTurnStateById: retainThreadScopedRecord(state.threadTurnStateById, threadIds),
     turnDiffIdsByThreadId: retainThreadScopedRecord(state.turnDiffIdsByThreadId, threadIds),
     turnDiffSummaryByThreadId: retainThreadScopedRecord(state.turnDiffSummaryByThreadId, threadIds),
   }
@@ -323,7 +311,7 @@ function applyFreshShellStreamItem(
     case 'project-removed':
       return removeProject(state, item.projectId)
     case 'thread-upserted':
-      return writeThreadShellState(state, item.thread)
+      return writeThreadFromShell(state, item.thread)
     case 'thread-removed':
       return removeThreadState(state, item.threadId)
   }
@@ -386,24 +374,24 @@ function applyFreshThreadEvent(
     case 'thread.deleted':
       return removeThreadState(state, event.payload.threadId)
     case 'thread.archived':
-      return patchThreadShellAndSummary(state, event.payload.threadId, {
+      return patchThread(state, event.payload.threadId, {
         archivedAt: event.payload.archivedAt,
         updatedAt: event.payload.updatedAt,
       })
     case 'thread.unarchived':
-      return patchThreadShellAndSummary(state, event.payload.threadId, {
+      return patchThread(state, event.payload.threadId, {
         archivedAt: null,
         updatedAt: event.payload.updatedAt,
       })
     case 'thread.meta-updated':
       return applyThreadMetaUpdatedEvent(state, event)
     case 'thread.runtime-mode-set':
-      return patchThreadShellAndSummary(state, event.payload.threadId, {
+      return patchThread(state, event.payload.threadId, {
         runtimeMode: event.payload.runtimeMode,
         updatedAt: event.payload.updatedAt,
       })
     case 'thread.interaction-mode-set':
-      return patchThreadShellAndSummary(state, event.payload.threadId, {
+      return patchThread(state, event.payload.threadId, {
         interactionMode: event.payload.interactionMode,
         updatedAt: event.payload.updatedAt,
       })
@@ -456,24 +444,23 @@ function applyFreshThreadEvent(
 }
 
 /**
- * Slice-scoped to the sidebar summary: the arranged slot never reaches the
- * thread shell, so writing it through `patchThreadShellAndSummary` would put a
- * field on the shell record that no shell write can ever refresh.
+ * The arranged slot has no shell producer, so it is written here and carried across
+ * resnapshots by `threadFromShell`.
  */
 function writeThreadPinOrderKey(
   state: ChatProjectionState,
   threadId: ThreadId,
   pinOrderKey: string | null,
 ): ChatProjectionState {
-  const summary = state.sidebarThreadSummaryById[threadId]
-  if (!summary) return state
-  if ((summary.pinOrderKey ?? null) === pinOrderKey) return state
+  const thread = state.threadById[threadId]
+  if (!thread) return state
+  if (thread.pinOrderKey === pinOrderKey) return state
 
   return {
     ...state,
-    sidebarThreadSummaryById: {
-      ...state.sidebarThreadSummaryById,
-      [threadId]: { ...summary, pinOrderKey },
+    threadById: {
+      ...state.threadById,
+      [threadId]: { ...thread, pinOrderKey },
     },
   }
 }
@@ -519,40 +506,57 @@ function removeProject(state: ChatProjectionState, projectId: ProjectId): ChatPr
   }
 }
 
-function writeThreadShellState(
+function writeThreadFromShell(
   state: ChatProjectionState,
   thread: OrchestrationThreadShell,
 ): ChatProjectionState {
-  const previousShell = state.threadShellById[thread.id]
-  const nextState = ensureThreadRegistered(
-    state,
-    thread.id,
-    thread.projectId,
-    previousShell?.projectId,
-  )
+  const previous = state.threadById[thread.id]
+  const nextState = ensureThreadRegistered(state, thread.id, thread.projectId, previous?.projectId)
 
-  return writeThreadLatestTurn(
-    {
-      ...nextState,
-      sidebarThreadSummaryById: {
-        ...nextState.sidebarThreadSummaryById,
-        [thread.id]: sidebarSummaryFromThreadShell(
-          thread,
-          nextState.sidebarThreadSummaryById[thread.id]?.pinOrderKey ?? null,
-        ),
-      },
-      threadSessionById: {
-        ...nextState.threadSessionById,
-        [thread.id]: thread.session,
-      },
-      threadShellById: {
-        ...nextState.threadShellById,
-        [thread.id]: shellFromThreadShell(thread),
-      },
+  return {
+    ...nextState,
+    threadById: {
+      ...nextState.threadById,
+      [thread.id]: threadFromShell(thread, previous),
     },
-    thread.id,
-    thread.latestTurn,
-  )
+  }
+}
+
+/**
+ * The shell is the whole truth for everything it publishes. The three client-only
+ * facts have no shell producer, so they are carried across explicitly — a resnapshot
+ * that dropped them would lose the arranged pin slot and the plan banner.
+ */
+function threadFromShell(
+  thread: OrchestrationThreadShell,
+  previous: ProjectionThread | undefined,
+): ProjectionThread {
+  return {
+    archivedAt: thread.archivedAt,
+    branch: thread.branch,
+    createdAt: thread.createdAt,
+    detailSynced: previous?.detailSynced ?? false,
+    hasActionableProposedPlan: thread.hasActionableProposedPlan,
+    id: thread.id,
+    interactionMode: thread.interactionMode,
+    latestTurn: thread.latestTurn,
+    latestUserMessageAt: thread.latestUserMessageAt,
+    liveTurn: thread.latestTurn,
+    metaSource: 'shell',
+    modelSelection: thread.modelSelection,
+    pendingApprovalCount: thread.pendingApprovalCount,
+    pendingSourceProposedPlan: carriedPendingSourcePlan(previous, thread.latestTurn),
+    pendingUserInputCount: thread.pendingUserInputCount,
+    pinOrderKey: previous?.pinOrderKey ?? null,
+    planProgress: thread.planProgress,
+    projectId: thread.projectId,
+    runtimeMode: thread.runtimeMode,
+    session: thread.session,
+    sessionKnown: true,
+    title: thread.title,
+    updatedAt: thread.updatedAt,
+    worktreePath: thread.worktreePath,
+  }
 }
 
 /**
@@ -599,9 +603,9 @@ function writeThreadDetailState(
         ...state.proposedPlanIdsByThreadId,
         [thread.id]: planSlice.ids,
       },
-      threadDetailMetaById: {
-        ...state.threadDetailMetaById,
-        [thread.id]: detailMetaFromThread(thread),
+      threadById: {
+        ...state.threadById,
+        [thread.id]: threadFromDetail(thread, state.threadById[thread.id]),
       },
       turnDiffIdsByThreadId: {
         ...state.turnDiffIdsByThreadId,
@@ -639,7 +643,7 @@ function writeCreatedThread(
   state: ChatProjectionState,
   event: Extract<OrchestrationEvent, { type: 'thread.created' }>,
 ): ChatProjectionState {
-  return writeThreadShellState(state, {
+  return writeThreadFromShell(state, {
     archivedAt: null,
     branch: event.payload.branch,
     createdAt: event.payload.createdAt,
@@ -664,7 +668,7 @@ function applyThreadMetaUpdatedEvent(
   state: ChatProjectionState,
   event: Extract<OrchestrationEvent, { type: 'thread.meta-updated' }>,
 ): ChatProjectionState {
-  return patchThreadShellAndSummary(state, event.payload.threadId, {
+  return patchThread(state, event.payload.threadId, {
     branch: event.payload.branch,
     modelSelection: event.payload.modelSelection,
     title: event.payload.title,
@@ -687,15 +691,15 @@ function applyThreadTurnStartRequestedEvent(
     turnId: event.payload.turnId,
   }
 
-  const nextState = patchThreadShellAndSummary(state, event.payload.threadId, {
+  const nextState = patchThread(state, event.payload.threadId, {
     interactionMode: event.payload.interactionMode,
     modelSelection: event.payload.modelSelection,
     runtimeMode: event.payload.runtimeMode,
     updatedAt: event.payload.createdAt,
   })
 
-  return writeThreadTurnState(nextState, event.payload.threadId, {
-    latestTurn,
+  return writeThreadTurn(nextState, event.payload.threadId, {
+    liveTurn: latestTurn,
     pendingSourceProposedPlan: event.payload.sourceProposedPlan,
   })
 }
@@ -704,18 +708,18 @@ function applyThreadTurnInterruptRequestedEvent(
   state: ChatProjectionState,
   event: Extract<OrchestrationEvent, { type: 'thread.turn-interrupt-requested' }>,
 ): ChatProjectionState {
-  const turnState = state.threadTurnStateById[event.payload.threadId]
-  if (!event.payload.turnId || !turnState?.latestTurn) return state
-  if (turnState.latestTurn.turnId !== event.payload.turnId) return state
+  const thread = state.threadById[event.payload.threadId]
+  if (!event.payload.turnId || !thread?.liveTurn) return state
+  if (thread.liveTurn.turnId !== event.payload.turnId) return state
 
-  return writeThreadTurnState(state, event.payload.threadId, {
-    ...turnState,
-    latestTurn: {
-      ...turnState.latestTurn,
-      completedAt: turnState.latestTurn.completedAt ?? event.payload.createdAt,
-      startedAt: turnState.latestTurn.startedAt ?? event.payload.createdAt,
+  return writeThreadTurn(state, event.payload.threadId, {
+    liveTurn: {
+      ...thread.liveTurn,
+      completedAt: thread.liveTurn.completedAt ?? event.payload.createdAt,
+      startedAt: thread.liveTurn.startedAt ?? event.payload.createdAt,
       state: 'interrupted',
     },
+    pendingSourceProposedPlan: thread.pendingSourceProposedPlan,
   })
 }
 
@@ -736,11 +740,11 @@ function applyThreadSessionSetEvent(
   if (status !== 'running' && status !== 'waiting') return nextState
   if (event.payload.session.activeTurnId === null) return nextState
 
-  const currentTurn = nextState.threadTurnStateById[event.payload.threadId]?.latestTurn
+  const currentTurn = nextState.threadById[event.payload.threadId]?.liveTurn
   const activeTurnId = event.payload.session.activeTurnId
 
-  return writeThreadTurnState(nextState, event.payload.threadId, {
-    latestTurn: {
+  return writeThreadTurn(nextState, event.payload.threadId, {
+    liveTurn: {
       assistantMessageId:
         currentTurn?.turnId === activeTurnId ? currentTurn.assistantMessageId : null,
       completedAt: null,
@@ -757,6 +761,7 @@ function applyThreadSessionSetEvent(
       state: 'running',
       turnId: activeTurnId,
     },
+    pendingSourceProposedPlan: undefined,
   })
 }
 
@@ -787,7 +792,7 @@ function applyThreadMessageSentEvent(
       ? grownById
       : retainRecordKeys(grownById, new Set(nextIds))
 
-  const nextState = patchThreadShell(
+  const nextState = patchThread(
     markTrimmedFront(
       {
         ...state,
@@ -804,12 +809,21 @@ function applyThreadMessageSentEvent(
       appendedIds.length - nextIds.length,
     ),
     threadId,
-    {
-      updatedAt: event.payload.updatedAt,
-    },
+    messageThreadPatch(event),
   )
 
   return writeAssistantMessageTurnState(nextState, event)
+}
+
+function messageThreadPatch(
+  event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
+): Partial<ProjectionThread> {
+  if (event.payload.role !== 'user') return { updatedAt: event.payload.updatedAt }
+
+  return {
+    latestUserMessageAt: event.payload.createdAt,
+    updatedAt: event.payload.updatedAt,
+  }
 }
 
 function applyThreadActivityAppendedEvent(
@@ -833,7 +847,7 @@ function applyThreadActivityAppendedEvent(
   return writeTurnFailureState(
     markTrimmedFront(
       {
-        ...patchThreadShell(state, threadId, { updatedAt: activity.createdAt }),
+        ...patchThread(state, threadId, { updatedAt: activity.createdAt }),
         activityByThreadId: {
           ...state.activityByThreadId,
           [threadId]: nextById,
@@ -900,7 +914,7 @@ function applyThreadProposedPlanUpsertedEvent(
     .slice(-CHAT_PROPOSED_PLAN_CACHE_LIMIT)
 
   return {
-    ...patchThreadShell(state, threadId, {
+    ...patchThread(state, threadId, {
       updatedAt: event.payload.proposedPlan.updatedAt,
     }),
     proposedPlanByThreadId: {
@@ -937,7 +951,7 @@ function applyThreadTurnDiffCompletedEvent(
     .toSorted((left, right) => left.checkpointTurnCount - right.checkpointTurnCount)
     .slice(-CHAT_CHECKPOINT_CACHE_LIMIT)
   const nextState = {
-    ...patchThreadShell(state, threadId, { updatedAt: event.payload.completedAt }),
+    ...patchThread(state, threadId, { updatedAt: event.payload.completedAt }),
     turnDiffIdsByThreadId: {
       ...state.turnDiffIdsByThreadId,
       [threadId]: summaries.map((entry) => entry.turnId),
@@ -948,17 +962,16 @@ function applyThreadTurnDiffCompletedEvent(
     },
   }
 
-  return writeThreadTurnState(nextState, threadId, {
-    latestTurn: {
+  return writeThreadTurn(nextState, threadId, {
+    liveTurn: {
       assistantMessageId: event.payload.assistantMessageId,
       completedAt: event.payload.completedAt,
-      requestedAt:
-        state.threadTurnStateById[threadId]?.latestTurn?.requestedAt ?? event.payload.completedAt,
-      startedAt:
-        state.threadTurnStateById[threadId]?.latestTurn?.startedAt ?? event.payload.completedAt,
+      requestedAt: state.threadById[threadId]?.liveTurn?.requestedAt ?? event.payload.completedAt,
+      startedAt: state.threadById[threadId]?.liveTurn?.startedAt ?? event.payload.completedAt,
       state: checkpointStatusToLatestTurnState(event.payload.status),
       turnId: event.payload.turnId,
     },
+    pendingSourceProposedPlan: undefined,
   })
 }
 
@@ -982,47 +995,48 @@ function applyThreadRevertedEvent(
   )
   const latestSummary = summaries.at(-1)
 
-  return {
-    ...patchThreadShell(state, threadId, { updatedAt: event.payload.revertedAt }),
-    activityByThreadId: {
-      ...state.activityByThreadId,
-      [threadId]: recordById(activities, (entry) => entry.id),
-    },
-    activityIdsByThreadId: {
-      ...state.activityIdsByThreadId,
-      [threadId]: activities.map((activity) => activity.id),
-    },
-    messageByThreadId: {
-      ...state.messageByThreadId,
-      [threadId]: recordById(messages, (entry) => entry.id),
-    },
-    messageIdsByThreadId: {
-      ...state.messageIdsByThreadId,
-      [threadId]: messages.map((message) => message.id),
-    },
-    proposedPlanByThreadId: {
-      ...state.proposedPlanByThreadId,
-      [threadId]: recordById(plans, (entry) => entry.id),
-    },
-    proposedPlanIdsByThreadId: {
-      ...state.proposedPlanIdsByThreadId,
-      [threadId]: plans.map((plan) => plan.id),
-    },
-    turnDiffIdsByThreadId: {
-      ...state.turnDiffIdsByThreadId,
-      [threadId]: summaries.map((summary) => summary.turnId),
-    },
-    turnDiffSummaryByThreadId: {
-      ...state.turnDiffSummaryByThreadId,
-      [threadId]: recordById(summaries, (summary) => summary.turnId),
-    },
-    threadTurnStateById: {
-      ...state.threadTurnStateById,
-      [threadId]: {
-        latestTurn: latestSummary ? latestTurnFromSummary(latestSummary) : null,
+  return writeThreadTurn(
+    {
+      ...patchThread(state, threadId, { updatedAt: event.payload.revertedAt }),
+      activityByThreadId: {
+        ...state.activityByThreadId,
+        [threadId]: recordById(activities, (entry) => entry.id),
+      },
+      activityIdsByThreadId: {
+        ...state.activityIdsByThreadId,
+        [threadId]: activities.map((activity) => activity.id),
+      },
+      messageByThreadId: {
+        ...state.messageByThreadId,
+        [threadId]: recordById(messages, (entry) => entry.id),
+      },
+      messageIdsByThreadId: {
+        ...state.messageIdsByThreadId,
+        [threadId]: messages.map((message) => message.id),
+      },
+      proposedPlanByThreadId: {
+        ...state.proposedPlanByThreadId,
+        [threadId]: recordById(plans, (entry) => entry.id),
+      },
+      proposedPlanIdsByThreadId: {
+        ...state.proposedPlanIdsByThreadId,
+        [threadId]: plans.map((plan) => plan.id),
+      },
+      turnDiffIdsByThreadId: {
+        ...state.turnDiffIdsByThreadId,
+        [threadId]: summaries.map((summary) => summary.turnId),
+      },
+      turnDiffSummaryByThreadId: {
+        ...state.turnDiffSummaryByThreadId,
+        [threadId]: recordById(summaries, (summary) => summary.turnId),
       },
     },
-  }
+    threadId,
+    {
+      liveTurn: latestSummary ? latestTurnFromSummary(latestSummary) : null,
+      pendingSourceProposedPlan: undefined,
+    },
+  )
 }
 
 function latestTurnFromSummary(summary: ChatTurnDiffSummary): OrchestrationLatestTurn {
@@ -1041,57 +1055,58 @@ function writeThreadSession(
   threadId: ThreadId,
   session: OrchestrationSession | null,
 ): ChatProjectionState {
+  const thread = state.threadById[threadId]
+  // A session for a thread the projection has never seen had no reader before either:
+  // `selectChatThreadById` resolves nothing without a thread record. Dropping it keeps
+  // every record complete instead of half-born.
+  if (!thread) return state
+
   return {
     ...state,
-    threadSessionById: {
-      ...state.threadSessionById,
-      [threadId]: session,
+    threadById: {
+      ...state.threadById,
+      [threadId]: { ...thread, session, sessionKnown: true },
     },
   }
 }
 
-/**
- * Slice-scoped: the shell owns `latestTurn`, but `pendingSourceProposedPlan` is only
- * ever stamped by `thread.turn-start-requested`, whose sequence the retained detail
- * cursor guarantees is never replayed — so a shell write carries it forward.
- */
-function writeThreadLatestTurn(
-  state: ChatProjectionState,
-  threadId: ThreadId,
-  latestTurn: OrchestrationLatestTurn | null,
-): ChatProjectionState {
-  return writeThreadTurnState(state, threadId, {
-    latestTurn,
-    pendingSourceProposedPlan: carriedPendingSourcePlan(state, threadId, latestTurn),
-  })
-}
-
 function carriedPendingSourcePlan(
-  state: ChatProjectionState,
-  threadId: ThreadId,
+  previous: ProjectionThread | undefined,
   latestTurn: OrchestrationLatestTurn | null,
 ) {
   if (latestTurn?.sourceProposedPlan) return latestTurn.sourceProposedPlan
-
-  const previous = state.threadTurnStateById[threadId]
   if (!previous?.pendingSourceProposedPlan) return undefined
   // Only the turn the plan was implemented by carries it. A newer turn drops it, or a
   // resolved plan would pin the thread's detail subscription against eviction forever.
-  if (previous.latestTurn?.turnId !== latestTurn?.turnId) return undefined
+  if (previous.liveTurn?.turnId !== latestTurn?.turnId) return undefined
 
   return previous.pendingSourceProposedPlan
 }
 
-function writeThreadTurnState(
+/**
+ * Both fields are required on purpose. The old turn-state record was *replaced*
+ * wholesale by every writer, so omitting `pendingSourceProposedPlan` cleared it and
+ * nothing said so. Spreading onto one record would silently preserve it instead, so
+ * the type forces each caller to state which it means.
+ */
+type ThreadTurnWrite = {
+  liveTurn: OrchestrationLatestTurn | null
+  pendingSourceProposedPlan: OrchestrationLatestTurn['sourceProposedPlan'] | undefined
+}
+
+function writeThreadTurn(
   state: ChatProjectionState,
   threadId: ThreadId,
-  turnState: ChatProjectionThreadTurnState,
+  turn: ThreadTurnWrite,
 ): ChatProjectionState {
+  const thread = state.threadById[threadId]
+  if (!thread) return state
+
   return {
     ...state,
-    threadTurnStateById: {
-      ...state.threadTurnStateById,
-      [threadId]: turnState,
+    threadById: {
+      ...state.threadById,
+      [threadId]: { ...thread, ...turn },
     },
   }
 }
@@ -1103,19 +1118,19 @@ function writeTurnFailureState(
   if (!isProviderTurnFailureActivity(activity.kind)) return state
   if (!activity.turnId) return state
 
-  const turnState = state.threadTurnStateById[activity.threadId]
-  const latestTurn = turnState?.latestTurn
+  const thread = state.threadById[activity.threadId]
+  const latestTurn = thread?.liveTurn
   if (!latestTurn) return state
   if (latestTurn.turnId !== activity.turnId) return state
 
-  return writeThreadTurnState(state, activity.threadId, {
-    ...turnState,
-    latestTurn: {
+  return writeThreadTurn(state, activity.threadId, {
+    liveTurn: {
       ...latestTurn,
       completedAt: latestTurn.completedAt ?? activity.createdAt,
       startedAt: latestTurn.startedAt ?? activity.createdAt,
       state: 'error',
     },
+    pendingSourceProposedPlan: thread.pendingSourceProposedPlan,
   })
 }
 
@@ -1131,12 +1146,12 @@ function writeAssistantMessageTurnState(
   if (!event.payload.turnId) return state
 
   const threadId = event.payload.threadId
-  const current = state.threadTurnStateById[threadId]
-  const latestTurn = current?.latestTurn
+  const current = state.threadById[threadId]
+  const latestTurn = current?.liveTurn
   if (latestTurn?.turnId && latestTurn.turnId !== event.payload.turnId) return state
 
-  return writeThreadTurnState(state, threadId, {
-    latestTurn: {
+  return writeThreadTurn(state, threadId, {
+    liveTurn: {
       assistantMessageId: event.payload.messageId,
       completedAt: event.payload.streaming
         ? (latestTurn?.completedAt ?? null)
@@ -1151,46 +1166,23 @@ function writeAssistantMessageTurnState(
   })
 }
 
-function patchThreadShellAndSummary(
+function patchThread(
   state: ChatProjectionState,
   threadId: ThreadId,
-  patch: Partial<ChatProjectionThreadShell>,
+  patch: Partial<ProjectionThread>,
 ): ChatProjectionState {
-  const nextState = patchThreadShell(state, threadId, patch)
-  const summary = state.sidebarThreadSummaryById[threadId]
-  const nextSummaryById = summary
-    ? {
-        ...state.sidebarThreadSummaryById,
-        [threadId]: compactUpdate(summary, pickSummaryPatch(patch)),
-      }
-    : state.sidebarThreadSummaryById
+  const thread = state.threadById[threadId]
+  if (!thread) return state
 
-  if (nextSummaryById === state.sidebarThreadSummaryById) return nextState
-
-  return {
-    ...nextState,
-    sidebarThreadSummaryById: nextSummaryById,
-  }
-}
-
-function patchThreadShell(
-  state: ChatProjectionState,
-  threadId: ThreadId,
-  patch: Partial<ChatProjectionThreadShell>,
-): ChatProjectionState {
-  const shell = state.threadShellById[threadId]
-  const nextShellById = shell
-    ? {
-        ...state.threadShellById,
-        [threadId]: compactUpdate(shell, patch),
-      }
-    : state.threadShellById
-
-  if (nextShellById === state.threadShellById) return state
+  const nextThread = compactUpdate(thread, patch)
+  if (nextThread === thread) return state
 
   return {
     ...state,
-    threadShellById: nextShellById,
+    threadById: {
+      ...state.threadById,
+      [threadId]: nextThread,
+    },
   }
 }
 
@@ -1259,15 +1251,11 @@ function removeThreadState(state: ChatProjectionState, threadId: ThreadId): Chat
     messageIdsByThreadId: removeRecordKey(state.messageIdsByThreadId, threadId),
     proposedPlanByThreadId: removeRecordKey(state.proposedPlanByThreadId, threadId),
     proposedPlanIdsByThreadId: removeRecordKey(state.proposedPlanIdsByThreadId, threadId),
-    sidebarThreadSummaryById: removeRecordKey(state.sidebarThreadSummaryById, threadId),
-    threadDetailMetaById: removeRecordKey(state.threadDetailMetaById, threadId),
+    threadById: removeRecordKey(state.threadById, threadId),
     threadDetailSequenceById: removeRecordKey(state.threadDetailSequenceById, threadId),
     threadHasEarlierById: removeRecordKey(state.threadHasEarlierById, threadId),
     threadIds: removeId(state.threadIds, threadId),
     threadIdsByProjectId: removeThreadFromAllProjectIndexes(state.threadIdsByProjectId, threadId),
-    threadSessionById: removeRecordKey(state.threadSessionById, threadId),
-    threadShellById: removeRecordKey(state.threadShellById, threadId),
-    threadTurnStateById: removeRecordKey(state.threadTurnStateById, threadId),
     turnDiffIdsByThreadId: removeRecordKey(state.turnDiffIdsByThreadId, threadId),
     turnDiffSummaryByThreadId: removeRecordKey(state.turnDiffSummaryByThreadId, threadId),
   }
@@ -1280,59 +1268,56 @@ function projectStateFromShell(projects: ReadonlyArray<OrchestrationProjectShell
   }
 }
 
-function shellFromThreadShell(thread: OrchestrationThreadShell): ChatProjectionThreadShell {
-  return {
-    archivedAt: thread.archivedAt,
-    branch: thread.branch,
-    createdAt: thread.createdAt,
-    id: thread.id,
-    interactionMode: thread.interactionMode,
-    modelSelection: thread.modelSelection,
-    projectId: thread.projectId,
-    runtimeMode: thread.runtimeMode,
-    title: thread.title,
-    updatedAt: thread.updatedAt,
-    worktreePath: thread.worktreePath,
+/**
+ * The detail subscription is the weaker producer. Both subscriptions run
+ * independently, so a detail snapshot cached before a reconnect can land after a
+ * newer shell one — it therefore fills in only what nothing authoritative has
+ * published yet. `metaSource` decides the meta group all-or-nothing (never per
+ * field: the shell publishes them as one row and mixing halves of two rows is how
+ * a stale branch ends up next to a fresh worktree), and `sessionKnown` decides the
+ * session by presence, because `null` is a real session value.
+ *
+ * The thread is deliberately *not* registered in `threadIds` here: a thread the
+ * shell has not delivered is resolvable by id but is not a rail row.
+ */
+function threadFromDetail(
+  thread: OrchestrationThread,
+  previous: ProjectionThread | undefined,
+): ProjectionThread {
+  if (previous?.metaSource === 'shell') {
+    return {
+      ...previous,
+      detailSynced: true,
+      liveTurn: thread.latestTurn,
+      pendingSourceProposedPlan: carriedPendingSourcePlan(previous, thread.latestTurn),
+    }
   }
-}
 
-function detailMetaFromThread(thread: OrchestrationThread): ChatProjectionThreadDetailMeta {
   return {
     archivedAt: thread.archivedAt,
     branch: thread.branch,
     createdAt: thread.createdAt,
+    detailSynced: true,
+    // Shell-only counters: nothing authoritative has published this thread, so they
+    // stand at their zero values and `selectChatThreadById` derives the plan flag
+    // from the plans it holds instead.
+    hasActionableProposedPlan: false,
     id: thread.id,
     interactionMode: thread.interactionMode ?? DEFAULT_INTERACTION_MODE,
     latestTurn: thread.latestTurn,
+    latestUserMessageAt: null,
+    liveTurn: thread.latestTurn,
+    metaSource: 'detail',
     modelSelection: thread.modelSelection,
+    pendingApprovalCount: 0,
+    pendingSourceProposedPlan: carriedPendingSourcePlan(previous, thread.latestTurn),
+    pendingUserInputCount: 0,
+    pinOrderKey: previous?.pinOrderKey ?? null,
+    planProgress: null,
     projectId: thread.projectId,
     runtimeMode: thread.runtimeMode ?? DEFAULT_RUNTIME_MODE,
-    session: thread.session,
-    title: thread.title,
-    updatedAt: thread.updatedAt,
-    worktreePath: thread.worktreePath,
-  }
-}
-
-function sidebarSummaryFromThreadShell(
-  thread: OrchestrationThreadShell,
-  pinOrderKey: string | null,
-): ChatSidebarThreadSummary {
-  return {
-    archivedAt: thread.archivedAt,
-    branch: thread.branch,
-    createdAt: thread.createdAt,
-    hasActionableProposedPlan: thread.hasActionableProposedPlan,
-    id: thread.id,
-    interactionMode: thread.interactionMode,
-    latestTurn: thread.latestTurn,
-    latestUserMessageAt: thread.latestUserMessageAt,
-    pendingApprovalCount: thread.pendingApprovalCount,
-    pendingUserInputCount: thread.pendingUserInputCount,
-    pinOrderKey,
-    planProgress: thread.planProgress,
-    projectId: thread.projectId,
-    session: thread.session,
+    session: previous?.sessionKnown ? previous.session : thread.session,
+    sessionKnown: previous?.sessionKnown ?? false,
     title: thread.title,
     updatedAt: thread.updatedAt,
     worktreePath: thread.worktreePath,
@@ -1555,21 +1540,6 @@ function compactUpdate<T extends object>(value: T, patch: Partial<T>): T {
   if (entries.length === 0) return value
 
   return Object.assign({ ...value }, Object.fromEntries(entries)) as T
-}
-
-function pickSummaryPatch(
-  patch: Partial<ChatProjectionThreadShell>,
-): Partial<ChatSidebarThreadSummary> {
-  return {
-    archivedAt: patch.archivedAt,
-    branch: patch.branch,
-    createdAt: patch.createdAt,
-    interactionMode: patch.interactionMode,
-    projectId: patch.projectId,
-    title: patch.title,
-    updatedAt: patch.updatedAt,
-    worktreePath: patch.worktreePath,
-  }
 }
 
 function compareActivities(left: OrchestrationThreadActivity, right: OrchestrationThreadActivity) {

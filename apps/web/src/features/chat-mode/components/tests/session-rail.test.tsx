@@ -464,7 +464,6 @@ function renderSessionRail() {
     rootPath: '/repo/platform',
     selectSession: () => {},
     startDraft: () => {},
-    threads: [],
   }
 
   // ChatModeSessionProvider hands the app-level project opener over while chat mode

@@ -52,7 +52,7 @@ test('preserves existing detail for threads still present in a shell snapshot', 
 
   expect(state.messageIdsByThreadId[threadId]).toEqual([message.id])
   expect(state.messageByThreadId[threadId]?.[message.id]?.text).toBe(message.text)
-  expect(state.threadShellById[threadId]?.title).toBe('shell title')
+  expect(state.threadById[threadId]?.title).toBe('shell title')
 })
 
 test('removes all thread-scoped state when the shell removes a thread', () => {
@@ -84,12 +84,9 @@ test('removes all thread-scoped state when the shell removes a thread', () => {
   })
 
   expect(state.threadIds).toEqual([otherThreadId])
-  expect(state.threadShellById[threadId]).toBeUndefined()
-  expect(state.threadDetailMetaById[threadId]).toBeUndefined()
-  expect(state.threadSessionById[threadId]).toBeUndefined()
+  expect(state.threadById[threadId]).toBeUndefined()
   expect(state.messageIdsByThreadId[threadId]).toBeUndefined()
   expect(state.activityIdsByThreadId[threadId]).toBeUndefined()
-  expect(state.sidebarThreadSummaryById[threadId]).toBeUndefined()
   expect(state.threadIdsByProjectId[parseProjectId('project-1')]).toEqual([otherThreadId])
 })
 
@@ -129,13 +126,10 @@ test('applies a detail snapshot only to the target thread detail slices', () => 
 
   expect(state.messageIdsByThreadId[otherThreadId]).toEqual([otherMessage.id])
   expect(state.messageIdsByThreadId[threadId]).toEqual([parseMessageId('message-1')])
-  expect(state.sidebarThreadSummaryById[threadId]?.title).toBe('shell thread')
-  expect(state.threadShellById[threadId]?.title).toBe('shell thread')
+  expect(state.threadById[threadId]?.title).toBe('shell thread')
 })
 
-// A detail write that touched a shell record could revert branch/worktree/title/session
-// behind the rail's back; keeping the mutation slice-scoped is what makes that impossible.
-test('a thread detail snapshot leaves every shell-owned record untouched', () => {
+test('a thread detail snapshot cannot revert shell-published metadata', () => {
   const threadId = parseThreadId('thread-1')
   let state = createInitialChatProjectionState()
 
@@ -146,9 +140,7 @@ test('a thread detail snapshot leaves every shell-owned record untouched', () =>
     updatedAt: timestamp(1),
   })
 
-  const shellById = state.threadShellById
-  const sessionById = state.threadSessionById
-  const summaryById = state.sidebarThreadSummaryById
+  const threadBefore = state.threadById[threadId]
   const threadIds = state.threadIds
 
   state = syncChatProjectionThreadDetailSnapshot(
@@ -164,11 +156,15 @@ test('a thread detail snapshot leaves every shell-owned record untouched', () =>
     }),
   )
 
-  expect(state.threadShellById).toBe(shellById)
-  expect(state.threadSessionById).toBe(sessionById)
-  expect(state.sidebarThreadSummaryById).toBe(summaryById)
+  expect(state.threadById[threadId]).toMatchObject({
+    branch: 'main',
+    metaSource: 'shell',
+    session: threadBefore?.session,
+    title: 'shell thread',
+    worktreePath: threadBefore?.worktreePath,
+  })
+  expect(state.threadById[threadId]?.detailSynced).toBe(true)
   expect(state.threadIds).toBe(threadIds)
-  expect(state.threadDetailMetaById[threadId]?.branch).toBe('stale-detail-branch')
 })
 
 test('trims message and activity detail arrays deterministically', () => {
@@ -226,7 +222,7 @@ test('ignores stale shell and detail snapshots', () => {
   )
 
   expect(state.projectById[parseProjectId('project-1')]?.title).toBe('new project')
-  expect(state.threadShellById[threadId]?.title).toBe('new thread')
+  expect(state.threadById[threadId]?.title).toBe('new thread')
   expect(state.messageIdsByThreadId[threadId]).toEqual([parseMessageId('message-6')])
 })
 
@@ -342,7 +338,7 @@ test('a shell resnapshot preserves the pending source proposed plan', () => {
     updatedAt: timestamp(3),
   })
 
-  expect(state.threadTurnStateById[threadId]?.pendingSourceProposedPlan).toEqual({
+  expect(state.threadById[threadId]?.pendingSourceProposedPlan).toEqual({
     planId,
     threadId,
   })
@@ -368,10 +364,10 @@ test('a shell resnapshot preserves the arranged pin slot', () => {
     updatedAt: timestamp(2),
   })
 
-  expect(state.sidebarThreadSummaryById[threadId]?.pinOrderKey).toBe('m')
+  expect(state.threadById[threadId]?.pinOrderKey).toBe('m')
 })
 
-test('keeps sidebar summaries shell-owned while detail events update local turn state', () => {
+test('keeps published turns shell-owned while detail events update the live turn', () => {
   const threadId = parseThreadId('thread-1')
   const turnId = parseTurnId('turn-1')
   let state = createInitialChatProjectionState()
@@ -389,11 +385,11 @@ test('keeps sidebar summaries shell-owned while detail events update local turn 
     updatedAt: timestamp(1),
   })
 
-  const summaryBefore = state.sidebarThreadSummaryById[threadId]
+  const publishedTurn = state.threadById[threadId]?.latestTurn
   state = applyChatProjectionEvent(state, assistantCompleteEvent(threadId, turnId))
 
-  expect(state.sidebarThreadSummaryById[threadId]).toBe(summaryBefore)
-  expect(state.threadTurnStateById[threadId]?.latestTurn).toMatchObject({
+  expect(state.threadById[threadId]?.latestTurn).toBe(publishedTurn)
+  expect(state.threadById[threadId]?.liveTurn).toMatchObject({
     assistantMessageId: parseMessageId('message-assistant'),
     completedAt: timestamp(4),
     state: 'completed',
@@ -420,7 +416,7 @@ test('marks live provider turn failures as terminal in local turn state', () => 
   })
   state = applyChatProjectionEvent(state, providerFailureActivityEvent(threadId, turnId))
 
-  expect(state.threadTurnStateById[threadId]?.latestTurn).toMatchObject({
+  expect(state.threadById[threadId]?.liveTurn).toMatchObject({
     completedAt: timestamp(5),
     state: 'error',
     turnId,
@@ -476,12 +472,26 @@ test('projects streamed assistant deltas before completion without duplicating t
     streaming: false,
     text: 'Hello world',
   })
-  expect(state.threadTurnStateById[threadId]?.latestTurn).toMatchObject({
+  expect(state.threadById[threadId]?.liveTurn).toMatchObject({
     assistantMessageId: messageId,
     completedAt: timestamp(4),
     state: 'completed',
     turnId,
   })
+})
+
+test('projects the latest user message stamp before the next shell publish', () => {
+  const threadId = parseThreadId('thread-1')
+  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionState(), {
+    projects: [makeProject()],
+    snapshotSequence: 1,
+    threads: [makeThreadShell({ id: threadId })],
+    updatedAt: timestamp(1),
+  })
+
+  state = applyChatProjectionEvent(state, userMessageEvent(threadId))
+
+  expect(state.threadById[threadId]?.latestUserMessageAt).toBe(timestamp(2))
 })
 
 function makeDetailSnapshot({
@@ -778,6 +788,24 @@ function assistantCompleteEvent(
       threadId,
       turnId,
       updatedAt: timestamp(4),
+    },
+    type: 'thread.message-sent',
+  }
+}
+
+function userMessageEvent(threadId: ReturnType<typeof parseThreadId>): OrchestrationEvent {
+  return {
+    ...makeThreadEvent(threadId, 2, 'user-message'),
+    payload: {
+      attachments: [],
+      createdAt: timestamp(2),
+      messageId: parseMessageId('message-user'),
+      role: 'user',
+      streaming: false,
+      text: 'Ship it',
+      threadId,
+      turnId: null,
+      updatedAt: timestamp(2),
     },
     type: 'thread.message-sent',
   }

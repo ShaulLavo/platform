@@ -1,9 +1,9 @@
 import { projectIdSchema, threadIdSchema, turnIdSchema } from '@workspace/contracts'
 import * as v from 'valibot'
 
-import type { ChatSidebarThreadSummary } from '@/features/chat/state/chat-projection-store'
+import type { ProjectionThread } from '@/features/chat/state/chat-projection-store'
 import { sessionRailModel } from '@/features/chat-mode/utils/session-rail-model'
-import { chatProject, sidebarThreadSummary } from '../../../../../test/factories/chat'
+import { chatProject, projectionThread } from '../../../../../test/factories/chat'
 import { expect, test } from '../../../../../test/fixtures'
 
 const platformId = v.parse(projectIdSchema, 'project-platform')
@@ -40,11 +40,11 @@ test('activity never reorders the list — a session holds the slot it was creat
   ]
   const busyOldThread = threads.map((thread) =>
     thread.id === 'thread-old'
-      ? sidebarThreadSummary({ ...thread, latestUserMessageAt: '2026-06-01T00:00:00Z' })
+      ? projectionThread({ ...thread, latestUserMessageAt: '2026-06-01T00:00:00Z' })
       : thread,
   )
 
-  const order = (list: readonly ChatSidebarThreadSummary[]) =>
+  const order = (list: readonly ProjectionThread[]) =>
     sessionRailModel({
       projects: [chatProject({ id: platformId })],
       threads: list,
@@ -236,7 +236,7 @@ test('creating a session does not reshuffle the projects', () => {
     chatProject({ createdAt: '2026-04-02T00:00:00Z', id: platformId, title: 'platform' }),
   ]
   const threads = [threadSummary({ id: 'thread-a', projectId: platformId })]
-  const order = (list: readonly ChatSidebarThreadSummary[]) =>
+  const order = (list: readonly ProjectionThread[]) =>
     sessionRailModel({ projects, threads: list }).projects.map((project) => project.title)
 
   expect(order(threads)).toEqual(['site', 'platform'])
@@ -320,8 +320,8 @@ test('reports the status a session is in', () => {
 })
 
 test('a session that finished after it was last read comes back unread', () => {
-  const runningTurn = sidebarThreadSummary().latestTurn
-  const finished: Partial<ChatSidebarThreadSummary> = {
+  const runningTurn = projectionThread().latestTurn
+  const finished: Partial<ProjectionThread> = {
     latestTurn: runningTurn && {
       ...runningTurn,
       completedAt: '2026-05-09T10:00:00.000Z',
@@ -537,8 +537,8 @@ function runningTurn(turnId: string) {
 function threadSummary({
   id,
   ...overrides
-}: Omit<Partial<ChatSidebarThreadSummary>, 'id'> & { id: string }) {
-  return sidebarThreadSummary({
+}: Omit<Partial<ProjectionThread>, 'id'> & { id: string }) {
+  return projectionThread({
     id: v.parse(threadIdSchema, id),
     ...overrides,
   })

@@ -27,9 +27,7 @@ export function ChatStage() {
   // Read by id rather than from the provider's list: the archive browser can put a
   // filed-away session on the stage, and that list deliberately excludes them.
   const summary = useChatProjectionStore((state) =>
-    activeSession.threadId
-      ? (state.sidebarThreadSummaryById[activeSession.threadId] ?? null)
-      : null,
+    activeSession.threadId ? (state.threadById[activeSession.threadId] ?? null) : null,
   )
   const seenByThreadId = useSessionReadStore((state) => state.seenByThreadId)
   // Activities carry the provider's context-window snapshots, and only the detail

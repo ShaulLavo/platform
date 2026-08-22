@@ -1,4 +1,4 @@
-import type { ChatSidebarThreadSummary } from '@/features/chat/state/chat-projection-store'
+import type { ProjectionThread } from '@/features/chat/state/chat-projection-store'
 
 /**
  * The four states a session can be in as far as the user is concerned. Turn state,
@@ -12,10 +12,10 @@ import type { ChatSidebarThreadSummary } from '@/features/chat/state/chat-projec
 export type ThreadStatus = 'waiting' | 'working' | 'failed' | 'idle'
 
 export type ThreadStatusSource = Pick<
-  ChatSidebarThreadSummary,
+  ProjectionThread,
   'hasActionableProposedPlan' | 'latestTurn' | 'pendingApprovalCount' | 'pendingUserInputCount'
 > & {
-  readonly session?: ChatSidebarThreadSummary['session']
+  readonly session?: ProjectionThread['session']
 }
 
 export function threadStatus(thread: ThreadStatusSource): ThreadStatus {
@@ -52,7 +52,7 @@ function isImplementingProposedPlan(thread: ThreadStatusSource) {
   return Boolean(thread.latestTurn.sourceProposedPlan)
 }
 
-export type ThreadPlanProgressSource = Pick<ChatSidebarThreadSummary, 'latestTurn' | 'planProgress'>
+export type ThreadPlanProgressSource = Pick<ProjectionThread, 'latestTurn' | 'planProgress'>
 
 /**
  * "step 3 of 7: running tests" instead of a spinner, but only while that plan

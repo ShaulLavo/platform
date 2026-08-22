@@ -12,7 +12,7 @@ import {
 import { selectChatSidebarThreadsForProject } from '@/features/chat/state/chat-projection-selectors'
 import {
   useChatProjectionStore,
-  type ChatSidebarThreadSummary,
+  type ProjectionThread,
 } from '@/features/chat/state/chat-projection-store'
 import { useChatModeSession } from '@/features/chat-mode/providers/session-context'
 import { clearSessionMultiSelect } from '@/features/chat-mode/state/session-commands'
@@ -117,11 +117,11 @@ export function useSessionActions() {
  * being acted on is not always one the surrounding surface is showing.
  */
 function threadSummary(threadId: ThreadId) {
-  return useChatProjectionStore.getState().sidebarThreadSummaryById[threadId]
+  return useChatProjectionStore.getState().threadById[threadId]
 }
 
 /** The departing session's own project, in the order the rail draws it. */
-function railOrderThreadIds(thread: ChatSidebarThreadSummary | undefined) {
+function railOrderThreadIds(thread: ProjectionThread | undefined) {
   if (!thread) return []
 
   return selectChatSidebarThreadsForProject(useChatProjectionStore.getState(), thread.projectId)

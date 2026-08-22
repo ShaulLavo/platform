@@ -17,7 +17,7 @@ import {
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
 import { railReorderIntent, type RailOrderRow } from '@/features/chat-mode/utils/rail-reorder'
 import { sessionRailModel } from '@/features/chat-mode/utils/session-rail-model'
-import { sessionThreads } from '@/features/chat-mode/utils/session-threads'
+import { selectChatSessionThreads } from '@/features/chat/state/chat-projection-selectors'
 import { log } from '@/lib/client-logging'
 
 /**
@@ -176,7 +176,7 @@ function railOrderModel() {
   return sessionRailModel({
     orderOverrides: useRailOrderStore.getState(),
     projects: selectChatProjects(projection),
-    threads: sessionThreads(projection.threadIds, projection.sidebarThreadSummaryById),
+    threads: selectChatSessionThreads(projection),
     view: useSessionRailStore.getState().view,
   })
 }

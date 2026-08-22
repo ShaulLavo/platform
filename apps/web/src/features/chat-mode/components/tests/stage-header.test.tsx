@@ -21,8 +21,8 @@ import { sessionRailItem } from '@/features/chat-mode/utils/session-rail-model'
 import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import {
   chatProject,
+  projectionThread,
   shellSnapshot,
-  sidebarThreadSummary,
   threadShell,
 } from '../../../../../test/factories/chat'
 import { expect, test } from '../../../../../test/fixtures'
@@ -122,7 +122,6 @@ function chatModeSession(dispatched: ClientOrchestrationCommand[]): ChatModeSess
     rootPath: '/repo/platform',
     selectSession: () => {},
     startDraft: () => {},
-    threads: [],
   }
 }
 
@@ -131,7 +130,7 @@ function renderStageHeader() {
   const dispatched: ClientOrchestrationCommand[] = []
   // Same shape the projection seeded above holds, so the header renders the row the
   // rail would render for this thread.
-  const summary = sidebarThreadSummary({
+  const summary = projectionThread({
     id: threadId,
     latestTurn: null,
     projectId,

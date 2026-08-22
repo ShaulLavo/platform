@@ -17,7 +17,7 @@ export function useSessionToolRoot() {
   const { activeSession, rootPath } = useChatModeSession()
   const worktreePath = useChatProjectionStore((state) =>
     activeSession.threadId
-      ? (state.sidebarThreadSummaryById[activeSession.threadId]?.worktreePath ?? null)
+      ? (state.threadById[activeSession.threadId]?.worktreePath ?? null)
       : null,
   )
 

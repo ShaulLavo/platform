@@ -78,7 +78,6 @@ function renderEmptyState({
     rootPath,
     selectSession: () => {},
     startDraft: () => {},
-    threads: [],
   }
 
   renderWithProviders(
