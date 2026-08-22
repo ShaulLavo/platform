@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { FileTreeController } from '@workspace/tree/utils/model/FileTreeController'
-import { computeFileTreeLayout } from '@workspace/tree/utils/model/layout'
-import { renameFileTreePaths } from '@workspace/tree/utils/renameFileTreePaths'
-import { computeFileTreeRowElementAttributes } from '@workspace/tree/utils/render/rowAttributes'
-import type { FileTreeVisibleRow } from '@workspace/tree/utils/model/publicTypes'
+import { FileTreeController } from '../model/FileTreeController'
+import { computeFileTreeLayout } from '../model/layout'
+import { renameFileTreePaths } from '../renameFileTreePaths'
+import { computeFileTreeRowElementAttributes } from '../render/rowAttributes'
+import type { FileTreeVisibleRow } from '../model/publicTypes'
 
 describe('FileTreeController', () => {
   it('tracks selection, search, drag/drop, and rename state', () => {

@@ -2,7 +2,7 @@
 
 import type { JSX } from 'react'
 
-import type { OverflowTextProps } from '@workspace/tree/components/OverflowText'
+import type { OverflowTextProps } from './OverflowText'
 
 export function OverflowContent({ children, mode }: OverflowTextProps): JSX.Element {
   const visibleChildren = mode === 'fruncate' ? <span>{children}</span> : children

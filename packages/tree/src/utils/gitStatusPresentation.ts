@@ -1,4 +1,4 @@
-import type { GitStatus } from '@workspace/tree/utils/publicTypes'
+import type { GitStatus } from './publicTypes'
 
 export const GIT_STATUS_LABEL: Record<GitStatus, string | null> = {
   added: 'A',

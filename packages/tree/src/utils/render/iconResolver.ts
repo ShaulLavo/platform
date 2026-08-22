@@ -1,13 +1,6 @@
-import {
-  getBuiltInFileIconName,
-  resolveBuiltInFileIconToken,
-} from '@workspace/tree/utils/builtInIcons'
-import {
-  type FileTreeIcons,
-  normalizeFileTreeIcons,
-  type RemappedIcon,
-} from '@workspace/tree/utils/iconConfig'
-import type { SVGSpriteNames } from '@workspace/tree/utils/sprite'
+import { getBuiltInFileIconName, resolveBuiltInFileIconToken } from '../builtInIcons'
+import { type FileTreeIcons, normalizeFileTreeIcons, type RemappedIcon } from '../iconConfig'
+import type { SVGSpriteNames } from '../sprite'
 
 export interface FileTreeResolvedIcon {
   height?: number

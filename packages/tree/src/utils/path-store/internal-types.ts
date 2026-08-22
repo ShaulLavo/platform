@@ -65,7 +65,7 @@ export function isDirectoryNode(node: PathStoreNode): boolean {
   return (node.depthAndFlags & PATH_STORE_NODE_KIND_MASK) !== 0
 }
 
-export function getNodeFlags(node: PathStoreNode): number {
+function getNodeFlags(node: PathStoreNode): number {
   return node.depthAndFlags & PATH_STORE_NODE_FLAGS_MASK
 }
 

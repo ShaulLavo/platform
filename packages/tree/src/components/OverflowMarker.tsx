@@ -2,7 +2,7 @@
 
 import type { JSX, ReactNode } from 'react'
 
-import type { OverflowTextProps } from '@workspace/tree/components/OverflowText'
+import type { OverflowTextProps } from './OverflowText'
 
 export function OverflowMarker({
   children,

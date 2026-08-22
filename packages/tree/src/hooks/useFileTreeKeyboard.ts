@@ -1,25 +1,19 @@
 import type { KeyboardEvent as ReactKeyboardEvent, KeyboardEventHandler } from 'react'
 
-import type { FileTreeFocusCoordinator } from '@workspace/tree/hooks/useFileTreeFocusSync'
-import type { FileTreeRowDom } from '@workspace/tree/hooks/useFileTreeRowDom'
-import type { FileTreeController } from '@workspace/tree/utils/model/FileTreeController'
-import type {
-  FileTreeContextMenuOpenContext,
-  FileTreeVisibleRow,
-} from '@workspace/tree/utils/model/publicTypes'
-import { getContextMenuAnchorButton } from '@workspace/tree/utils/render/contextMenuAnchor'
-import { isFileTreeDirectoryHandle } from '@workspace/tree/utils/render/dragPointer'
-import {
-  getActiveTreeElement,
-  readMeasuredViewportHeight,
-} from '@workspace/tree/utils/render/focusHelpers'
+import type { FileTreeFocusCoordinator } from './useFileTreeFocusSync'
+import type { FileTreeRowDom } from './useFileTreeRowDom'
+import type { FileTreeController } from '../utils/model/FileTreeController'
+import type { FileTreeContextMenuOpenContext, FileTreeVisibleRow } from '../utils/model/publicTypes'
+import { getContextMenuAnchorButton } from '../utils/render/contextMenuAnchor'
+import { isFileTreeDirectoryHandle } from '../utils/render/dragPointer'
+import { getActiveTreeElement, readMeasuredViewportHeight } from '../utils/render/focusHelpers'
 import {
   BLOCKED_CONTEXT_MENU_NAV_KEYS,
   canKeyUseStickyKeyboardState,
   isContextMenuOpenKey,
   isSearchOpenSeedKey,
   isSpaceSelectionKey,
-} from '@workspace/tree/utils/render/keyboard'
+} from '../utils/render/keyboard'
 
 interface UseFileTreeKeyboardOptions {
   readonly closeContextMenu: () => void

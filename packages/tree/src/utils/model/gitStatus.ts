@@ -1,6 +1,6 @@
-import type { GitStatus, GitStatusEntry } from '@workspace/tree/utils/publicTypes'
-import { getGitStatusSignature } from '@workspace/tree/utils/getGitStatusSignature'
-import { normalizeInputPath } from '@workspace/tree/utils/normalizeInputPath'
+import type { GitStatus, GitStatusEntry } from '../publicTypes'
+import { getGitStatusSignature } from '../getGitStatusSignature'
+import { normalizeInputPath } from '../normalizeInputPath'
 import type { FileTreeGitStatusPatch } from './publicTypes'
 
 export interface FileTreeGitStatusState {

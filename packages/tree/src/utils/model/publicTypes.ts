@@ -1,6 +1,6 @@
-import type { FileTreeIcons, RemappedIcon } from '@workspace/tree/utils/iconConfig'
-import type { FileTreePreparedInput } from '@workspace/tree/utils/preparedInput'
-import type { ContextMenuAnchorRect, GitStatusEntry } from '@workspace/tree/utils/publicTypes'
+import type { FileTreeIcons, RemappedIcon } from '../iconConfig'
+import type { FileTreePreparedInput } from '../preparedInput'
+import type { ContextMenuAnchorRect, GitStatusEntry } from '../publicTypes'
 import type { FileTreeDensity } from './density'
 
 /**
@@ -25,7 +25,7 @@ export type FileTreePublicId = string
 // hand. The structural equivalence is exercised in tests via the values that
 // flow between the two layers.
 
-export interface FileTreeSortEntry {
+interface FileTreeSortEntry {
   basename: string
   depth: number
   isDirectory: boolean
@@ -41,7 +41,7 @@ export interface FileTreeRemoveOptions {
   recursive?: boolean
 }
 
-export type FileTreeCollisionStrategy = 'error' | 'replace' | 'skip'
+type FileTreeCollisionStrategy = 'error' | 'replace' | 'skip'
 
 export interface FileTreeMoveOptions {
   collision?: FileTreeCollisionStrategy
@@ -92,7 +92,7 @@ type FileTreeControllerBehaviorOptions = FileTreeStoreOptions & {
 
 export type FileTreeControllerOptions = FileTreeControllerBehaviorOptions & FileTreeInputOptions
 
-export interface FileTreeVisibleSegment {
+interface FileTreeVisibleSegment {
   isTerminal: boolean
   name: string
   path: FileTreePublicId
@@ -116,7 +116,7 @@ export interface FileTreeVisibleRow {
   setSize: number
 }
 
-export interface FileTreeItemHandleBase {
+interface FileTreeItemHandleBase {
   deselect(): void
   focus(): void
   getPath(): FileTreePublicId
@@ -172,7 +172,7 @@ export type FileTreeSearchMode = 'expand-matches' | 'collapse-non-matches' | 'hi
 // during mount.
 export type FileTreeSearchBlurBehavior = 'close' | 'retain'
 
-export type FileTreeSearchChangeListener = (value: string | null) => void
+type FileTreeSearchChangeListener = (value: string | null) => void
 
 export interface FileTreeSearchSessionHandle {
   closeSearch(): void
@@ -209,7 +209,7 @@ export interface FileTreeDragAndDropConfig {
   openOnDropDelay?: number
 }
 
-export interface FileTreeRenamingItem {
+interface FileTreeRenamingItem {
   isFolder: boolean
   path: FileTreePublicId
 }
@@ -253,24 +253,24 @@ export interface FileTreeRenderProps {
   fileTreeContainer?: HTMLElement
 }
 
-export interface FileTreeMutationEventInvalidation {
+interface FileTreeMutationEventInvalidation {
   canonicalChanged: boolean
   projectionChanged: boolean
   visibleCountDelta: number | null
 }
 
-export interface FileTreeAddEvent extends FileTreeMutationEventInvalidation {
+interface FileTreeAddEvent extends FileTreeMutationEventInvalidation {
   operation: 'add'
   path: FileTreePublicId
 }
 
-export interface FileTreeRemoveEvent extends FileTreeMutationEventInvalidation {
+interface FileTreeRemoveEvent extends FileTreeMutationEventInvalidation {
   operation: 'remove'
   path: FileTreePublicId
   recursive: boolean
 }
 
-export interface FileTreeMoveEvent extends FileTreeMutationEventInvalidation {
+interface FileTreeMoveEvent extends FileTreeMutationEventInvalidation {
   from: FileTreePublicId
   operation: 'move'
   to: FileTreePublicId
@@ -346,7 +346,7 @@ export interface FileTreeContextMenuOpenContext {
   restoreFocus: () => void
 }
 
-export interface FileTreeHeaderCompositionOptions {
+interface FileTreeHeaderCompositionOptions {
   html?: string
   render?: () => HTMLElement | null
 }
@@ -354,7 +354,7 @@ export interface FileTreeHeaderCompositionOptions {
 export type FileTreeContextMenuTriggerMode = 'both' | 'button' | 'right-click'
 export type FileTreeContextMenuButtonVisibility = 'always' | 'when-needed'
 
-export interface FileTreeContextMenuCompositionOptions {
+interface FileTreeContextMenuCompositionOptions {
   enabled?: boolean
   triggerMode?: FileTreeContextMenuTriggerMode
   buttonVisibility?: FileTreeContextMenuButtonVisibility
@@ -377,12 +377,12 @@ export interface FileTreeCompositionOptions {
   header?: FileTreeHeaderCompositionOptions
 }
 
-export interface FileTreeRowDecorationText {
+interface FileTreeRowDecorationText {
   text: string
   title?: string
 }
 
-export interface FileTreeRowDecorationIcon {
+interface FileTreeRowDecorationIcon {
   icon: RemappedIcon
   title?: string
 }

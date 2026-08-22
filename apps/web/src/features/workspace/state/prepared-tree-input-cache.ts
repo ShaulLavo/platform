@@ -1,7 +1,4 @@
-import {
-  prepareFileTreeInput,
-  type FileTreePreparedInput,
-} from '@workspace/tree/utils/preparedInput'
+import { prepareFileTreeInput, type FileTreePreparedInput } from '@workspace/tree'
 
 const preparedInputByPaths = new WeakMap<readonly string[], FileTreePreparedInput>()
 

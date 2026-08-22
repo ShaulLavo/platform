@@ -1,5 +1,5 @@
-import type { FileTreeGitStatusPatch } from '@workspace/tree/utils/model/publicTypes'
-import type { GitStatusEntry } from '@workspace/tree/utils/publicTypes'
+import type { FileTreeGitStatusPatch } from '@workspace/tree'
+import type { GitStatusEntry } from '@workspace/tree'
 
 export function treeGitStatusPatch(
   previous: readonly GitStatusEntry[],

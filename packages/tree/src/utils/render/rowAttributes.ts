@@ -2,14 +2,14 @@ import type {
   FileTreeContextMenuButtonVisibility,
   FileTreeContextMenuTriggerMode,
   FileTreeVisibleRow,
-} from '@workspace/tree/utils/model/publicTypes'
-import type { GitStatus } from '@workspace/tree/utils/publicTypes'
-import type { FileTreeRowClickMode } from '@workspace/tree/utils/render/rowClickPlan'
+} from '../model/publicTypes'
+import type { GitStatus } from '../publicTypes'
+import type { FileTreeRowClickMode } from './rowClickPlan'
 
 // Visual/interaction state that shows up as data attributes on the row. Kept as
 // plain booleans (rather than references to dragSession, selectionSets, etc.)
 // so the attribute helper is fully pure and table-testable.
-export type FileTreeRowStateFlags = {
+type FileTreeRowStateFlags = {
   isFocusRinged: boolean
   isContextHovered: boolean
   isDragging: boolean
@@ -19,7 +19,7 @@ export type FileTreeRowStateFlags = {
 
 // Feature-level flags derived from the tree's configuration. These translate
 // 1:1 into data attributes that downstream CSS and integration tests rely on.
-export type FileTreeRowFeatureFlags = {
+type FileTreeRowFeatureFlags = {
   contextMenuEnabled: boolean
   actionLaneEnabled: boolean
   contextMenuButtonVisibility: FileTreeContextMenuButtonVisibility | null

@@ -372,6 +372,7 @@ export {
   type SettingsLayerSnapshot,
   type SettingsParseError,
   type SettingsSnapshot,
+  type SettingsTextRange,
   type SettingsWriteRequest,
   type SettingsWriteTarget,
 } from './settings/wire'

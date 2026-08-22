@@ -67,7 +67,7 @@ export function createTransactionFrame(): TransactionFrame {
   }
 }
 
-export function resolveInitialExpansion(
+function resolveInitialExpansion(
   initialExpansion: PathStoreInitialExpansion,
 ): PathStoreInitialExpansion {
   if (typeof initialExpansion !== 'number') {

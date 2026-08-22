@@ -425,6 +425,7 @@ export class SettingsStore {
           text: contents.text,
           revision: contents.revision ?? '',
           parseErrors: [...contents.parseErrors],
+          keyRanges: { ...contents.keyRanges },
         },
       }
     })

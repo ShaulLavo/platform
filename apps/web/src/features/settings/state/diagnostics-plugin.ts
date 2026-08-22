@@ -1,0 +1,78 @@
+import type {
+  EditorPlugin,
+  EditorViewContribution,
+  EditorViewContributionContext,
+  EditorViewContributionUpdateKind,
+  EditorViewSnapshot,
+} from '@singapor/core'
+import { DiagnosticsPresenter } from '@singapor/lsp-plugin/diagnostics-presenter'
+
+import { settingsJsonDocumentId } from '@/features/settings/utils/json-document'
+import { settingsEditorDiagnostics } from '@/features/settings/utils/diagnostics'
+import type { SettingsDiagnosticsSource } from '@/features/settings/state/diagnostics-source'
+
+const PLUGIN_NAME = 'platform.settings-diagnostics'
+const HIGHLIGHT_NAMESPACE = 'settings-diagnostics'
+const MINIMAP_SOURCE_ID = 'platform.settings.diagnostics'
+const MARKER_TIMING_PREFIX = 'settingsDiagnostics'
+
+export function createSettingsDiagnosticsPlugin(source: SettingsDiagnosticsSource): EditorPlugin {
+  return {
+    name: PLUGIN_NAME,
+    activate: (context) =>
+      context.registerViewContribution({
+        createContribution: (contributionContext) =>
+          new SettingsDiagnosticsContribution(contributionContext, source),
+      }),
+  }
+}
+
+class SettingsDiagnosticsContribution implements EditorViewContribution {
+  private readonly presenter: DiagnosticsPresenter
+  private readonly unsubscribe: () => void
+
+  constructor(
+    context: EditorViewContributionContext,
+    private readonly source: SettingsDiagnosticsSource,
+  ) {
+    this.presenter = new DiagnosticsPresenter(context, context.highlightPrefix ?? 'editor', {
+      highlightNameNamespace: HIGHLIGHT_NAMESPACE,
+      markerTimingNamePrefix: MARKER_TIMING_PREFIX,
+      minimapSourceId: MINIMAP_SOURCE_ID,
+    })
+    this.unsubscribe = source.subscribe(() => this.render(context.getSnapshot()))
+  }
+
+  update(snapshot: EditorViewSnapshot, kind: EditorViewContributionUpdateKind): void {
+    if (kind === 'clear') {
+      this.presenter.clear()
+      return
+    }
+    if (kind !== 'document' && kind !== 'content') return
+
+    this.render(snapshot)
+  }
+
+  dispose(): void {
+    this.unsubscribe()
+    this.presenter.clear()
+  }
+
+  private render(editor: EditorViewSnapshot): void {
+    const snapshot = this.source.getSnapshot()
+    const documentId = settingsJsonDocumentId(snapshot.target)
+    if (!snapshot.file || editor.documentId !== documentId) {
+      this.presenter.clear()
+      return
+    }
+    if (editor.fullText !== snapshot.file.text) {
+      this.presenter.clear()
+      return
+    }
+
+    this.presenter.render(
+      editor.fullText,
+      settingsEditorDiagnostics(snapshot.target, snapshot.file, snapshot.diagnostics),
+    )
+  }
+}

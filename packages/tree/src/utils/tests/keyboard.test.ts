@@ -7,7 +7,7 @@ import {
   isSearchOpenSeedKey,
   isSpaceSelectionKey,
   type FileTreeKeyboardEventLike,
-} from '@workspace/tree/utils/render/keyboard'
+} from '../render/keyboard'
 
 describe('file tree keyboard classification', () => {
   it.each([

@@ -1,4 +1,4 @@
-import type { FileTree as FileTreeModel } from '@workspace/tree/utils/render/FileTree'
+import type { FileTreeModel } from '@workspace/tree'
 import { useMemo, useSyncExternalStore } from 'react'
 
 export type TreeSearchSessionSnapshot = {

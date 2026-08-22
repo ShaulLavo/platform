@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { FileTreeController } from '@workspace/tree/utils/model/FileTreeController'
-import type {
-  FileTreeDirectoryHandle,
-  FileTreeVisibleRow,
-} from '@workspace/tree/utils/model/publicTypes'
+import { FileTreeController } from '../model/FileTreeController'
+import type { FileTreeDirectoryHandle, FileTreeVisibleRow } from '../model/publicTypes'
 
 import { allDirectories, naiveVisiblePaths } from '../../../test/factories/tree-paths'
 

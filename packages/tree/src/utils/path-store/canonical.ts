@@ -322,7 +322,7 @@ export function findNodeId(state: PathStoreState, path: string): NodeId | null {
   return findNodeIdBySegments(state, lookupPath.segments, lookupPath.requiresDirectory)
 }
 
-export function findNodeIdBySegments(
+function findNodeIdBySegments(
   state: PathStoreState,
   segments: readonly string[],
   requireDirectory: boolean,

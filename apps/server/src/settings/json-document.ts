@@ -4,10 +4,12 @@ import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import {
   applyEdits,
+  getNodeValue,
   modify,
-  parse,
+  parseTree,
   printParseErrorCode,
   type FormattingOptions,
+  type Node as JsonNode,
   type ParseError,
 } from 'jsonc-parser'
 import { isRecord } from '@workspace/contracts'
@@ -33,9 +35,15 @@ export type SettingsParseError = {
   readonly length: number
 }
 
+export type SettingsTextRange = {
+  readonly offset: number
+  readonly length: number
+}
+
 export type ParsedSettingsDocument = {
   readonly values: Record<string, unknown>
   readonly parseErrors: readonly SettingsParseError[]
+  readonly keyRanges: Readonly<Record<string, SettingsTextRange>>
 }
 
 export type SettingsFileContents = {
@@ -60,19 +68,35 @@ export type DocumentEdit = {
  * depends on.
  */
 export function parseSettingsDocument(text: string): ParsedSettingsDocument {
-  if (text.trim() === '') return { values: {}, parseErrors: [] }
+  if (text.trim() === '') return { values: {}, parseErrors: [], keyRanges: {} }
 
   const errors: ParseError[] = []
-  const parsed: unknown = parse(text, errors, PARSE_OPTIONS)
+  const root = parseTree(text, errors, PARSE_OPTIONS)
+  const parsed: unknown = root ? getNodeValue(root) : undefined
   const parseErrors = errors.map(toParseError)
 
   if (!isRecord(parsed)) {
     const notAnObject = { message: 'settings must be a JSON object', offset: 0, length: 0 }
 
-    return { values: {}, parseErrors: [...parseErrors, notAnObject] }
+    return { values: {}, parseErrors: [...parseErrors, notAnObject], keyRanges: {} }
   }
 
-  return { values: parsed, parseErrors }
+  return { values: parsed, parseErrors, keyRanges: topLevelKeyRanges(root) }
+}
+
+function topLevelKeyRanges(root: JsonNode | undefined): Record<string, SettingsTextRange> {
+  if (root?.type !== 'object') return {}
+
+  const ranges: Record<string, SettingsTextRange> = {}
+  for (const property of root.children ?? []) {
+    const key = property.children?.[0]
+    if (key?.type !== 'string') continue
+    if (typeof key.value !== 'string') continue
+
+    ranges[key.value] = { offset: key.offset, length: key.length }
+  }
+
+  return ranges
 }
 
 /**

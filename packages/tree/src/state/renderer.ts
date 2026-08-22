@@ -1,8 +1,8 @@
 import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 
-import { FileTreeView } from '@workspace/tree/components/FileTreeView'
-import type { FileTreeViewProps } from '@workspace/tree/utils/model/internalTypes'
+import { FileTreeView } from '../components/FileTreeView'
+import type { FileTreeViewProps } from '../utils/model/internalTypes'
 
 interface RootState {
   controller: FileTreeViewProps['controller']

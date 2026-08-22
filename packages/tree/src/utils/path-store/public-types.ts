@@ -22,13 +22,6 @@ export interface PathStorePreparedInput {
   paths: readonly string[]
 }
 
-export interface PathStoreChildPatch {
-  metadata?: {
-    knownChildCount?: number
-  }
-  operations: readonly PathStoreOperation[]
-}
-
 export interface PathStoreConstructorOptions extends PathStoreOptions {
   initialExpansion?: PathStoreInitialExpansion
   initialExpandedPaths?: readonly string[]
@@ -37,7 +30,7 @@ export interface PathStoreConstructorOptions extends PathStoreOptions {
   presorted?: boolean
 }
 
-export interface PathStoreFlattenedRowSegment {
+interface PathStoreFlattenedRowSegment {
   isTerminal: boolean
   name: string
   nodeId: number
@@ -103,7 +96,7 @@ export interface PathStoreVisibleTreeProjectionData {
   visibleIndexByPath: Map<string, number>
 }
 
-export interface PathStoreEventInvalidation {
+interface PathStoreEventInvalidation {
   affectedAncestorIds: readonly number[]
   affectedNodeIds: readonly number[]
   canonicalChanged: boolean

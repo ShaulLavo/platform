@@ -6,6 +6,9 @@
   "workspaces": {
     "apps/desktop": {
       "entry": ["src/bun/index.ts", "src/preload/index.ts", "electrobun.config.ts"]
+    },
+    "packages/tree": {
+      "ignoreFiles": ["test/factories/tree-paths.ts"]
     }
   }
 }

@@ -3,7 +3,7 @@ import { createTreeError } from '../structured-errors'
 import type { SegmentId, SegmentTable } from './internal-types'
 import { createSegmentSortKey } from './sort'
 
-export const ROOT_SEGMENT_VALUE = ''
+const ROOT_SEGMENT_VALUE = ''
 
 export function createSegmentTable(): SegmentTable {
   const idByValue = new Map<string, SegmentId>()

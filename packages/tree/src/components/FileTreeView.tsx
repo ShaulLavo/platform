@@ -18,42 +18,36 @@ import {
   useState,
 } from 'react'
 
-import { Icon } from '@workspace/tree/components/Icon'
+import { Icon } from './Icon'
 import {
   FileTreeRow,
   type FileTreeRenderedRowMode,
   type FileTreeRenderRowFrame,
-} from '@workspace/tree/components/FileTreeRow'
-import { useFileTreeContextMenu } from '@workspace/tree/hooks/useFileTreeContextMenu'
-import { useFileTreeDrag } from '@workspace/tree/hooks/useFileTreeDrag'
-import { useFileTreeFocusSync } from '@workspace/tree/hooks/useFileTreeFocusSync'
-import { useFileTreeKeyboard } from '@workspace/tree/hooks/useFileTreeKeyboard'
-import { type FileTreeRowDom, useFileTreeRowDom } from '@workspace/tree/hooks/useFileTreeRowDom'
+} from './FileTreeRow'
+import { useFileTreeContextMenu } from '../hooks/useFileTreeContextMenu'
+import { useFileTreeDrag } from '../hooks/useFileTreeDrag'
+import { useFileTreeFocusSync } from '../hooks/useFileTreeFocusSync'
+import { useFileTreeKeyboard } from '../hooks/useFileTreeKeyboard'
+import { type FileTreeRowDom, useFileTreeRowDom } from '../hooks/useFileTreeRowDom'
 import {
   CONTEXT_MENU_SLOT_NAME,
   CONTEXT_MENU_TRIGGER_TYPE,
   HEADER_SLOT_NAME,
-} from '@workspace/tree/utils/constants'
-import { FileTreeController } from '@workspace/tree/utils/model/FileTreeController'
-import type {
-  FileTreeStickyRowCandidate,
-  FileTreeViewProps,
-} from '@workspace/tree/utils/model/internalTypes'
+} from '../utils/constants'
+import { FileTreeController } from '../utils/model/FileTreeController'
+import type { FileTreeStickyRowCandidate, FileTreeViewProps } from '../utils/model/internalTypes'
 import {
   computeFileTreeLayout,
   computeStickyRows,
   type FileTreeLayoutSnapshot,
   type FileTreeLayoutStickyRow,
-} from '@workspace/tree/utils/model/layout'
-import type {
-  FileTreeRowDecoration,
-  FileTreeVisibleRow,
-} from '@workspace/tree/utils/model/publicTypes'
+} from '../utils/model/layout'
+import type { FileTreeRowDecoration, FileTreeVisibleRow } from '../utils/model/publicTypes'
 import {
   FILE_TREE_DEFAULT_ITEM_HEIGHT,
   FILE_TREE_DEFAULT_OVERSCAN,
   FILE_TREE_DEFAULT_VIEWPORT_HEIGHT,
-} from '@workspace/tree/utils/model/virtualization'
+} from '../utils/model/virtualization'
 import {
   focusElement,
   getActiveTreeElement,
@@ -63,16 +57,13 @@ import {
   readMeasuredViewportHeight,
   scrollFocusedRowIntoView,
   scrollFocusedRowToViewportOffset,
-} from '@workspace/tree/utils/render/focusHelpers'
-import { createFileTreeIconResolver } from '@workspace/tree/utils/render/iconResolver'
-import { classifyFileTreeRenameHandoff } from '@workspace/tree/utils/render/renameHandoff'
-import { transitionControllerSnapshotSubscription } from '@workspace/tree/utils/render/controllerSnapshotSubscription'
-import { createContextMenuItem } from '@workspace/tree/utils/render/contextMenuAnchor'
-import { computeFileTreeRowClickPlan } from '@workspace/tree/utils/render/rowClickPlan'
-import {
-  getFileTreeFocusedRowDomId,
-  getFileTreeRowPath,
-} from '@workspace/tree/utils/render/rowIdentity'
+} from '../utils/render/focusHelpers'
+import { createFileTreeIconResolver } from '../utils/render/iconResolver'
+import { classifyFileTreeRenameHandoff } from '../utils/render/renameHandoff'
+import { transitionControllerSnapshotSubscription } from '../utils/render/controllerSnapshotSubscription'
+import { createContextMenuItem } from '../utils/render/contextMenuAnchor'
+import { computeFileTreeRowClickPlan } from '../utils/render/rowClickPlan'
+import { getFileTreeFocusedRowDomId, getFileTreeRowPath } from '../utils/render/rowIdentity'
 
 type FileTreeViewLayoutState = {
   snapshot: FileTreeLayoutSnapshot<FileTreeVisibleRow>

@@ -1,27 +1,17 @@
 import { createTreeError } from '../structured-errors'
 
-import { getBuiltInSpriteSheet, isColoredBuiltInIconSet } from '@workspace/tree/utils/builtInIcons'
-import {
-  FileTreeContainerLoaded,
-  prepareFileTreeShadowRoot,
-} from '@workspace/tree/utils/render/web-components'
-import {
-  FILE_TREE_TAG_NAME,
-  FILE_TREE_UNSAFE_CSS_ATTRIBUTE,
-  HEADER_SLOT_NAME,
-} from '@workspace/tree/utils/constants'
-import { normalizeFileTreeIcons } from '@workspace/tree/utils/iconConfig'
-import {
-  type FileTreeDensityPreset,
-  resolveFileTreeDensity,
-} from '@workspace/tree/utils/model/density'
-import { FileTreeController } from '@workspace/tree/utils/model/FileTreeController'
+import { getBuiltInSpriteSheet, isColoredBuiltInIconSet } from '../builtInIcons'
+import { FileTreeContainerLoaded, prepareFileTreeShadowRoot } from './web-components'
+import { FILE_TREE_TAG_NAME, FILE_TREE_UNSAFE_CSS_ATTRIBUTE, HEADER_SLOT_NAME } from '../constants'
+import { normalizeFileTreeIcons } from '../iconConfig'
+import { type FileTreeDensityPreset, resolveFileTreeDensity } from '../model/density'
+import { FileTreeController } from '../model/FileTreeController'
 import {
   applyFileTreeGitStatusPatch,
   type FileTreeGitStatusState,
   resolveFileTreeGitStatusState,
-} from '@workspace/tree/utils/model/gitStatus'
-import type { FileTreeViewProps } from '@workspace/tree/utils/model/internalTypes'
+} from '../model/gitStatus'
+import type { FileTreeViewProps } from '../model/internalTypes'
 import type {
   FileTreeBatchOperation,
   FileTreeCompositionOptions,
@@ -41,14 +31,14 @@ import type {
   FileTreeScrollToPathOptions,
   FileTreeSearchSessionHandle,
   FileTreeSelectionChangeListener,
-} from '@workspace/tree/utils/model/publicTypes'
+} from '../model/publicTypes'
 import {
   FILE_TREE_DEFAULT_ITEM_HEIGHT,
   FILE_TREE_DEFAULT_VIEWPORT_HEIGHT,
-} from '@workspace/tree/utils/model/virtualization'
-import { wrapUnsafeCSS } from '@workspace/tree/utils/cssWrappers'
-import { renderFileTreeRoot, unmountFileTreeRoot } from '@workspace/tree/state/renderer'
-import { FileTreeManagedSlotHost } from '@workspace/tree/utils/render/slotHost'
+} from '../model/virtualization'
+import { wrapUnsafeCSS } from '../cssWrappers'
+import { renderFileTreeRoot, unmountFileTreeRoot } from '../../state/renderer'
+import { FileTreeManagedSlotHost } from './slotHost'
 
 let clientInstanceId = 0
 

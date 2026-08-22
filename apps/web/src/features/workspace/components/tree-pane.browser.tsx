@@ -1,5 +1,5 @@
 import '@workspace/ui/globals.css'
-import type { GitStatusEntry } from '@workspace/tree/utils/publicTypes'
+import type { GitStatusEntry } from '@workspace/tree'
 import { useState } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'

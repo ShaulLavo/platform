@@ -1,4 +1,4 @@
-export interface OverflowTextSplitOptions {
+interface OverflowTextSplitOptions {
   priority?: 'start' | 'end' | 'equal'
   splitIndex?: number
   splitOffset?: number
@@ -57,14 +57,14 @@ function splitAtCenter(contents: string): [string, string] {
   return [contents.slice(0, centerIndex), contents.slice(centerIndex)]
 }
 
-export const splitCenter: OverflowTextSplit = (contents) => {
+const splitCenter: OverflowTextSplit = (contents) => {
   if (contents.length < 2) return [contents, '']
 
   const splitIndex = getCenterSplitIndex(contents)
   return [contents.slice(0, splitIndex), contents.slice(splitIndex)]
 }
 
-export const splitExtension: OverflowTextSplit = (contents) => {
+const splitExtension: OverflowTextSplit = (contents) => {
   if (contents.length < 4) return [contents, '']
 
   const extensionIndex = contents.lastIndexOf('.') + 1
@@ -76,7 +76,7 @@ export const splitExtension: OverflowTextSplit = (contents) => {
   return [contents.slice(0, splitIndex), contents.slice(splitIndex)]
 }
 
-export const splitLeafPath: OverflowTextSplit = (contents) => {
+const splitLeafPath: OverflowTextSplit = (contents) => {
   if (contents.length < 4) return [contents, '']
 
   const leafPathIndex = contents.lastIndexOf('/') + 1
@@ -88,13 +88,13 @@ export const splitLeafPath: OverflowTextSplit = (contents) => {
   return [contents.slice(0, splitIndex), contents.slice(splitIndex)]
 }
 
-export const splitByIndex: OverflowTextSplit = (contents, options = {}) => {
+const splitByIndex: OverflowTextSplit = (contents, options = {}) => {
   if (typeof options.splitIndex !== 'number') return splitAtCenter(contents)
 
   return [contents.slice(0, options.splitIndex), contents.slice(options.splitIndex)]
 }
 
-export const splitLast: OverflowTextSplit = (contents, options = {}) => {
+const splitLast: OverflowTextSplit = (contents, options = {}) => {
   const splitOffset = options.splitOffset
   if (typeof splitOffset !== 'number' || splitOffset <= 0 || splitOffset >= contents.length) {
     return splitAtCenter(contents)
@@ -104,7 +104,7 @@ export const splitLast: OverflowTextSplit = (contents, options = {}) => {
   return [contents.slice(0, splitIndex), contents.slice(splitIndex)]
 }
 
-export const splitFirst: OverflowTextSplit = (contents, options = {}) => {
+const splitFirst: OverflowTextSplit = (contents, options = {}) => {
   const splitOffset = options.splitOffset
   if (typeof splitOffset !== 'number' || splitOffset <= 0 || splitOffset >= contents.length) {
     return splitAtCenter(contents)

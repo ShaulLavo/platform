@@ -1,4 +1,4 @@
-import type { FileTreeSearchBlurBehavior } from '@workspace/tree/utils/model/publicTypes'
+import type { FileTreeSearchBlurBehavior } from '../model/publicTypes'
 
 export type FileTreeRowClickMode = 'flow' | 'sticky'
 

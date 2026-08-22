@@ -3,15 +3,15 @@ import { createRoot, type Root } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 import { useState } from 'react'
 
-import { FileTree } from '@workspace/tree/components/FileTree'
-import { useFileTree } from '@workspace/tree/hooks/useFileTree'
-import type { FileTreeIcons } from '@workspace/tree/utils/iconConfig'
-import type { GitStatusEntry } from '@workspace/tree/utils/publicTypes'
+import { FileTree } from './FileTree'
+import { useFileTree } from '../hooks/useFileTree'
+import type { FileTreeIcons } from '../utils/iconConfig'
+import type { GitStatusEntry } from '../utils/publicTypes'
 import type {
   FileTreeContextMenuItem,
   FileTreeContextMenuOpenContext,
-} from '@workspace/tree/utils/model/publicTypes'
-import { FileTree as FileTreeModel } from '@workspace/tree/utils/render/FileTree'
+} from '../utils/model/publicTypes'
+import { FileTree as FileTreeModel } from '../utils/render/FileTree'
 
 let root: Root | null = null
 

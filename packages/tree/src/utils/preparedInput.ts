@@ -1,4 +1,4 @@
-import { PathStore } from '@workspace/tree/utils/path-store/store'
+import { PathStore } from './path-store/store'
 
 import type { FileTreeSortComparator } from './model/publicTypes'
 

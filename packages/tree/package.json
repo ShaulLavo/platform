@@ -7,14 +7,7 @@
     "./src/styles/style.css"
   ],
   "exports": {
-    "./components/*": "./src/components/*.tsx",
-    "./hooks/*": "./src/hooks/*.ts",
-    "./state/*": "./src/state/*.ts",
-    "./styles/*": "./src/styles/*",
-    "./utils/*": "./src/utils/*.ts",
-    "./utils/model/*": "./src/utils/model/*.ts",
-    "./utils/path-store/*": "./src/utils/path-store/*.ts",
-    "./utils/render/*": "./src/utils/render/*.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
     "build": "tsgo --noEmit",

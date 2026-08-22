@@ -2,14 +2,14 @@
 
 import type { JSX, ReactNode } from 'react'
 
-import { Fruncate } from '@workspace/tree/components/Fruncate'
-import type { OverflowTextProps } from '@workspace/tree/components/OverflowText'
-import { Truncate } from '@workspace/tree/components/Truncate'
+import { Fruncate } from './Fruncate'
+import type { OverflowTextProps } from './OverflowText'
+import { Truncate } from './Truncate'
 import {
   resolveOverflowTextSplit,
   type OverflowTextSplit,
   type OverflowTextSplitOffset,
-} from '@workspace/tree/utils/render/overflowTextSplit'
+} from '../utils/render/overflowTextSplit'
 
 type AllowableContentGroups =
   | {

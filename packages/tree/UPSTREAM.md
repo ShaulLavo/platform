@@ -63,7 +63,11 @@ proven comparator-compatible, so no dummy caller is maintained for it.
 ## API policy
 
 Local product intent defines the public API. High-level capabilities above and the opaque
-prepared/presorted input contract are retained. Controller, path-store, renderer, layout,
-virtualization, DOM, and state details remain implementation concerns even when Pierre exports an
-equivalent symbol. Any future public addition needs either a real outside consumer or a documented,
+prepared/presorted input contract are retained through the single `@workspace/tree` root entry
+point. Local consumers do not import package subpaths. Controller, path-store, renderer, layout,
+virtualization, DOM, and state details remain implementation concerns even when Pierre exposes an
+equivalent symbol.
+
+This intentionally diverges from Pierre's wider package surface. Upstream public additions are
+reviewed as behavior and do not widen the local root API without a product consumer or an explicit,
 measured exception.

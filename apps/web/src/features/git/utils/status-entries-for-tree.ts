@@ -1,4 +1,4 @@
-import type { GitStatusEntry } from '@workspace/tree/utils/publicTypes'
+import type { GitStatusEntry } from '@workspace/tree'
 
 import { toTreePath } from '@/lib/path-formatters'
 import type { FileStatus, TreeStatus } from '@/features/git/utils/types'

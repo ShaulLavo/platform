@@ -130,7 +130,7 @@ function compareSegmentValuesWithSortKeyLookup(
   return left < right ? -1 : 1
 }
 
-export function compareSegmentValues(left: string, right: string): number {
+function compareSegmentValues(left: string, right: string): number {
   return compareSegmentValuesWithSortKeyLookup(left, right, createSegmentSortKey)
 }
 
@@ -224,13 +224,6 @@ export function comparePreparedPathsWithCachedSortKeys(
   }
 
   return left.isDirectory ? -1 : 1
-}
-
-export function compareCompareEntries(
-  left: PathStoreCompareEntry,
-  right: PathStoreCompareEntry,
-): number {
-  return comparePreparedEntries(left, right)
 }
 
 export function getSegmentSortKey(segmentTable: SegmentTable, segmentId: number): SegmentSortKey {

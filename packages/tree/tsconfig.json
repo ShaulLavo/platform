@@ -4,8 +4,7 @@
     "jsx": "react-jsx",
     "types": ["vite/client", "bun"],
     "paths": {
-      "@/*": ["./src/*"],
-      "@workspace/tree/*": ["./src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src", "test", "vitest.config.ts"],

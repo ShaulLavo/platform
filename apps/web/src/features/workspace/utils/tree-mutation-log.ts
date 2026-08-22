@@ -1,7 +1,4 @@
-import type {
-  FileTreeMutationEvent,
-  FileTreeMutationSemanticEvent,
-} from '@workspace/tree/utils/model/publicTypes'
+import type { FileTreeMutationEvent, FileTreeMutationSemanticEvent } from '@workspace/tree'
 
 const MAX_LOGGED_PATHS = 12
 

@@ -2,7 +2,7 @@ import {
   FILE_TREE_SCROLLBAR_GUTTER_MEASURED_PROPERTY,
   FILE_TREE_SCROLLBAR_GUTTER_STYLE_ATTRIBUTE,
   FILE_TREE_SCROLLBAR_MEASURE_ATTRIBUTE,
-} from '@workspace/tree/utils/constants'
+} from './constants'
 
 const measuredGutterCache = new WeakMap<ShadowRoot, number>()
 

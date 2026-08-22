@@ -1,7 +1,4 @@
-import type {
-  FileTreeContextMenuItem,
-  FileTreeContextMenuOpenContext,
-} from '@workspace/tree/utils/model/publicTypes'
+import type { FileTreeContextMenuItem, FileTreeContextMenuOpenContext } from '@workspace/tree'
 import { containerTreePath, entryName } from '@/features/workspace/utils/entry-paths'
 import { rowGitActions, treeRowMenu } from '@/features/workspace/utils/row-menu'
 import type { TreeFsActions } from '@/features/workspace/hooks/use-fs-actions'

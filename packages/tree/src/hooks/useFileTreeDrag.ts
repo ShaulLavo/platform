@@ -6,12 +6,9 @@ import {
   useRef,
 } from 'react'
 
-import type { FileTreeRowDom } from '@workspace/tree/hooks/useFileTreeRowDom'
-import type { FileTreeController } from '@workspace/tree/utils/model/FileTreeController'
-import type {
-  FileTreeDropTarget,
-  FileTreeVisibleRow,
-} from '@workspace/tree/utils/model/publicTypes'
+import type { FileTreeRowDom } from './useFileTreeRowDom'
+import type { FileTreeController } from '../utils/model/FileTreeController'
+import type { FileTreeDropTarget, FileTreeVisibleRow } from '../utils/model/publicTypes'
 import {
   createDragPreviewElement,
   getDragEdgeScrollDelta,
@@ -21,7 +18,7 @@ import {
   shouldUseCustomPointerDragImage,
   TOUCH_LONG_PRESS_DELAY,
   TOUCH_LONG_PRESS_MOVE_THRESHOLD,
-} from '@workspace/tree/utils/render/dragPointer'
+} from '../utils/render/dragPointer'
 
 export interface UseFileTreeDragOptions {
   readonly controller: FileTreeController

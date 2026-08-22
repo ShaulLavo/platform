@@ -10,6 +10,7 @@ import {
   writeSettingsFile,
   type DocumentEdit,
   type SettingsParseError,
+  type SettingsTextRange,
 } from './json-document'
 import { settingsErrors } from './structured-errors'
 
@@ -40,6 +41,7 @@ const ARMING_CATCHUP_MS = 250
 export type LayerContents = {
   readonly raw: Readonly<Record<string, unknown>>
   readonly parseErrors: readonly SettingsParseError[]
+  readonly keyRanges: Readonly<Record<string, SettingsTextRange>>
   readonly revision: string | null
   readonly text: string
   readonly present: boolean
@@ -48,6 +50,7 @@ export type LayerContents = {
 const EMPTY: LayerContents = {
   raw: {},
   parseErrors: [],
+  keyRanges: {},
   revision: null,
   text: '',
   present: false,
@@ -141,6 +144,7 @@ export class SettingsFileLayer {
       this.apply({
         raw: parsed.values,
         parseErrors: parsed.parseErrors,
+        keyRanges: parsed.keyRanges,
         revision,
         text,
         present: true,
@@ -186,6 +190,7 @@ export class SettingsFileLayer {
       this.apply({
         raw: incoming.values,
         parseErrors: [],
+        keyRanges: incoming.keyRanges,
         revision,
         text,
         present: true,
@@ -249,13 +254,21 @@ export class SettingsFileLayer {
         // errors never clear on their own.
         raw: this.contents.present ? this.contents.raw : parsed.values,
         parseErrors: parsed.parseErrors,
+        keyRanges: parsed.keyRanges,
         revision,
         text,
         present: true,
       }
     }
 
-    return { raw: parsed.values, parseErrors: parsed.parseErrors, revision, text, present: true }
+    return {
+      raw: parsed.values,
+      parseErrors: parsed.parseErrors,
+      keyRanges: parsed.keyRanges,
+      revision,
+      text,
+      present: true,
+    }
   }
 
   private watchFile() {

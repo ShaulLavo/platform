@@ -1,5 +1,5 @@
-import type { FileTreeIcons } from '@workspace/tree/utils/iconConfig'
-import type { GitStatus } from '@workspace/tree/utils/publicTypes'
+import type { FileTreeIcons } from '../iconConfig'
+import type { GitStatus } from '../publicTypes'
 import type {
   FileTreeCompositionOptions,
   FileTreePublicId,
@@ -16,26 +16,6 @@ export type FileTreeControllerListener = () => void
 export interface FileTreeStickyRowCandidate {
   row: FileTreeVisibleRow
   subtreeEndIndex: number
-}
-
-export interface FileTreeViewportMetrics {
-  itemCount: number
-  itemHeight: number
-  overscan?: number
-  scrollTop: number
-  viewportHeight: number
-}
-
-export interface FileTreeRange {
-  end: number
-  start: number
-}
-
-export interface FileTreeStickyWindowLayout {
-  offsetHeight: number
-  stickyInset: number
-  totalHeight: number
-  windowHeight: number
 }
 
 export interface FileTreeScrollRequest {

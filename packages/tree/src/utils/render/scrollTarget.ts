@@ -6,9 +6,9 @@
 // no change is required. Callers that currently own a scroll element perform
 // the single imperative write.
 
-import type { FileTreeScrollOffset } from '@workspace/tree/utils/model/publicTypes'
+import type { FileTreeScrollOffset } from '../model/publicTypes'
 
-export type FileTreeScrollTargetInput = {
+type FileTreeScrollTargetInput = {
   focusedIndex: number
   itemHeight: number
   viewportHeight: number

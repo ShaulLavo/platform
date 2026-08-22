@@ -1,4 +1,4 @@
-import type { FileTree as FileTreeModel } from '@workspace/tree/utils/render/FileTree'
+import type { FileTreeModel } from '@workspace/tree'
 import { useEffect } from 'react'
 
 import { treeMutationLogContext } from '@/features/workspace/utils/tree-mutation-log'

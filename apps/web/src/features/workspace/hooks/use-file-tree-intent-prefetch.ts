@@ -17,11 +17,11 @@ import { createIdleScheduler } from '@/features/workspace/utils/intent-prefetch-
 import { FILE_SNAPSHOT_STALE_MS, prefetchFileSnapshotQuery } from '@/lib/file-snapshot-query-cache'
 import { isDirectoryEntry } from '@/lib/file-system-types'
 import { entryForTreePath, type TreeModel } from '@/lib/tree-model'
-import type { FileTree } from '@workspace/tree/utils/render/FileTree'
+import type { FileTreeModel } from '@workspace/tree'
 
 type FileTreeIntentPrefetchOptions = {
   model: TreeModel
-  tree: FileTree
+  tree: FileTreeModel
 }
 
 export function useFileTreeIntentPrefetch({ model, tree }: FileTreeIntentPrefetchOptions) {
@@ -93,7 +93,7 @@ function resolveFileTreeRow(element: HTMLElement): IntentPrefetchRow<string> | n
   }
 }
 
-function observeTreeRows(tree: FileTree, onChange: () => void): MutationObserver | null {
+function observeTreeRows(tree: FileTreeModel, onChange: () => void): MutationObserver | null {
   if (typeof MutationObserver === 'undefined') return null
 
   const shadowRoot = tree.getFileTreeContainer()?.shadowRoot

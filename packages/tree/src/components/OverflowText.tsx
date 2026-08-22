@@ -2,20 +2,20 @@
 
 import type { CSSProperties, JSX, ReactNode } from 'react'
 
-import { OverflowContent } from '@workspace/tree/components/OverflowContent'
-import { OverflowMarker } from '@workspace/tree/components/OverflowMarker'
+import { OverflowContent } from './OverflowContent'
+import { OverflowMarker } from './OverflowMarker'
 
 type PropsWithChildren<T = object> = T & {
   children?: ReactNode
 }
 
-export type CSSPropertiesWithVars = CSSProperties & {
+type CSSPropertiesWithVars = CSSProperties & {
   [key: `--${string}`]: string | number | undefined
 }
 
-export interface MarkerProps extends PropsWithChildren {}
+interface MarkerProps extends PropsWithChildren {}
 
-export type TruncateMode = 'truncate' | 'fruncate'
+type TruncateMode = 'truncate' | 'fruncate'
 
 export interface OverflowTextProps extends PropsWithChildren {
   mode?: TruncateMode

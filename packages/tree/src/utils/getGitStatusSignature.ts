@@ -1,4 +1,4 @@
-import type { GitStatusEntry } from '@workspace/tree/utils/publicTypes'
+import type { GitStatusEntry } from './publicTypes'
 
 /**
  * Produces a stable cache key for a git status array.

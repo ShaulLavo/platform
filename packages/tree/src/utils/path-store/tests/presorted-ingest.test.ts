@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { PathStore } from '@workspace/tree/utils/path-store/store'
+import { PathStore } from '../store'
 
 const PRESORTED_CASES = [
   {

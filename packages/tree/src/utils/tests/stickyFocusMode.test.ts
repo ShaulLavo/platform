@@ -8,7 +8,7 @@ import {
   preserveStickyKeyboardFocusAtScrollTop,
   restoreStickyKeyboardViewportOffset,
   settleStickyKeyboardFocus,
-} from '@workspace/tree/utils/render/stickyFocusMode'
+} from '../render/stickyFocusMode'
 
 describe('stickyFocusMode', () => {
   // The ref this replaces set the focus path unconditionally and only the

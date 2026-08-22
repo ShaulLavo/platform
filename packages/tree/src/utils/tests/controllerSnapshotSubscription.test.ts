@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { transitionControllerSnapshotSubscription } from '@workspace/tree/utils/render/controllerSnapshotSubscription'
+import { transitionControllerSnapshotSubscription } from '../render/controllerSnapshotSubscription'
 
 describe('controller snapshot subscription transition', () => {
   it('suppresses only the genuine initial snapshot', () => {

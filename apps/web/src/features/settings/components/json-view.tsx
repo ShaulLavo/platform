@@ -2,9 +2,11 @@ import { useEditorDocumentState } from '@/features/editor/state/document-state'
 import { Editor } from '@/features/editor/components/editor'
 import type { EditorRenderDocument } from '@/features/editor/utils/render-document'
 import type { EditorKeymapLayer } from '@singapor/core'
+import type { SettingsDiagnostic, SettingsLayerFile } from '@workspace/contracts'
 
 import { settingsJsonDocumentId } from '../utils/json-document'
 import type { SettingsScope } from '../state/scope-store'
+import { useSettingsDiagnosticsPlugin } from '../hooks/use-settings-diagnostics-plugin'
 import { Status } from './status'
 
 /**
@@ -15,18 +17,23 @@ import { Status } from './status'
  * a second derivation would have to build a fresh object inside a store selector.
  */
 export function SettingsJsonView({
+  diagnostics,
   editorKeymapLayers,
+  file,
   liveDocument,
   rootPath,
   scope,
   tabId,
 }: {
+  diagnostics: readonly SettingsDiagnostic[]
   editorKeymapLayers: readonly EditorKeymapLayer[]
+  file: SettingsLayerFile | null
   liveDocument: EditorRenderDocument | null
   rootPath: string
   scope: SettingsScope
   tabId: string
 }) {
+  const diagnosticsPlugins = useSettingsDiagnosticsPlugin({ diagnostics, file, target: scope })
   const setLiveEditorDocumentDirty = useEditorDocumentState(
     (state) => state.setLiveEditorDocumentDirty,
   )
@@ -43,6 +50,7 @@ export function SettingsJsonView({
   return (
     <Editor
       active
+      additionalPlugins={diagnosticsPlugins}
       document={liveDocument}
       keymapLayers={editorKeymapLayers}
       rootPath={rootPath}

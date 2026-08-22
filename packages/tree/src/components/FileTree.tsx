@@ -11,17 +11,13 @@ import {
   useState,
 } from 'react'
 
-import {
-  CONTEXT_MENU_SLOT_NAME,
-  FILE_TREE_TAG_NAME,
-  HEADER_SLOT_NAME,
-} from '@workspace/tree/utils/constants'
+import { CONTEXT_MENU_SLOT_NAME, FILE_TREE_TAG_NAME, HEADER_SLOT_NAME } from '../utils/constants'
 import type {
   FileTreeCompositionOptions,
   FileTreeContextMenuItem,
   FileTreeContextMenuOpenContext,
-} from '@workspace/tree/utils/model/publicTypes'
-import type { FileTree as FileTreeModel } from '@workspace/tree/utils/render/FileTree'
+} from '../utils/model/publicTypes'
+import type { FileTree as FileTreeModel } from '../utils/render/FileTree'
 
 const useClientLayoutEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect
 

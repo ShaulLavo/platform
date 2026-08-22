@@ -9,35 +9,35 @@ import {
   type TouchEvent as ReactTouchEvent,
 } from 'react'
 
-import { Icon } from '@workspace/tree/components/Icon'
-import { MiddleTruncate } from '@workspace/tree/components/MiddleTruncate'
-import { Truncate } from '@workspace/tree/components/Truncate'
-import { RenameInput } from '@workspace/tree/components/RenameInput'
+import { Icon } from './Icon'
+import { MiddleTruncate } from './MiddleTruncate'
+import { Truncate } from './Truncate'
+import { RenameInput } from './RenameInput'
 import {
   GIT_STATUS_DESCENDANT_TITLE,
   GIT_STATUS_LABEL,
   GIT_STATUS_TITLE,
-} from '@workspace/tree/utils/gitStatusPresentation'
-import type { FileTreeController } from '@workspace/tree/utils/model/FileTreeController'
+} from '../utils/gitStatusPresentation'
+import type { FileTreeController } from '../utils/model/FileTreeController'
 import type {
   FileTreeContextMenuButtonVisibility,
   FileTreeContextMenuOpenContext,
   FileTreeContextMenuTriggerMode,
   FileTreeRowDecoration,
   FileTreeVisibleRow,
-} from '@workspace/tree/utils/model/publicTypes'
-import type { GitStatus } from '@workspace/tree/utils/publicTypes'
-import { createAnchorRectFromPoint } from '@workspace/tree/utils/render/contextMenuAnchor'
-import { focusElement } from '@workspace/tree/utils/render/focusHelpers'
-import { createFileTreeIconResolver } from '@workspace/tree/utils/render/iconResolver'
-import { computeFileTreeRowElementAttributes } from '@workspace/tree/utils/render/rowAttributes'
-import type { FileTreeRowClickMode } from '@workspace/tree/utils/render/rowClickPlan'
+} from '../utils/model/publicTypes'
+import type { GitStatus } from '../utils/publicTypes'
+import { createAnchorRectFromPoint } from '../utils/render/contextMenuAnchor'
+import { focusElement } from '../utils/render/focusHelpers'
+import { createFileTreeIconResolver } from '../utils/render/iconResolver'
+import { computeFileTreeRowElementAttributes } from '../utils/render/rowAttributes'
+import type { FileTreeRowClickMode } from '../utils/render/rowClickPlan'
 import {
   getFileTreeFocusedRowDomId,
   getFileTreeRowAriaLabel,
   getFileTreeRowPath,
-} from '@workspace/tree/utils/render/rowIdentity'
-import type { SVGSpriteNames } from '@workspace/tree/utils/sprite'
+} from '../utils/render/rowIdentity'
+import type { SVGSpriteNames } from '../utils/sprite'
 
 function formatFlattenedSegments(
   row: FileTreeVisibleRow,
@@ -312,7 +312,7 @@ export interface FileTreeRenderRowFrame {
   readonly onKeyDown: (event: ReactKeyboardEvent<HTMLElement>) => void
 }
 
-export interface FileTreeRenderRowOptions {
+interface FileTreeRenderRowOptions {
   readonly isParked?: boolean
   readonly mode?: FileTreeRenderedRowMode
   readonly style?: Record<string, string | undefined>

@@ -2,7 +2,7 @@ import type {
   FileTreeDirectoryHandle,
   FileTreeDropTarget,
   FileTreeItemHandle,
-} from '@workspace/tree/utils/model/publicTypes'
+} from '../model/publicTypes'
 
 export const TOUCH_LONG_PRESS_DELAY = 400
 export const TOUCH_LONG_PRESS_MOVE_THRESHOLD = 10

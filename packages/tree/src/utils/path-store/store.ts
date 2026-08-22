@@ -392,10 +392,6 @@ export class PathStore {
     return subscribe(this.#state, type, handler)
   }
 
-  public getNodeCount(): number {
-    return this.#state.activeNodeCount
-  }
-
   private initializeExpandedPaths(expandedPaths: readonly string[] | undefined): number {
     if (expandedPaths == null || expandedPaths.length === 0) {
       return 0

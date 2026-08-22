@@ -28,13 +28,17 @@ import type {
   DocumentSessionChange,
   EditorKeymapLayer,
   EditorKeymapOptions,
+  EditorPlugin,
   EditorScrollPosition,
 } from '@singapor/core'
+
+const NO_ADDITIONAL_PLUGINS: readonly EditorPlugin[] = []
 
 type EditorProps = {
   active: boolean
   document: EditorRenderDocument
   keymapLayers: readonly EditorKeymapLayer[]
+  additionalPlugins?: readonly EditorPlugin[]
   rootPath: string
   tabId: string
   definitionTarget?: LanguageServerDefinitionTarget | null
@@ -48,6 +52,7 @@ type EditorProps = {
 
 export function Editor({
   active,
+  additionalPlugins = NO_ADDITIONAL_PLUGINS,
   definitionTarget,
   document: liveDocument,
   keymapLayers,
@@ -88,8 +93,15 @@ export function Editor({
       languageServer,
       nonCriticalEditorPlugins,
       scrollPersistencePlugin,
+      ...additionalPlugins,
     ],
-    [criticalEditorCorePlugins, languageServer, nonCriticalEditorPlugins, scrollPersistencePlugin],
+    [
+      additionalPlugins,
+      criticalEditorCorePlugins,
+      languageServer,
+      nonCriticalEditorPlugins,
+      scrollPersistencePlugin,
+    ],
   )
   const document = useMemo(
     () => ({

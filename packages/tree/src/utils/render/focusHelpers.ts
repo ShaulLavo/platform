@@ -1,12 +1,9 @@
-import type {
-  FileTreeScrollBehavior,
-  FileTreeScrollOffset,
-} from '@workspace/tree/utils/model/publicTypes'
+import type { FileTreeScrollBehavior, FileTreeScrollOffset } from '../model/publicTypes'
 import {
   computeFocusedRowScrollIntoView,
   computeFocusedRowScrollTopForOffset,
   computeViewportOffsetScrollTop,
-} from '@workspace/tree/utils/render/scrollTarget'
+} from './scrollTarget'
 
 export function focusElement(element: HTMLElement | null): boolean {
   if (element == null || !element.isConnected) {

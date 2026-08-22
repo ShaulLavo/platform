@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
-import type { FileTreeOptions } from '@workspace/tree/utils/model/publicTypes'
-import { FileTree } from '@workspace/tree/utils/render/FileTree'
+import type { FileTreeOptions } from '../utils/model/publicTypes'
+import { FileTree } from '../utils/render/FileTree'
 
 interface CleanUpRef {
   timeout: ReturnType<typeof setTimeout> | null

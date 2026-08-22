@@ -1,11 +1,11 @@
-import { CONTEXT_MENU_SLOT_NAME, CONTEXT_MENU_TRIGGER_TYPE } from '@workspace/tree/utils/constants'
+import { CONTEXT_MENU_SLOT_NAME, CONTEXT_MENU_TRIGGER_TYPE } from '../constants'
 import type {
   FileTreeContextMenuItem,
   FileTreeContextMenuOpenContext,
   FileTreeVisibleRow,
-} from '@workspace/tree/utils/model/publicTypes'
-import { focusElement } from '@workspace/tree/utils/render/focusHelpers'
-import { getFileTreeRowAriaLabel } from '@workspace/tree/utils/render/rowIdentity'
+} from '../model/publicTypes'
+import { focusElement } from './focusHelpers'
+import { getFileTreeRowAriaLabel } from './rowIdentity'
 
 export function isEventInContextMenu(event: Event): boolean {
   for (const entry of event.composedPath()) {

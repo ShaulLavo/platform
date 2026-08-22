@@ -43,29 +43,3 @@ export function normalizeInputPath(inputPath: string): NormalizedInputPath | nul
     path: normalizedPath,
   }
 }
-
-export function forEachFolderInNormalizedPath(
-  path: string,
-  isDirectory: boolean,
-  visit: (folderPath: string) => void,
-): void {
-  const lastSlashIndex = path.lastIndexOf('/')
-  if (lastSlashIndex === -1) {
-    if (isDirectory) {
-      visit(path)
-    }
-    return
-  }
-
-  const limit = isDirectory ? path.length : lastSlashIndex
-  let slashIndex = path.indexOf('/')
-
-  while (slashIndex !== -1 && slashIndex <= limit) {
-    visit(path.slice(0, slashIndex))
-    slashIndex = path.indexOf('/', slashIndex + 1)
-  }
-
-  if (isDirectory) {
-    visit(path)
-  }
-}

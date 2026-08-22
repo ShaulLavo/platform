@@ -23,6 +23,12 @@ export const settingsParseErrorSchema = v.object({
   length: v.number(),
 })
 
+/** A source span in the exact settings document bytes carried beside it. */
+export const settingsTextRangeSchema = v.object({
+  offset: v.number(),
+  length: v.number(),
+})
+
 /**
  * The layer's file, as bytes.
  *
@@ -39,6 +45,7 @@ export const settingsLayerFileSchema = v.object({
   text: v.string(),
   revision: v.string(),
   parseErrors: v.array(settingsParseErrorSchema),
+  keyRanges: v.record(v.string(), settingsTextRangeSchema),
 })
 
 /**
@@ -103,6 +110,7 @@ export const settingsWriteRequestSchema = v.object({
 export type SettingsLayerFile = v.InferOutput<typeof settingsLayerFileSchema>
 export type SettingsLayerSnapshot = v.InferOutput<typeof settingsLayerSnapshotSchema>
 export type SettingsParseError = v.InferOutput<typeof settingsParseErrorSchema>
+export type SettingsTextRange = v.InferOutput<typeof settingsTextRangeSchema>
 export type SettingsSnapshot = v.InferOutput<typeof settingsSnapshotSchema>
 export type SettingsEdit = v.InferOutput<typeof settingsEditSchema>
 export type SettingsWriteRequest = v.InferOutput<typeof settingsWriteRequestSchema>

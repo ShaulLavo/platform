@@ -1,193 +1,78 @@
-# Plan 054: `ghostty-webgpu` — full Ghostty terminal for the web on WebGPU
+# Plan 054: ghostty-webgpu Phase 0 — feasibility spike and go/no-go
+
+> **Executor instructions**: Follow this plan step by step. Run every verification command and
+> confirm the expected result before moving to the next step. If anything in the "STOP conditions"
+> section occurs, stop and report — do not improvise. This repository deletes completed plans:
+> once every done criterion is verified, record the S1–S5 answers and the go/no-go decision in
+> `docs/ghostty-webgpu-brief.md`, then delete this file and update its row in `plans/README.md`
+> in the same change.
+>
+> **Context**: The architecture and Phases 1–6 live in
+> [docs/ghostty-webgpu-brief.md](../docs/ghostty-webgpu-brief.md). This plan is only the spike
+> that decides whether that project proceeds, descopes, or dies. Do not start Phase 1 from this
+> plan.
+>
+> **Drift check (run first)**:
+>
+> ```bash
+> git diff --stat 2b503172..HEAD -- apps/web/src/features/terminal apps/web/vite.config.ts \
+>   packages/ui/src/styles/globals.css packages/contracts/src/settings/keys.ts patches/
+> git -C references/ghostty-web rev-parse --short HEAD   # expect 1858a59
+> git -C references/ghostling rev-parse --short HEAD     # expect 63842bf
+> grep -n "references/" .gitignore                        # expect a hit (line ~37)
+> ```
+>
+> Committed drift touching the terminal feature or the ghostty-web patch is a re-inventory
+> trigger, not a STOP. Missing reference clones: re-clone shallow from coder/ghostty-web and
+> ghostty-org/ghostling and verify the ghostling pin still fetches upstream ghostty
+> `f64f4aca2c29b554d111b36c3d946a9bddd159ff`.
 
 ## Status
 
-**Phase 0 READY; later phases are a brief, not yet executable.** Revised 2026-08-22 after external
-review; the review's findings are folded in below (callback bridge, scheduler spec, blink-aware
-gates, transparency contract, real seam inventory, atlas generations, pass topology, corrected
-perf diagnosis, phase split).
+- **Priority**: P1 — sizes/kills a large project before it starts
+- **Effort**: ~2–3 focused days (S1 is the long pole)
+- **Risk**: low (throwaway spike code; only measurement and one bench-only patch)
+- **State**: READY
+- **Category**: feasibility spike
+- **Planned at**: platform `2b503172`; `references/ghostty-web` `1858a59`;
+  `references/ghostling` `63842bf`; upstream ghostty pin
+  `f64f4aca2c29b554d111b36c3d946a9bddd159ff` (ghostling's pin — all C-API claims read there)
 
-Planned at: platform `cf070159`; references cloned into `references/` (gitignored):
-`ghostty-web` @ `1858a59` (coder/ghostty-web, source of our vendored `ghostty-web@0.4.0`),
-`ghostling` @ `63842bf` (ghostty-org/ghostling), which pins upstream ghostty
-`f64f4aca2c29b554d111b36c3d946a9bddd159ff` — the rev all C-API claims below were read at.
+## Why
 
-Only **Phase 0** in this document is executable. Phases 1–6 are the project brief; each gets its
-own numbered plan (with drift check, commands, step gates) when its predecessor completes.
+Measured 2026-08-22 (memory `ghostty-render-loop-gpu`): an idle visible terminal drives the
+browser's shared GPU process to ~63% via ghostty-web's standing rAF loop
+(`references/ghostty-web/lib/terminal.ts:1167`). The proposed fix is a full rewrite
+(`docs/ghostty-webgpu-brief.md`), but three things are unproven and each can kill or reshape it:
 
-## Why this matters
+1. The libghostty-vt wasm **callback bridge** (the C API is function-pointer-shaped, in three ABI
+   shapes; JS must satisfy all three).
+2. **WebGPU in the environments we actually ship**: Playwright CI _and_ the Electrobun CEF
+   desktop build — including the `WINDOW_TRANSPARENT` OSR mode that transparency work needs.
+3. **The payoff**: how much of the 63% is scheduling (fixable with a patch) vs Canvas 2D itself
+   (fixable only by the rewrite). Without a WebGPU floor measurement and a pre-registered kill
+   number, "go/no-go recorded" is unfalsifiable.
 
-Measured 2026-08-22 (memory `ghostty-render-loop-gpu`): with the wallpaper disabled, an **idle**
-terminal showing static output drives the browser's shared GPU process to ~63% whenever the tab is
-visible, dropping to ~0% the moment the tab hides (rAF throttling) — which masks the cost exactly
-when people check. Confirmed causes in `ghostty-web`:
+## Scope
 
-1. `startRenderLoop()` (`references/ghostty-web/lib/terminal.ts:1167`) runs `renderer.render(...)`
-   on **every** `requestAnimationFrame` from `open()` until dispose. There is no idle state.
-2. The renderer is pure Canvas 2D (`fillText`/`fillRect`; the only contexts requested are `"2d"`).
+Throwaway spike code only, in `references/spike-ghostty-wasm/` (gitignored via `references/`).
+One bench-only bun patch on a branch (S4). **No production files change** except this plan, the
+brief, and `plans/README.md` at completion. Prereq: `zig` 0.15.2+ on PATH (`brew install zig`).
 
-**Diagnosis precision (corrected):** the renderer is _not_ naively full-grid — `renderer.ts:424`
-builds `rowsToRender` from dirty/selection/hyperlink rows (plus adjacent rows for glyph overflow)
-and redraws only those; scrolled viewports force full redraws. So the idle burn comes from the
-standing per-frame loop and whatever per-frame work survives the dirty-row filter (render-state
-polling, cursor pass, canvas flush/composite), not from re-rasterizing every cell. How much of the
-63% is _scheduling_ vs _Canvas 2D itself_ is unknown — Phase 0 measures exactly that before the
-rewrite is committed (S4 below).
+## Pre-registered kill thresholds (write results next to these; do not move them after measuring)
 
-## Goal and non-goals
+Descope to **a scheduling patch upstreamed to coder/ghostty-web** (and re-justify the rewrite on
+fidelity/protocol grounds only, or drop it) if BOTH hold:
 
-**Goal:** a standalone project `ghostty-webgpu` — upstream libghostty-vt compiled to wasm driving
-a damage-scheduled WebGPU renderer modeled on Ghostty's native Metal renderer. It lives in **its
-own repository** as a sibling of platform (`/Users/shaul/Desktop/D/ghostty-webgpu`), Editor-style:
-platform consumes it via root `overrides` + `bun link:`, compiled against its `dist`. Publishable
-to npm on its own (unscoped name `ghostty-webgpu`).
+- **K1**: damage-scheduled canvas (S4) reaches GPU-process CPU ≤ **5%** on focused blinking idle
+  and ≤ **1%** on unfocused idle, AND
+- **K2**: damage-scheduled canvas burst-output and scroll scenarios land within **1.25×** of the
+  WebGPU probe (S5) on the same scenarios, same machine, same methodology.
 
-**Non-goals (explicit):**
+Hard STOPs are listed at the end. Thresholds may be revised only _before_ S4/S5 run, with the
+revision committed to this file first.
 
-- No WebGL2/Canvas fallback renderer inside the package. The rollout fallback is platform's
-  existing `ghostty-web` path behind a setting, kept **through Phase 5 plus a parity soak** —
-  Kitty graphics and the protocol audit land in Phase 5, so removal before that would strand
-  features. Removal is Phase 6's first gate.
-- No tmux-style multiplexing, no search — native Ghostty doesn't own these either.
-- Custom user shaders (Ghostty's GLSL cursor/background shaders) are out of scope for all phases
-  in this document; WebGPU speaks WGSL and translation is its own project.
-
-## Load-bearing facts from the reference read
-
-Verified at the pins above; re-verify in each phase's drift check:
-
-1. **Upstream libghostty-vt builds to wasm unpatched.** ghostling links it via `zig build lib-vt`
-   (CMake `FetchContent` on the ghostty repo, no patch step); coder's `build-wasm.sh` uses the
-   same target as `zig build lib-vt -Dtarget=wasm32-freestanding -Doptimize=ReleaseSmall`
-   (Zig 0.15.2+, ~20s) _plus a patch that predates the official `ghostty_terminal_*` API_.
-2. **BUT the C API is callback-shaped, and that is the feasibility risk.** Essential behavior
-   arrives through C function pointers installed with `ghostty_terminal_set`:
-   `GHOSTTY_TERMINAL_OPT_WRITE_PTY` (query replies — without it DA/DSR/size queries are silently
-   dropped and vim/htop degrade or hang), `OPT_SIZE`, plus title, bell, clipboard (OSC 52), and
-   PNG decode effects (`references/ghostling/main.c:1312-1340`). Checking exported `ghostty_*`
-   symbols is **insufficient**; JS must be able to install functions the wasm side can call —
-   funcref table entries / trampolines, and allocator-owned buffers for the PNG-decode path.
-   Phase 0 S1 proves or falsifies this before anything else is built.
-3. **The render API has the damage primitives, but no reference implementation of damage
-   scheduling exists.** `ghostty_render_state_update` snapshots terminal → render state; global
-   dirty and per-row dirty are independent flags that the _consumer_ manages
-   (`include/ghostty/vt/render.h`). ghostling is **not** that reference: its raylib loop calls
-   `render_state_update` + `BeginDrawing` + full-row-iteration `render_terminal()` every frame
-   and never reads `ROW_DATA_DIRTY` (`main.c:1542`, `:837`). Our scheduler is specified in this
-   plan (below), not inherited.
-4. **Kitty graphics implies layered drawing.** ghostling renders three image layers relative to
-   the cell grid: below backgrounds, below text, above text (`main.c:827` area). "Two instanced
-   draw calls" is the **text-only** fast path, not a renderer invariant.
-5. **ghostty-web's TS layer remains prior art** for web-only concerns (fit sizing, link
-   providers, selection UX, IME, bench scenarios) and its renderer's dirty-row bookkeeping is
-   worth reading before writing ours. Steal designs, not code.
-
-## Architecture (brief for Phases 1+)
-
-Five layers, one package. Only `dom/` and `render/` may touch browser APIs; `core/` and `term/`
-run under plain `vitest` in Node.
-
-```
-ghostty-webgpu/            (own repo, sibling of platform and Editor)
-  src/
-    core/     wasm loading + typed bindings over the libghostty-vt C ABI,
-              including the callback/effects bridge from Phase 0. Zero DOM.
-    term/     Terminal orchestrator: write() → vt_write, resize, viewport
-              scroll, selection model, render-state ownership, OSC 8 links,
-              title/bell/clipboard effects surfaced as events.
-    render/   WebGPU renderer (spec below).
-    dom/      host wiring: keyboard/IME → key encoder, mouse → mouse encoder,
-              clipboard, ResizeObserver fit, scrollbar UI from
-              GHOSTTY_TERMINAL_DATA_SCROLLBAR, accessibility mirror.
-  ghostty-vt.wasm          committed artifact (consumers never need Zig)
-  scripts/build-wasm.ts    pinned upstream rev; unpatched `zig build lib-vt`
-  AGENTS.md                own instructions — the repo does NOT inherit
-                           platform's CLAUDE.md; must carry the never-nester
-                           control-flow rules and the comments policy.
-```
-
-### Render scheduling (the actual algorithm, not "like ghostling")
-
-State: `framePending: boolean`, `blinkTimer` (armed only when cursor-blink is on AND focused AND
-document visible), `needsFullRebuild` (resize, theme, scroll-position change, atlas generation
-bump, device restore).
-
-1. Wake sources — vt bytes written, blink tick, selection change, scroll, resize, focus/theme
-   change, atlas/device invalidation — call `schedule()`. If `framePending`, they return (damage
-   coalescing: at most one pending frame); else set it and `requestAnimationFrame(frame)`.
-2. `frame()`: clear `framePending`; call `ghostty_render_state_update`; read global dirty. If
-   nothing is dirty and no overlay (cursor/selection/scrollbar fade) changed, submit nothing.
-3. Rebuild instance data only for rows whose `ROW_DATA_DIRTY` is set (or all rows when
-   `needsFullRebuild`); after painting, clear each row's dirty flag and reset the global dirty
-   flag — the acknowledgement protocol the C API expects the consumer to run.
-4. No standing loop exists anywhere: an idle, unfocused terminal has zero armed timers and zero
-   rAF callbacks. This is asserted by test, with blink-aware gates (Phase 2 gates below).
-
-### Renderer spec
-
-- **Text fast path: two instanced draws** (bg-cell rects, then glyph quads from the atlas),
-  per-cell instances in a storage buffer, `writeBuffer` deltas per dirty row. Kitty graphics
-  (Phase 5) inserts its three textured-quad layers around these; the pass count is whatever
-  z-order requires that frame.
-- **Glyph atlas with generation tracking.** Shelf-packed pages (grayscale + color), rasterized
-  via OffscreenCanvas 2D scratch. Every atlas page carries a generation; instance records carry
-  the generation they were built against. **Eviction bumps the generation and marks every row
-  whose instances reference the evicted page for rebuild — LRU eviction without invalidation
-  corrupts clean rows.** GPU device loss reuses the same path: bump all generations,
-  `needsFullRebuild`, re-upload. The CJK/emoji eviction stress test belongs to the phase that
-  introduces eviction (Phase 2), not later.
-- **Transparency contract — two color systems, kept apart.** `GhosttyColorRgb` has no alpha; the
-  render-state background RGB is kept for _terminal color semantics_ (inverse video, minimum
-  contrast, palette defaults). _Canvas compositing_ is separate: default (unset-background) cells
-  are cleared to alpha 0; only cells with an explicit background paint opaquely; canvas context
-  `alphaMode: 'premultiplied'` (which governs blending semantics only — it does not make an
-  opaque clear transparent). Platform's pane already paints the ground and the terminal section
-  deliberately paints none (`packages/ui/src/styles/globals.css:256`, a parse contract for
-  ghostty's color reader — plain colors only, no `color-mix()`). Gates: a GPU readback assertion
-  that empty-cell alpha is 0, plus a real workbench compositing test over a translucent pane
-  (memory `terminal-ghostty-transparency` is the bug this prevents).
-- **Decorations in-shader:** cursor styles, underline styles incl. undercurl, strikethrough,
-  minimum-contrast — per-instance flags in the fragment shader.
-- **Main thread first;** `render/` stays free of direct DOM event access so it can move behind
-  `transferControlToOffscreen` later without redesign.
-
-### Font pipeline (two stages, deliberate)
-
-- Phase 1–4: per-cell grapheme clusters via `fillText` into the atlas — today's fidelity, no
-  cross-cell ligatures. Atlas keys on (font, size, cluster/glyph-id) so the upgrade is additive.
-- Phase 6 (parity): HarfBuzz-wasm shaping; glyph outlines via HarfBuzz draw API → `Path2D` →
-  same atlas keyed by glyph id. Needs font _bytes_: bundled default (JetBrains Mono, as
-  ghostling), user font URLs, `queryLocalFonts()` where granted; browser-shaped `fillText`
-  remains the fallback for CSS-name-only fonts.
-
-## The platform seam (corrected: it is NOT import-level)
-
-Inventory of ghostty-web API platform consumes today (verify in the Phase 5 plan's drift check):
-
-- `panel.tsx` — `new Terminal({allowTransparency, cursorBlink, cursorStyle, fontFamily,
-fontSize, scrollback, smoothScrollDuration, theme})`, mutable `options` writes (cursor style
-  patching, focus handover), `loadAddon(FitAddon)` + `fit()` + `observeResize()`, `open()`,
-  `write`/`writeln`, `onData`, `onResize`, dispose lifecycle.
-- `hooks/use-links.ts` — `ILink`, link providers, `buffer.active.getLine()` reads.
-- `utils/commands.ts` + `utils/capture.ts` — `getSelection()`, `getScrollbackLength()`,
-  `clear()`, paste/input, scrollback capture.
-
-Consequence: define a **platform-local structural terminal contract** (a type in the terminal
-feature covering exactly the consumed surface above) with **two adapters** — one over ghostty-web,
-one over ghostty-webgpu — rather than pretending the new package can be swapped at the import.
-The contract is also the checklist for what `term/`+`dom/` must implement.
-
-**Renderer switching semantics (decided):** flipping the `terminal.renderer` setting recreates
-the terminal view and reconnects to the same server-side PTY session (sessions already survive
-socket reconnects); it does not attempt live in-place renderer swap and does not require an app
-restart. Settings key registered in `packages/contracts/src/settings/keys.ts`, **application
-scope** (selects an execution path; window scope is forbidden for that), wired in the same pass.
-
-## Phase 0 — feasibility spike (EXECUTABLE)
-
-Everything here is throwaway-quality code in `references/spike-ghostty-wasm/` (gitignored via
-`references/`); the deliverable is answers, committed as updates to this plan. Prereq: `zig`
-0.15.2+ on PATH (`brew install zig`).
+## Steps
 
 ### S1 — wasm callback bridge (the P0 blocker)
 
@@ -201,88 +86,106 @@ cd references/spike-ghostty-wasm/ghostty && zig build lib-vt -Dtarget=wasm32-fre
 Expected: `zig-out/bin/ghostty-vt.wasm` builds with **no patch**. Then, in a Node script
 (`node:fs` + `WebAssembly.instantiate`):
 
-1. Enumerate exports; diff against the full symbol set ghostling consumes
-   (`grep -oE 'ghostty_[a-z_]+' references/ghostling/main.c | sort -u`) **and** the
-   `GHOSTTY_TERMINAL_OPT_*` callback constants in `include/ghostty/vt/terminal.h`.
-2. Install a JS function as `OPT_WRITE_PTY` (exported funcref table + `WebAssembly.Function`, a
-   wasm trampoline export, or — if neither exists — a minimal Zig shim module we compile
-   alongside; document which). Feed `vt_write` a DA1 query (`\x1b[c`); **assert JS receives the
-   reply bytes.** Repeat for title (OSC 0) and bell (BEL).
-3. Prove the PNG-decode effect can hand back allocator-owned pixels (or record that Kitty
-   graphics needs a JS-side decoder — acceptable, but it must be a recorded decision, not a
-   surprise).
-4. Instantiate the same artifact in a browser page (the running dev server is fine) — same
-   results.
+1. **Symbol diff.** Enumerate wasm exports; diff against (a) the symbol set ghostling consumes —
+   `grep -oE 'ghostty_[a-z_]+' references/ghostling/main.c | sort -u` — and (b) the constants the
+   C headers define: every `GHOSTTY_TERMINAL_OPT_*` in `include/ghostty/vt/terminal.h`, plus
+   `GHOSTTY_SYS_OPT_DECODE_PNG`, `GHOSTTY_RENDER_STATE_ROW_OPTION_DIRTY`, and
+   `GHOSTTY_RENDER_STATE_OPTION_DIRTY` (do not assume names; read the headers). While there,
+   record from `terminal.h` whether bell and OSC 52 clipboard callbacks exist at this rev —
+   ghostling installs neither, so the header is the only ground truth.
+2. **One callback per ABI shape** — the effects span three shapes and the easiest proves nothing
+   about the others. Install a JS function for each (funcref table + `WebAssembly.Function`, a
+   wasm trampoline export, or — if neither works — a minimal Zig shim module compiled alongside;
+   document which mechanism won):
+   - _pointer+length_: `OPT_WRITE_PTY` — `void (terminal, userdata, ptr, len)`; JS reads wasm
+     memory.
+   - _bool + out-struct pointer_: `OPT_DEVICE_ATTRIBUTES` (and `OPT_SIZE`) — JS writes a
+     versioned `GHOSTTY_INIT_SIZED` struct into wasm memory at the correct wasm32 layout.
+   - _struct returned by value_: `OPT_XTVERSION` returns `GhosttyString`
+     (`references/ghostling/main.c:1154`) — under the wasm C ABI this lowers to a hidden sret
+     pointer argument; the JS funcref must match the **lowered** signature.
+     Expected result per shape: install succeeds and the callback observably fires (see step 3).
+3. **End-to-end query replies.** With `write_pty` AND `device_attributes` installed (DA1 needs
+   both — without `device_attributes` the test fails for the wrong reason), feed `vt_write` a DA1
+   query (`\x1b[c`) and **assert JS receives the reply bytes**; send `CSI > q` and assert the
+   xtversion string round-trips (proves the sret shape); send OSC 0 and assert the title-changed
+   callback fires.
+4. **PNG decode.** `ghostty_sys_set(GHOSTTY_SYS_OPT_DECODE_PNG, …)` is **process-global and must
+   be installed before any terminal exists** (`references/ghostling/main.c:1273`) — record what
+   that means for a multi-terminal single-wasm-instance design, and prove the decoder can hand
+   back allocator-owned pixels (or record the decision that Kitty graphics uses a JS-side
+   decoder instead).
+5. **Same artifact in a browser page** (the running dev server is fine — never spawn a new one):
+   same results for steps 2–3.
 
-**STOP condition:** if the unpatched artifact cannot expose a workable callback bridge and a
-small custom Zig wrapper module can't provide one cleanly either, halt the project here and
-reassess (options: upstream contribution, coder-style patch as last resort).
+### S2 — WebGPU in the environments we ship
 
-### S2 — WebGPU in CI runners
-
-Verify Playwright's pinned Chromium exposes `navigator.gpu` and can create a device headless on
-macOS dev machines and Linux CI (`--enable-unsafe-webgpu`, `--enable-features=Vulkan` on Linux);
-record exact flags. STOP-and-rethink (fallback: WebGL2 target or software Dawn) if CI cannot run
-WebGPU at all.
+1. **CI runners:** verify Playwright's pinned Chromium exposes `navigator.gpu` and can create a
+   device and submit a trivial frame headless on macOS dev machines and Linux CI
+   (`--enable-unsafe-webgpu`, `--enable-features=Vulkan` on Linux); record exact flags.
+2. **The shipping desktop:** Electrobun CEF (`apps/desktop/electrobun.config.ts:14` —
+   `bundleCEF: true`, `defaultRenderer: 'cef'`). In the real desktop dev build, create a device
+   and submit a frame. Then record behavior with `WINDOW_TRANSPARENT: true`
+   (`apps/desktop/src/shared/window.ts`) — transparency flips CEF to offscreen rendering, and
+   GPU canvas + OSR readback is exactly where WebGPU support gets shaky (memory
+   `wallpaper-video-idle-gpu`). A broken transparent-mode result is a **recorded risk** for the
+   brief, not necessarily a STOP (the opaque desktop path is current production).
+3. If CI or CEF cannot run WebGPU at all: STOP-and-rethink. Any fallback direction adopted
+   (WebGL2 target, software Dawn) **rewrites the brief's "no WebGL2 fallback" non-goal
+   explicitly** as part of the go/no-go — the two must not silently coexist.
 
 ### S3 — upstream packaging check
 
-Check whether ghostty upstream has since shipped an official wasm/JS package for libghostty-vt
-(repo, npm, ghostty.org docs). If yes, evaluate consuming it instead of building our own artifact
-— this changes Phase 1's shape and must be answered before it.
+Check whether ghostty upstream now ships an official wasm/JS package for libghostty-vt (repo,
+npm, ghostty.org docs). If yes, evaluate consuming it instead of building our own artifact —
+this reshapes Phase 1 and must be answered before it.
 
-### S4 — scheduler control benchmark (quantify before rewriting)
+### S4 — scheduler control benchmark (on the build we actually ship)
 
-Patch **a local copy** of ghostty-web (never the vendored dep) with damage scheduling only:
-`startRenderLoop` replaced by schedule-on-{write, blink tick, selection, scroll, focus}. Bench
-stock-canvas vs damage-scheduled-canvas across: focused blinking idle, unfocused idle, burst
-output (`yes`/vtebench-style), scrolling. Record browser GPU-process CPU for each (the
-task-manager methodology from memory `ghostty-render-loop-gpu`). This tells us how much of the
-63% is scheduling vs Canvas 2D itself — it sizes the WebGPU payoff honestly and gives Phase 2 its
-baseline numbers. (It is a measurement control, not a shippable fix.)
+The installed dep is **already patched** — `patches/ghostty-web@0.4.0.patch` adds
+transparent-background `clearRect` and the `outline` cursor style — so do NOT bench coder's
+unpatched source build (wrong build, and it drags in zig + their wasm patch). Instead, on a
+bench-only branch, add a **second bun patch on the dist bundle** (same `patchedDependencies`
+mechanism already in use; `startRenderLoop` is intact and readable in
+`node_modules/ghostty-web/dist/ghostty-web.js:2662`) that replaces the standing loop with
+schedule-on-{write, blink tick, selection, scroll, focus}.
 
-**Phase 0 exit:** S1–S4 answers written into this plan; go/no-go recorded.
+Bench stock-patched vs damage-scheduled across: focused blinking idle, unfocused idle, burst
+output (`yes`-style), sustained scroll. Reuse `references/ghostty-web/bench/versus.ts` scenario
+design where it fits. Record browser GPU-process CPU per scenario (task-manager methodology from
+memory `ghostty-render-loop-gpu`; sample ≥ 30s per scenario, tab visible). The branch is deleted
+after numbers are recorded — it is a measurement control, not a shippable fix.
 
-## Phases 1–6 (brief; each becomes its own numbered plan)
+### S5 — WebGPU floor probe (sizes the payoff)
 
-1. **Repo + core bindings.** Sibling repo bootstrap (contracts-style tooling, own AGENTS.md with
-   never-nester + comments rules, MIT, dist-first build since platform compiles against `dist` —
-   memories `editor-perf-and-linking`, `editor-dist-stale-after-pull`); committed wasm; `core/`
-   bindings incl. the S1 callback bridge; node tests: VT corpora in, render-state cells asserted,
-   dirty acknowledgement protocol correct. Platform CI provisioning gains the sibling repo
-   (memory `ci-pipeline-environment`) when Phase 5 lands, not before.
-2. **Damage-scheduled WebGPU renderer.** The scheduler spec + text fast path + atlas with
-   generations/eviction (stress test here) + transparency contract + device-loss recovery.
-   Gates: unfocused or blink-off idle → **zero** submitted frames over 10s (counter test);
-   focused blinking idle → exactly one frame per blink transition, no standing rAF; damage
-   coalescing → at most one pending frame under write storms; empty-cell alpha readback = 0;
-   scroll throughput ≥ the S4 damage-scheduled-canvas baseline.
-3. **DOM/input.** Key/mouse encoders (Kitty keyboard protocol), IME composition, clipboard incl.
-   OSC 52 effect, bracketed paste, focus reporting, fit/resize, selection UX, OSC 8 + regex
-   links, accessibility mirror. Gate: vim/htop/lazygit + kitty-keyboard test script behave.
-4. **Platform adapter + dual-renderer rollout.** The structural contract + two adapters + the
-   `terminal.renderer` setting (application scope) + recreate-and-reconnect switching. Gate:
-   daily-drivable; before/after GPU numbers recorded against S4 baselines.
-5. **Full-Ghostty surface.** Kitty graphics (three image layers, deferred texture destruction
-   after `onSubmittedWorkDone`), scrollbar polish, protocol audit vs upstream docs. Gate: icat
-   works; audit checklist complete. Then the parity soak starts.
-6. **Shaping parity + release.** HarfBuzz shaping/ligatures/emoji pages/fallback chain; delete
-   the ghostty-web path + dependency after the soak; README + demo, CI, npm publish, upstream-rev
-   bump script. Gate: fresh Vite app outside the monorepo runs the published package.
+A minimal terminal-shaped WebGPU probe page — two instanced draws (bg rects + textured glyph
+quads from a pre-filled atlas), ~200×50 cells at dpr 2 — driven at (a) idle/damage-only and
+(b) full-refresh burst, measured with the **same** GPU-process methodology and on the same
+machine as S4. This is the "what would the rewrite buy" floor that K2 compares against. Keep the
+probe in the spike directory; it seeds Phase 2's renderer skeleton if the project proceeds.
 
-## Risks
+## STOP conditions
 
-- **The callback bridge (S1) is the load-bearing unknown.** Everything else assumes it lands.
-- **WebGPU availability:** Chromium ≥ 113 fine (dev browser, CEF desktop); WKWebView needs
-  Safari 26+; CI is S2's question. The dual-renderer rollout keeps canvas until we choose.
-- **Upstream API churn:** libghostty-vt is young; bump pins only when ghostling's moves.
-- **Ligatures across cells** are known-hard; deferred to Phase 6 with the atlas keyed to survive.
-- **Accessibility:** the `dom/` mirror ships with Phase 3 input work, not as polish.
+- **S1**: the unpatched artifact cannot expose a workable callback bridge for **all three ABI
+  shapes**, and a small custom Zig wrapper module can't provide one cleanly either → halt the
+  project; reassess (upstream contribution; coder-style patch as last resort).
+- **S2**: neither Playwright CI nor the CEF desktop build can run WebGPU at all → halt; the
+  go/no-go must choose a different renderer target and rewrite the brief's non-goals.
+- **S4/S5**: kill thresholds K1+K2 both met → descope to the upstream scheduling patch; the
+  rewrite proceeds only if re-justified on fidelity/protocol grounds, recorded in the brief.
+- Any step requires editing production platform code (beyond the bench branch) → out of scope
+  here; stop and report.
 
-## Drift check (before executing Phase 0)
+## Done criteria
 
-- Re-read `panel.tsx`, `use-links.ts`, `utils/commands.ts` — the seam inventory above matches
-  platform `cf070159`; re-inventory if the terminal feature moved.
-- Confirm the reference clones still sit at the pins in Status (they are shallow; re-clone if
-  pruned).
-- `references/` is still gitignored (`.gitignore:37`).
+- [ ] S1 answers recorded: symbol diff, winning bridge mechanism per ABI shape, DA1/xtversion/
+      title round-trips in Node AND browser, PNG-decode decision with the process-global
+      constraint spelled out.
+- [ ] S2 answers recorded: exact CI flags; CEF opaque-mode result; CEF transparent/OSR result
+      logged as risk in the brief.
+- [ ] S3 answer recorded (upstream package: yes/no/what).
+- [ ] S4 + S5 numbers tabulated per scenario; K1/K2 evaluated against the pre-registered
+      thresholds; bench branch deleted.
+- [ ] Go / descope / no-go decision written into `docs/ghostty-webgpu-brief.md` with the numbers
+      inline; this plan file deleted and `plans/README.md` updated in the same change (a "go"
+      replaces this row with the Phase 1 plan when that plan is written).

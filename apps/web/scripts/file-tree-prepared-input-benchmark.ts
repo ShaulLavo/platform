@@ -1,5 +1,5 @@
-import { FileTree } from '@workspace/tree/utils/render/FileTree'
-import { prepareFileTreeInput } from '@workspace/tree/utils/preparedInput'
+import { FileTreeModel } from '@workspace/tree'
+import { prepareFileTreeInput } from '@workspace/tree'
 
 const PATH_COUNTS = [10_000, 50_000] as const
 const WARMUP_ROUNDS = 3
@@ -65,7 +65,7 @@ function measureRound(paths: readonly string[]): TimingSample {
 
   const preparedColdStartedAt = performance.now()
   const preparedInput = prepareFileTreeInput(paths, { flattenEmptyDirectories: true })
-  const preparedColdTree = new FileTree({
+  const preparedColdTree = new FileTreeModel({
     flattenEmptyDirectories: true,
     preparedInput,
   })
@@ -82,9 +82,9 @@ function measureRound(paths: readonly string[]): TimingSample {
   }
 }
 
-function measureConstruction(options: ConstructorParameters<typeof FileTree>[0]): number {
+function measureConstruction(options: ConstructorParameters<typeof FileTreeModel>[0]): number {
   const startedAt = performance.now()
-  const tree = new FileTree({ flattenEmptyDirectories: true, ...options })
+  const tree = new FileTreeModel({ flattenEmptyDirectories: true, ...options })
   const elapsedMs = performance.now() - startedAt
   tree.cleanUp()
   return elapsedMs

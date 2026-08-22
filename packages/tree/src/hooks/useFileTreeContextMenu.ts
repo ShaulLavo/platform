@@ -8,10 +8,10 @@ import {
   useState,
 } from 'react'
 
-import type { FileTreeRowDom } from '@workspace/tree/hooks/useFileTreeRowDom'
-import { CONTEXT_MENU_SLOT_NAME, CONTEXT_MENU_TRIGGER_TYPE } from '@workspace/tree/utils/constants'
-import type { FileTreeController } from '@workspace/tree/utils/model/FileTreeController'
-import type { FileTreeLayoutStickyRow } from '@workspace/tree/utils/model/layout'
+import type { FileTreeRowDom } from './useFileTreeRowDom'
+import { CONTEXT_MENU_SLOT_NAME, CONTEXT_MENU_TRIGGER_TYPE } from '../utils/constants'
+import type { FileTreeController } from '../utils/model/FileTreeController'
+import type { FileTreeLayoutStickyRow } from '../utils/model/layout'
 import type {
   FileTreeCompositionOptions,
   FileTreeContextMenuButtonVisibility,
@@ -19,8 +19,8 @@ import type {
   FileTreeContextMenuOpenContext,
   FileTreeContextMenuTriggerMode,
   FileTreeVisibleRow,
-} from '@workspace/tree/utils/model/publicTypes'
-import type { FileTreeSlotHost } from '@workspace/tree/utils/model/internalTypes'
+} from '../utils/model/publicTypes'
+import type { FileTreeSlotHost } from '../utils/model/internalTypes'
 import {
   createContextMenuItem,
   focusFirstMenuElement,
@@ -28,8 +28,8 @@ import {
   getContextMenuAnchorTop,
   isEventInContextMenu,
   serializeAnchorRect,
-} from '@workspace/tree/utils/render/contextMenuAnchor'
-import { focusElement } from '@workspace/tree/utils/render/focusHelpers'
+} from '../utils/render/contextMenuAnchor'
+import { focusElement } from '../utils/render/focusHelpers'
 
 interface FileTreeContextMenuState {
   readonly anchorRect: FileTreeContextMenuOpenContext['anchorRect'] | null

@@ -3,7 +3,7 @@ import type { LookupPath, PreparedPath } from './internal-types'
 // Canonical path parsing runs once per input path during prepare steps, so keep
 // it as a single pass over the string and avoid constructing an extra
 // trailing-slash-trimmed copy before splitting segments.
-export function splitCanonicalPath(inputPath: string): {
+function splitCanonicalPath(inputPath: string): {
   hasTrailingSlash: boolean
   segments: readonly string[]
 } {

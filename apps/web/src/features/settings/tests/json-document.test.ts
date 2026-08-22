@@ -70,6 +70,7 @@ test('the snapshot carries each layer bytes, so a JSON view needs no second fetc
   expect(file?.text).toContain('// why this is set')
   expect(file?.text).toContain('"from.a.newer.build"')
   expect(file?.parseErrors).toEqual([])
+  expect(file?.keyRanges['from.a.newer.build']).toEqual({ offset: 50, length: 20 })
   expect(file?.revision).not.toBe('')
 })
 

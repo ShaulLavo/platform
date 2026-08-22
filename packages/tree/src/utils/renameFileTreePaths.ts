@@ -31,46 +31,6 @@ function joinPath(parentPath: string, baseName: string): string {
   return parentPath === '' ? baseName : `${parentPath}/${baseName}`
 }
 
-export function remapExpandedPathsForFolderRename({
-  expandedPaths,
-  sourcePath,
-  destinationPath,
-}: {
-  expandedPaths: string[]
-  sourcePath: string
-  destinationPath: string
-}): string[] {
-  if (expandedPaths.length === 0 || sourcePath === destinationPath) {
-    return expandedPaths
-  }
-
-  const sourcePrefix = `${sourcePath}/`
-  const nextExpandedPaths: string[] = []
-  const seen = new Set<string>()
-  let changed = false
-
-  for (let index = 0; index < expandedPaths.length; index++) {
-    const path = expandedPaths[index]
-    const nextPath =
-      path === sourcePath
-        ? destinationPath
-        : path.startsWith(sourcePrefix)
-          ? `${destinationPath}${path.slice(sourcePath.length)}`
-          : path
-    if (nextPath !== path) {
-      changed = true
-    }
-    if (seen.has(nextPath)) {
-      changed = true
-      continue
-    }
-    seen.add(nextPath)
-    nextExpandedPaths.push(nextPath)
-  }
-
-  return changed ? nextExpandedPaths : expandedPaths
-}
-
 /**
  * Computes a renamed file list using same-parent basename rename semantics.
  */

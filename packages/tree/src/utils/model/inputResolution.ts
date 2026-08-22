@@ -1,8 +1,8 @@
 import { createTreeError } from '../structured-errors'
 
-import { PathStore } from '@workspace/tree/utils/path-store/store'
+import { PathStore } from '../path-store/store'
 
-import type { FileTreePreparedInput } from '@workspace/tree/utils/preparedInput'
+import type { FileTreePreparedInput } from '../preparedInput'
 import type { FileTreeControllerOptions } from './publicTypes'
 
 function haveMatchingPaths(

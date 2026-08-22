@@ -2,9 +2,9 @@ import type {
   FileTreeBatchOperation,
   FileTreeDirectoryHandle,
   FileTreeItemHandle,
-} from '@workspace/tree/utils/model/publicTypes'
-import type { FileTreePreparedInput } from '@workspace/tree/utils/preparedInput'
-import type { FileTree as FileTreeModel } from '@workspace/tree/utils/render/FileTree'
+} from '@workspace/tree'
+import type { FileTreePreparedInput } from '@workspace/tree'
+import type { FileTreeModel } from '@workspace/tree'
 
 import type { TreeEntry } from '@/lib/file-system-types'
 import { isDirectoryEntry } from '@/lib/file-system-types'

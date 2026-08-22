@@ -3,11 +3,11 @@ import type {
   FileTreeDropResult,
   FileTreeRenameEvent,
   FileTreeRowDecorationContext,
-} from '@workspace/tree/utils/model/publicTypes'
-import { FileTree } from '@workspace/tree/components/FileTree'
-import { useFileTree } from '@workspace/tree/hooks/useFileTree'
-import type { GitStatusEntry } from '@workspace/tree/utils/publicTypes'
-import type { FileTree as FileTreeModel } from '@workspace/tree/utils/render/FileTree'
+} from '@workspace/tree'
+import { FileTree } from '@workspace/tree'
+import { useFileTree } from '@workspace/tree'
+import type { GitStatusEntry } from '@workspace/tree'
+import type { FileTreeModel } from '@workspace/tree'
 import { CircleNotchIcon, WarningCircleIcon } from '@phosphor-icons/react'
 
 import { workspacePathForTreePath } from '@/features/workspace/utils/entry-paths'

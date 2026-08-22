@@ -1,5 +1,5 @@
 import { act, fireEvent, renderHook, screen, waitFor } from '@testing-library/react'
-import { FileTree } from '@workspace/tree/utils/render/FileTree'
+import { FileTreeModel } from '@workspace/tree'
 import type { ReactNode } from 'react'
 import { vi } from 'vitest'
 
@@ -77,7 +77,7 @@ test('discards a pending request owned by another root', async () => {
 })
 
 test('logs one wide event for a batch and unsubscribes on unmount', () => {
-  const tree = new FileTree({ paths: ['a.ts', 'old/'] })
+  const tree = new FileTreeModel({ paths: ['a.ts', 'old/'] })
   const info = vi.spyOn(log, 'info').mockImplementation(() => {})
   const { unmount } = renderHook(() => useFileTreeMutationEvents({ rootPath: '/repo', tree }))
 

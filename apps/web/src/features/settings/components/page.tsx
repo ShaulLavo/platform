@@ -61,6 +61,7 @@ export function SettingsPage({
     (id) => (descriptorFor(id).visibility ?? 'user') !== 'internal',
   )
   const categories = groupByCategory(visible)
+  const selectedFile = settings.data.layers.find((layer) => layer.id === scope)?.file ?? null
   // An address can narrow the page to one category. Unknown or absent means all of
   // them, so a stale link degrades to the full page rather than to nothing.
   const shown = selectedCategory
@@ -123,7 +124,9 @@ export function SettingsPage({
           </div>
           <div className='min-h-0 flex-1'>
             <SettingsJsonView
+              diagnostics={settings.data.diagnostics}
               editorKeymapLayers={editorKeymapLayers}
+              file={selectedFile}
               liveDocument={liveDocument}
               rootPath={rootPath}
               scope={scope}

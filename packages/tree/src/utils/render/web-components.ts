@@ -1,11 +1,11 @@
-import { FILE_TREE_STYLE_ATTRIBUTE, FILE_TREE_TAG_NAME } from '@workspace/tree/utils/constants'
-import rawStyles from '@workspace/tree/styles/style.css?raw'
-import { wrapCoreCSS } from '@workspace/tree/utils/cssWrappers'
-import { ensureMeasuredScrollbarGutter } from '@workspace/tree/utils/scrollbarGutter'
+import { FILE_TREE_STYLE_ATTRIBUTE, FILE_TREE_TAG_NAME } from '../constants'
+import rawStyles from '../../styles/style.css?raw'
+import { wrapCoreCSS } from '../cssWrappers'
+import { ensureMeasuredScrollbarGutter } from '../scrollbarGutter'
 
 let sheet: CSSStyleSheet | undefined
 
-export function ensureFileTreeStyles(shadowRoot: ShadowRoot): void {
+function ensureFileTreeStyles(shadowRoot: ShadowRoot): void {
   const hasReplaceSync =
     typeof CSSStyleSheet !== 'undefined' &&
     typeof (CSSStyleSheet.prototype as { replaceSync?: unknown }).replaceSync === 'function'
@@ -52,7 +52,7 @@ export function prepareFileTreeShadowRoot(host: HTMLElement, shadowRoot: ShadowR
   ensureMeasuredScrollbarGutter(host, shadowRoot)
 }
 
-export function adoptDeclarativeShadowDom(host: HTMLElement, shadowRoot: ShadowRoot): void {
+function adoptDeclarativeShadowDom(host: HTMLElement, shadowRoot: ShadowRoot): void {
   // Some runtimes (and client-side navigations) may create the template element
   // via DOM APIs rather than the HTML parser, which means the browser won't
   // automatically parse declarative Shadow DOM.

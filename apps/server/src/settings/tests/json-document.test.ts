@@ -29,7 +29,7 @@ afterEach(async () => {
 describe('parseSettingsDocument', () => {
   it('treats an empty file as an empty document rather than a parse error', () => {
     for (const text of ['', '   ', '\n\n']) {
-      expect(parseSettingsDocument(text)).toEqual({ values: {}, parseErrors: [] })
+      expect(parseSettingsDocument(text)).toEqual({ values: {}, parseErrors: [], keyRanges: {} })
     }
   })
 
@@ -43,6 +43,18 @@ describe('parseSettingsDocument', () => {
     expect(parseSettingsDocument(text)).toEqual({
       values: { 'editor.fontSize': 15, 'editor.wordWrap': true },
       parseErrors: [],
+      keyRanges: {
+        'editor.fontSize': { offset: 40, length: 17 },
+        'editor.wordWrap': { offset: 69, length: 17 },
+      },
+    })
+  })
+
+  it('locates the final top-level spelling of each parsed key', () => {
+    const text = '{ "editor\\u002efontSize": 15, "editor.fontSize": 18 }'
+
+    expect(parseSettingsDocument(text).keyRanges).toEqual({
+      'editor.fontSize': { offset: 30, length: 17 },
     })
   })
 

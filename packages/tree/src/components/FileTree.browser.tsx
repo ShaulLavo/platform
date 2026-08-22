@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createRoot, type Root } from 'react-dom/client'
 import { flushSync } from 'react-dom'
 
-import { FileTree } from '@workspace/tree/components/FileTree'
-import type { FileTreeSearchBlurBehavior } from '@workspace/tree/utils/model/publicTypes'
-import { FileTree as FileTreeModel } from '@workspace/tree/utils/render/FileTree'
+import { FileTree } from './FileTree'
+import type { FileTreeSearchBlurBehavior } from '../utils/model/publicTypes'
+import { FileTree as FileTreeModel } from '../utils/render/FileTree'
 
 let root: Root | null = null
 let model: FileTreeModel | null = null

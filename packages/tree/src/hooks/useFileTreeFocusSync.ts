@@ -1,15 +1,15 @@
 import { type RefObject, useCallback, useLayoutEffect, useRef } from 'react'
 
-import type { FileTreeRowDom } from '@workspace/tree/hooks/useFileTreeRowDom'
-import type { FileTreeController } from '@workspace/tree/utils/model/FileTreeController'
-import type { FileTreeVisibleRow } from '@workspace/tree/utils/model/publicTypes'
+import type { FileTreeRowDom } from './useFileTreeRowDom'
+import type { FileTreeController } from '../utils/model/FileTreeController'
+import type { FileTreeVisibleRow } from '../utils/model/publicTypes'
 import {
   focusElement,
   getActiveTreeElement,
   scrollFocusedRowIntoView,
   scrollFocusedRowToOffset,
   scrollFocusedRowToViewportOffset,
-} from '@workspace/tree/utils/render/focusHelpers'
+} from '../utils/render/focusHelpers'
 import {
   getStickyKeyboardFocusPath,
   getStickyKeyboardScrollTopEntry,
@@ -19,7 +19,7 @@ import {
   restoreStickyKeyboardViewportOffset,
   settleStickyKeyboardFocus,
   type StickyKeyboardFocusMode,
-} from '@workspace/tree/utils/render/stickyFocusMode'
+} from '../utils/render/stickyFocusMode'
 
 export interface FileTreeFocusCoordinator {
   readonly cancelSearchCloseFocusRestore: () => void

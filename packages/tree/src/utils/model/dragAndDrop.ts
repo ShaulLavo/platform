@@ -25,9 +25,7 @@ function getPathBasename(path: string): string {
 
 // Multi-select drags should move each subtree once, even when callers selected
 // both a folder and descendants inside that same folder.
-export function normalizeDraggedPaths(
-  paths: readonly FileTreePublicId[],
-): readonly FileTreePublicId[] {
+function normalizeDraggedPaths(paths: readonly FileTreePublicId[]): readonly FileTreePublicId[] {
   const uniquePaths: FileTreePublicId[] = []
   const seenPaths = new Set<FileTreePublicId>()
   for (const path of paths) {

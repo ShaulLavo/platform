@@ -19,12 +19,12 @@ export type FileTreeLayoutMetrics = {
   totalRowCount?: number
 }
 
-export type FileTreeLayoutRange = {
+type FileTreeLayoutRange = {
   endIndex: number
   startIndex: number
 }
 
-export const EMPTY_FILE_TREE_LAYOUT_RANGE: FileTreeLayoutRange = {
+const EMPTY_FILE_TREE_LAYOUT_RANGE: FileTreeLayoutRange = {
   endIndex: -1,
   startIndex: -1,
 }

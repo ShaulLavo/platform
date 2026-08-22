@@ -1,4 +1,4 @@
-import type { FileTreeVisibleRow } from '@workspace/tree/utils/model/publicTypes'
+import type { FileTreeVisibleRow } from '../model/publicTypes'
 
 export function getFileTreeRowPath(row: FileTreeVisibleRow): string {
   return row.isFlattened

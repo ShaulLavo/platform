@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { FileTreeController } from '@workspace/tree/utils/model/FileTreeController'
-import { computeFileTreeRowClickPlan } from '@workspace/tree/utils/render/rowClickPlan'
+import { FileTreeController } from '../model/FileTreeController'
+import { computeFileTreeRowClickPlan } from '../render/rowClickPlan'
 
 const SEARCH_PATHS = [
   'README.md',

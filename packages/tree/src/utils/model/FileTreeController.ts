@@ -1,6 +1,6 @@
 import { createTreeError } from '../structured-errors'
 
-import { PathStore } from '@workspace/tree/utils/path-store/store'
+import { PathStore } from '../path-store/store'
 import type {
   PathStoreEvent,
   PathStorePathInfo,
@@ -8,10 +8,10 @@ import type {
   PathStoreVisibleRowContext,
   PathStoreVisibleRow as PathStoreVisibleRowData,
   PathStoreVisibleTreeProjectionData,
-} from '@workspace/tree/utils/path-store/public-types'
+} from '../path-store/public-types'
 
-import type { FileTreePreparedInput } from '@workspace/tree/utils/preparedInput'
-import { renameFileTreePaths } from '@workspace/tree/utils/renameFileTreePaths'
+import type { FileTreePreparedInput } from '../preparedInput'
+import { renameFileTreePaths } from '../renameFileTreePaths'
 import {
   buildDropOperations,
   createDropContext,

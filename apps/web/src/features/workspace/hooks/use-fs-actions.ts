@@ -1,5 +1,5 @@
-import type { FileTreeRenameEvent } from '@workspace/tree/utils/model/publicTypes'
-import type { FileTree as FileTreeModel } from '@workspace/tree/utils/render/FileTree'
+import type { FileTreeRenameEvent } from '@workspace/tree'
+import type { FileTreeModel } from '@workspace/tree'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState, type RefObject } from 'react'
 
