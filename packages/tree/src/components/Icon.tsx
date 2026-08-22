@@ -1,5 +1,5 @@
-/** @jsxImportSource preact */
-import type { JSX } from 'preact'
+/** @jsxImportSource react */
+import type { JSX } from 'react'
 
 const DEFAULT_WIDTH = 16
 const DEFAULT_HEIGHT = 16
@@ -28,7 +28,6 @@ export function Icon({
   label?: string
   alignCapitals?: boolean
 }): JSX.Element {
-  'use no memo'
   const href = `#${name.replace(/^#/, '')}`
   const override = ICON_SIZE_OVERRIDES[name] ?? {
     width: DEFAULT_WIDTH,

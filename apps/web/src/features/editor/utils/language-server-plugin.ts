@@ -10,6 +10,7 @@ import { LSP_SEMANTIC_TOKENS_REFRESH, LSP_SERVER_EXITED } from '@workspace/contr
 
 import { languageServerConnectionProvider } from '@/features/editor/state/language-server-connection-pool'
 import type { EditorLanguageServerStatusSource } from '@/features/editor/state/language-server-status-source'
+import { lspLanguageIdForPath } from '@/features/editor/utils/lsp-language-id'
 import { SemanticTokenController } from '@/features/editor/state/semantic-token-controller'
 import {
   LANGUAGE_SERVER_CLIENT_INFO,
@@ -64,6 +65,9 @@ export function createMatchedLanguageServerPlugin({
         statusSource.setStatus('error')
         return true
       },
+    },
+    documentSync: {
+      languageIdForDocument: (_languageId, uri) => lspLanguageIdForPath(uri),
     },
     rootUri: fileUriForPath(rootPath),
     // Outlives this plugin, shared with every surface on the same root and server.

@@ -143,6 +143,9 @@ function ReadyTreePane({
     : undefined
   const { model: tree } = useFileTree({
     density: 'compact',
+    // Compact preset rows are 24px; 20px keeps 12px text readable while fitting
+    // ~17% more rows. itemHeight (not a CSS override) so virtualization agrees.
+    itemHeight: 20,
     flattenEmptyDirectories: true,
     gitStatus,
     icons,
@@ -463,6 +466,10 @@ const treeStyle = {
   '--trees-selected-bg-override': 'color-mix(in oklch, var(--accent-solid) 60%, transparent)',
   '--trees-border-color-override': 'var(--border)',
   '--trees-fg-override': 'var(--foreground)',
+  // Per level the tree indents level-gap + row-gap + icon-width/2 (~18px at
+  // compact density); level-gap is the only component not shared with in-row
+  // spacing, so it is the one safe place to reclaim width in deep trees.
+  '--trees-level-gap-override': '2px',
   height: '100%',
 } as CSSProperties
 
@@ -470,8 +477,12 @@ const treeUnsafeCss = `
   :host {
     color: var(--foreground);
     background: transparent;
-    font-family: var(--font-mono);
-    font-size: 12px;
+    /* Experiment: the UI sans instead of the app's mono. Mono glyphs are
+       uniform-width, so long file names run ~30% wider and lose word shape;
+       this is most of why the VS Code explorer reads denser. No sans token
+       exists yet — promote this stack to a token if the experiment sticks. */
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 12.5px;
   }
 
   button[data-type='item'] {

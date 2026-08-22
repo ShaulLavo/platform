@@ -47,7 +47,7 @@ import {
   FILE_TREE_DEFAULT_VIEWPORT_HEIGHT,
 } from '@workspace/tree/utils/model/virtualization'
 import { wrapUnsafeCSS } from '@workspace/tree/utils/cssWrappers'
-import { renderFileTreeRoot, unmountFileTreeRoot } from '@workspace/tree/utils/render/runtime'
+import { renderFileTreeRoot, unmountFileTreeRoot } from '@workspace/tree/state/renderer'
 import { FileTreeManagedSlotHost } from '@workspace/tree/utils/render/slotHost'
 
 let clientInstanceId = 0

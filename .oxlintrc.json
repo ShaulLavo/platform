@@ -22,28 +22,5 @@
     "oxc-react-compiler/config": "error",
     "oxc-react-compiler/gating": "error",
     "oxc-react-compiler/no-unused-directives": "error"
-  },
-  "overrides": [
-    {
-      "files": ["packages/tree/**"],
-      "rules": {
-        "oxc-react-compiler/static-components": "off",
-        "oxc-react-compiler/use-memo": "off",
-        "oxc-react-compiler/component-hook-factories": "off",
-        "oxc-react-compiler/preserve-manual-memoization": "off",
-        "oxc-react-compiler/incompatible-library": "off",
-        "oxc-react-compiler/immutability": "off",
-        "oxc-react-compiler/globals": "off",
-        "oxc-react-compiler/refs": "off",
-        "oxc-react-compiler/set-state-in-effect": "off",
-        "oxc-react-compiler/error-boundaries": "off",
-        "oxc-react-compiler/purity": "off",
-        "oxc-react-compiler/set-state-in-render": "off",
-        "oxc-react-compiler/unsupported-syntax": "off",
-        "oxc-react-compiler/config": "off",
-        "oxc-react-compiler/gating": "off",
-        "oxc-react-compiler/no-unused-directives": "off"
-      }
-    }
-  ]
+  }
 }

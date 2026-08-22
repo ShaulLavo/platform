@@ -2,6 +2,7 @@ import type { DiffFile } from '@singapor/diff'
 
 import type { DiffLanguageDocument } from '@/features/editor/state/diff-language-session'
 import { languageIdForFilePath } from '@/features/editor/utils/file-path'
+import { lspLanguageIdForPath } from '@/features/editor/utils/lsp-language-id'
 
 /**
  * The two documents a diff opens, and the names it opens them under.
@@ -47,8 +48,10 @@ export function diffLanguageDocuments({
   // `didOpen` carrying `languageId: null` fails the proxy's validator — it is then forwarded raw
   // and UNTRACKED, so the matching `didClose` is swallowed and the backend keeps the document
   // forever. Refusing here is the difference between no feature and a leak.
-  const languageId = languageIdForFilePath(documentPath)
-  if (!languageId) return []
+  const grammarId = languageIdForFilePath(documentPath)
+  if (!grammarId) return []
+
+  const languageId = lspLanguageIdForPath(documentPath) ?? grammarId
 
   const newText = file.newLines.join('\n')
   const oldText = file.oldLines.join('\n')

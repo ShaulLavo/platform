@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { splitCenter, splitExtension } from '@workspace/tree/components/OverflowText'
+import {
+  splitByIndex,
+  splitCenter,
+  splitExtension,
+  splitFirst,
+  splitLast,
+  splitLeafPath,
+} from '@workspace/tree/utils/render/overflowTextSplit'
 
 const SPACED_FALLBACK_NAMES = [
   'Hello world',
@@ -45,6 +52,27 @@ describe('overflow text splitting', () => {
 
     expect(result.join('')).toBe('    ')
     expect(result).toEqual(['  ', '  '])
+  })
+
+  it('splits leaf paths at the final slash within the leaf threshold', () => {
+    expect(splitLeafPath('src/components/FileTree.tsx')).toEqual([
+      'src/components/',
+      'FileTree.tsx',
+    ])
+  })
+
+  it('uses an explicit split index', () => {
+    expect(splitByIndex('abcdef', { splitIndex: 2 })).toEqual(['ab', 'cdef'])
+  })
+
+  it('splits by first and last offsets', () => {
+    expect(splitFirst('abcdef', { splitOffset: 2 })).toEqual(['ab', 'cdef'])
+    expect(splitLast('abcdef', { splitOffset: 2 })).toEqual(['abcd', 'ef'])
+  })
+
+  it('falls back to the center for invalid offsets', () => {
+    expect(splitFirst('abcdef', { splitOffset: 0 })).toEqual(['abc', 'def'])
+    expect(splitLast('abcdef', { splitOffset: 6 })).toEqual(['abc', 'def'])
   })
 })
 
