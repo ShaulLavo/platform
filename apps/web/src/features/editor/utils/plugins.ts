@@ -39,7 +39,8 @@ import {
   activeShikiThemeId,
   editorThemeSwitchingPrepared,
   getLoadedVscodeThemeRegistration,
-  subscribeEditorColorTheme,
+  getResolvedShikiThemeContentHash,
+  subscribeActiveShikiTheme,
 } from '@/features/editor/state/color-theme-store'
 import { requestedDecodeMode } from '@/features/editor/utils/decode-mode'
 import {
@@ -255,10 +256,12 @@ function createEditorSyntaxHighlightingPlugins(): readonly EditorPlugin[] {
  */
 function resolveShikiThemeForSession(): string {
   const themeId = activeShikiThemeId()
+  const registration = getLoadedVscodeThemeRegistration(themeId)
   log.debug({
     action: 'editor.color-theme.shiki_resolved',
     area: 'editor',
-    hasRegistration: Boolean(getLoadedVscodeThemeRegistration(themeId)),
+    contentHash: getResolvedShikiThemeContentHash(themeId),
+    hasRegistration: Boolean(registration),
     themeId,
   })
 
@@ -276,7 +279,11 @@ function resolveShikiThemeForSession(): string {
 function createEditorShikiHighlighterPlugin(): EditorPlugin {
   const shiki = createShikiHighlighterPlugin({
     languages: EDITOR_SHIKI_LANGUAGE_MAP,
-    onThemeChanged: (listener) => subscribeEditorColorTheme(listener),
+    onThemeChanged: (listener) =>
+      subscribeActiveShikiTheme(() => {
+        if (!activeEditorThemeUsesShiki()) return
+        listener()
+      }),
     preloadLanguages: EDITOR_SHIKI_PRELOAD_LANGUAGES,
     // Naming every theme is what makes a swap reuse one highlighter, but it is
     // only worth building until the user shows they intend to switch — opening a
@@ -308,7 +315,7 @@ function createEditorShikiHighlighterPlugin(): EditorPlugin {
       }
 
       syncActivation()
-      const unsubscribe = subscribeEditorColorTheme(syncActivation)
+      const unsubscribe = subscribeActiveShikiTheme(syncActivation)
 
       return {
         dispose: () => {
@@ -419,6 +426,7 @@ function logEditorEventToConsole(event: EditorLogEvent): void {
     ...editorEventScrollContext(event),
     ...event,
     area: 'editor',
+    level: editorLogPayloadLevel(event),
   })
   forgetEditorScrollPosition(event)
 }
@@ -443,6 +451,11 @@ function editorLogLevel(event: EditorLogEvent) {
   if (event.level === 'warn' || event.level === 'error') return event.level
 
   return 'info'
+}
+
+function editorLogPayloadLevel(event: EditorLogEvent) {
+  if (event.action === 'editor.syntax.reloaded') return 'debug'
+  return event.level
 }
 
 function logSearchResultEditorEventToConsole(event: EditorLogEvent): void {

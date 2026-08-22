@@ -8,6 +8,7 @@ import {
   getActiveEditorColorMode,
   getCommittedEditorThemeId,
   getLoadedVscodeThemeRegistration,
+  getResolvedShikiThemeContentHash,
   getSelectedEditorThemeId,
   loadEditorThemeForSelection,
   preloadVscodeThemeRegistrations,
@@ -15,6 +16,7 @@ import {
   resetEditorColorThemeStore,
   setActiveEditorColorMode,
   setSelectedEditorThemeId,
+  subscribeActiveShikiTheme,
   subscribeEditorColorTheme,
 } from '@/features/editor/state/color-theme-store'
 
@@ -215,24 +217,61 @@ test('a hover-preview overlays the selection without persisting', () => {
   expect(getSelectedEditorThemeId('dark')).toBe('monokai')
 })
 
-test('scrubbing the theme list does not reload the editor for every row it crosses', async () => {
-  const listener = vi.fn()
-  subscribeEditorColorTheme(listener)
+test('a peak-sized theme scrub produces one active Shiki notification', async () => {
+  setSelectedEditorThemeId('dark', 'monokai')
+  await loadEditorThemeForSelection('dark')
+  setSelectedEditorThemeId('dark', 'dracula')
+  await loadEditorThemeForSelection('dark')
 
-  previewEditorTheme('dark', 'monokai')
-  previewEditorTheme('dark', 'dracula')
-  previewEditorTheme('dark', 'nord')
+  const listener = vi.fn()
+  subscribeActiveShikiTheme(listener)
+
+  for (let index = 0; index < 303; index += 1) {
+    previewEditorTheme('dark', index % 2 === 0 ? 'monokai' : 'dracula')
+  }
 
   // The selection follows the pointer immediately, so badges stay honest...
-  expect(getSelectedEditorThemeId('dark')).toBe('nord')
-  // ...but nothing has reached the highlighter yet. Three rows crossed, zero
-  // re-tokenizes queued — the whole point, since each one costs the shiki
-  // worker hundreds of milliseconds it runs serially per document.
+  expect(getSelectedEditorThemeId('dark')).toBe('monokai')
+  // ...but the historical 303-event peak has not reached the highlighter.
   expect(listener).not.toHaveBeenCalled()
 
   await vi.waitFor(() => {
-    expect(listener).toHaveBeenCalled()
+    expect(listener).toHaveBeenCalledTimes(1)
   })
+})
+
+test('active Shiki subscribers ignore an inactive color-mode selection', () => {
+  const listener = vi.fn()
+  subscribeActiveShikiTheme(listener)
+
+  setSelectedEditorThemeId('light', 'github-light')
+
+  expect(listener).not.toHaveBeenCalled()
+})
+
+test('committing the effective preview theme does not reload Shiki', async () => {
+  setSelectedEditorThemeId('dark', 'monokai')
+  await loadEditorThemeForSelection('dark')
+  previewEditorTheme('dark', 'dracula')
+  await loadEditorThemeForSelection('dark')
+
+  const listener = vi.fn()
+  subscribeActiveShikiTheme(listener)
+
+  setSelectedEditorThemeId('dark', 'dracula')
+
+  expect(listener).not.toHaveBeenCalled()
+})
+
+test('resolved Shiki content hashes are stable and distinguish loaded content', async () => {
+  const nameOnlyHash = getResolvedShikiThemeContentHash('dark-plus')
+  await loadEditorThemeForSelection('dark')
+  const loadedHash = getResolvedShikiThemeContentHash('dark-plus')
+
+  expect(nameOnlyHash).toMatch(/^[0-9a-f]{8}$/)
+  expect(loadedHash).toMatch(/^[0-9a-f]{8}$/)
+  expect(loadedHash).not.toBe(nameOnlyHash)
+  expect(getResolvedShikiThemeContentHash('dark-plus')).toBe(loadedHash)
 })
 
 test('preview is ignored when it targets the already-selected theme', () => {

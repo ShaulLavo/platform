@@ -15,6 +15,7 @@ import {
   isBuiltinEditorThemeId,
   type BuiltinEditorThemeDefinition,
 } from '@/features/editor/utils/theme-catalog'
+import { shikiThemeContentHash } from '@/features/editor/utils/theme-content-hash'
 import { log } from '@/lib/client-logging'
 import { clientErrors } from '@/lib/structured-errors'
 
@@ -54,6 +55,7 @@ const loadedThemeById = new Map<string, Promise<LoadedEditorColorTheme>>()
 // Registrations cached for synchronous reads (the shiki plugin resolves theme
 // registrations at worker-session creation, with no await).
 const registrationByIdSync = new Map<string, VscodeThemeRegistration>()
+const registrationContentHashById = new Map<string, string>()
 
 const previewSettle = new Debouncer(() => notifyEditorColorThemeListeners(), {
   wait: PREVIEW_SETTLE_MS,
@@ -187,12 +189,29 @@ export function getLoadedVscodeThemeRegistration(
   return registration as ShikiWorkerThemeRegistration
 }
 
+export function getResolvedShikiThemeContentHash(themeId: string): string {
+  return registrationContentHashById.get(themeId) ?? shikiThemeContentHash(themeId)
+}
+
 export function subscribeEditorColorTheme(listener: () => void): () => void {
   editorColorThemeListeners.add(listener)
 
   return () => {
     editorColorThemeListeners.delete(listener)
   }
+}
+
+/** Notifies highlighters only when their effective worker configuration changes. */
+export function subscribeActiveShikiTheme(listener: () => void): () => void {
+  let previousSnapshot = activeShikiThemeSubscriptionSnapshot()
+
+  return subscribeEditorColorTheme(() => {
+    const nextSnapshot = activeShikiThemeSubscriptionSnapshot()
+    if (nextSnapshot === previousSnapshot) return
+
+    previousSnapshot = nextSnapshot
+    listener()
+  })
 }
 
 export function getActiveEditorColorMode(): EditorColorMode {
@@ -243,6 +262,7 @@ export function resetEditorColorThemeStore() {
   previewTheme = null
   loadedThemeById.clear()
   registrationByIdSync.clear()
+  registrationContentHashById.clear()
   editorColorThemeListeners.clear()
 }
 
@@ -271,7 +291,7 @@ function loadEditorTheme(
 
   const loaded = loadVscodeThemeRegistration(definition)
     .then((registration) => {
-      registrationByIdSync.set(definition.id, registration)
+      cacheRegistration(definition.id, registration)
       // Covers the mode-switch path: the plugin reloaded synchronously when the
       // active mode changed, before this registration had landed.
       if (themeIdIsCurrentlySelected(definition.id)) notifyEditorColorThemeListeners()
@@ -320,7 +340,7 @@ function ensureRegistrationLoaded(
 
   return loadVscodeThemeRegistration(definition)
     .then((registration) => {
-      registrationByIdSync.set(themeId, registration)
+      cacheRegistration(themeId, registration)
       // The shiki plugin reloaded synchronously off the preview/commit notify,
       // when no registration was sync-available yet. Re-notify now so it
       // reloads with a real registration instead of going through name lookup.
@@ -397,6 +417,21 @@ function persistSelectionByColorMode(selection: Record<EditorColorMode, string>)
 
 function notifyEditorColorThemeListeners() {
   for (const listener of editorColorThemeListeners) listener()
+}
+
+function activeShikiThemeSubscriptionSnapshot(): string {
+  const themeId = activeShikiThemeId()
+  return [
+    activeEditorThemeUsesShiki() ? 'shiki' : 'tree-sitter',
+    themeId,
+    getResolvedShikiThemeContentHash(themeId),
+    themeSwitchingPrepared ? 'preloaded' : 'single',
+  ].join(':')
+}
+
+function cacheRegistration(themeId: string, registration: VscodeThemeRegistration) {
+  registrationByIdSync.set(themeId, registration)
+  registrationContentHashById.set(themeId, shikiThemeContentHash(themeId, registration))
 }
 
 function themeIdIsCurrentlySelected(themeId: string): boolean {
