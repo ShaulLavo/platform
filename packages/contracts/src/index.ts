@@ -310,12 +310,19 @@ export {
   type LogLiveStreamItem,
 } from './log-dashboard'
 export {
+  LSP_DIAGNOSTIC_REFRESH,
+  LSP_FEATURE_IDS,
   LSP_SEMANTIC_TOKENS_REFRESH,
   LSP_SERVER_EXITED,
+  type LspFeatureId,
+  type LspFeatureRanks,
+  type LspMatch,
   type LspNegotiatedSemanticTokens,
   type LspServerExitedParams,
 } from './lsp-protocol'
 export {
+  lspFeatureRanksOverrideSchema,
+  lspLanguageServerListsSchema,
   lspServerOverrideSchema,
   lspServerOverridesSchema,
   modelRefKey,
@@ -324,6 +331,7 @@ export {
   REDACTED_SETTINGS_VALUE,
   semanticTokenServerOverridesSchema,
   type KeybindingOverrides,
+  type LspLanguageServerLists,
   type LspServerOverride,
   type LspServerOverrides,
   type ModelRef,

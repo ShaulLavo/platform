@@ -1,10 +1,10 @@
 /**
- * The two messages this app's LSP proxy sends a browser that LSP itself does not
+ * The messages this app's LSP proxy sends a browser that LSP itself does not
  * define as client-bound, named once so the two halves cannot drift.
  *
  * Everything else on that socket is ordinary JSON-RPC forwarded between a
- * browser and a language server. These two are the proxy speaking for itself,
- * and both exist because a backend is **pooled** — shared by every tab in a root
+ * browser and a language server. These are the proxy speaking for itself,
+ * and each exists because a backend is **pooled** — shared by every tab in a root
  * — so neither the server's request nor the socket's close can address one tab.
  */
 
@@ -23,6 +23,9 @@
  */
 export const LSP_SEMANTIC_TOKENS_REFRESH = 'workspace/semanticTokens/refresh'
 
+/** The pooled equivalent of `workspace/semanticTokens/refresh` for pull diagnostics. */
+export const LSP_DIAGNOSTIC_REFRESH = 'workspace/diagnostic/refresh'
+
 /**
  * Why the socket is about to close.
  *
@@ -34,6 +37,29 @@ export const LSP_SEMANTIC_TOKENS_REFRESH = 'workspace/semanticTokens/refresh'
  * tolerate.
  */
 export const LSP_SERVER_EXITED = '$/platform/serverExited'
+
+export const LSP_FEATURE_IDS = [
+  'completion',
+  'hover',
+  'navigation',
+  'signatureHelp',
+  'diagnostics',
+  'codeActions',
+  'formatting',
+  'rename',
+  'documentHighlights',
+  'semanticTokens',
+] as const
+
+export type LspFeatureId = (typeof LSP_FEATURE_IDS)[number]
+
+export type LspFeatureRanks = Partial<Readonly<Record<LspFeatureId, number>>>
+
+export type LspMatch = {
+  readonly root: string
+  readonly serverId: string
+  readonly features: LspFeatureRanks
+}
 
 /**
  * What a pooled backend actually agreed to, read out of the `initializeResult`

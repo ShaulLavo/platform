@@ -1,11 +1,23 @@
 # 12-Week State-Correctness Architecture Roadmap
 
 ## Summary
+
 Build a staged remediation plan for one sequential implementer on a feature branch. Temporary breakage is acceptable inside the branch, but every milestone must end with typecheck/tests passing and the app usable for core editor workflows.
 
 Primary goal: remove duplicated truth. The finished system has one authoritative workspace document model, deterministic file sync, explicit command/focus transitions, React as a renderer of projections, and workers/resources with clear ownership.
 
+## Current execution order
+
+This is the authoritative cross-project order. `plans/README.md` is an inventory of executable plans, not a second roadmap.
+
+1. **Plan 049b — JSON language server for settings: ready, reconcile first.** Multi-server routing is complete. Its registry assumptions have since drifted because the generic JSON/CSS/HTML server and server-selection policy landed with the multi-server review fixes; reconcile those facts before executing its settings-schema and synthetic-document work.
+2. **Editor BiDi geometry Tier B: open and independent.** Tier A M1-M5 is verified complete; M6-M7 may proceed without Plan 049b or environment work.
+3. **Plan 055 — ghostty-webgpu DOM/input: ready.** Phase 2 is complete. Keep its package work isolated from Platform environment integration, which remains a later phase.
+
+Completed prerequisite: Plan 050 now provides ordered server sets, runtime capability arbitration, composite diagnostics/status, and shared-pool diff-session leases across Editor and Platform. Do not recreate those concerns in Plan 049b.
+
 Success criteria:
+
 - One live text buffer per workspace document; tabs own view state only.
 - Dirty, saved, conflict, revision, and undo state have one owner.
 - File sync correctness no longer depends on watcher timing, debounce windows, or retry luck.
@@ -13,6 +25,7 @@ Success criteria:
 - Command, keyboard, focus, worker, LSP, and persistence boundaries are explicit and testable.
 
 ## Key Architecture Changes
+
 - Add `WorkspaceDocumentService` outside React. It owns `DocumentId`, `DocumentSession`, document version, dirty state, save state, conflict state, undo history, and per-view attachments.
 - Replace per-tab cloned sessions with `DocumentViewState`: tab id, pane id, cursor/selection policy, scroll, folds, reveal target, and editor instance metadata.
 - Add `FileSyncService` as the only bridge between document state and server files. Its API uses `{ path, version, writeId, origin }`, and file watcher events become invalidation hints, not correctness proof.
@@ -25,6 +38,7 @@ Success criteria:
 - Split persistence into durable workspace layout, session recovery, cache, and ephemeral UI. Do not persist runtime service internals.
 
 ## 12-Week Implementation Roadmap
+
 - Week 1: Baseline and invariants.
   - Capture current behavior with characterization tests for open/edit/save/reopen, multi-tab same file, split panes, external file change, conflict markers, undo/redo, search buffer, LSP attachment, and dirty-close.
   - Write a short ownership document defining the single owner for text, dirty, conflict, save, focus, command, query, worker, and persistence state.
@@ -77,6 +91,7 @@ Success criteria:
   - Gate: branch is mergeable with no known correctness regressions in core editor workflows.
 
 ## Test Plan
+
 - Run after every milestone: `bun run typecheck`, `bun run test`, plus targeted package tests for web, server, and editor.
 - Add service-level tests for document ownership, file sync state transitions, command dispatch, focus transitions, persistence hydration, and worker cancellation.
 - Add race tests with fake timers and controlled promises for save vs external edit, watcher event ordering, stale worker responses, tab close during save, and conflict resolution.
@@ -84,6 +99,7 @@ Success criteria:
 - Keep performance checks as acceptance gates, not the main driver: large file open, rapid typing, syntax update latency, minimap update latency, search buffer responsiveness.
 
 ## Assumptions
+
 - Existing dirty worktree changes are user-owned and must not be reverted.
 - The implementation happens on a feature branch where temporary breakage is allowed between milestones.
 - React 19, Vite, Bun, TanStack Query, Zustand, and the existing editor packages remain in use; their responsibilities change rather than being replaced wholesale.

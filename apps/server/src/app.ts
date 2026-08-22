@@ -141,7 +141,11 @@ export function createApp(options: AppOptions) {
     // `/lsp/match` request.
     const { values } = settings.snapshot()
 
-    return { servers: values['lsp.servers'], tyForPython: values['lsp.experimental.tyForPython'] }
+    return {
+      servers: values['lsp.servers'],
+      languageServers: values['lsp.languageServers'],
+      tyForPython: values['lsp.experimental.tyForPython'],
+    }
   }
   // The one knob that cannot be threaded as a parameter — see the comment on
   // `setLspDownloadPolicy`.

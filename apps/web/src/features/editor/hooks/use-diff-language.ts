@@ -10,7 +10,12 @@ import {
 import type { LanguageServerDefinitionTarget } from '@singapor/lsp-plugin'
 import { documentUriToFileName } from '@singapor/lsp-plugin/paths'
 
-import { useLanguageServerMatch } from '@/features/editor/hooks/use-language-server-match'
+import { useLanguageServerMatches } from '@/features/editor/hooks/use-language-server-matches'
+import { diffLanguageServerConnectionProvider } from '@/features/editor/state/language-server-connection-pool'
+import {
+  languageServerLaneOptions,
+  type LanguageServerMatch,
+} from '@/features/editor/utils/language-server-plugin'
 import { useOptionalEditorCommands } from '@/features/editor/state/commands'
 import {
   createDiffLanguagePlugin,
@@ -74,7 +79,12 @@ export function useDiffLanguage(
   // Asked before connecting. A file no server claims — a `.md`, anything outside a project — must
   // not open a socket at all: the connection would be accepted and then answer nothing, which is
   // indistinguishable from a server that is merely slow.
-  const match = useLanguageServerMatch(rootPath ?? '', documentPath ?? '', documentPath !== null)
+  const matches = useLanguageServerMatches(
+    rootPath ?? '',
+    documentPath ?? '',
+    documentPath !== null,
+  )
+  const routedMatches = useMemo(() => diffLanguageServerMatches(matches), [matches])
 
   // A plain holder the plugin reads from, so its identity stays stable across renders — a fresh
   // plugin per render would tear the view contribution down and rebuild its tooltip on every mouse
@@ -107,7 +117,7 @@ export function useDiffLanguage(
   // one would cost a `didClose`/`didOpen` pair. What editing can invalidate is checked per request
   // instead, in `sideStates`.
   useEffect(() => {
-    if (!documentPath || !rootPath || !match) return
+    if (!documentPath || !rootPath || routedMatches.length === 0) return
 
     const documents = diffLanguageDocuments({
       documentPath,
@@ -119,9 +129,18 @@ export function useDiffLanguage(
 
     const session = createDiffLanguageSession({
       documents,
-      path: documentPath,
-      rootPath,
-      serverId: match.serverId,
+      lanes: routedMatches.map((match) =>
+        languageServerLaneOptions({
+          connectionProvider: diffLanguageServerConnectionProvider({
+            rootPath: match.root,
+            serverId: match.serverId,
+            sessionId: crypto.randomUUID(),
+          }),
+          match,
+          rootPath,
+          target: { matchPath: documentPath },
+        }),
+      ),
     })
     // `Object.assign` rather than field writes for the same reason the layout effect above uses it:
     // the React Compiler treats a direct assignment into a `useState` value as a mutation it cannot
@@ -132,11 +151,11 @@ export function useDiffLanguage(
       Object.assign(latest, { documents: [], drifted: new Set<DiffFileSide>(), session: null })
       session.dispose()
     }
-  }, [documentPath, file, latest, match, rootPath])
+  }, [documentPath, file, latest, rootPath, routedMatches])
 
   // Only whether a file could be asked about at all rebuilds the plugin; everything else is read
   // live from the holder.
-  const available = documentPath !== null && rootPath !== null && match !== null
+  const available = documentPath !== null && rootPath !== null && routedMatches.length > 0
 
   return useMemo(() => {
     if (!available) return null
@@ -179,6 +198,16 @@ export function useDiffLanguage(
       theme: () => latest.theme,
     })
   }, [available, latest])
+}
+
+export function diffLanguageServerMatches(
+  matches: readonly LanguageServerMatch[] | null,
+): readonly LanguageServerMatch[] {
+  if (!matches) return []
+
+  return matches.filter(
+    (match) => match.features.hover !== undefined || match.features.navigation !== undefined,
+  )
 }
 
 type HoverHolder = {

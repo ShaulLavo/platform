@@ -34,7 +34,7 @@ const _hiddenIsModelRefList: SettingsValues['models.hidden'] = v.parse(modelRefL
   { providerInstanceId: 'codex-personal', model: 'gpt-5' },
 ])
 const _serversAreOverrides: SettingsValues['lsp.servers'] = v.parse(lspServerOverridesSchema, {
-  typescript: { disabled: true },
+  typescript: { disabled: true, features: { completion: 5, semanticTokens: null } },
   'custom-lsp': { command: ['custom-lsp-server', '--stdio'], extensions: ['.custom'] },
 })
 const _overridesAreNullableStrings: SettingsValues['keybindings.overrides'] = {
@@ -102,6 +102,25 @@ void _modelsRejectProviders
 void _providersRejectModels
 
 describe('settings registry', () => {
+  it('accepts non-negative integer LSP feature ranks and null exclusions only', () => {
+    expect(
+      v.parse(lspServerOverridesSchema, {
+        typescript: { features: { completion: 0, semanticTokens: null } },
+      }),
+    ).toEqual({
+      typescript: {
+        disabled: false,
+        features: { completion: 0, semanticTokens: null },
+      },
+    })
+
+    for (const features of [{ completion: -1 }, { completion: 1.5 }, { unknownFeature: 0 }]) {
+      expect(v.safeParse(lspServerOverridesSchema, { typescript: { features } }).success).toBe(
+        false,
+      )
+    }
+  })
+
   it('registers no malformed id and no default that fails its own schema', () => {
     expect(registryProblems(SETTINGS_REGISTRY)).toEqual([])
   })
@@ -191,6 +210,8 @@ describe('settings registry', () => {
       'providers.instances',
       'keybindings.overrides',
       'lsp.servers',
+      // Explicit selection can start a registered tool, so this is machine-scoped.
+      'lsp.languageServers',
       'lsp.experimental.tyForPython',
       'lsp.idleTimeoutMs',
       'lsp.downloadRuntimes',

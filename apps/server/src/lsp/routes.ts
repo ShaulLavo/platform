@@ -4,7 +4,14 @@ import * as v from 'valibot'
 import { authenticateWebSocketData, type AuthConfig } from '../auth'
 import { pathSchema } from '../fs/contracts'
 import type { WorkspacePaths } from '../fs/path'
-import { matchLspServer, type LspServerMatch, type LspSettings } from './registry'
+import {
+  bestLspMatchForFeature,
+  matchDescriptor,
+  matchLspServers,
+  resolveLspServer,
+  type LspServerMatch,
+  type LspSettings,
+} from './registry'
 import type { LspProxyClientSession, LspSessionSource } from './proxy-session'
 import { recordProcessWarning } from '../observability'
 
@@ -23,21 +30,8 @@ export async function lspRouteMatch(
   query: v.InferOutput<typeof lspMatchQuerySchema>,
   settings: LspSettings,
 ) {
-  const match = await resolveLspRouteMatch(
-    paths,
-    {
-      path: query.path,
-      root: query.root,
-      serverId: query.server ?? null,
-    },
-    settings,
-  )
-  if (!match) return null
-
-  return {
-    root: match.root,
-    serverId: match.server.id,
-  }
+  const matches = await resolveLspRouteMatches(paths, routeMatchInput(query), settings)
+  return matches.map(matchDescriptor)
 }
 
 /**
@@ -61,11 +55,12 @@ export async function lspRouteSemanticTokens(
   settings: LspSettings,
   pool: LspNegotiationSource,
 ) {
-  const match = await resolveLspRouteMatch(
-    paths,
-    { path: query.path, root: query.root, serverId: query.server ?? null },
-    settings,
-  )
+  const match = query.server
+    ? await resolveExplicitLspRouteMatch(paths, routeMatchInput(query), settings)
+    : bestLspMatchForFeature(
+        await resolveLspRouteMatches(paths, routeMatchInput(query), settings),
+        'semanticTokens',
+      )
   if (!match) return null
 
   return {
@@ -81,7 +76,7 @@ export type LspNegotiationSource = {
 }
 
 export type LspRouteDeps = {
-  readonly matchServer?: typeof matchLspServer
+  readonly resolveServer?: typeof resolveLspServer
   /**
    * Required: the app owns the pool so `appCleanup` can tear it down. There is
    * deliberately no module-global fallback — that was the bug.
@@ -97,7 +92,7 @@ export type LspRouteDeps = {
 
 export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig, deps: LspRouteDeps) {
   const sessions = new WeakMap<object, PendingLspSession>()
-  const matchServer = deps.matchServer ?? matchLspServer
+  const resolveServer = deps.resolveServer ?? resolveLspServer
 
   return {
     async open(ws: unknown) {
@@ -121,7 +116,12 @@ export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig, deps: LspRou
         return
       }
 
-      const match = await resolveLspRouteMatch(fs.paths, socket, deps.settings(), matchServer)
+      const match = await resolveExplicitLspRouteMatch(
+        fs.paths,
+        socket,
+        deps.settings(),
+        resolveServer,
+      )
       if (!match) {
         rejectPendingLspSession(sessions, socket, pending)
         recordProcessWarning('lsp.session.rejected', {
@@ -264,24 +264,55 @@ async function flushPendingLspMessages(pending: PendingLspSession) {
   if (pending.messages.length > 0) flushPendingLspSession(pending)
 }
 
-async function resolveLspRouteMatch(
+async function resolveLspRouteMatches(
   paths: WorkspacePaths,
   input: LspRouteMatchInput,
   settings: LspSettings,
-  match: typeof matchLspServer = matchLspServer,
-) {
+  match: typeof matchLspServers = matchLspServers,
+): Promise<readonly LspServerMatch[]> {
   try {
-    const file = input.path ? paths.resolve(input.path) : null
-    if (!file) return null
+    const target = resolveRouteTarget(paths, input)
+    if (!target) return []
 
     return match({
-      filePath: file.absolutePath,
+      filePath: target.filePath,
+      settings,
+      workspaceRoot: target.workspaceRoot,
+    })
+  } catch {
+    return []
+  }
+}
+
+async function resolveExplicitLspRouteMatch(
+  paths: WorkspacePaths,
+  input: LspRouteMatchInput,
+  settings: LspSettings,
+  resolve: typeof resolveLspServer = resolveLspServer,
+): Promise<LspServerMatch | null> {
+  if (!input.serverId) return null
+
+  try {
+    const target = resolveRouteTarget(paths, input)
+    if (!target) return null
+
+    return resolve({
+      filePath: target.filePath,
       serverId: input.serverId,
       settings,
-      workspaceRoot: paths.resolve(input.root).absolutePath,
+      workspaceRoot: target.workspaceRoot,
     })
   } catch {
     return null
+  }
+}
+
+function resolveRouteTarget(paths: WorkspacePaths, input: LspRouteMatchInput) {
+  if (!input.path) return null
+
+  return {
+    filePath: paths.resolve(input.path).absolutePath,
+    workspaceRoot: paths.resolve(input.root).absolutePath,
   }
 }
 
@@ -289,6 +320,14 @@ type LspRouteMatchInput = {
   readonly path: string
   readonly root: string
   readonly serverId: string | null
+}
+
+function routeMatchInput(query: v.InferOutput<typeof lspMatchQuerySchema>): LspRouteMatchInput {
+  return {
+    path: query.path,
+    root: query.root,
+    serverId: query.server ?? null,
+  }
 }
 
 type LspWebSocket = {

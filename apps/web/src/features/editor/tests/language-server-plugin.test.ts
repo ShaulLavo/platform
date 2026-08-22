@@ -1,37 +1,17 @@
-import type { LanguageServerDiagnosticSummary, LanguageServerStatus } from '@singapor/lsp-plugin'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { summarizeDiagnostics, type LanguageServerSetPluginOptions } from '@singapor/lsp-plugin'
+import { beforeEach, describe, vi } from 'vitest'
 
-import type {
-  EditorLanguageServerStatusSnapshot,
-  EditorLanguageServerStatusSource,
-} from '@/features/editor/state/language-server-status-source'
+import { createEditorLanguageServerStatusSource } from '@/features/editor/state/language-server-status-source'
+import { expect, test } from '../../../../test/fixtures'
 
-type MockLanguageServerPluginOptions = {
-  readonly capabilities?: Record<string, unknown>
-  readonly clientInfo?: { name: string }
-  readonly notificationHandlers?: Record<string, (...args: never[]) => unknown>
-  readonly onDiagnostics?: (summary: LanguageServerDiagnosticSummary) => void
-  readonly onInteractiveReady?: () => void
-  readonly onStatusChange?: (status: LanguageServerStatus) => void
-  readonly rootUri?: string | null
-  readonly semanticTokens?: {
-    readonly scopeAliases?: Readonly<Record<string, string>>
-    readonly viewportDelayMs?: number
-  }
-  readonly webSocketRoute: string | URL
-}
-
-const { createdLanguageServerPlugins } = vi.hoisted(() => ({
-  createdLanguageServerPlugins: [] as MockLanguageServerPluginOptions[],
+const { createdServerSets } = vi.hoisted(() => ({
+  createdServerSets: [] as LanguageServerSetPluginOptions[],
 }))
 
 vi.mock('@singapor/lsp-plugin/websocket', () => ({
-  createLanguageServerPlugin: (options: MockLanguageServerPluginOptions) => {
-    createdLanguageServerPlugins.push(options)
-    return {
-      activate: () => [],
-      name: 'editor.language-server',
-    }
+  createLanguageServerSetPlugin: (options: LanguageServerSetPluginOptions) => {
+    createdServerSets.push(options)
+    return { activate: () => [], name: 'editor.language-server' }
   },
 }))
 
@@ -39,384 +19,222 @@ vi.mock('@/lib/server-sockets', () => ({
   EdenLanguageServerWebSocket: class EdenLanguageServerWebSocket {},
 }))
 
-const { createMatchedLanguageServerPlugin, languageServerMatch } =
+const { createMatchedLanguageServerPlugin, languageServerMatches } =
   await import('@/features/editor/utils/language-server-plugin')
 
 beforeEach(() => {
-  createdLanguageServerPlugins.length = 0
+  createdServerSets.length = 0
 })
 
 describe('createMatchedLanguageServerPlugin', () => {
-  it('stays idle while a language server match is unavailable', () => {
-    const source = statusSource()
+  test('stays idle without eligible matches', () => {
+    const source = createEditorLanguageServerStatusSource()
     const plugin = createMatchedLanguageServerPlugin({
       enabled: true,
-      filePath: '/repo/src/a.ts',
-      match: null,
+      matches: [],
       rootPath: '/repo',
       statusSource: source,
+      target: { matchPath: '/repo/README.md' },
     })
 
     plugin.activate({} as never)
 
-    expect(source.resetCount).toBe(1)
     expect(plugin.name).toBe('editor.language-server.idle')
+    expect(source.getSnapshot().status).toBe('idle')
+    expect(createdServerSets).toEqual([])
   })
 
-  it('creates the real language server plugin when a match is available', () => {
+  test('builds one composite with one distinct lane per descriptor', () => {
+    const source = createEditorLanguageServerStatusSource()
     const plugin = createMatchedLanguageServerPlugin({
       enabled: true,
-      filePath: '/repo/src/a.ts',
-      match: { root: '/repo', serverId: 'typescript' },
-      rootPath: '/repo',
-      statusSource: statusSource(),
-    })
-
-    expect(plugin.name).toBe('editor.language-server')
-    expect(createdLanguageServerPlugins).toHaveLength(1)
-
-    const options = createdLanguageServerPlugins[0]
-    const route = new URL(options.webSocketRoute)
-
-    expect(options.rootUri).toBe('file:///repo')
-    expect(route.protocol).toBe('ws:')
-    expect(route.pathname).toBe('/lsp')
-    expect(route.searchParams.get('root')).toBe('/repo')
-    expect(route.searchParams.get('path')).toBe('/repo/src/a.ts')
-    expect(route.searchParams.get('server')).toBe('typescript')
-  })
-
-  it('keeps status loading until the document is usable', () => {
-    const source = statusSource()
-    createMatchedLanguageServerPlugin({
-      enabled: true,
-      filePath: '/repo/src/a.ts',
-      match: { root: '/repo', serverId: 'typescript' },
+      matches: [match('typescript', '/repo/package', 0), match('eslint', '/repo', 5)],
       rootPath: '/repo',
       statusSource: source,
+      target: { matchPath: 'src/a.ts' },
     })
 
-    const options = createdLanguageServerPlugins[0]
-    options.onStatusChange?.('loading')
-    options.onStatusChange?.('ready')
+    plugin.activate({} as never)
+    const options = createdServerSets[0]
+    const routes = options?.lanes.map((lane) => new URL(lane.webSocketRoute)) ?? []
 
-    expect(source.snapshot.status).toBe('loading')
-
-    options.onInteractiveReady?.()
-
-    expect(source.snapshot.status).toBe('ready')
+    expect(createdServerSets).toHaveLength(1)
+    expect(options?.lanes.map((lane) => lane.id)).toEqual(['typescript', 'eslint'])
+    expect(options?.lanes[0]?.connectionProvider).not.toBe(options?.lanes[1]?.connectionProvider)
+    expect(options?.lanes.map((lane) => lane.rootUri)).toEqual([
+      'file:///repo/package',
+      'file:///repo',
+    ])
+    expect(routes.map((route) => route.searchParams.get('server'))).toEqual([
+      'typescript',
+      'eslint',
+    ])
+    expect(routes.every((route) => route.searchParams.get('path') === 'src/a.ts')).toBe(true)
+    expect(source.getSnapshot().status).toBe('loading')
   })
 
-  it('also marks ready when diagnostics arrive first', () => {
-    const source = statusSource()
+  test('applies feature exclusions and named ready notifications before lane construction', () => {
     createMatchedLanguageServerPlugin({
       enabled: true,
-      filePath: '/repo/src/a.ts',
-      match: { root: '/repo', serverId: 'typescript' },
+      matches: [match('typescript', '/repo', 0), match('eslint', '/repo', 5)],
       rootPath: '/repo',
-      statusSource: source,
+      statusSource: createEditorLanguageServerStatusSource(),
+      target: {
+        matchPath: '.platform/settings.json',
+        disabledFeatures: ['diagnostics'],
+        sharedNotificationsByServer: {
+          typescript: [{ method: 'workspace/state', params: { complete: true } }],
+        },
+      },
     })
 
-    const options = createdLanguageServerPlugins[0]
-    options.onStatusChange?.('loading')
-    options.onStatusChange?.('ready')
+    const [typescript, eslint] = createdServerSets[0]?.lanes ?? []
+    expect(typescript?.features.diagnostics).toBeUndefined()
+    expect(eslint?.features.diagnostics).toBeUndefined()
+    expect(typescript?.readyNotifications).toEqual([
+      { method: 'workspace/state', params: { complete: true } },
+    ])
+    expect(eslint?.readyNotifications).toBeUndefined()
+  })
 
-    expect(source.snapshot.status).toBe('loading')
+  test('keeps a ready primary aggregate ready when a secondary errors', () => {
+    const source = createEditorLanguageServerStatusSource()
+    const plugin = createMatchedLanguageServerPlugin({
+      enabled: true,
+      matches: [match('typescript', '/repo', 0), match('eslint', '/repo', 5)],
+      rootPath: '/repo',
+      statusSource: source,
+      target: { matchPath: 'src/a.ts' },
+    })
+    plugin.activate({} as never)
+    const [typescript, eslint] = createdServerSets[0]?.lanes ?? []
 
-    options.onDiagnostics?.(diagnosticSummary('/repo/src/a.ts'))
+    typescript?.onStatusChange?.('ready')
+    typescript?.onInteractiveReady?.()
+    eslint?.onStatusChange?.('error')
 
-    expect(source.snapshot.status).toBe('ready')
+    expect(source.getSnapshot().status).toBe('ready')
+  })
+
+  test('keeps a lane ready after a routed request fails', () => {
+    const source = createEditorLanguageServerStatusSource()
+    const plugin = createMatchedLanguageServerPlugin({
+      enabled: true,
+      matches: [match('typescript', '/repo', 0)],
+      rootPath: '/repo',
+      statusSource: source,
+      target: { matchPath: 'src/a.ts' },
+    })
+    plugin.activate({} as never)
+    const lane = createdServerSets[0]?.lanes[0]
+
+    lane?.onStatusChange?.('ready')
+    lane?.onInteractiveReady?.()
+    expect(source.getSnapshot().status).toBe('ready')
+
+    lane?.onRequestError?.('textDocument/hover', new Error('request failed'))
+    expect(source.getSnapshot().status).toBe('ready')
+
+    lane?.onError?.(new Error('transport failed'))
+    expect(source.getSnapshot().status).toBe('error')
+  })
+
+  test('orders composite diagnostics by diagnostic rank', () => {
+    const source = createEditorLanguageServerStatusSource()
+    const plugin = createMatchedLanguageServerPlugin({
+      enabled: true,
+      matches: [match('typescript', '/repo', 5), match('eslint', '/repo', 0)],
+      rootPath: '/repo',
+      statusSource: source,
+      target: { matchPath: 'src/a.ts' },
+    })
+    plugin.activate({} as never)
+    const [typescript, eslint] = createdServerSets[0]?.lanes ?? []
+
+    typescript?.onDiagnostics?.(diagnostics('typescript'))
+    eslint?.onDiagnostics?.(diagnostics('eslint'))
+
+    expect(source.getSnapshot().diagnostics?.diagnostics.map((item) => item.message)).toEqual([
+      'eslint',
+      'typescript',
+    ])
   })
 })
 
-/**
- * The invariant the whole pooling argument rests on.
- *
- * `initialize` is sent once per pooled backend and its result is replayed to
- * every client that connects after, so the legend a root sees is the one
- * negotiated by whichever tab opened first. At least two servers compute their
- * advertised legend *from* the declared block. If the block varied by document,
- * root or viewport, a root's colour would depend on which file someone opened
- * first — an ordering bug with no symptom anyone could trace.
- */
-describe('semantic token capabilities', () => {
-  const SERVER_IDS = ['rust', 'gopls', 'clangd', 'zls', 'terraform', 'typescript', 'unknown-server']
+describe('semantic token ownership', () => {
+  test('creates layer options for the runtime-elected semantic owner', () => {
+    createMatchedLanguageServerPlugin({
+      enabled: true,
+      matches: [match('typescript', '/repo', 5), match('rust', '/repo', 0)],
+      rootPath: '/repo',
+      statusSource: createEditorLanguageServerStatusSource(),
+      target: { matchPath: 'src/a.rs' },
+    })
 
-  it('builds a byte-identical block for one server across documents and roots', () => {
-    for (const serverId of SERVER_IDS) {
-      createdLanguageServerPlugins.length = 0
+    const options = createdServerSets[0]
+    const semanticTokens = options?.semanticTokens?.({
+      id: 'rust',
+      connection: { client: {}, workspace: {} } as never,
+    })
+
+    expect(semanticTokens?.viewportDelayMs).toBe(0)
+    expect(options?.lanes.every((lane) => lane.onConnectionCreated === undefined)).toBe(true)
+    semanticTokens?.dispose?.()
+  })
+
+  test('keeps initialization capabilities stable per server', () => {
+    for (const root of ['/repo', '/other']) {
       createMatchedLanguageServerPlugin({
         enabled: true,
-        filePath: '/repo/src/a.ts',
-        match: { root: '/repo', serverId },
-        rootPath: '/repo',
-        statusSource: statusSource(),
+        matches: [match('rust', root, 0)],
+        rootPath: root,
+        statusSource: createEditorLanguageServerStatusSource(),
+        target: { matchPath: 'src/a.rs' },
       })
-      createMatchedLanguageServerPlugin({
-        enabled: true,
-        filePath: '/other/deeply/nested/b.rs',
-        match: { root: '/other', serverId },
-        rootPath: '/other',
-        statusSource: statusSource(),
-      })
-
-      const [first, second] = createdLanguageServerPlugins
-      expect(JSON.stringify(first?.capabilities)).toBe(JSON.stringify(second?.capabilities))
-      expect(first?.capabilities).toBeDefined()
-    }
-  })
-
-  it('varies the block between servers, or the per-server table does nothing', () => {
-    const blocks = SERVER_IDS.map((serverId) => {
-      createdLanguageServerPlugins.length = 0
-      createMatchedLanguageServerPlugin({
-        enabled: true,
-        filePath: '/repo/src/a.ts',
-        match: { root: '/repo', serverId },
-        rootPath: '/repo',
-        statusSource: statusSource(),
-      })
-      return JSON.stringify(createdLanguageServerPlugins[0]?.capabilities)
-    })
-
-    expect(new Set(blocks).size).toBeGreaterThan(1)
-  })
-
-  /**
-   * Absences, not `false` values. An undeclared capability is what the wire
-   * means by "no", and a key present with `false` is a different statement that
-   * some servers branch on separately.
-   */
-  it('declares none of the three flags this client cannot honour', () => {
-    createMatchedLanguageServerPlugin({
-      enabled: true,
-      filePath: '/repo/src/a.rs',
-      match: { root: '/repo', serverId: 'rust' },
-      rootPath: '/repo',
-      statusSource: statusSource(),
-    })
-
-    const block = createdLanguageServerPlugins[0]?.capabilities as {
-      textDocument?: { semanticTokens?: Record<string, unknown> }
-    }
-    const semanticTokens = block?.textDocument?.semanticTokens
-    expect(semanticTokens).toBeDefined()
-    expect(semanticTokens).not.toHaveProperty('multilineTokenSupport')
-    expect(semanticTokens).not.toHaveProperty('overlappingTokenSupport')
-    expect(semanticTokens).not.toHaveProperty('dynamicRegistration')
-    expect(semanticTokens).toHaveProperty('augmentsSyntaxTokens')
-  })
-
-  /**
-   * Without this the refresh route does not exist. A conformant server only
-   * sends `workspace/semanticTokens/refresh` to a client that declared it, and
-   * the editor's builder emits a `textDocument` block only — so the proxy's
-   * downgrade and the handler behind it would be waiting for a request nobody
-   * would ever send.
-   */
-  it('declares refresh support, which is what makes the refresh route reachable', () => {
-    createMatchedLanguageServerPlugin({
-      enabled: true,
-      filePath: '/repo/src/a.rs',
-      match: { root: '/repo', serverId: 'rust' },
-      rootPath: '/repo',
-      statusSource: statusSource(),
-    })
-
-    const block = createdLanguageServerPlugins[0]?.capabilities as {
-      workspace?: { semanticTokens?: { refreshSupport?: boolean } }
-    }
-    expect(block?.workspace?.semanticTokens?.refreshSupport).toBe(true)
-  })
-
-  /** Values, not just presence: the per-server table is what these come from. */
-  it("declares each server's own measured request set", () => {
-    const requestsFor = (serverId: string) => {
-      createdLanguageServerPlugins.length = 0
-      createMatchedLanguageServerPlugin({
-        enabled: true,
-        filePath: '/repo/src/a',
-        match: { root: '/repo', serverId },
-        rootPath: '/repo',
-        statusSource: statusSource(),
-      })
-      const block = createdLanguageServerPlugins[0]?.capabilities as {
-        textDocument?: { semanticTokens?: { requests?: unknown } }
-      }
-      return block?.textDocument?.semanticTokens?.requests
     }
 
-    // Measured: rust-analyzer answers deltas and ranges; gopls answers ranges and
-    // refuses deltas; clangd answers deltas and refuses ranges outright.
-    expect(requestsFor('rust')).toEqual({ full: { delta: true }, range: true })
-    expect(requestsFor('gopls')).toEqual({ full: { delta: false }, range: true })
-    expect(requestsFor('clangd')).toEqual({ full: { delta: true }, range: false })
-  })
-
-  it('answers augmentsSyntaxTokens per server, which is the whole reason it is host data', () => {
-    const augmentsFor = (serverId: string) => {
-      createdLanguageServerPlugins.length = 0
-      createMatchedLanguageServerPlugin({
-        enabled: true,
-        filePath: '/repo/src/a',
-        match: { root: '/repo', serverId },
-        rootPath: '/repo',
-        statusSource: statusSource(),
-      })
-      const block = createdLanguageServerPlugins[0]?.capabilities as {
-        textDocument?: { semanticTokens?: { augmentsSyntaxTokens?: boolean } }
-      }
-      return block?.textDocument?.semanticTokens?.augmentsSyntaxTokens
-    }
-
-    // zig has a grammar registered here, but zls's tokens are the whole rendering
-    // of the identifiers in it — there is nothing to augment.
-    expect(augmentsFor('zls')).toBe(false)
-    expect(augmentsFor('rust')).toBe(true)
-  })
-
-  /** `zls` turns `full` off for either of these two names. */
-  it('never calls itself a name zls refuses to answer', () => {
-    createMatchedLanguageServerPlugin({
-      enabled: true,
-      filePath: '/repo/main.zig',
-      match: { root: '/repo', serverId: 'zls' },
-      rootPath: '/repo',
-      statusSource: statusSource(),
-    })
-
-    const name = createdLanguageServerPlugins[0]?.clientInfo?.name
-    expect(name).toBeTruthy()
-    expect(name).not.toBe('Visual Studio Code')
-    expect(name).not.toBe('Code - OSS')
-  })
-
-  /**
-   * The editor's demand signal has no default delay and this repo's controller
-   * owns all three numbers on the path. Written down rather than inherited: a
-   * later editor default underneath them would be a latency neither document
-   * budgets.
-   */
-  it('leaves the editor with no delay of its own on the demand signal', () => {
-    createMatchedLanguageServerPlugin({
-      enabled: true,
-      filePath: '/repo/src/a.rs',
-      match: { root: '/repo', serverId: 'rust' },
-      rootPath: '/repo',
-      statusSource: statusSource(),
-    })
-
-    expect(createdLanguageServerPlugins[0]?.semanticTokens?.viewportDelayMs).toBe(0)
-  })
-
-  it("hands the layer the matched server's alias table", () => {
-    createMatchedLanguageServerPlugin({
-      enabled: true,
-      filePath: '/repo/src/a.rs',
-      match: { root: '/repo', serverId: 'rust' },
-      rootPath: '/repo',
-      statusSource: statusSource(),
-    })
-
-    expect(createdLanguageServerPlugins[0]?.semanticTokens?.scopeAliases).toMatchObject({
-      lifetime: 'typeParameter',
-      selfKeyword: 'keyword',
-    })
-  })
-
-  it('registers a handler for both proxy-only notifications', () => {
-    createMatchedLanguageServerPlugin({
-      enabled: true,
-      filePath: '/repo/src/a.rs',
-      match: { root: '/repo', serverId: 'rust' },
-      rootPath: '/repo',
-      statusSource: statusSource(),
-    })
-
-    const handlers = createdLanguageServerPlugins[0]?.notificationHandlers ?? {}
-    expect(Object.keys(handlers)).toEqual(
-      expect.arrayContaining(['workspace/semanticTokens/refresh', '$/platform/serverExited']),
-    )
-  })
-
-  it('reports an error status when the proxy says the backend exited', () => {
-    const source = statusSource()
-    createMatchedLanguageServerPlugin({
-      enabled: true,
-      filePath: '/repo/src/a.rs',
-      match: { root: '/repo', serverId: 'rust' },
-      rootPath: '/repo',
-      statusSource: source,
-    })
-
-    source.setStatus('ready')
-    createdLanguageServerPlugins[0]?.notificationHandlers?.['$/platform/serverExited']?.()
-
-    // The status lie: without this the socket closes silently and the indicator
-    // keeps reading `ready` over a server that is gone.
-    expect(source.snapshot.status).toBe('error')
+    const [first, second] = createdServerSets.map((set) => set.lanes[0]?.capabilities)
+    expect(JSON.stringify(first)).toBe(JSON.stringify(second))
+    expect(first).toMatchObject({ workspace: { semanticTokens: { refreshSupport: true } } })
   })
 })
 
-describe('languageServerMatch', () => {
-  it('normalizes valid match responses', () => {
-    expect(languageServerMatch({ root: '/repo', serverId: 'typescript' })).toEqual({
-      root: '/repo',
-      serverId: 'typescript',
-    })
-  })
-
-  it('rejects invalid match responses', () => {
-    expect(languageServerMatch(null)).toBeNull()
-    expect(languageServerMatch({ root: '/repo' })).toBeNull()
-    expect(languageServerMatch({ root: 1, serverId: 'typescript' })).toBeNull()
+describe('languageServerMatches', () => {
+  test('normalizes valid collection responses and rejects malformed descriptors', () => {
+    expect(
+      languageServerMatches([
+        { root: '/repo', serverId: 'typescript', features: { completion: 0 } },
+        { root: '/repo', serverId: 'bad', features: { unknown: 0 } },
+      ]),
+    ).toEqual([{ root: '/repo', serverId: 'typescript', features: { completion: 0 } }])
+    expect(languageServerMatches(null)).toEqual([])
+    expect(languageServerMatches([{ root: 1, serverId: 'typescript', features: {} }])).toEqual([])
   })
 })
 
-type TestStatusSource = EditorLanguageServerStatusSource & {
-  readonly resetCount: number
-  readonly snapshot: EditorLanguageServerStatusSnapshot
-}
-
-function statusSource(): TestStatusSource {
-  let resetCount = 0
-  let snapshot: EditorLanguageServerStatusSnapshot = { diagnostics: null, status: 'idle' }
+function match(serverId: string, root: string, semanticRank: number) {
   return {
-    getSnapshot: () => snapshot,
-    reset: () => {
-      resetCount += 1
-      snapshot = { diagnostics: null, status: 'idle' }
+    root,
+    serverId,
+    features: {
+      completion: semanticRank,
+      diagnostics: semanticRank,
+      hover: semanticRank,
+      navigation: semanticRank,
+      semanticTokens: semanticRank,
     },
-    get resetCount() {
-      return resetCount
-    },
-    setDiagnostics: (diagnostics) => {
-      snapshot = { ...snapshot, diagnostics }
-    },
-    setSnapshot: (next) => {
-      snapshot = next
-    },
-    setStatus: (status) => {
-      snapshot = { ...snapshot, status }
-    },
-    get snapshot() {
-      return snapshot
-    },
-    subscribe: () => () => undefined,
   }
 }
 
-function diagnosticSummary(uri: string): LanguageServerDiagnosticSummary {
-  return {
-    counts: {
-      error: 0,
-      hint: 0,
-      information: 0,
-      total: 0,
-      warning: 0,
+function diagnostics(message: string) {
+  return summarizeDiagnostics('file:///repo/src/a.ts', 1, [
+    {
+      message,
+      range: {
+        start: { line: 0, character: 0 },
+        end: { line: 0, character: 1 },
+      },
+      severity: 1,
     },
-    diagnostics: [],
-    uri,
-    version: 1,
-  }
+  ])
 }

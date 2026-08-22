@@ -12,6 +12,19 @@ import { providerDriverKindSchema } from './orchestration-runtime'
 const ENVIRONMENT_VARIABLE_NAME_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/
 const KEYBINDING_COMMAND_ID_PATTERN = /^[a-zA-Z][a-zA-Z0-9_.-]*$/
 
+export const lspFeatureRanksOverrideSchema = v.strictObject({
+  completion: v.optional(lspFeatureRankOverrideSchema()),
+  hover: v.optional(lspFeatureRankOverrideSchema()),
+  navigation: v.optional(lspFeatureRankOverrideSchema()),
+  signatureHelp: v.optional(lspFeatureRankOverrideSchema()),
+  diagnostics: v.optional(lspFeatureRankOverrideSchema()),
+  codeActions: v.optional(lspFeatureRankOverrideSchema()),
+  formatting: v.optional(lspFeatureRankOverrideSchema()),
+  rename: v.optional(lspFeatureRankOverrideSchema()),
+  documentHighlights: v.optional(lspFeatureRankOverrideSchema()),
+  semanticTokens: v.optional(lspFeatureRankOverrideSchema()),
+})
+
 /**
  * One environment variable handed to a provider process. `value` is stored in
  * the clear, so this is for `PATH`-style knobs, not credentials: nothing here
@@ -122,6 +135,7 @@ export const lspServerOverrideSchema = v.object({
     v.record(v.pipe(v.string(), v.regex(ENVIRONMENT_VARIABLE_NAME_PATTERN)), v.string()),
   ),
   extensions: v.optional(v.array(trimmedNonEmptyStringSchema)),
+  features: v.optional(lspFeatureRanksOverrideSchema),
   initialization: v.optional(v.record(v.string(), v.unknown())),
 })
 
@@ -133,6 +147,12 @@ export const lspServerOverrideSchema = v.object({
 export const lspServerOverridesSchema = v.record(
   trimmedNonEmptyStringSchema,
   lspServerOverrideSchema,
+)
+
+/** Extension → ordered server ids; `!id` removes and `...` retains automatic matches. */
+export const lspLanguageServerListsSchema = v.record(
+  trimmedNonEmptyStringSchema,
+  v.array(trimmedNonEmptyStringSchema),
 )
 
 /**
@@ -148,11 +168,17 @@ export const semanticTokenServerOverridesSchema = v.record(trimmedNonEmptyString
 
 export type LspServerOverride = v.InferOutput<typeof lspServerOverrideSchema>
 export type LspServerOverrides = v.InferOutput<typeof lspServerOverridesSchema>
+/** Read-only consumer view of the stored language-server lists. */
+export type LspLanguageServerLists = Readonly<Record<string, readonly string[]>>
 export type SemanticTokenServerOverrides = v.InferOutput<typeof semanticTokenServerOverridesSchema>
 export type ProviderEnvironmentVariable = v.InferOutput<typeof providerEnvironmentVariableSchema>
 export type ProviderInstanceConfig = v.InferOutput<typeof providerInstanceConfigSchema>
 export type ModelRef = v.InferOutput<typeof modelRefSchema>
 export type KeybindingOverrides = v.InferOutput<typeof keybindingOverridesSchema>
+
+function lspFeatureRankOverrideSchema() {
+  return v.nullable(v.pipe(v.number(), v.integer(), v.minValue(0)))
+}
 
 /** Stable identity for a model across the hidden and order lists. */
 export function modelRefKey(ref: ModelRef): string {
