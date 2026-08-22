@@ -2,7 +2,7 @@ import type { OrchestrationProjectShell, ProjectId, ThreadId } from '@workspace/
 import { createContext, use } from 'react'
 
 import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
-import type { ChatSidebarThreadSummary } from '@/features/chat/state/chat-projection-store'
+import type { ProjectionThread } from '@/features/chat/state/chat-projection-store'
 import type { ActiveSession } from '@/features/chat-mode/utils/active-session'
 import { clientErrors } from '@/lib/structured-errors'
 
@@ -23,7 +23,7 @@ export type ChatModeSession = {
   readonly rootPath: string
   readonly selectSession: (projectId: ProjectId, threadId: ThreadId) => void
   readonly startDraft: (projectId: ProjectId) => void
-  readonly threads: readonly ChatSidebarThreadSummary[]
+  readonly threads: readonly ProjectionThread[]
 }
 
 export const ChatModeSessionContext = createContext<ChatModeSession | null>(null)

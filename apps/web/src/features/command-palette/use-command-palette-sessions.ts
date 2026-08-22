@@ -12,7 +12,7 @@ import { sessionThreads } from '@/features/chat-mode/utils/session-threads'
 export function useCommandPaletteSessions() {
   const projects = useChatProjectionStore(selectChatProjects)
   const threadIds = useChatProjectionStore((state) => state.threadIds)
-  const summaryById = useChatProjectionStore((state) => state.sidebarThreadSummaryById)
+  const summaryById = useChatProjectionStore((state) => state.threadById)
   const seenByThreadId = useSessionReadStore((state) => state.seenByThreadId)
   const model = sessionRailModel({
     projects,

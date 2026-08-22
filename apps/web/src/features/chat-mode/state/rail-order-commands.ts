@@ -176,7 +176,7 @@ function railOrderModel() {
   return sessionRailModel({
     orderOverrides: useRailOrderStore.getState(),
     projects: selectChatProjects(projection),
-    threads: sessionThreads(projection.threadIds, projection.sidebarThreadSummaryById),
+    threads: sessionThreads(projection.threadIds, projection.threadById),
     view: useSessionRailStore.getState().view,
   })
 }

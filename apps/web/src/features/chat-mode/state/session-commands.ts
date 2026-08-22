@@ -140,7 +140,7 @@ function visibleSessions() {
     scope: rail.scope,
     searchMatches: useSessionSearchStore.getState().matchByThreadId,
     seenByThreadId: useSessionReadStore.getState().seenByThreadId,
-    threads: sessionThreads(projection.threadIds, projection.sidebarThreadSummaryById),
+    threads: sessionThreads(projection.threadIds, projection.threadById),
     view: rail.view,
   }).sessions
 }

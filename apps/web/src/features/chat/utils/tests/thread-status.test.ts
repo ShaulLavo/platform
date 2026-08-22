@@ -2,24 +2,24 @@ import { proposedPlanIdSchema } from '@workspace/contracts'
 import * as v from 'valibot'
 
 import { threadStatus } from '@/features/chat/utils/thread-status'
-import { sidebarThreadSummary } from '../../../../../test/factories/chat'
+import { projectionThread } from '../../../../../test/factories/chat'
 import { expect, test } from '../../../../../test/fixtures'
 
 test('a running turn reads as working', () => {
-  expect(threadStatus(sidebarThreadSummary())).toBe('working')
+  expect(threadStatus(projectionThread())).toBe('working')
 })
 
 test('needing the user outranks a turn that is still running', () => {
   // The run cannot finish until the approval is answered, so "working" would send
   // the user away from the one session that is actually blocked on them.
-  const status = threadStatus(sidebarThreadSummary({ pendingApprovalCount: 1 }))
+  const status = threadStatus(projectionThread({ pendingApprovalCount: 1 }))
 
   expect(status).toBe('waiting')
 })
 
 test('a proposed plan waiting on a decision counts as waiting', () => {
   const status = threadStatus(
-    sidebarThreadSummary({ hasActionableProposedPlan: true, latestTurn: null, session: null }),
+    projectionThread({ hasActionableProposedPlan: true, latestTurn: null, session: null }),
   )
 
   expect(status).toBe('waiting')
@@ -28,7 +28,7 @@ test('a proposed plan waiting on a decision counts as waiting', () => {
 test('a plan already being implemented reads as working, not waiting', () => {
   // The implementing turn is the answer to the plan; the plan's own
   // `implementedAt` stamp arrives a sync later.
-  const source = sidebarThreadSummary({ hasActionableProposedPlan: true })
+  const source = projectionThread({ hasActionableProposedPlan: true })
   const status = threadStatus({
     ...source,
     latestTurn: source.latestTurn
@@ -47,7 +47,7 @@ test('a plan already being implemented reads as working, not waiting', () => {
 })
 
 test('a failed turn reads as failed', () => {
-  const source = sidebarThreadSummary()
+  const source = projectionThread()
   const status = threadStatus({
     ...source,
     latestTurn: source.latestTurn ? { ...source.latestTurn, state: 'error' } : null,
@@ -58,7 +58,7 @@ test('a failed turn reads as failed', () => {
 })
 
 test('a settled thread is idle', () => {
-  const status = threadStatus(sidebarThreadSummary({ latestTurn: null, session: null }))
+  const status = threadStatus(projectionThread({ latestTurn: null, session: null }))
 
   expect(status).toBe('idle')
 })

@@ -57,7 +57,7 @@ export function SessionRail() {
   const sessionOrderKeys = useRailOrderStore((state) => state.sessionOrderKeys)
   const projects = useChatProjectionStore(selectChatProjects)
   const threadIds = useChatProjectionStore((state) => state.threadIds)
-  const summaryById = useChatProjectionStore((state) => state.sidebarThreadSummaryById)
+  const summaryById = useChatProjectionStore((state) => state.threadById)
   const seenByThreadId = useSessionReadStore((state) => state.seenByThreadId)
   const collapsedProjectIds = useSessionRailStore((state) => state.collapsedProjectIds)
   const query = useSessionRailStore((state) => state.query)

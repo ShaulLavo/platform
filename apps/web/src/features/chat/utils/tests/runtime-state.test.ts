@@ -1,18 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
-  DEFAULT_INTERACTION_MODE,
   DEFAULT_PROVIDER_DRIVER_KIND,
   DEFAULT_PROVIDER_INSTANCE_ID,
   DEFAULT_RUNTIME_MODE,
-  projectIdSchema,
-  threadIdSchema,
-  turnIdSchema,
   type ProviderSnapshot,
 } from '@workspace/contracts'
-import * as v from 'valibot'
 
 import type { ChatThread } from '@/features/chat/state/chat-projection-store'
 import { chatRuntimeAlerts } from '@/features/chat/utils/runtime-state'
+import { thread } from '../../../../../test/factories/chat'
 
 describe('chat runtime state', () => {
   it('renders only attention-worthy command, provider, and pending action states', () => {
@@ -192,56 +188,6 @@ function threadWithError(lastError: string): ChatThread {
   const base = thread()
 
   return { ...base, session: base.session ? { ...base.session, lastError } : null }
-}
-
-function thread(overrides: Partial<ChatThread> = {}): ChatThread {
-  const threadId = v.parse(threadIdSchema, 'thread-1')
-  const turnId = v.parse(turnIdSchema, 'turn-1')
-
-  return {
-    activities: [],
-    archivedAt: null,
-    branch: null,
-    createdAt: timestamp(1),
-    hasActionableProposedPlan: false,
-    id: threadId,
-    interactionMode: DEFAULT_INTERACTION_MODE,
-    latestTurn: {
-      assistantMessageId: null,
-      completedAt: null,
-      requestedAt: timestamp(1),
-      startedAt: timestamp(2),
-      state: 'running',
-      turnId,
-    },
-    latestUserMessageAt: timestamp(1),
-    messages: [],
-    modelSelection: {
-      model: 'gpt-5.5',
-      providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
-    },
-    pendingApprovalCount: 0,
-    pendingUserInputCount: 0,
-    projectId: v.parse(projectIdSchema, 'project-1'),
-    proposedPlans: [],
-    runtimeMode: DEFAULT_RUNTIME_MODE,
-    session: {
-      activeTurnId: turnId,
-      lastError: null,
-      providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
-      providerName: 'Codex',
-      providerSessionId: 'provider-session-1',
-      runtimeMode: DEFAULT_RUNTIME_MODE,
-      status: 'running',
-      threadId,
-      updatedAt: timestamp(2),
-    },
-    title: 'Thread',
-    turnDiffSummaries: [],
-    updatedAt: timestamp(2),
-    worktreePath: null,
-    ...overrides,
-  }
 }
 
 function provider(overrides: Partial<ProviderSnapshot> = {}): ProviderSnapshot {

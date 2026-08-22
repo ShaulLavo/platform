@@ -8,7 +8,6 @@ import {
   type OrchestrationMessage,
   type OrchestrationProjectShell,
   type OrchestrationProposedPlan,
-  type OrchestrationSession,
   type OrchestrationShellSnapshot,
   type OrchestrationShellStreamItem,
   type OrchestrationThreadActivity,
@@ -48,39 +47,16 @@ import {
   syncChatProjectionThreadDetailSnapshot,
 } from './chat-projection-writers'
 
-export type ChatProjectionThreadShell = Pick<
-  OrchestrationThreadShell,
-  | 'archivedAt'
-  | 'branch'
-  | 'createdAt'
-  | 'id'
-  | 'interactionMode'
-  | 'modelSelection'
-  | 'projectId'
-  | 'runtimeMode'
-  | 'title'
-  | 'updatedAt'
-  | 'worktreePath'
->
-
 /**
- * The metadata a thread detail snapshot carries about the thread itself. It is kept
- * apart from `threadShellById` because the shell and detail subscriptions run
- * independently: a detail cached before a reconnect can land after a newer shell
- * snapshot, and the shell is authoritative for branch/worktree/title/session.
- * `selectChatThreadById` merges the two shell-wins; nothing merges them in a write.
+ * One thread, as this client holds it. Two independent subscriptions produce it —
+ * the shell stream (the rail's view of every thread) and the detail stream (the open
+ * transcript) — and they can arrive in either order: a detail snapshot cached before
+ * a reconnect can land *after* a newer shell one. The shell is authoritative, and
+ * `metaSource` / `sessionKnown` are what make that true no matter which arrives last.
+ * The rule used to live in the shape of the state (five records merged shell-first at
+ * read time); it lives in `threadFromDetail` now, where the compiler can see it.
  */
-export type ChatProjectionThreadDetailMeta = ChatProjectionThreadShell & {
-  latestTurn: OrchestrationLatestTurn | null
-  session: OrchestrationSession | null
-}
-
-export type ChatProjectionThreadTurnState = {
-  latestTurn: OrchestrationLatestTurn | null
-  pendingSourceProposedPlan?: OrchestrationLatestTurn['sourceProposedPlan']
-}
-
-export type ChatSidebarThreadSummary = Pick<
+export type ProjectionThread = Pick<
   OrchestrationThreadShell,
   | 'archivedAt'
   | 'branch'
@@ -90,21 +66,44 @@ export type ChatSidebarThreadSummary = Pick<
   | 'interactionMode'
   | 'latestTurn'
   | 'latestUserMessageAt'
+  | 'modelSelection'
   | 'pendingApprovalCount'
   | 'pendingUserInputCount'
   | 'planProgress'
   | 'projectId'
+  | 'runtimeMode'
   | 'session'
   | 'title'
   | 'updatedAt'
   | 'worktreePath'
 > & {
+  /** A detail snapshot has landed for this thread; the cache uses it to pick transcripts. */
+  detailSynced: boolean
+  /**
+   * `latestTurn` advanced by this client's own events since the last shell publish.
+   * Deliberately *not* the same fact as `latestTurn`: the rail reports what the server
+   * published (so a thread's dot does not flicker on every local event) while the open
+   * transcript reports what this client has observed. Both are real; neither derives
+   * from the other.
+   */
+  liveTurn: OrchestrationLatestTurn | null
+  /** Which producer owns the meta group. `'shell'` wins and is never downgraded. */
+  metaSource: 'shell' | 'detail'
+  /** Carried by the turn that implements a proposed plan, cleared by the next turn. */
+  pendingSourceProposedPlan?: OrchestrationLatestTurn['sourceProposedPlan']
   /**
    * The slot the user dragged this session into, `null` while it holds none.
-   * Event-derived rather than shell-derived: the thread shell carries no pin
-   * state, so the writers keep this field across a resnapshot themselves.
+   * Event-derived: the thread shell carries no pin state, so a resnapshot must
+   * carry this field across itself.
    */
-  pinOrderKey?: string | null
+  pinOrderKey: string | null
+  /**
+   * An authoritative producer (shell snapshot, shell stream item, or a session
+   * event) has published a session for this thread. `null` is a real session value
+   * — "stopped" — so presence, not truthiness, is what lets a detail snapshot fill
+   * in only for a thread nothing authoritative has spoken about yet.
+   */
+  sessionKnown: boolean
 }
 
 export type ChatTurnDiffSummary = {
@@ -118,17 +117,15 @@ export type ChatTurnDiffSummary = {
   turnId: TurnId
 }
 
-export type ChatThread = ChatProjectionThreadShell & {
+/**
+ * A thread with its timelines attached — what the transcript renders. `latestTurn`
+ * here is the *live* turn corrected for the session's terminal states, not the
+ * shell-published one; `liveTurn` is therefore omitted rather than shipped alongside.
+ */
+export type ChatThread = Omit<ProjectionThread, 'liveTurn'> & {
   activities: OrchestrationThreadActivity[]
-  hasActionableProposedPlan: boolean
-  latestTurn: OrchestrationLatestTurn | null
-  latestUserMessageAt: string | null
   messages: OrchestrationMessage[]
-  pendingApprovalCount: number
-  pendingSourceProposedPlan?: OrchestrationLatestTurn['sourceProposedPlan']
-  pendingUserInputCount: number
   proposedPlans: OrchestrationProposedPlan[]
-  session: OrchestrationSession | null
   turnDiffSummaries: ChatTurnDiffSummary[]
 }
 
@@ -144,8 +141,7 @@ export type ChatProjectionState = {
   projectIds: ProjectId[]
   proposedPlanByThreadId: Record<ThreadId, Record<ProposedPlanId, OrchestrationProposedPlan>>
   proposedPlanIdsByThreadId: Record<ThreadId, ProposedPlanId[]>
-  sidebarThreadSummaryById: Record<ThreadId, ChatSidebarThreadSummary>
-  threadDetailMetaById: Record<ThreadId, ChatProjectionThreadDetailMeta>
+  threadById: Record<ThreadId, ProjectionThread>
   /**
    * Whether older rows exist behind the oldest one currently held. An absent
    * entry means "not asked yet" and reads as `true`: the server's answer to the
@@ -156,9 +152,6 @@ export type ChatProjectionState = {
   threadDetailSequenceById: Record<ThreadId, number>
   threadIds: ThreadId[]
   threadIdsByProjectId: Record<ProjectId, ThreadId[]>
-  threadSessionById: Record<ThreadId, OrchestrationSession | null>
-  threadShellById: Record<ThreadId, ChatProjectionThreadShell>
-  threadTurnStateById: Record<ThreadId, ChatProjectionThreadTurnState>
   turnDiffIdsByThreadId: Record<ThreadId, TurnId[]>
   turnDiffSummaryByThreadId: Record<ThreadId, Record<TurnId, ChatTurnDiffSummary>>
 }
@@ -196,15 +189,11 @@ export function createInitialChatProjectionState(): ChatProjectionState {
     projectIds: [],
     proposedPlanByThreadId: {},
     proposedPlanIdsByThreadId: {},
-    sidebarThreadSummaryById: {},
-    threadDetailMetaById: {},
+    threadById: {},
     threadDetailSequenceById: {},
     threadHasEarlierById: {},
     threadIds: [],
     threadIdsByProjectId: {},
-    threadSessionById: {},
-    threadShellById: {},
-    threadTurnStateById: {},
     turnDiffIdsByThreadId: {},
     turnDiffSummaryByThreadId: {},
   }

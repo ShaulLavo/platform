@@ -18,9 +18,9 @@ import {
 import * as v from 'valibot'
 
 import type {
-  ChatSidebarThreadSummary,
   ChatThread,
   ChatTurnDiffSummary,
+  ProjectionThread,
 } from '@/features/chat/state/chat-projection-store'
 
 // Deterministic timestamps so factory output is stable across runs.
@@ -82,12 +82,13 @@ export function turnDiffSummary(overrides: Partial<ChatTurnDiffSummary> = {}): C
   } as ChatTurnDiffSummary
 }
 
-export function thread(overrides: Partial<ChatThread> = {}): ChatThread {
+export function threadShell(
+  overrides: Partial<OrchestrationThreadShell> = {},
+): OrchestrationThreadShell {
   const threadId = v.parse(threadIdSchema, 'thread-1')
   const turnId = v.parse(turnIdSchema, 'turn-1')
 
   return {
-    activities: [],
     archivedAt: null,
     branch: null,
     createdAt: timestamp(1),
@@ -103,12 +104,10 @@ export function thread(overrides: Partial<ChatThread> = {}): ChatThread {
       turnId,
     },
     latestUserMessageAt: timestamp(1),
-    messages: [],
     modelSelection: { model: 'claude-opus-5', providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID },
     pendingApprovalCount: 0,
     pendingUserInputCount: 0,
     projectId: v.parse(projectIdSchema, 'project-1'),
-    proposedPlans: [],
     runtimeMode: DEFAULT_RUNTIME_MODE,
     session: {
       activeTurnId: turnId,
@@ -122,9 +121,35 @@ export function thread(overrides: Partial<ChatThread> = {}): ChatThread {
       updatedAt: timestamp(2),
     },
     title: 'Thread',
-    turnDiffSummaries: [],
     updatedAt: timestamp(2),
     worktreePath: null,
+    ...overrides,
+  }
+}
+
+export function projectionThread(overrides: Partial<ProjectionThread> = {}): ProjectionThread {
+  const source = threadShell()
+
+  return {
+    ...source,
+    detailSynced: false,
+    liveTurn: source.latestTurn,
+    metaSource: 'shell',
+    pinOrderKey: null,
+    sessionKnown: true,
+    ...overrides,
+  }
+}
+
+export function thread(overrides: Partial<ChatThread> = {}): ChatThread {
+  const { liveTurn: _liveTurn, ...source } = projectionThread()
+
+  return {
+    ...source,
+    activities: [],
+    messages: [],
+    proposedPlans: [],
+    turnDiffSummaries: [],
     ...overrides,
   }
 }
@@ -141,44 +166,6 @@ export function chatProject(
     title: 'platform',
     updatedAt: timestamp(1),
     workspaceRoot: '/repo/platform',
-    ...overrides,
-  }
-}
-
-export function sidebarThreadSummary(
-  overrides: Partial<ChatSidebarThreadSummary> = {},
-): ChatSidebarThreadSummary {
-  const source = thread()
-
-  return {
-    archivedAt: source.archivedAt,
-    branch: source.branch,
-    createdAt: source.createdAt,
-    hasActionableProposedPlan: source.hasActionableProposedPlan,
-    id: source.id,
-    interactionMode: source.interactionMode,
-    latestTurn: source.latestTurn,
-    latestUserMessageAt: source.latestUserMessageAt,
-    pendingApprovalCount: source.pendingApprovalCount,
-    pendingUserInputCount: source.pendingUserInputCount,
-    projectId: source.projectId,
-    session: source.session,
-    title: source.title,
-    updatedAt: source.updatedAt,
-    worktreePath: source.worktreePath,
-    ...overrides,
-  }
-}
-
-export function threadShell(
-  overrides: Partial<OrchestrationThreadShell> = {},
-): OrchestrationThreadShell {
-  const source = thread()
-
-  return {
-    ...sidebarThreadSummary(),
-    modelSelection: source.modelSelection,
-    runtimeMode: source.runtimeMode,
     ...overrides,
   }
 }

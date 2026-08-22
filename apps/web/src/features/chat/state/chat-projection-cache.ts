@@ -4,7 +4,6 @@ import {
   orchestrationThreadActivitySchema,
   orchestrationThreadShellSchema,
   threadIdSchema,
-  type OrchestrationSession,
   type OrchestrationThread,
   type OrchestrationThreadShell,
   type ThreadId,
@@ -17,7 +16,7 @@ import {
   CHAT_PROJECTION_CACHE_THREAD_LIMIT,
   CHAT_PROJECTION_CACHE_TRANSCRIPT_LIMIT,
 } from './chat-cache-constants'
-import type { ChatProjectionState, ChatSidebarThreadSummary } from './chat-projection-store'
+import type { ChatProjectionState, ProjectionThread } from './chat-projection-store'
 import {
   syncChatProjectionShellSnapshot,
   syncChatProjectionThreadDetailSnapshot,
@@ -165,29 +164,43 @@ function cachedShellThreads(state: ChatProjectionState) {
   for (const threadId of state.threadIds) {
     if (threads.length >= CHAT_PROJECTION_CACHE_THREAD_LIMIT) break
 
-    const shell = state.threadShellById[threadId]
-    const summary = state.sidebarThreadSummaryById[threadId]
-    if (!shell || !summary) continue
+    const thread = state.threadById[threadId]
+    if (!thread) continue
 
-    threads.push({
-      ...summary,
-      ...shell,
-      session: cachedThreadSession(state, threadId, summary),
-    })
+    threads.push(shellFromProjectionThread(thread))
   }
 
   return threads
 }
 
-/** `null` is a real session, so presence in the live slice decides, as it does in the selector. */
-function cachedThreadSession(
-  state: ChatProjectionState,
-  threadId: ThreadId,
-  summary: ChatSidebarThreadSummary,
-): OrchestrationSession | null {
-  if (!Object.hasOwn(state.threadSessionById, threadId)) return summary.session
-
-  return state.threadSessionById[threadId] ?? null
+/**
+ * Exactly the fields `orchestrationThreadShellSchema` defines. The client-only facts
+ * — the arranged pin slot, the provenance stamps, the live turn — are deliberately
+ * absent: the reader parses this back through the same schema and would strip them.
+ */
+function shellFromProjectionThread(thread: ProjectionThread): OrchestrationThreadShell {
+  return {
+    archivedAt: thread.archivedAt,
+    branch: thread.branch,
+    createdAt: thread.createdAt,
+    hasActionableProposedPlan: thread.hasActionableProposedPlan,
+    id: thread.id,
+    interactionMode: thread.interactionMode,
+    latestTurn: thread.latestTurn,
+    latestUserMessageAt: thread.latestUserMessageAt,
+    modelSelection: thread.modelSelection,
+    pendingApprovalCount: thread.pendingApprovalCount,
+    pendingUserInputCount: thread.pendingUserInputCount,
+    // `planProgress` is optional on the schema, so leaving it out would compile and
+    // silently drop the plan-progress label from every cache-hydrated rail row.
+    planProgress: thread.planProgress,
+    projectId: thread.projectId,
+    runtimeMode: thread.runtimeMode,
+    session: thread.session,
+    title: thread.title,
+    updatedAt: thread.updatedAt,
+    worktreePath: thread.worktreePath,
+  }
 }
 
 /**
@@ -197,7 +210,9 @@ function cachedThreadSession(
  * budget goes to the thread the user is most likely to land back on.
  */
 function cachedTranscripts(state: ChatProjectionState) {
-  const threadIds = Object.keys(state.threadDetailMetaById) as ThreadId[]
+  const threadIds = (Object.keys(state.threadById) as ThreadId[]).filter(
+    (threadId) => state.threadById[threadId]?.detailSynced,
+  )
   const ordered = threadIds.toSorted((left, right) =>
     threadDetailUpdatedAt(state, right).localeCompare(threadDetailUpdatedAt(state, left)),
   )
@@ -218,9 +233,7 @@ function cachedTranscripts(state: ChatProjectionState) {
 }
 
 function threadDetailUpdatedAt(state: ChatProjectionState, threadId: ThreadId) {
-  return (
-    state.threadShellById[threadId]?.updatedAt ?? state.threadDetailMetaById[threadId].updatedAt
-  )
+  return state.threadById[threadId]?.updatedAt ?? ''
 }
 
 function transcriptTail<TId extends string, TValue>(

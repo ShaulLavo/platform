@@ -56,7 +56,7 @@ export function settleSessionOrder(threadId: ThreadId, orderKey: string) {
   settleWhenProjected({
     orderKey,
     pending: () => useRailOrderStore.getState().sessionOrderKeys[threadId],
-    projected: (state) => state.sidebarThreadSummaryById[threadId]?.pinOrderKey ?? null,
+    projected: (state) => state.threadById[threadId]?.pinOrderKey ?? null,
     release: () => useRailOrderStore.getState().releaseSession(threadId),
   })
 }

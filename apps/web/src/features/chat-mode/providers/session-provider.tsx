@@ -47,7 +47,7 @@ export function ChatModeSessionProvider({
       ? (state.threadIdsByProjectId[projectId] ?? NO_PROJECT_THREAD_IDS)
       : NO_PROJECT_THREAD_IDS,
   )
-  const summaryById = useChatProjectionStore((state) => state.sidebarThreadSummaryById)
+  const summaryById = useChatProjectionStore((state) => state.threadById)
   const threads = projectThreads.toSorted(compareSessionsForRail)
   const threadIds = threads.map((thread) => thread.id)
   const archivedThreadIds = projectThreadIds.filter((threadId) =>

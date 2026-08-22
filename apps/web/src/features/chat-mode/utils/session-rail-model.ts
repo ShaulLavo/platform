@@ -11,7 +11,7 @@ import {
   threadStatus,
   type ThreadStatus,
 } from '@/features/chat/utils/thread-status'
-import type { ChatSidebarThreadSummary } from '@/features/chat/state/chat-projection-store'
+import type { ProjectionThread } from '@/features/chat/state/chat-projection-store'
 import {
   compareProjectsForRail,
   withProjectOrderKey,
@@ -144,7 +144,7 @@ export function sessionRailModel({
   readonly scope?: SessionRailScope
   readonly searchMatches?: SessionSearchMatches
   readonly seenByThreadId?: SessionSeenStamps
-  readonly threads: readonly ChatSidebarThreadSummary[]
+  readonly threads: readonly ProjectionThread[]
   readonly view?: SessionRailView
 }): SessionRailModel {
   const titleByProjectId = new Map(projects.map((project) => [project.id, project.title]))
@@ -192,7 +192,7 @@ export function sessionRailModel({
 
 /** The stage builds one of these for the session it is showing, so header and row agree. */
 export function sessionRailItem(
-  thread: ChatSidebarThreadSummary,
+  thread: ProjectionThread,
   projectTitle: string,
   seenAt: string | undefined,
   pendingOrderKey?: string,
