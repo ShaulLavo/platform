@@ -502,7 +502,9 @@ html[data-wallpaper-hidden] {
   }
   html {
     /* Solid floor: translucent surfaces must never composite against the UA
-       canvas, whatever --surface-opacity is set to. */
+       canvas, whatever --surface-opacity is set to. The boot floor in
+       apps/web/index.html paints the same colors before this file loads —
+       changing --background-solid means changing both. */
     background-color: var(--background-solid);
   }
   /* Except when the desktop shell runs a transparent window over a real

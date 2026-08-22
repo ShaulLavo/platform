@@ -7,6 +7,8 @@ import * as v from 'valibot'
  * mirror is the only synchronous source of the user's choice at that point.
  */
 
+// Also read inline by the boot script in apps/web/index.html, which runs
+// before any module can load — renaming the key means changing both.
 const BOOT_MIRROR_KEY = 'platform.settings-boot-mirror.v1'
 
 /**

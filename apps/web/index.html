@@ -9,6 +9,52 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>vite-monorepo</title>
+    <style>
+      /* Boot floor: painted before any module loads, so the module waterfall
+         shows the theme's background instead of UA white. Declared as the
+         first (lowest-priority) layer so the token rules in
+         packages/ui/src/styles/globals.css win the moment they load —
+         including the desktop shell's html[data-native-vibrancy] transparent
+         floor. The colors mirror --background-solid there; changing them
+         means changing both. */
+      @layer boot {
+        html {
+          color-scheme: light;
+          background-color: oklch(1 0.006 70);
+        }
+        html.dark {
+          color-scheme: dark;
+          background-color: oklch(0.145 0.006 70);
+        }
+        html[data-native-vibrancy] {
+          background-color: transparent;
+        }
+      }
+    </style>
+    <script>
+      // Pre-paint theme class for the boot floor above. Reads the settings
+      // boot mirror (written by features/settings/utils/boot-mirror.ts, which
+      // this classic script cannot import — a module script would defer past
+      // first paint). applyAppearance in main.tsx re-applies the full
+      // appearance once the app boots; this only decides dark vs light.
+      ;(() => {
+        let theme = 'system'
+        try {
+          const raw = localStorage.getItem('platform.settings-boot-mirror.v1')
+          const stored = raw
+            ? JSON.parse(raw)['workbench.colorTheme']
+            : undefined
+          if (stored === 'dark' || stored === 'light') theme = stored
+        } catch {
+          // An unreadable mirror costs a system-theme boot floor, nothing more.
+        }
+        const dark =
+          theme === 'dark' ||
+          (theme === 'system' &&
+            matchMedia('(prefers-color-scheme: dark)').matches)
+        document.documentElement.classList.add(dark ? 'dark' : 'light')
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
