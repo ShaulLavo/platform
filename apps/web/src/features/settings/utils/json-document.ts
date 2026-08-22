@@ -20,6 +20,9 @@ export function settingsJsonDocumentId(target: SettingsWriteTarget): string {
   return `${SETTINGS_JSON_DOCUMENT_PREFIX}${target}`
 }
 
+/** Every settings buffer that can exist, for the callers that must cover both. */
+export const SETTINGS_JSON_DOCUMENT_IDS: readonly string[] = TARGETS.map(settingsJsonDocumentId)
+
 export function parseSettingsJsonDocumentId(
   id: string | null | undefined,
 ): SettingsWriteTarget | null {

@@ -16,6 +16,24 @@ export function editorDiffFiles(diffs: readonly GitFileDiff[]): DiffFile[] {
   return diffs.flatMap(toEditorDiffFiles)
 }
 
+/**
+ * The one file the pane draws.
+ *
+ * A file with hunks is the normal answer. A whole-file diff with no hunks is a rename or a mode
+ * change, and its text is still the thing the reader opened — the diff editor draws it as unchanged
+ * rather than replacing the file with a sentence about it. A patch-only entry with no hunks carries
+ * no text at all, so there is nothing there to draw.
+ */
+export function renderableDiffFile(files: readonly DiffFile[]): DiffFile | null {
+  return files.find((file) => file.hunks.length > 0) ?? files.find(hasWholeFileText) ?? null
+}
+
+function hasWholeFileText(file: DiffFile) {
+  if (file.isPartial) return false
+
+  return file.newLines.length > 0 || file.oldLines.length > 0
+}
+
 function toEditorDiffFiles(diff: GitFileDiff): DiffFile[] {
   if (diff.oldText === undefined && diff.newText === undefined) {
     return [...parseGitPatch(diff.patch, { cacheKey: diffCacheKey(diff) })]

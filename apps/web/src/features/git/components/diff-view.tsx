@@ -5,10 +5,15 @@ import { DiffEditor } from '@/features/editor/components/diff-editor'
 import { useDiffOwnedText } from '@/features/editor/hooks/use-diff-owned-text'
 import type { DiffDocumentInfo } from '@/features/git/utils/diff-document'
 import { useDiffDocumentDiffs } from '../hooks/use-diff-document-diffs'
-import { emptyDiffNotice, unrenderableDiffNotice } from '../utils/diff-presentation'
-import { editorDiffFiles } from '../utils/editor-diff-files'
+import {
+  emptyDiffNotice,
+  unchangedFileNotice,
+  unrenderableDiffNotice,
+} from '../utils/diff-presentation'
+import { editorDiffFiles, renderableDiffFile } from '../utils/editor-diff-files'
 import { DiffLineCommentAction } from './diff-line-comment-action'
 import { DiffNotice } from './diff-notice'
+import { UnchangedDiffBanner } from './unchanged-diff-banner'
 import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 
 /**
@@ -35,21 +40,27 @@ export function DiffView({
   // Stable identity is required: this is pushed into the plugin, and a fresh
   // array each render would re-project the diff and throw away scroll position.
   const files = useMemo(() => editorDiffFiles(diffs), [diffs])
-  // A binary file and a pure rename both come back as a file entry with no
-  // hunks, so "we got diffs" is not the same as "there is something to draw".
+  // A file with hunks wins; a hunkless one is drawn only when it carries whole-file text, which is
+  // what a pure rename looks like once the server sends the blob. A binary entry has neither and
+  // still falls through to a notice — "we got diffs" is not the same as "there is something to
+  // draw".
   //
-  // One `find` rather than a `some` beside a `files[0]`: those are two decisions that have to agree
-  // and nothing made them. A first entry with no hunks and a second with some would have reported
-  // ready and then drawn the empty one. No route produces that today — the patch parser drops
-  // hunkless entries and the compare-saved path is single-file — so this is a latent mismatch being
-  // closed rather than a bug being fixed. The file list is off either way, so a checkpoint diff
-  // touching several files deliberately shows one.
-  const file = files.find((entry) => entry.hunks.length > 0)
+  // One pass over the whole list rather than a `some` beside a `files[0]`: those are two decisions
+  // that have to agree and nothing made them. The file list is off either way for a multi-file
+  // diff, so a checkpoint diff touching several files deliberately shows one.
+  const file = renderableDiffFile(files)
   // What an editor tab currently holds for this path, if anything. That is the only text a
   // language server can be asked about, and comparing it to the diff's new side is what makes an
   // answer true — see `diffQueryTargetAt`. Called before the early returns below: hooks are not
   // conditional.
-  const languageServer = useDiffOwnedText(file?.newPath || file?.path || null, rootPath)
+  // Only an unstaged working-tree diff draws the file as it is on disk; a staged diff draws the
+  // index blob and a checkpoint a historical commit. That decides whether the new side may be
+  // published to the language server under the file's own uri.
+  const languageServer = useDiffOwnedText(
+    file?.newPath || file?.path || null,
+    rootPath,
+    documentInfo.kind === 'snapshot' && documentInfo.source === 'worktree',
+  )
 
   if (failure) return <DiffNotice message={failure} tone='error' />
   if (pending) return <DiffNotice message='Loading diff…' />
@@ -58,12 +69,15 @@ export function DiffView({
     return <DiffNotice message={unrenderableDiffNotice(diffs, documentInfo, rootPath)} />
   }
 
+  const unchanged = unchangedFileNotice(file, rootPath)
+
   return (
-    <div className='relative h-full min-h-0 w-full min-w-0 overflow-hidden'>
+    <div className='relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden'>
+      {unchanged ? <UnchangedDiffBanner message={unchanged} /> : null}
       {/* The ref is on the panes and not on the wrapper the toolbar shares: the
           comment layer listens for `mousedown` in capture, and a press on its own
           "Ask" button would otherwise clear the selection before the click landed. */}
-      <div className='h-full min-h-0 w-full min-w-0' ref={containerRef}>
+      <div className='min-h-0 w-full min-w-0 flex-1' ref={containerRef}>
         <DiffEditor file={file} languageServer={languageServer} mode={mode} regions={regions} />
       </div>
       <DiffLineCommentAction file={file} hostRef={containerRef} key={file.path} regions={regions} />

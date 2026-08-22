@@ -920,6 +920,42 @@ describe('git rpc', () => {
     ])
   })
 
+  it('sends the whole file for a rename with no content change', async () => {
+    const root = await fixtureRoot()
+    await initGitRepository(root)
+    await writeFile(path.join(root, 'old.txt'), 'one\ntwo\nthree\n')
+    await runGit(root, ['add', 'old.txt'])
+    await runGit(root, ['commit', '-m', 'initial'])
+    await runGit(root, ['mv', 'old.txt', 'new.txt'])
+    const app = testApp(root)
+
+    const live = await app.handle(
+      new Request('http://local/git/diff?path=new.txt&staged=true', {
+        headers: trustedOriginHeaders(),
+      }),
+    )
+    const [snapshot] = (await live.json()) as GitDiffTestPayload
+
+    const blob = await app.handle(
+      new Request(`http://local/git/diff/blob?${blobDiffParams(snapshot)}`, {
+        headers: trustedOriginHeaders(),
+      }),
+    )
+
+    // Identical blobs make an empty patch, so there is no entry to parse out of it. The viewer
+    // still opened a file, and text on both sides is what lets it draw one instead of a sentence.
+    expect(blob.status).toBe(200)
+    expect(await blob.json()).toMatchObject([
+      {
+        hunks: [],
+        newText: 'one\ntwo\nthree\n',
+        oldPath: 'old.txt',
+        oldText: 'one\ntwo\nthree\n',
+        path: 'new.txt',
+      },
+    ])
+  })
+
   it('renders deletion and rename blob snapshots with stable paths', async () => {
     const root = await fixtureRoot()
     await initGitRepository(root)

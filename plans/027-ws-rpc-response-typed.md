@@ -1120,7 +1120,7 @@ baseline_, not exit-0 checks — see the callout at the top of this file.
       returns exactly one match, in `packages/contracts/src/orchestration-ws.ts`
 - [ ] `rg -c "receipt" apps/server/src/orchestration/engine.ts` → `15`
       (18 at baseline; Step 5 deletes exactly three lines — `49: receipt:
-    ReturnType<…>`, `209: receipt: committed.receipt,` and `509: receipt,`).
+ReturnType<…>`, `209: receipt: committed.receipt,` and `509: receipt,`).
       Line `302: receipt,` inside `commitCommand` **stays**; see out-of-scope.
 - [ ] `rg -n "receipt: committed" apps/server/src` returns no matches
 - [ ] `git status --porcelain` shows changes only to the eleven in-scope files,

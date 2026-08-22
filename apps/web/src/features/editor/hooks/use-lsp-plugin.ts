@@ -2,15 +2,11 @@ import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
 } from '@singapor/lsp-plugin'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 
-import {
-  createMatchedLanguageServerPlugin,
-  languageServerMatch,
-  type LanguageServerMatch,
-} from '@/features/editor/utils/language-server-plugin'
+import { createMatchedLanguageServerPlugin } from '@/features/editor/utils/language-server-plugin'
+import { useLanguageServerMatch } from '@/features/editor/hooks/use-language-server-match'
 import { createEditorLanguageServerStatusSource } from '@/features/editor/state/language-server-status-source'
-import { getClient } from '@/lib/client'
 
 type UseLanguageServerPluginOptions = {
   enabled?: boolean
@@ -28,36 +24,13 @@ export function useLanguageServerPlugin({
   onOpenReferences,
 }: UseLanguageServerPluginOptions) {
   const languageServerStatusSource = useMemo(() => createEditorLanguageServerStatusSource(), [])
-  const matchKey = languageServerMatchKey(rootPath, filePath)
-  const [matchState, setMatchState] = useState<LanguageServerMatchState | null>(null)
-  const match = enabled && matchState?.key === matchKey ? matchState.match : null
+  const match = useLanguageServerMatch(rootPath, filePath, enabled)
 
+  // Cleared whenever the file or the root changes, not only when the plugin is turned off: the
+  // indicator would otherwise keep showing the previous file's server while this one is matching.
   useEffect(() => {
     languageServerStatusSource.reset()
-    if (!enabled) return
-
-    const controller = new AbortController()
-    getClient()
-      .lsp.match.get({
-        query: { path: filePath, root: rootPath },
-        fetch: { signal: controller.signal },
-      })
-      .then((response) => {
-        if (controller.signal.aborted) return
-
-        setMatchState({
-          key: matchKey,
-          match: response.error ? null : languageServerMatch(response.data),
-        })
-      })
-      .catch(() => {
-        if (controller.signal.aborted) return
-
-        setMatchState({ key: matchKey, match: null })
-      })
-
-    return () => controller.abort()
-  }, [enabled, filePath, languageServerStatusSource, matchKey, rootPath])
+  }, [enabled, filePath, languageServerStatusSource, rootPath])
 
   const languageServer = useMemo(() => {
     return createMatchedLanguageServerPlugin({
@@ -83,13 +56,4 @@ export function useLanguageServerPlugin({
     languageServer,
     languageServerStatusSource,
   }
-}
-
-type LanguageServerMatchState = {
-  readonly key: string
-  readonly match: LanguageServerMatch | null
-}
-
-function languageServerMatchKey(rootPath: string, filePath: string) {
-  return `${rootPath}\u0000${filePath}`
 }

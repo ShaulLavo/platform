@@ -49,13 +49,20 @@ export class SettingsSyncService {
     // subtree, so the two differ exactly when a secret was absorbed.
     const written = snapshot.layers.find((layer) => layer.id === sync.target)?.file
     const state = this.documentStore.getState()
-    state.markSettingsDocumentSaved({
+    // Marked against what was POSTED, not against what landed. The buffer holds
+    // `posted`, so handing it a rewritten `written.text` reports the save as not
+    // applied in exactly the case the replacement below exists for — the two
+    // conditions were mutually exclusive, which left the buffer permanently
+    // dirty displaying a credential the file no longer contains.
+    const marked = state.markSettingsDocumentSaved({
       documentId: document.id,
       revision: written?.revision ?? sync.revision,
       savedContentRevision,
-      savedText: written?.text ?? posted,
+      savedText: posted,
     })
-    if (written && written.text !== posted) {
+    // `marked` false here means the user typed while the request was in flight.
+    // Their text wins and the next save absorbs the credential again.
+    if (marked && written && written.text !== posted) {
       state.replaceUnsyncedEditorDocumentText(document.id, written.text)
     }
   }

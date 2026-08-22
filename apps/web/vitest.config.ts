@@ -79,6 +79,7 @@ export default defineConfig({
             commands: {
               diffMouseWheel,
               proofMouseDrag,
+              proofMouseHover,
               proofMouseUp,
             },
             enabled: true,
@@ -141,6 +142,12 @@ type ProofMouseFrameTransform = {
   readonly scaleY: number
 }
 
+type ProofMouseHoverInput = {
+  readonly selector: string
+  readonly x?: number
+  readonly y?: number
+}
+
 type ProofMouseDragInput = {
   readonly release?: boolean
   readonly sourceClientX?: number
@@ -187,6 +194,28 @@ async function diffMouseWheel(context: ProofMouseCommandContext, input: DiffMous
 
   await context.page.mouse.move(point.x, point.y)
   await context.page.mouse.wheel(input.deltaX ?? 0, input.deltaY ?? 0)
+}
+
+/**
+ * A real pointer move with no button pressed.
+ *
+ * `proofMouseDrag` cannot stand in for this: it presses on the way in, and a
+ * pressed pointer is a drag, which is a different code path from hover in every
+ * editor. Synthetic `mousemove` cannot stand in for it either — the events the
+ * editor listens for have to come from the browser to carry real coordinates
+ * against real layout.
+ */
+async function proofMouseHover(context: ProofMouseCommandContext, input: ProofMouseHoverInput) {
+  const frame = await context.frame()
+  const transform = await proofMouseFrameTransform(frame)
+  // Offsets from the element's top-left, not the ratios `pointForSelector` takes
+  // by default: a hover targets a specific row, and a ratio cannot name one.
+  const point = await pointForSelector(frame, transform, input.selector, 0, 0, input.x, input.y)
+
+  // Two moves: the first can land on the element before its listeners are live,
+  // and a hover that never moves again is a hover the editor never sees.
+  await context.page.mouse.move(point.x - 1, point.y)
+  await context.page.mouse.move(point.x, point.y, { steps: 4 })
 }
 
 async function proofMouseDrag(context: ProofMouseCommandContext, input: ProofMouseDragInput) {

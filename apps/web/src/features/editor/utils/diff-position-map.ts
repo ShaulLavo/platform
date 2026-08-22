@@ -6,39 +6,44 @@ export type DiffFilePosition = {
   readonly character: number
 }
 
+/** Which of the two texts a row stands for. Both are opened as documents, so both can be asked. */
+export type DiffFileSide = 'new' | 'old'
+
 /**
- * What a buffer offset turns out to be. Three answers rather than a position or null, deliberately.
+ * What a buffer offset turns out to be.
  *
- * A feature handed `null` tends to fall back to asking anyway; a feature handed `old-side` has to
- * decide what to do about it. That decision is the one both prior arts got wrong by leaving it
- * implicit: VS Code has shipped an enabled, permanently no-opping "Go to definition" on `git:`
- * documents for nine years (microsoft/vscode#324356), and Zed guards deleted-hunk positions in
- * `completions.rs` and `code_actions.rs` while missing hover and go-to-definition. Both enumerated
- * call sites by hand. This type is the chokepoint neither of them had.
+ * Two answers rather than a position or null, deliberately. A feature handed `null` tends to fall
+ * back to asking anyway; a feature handed a SIDE has to carry it through to the document it asks
+ * about. That decision is the one both prior arts left implicit: VS Code has shipped an enabled,
+ * permanently no-opping "Go to definition" on `git:` documents for nine years
+ * (microsoft/vscode#324356), and Zed guards deleted-hunk positions in `completions.rs` and
+ * `code_actions.rs` while missing hover and go-to-definition. Both enumerated call sites by hand.
+ * This type is the chokepoint neither of them had.
  */
 export type DiffPositionLookup =
-  /** A real line of the new file. The only answer a language server may be asked about. */
-  | { readonly kind: 'file'; readonly position: DiffFilePosition }
-  /** Real code, but from the pre-image — it exists only in the diff, never on disk. */
-  | { readonly kind: 'old-side' }
+  /** A real line of one of the two texts, at this position in it. */
+  | { readonly kind: 'file'; readonly side: DiffFileSide; readonly position: DiffFilePosition }
   /** Padding, a `Show N unmodified lines` label, or a row whose text the projection blanked. */
   | { readonly kind: 'none' }
 
 export type DiffPositionMap = {
   lookupAt(offset: number): DiffPositionLookup
-  /** Where a new-file position sits in the buffer, or null when that line is not projected. */
-  bufferOffsetAt(position: DiffFilePosition): number | null
+  /** Where a position in one of the two texts sits in the buffer, or null when it is not drawn. */
+  bufferOffsetAt(side: DiffFileSide, position: DiffFilePosition): number | null
 }
 
 /**
- * Translates between the diff's buffer and the new-side file.
+ * Translates between the diff's buffer and the two texts it is drawing.
  *
  * The buffer a diff editor holds is `joinRenderLines(rows)` — the two sides interleaved, plus
  * separator rows carrying a label and placeholder rows carrying nothing. So buffer line N is not
  * file line N, and anything position-based talking to a language server has to come through here.
  *
- * Only rows that stand for a real line of the NEW file map. Three kinds do not, and the third is
- * the one worth naming:
+ * A row is resolved against the NEW text first and the old text second, so an unchanged line —
+ * which carries both numbers — is answered about the file that still exists. Only a deletion ends
+ * up on the old side.
+ *
+ * Three kinds of row stand for no line at all, and the third is the one worth naming:
  *
  * - placeholders, which pad the short side of a change block and stand for nothing;
  * - separators, whose text is the `Show N unmodified lines` label;
@@ -46,25 +51,28 @@ export type DiffPositionMap = {
  *   raw hunk header, so a file that itself contains `@@ -1,2 +3,4 @@` projects an empty row while
  *   the file line has content. Its line number is honest and its columns are not.
  *
- * The third is caught by comparing each row against the file line it claims, which also covers any
- * future divergence between the two without this needing to know about it. That check needs
- * `newLines`; a partial diff carries none, and then nothing maps — which is correct, because a
- * patch-only diff is not the file.
+ * The third is caught by comparing each row against the line it claims, which also covers any
+ * future divergence between projection and file without this needing to know about it. That check
+ * needs the whole text; a partial diff carries none, and then nothing maps — which is correct,
+ * because a patch-only diff is not the file.
  */
 export function createDiffPositionMap(
   rows: readonly DiffRenderRow[],
   newLines: readonly string[],
+  oldLines: readonly string[],
 ): DiffPositionMap {
   const starts: number[] = []
-  const rowByLine = new Map<number, number>()
+  const rowByLine = { new: new Map<number, number>(), old: new Map<number, number>() }
   let offset = 0
 
   for (const [index, row] of rows.entries()) {
     starts.push(offset)
     offset += row.text.length + 1
-    if (!mapsToFile(row, newLines)) continue
 
-    rowByLine.set(row.newLineNumber! - 1, index)
+    const side = sideOf(row, newLines, oldLines)
+    if (!side) continue
+
+    rowByLine[side].set(lineNumberOf(row, side) - 1, index)
   }
 
   return {
@@ -72,19 +80,15 @@ export function createDiffPositionMap(
       const index = rowIndexAt(starts, target)
       const row = index === null ? undefined : rows[index]
       if (index === null || !row) return { kind: 'none' }
-      if (!mapsToFile(row, newLines)) {
-        // A deletion carries a real line of the OLD file. Naming it separately is what lets a
-        // caller disable an affordance instead of offering one that silently answers nothing.
-        return row.oldLineNumber !== undefined && row.type === 'deletion'
-          ? { kind: 'old-side' }
-          : { kind: 'none' }
-      }
+
+      const side = sideOf(row, newLines, oldLines)
+      if (!side) return { kind: 'none' }
 
       const character = Math.min(Math.max(0, target - starts[index]!), row.text.length)
-      return { kind: 'file', position: { character, line: row.newLineNumber! - 1 } }
+      return { kind: 'file', position: { character, line: lineNumberOf(row, side) - 1 }, side }
     },
-    bufferOffsetAt({ character, line }) {
-      const index = rowByLine.get(line)
+    bufferOffsetAt(side, { character, line }) {
+      const index = rowByLine[side].get(line)
       if (index === undefined) return null
 
       const row = rows[index]!
@@ -94,18 +98,28 @@ export function createDiffPositionMap(
 }
 
 /**
- * A row stands for a new-file line only if it claims one AND renders it verbatim.
+ * Which text a row stands for, or null when it stands for none.
  *
- * Deliberately not also a check on `row.type`. Placeholders, separators and the empty-diff row
- * carry no `newLineNumber` at all, so the first guard already has them, and a deletion only ever
- * carries an old one — a type list here would be a second spelling of the same thing that could
- * fall out of step with the projection. The verbatim check is what catches the case neither a
- * type nor a line number can see: a row the projection blanked.
+ * A row belongs to a side only if it claims a line there AND renders it verbatim. Deliberately not
+ * also a check on `row.type`: placeholders, separators and the empty-diff row carry no line number
+ * at all, so the claim already excludes them, and a type list here would be a second spelling of
+ * the projection's rules that could fall out of step with it. The verbatim check is what catches
+ * the case neither a type nor a line number can see — a row the projection blanked.
  */
-function mapsToFile(row: DiffRenderRow, newLines: readonly string[]): boolean {
-  if (row.newLineNumber === undefined) return false
+function sideOf(
+  row: DiffRenderRow,
+  newLines: readonly string[],
+  oldLines: readonly string[],
+): DiffFileSide | null {
+  if (row.newLineNumber !== undefined && newLines[row.newLineNumber - 1] === row.text) return 'new'
+  if (row.oldLineNumber !== undefined && oldLines[row.oldLineNumber - 1] === row.text) return 'old'
 
-  return newLines[row.newLineNumber - 1] === row.text
+  return null
+}
+
+/** Only ever called for a side `sideOf` already accepted, which is what makes the `!` sound. */
+function lineNumberOf(row: DiffRenderRow, side: DiffFileSide): number {
+  return side === 'new' ? row.newLineNumber! : row.oldLineNumber!
 }
 
 /** The row containing an offset. Binary search, because a hover asks on every pointer move. */

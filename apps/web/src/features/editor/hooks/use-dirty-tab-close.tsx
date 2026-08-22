@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { UnsavedChangesDialog } from '@/features/editor/components/unsaved-changes-dialog'
 import { savableDocumentPath } from '@/features/editor/utils/file-backed-document'
+import { editorTabDocumentIds } from '@/features/workspace/utils/tab-dirty'
 import { isDirtyLiveEditorDocument, saveEditorDocumentByPath } from '@/features/editor/utils/save'
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
@@ -63,7 +64,12 @@ export function useDirtyTabCloseRequest() {
       const openPathCounts = editorPathCountsForWorkbenchPanels(workspace.workbenchPanels)
 
       for (const tab of openTabs) {
-        const dirty = isDirtyLiveEditorDocument(state, tab.path)
+        // Of the documents behind the tab: the settings tab's text lives in
+        // per-scope buffers, so asking its own path is always false and it
+        // closed without a prompt.
+        const dirty = editorTabDocumentIds(tab.path).some((id) =>
+          isDirtyLiveEditorDocument(state, id),
+        )
         const closingLastPathTab = closingPathCounts.get(tab.path) === openPathCounts.get(tab.path)
         if (dirty && closingLastPathTab) {
           appendPendingClose(pending, tab.path, tab.id)
@@ -183,12 +189,15 @@ async function saveAndClosePendingTab(pendingClose: PendingClose, context: SaveA
       return
     }
 
-    const saved = await saveEditorDocumentByPath(
-      context.documentStore,
-      context.queryClient,
-      pendingClose.path,
+    // Every document behind the tab, for the same reason the dirty check above
+    // covers them: saving `settings:` finds no live document and reports a
+    // failure the user cannot act on.
+    const results = await Promise.all(
+      editorTabDocumentIds(pendingClose.path).map((id) =>
+        saveEditorDocumentByPath(context.documentStore, context.queryClient, id),
+      ),
     )
-    if (!saved) {
+    if (!results.some(Boolean)) {
       context.setSaveError('This tab could not be saved.')
       return
     }

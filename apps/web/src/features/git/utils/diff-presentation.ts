@@ -1,4 +1,5 @@
 import type { GitFileDiff } from '@workspace/contracts'
+import type { DiffFile } from '@singapor/diff'
 
 import { toTreePath } from '@/lib/path-formatters'
 
@@ -45,4 +46,22 @@ function isBinaryDiff(diff: GitFileDiff) {
 
 function isRenamedDiff(diff: GitFileDiff) {
   return Boolean(diff.oldPath && diff.oldPath !== diff.path)
+}
+
+/**
+ * Why a file the pane *is* drawing has no changes in it. Null for an ordinary diff, where the
+ * hunks say it themselves.
+ *
+ * The file is shown either way — this is a line of chrome above it, not a replacement for it —
+ * because a reader who opened a rename cannot otherwise tell a rename from a file nobody touched.
+ */
+export function unchangedFileNotice(file: DiffFile, rootPath: string): string | null {
+  if (file.hunks.length > 0) return null
+
+  const oldPath = file.oldPath
+  if (oldPath && oldPath !== file.newPath) {
+    return `Renamed from ${toTreePath(oldPath, rootPath)} — no content changes`
+  }
+
+  return 'No content changes'
 }

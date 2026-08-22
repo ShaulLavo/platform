@@ -55,9 +55,20 @@ export async function saveAllEditorDocuments(
     shouldSaveDocument(state, liveDocument),
   )
 
+  // Each document on its own: a save that refuses itself — a settings buffer
+  // whose file moved, a file another window is holding — must not take every
+  // document ordered after it with it. The first failure is still reported, so
+  // the command surfaces an error rather than claiming it saved everything.
+  const failures: unknown[] = []
   for (const document of dirtyDocuments) {
-    await saveLiveEditorDocument(documentStore, queryClient, document)
+    try {
+      await saveLiveEditorDocument(documentStore, queryClient, document)
+    } catch (error) {
+      failures.push(error)
+    }
   }
+
+  if (failures.length > 0) throw failures[0]
 }
 
 async function saveLiveEditorDocument(

@@ -79,3 +79,55 @@ test('only a settings-synced document can be reconciled', () => {
   )
   expect(store.getState().reconcileSettingsDocument('nothing-here', 'other', 'rev-2')).toBe(false)
 })
+
+/**
+ * The save marks the buffer clean against what it POSTED, then replaces it with
+ * what actually landed. Marking against the landed text instead made the two
+ * mutually exclusive — the buffer only fails the content check when the server
+ * rewrote it, which is precisely when the replacement is needed — so a save that
+ * absorbed a credential left the buffer permanently dirty still displaying it.
+ */
+test('a save the server rewrote marks clean and takes the written text', () => {
+  const store = createEditorDocumentStore()
+  const posted = '{ "providers.instances": [{ "env": { "K": "sk-secret" } }] }\n'
+  const written = '{ "providers.instances": [{ "env": { "K": "" } }] }\n'
+  seed(store, posted, 'rev-1')
+
+  const document = store.getState().getLiveEditorDocument(ID)
+  const marked = store.getState().markSettingsDocumentSaved({
+    documentId: ID,
+    revision: 'rev-2',
+    savedContentRevision: document!.contentRevision,
+    savedText: posted,
+  })
+
+  expect(marked).toBe(true)
+  expect(store.getState().replaceUnsyncedEditorDocumentText(ID, written)).toBe(true)
+  const after = store.getState().getLiveEditorDocument(ID)
+  expect(after?.buffer.materializeFullText()).toBe(written)
+  expect(after?.buffer.isDirty()).toBe(false)
+  expect(store.getState().dirtyFilePaths.has(ID)).toBe(false)
+})
+
+// Typing while the request is in flight is the one case that must NOT be
+// replaced: the keystrokes win and the next save re-absorbs the credential.
+test('a save does not mark clean over text typed while it was in flight', () => {
+  const store = createEditorDocumentStore()
+  const posted = '{ "editor.fontSize": 18 }\n'
+  seed(store, posted, 'rev-1')
+
+  const document = store.getState().getLiveEditorDocument(ID)
+  const savedContentRevision = document!.contentRevision
+  createEditorBufferSession(document!.buffer).applyText('!')
+  store.getState().recordLiveEditorDocumentTextChange(ID)
+
+  expect(
+    store.getState().markSettingsDocumentSaved({
+      documentId: ID,
+      revision: 'rev-2',
+      savedContentRevision,
+      savedText: posted,
+    }),
+  ).toBe(false)
+  expect(store.getState().getLiveEditorDocument(ID)?.buffer.materializeFullText()).toContain('!')
+})

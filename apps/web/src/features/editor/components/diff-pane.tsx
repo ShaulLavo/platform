@@ -11,9 +11,9 @@ import type { Editor } from '@singapor/core'
 import { useEffect, useLayoutEffect, useMemo } from 'react'
 
 import {
-  useDiffHover,
+  useDiffLanguage,
   type DiffLanguageServerContext,
-} from '@/features/editor/hooks/use-diff-hover'
+} from '@/features/editor/hooks/use-diff-language'
 import { useDiffRows } from '@/features/editor/hooks/use-diff-rows'
 import {
   DIFF_CURSOR_LINE_HIGHLIGHT,
@@ -47,7 +47,7 @@ export function DiffPane({
   onScroll,
 }: {
   file: DiffFile
-  /** Present only where a language server may safely be asked about this diff; see `useDiffHover`. */
+  /** Present only where a language server may safely be asked about this diff; see `useDiffLanguage`. */
   languageServer?: DiffLanguageServerContext | null
   regions: DiffRegionStore
   side: DiffGutterSide
@@ -69,7 +69,7 @@ export function DiffPane({
     [regions, side, syntaxBackend],
   )
   const { rows, text, tokensRevision } = useDiffRows(plugin, file)
-  const hoverPlugin = useDiffHover(file, rows, theme, languageServer)
+  const hoverPlugin = useDiffLanguage(file, rows, theme, languageServer)
   const plugins = useMemo(
     () =>
       [

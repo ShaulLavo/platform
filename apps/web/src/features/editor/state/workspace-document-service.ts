@@ -356,12 +356,17 @@ export class WorkspaceDocumentService {
 
     const buffer = createEditorTextBuffer(text)
     buffer.markClean()
+    const contentRevision = contentRevisionForText(text)
     this.liveDocumentsById.set(documentId, {
       ...document,
       buffer,
-      contentRevision: contentRevisionForText(text),
+      contentRevision,
       localRevision: buffer.getRevision(),
     })
+    // The map mirrors the record; every other writer keeps them together, and a
+    // consumer that reads the map to decide whether the text moved would
+    // otherwise never notice this one.
+    this.setContentRevision(documentId, contentRevision)
     this.deleteDirtyPath(document.path)
     this.rebindViewsForDocument(documentId)
     return true
@@ -391,13 +396,15 @@ export class WorkspaceDocumentService {
 
     const buffer = createEditorTextBuffer(text)
     buffer.markClean()
+    const contentRevision = contentRevisionForText(text)
     this.liveDocumentsById.set(documentId, {
       ...document,
       buffer,
-      contentRevision: contentRevisionForText(text),
+      contentRevision,
       localRevision: buffer.getRevision(),
       sync: { ...document.sync, revision },
     })
+    this.setContentRevision(documentId, contentRevision)
     this.deleteDirtyPath(document.path)
     this.rebindViewsForDocument(documentId)
     return true

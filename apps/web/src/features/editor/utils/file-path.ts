@@ -118,7 +118,7 @@ const LANGUAGE_BY_BASENAME: Record<string, EditorSyntaxLanguageId> = {
   makefile: 'makefile',
 }
 
-export function languageIdForFilePath(filePath: string) {
+export function languageIdForFilePath(filePath: string): EditorSyntaxLanguageId | null {
   // The raw settings buffer is JSON with no `.json` in its id, deliberately: an
   // id that looks like a path would have the language server matcher try to
   // resolve it and spawn a server against a document that is not on disk.

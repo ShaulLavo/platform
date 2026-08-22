@@ -5,11 +5,9 @@ import path from 'node:path'
 import { screen } from '@testing-library/react'
 import type { ReactElement } from 'react'
 
-import {
-  EditorWorkspaceStateContext,
-  createEditorWorkspaceStore,
-} from '@/features/editor/state/workspace-state'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import { fetchDiff } from '@/features/git/utils/api'
+import { fetchBlobDiff } from '@/features/git/utils/blob-diff-query'
 import { DiffView } from '@/features/git/components/diff-view'
 import { parseDiffDocumentId, snapshotDiffDocumentId } from '@/features/git/utils/diff-document'
 import type {
@@ -93,7 +91,10 @@ test('an added file maps with no old side', async ({ client, server }) => {
   expect(file?.newLines).toContain('export const added = true')
 })
 
-test('a pure rename is a message, not a blank pane', async ({ client, server }) => {
+test('a pure rename shows the file, with a line saying where it came from', async ({
+  client,
+  server,
+}) => {
   void client
   const repo = await initRepo(server.root)
   git(repo, 'mv', 'lines.ts', 'renamed.ts')
@@ -103,6 +104,36 @@ test('a pure rename is a message, not a blank pane', async ({ client, server }) 
   renderDiffView(<DiffView documentInfo={snapshotDocument(diff)} rootPath='repo' />)
 
   expect(await screen.findByText(/Renamed from lines\.ts/)).toBeInTheDocument()
+  // The rows themselves are drawn by the editor's virtualized view, so what is checked here is
+  // that the pane got a file to draw rather than the notice that used to replace it.
+  expect(screen.queryByText(/No changes to show/)).not.toBeInTheDocument()
+  expect(document.querySelector('.editor-diff-pane')).not.toBeNull()
+})
+
+test('a pure rename carries the whole file, unchanged on both sides', async ({
+  client,
+  server,
+}) => {
+  void client
+  const repo = await initRepo(server.root)
+  git(repo, 'mv', 'lines.ts', 'renamed.ts')
+  git(repo, 'add', '-A')
+  const diff = (await fetchDiff('repo/renamed.ts', true))[0]!
+
+  // What the pane itself fetches: the blob route, which is where an identical pair used to come
+  // back as nothing at all.
+  const diffs = await fetchBlobDiff({
+    newObjectId: diff.newObjectId,
+    oldObjectId: diff.oldObjectId,
+    oldPath: diff.oldPath,
+    path: diff.path,
+  })
+  const [file] = editorDiffFiles(diffs)
+
+  expect(file?.hunks).toEqual([])
+  expect(file?.isPartial).toBe(false)
+  expect(file?.newLines).toContain('line 40')
+  expect(file?.oldLines).toEqual(file?.newLines)
 })
 
 test('a binary file says so instead of rendering an empty pane', async ({ client, server }) => {
@@ -120,7 +151,7 @@ test('a binary file says so instead of rendering an empty pane', async ({ client
   expect(await screen.findByText(/Binary file/)).toBeInTheDocument()
 })
 
-test('a document whose two sides are identical says there are no changes', async ({
+test('a document whose two sides are identical still shows the file', async ({
   client,
   server,
 }) => {
@@ -134,17 +165,16 @@ test('a document whose two sides are identical says there are no changes', async
 
   renderDiffView(<DiffView documentInfo={documentInfo} rootPath='repo' />)
 
-  expect(await screen.findByText('No changes to show.')).toBeInTheDocument()
+  expect(await screen.findByText('No content changes')).toBeInTheDocument()
+  expect(screen.queryByText('No changes to show.')).not.toBeInTheDocument()
 })
 
 /** The diff pane reads `diffViewMode` from the editor workspace store, which the
  *  workbench always provides around it. */
 function renderDiffView(ui: ReactElement) {
-  return renderWithProviders(
-    <EditorWorkspaceStateContext.Provider value={createEditorWorkspaceStore()}>
-      {ui}
-    </EditorWorkspaceStateContext.Provider>,
-  )
+  // The real provider, not a bare workspace store: a diff asks for editor commands now — it
+  // opens a file when a definition lands outside it — and those need the whole editor store stack.
+  return renderWithProviders(<EditorStateProvider>{ui}</EditorStateProvider>)
 }
 
 function twoEditFile() {

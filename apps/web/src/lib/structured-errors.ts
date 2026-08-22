@@ -31,6 +31,18 @@ export const clientErrors = defineErrorCatalog('client', {
     why: 'The file picker expected a directory entry for the active path.',
     fix: 'Select an existing folder path before opening directory contents.',
   },
+  DIFF_LANGUAGE_REQUEST_FAILED: {
+    status: 502,
+    message: ({ method }: { method: string }) => `Diff language request ${method} failed`,
+    why: 'The language server returned an error for a request made from a diff view.',
+    fix: 'Check the language server session for this root and retry once it recovers.',
+  },
+  DIFF_LANGUAGE_SESSION_CLOSED: {
+    status: 502,
+    message: 'Diff language session closed',
+    why: 'The diff view socket closed before the language server answered.',
+    fix: 'Reopen the diff to establish a new language server session.',
+  },
   DOCUMENT_SYMBOL_ABORTED: {
     status: 499,
     message: 'Document symbol request aborted',

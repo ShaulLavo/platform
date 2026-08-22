@@ -23,8 +23,8 @@ export function CompareSavedView({ path, rootPath }: { path: string; rootPath: s
   // and would never re-run the diff.
   const revision = useEditorDocumentState((state) => state.documentContentRevisions[path] ?? '')
   // Its new side IS the live buffer, so it is by construction the text the owning editor sent the
-  // server. No special case — the ordinary comparison simply holds.
-  const languageServer = useDiffOwnedText(path, rootPath)
+  // server — the file's own uri names exactly this text, and joining it is a no-op on the wire.
+  const languageServer = useDiffOwnedText(path, rootPath, true)
 
   const savedText = fileState.status === 'ready' ? fileState.data.content : null
   const file = useMemo(() => {

@@ -10,10 +10,7 @@ import {
   resetComposerInboxStore,
   useComposerInboxStore,
 } from '@/features/chat/state/composer-inbox-store'
-import {
-  EditorWorkspaceStateContext,
-  createEditorWorkspaceStore,
-} from '@/features/editor/state/workspace-state'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import { fetchDiff } from '@/features/git/utils/api'
 import { DiffView } from '@/features/git/components/diff-view'
 import { parseDiffDocumentId, snapshotDiffDocumentId } from '@/features/git/utils/diff-document'
@@ -141,7 +138,6 @@ async function dragRows(side: PaneSide, anchorRow: number, headRow: number) {
 function renderDiffView(ui: ReactElement) {
   stubHighlightApi()
   resetComposerInboxStore()
-  const store = createEditorWorkspaceStore()
   const queryClient = createTestQueryClient()
   // Seeded rather than written through the server: this suite is about diff
   // addressing, and a real save would make every case wait on a round trip.
@@ -152,10 +148,7 @@ function renderDiffView(ui: ReactElement) {
     values: { ...DEFAULT_SETTING_VALUES, 'editor.diff.viewMode': 'split' },
   })
 
-  return renderWithProviders(
-    <EditorWorkspaceStateContext.Provider value={store}>{ui}</EditorWorkspaceStateContext.Provider>,
-    { queryClient },
-  )
+  return renderWithProviders(<EditorStateProvider>{ui}</EditorStateProvider>, { queryClient })
 }
 
 function stubHighlightApi() {

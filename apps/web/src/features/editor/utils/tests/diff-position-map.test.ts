@@ -28,8 +28,8 @@ describe('createDiffPositionMap', () => {
     const lookup = map.lookupAt(offset)
 
     // `const B = 22` is the second line of the new file, so line 1 zero-based.
-    expect(lookup).toEqual({ kind: 'file', position: { character: 6, line: 1 } })
-    expect(map.bufferOffsetAt(filePosition(lookup))).toBe(offset)
+    expect(lookup).toEqual({ kind: 'file', position: { character: 6, line: 1 }, side: 'new' })
+    expect(map.bufferOffsetAt('new', filePosition(lookup))).toBe(offset)
     expect(text.slice(offset, offset + 1)).toBe('B')
   })
 
@@ -79,28 +79,33 @@ describe('createDiffPositionMap', () => {
     expect(map.lookupAt(offsetOfRow(rows, blanked))).toEqual({ kind: 'none' })
   })
 
-  it('names a deletion row as the old side rather than merely refusing it', () => {
-    // The distinction a caller needs in order to disable "go to definition" instead of offering
-    // one that answers nothing — the failure both VS Code and Zed shipped.
+  it('maps a deletion row to the old file, which the diff opens as its own document', () => {
+    // The answer that lets a deleted line be hovered at all. It used to be a bare refusal, which
+    // is the failure both VS Code and Zed shipped — an affordance that silently answers nothing.
     const file = createTextDiff({
       newFile: { path: 'repo/a.ts', text: 'alpha\n' },
       oldFile: { path: 'repo/a.ts', text: 'alpha\nbeta\n' },
     })
     const rows = createStackedProjection(file).rows
-    const map = createDiffPositionMap(rows, file.newLines)
+    const map = createDiffPositionMap(rows, file.newLines, file.oldLines)
     const deletion = rows.findIndex((entry) => entry.type === 'deletion')
     expect(deletion).toBeGreaterThanOrEqual(0)
 
-    expect(map.lookupAt(offsetOfRow(rows, deletion))).toEqual({ kind: 'old-side' })
+    // `beta` is the second line of the OLD file, and of no line of the new one.
+    expect(map.lookupAt(offsetOfRow(rows, deletion))).toEqual({
+      kind: 'file',
+      position: { character: 0, line: 1 },
+      side: 'old',
+    })
   })
 
   it('maps nothing when the diff carries no file text', () => {
     // A patch-only diff has no `newLines` to check a row against, and is not the file anyway.
     const { rows } = mapFor(OLD, NEW)
-    const map = createDiffPositionMap(rows, [])
+    const map = createDiffPositionMap(rows, [], [])
 
     expect(map.lookupAt(0).kind).not.toBe('file')
-    expect(map.bufferOffsetAt({ character: 0, line: 0 })).toBeNull()
+    expect(map.bufferOffsetAt('new', { character: 0, line: 0 })).toBeNull()
   })
 
   it('has no offset for a line that is collapsed out of the projection', () => {
@@ -108,8 +113,8 @@ describe('createDiffPositionMap', () => {
     const { map } = mapFor(`${long}\n`, `${long.replace('line 40', 'changed')}\n`)
 
     // Line 5 is inside the collapsed region above the only hunk.
-    expect(map.bufferOffsetAt({ character: 0, line: 4 })).toBeNull()
-    expect(map.bufferOffsetAt({ character: 0, line: 39 })).not.toBeNull()
+    expect(map.bufferOffsetAt('new', { character: 0, line: 4 })).toBeNull()
+    expect(map.bufferOffsetAt('new', { character: 0, line: 39 })).not.toBeNull()
   })
 })
 
@@ -129,7 +134,7 @@ function mapFor(oldText: string, newText: string) {
   const rows = createSplitProjection(file).rightRows
 
   return {
-    map: createDiffPositionMap(rows, file.newLines),
+    map: createDiffPositionMap(rows, file.newLines, file.oldLines),
     newLines: file.newLines,
     rows,
     text: joinRenderLines(rows),

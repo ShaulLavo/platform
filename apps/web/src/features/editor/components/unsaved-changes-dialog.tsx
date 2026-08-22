@@ -14,7 +14,8 @@ import {
   DialogTitle,
 } from '@workspace/ui/components/dialog'
 
-import { basename } from '@/lib/path-formatters'
+import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
+import { documentLabel } from '@/features/workspace/utils/document-label'
 
 type UnsavedChangesDialogProps = {
   canSave: boolean
@@ -39,7 +40,10 @@ export function UnsavedChangesDialog({
   onOpenChange,
   onSave,
 }: UnsavedChangesDialogProps) {
-  const name = path ? basename(path) : 'this tab'
+  // Through `documentLabel`, like the tab strip and the window title: `basename`
+  // renders a synthetic id raw, so this dialog asked whether to save changes to
+  // `settings:` or to an encoded diff blob.
+  const name = path ? documentLabel(path) : 'this tab'
   const description = canSave
     ? `Save changes to ${name} before closing?`
     : `${name} has unsaved changes that cannot be saved directly.`
@@ -54,7 +58,10 @@ export function UnsavedChangesDialog({
           <DialogTitle>Unsaved changes</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        {path ? (
+        {/* Only a real path on disk. `path !== name` suppressed nothing that
+            mattered — every synthetic id differs from its label, so all of them
+            still rendered raw — while hiding the path for a file at the root. */}
+        {fileBackedDocumentPath(path) ? (
           <div className='bg-muted/30 text-muted-foreground truncate rounded-md border px-3 py-2 text-xs'>
             {path}
           </div>

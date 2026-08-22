@@ -84,7 +84,7 @@ export async function spawnBiome(root: string) {
   const bin = local ?? which('biome')
   if (bin) return spawnCommand([bin, 'lsp-proxy', '--stdio'], { cwd: root })
 
-  return spawnNodePackageBin('biome', 'biome', ['lsp-proxy', '--stdio'], {
+  return spawnNodePackageBin('@biomejs/biome', 'biome', ['lsp-proxy', '--stdio'], {
     cwd: root,
   })
 }

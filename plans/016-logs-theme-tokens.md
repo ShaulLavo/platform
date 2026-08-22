@@ -365,9 +365,9 @@ ALL must hold:
 
 - [ ] The repo-wide palette grep returns **zero** results:
       `bash
-    grep -rEn "(bg|text|border|ring|from|to)-(blue|red|green|yellow|amber|emerald|sky|slate|zinc|gray|neutral|stone|rose|orange|indigo|violet|purple|pink|teal|cyan|lime)-[0-9]" \
-      apps/web/src packages/ui/src packages/tree/src --include="*.tsx" --include="*.ts" | wc -l
-    `
+grep -rEn "(bg|text|border|ring|from|to)-(blue|red|green|yellow|amber|emerald|sky|slate|zinc|gray|neutral|stone|rose|orange|indigo|violet|purple|pink|teal|cyan|lime)-[0-9]" \
+  apps/web/src packages/ui/src packages/tree/src --include="*.tsx" --include="*.ts" | wc -l
+`
       → `0`
 - [ ] `grep -rn "dark:" apps/web/src/features/logs/ | wc -l` → `0`
 - [ ] `cd apps/web && bun run typecheck` exits 0

@@ -58,12 +58,24 @@ returns the first whose root resolves:
 apps/server/src/lsp/registry.ts:493-513
 ```
 
-So this is **instead of biome for `.json`/`.jsonc`, not in addition to it** —
-biome keeps every other extension it claims (`.ts`, `.tsx`, `.css`, `.vue`,
-`.astro`, `.svelte`, `.graphql`, `.html`). The trade is biome's JSON
-formatting/lint on JSON files for schema validation, completion and hover.
-That is the right trade for a settings document and, this plan argues, for
-`package.json`/`tsconfig.json` too — those have published schemas.
+So today this is **instead of biome for `.json`/`.jsonc`, not in addition to
+it** — biome keeps every other extension it claims (`.ts`, `.tsx`, `.css`,
+`.vue`, `.astro`, `.svelte`, `.graphql`, `.html`). See
+[050](050-multi-server-lsp.md) for lifting that restriction; this plan is
+written to work either way, because the schema generation is the valuable half
+and it is independent.
+
+> ### ⚠️ A new registry entry is UNREACHABLE without a priority entry
+>
+> This is the trap that would have made step 1 look done and do nothing.
+> `serverPriority` is a six-item list — `['deno', 'typescript', 'vue', 'eslint',
+'oxlint', 'biome']` (`registry.ts:75`) — and `serverPriorityIndex` returns
+> `serverPriority.length` for **any id not in it** (`registry.ts:669-672`), which
+> sorts _after_ biome. Biome's `root` uses `nearestRoot` without
+> `fallback: false`, so it falls back to `workspaceRoot` and **always resolves**
+> (`registry.ts:541-558`). A `json` entry added to `lspServers` alone therefore
+> never wins a `.json` file — not deprioritized, unreachable. Adding the id to
+> `serverPriority` ahead of `biome` is a required step, not a tuning knob.
 
 **The settings buffer deliberately has no resolvable path.** Its id is
 `settings-json:<user|workspace>` with no `.json` in it, precisely so
@@ -91,8 +103,10 @@ the text view. Squiggles for both need no LSP at all — only completion does.
 ## Scope
 
 1. Register `vscode-json-languageserver` in `apps/server/src/lsp/registry.ts`
-   with an installer in `installers.ts`, claiming `.json` and `.jsonc` at a
-   higher priority than biome.
+   with an installer in `installers.ts`, claiming `.json` and `.jsonc` — **and
+   add its id to `serverPriority` ahead of `biome`**, or it is unreachable (see
+   the warning above). Add a test that asserts `matchLspServer` returns it for a
+   `.json` file inside a repo that also has a `package.json`.
 2. Generate a JSON Schema from `SETTINGS_REGISTRY` (a `settings:schema` script
    beside the existing `settings:reference` one), covering key names,
    types, enums, defaults, `description` for hover, and `deprecated`.

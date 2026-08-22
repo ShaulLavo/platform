@@ -239,9 +239,12 @@ export class GitService {
     })
     const diffs = parseDiff(patch, repository.rootPath, false)
 
-    const results = await mapWithConcurrency(diffs, this.diffConcurrency, async (diff) =>
-      this.withBlobDiffContent(repository, diff, query),
-    )
+    const results =
+      diffs.length === 0
+        ? await this.unchangedBlobDiff(repository, query, oldPath)
+        : await mapWithConcurrency(diffs, this.diffConcurrency, async (diff) =>
+            this.withBlobDiffContent(repository, diff, query),
+          )
     recordRequestContext({ git: { diffCount: results.length } })
     return results
   }
@@ -851,6 +854,40 @@ export class GitService {
     }
   }
 
+  /**
+   * Two identical blobs produce an empty patch, so `parseDiff` has no entry to make — which is what
+   * a pure rename, a mode change, or a file staged and then reverted looks like from here. The
+   * reader still opened a file, so send the file: both sides carry the same text and the viewer
+   * draws it as unchanged, the way every other diff viewer answers this state. Binary content and
+   * anything past the text limit have nothing to draw and keep the notice.
+   */
+  private async unchangedBlobDiff(
+    repository: GitRepositoryLocation,
+    query: GitBlobDiffQuery,
+    oldPath: string,
+  ): Promise<GitFileDiff[]> {
+    const objectId = query.newObjectId ?? query.oldObjectId
+    if (!objectId) return []
+    if (await this.isBlobDiffTooLarge(repository, query)) return []
+
+    const text = await this.gitObjectText(repository, objectId)
+    if (!text || isBinaryText(text)) return []
+
+    return [
+      {
+        hunks: [],
+        newObjectId: query.newObjectId,
+        newText: text,
+        oldObjectId: query.oldObjectId,
+        oldPath: oldPath === query.path ? undefined : oldPath,
+        oldText: text,
+        patch: '',
+        path: query.path,
+        staged: false,
+      },
+    ]
+  }
+
   private withBlobObjectIds(diff: GitFileDiff, query: GitBlobDiffQuery): GitFileDiff {
     return {
       ...diff,
@@ -874,11 +911,37 @@ export class GitService {
       this.refDiffObjectId(repository, input.newRef, diff.path, diff.newFileMissing),
     ])
 
-    return {
+    return this.withUnchangedRefDiffText(repository, {
       ...diff,
       newObjectId: newObjectId ?? undefined,
       oldObjectId: oldObjectId ?? undefined,
-    }
+    })
+  }
+
+  /**
+   * A ref diff carries only its patch — whole-file text is the blob route's job, and one turn diff
+   * can touch every file in the repository. A file whose two sides are the same object is the
+   * exception: it is a rename or a mode change, its patch holds nothing to render, and its text is
+   * one `cat-file` away. Without it the viewer can only print a sentence where the file should be.
+   *
+   * Gated on the two object ids being equal rather than on the entry having no hunks: a binary
+   * change is also hunkless, and its two sides are genuinely different content that no text diff
+   * should pretend to render.
+   */
+  private async withUnchangedRefDiffText(
+    repository: GitRepositoryLocation,
+    diff: GitFileDiff,
+  ): Promise<GitFileDiff> {
+    const objectId = diff.newObjectId
+    if (!objectId || objectId !== diff.oldObjectId) return diff
+
+    const size = await this.gitObjectSize(repository, objectId)
+    if (isTooLarge(size, this.maxTextFileBytes)) return diff
+
+    const text = await this.gitObjectText(repository, objectId)
+    if (!text || isBinaryText(text)) return diff
+
+    return { ...diff, newText: text, oldText: text }
   }
 
   private async refDiffObjectId(
@@ -1218,6 +1281,15 @@ function positiveInteger(value: number | undefined, fallback: number) {
   if (!Number.isInteger(value) || value < 1) return fallback
 
   return value
+}
+
+/**
+ * Only ever asked of text git already handed us as a string, so a NUL is the whole test: git's own
+ * binary detection reads the first 8k for one, and a decoded blob that holds one is not something a
+ * text editor can draw.
+ */
+function isBinaryText(text: string) {
+  return text.includes('\u0000')
 }
 
 function isBinaryDiff(diff: GitFileDiff) {
