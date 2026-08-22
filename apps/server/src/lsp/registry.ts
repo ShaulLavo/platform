@@ -92,6 +92,11 @@ const jsProjectMarkers = [
 
 const tsExtensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts'] as const
 
+const compatibleTypeScriptServerPath = path.resolve(
+  import.meta.dirname,
+  '../../node_modules/typescript-language-service/lib/tsserver.js',
+)
+
 const LANGUAGE_SERVER_FEATURES = {
   completion: 0,
   hover: 0,
@@ -482,14 +487,7 @@ const lspServers: readonly LspServerDefinition[] = withBuiltInFeatures([
       spawnNodePackageBin('typescript-language-server', 'typescript-language-server', ['--stdio'], {
         cwd: root,
       }),
-    initializationOptions: async (root) => {
-      const tsserver = await findUp(path.resolve(root), root, [
-        'node_modules/typescript/lib/tsserver.js',
-      ])
-      if (!tsserver) return undefined
-
-      return { tsserver: { path: tsserver } }
-    },
+    initializationOptions: typescriptInitializationOptions,
   },
   {
     id: 'vue',
@@ -749,6 +747,17 @@ async function pythonInitializationOptions(root: string) {
   if (!pythonPath) return undefined
 
   return { pythonPath }
+}
+
+async function typescriptInitializationOptions(root: string) {
+  const workspaceTypeScriptServer = await findUp(path.resolve(root), root, [
+    'node_modules/typescript/lib/tsserver.js',
+  ])
+  const tsserver =
+    workspaceTypeScriptServer ?? (await firstExistingPath([compatibleTypeScriptServerPath]))
+  if (!tsserver) return undefined
+
+  return { tsserver: { path: tsserver } }
 }
 
 function serverMatches(server: LspServerDefinition, extension: string) {
