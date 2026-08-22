@@ -1,10 +1,10 @@
 # ghostty-webgpu — project brief (Phases 1–6)
 
 Strategy document per `plans/README.md`: this is the architecture and phase brief for the
-`ghostty-webgpu` project. It is **not executable**. The executable feasibility spike is
-[Plan 054](../plans/054-ghostty-webgpu.md); each phase below gets its own numbered plan (with
-drift check, commands, step gates) only after its predecessor — and Phase 0's go decision —
-completes. Facts here were verified at the pins recorded in Plan 054's Status block.
+`ghostty-webgpu` project. It is **not executable**. Phase 0's completed Plan 054 is archived in Git,
+and Phase 2's completed results are recorded below. Phase 3 needs a new numbered plan (with drift
+check, commands, and step gates) before execution. Facts here were verified at the pins recorded
+in Plan 054's Status block.
 
 ## Goal and non-goals
 
@@ -30,9 +30,10 @@ to npm on its own (unscoped name `ghostty-webgpu`).
 
 Verified at Plan 054's pins; re-verify in each phase plan's drift check:
 
-1. **Upstream libghostty-vt builds to wasm unpatched.** ghostling links it via `zig build lib-vt`
+1. **Upstream libghostty-vt builds to wasm unpatched.** ghostling links it via `zig build -Demit-lib-vt=true`
    (CMake `FetchContent`, no patch step); the wasm target is
-   `zig build lib-vt -Dtarget=wasm32-freestanding -Doptimize=ReleaseSmall` (Zig 0.15.2+, ~20s).
+   `zig build -Demit-lib-vt=true -Dtarget=wasm32-freestanding -Doptimize=ReleaseSmall`
+   (Zig 0.16.0+, ~20s).
    coder/ghostty-web still applies a patch that predates the official `ghostty_terminal_*` API.
 2. **The C API is callback-shaped, across three ABI shapes** (`references/ghostling/main.c:1324`
    installs `userdata`, `write_pty`, `size`, `device_attributes`, `xtversion`, `title_changed`,
@@ -83,7 +84,7 @@ ghostty-webgpu/            (own repo, sibling of platform and Editor)
               clipboard, ResizeObserver fit, scrollbar UI from
               GHOSTTY_TERMINAL_DATA_SCROLLBAR, accessibility mirror.
   ghostty-vt.wasm          committed artifact (consumers never need Zig)
-  scripts/build-wasm.ts    pinned upstream rev; unpatched `zig build lib-vt`
+  scripts/build-wasm.ts    pinned upstream rev; unpatched `zig build -Demit-lib-vt=true`
   AGENTS.md                own instructions — the repo does NOT inherit
                            platform's CLAUDE.md; must carry the never-nester
                            control-flow rules and the comments policy.
@@ -182,14 +183,14 @@ Registered and wired in the same pass.
 
 ## Phases
 
-1. **Repo + core bindings.** Sibling repo bootstrap (contracts-style tooling, own AGENTS.md with
+1. **Repo + core bindings — COMPLETE at `ghostty-webgpu` `29fd3d4`.** Sibling repo bootstrap (contracts-style tooling, own AGENTS.md with
    never-nester + comments rules, MIT, dist-first build since platform compiles against `dist` —
    memories `editor-perf-and-linking`, `editor-dist-stale-after-pull`); committed wasm; `core/`
    bindings incl. the S1 callback bridge and sys interface; node tests: VT corpora in,
    render-state cells asserted, dirty acknowledgement protocol correct. Platform CI provisioning
    gains the sibling repo (memory `ci-pipeline-environment`) when Phase 4 lands, not before.
-2. **Damage-scheduled WebGPU renderer.** The scheduler + text fast path + atlas with
-   generations/eviction (stress test here) + transparency contract + patch-parity items
+2. **Damage-scheduled WebGPU renderer — COMPLETE (2026-08-22).** The scheduler + text fast path + atlas with
+   generations/eviction (stress test included) + transparency contract + patch-parity items
    (`outline` cursor, transparent clear) + device-loss recovery.
    Gates: unfocused or blink-off idle → **zero** submitted frames over 10s (counter test);
    focused blinking idle → exactly one frame per blink transition, no standing rAF; damage
@@ -214,17 +215,141 @@ Registered and wired in the same pass.
 
 ## Risks
 
-- **The callback bridge (Plan 054 S1) is the load-bearing unknown** — especially the
-  sret-lowered struct-return shape. Everything else assumes it lands.
-- **WebGPU availability:** dev-browser Chromium is fine; the shipping desktop is Electrobun CEF
-  (`bundleCEF: true`, `defaultRenderer: 'cef'`) where WebGPU is unverified, and
-  `WINDOW_TRANSPARENT: true` switches CEF to offscreen rendering — GPU canvas + OSR readback is
-  exactly where WebGPU gets shaky (Plan 054 S2 measures both; memory
-  `wallpaper-video-idle-gpu`). WKWebView needs Safari 26+. The dual-renderer rollout keeps
-  canvas until we choose.
-- **The perf payoff is unproven until Plan 054 S4/S5 report.** If damage-scheduled canvas clears
-  the pre-registered thresholds, the honest outcome is a scheduling patch upstreamed to
-  coder/ghostty-web and this project is re-justified (or not) on fidelity/protocol grounds alone.
+- ~~The callback bridge (Plan 054 S1) is the load-bearing unknown~~ **Resolved — see Phase 0
+  results.** All three ABI shapes work via Zig trampolines in the exported funcref table.
+- **WebGPU availability:** verified working in Playwright headless CI (SwiftShader software
+  adapter — fine for correctness tests, not perf) and in the shipping Electrobun CEF desktop on
+  a **hardware Metal 3 adapter** (opaque window). `WINDOW_TRANSPARENT: true` OSR mode remains
+  **untested** — GPU canvas + OSR readback is exactly where WebGPU gets shaky (memory
+  `wallpaper-video-idle-gpu`); must be measured before any transparent-desktop work. WKWebView
+  needs Safari 26+. The dual-renderer rollout keeps canvas until we choose.
 - **Upstream API churn:** libghostty-vt is young; bump pins only when ghostling's moves.
 - **Ligatures across cells** are known-hard; deferred to Phase 6 with the atlas keyed to survive.
 - **Accessibility:** the `dom/` mirror ships with Phase 3 input work, not as polish.
+
+## Phase 0 results (2026-08-22) — decision: GO
+
+Plan 054 executed; spike workspace: `/Users/shaul/Desktop/D/ghostty-webgpu-spike` (disposable).
+S1/S2 probe results were re-run and verified independently of the original spike session; S4/S5
+numbers below were measured fresh with the spike's harness after a runner fix (the bench page is
+now route-fulfilled on the dev-server origin instead of `setContent` over the live app, whose
+router navigated the main frame mid-run and wiped the harness).
+
+**S1 — callback bridge: PASS (all three ABI shapes).** Unpatched
+`zig build -Demit-lib-vt=true -Dtarget=wasm32-freestanding` at the ghostling pin (Zig 0.16.0); bridge
+mechanism: **standalone Zig wasm trampolines inserted into the exported funcref table**
+(`bridge.zig`/`bridge.wasm` in the spike). Verified in Node AND browser (zero errors):
+DA1 reply `\x1b[?62;1;6;22c` received by JS (ptr+len `write_pty` + out-struct
+`device_attributes`), size report `\x1b[8;24;80t` (out-struct), xtversion round-trip (the
+sret-lowered struct-by-value shape — the risky one), title-changed fires, PNG decode returns
+1×1 RGBA via the process-global sys hook (Kitty file/shared-mem media are compiled out for
+wasm32-freestanding — image transfer is direct-medium only). Damage acknowledgement protocol
+verified (dirty 2 → ack 0 → targeted write re-dirties 1 row). Symbol diff: 62/62 consumed
+symbols exported (198 total); the two "missing" names were grep artifacts (`…set_utf8`
+truncated by the `[a-z_]+` pattern; `ghostty_mods` is ghostling's own helper + a type name).
+**Bell and OSC 52 exist as `GHOSTTY_TERMINAL_OPT_BELL` / `OPT_CLIPBOARD_WRITE`** (39 OPT
+constants total — also progress reports, desktop notifications, PWD, terminfo name).
+
+**S2 — WebGPU environments: PASS with one recorded risk.** Playwright headless Chromium 148:
+device + frame submit OK with `--enable-unsafe-webgpu` (`--enable-features=Vulkan` on Linux);
+adapter is **SwiftShader** (software) headless on macOS — CI is for correctness, perf needs
+headed/hardware. Shipping desktop (Electrobun CEF, Chrome 147, via CDP :9222): device + frame
+submit OK on **hardware `metal-3`**, opaque window. Transparent/OSR mode: untested, recorded
+risk above.
+
+**S3 — upstream packaging: none exists (2026-08-22).** npm `ghostty-web` is coder's package
+(the one platform ships); it plans to consume a native Ghostty wasm distribution "once
+available". We build our own pinned artifact.
+Sources: [npm ghostty-web](https://www.npmjs.com/package/ghostty-web),
+[Libghostty Is Coming](https://mitchellh.com/writing/libghostty-is-coming),
+[Bytes #427](https://bytes.dev/archives/427).
+
+**S4/S5 — benchmarks.** Playwright headed Chrome-for-Testing 148, 1600×900 @ dpr 2, terminal
+200×50, GPU-process CPU, 5s warmup + 30×1s samples (means; renders = calls in 30s). Canvas =
+platform's installed patched `ghostty-web@0.4.0` bundle; "scheduled" = temporary dirty-gated
+`startRenderLoop` (render only when dirty rows / cursor / viewport / scrollbar change; standing
+rAF kept, paints skipped), restored after measurement. WebGPU floor = two instanced draws,
+pre-filled atlas, hardware Metal 3.
+
+| Scenario              | stock canvas | scheduled canvas | WebGPU floor |
+| --------------------- | -----------: | ---------------: | -----------: |
+| focused-blinking idle | 11.1% (1819) |         1.5% (0) |    1.2% (58) |
+| unfocused idle        | 12.1% (1816) |         1.1% (0) |     0.0% (0) |
+| burst output          | 24.9% (1808) |      17.8% (616) | 15.7% (1895) |
+| sustained scroll      | 54.0% (1616) |     40.0% (1542) | 17.4% (1890) |
+
+Caveats: cursor blink never armed in the canvas benches (automation window lacks OS focus), so
+"focused-blinking" ≈ blink-off idle there; the WebGPU floor page armed its own blink (58
+frames ≈ 2/s). Absolute numbers are not comparable to the production ~63% observation
+(different browser, viewport, workload); comparisons within the table are same-machine,
+same-methodology.
+
+**K1/K2 evaluation (pre-registered in Plan 054):** K1 focused ≤5% → 1.5% PASS; K1 unfocused
+≤1% → 1.1% marginal (within sampling noise of the threshold). K2 burst within 1.25× of floor →
+17.8% vs 19.6% ceiling PASS; **K2 scroll → 40.0% vs 21.8% ceiling FAIL (2.3× the floor)**.
+Descope required BOTH kill conditions to hold; K2 fails decisively on scroll → **the rewrite
+proceeds (GO)**. Reading: damage scheduling alone recovers the idle burn (the production
+complaint), but Canvas 2D remains ~2.3× the WebGPU floor under sustained scroll and ~13% worse
+under burst — plus the protocol/fidelity surface (Kitty graphics, kitty keyboard, bell/OSC 52
+effects) that only the rewrite reaches.
+
+**Recommended interim mitigation (independent of the rewrite):** the dirty-gate is a ~15-line
+patch to `startRenderLoop` and takes idle from ~12% to ~1% — worth upstreaming to
+coder/ghostty-web (or carrying in `patches/`) so platform stops burning GPU while Phases 1–3
+land. Not a substitute: scroll/burst and the protocol gaps remain.
+
+## Phase 1 results (2026-08-22) — complete
+
+The standalone sibling repository `/Users/shaul/Desktop/D/ghostty-webgpu` is bootstrapped and
+committed at `29fd3d4`. It contains the pinned, unpatched libghostty-vt wasm artifact and Zig build
+script, the standalone Zig callback bridge, typed browser-independent `core/` bindings, terminal
+and render-state ownership, the process-global PNG decoder boundary, package-root wasm exports,
+dist-first TypeScript output, MIT licensing, repository instructions, and CI.
+
+`bun run verify` passes typecheck, lint, formatting, seven Node/Vitest tests, and the dist build.
+The tests cover the pointer+length, out-struct, and sret callback shapes; DA1, xtversion, size, and
+title round-trips; process-global PNG setup ordering; a VT corpus spanning controls, combining and
+wide graphemes, cursor positioning, color, and decoration state; and global/per-row damage
+acknowledgement with targeted re-damage. A direct `dist/index.js` runtime smoke test and
+`npm pack --dry-run` also pass. Both committed wasm artifacts are byte-identical to the independently
+verified Phase 0 artifacts.
+
+## Phase 2 results (2026-08-22) — complete
+
+The standalone package now exports `WebGpuTerminalRenderer`: a damage-driven, no-standing-loop
+renderer over the Phase 1 `GhosttyRenderState`. It owns stable per-row instance ranges, separate
+grayscale/color shelf-packed atlases with generation-safe LRU recycling, Canvas 2D glyph bitmap
+caching, two instanced text draws, premultiplied-alpha compositing, shader decorations and
+minimum-contrast adjustment, overlay wake sources, diagnostic counters, and tokenized GPU-device
+replacement. Failed replacement acquisition remains retryable; late replacements cannot resurrect
+a disposed renderer.
+
+Focused fake-clock and real-Chromium gates prove write-storm coalescing, zero pending work when
+blink is ineligible, exactly one frame per blink transition, partial dirty-row rebuilding before
+damage acknowledgement, clean-frame elision, transparent empty cells, opaque explicit
+backgrounds, glyph coverage, outline cursor, underline/undercurl/strikethrough/overline, inverse,
+selection, invisible text, shader minimum contrast, exactly two draws, grayscale/color uploads,
+CJK/emoji eviction safety, and pixel recovery on a replacement device.
+
+**Headed hardware benchmark:** Playwright Chrome-for-Testing 148.0.7778.96 on macOS arm64, Apple
+Metal 3 adapter (`vendor=apple`, `architecture=metal-3`), 1600×900 at DPR 2, terminal 200×50,
+5-second warmup plus 30 one-second GPU-process CPU samples. Atlas evictions and device restores
+were zero in every scenario.
+
+| Scenario              | GPU CPU mean | GPU CPU max | frames | draws | rows rebuilt | bytes uploaded |
+| --------------------- | -----------: | ----------: | -----: | ----: | -----------: | -------------: |
+| focused-blinking idle |        0.56% |        0.8% |     61 |   122 |           61 |      1,561,600 |
+| unfocused idle        |        0.01% |        0.3% |      0 |     0 |            0 |              0 |
+| burst output          |        5.79% |        6.0% |  1,810 | 3,620 |       90,500 |  2,316,800,000 |
+| sustained scroll      |        6.07% |        6.4% |  1,810 | 3,620 |       90,500 |  2,316,800,000 |
+
+The registered sustained-scroll gate passes: production WebGPU delivered 1,810 frames versus the
+scheduled-Canvas baseline's 1,542 (+17.4%), while GPU-process CPU fell from 40.0% to 6.07%. Against
+the Phase 0 WebGPU floor, CPU is 65.1% lower (6.07% versus 17.4%) and the timer-cadenced frame count
+is 4.2% lower (1,810 versus 1,890). The renderer therefore clears the Phase 2 correctness,
+no-standing-work, throughput, and ≤40% CPU gates.
+
+The closing `bun run verify` passes typecheck, lint, formatting, 22 Node tests, 10 real-Chromium
+tests, and the dist build. `npm pack --dry-run --json` also passes and includes compiled JS/types,
+`ghostty-vt.wasm`, `bridge.wasm`, README, and LICENSE. Phase 3 (DOM/input) needs its own executable
+plan; do not begin it from this strategy brief.
