@@ -8,6 +8,9 @@ import { expect, test } from '../../../../../test/fixtures'
 test('returns every match for a path through the real match route', async ({ client, server }) => {
   void client
   await writeWorkspace(server.root, {
+    '.oxlintrc.json': '{}',
+    'biome.json': '{}',
+    'eslint.config.js': 'export default []\n',
     'package.json': '{}',
     'src/file.ts': 'export const value = 1\n',
   })

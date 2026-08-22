@@ -8,17 +8,47 @@
 const LSP_LANGUAGE_BY_EXTENSION: Record<string, string> = {
   '.jsx': 'javascriptreact',
   '.tsx': 'typescriptreact',
+  '.jsonc': 'jsonc',
 }
+
+/** Known `.json` configuration files whose ecosystems permit comments. */
+const JSONC_BASENAMES = new Set([
+  '.babelrc.json',
+  '.devcontainer.json',
+  '.eslintrc.json',
+  'babel.config.json',
+  'devcontainer.json',
+  'jsconfig.json',
+  'tsconfig.json',
+  'typedoc.json',
+])
+
+/** `tsconfig.build.json`, `jsconfig.app.json`, and the rest of the flavoured configs. */
+const JSONC_BASENAME_PATTERN = /^[tj]sconfig\..+\.json$/
+
+/** Directories whose `.json` files are all editor/tool config, comments included. */
+const JSONC_DIRECTORIES = new Set(['.devcontainer', '.platform', '.vscode'])
 
 /** Accepts a path or a file uri — only the last segment's extension is read. */
 export function lspLanguageIdForPath(pathOrUri: string): string | undefined {
-  return LSP_LANGUAGE_BY_EXTENSION[extensionFor(pathOrUri)]
+  const segments = pathOrUri.split('/')
+  const name = (segments.at(-1) ?? '').toLowerCase()
+  const extension = extensionFor(name)
+  if (extension === '.json' && isJsoncDocument(name, segments)) return 'jsonc'
+
+  return LSP_LANGUAGE_BY_EXTENSION[extension]
 }
 
-function extensionFor(pathOrUri: string) {
-  const name = pathOrUri.slice(pathOrUri.lastIndexOf('/') + 1)
+function isJsoncDocument(name: string, segments: readonly string[]) {
+  if (JSONC_BASENAMES.has(name) || JSONC_BASENAME_PATTERN.test(name)) return true
+
+  const parent = segments.at(-2)?.toLowerCase()
+  return parent !== undefined && JSONC_DIRECTORIES.has(parent)
+}
+
+function extensionFor(name: string) {
   const dotIndex = name.lastIndexOf('.')
   if (dotIndex === -1) return ''
 
-  return name.slice(dotIndex).toLowerCase()
+  return name.slice(dotIndex)
 }

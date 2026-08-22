@@ -817,6 +817,20 @@ class PooledLspProxySession {
     if (this.disposed) return
 
     this.writeToServer(JSON.stringify(message))
+    this.pushConfiguration()
+  }
+
+  private pushConfiguration(): void {
+    const settings = this.match.server.didChangeConfiguration
+    if (!settings) return
+
+    this.writeToServer(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        method: 'workspace/didChangeConfiguration',
+        params: { settings },
+      }),
+    )
   }
 
   private handleDidOpen(connection: LspProxyConnection, message: JsonRpcNotification): void {

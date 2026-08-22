@@ -149,6 +149,12 @@ export const lspServerOverridesSchema = v.record(
   lspServerOverrideSchema,
 )
 
+/** Extension → ordered server ids; `!id` removes and `...` retains automatic matches. */
+export const lspLanguageServerListsSchema = v.record(
+  trimmedNonEmptyStringSchema,
+  v.array(trimmedNonEmptyStringSchema),
+)
+
 /**
  * Server id → whether that server's semantic tokens are requested.
  *
@@ -162,6 +168,8 @@ export const semanticTokenServerOverridesSchema = v.record(trimmedNonEmptyString
 
 export type LspServerOverride = v.InferOutput<typeof lspServerOverrideSchema>
 export type LspServerOverrides = v.InferOutput<typeof lspServerOverridesSchema>
+/** Read-only consumer view of the stored language-server lists. */
+export type LspLanguageServerLists = Readonly<Record<string, readonly string[]>>
 export type SemanticTokenServerOverrides = v.InferOutput<typeof semanticTokenServerOverridesSchema>
 export type ProviderEnvironmentVariable = v.InferOutput<typeof providerEnvironmentVariableSchema>
 export type ProviderInstanceConfig = v.InferOutput<typeof providerInstanceConfigSchema>

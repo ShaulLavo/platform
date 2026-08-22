@@ -210,6 +210,8 @@ describe('settings registry', () => {
       'providers.instances',
       'keybindings.overrides',
       'lsp.servers',
+      // Explicit selection can start a registered tool, so this is machine-scoped.
+      'lsp.languageServers',
       'lsp.experimental.tyForPython',
       'lsp.idleTimeoutMs',
       'lsp.downloadRuntimes',

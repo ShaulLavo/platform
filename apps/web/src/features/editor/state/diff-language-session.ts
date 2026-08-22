@@ -3,6 +3,7 @@ import {
   type AcquiredLanguageServerLane,
   type LanguageServerLaneOptions,
 } from '@singapor/lsp-plugin/websocket'
+import { LanguageServerSet } from '@singapor/lsp-plugin'
 
 import type { DiffFileSide } from '@/features/editor/utils/diff-position-map'
 import { clientErrors } from '@/lib/structured-errors'
@@ -25,41 +26,72 @@ export type DiffLanguageSession = {
 
 export function createDiffLanguageSession({
   documents,
-  lane,
+  lanes,
 }: {
   readonly documents: readonly DiffLanguageDocument[]
-  readonly lane: LanguageServerLaneOptions
+  readonly lanes: readonly LanguageServerLaneOptions[]
 }): DiffLanguageSession {
   const uris = new Map<DiffFileSide, string>(
     documents.map((document) => [document.side, document.uri]),
   )
-  const openedUris = new Set<string>()
+  const openedUris = new Map<AcquiredLanguageServerLane, Set<string>>()
   const abort = new AbortController()
-  let lease: AcquiredLanguageServerLane | null = null
+  let leases: readonly {
+    readonly connection: AcquiredLanguageServerLane
+    readonly options: LanguageServerLaneOptions
+  }[] = []
+  let servers: LanguageServerSet | null = null
   let ready: Promise<void> | null = null
   let disposed = false
 
-  async function ensureReady(): Promise<AcquiredLanguageServerLane> {
+  async function ensureReady(): Promise<LanguageServerSet> {
     if (disposed) throw closedSessionError('disposed')
-    if (!lease) lease = acquireLanguageServerLane(lane)
-    const acquired = lease
-    if (!ready) ready = acquired.ready.then(() => openDocuments(acquired))
+    if (!servers) {
+      leases = lanes.map((options) => ({
+        connection: acquireLanguageServerLane(options),
+        options,
+      }))
+      servers = new LanguageServerSet(
+        leases.map(({ connection, options }) => ({
+          connection,
+          features: options.features,
+          id: options.id,
+          onRequestError: options.onRequestError,
+        })),
+      )
+    }
+    if (!ready) ready = prepareLanes()
 
     await ready
     if (disposed) throw closedSessionError('disposed')
-    return acquired
+    return servers
+  }
+
+  async function prepareLanes(): Promise<void> {
+    await Promise.all(
+      leases.map(async ({ connection }) => {
+        try {
+          await connection.ready
+          openDocuments(connection)
+        } catch {
+          // The router excludes this lane; another ready feature owner can still answer.
+        }
+      }),
+    )
   }
 
   function openDocuments(acquired: AcquiredLanguageServerLane): void {
     if (disposed) return
 
+    const opened = new Set<string>()
+    openedUris.set(acquired, opened)
     for (const document of documents) {
       acquired.workspace.openDocument({
         languageId: document.languageId,
         text: document.text,
         uri: document.uri,
       })
-      openedUris.add(document.uri)
+      opened.add(document.uri)
     }
   }
 
@@ -68,9 +100,9 @@ export function createDiffLanguageSession({
     uriFor: (side) => uris.get(side) ?? null,
     sideForUri: (uri) => documents.find((document) => document.uri === uri)?.side ?? null,
     request: async <TResult>(method: string, params: unknown) => {
-      const acquired = await ensureReady()
+      const router = await ensureReady()
       try {
-        const result = await acquired.client.request<TResult | null>(method, params, {
+        const result = await router.request<TResult | null>(method, params, {
           signal: abort.signal,
         })
         if (disposed) throw closedSessionError('disposed')
@@ -85,13 +117,13 @@ export function createDiffLanguageSession({
 
       disposed = true
       abort.abort()
-      const acquired = lease
-      if (!acquired) return
-
-      for (const uri of openedUris) acquired.workspace.closeDocument(uri)
+      for (const { connection } of leases) {
+        for (const uri of openedUris.get(connection) ?? []) connection.workspace.closeDocument(uri)
+        connection.release()
+      }
       openedUris.clear()
-      acquired.release()
-      lease = null
+      leases = []
+      servers = null
       ready = null
     },
   }

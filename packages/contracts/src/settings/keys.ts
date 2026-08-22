@@ -1,6 +1,7 @@
 import * as v from 'valibot'
 import {
   keybindingOverridesSchema,
+  lspLanguageServerListsSchema,
   lspServerOverridesSchema,
   modelRefListSchema,
   providerInstanceConfigsSchema,
@@ -418,6 +419,22 @@ export const SETTINGS_REGISTRY = {
     description:
       'Per-server overrides: extensions and feature ranks apply when a document is matched; command, env, and initialization apply on the next backend start. Set a feature to null to exclude that server. A running backend keeps its old process options until it idles out.',
     keywords: ['lsp', 'language server', 'command', 'override', 'disable'],
+  }),
+  'lsp.languageServers': defineSetting({
+    schema: lspLanguageServerListsSchema,
+    default: {},
+    // Named entries may start matching tools, so cloned workspaces cannot set this.
+    scope: 'machine',
+    // A record of lists has no widget; the JSON view is the editor for it.
+    widget: 'complex',
+    visibility: 'advanced',
+    category: 'Language servers',
+    description:
+      "Which language servers may serve a file type, keyed by extension ('.json'). Values are server ids in preference order, '!id' drops a server, and '...' keeps the rest. Naming a registered server explicitly enables it for matching file types even without its project marker. Open documents keep their current servers until reopened.",
+    // Per-extension rather than replace: a workspace should be able to answer
+    // for `.json` without erasing the answer someone gave for `.ts`.
+    merge: 'record',
+    keywords: ['lsp', 'language server', 'disable', 'json', 'biome', 'eslint'],
   }),
   'lsp.semanticTokens.enabled': defineSetting({
     schema: v.boolean(),

@@ -84,7 +84,7 @@ export function useDiffLanguage(
     documentPath ?? '',
     documentPath !== null,
   )
-  const match = highestRankedDiffMatch(matches)
+  const routedMatches = useMemo(() => diffLanguageServerMatches(matches), [matches])
 
   // A plain holder the plugin reads from, so its identity stays stable across renders — a fresh
   // plugin per render would tear the view contribution down and rebuild its tooltip on every mouse
@@ -117,7 +117,7 @@ export function useDiffLanguage(
   // one would cost a `didClose`/`didOpen` pair. What editing can invalidate is checked per request
   // instead, in `sideStates`.
   useEffect(() => {
-    if (!documentPath || !rootPath || !match) return
+    if (!documentPath || !rootPath || routedMatches.length === 0) return
 
     const documents = diffLanguageDocuments({
       documentPath,
@@ -129,16 +129,18 @@ export function useDiffLanguage(
 
     const session = createDiffLanguageSession({
       documents,
-      lane: languageServerLaneOptions({
-        connectionProvider: diffLanguageServerConnectionProvider({
-          rootPath: match.root,
-          serverId: match.serverId,
-          sessionId: crypto.randomUUID(),
+      lanes: routedMatches.map((match) =>
+        languageServerLaneOptions({
+          connectionProvider: diffLanguageServerConnectionProvider({
+            rootPath: match.root,
+            serverId: match.serverId,
+            sessionId: crypto.randomUUID(),
+          }),
+          match,
+          rootPath,
+          target: { matchPath: documentPath },
         }),
-        match,
-        rootPath,
-        target: { matchPath: documentPath },
-      }),
+      ),
     })
     // `Object.assign` rather than field writes for the same reason the layout effect above uses it:
     // the React Compiler treats a direct assignment into a `useState` value as a mutation it cannot
@@ -149,11 +151,11 @@ export function useDiffLanguage(
       Object.assign(latest, { documents: [], drifted: new Set<DiffFileSide>(), session: null })
       session.dispose()
     }
-  }, [documentPath, file, latest, match, rootPath])
+  }, [documentPath, file, latest, rootPath, routedMatches])
 
   // Only whether a file could be asked about at all rebuilds the plugin; everything else is read
   // live from the holder.
-  const available = documentPath !== null && rootPath !== null && match !== null
+  const available = documentPath !== null && rootPath !== null && routedMatches.length > 0
 
   return useMemo(() => {
     if (!available) return null
@@ -198,22 +200,13 @@ export function useDiffLanguage(
   }, [available, latest])
 }
 
-export function highestRankedDiffMatch(
+export function diffLanguageServerMatches(
   matches: readonly LanguageServerMatch[] | null,
-): LanguageServerMatch | null {
-  if (!matches) return null
+): readonly LanguageServerMatch[] {
+  if (!matches) return []
 
-  return (
-    matches
-      .filter(
-        (match) => match.features.hover !== undefined && match.features.navigation !== undefined,
-      )
-      .toSorted(
-        (left, right) =>
-          (left.features.hover ?? 0) - (right.features.hover ?? 0) ||
-          (left.features.navigation ?? 0) - (right.features.navigation ?? 0) ||
-          matches.indexOf(left) - matches.indexOf(right),
-      )[0] ?? null
+  return matches.filter(
+    (match) => match.features.hover !== undefined || match.features.navigation !== undefined,
   )
 }
 

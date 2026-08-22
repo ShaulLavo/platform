@@ -321,6 +321,7 @@ export {
 } from './lsp-protocol'
 export {
   lspFeatureRanksOverrideSchema,
+  lspLanguageServerListsSchema,
   lspServerOverrideSchema,
   lspServerOverridesSchema,
   modelRefKey,
@@ -329,6 +330,7 @@ export {
   REDACTED_SETTINGS_VALUE,
   semanticTokenServerOverridesSchema,
   type KeybindingOverrides,
+  type LspLanguageServerLists,
   type LspServerOverride,
   type LspServerOverrides,
   type ModelRef,

@@ -54,7 +54,7 @@ describe('LSP websocket routes', () => {
     const acquire = vi.fn()
     const routes = lspRoutes({ paths: createWorkspacePaths(root) }, auth(), {
       resolveServer: async () => null,
-      settings: () => ({ servers: {}, tyForPython: false }),
+      settings: () => ({ servers: {}, languageServers: {}, tyForPython: false }),
       pool: { acquire },
     })
     const ws = fakeSocket({ path: 'src/file.fake', root: '', server: 'unknown' })
@@ -70,6 +70,11 @@ describe('LSP match route', () => {
   it('returns every descriptor with its independently resolved root', async () => {
     const root = await fixtureRoot()
     await Bun.write(path.join(root, 'package.json'), '{}')
+    // The linters answer for a project that adopted them, so the fixture adopts
+    // all three: this test is about root resolution, not about the gate.
+    await Bun.write(path.join(root, 'biome.json'), '{}')
+    await Bun.write(path.join(root, 'eslint.config.js'), 'export default []\n')
+    await Bun.write(path.join(root, '.oxlintrc.json'), '{}')
     await mkdir(path.join(root, 'nested'))
     await Bun.write(path.join(root, 'nested', 'deno.json'), '{}')
     await Bun.write(path.join(root, 'nested', 'file.ts'), 'export const value = 1\n')
@@ -77,7 +82,7 @@ describe('LSP match route', () => {
     const result = await lspRouteMatch(
       createWorkspacePaths(root),
       { path: 'nested/file.ts', root: '' },
-      { servers: {}, tyForPython: false },
+      { servers: {}, languageServers: {}, tyForPython: false },
     )
 
     expect(result.map((match) => match.serverId)).toEqual(['deno', 'eslint', 'oxlint', 'biome'])
@@ -96,7 +101,7 @@ function bufferedLspDeps(root: string, createdSessions: FakeLspProxySession[]): 
       await Bun.sleep(25)
       return { root, server: { id: 'buffered-lsp' } }
     }) as unknown as LspRouteDeps['resolveServer'],
-    settings: () => ({ servers: {}, tyForPython: false }),
+    settings: () => ({ servers: {}, languageServers: {}, tyForPython: false }),
     pool: {
       acquire: async () => {
         await Bun.sleep(25)
@@ -168,7 +173,7 @@ describe('negotiated semantic tokens', () => {
     const result = await lspRouteSemanticTokens(
       createWorkspacePaths(root),
       { path: 'main.go', root: '' },
-      { servers: {}, tyForPython: false },
+      { servers: {}, languageServers: {}, tyForPython: false },
       { negotiatedSemanticTokens: () => negotiated },
     )
 
@@ -184,7 +189,7 @@ describe('negotiated semantic tokens', () => {
     const result = await lspRouteSemanticTokens(
       createWorkspacePaths(root),
       { path: 'main.go', root: '' },
-      { servers: {}, tyForPython: false },
+      { servers: {}, languageServers: {}, tyForPython: false },
       {
         negotiatedSemanticTokens: () => {
           asked += 1
@@ -204,7 +209,7 @@ describe('negotiated semantic tokens', () => {
     const result = await lspRouteSemanticTokens(
       createWorkspacePaths(root),
       { path: 'notes.txt', root: '' },
-      { servers: {}, tyForPython: false },
+      { servers: {}, languageServers: {}, tyForPython: false },
       { negotiatedSemanticTokens: () => null },
     )
 

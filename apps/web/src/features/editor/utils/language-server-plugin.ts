@@ -4,6 +4,7 @@ import type {
   LanguageServerLaneOptions,
   LanguageServerPlugin,
   LanguageServerReferencesResult,
+  LanguageServerSemanticTokensFactory,
   LspConnectionProvider,
 } from '@singapor/lsp-plugin'
 import { createLanguageServerSetPlugin } from '@singapor/lsp-plugin/websocket'
@@ -25,6 +26,7 @@ import {
 } from '@/features/editor/utils/semantic-token-capability'
 import { serverUrl } from '@/lib/client'
 import { EdenLanguageServerWebSocket } from '@/lib/server-sockets'
+import { log } from '@/lib/client-logging'
 
 export type LanguageServerMatch = LspMatch
 
@@ -62,16 +64,12 @@ export function createMatchedLanguageServerPlugin({
     ...match,
     features: withoutDisabledFeatures(match.features, target.disabledFeatures),
   }))
-  const semanticOwner = highestRankedMatch(descriptors, 'semanticTokens')
-  const semanticTokens = semanticOwner
-    ? new SemanticTokenController({ serverId: semanticOwner.serverId })
-    : null
+  const semanticControllers = new Map<string, SemanticTokenController>()
   const lanes = descriptors.map((match) =>
     liveLanguageServerLane({
       match,
       rootPath,
-      semanticOwner,
-      semanticTokens,
+      semanticControllers,
       statusSource,
       target,
     }),
@@ -81,7 +79,9 @@ export function createMatchedLanguageServerPlugin({
     documentSync: {
       languageIdForDocument: (_languageId, uri) => lspLanguageIdForPath(uri),
     },
-    semanticTokens: semanticTokens ? semanticTokenLayerOptions(semanticTokens) : undefined,
+    semanticTokens: descriptors.some((match) => match.features.semanticTokens !== undefined)
+      ? semanticTokenOwnerFactory(semanticControllers)
+      : undefined,
     onOpenDefinition,
     onOpenReferences,
   })
@@ -92,19 +92,16 @@ export function createMatchedLanguageServerPlugin({
 function liveLanguageServerLane({
   match,
   rootPath,
-  semanticOwner,
-  semanticTokens,
+  semanticControllers,
   statusSource,
   target,
 }: {
   match: LanguageServerMatch
   rootPath: string
-  semanticOwner: LanguageServerMatch | null
-  semanticTokens: SemanticTokenController | null
+  semanticControllers: Map<string, SemanticTokenController>
   statusSource: EditorLanguageServerStatusSource
   target: LanguageServerDocumentTarget
 }): LanguageServerLaneOptions {
-  const ownsSemanticTokens = semanticOwner?.serverId === match.serverId
   return {
     ...languageServerLaneOptions({
       connectionProvider: languageServerConnectionProvider({
@@ -117,25 +114,21 @@ function liveLanguageServerLane({
     }),
     notificationHandlers: laneNotificationHandlers(
       match.serverId,
-      ownsSemanticTokens ? semanticTokens : null,
+      semanticControllers,
       statusSource,
     ),
-    onConnectionCreated:
-      ownsSemanticTokens && semanticTokens
-        ? (context) => {
-            semanticTokens.attachConnection(context)
-            return { dispose: () => semanticTokens.detachConnection() }
-          }
-        : undefined,
-    onConnected:
-      ownsSemanticTokens && semanticTokens
-        ? () => {
-            semanticTokens.handleConnected()
-          }
-        : undefined,
     onStatusChange: (status) => statusSource.setServerStatus(match.serverId, status),
     onDiagnostics: (diagnostics) => statusSource.setServerDiagnostics(match.serverId, diagnostics),
     onInteractiveReady: () => statusSource.setServerInteractiveReady(match.serverId),
+    onRequestError: (method, error) => {
+      log.error({
+        action: 'lsp.request_failed',
+        area: 'lsp',
+        error,
+        method,
+        serverId: match.serverId,
+      })
+    },
     onError: () => statusSource.setServerStatus(match.serverId, 'error'),
   }
 }
@@ -168,11 +161,12 @@ export function languageServerLaneOptions({
 
 function laneNotificationHandlers(
   serverId: string,
-  semanticTokens: SemanticTokenController | null,
+  semanticControllers: ReadonlyMap<string, SemanticTokenController>,
   statusSource: EditorLanguageServerStatusSource,
 ) {
   return {
     [LSP_SEMANTIC_TOKENS_REFRESH]: () => {
+      const semanticTokens = semanticControllers.get(serverId) ?? null
       semanticTokens?.handleRefresh()
       return semanticTokens !== null
     },
@@ -180,6 +174,26 @@ function laneNotificationHandlers(
       statusSource.setServerStatus(serverId, 'error')
       return true
     },
+  }
+}
+
+function semanticTokenOwnerFactory(
+  controllers: Map<string, SemanticTokenController>,
+): LanguageServerSemanticTokensFactory {
+  return (owner) => {
+    controllers.get(owner.id)?.dispose()
+    const controller = new SemanticTokenController({ serverId: owner.id })
+    controllers.set(owner.id, controller)
+    controller.attachConnection(owner.connection)
+    controller.handleConnected()
+
+    return {
+      ...semanticTokenLayerOptions(controller),
+      dispose: () => {
+        if (controllers.get(owner.id) === controller) controllers.delete(owner.id)
+        controller.dispose()
+      },
+    }
   }
 }
 
@@ -206,7 +220,7 @@ function initializeStatusOnActivation(
   return {
     name: plugin.name,
     activate: (context) => {
-      statusSource.setServers(matches.map((match) => match.serverId))
+      statusSource.setServers(statusOrderedMatches(matches).map((match) => match.serverId))
       return plugin.activate(context)
     },
   }
@@ -224,19 +238,25 @@ function createIdleLanguageServerPlugin(
   }
 }
 
-function highestRankedMatch(
+function rankedMatches(
   matches: readonly LanguageServerMatch[],
   feature: LspFeatureId,
-): LanguageServerMatch | null {
-  return (
-    matches
-      .filter((match) => match.features[feature] !== undefined)
-      .toSorted(
-        (left, right) =>
-          (left.features[feature] ?? 0) - (right.features[feature] ?? 0) ||
-          matches.indexOf(left) - matches.indexOf(right),
-      )[0] ?? null
-  )
+): readonly LanguageServerMatch[] {
+  return matches
+    .filter((match) => match.features[feature] !== undefined)
+    .toSorted(
+      (left, right) =>
+        (left.features[feature] ?? 0) - (right.features[feature] ?? 0) ||
+        matches.indexOf(left) - matches.indexOf(right),
+    )
+}
+
+function statusOrderedMatches(
+  matches: readonly LanguageServerMatch[],
+): readonly LanguageServerMatch[] {
+  const diagnostics = rankedMatches(matches, 'diagnostics')
+  const diagnosticIds = new Set(diagnostics.map((match) => match.serverId))
+  return diagnostics.concat(matches.filter((match) => !diagnosticIds.has(match.serverId)))
 }
 
 function withoutDisabledFeatures(

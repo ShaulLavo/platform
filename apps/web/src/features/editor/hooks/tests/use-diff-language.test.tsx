@@ -2,7 +2,7 @@ import type { LspManagedTransport, LspTransportHandler } from '@singapor/lsp'
 import type { LspConnectionCallbacks, LspConnectionOptions } from '@singapor/lsp-plugin'
 import { afterEach } from 'vitest'
 
-import { highestRankedDiffMatch } from '@/features/editor/hooks/use-diff-language'
+import { diffLanguageServerMatches } from '@/features/editor/hooks/use-diff-language'
 import {
   diffLanguageServerConnectionProvider,
   languageServerConnectionProvider,
@@ -13,24 +13,25 @@ import { expect, test } from '../../../../../test/fixtures'
 
 afterEach(resetLanguageServerConnectionPool)
 
-test('selects one highest-ranked server eligible for hover and navigation', () => {
+test('keeps hover and navigation candidates independent', () => {
   const matches = [
     match('hover-only', { hover: 0 }),
     match('fallback', { hover: 5, navigation: 5 }),
     match('preferred', { hover: 1, navigation: 3 }),
   ]
 
-  expect(highestRankedDiffMatch(matches)?.serverId).toBe('preferred')
+  expect(diffLanguageServerMatches(matches).map((item) => item.serverId)).toEqual([
+    'hover-only',
+    'fallback',
+    'preferred',
+  ])
 })
 
-test('uses declared collection order to break equal role ranks', () => {
-  const matches = [
-    match('first', { hover: 1, navigation: 1 }),
-    match('second', { hover: 1, navigation: 1 }),
-  ]
+test('drops matches that cannot answer either diff feature', () => {
+  const matches = [match('diagnostics', { diagnostics: 0 }), match('navigation', { navigation: 1 })]
 
-  expect(highestRankedDiffMatch(matches)?.serverId).toBe('first')
-  expect(highestRankedDiffMatch(null)).toBeNull()
+  expect(diffLanguageServerMatches(matches).map((item) => item.serverId)).toEqual(['navigation'])
+  expect(diffLanguageServerMatches(null)).toEqual([])
 })
 
 test('gives every diff a browser owner while retaining one backend route', () => {
@@ -85,6 +86,10 @@ class InertTransport implements LspManagedTransport {
 
   unsubscribe(handler: LspTransportHandler): void {
     this.#handlers.delete(handler)
+  }
+
+  onDidClose(): () => void {
+    return () => undefined
   }
 
   close(): void {

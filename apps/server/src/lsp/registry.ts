@@ -1,6 +1,7 @@
 import type {
   LspFeatureId,
   LspFeatureRanks,
+  LspLanguageServerLists,
   LspServerOverride,
   LspServerOverrides,
 } from '@workspace/contracts'
@@ -30,6 +31,7 @@ import {
   spawnZls,
 } from './installers'
 import { fileExtension } from './language'
+import { recordProcessInfo } from '../observability'
 
 export type LspServerHandle = {
   readonly process: ChildProcessWithoutNullStreams
@@ -40,9 +42,12 @@ export type LspServerDefinition = {
   readonly extensions: readonly string[]
   /** Registry definitions always provide this; transport-only test definitions need not. */
   readonly features?: LspFeatureRanks
+  readonly adoptionMarkers?: readonly string[]
   readonly root: (filePath: string, workspaceRoot: string) => Promise<string | null>
   readonly spawn: (root: string) => Promise<LspServerHandle | null>
   readonly initializationOptions?: (root: string) => Promise<Record<string, unknown> | undefined>
+  /** Settings pushed once through `workspace/didChangeConfiguration` after initialization. */
+  readonly didChangeConfiguration?: Readonly<Record<string, unknown>>
   /**
    * What this server gets back when it asks `workspace/configuration`.
    *
@@ -76,6 +81,7 @@ export type LspServerMatch = {
  */
 export type LspSettings = {
   readonly servers: LspServerOverrides
+  readonly languageServers: LspLanguageServerLists
   readonly tyForPython: boolean
 }
 
@@ -91,6 +97,11 @@ const jsProjectMarkers = [
 ] as const
 
 const tsExtensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts'] as const
+
+/** Tool-specific markers keep supplementary linters and formatters opt-in per project. */
+const eslintConfigMarkers = ['eslint.config.*', '.eslintrc*'] as const
+const biomeConfigMarkers = ['biome.json', 'biome.jsonc'] as const
+const oxlintConfigMarkers = ['.oxlintrc.json', '.oxlintrc.jsonc'] as const
 
 const compatibleTypeScriptServerPath = path.resolve(
   import.meta.dirname,
@@ -177,6 +188,23 @@ const lspServers: readonly LspServerDefinition[] = withBuiltInFeatures([
     spawn: (root) => spawnDotnetTool('csharp-ls', 'csharp-ls', root),
   },
   {
+    id: 'css-ls',
+    extensions: ['.css'],
+    root: async (_filePath, workspaceRoot) => workspaceRoot,
+    spawn: (root) =>
+      spawnNodePackageBin(
+        'vscode-langservers-extracted',
+        'vscode-css-language-server',
+        ['--stdio'],
+        {
+          cwd: root,
+        },
+      ),
+    // Same switch as `json-ls`: the server answers `documentFormattingProvider:
+    // false` without it. Biome outranks it where a project adopts Biome.
+    initializationOptions: async () => ({ provideFormatter: true }),
+  },
+  {
     id: 'dart',
     extensions: ['.dart'],
     root: (filePath, workspaceRoot) =>
@@ -211,6 +239,7 @@ const lspServers: readonly LspServerDefinition[] = withBuiltInFeatures([
   {
     id: 'eslint',
     extensions: Array.from<string>(tsExtensions).concat('.vue'),
+    adoptionMarkers: eslintConfigMarkers,
     root: (filePath, workspaceRoot) => nearestRoot(filePath, workspaceRoot, jsProjectMarkers),
     spawn: (root) =>
       spawnNodePackageBin(
@@ -257,6 +286,21 @@ const lspServers: readonly LspServerDefinition[] = withBuiltInFeatures([
     spawn: (root) => spawnCommand(['haskell-language-server-wrapper', '--lsp'], { cwd: root }),
   },
   {
+    id: 'html-ls',
+    extensions: ['.html', '.htm'],
+    root: async (_filePath, workspaceRoot) => workspaceRoot,
+    spawn: (root) =>
+      spawnNodePackageBin(
+        'vscode-langservers-extracted',
+        'vscode-html-language-server',
+        ['--stdio'],
+        {
+          cwd: root,
+        },
+      ),
+    initializationOptions: async () => ({ provideFormatter: true }),
+  },
+  {
     id: 'jdtls',
     extensions: ['.java'],
     root: (filePath, workspaceRoot) =>
@@ -272,6 +316,31 @@ const lspServers: readonly LspServerDefinition[] = withBuiltInFeatures([
         'gradlew.bat',
       ]),
     spawn: (root) => spawnJdtls(root),
+  },
+  {
+    id: 'json-ls',
+    extensions: ['.json', '.jsonc'],
+    root: async (_filePath, workspaceRoot) => workspaceRoot,
+    spawn: (root) =>
+      spawnNodePackageBin(
+        'vscode-langservers-extracted',
+        'vscode-json-language-server',
+        ['--stdio'],
+        {
+          cwd: root,
+        },
+      ),
+    // Without this, 4.10.0 disables formatting; Biome still outranks it where adopted.
+    initializationOptions: async () => ({ provideFormatter: true }),
+    // json-ls disables diagnostics when this notification omits `validate.enable`.
+    didChangeConfiguration: {
+      json: {
+        jsonFoldingLimit: 5000,
+        jsoncFoldingLimit: 5000,
+        resultLimit: 5000,
+        validate: { enable: true },
+      },
+    },
   },
   {
     id: 'julials',
@@ -341,8 +410,8 @@ const lspServers: readonly LspServerDefinition[] = withBuiltInFeatures([
   {
     id: 'oxlint',
     extensions: Array.from<string>(tsExtensions).concat('.vue', '.astro', '.svelte'),
-    root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, ['.oxlintrc.json', ...jsProjectMarkers]),
+    adoptionMarkers: oxlintConfigMarkers,
+    root: (filePath, workspaceRoot) => nearestRoot(filePath, workspaceRoot, jsProjectMarkers),
     spawn: (root) => spawnOxlint(root),
   },
   {
@@ -359,8 +428,8 @@ const lspServers: readonly LspServerDefinition[] = withBuiltInFeatures([
       '.gql',
       '.html',
     ],
-    root: (filePath, workspaceRoot) =>
-      nearestRoot(filePath, workspaceRoot, ['biome.json', 'biome.jsonc', ...jsProjectMarkers]),
+    adoptionMarkers: biomeConfigMarkers,
+    root: (filePath, workspaceRoot) => nearestRoot(filePath, workspaceRoot, jsProjectMarkers),
     spawn: (root) => spawnBiome(root),
   },
   {
@@ -522,14 +591,32 @@ export async function matchLspServers(input: {
   workspaceRoot: string
 }): Promise<readonly LspServerMatch[]> {
   const extension = fileExtension(input.filePath)
-  const candidates = lspServersFor(input.settings)
-    .filter((server) => serverMatches(server, extension))
-    .sort(compareServerPriority)
+  const { considered, eligible, explicitlySelected } = eligibleLspServers(input.settings, extension)
   const matches = await Promise.all(
-    candidates.map((server) => resolveServerRoot(server, input.filePath, input.workspaceRoot)),
+    eligible.map((server) =>
+      resolveServerRoot(
+        server,
+        input.filePath,
+        input.workspaceRoot,
+        explicitlySelected.has(server.id),
+      ),
+    ),
   )
+  const resolved = matches.filter((match): match is LspServerMatch => match !== null)
 
-  return matches.filter((match): match is LspServerMatch => match !== null)
+  // Preserve each eligibility stage so a missing tool is explainable from one event.
+  recordProcessInfo('lsp.match', {
+    area: 'lsp',
+    operation: 'match',
+    extension,
+    considered: considered.map((server) => server.id),
+    eligible: eligible.map((server) => server.id),
+    matched: resolved.map((match) => match.server.id),
+    outcome: resolved.length > 0 ? 'matched' : 'none',
+    workspaceRoot: input.workspaceRoot,
+  })
+
+  return resolved
 }
 
 export async function resolveLspServer(input: {
@@ -538,11 +625,20 @@ export async function resolveLspServer(input: {
   settings: LspSettings
   workspaceRoot: string
 }): Promise<LspServerMatch | null> {
-  const extension = fileExtension(input.filePath)
-  const server = lspServersFor(input.settings).find((candidate) => candidate.id === input.serverId)
-  if (!server || !serverMatches(server, extension)) return null
+  // A stale socket must not reopen a server the match route has filtered out.
+  const { eligible, explicitlySelected } = eligibleLspServers(
+    input.settings,
+    fileExtension(input.filePath),
+  )
+  const server = eligible.find((candidate) => candidate.id === input.serverId)
+  if (!server) return null
 
-  return resolveServerRoot(server, input.filePath, input.workspaceRoot)
+  return resolveServerRoot(
+    server,
+    input.filePath,
+    input.workspaceRoot,
+    explicitlySelected.has(server.id),
+  )
 }
 
 export function matchDescriptor(match: LspServerMatch) {
@@ -568,11 +664,80 @@ async function resolveServerRoot(
   server: LspServerDefinition,
   filePath: string,
   workspaceRoot: string,
+  explicitlySelected = false,
 ): Promise<LspServerMatch | null> {
+  if (!explicitlySelected && !(await serverIsAdopted(server, filePath, workspaceRoot))) return null
+
   const root = await server.root(filePath, workspaceRoot)
   if (!root) return null
 
   return { root, server }
+}
+
+/** Stands for every server the extension matched that the list does not name. */
+const REST_SERVERS_ENTRY = '...'
+
+/** Keeps match discovery and explicit websocket resolution on one eligibility policy. */
+function eligibleLspServers(settings: LspSettings, extension: string) {
+  const considered = lspServersFor(settings)
+    .filter((server) => serverMatches(server, extension))
+    .sort(compareServerPriority)
+  const list = serverListFor(settings.languageServers, extension)
+
+  return {
+    considered,
+    eligible: applyServerList(considered, list),
+    explicitlySelected: explicitlySelectedServerIds(list),
+  }
+}
+
+function explicitlySelectedServerIds(list: readonly string[] | undefined): ReadonlySet<string> {
+  if (!list) return new Set()
+
+  return new Set(list.filter((entry) => entry !== REST_SERVERS_ENTRY && !entry.startsWith('!')))
+}
+
+async function serverIsAdopted(
+  server: LspServerDefinition,
+  filePath: string,
+  workspaceRoot: string,
+): Promise<boolean> {
+  if (!server.adoptionMarkers) return true
+
+  return Boolean(await findUp(path.dirname(filePath), workspaceRoot, server.adoptionMarkers))
+}
+
+function serverListFor(lists: LspLanguageServerLists, extension: string) {
+  const key = Object.keys(lists).find((candidate) => equalsIgnoreCase(candidate, extension))
+  return key === undefined ? undefined : lists[key]
+}
+
+/** Named ids order, `!id` removes, and `...` retains every other matched server. */
+function applyServerList(
+  matched: readonly LspServerDefinition[],
+  list: readonly string[] | undefined,
+): readonly LspServerDefinition[] {
+  if (!list) return matched
+
+  // Deduplicate ids before they become lanes and collide in per-server state.
+  const named = new Set(
+    list.filter((entry) => entry !== REST_SERVERS_ENTRY && !entry.startsWith('!')),
+  )
+  const removed = new Set(
+    list.filter((entry) => entry.startsWith('!')).map((entry) => entry.slice(1)),
+  )
+  const ordered = Array.from(named)
+    .map((id) => matched.find((server) => server.id === id))
+    .filter((server): server is LspServerDefinition => server !== undefined)
+  const rest = list.includes(REST_SERVERS_ENTRY)
+    ? matched.filter((server) => !named.has(server.id))
+    : []
+
+  return ordered.concat(rest).filter((server) => !removed.has(server.id))
+}
+
+function equalsIgnoreCase(left: string, right: string) {
+  return left.localeCompare(right, undefined, { sensitivity: 'accent' }) === 0
 }
 
 export function lspServersFor(settings: LspSettings) {
@@ -678,7 +843,8 @@ function configuredServer(
   return {
     id,
     extensions: config.extensions ?? existing?.extensions ?? [],
-    features: configuredFeatures(config, existing?.features),
+    features: configuredFeatures(config, existing?.features ?? LANGUAGE_SERVER_FEATURES),
+    adoptionMarkers: existing?.adoptionMarkers,
     root: existing?.root ?? (async (_filePath, workspaceRoot) => workspaceRoot),
     spawn: (root) =>
       spawnCommand(command, {
@@ -689,10 +855,9 @@ function configuredServer(
         },
       }),
     initializationOptions: configuredInitialization(config, existing),
-    // Carried across a command override on purpose: pointing `gopls` at a
-    // different binary does not stop it being gopls, and dropping the reply here
-    // would silently turn its semantic tokens back off.
+    // A binary override retains the built-in server's protocol configuration.
     configuration: existing?.configuration,
+    didChangeConfiguration: existing?.didChangeConfiguration,
   }
 }
 
@@ -815,5 +980,6 @@ function isInsideOrEqual(root: string, candidate: string) {
 
 function globMarkerRegex(marker: string) {
   const escaped = marker.replace(/[.+?^${}()|[\]\\]/gu, '\\$&')
-  return new RegExp(`^${escaped.replaceAll('\\*', '.*')}$`, 'u')
+  // The escape pass leaves `*` bare; replacing `\*` produces an invalid glob regex.
+  return new RegExp(`^${escaped.replaceAll('*', '.*')}$`, 'u')
 }

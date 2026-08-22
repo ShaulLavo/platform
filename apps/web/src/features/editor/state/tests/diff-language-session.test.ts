@@ -11,14 +11,16 @@ import { expect, test } from '../../../../../test/fixtures'
 
 test('awaits the existing lane lease before opening documents or sending requests', async () => {
   const harness = laneHarness()
-  const session = createDiffLanguageSession({ documents: documents(), lane: harness.options })
+  const session = createDiffLanguageSession({ documents: documents(), lanes: [harness.options] })
 
-  const request = session.request<string>('textDocument/hover', { position: 1 })
+  const request = session.request('textDocument/hover', { position: 1 })
   expect(harness.openDocument).not.toHaveBeenCalled()
   expect(harness.request).not.toHaveBeenCalled()
 
   harness.connect()
-  await expect(request).resolves.toBe('answer')
+  await expect(request).resolves.toMatchObject({
+    contents: { kind: 'markdown', value: 'answer' },
+  })
   expect(harness.openDocument).toHaveBeenCalledTimes(2)
   expect(harness.request).toHaveBeenCalledWith(
     'textDocument/hover',
@@ -29,7 +31,7 @@ test('awaits the existing lane lease before opening documents or sending request
 
 test('closes only diff-owned documents and releases its dedicated lease', async () => {
   const harness = laneHarness()
-  const session = createDiffLanguageSession({ documents: documents(), lane: harness.options })
+  const session = createDiffLanguageSession({ documents: documents(), lanes: [harness.options] })
   const request = session.request('textDocument/definition', {})
   harness.connect()
   await request
@@ -46,7 +48,7 @@ test('closes only diff-owned documents and releases its dedicated lease', async 
 test('rejects an in-flight response after the session is disposed', async () => {
   const answer = deferred<string>()
   const harness = laneHarness(() => answer.promise)
-  const session = createDiffLanguageSession({ documents: documents(), lane: harness.options })
+  const session = createDiffLanguageSession({ documents: documents(), lanes: [harness.options] })
   const request = session.request<string>('textDocument/hover', {})
   harness.connect()
   await vi.waitFor(() => expect(harness.request).toHaveBeenCalledTimes(1))
@@ -57,7 +59,55 @@ test('rejects an in-flight response after the session is disposed', async () => 
   await expect(request).rejects.toThrow('Diff language session closed')
 })
 
-function laneHarness(requestResult: () => Promise<unknown> = async () => 'answer') {
+test('routes diff hover and navigation through independent capable lanes', async () => {
+  const hover = laneHarness(async () => ({ contents: { kind: 'markdown', value: 'hover' } }), {
+    capabilities: { hoverProvider: true },
+    features: { hover: 0 },
+    id: 'hover',
+  })
+  const navigation = laneHarness(
+    async () => [
+      {
+        range: {
+          end: { character: 1, line: 0 },
+          start: { character: 0, line: 0 },
+        },
+        uri: 'file:///repo/definition.ts',
+      },
+    ],
+    {
+      capabilities: { definitionProvider: true },
+      features: { navigation: 0 },
+      id: 'navigation',
+    },
+  )
+  const session = createDiffLanguageSession({
+    documents: documents(),
+    lanes: [hover.options, navigation.options],
+  })
+  const hoverRequest = session.request('textDocument/hover', {})
+  const definitionRequest = session.request('textDocument/definition', {})
+  hover.connect()
+  navigation.connect()
+
+  await expect(hoverRequest).resolves.toMatchObject({
+    contents: { kind: 'markdown', value: 'hover' },
+  })
+  await expect(definitionRequest).resolves.toHaveLength(1)
+  expect(hover.request).toHaveBeenCalledWith('textDocument/hover', {}, expect.any(Object))
+  expect(navigation.request).toHaveBeenCalledWith('textDocument/definition', {}, expect.any(Object))
+})
+
+function laneHarness(
+  requestResult: (method: string) => Promise<unknown> = async () => ({
+    contents: { kind: 'markdown', value: 'answer' },
+  }),
+  overrides: {
+    readonly capabilities?: LspClient['serverCapabilities']
+    readonly features?: LanguageServerLaneOptions['features']
+    readonly id?: string
+  } = {},
+) {
   let callbacks: LspConnectionCallbacks | null = null
   const openDocument = vi.fn((document: { uri: string }) => ({ ...document, version: 1 }))
   const closeDocument = vi.fn()
@@ -66,7 +116,10 @@ function laneHarness(requestResult: () => Promise<unknown> = async () => 'answer
   const client = {
     notify: vi.fn(async () => undefined),
     request,
-    serverCapabilities: { hoverProvider: true },
+    serverCapabilities: overrides.capabilities ?? {
+      definitionProvider: true,
+      hoverProvider: true,
+    },
   } as unknown as LspClient
   const workspace = { closeDocument, openDocument } as unknown as LspWorkspace
   const connection = { client, workspace }
@@ -78,8 +131,8 @@ function laneHarness(requestResult: () => Promise<unknown> = async () => 'answer
   }
   const options: LanguageServerLaneOptions = {
     connectionProvider: provider,
-    features: { hover: 0, navigation: 0 },
-    id: 'typescript',
+    features: overrides.features ?? { hover: 0, navigation: 0 },
+    id: overrides.id ?? 'typescript',
     webSocketRoute: 'ws://localhost/lsp',
   }
 

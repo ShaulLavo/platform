@@ -1,4 +1,4 @@
-import type { LanguageServerSetPluginOptions } from '@singapor/lsp-plugin'
+import { summarizeDiagnostics, type LanguageServerSetPluginOptions } from '@singapor/lsp-plugin'
 import { beforeEach, describe, vi } from 'vitest'
 
 import { createEditorLanguageServerStatusSource } from '@/features/editor/state/language-server-status-source'
@@ -116,7 +116,7 @@ describe('createMatchedLanguageServerPlugin', () => {
     expect(source.getSnapshot().status).toBe('ready')
   })
 
-  test('marks a lane unavailable when a routed request fails', () => {
+  test('keeps a lane ready after a routed request fails', () => {
     const source = createEditorLanguageServerStatusSource()
     const plugin = createMatchedLanguageServerPlugin({
       enabled: true,
@@ -132,13 +132,37 @@ describe('createMatchedLanguageServerPlugin', () => {
     lane?.onInteractiveReady?.()
     expect(source.getSnapshot().status).toBe('ready')
 
-    lane?.onError?.(new Error('request failed'))
+    lane?.onRequestError?.('textDocument/hover', new Error('request failed'))
+    expect(source.getSnapshot().status).toBe('ready')
+
+    lane?.onError?.(new Error('transport failed'))
     expect(source.getSnapshot().status).toBe('error')
+  })
+
+  test('orders composite diagnostics by diagnostic rank', () => {
+    const source = createEditorLanguageServerStatusSource()
+    const plugin = createMatchedLanguageServerPlugin({
+      enabled: true,
+      matches: [match('typescript', '/repo', 5), match('eslint', '/repo', 0)],
+      rootPath: '/repo',
+      statusSource: source,
+      target: { matchPath: 'src/a.ts' },
+    })
+    plugin.activate({} as never)
+    const [typescript, eslint] = createdServerSets[0]?.lanes ?? []
+
+    typescript?.onDiagnostics?.(diagnostics('typescript'))
+    eslint?.onDiagnostics?.(diagnostics('eslint'))
+
+    expect(source.getSnapshot().diagnostics?.diagnostics.map((item) => item.message)).toEqual([
+      'eslint',
+      'typescript',
+    ])
   })
 })
 
 describe('semantic token ownership', () => {
-  test('creates one layer owned by the highest-ranked semantic lane', () => {
+  test('creates layer options for the runtime-elected semantic owner', () => {
     createMatchedLanguageServerPlugin({
       enabled: true,
       matches: [match('typescript', '/repo', 5), match('rust', '/repo', 0)],
@@ -148,9 +172,14 @@ describe('semantic token ownership', () => {
     })
 
     const options = createdServerSets[0]
-    expect(options?.semanticTokens?.viewportDelayMs).toBe(0)
-    expect(options?.lanes[0]?.onConnectionCreated).toBeUndefined()
-    expect(options?.lanes[1]?.onConnectionCreated).toBeTypeOf('function')
+    const semanticTokens = options?.semanticTokens?.({
+      id: 'rust',
+      connection: { client: {}, workspace: {} } as never,
+    })
+
+    expect(semanticTokens?.viewportDelayMs).toBe(0)
+    expect(options?.lanes.every((lane) => lane.onConnectionCreated === undefined)).toBe(true)
+    semanticTokens?.dispose?.()
   })
 
   test('keeps initialization capabilities stable per server', () => {
@@ -195,4 +224,17 @@ function match(serverId: string, root: string, semanticRank: number) {
       semanticTokens: semanticRank,
     },
   }
+}
+
+function diagnostics(message: string) {
+  return summarizeDiagnostics('file:///repo/src/a.ts', 1, [
+    {
+      message,
+      range: {
+        start: { line: 0, character: 0 },
+        end: { line: 0, character: 1 },
+      },
+      severity: 1,
+    },
+  ])
 }

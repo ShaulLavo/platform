@@ -223,6 +223,31 @@ describe('LspSessionPool ownership', () => {
 })
 
 describe('LspSessionPool server requests', () => {
+  it('pushes configured settings once after the initialized notification', async () => {
+    const settings = {
+      json: {
+        jsonFoldingLimit: 5000,
+        jsoncFoldingLimit: 5000,
+        resultLimit: 5000,
+        validate: { enable: true },
+      },
+    }
+    const fixture = await initializedFixture({ didChangeConfiguration: settings })
+    const initialized = { jsonrpc: '2.0', method: 'initialized', params: {} }
+
+    await fixture.first.handleClientMessage(json(initialized))
+    await fixture.second.handleClientMessage(json(initialized))
+
+    expect(fixture.serverMessages.slice(1)).toEqual([
+      initialized,
+      {
+        jsonrpc: '2.0',
+        method: 'workspace/didChangeConfiguration',
+        params: { settings },
+      },
+    ])
+  })
+
   it('answers each configuration item by its own section', async () => {
     const fixture = await initializedFixture({
       configuration: { gopls: { semanticTokens: true }, other: { verbose: 1 } },
