@@ -228,6 +228,7 @@ export class FileTreeController implements FileTreeMutationHandle, FileTreeSearc
   #focusedIndex = -1
   #focusedPath: string | null = null
   #focusRequestId = 0
+  #pendingFocusRequestId: number | null = null
   #hasFullProjection = false
   #getParentIndexForVisibleRow = (_index: number): number => -1
   #itemHandles = new Map<string, FileTreeItemHandle>()
@@ -376,6 +377,7 @@ export class FileTreeController implements FileTreeMutationHandle, FileTreeSearc
 
   public requestFocus(): void {
     this.#focusRequestId += 1
+    this.#pendingFocusRequestId = this.#focusRequestId
     this.#emit()
   }
 
@@ -455,8 +457,14 @@ export class FileTreeController implements FileTreeMutationHandle, FileTreeSearc
     return this.#focusedPath
   }
 
-  public getFocusRequestId(): number {
-    return this.#focusRequestId
+  public getFocusRequestId(): number | null {
+    return this.#pendingFocusRequestId
+  }
+
+  public clearFocusRequest(id: number): void {
+    if (this.#pendingFocusRequestId !== id) return
+
+    this.#pendingFocusRequestId = null
   }
 
   public getScrollRequest(): FileTreeScrollRequest | null {

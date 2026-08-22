@@ -76,9 +76,14 @@ test('the live navigator retains search, consumes queued focus, reveals, and cre
   searchInput.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Escape' }))
   await expect.poll(() => searchContainer(shadowRoot).dataset.open).toBe('false')
 
+  clickToolbarButton('Filter files')
+  await expect.poll(() => shadowRoot.activeElement).toBe(searchInput)
+  typeSearch(searchInput, 'file-0')
+  await expect.poll(() => matchCountText()).toBe('1 match')
   clickToolbarButton('Select deep file')
   await expect.poll(() => selectedFilePathText()).toBe(DEEP_FILE_PATH)
   clickToolbarButton('Reveal active file in tree')
+  await expect.poll(() => searchContainer(shadowRoot).dataset.open).toBe('false')
   await expect.poll(() => activeTreePath(shadowRoot)).toBe('src/file-79.ts')
   expect(treeScroller(shadowRoot).scrollTop).toBeGreaterThan(0)
 

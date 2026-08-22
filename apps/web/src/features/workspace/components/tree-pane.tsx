@@ -207,6 +207,7 @@ function ReadyTreePane({
   function focusTreeForCommand(revealActive: boolean) {
     const activeTreePath = selectedTreePath(rootPath, selectedFilePath)
     if (revealActive && !activeTreePath) return false
+    if (revealActive) tree.closeSearch()
 
     const candidate = treeCommandFocusCandidate({
       activeTreePath,

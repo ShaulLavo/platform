@@ -1,14 +1,7 @@
-import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  CrosshairIcon,
-  EraserIcon,
-  FilePlusIcon,
-  FolderPlusIcon,
-  MagnifyingGlassIcon,
-  XIcon,
-} from '@phosphor-icons/react'
+import { CrosshairIcon, FilePlusIcon, FolderPlusIcon } from '@phosphor-icons/react'
 import { Button } from '@workspace/ui/components/button'
+
+import { TreeSearchActions } from '@/features/workspace/components/tree-search-actions'
 
 export function TreeToolbar({
   isSearchOpen,
@@ -35,10 +28,6 @@ export function TreeToolbar({
   readonly onRevealActiveFile: () => void
   readonly query: string
 }) {
-  const hasQuery = query.length > 0
-  const hasMatches = hasQuery && matchCount > 0
-  const matchLabel = `${String(matchCount)} file ${matchCount === 1 ? 'match' : 'matches'}`
-
   return (
     <div
       aria-label='File tree actions'
@@ -69,73 +58,16 @@ export function TreeToolbar({
       </div>
 
       <div className='flex min-w-0 items-center justify-end gap-0.5'>
-        {isSearchOpen ? (
-          <>
-            {hasQuery ? (
-              <output
-                aria-label={matchLabel}
-                aria-live='polite'
-                className='text-muted-foreground min-w-0 truncate px-1 text-[10px] tabular-nums'
-              >
-                {matchCount} {matchCount === 1 ? 'match' : 'matches'}
-              </output>
-            ) : null}
-            <Button
-              aria-label='Previous file match'
-              disabled={!hasMatches}
-              size='icon-xs'
-              title='Previous Match'
-              type='button'
-              variant='ghost'
-              onClick={onPreviousMatch}
-            >
-              <ArrowUpIcon className='size-3.5' />
-            </Button>
-            <Button
-              aria-label='Next file match'
-              disabled={!hasMatches}
-              size='icon-xs'
-              title='Next Match'
-              type='button'
-              variant='ghost'
-              onClick={onNextMatch}
-            >
-              <ArrowDownIcon className='size-3.5' />
-            </Button>
-            <Button
-              aria-label='Clear file filter'
-              disabled={!hasQuery}
-              size='icon-xs'
-              title='Clear Filter'
-              type='button'
-              variant='ghost'
-              onClick={onClearSearch}
-            >
-              <EraserIcon className='size-3.5' />
-            </Button>
-            <Button
-              aria-label='Close file filter'
-              size='icon-xs'
-              title='Close Filter'
-              type='button'
-              variant='ghost'
-              onClick={onCloseSearch}
-            >
-              <XIcon className='size-3.5' />
-            </Button>
-          </>
-        ) : (
-          <Button
-            aria-label='Filter files'
-            size='icon-xs'
-            title='Filter Files'
-            type='button'
-            variant='ghost'
-            onClick={onOpenSearch}
-          >
-            <MagnifyingGlassIcon className='size-3.5' />
-          </Button>
-        )}
+        <TreeSearchActions
+          isOpen={isSearchOpen}
+          matchCount={matchCount}
+          query={query}
+          onClear={onClearSearch}
+          onClose={onCloseSearch}
+          onNext={onNextMatch}
+          onOpen={onOpenSearch}
+          onPrevious={onPreviousMatch}
+        />
         <Button
           aria-label='Reveal active file in tree'
           size='icon-xs'
