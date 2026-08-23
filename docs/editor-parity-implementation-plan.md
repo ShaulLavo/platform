@@ -51,19 +51,19 @@ Effort letters from the matrix: S = days, M = 1–2 wk, L = 3–6 wk, XL = multi
 
 ### E0 — Unwired wins (~2 weeks total; everything here has its data or engine code already built)
 
-> **Status: 8 of 11 landed** — bracket matching, word wrap, go-to-line, occurrence highlighting, document links, signature help, compare-with-saved, open-file-at-ref. Committed in both repos with tests; the highlighters, links, compare-with-saved, and open-at-ref were verified in the running app. Remaining: expand/shrink selection (re-rated, see below), markdown preview, AI commit message.
+> **Status: 11 of 11 landed — E0 complete.** The final AI commit-message flow uses the shared provider runtime, was covered by focused tests, and was verified in the running app without changing `HEAD` or the index.
 
 - ✅ **Bracket-match highlight + jump-to-bracket** — the worker's bracket ranges had no consumer past `syntaxController`; `brackets` now reaches `EditorViewSnapshot` (gated by the folds coverage check) and `bracketMatchPlugin` paints the pair. `editor.action.jumpToBracket` on `Mod+\` — VS Code's `Mod+Shift+\` is unavailable because the hotkey layer refuses Shift+punctuation as layout-dependent. Matching validates characters rather than trusting the worker's `depth`, which collides on unbalanced text (`{ a ]`).
 - ✅ **Word wrap** — `wordWrap` in EditorOptions, `setWordWrap`/`isWordWrapEnabled`, and `editor.action.toggleWordWrap` on `Alt+Z`.
-- Expand/shrink selection — tree-sitter helpers exist; wire commands + keybindings. (S) — _still open: the helpers are async and need the tree-sitter backend, so this is a plugin, not a command alias._
+- ✅ **Expand/shrink selection** — provider-backed selection ladders drive `editor.action.smartSelect.expand` / `shrink`, including multi-selection history and platform keybindings.
 - ✅ **Go to line/column** — `:line[:column]` quick-access mode, navigating through the same `openDefinition` path the `@` symbol mode uses.
 - ✅ **Passive occurrence/word highlight** — scans only the mounted rows the snapshot carries, so it never materializes the document; whole-word matching reuses `wordRangeAtOffset`.
-- Signature help — server handlers already answer; reuse markdown-tooltip infra for the widget. (S) — _still open: needs a controller inside `lsp-plugin/plugin.ts` (it requires the LSP client), unlike the standalone view-contribution plugins above. `createTooltipController` is the reusable widget._
+- ✅ **Signature help** — an LSP-plugin controller requests `textDocument/signatureHelp`, renders the shared tooltip surface, and cycles overloads.
 - ✅ **Document links** — http(s) URLs underlined, Cmd/Ctrl+click to open; viewport-scoped, narrow matching, keeps a `)` the address itself opened.
-- Markdown live preview — engine package built; add to platform plugin list. (S) — _blocked on adding `@singapor/markdown` as a web dependency, which touches the bun-link/turbo-cache setup._
+- ✅ **Markdown live preview** — `@singapor/markdown` is registered in the platform plugin list for Markdown documents.
 - ✅ **Compare with Saved** — a `compare-saved:` document kind diffing the live buffer against disk, both sides read live so the diff keeps updating as you type. In the editor context menu. _Revert file, compare-with-clipboard, and select-for-compare remain open; revert also needs the undo-history hazard resolved (see the text-menu note)._
 - ✅ **Open file at ref** — `git-ref:` document kind + "Open File at HEAD". Read-only by construction: the content lands in an _unsynced_ document, which the save path and the file-backed guards both refuse, because the editor has no read-only flag.
-- AI commit message — sparkle button over the orchestration runtime we already run. (S)
+- ✅ **AI commit message** — the sparkle action sends staged-first (working-tree fallback) diff context through an isolated turn on the shared provider runtime, prefers ChatGPT `gpt-5.6-luna` at low effort, falls back only to advertised cheap models, and fills the existing input without committing. Loading, failure, cancellation, stale results, and user edits are handled explicitly.
 
 ### E1 — Typing assistance (the "feels finished" wave)
 

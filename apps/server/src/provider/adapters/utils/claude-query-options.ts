@@ -32,6 +32,8 @@ export type ClaudeQueryOptionsInput = ClaudeRuntimeSelection & {
   /** Per-instance spawn env. Absent means "inherit the server's env untouched". */
   env?: NodeJS.ProcessEnv
   model: string
+  /** False keeps isolated utility turns out of the provider's transcript store. */
+  persistSession?: boolean
   /** Effort/thinking for this thread; absent means "send neither". */
   reasoning?: ClaudeReasoning
   resumeCursor?: unknown
@@ -114,6 +116,7 @@ export function claudeQueryOptions(input: ClaudeQueryOptionsInput): Options {
     cwd: input.cwd,
     includePartialMessages: true,
     model: input.model,
+    ...(input.persistSession === undefined ? {} : { persistSession: input.persistSession }),
     settingSources: ['user', 'project', 'local'],
     systemPrompt: { preset: 'claude_code', type: 'preset' },
     ...claudeReasoningQueryOptions(input.reasoning ?? {}),

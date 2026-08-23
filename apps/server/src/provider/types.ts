@@ -25,10 +25,13 @@ import type {
 export type ProviderTurnInput = {
   attachments: ChatAttachment[]
   cwd: string
+  ephemeral?: boolean
   interactionMode: InteractionMode
   messageText: string
   modelSelection: ModelSelection
-  project: OrchestrationProject
+  project?: OrchestrationProject
+  /** Adapters only route on the id; chat callers may still pass their full thread. */
+  thread: OrchestrationThread | Pick<OrchestrationThread, 'id'>
   providerInstanceId: ProviderInstanceId
   /**
    * Cursor of the conversation this turn continues, filled in by
@@ -38,12 +41,12 @@ export type ProviderTurnInput = {
    */
   resumeCursor?: unknown | null
   runtimeMode: RuntimeMode
-  thread: OrchestrationThread
   turnId: TurnId
 }
 
 export type ProviderSessionStartInput = {
   cwd: string
+  ephemeral?: boolean
   interactionMode?: InteractionMode
   modelSelection: ModelSelection
   providerInstanceId: ProviderInstanceId

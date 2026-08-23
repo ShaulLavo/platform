@@ -1,4 +1,5 @@
 import * as v from 'valibot'
+import { modelSelectionSchema } from '@workspace/contracts'
 import { booleanQueryValueSchema, pathSchema } from '../fs/contracts'
 
 export const gitPathQuerySchema = v.object({
@@ -55,6 +56,14 @@ export const gitApplyPatchBodySchema = v.object({
 export const gitCommitBodySchema = v.object({
   path: v.optional(pathSchema, ''),
   message: v.string(),
+})
+
+export const gitCommitMessageSourceSchema = v.picklist(['staged', 'working'])
+
+export const gitCommitMessageResultSchema = v.object({
+  message: v.string(),
+  modelSelection: modelSelectionSchema,
+  source: gitCommitMessageSourceSchema,
 })
 
 export const gitCheckoutBodySchema = v.object({
@@ -116,6 +125,8 @@ export type GitBlobDiffQuery = v.InferOutput<typeof gitBlobDiffQuerySchema>
 export type GitPathsBody = v.InferOutput<typeof gitPathsBodySchema>
 export type GitApplyPatchBody = v.InferOutput<typeof gitApplyPatchBodySchema>
 export type GitCommitBody = v.InferOutput<typeof gitCommitBodySchema>
+export type GitCommitMessageResult = v.InferOutput<typeof gitCommitMessageResultSchema>
+export type GitCommitMessageSource = v.InferOutput<typeof gitCommitMessageSourceSchema>
 export type GitCheckoutBody = v.InferOutput<typeof gitCheckoutBodySchema>
 export type GitCreateBranchBody = v.InferOutput<typeof gitCreateBranchBodySchema>
 export type GitWorktreeCreateBody = v.InferOutput<typeof gitWorktreeCreateBodySchema>

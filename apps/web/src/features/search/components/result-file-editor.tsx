@@ -16,10 +16,8 @@ import {
 } from 'react'
 
 import { useFocus } from '@/features/workspace/providers/focus-state'
-import {
-  createPlatformSearchResultEditorLoggingPlugin,
-  editorTreeSitterSyntaxProvider,
-} from '@/features/editor/utils/plugins'
+import { editorTreeSitterSyntaxProvider } from '@/features/editor/state/syntax-highlighting'
+import { createPlatformSearchResultEditorLoggingPlugin } from '@/features/editor/utils/plugins'
 import { useSearchResultActions } from '@/features/search/hooks/use-result-actions'
 import { SearchResultFileLineActions } from '@/features/search/components/result-file-line-actions'
 import { SearchResultSourceLineGutter } from '@/features/search/components/result-source-line-gutter'

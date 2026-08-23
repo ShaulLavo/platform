@@ -20,6 +20,8 @@ export type TestServer = {
   /** The real Elysia app — drive it with `app.handle(new Request(...))`. */
   app: ReturnType<typeof createApp>
   database: MetadataDatabaseHandle
+  /** Provider boundary used by orchestration routes, exposed for behavioural assertions. */
+  providerAdapter: MockProviderAdapter
   /** Isolated temp workspace root backing this app's filesystem. */
   root: string
   origin: string
@@ -28,7 +30,11 @@ export type TestServer = {
 
 // Boots a real server against a throwaway workspace. No network, no mocks: the
 // app routes, valibot contracts, and filesystem are the genuine article.
-export async function makeTestServer(): Promise<TestServer> {
+export async function makeTestServer({
+  providerAdapter = new MockProviderAdapter(),
+}: {
+  providerAdapter?: MockProviderAdapter
+} = {}): Promise<TestServer> {
   const root = await mkdtemp(path.join(tmpdir(), 'web-itest-'))
   const database = createMetadataDatabase({ databasePath: ':memory:' })
   const app = createApp({
@@ -42,7 +48,7 @@ export async function makeTestServer(): Promise<TestServer> {
       // Never the default registry: its Codex and Claude adapters shell out to
       // real CLIs, so any route that touches a provider would spawn a binary,
       // read the developer's own machine, and answer differently per checkout.
-      providerAdapterRegistry: new ProviderAdapterRegistry([new MockProviderAdapter()]),
+      providerAdapterRegistry: new ProviderAdapterRegistry([providerAdapter]),
     },
     settings: testSettingsOptions(root),
     watch: false,
@@ -54,6 +60,7 @@ export async function makeTestServer(): Promise<TestServer> {
     cleanup: () => cleanupTestServer(app, root, database),
     database,
     origin: TEST_ORIGIN,
+    providerAdapter,
     root,
   }
 }

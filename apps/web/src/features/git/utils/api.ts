@@ -84,6 +84,25 @@ export async function fetchDiff(path: string, staged: boolean, signal?: AbortSig
   )
 }
 
+export async function generateCommitMessage(path: string, signal: AbortSignal) {
+  return observeGitOperation(
+    { action: 'git.generate_commit_message', path, signal },
+    async () => {
+      const response = await getClient().git['commit-message'].post({ path }, { fetch: { signal } })
+
+      return unwrapEdenResponse(response, {
+        requireData: true,
+        emptyMessage: 'git server returned an empty response',
+      })
+    },
+    (result) => ({
+      model: result.modelSelection.model,
+      providerInstanceId: result.modelSelection.providerInstanceId,
+      source: result.source,
+    }),
+  )
+}
+
 export async function fetchBranches(path: string, signal?: AbortSignal) {
   return observeGitOperation(
     { action: 'git.branches', path, signal },

@@ -36,6 +36,11 @@ export type ProviderAdapterRegistryChangeListener = (
   change: ProviderAdapterRegistryChange,
 ) => Promise<void> | void
 
+export type ProviderAdapterLease = {
+  adapter: ProviderAdapter
+  release: () => void
+}
+
 export type ProviderAdapterRegistryOptions = {
   /** Pre-materialized adapters, for tests and for the deterministic harness. */
   adapters?: readonly ProviderAdapter[]
@@ -65,6 +70,7 @@ type LiveProviderInstance = {
  * server restart, and removing one takes its child processes with it.
  */
 export class ProviderAdapterRegistry {
+  private readonly activeLeaseCounts = new Map<ProviderInstanceId, number>()
   private readonly changeListeners = new Set<ProviderAdapterRegistryChangeListener>()
   private readonly credentialWatch = new ProviderCredentialWatch((providerInstanceIds) => {
     void this.refreshInstances(providerInstanceIds)
@@ -72,6 +78,9 @@ export class ProviderAdapterRegistry {
   private readonly drivers = new Map<ProviderDriverKind, AnyProviderDriver>()
   private readonly hasLiveSessions: (providerInstanceId: ProviderInstanceId) => boolean
   private readonly instances = new Map<ProviderInstanceId, LiveProviderInstance>()
+  private readonly leaseDeferredInstances = new Set<ProviderInstanceId>()
+  private desiredEntries: readonly ProviderInstanceConfig[] | null = null
+  private disposed = false
   private reconcileChain: Promise<void> = Promise.resolve()
   private readonly statusCache: ProviderStatusCache
   private readonly unavailable = new Map<ProviderInstanceId, ProviderSnapshot>()
@@ -102,12 +111,18 @@ export class ProviderAdapterRegistry {
    * an unavailable snapshot instead of an error.
    */
   reconcile(entries: readonly ProviderInstanceConfig[]) {
+    if (this.disposed) {
+      recordChatPipelineWarning('chat.pipeline.provider_registry.reconcile_after_dispose', {
+        requestedInstanceCount: entries.length,
+      })
+      return Promise.resolve()
+    }
+
+    const desiredEntries = entries.slice()
+    this.desiredEntries = desiredEntries
     // Serialized: two settings writes landing together would otherwise
     // interleave create and dispose over the same instance map.
-    const run = this.reconcileChain.then(() => this.applyReconcile(entries))
-    this.reconcileChain = run.catch(() => {})
-
-    return run
+    return this.queueReconcile(() => desiredEntries)
   }
 
   private async applyReconcile(entries: readonly ProviderInstanceConfig[]) {
@@ -132,14 +147,18 @@ export class ProviderAdapterRegistry {
     for (const [providerInstanceId, instance] of this.instances) {
       if (seen.has(providerInstanceId)) continue
 
+      this.leaseDeferredInstances.delete(providerInstanceId)
+
       // Disposing an adapter mid-turn kills the child process a streaming
       // session is reading from, and threads route by `providerInstanceId`, so
       // the turn would fail with whatever the transport happened to throw. The
-      // instance is kept instead and removed by a later reconcile once its
-      // sessions end — a setting that takes effect a little later is a far
-      // smaller surprise than a turn that dies halfway.
-      if (this.hasLiveSessions(providerInstanceId)) {
+      // The instance stays alive until its current use ends. Utility leases
+      // replay the desired state on release; persisted sessions wait for a later reconcile.
+      if (this.hasLiveUsage(providerInstanceId)) {
+        const activeLeaseCount = this.activeLeaseCounts.get(providerInstanceId) ?? 0
+        if (activeLeaseCount > 0) this.leaseDeferredInstances.add(providerInstanceId)
         recordChatPipelineWarning('chat.pipeline.provider_registry.dispose_deferred', {
+          activeLeaseCount,
           providerInstanceId,
         })
         continue
@@ -226,6 +245,24 @@ export class ProviderAdapterRegistry {
     return adapter
   }
 
+  /** Keeps a utility turn's adapter alive across settings reconciliation. */
+  acquireInstanceLease(providerInstanceId: ProviderInstanceId): ProviderAdapterLease {
+    const adapter = this.getByInstance(providerInstanceId)
+    const count = (this.activeLeaseCounts.get(providerInstanceId) ?? 0) + 1
+    this.activeLeaseCounts.set(providerInstanceId, count)
+    let released = false
+
+    return {
+      adapter,
+      release: () => {
+        if (released) return
+
+        released = true
+        this.releaseInstanceLease(providerInstanceId)
+      },
+    }
+  }
+
   async getInstanceRoutingInfo(
     providerInstanceId: ProviderInstanceId,
   ): Promise<ProviderInstanceRoutingInfo> {
@@ -272,10 +309,17 @@ export class ProviderAdapterRegistry {
 
   /** Releases every instance. Nothing the registry spawned may outlive this. */
   async dispose() {
-    this.credentialWatch.stop()
+    if (this.disposed) return
+
+    this.disposed = true
+    this.desiredEntries = null
+    this.leaseDeferredInstances.clear()
     this.changeListeners.clear()
+    await this.reconcileChain
+    this.credentialWatch.stop()
     const instances = Array.from(this.instances.entries())
     this.instances.clear()
+    this.activeLeaseCounts.clear()
     for (const [providerInstanceId, instance] of instances) {
       await disposeInstance(providerInstanceId, instance)
     }
@@ -296,6 +340,7 @@ export class ProviderAdapterRegistry {
 
   /** Returns an unavailable snapshot when the entry cannot be materialized. */
   private async materialize(entry: ProviderInstanceConfig, instanceCountForKind: number) {
+    this.leaseDeferredInstances.delete(entry.providerInstanceId)
     const driver = this.drivers.get(entry.driverKind)
     if (!driver) {
       return unavailableSnapshot(entry, `Driver '${entry.driverKind}' is not registered.`)
@@ -314,9 +359,12 @@ export class ProviderAdapterRegistry {
     // it, so it arrives here as a config change. Replacing the adapter now would
     // dispose the child process a streaming turn is reading from — the exact
     // thing deferring disposal exists to prevent. The old adapter keeps serving
-    // and the new config lands on the next reconcile after the turn ends.
-    if (existing && this.hasLiveSessions(entry.providerInstanceId)) {
+    // Utility leases replay the config on release; persisted sessions wait for a later reconcile.
+    if (existing && this.hasLiveUsage(entry.providerInstanceId)) {
+      const activeLeaseCount = this.activeLeaseCounts.get(entry.providerInstanceId) ?? 0
+      if (activeLeaseCount > 0) this.leaseDeferredInstances.add(entry.providerInstanceId)
       recordChatPipelineWarning('chat.pipeline.provider_registry.reconfigure_deferred', {
+        activeLeaseCount,
         providerInstanceId: entry.providerInstanceId,
       })
 
@@ -430,6 +478,55 @@ export class ProviderAdapterRegistry {
         providerInstanceId,
       })),
     )
+  }
+
+  private hasLiveUsage(providerInstanceId: ProviderInstanceId) {
+    if ((this.activeLeaseCounts.get(providerInstanceId) ?? 0) > 0) return true
+
+    return this.hasLiveSessions(providerInstanceId)
+  }
+
+  private releaseInstanceLease(providerInstanceId: ProviderInstanceId) {
+    const count = this.activeLeaseCounts.get(providerInstanceId) ?? 0
+    if (count > 1) {
+      this.activeLeaseCounts.set(providerInstanceId, count - 1)
+      return
+    }
+
+    this.activeLeaseCounts.delete(providerInstanceId)
+    if (!this.leaseDeferredInstances.delete(providerInstanceId)) return
+
+    this.reconcileAfterLeaseRelease(providerInstanceId)
+  }
+
+  private reconcileAfterLeaseRelease(providerInstanceId: ProviderInstanceId) {
+    if (this.disposed) return
+    if (!this.desiredEntries) return
+
+    recordChatPipelineInfo('chat.pipeline.provider_registry.lease_reconcile', {
+      desiredInstanceCount: this.desiredEntries.length,
+      providerInstanceId,
+    })
+    void this.queueReconcile(() => this.desiredEntries).catch((error) => {
+      recordChatPipelineWarning('chat.pipeline.provider_registry.lease_reconcile_failed', {
+        error,
+        providerInstanceId,
+      })
+    })
+  }
+
+  private queueReconcile(entries: () => readonly ProviderInstanceConfig[] | null) {
+    const run = this.reconcileChain.then(async () => {
+      if (this.disposed) return
+
+      const desiredEntries = entries()
+      if (!desiredEntries) return
+
+      await this.applyReconcile(desiredEntries)
+    })
+    this.reconcileChain = run.catch(() => {})
+
+    return run
   }
 
   private emitChanges() {

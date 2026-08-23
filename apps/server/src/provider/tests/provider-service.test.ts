@@ -249,6 +249,101 @@ describe('ProviderService', () => {
     expect(directory.getBinding(input.thread.id)).toMatchObject({ status: 'stopped' })
     fixture.close()
   })
+
+  it('marks isolated text generation ephemeral without creating a chat binding', async () => {
+    const fixture = createFixture()
+    const adapter = new MockProviderAdapter({ responseText: 'Generated title' })
+    const directory = new ProviderSessionDirectory(fixture.database)
+    const service = new ProviderService({
+      adapterRegistry: new ProviderAdapterRegistry([adapter]),
+      sessionDirectory: directory,
+    })
+    const input = providerTurnInput()
+
+    const result = await service.generateText({
+      cwd: input.cwd,
+      messageText: 'Describe this diff',
+      modelSelection: input.modelSelection,
+    })
+
+    expect(result).toEqual({ text: 'Generated title' })
+    expect(adapter.startedSessions).toHaveLength(1)
+    expect(adapter.startedSessions[0]).toMatchObject({
+      ephemeral: true,
+      runtimeMode: 'approval-required',
+    })
+    expect(adapter.startedTurns).toHaveLength(1)
+    expect(adapter.startedTurns[0]).toMatchObject({
+      ephemeral: true,
+      runtimeMode: 'approval-required',
+    })
+    const generatedThreadId = adapter.startedTurns[0]!.thread.id
+    expect(directory.getBinding(generatedThreadId)).toBeNull()
+    expect(await adapter.hasSession({ threadId: generatedThreadId })).toBe(false)
+    fixture.close()
+  })
+
+  it('closes an isolated session when cancellation lands before provider completion', async () => {
+    const fixture = createFixture()
+    const gate = Promise.withResolvers<void>()
+    const adapter = new MockProviderAdapter({ beforeComplete: () => gate.promise })
+    const service = new ProviderService({
+      adapterRegistry: new ProviderAdapterRegistry([adapter]),
+      sessionDirectory: new ProviderSessionDirectory(fixture.database),
+    })
+    const input = providerTurnInput()
+    const controller = new AbortController()
+    const generation = service.generateText({
+      cwd: input.cwd,
+      messageText: 'Describe this diff',
+      modelSelection: input.modelSelection,
+      signal: controller.signal,
+    })
+
+    await waitForCondition(() => adapter.startedTurns.length === 1, 'provider turn did not start')
+    const generatedThreadId = adapter.startedTurns[0]!.thread.id
+    controller.abort()
+    await waitForCondition(
+      async () => !(await adapter.hasSession({ threadId: generatedThreadId })),
+      'cancelled provider session stayed open',
+    )
+    gate.resolve()
+
+    await expect(generation).rejects.toThrow('Provider text generation was cancelled.')
+    expect(adapter.interruptedThreads).toEqual([generatedThreadId, generatedThreadId])
+    await service.shutdown()
+    fixture.close()
+  })
+
+  it('leases an adapter while isolated generation survives settings reconciliation', async () => {
+    const fixture = createFixture()
+    const gate = Promise.withResolvers<void>()
+    const adapter = new MockProviderAdapter({ beforeComplete: () => gate.promise })
+    const registry = new ProviderAdapterRegistry([adapter])
+    const service = new ProviderService({
+      adapterRegistry: registry,
+      sessionDirectory: new ProviderSessionDirectory(fixture.database),
+    })
+    const input = providerTurnInput()
+    const generation = service.generateText({
+      cwd: input.cwd,
+      messageText: 'Describe this diff',
+      modelSelection: input.modelSelection,
+    })
+
+    await waitForCondition(() => adapter.startedTurns.length === 1, 'provider turn did not start')
+    await registry.reconcile([])
+    expect(registry.adapter(DEFAULT_PROVIDER_INSTANCE_ID)).toBe(adapter)
+
+    gate.resolve()
+    await expect(generation).resolves.toEqual({ text: 'Mock response' })
+    await waitForCondition(
+      () => registry.adapter(DEFAULT_PROVIDER_INSTANCE_ID) === null,
+      'deferred provider removal was not replayed after lease release',
+    )
+    await service.shutdown()
+    fixture.close()
+  })
 })
 
 function providerTurnInput(): ProviderTurnInput {
@@ -317,6 +412,16 @@ async function waitForRuntimeEvent(
   }
 }
 
+async function waitForCondition(predicate: () => boolean | Promise<boolean>, message: string) {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (await predicate()) return
+
+    await new Promise((resolve) => setTimeout(resolve, 2))
+  }
+
+  expect.unreachable(message)
+}
+
 function providerSessionPayload(input: ProviderTurnInput) {
   return {
     activeTurnId: null,
@@ -379,6 +484,22 @@ describe('ProviderService adapter streams', () => {
       await rm(home, { force: true, recursive: true })
       fixture.close()
     }
+  })
+})
+
+describe('ProviderAdapterRegistry leases', () => {
+  it('does not replay deferred desired state after disposal begins', async () => {
+    const registry = new ProviderAdapterRegistry({ drivers: [mockDriver] })
+    await registry.reconcile([mockInstance({ responseText: 'before' })])
+    const lease = registry.acquireInstanceLease(MOCK_INSTANCE)
+    await registry.reconcile([mockInstance({ responseText: 'after' })])
+
+    const disposal = registry.dispose()
+    lease.release()
+    await disposal
+    await registry.reconcile([mockInstance({ responseText: 'after' })])
+
+    expect(registry.listInstances()).toEqual([])
   })
 })
 

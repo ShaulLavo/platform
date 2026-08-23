@@ -287,7 +287,9 @@ function handle(message) {
     return;
   }
   if (message.method === 'turn/start') {
+    record({ event: 'turn/start' });
     if (mode !== 'echo-mode-params' && !assertTurnParams(message)) return;
+    if (mode === 'hold-turn-start') return;
     process.stderr.write('2026-05-28T00:00:00Z INFO codex: harmless diagnostic\\n');
     send({
       method: 'turn/started',
@@ -304,6 +306,9 @@ function handle(message) {
           reasoningEffort: collaborationMode?.settings?.reasoning_effort ?? null,
           settingsModel: collaborationMode?.settings?.model ?? null,
           threadApprovalsReviewer: lastThreadStartParams?.approvalsReviewer ?? null,
+          threadEphemeral: lastThreadStartParams?.ephemeral ?? null,
+          threadPersistsExtendedHistory:
+            lastThreadStartParams?.persistExtendedHistory ?? null,
           threadStarts: threadStartCount,
           turnDeveloperInstructions: message.params.developerInstructions ?? null,
         })
@@ -534,7 +539,7 @@ type FakeCodexContext = { readonly projectPath: string; readonly spawnLogPath: s
 type FakeCodexLogEntry = {
   readonly cwd?: string
   readonly cwds?: readonly string[] | null
-  readonly event: 'skills/list' | 'spawn'
+  readonly event: 'skills/list' | 'spawn' | 'turn/start'
 }
 
 type EchoedModeParams = {
@@ -544,6 +549,8 @@ type EchoedModeParams = {
   reasoningEffort: string | null
   settingsModel: string | null
   threadApprovalsReviewer: string | null
+  threadEphemeral: boolean | null
+  threadPersistsExtendedHistory: boolean | null
   threadStarts: number
   turnDeveloperInstructions: string | null
 }
@@ -639,6 +646,27 @@ describe('CodexProviderAdapter', () => {
         }),
       )
     })
+  })
+
+  it('closing a session rejects a turn before Codex maps its provider turn id', async () => {
+    await withFakeCodex(
+      async ({ spawnLogPath }) => {
+        const adapter = new CodexProviderAdapter()
+        const input = providerTurnInput()
+        const outcome = adapter.sendTurn(input).then(
+          () => null,
+          (error: unknown) => error,
+        )
+
+        await waitForFakeCodexEvent(spawnLogPath, 'turn/start')
+        expect(await adapter.hasSession({ threadId: input.thread.id })).toBe(true)
+        await adapter.stopSession({ threadId: input.thread.id })
+
+        expect(await outcome).toBeInstanceOf(Error)
+        expect(await adapter.hasSession({ threadId: input.thread.id })).toBe(false)
+      },
+      { mode: 'hold-turn-start' },
+    )
   })
 
   it('passes image data URLs and Codex model options to turn/start', async () => {
@@ -744,6 +772,33 @@ describe('CodexProviderAdapter', () => {
         expect(spawns).toBe(1)
         expect(second?.threadStarts).toBe(1)
         expect(sessions).toHaveLength(1)
+      },
+      { mode: 'echo-mode-params' },
+    )
+  })
+
+  it('disables provider transcript persistence only for ephemeral sessions', async () => {
+    await withFakeCodex(
+      async () => {
+        const adapter = new CodexProviderAdapter()
+        const events: ProviderRuntimeEvent[] = []
+        const normalTurn = providerTurnInput()
+        const ephemeralTurn = providerTurnInput()
+        ephemeralTurn.ephemeral = true
+        ephemeralTurn.turnId = v.parse(turnIdSchema, 'turn-2')
+        collectAdapterEvents(adapter, events)
+
+        await adapter.sendTurn(normalTurn)
+        await settleRuntimeEvents()
+        await adapter.sendTurn(ephemeralTurn)
+        await settleRuntimeEvents()
+        await adapter.stopAll()
+
+        const [normal, ephemeral] = echoedModeParams(events)
+        expect(normal?.threadEphemeral).toBeNull()
+        expect(normal?.threadPersistsExtendedHistory).toBe(true)
+        expect(ephemeral?.threadEphemeral).toBe(true)
+        expect(ephemeral?.threadPersistsExtendedHistory).toBe(false)
       },
       { mode: 'echo-mode-params' },
     )
@@ -1133,6 +1188,17 @@ async function readFakeCodexLog(spawnLogPath: string) {
     .split('\n')
     .filter(Boolean)
     .map((line) => JSON.parse(line) as FakeCodexLogEntry)
+}
+
+async function waitForFakeCodexEvent(spawnLogPath: string, event: FakeCodexLogEntry['event']) {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
+    const entries = await readFakeCodexLog(spawnLogPath)
+    if (entries.some((entry) => entry.event === event)) return
+
+    await new Promise((resolve) => setTimeout(resolve, 2))
+  }
+
+  expect.unreachable(`Fake Codex never received ${event}.`)
 }
 
 function collectAdapterEvents(adapter: CodexProviderAdapter, events: ProviderRuntimeEvent[]) {

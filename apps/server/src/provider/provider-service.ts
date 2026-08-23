@@ -8,7 +8,13 @@ import type {
   RuntimeMode,
   ThreadId,
 } from '@workspace/contracts'
-import { DEFAULT_RUNTIME_MODE } from '@workspace/contracts'
+import {
+  DEFAULT_INTERACTION_MODE,
+  DEFAULT_RUNTIME_MODE,
+  threadIdSchema,
+  turnIdSchema,
+} from '@workspace/contracts'
+import * as v from 'valibot'
 import { providerContinuationKey } from './driver'
 import type { ProviderSessionStartPayload } from './session-payload'
 import type {
@@ -39,6 +45,11 @@ import type {
   ProviderTurnInput,
   ProviderUserInputResponseInput,
 } from './types'
+import {
+  ProviderTextGenerationTask,
+  type ProviderTextGenerationInput,
+  type ProviderTextGenerationResult,
+} from './text-generation'
 
 export type ProviderServiceOptions = {
   adapterRegistry?: ProviderAdapterRegistry
@@ -93,6 +104,8 @@ export class ProviderService {
     this.handleRuntimeEvent(task),
   )
   private readonly sessionDirectory: ProviderSessionDirectory
+  private readonly suppressedTextGenerationThreads = new Set<ThreadId>()
+  private readonly textGenerationTasks = new Map<ThreadId, ProviderTextGenerationTask>()
   private shuttingDown = false
   private unsubscribeRegistry: (() => void) | null = null
 
@@ -258,6 +271,111 @@ export class ProviderService {
     }
   }
 
+  /** Runs one provider turn on the shared adapters without creating a chat projection. */
+  async generateText(input: ProviderTextGenerationInput): Promise<ProviderTextGenerationResult> {
+    const startedAt = performance.now()
+    const providerInstanceId = input.modelSelection.providerInstanceId
+    const adapterLease = this.adapterRegistry.acquireInstanceLease(providerInstanceId)
+    const adapter = adapterLease.adapter
+    const ids = textGenerationIds()
+    let sessionStarted = false
+    let turnStarted = false
+    let interruptPromise: Promise<void> | null = null
+    let stopPromise: Promise<void> | null = null
+    const stopSession = () => {
+      if (!sessionStarted) return Promise.resolve()
+      if (stopPromise) return stopPromise
+
+      stopPromise = this.stopTextGenerationSession(adapter, ids.threadId)
+      return stopPromise
+    }
+    const interrupt = () => {
+      if (interruptPromise) return interruptPromise
+
+      interruptPromise = Promise.all([
+        this.interruptTextGenerationTurn(adapter, ids, turnStarted),
+        stopSession(),
+      ]).then(noop)
+      return interruptPromise
+    }
+    const task = new ProviderTextGenerationTask({
+      interrupt,
+      providerInstanceId,
+      ...ids,
+    })
+    const abort = () => void task.interrupt()
+    this.textGenerationTasks.set(ids.threadId, task)
+    input.signal?.addEventListener('abort', abort, { once: true })
+    recordChatPipelineInfo('chat.pipeline.provider_service.text_generation.start', {
+      model: input.modelSelection.model,
+      promptLength: input.messageText.length,
+      providerInstanceId,
+      threadId: ids.threadId,
+      turnId: ids.turnId,
+    })
+
+    try {
+      throwIfTextGenerationAborted(input.signal)
+      await adapter.startSession({
+        cwd: input.cwd,
+        ephemeral: true,
+        interactionMode: DEFAULT_INTERACTION_MODE,
+        modelSelection: input.modelSelection,
+        providerInstanceId,
+        runtimeMode: 'approval-required',
+        threadId: ids.threadId,
+      })
+      sessionStarted = true
+      throwIfTextGenerationAborted(input.signal)
+      turnStarted = true
+      await adapter.sendTurn({
+        attachments: [],
+        cwd: input.cwd,
+        ephemeral: true,
+        interactionMode: DEFAULT_INTERACTION_MODE,
+        messageText: input.messageText,
+        modelSelection: input.modelSelection,
+        providerInstanceId,
+        runtimeMode: 'approval-required',
+        thread: { id: ids.threadId },
+        turnId: ids.turnId,
+      })
+      await this.drainRuntimeEvents()
+      throwIfTextGenerationAborted(input.signal)
+      const result = textGenerationResult(task)
+      recordChatPipelineInfo('chat.pipeline.provider_service.text_generation.complete', {
+        durationMs: elapsedMs(startedAt),
+        model: input.modelSelection.model,
+        outputLength: result.text.length,
+        providerInstanceId,
+        threadId: ids.threadId,
+        turnId: ids.turnId,
+      })
+      return result
+    } catch (error) {
+      const failure = input.signal?.aborted
+        ? createInternalError('Provider text generation was cancelled.', error)
+        : error
+      recordChatPipelineWarning('chat.pipeline.provider_service.text_generation.failed', {
+        aborted: input.signal?.aborted ?? false,
+        durationMs: elapsedMs(startedAt),
+        error: failure,
+        model: input.modelSelection.model,
+        providerInstanceId,
+        threadId: ids.threadId,
+        turnId: ids.turnId,
+      })
+      throw failure
+    } finally {
+      input.signal?.removeEventListener('abort', abort)
+      await stopSession()
+      await this.drainRuntimeEvents()
+      this.suppressCompletedTextGeneration(ids.threadId)
+      this.textGenerationTasks.delete(ids.threadId)
+      adapterLease.release()
+    }
+  }
+
   async interruptTurn(input: ProviderTurnControlInput) {
     recordChatPipelineInfo('chat.pipeline.provider_service.interrupt.start', {
       ...providerTurnControlSummary(input),
@@ -413,6 +531,44 @@ export class ProviderService {
     return { adapter, binding }
   }
 
+  private async stopTextGenerationSession(
+    adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>,
+    threadId: ThreadId,
+  ) {
+    await adapter.stopSession({ threadId }).catch((error) => {
+      recordChatPipelineWarning('chat.pipeline.provider_service.text_generation.stop_failed', {
+        error,
+        providerInstanceId: adapter.adapterKey,
+        threadId,
+      })
+    })
+  }
+
+  private async interruptTextGenerationTurn(
+    adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>,
+    ids: ReturnType<typeof textGenerationIds>,
+    turnStarted: boolean,
+  ) {
+    if (!turnStarted) return
+
+    await adapter.interruptTurn({ threadId: ids.threadId, turnId: ids.turnId }).catch((error) => {
+      recordChatPipelineWarning('chat.pipeline.provider_service.text_generation.interrupt_failed', {
+        error,
+        providerInstanceId: adapter.adapterKey,
+        threadId: ids.threadId,
+        turnId: ids.turnId,
+      })
+    })
+  }
+
+  private suppressCompletedTextGeneration(threadId: ThreadId) {
+    this.suppressedTextGenerationThreads.add(threadId)
+    if (this.suppressedTextGenerationThreads.size <= 1_024) return
+
+    const oldest = this.suppressedTextGenerationThreads.values().next().value
+    if (oldest) this.suppressedTextGenerationThreads.delete(oldest)
+  }
+
   private startAdapterEventStreams() {
     for (const providerInstanceId of this.adapterRegistry.listInstances()) {
       this.startAdapterEventStream(providerInstanceId)
@@ -478,6 +634,13 @@ export class ProviderService {
     // The adapter too, not just the id: an event queued by an adapter the registry has since
     // replaced belongs to a stream nothing is listening to any more.
     if (this.adapterSubscriptions.get(task.providerInstanceId)?.adapter !== task.adapter) return
+
+    const textGeneration = this.textGenerationTasks.get(task.event.threadId)
+    if (textGeneration) {
+      if (textGeneration.accept(task.event)) await textGeneration.interrupt()
+      return
+    }
+    if (this.suppressedTextGenerationThreads.has(task.event.threadId)) return
 
     this.recordRuntimeEvent(task.event, task.adapter)
     await this.emitRuntimeEvent(task.event)
@@ -795,6 +958,39 @@ function providerErrorMessage(error: unknown) {
 }
 
 function noop() {}
+
+function textGenerationIds() {
+  const id = crypto.randomUUID()
+  return {
+    threadId: v.parse(threadIdSchema, `text-generation:${id}`),
+    turnId: v.parse(turnIdSchema, `text-generation:${id}`),
+  }
+}
+
+function throwIfTextGenerationAborted(signal: AbortSignal | undefined) {
+  if (signal?.aborted) throw createInternalError('Provider text generation was cancelled.')
+}
+
+function textGenerationResult(task: ProviderTextGenerationTask): ProviderTextGenerationResult {
+  const outcome = task.outcome()
+  if (outcome.interactionRequired) {
+    throw createInternalError(
+      `Provider ${task.providerInstanceId} requested interaction while generating text.`,
+    )
+  }
+  if (outcome.errorMessage) {
+    throw createInternalError(
+      `Provider ${task.providerInstanceId} failed while generating text: ${outcome.errorMessage}`,
+    )
+  }
+  if (outcome.state !== 'completed') {
+    throw createInternalError(
+      `Provider ${task.providerInstanceId} ended text generation as ${outcome.state ?? 'unknown'}.`,
+    )
+  }
+
+  return { text: outcome.text }
+}
 
 function elapsedMs(startedAt: number) {
   return Math.round((performance.now() - startedAt) * 100) / 100

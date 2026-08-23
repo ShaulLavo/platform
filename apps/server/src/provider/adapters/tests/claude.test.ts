@@ -688,6 +688,18 @@ describe('ClaudeProviderAdapter', () => {
     await harness.adapter.stopAll()
   })
 
+  it('disables provider transcript persistence only for ephemeral sessions', async () => {
+    const normal = claudeHarness()
+    await normal.adapter.startSession(sessionStartInput({}))
+    expect('persistSession' in latestOptions(normal)).toBe(false)
+    await normal.adapter.stopAll()
+
+    const ephemeral = claudeHarness()
+    await ephemeral.adapter.startSession(sessionStartInput({ ephemeral: true }))
+    expect(latestOptions(ephemeral).persistSession).toBe(false)
+    await ephemeral.adapter.stopAll()
+  })
+
   it('treats ultrathink as a prompt keyword instead of an effort flag', async () => {
     const harness = claudeHarness()
     const input = providerTurnInput({
@@ -936,6 +948,7 @@ function modelSelection(options?: ModelSelection['options']): ModelSelection {
 }
 
 function sessionStartInput(overrides: {
+  ephemeral?: boolean
   interactionMode?: InteractionMode
   options?: ModelSelection['options']
   resumeCursor?: unknown
@@ -944,6 +957,7 @@ function sessionStartInput(overrides: {
 }): ProviderSessionStartInput {
   return {
     cwd: WORKSPACE_ROOT,
+    ...(overrides.ephemeral === undefined ? {} : { ephemeral: overrides.ephemeral }),
     interactionMode: overrides.interactionMode ?? DEFAULT_INTERACTION_MODE,
     modelSelection: modelSelection(overrides.options),
     providerInstanceId: DEFAULT_CLAUDE_PROVIDER_SETTINGS.providerInstanceId,

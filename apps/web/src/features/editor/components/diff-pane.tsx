@@ -41,6 +41,7 @@ export function DiffPane({
   regions,
   side,
   syntaxBackend,
+  syntaxHighlight = true,
   theme,
   onFocus,
   onRegisterEditor,
@@ -52,6 +53,7 @@ export function DiffPane({
   regions: DiffRegionStore
   side: DiffGutterSide
   syntaxBackend: DiffSyntaxBackend
+  syntaxHighlight?: boolean
   theme: EditorTheme
   onFocus?: (side: DiffGutterSide) => void
   onRegisterEditor?: (side: DiffGutterSide, editor: Editor | null) => void
@@ -64,9 +66,9 @@ export function DiffPane({
         regions,
         side,
         syntaxBackend,
-        syntaxHighlight: true,
+        syntaxHighlight,
       }),
-    [regions, side, syntaxBackend],
+    [regions, side, syntaxBackend, syntaxHighlight],
   )
   const { rows, text, tokensRevision } = useDiffRows(plugin, file)
   const hoverPlugin = useDiffLanguage(file, rows, theme, languageServer)

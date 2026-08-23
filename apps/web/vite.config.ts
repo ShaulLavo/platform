@@ -14,6 +14,7 @@ const workspaceRoot = path.resolve(__dirname, '../..')
 const editorPackagesRoot = path.resolve(workspaceRoot, 'node_modules/@singapor')
 const editorSourceModules = buildEditorSourceModules(editorPackagesRoot)
 const editorRepoRoots = collectEditorRepoRoots(editorPackagesRoot, editorSourceModules)
+const reactRefreshExclude = buildReactRefreshExclude(editorRepoRoots)
 const devServerHost = process.env.WEB_HOST ?? '127.0.0.1'
 const devServerPort = portFromEnv(process.env, 'WEB_PORT', 5173)
 
@@ -29,7 +30,7 @@ export default defineConfig({
   plugins: [
     editorSourcePlugin(editorSourceModules),
     platformSelfSaveHmrPlugin(),
-    react({ compiler: true }),
+    react({ compiler: true, exclude: reactRefreshExclude }),
     tailwindcss(),
   ],
   resolve: {
@@ -195,6 +196,19 @@ function collectEditorRepoRoots(root: string, modules: EditorSourceModules): rea
     roots.add(path.resolve(real, '../..'))
   }
   return [...roots]
+}
+
+function buildReactRefreshExclude(editorRoots: readonly string[]): RegExp[] {
+  return [
+    /\/node_modules\//,
+    // Source linking bypasses the default node_modules exclusion. Only @singapor/react is React;
+    // refreshing editor core also injects browser-only globals into its worker modules.
+    ...editorRoots.map((root) => new RegExp(`^${escapeRegExp(root)}/packages/(?!react(?:/|$))`)),
+  ]
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
 function readJson(file: string): Record<string, unknown> | null {

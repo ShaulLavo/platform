@@ -9,56 +9,25 @@ import {
   type EditorPlugin,
   type EditorScrollPosition,
   type EditorSyntaxLanguageId,
-  type EditorSyntaxProvider,
 } from '@singapor/core'
 import { createEditorFindPlugin } from '@singapor/find'
 import { createFoldGutterPlugin, createLineGutterPlugin } from '@singapor/gutters'
 import type { FoldGutterIconContext } from '@singapor/gutters'
 import { createMarkdownPreviewPlugin } from '@singapor/markdown'
-import {
-  createShikiHighlighterPlugin,
-  createShikiWorkerOwner,
-  type ShikiWorkerOwner,
-} from '@singapor/core/shiki'
-import {
-  createTreeSitterSyntaxProvider,
-  createTreeSitterWorkerBackend,
-  type TreeSitterBackend,
-} from '@singapor/tree-sitter'
-import {
-  TREE_SITTER_LANGUAGE_CONTRIBUTIONS,
-  css,
-  html,
-  javaScript,
-  json,
-  markdown,
-  typeScript,
-} from '@singapor/tree-sitter-languages'
-import {
-  activeEditorThemeUsesShiki,
-  activeShikiThemeId,
-  editorThemeSwitchingPrepared,
-  getLoadedVscodeThemeRegistration,
-  getResolvedShikiThemeContentHash,
-  subscribeActiveShikiTheme,
-} from '@/features/editor/state/color-theme-store'
+import { createTreeSitterSyntaxPlugin } from '@singapor/tree-sitter'
+import { subscribeActiveShikiTheme } from '@/features/editor/state/color-theme-store'
 import { requestedDecodeMode } from '@/features/editor/utils/decode-mode'
 import {
-  EDITOR_SHIKI_LANGUAGE_MAP,
-  EDITOR_SHIKI_PRELOAD_LANGUAGES,
-  EDITOR_SHIKI_PRELOAD_THEMES,
-} from '@/features/editor/utils/shiki-languages'
+  editorShikiHighlighterProvider,
+  editorSyntaxHighlightingSource,
+  editorTreeSitterSyntaxProvider,
+} from '@/features/editor/state/syntax-highlighting'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
 import { editorPerformanceFeatureDisabled } from '@/features/editor/state/performance-trace'
 import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
 import type { DecodeMode } from '@singapor/decode'
 
-const NO_PRELOADED_THEMES: readonly string[] = []
-
-let treeSitterSyntaxProvider: EditorSyntaxProvider | null = null
-let treeSitterSyntaxBackend: TreeSitterBackend | null = null
-let shikiWorkerOwner: ShikiWorkerOwner | null = null
 const editorScrollPositionsByInstanceId = new Map<string, EditorScrollPosition>()
 const ignoredEditorInfoActions = new Set([
   'editor.plugins.gutters.changed',
@@ -232,134 +201,48 @@ function disposeAll(disposables: readonly EditorDisposable[]) {
 }
 
 function createEditorSyntaxHighlightingPlugins(): readonly EditorPlugin[] {
-  if (!readSettingsMirror()['editor.syntaxHighlighting.enabled']) return []
-  if (editorPerformanceFeatureDisabled('syntax')) return []
+  if (editorSyntaxHighlightingSource() === 'disabled') return []
+
+  const treeSitter = editorTreeSitterSyntaxProvider()
 
   return [
     // Tree-sitter stays for structure (folds/brackets); its token output is
     // suppressed automatically once the shiki highlighter session exists.
-    javaScript({ jsx: true }),
-    typeScript({ tsx: true }),
-    html(),
-    css(),
-    json(),
-    markdown(),
+    createTreeSitterSyntaxPlugin(treeSitter, { name: 'platform.tree-sitter-syntax' }),
     createEditorShikiHighlighterPlugin(),
   ]
 }
 
 /**
- * The theme name the shiki worker is asked for, logged at the point of decision.
- * Nothing downstream reports which theme a highlighter session was built with, so
- * without this a theme swap that fails to repaint is indistinguishable from one
- * that never reached the worker.
- */
-function resolveShikiThemeForSession(): string {
-  const themeId = activeShikiThemeId()
-  const registration = getLoadedVscodeThemeRegistration(themeId)
-  log.debug({
-    action: 'editor.color-theme.shiki_resolved',
-    area: 'editor',
-    contentHash: getResolvedShikiThemeContentHash(themeId),
-    hasRegistration: Boolean(registration),
-    themeId,
-  })
-
-  return themeId
-}
-
-/**
- * The shiki highlighter, registered only while the selected theme is one shiki
- * can paint. The built-in themes color tree-sitter's captures instead, and
- * tree-sitter emits highlights only when no highlighter session exists — so a
- * built-in selection has to take the provider off the editor, not just hand it
- * different colors. Deregistering reloads every open document's highlighter,
- * which is exactly the repaint the swap needs.
+ * Registers the same Shiki provider instance that diff panes use. Re-registering on a theme change
+ * reloads open editor sessions while the provider keeps its shared worker and language cache.
  */
 function createEditorShikiHighlighterPlugin(): EditorPlugin {
-  const shiki = createShikiHighlighterPlugin({
-    languages: EDITOR_SHIKI_LANGUAGE_MAP,
-    onThemeChanged: (listener) =>
-      subscribeActiveShikiTheme(() => {
-        if (!activeEditorThemeUsesShiki()) return
-        listener()
-      }),
-    preloadLanguages: EDITOR_SHIKI_PRELOAD_LANGUAGES,
-    // Naming every theme is what makes a swap reuse one highlighter, but it is
-    // only worth building until the user shows they intend to switch — opening a
-    // document should not pay for sixty-five themes nobody asked for.
-    preloadThemes: () =>
-      editorThemeSwitchingPrepared() ? EDITOR_SHIKI_PRELOAD_THEMES : NO_PRELOADED_THEMES,
-    theme: () => resolveShikiThemeForSession(),
-    // The worker can resolve only ~20 themes by name; the rest need a real
-    // registration object handed over synchronously at session creation.
-    themeRegistration: () => getLoadedVscodeThemeRegistration(activeShikiThemeId()),
-    workerOwner: editorShikiWorkerOwner(),
-  })
-
   return {
     name: 'platform.shiki-highlighter',
     activate: (context) => {
-      let activation: EditorDisposable | null = null
+      let registration: EditorDisposable | null = null
 
-      const syncActivation = () => {
-        const wanted = activeEditorThemeUsesShiki()
-        if (wanted === (activation !== null)) return
-        if (!wanted) {
-          activation?.dispose()
-          activation = null
-          return
-        }
+      const syncRegistration = () => {
+        registration?.dispose()
+        registration = null
+        if (editorSyntaxHighlightingSource() !== 'shiki') return
 
-        activation = disposableFromActivationResult(shiki.activate(context))
+        registration = context.registerHighlighter(editorShikiHighlighterProvider())
       }
 
-      syncActivation()
-      const unsubscribe = subscribeActiveShikiTheme(syncActivation)
+      syncRegistration()
+      const unsubscribe = subscribeActiveShikiTheme(syncRegistration)
 
       return {
         dispose: () => {
           unsubscribe()
-          activation?.dispose()
-          activation = null
+          registration?.dispose()
+          registration = null
         },
       }
     },
   }
-}
-
-export function editorShikiWorkerOwner(): ShikiWorkerOwner {
-  if (shikiWorkerOwner) return shikiWorkerOwner
-
-  shikiWorkerOwner = createShikiWorkerOwner()
-  return shikiWorkerOwner
-}
-
-export async function disposeEditorShikiWorkerOwner() {
-  const owner = shikiWorkerOwner
-  shikiWorkerOwner = null
-  await owner?.dispose?.()
-}
-
-export function editorTreeSitterSyntaxProvider(): EditorSyntaxProvider {
-  if (treeSitterSyntaxProvider) return treeSitterSyntaxProvider
-
-  const backend = createTreeSitterWorkerBackend()
-  const provider = createTreeSitterSyntaxProvider({ backend })
-  for (const contribution of TREE_SITTER_LANGUAGE_CONTRIBUTIONS) {
-    provider.registerLanguage(contribution, { replace: true })
-  }
-
-  treeSitterSyntaxBackend = backend
-  treeSitterSyntaxProvider = provider
-  return provider
-}
-
-export async function disposeEditorTreeSitterSyntaxProvider() {
-  const backend = treeSitterSyntaxBackend
-  treeSitterSyntaxBackend = null
-  treeSitterSyntaxProvider = null
-  await backend?.dispose?.()
 }
 
 async function loadPlugin(

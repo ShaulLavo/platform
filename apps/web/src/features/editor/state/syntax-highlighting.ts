@@ -1,0 +1,155 @@
+import type { EditorHighlighterProvider } from '@singapor/core'
+import {
+  createShikiHighlighterProvider,
+  createShikiWorkerOwner,
+  type ShikiWorkerOwner,
+} from '@singapor/core/shiki'
+import type { DiffSyntaxBackend } from '@singapor/diff'
+import {
+  createTreeSitterSyntaxProvider,
+  createTreeSitterWorkerBackend,
+  type TreeSitterBackend,
+  type TreeSitterSyntaxProvider,
+} from '@singapor/tree-sitter'
+import { TREE_SITTER_LANGUAGE_CONTRIBUTIONS } from '@singapor/tree-sitter-languages'
+
+import {
+  activeEditorThemeUsesShiki,
+  activeShikiThemeId,
+  editorThemeSwitchingPrepared,
+  getLoadedVscodeThemeRegistration,
+  getResolvedShikiThemeContentHash,
+} from '@/features/editor/state/color-theme-store'
+import { editorPerformanceFeatureDisabled } from '@/features/editor/state/performance-trace'
+import {
+  EDITOR_SHIKI_LANGUAGE_MAP,
+  EDITOR_SHIKI_PRELOAD_LANGUAGES,
+  EDITOR_SHIKI_PRELOAD_THEMES,
+} from '@/features/editor/utils/shiki-languages'
+import { isBuiltinEditorThemeId } from '@/features/editor/utils/theme-catalog'
+import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
+import { log } from '@/lib/client-logging'
+
+const NO_PRELOADED_THEMES: readonly string[] = []
+
+let treeSitterSyntaxProvider: TreeSitterSyntaxProvider | null = null
+let treeSitterSyntaxBackend: TreeSitterBackend | null = null
+let shikiHighlighterProvider: EditorHighlighterProvider | null = null
+let shikiWorkerOwner: ShikiWorkerOwner | null = null
+
+export type EditorSyntaxHighlightingSource = 'disabled' | 'shiki' | 'tree-sitter'
+
+export type EditorDiffSyntaxConfiguration = {
+  readonly backend: DiffSyntaxBackend
+  readonly enabled: boolean
+  readonly source: EditorSyntaxHighlightingSource
+  readonly themeRegistrationName: string | null
+}
+
+/** The single policy used by regular documents and diffs. */
+export function editorSyntaxHighlightingSource(
+  selectedThemeId?: string,
+): EditorSyntaxHighlightingSource {
+  if (!readSettingsMirror()['editor.syntaxHighlighting.enabled']) return 'disabled'
+  if (editorPerformanceFeatureDisabled('syntax')) return 'disabled'
+
+  const usesShiki = selectedThemeId
+    ? !isBuiltinEditorThemeId(selectedThemeId)
+    : activeEditorThemeUsesShiki()
+  return usesShiki ? 'shiki' : 'tree-sitter'
+}
+
+export function editorDiffSyntaxConfiguration(
+  selectedThemeId: string,
+  themeRegistrationName: string | null = null,
+): EditorDiffSyntaxConfiguration {
+  const source = editorSyntaxHighlightingSource(selectedThemeId)
+  if (source === 'disabled') {
+    return {
+      backend: { kind: 'tree-sitter', provider: null },
+      enabled: false,
+      source,
+      themeRegistrationName,
+    }
+  }
+  if (source === 'shiki') {
+    return {
+      backend: { kind: 'highlighter', provider: editorShikiHighlighterProvider() },
+      enabled: true,
+      source,
+      themeRegistrationName,
+    }
+  }
+
+  return {
+    backend: { kind: 'tree-sitter', provider: editorTreeSitterSyntaxProvider() },
+    enabled: true,
+    source,
+    themeRegistrationName,
+  }
+}
+
+export function editorShikiHighlighterProvider(): EditorHighlighterProvider {
+  if (shikiHighlighterProvider) return shikiHighlighterProvider
+
+  shikiHighlighterProvider = createShikiHighlighterProvider({
+    languages: EDITOR_SHIKI_LANGUAGE_MAP,
+    preloadLanguages: EDITOR_SHIKI_PRELOAD_LANGUAGES,
+    preloadThemes: () =>
+      editorThemeSwitchingPrepared() ? EDITOR_SHIKI_PRELOAD_THEMES : NO_PRELOADED_THEMES,
+    theme: resolveShikiThemeForSession,
+    themeRegistration: () => getLoadedVscodeThemeRegistration(activeShikiThemeId()),
+    workerOwner: editorShikiWorkerOwner(),
+  })
+  return shikiHighlighterProvider
+}
+
+export function editorShikiWorkerOwner(): ShikiWorkerOwner {
+  if (shikiWorkerOwner) return shikiWorkerOwner
+
+  shikiWorkerOwner = createShikiWorkerOwner()
+  return shikiWorkerOwner
+}
+
+export async function disposeEditorShikiWorkerOwner() {
+  const owner = shikiWorkerOwner
+  shikiHighlighterProvider = null
+  shikiWorkerOwner = null
+  await owner?.dispose?.()
+}
+
+export function editorTreeSitterSyntaxProvider(): TreeSitterSyntaxProvider {
+  if (treeSitterSyntaxProvider) return treeSitterSyntaxProvider
+
+  const backend = createTreeSitterWorkerBackend()
+  const provider = createTreeSitterSyntaxProvider({ backend })
+  for (const contribution of TREE_SITTER_LANGUAGE_CONTRIBUTIONS) {
+    provider.registerLanguage(contribution, { replace: true })
+  }
+
+  treeSitterSyntaxBackend = backend
+  treeSitterSyntaxProvider = provider
+  return provider
+}
+
+export async function disposeEditorTreeSitterSyntaxProvider() {
+  const backend = treeSitterSyntaxBackend
+  treeSitterSyntaxBackend = null
+  treeSitterSyntaxProvider = null
+  await backend?.dispose?.()
+}
+
+/** Logs the exact theme handed to every shared Shiki session. */
+function resolveShikiThemeForSession(): string {
+  const themeId = activeShikiThemeId()
+  const registration = getLoadedVscodeThemeRegistration(themeId)
+  log.debug({
+    action: 'editor.color-theme.shiki_resolved',
+    area: 'editor',
+    contentHash: getResolvedShikiThemeContentHash(themeId),
+    hasRegistration: Boolean(registration),
+    themeId,
+  })
+
+  return themeId
+}

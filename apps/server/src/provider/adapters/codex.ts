@@ -324,7 +324,8 @@ export class CodexProviderAdapter implements ProviderAdapter {
     const model = normalizeCodexModel(input.modelSelection.model)
     const interactionMode = input.interactionMode ?? DEFAULT_INTERACTION_MODE
     const modelOptions = codexModelOptions(input)
-    if (existing?.matches({ cwd, model, runtimeMode: input.runtimeMode })) {
+    const ephemeral = input.ephemeral ?? false
+    if (existing?.matches({ cwd, ephemeral, model, runtimeMode: input.runtimeMode })) {
       recordChatPipelineInfo('chat.pipeline.codex_adapter.session.reuse', {
         interactionMode,
         model,
@@ -357,6 +358,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
       cwd,
       emit: (event) => this.events.publish(event),
       env: this.env,
+      ephemeral,
       interactionMode,
       model,
       modelOptions,
@@ -391,6 +393,7 @@ class CodexAppServerSession {
   private readonly client: CodexAppServerRpcClient
   private readonly cwd: string
   private readonly emit: (event: ProviderRuntimeEvent) => void
+  private readonly ephemeral: boolean
   private readonly model: string
   private readonly pendingApprovals = new Map<ApprovalRequestId, PendingCodexApproval>()
   private readonly pendingUserInputs = new Map<ApprovalRequestId, PendingCodexUserInput>()
@@ -411,6 +414,7 @@ class CodexAppServerSession {
     client: CodexAppServerRpcClient
     cwd: string
     emit: (event: ProviderRuntimeEvent) => void
+    ephemeral: boolean
     interactionMode: InteractionMode
     model: string
     providerInstanceId: ProviderTurnInput['providerInstanceId']
@@ -422,6 +426,7 @@ class CodexAppServerSession {
     this.client = input.client
     this.cwd = input.cwd
     this.emit = input.emit
+    this.ephemeral = input.ephemeral
     this.interactionMode = input.interactionMode
     this.model = input.model
     this.providerInstanceId = input.providerInstanceId
@@ -437,6 +442,7 @@ class CodexAppServerSession {
     cwd: string
     emit: (event: ProviderRuntimeEvent) => void
     env: NodeJS.ProcessEnv
+    ephemeral: boolean
     interactionMode: InteractionMode
     model: string
     modelOptions: CodexModelOptions
@@ -448,6 +454,7 @@ class CodexAppServerSession {
     recordChatPipelineInfo('chat.pipeline.codex_session.start', {
       interactionMode: input.interactionMode,
       model: input.model,
+      ephemeral: input.ephemeral,
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
       threadId: input.threadId,
@@ -466,6 +473,7 @@ class CodexAppServerSession {
         client,
         cwd: input.cwd,
         emit: input.emit,
+        ephemeral: input.ephemeral,
         interactionMode: input.interactionMode,
         model: input.model,
         providerInstanceId: input.providerInstanceId,
@@ -495,9 +503,10 @@ class CodexAppServerSession {
    * changing it only needs `reconfigureInteractionMode` — replacing the session
    * would throw away the conversation Codex holds for this thread.
    */
-  matches(input: { cwd: string; model: string; runtimeMode: RuntimeMode }) {
+  matches(input: { cwd: string; ephemeral: boolean; model: string; runtimeMode: RuntimeMode }) {
     if (this.client.isClosed()) return false
     if (this.cwd !== input.cwd) return false
+    if (this.ephemeral !== input.ephemeral) return false
     if (this.model !== input.model) return false
 
     return this.runtimeMode === input.runtimeMode
@@ -2276,6 +2285,7 @@ async function openCodexThread(
   client: CodexAppServerRpcClient,
   input: {
     cwd: string
+    ephemeral: boolean
     model: string
     modelOptions: CodexModelOptions
     resumeCursor?: unknown | null
@@ -2308,6 +2318,7 @@ async function requestCodexModels(client: CodexAppServerRpcClient) {
 
 function threadStartParams(input: {
   cwd: string
+  ephemeral: boolean
   model: string
   modelOptions: CodexModelOptions
   runtimeMode: RuntimeMode
@@ -2318,9 +2329,10 @@ function threadStartParams(input: {
     approvalPolicy: runtime.approvalPolicy,
     approvalsReviewer: runtime.approvalsReviewer,
     cwd: input.cwd,
+    ...(input.ephemeral ? { ephemeral: true } : {}),
     experimentalRawEvents: true,
     model: input.model,
-    persistExtendedHistory: true,
+    persistExtendedHistory: !input.ephemeral,
     sandbox: runtime.sandbox,
     ...(input.modelOptions.serviceTier ? { serviceTier: input.modelOptions.serviceTier } : {}),
   } as CodexClientRequestParamsByMethod['thread/start']

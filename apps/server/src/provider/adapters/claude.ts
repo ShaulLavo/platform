@@ -388,9 +388,11 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
     // session across a switch runs the new mode against the old query, which is
     // what made "plan" silently behave as whatever the thread started in.
     const interactionMode = input.interactionMode ?? DEFAULT_INTERACTION_MODE
+    const ephemeral = input.ephemeral ?? false
     if (
       existing?.matches({
         cwd,
+        ephemeral,
         interactionMode,
         model,
         reasoningKey,
@@ -433,6 +435,7 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
       cwd,
       emit: (event) => this.events.publish(event),
       env: this.env,
+      ephemeral,
       interactionMode,
       model,
       providerInstanceId: input.providerInstanceId,
@@ -468,6 +471,7 @@ class ClaudeAgentSession {
   private readonly attachmentsDir: string
   private readonly cwd: string
   private readonly emit: (event: ProviderRuntimeEvent) => void
+  private readonly ephemeral: boolean
   private readonly inFlightTools = new Map<string, InFlightClaudeTool>()
   private readonly interactionMode: InteractionMode
   private readonly model: string
@@ -489,6 +493,7 @@ class ClaudeAgentSession {
     attachmentsDir: string
     cwd: string
     emit: (event: ProviderRuntimeEvent) => void
+    ephemeral: boolean
     interactionMode: InteractionMode
     model: string
     providerInstanceId: ProviderTurnInput['providerInstanceId']
@@ -500,6 +505,7 @@ class ClaudeAgentSession {
     this.attachmentsDir = input.attachmentsDir
     this.cwd = input.cwd
     this.emit = input.emit
+    this.ephemeral = input.ephemeral
     this.interactionMode = input.interactionMode
     this.model = input.model
     this.providerInstanceId = input.providerInstanceId
@@ -529,6 +535,7 @@ class ClaudeAgentSession {
     cwd: string
     emit: (event: ProviderRuntimeEvent) => void
     env: NodeJS.ProcessEnv
+    ephemeral: boolean
     interactionMode: InteractionMode
     model: string
     providerInstanceId: ProviderTurnInput['providerInstanceId']
@@ -540,6 +547,7 @@ class ClaudeAgentSession {
     recordChatPipelineInfo('chat.pipeline.claude_session.start', {
       interactionMode: input.interactionMode,
       model: input.model,
+      ephemeral: input.ephemeral,
       providerInstanceId: input.providerInstanceId,
       reasoning: input.reasoning,
       runtimeMode: input.runtimeMode,
@@ -554,6 +562,7 @@ class ClaudeAgentSession {
       canUseTool: session.canUseTool(),
       cwd: input.cwd,
       env: input.env,
+      persistSession: input.ephemeral ? false : undefined,
       interactionMode: input.interactionMode,
       model: input.model,
       reasoning: input.reasoning,
@@ -594,6 +603,7 @@ class ClaudeAgentSession {
 
   matches(input: {
     cwd: string
+    ephemeral: boolean
     interactionMode: InteractionMode
     model: string
     reasoningKey: string
@@ -601,6 +611,7 @@ class ClaudeAgentSession {
   }) {
     if (!this.isActive()) return false
     if (this.cwd !== input.cwd) return false
+    if (this.ephemeral !== input.ephemeral) return false
     if (this.interactionMode !== input.interactionMode) return false
     if (this.model !== input.model) return false
     if (this.reasoningKey !== input.reasoningKey) return false

@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from 'node:fs'
 
 import {
   DEFAULT_CODEX_PROVIDER_SETTINGS,
+  type ProviderModel,
   type ProviderApprovalDecision,
   type ProviderDriverKind,
   type ProviderInstanceId,
@@ -26,6 +27,7 @@ import { sessionInputFromTurn } from './utils/session-input'
 
 export type MockProviderAdapterOptions = {
   approvalError?: string
+  auth?: ProviderSnapshot['auth']
   beforeComplete?: () => Promise<void> | void
   /** Replaces the default catalog; `{ commands: [], skills: [] }` models a provider with nothing to offer. */
   commandCatalog?: ProviderCommandCatalogResult
@@ -35,6 +37,7 @@ export type MockProviderAdapterOptions = {
   /** Resolved per-instance env, so multi-instance isolation is observable in tests. */
   env?: NodeJS.ProcessEnv
   interruptError?: string
+  models?: readonly ProviderModel[]
   /** Makes `snapshot()` report a failed probe, the way a flaky CLI read does. */
   probeError?: string
   providerInstanceId?: ProviderInstanceId
@@ -94,9 +97,11 @@ export class MockProviderAdapter implements ProviderAdapter {
   private readonly sessions = new Map<ThreadId, ProviderSessionStartInput>()
   private readonly settings: ProviderInstanceSettings
   private readonly approvalError: string | null
+  private readonly authOverride: ProviderSnapshot['auth'] | null
   private readonly beforeComplete: (() => Promise<void> | void) | null
   private readonly commandCatalog: ProviderCommandCatalogResult
   private readonly interruptError: string | null
+  private readonly modelsOverride: readonly ProviderModel[] | null
   private readonly responseText: string
   private readonly shouldFail: boolean
   private readonly stopError: string | null
@@ -115,9 +120,11 @@ export class MockProviderAdapter implements ProviderAdapter {
       providerInstanceId: this.adapterKey,
     }
     this.approvalError = options.approvalError ?? null
+    this.authOverride = options.auth ?? null
     this.beforeComplete = options.beforeComplete ?? null
     this.commandCatalog = options.commandCatalog ?? MOCK_COMMAND_CATALOG
     this.interruptError = options.interruptError ?? null
+    this.modelsOverride = options.models ?? null
     this.probeError = options.probeError ?? null
     this.responseText = options.responseText ?? 'Mock response'
     this.shouldFail = options.shouldFail ?? false
@@ -141,18 +148,10 @@ export class MockProviderAdapter implements ProviderAdapter {
 
     return {
       ...this.settings,
-      auth: mockAuth(this.env),
+      auth: this.authOverride ?? mockAuth(this.env),
       checkedAt: new Date().toISOString(),
       installed: true,
-      models: [
-        {
-          capabilities: null,
-          isCustom: false,
-          name: 'GPT-5.5',
-          shortName: 'GPT-5.5',
-          slug: 'gpt-5.5',
-        },
-      ],
+      models: this.modelsOverride ? this.modelsOverride.slice() : [mockModel()],
       status: 'ready',
       version: 'mock',
     }
@@ -311,6 +310,16 @@ export class MockProviderAdapter implements ProviderAdapter {
     if (this.userInputError) throw createInternalError(this.userInputError)
 
     this.userInputResponses.push(input)
+  }
+}
+
+function mockModel(): ProviderModel {
+  return {
+    capabilities: null,
+    isCustom: false,
+    name: 'GPT-5.5',
+    shortName: 'GPT-5.5',
+    slug: 'gpt-5.5',
   }
 }
 

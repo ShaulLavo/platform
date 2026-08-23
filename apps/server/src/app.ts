@@ -10,6 +10,7 @@ import { fsRoutes } from './fs/routes'
 import { FileSystemService, type FileSystemServiceOptions } from './fs/service'
 import { gitRoutes } from './git/routes'
 import { GitService } from './git/service'
+import { CommitMessageGenerator } from './git/commit-message-generator'
 import { setLspDownloadPolicy } from './lsp/installers'
 import { LspSessionPool } from './lsp/proxy-session'
 import { lspMatchQuerySchema, lspRouteMatch, lspRouteSemanticTokens, lspRoutes } from './lsp/routes'
@@ -41,6 +42,7 @@ import { SettingsStore, type SettingsStoreOptions } from './settings/store'
 import { TerminalService, type TerminalPtyFactory } from './terminal/service'
 import { wallpaperRoutes } from './wallpaper/routes'
 import { isActiveBinding, ProviderSessionDirectory } from './provider/provider-session-directory'
+import { ProviderService } from './provider/provider-service'
 
 export type AppOptions = FileSystemServiceOptions & {
   auth?: AuthOptions
@@ -124,11 +126,16 @@ export function createApp(options: AppOptions) {
   settings.onChange(() => {
     runDetached(reconcileProviderSettings, { area: 'provider', operation: 'reconcile' })
   })
+  const providerService = new ProviderService({
+    adapterRegistry: providerAdapterRegistry,
+    sessionDirectory: new ProviderSessionDirectory(database),
+  })
   const orchestration = new OrchestrationEngine(database, {
     providerRuntime: options.orchestration?.providerRuntime
-      ? { adapterRegistry: providerAdapterRegistry, checkpointGit: git }
+      ? { checkpointGit: git, providerService }
       : false,
   })
+  const commitMessages = new CommitMessageGenerator(git, providerAdapterRegistry, providerService)
   const checkpointDiff = new OrchestrationCheckpointDiffQuery(database, git)
   const threadSearch = new OrchestrationThreadSearchQuery(database)
   const auth = createAuthConfig(options.auth)
@@ -156,7 +163,7 @@ export function createApp(options: AppOptions) {
       () => settings.snapshot().values['lsp.idleTimeoutMs'],
       () => settings.snapshot().values['lsp.semanticTokens.delta'],
     )
-  const cleanup = appCleanup(terminal, fs, settings, lspPool)
+  const cleanup = appCleanup(terminal, fs, settings, lspPool, providerService)
 
   const app = new Elysia({ name: 'platform' })
   applyObservability(app)
@@ -203,7 +210,7 @@ export function createApp(options: AppOptions) {
     .use(fontRoutes(fonts))
     .use(wallpaperRoutes())
     .use(settingsRoutes(settings))
-    .use(gitRoutes(git))
+    .use(gitRoutes(git, commitMessages))
     .use(fsRoutes(fs))
     .onStop(cleanup)
   appCleanups.set(configured, cleanup)
@@ -245,6 +252,7 @@ function appCleanup(
   fs: FileSystemService,
   settings: SettingsStore,
   lspPool: LspSessionPool,
+  providerService: ProviderService,
 ) {
   let closed = false
 
@@ -260,6 +268,7 @@ function appCleanup(
     // Releases the settings file watchers; without this a test run leaks a
     // native handle per app it builds.
     settings.close()
+    await providerService.shutdown()
     await fs.close()
     await flushObservability()
   }

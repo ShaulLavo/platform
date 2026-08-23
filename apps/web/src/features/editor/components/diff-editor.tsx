@@ -10,8 +10,8 @@ import { DiffPane } from '@/features/editor/components/diff-pane'
 import type { DiffLanguageServerContext } from '@/features/editor/hooks/use-diff-language'
 import { useDiffPanes } from '@/features/editor/hooks/use-diff-panes'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
+import { editorDiffSyntaxConfiguration } from '@/features/editor/state/syntax-highlighting'
 import type { EditorDiffViewMode } from '@/features/editor/utils/diff-view-mode'
-import { editorTreeSitterSyntaxProvider } from '@/features/editor/utils/plugins'
 
 /**
  * A diff, drawn as one or two real `Editor`s with the diff plugin supplying the rows.
@@ -31,12 +31,11 @@ export function DiffEditor({
   mode: EditorDiffViewMode
   regions?: DiffRegionStore
 }) {
-  const { editorTheme } = useEditorColorTheme()
-  // Memoized for identity, not for cost: this is a dependency of the plugin each pane builds, so a
-  // fresh object per render would tear down and rebuild both plugins on every render.
-  const syntaxBackend = useMemo(
-    () => ({ kind: 'tree-sitter' as const, provider: editorTreeSitterSyntaxProvider() }),
-    [],
+  const { editorTheme, registration, shikiTheme } = useEditorColorTheme()
+  // Theme selection and its async Shiki registration landing both require new per-file sessions.
+  const syntax = useMemo(
+    () => editorDiffSyntaxConfiguration(shikiTheme, registration?.name ?? null),
+    [registration, shikiTheme],
   )
   // Split is two plugin instances, and a separator row is one region shown twice. Without a shared
   // store a gutter click would expand one pane and leave the other where it was, misaligning every
@@ -53,7 +52,8 @@ export function DiffEditor({
           languageServer={languageServer}
           regions={regionStore}
           side='stacked'
-          syntaxBackend={syntaxBackend}
+          syntaxBackend={syntax.backend}
+          syntaxHighlight={syntax.enabled}
           theme={editorTheme}
         />
       </div>
@@ -69,7 +69,8 @@ export function DiffEditor({
             languageServer={languageServer}
             regions={regionStore}
             side='old'
-            syntaxBackend={syntaxBackend}
+            syntaxBackend={syntax.backend}
+            syntaxHighlight={syntax.enabled}
             theme={editorTheme}
             onFocus={panes.handleFocus}
             onRegisterEditor={panes.registerEditor}
@@ -83,7 +84,8 @@ export function DiffEditor({
             languageServer={languageServer}
             regions={regionStore}
             side='new'
-            syntaxBackend={syntaxBackend}
+            syntaxBackend={syntax.backend}
+            syntaxHighlight={syntax.enabled}
             theme={editorTheme}
             onFocus={panes.handleFocus}
             onRegisterEditor={panes.registerEditor}

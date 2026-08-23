@@ -5,6 +5,7 @@ import {
   gitBranchDiffQuerySchema,
   gitCheckoutBodySchema,
   gitCommitBodySchema,
+  gitCommitMessageResultSchema,
   gitCreateBranchBodySchema,
   gitDiffQuerySchema,
   gitFileQuerySchema,
@@ -15,11 +16,12 @@ import {
   gitWorktreeCreateBodySchema,
   gitWorktreeRemoveBodySchema,
 } from './contracts'
+import type { CommitMessageGenerator } from './commit-message-generator'
 import { toSse } from '../sse'
 import type { GitService } from './service'
 import { GitWorktreeService } from './worktrees'
 
-export function gitRoutes(git: GitService) {
+export function gitRoutes(git: GitService, commitMessages: CommitMessageGenerator) {
   const worktrees = new GitWorktreeService(git)
 
   return new Elysia({ name: 'git-routes' }).group('/git', (app) =>
@@ -72,6 +74,14 @@ export function gitRoutes(git: GitService) {
       .post('/commit', ({ body }) => git.commit(body), {
         body: gitCommitBodySchema,
       })
+      .post(
+        '/commit-message',
+        ({ body, request }) => commitMessages.generate(body.path, request.signal),
+        {
+          body: gitPathBodySchema,
+          response: gitCommitMessageResultSchema,
+        },
+      )
       // Streamed rather than awaited: a commit runs the repository's hooks, and
       // a slow hook is only distinguishable from a stuck one if its output
       // arrives while it is still running.

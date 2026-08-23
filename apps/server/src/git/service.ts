@@ -215,10 +215,9 @@ export class GitService {
       ...pathspecs,
     ]
     const result = await this.git(repository.rootAbsolutePath, args)
-    const diffs =
-      result.stdout || staged
-        ? parseDiff(result.stdout, repository.rootPath, staged)
-        : await this.untrackedDiffs(repository)
+    const tracked = parseDiff(result.stdout, repository.rootPath, staged)
+    const untracked = staged ? [] : await this.untrackedDiffs(repository)
+    const diffs = tracked.concat(untracked)
     const results = await mapWithConcurrency(diffs, this.diffConcurrency, async (diff) =>
       this.withDiffSnapshotRefs(repository, diff),
     )
@@ -959,8 +958,6 @@ export class GitService {
   }
 
   private async untrackedDiffs(repository: GitRepositoryLocation): Promise<GitFileDiff[]> {
-    if (!repository.pathspec) return []
-
     const files = await this.untrackedFiles(repository)
     const diffableFiles = await mapWithConcurrency(files, this.diffConcurrency, async (file) =>
       this.diffableUntrackedFile(repository, file),
@@ -975,15 +972,13 @@ export class GitService {
   }
 
   private async untrackedFiles(repository: GitRepositoryLocation) {
-    if (!repository.pathspec) return []
-
+    const pathspec = repository.pathspec ? ['--', repository.pathspec] : []
     const result = await this.git(repository.rootAbsolutePath, [
       'ls-files',
       '--others',
       '--exclude-standard',
       '-z',
-      '--',
-      repository.pathspec,
+      ...pathspec,
     ])
 
     return result.stdout.split('\0').filter(Boolean)
