@@ -13,7 +13,13 @@ export function RecentShortcutList({
   state: EntriesLoadState
 }) {
   if (state.status === 'loading') {
-    return <LoadingState className='gap-1.5 px-2 py-1.5' label='Loading recents' rows={2} />
+    return (
+      <LoadingState
+        className='compact:gap-1 compact:px-1.5 compact:py-1 gap-1.5 px-2 py-1.5'
+        label='Loading recents'
+        rows={2}
+      />
+    )
   }
   if (state.status === 'error') return <RecentSidebarNote>Could not load</RecentSidebarNote>
   if (state.status === 'ready' && state.data.length === 0) {

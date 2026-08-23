@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 
 import { toJsonSchema } from '@valibot/to-json-schema'
+import { format } from 'oxfmt'
 
 import { SETTINGS_REGISTRY } from '../packages/contracts/src/settings/keys'
 
@@ -102,12 +103,14 @@ function isJsonObject(value: JsonValue): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-function schemaText(): string {
-  return `${JSON.stringify(generateSettingsSchema(), null, 2)}\n`
+async function schemaText(): Promise<string> {
+  const source = `${JSON.stringify(generateSettingsSchema(), null, 2)}\n`
+  const result = await format('schema.json', source)
+  return result.code
 }
 
 async function writeSchema(target: string): Promise<void> {
-  const content = schemaText()
+  const content = await schemaText()
   await writeFile(target, content, 'utf8')
   console.log(`wrote ${target} (${Object.keys(SETTINGS_REGISTRY).length} settings)`)
 }
@@ -117,7 +120,7 @@ async function checkSchema(target: string): Promise<void> {
   const generated = path.join(directory, 'schema.json')
 
   try {
-    await writeFile(generated, schemaText(), 'utf8')
+    await writeFile(generated, await schemaText(), 'utf8')
     const [actual, expected] = await Promise.all([
       readFile(target, 'utf8').catch(() => ''),
       readFile(generated, 'utf8'),

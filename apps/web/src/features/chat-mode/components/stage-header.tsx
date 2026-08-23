@@ -32,7 +32,7 @@ export function StageHeader({
     Boolean(session) && renaming?.surface === 'header' && renaming.threadId === session?.id
 
   return (
-    <header className='border-border/60 flex h-11 shrink-0 items-center gap-2 border-b px-3'>
+    <header className='border-border/60 compact:h-10 compact:gap-1.5 compact:px-2 flex h-11 shrink-0 items-center gap-2 border-b px-3'>
       <nav aria-label='Session' className='flex min-w-0 flex-1 items-center gap-1.5 text-[12px]'>
         {projectTitle ? (
           <>
@@ -53,7 +53,7 @@ export function StageHeader({
         ) : null}
         {session && editing ? (
           <SessionRename
-            className='text-foreground h-7 min-w-0 flex-1 rounded-md px-2 text-[13px] font-medium'
+            className='text-foreground compact:h-6 compact:px-1.5 h-7 min-w-0 flex-1 rounded-md px-2 text-[13px] font-medium'
             session={session}
           />
         ) : (

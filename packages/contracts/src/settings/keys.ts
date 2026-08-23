@@ -59,6 +59,16 @@ export const SETTINGS_REGISTRY = {
       'appearance',
     ],
   }),
+  'workbench.density': defineSetting({
+    schema: v.picklist(['compact', 'cozy'] as const),
+    default: 'compact',
+    scope: 'window',
+    widget: 'enum',
+    category: 'Appearance',
+    title: 'Interface density',
+    description: 'Use tighter compact spacing or roomier cozy spacing throughout the app.',
+    keywords: ['density', 'compact', 'cozy', 'spacing', 'padding', 'appearance'],
+  }),
   'workbench.surface.opacity': defineSetting({
     schema: percentSchema,
     default: 80,

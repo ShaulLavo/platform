@@ -9,6 +9,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 
 import { CONTEXT_MENU_SLOT_NAME, FILE_TREE_TAG_NAME, HEADER_SLOT_NAME } from '../utils/constants'
@@ -119,6 +120,13 @@ export function FileTree({
     baselineModelRef.current = model
     baselineCompositionRef.current = model.getComposition()
   }
+  // Stable callbacks prevent useSyncExternalStore from resubscribing every render.
+  const subscribeToDensity = useCallback(
+    (listener: () => void) => model.subscribeDensity(listener),
+    [model],
+  )
+  const getDensitySnapshot = useCallback(() => model.getDensityVersion(), [model])
+  useSyncExternalStore(subscribeToDensity, getDensitySnapshot, getDensitySnapshot)
 
   const hasContextMenu = renderContextMenu != null
   const handleContextMenuClose = useCallback(() => {

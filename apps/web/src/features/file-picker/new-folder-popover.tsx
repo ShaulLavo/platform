@@ -88,7 +88,7 @@ export function NewFolderPopover({
           <PopoverTitle>New folder</PopoverTitle>
           <PopoverDescription>{`Create inside ${displayPath(currentPath)}.`}</PopoverDescription>
         </PopoverHeader>
-        <form className='space-y-2' onSubmit={handleSubmit}>
+        <form className='compact:space-y-1.5 space-y-2' onSubmit={handleSubmit}>
           <Input
             autoFocus
             aria-describedby={displayedError ? 'file-picker-new-folder-error' : undefined}
@@ -108,7 +108,7 @@ export function NewFolderPopover({
               {displayedError}
             </p>
           ) : null}
-          <div className='flex justify-end gap-2'>
+          <div className='compact:gap-1.5 flex justify-end gap-2'>
             <Button
               disabled={mutation.isPending}
               onClick={() => setOpen(false)}

@@ -20,6 +20,18 @@ export function useFileTree(options: FileTreeOptions): UseFileTreeResult {
   const cleanUpRef = useRef<CleanUpRef>({ timeout: null, model })
   const iconsRef = useRef(options.icons)
   const gitStatusRef = useRef(options.gitStatus)
+  const densityRef = useRef(options.density)
+  const itemHeightRef = useRef(options.itemHeight)
+
+  useLayoutEffect(() => {
+    if (densityRef.current === options.density && itemHeightRef.current === options.itemHeight) {
+      return
+    }
+
+    densityRef.current = options.density
+    itemHeightRef.current = options.itemHeight
+    model.setDensity(options.density, options.itemHeight)
+  }, [model, options.density, options.itemHeight])
 
   useLayoutEffect(() => {
     if (iconsRef.current === options.icons) {

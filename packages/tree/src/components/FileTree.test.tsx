@@ -150,6 +150,63 @@ describe('FileTree React integration', () => {
     })
   })
 
+  it('syncs density changes into the stable model and virtualized geometry', async () => {
+    const container = document.createElement('main')
+    document.body.append(container)
+    root = createRoot(container)
+    const capturedModels: { first: FileTreeModel | null; latest: FileTreeModel | null } = {
+      first: null,
+      latest: null,
+    }
+
+    function Harness() {
+      const [itemHeight, setItemHeight] = useState(20)
+      const { model } = useFileTree({
+        density: 'compact',
+        initialExpansion: 'open',
+        itemHeight,
+        paths: ['src/', 'src/a.ts', 'src/b.ts'],
+      })
+      capturedModels.first ??= model
+      capturedModels.latest = model
+
+      return (
+        <>
+          <FileTree aria-label='Files' model={model} />
+          <button data-testid='set-density' type='button' onClick={() => setItemHeight(24)}>
+            Use cozy density
+          </button>
+        </>
+      )
+    }
+
+    flushSync(() => root?.render(<Harness />))
+    const shadowRoot = await waitForShadowRoot()
+    const host = document.querySelector<HTMLElement>('file-tree-container')
+    expect(host?.style.getPropertyValue('--trees-item-height')).toBe('20px')
+    expect(rowButton(shadowRoot, 'src/a.ts').style.minHeight).toBe('20px')
+
+    clickButton('set-density')
+
+    await vi.waitFor(() => {
+      expect(capturedModels.latest).toBe(capturedModels.first)
+      expect(capturedModels.first?.getItemHeight()).toBe(24)
+      expect(host?.style.getPropertyValue('--trees-item-height')).toBe('24px')
+      expect(rowButton(shadowRoot, 'src/a.ts').style.minHeight).toBe('24px')
+      expect(
+        shadowRoot.querySelector<HTMLElement>('[data-file-tree-virtualized-list="true"]')?.style
+          .height,
+      ).toBe('72px')
+    })
+
+    capturedModels.first?.setDensity('compact', 20)
+
+    await vi.waitFor(() => {
+      expect(host?.style.getPropertyValue('--trees-item-height')).toBe('20px')
+      expect(rowButton(shadowRoot, 'src/a.ts').style.minHeight).toBe('20px')
+    })
+  })
+
   it.each(ICON_FALLBACK_CASES)(
     'uses the generic file remap as the $set fallback',
     async ({ expectedTypeScriptIcon, set }) => {

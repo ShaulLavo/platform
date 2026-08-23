@@ -46,13 +46,18 @@ function EmptyState({
   return (
     <div
       className={cn(
-        'flex min-h-0 p-4 text-xs',
+        'flex min-h-0 p-4 text-xs compact:p-3',
         align === 'center' ? 'items-center justify-center' : 'items-start',
         className,
       )}
       data-slot='empty-state'
     >
-      <div className={cn('flex flex-col gap-2', align === 'center' && 'items-center text-center')}>
+      <div
+        className={cn(
+          'flex flex-col gap-2 compact:gap-1.5',
+          align === 'center' && 'items-center text-center',
+        )}
+      >
         {icon ? (
           <span aria-hidden='true' className={cn('[&>svg]:size-6', emptyStateIconTone[tone])}>
             {icon}

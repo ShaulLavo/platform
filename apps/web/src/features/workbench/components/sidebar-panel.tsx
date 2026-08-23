@@ -44,7 +44,7 @@ export function SidebarPanel({
     <aside className='bg-card backdrop-material border-border flex h-full min-h-0 min-w-0 overflow-hidden border-r'>
       <nav
         aria-label='Sidebar tabs'
-        className='border-border flex w-11 shrink-0 flex-col items-center gap-1 border-r p-1'
+        className='border-border compact:w-10 flex w-11 shrink-0 flex-col items-center gap-1 border-r p-1'
       >
         {sidebarTabButton({
           active: panels.activeSidebarTab === 'files',
@@ -104,7 +104,7 @@ function sidebarTabButton({
       aria-label={label}
       aria-pressed={active}
       className={cn(
-        'text-muted-foreground hover:text-foreground size-8 rounded-md',
+        'text-muted-foreground hover:text-foreground size-8 rounded-md compact:size-7',
         active && 'bg-accent text-accent-foreground',
       )}
       size='icon-sm'

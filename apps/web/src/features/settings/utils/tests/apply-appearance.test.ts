@@ -31,6 +31,7 @@ const appearance = (overrides: Partial<AppearanceValues> = {}): AppearanceValues
   'editor.lineHeight': DEFAULT_SETTING_VALUES['editor.lineHeight'],
   'editor.tabSize': DEFAULT_SETTING_VALUES['editor.tabSize'],
   'workbench.colorTheme': DEFAULT_SETTING_VALUES['workbench.colorTheme'],
+  'workbench.density': DEFAULT_SETTING_VALUES['workbench.density'],
   'workbench.palette': DEFAULT_SETTING_VALUES['workbench.palette'],
   'workbench.surface.blur': DEFAULT_SETTING_VALUES['workbench.surface.blur'],
   'workbench.surface.contentOpacity': DEFAULT_SETTING_VALUES['workbench.surface.contentOpacity'],
@@ -100,6 +101,16 @@ describe('applyAppearance', () => {
 
     applyAppearance(appearance({ 'workbench.palette': 'sage' }), root, false)
     expect(attributes.get('data-palette')).toBe('sage')
+  })
+
+  it('writes interface density as an attribute value the CSS can select on', () => {
+    const { attributes, root } = fakeRoot()
+
+    applyAppearance(appearance({ 'workbench.density': 'cozy' }), root, false)
+    expect(attributes.get('data-density')).toBe('cozy')
+
+    applyAppearance(appearance({ 'workbench.density': 'compact' }), root, false)
+    expect(attributes.get('data-density')).toBe('compact')
   })
 
   it('applies registry defaults without a stored document', () => {

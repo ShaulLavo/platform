@@ -39,7 +39,7 @@ export function SessionGroupHeader({
           {...dragAttributes}
           {...dragListeners}
           aria-expanded={!group.collapsed}
-          className='text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 flex w-full touch-none items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] font-medium outline-none focus-visible:ring-1'
+          className='text-muted-foreground hover:text-foreground focus-visible:ring-ring/50 compact:gap-1 compact:px-1.5 flex w-full touch-none items-center gap-1.5 rounded-md px-2 py-1 text-left text-[11px] font-medium outline-none focus-visible:ring-1'
           title={project.workspaceRoot}
           type='button'
           onClick={() => toggleProjectCollapsed(project.id)}

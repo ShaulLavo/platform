@@ -112,7 +112,7 @@ function gitToolPane(rootPath: string, diffScope: ThreadDiffScopeState) {
       <ToolPaneHeader tab='git' />
       <div
         aria-label='Diff scope'
-        className='border-border flex shrink-0 items-center gap-1 border-b px-2 py-1'
+        className='border-border compact:py-0.5 flex shrink-0 items-center gap-1 border-b px-2 py-1'
         role='group'
       >
         {scopeButton({

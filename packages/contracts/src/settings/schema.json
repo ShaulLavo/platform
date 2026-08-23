@@ -525,6 +525,12 @@
       "enum": ["dark", "light", "system"],
       "type": "string"
     },
+    "workbench.density": {
+      "default": "compact",
+      "description": "Use tighter compact spacing or roomier cozy spacing throughout the app.",
+      "enum": ["compact", "cozy"],
+      "type": "string"
+    },
     "workbench.palette": {
       "default": "graphite",
       "description": "Warm near-greyscale, or warm stone surfaces with a sage accent.",

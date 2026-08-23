@@ -54,7 +54,7 @@ export function EditorTabButton({
       {...dragListeners}
       aria-selected={tab.active}
       className={cn(
-        'group/proof-tab flex h-9 w-36 min-w-24 max-w-48 shrink-0 cursor-grab touch-none items-center gap-1.5 rounded-t-md border px-2 text-left text-xs outline-none transition-[background-color,border-color,opacity,box-shadow] active:cursor-grabbing focus-visible:ring-1 focus-visible:ring-ring/50',
+        'group/proof-tab flex h-9 w-36 min-w-24 max-w-48 shrink-0 cursor-grab touch-none items-center gap-1.5 rounded-t-md border px-2 text-left text-xs outline-none transition-[background-color,border-color,opacity,box-shadow] active:cursor-grabbing focus-visible:ring-1 focus-visible:ring-ring/50 compact:h-8 compact:gap-1 compact:px-1.5',
         tab.active
           ? 'border-border bg-background-solid text-foreground shadow-sm'
           : 'border-transparent text-muted-foreground shadow-none hover:bg-accent hover:text-accent-foreground',

@@ -12,7 +12,7 @@ import {
 import { Button } from '@workspace/ui/components/button'
 import { EmptyState } from '@workspace/ui/components/empty-state'
 import { LoadingState } from '@workspace/ui/components/loading-state'
-import { Spinner } from '@workspace/ui/components/spinner'
+import { OrbitLoader } from '@workspace/ui/components/orbit-loader'
 import { cn } from '@workspace/ui/lib/utils'
 import {
   useCallback,
@@ -31,6 +31,7 @@ import {
 
 import { EntryIcon } from '@/features/file-picker/entry-ui'
 import { useFilePickerSessionActions } from '@/features/file-picker/hooks/use-file-picker-session-actions'
+import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 import {
   displayPath,
   formatSizeLabel,
@@ -42,6 +43,10 @@ import {
   type FilePickerIconMode,
   type FilePickerMode,
 } from '@/features/file-picker/model'
+import {
+  filePickerDensityMetrics,
+  type FilePickerDensityMetrics,
+} from '@/features/file-picker/utils/density'
 import { fileListAvailabilityLabel } from '@/features/file-picker/utils/availability'
 import {
   buildFileListRowMetrics,
@@ -66,11 +71,6 @@ export type FileListKeyboardContext = {
 
 type SetFileListViewport = Dispatch<SetStateAction<FileListViewport>>
 
-// A browse row is one line of text. Only a search hit carries a second line
-// (the path that says which folder it was found in), so only it pays for one.
-const ENTRY_ROW_SIZE = 26
-const ENTRY_WITH_PATH_ROW_SIZE = 38
-const SECTION_ROW_SIZE = 22
 const INITIAL_VIEWPORT: FileListViewport = { height: 480, top: 0 }
 const compactModifiedFormatter = new Intl.DateTimeFormat(undefined, {
   day: 'numeric',
@@ -91,14 +91,18 @@ export function ListHeader({
   onSort: (key: FileListSortKey) => void
   sort: FileListSort | null
 }) {
+  const density = useSettingValue('workbench.density')
+  const metrics = filePickerDensityMetrics(density)
+
   return (
     <div
       aria-label='File list sorting'
       className={cn(
-        'bg-background backdrop-material text-muted-foreground grid h-8 items-center gap-3 border-b px-3 text-[11px] font-medium tracking-normal uppercase',
+        'border-border/60 text-muted-foreground/70 grid items-center gap-3 border-b px-3 text-[11px] font-medium tracking-normal uppercase compact:gap-2 compact:px-2 compact:text-[10px] compact:tracking-wide cozy:bg-background cozy:backdrop-material cozy:border-border cozy:text-muted-foreground',
         fileListGridClass(mode),
       )}
       role='group'
+      style={{ height: metrics.headerSize }}
     >
       <SortableColumnHeader
         isLoading={isLoading}
@@ -158,12 +162,14 @@ export function FileList({
   onRetry: () => void
   selectedPath: string | null
 }) {
+  const density = useSettingValue('workbench.density')
+  const densityMetrics = filePickerDensityMetrics(density)
   const rows = useMemo(() => fileListRows(entries, isSearching), [entries, isSearching])
   const listboxRef = useRef<HTMLDivElement>(null)
   const listId = useId()
   const statusId = `${listId}-status`
   const [viewport, setViewport] = useState<FileListViewport>(INITIAL_VIEWPORT)
-  const rowMetrics = useMemo(() => fileListRowMetrics(rows), [rows])
+  const rowMetrics = useMemo(() => fileListRowMetrics(rows, densityMetrics), [densityMetrics, rows])
   const selectedIndex = useMemo(
     () => selectedFileListRowIndex(rows, selectedPath),
     [rows, selectedPath],
@@ -210,7 +216,14 @@ export function FileList({
         aria-describedby={showStatus ? statusId : undefined}
         aria-label={listLabel(mode)}
         className='focus-visible:ring-ring/50 absolute inset-0 overflow-auto outline-none focus-visible:ring-1 focus-visible:ring-inset'
-        onKeyDown={(event) => onKeyDown(event, { pageSize: fileListPageSize(viewport.height) })}
+        onKeyDown={(event) =>
+          onKeyDown(event, {
+            pageSize: fileListPageSize(
+              viewport.height,
+              isSearching ? densityMetrics.entryWithPathRowSize : densityMetrics.entryRowSize,
+            ),
+          })
+        }
         onMouseDown={focusFileList}
         onScroll={handleFileListScroll(setViewport)}
         role='listbox'
@@ -244,7 +257,7 @@ export function FileList({
                 Retry
               </Button>
             }
-            className='h-full p-6'
+            className='compact:p-4 h-full p-6'
             description={loadState.message}
             icon={<WarningCircleIcon className='size-8' weight='duotone' />}
             title='Could not load this folder'
@@ -260,7 +273,7 @@ export function FileList({
       {showEmpty ? (
         <div className='absolute inset-0' id={statusId}>
           <EmptyState
-            className='h-full p-6'
+            className='compact:p-4 h-full p-6'
             description={pickerCopy(mode).emptyDescription}
             icon={<FolderOpenIcon className='size-8' weight='duotone' />}
             title='Nothing here'
@@ -314,13 +327,13 @@ function FileListVirtualRow({
 
   return (
     <div
-      className='absolute top-0 right-1 left-1'
-      style={{ transform: `translateY(${virtualRow.start}px)` }}
+      className='compact:right-1 compact:left-1 absolute top-0 right-1.5 left-1.5'
+      style={{ height: virtualRow.size, transform: `translateY(${virtualRow.start}px)` }}
     >
       {row.kind === 'section' ? (
         <div
           aria-hidden='true'
-          className='text-muted-foreground/70 flex h-[22px] items-center px-2 text-[10px] font-medium tracking-wide uppercase'
+          className='text-muted-foreground/70 compact:text-[10px] compact:tracking-wide flex h-full items-center px-2 text-[11px] font-medium tracking-normal uppercase'
         >
           {row.label}
         </div>
@@ -410,8 +423,7 @@ function FileRow({
       aria-selected={selected}
       aria-setsize={setSize}
       className={cn(
-        'grid w-full cursor-default items-center gap-3 rounded-sm px-2 text-left text-xs',
-        showPath ? 'h-[38px]' : 'h-[26px]',
+        'grid h-full w-full cursor-default items-center gap-3 rounded-sm px-2 text-left text-xs compact:gap-2',
         fileListGridClass(mode),
         selected && 'bg-row-selected text-foreground',
         !isBusy && !selected && 'hover:bg-row-hover',
@@ -477,7 +489,7 @@ function SortableColumnHeader({
       <Button
         aria-label={sortButtonLabel(keyName, direction)}
         className={cn(
-          'text-muted-foreground hover:text-foreground h-6 min-w-0 gap-1 px-1.5 text-[11px] font-medium uppercase',
+          'text-muted-foreground/70 hover:text-foreground h-6 min-w-0 gap-1 px-1.5 text-[11px] font-medium tracking-normal uppercase compact:text-[10px] compact:tracking-wide cozy:text-muted-foreground',
           align === 'start' && '-ml-1.5',
           align === 'end' && '-mr-1.5',
         )}
@@ -487,7 +499,11 @@ function SortableColumnHeader({
         variant='ghost'
       >
         <span className='truncate'>{label}</span>
-        {isLoading ? <Spinner className='size-3' /> : <SortIndicator direction={direction} />}
+        {isLoading ? (
+          <OrbitLoader className='size-3' label='Loading entries' />
+        ) : (
+          <SortIndicator direction={direction} />
+        )}
       </Button>
     </div>
   )
@@ -539,19 +555,22 @@ function fileListRows(entries: FsEntry[], isSearching: boolean): FileListRow[] {
   })
 }
 
-function fileListRowMetrics(rows: readonly FileListRow[]): FileListRowMetrics {
+function fileListRowMetrics(
+  rows: readonly FileListRow[],
+  densityMetrics: FilePickerDensityMetrics,
+): FileListRowMetrics {
   return buildFileListRowMetrics(
     rows.map((row) => ({
       key: row.key,
-      size: fileListRowSize(row),
+      size: fileListRowSize(row, densityMetrics),
     })),
   )
 }
 
-function fileListRowSize(row: FileListRow) {
-  if (row.kind === 'section') return SECTION_ROW_SIZE
+function fileListRowSize(row: FileListRow, densityMetrics: FilePickerDensityMetrics) {
+  if (row.kind === 'section') return densityMetrics.sectionRowSize
 
-  return row.showPath ? ENTRY_WITH_PATH_ROW_SIZE : ENTRY_ROW_SIZE
+  return row.showPath ? densityMetrics.entryWithPathRowSize : densityMetrics.entryRowSize
 }
 
 function selectedFileListRowIndex(rows: readonly FileListRow[], selectedPath: string | null) {
@@ -628,8 +647,8 @@ function sameFileListViewport(first: FileListViewport, second: FileListViewport)
   return first.height === second.height && first.top === second.top
 }
 
-function fileListPageSize(viewportHeight: number) {
-  return Math.max(1, Math.floor(viewportHeight / ENTRY_ROW_SIZE))
+function fileListPageSize(viewportHeight: number, rowSize: number) {
+  return Math.max(1, Math.floor(viewportHeight / rowSize))
 }
 
 function fileListGridClass(mode: FilePickerMode) {

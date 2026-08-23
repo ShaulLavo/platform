@@ -26,6 +26,7 @@ import { TreeToolbar } from '@/features/workspace/components/tree-toolbar'
 import { useFileTreeActions } from '@/features/workspace/hooks/use-file-tree-actions'
 import { useFileTreeIntentPrefetch } from '@/features/workspace/hooks/use-file-tree-intent-prefetch'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
+import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 import { useFileTreeMutationEvents } from '@/features/workspace/hooks/use-file-tree-mutation-events'
 import { useFsActions } from '@/features/workspace/hooks/use-fs-actions'
 import { useTreeCommandRequest } from '@/features/workspace/hooks/use-tree-command-request'
@@ -98,6 +99,7 @@ function ReadyTreePane({
   rootPath: string
 }) {
   const { editorTheme } = useEditorColorTheme()
+  const workbenchDensity = useSettingValue('workbench.density')
   const selectedFilePath = useEditorWorkspaceState((store) => store.selectedFilePath)
   const { selectFile } = useEditorCommands()
   const { loadDirectory, publishVisibleItemCount: publishVisibleItemCountAction } =
@@ -164,9 +166,7 @@ function ReadyTreePane({
     : undefined
   const { model: tree } = useFileTree({
     density: 'compact',
-    // Compact preset rows are 24px; 20px keeps 12px text readable while fitting
-    // ~17% more rows. itemHeight (not a CSS override) so virtualization agrees.
-    itemHeight: 20,
+    itemHeight: workbenchDensity === 'compact' ? 20 : 24,
     flattenEmptyDirectories: true,
     gitStatus: initialGitStatus,
     icons,
@@ -188,8 +188,8 @@ function ReadyTreePane({
         reportError(toClientError({ code: 'INVALID_PATH', error }))
       },
     },
-    // useFileTree captures these options once, so read live app state from refs
-    // at call time — the same pattern as the drag/drop and row-decoration callbacks.
+    // Callbacks are constructor-owned, so read live app state from refs at call
+    // time — the same pattern as the drag/drop and row-decoration callbacks.
     onSelectionChange: (selectedPaths) =>
       openSelectedTreeFile({
         model: modelRef.current,
@@ -549,10 +549,7 @@ const treeStyle = {
   '--trees-selected-bg-override': 'color-mix(in oklch, var(--accent-solid) 60%, transparent)',
   '--trees-border-color-override': 'var(--border)',
   '--trees-fg-override': 'var(--foreground)',
-  // Per level the tree indents level-gap + row-gap + icon-width/2 (~18px at
-  // compact density); level-gap is the only component not shared with in-row
-  // spacing, so it is the one safe place to reclaim width in deep trees.
-  '--trees-level-gap-override': '2px',
+  '--trees-level-gap-override': 'var(--workbench-tree-level-gap)',
   height: '100%',
 } as CSSProperties
 
@@ -569,12 +566,8 @@ const treeUnsafeCss = `
   :host {
     color: var(--foreground);
     background: transparent;
-    /* Experiment: the UI sans instead of the app's mono. Mono glyphs are
-       uniform-width, so long file names run ~30% wider and lose word shape;
-       this is most of why the VS Code explorer reads denser. No sans token
-       exists yet — promote this stack to a token if the experiment sticks. */
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    font-size: 12.5px;
+    font-family: var(--workbench-tree-font-family);
+    font-size: var(--workbench-tree-font-size);
   }
 
   button[data-type='item'] {

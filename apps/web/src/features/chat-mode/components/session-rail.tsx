@@ -118,9 +118,9 @@ export function SessionRail() {
       className='bg-card backdrop-material border-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-r'
       onKeyDown={handleKeyDown}
     >
-      <div className='flex shrink-0 items-center gap-1 px-2 pt-2'>
+      <div className='compact:pt-1.5 flex shrink-0 items-center gap-1 px-2 pt-2'>
         <Button
-          className='h-8 min-w-0 flex-1 justify-start gap-2 rounded-md px-2 text-[13px]'
+          className='compact:h-7 compact:gap-1.5 compact:px-1.5 h-8 min-w-0 flex-1 justify-start gap-2 rounded-md px-2 text-[13px]'
           disabled={!ready && !scope}
           size='sm'
           type='button'
@@ -132,7 +132,7 @@ export function SessionRail() {
         </Button>
         <Button
           aria-label='Add project'
-          className='text-muted-foreground hover:text-foreground size-8 shrink-0 rounded-md'
+          className='text-muted-foreground hover:text-foreground compact:size-7 size-8 shrink-0 rounded-md'
           size='icon-sm'
           title='Add project'
           type='button'
@@ -142,7 +142,7 @@ export function SessionRail() {
           <FolderPlusIcon className='size-4' />
         </Button>
       </div>
-      <div className='flex shrink-0 items-center gap-1 px-2 pt-1'>
+      <div className='compact:pt-0.5 flex shrink-0 items-center gap-1 px-2 pt-1'>
         <SessionScopeMenu
           projects={model.projects}
           scope={scope}
@@ -153,7 +153,7 @@ export function SessionRail() {
           aria-label='Archived sessions'
           aria-pressed={view === 'archived'}
           className={cn(
-            'text-muted-foreground hover:text-foreground ml-auto size-7 shrink-0 rounded-md',
+            'text-muted-foreground hover:text-foreground ml-auto size-7 shrink-0 rounded-md compact:size-6',
             view === 'archived' && 'bg-accent text-accent-foreground',
           )}
           size='icon-sm'
@@ -168,12 +168,12 @@ export function SessionRail() {
           {model.scopedCount}
         </span>
       </div>
-      <div className='relative shrink-0 px-2 py-2'>
+      <div className='compact:py-1.5 relative shrink-0 px-2 py-2'>
         <MagnifyingGlassIcon className='text-muted-foreground/60 pointer-events-none absolute top-1/2 left-4 size-3.5 -translate-y-1/2' />
         <Input
           aria-label='Search sessions'
           // The native search affordances duplicate our own clear button.
-          className='h-7 rounded-md pr-7 pl-7 text-[12px] [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden'
+          className='compact:h-6 h-7 rounded-md pr-7 pl-7 text-[12px] [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden'
           placeholder='Search sessions'
           type='search'
           value={query}
@@ -193,7 +193,7 @@ export function SessionRail() {
         ) : null}
       </div>
       <div className='min-h-0 flex-1 overflow-y-auto'>
-        <div className='flex flex-col gap-2 px-1 pb-3'>
+        <div className='compact:gap-1 compact:pb-2 flex flex-col gap-2 px-1 pb-3'>
           <DndContext
             collisionDetection={closestCenter}
             modifiers={RAIL_DND_MODIFIERS}

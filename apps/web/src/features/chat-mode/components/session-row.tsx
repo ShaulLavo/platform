@@ -38,7 +38,7 @@ export function SessionRow({
   if (renaming?.surface === 'rail' && renaming.threadId === session.id) {
     return (
       <SessionRename
-        className='bg-accent text-foreground h-auto rounded-md border-transparent px-2 py-1.5 text-[13px] leading-5'
+        className='bg-accent text-foreground compact:px-1.5 compact:py-1 h-auto rounded-md border-transparent px-2 py-1.5 text-[13px] leading-5'
         session={session}
       />
     )
@@ -53,7 +53,7 @@ export function SessionRow({
           {...listeners}
           aria-current={active ? 'true' : undefined}
           className={cn(
-            'group/session focus-visible:ring-ring/50 flex w-full touch-none flex-col gap-1 rounded-md px-2 py-1.5 text-left outline-none focus-visible:ring-1',
+            'group/session focus-visible:ring-ring/50 flex w-full touch-none flex-col gap-1 rounded-md px-2 py-1.5 text-left outline-none focus-visible:ring-1 compact:gap-0.5 compact:px-1.5 compact:py-1',
             // Hover material only when not selected: bg-accent already carries
             // --surface-opacity, so a /60 hover on top of it composites *lighter*.
             'text-muted-foreground',

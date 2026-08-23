@@ -30,7 +30,7 @@ export function BottomPanel({
 
   return (
     <section className='bg-content-well border-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden border-t'>
-      <header className='border-border flex h-9 shrink-0 items-center gap-1 border-b px-2'>
+      <header className='border-border compact:h-8 flex h-9 shrink-0 items-center gap-1 border-b px-2'>
         {bottomTabButton({
           active: panels.activeBottomTab === 'terminal',
           icon: <TerminalIcon className='size-3.5' />,
@@ -70,7 +70,7 @@ function bottomTabButton({
     <Button
       aria-pressed={active}
       className={cn(
-        'h-7 gap-1.5 rounded-md px-2 text-xs',
+        'h-7 gap-1.5 rounded-md px-2 text-xs compact:h-6 compact:gap-1 compact:px-1.5',
         active && 'bg-accent text-accent-foreground',
       )}
       size='sm'

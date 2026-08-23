@@ -42,12 +42,12 @@ export function ChangeGroup({
 
   return (
     <Collapsible
-      className='pb-1'
+      className='compact:pb-0.5 pb-1'
       open={open}
       onOpenChange={(nextOpen) => setSectionOpen(section, nextOpen)}
     >
       <div
-        className='group/group hover:bg-row-hover flex h-7 w-full items-center px-2 text-xs font-medium transition-colors'
+        className='group/group hover:bg-row-hover compact:h-6 flex h-7 w-full items-center px-2 text-xs font-medium transition-colors'
         onContextMenu={handleContextMenu}
         onKeyDown={handleHeaderKeyDown}
       >

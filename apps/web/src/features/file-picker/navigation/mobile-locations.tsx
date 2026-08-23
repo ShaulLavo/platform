@@ -17,7 +17,7 @@ export function MobileLocations({
   const recents = recentState.status === 'ready' ? recentState.data : []
 
   return (
-    <div className='mt-2 space-y-1 lg:hidden'>
+    <div className='compact:mt-1.5 compact:space-y-0.5 mt-2 space-y-1 lg:hidden'>
       <div className='flex gap-1 overflow-x-auto pb-0.5'>
         {locations.map((location) => (
           <LocationPill currentPath={currentPath} key={location.id} location={location} />

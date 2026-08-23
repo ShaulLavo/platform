@@ -71,7 +71,7 @@ export function SettingsPage({
 
   return (
     <div className='flex h-full min-h-0 flex-col'>
-      <header className='border-border flex shrink-0 flex-col gap-2 border-b px-4 pt-2 pb-4'>
+      <header className='border-border compact:gap-1.5 compact:px-3 compact:pb-3 flex shrink-0 flex-col gap-2 border-b px-4 pt-2 pb-4'>
         {/* The tab's own action strip, above the scope tabs: these act on the tab,
             the row below picks which file the tab is showing. */}
         <div className='flex items-center justify-end gap-1'>
@@ -120,7 +120,7 @@ export function SettingsPage({
           it. */}
       {showJson ? (
         <div className='flex min-h-0 flex-1 flex-col'>
-          <div className='px-4 pt-4'>
+          <div className='compact:px-3 compact:pt-3 px-4 pt-4'>
             <MalformedBanner layers={settings.data.layers} />
           </div>
           <div className='min-h-0 flex-1'>
@@ -137,7 +137,7 @@ export function SettingsPage({
         </div>
       ) : (
         <div
-          className='min-h-0 flex-1 overflow-y-auto p-4'
+          className='compact:p-3 min-h-0 flex-1 overflow-y-auto p-4'
           onKeyDown={(event) => {
             if (event.key !== 'Escape') return
             // Not while a control is mid-interaction: a recorder is capturing, and
@@ -153,7 +153,7 @@ export function SettingsPage({
             <Status>{emptySettingsMessage(query, selectedCategory)}</Status>
           ) : (
             shown.map(([category, ids]) => (
-              <section className='mb-6' key={category}>
+              <section className='compact:mb-4 mb-6' key={category}>
                 <h2 className='text-foreground mb-1 text-sm font-semibold'>{category}</h2>
                 {ids.map((id) => (
                   <SettingRow id={id} key={id} snapshot={settings.data} />

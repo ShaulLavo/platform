@@ -47,6 +47,7 @@ const MIRRORED_KEYS = [
   'search.wholeWord',
   'workbench.palette',
   'workbench.colorTheme',
+  'workbench.density',
   'workbench.surface.blur',
   'workbench.surface.contentOpacity',
   'workbench.surface.opacity',

@@ -23,7 +23,7 @@ export function AppTitlebar() {
       aria-label='Window toolbar'
       className={cn(
         NATIVE_WINDOW_DRAG_CLASS,
-        'bg-card backdrop-material border-border grid h-11 shrink-0 select-none border-b',
+        'bg-card backdrop-material border-border grid h-11 shrink-0 select-none border-b compact:h-10',
       )}
       data-native-window-drag-region=''
       style={{ gridTemplateColumns: model.gridTemplateColumns }}
@@ -32,13 +32,13 @@ export function AppTitlebar() {
         <WorkspaceProjectMenu workspaceTitle={model.workspaceTitle} />
       </div>
       {model.documentTitle ? (
-        <div className='border-border flex min-w-0 items-center gap-2 border-l px-3'>
+        <div className='border-border compact:gap-1.5 compact:px-2 flex min-w-0 items-center gap-2 border-l px-3'>
           <FileIcon className='text-muted-foreground size-4 shrink-0' />
           <span className='truncate text-xs font-medium'>{model.documentTitle}</span>
           <div aria-hidden='true' className='min-w-16 flex-1 self-stretch' />
         </div>
       ) : null}
-      <div className='flex items-center px-3'>
+      <div className='compact:px-2 flex items-center px-3'>
         <UiModeToggle />
       </div>
     </header>

@@ -34,7 +34,7 @@ export function SettingRow({ id, snapshot }: { id: SettingId; snapshot: Settings
   const value = snapshot.values[id]
 
   return (
-    <div className='border-border flex flex-col gap-2 border-b py-3 last:border-b-0 sm:flex-row sm:items-start sm:justify-between sm:gap-6'>
+    <div className='border-border compact:gap-1.5 compact:py-2 sm:compact:gap-4 flex flex-col gap-2 border-b py-3 last:border-b-0 sm:flex-row sm:items-start sm:justify-between sm:gap-6'>
       <div className='flex min-w-0 flex-col gap-1'>
         <div className='flex flex-wrap items-center gap-2'>
           {/* A border, not a coloured dot: it reads in both themes without a

@@ -22,7 +22,7 @@ export function Header({ repository, rootPath }: { repository: RepositoryInfo; r
   const setPanelOpen = useGitState((state) => state.setPanelOpen)
 
   return (
-    <header className='flex h-9 shrink-0 items-center gap-1 border-b px-2'>
+    <header className='compact:h-8 flex h-9 shrink-0 items-center gap-1 border-b px-2'>
       <button
         type='button'
         aria-expanded={open}

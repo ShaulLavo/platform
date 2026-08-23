@@ -227,7 +227,10 @@ export function TerminalPanel({
       onFocusCapture={handleTerminalFocus}
       onPointerDownCapture={handleTerminalPointerDown}
     >
-      <div className='min-h-0 min-w-0 flex-1 overflow-hidden px-3 py-2 font-mono' ref={hostRef} />
+      <div
+        className='compact:px-2 compact:py-1 min-h-0 min-w-0 flex-1 overflow-hidden px-3 py-2 font-mono'
+        ref={hostRef}
+      />
       {contextMenu.anchor && menuTarget ? (
         <TerminalMenu
           anchor={contextMenu.anchor}

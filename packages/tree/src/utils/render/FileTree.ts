@@ -101,7 +101,7 @@ export class FileTree implements FileTreeMutationHandle, FileTreeSearchSessionHa
   readonly #searchEnabled: boolean
   readonly #searchFakeFocus: boolean
   readonly #slotHost = new FileTreeManagedSlotHost()
-  readonly #density: FileTreeDensityPreset
+  #density: FileTreeDensityPreset
   readonly #viewOptions: Pick<
     FileTreeOptions,
     'initialVisibleRowCount' | 'itemHeight' | 'overscan' | 'stickyFolders'
@@ -109,6 +109,8 @@ export class FileTree implements FileTreeMutationHandle, FileTreeSearchSessionHa
   #fileTreeContainer: HTMLElement | undefined
   #gitStatusState: FileTreeGitStatusState | null
   #icons: FileTreeOptions['icons']
+  readonly #densityListeners = new Set<FileTreeListener>()
+  #densityVersion = 0
   readonly #unsafeCSS: string | undefined
   #unsafeCSSStyle: HTMLStyleElement | undefined
   #appliedUnsafeCSS: string | undefined
@@ -200,6 +202,7 @@ export class FileTree implements FileTreeMutationHandle, FileTreeSearchSessionHa
     this.unmount()
     this.#selectionSubscription?.()
     this.#selectionSubscription = null
+    this.#densityListeners.clear()
     this.#controller.destroy()
   }
 
@@ -233,6 +236,51 @@ export class FileTree implements FileTreeMutationHandle, FileTreeSearchSessionHa
 
   public getDensityFactor(): number {
     return this.#density.factor
+  }
+
+  public getDensityVersion(): number {
+    return this.#densityVersion
+  }
+
+  public setDensity(
+    density: FileTreeOptions['density'],
+    itemHeight: FileTreeOptions['itemHeight'],
+  ): void {
+    const nextDensity = resolveFileTreeDensity(density, itemHeight)
+    if (
+      nextDensity.factor === this.#density.factor &&
+      nextDensity.itemHeight === this.#density.itemHeight
+    ) {
+      return
+    }
+
+    const previousItemHeight = this.#density.itemHeight
+    const mountedTree = this.#getMountedTreeElements()
+    const scrollElement = mountedTree?.host.shadowRoot?.querySelector<HTMLElement>(
+      '[data-file-tree-virtualized-scroll="true"]',
+    )
+
+    this.#density = nextDensity
+    this.#viewOptions.itemHeight = nextDensity.itemHeight
+    this.#densityVersion += 1
+
+    if (scrollElement != null && previousItemHeight > 0) {
+      scrollElement.scrollTop *= nextDensity.itemHeight / previousItemHeight
+    }
+    if (mountedTree != null) {
+      this.#refreshOwnedDensityHostStyle(mountedTree.host)
+      renderFileTreeRoot(mountedTree.wrapper, this.#getViewProps())
+    }
+
+    this.#emitDensityChange()
+  }
+
+  public subscribeDensity(listener: FileTreeListener): () => void {
+    this.#densityListeners.add(listener)
+
+    return () => {
+      this.#densityListeners.delete(listener)
+    }
   }
 
   public subscribe(listener: FileTreeListener): () => void {
@@ -471,6 +519,12 @@ export class FileTree implements FileTreeMutationHandle, FileTreeSearchSessionHa
     onSelectionChange(this.#controller.getSelectedPaths())
   }
 
+  #emitDensityChange(): void {
+    for (const listener of this.#densityListeners) {
+      listener()
+    }
+  }
+
   // Keeps header slot content attached to the host light DOM so hydration and
   // later composition surfaces can share one host-managed slot path.
   #syncHeaderSlotContent(): void {
@@ -649,6 +703,15 @@ export class FileTree implements FileTreeMutationHandle, FileTreeSearchSessionHa
     if (host.style.getPropertyValue('--trees-density-override') === '') {
       host.style.setProperty('--trees-density-override', String(this.#density.factor))
       this.#wroteHostDensityFactor = true
+    }
+  }
+
+  #refreshOwnedDensityHostStyle(host: HTMLElement): void {
+    if (this.#wroteHostItemHeight) {
+      host.style.setProperty('--trees-item-height', `${String(this.#density.itemHeight)}px`)
+    }
+    if (this.#wroteHostDensityFactor) {
+      host.style.setProperty('--trees-density-override', String(this.#density.factor))
     }
   }
 

@@ -42,17 +42,20 @@
       // settings boot mirror (written by features/settings/utils/boot-mirror.ts,
       // which this classic script cannot import — a module script would defer
       // past first paint). applyAppearance in main.tsx re-applies the full
-      // appearance once the app boots; this only decides dark vs light and
-      // which palette those two are built from.
+      // appearance once the app boots; this only decides dark vs light,
+      // palette, and density.
       ;(() => {
         let theme = 'system'
         let palette = 'graphite'
+        let density = 'compact'
         try {
           const raw = localStorage.getItem('platform.settings-boot-mirror.v1')
           const mirror = raw ? JSON.parse(raw) : {}
           const storedTheme = mirror['workbench.colorTheme']
+          const storedDensity = mirror['workbench.density']
           if (storedTheme === 'dark' || storedTheme === 'light') theme = storedTheme
           if (mirror['workbench.palette'] === 'sage') palette = 'sage'
+          if (storedDensity === 'compact' || storedDensity === 'cozy') density = storedDensity
         } catch {
           // An unreadable mirror costs a system-theme boot floor, nothing more.
         }
@@ -64,6 +67,7 @@
         // Set before globals.css loads, so the first frame it paints already
         // matches the palette instead of flashing the default one.
         root.setAttribute('data-palette', palette)
+        root.setAttribute('data-density', density)
         if (palette !== 'sage') return
 
         root.style.setProperty(

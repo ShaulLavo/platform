@@ -70,6 +70,38 @@ describe('FileTree browser behavior', () => {
     expect(scrollElement.scrollTop).toBe(previousScrollTop)
   })
 
+  it('changes density in place while preserving tree state and the logical scroll anchor', async () => {
+    const { model: currentModel, shadowRoot } = await mountBrowserTree()
+    const host = document.querySelector<HTMLElement>('file-tree-container')
+    const scrollElement = virtualScroll(shadowRoot)
+
+    currentModel.focusPath('src/features/a-3.ts')
+    currentModel.getItem('src/features/a-3.ts')?.select()
+    scrollElement.scrollTop = 120
+    scrollElement.dispatchEvent(new Event('scroll', { bubbles: true }))
+
+    await vi.waitFor(() => {
+      expect(currentModel.getFocusedPath()).toBe('src/features/a-3.ts')
+      expect(currentModel.getSelectedPaths()).toEqual(['src/features/a-3.ts'])
+      expect(scrollElement.scrollTop).toBe(120)
+    })
+
+    currentModel.setDensity('compact', 20)
+
+    await vi.waitFor(() => {
+      const visibleRow = shadowRoot.querySelector<HTMLButtonElement>(
+        'button[data-item-path]:not([data-file-tree-sticky-row="true"])',
+      )
+      expect(host?.style.getPropertyValue('--trees-item-height')).toBe('20px')
+      expect(visibleRow?.style.minHeight).toBe('20px')
+      expect(scrollElement.scrollTop).toBeCloseTo(100, 5)
+    })
+    const directory = currentModel.getItem('src/features/')
+    expect(directory != null && 'isExpanded' in directory && directory.isExpanded()).toBe(true)
+    expect(currentModel.getFocusedPath()).toBe('src/features/a-3.ts')
+    expect(currentModel.getSelectedPaths()).toEqual(['src/features/a-3.ts'])
+  })
+
   it('preserves keyboard branch order for rename, selection, and directional navigation', async () => {
     const { model: currentModel, shadowRoot } = await mountBrowserTree()
     const directoryRow = rowButton(shadowRoot, 'src/features/')
@@ -226,6 +258,17 @@ describe('FileTree browser behavior', () => {
       expect(shadowRoot.activeElement).toBe(searchInput)
     })
     expect(currentModel.getSearchValue()).toBe('worker')
+  })
+
+  it('inherits the consuming light color scheme for search colors', async () => {
+    const { shadowRoot } = await mountSearchTree('retain', 'light')
+    const host = document.querySelector<HTMLElement>('file-tree-container')
+    const searchInput = shadowRoot.querySelector<HTMLInputElement>('[data-file-tree-search-input]')
+
+    expect(host).not.toBeNull()
+    expect(searchInput).not.toBeNull()
+    expect(getComputedStyle(host!).colorScheme).toBe('light')
+    expect(getComputedStyle(searchInput!).backgroundColor).toBe('rgb(248, 248, 248)')
   })
 
   it('keeps rename active for composing keys and commits on ordinary Enter', async () => {
@@ -409,10 +452,14 @@ async function renderBrowserTree(mountedModel: FileTreeModel) {
   return await waitForShadowRoot()
 }
 
-async function mountSearchTree(searchBlurBehavior: FileTreeSearchBlurBehavior) {
+async function mountSearchTree(
+  searchBlurBehavior: FileTreeSearchBlurBehavior,
+  colorScheme?: 'dark' | 'light',
+) {
   const container = document.createElement('main')
   container.style.height = '240px'
   container.style.width = '360px'
+  if (colorScheme) container.style.colorScheme = colorScheme
   document.body.append(container)
   root = createRoot(container)
   const mountedModel = new FileTreeModel({

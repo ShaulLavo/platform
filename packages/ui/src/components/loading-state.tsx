@@ -35,7 +35,11 @@ function LoadingState({
     <div
       aria-busy='true'
       aria-label={label}
-      className={cn('flex min-h-0 flex-col', visible && 'gap-2 p-3', className)}
+      className={cn(
+        'flex min-h-0 flex-col',
+        visible && 'gap-2 p-3 compact:gap-1.5 compact:p-2',
+        className,
+      )}
       data-slot='loading-state'
       role='status'
     >

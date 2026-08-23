@@ -32,7 +32,7 @@ export function SessionScopeMenu({
       <DropdownMenuTrigger
         render={
           <Button
-            className='text-muted-foreground hover:text-foreground h-7 max-w-full min-w-0 justify-start gap-1 rounded-md px-1.5 text-[11px] font-medium'
+            className='text-muted-foreground hover:text-foreground compact:h-6 h-7 max-w-full min-w-0 justify-start gap-1 rounded-md px-1.5 text-[11px] font-medium'
             size='sm'
             type='button'
             variant='ghost'

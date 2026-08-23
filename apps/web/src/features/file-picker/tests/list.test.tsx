@@ -1,8 +1,9 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 
 import { expect, test } from '../../../../test/fixtures'
 import { FileList } from '@/features/file-picker/list'
 import { FilePickerSessionActionsContext } from '@/features/file-picker/providers/session-actions-context'
+import { saveSettings } from '@/features/settings/utils/api'
 import type { FsEntry } from '@/lib/file-system-types'
 import { renderWithProviders } from '../../../../test/render'
 
@@ -42,6 +43,24 @@ test('exposes complete positions for virtualized options', () => {
     { position: '2', size: '3' },
     { position: '3', size: '3' },
   ])
+})
+
+test('keeps cozy painted rows aligned with the virtual list height', async ({ client }) => {
+  expect(client).toBeDefined()
+  await saveSettings({
+    edits: [{ key: 'workbench.density', target: 'user', value: 'cozy' }],
+  })
+  const entries = [entry('alpha.ts'), entry('beta.ts')]
+
+  renderList(entries, { status: 'ready', data: entries })
+
+  await waitFor(() => {
+    const firstOption = screen.getAllByRole('option')[0]
+    expect(firstOption?.parentElement).toHaveStyle({ height: '32px' })
+  })
+
+  const listbox = screen.getByRole('listbox', { name: 'Folders and files' })
+  expect(listbox.firstElementChild).toHaveStyle({ height: '64px' })
 })
 
 function renderList(entries: FsEntry[], loadState: Parameters<typeof pickerList>[1]) {

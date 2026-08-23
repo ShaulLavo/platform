@@ -25,6 +25,7 @@ stays safe to read, share and export.
 | ---------------------------------- | ------------ | ------ | ---------------------------------------------------------------------------------------- |
 | `workbench.colorTheme`             | `"system"`   | window | Light or dark, or follow the operating system.                                           |
 | `workbench.palette`                | `"graphite"` | window | Warm near-greyscale, or warm stone surfaces with a sage accent.                          |
+| `workbench.density`                | `"compact"`  | window | Use tighter compact spacing or roomier cozy spacing throughout the app.                  |
 | `workbench.surface.opacity`        | `80`         | window | How opaque panels and sidebars are over the wallpaper. 100 turns the glass material off. |
 | `workbench.surface.contentOpacity` | `95`         | window | How opaque the editor and terminal background is.                                        |
 | `workbench.surface.blur`           | `12`         | window | Backdrop blur radius, in pixels, behind translucent surfaces.                            |

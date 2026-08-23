@@ -11,6 +11,7 @@ export type AppearanceValues = Pick<
   | 'editor.tabSize'
   | 'workbench.palette'
   | 'workbench.colorTheme'
+  | 'workbench.density'
   | 'workbench.surface.blur'
   | 'workbench.surface.contentOpacity'
   | 'workbench.surface.opacity'
@@ -51,6 +52,7 @@ export function applyAppearance(values: AppearanceValues, root: Root, prefersDar
   // `:root` and `.dark` in globals.css, and `html[data-palette='sage']` does
   // that by specificity, without an `!important`.
   root.setAttribute('data-palette', values['workbench.palette'])
+  root.setAttribute('data-density', values['workbench.density'])
 
   root.style.setProperty('--surface-opacity', `${values['workbench.surface.opacity']}%`)
   root.style.setProperty('--content-opacity', `${values['workbench.surface.contentOpacity']}%`)

@@ -60,7 +60,7 @@ export function ToolPaneHeader({
         'border-border flex shrink-0 text-foreground',
         orientation === 'vertical'
           ? 'h-full w-full flex-col items-center gap-1 border-r px-1 py-1'
-          : 'h-10 items-center gap-2 border-b px-3',
+          : 'h-10 items-center gap-2 border-b px-3 compact:h-9 compact:gap-1.5 compact:px-2',
         className,
       )}
       data-workbench-tool-pane-header=''
@@ -97,7 +97,7 @@ export function ToolPaneHeader({
           {onCollapseToRow ? (
             <Button
               aria-label={rowLabel}
-              className='text-muted-foreground hover:text-foreground size-7 rounded-md'
+              className='text-muted-foreground hover:text-foreground compact:size-6 size-7 rounded-md'
               size='icon-sm'
               title={rowLabel}
               type='button'
@@ -111,7 +111,7 @@ export function ToolPaneHeader({
           {!onCollapseToRow && onToggleCollapse ? (
             <Button
               aria-label={toggleLabel}
-              className='text-muted-foreground hover:text-foreground size-7 rounded-md'
+              className='text-muted-foreground hover:text-foreground compact:size-6 size-7 rounded-md'
               size='icon-sm'
               title={toggleLabel}
               type='button'
@@ -125,7 +125,7 @@ export function ToolPaneHeader({
           {onClose ? (
             <Button
               aria-label={`Close ${title}`}
-              className='text-muted-foreground hover:text-foreground size-7 rounded-md'
+              className='text-muted-foreground hover:text-foreground compact:size-6 size-7 rounded-md'
               size='icon-sm'
               title={`Close ${title}`}
               type='button'

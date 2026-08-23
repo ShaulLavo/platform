@@ -375,7 +375,8 @@
     --trees-scrollbar-gutter: var(--trees-scrollbar-gutter-override, 6px);
     --trees-padding-inline: var(--trees-padding-inline-override, 16px);
 
-    color-scheme: light dark;
+    /* Match the consuming app theme even when the OS preference differs. */
+    color-scheme: inherit;
     display: flex;
     flex-direction: column;
     font-size: var(--trees-font-size);
