@@ -1,42 +1,130 @@
 import type { FsEntry } from '@/lib/file-system-types'
 import { isDirectoryEntry } from '@/lib/file-system-types'
-import { ArrowClockwiseIcon, FolderOpenIcon, WarningCircleIcon } from '@phosphor-icons/react'
+import { useForesight } from '@foresightjs/react'
+import {
+  ArrowClockwiseIcon,
+  CaretDownIcon,
+  CaretUpDownIcon,
+  CaretUpIcon,
+  FolderOpenIcon,
+  WarningCircleIcon,
+} from '@phosphor-icons/react'
 import { Button } from '@workspace/ui/components/button'
 import { EmptyState } from '@workspace/ui/components/empty-state'
+import { LoadingState } from '@workspace/ui/components/loading-state'
 import { Spinner } from '@workspace/ui/components/spinner'
 import { cn } from '@workspace/ui/lib/utils'
-import { useMemo, useRef, useState, type KeyboardEvent, type UIEvent } from 'react'
+import {
+  useCallback,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type Dispatch,
+  type Ref,
+  type SetStateAction,
+  type UIEvent,
+} from 'react'
 
+import { EntryIcon } from '@/features/file-picker/entry-ui'
 import { useFilePickerSessionActions } from '@/features/file-picker/hooks/use-file-picker-session-actions'
-import { EntryPreviewTile, KindBadge } from '@/features/file-picker/entry-ui'
 import {
   displayPath,
-  formatModified,
   formatSizeLabel,
   isPickableEntry,
+  kindLabel,
   listLabel,
   pickerCopy,
   type EntriesLoadState,
   type FilePickerIconMode,
   type FilePickerMode,
 } from '@/features/file-picker/model'
+import { fileListAvailabilityLabel } from '@/features/file-picker/utils/availability'
+import {
+  buildFileListRowMetrics,
+  fileListOptionId,
+  fileListSelectionScrollTop,
+  visibleFileListRows,
+  type FileListRowMetrics,
+  type FileListViewport,
+  type FileListVirtualItem,
+} from '@/features/file-picker/utils/listbox'
+import type {
+  FileListSort,
+  FileListSortDirection,
+  FileListSortKey,
+} from '@/features/file-picker/utils/sort-entries'
+import { DIRECTORY_QUERY_STALE_MS } from '@/features/file-picker/utils/directory-query'
+import { INTENT_PREFETCH_HIT_SLOP_PX } from '@/lib/intent-prefetch-options'
+
+export type FileListKeyboardContext = {
+  pageSize: number
+}
+
+type SetFileListViewport = Dispatch<SetStateAction<FileListViewport>>
+
+// A browse row is one line of text. Only a search hit carries a second line
+// (the path that says which folder it was found in), so only it pays for one.
+const ENTRY_ROW_SIZE = 26
+const ENTRY_WITH_PATH_ROW_SIZE = 38
+const SECTION_ROW_SIZE = 22
+const INITIAL_VIEWPORT: FileListViewport = { height: 480, top: 0 }
+const compactModifiedFormatter = new Intl.DateTimeFormat(undefined, {
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+})
 
 export function ListHeader({
   isLoading,
   isSearching,
+  mode,
+  onSort,
+  sort,
 }: {
   isLoading: boolean
   isSearching: boolean
+  mode: FilePickerMode
+  onSort: (key: FileListSortKey) => void
+  sort: FileListSort | null
 }) {
   return (
-    <div className='bg-background backdrop-material text-muted-foreground grid h-8 grid-cols-[minmax(0,1fr)_80px_116px_74px] items-center gap-3 border-b px-3 text-[11px] font-medium tracking-normal uppercase max-sm:grid-cols-[minmax(0,1fr)_68px]'>
-      <div className='flex min-w-0 items-center gap-2'>
-        <span>{isSearching ? 'Matches' : 'Name'}</span>
-        {isLoading && <Spinner className='size-3' />}
-      </div>
-      <div className='max-sm:text-right'>Kind</div>
-      <div className='max-sm:hidden'>Modified</div>
-      <div className='text-right max-sm:hidden'>Size</div>
+    <div
+      aria-label='File list sorting'
+      className={cn(
+        'bg-background backdrop-material text-muted-foreground grid h-8 items-center gap-3 border-b px-3 text-[11px] font-medium tracking-normal uppercase',
+        fileListGridClass(mode),
+      )}
+      role='group'
+    >
+      <SortableColumnHeader
+        isLoading={isLoading}
+        keyName='name'
+        label={isSearching ? 'Matches' : 'Name'}
+        onSort={onSort}
+        sort={sort}
+      />
+      {mode === 'file' ? (
+        <SortableColumnHeader keyName='kind' label='Kind' onSort={onSort} sort={sort} />
+      ) : null}
+      <SortableColumnHeader
+        className='max-sm:hidden'
+        keyName='modified'
+        label='Modified'
+        onSort={onSort}
+        sort={sort}
+      />
+      <SortableColumnHeader
+        align='end'
+        className='max-sm:hidden'
+        keyName='size'
+        label='Size'
+        onSort={onSort}
+        sort={sort}
+      />
     </div>
   )
 }
@@ -45,9 +133,13 @@ export function FileList({
   accept,
   entries,
   iconMode,
+  isBusy,
   isSearching,
+  listRef,
   loadState,
   mode,
+  onDirectoryIntent,
+  onEntryDoubleClick,
   onKeyDown,
   onRetry,
   selectedPath,
@@ -55,76 +147,126 @@ export function FileList({
   accept?: readonly string[]
   entries: FsEntry[]
   iconMode: FilePickerIconMode
+  isBusy: boolean
   isSearching: boolean
+  listRef?: Ref<HTMLDivElement>
   loadState: EntriesLoadState
   mode: FilePickerMode
-  onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void
+  onDirectoryIntent: (path: string) => void
+  onEntryDoubleClick: (entry: FsEntry) => void
+  onKeyDown: (event: KeyboardEvent<HTMLDivElement>, context: FileListKeyboardContext) => void
   onRetry: () => void
   selectedPath: string | null
 }) {
   const rows = useMemo(() => fileListRows(entries, isSearching), [entries, isSearching])
-  const scrollParentRef = useRef<HTMLDivElement>(null)
-  const [viewport, setViewport] = useState({ height: 480, top: 0 })
+  const listboxRef = useRef<HTMLDivElement>(null)
+  const listId = useId()
+  const statusId = `${listId}-status`
+  const [viewport, setViewport] = useState<FileListViewport>(INITIAL_VIEWPORT)
   const rowMetrics = useMemo(() => fileListRowMetrics(rows), [rows])
+  const selectedIndex = useMemo(
+    () => selectedFileListRowIndex(rows, selectedPath),
+    [rows, selectedPath],
+  )
+  const activeDescendant = activeFileListOptionId(rows, selectedIndex, listId)
   const virtualRows = useMemo(
-    () => visibleFileListRows(rowMetrics, viewport),
-    [rowMetrics, viewport],
+    () => visibleFileListRows(rowMetrics, viewport, selectedIndex),
+    [rowMetrics, selectedIndex, viewport],
+  )
+  const showError = loadState.status === 'error'
+  const showLoading = loadState.status === 'loading' && entries.length === 0
+  const showEmpty = !showError && !showLoading && entries.length === 0
+  const showStatus = showError || showLoading || showEmpty
+  // A stable composed ref prevents detaching the dialog's focus target on every scroll render.
+  const setListboxRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      listboxRef.current = element
+      assignRef(listRef, element)
+    },
+    [listRef],
   )
 
-  if (loadState.status === 'error') {
-    return (
-      <EmptyState
-        action={
-          <Button onClick={onRetry} size='sm' type='button' variant='outline'>
-            <ArrowClockwiseIcon data-icon='inline-start' />
-            Retry
-          </Button>
-        }
-        className='min-h-80 p-6'
-        description={loadState.message}
-        icon={<WarningCircleIcon className='size-8' weight='duotone' />}
-        title='Could not load this folder'
-        tone='error'
-      />
-    )
-  }
-  if (entries.length === 0) {
-    return (
-      <EmptyState
-        className='min-h-80 p-6'
-        description={pickerCopy(mode).emptyDescription}
-        icon={<FolderOpenIcon className='size-8' weight='duotone' />}
-        title='Nothing here'
-      />
-    )
-  }
+  useLayoutEffect(() => {
+    const element = listboxRef.current
+    if (!element) return
+
+    return observeFileListViewport(element, setViewport)
+  }, [])
+
+  useLayoutEffect(() => {
+    const element = listboxRef.current
+    const selectedItem = selectedIndex === undefined ? undefined : rowMetrics.items[selectedIndex]
+    if (!element) return
+
+    syncFileListSelectionScroll(element, selectedItem, setViewport)
+  }, [rowMetrics, selectedIndex])
 
   return (
-    <div
-      ref={scrollParentRef}
-      className='min-h-0 overflow-auto'
-      onScroll={handleFileListScroll(setViewport)}
-    >
+    <div className='relative min-h-0 overflow-hidden'>
       <div
+        ref={setListboxRef}
+        aria-activedescendant={activeDescendant}
+        aria-busy={isBusy || loadState.status === 'loading'}
+        aria-describedby={showStatus ? statusId : undefined}
         aria-label={listLabel(mode)}
-        className='relative p-1.5 outline-none'
-        onKeyDown={onKeyDown}
+        className='focus-visible:ring-ring/50 absolute inset-0 overflow-auto outline-none focus-visible:ring-1 focus-visible:ring-inset'
+        onKeyDown={(event) => onKeyDown(event, { pageSize: fileListPageSize(viewport.height) })}
+        onMouseDown={focusFileList}
+        onScroll={handleFileListScroll(setViewport)}
         role='listbox'
-        style={{ height: rowMetrics.totalSize }}
         tabIndex={0}
       >
-        {virtualRows.map((virtualRow) => (
-          <FileListVirtualRow
-            key={virtualRow.key}
-            accept={accept}
-            iconMode={iconMode}
-            mode={mode}
-            row={rows[virtualRow.index]}
-            selectedPath={selectedPath}
-            virtualRow={virtualRow}
-          />
-        ))}
+        <div className='relative' style={{ height: rowMetrics.totalSize }}>
+          {virtualRows.map((virtualRow) => (
+            <FileListVirtualRow
+              key={virtualRow.key}
+              accept={accept}
+              iconMode={iconMode}
+              isBusy={isBusy}
+              listId={listId}
+              mode={mode}
+              onDirectoryIntent={onDirectoryIntent}
+              onEntryDoubleClick={onEntryDoubleClick}
+              optionCount={entries.length}
+              row={rows[virtualRow.index]}
+              selectedPath={selectedPath}
+              virtualRow={virtualRow}
+            />
+          ))}
+        </div>
       </div>
+      {showError ? (
+        <div className='absolute inset-0' id={statusId}>
+          <EmptyState
+            action={
+              <Button onClick={onRetry} size='sm' type='button' variant='outline'>
+                <ArrowClockwiseIcon data-icon='inline-start' />
+                Retry
+              </Button>
+            }
+            className='h-full p-6'
+            description={loadState.message}
+            icon={<WarningCircleIcon className='size-8' weight='duotone' />}
+            title='Could not load this folder'
+            tone='error'
+          />
+        </div>
+      ) : null}
+      {showLoading ? (
+        <div className='absolute inset-0' id={statusId}>
+          <LoadingState className='h-full' label='Loading folder' rows={6} />
+        </div>
+      ) : null}
+      {showEmpty ? (
+        <div className='absolute inset-0' id={statusId}>
+          <EmptyState
+            className='h-full p-6'
+            description={pickerCopy(mode).emptyDescription}
+            icon={<FolderOpenIcon className='size-8' weight='duotone' />}
+            title='Nothing here'
+          />
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -139,32 +281,31 @@ type FileListRow =
       kind: 'entry'
       key: string
       entry: FsEntry
+      position: number
       showPath: boolean
     }
-
-type FileListVirtualItem = {
-  index: number
-  key: string
-  size: number
-  start: number
-}
-
-type FileListRowMetrics = {
-  items: readonly FileListVirtualItem[]
-  totalSize: number
-}
 
 function FileListVirtualRow({
   accept,
   iconMode,
+  isBusy,
+  listId,
   mode,
+  onDirectoryIntent,
+  onEntryDoubleClick,
+  optionCount,
   row,
   selectedPath,
   virtualRow,
 }: {
   accept?: readonly string[]
   iconMode: FilePickerIconMode
+  isBusy: boolean
+  listId: string
   mode: FilePickerMode
+  onDirectoryIntent: (path: string) => void
+  onEntryDoubleClick: (entry: FsEntry) => void
+  optionCount: number
   row: FileListRow | undefined
   selectedPath: string | null
   virtualRow: FileListVirtualItem
@@ -173,11 +314,14 @@ function FileListVirtualRow({
 
   return (
     <div
-      className='absolute top-0 right-1.5 left-1.5'
+      className='absolute top-0 right-1 left-1'
       style={{ transform: `translateY(${virtualRow.start}px)` }}
     >
       {row.kind === 'section' ? (
-        <div className='text-muted-foreground px-2 py-1.5 text-[11px] font-medium tracking-normal uppercase'>
+        <div
+          aria-hidden='true'
+          className='text-muted-foreground/70 flex h-[22px] items-center px-2 text-[10px] font-medium tracking-wide uppercase'
+        >
           {row.label}
         </div>
       ) : (
@@ -185,8 +329,14 @@ function FileListVirtualRow({
           accept={accept}
           entry={row.entry}
           iconMode={iconMode}
+          id={fileListOptionId(listId, row.entry.path)}
+          isBusy={isBusy}
           mode={mode}
+          onDirectoryIntent={onDirectoryIntent}
+          onDoubleClick={onEntryDoubleClick}
+          position={row.position}
           selected={row.entry.path === selectedPath}
+          setSize={optionCount}
           showPath={row.showPath}
         />
       )}
@@ -194,85 +344,328 @@ function FileListVirtualRow({
   )
 }
 
+function FileRow({
+  accept,
+  entry,
+  iconMode,
+  id,
+  isBusy,
+  mode,
+  onDirectoryIntent,
+  onDoubleClick,
+  position,
+  selected,
+  setSize,
+  showPath,
+}: {
+  accept?: readonly string[]
+  entry: FsEntry
+  iconMode: FilePickerIconMode
+  id: string
+  isBusy: boolean
+  mode: FilePickerMode
+  onDirectoryIntent: (path: string) => void
+  onDoubleClick: (entry: FsEntry) => void
+  position: number
+  selected: boolean
+  setSize: number
+  showPath: boolean
+}) {
+  const { selectEntry } = useFilePickerSessionActions()
+  const directory = isDirectoryEntry(entry)
+  const pickable = isPickableEntry(entry, mode, accept)
+  const availabilityLabel = fileListAvailabilityLabel(entry, mode, pickable)
+  const { elementRef } = useForesight<HTMLDivElement>({
+    callback: signalDirectoryIntent,
+    enabled: directory && !isBusy,
+    hitSlop: INTENT_PREFETCH_HIT_SLOP_PX,
+    meta: { path: entry.path },
+    name: `file-picker-directory:${entry.path}`,
+    reactivateAfter: DIRECTORY_QUERY_STALE_MS,
+  })
+
+  function signalDirectoryIntent() {
+    if (!directory || isBusy) return
+
+    return onDirectoryIntent(entry.path)
+  }
+
+  function handleClick() {
+    if (isBusy) return
+
+    selectEntry(entry)
+  }
+
+  function handleDoubleClick() {
+    if (isBusy) return
+
+    onDoubleClick(entry)
+  }
+
+  return (
+    <div
+      ref={directory ? elementRef : undefined}
+      aria-disabled={isBusy || undefined}
+      aria-posinset={position}
+      aria-selected={selected}
+      aria-setsize={setSize}
+      className={cn(
+        'grid w-full cursor-default items-center gap-3 rounded-sm px-2 text-left text-xs',
+        showPath ? 'h-[38px]' : 'h-[26px]',
+        fileListGridClass(mode),
+        selected && 'bg-row-selected text-foreground',
+        !isBusy && !selected && 'hover:bg-row-hover',
+        isBusy && 'pointer-events-none opacity-60',
+        !pickable && !selected && 'text-muted-foreground/65',
+      )}
+      id={id}
+      onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
+      role='option'
+    >
+      <div className='flex min-w-0 items-center gap-2'>
+        <EntryIcon
+          className='size-4 shrink-0'
+          entry={entry}
+          iconMode={iconMode}
+          selected={selected}
+        />
+        <div className='min-w-0'>
+          <div className='truncate'>{entry.name}</div>
+          {showPath ? (
+            <div className='text-muted-foreground truncate text-[11px]'>
+              {displayPath(entry.path)}
+            </div>
+          ) : null}
+        </div>
+      </div>
+      {mode === 'file' ? (
+        <div className='text-muted-foreground truncate'>{kindLabel(entry)}</div>
+      ) : null}
+      <div className='text-muted-foreground truncate tabular-nums max-sm:hidden'>
+        {formatFileListModified(entry.mtimeMs)}
+      </div>
+      <div className='text-muted-foreground text-right tabular-nums max-sm:hidden'>
+        {fileListSizeLabel(entry)}
+      </div>
+      {availabilityLabel ? <span className='sr-only'>{availabilityLabel}</span> : null}
+    </div>
+  )
+}
+
+function SortableColumnHeader({
+  align = 'start',
+  className,
+  isLoading = false,
+  keyName,
+  label,
+  onSort,
+  sort,
+}: {
+  align?: 'start' | 'end'
+  className?: string
+  isLoading?: boolean
+  keyName: FileListSortKey
+  label: string
+  onSort: (key: FileListSortKey) => void
+  sort: FileListSort | null
+}) {
+  const direction = sort?.key === keyName ? sort.direction : undefined
+
+  return (
+    <div className={cn('min-w-0', align === 'end' && 'flex justify-end', className)}>
+      <Button
+        aria-label={sortButtonLabel(keyName, direction)}
+        className={cn(
+          'text-muted-foreground hover:text-foreground h-6 min-w-0 gap-1 px-1.5 text-[11px] font-medium uppercase',
+          align === 'start' && '-ml-1.5',
+          align === 'end' && '-mr-1.5',
+        )}
+        onClick={() => onSort(keyName)}
+        size='xs'
+        type='button'
+        variant='ghost'
+      >
+        <span className='truncate'>{label}</span>
+        {isLoading ? <Spinner className='size-3' /> : <SortIndicator direction={direction} />}
+      </Button>
+    </div>
+  )
+}
+
+function SortIndicator({ direction }: { direction?: FileListSortDirection }) {
+  if (direction === 'ascending') {
+    return <CaretUpIcon aria-hidden='true' className='size-3' weight='bold' />
+  }
+  if (direction === 'descending') {
+    return <CaretDownIcon aria-hidden='true' className='size-3' weight='bold' />
+  }
+
+  return <CaretUpDownIcon aria-hidden='true' className='size-3 opacity-35' />
+}
+
 function fileListRows(entries: FsEntry[], isSearching: boolean): FileListRow[] {
   if (!isSearching || !entries.some(hasSearchScope)) {
-    return entries.map((entry) => ({
+    return entries.map((entry, index) => ({
       kind: 'entry',
       key: entry.path,
       entry,
+      position: index + 1,
       showPath: false,
     }))
   }
 
-  return searchResultSections(entries).flatMap((section) =>
-    section.entries.length === 0
-      ? []
-      : [
-          {
-            kind: 'section',
-            key: `section:${section.scope}`,
-            label: section.label,
-          },
-          ...section.entries.map((entry) => ({
-            kind: 'entry' as const,
-            key: `${section.scope}:${entry.path}`,
-            entry,
-            showPath: true,
-          })),
-        ],
-  )
-}
+  let position = 0
+  return searchResultSections(entries).flatMap((section) => {
+    if (section.entries.length === 0) return []
 
-function estimatedFileListRowSize(row: FileListRow | undefined) {
-  if (row?.kind === 'section') return 28
-
-  return 44
-}
-
-function fileListRowKey(row: FileListRow | undefined, index: number) {
-  return row?.key ?? `missing:${index}`
+    return [
+      {
+        kind: 'section' as const,
+        key: `section:${section.scope}`,
+        label: section.label,
+      },
+      ...section.entries.map((entry) => {
+        position += 1
+        return {
+          kind: 'entry' as const,
+          key: `${section.scope}:${entry.path}`,
+          entry,
+          position,
+          showPath: true,
+        }
+      }),
+    ]
+  })
 }
 
 function fileListRowMetrics(rows: readonly FileListRow[]): FileListRowMetrics {
-  const items: FileListVirtualItem[] = []
-  let totalSize = 0
-
-  for (let index = 0; index < rows.length; index += 1) {
-    const size = estimatedFileListRowSize(rows[index])
-    items.push({
-      index,
-      key: fileListRowKey(rows[index], index),
-      size,
-      start: totalSize,
-    })
-    totalSize += size
-  }
-
-  return { items, totalSize }
-}
-
-function visibleFileListRows(
-  metrics: FileListRowMetrics,
-  viewport: { height: number; top: number },
-) {
-  const overscan = 12
-  const start = Math.max(0, viewport.top - viewport.height)
-  const end = viewport.top + viewport.height * 2
-  const visible = metrics.items.filter(
-    (item) => item.start + item.size >= start && item.start <= end,
+  return buildFileListRowMetrics(
+    rows.map((row) => ({
+      key: row.key,
+      size: fileListRowSize(row),
+    })),
   )
-  if (visible.length > 0) return visible
-
-  return metrics.items.slice(0, overscan)
 }
 
-function handleFileListScroll(setViewport: (viewport: { height: number; top: number }) => void) {
+function fileListRowSize(row: FileListRow) {
+  if (row.kind === 'section') return SECTION_ROW_SIZE
+
+  return row.showPath ? ENTRY_WITH_PATH_ROW_SIZE : ENTRY_ROW_SIZE
+}
+
+function selectedFileListRowIndex(rows: readonly FileListRow[], selectedPath: string | null) {
+  if (!selectedPath) return undefined
+
+  const index = rows.findIndex((row) => row.kind === 'entry' && row.entry.path === selectedPath)
+  if (index < 0) return undefined
+
+  return index
+}
+
+function activeFileListOptionId(
+  rows: readonly FileListRow[],
+  selectedIndex: number | undefined,
+  listId: string,
+) {
+  if (selectedIndex === undefined) return undefined
+
+  const row = rows[selectedIndex]
+  if (row?.kind !== 'entry') return undefined
+
+  return fileListOptionId(listId, row.entry.path)
+}
+
+function handleFileListScroll(setViewport: SetFileListViewport) {
   return (event: UIEvent<HTMLDivElement>) => {
-    setViewport({
-      height: event.currentTarget.clientHeight,
-      top: event.currentTarget.scrollTop,
-    })
+    updateFileListViewport(event.currentTarget, setViewport)
   }
+}
+
+function focusFileList(event: MouseEvent<HTMLDivElement>) {
+  if (event.button !== 0) return
+
+  event.currentTarget.focus({ preventScroll: true })
+}
+
+function observeFileListViewport(element: HTMLDivElement, setViewport: SetFileListViewport) {
+  updateFileListViewport(element, setViewport)
+  if (typeof ResizeObserver === 'undefined') return
+
+  const observer = new ResizeObserver(() => updateFileListViewport(element, setViewport))
+  observer.observe(element)
+
+  return () => observer.disconnect()
+}
+
+function syncFileListSelectionScroll(
+  element: HTMLDivElement,
+  item: FileListVirtualItem | undefined,
+  setViewport: SetFileListViewport,
+) {
+  const viewport = fileListViewport(element)
+  const nextTop = fileListSelectionScrollTop(item, viewport)
+  if (nextTop === viewport.top) return
+
+  element.scrollTop = nextTop
+  updateFileListViewport(element, setViewport)
+}
+
+function updateFileListViewport(element: HTMLDivElement, setViewport: SetFileListViewport) {
+  const nextViewport = fileListViewport(element)
+  setViewport((currentViewport) => {
+    if (sameFileListViewport(currentViewport, nextViewport)) return currentViewport
+
+    return nextViewport
+  })
+}
+
+function fileListViewport(element: HTMLDivElement): FileListViewport {
+  return { height: element.clientHeight, top: element.scrollTop }
+}
+
+function sameFileListViewport(first: FileListViewport, second: FileListViewport) {
+  return first.height === second.height && first.top === second.top
+}
+
+function fileListPageSize(viewportHeight: number) {
+  return Math.max(1, Math.floor(viewportHeight / ENTRY_ROW_SIZE))
+}
+
+function fileListGridClass(mode: FilePickerMode) {
+  if (mode === 'folder') {
+    return 'grid-cols-[minmax(0,1fr)_116px_74px] max-sm:grid-cols-1'
+  }
+
+  return 'grid-cols-[minmax(0,1fr)_80px_116px_74px] max-sm:grid-cols-[minmax(0,1fr)_68px]'
+}
+
+function formatFileListModified(mtimeMs: number) {
+  if (mtimeMs <= 0) return 'Unknown'
+
+  return compactModifiedFormatter.format(new Date(mtimeMs))
+}
+
+function fileListSizeLabel(entry: FsEntry) {
+  if (isDirectoryEntry(entry)) return '--'
+
+  return formatSizeLabel(entry)
+}
+
+function sortButtonLabel(key: FileListSortKey, direction?: FileListSortDirection) {
+  if (!direction) return `Sort by ${key}`
+
+  return `Sort by ${key}, currently ${direction}`
+}
+
+function assignRef<T>(ref: Ref<T> | undefined, value: T | null) {
+  if (!ref) return
+  if (typeof ref === 'function') {
+    ref(value)
+    return
+  }
+
+  ref.current = value
 }
 
 function hasSearchScope(entry: FsEntry) {
@@ -292,67 +685,4 @@ function searchResultSections(entries: FsEntry[]) {
       entries: entries.filter((entry) => entry.searchScope === 'system'),
     },
   ]
-}
-
-function FileRow({
-  accept,
-  entry,
-  iconMode,
-  mode,
-  selected,
-  showPath,
-}: {
-  accept?: readonly string[]
-  entry: FsEntry
-  iconMode: FilePickerIconMode
-  mode: FilePickerMode
-  selected: boolean
-  showPath: boolean
-}) {
-  const { navigateTo, selectEntry } = useFilePickerSessionActions()
-  const pickable = isPickableEntry(entry, mode, accept)
-  const interactive = pickable || isDirectoryEntry(entry)
-
-  function handleDoubleClick() {
-    if (isDirectoryEntry(entry)) return navigateTo(entry.path)
-  }
-
-  return (
-    <button
-      aria-disabled={!pickable}
-      aria-selected={selected}
-      className={cn(
-        'grid h-11 w-full grid-cols-[minmax(0,1fr)_80px_116px_74px] items-center gap-3 rounded-md px-1.5 text-left text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring/50 max-sm:grid-cols-[minmax(0,1fr)_68px]',
-        'active:scale-[0.995] motion-reduce:active:scale-100',
-        selected && 'bg-row-selected text-foreground',
-        !selected && interactive && 'hover:bg-row-hover',
-        !interactive && 'cursor-not-allowed text-muted-foreground/60',
-        interactive && !pickable && 'text-muted-foreground/75',
-      )}
-      disabled={!interactive}
-      onClick={() => selectEntry(entry)}
-      onDoubleClick={handleDoubleClick}
-      role='option'
-      type='button'
-    >
-      <div className='flex min-w-0 items-center gap-2'>
-        <EntryPreviewTile entry={entry} iconMode={iconMode} selected={selected} size='sm' />
-        <div className='min-w-0'>
-          <div className='truncate font-medium'>{entry.name}</div>
-          <div
-            className={cn('truncate text-[11px] text-muted-foreground', !showPath && 'sm:hidden')}
-          >
-            {displayPath(entry.path)}
-          </div>
-        </div>
-      </div>
-      <KindBadge entry={entry} />
-      <div className='text-muted-foreground truncate tabular-nums max-sm:hidden'>
-        {formatModified(entry.mtimeMs)}
-      </div>
-      <div className='text-muted-foreground text-right tabular-nums max-sm:hidden'>
-        {formatSizeLabel(entry)}
-      </div>
-    </button>
-  )
 }

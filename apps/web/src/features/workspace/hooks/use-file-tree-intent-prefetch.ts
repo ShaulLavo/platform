@@ -12,10 +12,10 @@ import {
   type IntentPrefetchRegistry,
   type IntentPrefetchRow,
 } from '@/features/workspace/utils/intent-prefetch-registry'
-import { INTENT_PREFETCH_HIT_SLOP_PX } from '@/features/workspace/utils/intent-prefetch-options'
 import { createIdleScheduler } from '@/features/workspace/utils/intent-prefetch-scheduler'
 import { FILE_SNAPSHOT_STALE_MS, prefetchFileSnapshotQuery } from '@/lib/file-snapshot-query-cache'
 import { isDirectoryEntry } from '@/lib/file-system-types'
+import { INTENT_PREFETCH_HIT_SLOP_PX } from '@/lib/intent-prefetch-options'
 import { entryForTreePath, type TreeModel } from '@/lib/tree-model'
 import type { FileTreeModel } from '@workspace/tree'
 

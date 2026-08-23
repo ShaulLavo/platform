@@ -210,8 +210,8 @@ export function loadingLoadState(previous: EntriesLoadState): EntriesLoadState {
 }
 
 function nextSelectionIndex(currentIndex: number, offset: number, length: number) {
-  if (currentIndex < 0 && offset > 0) return 0
-  if (currentIndex < 0) return length - 1
+  if (currentIndex < 0 && offset > 0) return Math.min(offset - 1, length - 1)
+  if (currentIndex < 0) return Math.max(length + offset, 0)
 
   return Math.min(Math.max(currentIndex + offset, 0), length - 1)
 }

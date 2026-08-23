@@ -1,4 +1,5 @@
 import type { FsEntry } from '@/lib/file-system-types'
+import { isDirectoryEntry } from '@/lib/file-system-types'
 import { cn } from '@workspace/ui/lib/utils'
 
 import { EntryIcon } from '@/features/file-picker/entry-ui'
@@ -11,8 +12,8 @@ import {
 } from '@/features/file-picker/navigation/navigation-styles'
 
 export function RecentShortcut({ currentPath, entry }: { currentPath: string; entry: FsEntry }) {
-  const { jumpTo } = useFilePickerSessionActions()
-  const selected = currentPath === entry.path
+  const { revealEntry } = useFilePickerSessionActions()
+  const selected = isDirectoryEntry(entry) && currentPath === entry.path
 
   return (
     <button
@@ -22,7 +23,7 @@ export function RecentShortcut({ currentPath, entry }: { currentPath: string; en
         selected && SIDEBAR_NAV_BUTTON_SELECTED_CLASS,
         !selected && SIDEBAR_NAV_BUTTON_IDLE_CLASS,
       )}
-      onClick={() => jumpTo(entry.path)}
+      onClick={() => revealEntry(entry)}
       type='button'
     >
       <EntryIcon className='size-4' entry={entry} iconMode='default' selected={selected} />

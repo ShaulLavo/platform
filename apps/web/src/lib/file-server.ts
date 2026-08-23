@@ -41,6 +41,12 @@ type OpenWorkspaceRootResult = {
   workspaceIndex: NonNullable<ServerInfo['workspaceIndex']>
 }
 
+export type RecentEntriesOptions = {
+  limit: number
+  mode: 'file' | 'folder'
+  showHidden: boolean
+}
+
 export type WriteFileContentOptions = {
   baseVersion?: string | null
   expectedMtimeMs?: number | null
@@ -221,19 +227,27 @@ export async function createFileContent(path: string, content: string) {
 export async function ensureFolderPath(path: string) {
   if (!path) return null
 
+  return requestFolderCreation(path, true)
+}
+
+export async function createFolderPath(path: string) {
+  return requestFolderCreation(path, false)
+}
+
+async function requestFolderCreation(path: string, recursive: boolean) {
   return observeClientOperation(
     {
       action: 'fs.create_folder',
       area: 'fs',
       method: 'POST',
       path,
-      recursive: true,
+      recursive,
       route: '/fs/create-folder',
     },
     async () => {
       const response = await getClient().fs['create-folder'].post({
         path,
-        recursive: true,
+        recursive,
       })
 
       if (response.error) throw createRpcError(response.error)
@@ -357,11 +371,18 @@ export async function openWorkspaceRootPath(path: string, generation: number, si
 }
 
 /** `signal` is optional: a caller with no lifecycle to hang it on must not fake one. */
-export async function fetchRecentEntries(limit: number, signal?: AbortSignal) {
+export async function fetchRecentEntries(options: RecentEntriesOptions, signal?: AbortSignal) {
   return observeClientOperation(
-    { action: 'fs.recents', area: 'fs', limit, method: 'GET', route: '/fs/recents', signal },
+    {
+      action: 'fs.recents',
+      area: 'fs',
+      ...options,
+      method: 'GET',
+      route: '/fs/recents',
+      signal,
+    },
     async () => {
-      const response = await getClient().fs.recents.get({ query: { limit }, fetch: { signal } })
+      const response = await getClient().fs.recents.get({ query: options, fetch: { signal } })
 
       if (response.error) throw createRpcError(response.error)
 

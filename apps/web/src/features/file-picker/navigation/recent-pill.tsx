@@ -1,4 +1,5 @@
 import type { FsEntry } from '@/lib/file-system-types'
+import { isDirectoryEntry } from '@/lib/file-system-types'
 import { cn } from '@workspace/ui/lib/utils'
 
 import { useFilePickerSessionActions } from '@/features/file-picker/hooks/use-file-picker-session-actions'
@@ -9,8 +10,8 @@ import {
 } from '@/features/file-picker/navigation/navigation-styles'
 
 export function RecentPill({ currentPath, entry }: { currentPath: string; entry: FsEntry }) {
-  const { jumpTo } = useFilePickerSessionActions()
-  const selected = currentPath === entry.path
+  const { revealEntry } = useFilePickerSessionActions()
+  const selected = isDirectoryEntry(entry) && currentPath === entry.path
 
   return (
     <button
@@ -20,7 +21,7 @@ export function RecentPill({ currentPath, entry }: { currentPath: string; entry:
         selected && PILL_NAV_BUTTON_SELECTED_CLASS,
         !selected && PILL_NAV_BUTTON_IDLE_CLASS,
       )}
-      onClick={() => jumpTo(entry.path)}
+      onClick={() => revealEntry(entry)}
       type='button'
     >
       {entry.name}

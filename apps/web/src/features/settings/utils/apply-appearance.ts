@@ -9,6 +9,7 @@ export type AppearanceValues = Pick<
   | 'editor.fontSize'
   | 'editor.lineHeight'
   | 'editor.tabSize'
+  | 'workbench.palette'
   | 'workbench.colorTheme'
   | 'workbench.surface.blur'
   | 'workbench.surface.contentOpacity'
@@ -45,6 +46,11 @@ export function applyAppearance(values: AppearanceValues, root: Root, prefersDar
   const resolved = resolveColorTheme(values['workbench.colorTheme'], prefersDark)
   root.classList.remove('light', 'dark')
   root.classList.add(resolved)
+
+  // An attribute, not a class: the sage palette blocks have to outrank both
+  // `:root` and `.dark` in globals.css, and `html[data-palette='sage']` does
+  // that by specificity, without an `!important`.
+  root.setAttribute('data-palette', values['workbench.palette'])
 
   root.style.setProperty('--surface-opacity', `${values['workbench.surface.opacity']}%`)
   root.style.setProperty('--content-opacity', `${values['workbench.surface.contentOpacity']}%`)

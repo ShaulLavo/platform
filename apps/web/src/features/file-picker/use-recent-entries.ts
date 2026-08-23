@@ -4,22 +4,28 @@ import { useQuery } from '@tanstack/react-query'
 
 import { fetchRecentEntries } from '@/features/file-picker/data-helpers'
 import { entriesLoadState } from '@/features/file-picker/load-state'
+import type { FilePickerMode } from '@/features/file-picker/model'
 
 export function useRecentEntries({
+  mode,
   open,
-  reloadVersion,
   serverInfo,
+  showHidden,
 }: {
+  mode: FilePickerMode
   open: boolean
-  reloadVersion: number
   serverInfo: ServerInfo | null
+  showHidden: boolean
 }) {
   const enabled = open && Boolean(serverInfo)
   const query = useQuery<FsEntry[]>({
     enabled,
-    queryFn: ({ signal }) => fetchRecentEntries(signal),
-    queryKey: filePickerKeys.recentList(reloadVersion),
+    queryFn: ({ signal }) => fetchRecentEntries(mode, showHidden, signal),
+    queryKey: filePickerKeys.recentList(mode, showHidden),
   })
 
-  return entriesLoadState(query, enabled)
+  return {
+    loadState: entriesLoadState(query, enabled),
+    refresh: query.refetch,
+  }
 }

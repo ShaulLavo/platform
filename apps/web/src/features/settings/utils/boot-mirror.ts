@@ -45,6 +45,7 @@ const MIRRORED_KEYS = [
   'search.maxResultFiles',
   'search.quickOpenLimit',
   'search.wholeWord',
+  'workbench.palette',
   'workbench.colorTheme',
   'workbench.surface.blur',
   'workbench.surface.contentOpacity',

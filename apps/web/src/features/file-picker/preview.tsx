@@ -5,39 +5,35 @@ import { Separator } from '@workspace/ui/components/separator'
 
 import { EntryIcon, EntryPreviewTile, KindBadge } from '@/features/file-picker/entry-ui'
 import {
-  displayPath,
   formatModified,
   formatSize,
   kindLabel,
-  parentPath,
   pickerCopy,
   type FilePickerIconMode,
   type FilePickerMode,
 } from '@/features/file-picker/model'
 
 export function PreviewPane({
-  currentPath,
   entry,
   iconMode,
   isSearching,
   mode,
 }: {
-  currentPath: string
   entry: FsEntry | null
   iconMode: FilePickerIconMode
   isSearching: boolean
   mode: FilePickerMode
 }) {
   return (
-    <aside className='bg-muted/15 hidden min-h-0 border-l lg:flex lg:flex-col'>
-      <div className='text-muted-foreground border-b px-3 py-2 text-[11px] font-medium tracking-normal uppercase'>
+    <aside className='hidden min-h-0 lg:flex lg:flex-col'>
+      <div className='border-border/60 text-muted-foreground/70 flex h-[26px] shrink-0 items-center border-b px-3 text-[10px] font-medium tracking-wide uppercase'>
         Preview
       </div>
-      <div className='flex min-h-0 flex-1 flex-col p-4'>
+      <div className='flex min-h-0 flex-1 flex-col p-3'>
         {entry ? (
           <EntryPreviewDetails entry={entry} iconMode={iconMode} />
         ) : (
-          <NoPreview currentPath={currentPath} isSearching={isSearching} mode={mode} />
+          <NoPreview isSearching={isSearching} mode={mode} />
         )}
       </div>
     </aside>
@@ -67,10 +63,7 @@ export function SelectedSummary({
   return (
     <div className='flex min-w-0 items-center gap-2 text-xs'>
       <EntryIcon className='size-4' entry={entry} iconMode={iconMode} selected={false} />
-      <div className='min-w-0'>
-        <div className='truncate font-medium'>{entry.name}</div>
-        <div className='text-muted-foreground truncate'>{displayPath(entry.path)}</div>
-      </div>
+      <span className='truncate font-medium'>{entry.name}</span>
     </div>
   )
 }
@@ -85,22 +78,18 @@ function EntryPreviewDetails({
   return (
     <div className='flex min-h-0 flex-1 flex-col items-center text-center'>
       <EntryPreviewTile entry={entry} iconMode={iconMode} selected={false} size='lg' />
-      <div className='mt-3 w-full min-w-0'>
-        <div className='truncate text-sm font-medium'>{entry.name}</div>
-        <div className='text-muted-foreground mt-1 truncate font-mono text-[11px]'>
-          {displayPath(entry.path)}
-        </div>
+      <div className='mt-2.5 w-full min-w-0'>
+        <div className='truncate text-xs font-medium'>{entry.name}</div>
       </div>
-      <div className='mt-3'>
+      <div className='mt-2'>
         <KindBadge entry={entry} />
       </div>
-      <Separator className='my-4' />
-      <dl className='grid w-full gap-2 text-left text-xs'>
+      <Separator className='my-3' />
+      <dl className='grid w-full gap-1.5 text-left text-[11px]'>
         <PreviewFact label='Kind' value={kindLabel(entry)} />
         {!isDirectoryEntry(entry) && <PreviewFact label='Size' value={formatSize(entry.size)} />}
         <PreviewFact label='Modified' value={formatModified(entry.mtimeMs)} />
         <PreviewFact label='Created' value={formatModified(entry.birthtimeMs)} />
-        <PreviewFact label='Location' value={displayPath(parentPath(entry.path))} />
       </dl>
     </div>
   )
@@ -108,37 +97,26 @@ function EntryPreviewDetails({
 
 function PreviewFact({ label, value }: { label: string; value: string }) {
   return (
-    <div className='grid grid-cols-[74px_minmax(0,1fr)] gap-2'>
+    <div className='grid grid-cols-[64px_minmax(0,1fr)] gap-2'>
       <dt className='text-muted-foreground'>{label}</dt>
-      <dd className='text-foreground truncate tabular-nums'>{value}</dd>
+      <dd className='text-foreground min-w-0 text-right break-words tabular-nums'>{value}</dd>
     </div>
   )
 }
 
-function NoPreview({
-  currentPath,
-  isSearching,
-  mode,
-}: {
-  currentPath: string
-  isSearching: boolean
-  mode: FilePickerMode
-}) {
+function NoPreview({ isSearching, mode }: { isSearching: boolean; mode: FilePickerMode }) {
   const copy = pickerCopy(mode)
 
   return (
     <div className='flex min-h-0 flex-1 flex-col items-center justify-center text-center'>
-      <div className='bg-background text-muted-foreground flex size-20 items-center justify-center rounded-lg border shadow-xs'>
+      <div className='text-muted-foreground/40 flex items-center justify-center'>
         {isSearching ? (
-          <MagnifyingGlassIcon className='size-8' />
+          <MagnifyingGlassIcon className='size-7' />
         ) : (
-          <FolderOpenIcon className='size-8' weight='duotone' />
+          <FolderOpenIcon className='size-7' weight='duotone' />
         )}
       </div>
-      <div className='mt-3 text-sm font-medium'>{copy.emptyPreviewTitle}</div>
-      <p className='text-muted-foreground mt-1 max-w-40 text-xs'>
-        {`Previewing ${displayPath(currentPath)}`}
-      </p>
+      <div className='text-muted-foreground mt-2 text-[11px]'>{copy.emptyPreviewTitle}</div>
     </div>
   )
 }

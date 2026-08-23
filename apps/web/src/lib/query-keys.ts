@@ -14,10 +14,11 @@ export const filePickerKeys = {
   all: ['file-picker'] as const,
   serverInfo: () => [...filePickerKeys.all, 'server-info'] as const,
   directories: () => [...filePickerKeys.all, 'directories'] as const,
-  directory: (path: string, query: string, mode: 'file' | 'folder', reloadVersion: number) =>
-    [...filePickerKeys.directories(), { mode, path, query, reloadVersion }] as const,
+  directory: (path: string, query: string, mode: 'file' | 'folder', showHidden: boolean) =>
+    [...filePickerKeys.directories(), { mode, path, query, showHidden }] as const,
   recents: () => [...filePickerKeys.all, 'recents'] as const,
-  recentList: (reloadVersion: number) => [...filePickerKeys.recents(), reloadVersion] as const,
+  recentList: (mode: 'file' | 'folder', showHidden: boolean) =>
+    [...filePickerKeys.recents(), 'list', { mode, showHidden }] as const,
 }
 
 export const gitKeys = {

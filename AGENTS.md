@@ -66,6 +66,21 @@
 - Opaque-on-purpose surfaces use the `-solid` utilities (`bg-background-solid`, `bg-card-solid`, ...). They deliberately ignore the user's transparency setting — use them for things that must never fade (e.g. switch thumbs, active tab fills).
 - Regenerate `apps/web/public/workbench/wallpaper-vibrancy.png` (blur 48px, saturate 160%, 35% opacity baked into the alpha channel, ~1280px wide) whenever the wallpaper image changes. Keep the alpha low — it is a color cast; higher values drown the backdrop ghosting.
 
+## Loading And Empty States
+
+- Never hand-roll a loader. There are five, they live in `@workspace/ui`, and every waiting state in the app is one of them. No `animate-spin` on a borrowed icon, no `animate-pulse` dots, no bare "Loading…" paragraph.
+- Pick by **where the wait is**, not by which feature you are in:
+  - `LoadingState` — a region with no content yet (a pane, a list, a popover menu). Skeleton rows.
+  - `OrbitLoader` — a process running with no known end, in a slot beside a label: a header cell, a list row, a status line. This is the default small loader.
+  - `RingLoader` — the same, when the wait should stay quiet. Also the one to scale up for a whole-surface wait.
+  - `Spinner` — a control mid-action: a button that was clicked and is now working.
+  - `Shimmer` — text already on screen, transiently in progress, _inline inside a running sentence_ where a mark would break the flow. Never a substitute for a loader in a slot that can hold one.
+- A loading state and an empty state must never look alike. "Loading X" and "No X" set in the same type is a bug — the user cannot tell a slow panel from an empty one. Pending gets a loader; `EmptyState` is only for a verdict the app can actually deliver.
+- Check the fall-through. A list that only branches on `error` and `length === 0` will show "Nothing here" while it is still fetching. Branch on pending **before** empty.
+- `LoadingState` holds its bars back for 120ms (`delayMs`) so a fast query does not flash a skeleton. The `role="status"` container mounts immediately either way, so assistive tech is told at once. Do not defeat this with your own conditional.
+- Reduced motion is handled inside the primitives — they slow down rather than freeze, because a stopped spinner reads as a hung process. Do not add `motion-reduce:` classes at the call site.
+- Ellipsis is `…`, never `...`.
+
 ## Settings
 
 - Every user-facing knob is a registry entry in `packages/contracts/src/settings/keys.ts`. Never a new `localStorage` key, never a new env var, never a hardcoded constant someone has to recompile to change.

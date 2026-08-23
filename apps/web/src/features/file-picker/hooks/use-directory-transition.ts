@@ -1,0 +1,79 @@
+import { directoryQueryOptions } from '@/features/file-picker/utils/directory-query'
+import { errorMessage } from '@/lib/error-message'
+import { useQueryClient } from '@tanstack/react-query'
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react'
+import { toast } from 'sonner'
+
+import type { FilePickerMode } from '@/features/file-picker/model'
+
+export function useDirectoryTransition({
+  currentPath,
+  enabled,
+  mode,
+  showHidden,
+}: {
+  currentPath: string
+  enabled: boolean
+  mode: FilePickerMode
+  showHidden: boolean
+}) {
+  const queryClient = useQueryClient()
+  const requestIdRef = useRef(0)
+
+  useLayoutEffect(() => {
+    requestIdRef.current += 1
+  }, [currentPath, enabled, mode, showHidden])
+
+  useEffect(
+    () => () => {
+      requestIdRef.current += 1
+    },
+    [],
+  )
+
+  const beginDirectoryIntent = useCallback(() => {
+    requestIdRef.current += 1
+    return requestIdRef.current
+  }, [])
+
+  const preloadDirectory = useCallback(
+    (path: string) => {
+      if (!enabled || path === currentPath) return
+
+      return queryClient.prefetchQuery(
+        directoryQueryOptions({ mode, path, query: '', queryClient, showHidden }),
+      )
+    },
+    [currentPath, enabled, mode, queryClient, showHidden],
+  )
+
+  const loadDirectory = useCallback(
+    async (path: string, intentId?: number) => {
+      if (!enabled) return false
+
+      const requestId = intentId ?? beginDirectoryIntent()
+      if (requestId !== requestIdRef.current) return false
+      if (path === currentPath) {
+        return true
+      }
+
+      try {
+        await queryClient.fetchQuery(
+          directoryQueryOptions({ mode, path, query: '', queryClient, showHidden }),
+        )
+      } catch (cause) {
+        if (requestId !== requestIdRef.current) return false
+
+        toast.error('Could not open folder', {
+          description: errorMessage(cause, 'The folder could not be loaded.'),
+        })
+        return false
+      }
+
+      return requestId === requestIdRef.current
+    },
+    [beginDirectoryIntent, currentPath, enabled, mode, queryClient, showHidden],
+  )
+
+  return { beginDirectoryIntent, loadDirectory, preloadDirectory }
+}

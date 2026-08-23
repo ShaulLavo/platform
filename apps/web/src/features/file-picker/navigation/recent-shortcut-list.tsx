@@ -17,7 +17,7 @@ export function RecentShortcutList({
   }
   if (state.status === 'error') return <RecentSidebarNote>Could not load</RecentSidebarNote>
   if (state.status === 'ready' && state.data.length === 0) {
-    return <RecentSidebarNote>No folders yet</RecentSidebarNote>
+    return <RecentSidebarNote>No recent items</RecentSidebarNote>
   }
 
   const entries = state.status === 'ready' ? state.data : []

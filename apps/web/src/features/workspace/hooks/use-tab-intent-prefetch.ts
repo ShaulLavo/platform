@@ -6,8 +6,8 @@ import {
   editorTabPrefetchTarget,
   type EditorTabPrefetchCandidate,
 } from '@/features/workspace/utils/tab-prefetch'
-import { INTENT_PREFETCH_HIT_SLOP_PX } from '@/features/workspace/utils/intent-prefetch-options'
 import { FILE_SNAPSHOT_STALE_MS, prefetchFileSnapshotQuery } from '@/lib/file-snapshot-query-cache'
+import { INTENT_PREFETCH_HIT_SLOP_PX } from '@/lib/intent-prefetch-options'
 
 export function useEditorTabIntentPrefetch(tab: EditorTabPrefetchCandidate) {
   const queryClient = useQueryClient()

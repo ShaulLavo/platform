@@ -97,6 +97,10 @@
   --duration-exit: 100ms;
 }
 
+/* Warm near-greyscale: surfaces, ink and accents all sit on hue 70 at chroma
+   0.006, and nothing but the status colors carries a hue.
+   This is the `graphite` branch of workbench.palette — the default — and the
+   `sage` branch overrides it wholesale further down. */
 :root {
   color-scheme: light;
 
@@ -284,6 +288,7 @@
   --terminal-ansi-bright-white: #2a2a2a;
 }
 
+/* Again graphite: the same warm near-greyscale, inverted. */
 .dark {
   color-scheme: dark;
   /* Only the -solid inputs are redefined here; the translucent formulas live
@@ -421,6 +426,97 @@
   --terminal-ansi-bright-magenta: #e1b0ff;
   --terminal-ansi-bright-cyan: #8ce8f0;
   --terminal-ansi-bright-white: #ffffff;
+}
+
+/* workbench.palette === 'sage' — warm stone surfaces, cool ink and a sage
+   accent in light; deep slate and a muted teal in dark. Borrowed from ellie.
+   The background is deliberately off-white so white cards and popovers read as
+   raised against it, which the graphite base above does not do.
+
+   Attribute selectors because these have to outrank both `:root` and `.dark`,
+   which a class on the same element could not do. Both blocks list the same
+   token names on purpose — the light block outranks `.dark`, so any token it
+   set and the dark block did not would leak a light value into dark mode.
+
+   Only tokens that actually differ are here. The surface formulas, the file
+   icon colors, and the terminal, editor and search surfaces are shared by both
+   palettes and live once in `:root` / `.dark`. */
+html[data-palette='sage'] {
+  --background-solid: oklch(0.98 0.003 90);
+  --foreground: oklch(0.16 0.01 260);
+  --card-solid: oklch(1 0 0);
+  --card-foreground: oklch(0.16 0.01 260);
+  --popover-solid: oklch(1 0 0);
+  --popover-foreground: oklch(0.16 0.01 260);
+  --primary: oklch(0.47 0.08 170);
+  --primary-foreground: oklch(0.98 0.005 170);
+  --secondary: oklch(0.95 0.005 90);
+  --secondary-foreground: oklch(0.22 0.01 260);
+  --muted-solid: oklch(0.95 0.005 90);
+  --muted-foreground: oklch(0.5 0.01 260);
+  --accent-solid: oklch(0.95 0.008 170);
+  --accent-foreground: oklch(0.22 0.01 260);
+  --info-foreground: oklch(0.98 0.003 90);
+  /* Green sits at 150, not 165: the sage --primary lives at 170 and a success
+     badge must not read as "the brand color". */
+  --success: oklch(0.55 0.17 150);
+  --success-foreground: oklch(0.98 0.003 90);
+  --warning-foreground: oklch(0.22 0.01 260);
+  --update-foreground: oklch(0.98 0.003 90);
+  --border: oklch(0.9 0.005 90);
+  --input: oklch(0.9 0.005 90);
+  --ring: oklch(0.47 0.08 170);
+  --chart-1: oklch(0.55 0.1 170);
+  --chart-2: oklch(0.6 0.12 250);
+  --chart-3: oklch(0.5 0.14 310);
+  --chart-4: oklch(0.7 0.12 90);
+  --chart-5: oklch(0.65 0.15 30);
+  --sidebar: oklch(0.97 0.003 90);
+  --sidebar-foreground: oklch(0.16 0.01 260);
+  --sidebar-primary: oklch(0.47 0.08 170);
+  --sidebar-primary-foreground: oklch(0.98 0.005 170);
+  --sidebar-accent: oklch(0.95 0.008 170);
+  --sidebar-accent-foreground: oklch(0.22 0.01 260);
+  --sidebar-border: oklch(0.9 0.005 90);
+  --sidebar-ring: oklch(0.47 0.08 170);
+}
+
+.dark[data-palette='sage'] {
+  --background-solid: oklch(0.17 0.01 260);
+  --foreground: oklch(0.92 0.008 90);
+  --card-solid: oklch(0.21 0.01 260);
+  --card-foreground: oklch(0.92 0.008 90);
+  --popover-solid: oklch(0.21 0.01 260);
+  --popover-foreground: oklch(0.92 0.008 90);
+  --primary: oklch(0.72 0.1 175);
+  --primary-foreground: oklch(0.17 0.03 175);
+  --secondary: oklch(0.24 0.008 260);
+  --secondary-foreground: oklch(0.92 0.008 90);
+  --muted-solid: oklch(0.24 0.008 260);
+  --muted-foreground: oklch(0.65 0.012 260);
+  --accent-solid: oklch(0.24 0.015 260);
+  --accent-foreground: oklch(0.92 0.008 90);
+  --info-foreground: oklch(0.17 0.02 260);
+  --success: oklch(0.74 0.145 150);
+  --success-foreground: oklch(0.17 0.02 260);
+  --warning-foreground: oklch(0.17 0.02 260);
+  --update-foreground: oklch(0.17 0.02 260);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.72 0.1 175);
+  --chart-1: oklch(0.72 0.1 175);
+  --chart-2: oklch(0.68 0.12 250);
+  --chart-3: oklch(0.62 0.1 310);
+  --chart-4: oklch(0.78 0.12 90);
+  --chart-5: oklch(0.72 0.15 30);
+  --sidebar: oklch(0.21 0.01 260);
+  --sidebar-foreground: oklch(0.92 0.008 90);
+  --sidebar-primary: oklch(0.72 0.1 175);
+  --sidebar-primary-foreground: oklch(0.17 0.03 175);
+  --sidebar-accent: oklch(0.24 0.015 260);
+  --sidebar-accent-foreground: oklch(0.92 0.008 90);
+  --sidebar-border: oklch(1 0 0 / 9%);
+  --sidebar-ring: oklch(0.72 0.1 175);
 }
 
 /* Both shells give the editor and terminal a pane that already paints the

@@ -33,7 +33,10 @@ test('records an opened root as recent, so the project menu can order by it', as
 
   // Recorded through the real route: the picker is no longer the only way in.
   await waitFor(async () => {
-    const recents = await fetchRecentEntries(10, new AbortController().signal)
+    const recents = await fetchRecentEntries(
+      { limit: 10, mode: 'folder', showHidden: true },
+      new AbortController().signal,
+    )
     expect(recents.map((entry) => entry.path)).toEqual(['anubis'])
   })
 })

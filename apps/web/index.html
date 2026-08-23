@@ -16,15 +16,21 @@
          packages/ui/src/styles/globals.css win the moment they load —
          including the desktop shell's html[data-native-vibrancy] transparent
          floor. The colors mirror --background-solid there; changing them
-         means changing both. */
+         means changing both.
+
+         The default `graphite` palette is inline and `sage` arrives as
+         --boot-floor from the script below, rather than both being attribute
+         selectors: a [data-palette] rule would outrank
+         html[data-native-vibrancy] and paint an opaque floor over the desktop
+         shell's real blur. */
       @layer boot {
         html {
           color-scheme: light;
-          background-color: oklch(1 0.006 70);
+          background-color: var(--boot-floor, oklch(1 0.006 70));
         }
         html.dark {
           color-scheme: dark;
-          background-color: oklch(0.145 0.006 70);
+          background-color: var(--boot-floor, oklch(0.145 0.006 70));
         }
         html[data-native-vibrancy] {
           background-color: transparent;
@@ -32,24 +38,38 @@
       }
     </style>
     <script>
-      // Pre-paint theme class for the boot floor above. Reads the settings
-      // boot mirror (written by features/settings/utils/boot-mirror.ts, which
-      // this classic script cannot import — a module script would defer past
-      // first paint). applyAppearance in main.tsx re-applies the full
-      // appearance once the app boots; this only decides dark vs light.
+      // Pre-paint theme class and palette for the boot floor above. Reads the
+      // settings boot mirror (written by features/settings/utils/boot-mirror.ts,
+      // which this classic script cannot import — a module script would defer
+      // past first paint). applyAppearance in main.tsx re-applies the full
+      // appearance once the app boots; this only decides dark vs light and
+      // which palette those two are built from.
       ;(() => {
         let theme = 'system'
+        let palette = 'graphite'
         try {
           const raw = localStorage.getItem('platform.settings-boot-mirror.v1')
-          const stored = raw ? JSON.parse(raw)['workbench.colorTheme'] : undefined
-          if (stored === 'dark' || stored === 'light') theme = stored
+          const mirror = raw ? JSON.parse(raw) : {}
+          const storedTheme = mirror['workbench.colorTheme']
+          if (storedTheme === 'dark' || storedTheme === 'light') theme = storedTheme
+          if (mirror['workbench.palette'] === 'sage') palette = 'sage'
         } catch {
           // An unreadable mirror costs a system-theme boot floor, nothing more.
         }
         const dark =
           theme === 'dark' ||
           (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
-        document.documentElement.classList.add(dark ? 'dark' : 'light')
+        const root = document.documentElement
+        root.classList.add(dark ? 'dark' : 'light')
+        // Set before globals.css loads, so the first frame it paints already
+        // matches the palette instead of flashing the default one.
+        root.setAttribute('data-palette', palette)
+        if (palette !== 'sage') return
+
+        root.style.setProperty(
+          '--boot-floor',
+          dark ? 'oklch(0.17 0.01 260)' : 'oklch(0.98 0.003 90)',
+        )
       })()
     </script>
   </head>

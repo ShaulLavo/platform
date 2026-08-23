@@ -11,6 +11,7 @@ import {
 import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
 
 const SEARCH_SCOPE_TIMEOUT_MS = 6000
+export const PICKER_HIDDEN_SEARCH_EXCLUDE_GLOBS = ['**/.*', '**/.*/**'] as const
 
 /**
  * Streaming search source. Defaults to the workspace SSE client but is injectable
@@ -23,6 +24,7 @@ export type WorkspaceSearchStream = (
 
 export type StreamPickerSearchOptions = {
   search?: WorkspaceSearchStream
+  showHidden?: boolean
   scopeTimeoutMs?: number | null
 }
 
@@ -37,6 +39,7 @@ export async function streamPickerSearchEntries(
   options: StreamPickerSearchOptions = {},
 ): Promise<FsEntry[]> {
   const search = options.search ?? streamWorkspaceSearch
+  const showHidden = options.showHidden ?? false
   const scopeTimeoutMs = options.scopeTimeoutMs ?? SEARCH_SCOPE_TIMEOUT_MS
   const matches: FindMatch[] = []
   const seenPaths = new Set<string>()
@@ -47,6 +50,7 @@ export async function streamPickerSearchEntries(
     path,
     query,
     mode,
+    showHidden,
     scope,
     matches,
     seenPaths,
@@ -67,6 +71,7 @@ async function streamSearchScope(
   path: string,
   query: string,
   mode: FilePickerMode,
+  showHidden: boolean,
   scope: SearchScope,
   matches: FindMatch[],
   seenPaths: Set<string>,
@@ -81,6 +86,7 @@ async function streamSearchScope(
       {
         caseSensitive: false,
         entryType: searchEntryType(mode),
+        excludeGlobs: showHidden ? undefined : PICKER_HIDDEN_SEARCH_EXCLUDE_GLOBS,
         includeContent: false,
         includeNames: true,
         limit: readSettingsMirror()['search.quickOpenLimit'],

@@ -4,7 +4,7 @@ import type { ProviderInstanceId } from '@workspace/contracts'
 import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 import { Command, CommandEmpty, CommandInput, CommandList } from '@workspace/ui/components/command'
 import { Popover, PopoverContent } from '@workspace/ui/components/popover'
-import { Spinner } from '@workspace/ui/components/spinner'
+import { LoadingState } from '@workspace/ui/components/loading-state'
 import { TooltipProvider } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
 import { useState } from 'react'
@@ -147,10 +147,7 @@ export function ModelPicker({
             <div className='relative min-h-0 flex-1 overflow-hidden'>
               <CommandList className='h-full max-h-full px-1.5 py-1.5'>
                 {providersQuery.isPending ? (
-                  <div className='text-muted-foreground flex items-center justify-center gap-2 py-6 text-xs'>
-                    <Spinner className='size-3.5' />
-                    Loading providers
-                  </div>
+                  <LoadingState className='gap-1.5 px-1 py-2' label='Loading providers' rows={4} />
                 ) : null}
                 {emptyLabel ? (
                   <CommandEmpty className='text-muted-foreground text-xs leading-snug font-normal'>

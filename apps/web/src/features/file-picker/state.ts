@@ -1,13 +1,29 @@
-import type { FsEntry, PickedFsEntry, ServerInfo } from '@/lib/file-system-types'
+import {
+  isDirectoryEntry,
+  type FsEntry,
+  type PickedFsEntry,
+  type ServerInfo,
+} from '@/lib/file-system-types'
 import { useDebouncedValue } from '@tanstack/react-pacer/debouncer'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 
-import { ROOT_PATH, initialPathForOpen } from '@/features/file-picker/model'
+import { ROOT_PATH, initialPathForOpen, parentPath } from '@/features/file-picker/model'
+
+type NavigationState = {
+  readonly backHistory: readonly string[]
+  readonly currentPath: string
+  readonly forwardHistory: readonly string[]
+}
+
+const initialNavigationState: NavigationState = {
+  backHistory: [],
+  currentPath: ROOT_PATH,
+  forwardHistory: [],
+}
 
 export function useFilePickerSession(value: PickedFsEntry | null) {
-  const initializedOpenRef = useRef(false)
-  const [currentPath, setCurrentPath] = useState(ROOT_PATH)
-  const [history, setHistory] = useState<string[]>([])
+  const [isInitialized, setIsInitialized] = useState(false)
+  const [navigation, setNavigation] = useState(initialNavigationState)
   const [query, setQuery] = useState('')
   const [debouncedQuery] = useDebouncedValue(query, { wait: 180 })
   const effectiveQuery = query.trim() ? debouncedQuery : ''
@@ -15,72 +31,119 @@ export function useFilePickerSession(value: PickedFsEntry | null) {
 
   const initializeOpenSession = useCallback(
     (info: ServerInfo) => {
-      if (initializedOpenRef.current) return
+      if (isInitialized) return
 
-      initializedOpenRef.current = true
-      setHistory([])
+      setIsInitialized(true)
+      setNavigation({
+        backHistory: [],
+        currentPath: initialPathForOpen(value, info.defaultPath ?? info.homePath),
+        forwardHistory: [],
+      })
       setQuery('')
       setSelectedEntry(value)
-      setCurrentPath(initialPathForOpen(value, info.defaultPath ?? info.homePath))
     },
-    [value],
+    [isInitialized, value],
   )
 
   const resetOpenSession = useCallback(() => {
-    initializedOpenRef.current = false
+    setIsInitialized(false)
+    setNavigation(initialNavigationState)
+    setQuery('')
+    setSelectedEntry(null)
   }, [])
 
   const moveToPath = useCallback(
-    (path: string, keepHistory: boolean) => {
-      if (keepHistory) setHistory((items) => items.concat(currentPath))
-      setCurrentPath(path)
+    (path: string) => {
+      if (path === navigation.currentPath) return
+
+      setNavigation((current) => navigate(current, path))
       setSelectedEntry(null)
       setQuery('')
     },
-    [currentPath],
-  )
-
-  const navigateTo = useCallback(
-    (path: string) => {
-      if (path === currentPath) return
-
-      moveToPath(path, true)
-    },
-    [currentPath, moveToPath],
-  )
-
-  const jumpTo = useCallback(
-    (path: string) => {
-      if (path === currentPath) return
-
-      moveToPath(path, true)
-    },
-    [currentPath, moveToPath],
+    [navigation.currentPath],
   )
 
   const goBack = useCallback(() => {
-    const previous = history.at(-1)
-    if (previous === undefined) return
+    if (navigation.backHistory.length === 0) return
 
-    setHistory((items) => items.slice(0, -1))
-    setCurrentPath(previous)
+    setNavigation(back)
     setSelectedEntry(null)
     setQuery('')
-  }, [history])
+  }, [navigation.backHistory.length])
+
+  const goForward = useCallback(() => {
+    if (navigation.forwardHistory.length === 0) return
+
+    setNavigation(forward)
+    setSelectedEntry(null)
+    setQuery('')
+  }, [navigation.forwardHistory.length])
+
+  const revealEntry = useCallback(
+    (entry: FsEntry) => {
+      const directory = isDirectoryEntry(entry)
+      const path = directory ? entry.path : parentPath(entry.path)
+      if (path !== navigation.currentPath) {
+        setNavigation((current) => navigate(current, path))
+      }
+
+      setSelectedEntry(directory ? null : entry)
+      setQuery('')
+    },
+    [navigation.currentPath],
+  )
 
   return {
-    canGoBack: history.length > 0,
-    canGoUp: currentPath !== ROOT_PATH,
-    currentPath,
+    backPath: navigation.backHistory.at(-1) ?? null,
+    canGoBack: navigation.backHistory.length > 0,
+    canGoForward: navigation.forwardHistory.length > 0,
+    canGoUp: navigation.currentPath !== ROOT_PATH,
+    currentPath: navigation.currentPath,
     effectiveQuery,
+    forwardPath: navigation.forwardHistory[0] ?? null,
     goBack,
+    goForward,
     initializeOpenSession,
-    jumpTo,
-    navigateTo,
+    isInitialized,
+    jumpTo: moveToPath,
+    navigateTo: moveToPath,
     query,
+    revealEntry,
     resetOpenSession,
     selectedEntry,
     setQuery,
     setSelectedEntry,
+  }
+}
+
+function navigate(current: NavigationState, path: string): NavigationState {
+  if (path === current.currentPath) return current
+
+  return {
+    backHistory: current.backHistory.concat(current.currentPath),
+    currentPath: path,
+    forwardHistory: [],
+  }
+}
+
+function back(current: NavigationState): NavigationState {
+  const previousPath = current.backHistory.at(-1)
+  if (previousPath === undefined) return current
+
+  return {
+    backHistory: current.backHistory.slice(0, -1),
+    currentPath: previousPath,
+    forwardHistory: [current.currentPath, ...current.forwardHistory],
+  }
+}
+
+function forward(current: NavigationState): NavigationState {
+  const nextPath = current.forwardHistory[0]
+  if (nextPath === undefined) return current
+
+  return {
+    backHistory: current.backHistory.concat(current.currentPath),
+    currentPath: nextPath,
+    forwardHistory: current.forwardHistory.slice(1),
   }
 }

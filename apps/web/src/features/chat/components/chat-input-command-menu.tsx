@@ -1,3 +1,4 @@
+import { LoadingState } from '@workspace/ui/components/loading-state'
 import { Popover, PopoverContent, PopoverTrigger } from '@workspace/ui/components/popover'
 import { cn } from '@workspace/ui/lib/utils'
 import { useLayoutEffect, useMemo, useRef } from 'react'
@@ -122,9 +123,15 @@ export function ChatInputCommandMenu({
                 Built-in
               </div>
             ) : null}
-            <p className='text-muted-foreground/70 text-xs'>
-              {isLoading ? chatInputCommandMenuLoadingLabel(triggerKind) : emptyLabel}
-            </p>
+            {isLoading ? (
+              <LoadingState
+                className='gap-1.5 p-0'
+                label={chatInputCommandMenuLoadingLabel(triggerKind)}
+                rows={3}
+              />
+            ) : (
+              <p className='text-muted-foreground/70 text-xs'>{emptyLabel}</p>
+            )}
           </div>
         )}
       </PopoverContent>

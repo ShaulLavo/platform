@@ -20,6 +20,7 @@ const matchModeQueryValueSchema = v.union([
   v.literal('regex'),
   v.literal('fuzzy'),
 ])
+const pickerModeQueryValueSchema = v.union([v.literal('file'), v.literal('folder')])
 const globQueryValueSchema = v.pipe(
   v.union([v.string(), v.array(v.string())]),
   v.transform((value) => workspaceSearchGlobPatterns(value)),
@@ -169,6 +170,8 @@ export const eventsQuerySchema = v.object({
 
 export const recentsQuerySchema = v.object({
   limit: v.optional(recentLimitQueryValueSchema, '20'),
+  mode: pickerModeQueryValueSchema,
+  showHidden: booleanQueryValueSchema,
 })
 
 export const recordRecentBodySchema = v.object({
@@ -225,6 +228,7 @@ export type CreateFolderBody = v.InferOutput<typeof createFolderBodySchema>
 export type RenameBody = v.InferOutput<typeof renameBodySchema>
 export type CopyBody = v.InferOutput<typeof copyBodySchema>
 export type DeleteBody = v.InferOutput<typeof deleteBodySchema>
+export type RecentsQuery = v.InferOutput<typeof recentsQuerySchema>
 
 export type { EntryTypeFilter, TreeEntry, WatchServerMessage } from '@workspace/contracts'
 

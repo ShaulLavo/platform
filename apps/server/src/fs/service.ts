@@ -27,7 +27,7 @@ import {
 import { findInWorkspaceStream, type FindOptions, type SearchStreamEvent } from './search'
 import { FsError } from './errors'
 import type { MetadataDatabaseHandle } from '../db/client'
-import { FsMetadataStore, metadataRowToEntry, type FsMetadataEntry } from './metadata'
+import { FsMetadataStore } from './metadata'
 import {
   WorkspaceIndex,
   inactiveWorkspaceIndexStatus,
@@ -42,6 +42,7 @@ import type {
   DeleteBody,
   EntryTypeFilter,
   OpenWorkspaceRootBody,
+  RecentsQuery,
   RenameBody,
   TreeEntry,
   WatchServerMessage,
@@ -67,6 +68,7 @@ export type FileSystemServiceOptions = {
 }
 
 const DEFAULT_TREE_CONCURRENCY = 32
+const RECENT_CANDIDATE_BATCH_SIZE = 50
 
 type WorkspaceIndexScope = {
   abort: AbortController
@@ -296,7 +298,7 @@ export class FileSystemService {
     const entry = await this.statEntry(path)
     this.changes.emit({ type: 'created', path, entry })
 
-    return this.stat(path)
+    return entry
   }
 
   async rename(body: RenameBody) {
@@ -379,22 +381,42 @@ export class FileSystemService {
     )
   }
 
-  async recents(limit: number) {
+  async recents(query: RecentsQuery) {
     return observeRequestOperation(
-      { area: 'fs', limit, operation: 'recents' },
-      () => this.recentsObserved(limit),
+      {
+        area: 'fs',
+        limit: query.limit,
+        mode: query.mode,
+        operation: 'recents',
+        showHidden: query.showHidden,
+      },
+      () => this.recentsObserved(query),
       (result) => ({ entryCount: result.entries.length }),
     )
   }
 
-  private async recentsObserved(limit: number) {
-    const rows = this.metadata.listRecentDirectories(limit)
-    const entries: FsMetadataEntry[] = []
+  private async recentsObserved(query: RecentsQuery) {
+    const entries: TreeEntry[] = []
+    let offset = 0
 
-    for (const row of rows) {
-      const entry = await this.refreshMetadataEntry(metadataRowToEntry(row))
-      if (!entry) continue
-      entries.push(entry)
+    while (entries.length < query.limit) {
+      const rows = this.metadata.listRecentEntryCandidates({
+        limit: RECENT_CANDIDATE_BATCH_SIZE,
+        offset,
+      })
+      if (rows.length === 0) break
+
+      offset += rows.length
+      const candidates = await Promise.all(rows.map((row) => this.refreshMetadataEntry(row.path)))
+      for (const candidate of candidates) {
+        if (!candidate) continue
+        if (!matchesRecentQuery(candidate, query)) continue
+
+        entries.push(candidate)
+        if (entries.length >= query.limit) break
+      }
+
+      if (rows.length < RECENT_CANDIDATE_BATCH_SIZE) break
     }
 
     return { entries }
@@ -409,8 +431,8 @@ export class FileSystemService {
   }
 
   private async recordRecentObserved(path: string) {
-    const entry = await this.metadataEntry(path)
-    if (effectiveEntryType(entry) !== 'directory') throw new FsError('NOT_A_DIRECTORY')
+    const entry = await this.statEntry(path)
+    if (!isPickableEntry(entry)) throw new FsError('INVALID_PATH')
 
     this.metadata.recordPicked(entry)
     return entry
@@ -472,21 +494,13 @@ export class FileSystemService {
     this.retiringWorkspaceIndexScopes.add(retirement)
   }
 
-  private async refreshMetadataEntry(entry: FsMetadataEntry) {
+  private async refreshMetadataEntry(input: string) {
     try {
-      const refreshed = await this.metadataEntry(entry.path)
-      if (effectiveEntryType(refreshed) !== 'directory') return null
+      const refreshed = await this.statEntry(input)
+      if (!isPickableEntry(refreshed)) return null
       return refreshed
     } catch {
       return null
-    }
-  }
-
-  private async metadataEntry(input: string): Promise<FsMetadataEntry> {
-    const stat = await this.stat(input)
-
-    return {
-      ...entryFromStat(stat),
     }
   }
 
@@ -494,6 +508,22 @@ export class FileSystemService {
     const stat = await this.stat(input)
     return entryFromStat(stat)
   }
+}
+
+function isPickableEntry(entry: TreeEntry) {
+  const type = effectiveEntryType(entry)
+  return type === 'directory' || type === 'file'
+}
+
+function matchesRecentQuery(entry: TreeEntry, query: RecentsQuery) {
+  if (!query.showHidden && hasHiddenPathSegment(entry.path)) return false
+  if (query.mode === 'file') return true
+
+  return effectiveEntryType(entry) === 'directory'
+}
+
+function hasHiddenPathSegment(input: string) {
+  return input.split('/').some((segment) => segment.startsWith('.'))
 }
 
 function workspaceIndexForSearch(

@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, sql } from 'drizzle-orm'
+import { and, asc, desc, inArray, isNotNull, sql } from 'drizzle-orm'
 import { effectiveEntryType, type EntryTypeFilter } from '@workspace/contracts'
 import {
   createMetadataDatabase,
@@ -6,7 +6,7 @@ import {
   type PlatformDatabase,
 } from '../db/client'
 import { migrateMetadataDatabase } from '../db/migrations'
-import { fsMetadata, type FsMetadataRow } from '../db/schema'
+import { fsMetadata } from '../db/schema'
 
 export type FsMetadataEntry = {
   path: string
@@ -77,28 +77,23 @@ export class FsMetadataStore {
       .run()
   }
 
-  listRecentDirectories(limit: number) {
+  listRecentEntryCandidates({ limit, offset }: { limit: number; offset: number }) {
     return this.db
       .select()
       .from(fsMetadata)
-      .where(and(eq(fsMetadata.entryType, 'directory'), isNotNull(fsMetadata.lastPickedAt)))
-      .orderBy(desc(fsMetadata.lastPickedAt))
+      .where(
+        and(
+          inArray(fsMetadata.entryType, ['directory', 'file']),
+          isNotNull(fsMetadata.lastPickedAt),
+        ),
+      )
+      .orderBy(desc(fsMetadata.lastPickedAt), desc(fsMetadata.updatedAt), asc(fsMetadata.path))
       .limit(limit)
+      .offset(offset)
       .all()
   }
 
   close() {
     this.ownedHandle?.close()
-  }
-}
-
-export function metadataRowToEntry(row: FsMetadataRow): FsMetadataEntry {
-  return {
-    path: row.path,
-    name: row.name,
-    type: row.entryType,
-    size: row.size,
-    mtimeMs: row.mtimeMs,
-    birthtimeMs: row.birthtimeMs,
   }
 }

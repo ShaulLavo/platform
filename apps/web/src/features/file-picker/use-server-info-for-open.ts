@@ -29,6 +29,7 @@ export function useServerInfoForOpen(
   }, [open, query.data])
 
   return {
+    refresh: query.refetch,
     serverInfo: query.data ?? null,
     serverInfoError: query.isError ? query.error : null,
   }

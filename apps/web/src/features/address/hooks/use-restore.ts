@@ -31,7 +31,6 @@ import {
   setWorkbenchBottomTab,
   setWorkbenchSidebarTab,
 } from '@/features/workbench/utils/panels'
-import { isDirectoryEntry } from '@workspace/contracts'
 import { toast } from 'sonner'
 
 import { log } from '@/lib/client-logging'
@@ -284,9 +283,13 @@ async function resolvedSlug(slug: string, indexed: readonly string[]) {
  */
 async function recentRootPaths() {
   try {
-    const entries = await fetchRecentEntries(RECENT_DIRECTORY_LIMIT)
+    const entries = await fetchRecentEntries({
+      limit: RECENT_DIRECTORY_LIMIT,
+      mode: 'folder',
+      showHidden: true,
+    })
 
-    return entries.filter((entry) => isDirectoryEntry(entry)).map((entry) => entry.path)
+    return entries.map((entry) => entry.path)
   } catch {
     // Swallowed, not silent: `fs.recents` carries the failure as its own wide event.
     return []

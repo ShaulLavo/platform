@@ -1,5 +1,6 @@
 import type { EditorKeymapLayer } from '@singapor/core'
 import { Button } from '@workspace/ui/components/button'
+import { LoadingState } from '@workspace/ui/components/loading-state'
 
 import { SearchPane } from '@/features/workspace/components/search-pane'
 import type { EditorTabConflictMap } from '@/features/workspace/utils/tab-types'
@@ -165,12 +166,10 @@ function scopeButton({
 }
 
 function turnScopeBody({ openTurnFile, turnSummary }: ThreadDiffScopeState) {
+  // No summary yet means the checkpoint has not streamed in — pending, not
+  // absent. 'missing' below is the state that means there is nothing to show.
   if (!turnSummary) {
-    return (
-      <p className='text-muted-foreground px-3 py-2 text-[11px]'>
-        This turn&rsquo;s checkpoint is not loaded yet.
-      </p>
-    )
+    return <LoadingState className='px-3 py-2' label='Loading checkpoint' rows={3} />
   }
   if (turnSummary.status !== 'ready' || turnSummary.files.length === 0) {
     return (

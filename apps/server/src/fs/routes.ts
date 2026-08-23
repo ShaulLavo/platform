@@ -57,7 +57,7 @@ export function fsRoutes(fs: FileSystemService) {
           query: eventsQuerySchema,
         },
       )
-      .get('/recents', ({ query }) => fs.recents(query.limit), {
+      .get('/recents', ({ query }) => fs.recents(query), {
         query: recentsQuerySchema,
       })
       .post('/recents', ({ body }) => fs.recordRecent(body.path), {

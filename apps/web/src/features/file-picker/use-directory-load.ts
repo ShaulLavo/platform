@@ -1,46 +1,49 @@
 import type { ServerInfo } from '@/lib/file-system-types'
-import { filePickerKeys } from '@/lib/query-keys'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { loadDirectoryData, type DirectoryLoadData } from '@/features/file-picker/data-helpers'
 import { directoryLoadState } from '@/features/file-picker/load-state'
 import type { FilePickerMode } from '@/features/file-picker/model'
+import { directoryQueryOptions } from '@/features/file-picker/utils/directory-query'
+import { filePickerKeys } from '@/lib/query-keys'
 
 export function useDirectoryLoad({
   currentPath,
   effectiveQuery,
   mode,
   open,
-  reloadVersion,
   serverInfo,
+  showHidden,
 }: {
   currentPath: string
   effectiveQuery: string
   mode: FilePickerMode
   open: boolean
-  reloadVersion: number
   serverInfo: ServerInfo | null
+  showHidden: boolean
 }) {
   const queryClient = useQueryClient()
   const enabled = open && Boolean(serverInfo)
-  const queryKey = filePickerKeys.directory(currentPath, effectiveQuery, mode, reloadVersion)
-  const query = useQuery<DirectoryLoadData>({
+  const query = useQuery({
+    ...directoryQueryOptions({
+      mode,
+      path: currentPath,
+      query: effectiveQuery,
+      queryClient,
+      showHidden,
+    }),
     enabled,
-    placeholderData: (previousData) => previousData,
-    queryFn: ({ signal }) =>
-      loadDirectoryData(currentPath, effectiveQuery, mode, signal, (entries) => {
-        if (signal.aborted) return
+    placeholderData: () => {
+      if (!effectiveQuery) return undefined
 
-        queryClient.setQueryData(queryKey, (current: DirectoryLoadData | undefined) => ({
-          currentEntry: current?.currentEntry ?? null,
-          entries,
-        }))
-      }),
-    queryKey,
+      return queryClient.getQueryData(filePickerKeys.directory(currentPath, '', mode, showHidden))
+    },
   })
 
   return {
-    currentEntry: query.isPlaceholderData ? null : (query.data?.currentEntry ?? null),
+    currentEntry: query.data?.currentEntry ?? null,
+    isFetching: query.isFetching,
+    isPlaceholderData: query.isPlaceholderData,
     loadState: directoryLoadState(query, enabled),
+    refresh: query.refetch,
   }
 }

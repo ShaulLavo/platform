@@ -3,12 +3,14 @@ import type {
   WorkspaceSearchMatch,
   WorkspaceSearchQuery,
 } from '@workspace/contracts'
+import { createWorkspaceSearchMatcher } from '@workspace/contracts'
 import type { FindMatch } from '@/lib/file-system-types'
 import { describe, expect, it } from 'vitest'
 
 import {
   appendSearchMatch,
   fallbackEntries,
+  PICKER_HIDDEN_SEARCH_EXCLUDE_GLOBS,
   searchEntryType,
   streamPickerSearchEntries,
   type WorkspaceSearchStream,
@@ -68,6 +70,19 @@ describe('searchEntryType', () => {
   })
 })
 
+describe('hidden search exclusions', () => {
+  it('rejects a dot-prefixed segment at the root or below another folder', () => {
+    const matcher = createWorkspaceSearchMatcher({
+      excludeGlobs: PICKER_HIDDEN_SEARCH_EXCLUDE_GLOBS,
+      query: 'config',
+    })
+
+    expect(matcher.pathMatches('.config/settings.json')).toBe(false)
+    expect(matcher.pathMatches('src/.generated/types.ts')).toBe(false)
+    expect(matcher.pathMatches('src/config.ts')).toBe(true)
+  })
+})
+
 describe('streamPickerSearchEntries', () => {
   it('deduplicates streamed matches and emits incremental fallbacks', async () => {
     const search = stubStream([
@@ -111,6 +126,7 @@ describe('streamPickerSearchEntries', () => {
     )
 
     expect(observedQuery).toMatchObject({
+      excludeGlobs: PICKER_HIDDEN_SEARCH_EXCLUDE_GLOBS,
       includeContent: false,
       includeNames: true,
       matchMode: 'literal',
@@ -118,6 +134,25 @@ describe('streamPickerSearchEntries', () => {
       useWorkspaceIndex: false,
     })
     expect(result[0]).toMatchObject({ searchScope: 'system' })
+  })
+
+  it('leaves hidden paths eligible when the picker setting is enabled', async () => {
+    const observedQueries: WorkspaceSearchQuery[] = []
+    const search: WorkspaceSearchStream = (query) => {
+      observedQueries.push(query)
+      return toStream([doneEvent()])
+    }
+
+    await streamPickerSearchEntries(
+      '',
+      'env',
+      'file',
+      new AbortController().signal,
+      () => undefined,
+      { search, showHidden: true },
+    )
+
+    expect(observedQueries[0]?.excludeGlobs).toBeUndefined()
   })
 
   it('throws AbortError when the caller signal is already aborted', async () => {

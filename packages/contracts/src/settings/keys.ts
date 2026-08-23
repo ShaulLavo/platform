@@ -38,6 +38,27 @@ export const SETTINGS_REGISTRY = {
     description: 'Light or dark, or follow the operating system.',
     keywords: ['theme', 'dark', 'light', 'appearance', 'colour'],
   }),
+  'workbench.palette': defineSetting({
+    // Orthogonal to workbench.colorTheme: the palette picks which set of colors
+    // a mode is built from, the theme picks which mode. Every combination is
+    // defined, so the two never have to agree.
+    schema: v.picklist(['sage', 'graphite'] as const),
+    default: 'graphite',
+    scope: 'window',
+    widget: 'enum',
+    category: 'Appearance',
+    description: 'Warm near-greyscale, or warm stone surfaces with a sage accent.',
+    keywords: [
+      'palette',
+      'colour',
+      'sage',
+      'graphite',
+      'teal',
+      'monochrome',
+      'accent',
+      'appearance',
+    ],
+  }),
   'workbench.surface.opacity': defineSetting({
     schema: percentSchema,
     default: 80,
@@ -365,6 +386,18 @@ export const SETTINGS_REGISTRY = {
     category: 'Files',
     description: 'Milliseconds of quiet before an automatic save, when saving after a delay.',
     keywords: ['autosave', 'delay', 'debounce', 'files'],
+  }),
+  'files.showHidden': defineSetting({
+    schema: v.boolean(),
+    default: false,
+    // Visibility is suppression-only, so a workspace may choose it. The
+    // settings UI already marks workspace overrides for window-scoped values.
+    scope: 'window',
+    widget: 'boolean',
+    category: 'Files',
+    title: 'Show hidden files in pickers',
+    description: 'Show dot-prefixed files and folders in file pickers.',
+    keywords: ['files', 'folders', 'hidden', 'dotfiles', 'picker'],
   }),
   'lsp.experimental.tyForPython': defineSetting({
     schema: v.boolean(),

@@ -21,15 +21,16 @@ stays safe to read, share and export.
 
 ## Appearance
 
-| Setting                            | Default     | Scope  | What it does                                                                             |
-| ---------------------------------- | ----------- | ------ | ---------------------------------------------------------------------------------------- |
-| `workbench.colorTheme`             | `"system"`  | window | Light or dark, or follow the operating system.                                           |
-| `workbench.surface.opacity`        | `80`        | window | How opaque panels and sidebars are over the wallpaper. 100 turns the glass material off. |
-| `workbench.surface.contentOpacity` | `95`        | window | How opaque the editor and terminal background is.                                        |
-| `workbench.surface.blur`           | `12`        | window | Backdrop blur radius, in pixels, behind translucent surfaces.                            |
-| `workbench.surface.saturation`     | `160`       | window | Backdrop saturation, as a percentage, behind translucent surfaces.                       |
-| `workbench.wallpaper.enabled`      | `true`      | window | Show the desktop wallpaper behind the workbench.                                         |
-| `workbench.tree.indentGuides`      | `"onHover"` | window | When to show editor-coloured indentation guides in the file tree.                        |
+| Setting                            | Default      | Scope  | What it does                                                                             |
+| ---------------------------------- | ------------ | ------ | ---------------------------------------------------------------------------------------- |
+| `workbench.colorTheme`             | `"system"`   | window | Light or dark, or follow the operating system.                                           |
+| `workbench.palette`                | `"graphite"` | window | Warm near-greyscale, or warm stone surfaces with a sage accent.                          |
+| `workbench.surface.opacity`        | `80`         | window | How opaque panels and sidebars are over the wallpaper. 100 turns the glass material off. |
+| `workbench.surface.contentOpacity` | `95`         | window | How opaque the editor and terminal background is.                                        |
+| `workbench.surface.blur`           | `12`         | window | Backdrop blur radius, in pixels, behind translucent surfaces.                            |
+| `workbench.surface.saturation`     | `160`        | window | Backdrop saturation, as a percentage, behind translucent surfaces.                       |
+| `workbench.wallpaper.enabled`      | `true`       | window | Show the desktop wallpaper behind the workbench.                                         |
+| `workbench.tree.indentGuides`      | `"onHover"`  | window | When to show editor-coloured indentation guides in the file tree.                        |
 
 ## Chat
 
@@ -58,6 +59,7 @@ stays safe to read, share and export.
 | --------------------- | ------- | ------ | -------------------------------------------------------------------------- |
 | `files.autoSave`      | `"off"` | window | Save edited files automatically, and when.                                 |
 | `files.autoSaveDelay` | `1000`  | window | Milliseconds of quiet before an automatic save, when saving after a delay. |
+| `files.showHidden`    | `false` | window | Show dot-prefixed files and folders in file pickers.                       |
 
 ## Keyboard shortcuts
 

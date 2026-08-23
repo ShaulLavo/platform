@@ -20,6 +20,8 @@ import {
   selectChatProjects,
   selectChatSessionThreads,
 } from '@/features/chat/state/chat-projection-selectors'
+import { OrbitLoader } from '@workspace/ui/components/orbit-loader'
+
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { SessionBulkBar } from '@/features/chat-mode/components/session-bulk-bar'
 import { SessionGroup } from '@/features/chat-mode/components/session-group'
@@ -249,10 +251,20 @@ function emptyLabel({
 }) {
   // Before the verdict: titles have already been filtered, but the message scan
   // is still out, so "no matches" would be a claim the rail cannot yet make.
-  if (searching) return 'Searching…'
+  // The two pending lines carry the loader so they cannot be read as that verdict.
+  if (searching) return <PendingLabel>Searching…</PendingLabel>
   if (query.trim()) return `No sessions match “${query.trim()}”.`
   if (view === 'archived') return 'No archived sessions.'
-  if (scopedCount === 0 && !ready) return 'Connecting…'
+  if (scopedCount === 0 && !ready) return <PendingLabel>Connecting…</PendingLabel>
 
   return 'No sessions yet.'
+}
+
+function PendingLabel({ children }: { children: string }) {
+  return (
+    <span className='flex items-center gap-1.5'>
+      <OrbitLoader className='size-3 shrink-0' label={children} />
+      {children}
+    </span>
+  )
 }

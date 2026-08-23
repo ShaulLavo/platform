@@ -345,10 +345,10 @@ export function chatInputCommandMenuEmptyLabel(trigger: ChatInputTrigger | null)
 }
 
 export function chatInputCommandMenuLoadingLabel(triggerKind: ChatInputTriggerKind) {
-  if (triggerKind === 'mention') return 'Searching workspace files...'
-  if (triggerKind === 'skill') return 'Loading skills...'
+  if (triggerKind === 'mention') return 'Searching workspace files…'
+  if (triggerKind === 'skill') return 'Loading skills…'
 
-  return 'Loading commands...'
+  return 'Loading commands…'
 }
 
 /**
