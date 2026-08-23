@@ -1,13 +1,9 @@
 import type { FsEntry } from '@/lib/file-system-types'
 import { isDirectoryEntry } from '@/lib/file-system-types'
-import {
-  ArrowClockwiseIcon,
-  CircleNotchIcon,
-  FolderOpenIcon,
-  WarningCircleIcon,
-} from '@phosphor-icons/react'
+import { ArrowClockwiseIcon, FolderOpenIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import { Button } from '@workspace/ui/components/button'
 import { EmptyState } from '@workspace/ui/components/empty-state'
+import { Spinner } from '@workspace/ui/components/spinner'
 import { cn } from '@workspace/ui/lib/utils'
 import { useMemo, useRef, useState, type KeyboardEvent, type UIEvent } from 'react'
 
@@ -36,7 +32,7 @@ export function ListHeader({
     <div className='bg-background backdrop-material text-muted-foreground grid h-8 grid-cols-[minmax(0,1fr)_80px_116px_74px] items-center gap-3 border-b px-3 text-[11px] font-medium tracking-normal uppercase max-sm:grid-cols-[minmax(0,1fr)_68px]'>
       <div className='flex min-w-0 items-center gap-2'>
         <span>{isSearching ? 'Matches' : 'Name'}</span>
-        {isLoading && <CircleNotchIcon className='size-3 animate-spin' />}
+        {isLoading && <Spinner className='size-3' />}
       </div>
       <div className='max-sm:text-right'>Kind</div>
       <div className='max-sm:hidden'>Modified</div>

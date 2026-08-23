@@ -3,12 +3,12 @@ import { Editor } from '@/features/editor/components/editor'
 import type { EditorRenderDocument } from '@/features/editor/utils/render-document'
 import type { EditorKeymapLayer } from '@singapor/core'
 import type { SettingsDiagnostic, SettingsLayerFile } from '@workspace/contracts'
+import { LoadingState } from '@workspace/ui/components/loading-state'
 
 import { settingsJsonDocumentId } from '../utils/json-document'
 import { SETTINGS_LANGUAGE_SERVER_TARGET } from '../utils/language-server'
 import type { SettingsScope } from '../state/scope-store'
 import { useSettingsDiagnosticsPlugin } from '../hooks/use-settings-diagnostics-plugin'
-import { Status } from './status'
 
 /**
  * The settings document as text, in the same editor everything else opens in.
@@ -45,7 +45,7 @@ export function SettingsJsonView({
   // The buffer is seeded and bound in effects, so the first render after opening
   // the view — or after a scope switch — still has the previous document or none.
   if (!liveDocument || liveDocument.path !== settingsJsonDocumentId(scope)) {
-    return <Status>Loading settings.json…</Status>
+    return <LoadingState className='flex-1' label='Loading settings.json' rows={6} />
   }
 
   return (

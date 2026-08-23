@@ -89,6 +89,16 @@ export const SETTINGS_REGISTRY = {
     description: 'Show the desktop wallpaper behind the workbench.',
     keywords: ['wallpaper', 'background', 'desktop'],
   }),
+  'workbench.tree.indentGuides': defineSetting({
+    schema: v.picklist(['none', 'onHover', 'always'] as const),
+    default: 'onHover',
+    scope: 'window',
+    widget: 'enum',
+    category: 'Appearance',
+    title: 'File tree indent guides',
+    description: 'When to show editor-coloured indentation guides in the file tree.',
+    keywords: ['tree', 'files', 'folders', 'indent', 'guides', 'colour'],
+  }),
   'editor.fontFamily': defineSetting({
     // A Nerd Font id, not a CSS stack. The server can fetch, subset and cache any
     // of these on demand, so naming one is a font the user actually gets — where

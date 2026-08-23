@@ -8,9 +8,12 @@ import { FileTree } from '@workspace/tree'
 import { useFileTree } from '@workspace/tree'
 import type { GitStatusEntry } from '@workspace/tree'
 import type { FileTreeModel } from '@workspace/tree'
-import { CircleNotchIcon, WarningCircleIcon } from '@phosphor-icons/react'
+import { WarningCircleIcon } from '@phosphor-icons/react'
+import { EmptyState } from '@workspace/ui/components/empty-state'
+import { LoadingState } from '@workspace/ui/components/loading-state'
 
 import { workspacePathForTreePath } from '@/features/workspace/utils/entry-paths'
+import { fileTreeIndentGuideVariables } from '@/features/workspace/utils/indent-guide-style'
 import { invalidateTreeQueries } from '@/features/workspace/utils/invalidate-queries'
 import {
   loadExpandedDirectories,
@@ -22,6 +25,7 @@ import { DeleteEntryDialog } from '@/features/workspace/components/delete-entry-
 import { TreeToolbar } from '@/features/workspace/components/tree-toolbar'
 import { useFileTreeActions } from '@/features/workspace/hooks/use-file-tree-actions'
 import { useFileTreeIntentPrefetch } from '@/features/workspace/hooks/use-file-tree-intent-prefetch'
+import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import { useFileTreeMutationEvents } from '@/features/workspace/hooks/use-file-tree-mutation-events'
 import { useFsActions } from '@/features/workspace/hooks/use-fs-actions'
 import { useTreeCommandRequest } from '@/features/workspace/hooks/use-tree-command-request'
@@ -55,7 +59,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type ReactNode,
 } from 'react'
 
 export const TreePane = memo(
@@ -68,11 +71,18 @@ export const TreePane = memo(
     rootPath: string
     state: LoadState<TreeModel>
   }) => {
-    if (state.status === 'loading') return <TreeStatus label='Loading folder' />
+    if (state.status === 'loading') return <LoadingState label='Loading folder' rows={5} />
     if (state.status === 'error') {
-      return <TreeStatus icon={<WarningCircleIcon className='size-4' />} label={state.message} />
+      return (
+        <EmptyState
+          description={state.message}
+          icon={<WarningCircleIcon />}
+          title='Unable to load files'
+          tone='error'
+        />
+      )
     }
-    if (state.status !== 'ready') return <TreeStatus label='No files' />
+    if (state.status !== 'ready') return <EmptyState title='No files' />
 
     return <ReadyTreePane gitStatus={gitStatus} model={state.data} rootPath={rootPath} />
   },
@@ -87,6 +97,7 @@ function ReadyTreePane({
   model: TreeModel
   rootPath: string
 }) {
+  const { editorTheme } = useEditorColorTheme()
   const selectedFilePath = useEditorWorkspaceState((store) => store.selectedFilePath)
   const { selectFile } = useEditorCommands()
   const { loadDirectory, publishVisibleItemCount: publishVisibleItemCountAction } =
@@ -328,7 +339,7 @@ function ReadyTreePane({
             rootPath={rootPath}
           />
         )}
-        style={treeStyle}
+        style={fileTreeStyle(editorTheme)}
       />
       {/* Owned here, not by the menu: the menu unmounts the instant it closes. */}
       <DeleteEntryDialog {...fsActions.deleteDialog} />
@@ -354,17 +365,6 @@ function openSelectedTreeFile({
   if (entry.path === selectedFilePath) return
 
   selectFile(entry.path)
-}
-
-function TreeStatus({ icon, label }: { icon?: ReactNode; label: string }) {
-  return (
-    <div className='text-muted-foreground flex h-full min-h-48 items-center justify-center p-4 text-xs'>
-      <div className='flex items-center gap-2'>
-        {icon ?? <CircleNotchIcon className='size-4 animate-spin' />}
-        {label}
-      </div>
-    </div>
-  )
 }
 
 type SelectionSyncState = {
@@ -555,6 +555,15 @@ const treeStyle = {
   '--trees-level-gap-override': '2px',
   height: '100%',
 } as CSSProperties
+
+function fileTreeStyle(
+  editorTheme: Parameters<typeof fileTreeIndentGuideVariables>[0],
+): CSSProperties {
+  return {
+    ...treeStyle,
+    ...fileTreeIndentGuideVariables(editorTheme),
+  } as CSSProperties
+}
 
 const treeUnsafeCss = `
   :host {

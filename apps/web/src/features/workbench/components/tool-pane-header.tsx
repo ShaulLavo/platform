@@ -12,11 +12,12 @@ import {
 } from '@phosphor-icons/react'
 
 import { Button } from '@workspace/ui/components/button'
+import { Shimmer } from '@workspace/ui/components/shimmer'
 import { cn } from '@workspace/ui/lib/utils'
 import { PaneHeaderMenu } from '@/features/workbench/components/pane-header-menu'
 import type { LoadState } from '@/lib/load-state'
 import type { TreeModel } from '@/lib/tree-model'
-import type { PointerEvent } from 'react'
+import type { PointerEvent, ReactNode } from 'react'
 
 type ToolPaneHeaderOrientation = 'horizontal' | 'vertical'
 type ToolPaneHeaderTab = 'chat' | 'files' | 'git' | 'logs' | 'problems' | 'search' | 'terminal'
@@ -175,9 +176,9 @@ function toolPaneHeaderIcon(tab: ToolPaneHeaderTab | undefined) {
 function treeHeaderDetail(
   treeState: LoadState<TreeModel> | undefined,
   visibleTreeItemCount: number | null,
-) {
+): ReactNode {
   if (!treeState) return null
-  if (treeState.status === 'loading') return 'Loading...'
+  if (treeState.status === 'loading') return <Shimmer>Loading…</Shimmer>
   if (treeState.status === 'error') return 'Unable to load files'
   if (visibleTreeItemCount === null) return null
 

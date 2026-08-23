@@ -548,6 +548,12 @@
       "minimum": 0,
       "type": "integer"
     },
+    "workbench.tree.indentGuides": {
+      "default": "onHover",
+      "description": "When to show editor-coloured indentation guides in the file tree.",
+      "enum": ["always", "none", "onHover"],
+      "type": "string"
+    },
     "workbench.wallpaper.enabled": {
       "default": true,
       "description": "Show the desktop wallpaper behind the workbench.",

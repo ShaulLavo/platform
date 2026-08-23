@@ -1,7 +1,8 @@
+import { LoadingState } from '@workspace/ui/components/loading-state'
+
 import type { EntriesLoadState } from '@/features/file-picker/model'
 
 import { RecentShortcut } from '@/features/file-picker/navigation/recent-shortcut'
-import { RecentShortcutLoading } from '@/features/file-picker/navigation/recent-shortcut-loading'
 import { RecentSidebarNote } from '@/features/file-picker/navigation/recent-sidebar-note'
 
 export function RecentShortcutList({
@@ -11,7 +12,9 @@ export function RecentShortcutList({
   currentPath: string
   state: EntriesLoadState
 }) {
-  if (state.status === 'loading') return <RecentShortcutLoading />
+  if (state.status === 'loading') {
+    return <LoadingState className='gap-1.5 px-2 py-1.5' label='Loading recents' rows={2} />
+  }
   if (state.status === 'error') return <RecentSidebarNote>Could not load</RecentSidebarNote>
   if (state.status === 'ready' && state.data.length === 0) {
     return <RecentSidebarNote>No folders yet</RecentSidebarNote>

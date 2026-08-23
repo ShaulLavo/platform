@@ -178,6 +178,9 @@
       --trees-indent-guide-bg-override,
       color-mix(in lab, var(--trees-fg-muted) 25%, transparent)
     );
+    --trees-indent-guide-opacity: var(--trees-indent-guide-opacity-override, 0);
+    --trees-indent-guide-hover-opacity: var(--trees-indent-guide-hover-opacity-override, 0.75);
+    --trees-indent-guide-active-opacity: var(--trees-indent-guide-active-opacity-override, 1);
     --trees-density: var(--trees-density-override, 1);
     --trees-border-radius: var(--trees-border-radius-override, calc(6px * var(--trees-density)));
 
@@ -1017,12 +1020,14 @@
 
   /* Spacing per level */
   [data-item-section='spacing-item'] {
+    --trees-indent-guide-current-bg: var(--trees-indent-guide-bg);
+
     transform: translateX(-0.25px);
     display: inline-block;
-    border-left: 1px solid var(--trees-indent-guide-bg);
+    border-left: 1px solid var(--trees-indent-guide-current-bg);
     height: 100%;
     margin-right: calc(var(--trees-level-gap) - 1px);
-    opacity: 0;
+    opacity: var(--trees-indent-guide-opacity);
     transition: opacity 150ms ease;
 
     & + & {
@@ -1030,8 +1035,50 @@
     }
   }
 
+  [data-item-section='spacing-item']:nth-child(6n + 1) {
+    --trees-indent-guide-current-bg: var(
+      --trees-indent-guide-bg-0-override,
+      var(--trees-indent-guide-bg)
+    );
+  }
+
+  [data-item-section='spacing-item']:nth-child(6n + 2) {
+    --trees-indent-guide-current-bg: var(
+      --trees-indent-guide-bg-1-override,
+      var(--trees-indent-guide-bg)
+    );
+  }
+
+  [data-item-section='spacing-item']:nth-child(6n + 3) {
+    --trees-indent-guide-current-bg: var(
+      --trees-indent-guide-bg-2-override,
+      var(--trees-indent-guide-bg)
+    );
+  }
+
+  [data-item-section='spacing-item']:nth-child(6n + 4) {
+    --trees-indent-guide-current-bg: var(
+      --trees-indent-guide-bg-3-override,
+      var(--trees-indent-guide-bg)
+    );
+  }
+
+  [data-item-section='spacing-item']:nth-child(6n + 5) {
+    --trees-indent-guide-current-bg: var(
+      --trees-indent-guide-bg-4-override,
+      var(--trees-indent-guide-bg)
+    );
+  }
+
+  [data-item-section='spacing-item']:nth-child(6n) {
+    --trees-indent-guide-current-bg: var(
+      --trees-indent-guide-bg-5-override,
+      var(--trees-indent-guide-bg)
+    );
+  }
+
   :host(:hover) [data-item-section='spacing-item'] {
-    opacity: 0.75;
+    opacity: var(--trees-indent-guide-hover-opacity);
   }
 
   /* Git status indicator */

@@ -1,6 +1,7 @@
 import type { FlatDocumentSymbol } from '@/features/command-palette/document-symbols'
 import { TextTIcon } from '@phosphor-icons/react'
 import { CommandGroup, CommandItem, CommandShortcut } from '@workspace/ui/components/command'
+import { LoadingState } from '@workspace/ui/components/loading-state'
 
 import { useCommandPaletteActions } from '@/features/command-palette/hooks/use-command-palette-actions'
 import {
@@ -18,11 +19,12 @@ export function SymbolGroups({ isPending, items }: SymbolGroupsProps) {
   const { selectSymbol } = useCommandPaletteActions()
 
   if (isPending) {
+    // Still a CommandItem: an empty group would let cmdk's CommandEmpty render
+    // "No symbols" over a list that is merely still fetching.
     return (
       <CommandGroup heading='Symbols'>
         <CommandItem disabled value='symbols:loading'>
-          <TextTIcon className='text-muted-foreground' />
-          <span className='text-muted-foreground text-sm'>Loading symbols</span>
+          <LoadingState className='w-full gap-1.5 p-0' label='Loading symbols' rows={2} />
         </CommandItem>
       </CommandGroup>
     )

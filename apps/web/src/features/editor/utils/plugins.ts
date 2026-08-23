@@ -27,6 +27,7 @@ import { log } from '@/lib/client-logging'
 import { editorPerformanceFeatureDisabled } from '@/features/editor/state/performance-trace'
 import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
 import type { DecodeMode } from '@singapor/decode'
+import { editorIndentationGuidesSupported } from '@/features/editor/utils/indentation-guides'
 
 const editorScrollPositionsByInstanceId = new Map<string, EditorScrollPosition>()
 const ignoredEditorInfoActions = new Set([
@@ -42,8 +43,11 @@ const PLATFORM_SEARCH_RESULT_EDITOR_LOGGING_PLUGIN = createEditorLoggingPlugin(
     name: 'platform.search-result-editor-logging',
   },
 )
-let nonCriticalEditorPlugins: readonly EditorPlugin[] | null = null
-let nonCriticalEditorPluginsPromise: Promise<readonly EditorPlugin[]> | null = null
+const nonCriticalEditorPluginsByGuideEligibility = new Map<boolean, readonly EditorPlugin[]>()
+const nonCriticalEditorPluginPromisesByGuideEligibility = new Map<
+  boolean,
+  Promise<readonly EditorPlugin[]>
+>()
 
 /**
  * `languageId` gates the language-specific plugins. Markdown preview is registered only for markdown
@@ -78,7 +82,9 @@ export function createCriticalEditorCorePlugins(
   ]
 }
 
-export function createNonCriticalEditorPluginsLoaderPlugin(): EditorPlugin {
+export function createNonCriticalEditorPluginsLoaderPlugin(
+  languageId: EditorSyntaxLanguageId | null,
+): EditorPlugin {
   return {
     name: 'platform.non-critical-editor-plugins',
     activate: (context) => {
@@ -86,7 +92,7 @@ export function createNonCriticalEditorPluginsLoaderPlugin(): EditorPlugin {
       const disposables: EditorDisposable[] = []
 
       scheduleNonCriticalPluginLoad(async () => {
-        const plugins = await loadNonCriticalEditorPlugins()
+        const plugins = await loadNonCriticalEditorPlugins(languageId)
         if (disposed) return
 
         for (const plugin of plugins) {
@@ -105,24 +111,40 @@ export function createNonCriticalEditorPluginsLoaderPlugin(): EditorPlugin {
   }
 }
 
-function loadNonCriticalEditorPlugins(): Promise<readonly EditorPlugin[]> {
-  if (nonCriticalEditorPlugins) return Promise.resolve(nonCriticalEditorPlugins)
-  if (nonCriticalEditorPluginsPromise) return nonCriticalEditorPluginsPromise
+function loadNonCriticalEditorPlugins(
+  languageId: EditorSyntaxLanguageId | null,
+): Promise<readonly EditorPlugin[]> {
+  const guidesEligible = editorIndentationGuidesSupported(languageId)
+  const plugins = nonCriticalEditorPluginsByGuideEligibility.get(guidesEligible)
+  if (plugins) return Promise.resolve(plugins)
 
-  nonCriticalEditorPluginsPromise = Promise.all(nonCriticalEditorPluginLoaders()).then(
-    (plugins) => {
-      nonCriticalEditorPlugins = plugins.filter((plugin): plugin is EditorPlugin => plugin !== null)
-      return nonCriticalEditorPlugins
+  const pending = nonCriticalEditorPluginPromisesByGuideEligibility.get(guidesEligible)
+  if (pending) return pending
+
+  const promise = Promise.all(nonCriticalEditorPluginLoaders(guidesEligible)).then(
+    (loadedPlugins) => {
+      const availablePlugins = loadedPlugins.filter(
+        (plugin): plugin is EditorPlugin => plugin !== null,
+      )
+      nonCriticalEditorPluginsByGuideEligibility.set(guidesEligible, availablePlugins)
+      return availablePlugins
     },
   )
+  nonCriticalEditorPluginPromisesByGuideEligibility.set(guidesEligible, promise)
 
-  return nonCriticalEditorPluginsPromise
+  return promise
 }
 
-function nonCriticalEditorPluginLoaders(): readonly Promise<EditorPlugin | null>[] {
+function nonCriticalEditorPluginLoaders(
+  guidesEligible: boolean,
+): readonly Promise<EditorPlugin | null>[] {
   const loaders: Promise<EditorPlugin | null>[] = []
   const settings = readSettingsMirror()
-  if (settings['editor.guides.indentation'] && !editorPerformanceFeatureDisabled('scope-lines')) {
+  if (
+    guidesEligible &&
+    settings['editor.guides.indentation'] &&
+    !editorPerformanceFeatureDisabled('scope-lines')
+  ) {
     loaders.push(
       loadPlugin('@singapor/scope-lines', () =>
         import('@singapor/scope-lines').then((module) => module.createScopeLinesPlugin()),

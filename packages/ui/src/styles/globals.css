@@ -496,6 +496,177 @@ html[data-wallpaper-hidden] {
     max(100vw, 160vh) auto;
 }
 
+/* A skeleton bar. The tint is the floor; the sweep is what says "incoming".
+   An opacity pulse cannot do that job at these alphas — the row tint is 5-7%
+   foreground, so fading it in and out is a change nobody sees. A travelling
+   highlight is visible at the same weight because it moves. */
+@utility skeleton-sweep {
+  background-color: var(--row-hover);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklch, var(--foreground) 9%, transparent) 50%,
+    transparent 100%
+  );
+  background-repeat: no-repeat;
+  background-size: 55% 100%;
+  animation: app-skeleton-sweep 1.6s var(--ease-in-out-strong) infinite;
+}
+
+/* The same sweep, clipped to glyphs, for a label that is already on screen and
+   is transiently in progress ("Searching", "Loading…"). NOT for a region with
+   no content — that is LoadingState. Muted-foreground is the floor; a
+   foreground-bright band travels through it. */
+@utility text-shimmer {
+  background-image:
+    linear-gradient(90deg, transparent 0%, var(--foreground) 50%, transparent 100%),
+    linear-gradient(var(--muted-foreground), var(--muted-foreground));
+  background-repeat: no-repeat;
+  background-size:
+    45% 100%,
+    auto;
+  background-clip: text;
+  /* Not currentColor anywhere above: `background-clip: text` needs a
+     transparent color on this element, and currentColor would then resolve to
+     transparent and erase the base layer with it. */
+  color: transparent;
+  animation: app-skeleton-sweep 2s linear infinite;
+}
+
+/* Reduced motion keeps both readable and stops the travel: the skeleton falls
+   back to its flat tint, the label back to its own color. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-sweep,
+  .text-shimmer {
+    animation: none;
+    background-image: none;
+  }
+
+  .text-shimmer {
+    color: var(--muted-foreground);
+  }
+}
+
+/* The ring loader. Two conic arcs turning opposite ways, each masked down to a
+   thin annulus, under a slow breathing scale. currentColor so it inherits the
+   weight of its context. -webkit-mask is not optional: without it Safari paints
+   the raw conic square. */
+@utility loader-ring {
+  animation: app-loader-breathe 4s var(--ease-in-out-strong) infinite;
+}
+
+@utility loader-ring-outer {
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    currentColor 120deg,
+    color-mix(in oklch, currentColor, transparent 50%) 240deg,
+    transparent 360deg
+  );
+  -webkit-mask: radial-gradient(circle, transparent 42%, black 44%, black 48%, transparent 50%);
+  mask: radial-gradient(circle, transparent 42%, black 44%, black 48%, transparent 50%);
+  opacity: 0.9;
+  animation: app-loader-spin 2.5s var(--ease-in-out-strong) infinite;
+}
+
+@utility loader-ring-inner {
+  background: conic-gradient(
+    from 180deg,
+    transparent 0deg,
+    color-mix(in oklch, currentColor, transparent 40%) 45deg,
+    transparent 90deg
+  );
+  -webkit-mask: radial-gradient(circle, transparent 52%, black 54%, black 56%, transparent 58%);
+  mask: radial-gradient(circle, transparent 52%, black 54%, black 56%, transparent 58%);
+  opacity: 0.35;
+  animation: app-loader-spin-reverse 4s var(--ease-in-out-strong) infinite;
+}
+
+/* The orbit loader. Each ring turns the opposite way to its neighbour at an
+   unrelated speed — shared timing, or a whole-number ratio between them, would
+   let the three lock into one rigid shape every few seconds. */
+@utility loader-orbit {
+  & circle {
+    transform-box: view-box;
+    transform-origin: 8px 8px;
+  }
+
+  & circle:nth-child(1) {
+    animation: app-loader-spin 1.4s linear infinite;
+  }
+
+  & circle:nth-child(2) {
+    animation: app-loader-spin-reverse 2s linear infinite;
+  }
+
+  & circle:nth-child(3) {
+    animation: app-loader-spin 1.1s linear infinite;
+  }
+}
+
+/* Both loaders slow down rather than stop. A frozen ring reads as a hung
+   process, which is the opposite of what it is there to say. */
+@media (prefers-reduced-motion: reduce) {
+  .loader-ring {
+    animation: none;
+  }
+
+  .loader-ring-outer,
+  .loader-ring-inner {
+    animation-duration: 8s;
+    animation-timing-function: linear;
+  }
+
+  .loader-orbit circle {
+    animation-duration: 12s;
+  }
+}
+
+@keyframes app-loader-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes app-loader-spin-reverse {
+  from {
+    transform: rotate(360deg);
+  }
+
+  to {
+    transform: rotate(0deg);
+  }
+}
+
+@keyframes app-loader-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.02);
+  }
+}
+
+@keyframes app-skeleton-sweep {
+  from {
+    background-position:
+      -60% 0,
+      0 0;
+  }
+
+  to {
+    background-position:
+      160% 0,
+      0 0;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

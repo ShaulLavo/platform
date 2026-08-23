@@ -1,0 +1,59 @@
+import type { ComponentProps } from 'react'
+
+import { cn } from '@workspace/ui/lib/utils'
+
+/**
+ * Three rings, each cut into two arcs at 55% duty — the dash pairs are that
+ * fraction of each circumference, so every ring keeps the same rhythm however
+ * far out it sits. Radii and stroke are set so the gaps survive a 16px render:
+ * 1 unit of stroke to 1 unit of air, which is a whole pixel of each at 1x.
+ */
+const ORBIT_RINGS = [
+  { dash: '11.23 9.19', opacity: 1, radius: 6.5 },
+  { dash: '7.78 6.36', opacity: 0.85, radius: 4.5 },
+  { dash: '4.32 3.53', opacity: 0.7, radius: 2.5 },
+] as const
+
+/**
+ * A process running with no known end — an agent turn, a tool call. Three
+ * dashed rings counter-rotating at unrelated speeds, so the mark never settles
+ * into looking like one rigid object.
+ *
+ * Sized for a line of text and up. Draws in currentColor.
+ *
+ * Not the default: a region with no content yet gets LoadingState, and a button
+ * mid-action gets Spinner.
+ */
+function OrbitLoader({
+  className,
+  label = 'Working',
+  ...props
+}: ComponentProps<'span'> & { label?: string }) {
+  return (
+    <span
+      aria-label={label}
+      className={cn('inline-block size-4', className)}
+      data-slot='orbit-loader'
+      role='status'
+      {...props}
+    >
+      <svg aria-hidden='true' className='loader-orbit size-full' fill='none' viewBox='0 0 16 16'>
+        {ORBIT_RINGS.map((ring) => (
+          <circle
+            cx='8'
+            cy='8'
+            key={ring.radius}
+            opacity={ring.opacity}
+            r={ring.radius}
+            stroke='currentColor'
+            strokeDasharray={ring.dash}
+            strokeLinecap='round'
+            strokeWidth='1'
+          />
+        ))}
+      </svg>
+    </span>
+  )
+}
+
+export { OrbitLoader }

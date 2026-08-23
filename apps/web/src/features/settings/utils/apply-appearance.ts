@@ -14,6 +14,7 @@ export type AppearanceValues = Pick<
   | 'workbench.surface.contentOpacity'
   | 'workbench.surface.opacity'
   | 'workbench.surface.saturation'
+  | 'workbench.tree.indentGuides'
   | 'workbench.wallpaper.enabled'
 >
 
@@ -49,6 +50,7 @@ export function applyAppearance(values: AppearanceValues, root: Root, prefersDar
   root.style.setProperty('--content-opacity', `${values['workbench.surface.contentOpacity']}%`)
   root.style.setProperty('--surface-blur', `${values['workbench.surface.blur']}px`)
   root.style.setProperty('--surface-saturation', `${values['workbench.surface.saturation']}%`)
+  applyFileTreeIndentGuideVisibility(values['workbench.tree.indentGuides'], root)
 
   // Editor typography rides CSS rather than editor options. The editor package
   // already reads `--editor-tab-size` and `--editor-row-height` from its own
@@ -75,4 +77,22 @@ export function applyAppearance(values: AppearanceValues, root: Root, prefersDar
   }
 
   root.setAttribute('data-wallpaper-hidden', '')
+}
+
+function applyFileTreeIndentGuideVisibility(
+  visibility: AppearanceValues['workbench.tree.indentGuides'],
+  root: Root,
+) {
+  root.style.setProperty(
+    '--trees-indent-guide-opacity-override',
+    visibility === 'always' ? '1' : '0',
+  )
+  root.style.setProperty(
+    '--trees-indent-guide-hover-opacity-override',
+    visibility === 'none' ? '0' : '1',
+  )
+  root.style.setProperty(
+    '--trees-indent-guide-active-opacity-override',
+    visibility === 'none' ? '0' : '1',
+  )
 }

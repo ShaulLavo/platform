@@ -1,9 +1,4 @@
-import {
-  CircleNotchIcon,
-  FloppyDiskIcon,
-  TrashIcon,
-  WarningCircleIcon,
-} from '@phosphor-icons/react'
+import { FloppyDiskIcon, TrashIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import { Button } from '@workspace/ui/components/button'
 import {
   Dialog,
@@ -16,6 +11,7 @@ import {
 
 import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
 import { documentLabel } from '@/features/workspace/utils/document-label'
+import { Spinner } from '@workspace/ui/components/spinner'
 
 type UnsavedChangesDialogProps = {
   canSave: boolean
@@ -86,7 +82,7 @@ export function UnsavedChangesDialog({
           {canSave ? (
             <Button disabled={saving} onClick={onSave} type='button'>
               {saving ? (
-                <CircleNotchIcon className='animate-spin' data-icon='inline-start' />
+                <Spinner aria-hidden='true' data-icon='inline-start' role='presentation' />
               ) : (
                 <FloppyDiskIcon data-icon='inline-start' />
               )}

@@ -20,6 +20,7 @@ import {
 } from '@/features/search/utils/result-items'
 import { SearchNumber } from '@/features/search/components/number'
 import { Button } from '@workspace/ui/components/button'
+import { Shimmer } from '@workspace/ui/components/shimmer'
 import { cn } from '@workspace/ui/lib/utils'
 
 export function SearchSummary({
@@ -90,7 +91,7 @@ export function SearchSummary({
 function searchSummaryModel(query: string, snapshot: SearchBufferSnapshot | null) {
   if (!query) return emptySummary('Find in files')
   if (!snapshot) return emptySummary('Find in files')
-  if (snapshot.replaceStatus === 'running') return emptySummary('Replacing')
+  if (snapshot.replaceStatus === 'running') return emptySummary('Replacing', { pending: true })
   if (snapshot.replaceStatus === 'error')
     return emptySummary(snapshot.replaceMessage ?? 'Replace failed')
   if (snapshot.replaceStatus === 'success' && snapshot.replaceMessage)
@@ -102,14 +103,14 @@ function searchSummaryModel(query: string, snapshot: SearchBufferSnapshot | null
 
     return emptySummary(message)
   }
-  if (snapshot.status === 'idle') return emptySummary('Searching')
+  if (snapshot.status === 'idle') return emptySummary('Searching', { pending: true })
   if (snapshot.status === 'loading' && snapshot.matches.length === 0) {
-    return emptySummary('Searching')
+    return emptySummary('Searching', { pending: true })
   }
   const result = searchResultCount(snapshot)
   if (snapshot.status === 'loading') {
     return summaryWithControls(result.content, snapshot, result.title, {
-      trailingText: 'Searching',
+      pendingText: 'Searching',
     })
   }
 
@@ -153,12 +154,12 @@ function SearchSummaryButton({
   )
 }
 
-function emptySummary(text: string) {
+function emptySummary(text: string, options: { pending?: boolean } = {}) {
   return {
     canCollapse: false,
     canExpand: false,
     canNavigate: false,
-    content: text,
+    content: options.pending ? <Shimmer>{text}</Shimmer> : text,
     showControls: false,
     title: text,
   }
@@ -194,7 +195,7 @@ function summaryWithControls(
   content: ReactNode,
   snapshot: SearchBufferSnapshot,
   title = String(content),
-  options: { trailingText?: string } = {},
+  options: { pendingText?: string } = {},
 ) {
   const groups = searchGroupsForSnapshot(snapshot)
   const expandedItems = expandedSearchResultItems(groups)
@@ -208,13 +209,13 @@ function summaryWithControls(
     </>
   ) : null
   const activeTitle = active ? ` · ${active.index}/${active.total}` : ''
-  const trailingContent = options.trailingText ? (
+  const trailingContent = options.pendingText ? (
     <>
       {' '}
-      <span aria-hidden='true'>·</span> {options.trailingText}
+      <span aria-hidden='true'>·</span> <Shimmer>{options.pendingText}</Shimmer>
     </>
   ) : null
-  const trailingTitle = options.trailingText ? ` · ${options.trailingText}` : ''
+  const trailingTitle = options.pendingText ? ` · ${options.pendingText}` : ''
   const warning = searchWarningNotice(snapshot.warnings)
 
   return {

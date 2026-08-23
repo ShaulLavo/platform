@@ -1,4 +1,5 @@
 import { createTextDiff } from '@singapor/diff'
+import { LoadingState } from '@workspace/ui/components/loading-state'
 import { useMemo } from 'react'
 
 import { DiffEditor } from '@/features/editor/components/diff-editor'
@@ -47,11 +48,9 @@ export function CompareSavedView({ path, rootPath }: { path: string; rootPath: s
     return <CompareNotice message='Could not read the saved file.' tone='error' />
   }
   if (!file) {
-    return (
-      <CompareNotice
-        message={buffer ? 'Loading saved contents…' : 'Open the file to compare it with disk.'}
-      />
-    )
+    if (buffer) return <LoadingState className='flex-1' label='Loading saved contents' rows={6} />
+
+    return <CompareNotice message='Open the file to compare it with disk.' />
   }
   if (file.hunks.length === 0) return <CompareNotice message='No unsaved changes.' />
 

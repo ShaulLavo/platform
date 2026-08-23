@@ -181,7 +181,8 @@ function getFileTreeGuideStyleText(focusedParentPath: string | null): string {
   }
 
   const escapedPath = focusedParentPath.replaceAll('\\', '\\\\').replaceAll('"', '\\"')
-  return `[data-item-section="spacing-item"][data-ancestor-path="${escapedPath}"] { opacity: 1; }`
+  // Focus reveals the ancestor; its level colour deliberately stays unchanged.
+  return `[data-item-section="spacing-item"][data-ancestor-path="${escapedPath}"] { opacity: var(--trees-indent-guide-active-opacity); }`
 }
 
 function getFileTreeRootDomId(instanceId: string | undefined): string | undefined {

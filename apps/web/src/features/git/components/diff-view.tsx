@@ -1,4 +1,5 @@
 import { createDiffRegionStore } from '@singapor/diff'
+import { LoadingState } from '@workspace/ui/components/loading-state'
 import { useMemo, useRef, useState } from 'react'
 
 import { DiffEditor } from '@/features/editor/components/diff-editor'
@@ -63,7 +64,7 @@ export function DiffView({
   )
 
   if (failure) return <DiffNotice message={failure} tone='error' />
-  if (pending) return <DiffNotice message='Loading diff…' />
+  if (pending) return <LoadingState className='flex-1' label='Loading diff' rows={6} />
   if (diffs.length === 0) return <DiffNotice message={emptyDiffNotice(documentInfo, rootPath)} />
   if (!file) {
     return <DiffNotice message={unrenderableDiffNotice(diffs, documentInfo, rootPath)} />

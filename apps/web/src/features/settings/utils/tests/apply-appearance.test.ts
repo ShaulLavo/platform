@@ -35,6 +35,7 @@ const appearance = (overrides: Partial<AppearanceValues> = {}): AppearanceValues
   'workbench.surface.contentOpacity': DEFAULT_SETTING_VALUES['workbench.surface.contentOpacity'],
   'workbench.surface.opacity': DEFAULT_SETTING_VALUES['workbench.surface.opacity'],
   'workbench.surface.saturation': DEFAULT_SETTING_VALUES['workbench.surface.saturation'],
+  'workbench.tree.indentGuides': DEFAULT_SETTING_VALUES['workbench.tree.indentGuides'],
   'workbench.wallpaper.enabled': DEFAULT_SETTING_VALUES['workbench.wallpaper.enabled'],
   ...overrides,
 })
@@ -113,5 +114,19 @@ describe('applyAppearance', () => {
     // Unitless on purpose: `tab-size` counts characters, not pixels, so a `px`
     // suffix here silently disables the whole declaration.
     expect(properties.get('--editor-tab-size')).toBe('2')
+  })
+
+  it('maps file tree indent guide visibility onto inherited package variables', () => {
+    const { properties, root } = fakeRoot()
+
+    applyAppearance(appearance({ 'workbench.tree.indentGuides': 'none' }), root, false)
+    expect(properties.get('--trees-indent-guide-opacity-override')).toBe('0')
+    expect(properties.get('--trees-indent-guide-hover-opacity-override')).toBe('0')
+    expect(properties.get('--trees-indent-guide-active-opacity-override')).toBe('0')
+
+    applyAppearance(appearance({ 'workbench.tree.indentGuides': 'always' }), root, false)
+    expect(properties.get('--trees-indent-guide-opacity-override')).toBe('1')
+    expect(properties.get('--trees-indent-guide-hover-opacity-override')).toBe('1')
+    expect(properties.get('--trees-indent-guide-active-opacity-override')).toBe('1')
   })
 })

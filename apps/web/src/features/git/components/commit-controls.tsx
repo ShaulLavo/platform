@@ -80,11 +80,7 @@ export function CommitControls({
               size='icon-xs'
             >
               {generation.isPending ? (
-                <Spinner
-                  aria-hidden='true'
-                  className='motion-reduce:animate-none'
-                  role='presentation'
-                />
+                <Spinner aria-hidden='true' role='presentation' />
               ) : (
                 <SparkleIcon aria-hidden='true' />
               )}

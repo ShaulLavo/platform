@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@workspace/ui/components/alert'
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
-import { CircleNotchIcon, WarningCircleIcon, XIcon } from '@phosphor-icons/react'
+import { WarningCircleIcon, XIcon } from '@phosphor-icons/react'
 import { useState } from 'react'
 
 import {
@@ -15,6 +15,7 @@ import { errorMessage } from '@/lib/error-message'
 import { useProviderSignInDialog } from '../hooks/use-provider-sign-in-dialog'
 import { providerListQueryOptions } from '@/features/chat/utils/provider-query'
 import type { ChatThread } from '../state/chat-projection-store'
+import { Spinner } from '@workspace/ui/components/spinner'
 
 /**
  * The runtime notice stack above the composer. Only the most urgent notice is
@@ -99,7 +100,7 @@ function RuntimeAlert({
   readonly onDismiss: (alert: ChatRuntimeAlert) => void
   readonly onSignIn: (target: NonNullable<ChatRuntimeAlert['signIn']>) => void
 }) {
-  const Icon = alert.tone === 'busy' ? CircleNotchIcon : WarningCircleIcon
+  const Icon = alert.tone === 'busy' ? Spinner : WarningCircleIcon
   const signIn = alert.signIn
 
   return (
@@ -107,7 +108,7 @@ function RuntimeAlert({
       className={cn(runtimeAlertClass(alert.tone), 'rounded-md')}
       variant={alert.tone === 'error' ? 'destructive' : 'default'}
     >
-      <Icon className={cn('size-4', alert.tone === 'busy' && 'animate-spin')} />
+      <Icon className='size-4' />
       <AlertTitle>{alert.title}</AlertTitle>
       {alert.detail ? (
         <AlertDescription className='line-clamp-3 tabular-nums' title={alert.detail}>

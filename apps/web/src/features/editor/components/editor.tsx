@@ -90,7 +90,10 @@ export function Editor({
     () => createCriticalEditorCorePlugins(documentLanguageId),
     [documentLanguageId],
   )
-  const nonCriticalEditorPlugins = useMemo(() => createNonCriticalEditorPluginsLoaderPlugin(), [])
+  const nonCriticalEditorPlugins = useMemo(
+    () => createNonCriticalEditorPluginsLoaderPlugin(documentLanguageId),
+    [documentLanguageId],
+  )
   const plugins = useMemo(
     () => [
       ...criticalEditorCorePlugins,

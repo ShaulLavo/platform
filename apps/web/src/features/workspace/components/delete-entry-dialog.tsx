@@ -1,4 +1,4 @@
-import { CircleNotchIcon, TrashIcon, WarningCircleIcon } from '@phosphor-icons/react'
+import { TrashIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import { Button } from '@workspace/ui/components/button'
 import {
   Dialog,
@@ -10,6 +10,7 @@ import {
 } from '@workspace/ui/components/dialog'
 
 import type { DeleteTarget } from '@/features/workspace/hooks/use-fs-actions'
+import { Spinner } from '@workspace/ui/components/spinner'
 
 /**
  * Deleting is the one tree action with nothing to undo — no trash, no revert —
@@ -58,7 +59,7 @@ export function DeleteEntryDialog({
           </Button>
           <Button disabled={deleting} onClick={onConfirm} type='button' variant='destructive'>
             {deleting ? (
-              <CircleNotchIcon className='animate-spin' data-icon='inline-start' />
+              <Spinner aria-hidden='true' data-icon='inline-start' role='presentation' />
             ) : (
               <TrashIcon data-icon='inline-start' />
             )}
