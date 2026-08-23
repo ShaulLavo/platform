@@ -26,7 +26,7 @@ import { TreeToolbar } from '@/features/workspace/components/tree-toolbar'
 import { useFileTreeActions } from '@/features/workspace/hooks/use-file-tree-actions'
 import { useFileTreeIntentPrefetch } from '@/features/workspace/hooks/use-file-tree-intent-prefetch'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
-import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
+import { useWorkbenchDensity } from '@/features/settings/hooks/use-workbench-density'
 import { useFileTreeMutationEvents } from '@/features/workspace/hooks/use-file-tree-mutation-events'
 import { useFsActions } from '@/features/workspace/hooks/use-fs-actions'
 import { useTreeCommandRequest } from '@/features/workspace/hooks/use-tree-command-request'
@@ -99,7 +99,7 @@ function ReadyTreePane({
   rootPath: string
 }) {
   const { editorTheme } = useEditorColorTheme()
-  const workbenchDensity = useSettingValue('workbench.density')
+  const workbenchDensity = useWorkbenchDensity()
   const selectedFilePath = useEditorWorkspaceState((store) => store.selectedFilePath)
   const { selectFile } = useEditorCommands()
   const { loadDirectory, publishVisibleItemCount: publishVisibleItemCountAction } =
@@ -549,6 +549,10 @@ const treeStyle = {
   '--trees-selected-bg-override': 'color-mix(in oklch, var(--accent-solid) 60%, transparent)',
   '--trees-border-color-override': 'var(--border)',
   '--trees-fg-override': 'var(--foreground)',
+  // The tree defines its own font variables inside the shadow root, so host
+  // inheritance alone cannot reach the rows.
+  '--trees-font-family-override': 'var(--workbench-tree-font-family)',
+  '--trees-font-size-override': 'var(--workbench-tree-font-size)',
   '--trees-level-gap-override': 'var(--workbench-tree-level-gap)',
   height: '100%',
 } as CSSProperties

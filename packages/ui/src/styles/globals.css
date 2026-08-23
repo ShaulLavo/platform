@@ -107,8 +107,44 @@
 :root {
   color-scheme: light;
 
-  /* Density leaves content typography alone and changes only app chrome and
-     controls. The tree inherits these through its shadow host. */
+  /* Density changes chrome and controls. Cozy also restores the tree's
+     pre-compaction typography through its shadow host. */
+  --density-control-height: 2rem;
+  --density-control-height-sm: 1.75rem;
+  --density-control-height-lg: 2.25rem;
+  --density-control-gap: 0.375rem;
+  --density-control-padding-x: 0.625rem;
+  --density-control-padding-x-tight: 0.5rem;
+  --density-input-group-addon-gap: 0.5rem;
+  --density-input-group-addon-padding-y: 0.375rem;
+  --density-input-group-block-padding: 0.625rem;
+  --density-input-group-block-padding-y: 0.5rem;
+  --density-input-group-inline-padding: 0.5rem;
+  --density-input-group-input-block-padding: 0.75rem;
+  --density-dialog-gap: 1rem;
+  --density-dialog-padding: 1rem;
+  --density-popover-gap: 0.625rem;
+  --density-popover-padding: 0.625rem;
+  --density-menu-item-padding-y: 0.5rem;
+  --density-textarea-min-height: 4rem;
+  --density-textarea-padding-y: 0.5rem;
+  --density-tooltip-gap: 0.375rem;
+  --density-tooltip-padding-x: 0.75rem;
+  --density-tooltip-padding-y: 0.375rem;
+  --density-tooltip-kbd-padding-right: 0.375rem;
+  --density-section-padding: 1rem;
+  --density-section-gap: 0.5rem;
+  --density-accordion-padding-y: 0.625rem;
+  --density-copy-paragraph-gap: 1rem;
+  --density-alert-padding-y: 0.5rem;
+  --density-loading-padding: 0.75rem;
+  --density-command-input-height: 3rem;
+  --density-command-input-padding-x: 0.75rem;
+  --density-command-heading-padding-x: 0.75rem;
+  --density-command-heading-padding-top: 0.5rem;
+  --density-command-item-gap: 0.625rem;
+  --density-command-item-padding-x: 0.75rem;
+  --density-command-item-padding-y: 0.5rem;
   --workbench-tree-font-family: var(--font-mono);
   --workbench-tree-font-size: 12px;
   --workbench-tree-level-gap: 6.4px;
@@ -298,6 +334,41 @@
 }
 
 :root[data-density='compact'] {
+  --density-control-height: 1.75rem;
+  --density-control-height-sm: 1.5rem;
+  --density-control-height-lg: 2rem;
+  --density-control-padding-x: 0.5rem;
+  --density-control-padding-x-tight: 0.375rem;
+  --density-input-group-addon-gap: 0.375rem;
+  --density-input-group-addon-padding-y: 0.25rem;
+  --density-input-group-block-padding: 0.5rem;
+  --density-input-group-block-padding-y: 0.375rem;
+  --density-input-group-inline-padding: 0.375rem;
+  --density-input-group-input-block-padding: 0.625rem;
+  --density-dialog-gap: 0.75rem;
+  --density-dialog-padding: 0.75rem;
+  --density-popover-gap: 0.5rem;
+  --density-popover-padding: 0.5rem;
+  --density-menu-item-padding-y: 0.375rem;
+  --density-textarea-min-height: 3.5rem;
+  --density-textarea-padding-y: 0.375rem;
+  --density-tooltip-gap: 0.25rem;
+  --density-tooltip-padding-x: 0.625rem;
+  --density-tooltip-padding-y: 0.25rem;
+  --density-tooltip-kbd-padding-right: 0.25rem;
+  --density-section-padding: 0.75rem;
+  --density-section-gap: 0.375rem;
+  --density-accordion-padding-y: 0.5rem;
+  --density-copy-paragraph-gap: 0.75rem;
+  --density-alert-padding-y: 0.375rem;
+  --density-loading-padding: 0.5rem;
+  --density-command-input-height: 2.5rem;
+  --density-command-input-padding-x: 0.625rem;
+  --density-command-heading-padding-x: 0.625rem;
+  --density-command-heading-padding-top: 0.375rem;
+  --density-command-item-gap: 0.5rem;
+  --density-command-item-padding-x: 0.625rem;
+  --density-command-item-padding-y: 0.375rem;
   --workbench-tree-font-family: var(--font-ui);
   --workbench-tree-font-size: 12.5px;
   --workbench-tree-level-gap: 2px;

@@ -70,7 +70,7 @@ export function LocationBar({
           aria-describedby={error ? 'file-picker-path-error' : undefined}
           aria-invalid={Boolean(error)}
           aria-label='Folder path'
-          className='h-8 min-w-0 font-mono'
+          className='compact:h-6 h-8 min-w-0 font-mono'
           disabled={isPending}
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={handleInputKeyDown}

@@ -32,7 +32,7 @@ export function DeleteEntryDialog({
   return (
     <Dialog onOpenChange={(open) => open || onCancel()} open={target !== null}>
       <DialogContent
-        className='bg-background w-[min(420px,calc(100vw-2rem))] max-w-none gap-4 rounded-lg border p-4 text-sm shadow-xl sm:max-w-none'
+        className='bg-background w-[min(420px,calc(100vw-2rem))] max-w-none rounded-lg border text-sm shadow-xl sm:max-w-none'
         showCloseButton={false}
       >
         <DialogHeader>
@@ -40,13 +40,13 @@ export function DeleteEntryDialog({
           <DialogDescription>{deleteDescription(target)}</DialogDescription>
         </DialogHeader>
         {target ? (
-          <div className='bg-muted/30 text-muted-foreground truncate rounded-md border px-3 py-2 text-xs'>
+          <div className='bg-muted/30 text-muted-foreground compact:px-2.5 compact:py-1.5 truncate rounded-md border px-3 py-2 text-xs'>
             {target.path}
           </div>
         ) : null}
         {error ? (
           <div
-            className='border-destructive/25 bg-destructive/10 text-destructive flex items-start gap-2 rounded-md border px-3 py-2 text-xs'
+            className='border-destructive/25 bg-destructive/10 text-destructive compact:gap-1.5 compact:px-2.5 compact:py-1.5 flex items-start gap-2 rounded-md border px-3 py-2 text-xs'
             role='alert'
           >
             <WarningCircleIcon className='mt-0.5 size-3.5 shrink-0' />

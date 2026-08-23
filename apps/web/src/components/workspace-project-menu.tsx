@@ -52,7 +52,7 @@ export function WorkspaceProjectMenu({ workspaceTitle }: { readonly workspaceTit
             aria-label='Switch project'
             className={cn(
               NATIVE_WINDOW_NO_DRAG_CLASS,
-              'hover:bg-accent focus-visible:ring-ring/50 flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left outline-none focus-visible:ring-1',
+              'hover:bg-accent focus-visible:ring-ring/50 compact:gap-1.5 compact:px-1.5 compact:py-0.5 flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left outline-none focus-visible:ring-1',
             )}
             type='button'
           />

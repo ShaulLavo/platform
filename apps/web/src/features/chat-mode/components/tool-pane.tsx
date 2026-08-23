@@ -169,24 +169,30 @@ function turnScopeBody({ openTurnFile, turnSummary }: ThreadDiffScopeState) {
   // No summary yet means the checkpoint has not streamed in — pending, not
   // absent. 'missing' below is the state that means there is nothing to show.
   if (!turnSummary) {
-    return <LoadingState className='px-3 py-2' label='Loading checkpoint' rows={3} />
+    return (
+      <LoadingState
+        className='compact:px-2 compact:py-1.5 px-3 py-2'
+        label='Loading checkpoint'
+        rows={3}
+      />
+    )
   }
   if (turnSummary.status !== 'ready' || turnSummary.files.length === 0) {
     return (
-      <p className='text-muted-foreground px-3 py-2 text-[11px]'>
+      <p className='text-muted-foreground compact:px-2 compact:py-1.5 px-3 py-2 text-[11px]'>
         No checkpoint diff for turn {turnSummary.checkpointTurnCount}.
       </p>
     )
   }
 
   return (
-    <div className='app-scrollbar-thin h-full min-h-0 overflow-auto py-1'>
-      <p className='text-muted-foreground px-3 pb-1 text-[11px] tabular-nums'>
+    <div className='app-scrollbar-thin compact:py-0.5 h-full min-h-0 overflow-auto py-1'>
+      <p className='text-muted-foreground compact:px-2 compact:pb-0.5 px-3 pb-1 text-[11px] tabular-nums'>
         Turn {turnSummary.checkpointTurnCount} · {turnSummary.files.length} files
       </p>
       {turnSummary.files.map((file) => (
         <Button
-          className='w-full justify-between gap-2 px-3 font-normal'
+          className='compact:gap-1.5 compact:px-2 w-full justify-between gap-2 px-3 font-normal'
           key={file.path}
           size='sm'
           type='button'

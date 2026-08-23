@@ -29,10 +29,10 @@ installEditorPerformanceTraceFromUrl()
 initializeClientLogging()
 installServerRestartInvalidation(queryClient)
 applyNativeVibrancy(hasNativeVibrancyShell())
-// Before `createRoot`, deliberately. React runs child effects before parent
-// effects, so an effect near the root would land after descendants that read
-// computed styles — the terminal snapshots CSS variables when it is built. The
-// React pass in `AppearanceProvider` is the correction, not the primary path.
+// Before `createRoot`, deliberately. The mirrored appearance is initial
+// document state: descendants construct geometry and read computed styles on
+// their first render. `AppearanceProvider` corrects it from the server snapshot
+// in React's insertion phase before later layout effects run.
 const boot = bootAppearance()
 applyAppearance(boot, document.documentElement, systemPrefersDark())
 const visualViewport = window.visualViewport
@@ -77,7 +77,7 @@ createRoot(document.getElementById('root')!, {
   <StrictMode>
     <LoggingErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <AppearanceProvider>
+        <AppearanceProvider bootDensity={boot['workbench.density']}>
           <ThemeProvider>
             <EditorColorThemeProvider>
               <TooltipProvider delay={600}>

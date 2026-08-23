@@ -29,8 +29,8 @@ export function SettingsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='flex h-[min(720px,calc(100svh-4rem))] w-[min(880px,calc(100vw-3rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none'>
         <DialogHeader className='border-border/60 compact:px-3 compact:py-2 gap-1 border-b px-4 py-3'>
-          <DialogTitle className='flex items-center gap-2 text-sm'>
-            <span className='border-info/20 bg-info/10 text-info flex size-7 items-center justify-center rounded-md border'>
+          <DialogTitle className='compact:gap-1.5 flex items-center gap-2 text-sm'>
+            <span className='border-info/20 bg-info/10 text-info compact:size-6 flex size-7 items-center justify-center rounded-md border'>
               <GearSixIcon weight='duotone' />
             </span>
             Settings

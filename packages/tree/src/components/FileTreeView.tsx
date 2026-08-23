@@ -80,6 +80,11 @@ type FileTreeViewLayoutState = {
   visibleRows: readonly FileTreeVisibleRow[]
 }
 
+interface DensityScrollAnchor {
+  itemHeight: number
+  logicalScrollTop: number
+}
+
 function computeStickyRowsFromCandidates(
   candidates: readonly FileTreeStickyRowCandidate[],
   scrollTop: number,
@@ -244,6 +249,7 @@ export function FileTreeView({
     getStickyRowButtons,
   }
   const updateViewportRef = useRef<() => void>(() => {})
+  const densityScrollAnchorRef = useRef<DensityScrollAnchor | null>(null)
   const measuredViewportHeightRef = useRef<number | null>(null)
   const initialFocusedScrollAppliedRef = useRef(false)
   const initialFocusedScrollControllerRef = useRef(controller)
@@ -368,6 +374,41 @@ export function FileTreeView({
     () => new Set(occludedStickyRows.map((entry) => getFileTreeRowPath(entry.row))),
     [occludedStickyRows],
   )
+
+  // Capture against the old rows, then restore only after the new scroll height
+  // lands so density growth cannot clamp the anchor to the previous maximum.
+  useLayoutEffect(() => {
+    const scrollElement = getScroll()
+    if (scrollElement == null) return
+
+    const renderedItemHeight = layoutSnapshot.physical.itemHeight
+    const pendingAnchor = densityScrollAnchorRef.current
+    if (renderedItemHeight !== itemHeight) {
+      const logicalScrollTop =
+        renderedItemHeight > 0 ? scrollElement.scrollTop / renderedItemHeight : 0
+      densityScrollAnchorRef.current = {
+        itemHeight,
+        logicalScrollTop: pendingAnchor?.logicalScrollTop ?? logicalScrollTop,
+      }
+      return
+    }
+
+    if (pendingAnchor == null) return
+    densityScrollAnchorRef.current = null
+    if (pendingAnchor.itemHeight !== itemHeight) return
+
+    const nextScrollTop = Math.min(
+      pendingAnchor.logicalScrollTop * itemHeight,
+      layoutSnapshot.physical.maxScrollTop,
+    )
+    scrollElement.scrollTop = nextScrollTop
+    updateViewportRef.current()
+  }, [
+    getScroll,
+    itemHeight,
+    layoutSnapshot.physical.itemHeight,
+    layoutSnapshot.physical.maxScrollTop,
+  ])
 
   const focusedRowIsMounted =
     focusedIndex >= 0 && focusedIndex >= range.start && focusedIndex <= range.end

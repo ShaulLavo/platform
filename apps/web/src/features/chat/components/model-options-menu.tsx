@@ -72,7 +72,7 @@ export function ModelOptionsMenu({
         render={
           <Button
             aria-label='Model options'
-            className='text-muted-foreground hover:text-foreground h-7 min-w-0 gap-1 rounded-md px-2 text-xs font-normal'
+            className='text-muted-foreground hover:text-foreground compact:h-6 compact:px-1.5 h-7 min-w-0 gap-1 rounded-md px-2 text-xs font-normal'
             disabled={disabled || locked}
             size='sm'
             title={`Model options: ${summary}`}

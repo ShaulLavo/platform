@@ -4,7 +4,7 @@ import { FolderOpenIcon, MagnifyingGlassIcon, ProhibitIcon } from '@phosphor-ico
 import { Separator } from '@workspace/ui/components/separator'
 
 import { EntryIcon, EntryPreviewTile, KindBadge } from '@/features/file-picker/entry-ui'
-import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
+import { useWorkbenchDensity } from '@/features/settings/hooks/use-workbench-density'
 import {
   formatModified,
   formatSize,
@@ -26,7 +26,7 @@ export function PreviewPane({
   isSearching: boolean
   mode: FilePickerMode
 }) {
-  const density = useSettingValue('workbench.density')
+  const density = useWorkbenchDensity()
   const metrics = filePickerDensityMetrics(density)
 
   return (

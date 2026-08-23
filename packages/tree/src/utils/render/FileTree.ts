@@ -254,19 +254,12 @@ export class FileTree implements FileTreeMutationHandle, FileTreeSearchSessionHa
       return
     }
 
-    const previousItemHeight = this.#density.itemHeight
     const mountedTree = this.#getMountedTreeElements()
-    const scrollElement = mountedTree?.host.shadowRoot?.querySelector<HTMLElement>(
-      '[data-file-tree-virtualized-scroll="true"]',
-    )
 
     this.#density = nextDensity
     this.#viewOptions.itemHeight = nextDensity.itemHeight
     this.#densityVersion += 1
 
-    if (scrollElement != null && previousItemHeight > 0) {
-      scrollElement.scrollTop *= nextDensity.itemHeight / previousItemHeight
-    }
     if (mountedTree != null) {
       this.#refreshOwnedDensityHostStyle(mountedTree.host)
       renderFileTreeRoot(mountedTree.wrapper, this.#getViewProps())

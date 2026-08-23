@@ -68,8 +68,8 @@ export function LanguageServerReferencesPane({
       aria-label='References'
       className='grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l'
     >
-      <div className='flex h-10 items-center justify-between gap-2 border-b px-3'>
-        <div className='flex min-w-0 items-center gap-2'>
+      <div className='compact:h-9 compact:gap-1.5 compact:px-2 flex h-10 items-center justify-between gap-2 border-b px-3'>
+        <div className='compact:gap-1.5 flex min-w-0 items-center gap-2'>
           <span className='truncate text-xs font-medium'>References</span>
           <span className='bg-muted/70 text-muted-foreground rounded px-1.5 text-[10px] leading-4 tabular-nums'>
             {references.targets.length.toLocaleString()}
@@ -77,7 +77,7 @@ export function LanguageServerReferencesPane({
         </div>
         <Button
           aria-label='Close references'
-          className='text-muted-foreground hover:text-foreground size-7 shrink-0'
+          className='text-muted-foreground hover:text-foreground compact:size-6 size-7 shrink-0'
           size='icon-sm'
           title='Close references'
           type='button'
@@ -89,7 +89,11 @@ export function LanguageServerReferencesPane({
       </div>
       <div className='min-h-0 overflow-y-auto py-1'>
         {groups.length === 0 ? (
-          <EmptyState align='start' className='px-3 py-4' title='No references found' />
+          <EmptyState
+            align='start'
+            className='compact:px-2 compact:py-3 px-3 py-4'
+            title='No references found'
+          />
         ) : (
           groups.map((group) => {
             const collapsed = collapsedPaths.has(group.path)
@@ -130,7 +134,7 @@ function ReferenceGroupHeader({
 
   return (
     <button
-      className='hover:bg-row-hover focus-visible:ring-ring/50 grid h-7 w-full grid-cols-[14px_14px_minmax(0,1fr)_auto] items-center gap-1.5 px-2 text-left text-xs outline-none focus-visible:ring-1'
+      className='hover:bg-row-hover focus-visible:ring-ring/50 compact:h-6 compact:gap-1 compact:px-1.5 grid h-7 w-full grid-cols-[14px_14px_minmax(0,1fr)_auto] items-center gap-1.5 px-2 text-left text-xs outline-none focus-visible:ring-1'
       type='button'
       onClick={() => onToggle(group.path)}
     >

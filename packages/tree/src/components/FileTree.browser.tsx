@@ -96,10 +96,36 @@ describe('FileTree browser behavior', () => {
       expect(visibleRow?.style.minHeight).toBe('20px')
       expect(scrollElement.scrollTop).toBeCloseTo(100, 5)
     })
+
+    const compactMaxScrollTop = scrollElement.scrollHeight - scrollElement.clientHeight
+    const compactScrollTop = compactMaxScrollTop - 7
+    currentModel.focusPath('src/features/a-27.ts')
+    currentModel.getItem('src/features/a-27.ts')?.select()
+    currentModel.focus()
+
+    await vi.waitFor(() => {
+      expect(activePath(shadowRoot)).toBe('src/features/a-27.ts')
+    })
+    scrollElement.scrollTop = compactScrollTop
+    scrollElement.dispatchEvent(new Event('scroll', { bubbles: true }))
+
+    await vi.waitFor(() => {
+      expect(scrollElement.scrollTop).toBe(compactScrollTop)
+      expect(shadowRoot.querySelector('[data-file-tree-sticky-path="src/features/"]')).toBeTruthy()
+    })
+
+    currentModel.setDensity('compact', 24)
+
+    await vi.waitFor(() => {
+      const expectedScrollTop = Math.round(compactScrollTop * (24 / 20))
+      expect(scrollElement.scrollTop).toBe(expectedScrollTop)
+      expect(scrollElement.scrollTop).toBeGreaterThan(compactMaxScrollTop)
+      expect(activePath(shadowRoot)).toBe('src/features/a-27.ts')
+    })
     const directory = currentModel.getItem('src/features/')
     expect(directory != null && 'isExpanded' in directory && directory.isExpanded()).toBe(true)
-    expect(currentModel.getFocusedPath()).toBe('src/features/a-3.ts')
-    expect(currentModel.getSelectedPaths()).toEqual(['src/features/a-3.ts'])
+    expect(currentModel.getFocusedPath()).toBe('src/features/a-27.ts')
+    expect(currentModel.getSelectedPaths()).toEqual(['src/features/a-3.ts', 'src/features/a-27.ts'])
   })
 
   it('preserves keyboard branch order for rename, selection, and directional navigation', async () => {

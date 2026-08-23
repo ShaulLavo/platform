@@ -14,15 +14,19 @@ export function PendingApprovalPanel() {
   if (pendingApprovals.length === 0) return null
 
   return (
-    <div aria-label='Pending approvals' className='shrink-0 px-3 pb-2' role='alert'>
-      <div className='mx-auto flex max-w-3xl flex-col gap-2'>
+    <div
+      aria-label='Pending approvals'
+      className='compact:px-2 compact:pb-1.5 shrink-0 px-3 pb-2'
+      role='alert'
+    >
+      <div className='compact:gap-1.5 mx-auto flex max-w-3xl flex-col gap-2'>
         {pendingApprovals.map((approval, index) => (
           <section
             aria-label={approvalTitle(approval.requestKind)}
-            className='border-warning/30 bg-warning/10 flex flex-col gap-2 border p-3'
+            className='border-warning/30 bg-warning/10 compact:gap-1.5 compact:p-2 flex flex-col gap-2 border p-3'
             key={approval.requestId}
           >
-            <div className='flex flex-wrap items-center gap-2'>
+            <div className='compact:gap-1.5 flex flex-wrap items-center gap-2'>
               <WarningCircleIcon className='text-warning size-4' />
               <span className='text-warning text-[11px] font-semibold tracking-widest uppercase'>
                 Approval needed
@@ -42,7 +46,7 @@ export function PendingApprovalPanel() {
               ) : null}
             </div>
             {approval.detail ? (
-              <div className='border-border bg-background border p-2'>
+              <div className='border-border bg-background compact:p-1.5 border p-2'>
                 <p className='text-muted-foreground text-[11px] font-medium'>
                   {detailLabel(approval.requestKind)}
                 </p>

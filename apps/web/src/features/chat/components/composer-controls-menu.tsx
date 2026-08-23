@@ -95,7 +95,7 @@ export function ComposerControlsMenu({
         render={
           <Button
             aria-label='Agent access and mode'
-            className='text-muted-foreground hover:text-foreground h-7 min-w-0 gap-1 rounded-md px-2 text-xs font-normal'
+            className='text-muted-foreground hover:text-foreground compact:h-6 compact:px-1.5 h-7 min-w-0 gap-1 rounded-md px-2 text-xs font-normal'
             disabled={disabled}
             size='sm'
             title={triggerTitle(activeRuntimeMode, activeInteractionMode)}

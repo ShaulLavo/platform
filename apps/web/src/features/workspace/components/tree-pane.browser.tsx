@@ -1,4 +1,10 @@
 import '@workspace/ui/globals.css'
+import type { QueryClient } from '@tanstack/react-query'
+import {
+  DEFAULT_SETTING_VALUES,
+  type SettingsSnapshot,
+  type SettingsValues,
+} from '@workspace/contracts'
 import type { GitStatusEntry } from '@workspace/tree'
 import { useState } from 'react'
 import { flushSync } from 'react-dom'
@@ -8,6 +14,7 @@ import { afterEach, expect, test } from 'vitest'
 import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
+import { settingsKeys } from '@/features/settings/utils/query-keys'
 import { TreePane } from '@/features/workspace/components/tree-pane'
 import {
   FileTreeActionsContext,
@@ -37,6 +44,7 @@ afterEach(() => {
   flushSync(() => root?.unmount())
   root = null
   document.body.replaceChildren()
+  delete document.documentElement.dataset.density
   localStorage.clear()
 })
 
@@ -167,6 +175,40 @@ test('selecting an editor tab expands and animates its file into view without st
   scroller.removeEventListener('scroll', recordScrollPosition)
 })
 
+test('live density changes preserve the compact and cozy tree geometry and typography', async () => {
+  const queryClient = createTestQueryClient()
+  setWorkbenchDensity(queryClient, 'compact')
+  mountTreePane(createTreeCommandStore(), queryClient)
+
+  const shadowRoot = await fileTreeShadowRoot()
+  const treeHost = document.querySelector<HTMLElement>('file-tree-container')
+  expect(treeHost).not.toBeNull()
+  expect(treeHost!.style.getPropertyValue('--trees-font-family-override')).toBe(
+    'var(--workbench-tree-font-family)',
+  )
+  expect(treeHost!.style.getPropertyValue('--trees-font-size-override')).toBe(
+    'var(--workbench-tree-font-size)',
+  )
+
+  await expect
+    .poll(() => treeDensityMetrics(shadowRoot))
+    .toEqual({
+      fontFamily: resolvedRootFontFamily('--font-ui'),
+      fontSize: '12.5px',
+      height: 20,
+    })
+
+  setWorkbenchDensity(queryClient, 'cozy')
+
+  await expect
+    .poll(() => treeDensityMetrics(shadowRoot))
+    .toEqual({
+      fontFamily: resolvedRootFontFamily('--font-mono'),
+      fontSize: '12px',
+      height: 24,
+    })
+})
+
 function TreePaneHarness() {
   const { selectFile, selectTab } = useEditorCommands()
   const selectedFilePath = useEditorWorkspaceState((state) => state.selectedFilePath)
@@ -235,7 +277,10 @@ function TreePaneHarness() {
   )
 }
 
-function mountTreePane(commandStore: ReturnType<typeof createTreeCommandStore>) {
+function mountTreePane(
+  commandStore: ReturnType<typeof createTreeCommandStore>,
+  queryClient: QueryClient = createTestQueryClient(),
+) {
   seedBootMirrorTheme('dark')
   const host = document.createElement('main')
   document.body.append(host)
@@ -243,7 +288,7 @@ function mountTreePane(commandStore: ReturnType<typeof createTreeCommandStore>) 
 
   flushSync(() => {
     root?.render(
-      <AppProviders queryClient={createTestQueryClient()}>
+      <AppProviders queryClient={queryClient}>
         <EditorStateProvider>
           <FocusProvider>
             <TreeCommandsContext value={commandStore}>
@@ -336,6 +381,45 @@ function searchContainer(shadowRoot: ShadowRoot) {
 
 function treeScroller(shadowRoot: ShadowRoot) {
   return shadowRoot.querySelector<HTMLElement>('[data-file-tree-virtualized-scroll="true"]')!
+}
+
+function treeDensityMetrics(shadowRoot: ShadowRoot) {
+  const row = rowButton(shadowRoot, 'src/')
+  if (!row) return null
+
+  const style = getComputedStyle(row)
+  return {
+    fontFamily: style.fontFamily,
+    fontSize: style.fontSize,
+    height: row.getBoundingClientRect().height,
+  }
+}
+
+function resolvedRootFontFamily(variable: '--font-mono' | '--font-ui') {
+  const probe = document.createElement('span')
+  probe.style.fontFamily = `var(${variable})`
+  document.body.append(probe)
+  const fontFamily = getComputedStyle(probe).fontFamily
+  probe.remove()
+
+  return fontFamily
+}
+
+function setWorkbenchDensity(
+  queryClient: QueryClient,
+  density: SettingsValues['workbench.density'],
+) {
+  document.documentElement.dataset.density = density
+  queryClient.setQueryData(settingsKeys.document(), settingsSnapshot(density))
+}
+
+function settingsSnapshot(density: SettingsValues['workbench.density']): SettingsSnapshot {
+  return {
+    diagnostics: [],
+    layers: [],
+    revision: density,
+    values: { ...DEFAULT_SETTING_VALUES, 'workbench.density': density },
+  }
 }
 
 function rowIsVisibleInScroller(row: HTMLElement | null, scroller: HTMLElement) {

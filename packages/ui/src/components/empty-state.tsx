@@ -46,7 +46,7 @@ function EmptyState({
   return (
     <div
       className={cn(
-        'flex min-h-0 p-4 text-xs compact:p-3',
+        'flex min-h-0 p-(--density-section-padding) text-xs',
         align === 'center' ? 'items-center justify-center' : 'items-start',
         className,
       )}
@@ -54,7 +54,7 @@ function EmptyState({
     >
       <div
         className={cn(
-          'flex flex-col gap-2 compact:gap-1.5',
+          'flex flex-col gap-(--density-section-gap)',
           align === 'center' && 'items-center text-center',
         )}
       >

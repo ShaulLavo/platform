@@ -24,7 +24,7 @@ export function UiModeToggle() {
         <Button
           aria-label='Toggle sessions'
           aria-pressed={chatModePanels.sessionRailOpen}
-          className='text-muted-foreground hover:text-foreground size-7 rounded-md'
+          className='text-muted-foreground hover:text-foreground compact:size-6 size-7 rounded-md'
           size='icon-sm'
           title='Toggle sessions'
           type='button'

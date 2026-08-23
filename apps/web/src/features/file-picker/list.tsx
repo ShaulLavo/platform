@@ -26,12 +26,11 @@ import {
   type Dispatch,
   type Ref,
   type SetStateAction,
-  type UIEvent,
 } from 'react'
 
 import { EntryIcon } from '@/features/file-picker/entry-ui'
 import { useFilePickerSessionActions } from '@/features/file-picker/hooks/use-file-picker-session-actions'
-import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
+import { useWorkbenchDensity } from '@/features/settings/hooks/use-workbench-density'
 import {
   displayPath,
   formatSizeLabel,
@@ -45,11 +44,13 @@ import {
 } from '@/features/file-picker/model'
 import {
   filePickerDensityMetrics,
+  type FilePickerDensity,
   type FilePickerDensityMetrics,
 } from '@/features/file-picker/utils/density'
 import { fileListAvailabilityLabel } from '@/features/file-picker/utils/availability'
 import {
   buildFileListRowMetrics,
+  fileListDensityScrollTop,
   fileListOptionId,
   fileListSelectionScrollTop,
   visibleFileListRows,
@@ -70,6 +71,14 @@ export type FileListKeyboardContext = {
 }
 
 type SetFileListViewport = Dispatch<SetStateAction<FileListViewport>>
+type FileListViewportRef = { current: FileListViewport }
+
+type FileListScrollSnapshot = {
+  density: FilePickerDensity
+  rowMetrics: FileListRowMetrics
+  rows: readonly FileListRow[]
+  selectedIndex: number | undefined
+}
 
 const INITIAL_VIEWPORT: FileListViewport = { height: 480, top: 0 }
 const compactModifiedFormatter = new Intl.DateTimeFormat(undefined, {
@@ -91,7 +100,7 @@ export function ListHeader({
   onSort: (key: FileListSortKey) => void
   sort: FileListSort | null
 }) {
-  const density = useSettingValue('workbench.density')
+  const density = useWorkbenchDensity()
   const metrics = filePickerDensityMetrics(density)
 
   return (
@@ -162,10 +171,12 @@ export function FileList({
   onRetry: () => void
   selectedPath: string | null
 }) {
-  const density = useSettingValue('workbench.density')
+  const density = useWorkbenchDensity()
   const densityMetrics = filePickerDensityMetrics(density)
   const rows = useMemo(() => fileListRows(entries, isSearching), [entries, isSearching])
   const listboxRef = useRef<HTMLDivElement>(null)
+  const viewportRef = useRef<FileListViewport>(INITIAL_VIEWPORT)
+  const scrollSnapshotRef = useRef<FileListScrollSnapshot>(null)
   const listId = useId()
   const statusId = `${listId}-status`
   const [viewport, setViewport] = useState<FileListViewport>(INITIAL_VIEWPORT)
@@ -196,16 +207,31 @@ export function FileList({
     const element = listboxRef.current
     if (!element) return
 
-    return observeFileListViewport(element, setViewport)
+    return observeFileListViewport(element, setViewport, viewportRef)
   }, [])
 
   useLayoutEffect(() => {
     const element = listboxRef.current
     const selectedItem = selectedIndex === undefined ? undefined : rowMetrics.items[selectedIndex]
+    const previousSnapshot = scrollSnapshotRef.current
+    const nextSnapshot = { density, rowMetrics, rows, selectedIndex }
+    scrollSnapshotRef.current = nextSnapshot
     if (!element) return
 
-    syncFileListSelectionScroll(element, selectedItem, setViewport)
-  }, [rowMetrics, selectedIndex])
+    if (isDensityOnlyFileListChange(previousSnapshot, nextSnapshot)) {
+      syncFileListDensityScroll(
+        element,
+        previousSnapshot.rowMetrics,
+        rowMetrics,
+        viewportRef.current,
+        setViewport,
+        viewportRef,
+      )
+      return
+    }
+
+    syncFileListSelectionScroll(element, selectedItem, setViewport, viewportRef)
+  }, [density, rowMetrics, rows, selectedIndex])
 
   return (
     <div className='relative min-h-0 overflow-hidden'>
@@ -225,7 +251,7 @@ export function FileList({
           })
         }
         onMouseDown={focusFileList}
-        onScroll={handleFileListScroll(setViewport)}
+        onScroll={(event) => updateFileListViewport(event.currentTarget, setViewport, viewportRef)}
         role='listbox'
         tabIndex={0}
       >
@@ -595,23 +621,23 @@ function activeFileListOptionId(
   return fileListOptionId(listId, row.entry.path)
 }
 
-function handleFileListScroll(setViewport: SetFileListViewport) {
-  return (event: UIEvent<HTMLDivElement>) => {
-    updateFileListViewport(event.currentTarget, setViewport)
-  }
-}
-
 function focusFileList(event: MouseEvent<HTMLDivElement>) {
   if (event.button !== 0) return
 
   event.currentTarget.focus({ preventScroll: true })
 }
 
-function observeFileListViewport(element: HTMLDivElement, setViewport: SetFileListViewport) {
-  updateFileListViewport(element, setViewport)
+function observeFileListViewport(
+  element: HTMLDivElement,
+  setViewport: SetFileListViewport,
+  viewportRef: FileListViewportRef,
+) {
+  updateFileListViewport(element, setViewport, viewportRef)
   if (typeof ResizeObserver === 'undefined') return
 
-  const observer = new ResizeObserver(() => updateFileListViewport(element, setViewport))
+  const observer = new ResizeObserver(() =>
+    updateFileListViewport(element, setViewport, viewportRef),
+  )
   observer.observe(element)
 
   return () => observer.disconnect()
@@ -621,17 +647,35 @@ function syncFileListSelectionScroll(
   element: HTMLDivElement,
   item: FileListVirtualItem | undefined,
   setViewport: SetFileListViewport,
+  viewportRef: FileListViewportRef,
 ) {
   const viewport = fileListViewport(element)
   const nextTop = fileListSelectionScrollTop(item, viewport)
-  if (nextTop === viewport.top) return
+  if (nextTop !== viewport.top) element.scrollTop = nextTop
 
-  element.scrollTop = nextTop
-  updateFileListViewport(element, setViewport)
+  updateFileListViewport(element, setViewport, viewportRef)
 }
 
-function updateFileListViewport(element: HTMLDivElement, setViewport: SetFileListViewport) {
+function syncFileListDensityScroll(
+  element: HTMLDivElement,
+  previousMetrics: FileListRowMetrics,
+  nextMetrics: FileListRowMetrics,
+  previousViewport: FileListViewport,
+  setViewport: SetFileListViewport,
+  viewportRef: FileListViewportRef,
+) {
+  const viewport = { height: element.clientHeight, top: previousViewport.top }
+  element.scrollTop = fileListDensityScrollTop(previousMetrics, nextMetrics, viewport)
+  updateFileListViewport(element, setViewport, viewportRef)
+}
+
+function updateFileListViewport(
+  element: HTMLDivElement,
+  setViewport: SetFileListViewport,
+  viewportRef: FileListViewportRef,
+) {
   const nextViewport = fileListViewport(element)
+  viewportRef.current = nextViewport
   setViewport((currentViewport) => {
     if (sameFileListViewport(currentViewport, nextViewport)) return currentViewport
 
@@ -645,6 +689,27 @@ function fileListViewport(element: HTMLDivElement): FileListViewport {
 
 function sameFileListViewport(first: FileListViewport, second: FileListViewport) {
   return first.height === second.height && first.top === second.top
+}
+
+function isDensityOnlyFileListChange(
+  previous: FileListScrollSnapshot | null,
+  next: FileListScrollSnapshot,
+): previous is FileListScrollSnapshot {
+  if (!previous) return false
+  if (previous.density === next.density) return false
+  if (previous.selectedIndex !== next.selectedIndex) return false
+
+  return sameFileListRows(previous.rows, next.rows)
+}
+
+function sameFileListRows(first: readonly FileListRow[], second: readonly FileListRow[]) {
+  if (first.length !== second.length) return false
+
+  for (let index = 0; index < first.length; index += 1) {
+    if (first[index]?.key !== second[index]?.key) return false
+  }
+
+  return true
 }
 
 function fileListPageSize(viewportHeight: number, rowSize: number) {

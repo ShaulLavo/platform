@@ -78,9 +78,13 @@ function PendingUserInputCard({ pending }: { readonly pending: PendingUserInput 
   }
 
   return (
-    <div aria-label='Agent question' className='shrink-0 px-3 pb-2' role='alert'>
-      <div className='border-warning/30 bg-warning/10 mx-auto flex max-w-3xl flex-col gap-2 border p-3'>
-        <div className='flex flex-wrap items-center gap-2'>
+    <div
+      aria-label='Agent question'
+      className='compact:px-2 compact:pb-1.5 shrink-0 px-3 pb-2'
+      role='alert'
+    >
+      <div className='border-warning/30 bg-warning/10 compact:gap-1.5 compact:p-2 mx-auto flex max-w-3xl flex-col gap-2 border p-3'>
+        <div className='compact:gap-1.5 flex flex-wrap items-center gap-2'>
           <QuestionIcon className='text-warning size-4' />
           <span className='text-warning text-[11px] font-semibold tracking-widest uppercase'>
             {question.header ?? 'Input needed'}
@@ -105,7 +109,7 @@ function PendingUserInputCard({ pending }: { readonly pending: PendingUserInput 
             {question.options.map((option) => (
               <Button
                 aria-pressed={picked.includes(option.value)}
-                className='h-auto justify-start px-2.5 py-1.5 text-left'
+                className='compact:px-2 compact:py-1 h-auto justify-start px-2.5 py-1.5 text-left'
                 disabled={responding}
                 key={option.value}
                 onClick={() => selectOption(option.value)}
@@ -151,7 +155,10 @@ function PendingUserInputCard({ pending }: { readonly pending: PendingUserInput 
             )}
           </div>
         ) : null}
-        <div aria-busy={responding} className='flex flex-wrap items-center justify-end gap-1.5'>
+        <div
+          aria-busy={responding}
+          className='compact:gap-1 flex flex-wrap items-center justify-end gap-1.5'
+        >
           {activeIndex > 0 ? (
             <Button
               disabled={responding}

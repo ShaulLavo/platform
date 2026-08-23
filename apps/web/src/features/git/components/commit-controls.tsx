@@ -59,7 +59,7 @@ export function CommitControls({
             aria-label='Commit message'
             aria-describedby={generation.error ? generationErrorId : undefined}
             aria-invalid={generation.error ? true : undefined}
-            className='h-full px-2.5 text-xs font-medium'
+            className='h-full text-xs font-medium'
             disabled={inputDisabled}
             onChange={handleMessageChange}
             onKeyDown={handleCommitKeyDown}

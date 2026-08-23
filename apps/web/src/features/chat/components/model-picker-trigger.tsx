@@ -47,7 +47,7 @@ export function ModelPickerTrigger({
                 // events, so the tooltip explaining the lock would never open.
                 aria-disabled={locked}
                 aria-label='Provider and model'
-                className='text-muted-foreground hover:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 flex h-7 max-w-44 items-center gap-1 truncate rounded-md px-2 text-xs transition-colors focus-visible:ring-1 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 aria-disabled:cursor-default aria-disabled:opacity-50'
+                className='text-muted-foreground hover:text-foreground focus-visible:border-ring focus-visible:ring-ring/50 compact:h-6 compact:px-1.5 flex h-7 max-w-44 items-center gap-1 truncate rounded-md px-2 text-xs transition-colors focus-visible:ring-1 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 aria-disabled:cursor-default aria-disabled:opacity-50'
                 disabled={disabled}
                 type='button'
               />

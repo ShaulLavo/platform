@@ -65,7 +65,7 @@ export function ChatInputActions({
 
   return (
     <div
-      className='flex min-w-0 flex-col gap-1 px-3 pb-2.5'
+      className='compact:px-2 compact:pb-2 flex min-w-0 flex-col gap-1 px-3 pb-2.5'
       data-composer-actions
       data-compact={compact}
       ref={actionsRef}

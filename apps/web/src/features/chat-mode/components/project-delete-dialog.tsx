@@ -24,7 +24,7 @@ export function ProjectDeleteDialog() {
   return (
     <Dialog onOpenChange={(open) => open || actions.cancelDelete()} open={request !== null}>
       <DialogContent
-        className='w-[min(420px,calc(100vw-2rem))] max-w-none gap-4 rounded-lg border p-4 text-sm sm:max-w-none'
+        className='w-[min(420px,calc(100vw-2rem))] max-w-none rounded-lg border text-sm sm:max-w-none'
         showCloseButton={false}
       >
         <DialogHeader>

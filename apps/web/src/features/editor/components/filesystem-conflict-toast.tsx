@@ -17,12 +17,12 @@ export function FilesystemConflictToast({
   onOverrideRemote,
 }: FilesystemConflictToastProps) {
   return (
-    <div className='border-destructive/40 bg-background text-foreground w-[360px] max-w-[calc(100vw-2rem)] rounded-md border p-3 shadow-lg'>
+    <div className='border-destructive/40 bg-background text-foreground compact:p-2.5 w-[360px] max-w-[calc(100vw-2rem)] rounded-md border p-3 shadow-lg'>
       <div className='text-sm font-medium'>Unsaved file conflict</div>
       <div className='text-muted-foreground mt-1 text-xs leading-5'>
         {conflictDescription(conflict)}
       </div>
-      <div className='mt-3 flex flex-wrap gap-2'>
+      <div className='compact:mt-2 compact:gap-1.5 mt-3 flex flex-wrap gap-2'>
         <Button size='sm' type='button' onClick={onOverrideLocal}>
           Override with local
         </Button>

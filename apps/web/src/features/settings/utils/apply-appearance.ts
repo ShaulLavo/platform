@@ -36,10 +36,9 @@ export function resolveColorTheme(
  *
  * A plain function over a root element rather than a React effect, because it
  * has to run twice in two different worlds: once at module scope in `main.tsx`
- * before the first paint, and again whenever settings change. React runs child
- * effects before parent effects, so a provider-owned effect near the root would
- * land *after* descendants that read computed styles — `readTerminalTheme`
- * snapshots CSS variables when a terminal is constructed.
+ * before the first paint, and again in React's insertion phase whenever
+ * settings change. The insertion phase runs before descendant layout effects
+ * such as the terminal's CSS-variable snapshot.
  *
  * The pre-paint call is the primary path; the React one is a correction.
  */

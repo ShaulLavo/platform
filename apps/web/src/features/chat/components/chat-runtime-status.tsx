@@ -60,8 +60,12 @@ export function ChatRuntimeStatus({
   }
 
   return (
-    <div aria-label='Runtime notices' className='shrink-0 px-3 pt-3' role='status'>
-      <div className='mx-auto max-w-3xl space-y-2'>
+    <div
+      aria-label='Runtime notices'
+      className='compact:px-2 compact:pt-2 shrink-0 px-3 pt-3'
+      role='status'
+    >
+      <div className='compact:space-y-1.5 mx-auto max-w-3xl space-y-2'>
         <RuntimeAlert alert={front} onDismiss={dismiss} onSignIn={openSignIn} />
         {folded.length === 0 ? null : (
           <Button

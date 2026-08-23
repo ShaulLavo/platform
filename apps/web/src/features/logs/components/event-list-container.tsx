@@ -25,7 +25,7 @@ export function LogsEventListContainer({
   return (
     <>
       {events.isError ? (
-        <div className='bg-destructive/10 text-destructive border-b px-3 py-2 text-xs'>
+        <div className='bg-destructive/10 text-destructive compact:px-2 compact:py-1.5 border-b px-3 py-2 text-xs'>
           Could not read local logs.
         </div>
       ) : null}

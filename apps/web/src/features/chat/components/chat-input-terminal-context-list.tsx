@@ -23,7 +23,7 @@ export function ChatInputTerminalContextList({
   if (contexts.length === 0) return null
 
   return (
-    <div className='flex min-w-0 flex-wrap gap-1.5 px-3 pb-2'>
+    <div className='compact:gap-1 compact:px-2 compact:pb-1.5 flex min-w-0 flex-wrap gap-1.5 px-3 pb-2'>
       {contexts.map((context) => (
         <span className='inline-flex min-w-0 items-center gap-0.5' key={context.id}>
           <TerminalContextChip className='min-w-0' selection={context} />

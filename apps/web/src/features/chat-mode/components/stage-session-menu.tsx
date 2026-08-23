@@ -20,7 +20,7 @@ export function StageSessionMenu({ session }: { readonly session: SessionRailIte
     <>
       <Button
         aria-label='Session actions'
-        className='text-muted-foreground hover:text-foreground size-7 shrink-0 rounded-md'
+        className='text-muted-foreground hover:text-foreground compact:size-6 size-7 shrink-0 rounded-md'
         size='icon-sm'
         type='button'
         variant='ghost'

@@ -31,7 +31,7 @@ export function ModelPickerRow({
   const row = (
     <CommandItem
       className={cn(
-        'gap-2 rounded-md px-2 py-2',
+        'compact:gap-1.5 compact:px-1.5 compact:py-1.5 gap-2 rounded-md px-2 py-2',
         !disabled && 'cursor-pointer',
         // A natively inert row swallows hover, and the tooltip below is the only
         // place a blocked model says why it is blocked.
@@ -52,7 +52,7 @@ export function ModelPickerRow({
             </span>
           ) : null}
         </span>
-        <span className='mt-1 flex min-w-0 items-center gap-1.5'>
+        <span className='compact:mt-0.5 mt-1 flex min-w-0 items-center gap-1.5'>
           <ProviderGlyph
             className='size-3 text-[6px]'
             displayLabel={option.providerLabel}

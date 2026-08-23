@@ -16,7 +16,7 @@ export function Breadcrumbs({ currentPath }: { currentPath: string }) {
           {index > 0 && <CaretRightIcon className='text-muted-foreground size-3 shrink-0' />}
           <button
             className={cn(
-              'min-w-0 shrink truncate rounded-sm px-1.5 py-1 text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50',
+              'compact:px-1.5 compact:py-1 min-w-0 shrink truncate rounded-sm px-2 py-1.5 text-muted-foreground transition-colors duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] outline-none hover:bg-muted hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring/50',
               crumb.path === currentPath && 'text-foreground',
             )}
             onClick={() => navigateTo(crumb.path)}

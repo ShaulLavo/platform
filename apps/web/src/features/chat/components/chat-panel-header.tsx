@@ -31,8 +31,8 @@ export function ChatPanelHeader({
   const activeThread = threads.find((thread) => thread.id === activeThreadId)
 
   return (
-    <header className='border-border/70 flex h-12 shrink-0 items-center justify-between border-b px-3'>
-      <div className='min-w-0 pr-3'>
+    <header className='border-border/70 compact:h-10 compact:px-2 flex h-12 shrink-0 items-center justify-between border-b px-3'>
+      <div className='compact:pr-2 min-w-0 pr-3'>
         <div className='truncate text-sm font-semibold'>Chat</div>
         {activeThread ? (
           <div className='text-muted-foreground truncate text-[11px]'>{activeThread.title}</div>
@@ -74,7 +74,7 @@ export function ChatPanelHeader({
             {threads.map((thread) => (
               <DropdownMenuItem
                 className={cn(
-                  'grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 rounded-md px-2.5 py-2.5',
+                  'compact:gap-x-2 compact:px-2 compact:py-2 grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 rounded-md px-2.5 py-2.5',
                   thread.id === activeThreadId && 'bg-muted/70',
                 )}
                 key={thread.id}

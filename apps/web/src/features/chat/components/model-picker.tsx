@@ -51,6 +51,7 @@ const PANEL_CLASS =
 const SEARCH_FIELD_CLASS = [
   '[&_[data-slot=command-input-wrapper]]:border-border/70',
   '[&_[data-slot=command-input-wrapper]]:pb-2.5',
+  'compact:[&_[data-slot=command-input-wrapper]]:pb-2',
   '[&_[data-slot=command-input-wrapper]]:transition-colors',
   '[&_[data-slot=command-input-wrapper]]:focus-within:border-ring',
   '[&_[data-slot=input-group]]:h-6.5',
@@ -136,7 +137,7 @@ export function ModelPicker({
             label='Models'
             shouldFilter={false}
           >
-            <div className={cn('px-2 pt-2', SEARCH_FIELD_CLASS)}>
+            <div className={cn('compact:px-1.5 compact:pt-1.5 px-2 pt-2', SEARCH_FIELD_CLASS)}>
               <CommandInput
                 className='h-6.5'
                 placeholder='Search models'
@@ -145,9 +146,13 @@ export function ModelPicker({
               />
             </div>
             <div className='relative min-h-0 flex-1 overflow-hidden'>
-              <CommandList className='h-full max-h-full px-1.5 py-1.5'>
+              <CommandList className='compact:p-1 h-full max-h-full px-1.5 py-1.5'>
                 {providersQuery.isPending ? (
-                  <LoadingState className='gap-1.5 px-1 py-2' label='Loading providers' rows={4} />
+                  <LoadingState
+                    className='compact:py-1.5 gap-1.5 px-1 py-2'
+                    label='Loading providers'
+                    rows={4}
+                  />
                 ) : null}
                 {emptyLabel ? (
                   <CommandEmpty className='text-muted-foreground text-xs leading-snug font-normal'>

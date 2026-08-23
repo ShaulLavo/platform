@@ -75,7 +75,7 @@ export function ContextUsageRing({
           </button>
         }
       />
-      <PopoverContent align='end' className='w-64 p-2.5 text-xs' side='top'>
+      <PopoverContent align='end' className='w-64 text-xs' side='top'>
         <div className='flex items-baseline justify-between gap-3'>
           <span className='text-muted-foreground font-medium'>Context window</span>
           <span className='tabular-nums'>{tokenSummary(usage)}</span>

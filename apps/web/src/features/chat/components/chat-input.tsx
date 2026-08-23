@@ -362,7 +362,7 @@ export function ChatInput({
   }
 
   return (
-    <div className='border-border/60 shrink-0 border-t px-3 pt-2.5 pb-3'>
+    <div className='border-border/60 compact:px-2 compact:py-2 shrink-0 border-t px-3 pt-2.5 pb-3'>
       <ChatModelPickerProvider
         draftTarget={draftTarget}
         locked={modelSelectionLocked}

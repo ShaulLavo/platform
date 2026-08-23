@@ -1,11 +1,13 @@
-import { screen, waitFor } from '@testing-library/react'
+import { DEFAULT_SETTING_VALUES, type SettingsSnapshot } from '@workspace/contracts'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 
 import { expect, test } from '../../../../test/fixtures'
 import { FileList } from '@/features/file-picker/list'
 import { FilePickerSessionActionsContext } from '@/features/file-picker/providers/session-actions-context'
 import { saveSettings } from '@/features/settings/utils/api'
+import { settingsKeys } from '@/features/settings/utils/query-keys'
 import type { FsEntry } from '@/lib/file-system-types'
-import { renderWithProviders } from '../../../../test/render'
+import { createTestQueryClient, renderWithProviders } from '../../../../test/render'
 
 const actions = {
   jumpTo: () => undefined,
@@ -63,11 +65,26 @@ test('keeps cozy painted rows aligned with the virtual list height', async ({ cl
   expect(listbox.firstElementChild).toHaveStyle({ height: '64px' })
 })
 
+test('preserves a scrolled list without a selection when density changes', async () => {
+  await expectDensityChangeToPreserveScroll(null)
+})
+
+test('does not reveal an offscreen selection when only density changes', async () => {
+  await expectDensityChangeToPreserveScroll('entry-90')
+})
+
 function renderList(entries: FsEntry[], loadState: Parameters<typeof pickerList>[1]) {
   return renderWithProviders(pickerList(entries, loadState))
 }
 
-function pickerList(entries: FsEntry[], loadState: Parameters<typeof FileList>[0]['loadState']) {
+function pickerList(
+  entries: FsEntry[],
+  loadState: Parameters<typeof FileList>[0]['loadState'],
+  options: {
+    listRef?: Parameters<typeof FileList>[0]['listRef']
+    selectedPath?: string | null
+  } = {},
+) {
   return (
     <FilePickerSessionActionsContext value={actions}>
       <FileList
@@ -76,15 +93,58 @@ function pickerList(entries: FsEntry[], loadState: Parameters<typeof FileList>[0
         isBusy={false}
         isSearching={false}
         loadState={loadState}
+        listRef={options.listRef}
         mode='folder'
         onDirectoryIntent={() => undefined}
         onEntryDoubleClick={() => undefined}
         onKeyDown={() => undefined}
         onRetry={() => undefined}
-        selectedPath={null}
+        selectedPath={options.selectedPath ?? null}
       />
     </FilePickerSessionActionsContext>
   )
+}
+
+async function expectDensityChangeToPreserveScroll(selectedPath: string | null) {
+  const queryClient = createTestQueryClient()
+  queryClient.setQueryData(settingsKeys.document(), settingsSnapshot('compact'))
+  const entries = Array.from({ length: 100 }, (_, index) => entry(`entry-${index}`))
+  renderWithProviders(
+    pickerList(
+      entries,
+      { status: 'ready', data: entries },
+      { listRef: setListboxHeight, selectedPath },
+    ),
+    { queryClient },
+  )
+  const listbox = screen.getByRole('listbox', { name: 'Folders and files' })
+
+  listbox.scrollTop = 533
+  fireEvent.scroll(listbox)
+  expect(listbox.scrollTop).toBe(533)
+
+  act(() => {
+    queryClient.setQueryData(settingsKeys.document(), settingsSnapshot('cozy'))
+  })
+
+  await waitFor(() => expect(listbox.scrollTop).toBe(656))
+}
+
+function setListboxHeight(element: HTMLDivElement | null) {
+  if (!element) return
+
+  Object.defineProperty(element, 'clientHeight', { configurable: true, value: 260 })
+}
+
+function settingsSnapshot(
+  density: SettingsSnapshot['values']['workbench.density'],
+): SettingsSnapshot {
+  return {
+    diagnostics: [],
+    layers: [],
+    revision: '',
+    values: { ...DEFAULT_SETTING_VALUES, 'workbench.density': density },
+  }
 }
 
 function entry(path: string): FsEntry {

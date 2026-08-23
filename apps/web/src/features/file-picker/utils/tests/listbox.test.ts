@@ -2,6 +2,7 @@ import { expect, test } from '../../../../../test/fixtures'
 
 import {
   buildFileListRowMetrics,
+  fileListDensityScrollTop,
   fileListOptionId,
   fileListSelectionScrollTop,
   nearestFileListScrollTop,
@@ -38,6 +39,32 @@ test('calculates the nearest scroll position without moving visible rows', () =>
 
 test('resets the scroll position when selection clears', () => {
   expect(fileListSelectionScrollTop(undefined, { height: 440, top: 22_000 })).toBe(0)
+})
+
+test('preserves the visible row and its relative offset across density changes', () => {
+  const compact = buildFileListRowMetrics([
+    { key: 'section', size: 22 },
+    { key: 'first', size: 38 },
+    { key: 'second', size: 26 },
+  ])
+  const cozy = buildFileListRowMetrics([
+    { key: 'section', size: 26 },
+    { key: 'first', size: 44 },
+    { key: 'second', size: 32 },
+  ])
+
+  expect(fileListDensityScrollTop(compact, cozy, { height: 40, top: 41 })).toBe(48)
+})
+
+test('clamps a density anchor to the resized list bounds', () => {
+  const compact = buildFileListRowMetrics(
+    Array.from({ length: 10 }, (_, index) => ({ key: String(index), size: 26 })),
+  )
+  const cozy = buildFileListRowMetrics(
+    Array.from({ length: 10 }, (_, index) => ({ key: String(index), size: 32 })),
+  )
+
+  expect(fileListDensityScrollTop(cozy, compact, { height: 100, top: 220 })).toBe(160)
 })
 
 test('encodes paths into deterministic option ids', () => {

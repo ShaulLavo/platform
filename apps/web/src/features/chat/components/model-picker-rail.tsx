@@ -6,8 +6,8 @@ import type { ProviderModelOptionGroup } from '@/features/chat/utils/provider-mo
 /**
  * Provider switcher down the left edge of the picker panel. Only worth showing
  * once a second provider instance exists — the panel decides that and renders
- * nothing here otherwise. Its scrollbar is hidden: the rail is 44px wide and a
- * gutter would eat a quarter of every glyph.
+ * nothing here otherwise. Its scrollbar is hidden because a gutter would consume
+ * too much of the 40–44px rail.
  */
 export function ModelPickerRail({
   activeProviderInstanceId,
@@ -19,7 +19,7 @@ export function ModelPickerRail({
   readonly onSelect: (providerInstanceId: ProviderInstanceId) => void
 }) {
   return (
-    <div className='bg-muted w-11 shrink-0 overflow-hidden'>
+    <div className='bg-muted compact:w-10 w-11 shrink-0 overflow-hidden'>
       <div className='h-full overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
         <div className='relative flex min-h-full flex-col gap-1 p-1'>
           {groups.map((group) => (

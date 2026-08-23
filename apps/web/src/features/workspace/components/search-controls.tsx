@@ -37,12 +37,12 @@ export function SearchControls({
   const replace = useWorkspaceSearchReplace(rootPath, replaceVisible)
 
   return (
-    <div className='border-b p-1.5'>
+    <div className='compact:p-1 border-b p-1.5'>
       <div className='flex items-center gap-1'>
         <SearchHistoryInput
           aria-label='Search workspace'
           className='flex-1'
-          inputClassName='h-7 px-2 pr-[5.5rem] text-[11px]'
+          inputClassName='compact:h-6 compact:pl-1.5 h-7 px-2 pr-[5.5rem] text-[11px]'
           label='Search'
           rightAdornment={
             <SearchModeButtons
@@ -60,13 +60,13 @@ export function SearchControls({
         />
         <SearchReplaceToggleButton
           active={replaceVisible}
-          className='h-7 px-1.5'
+          className='compact:h-6 compact:px-1 h-7 px-1.5'
           onToggle={setReplaceVisible}
         />
         {showOpenInEditorButton ? (
           <Button
             aria-label='Open search editor'
-            className='text-muted-foreground hover:text-foreground size-7 shrink-0'
+            className='text-muted-foreground hover:text-foreground compact:size-6 size-7 shrink-0'
             size='icon-sm'
             title='Open search editor'
             type='button'
@@ -78,7 +78,7 @@ export function SearchControls({
         ) : null}
       </div>
       <SearchFilterFields
-        className='mt-1.5 gap-1'
+        className='compact:mt-1 mt-1.5 gap-1'
         inputClassName='h-6 px-1.5 text-[11px]'
         options={searchOptions}
         onOptionsChange={setSearchOptions}
@@ -86,7 +86,7 @@ export function SearchControls({
       <SearchReplaceFields
         buttonClassName='h-6 px-1.5 text-[10px]'
         canReplace={replace.canReplace}
-        className='mt-1.5 gap-1'
+        className='compact:mt-1 mt-1.5 gap-1'
         inputClassName='h-6 px-1.5 text-[11px]'
         replaceText={replaceText}
         replaceVisible={replaceVisible}

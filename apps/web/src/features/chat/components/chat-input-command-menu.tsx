@@ -83,7 +83,7 @@ export function ChatInputCommandMenu({
               <div key={group.id}>
                 {groupIndex > 0 ? <div className='bg-border my-0.5 h-px' /> : null}
                 {group.label ? (
-                  <div className='text-muted-foreground/55 px-3 pt-2 pb-1 text-[10px] font-semibold tracking-[0.08em] uppercase'>
+                  <div className='text-muted-foreground/55 compact:px-2.5 compact:pt-1.5 px-3 pt-2 pb-1 text-[10px] font-semibold tracking-[0.08em] uppercase'>
                     {group.label}
                   </div>
                 ) : null}
@@ -91,7 +91,7 @@ export function ChatInputCommandMenu({
                   <button
                     aria-selected={activeItemId === item.id}
                     className={cn(
-                      'hover:bg-transparent hover:text-inherit data-[highlighted=true]:bg-transparent data-[highlighted=true]:text-inherit flex w-full min-w-0 cursor-pointer items-center gap-2 px-2 py-2 text-left text-xs select-none',
+                      'hover:bg-transparent hover:text-inherit data-[highlighted=true]:bg-transparent data-[highlighted=true]:text-inherit compact:gap-1.5 compact:px-1.5 compact:py-1.5 flex w-full min-w-0 cursor-pointer items-center gap-2 px-2 py-2 text-left text-xs select-none',
                       activeItemId === item.id && 'bg-accent! text-accent-foreground!',
                     )}
                     data-chat-input-command-item-id={item.id}
@@ -117,7 +117,7 @@ export function ChatInputCommandMenu({
             ))}
           </div>
         ) : (
-          <div className='px-3 py-2'>
+          <div className='compact:px-2.5 compact:py-1.5 px-3 py-2'>
             {triggerKind === 'slash-command' ? (
               <div className='text-muted-foreground/55 pb-1 text-[10px] font-semibold tracking-[0.08em] uppercase'>
                 Built-in

@@ -79,6 +79,26 @@ export function fileListSelectionScrollTop(
   return nearestFileListScrollTop(item, viewport)
 }
 
+export function fileListDensityScrollTop(
+  previousMetrics: FileListRowMetrics,
+  nextMetrics: FileListRowMetrics,
+  viewport: FileListViewport,
+) {
+  const maxScrollTop = Math.max(0, nextMetrics.totalSize - viewport.height)
+  const previousIndex = findFirstItemEndingAfter(previousMetrics.items, viewport.top)
+  const previousItem = previousMetrics.items[previousIndex]
+  const nextItem = nextMetrics.items[previousIndex]
+  if (!previousItem || !nextItem || previousItem.key !== nextItem.key) {
+    return clamp(viewport.top, 0, maxScrollTop)
+  }
+
+  const offset = clamp(viewport.top - previousItem.start, 0, previousItem.size)
+  const offsetRatio = previousItem.size === 0 ? 0 : offset / previousItem.size
+  const anchoredTop = nextItem.start + nextItem.size * offsetRatio
+
+  return clamp(anchoredTop, 0, maxScrollTop)
+}
+
 export function fileListOptionId(listId: string, path: string) {
   const encodedListId = encodeIdPart(listId)
   const encodedPath = path ? encodeIdPart(path) : 'root'
@@ -124,4 +144,8 @@ function findFirstItemStartingAtOrAfter(items: readonly FileListVirtualItem[], o
 
 function encodeIdPart(value: string) {
   return Array.from(value, (character) => character.codePointAt(0)?.toString(16) ?? '').join('-')
+}
+
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.min(Math.max(value, minimum), maximum)
 }

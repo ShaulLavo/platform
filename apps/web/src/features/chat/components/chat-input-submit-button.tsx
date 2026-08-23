@@ -24,7 +24,7 @@ export const ChatInputSubmitButton = forwardRef<HTMLButtonElement, ChatInputSubm
             <Button
               aria-label={label}
               className={cn(
-                'size-7 rounded-lg transition-colors',
+                'compact:size-6 size-7 rounded-lg transition-colors',
                 'bg-primary text-primary-foreground hover:bg-primary/90',
                 // Disabled is driven imperatively on the DOM node by the draft plugin,
                 // so the idle/ready look must key off :disabled, not a React prop.
