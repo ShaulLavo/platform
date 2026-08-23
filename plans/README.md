@@ -13,26 +13,12 @@ a bare root `bun run verify`.
 
 ## Executable plan inventory
 
-| Plan                                                                                  | State                      |
-| ------------------------------------------------------------------------------------- | -------------------------- |
-| [049b — JSON language server for settings](049b-json-language-server-for-settings.md) | **READY, reconcile first** |
-| [Editor BiDi geometry](../../Editor/docs/plan-bidi-geometry.md)                       | **TIER B OPEN**            |
-| [055 — ghostty-webgpu DOM/input](055-ghostty-webgpu-dom-input.md)                     | **READY**                  |
-| [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                       | **READY**                  |
-| [057 — editor-native VS Code keymap](057-editor-native-vscode-keymap.md)              | **BLOCKED ON 056**         |
-
-## LSP foundation
-
-The multi-server milestone is complete. The server and browser now expose ordered matches,
-feature ranks, runtime arbitration, one composite Editor contribution, aggregate diagnostics/status,
-and a dedicated diff lease from the existing browser pool. Plan 049b consumes those extension points
-for JSON server registration, generated settings schema data, and settings-specific schema association.
-It must not add a second queue, ownership model, pool, or routing path.
-
-Plan 049b's registry assumptions now predate the generic JSON/CSS/HTML registration and visible
-server-selection policy included with the multi-server review fixes. Reconcile that drift before
-executing its settings-schema and synthetic-document work. The remaining ordering and all
-cross-project promotion decisions come from [`PLAN.md`](../PLAN.md).
+| Plan                                                                     | State              |
+| ------------------------------------------------------------------------ | ------------------ |
+| [Editor BiDi geometry](../../Editor/docs/plan-bidi-geometry.md)          | **TIER B OPEN**    |
+| [055 — ghostty-webgpu DOM/input](055-ghostty-webgpu-dom-input.md)        | **READY**          |
+| [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)          | **READY**          |
+| [057 — editor-native VS Code keymap](057-editor-native-vscode-keymap.md) | **BLOCKED ON 056** |
 
 ## Cleanup policy
 

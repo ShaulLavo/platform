@@ -1,0 +1,558 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "chat.defaultInteractionMode": {
+      "default": "default",
+      "description": "Whether a new session starts in plan mode.",
+      "enum": ["default", "plan"],
+      "type": "string"
+    },
+    "chat.defaultRuntimeMode": {
+      "default": "full-access",
+      "description": "Permission posture a new session starts in.",
+      "enum": ["approval-required", "auto-accept-edits", "full-access"],
+      "type": "string"
+    },
+    "editor.decode.mode": {
+      "default": "off",
+      "description": "Animate a file as it opens, as if it were being written.",
+      "enum": ["autoregressive", "diffusion", "off", "parallel", "token"],
+      "type": "string"
+    },
+    "editor.diff.viewMode": {
+      "default": "stacked",
+      "description": "Show diffs side by side or stacked.",
+      "enum": ["split", "stacked"],
+      "type": "string"
+    },
+    "editor.fontFamily": {
+      "default": "JetBrainsMono",
+      "description": "Font for the editor and, unless overridden, the terminal.",
+      "maxLength": 64,
+      "minLength": 1,
+      "type": "string"
+    },
+    "editor.fontSize": {
+      "default": 13,
+      "description": "Editor font size in pixels.",
+      "maximum": 72,
+      "minimum": 6,
+      "type": "integer"
+    },
+    "editor.guides.indentation": {
+      "default": true,
+      "description": "Draw indentation guides (scope lines).",
+      "type": "boolean"
+    },
+    "editor.lineHeight": {
+      "default": 24,
+      "description": "Editor row height in pixels.",
+      "maximum": 120,
+      "minimum": 8,
+      "type": "integer"
+    },
+    "editor.minimap.enabled": {
+      "default": true,
+      "description": "Show the minimap beside the editor.",
+      "type": "boolean"
+    },
+    "editor.syntaxHighlighting.enabled": {
+      "default": true,
+      "description": "Colour code by syntax. Turning this off makes very large files faster.",
+      "type": "boolean"
+    },
+    "editor.tabSize": {
+      "default": 4,
+      "description": "Rendered width of a tab character, in spaces.",
+      "maximum": 16,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "files.autoSave": {
+      "default": "off",
+      "description": "Save edited files automatically, and when.",
+      "enum": ["afterDelay", "off", "onFocusChange", "onWindowChange"],
+      "type": "string"
+    },
+    "files.autoSaveDelay": {
+      "default": 1000,
+      "description": "Milliseconds of quiet before an automatic save, when saving after a delay.",
+      "maximum": 60000,
+      "minimum": 100,
+      "type": "integer"
+    },
+    "keybindings.overrides": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "minLength": 1,
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "default": {},
+      "description": "Command id to hotkey. A missing key keeps the default; an explicit null unbinds the command.",
+      "propertyNames": {
+        "maxLength": 120,
+        "minLength": 1,
+        "pattern": "^[a-zA-Z][a-zA-Z0-9_.-]*$",
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "logs.defaultTimeRange": {
+      "default": "1h",
+      "description": "Time range the logs view opens on.",
+      "enum": ["15m", "1h", "24h", "6h", "all"],
+      "type": "string"
+    },
+    "logs.slowThresholdMs": {
+      "default": 500,
+      "description": "How many milliseconds counts as a slow operation.",
+      "maximum": 60000,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lsp.downloadRuntimes": {
+      "default": true,
+      "description": "Download missing language servers on demand. Off means only servers already on PATH are used.",
+      "type": "boolean"
+    },
+    "lsp.experimental.tyForPython": {
+      "default": false,
+      "description": "Use ty instead of pyright for Python. Files already open keep their current server until reopened.",
+      "type": "boolean"
+    },
+    "lsp.idleTimeoutMs": {
+      "default": 120000,
+      "description": "Milliseconds an unused language server stays alive after the last editor disconnects. 0 shuts it down immediately.",
+      "maximum": 3600000,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "lsp.languageServers": {
+      "additionalProperties": {
+        "items": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "default": {},
+      "description": "Which language servers may serve a file type, keyed by extension ('.json'). Values are server ids in preference order, '!id' drops a server, and '...' keeps the rest. Naming a registered server explicitly enables it for matching file types even without its project marker. Open documents keep their current servers until reopened.",
+      "propertyNames": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "lsp.semanticTokens.delta": {
+      "default": false,
+      "description": "Let the proxy re-ask a delta-capable server for token deltas instead of whole files. Saves bandwidth and garbage per keystroke, not latency.",
+      "type": "boolean"
+    },
+    "lsp.semanticTokens.enabled": {
+      "default": false,
+      "description": "Ask language servers to colour identifiers they have actually resolved. Off means no token request is ever sent. Each server still has its own default under lsp.semanticTokens.servers.",
+      "type": "boolean"
+    },
+    "lsp.semanticTokens.servers": {
+      "additionalProperties": {
+        "type": "boolean"
+      },
+      "default": {},
+      "description": "Server id to true or false, overriding the per-server default. Lets one misbehaving server be turned off without turning the feature off.",
+      "propertyNames": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "lsp.servers": {
+      "additionalProperties": {
+        "properties": {
+          "command": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "disabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "env": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$",
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "extensions": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "features": {
+            "additionalProperties": false,
+            "properties": {
+              "codeActions": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "completion": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "diagnostics": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "documentHighlights": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "formatting": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "hover": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "navigation": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "rename": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "semanticTokens": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "signatureHelp": {
+                "anyOf": [
+                  {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "initialization": {
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          }
+        },
+        "required": [],
+        "type": "object"
+      },
+      "default": {},
+      "description": "Per-server overrides: extensions and feature ranks apply when a document is matched; command, env, and initialization apply on the next backend start. Set a feature to null to exclude that server. A running backend keeps its old process options until it idles out.",
+      "propertyNames": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "type": "object"
+    },
+    "models.hidden": {
+      "default": [],
+      "description": "Which models the picker offers, and in what order. Turn one off to keep it out of the picker.",
+      "items": {
+        "properties": {
+          "model": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "providerInstanceId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$",
+            "type": "string"
+          }
+        },
+        "required": ["model", "providerInstanceId"],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "models.order": {
+      "default": [],
+      "description": "Explicit leading order for the picker. Models named by neither list stay visible after these, in provider order.",
+      "items": {
+        "properties": {
+          "model": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "providerInstanceId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$",
+            "type": "string"
+          }
+        },
+        "required": ["model", "providerInstanceId"],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "providers.instances": {
+      "default": [],
+      "description": "Configured provider instances, in the order the picker shows them.",
+      "items": {
+        "properties": {
+          "binaryPath": {
+            "default": "",
+            "type": "string"
+          },
+          "config": {
+            "additionalProperties": {},
+            "default": {},
+            "propertyNames": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "displayLabel": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "driverKind": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "environment": {
+            "default": [],
+            "items": {
+              "properties": {
+                "name": {
+                  "maxLength": 128,
+                  "minLength": 1,
+                  "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$",
+                  "type": "string"
+                },
+                "value": {
+                  "default": "",
+                  "type": "string"
+                }
+              },
+              "required": ["name"],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "providerInstanceId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$",
+            "type": "string"
+          }
+        },
+        "required": ["driverKind", "providerInstanceId"],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "search.caseSensitive": {
+      "default": false,
+      "description": "Match case by default.",
+      "type": "boolean"
+    },
+    "search.defaultMatchMode": {
+      "default": "literal",
+      "description": "How a new search interprets the query.",
+      "enum": ["fuzzy", "literal", "regex"],
+      "type": "string"
+    },
+    "search.maxResultFiles": {
+      "default": 100,
+      "description": "How many files a workspace search returns matches from.",
+      "maximum": 200,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "search.maxResults": {
+      "default": 200,
+      "description": "How many matches a workspace search returns.",
+      "maximum": 200,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "search.quickOpenLimit": {
+      "default": 80,
+      "description": "How many files the file picker lists.",
+      "maximum": 200,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "search.wholeWord": {
+      "default": false,
+      "description": "Match whole words by default.",
+      "type": "boolean"
+    },
+    "terminal.integrated.cursorBlinking": {
+      "default": true,
+      "description": "Blink the terminal cursor while the terminal has focus.",
+      "type": "boolean"
+    },
+    "terminal.integrated.fontSize": {
+      "default": 12,
+      "description": "Terminal font size in pixels.",
+      "maximum": 72,
+      "minimum": 6,
+      "type": "integer"
+    },
+    "terminal.integrated.scrollback": {
+      "default": 10000,
+      "description": "How many lines of output the terminal keeps.",
+      "maximum": 500000,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "window.nativeVibrancy": {
+      "default": false,
+      "description": "Composite the live macOS desktop behind the window.",
+      "type": "boolean"
+    },
+    "workbench.colorTheme": {
+      "default": "system",
+      "description": "Light or dark, or follow the operating system.",
+      "enum": ["dark", "light", "system"],
+      "type": "string"
+    },
+    "workbench.surface.blur": {
+      "default": 12,
+      "description": "Backdrop blur radius, in pixels, behind translucent surfaces.",
+      "maximum": 40,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "workbench.surface.contentOpacity": {
+      "default": 95,
+      "description": "How opaque the editor and terminal background is.",
+      "maximum": 100,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "workbench.surface.opacity": {
+      "default": 80,
+      "description": "How opaque panels and sidebars are over the wallpaper. 100 turns the glass material off.",
+      "maximum": 100,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "workbench.surface.saturation": {
+      "default": 160,
+      "description": "Backdrop saturation, as a percentage, behind translucent surfaces.",
+      "maximum": 400,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "workbench.wallpaper.enabled": {
+      "default": true,
+      "description": "Show the desktop wallpaper behind the workbench.",
+      "type": "boolean"
+    }
+  },
+  "type": "object"
+}

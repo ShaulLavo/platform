@@ -359,6 +359,12 @@ export {
   type SettingsValues,
   type SettingValue,
 } from './settings/keys'
+export {
+  SETTINGS_JSON_SCHEMA,
+  type ReadonlyJsonObject,
+  type ReadonlyJsonValue,
+  type SettingsJsonSchema,
+} from './settings/schema'
 export { settingControl, type SettingControl } from './settings/control'
 export {
   deriveWriteTarget,

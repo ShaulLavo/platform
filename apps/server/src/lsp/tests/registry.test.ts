@@ -323,6 +323,28 @@ describe('LSP server registry', () => {
     expect(await serverIdsFor(root, 'index.html')).toEqual(['html-ls'])
   })
 
+  it('routes JSON features across JSON LS and an adopted Biome lane', async () => {
+    const root = await fixtureRoot({
+      'biome.json': '{}',
+      'data.json': '{}',
+      'data.jsonc': '{}',
+    })
+
+    for (const relativePath of ['data.json', 'data.jsonc']) {
+      const matches = await matchLspServers({
+        settings: NO_OVERRIDES,
+        filePath: path.join(root, relativePath),
+        workspaceRoot: root,
+      })
+      const ids = matches.map((match) => match.server.id)
+
+      expect(ids).toEqual(expect.arrayContaining(['biome', 'json-ls']))
+      expect(bestLspMatchForFeature(matches, 'completion')?.server.id).toBe('json-ls')
+      expect(bestLspMatchForFeature(matches, 'hover')?.server.id).toBe('json-ls')
+      expect(bestLspMatchForFeature(matches, 'formatting')?.server.id).toBe('biome')
+    }
+  })
+
   it('starts a linter or formatter only in a project that adopted it', async () => {
     const bare = await fixtureRoot({
       'package.json': '{}',

@@ -5,6 +5,7 @@ import type { EditorKeymapLayer } from '@singapor/core'
 import type { SettingsDiagnostic, SettingsLayerFile } from '@workspace/contracts'
 
 import { settingsJsonDocumentId } from '../utils/json-document'
+import { SETTINGS_LANGUAGE_SERVER_TARGET } from '../utils/language-server'
 import type { SettingsScope } from '../state/scope-store'
 import { useSettingsDiagnosticsPlugin } from '../hooks/use-settings-diagnostics-plugin'
 import { Status } from './status'
@@ -53,6 +54,7 @@ export function SettingsJsonView({
       additionalPlugins={diagnosticsPlugins}
       document={liveDocument}
       keymapLayers={editorKeymapLayers}
+      languageServerTarget={SETTINGS_LANGUAGE_SERVER_TARGET}
       rootPath={rootPath}
       tabId={tabId}
       onDirtyChange={setLiveEditorDocumentDirty}

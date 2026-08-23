@@ -10,11 +10,8 @@ Primary goal: remove duplicated truth. The finished system has one authoritative
 
 This is the authoritative cross-project order. `plans/README.md` is an inventory of executable plans, not a second roadmap.
 
-1. **Plan 049b — JSON language server for settings: ready, reconcile first.** Multi-server routing is complete. Its registry assumptions have since drifted because the generic JSON/CSS/HTML server and server-selection policy landed with the multi-server review fixes; reconcile those facts before executing its settings-schema and synthetic-document work.
-2. **Editor BiDi geometry Tier B: open and independent.** Tier A M1-M5 is verified complete; M6-M7 may proceed without Plan 049b or environment work.
-3. **Plan 055 — ghostty-webgpu DOM/input: ready.** Phase 2 is complete. Keep its package work isolated from Platform environment integration, which remains a later phase.
-
-Completed prerequisite: Plan 050 now provides ordered server sets, runtime capability arbitration, composite diagnostics/status, and shared-pool diff-session leases across Editor and Platform. Do not recreate those concerns in Plan 049b.
+1. **Editor BiDi geometry Tier B: open and independent.** Tier A M1-M5 is verified complete; M6-M7 may proceed without environment work.
+2. **Plan 055 — ghostty-webgpu DOM/input: ready.** Phase 2 is complete. Keep its package work isolated from Platform environment integration, which remains a later phase.
 
 Success criteria:
 
