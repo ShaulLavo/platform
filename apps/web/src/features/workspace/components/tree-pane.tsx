@@ -10,7 +10,6 @@ import type { GitStatusEntry } from '@workspace/tree'
 import type { FileTreeModel } from '@workspace/tree'
 import { WarningCircleIcon } from '@phosphor-icons/react'
 import { EmptyState } from '@workspace/ui/components/empty-state'
-import { LoadingState } from '@workspace/ui/components/loading-state'
 
 import { workspacePathForTreePath } from '@/features/workspace/utils/entry-paths'
 import { fileTreeIndentGuideVariables } from '@/features/workspace/utils/indent-guide-style'
@@ -23,6 +22,7 @@ import {
 import { selectedFileEntryForTreeSelection } from '@/features/workspace/utils/tree-selection'
 import { DeleteEntryDialog } from '@/features/workspace/components/delete-entry-dialog'
 import { TreeToolbar } from '@/features/workspace/components/tree-toolbar'
+import { TreeLoading } from '@/features/workspace/components/tree-loading'
 import { useFileTreeActions } from '@/features/workspace/hooks/use-file-tree-actions'
 import { useFileTreeIntentPrefetch } from '@/features/workspace/hooks/use-file-tree-intent-prefetch'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
@@ -72,7 +72,7 @@ export const TreePane = memo(
     rootPath: string
     state: LoadState<TreeModel>
   }) => {
-    if (state.status === 'loading') return <LoadingState label='Loading folder' rows={5} />
+    if (state.status === 'loading') return <TreeLoading />
     if (state.status === 'error') {
       return (
         <EmptyState

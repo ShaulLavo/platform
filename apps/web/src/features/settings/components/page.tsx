@@ -1,7 +1,6 @@
 import { descriptorFor, type SettingId } from '@workspace/contracts'
 import { Button } from '@workspace/ui/components/button'
 import { Input } from '@workspace/ui/components/input'
-import { LoadingState } from '@workspace/ui/components/loading-state'
 import { XIcon } from '@phosphor-icons/react'
 import { useRef, useState } from 'react'
 
@@ -12,6 +11,7 @@ import { matchingSettingIds } from '../utils/search'
 import { DiagnosticsBanner } from './diagnostics-banner'
 import { MalformedBanner } from './malformed-banner'
 import { PageActions } from './page-actions'
+import { PageLoading } from '@/features/settings/components/page-loading'
 import { ScopeTabs } from './scope-tabs'
 import { SettingsJsonView } from './json-view'
 import { SettingRow } from './setting-row'
@@ -53,7 +53,7 @@ export function SettingsPage({
   // The dialog mount has no tab to bind an editor to, so it only has the form.
   const showJson = view === 'json' && tabId !== ''
 
-  if (settings.isPending) return <LoadingState label='Loading settings' rows={6} />
+  if (settings.isPending) return <PageLoading showJson={showJson} />
   if (settings.isError) return <Status tone='destructive'>Settings could not be loaded.</Status>
 
   // `matchingSettingIds` already searches rows rather than keys, so a key edited

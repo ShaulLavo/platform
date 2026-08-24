@@ -1,10 +1,10 @@
 import type { EditorKeymapLayer } from '@singapor/core'
 import { Button } from '@workspace/ui/components/button'
-import { LoadingState } from '@workspace/ui/components/loading-state'
 
 import { SearchPane } from '@/features/workspace/components/search-pane'
 import type { EditorTabConflictMap } from '@/features/workspace/utils/tab-types'
 import { ChatDiffStatLabel } from '@/features/chat/components/chat-diff-stat-label'
+import { CheckpointLoading } from '@/features/chat-mode/components/checkpoint-loading'
 import { useSessionTerminalId } from '@/features/chat-mode/hooks/use-session-terminal-id'
 import { useSessionToolRoot } from '@/features/chat-mode/hooks/use-session-tool-root'
 import { useThreadDiffScope } from '@/features/chat/hooks/use-thread-diff-scope'
@@ -169,13 +169,7 @@ function turnScopeBody({ openTurnFile, turnSummary }: ThreadDiffScopeState) {
   // No summary yet means the checkpoint has not streamed in — pending, not
   // absent. 'missing' below is the state that means there is nothing to show.
   if (!turnSummary) {
-    return (
-      <LoadingState
-        className='compact:px-2 compact:py-1.5 px-3 py-2'
-        label='Loading checkpoint'
-        rows={3}
-      />
-    )
+    return <CheckpointLoading />
   }
   if (turnSummary.status !== 'ready' || turnSummary.files.length === 0) {
     return (

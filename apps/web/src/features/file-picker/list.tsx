@@ -11,7 +11,6 @@ import {
 } from '@phosphor-icons/react'
 import { Button } from '@workspace/ui/components/button'
 import { EmptyState } from '@workspace/ui/components/empty-state'
-import { LoadingState } from '@workspace/ui/components/loading-state'
 import { OrbitLoader } from '@workspace/ui/components/orbit-loader'
 import { cn } from '@workspace/ui/lib/utils'
 import {
@@ -29,6 +28,7 @@ import {
 } from 'react'
 
 import { EntryIcon } from '@/features/file-picker/entry-ui'
+import { ListLoading } from '@/features/file-picker/components/list-loading'
 import { useFilePickerSessionActions } from '@/features/file-picker/hooks/use-file-picker-session-actions'
 import { useWorkbenchDensity } from '@/features/settings/hooks/use-workbench-density'
 import {
@@ -293,7 +293,7 @@ export function FileList({
       ) : null}
       {showLoading ? (
         <div className='absolute inset-0' id={statusId}>
-          <LoadingState className='h-full' label='Loading folder' rows={6} />
+          <ListLoading mode={mode} />
         </div>
       ) : null}
       {showEmpty ? (

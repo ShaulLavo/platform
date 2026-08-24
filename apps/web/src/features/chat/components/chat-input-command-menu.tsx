@@ -1,4 +1,3 @@
-import { LoadingState } from '@workspace/ui/components/loading-state'
 import { Popover, PopoverContent, PopoverTrigger } from '@workspace/ui/components/popover'
 import { cn } from '@workspace/ui/lib/utils'
 import { useLayoutEffect, useMemo, useRef } from 'react'
@@ -10,6 +9,7 @@ import {
   type ChatInputTriggerKind,
 } from '@/features/chat/utils/input-logic'
 import { ChatInputCommandItemIcon } from './chat-input-command-item-icon'
+import { CommandMenuLoading } from '@/features/chat/components/command-menu-loading'
 
 /**
  * Matches the composer's width through the positioner's anchor variables and
@@ -124,11 +124,7 @@ export function ChatInputCommandMenu({
               </div>
             ) : null}
             {isLoading ? (
-              <LoadingState
-                className='gap-1.5 p-0'
-                label={chatInputCommandMenuLoadingLabel(triggerKind)}
-                rows={3}
-              />
+              <CommandMenuLoading label={chatInputCommandMenuLoadingLabel(triggerKind)} />
             ) : (
               <p className='text-muted-foreground/70 text-xs'>{emptyLabel}</p>
             )}

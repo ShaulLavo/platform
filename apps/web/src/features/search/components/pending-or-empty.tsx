@@ -1,8 +1,8 @@
 import { MagnifyingGlassIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import type { WorkspaceSearchWarningEvent } from '@workspace/contracts'
 import { EmptyState } from '@workspace/ui/components/empty-state'
-import { LoadingState } from '@workspace/ui/components/loading-state'
 
+import { SearchResultsLoading } from '@/features/search/components/results-loading'
 import type { SearchBufferStatus } from '@/features/search/state/buffer-state'
 
 export function SearchPendingOrEmpty({
@@ -15,7 +15,7 @@ export function SearchPendingOrEmpty({
   warnings?: readonly WorkspaceSearchWarningEvent[]
 }) {
   if (status === 'loading') {
-    return <LoadingState className={className} label='Searching' rows={5} />
+    return <SearchResultsLoading className={className} />
   }
 
   const warning = warnings[0]

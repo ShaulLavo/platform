@@ -4,7 +4,6 @@ import type {
   LanguageServerStatus,
 } from '@singapor/lsp-plugin'
 import { EmptyState } from '@workspace/ui/components/empty-state'
-import { LoadingState } from '@workspace/ui/components/loading-state'
 import { cn } from '@workspace/ui/lib/utils'
 
 import { useEditorLanguageServerStatus } from '@/features/editor/hooks/use-editor-language-server-status'
@@ -12,6 +11,7 @@ import { useEditorCommands } from '@/features/editor/state/commands'
 import { createEditorLanguageServerStatusSource } from '@/features/editor/state/language-server-status-source'
 import type { EditorStatusBarSource } from '@/features/editor/state/status-bar-source'
 import { useEditorUiState, useEditorUiStoreApi } from '@/features/editor/state/ui-state'
+import { DiagnosticsLoading } from '@/features/workbench/components/diagnostics-loading'
 
 const idleLanguageServerStatusSource = createEditorLanguageServerStatusSource()
 
@@ -156,7 +156,7 @@ function renderDiagnosticList({
 
 function renderDiagnosticsState(status: LanguageServerStatus) {
   if (status === 'loading') {
-    return <LoadingState className='flex-1' label='Loading diagnostics' rows={3} />
+    return <DiagnosticsLoading />
   }
   if (status === 'error') {
     return <EmptyState className='min-h-0 flex-1' title='Diagnostics unavailable' tone='error' />

@@ -4,7 +4,6 @@ import type { ProviderInstanceId } from '@workspace/contracts'
 import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 import { Command, CommandEmpty, CommandInput, CommandList } from '@workspace/ui/components/command'
 import { Popover, PopoverContent } from '@workspace/ui/components/popover'
-import { LoadingState } from '@workspace/ui/components/loading-state'
 import { TooltipProvider } from '@workspace/ui/components/tooltip'
 import { cn } from '@workspace/ui/lib/utils'
 import { useState } from 'react'
@@ -24,6 +23,7 @@ import { ModelPickerRail } from '@/features/chat/components/model-picker-rail'
 import { ModelPickerRow } from '@/features/chat/components/model-picker-row'
 import { ModelPickerSignInItem } from '@/features/chat/components/model-picker-sign-in-item'
 import { ModelPickerTrigger } from '@/features/chat/components/model-picker-trigger'
+import { ModelsLoading } from '@/features/chat/components/models-loading'
 
 /** What the list shows right now, and whether a sign-in row belongs under it. */
 type ModelPickerList = {
@@ -147,13 +147,7 @@ export function ModelPicker({
             </div>
             <div className='relative min-h-0 flex-1 overflow-hidden'>
               <CommandList className='compact:p-1 h-full max-h-full px-1.5 py-1.5'>
-                {providersQuery.isPending ? (
-                  <LoadingState
-                    className='compact:py-1.5 gap-1.5 px-1 py-2'
-                    label='Loading providers'
-                    rows={4}
-                  />
-                ) : null}
+                {providersQuery.isPending ? <ModelsLoading /> : null}
                 {emptyLabel ? (
                   <CommandEmpty className='text-muted-foreground text-xs leading-snug font-normal'>
                     {emptyLabel}

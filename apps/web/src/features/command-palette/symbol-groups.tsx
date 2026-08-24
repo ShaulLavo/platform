@@ -1,8 +1,8 @@
 import type { FlatDocumentSymbol } from '@/features/command-palette/document-symbols'
 import { TextTIcon } from '@phosphor-icons/react'
 import { CommandGroup, CommandItem, CommandShortcut } from '@workspace/ui/components/command'
-import { LoadingState } from '@workspace/ui/components/loading-state'
 
+import { SymbolsLoading } from '@/features/command-palette/components/symbols-loading'
 import { useCommandPaletteActions } from '@/features/command-palette/hooks/use-command-palette-actions'
 import {
   symbolDescription,
@@ -24,7 +24,7 @@ export function SymbolGroups({ isPending, items }: SymbolGroupsProps) {
     return (
       <CommandGroup heading='Symbols'>
         <CommandItem disabled value='symbols:loading'>
-          <LoadingState className='w-full gap-1.5 p-0' label='Loading symbols' rows={2} />
+          <SymbolsLoading />
         </CommandItem>
       </CommandGroup>
     )
