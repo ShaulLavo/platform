@@ -207,6 +207,33 @@ describe('FileTree React integration', () => {
     })
   })
 
+  it('projects loading paths onto their virtualized rows', async () => {
+    const container = document.createElement('main')
+    document.body.append(container)
+    root = createRoot(container)
+    const treeModel = new FileTreeModel({
+      initialExpansion: 'open',
+      paths: ['src/', 'src/a.ts', 'src/b.ts'],
+    })
+
+    flushSync(() => root?.render(<FileTree aria-label='Files' model={treeModel} />))
+    const shadowRoot = await waitForShadowRoot()
+
+    treeModel.setLoadingPaths(['src/a.ts'])
+
+    await vi.waitFor(() => {
+      expect(rowButton(shadowRoot, 'src/a.ts').getAttribute('aria-busy')).toBe('true')
+      expect(rowButton(shadowRoot, 'src/a.ts').dataset.itemLoading).toBe('true')
+      expect(rowButton(shadowRoot, 'src/b.ts').dataset.itemLoading).toBeUndefined()
+    })
+
+    treeModel.setLoadingPaths([])
+
+    await vi.waitFor(() => {
+      expect(rowButton(shadowRoot, 'src/a.ts').dataset.itemLoading).toBeUndefined()
+    })
+  })
+
   it.each(ICON_FALLBACK_CASES)(
     'uses the generic file remap as the $set fallback',
     async ({ expectedTypeScriptIcon, set }) => {

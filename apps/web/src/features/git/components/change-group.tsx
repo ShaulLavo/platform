@@ -17,11 +17,13 @@ import { GroupMenu } from './group-menu'
 
 export function ChangeGroup({
   label,
+  loadingPath,
   rootPath,
   rows,
   section,
 }: {
   label: string
+  loadingPath?: string | null
   rootPath: string
   rows: readonly ChangeRow[]
   section: PanelSection
@@ -69,6 +71,7 @@ export function ChangeGroup({
         {rows.map((row) => (
           <FileRow
             key={`${row.section}:${row.file.path}:${row.status}`}
+            loading={row.file.path === loadingPath}
             rootPath={rootPath}
             row={row}
           />

@@ -8,6 +8,7 @@ import { useEditorTabActions } from '@/features/editor/hooks/use-editor-tab-acti
 import { EditorTabMenu } from '@/features/workbench/components/editor-tab-menu'
 import { TabTrailingSlot } from '@/features/workbench/components/tab-trailing-slot'
 import { fileIconStyle } from '@/lib/file-icon-style'
+import { Shimmer } from '@workspace/ui/components/shimmer'
 import { cn } from '@workspace/ui/lib/utils'
 
 export function EditorTabButton({
@@ -18,6 +19,7 @@ export function EditorTabButton({
   dragging = false,
   dragNodeRef,
   dragStyle,
+  loading,
   tab,
 }: {
   readonly closeTargets: readonly EditorTabCloseTarget[]
@@ -27,6 +29,7 @@ export function EditorTabButton({
   readonly dragging?: boolean
   readonly dragNodeRef?: Ref<HTMLButtonElement>
   readonly dragStyle?: CSSProperties
+  readonly loading: boolean
   readonly tab: EditorTabModel
 }) {
   const intentPrefetchRef = useEditorTabIntentPrefetch(tab)
@@ -52,6 +55,7 @@ export function EditorTabButton({
     <button
       {...dragAttributes}
       {...dragListeners}
+      aria-busy={loading || undefined}
       aria-selected={tab.active}
       className={cn(
         'group/proof-tab flex h-9 w-36 min-w-24 max-w-48 shrink-0 cursor-grab touch-none items-center gap-1.5 rounded-t-md border px-2 text-left text-xs outline-none transition-[background-color,border-color,opacity,box-shadow] active:cursor-grabbing focus-visible:ring-1 focus-visible:ring-ring/50 compact:h-8 compact:gap-1 compact:px-1.5',
@@ -61,6 +65,7 @@ export function EditorTabButton({
         dragging && 'relative z-10 opacity-60',
       )}
       data-editor-tab-id={tab.id}
+      data-editor-tab-loading={loading || undefined}
       data-editor-tab-path={tab.path}
       draggable={false}
       ref={buttonRef}
@@ -75,7 +80,7 @@ export function EditorTabButton({
         className='size-3.5 shrink-0 object-contain'
         style={fileIconStyle(tab.icon)}
       />
-      {editorTabTitle(tab)}
+      {editorTabTitle(tab, loading)}
       <TabTrailingSlot
         active={tab.active}
         dirty={dirty}
@@ -99,10 +104,14 @@ function assignRef<TElement>(ref: Ref<TElement> | undefined, node: TElement | nu
   ref.current = node
 }
 
-function editorTabTitle(tab: EditorTabModel) {
+function editorTabTitle(tab: EditorTabModel, loading: boolean) {
   return (
     <span className='flex min-w-0 flex-1 items-baseline gap-1 overflow-hidden whitespace-nowrap'>
-      <span className='min-w-0 flex-1 truncate'>{tab.name}</span>
+      {loading ? (
+        <Shimmer className='min-w-0 flex-1 truncate'>{tab.name}</Shimmer>
+      ) : (
+        <span className='min-w-0 flex-1 truncate'>{tab.name}</span>
+      )}
       {tab.diffSuffix ? (
         <span
           aria-hidden='true'

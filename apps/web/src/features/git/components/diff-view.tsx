@@ -12,7 +12,6 @@ import {
 } from '../utils/diff-presentation'
 import { editorDiffFiles, renderableDiffFile } from '../utils/editor-diff-files'
 import { DiffLineCommentAction } from './diff-line-comment-action'
-import { DiffLoading } from '@/features/git/components/diff-loading'
 import { DiffNotice } from './diff-notice'
 import { UnchangedDiffBanner } from './unchanged-diff-banner'
 import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
@@ -64,24 +63,40 @@ export function DiffView({
   )
 
   if (failure) return <DiffNotice message={failure} tone='error' />
-  if (pending) return <DiffLoading />
-  if (diffs.length === 0) return <DiffNotice message={emptyDiffNotice(documentInfo, rootPath)} />
-  if (!file) {
+  if (!pending && diffs.length === 0) {
+    return <DiffNotice message={emptyDiffNotice(documentInfo, rootPath)} />
+  }
+  if (!pending && !file) {
     return <DiffNotice message={unrenderableDiffNotice(diffs, documentInfo, rootPath)} />
   }
 
-  const unchanged = unchangedFileNotice(file, rootPath)
+  const unchanged = file ? unchangedFileNotice(file, rootPath) : null
 
   return (
-    <div className='relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden'>
+    <div
+      aria-busy={pending || undefined}
+      className='relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden'
+    >
       {unchanged ? <UnchangedDiffBanner message={unchanged} /> : null}
       {/* The ref is on the panes and not on the wrapper the toolbar shares: the
           comment layer listens for `mousedown` in capture, and a press on its own
           "Ask" button would otherwise clear the selection before the click landed. */}
       <div className='min-h-0 w-full min-w-0 flex-1' ref={containerRef}>
-        <DiffEditor file={file} languageServer={languageServer} mode={mode} regions={regions} />
+        <DiffEditor
+          file={file}
+          languageServer={file ? languageServer : null}
+          mode={mode}
+          regions={regions}
+        />
       </div>
-      <DiffLineCommentAction file={file} hostRef={containerRef} key={file.path} regions={regions} />
+      {file ? (
+        <DiffLineCommentAction
+          file={file}
+          hostRef={containerRef}
+          key={file.path}
+          regions={regions}
+        />
+      ) : null}
     </div>
   )
 }

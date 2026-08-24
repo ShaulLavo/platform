@@ -1,7 +1,9 @@
 import { EmptyState } from '@workspace/ui/components/empty-state'
 import { cn } from '@workspace/ui/lib/utils'
 import { memo, useMemo, type ComponentProps } from 'react'
+import { useIsFetching } from '@tanstack/react-query'
 
+import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import { useFocus } from '@/features/workspace/providers/focus-state'
 import { errorMessage } from '@/lib/file-server'
 import { useStatus } from '@/features/git/hooks'
@@ -12,6 +14,11 @@ import { ChangeGroup } from '@/features/git/components/change-group'
 import { CommitControls } from '@/features/git/components/commit-controls'
 import { Header } from '@/features/git/components/header'
 import { PanelLoading } from '@/features/git/components/panel-loading'
+import { parseDiffDocumentId } from '@/features/git/utils/diff-document'
+import { diffDocumentQueryKey } from '@/features/git/utils/diff-document-query'
+import { queryHasNoData } from '@/lib/query-state'
+
+const DISABLED_DIFF_QUERY = ['git', 'diffs', 'disabled'] as const
 
 const EMPTY_FILES: readonly FileStatus[] = []
 
@@ -29,6 +36,18 @@ function PanelContent({ className, rootPath }: ComponentProps<'section'> & { roo
   const hasLocalChanges = rows.staged.length > 0 || rows.worktree.length > 0
   const panelOpen = useGitState((state) => state.panelOpen)
   const setFocusArea = useFocus((state) => state.setFocusArea)
+  const selectedDocumentPath = useEditorWorkspaceState((state) => state.selectedFilePath)
+  const selectedDiff = parseDiffDocumentId(selectedDocumentPath)
+  const selectedDiffQueryKey = selectedDiff
+    ? diffDocumentQueryKey(selectedDiff)
+    : DISABLED_DIFF_QUERY
+  const selectedDiffPending =
+    useIsFetching({
+      exact: true,
+      predicate: queryHasNoData,
+      queryKey: selectedDiffQueryKey,
+    }) > 0
+  const loadingDiff = selectedDiffPending && selectedDiff?.kind === 'snapshot' ? selectedDiff : null
 
   if (status.isPending) {
     return <PanelLoading className={className} />
@@ -65,12 +84,14 @@ function PanelContent({ className, rootPath }: ComponentProps<'section'> & { roo
           <div className='app-scrollbar-thin min-h-0 flex-1 overflow-auto pt-2'>
             <ChangeGroup
               label='Staged Changes'
+              loadingPath={loadingDiff?.source === 'staged' ? loadingDiff.path : null}
               rootPath={rootPath}
               rows={rows.staged}
               section='staged'
             />
             <ChangeGroup
               label='Changes'
+              loadingPath={loadingDiff?.source === 'worktree' ? loadingDiff.path : null}
               rootPath={rootPath}
               rows={rows.worktree}
               section='worktree'

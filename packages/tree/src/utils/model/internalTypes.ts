@@ -42,6 +42,7 @@ export interface FileTreeViewProps extends Omit<FileTreeRenderOptions, 'initialV
   // before passing the pixel value down here.
   initialViewportHeight?: number
   instanceId?: string
+  loadingPaths?: ReadonlySet<FileTreePublicId>
   renamingEnabled?: boolean
   renderRowDecoration?: FileTreeRowDecorationRenderer
   searchBlurBehavior?: FileTreeSearchBlurBehavior

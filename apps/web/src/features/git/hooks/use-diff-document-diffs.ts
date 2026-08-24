@@ -1,15 +1,15 @@
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query'
 
 import {
-  checkpointDiffQueryKey,
   checkpointDiffRetry,
   checkpointDiffRetryDelay,
   fetchCheckpointDiff,
 } from '@/features/chat/utils/checkpoint-diff-query'
 import { errorMessage } from '@/lib/error-message'
 
-import { blobDiffQueryKey, fetchBlobDiff } from '@/features/git/utils/blob-diff-query'
+import { fetchBlobDiff } from '@/features/git/utils/blob-diff-query'
 import type { DiffDocumentInfo } from '@/features/git/utils/diff-document'
+import { diffDocumentQueryKey } from '@/features/git/utils/diff-document-query'
 import type { FileDiff } from '@/features/git/utils/types'
 
 type DiffList = readonly FileDiff[]
@@ -37,7 +37,7 @@ function diffDocumentQueryOptions(info: DiffDocumentInfo): DiffQueryOptions {
 
     return {
       queryFn: ({ signal }) => fetchCheckpointDiff(input, signal),
-      queryKey: checkpointDiffQueryKey(input),
+      queryKey: diffDocumentQueryKey(info),
       retry: checkpointDiffRetry,
       retryDelay: checkpointDiffRetryDelay,
       staleTime: Infinity,
@@ -48,7 +48,7 @@ function diffDocumentQueryOptions(info: DiffDocumentInfo): DiffQueryOptions {
 
   return {
     queryFn: ({ signal }) => fetchBlobDiff(input, signal),
-    queryKey: blobDiffQueryKey(input),
+    queryKey: diffDocumentQueryKey(info),
     retry: false,
     staleTime: Infinity,
   }

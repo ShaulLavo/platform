@@ -2,6 +2,7 @@ import { useContextMenu } from '@/features/menus/hooks/use-context-menu'
 import { colorForFileIcon, iconForEntry, type ResolvedFileIcon } from '@/lib/file-icons'
 import { basename, toTreePath } from '@/lib/path-formatters'
 import { cn } from '@workspace/ui/lib/utils'
+import { Shimmer } from '@workspace/ui/components/shimmer'
 import type { CSSProperties, KeyboardEvent, MouseEvent } from 'react'
 
 import { useOpenDiffDocument } from '../hooks'
@@ -11,14 +12,23 @@ import { parentPath } from '../utils/paths'
 import { FileActions } from './file-actions'
 import { FileMenu } from './file-menu'
 
-export function FileRow({ rootPath, row }: { rootPath: string; row: ChangeRow }) {
-  const { openDiff } = useOpenDiffDocument()
+export function FileRow({
+  loading = false,
+  rootPath,
+  row,
+}: {
+  loading?: boolean
+  rootPath: string
+  row: ChangeRow
+}) {
+  const { opening, openDiff } = useOpenDiffDocument()
   const contextMenu = useContextMenu()
   const relativePath = toTreePath(row.file.path, rootPath)
   const name = basename(relativePath)
   const directory = parentPath(relativePath)
   const icon = iconForEntry({ name, type: 'file' })
   const status = gitStatusSymbol(row.status, row.section)
+  const inputPending = loading || opening
 
   function handleOpen() {
     void openDiff(row)
@@ -39,7 +49,9 @@ export function FileRow({ rootPath, row }: { rootPath: string; row: ChangeRow })
   return (
     <>
       <div
+        aria-busy={inputPending || undefined}
         className='group/row hover:bg-row-hover focus-visible:ring-ring/50 grid h-6 cursor-pointer grid-cols-[22px_minmax(0,1fr)_auto_28px] items-center px-2 text-xs leading-4 outline-none focus-visible:ring-1'
+        data-git-file-loading={inputPending || undefined}
         role='button'
         tabIndex={0}
         onClick={handleOpen}
@@ -52,8 +64,7 @@ export function FileRow({ rootPath, row }: { rootPath: string; row: ChangeRow })
           style={fileIconStyle(icon)}
         />
         <div className='min-w-0 truncate text-left' title={relativePath}>
-          <span className='text-foreground font-medium'>{name}</span>
-          {directory && <span className='text-muted-foreground ml-2 font-normal'>{directory}</span>}
+          {fileRowLabel(name, directory, inputPending)}
         </div>
         <FileActions path={row.file.path} section={row.section} />
         <span
@@ -74,6 +85,26 @@ export function FileRow({ rootPath, row }: { rootPath: string; row: ChangeRow })
           row={row}
         />
       )}
+    </>
+  )
+}
+
+function fileRowLabel(name: string, directory: string, loading: boolean) {
+  if (loading) {
+    return (
+      <Shimmer className='font-medium'>
+        {name}
+        {directory ? <span className='ml-2 font-normal'>{directory}</span> : null}
+      </Shimmer>
+    )
+  }
+
+  return (
+    <>
+      <span className='text-foreground font-medium'>{name}</span>
+      {directory ? (
+        <span className='text-muted-foreground ml-2 font-normal'>{directory}</span>
+      ) : null}
     </>
   )
 }

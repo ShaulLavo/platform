@@ -1,7 +1,6 @@
 import { createTextDiff } from '@singapor/diff'
 import { useMemo } from 'react'
 
-import { CompareSavedLoading } from '@/features/editor/components/compare-saved-loading'
 import { DiffEditor } from '@/features/editor/components/diff-editor'
 import { useDiffOwnedText } from '@/features/editor/hooks/use-diff-owned-text'
 import { useEditorDocumentState } from '@/features/editor/state/document-state'
@@ -48,7 +47,7 @@ export function CompareSavedView({ path, rootPath }: { path: string; rootPath: s
     return <CompareNotice message='Could not read the saved file.' tone='error' />
   }
   if (!file) {
-    if (buffer) return <CompareSavedLoading />
+    if (buffer) return <DiffEditor file={null} mode={mode} />
 
     return <CompareNotice message='Open the file to compare it with disk.' />
   }

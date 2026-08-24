@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import type { ReactElement } from 'react'
 
 import { EditorStateProvider } from '@/features/editor/providers/state-provider'
@@ -61,6 +61,31 @@ test('whole-file text produces an expandable, fully-typed model', async ({ clien
   expect(file?.isPartial).toBe(false)
   expect(file?.newLines.length).toBe(41)
   expect(file?.languageId).toBe('typescript')
+})
+
+test('keeps the diff editor mounted with an empty model while the blob resolves', async ({
+  client,
+  server,
+}) => {
+  void client
+  const repo = await initRepo(server.root)
+  await writeFile(path.join(repo, 'lines.ts'), twoEditFile())
+  const [diff] = await fetchDiff('repo/lines.ts', false)
+
+  const { container } = renderDiffView(
+    <DiffView documentInfo={snapshotDocument(diff!)} rootPath='repo' />,
+  )
+
+  expect(container.querySelector('.editor-diff-pane')).not.toBeNull()
+  expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Editor input"]')?.value).toBe(
+    '',
+  )
+  expect(screen.queryByRole('status', { name: 'Loading diff' })).not.toBeInTheDocument()
+
+  await waitFor(() => {
+    expect(container.querySelector('[aria-busy="true"]')).toBeNull()
+  })
+  expect(container.querySelector('.editor-diff-pane')).not.toBeNull()
 })
 
 test('a rename with edits keeps both paths on the mapped file', async ({ client, server }) => {

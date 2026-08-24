@@ -33,6 +33,7 @@ import { useTreeCommandRequest } from '@/features/workspace/hooks/use-tree-comma
 import { useTreeSearchSession } from '@/features/workspace/hooks/use-tree-search-session'
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
+import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
 import { useFocus } from '@/features/workspace/providers/focus-state'
 import { preparedTreeInputForPaths } from '@/features/workspace/state/prepared-tree-input-cache'
 import { treeCommandFocusCandidate } from '@/features/workspace/utils/tree-commands'
@@ -44,13 +45,14 @@ import { renamePath } from '@/lib/file-server'
 import type { LoadState } from '@/lib/load-state'
 import { canonicalTreePath } from '@/lib/path-formatters'
 import { fileSystemKeys } from '@/lib/query-keys'
+import { queryHasNoData } from '@/lib/query-state'
 import {
   moveTreeModelPaths,
   treePathForSelectedPath,
   type TreePathMove,
   type TreeModel,
 } from '@/lib/tree-model'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useIsFetching, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   useEffectEvent,
   useEffect,
@@ -61,6 +63,8 @@ import {
   useState,
   type CSSProperties,
 } from 'react'
+
+const DISABLED_FILE_QUERY = ['file-system', 'file-snapshots', 'disabled'] as const
 
 export const TreePane = memo(
   ({
@@ -101,6 +105,20 @@ function ReadyTreePane({
   const { editorTheme } = useEditorColorTheme()
   const workbenchDensity = useWorkbenchDensity()
   const selectedFilePath = useEditorWorkspaceState((store) => store.selectedFilePath)
+  const selectedDiskPath = fileBackedDocumentPath(selectedFilePath)
+  const selectedFileQueryKey = selectedDiskPath
+    ? fileSystemKeys.fileSnapshot(selectedDiskPath)
+    : DISABLED_FILE_QUERY
+  const selectedFilePending =
+    useIsFetching({
+      exact: true,
+      predicate: queryHasNoData,
+      queryKey: selectedFileQueryKey,
+    }) > 0
+  const loadingTreePath =
+    selectedFilePending && selectedDiskPath
+      ? canonicalTreePath(treePathForSelectedPath(rootPath, selectedDiskPath))
+      : null
   const { selectFile } = useEditorCommands()
   const { loadDirectory, publishVisibleItemCount: publishVisibleItemCountAction } =
     useFileTreeActions()
@@ -204,6 +222,10 @@ function ReadyTreePane({
     renderRowDecoration: (context) => treeRowDecoration(modelRef.current, context),
     unsafeCSS: treeUnsafeCss,
   })
+
+  useLayoutEffect(() => {
+    tree.setLoadingPaths(loadingTreePath ? [loadingTreePath] : [])
+  }, [loadingTreePath, tree])
   const searchSession = useTreeSearchSession(tree)
   const { acknowledge: acknowledgeTreeCommand, request: treeCommandRequest } =
     useTreeCommandRequest(rootPath)
@@ -576,5 +598,29 @@ const treeUnsafeCss = `
 
   button[data-type='item'] {
     border-radius: 6px;
+  }
+
+  button[data-item-loading='true'] [data-item-section='content'] {
+    background-image:
+      linear-gradient(90deg, transparent 0%, var(--foreground) 50%, transparent 100%),
+      linear-gradient(var(--muted-foreground), var(--muted-foreground));
+    background-repeat: no-repeat;
+    background-size: 45% 100%, auto;
+    background-clip: text;
+    color: transparent;
+    animation: file-tree-loading-shimmer 2s linear infinite;
+  }
+
+  @keyframes file-tree-loading-shimmer {
+    from { background-position: -100% 0, 0 0; }
+    to { background-position: 250% 0, 0 0; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    button[data-item-loading='true'] [data-item-section='content'] {
+      animation: none;
+      background-image: none;
+      color: var(--muted-foreground);
+    }
   }
 `

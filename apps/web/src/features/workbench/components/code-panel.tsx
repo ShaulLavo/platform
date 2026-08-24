@@ -5,6 +5,7 @@ import { EmptyState } from '@workspace/ui/components/empty-state'
 import { EMPTY_GIT_FILES, editorTabModel } from '@/features/workspace/utils/tab-model'
 import { EditorSurfaceTabBody } from '@/features/workbench/components/editor-surface-tab-body'
 import { EditorTabBar } from '@/features/workbench/components/editor-tab-bar'
+import { useEditorInputPending } from '@/features/workbench/hooks/use-editor-input-pending'
 import type { FileStatus } from '@/features/git/utils/types'
 import type { EditorTabConflictMap } from '@/features/workspace/utils/tab-types'
 import type { WorkbenchPanels } from '@/features/workbench/utils/panels'
@@ -32,10 +33,12 @@ export function CodePanel({
     }),
   )
   const activeTab = panels.editorTabs.find((tab) => tab.id === panels.activeEditorTabId) ?? null
+  const inputPending = useEditorInputPending(activeTab?.path)
+  const loadingTabId = inputPending ? activeTab?.id : null
 
   return (
     <section className='bg-content-well border-border flex h-full min-h-0 min-w-0 flex-col overflow-hidden'>
-      <EditorTabBar tabs={tabModels} />
+      <EditorTabBar loadingTabId={loadingTabId} tabs={tabModels} />
       <div className='min-h-0 min-w-0 flex-1 overflow-hidden'>
         {activeTab ? (
           <EditorSurfaceTabBody

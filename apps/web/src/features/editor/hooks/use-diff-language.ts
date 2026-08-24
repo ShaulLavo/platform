@@ -40,6 +40,8 @@ import {
 import { hoverMarkup, type HoverResponse } from '@/features/editor/utils/hover-markup'
 import { log } from '@/lib/client-logging'
 
+const EMPTY_DIFF_LINES: readonly string[] = []
+
 export type DiffLanguageServerContext = {
   /**
    * The absolute path an editor would have opened this file under, which is the only name the
@@ -63,14 +65,16 @@ export type DiffLanguageServerContext = {
  * asked about that side's document.
  */
 export function useDiffLanguage(
-  file: DiffFile,
+  file: DiffFile | null,
   rows: readonly DiffRenderRow[],
   theme: EditorTheme,
   languageServer: DiffLanguageServerContext | null,
 ): EditorPlugin | null {
+  const newLines = file?.newLines ?? EMPTY_DIFF_LINES
+  const oldLines = file?.oldLines ?? EMPTY_DIFF_LINES
   const map = useMemo(
-    () => createDiffPositionMap(rows, file.newLines, file.oldLines),
-    [file.newLines, file.oldLines, rows],
+    () => createDiffPositionMap(rows, newLines, oldLines),
+    [newLines, oldLines, rows],
   )
   const commands = useOptionalEditorCommands()
   const openDefinition = commands?.openDefinition ?? null
@@ -117,6 +121,7 @@ export function useDiffLanguage(
   // one would cost a `didClose`/`didOpen` pair. What editing can invalidate is checked per request
   // instead, in `sideStates`.
   useEffect(() => {
+    if (!file) return
     if (!documentPath || !rootPath || routedMatches.length === 0) return
 
     const documents = diffLanguageDocuments({
@@ -155,7 +160,8 @@ export function useDiffLanguage(
 
   // Only whether a file could be asked about at all rebuilds the plugin; everything else is read
   // live from the holder.
-  const available = documentPath !== null && rootPath !== null && routedMatches.length > 0
+  const available =
+    file !== null && documentPath !== null && rootPath !== null && routedMatches.length > 0
 
   return useMemo(() => {
     if (!available) return null

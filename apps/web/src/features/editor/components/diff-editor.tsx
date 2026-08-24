@@ -26,7 +26,7 @@ export function DiffEditor({
   mode,
   regions,
 }: {
-  file: DiffFile
+  file: DiffFile | null
   languageServer?: DiffLanguageServerContext | null
   mode: EditorDiffViewMode
   regions?: DiffRegionStore

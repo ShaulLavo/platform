@@ -202,6 +202,7 @@ export function FileTreeView({
   directoriesWithGitChanges,
   icons,
   instanceId,
+  loadingPaths,
   itemHeight = FILE_TREE_DEFAULT_ITEM_HEIGHT,
   overscan = FILE_TREE_DEFAULT_OVERSCAN,
   renamingEnabled = false,
@@ -1288,6 +1289,7 @@ export function FileTreeView({
     ignoredInheritanceCache,
     instanceId,
     itemHeight,
+    loadingPaths,
     markPointerFocusPath: (path) => {
       if (controller.getFocusedPath() === path) return
 

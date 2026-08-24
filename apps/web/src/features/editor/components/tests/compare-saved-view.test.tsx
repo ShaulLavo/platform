@@ -29,9 +29,9 @@ test('a buffer that differs from disk is shown as a diff', async ({ client, serv
   void client
   await renderCompare(server.root, { buffer: EDITED })
 
-  await waitFor(() => expect(diffRowTexts().length).toBeGreaterThan(0))
-  expect(diffRowTexts()).toContain('beta')
-  expect(diffRowTexts()).toContain('beta changed')
+  await waitFor(() => {
+    expect(diffRowTexts()).toEqual(expect.arrayContaining(['beta', 'beta changed']))
+  })
 })
 
 test('a buffer that matches disk says there is nothing to compare', async ({ client, server }) => {

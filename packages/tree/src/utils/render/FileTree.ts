@@ -6,6 +6,7 @@ import { FILE_TREE_TAG_NAME, FILE_TREE_UNSAFE_CSS_ATTRIBUTE, HEADER_SLOT_NAME } 
 import { normalizeFileTreeIcons } from '../iconConfig'
 import { type FileTreeDensityPreset, resolveFileTreeDensity } from '../model/density'
 import { FileTreeController } from '../model/FileTreeController'
+import { arePathSetsEqual } from '../model/pathHelpers'
 import {
   applyFileTreeGitStatusPatch,
   type FileTreeGitStatusState,
@@ -109,6 +110,7 @@ export class FileTree implements FileTreeMutationHandle, FileTreeSearchSessionHa
   #fileTreeContainer: HTMLElement | undefined
   #gitStatusState: FileTreeGitStatusState | null
   #icons: FileTreeOptions['icons']
+  #loadingPaths: ReadonlySet<string> = new Set()
   readonly #densityListeners = new Set<FileTreeListener>()
   #densityVersion = 0
   readonly #unsafeCSS: string | undefined
@@ -430,6 +432,16 @@ export class FileTree implements FileTreeMutationHandle, FileTreeSearchSessionHa
     renderFileTreeRoot(mountedTree.wrapper, this.#getViewProps())
   }
 
+  public setLoadingPaths(paths: readonly FileTreePublicId[]): void {
+    if (arePathSetsEqual(this.#loadingPaths, paths)) return
+
+    this.#loadingPaths = new Set(paths)
+    const mountedTree = this.#getMountedTreeElements()
+    if (!mountedTree) return
+
+    renderFileTreeRoot(mountedTree.wrapper, this.#getViewProps())
+  }
+
   public render({ containerWrapper, fileTreeContainer }: FileTreeRenderProps): void {
     const host = this.#prepareHost(fileTreeContainer ?? this.#fileTreeContainer, containerWrapper)
     const wrapper = this.#getOrCreateWrapper(host)
@@ -463,6 +475,7 @@ export class FileTree implements FileTreeMutationHandle, FileTreeSearchSessionHa
       directoriesWithGitChanges: this.#gitStatusState?.directoriesWithChanges,
       icons: this.#icons,
       instanceId: this.#id,
+      loadingPaths: this.#loadingPaths,
       renamingEnabled: this.#renamingEnabled,
       renderRowDecoration: this.#renderRowDecoration,
       searchBlurBehavior: this.#searchBlurBehavior,

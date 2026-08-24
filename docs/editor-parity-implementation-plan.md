@@ -23,27 +23,27 @@ Scoreboard after a verified sweep of 448 features: **80 have · 109 partial · 2
 **Three structural findings that shape everything below:**
 
 - **The server is ahead of the client.** The native TS session already answers signatureHelp, rename, codeAction, documentSymbol; the stdio proxy passes any LSP method through; the git service has applyPatch, branches, worktrees, file-at-ref with no UI consumers. Many "missing" features are client-UI-plus-wiring, not full-stack builds.
-- **The engine has ready seams.** Typed registries (blocks, injected rows, inline replacements, gutters, highlighters, decorations) mean CodeLens, inlay hints, ghost text, sticky scroll, quick-diff, breakpoints have rendering hosts waiting. Data is even pre-computed in places (tree-sitter worker already ships bracket ranges with zero consumers).
+- **The engine has narrow ready seams, not a generic surface host.** Injected rows, inline replacements, gutters, highlighters, and decorations cover their specific text/paint jobs. The broad block/zone system was removed and is not a compatibility target. Any floating React product surface starts with a named-consumer composition gate; [plan 064](../plans/064-anchored-diagnostic-peek.md) applies that rule to one diagnostic peek. Data is even pre-computed in places (tree-sitter worker already ships bracket ranges with zero consumers).
 - **PLAN.md is the spine.** The 12-week state-correctness roadmap (WorkspaceDocumentService, FileSyncService, CommandBus, FocusService, LspService) is a prerequisite, not a competitor: splits, chords, when-clauses, changesets, workspace problems all land **on those seams**. Do not build parity features on the current React-effect wiring that PLAN.md is scheduled to delete.
 
-## Shared substrates (build once, unlock many)
+## Shared substrates and consumer gates
 
-The critic pass found the same infrastructure hiding inside dozens of feature requests. Each substrate is listed in the wave where it lands; violating this list means five features each half-build the same thing.
+The critic pass found the same infrastructure hiding inside dozens of feature requests. Each shared substrate is listed in the wave where it lands; violating that list means five features each half-build the same thing. S3 keeps its roadmap number for continuity but is the exception: it is one consumer decision and implementation, not a build-once surface promise.
 
-| #   | Substrate                                                                                                          | Unlocks                                                                                                                | Wave |
-| --- | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ---- |
-| S1  | Command registry with metadata (title, category, when, keybinding) on the PLAN.md CommandBus                       | real palette, keybindings editor, menus, chords                                                                        | E3   |
-| S2  | Status bar strip (data source already exists)                                                                      | 6 domains' indicators: cursor/indent/encoding/EOL/language/branch/sync/problems/LSP/debug/chat                         | E3   |
-| S3  | Zone widgets (embedded editor / React block in-buffer)                                                             | peek views, error peek, inline chat, quick-diff peek, test failure peek, breakpoint condition widget, exception widget | E2   |
-| S4  | Language configuration engine (per-language: pairs, onEnter, word patterns; comment tokens exist)                  | auto-close/type-over/surround, auto-indent, word-part ops                                                              | E1   |
-| S5  | WorkspaceEdit applicator + Refactor Preview (honors dirty buffers + unopened files, one undo unit, resource edits) | rename, code actions, organize imports, fix-on-save, AI changesets, search-replace preview, update-imports-on-move     | E2   |
-| S6  | Inline-suggestion (ghost text) surface in the engine                                                               | AI completions, FIM, NES, word-based fallback                                                                          | E7   |
-| S7  | Editor groups model (split tree over shared buffers — EditorViewSession + panes package exist)                     | splits/grid, open-to-side everywhere, side-by-side terminal-in-editor, merge editor layout                             | E3   |
-| S8  | Workspace-wide problems aggregation store                                                                          | Problems panel, tree/tab badges, problem matchers output, Checks-style views                                           | E6   |
-| S9  | Git log/graph server endpoint                                                                                      | graph view, timeline, blame, commit details, incoming/outgoing                                                         | E5   |
-| S10 | Quick-input framework + palette provider registry                                                                  | all pickers, multi-step wizards, git/task/debug quick-picks, MRU                                                       | E3   |
-| S11 | Non-text document surface + editor associations ("Open With")                                                      | image/PDF/hex/CSV viewers, simple browser, database client, notebook (if ever)                                         | E4   |
-| S12 | LSP client capability breadth + multi-server-per-document (the PLAN.md LspService)                                 | semantic tokens, resolve, snippets, eslint+ts concurrently, pull diagnostics                                           | E2   |
+| #   | Substrate                                                                                                          | Unlocks                                                                                                                             | Wave |
+| --- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| S1  | Command registry with metadata (title, category, when, keybinding) on the PLAN.md CommandBus                       | real palette, keybindings editor, menus, chords                                                                                     | E3   |
+| S2  | Status bar strip (data source already exists)                                                                      | 6 domains' indicators: cursor/indent/encoding/EOL/language/branch/sync/problems/LSP/debug/chat                                      | E3   |
+| S3  | [Diagnostic-peek composition gate and selected implementation](../plans/064-anchored-diagnostic-peek.md)           | One E2 marker peek; ordinary composition is S, managed geometry only after a proved gate failure is M; no later surface inherits it | E2   |
+| S4  | Language configuration engine (per-language: pairs, onEnter, word patterns; comment tokens exist)                  | auto-close/type-over/surround, auto-indent, word-part ops                                                                           | E1   |
+| S5  | WorkspaceEdit applicator + Refactor Preview (honors dirty buffers + unopened files, one undo unit, resource edits) | rename, code actions, organize imports, fix-on-save, AI changesets, search-replace preview, update-imports-on-move                  | E2   |
+| S6  | Inline-suggestion (ghost text) surface in the engine                                                               | AI completions, FIM, NES, word-based fallback                                                                                       | E7   |
+| S7  | Editor groups model (split tree over shared buffers — EditorViewSession + panes package exist)                     | splits/grid, open-to-side everywhere, side-by-side terminal-in-editor, merge editor layout                                          | E3   |
+| S8  | Workspace-wide problems aggregation store                                                                          | Problems panel, tree/tab badges, problem matchers output, Checks-style views                                                        | E6   |
+| S9  | Git log/graph server endpoint                                                                                      | graph view, timeline, blame, commit details, incoming/outgoing                                                                      | E5   |
+| S10 | Quick-input framework + palette provider registry                                                                  | all pickers, multi-step wizards, git/task/debug quick-picks, MRU                                                                    | E3   |
+| S11 | Non-text document surface + editor associations ("Open With")                                                      | image/PDF/hex/CSV viewers, simple browser, database client, notebook (if ever)                                                      | E4   |
+| S12 | LSP client capability breadth + multi-server-per-document (the PLAN.md LspService)                                 | semantic tokens, resolve, snippets, eslint+ts concurrently, pull diagnostics                                                        | E2   |
 
 ## The waves
 
@@ -93,7 +93,7 @@ Substrate S4 first, then:
 
 ### E2 — Language intelligence completion
 
-Substrates S3, S5, S12 first — S12 means landing the PLAN.md LspService with multi-server-per-document (eslint + ts concurrently, provider merging). Then:
+Run S3's go/no-go before the marker peek; build S5 and S12 for the broader wave — S12 means landing the PLAN.md LspService with multi-server-per-document (eslint + ts concurrently, provider merging). Then:
 
 - Formatting: document/range commands, default-formatter pick, **format-on-save + save participants** (trim trailing, final newline — the "file hygiene" items), format-on-type (M total)
 - Rename with prepare + inline widget + multi-file preview via S5 (L→M once S5 exists)
@@ -102,8 +102,8 @@ Substrates S3, S5, S12 first — S12 means landing the PLAN.md LspService with m
 - Semantic tokens layered over tree-sitter coloring (M)
 - Inlay hints (inline-replacement seam) (M); CodeLens (injected-row seam) (M)
 - Color decorators + picker (M); linked editing (M); smart paste/drop providers (M/niche)
-- Real peek views via S3 (references/definition embedded editor) + marker peek with related info; diagnostic tags (fade/strikethrough) + relatedInformation rendering (M)
-- Sticky scroll (top-block seam + scope data) (M)
+- [Anchored diagnostic marker peek](../plans/064-anchored-diagnostic-peek.md) with message, severity, source, and related information (S on the ordinary-composition path; M only after a proved managed-geometry gate failure); definition/references embedded peek remains a separate consumer decision because the current references UI already composes beside the Editor in React (M)
+- Sticky scroll (separate rendering decision + scope data; no deleted top-block seam) (M)
 - Outline sidebar view + breadcrumbs strip with symbol trail (M each; breadcrumbs also satisfies Athas/shell entries)
 - Call hierarchy (L), then type hierarchy reusing its shell (M)
 - Folding extras: LSP foldingRange fallback, `#region`, fold-all-by-level/comments/imports (S)
@@ -183,7 +183,7 @@ Substrate S9 (one `git log`-backed endpoint unblocks four features). Then, rough
 We already lead on the runtime; this wave closes the gap where **NeuralInverse and VS Code lead: AI woven into the editor surface itself**. Substrate S6 first.
 
 - **Ghost-text inline completions** on S6 → **FIM autocomplete service** (prefix/suffix windows, import injection, AST context — NI's design; BYOK model routing) → **Next Edit Suggestions** (gutter arrows, jump hints, rename propagation) (L → L → XL, strictly in that order)
-- **Inline chat (Cmd+K/Cmd+I)**: zone-widget prompt over selection, streamed in-place diff, accept/discard/rerun; selection helper widget; editor AI actions (explain/fix/review, fix-this-diagnostic); terminal inline chat (L + S + M + M)
+- **Inline chat (Cmd+K/Cmd+I)**: run its own ordinary-React composition go/no-go — it does not inherit S3 — then build a selection-anchored prompt, streamed in-place diff, and accept/discard/rerun; selection helper widget; editor AI actions (explain/fix/review, fix-this-diagnostic); terminal inline chat (L + S + M + M)
 - **Changesets over open buffers** on WorkspaceDocumentService + S5: live streamed edits into editors, per-hunk/per-file keep/undo, editor overlay with prev/next + N-files progress, auto-accept setting — merges NI fast-apply + VS Code chatEditing (L)
 - Code-block actions: smart apply-to-editor, insert at cursor, run/insert in terminal, save-to-file (M)
 - Context breadth: implicit active-file/selection with toggle, symbol/folder/problems attachments, screenshots (M)
@@ -211,7 +211,7 @@ We already lead on the runtime; this wave closes the gap where **NeuralInverse a
 
 - Viewers on S11: PDF, hex/binary, CSV table, image editor (resize/convert) (M each)
 - **Database client** (Athas's biggest unique surface: connection manager, schema browser, data grid CRUD, SQL console; per-provider sidecars → our Bun server processes) — GO, it fits the server architecture (XL)
-- **GitHub integration**: PR list/viewer + review comments (needs the critic's commenting-threads substrate: range-anchored threads on zone widgets + comments panel + provider API), issues, Actions runs, create-PR (L + L)
+- **GitHub integration**: PR list/viewer + review comments (needs commenting-thread data, a comments panel, and its own named-consumer surface gate; it does not inherit a zone/widget host from S3), issues, Actions runs, create-PR (L + L)
 - **Vim mode** built-in (operators/motions/text-objects/registers/command bar/jump list) (L)
 - Extension ecosystem decision: keep first-party typed registries as the plugin story now; third-party marketplace/isolation is XL and deferred until demand is real. Athas-style **AI extension generation** is the interesting middle path — generate + install into our registries (M investigate)
 - Remote: productize the client/server split (connect-to-remote UX, TLS, host management — our web architecture gets this nearly free); ports view later; SSH auto-provisioning after (M + L)
@@ -254,6 +254,6 @@ We already lead on the runtime; this wave closes the gap where **NeuralInverse a
 | E8   | Debug & testing         | ~4 mo                           |
 | E9   | Viewers & verticals     | ~4 mo of GOs                    |
 
-Dependency spine: PLAN.md services → E0 anytime → E1/E2 (need S3/S4/S5/S12) → E3 (needs CommandBus) → E5/E6 ride E3's palette/status-bar/settings → E7 rides E2's edit substrate + S6 → E8 rides E6 tasks + S2 → E9 rides S11. E4 is independent and can interleave anywhere after E0. Where the user-visible payoff must come first, run E0+E1 before finishing the PLAN.md weeks — they touch the engine, not the state seams.
+Dependency spine: PLAN.md services → E0 anytime → E1/E2 (need S4/S5/S12, plus S3's gate for marker peek only) → E3 (needs CommandBus) → E5/E6 ride E3's palette/status-bar/settings → E7 rides E2's edit substrate + S6 and re-gates its own surfaces → E8 rides E6 tasks + S2 → E9 rides S11. E4 is independent and can interleave anywhere after E0. Where the user-visible payoff must come first, run E0+E1 before finishing the PLAN.md weeks — they touch the engine, not the state seams.
 
 Every wave should keep the two ours-only differentiators alive and untouched: the decode open animation and in-buffer markdown live preview — no reference has either.

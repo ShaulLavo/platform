@@ -278,6 +278,7 @@ export interface FileTreeRenderRowFrame {
   readonly markPointerFocusPath: (path: string) => void
   readonly instanceId: string | undefined
   readonly itemHeight: number
+  readonly loadingPaths: ReadonlySet<string> | undefined
   readonly gitStatusByPath: ReadonlyMap<string, GitStatus> | undefined
   readonly ignoredGitDirectories: ReadonlySet<string> | undefined
   readonly ignoredInheritanceCache: Map<string, boolean>
@@ -341,6 +342,7 @@ export function FileTreeRow({ frame, options = {}, row }: FileTreeRowProps): JSX
     markPointerFocusPath,
     instanceId,
     itemHeight,
+    loadingPaths,
     gitStatusByPath,
     ignoredGitDirectories,
     ignoredInheritanceCache,
@@ -422,6 +424,7 @@ export function FileTreeRow({ frame, options = {}, row }: FileTreeRowProps): JSX
       isContextHovered: contextHoverPath === targetPath,
       isDragging: draggedPathSet?.has(targetPath) === true,
       isFocusRinged: row.isFocused && visualFocusPath === targetPath,
+      isLoading: loadingPaths?.has(targetPath) === true,
     },
     targetPath,
   })

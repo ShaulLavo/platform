@@ -15,6 +15,7 @@ type FileTreeRowStateFlags = {
   isDragging: boolean
   effectiveGitStatus: GitStatus | null
   containsGitChange: boolean
+  isLoading: boolean
 }
 
 // Feature-level flags derived from the tree's configuration. These translate
@@ -80,6 +81,10 @@ export function computeFileTreeRowElementAttributes(
   }
   if (state.containsGitChange) {
     stateAttributes['data-item-contains-git-change'] = 'true'
+  }
+  if (state.isLoading) {
+    stateAttributes['aria-busy'] = 'true'
+    stateAttributes['data-item-loading'] = 'true'
   }
 
   return {

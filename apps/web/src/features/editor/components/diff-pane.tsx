@@ -47,7 +47,7 @@ export function DiffPane({
   onRegisterEditor,
   onScroll,
 }: {
-  file: DiffFile
+  file: DiffFile | null
   /** Present only where a language server may safely be asked about this diff; see `useDiffLanguage`. */
   languageServer?: DiffLanguageServerContext | null
   regions: DiffRegionStore
@@ -131,6 +131,8 @@ export function DiffPane({
   // anything that breaks it (word wrap, a fold map, block rows) would otherwise show up as line
   // comments quietly addressing the wrong line.
   useLayoutEffect(() => {
+    if (!file) return
+
     const { lineCount, rowCount, violations } = plugin.getDocumentModeStatus()
     // The plugin can publish its next projection one layout pass before this host receives it.
     if (rowCount !== rows.length) return
@@ -145,7 +147,7 @@ export function DiffPane({
       side,
       violations,
     })
-  }, [file.cacheKey, file.path, plugin, rows, side])
+  }, [file?.cacheKey, file?.path, plugin, rows, side])
 
   return (
     <div

@@ -8,10 +8,12 @@ import { EditorTabButton } from '@/features/workbench/components/editor-tab-butt
 export function SortableEditorTabButton({
   closeTargets,
   dirty,
+  loading,
   tab,
 }: {
   readonly closeTargets: readonly EditorTabCloseTarget[]
   readonly dirty: boolean
+  readonly loading: boolean
   readonly tab: EditorTabModel
 }) {
   const { attributes, isDragging, listeners, setNodeRef, transform, transition } = useSortable({
@@ -34,6 +36,7 @@ export function SortableEditorTabButton({
         transform: CSS.Transform.toString(transform),
         transition,
       }}
+      loading={loading}
       tab={tab}
     />
   )

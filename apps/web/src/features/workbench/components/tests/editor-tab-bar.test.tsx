@@ -34,6 +34,17 @@ test('only the active tab carries a background fill, and inactive tabs react to 
   expect(editorTabElement(container, 'tab-b')).toHaveClass('hover:bg-accent')
 })
 
+test('shimmers the filename of the editor input being resolved', () => {
+  const { container } = renderWithProviders(
+    <TestEditorTabs loadingTabId='tab-a' tabs={editorTabs()} />,
+  )
+
+  const loadingTab = editorTabElement(container, 'tab-a')
+  expect(loadingTab).toHaveAttribute('aria-busy', 'true')
+  expect(loadingTab?.querySelector('[data-slot="shimmer"]')).toHaveTextContent('a.ts')
+  expect(editorTabElement(container, 'tab-b')?.querySelector('[data-slot="shimmer"]')).toBeNull()
+})
+
 test('closes the clicked tab id', () => {
   const closeTab = vi.fn()
 
@@ -70,11 +81,13 @@ test('requests bulk close ids from the tab context menu', () => {
 })
 
 function TestEditorTabs({
+  loadingTabId,
   tabs,
   onCloseTab = () => true,
   onCloseTabs = () => true,
   onSelectTab = () => undefined,
 }: {
+  readonly loadingTabId?: string | null
   readonly tabs: readonly EditorTabModel[]
   readonly onCloseTab?: (tabId: string) => boolean
   readonly onCloseTabs?: (tabIds: readonly string[]) => boolean
@@ -90,7 +103,7 @@ function TestEditorTabs({
           selectTab: onSelectTab,
         }}
       >
-        <EditorTabBar tabs={tabs} />
+        <EditorTabBar loadingTabId={loadingTabId} tabs={tabs} />
       </EditorTabActionsContext>
     </EditorStateProvider>
   )

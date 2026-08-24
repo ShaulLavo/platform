@@ -25,7 +25,13 @@ import { editorTabReorderIntent } from '@/features/workbench/utils/editor-tab-dn
 
 const EDITOR_TAB_DND_MODIFIERS = [restrictToHorizontalAxis]
 
-export function EditorTabBar({ tabs }: { readonly tabs: readonly EditorTabModel[] }) {
+export function EditorTabBar({
+  loadingTabId = null,
+  tabs,
+}: {
+  readonly loadingTabId?: string | null
+  readonly tabs: readonly EditorTabModel[]
+}) {
   const dirtyFilePaths = useEditorDocumentState((state) => state.dirtyFilePaths)
   const { reorderTab } = useEditorTabActions()
   const closeTargets = editorTabCloseTargets(tabs, dirtyFilePaths)
@@ -68,6 +74,7 @@ export function EditorTabBar({ tabs }: { readonly tabs: readonly EditorTabModel[
                 closeTargets={closeTargets}
                 dirty={isEditorTabDirty(tab.path, dirtyFilePaths)}
                 key={tab.id}
+                loading={tab.id === loadingTabId}
                 tab={tab}
               />
             )
