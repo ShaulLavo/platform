@@ -95,19 +95,19 @@
 > value immediate. Preserve every unrelated file-picker edit byte-for-byte. If
 > that exact block has also changed, STOP for ownership reconciliation. If the
 > dirty `keys.ts` change overlaps a type or collection shape required below, or
-> if plan 058 has already changed the theme, palette, settings-action, or
+> if plan 062 has already changed the theme, palette, settings-action, or
 > workspace-command symbols cited here, STOP and reconcile before editing.
 
 ## Status
 
-- **State**: Ready; execute before plan 058, then reconcile 058's theme-command
+- **State**: Reconcile drift first; execute before plan 062, then reconcile 062's theme-command
   and `useSettingsActions` assumptions
 - **Priority**: P0
 - **Effort**: XL
 - **Risk**: HIGH — persistence, secrets, file watching, SSE ordering, raw editor
   conflict state, theme paint, and optimistic UI meet here
 - **Depends on**: none
-- **Blocks**: the settings/theme portions of plan 058
+- **Blocks**: the settings/theme portions of plan 062
 - **Category**: correctness / architecture / UX / observability
 - **Planned at**: Platform commit `0d96f6f9`, 2026-08-23
 
@@ -661,7 +661,7 @@ logged with layer and operation rather than swallowed.
   external editors. If Platform later runs multiple server processes against one
   settings path, design a vetted lease as a separate plan.
 - Reworking the general CommandBus beyond adapting theme commands to the new
-  async settings action. Plan 058 owns that cutover after reconciliation.
+  async settings action. Plan 062 owns that cutover after reconciliation.
 - File-picker/fs behavior changes already present in the user worktree; only the
   exact settings-hook/toggle-lock migration named in the drift note is in scope.
 
@@ -1066,7 +1066,7 @@ constraints, and keep every new function at nesting depth three or less.
 - Logs correlate one mutation without values/secrets and no longer duplicate
   client-ingest events.
 - Focused tests/typechecks have no regression relative to the recorded baseline.
-- Plan 058 is reconciled against the new theme context, async settings action,
+- Plan 062 is reconciled against the new theme context, async settings action,
   mutation result, and palette preview boundary before it is executed.
 
 ## STOP conditions
@@ -1078,7 +1078,7 @@ STOP and report rather than improvise when:
   approved atomic whole-list register, not a precedent for other collections;
 - the user-owned `keys.ts` edit changes any collection identity or scope assumed
   by this plan;
-- plan 058 has landed and changed command/theme ownership without this plan being
+- plan 062 has landed and changed command/theme ownership without this plan being
   reconciled first;
 - a test proves two store instances inside one server process can bypass the
   canonical-path coordinator;
@@ -1111,4 +1111,4 @@ STOP and report rather than improvise when:
   add a vetted cross-process lease in a separate plan and keep the semantic
   recheck/replay because advisory locks still do not cover external editors.
 - After verification, follow `plans/README.md` cleanup policy and reconcile plan
-  058's theme/settings command assumptions before marking it ready.
+  062's theme/settings command assumptions before marking it ready.

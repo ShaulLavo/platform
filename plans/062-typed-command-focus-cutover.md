@@ -74,7 +74,7 @@
 - **Risk**: HIGH — trusted-key suppression, multiple Editor mounts, shadow-DOM
   tree focus, floating UI, dirty close, and async persistence meet here
 - **Depends on**: plan 059 complete and reconciled
-- **Supersedes**: plan 058 in full; never execute 058 after this plan exists
+- **Replaces**: the earlier command/focus draft, now deleted; do not recreate its mutation design
 - **Blocks**: plan 056 until it is rebased onto this bus; plan 057 until it is
   rebased onto this bus and FocusService; plan 061 should execute after both 060
   and 062 so its activation transaction has one typed caller boundary
@@ -1080,7 +1080,7 @@ Before changing code, inspect the landed plan 059 implementation and prove:
 - a settings failure already has one canonical owner/reporter.
 
 If those facts are absent or cannot be exposed without a second mutation path,
-STOP. Do not implement the old plan 058 `setSettingAsync` design.
+STOP. Do not recreate the deleted draft's `setSettingAsync` design.
 
 Capture baseline outputs:
 
@@ -1287,8 +1287,7 @@ Do not execute plans 056, 057, 060, or 061 here. Reconcile their status notes:
 
 Then apply the repository plan cleanup policy: remove completed plan 062 and
 its inventory row only after implementation and every completion check are
-verified. Plan 058 remains historical/superseded until repository maintainers
-remove it under that policy; it is never executable.
+verified. The earlier superseded draft is deleted and must not be restored.
 
 ## Done criteria
 

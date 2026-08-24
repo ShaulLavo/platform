@@ -1,5 +1,12 @@
 # Plan 055: Ship DOM input and an interactive terminal host for `ghostty-webgpu`
 
+> **CLOSEOUT-ONLY STATUS (reconciled 2026-08-24):** implementation landed in `ghostty-webgpu`
+> commit `93811b9` and later package commits; automated acceptance is recorded in
+> `docs/phase-3-acceptance.md`. Do **not** execute Steps 1–7 or rebuild the host. Run only the
+> remaining physical operator gate from Step 8 against current package HEAD, reconcile the current
+> pinned ABI as evidence rather than restoring the old pin, then perform Step 9 closeout and delete
+> this plan after the acceptance record is PASS.
+
 > **Executor instructions**: Follow this plan step by step. Run every verification command and
 > confirm the expected result before moving to the next step. If anything in **STOP conditions**
 > occurs, stop and report it; do not improvise. Work in the existing platform and
@@ -32,6 +39,7 @@
 
 ## Status
 
+- **State**: implementation complete; physical hardware/operator acceptance pending
 - **Priority**: P1
 - **Effort**: L
 - **Risk**: HIGH

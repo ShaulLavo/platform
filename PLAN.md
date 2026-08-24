@@ -1,104 +1,125 @@
-# 12-Week State-Correctness Architecture Roadmap
+# Cross-Project Execution Roadmap
 
-## Summary
+> **Status:** reconciled against Platform `64928b42`, Editor `c8c36b9`, and
+> `ghostty-webgpu` `09e4147` on 2026-08-24. Re-run each executable plan's drift check before editing.
 
-Build a staged remediation plan for one sequential implementer on a feature branch. Temporary breakage is acceptable inside the branch, but every milestone must end with typecheck/tests passing and the app usable for core editor workflows.
+This file is the sole source of cross-project execution order. [`plans/README.md`](plans/README.md)
+is the Platform executable-plan inventory. Strategy documents under `docs/` describe product scope
+but do not authorize implementation. A completed executable plan is deleted after its checks pass;
+Git history is the archive.
 
-Primary goal: remove duplicated truth. The finished system has one authoritative workspace document model, deterministic file sync, explicit command/focus transitions, React as a renderer of projections, and workers/resources with clear ownership.
+## Verified completed foundations
 
-## Current execution order
+- Platform's one-document representation and deterministic file-sync cutover are live. Completed
+  plan 038 has been deleted.
+- Editor BiDi geometry Tiers A and B are complete; Editor has no standalone BiDi execution plan.
+- Multi-server-per-document LSP and schema-aware settings JSON support are live. Do not rebuild a
+  one-server compatibility layer.
+- Editor-parity wave E0 is complete.
+- The earlier command/focus draft, plan 058, is deleted. Plan 062 is the only command/focus cutover.
 
-This is the authoritative cross-project order. `plans/README.md` is an inventory of executable plans, not a second roadmap.
+## Shared prerequisites
 
-1. **Editor BiDi geometry Tier B: open and independent.** Tier A M1-M5 is verified complete; M6-M7 may proceed without environment work.
-2. **Plan 055 — ghostty-webgpu DOM/input: ready.** Phase 2 is complete. Keep its package work isolated from Platform environment integration, which remains a later phase.
+1. **Plan 059 — conflict-proof optimistic settings.** Reconcile its stamped paths and assumptions
+   against current source, then implement it before plan 062. It owns semantic settings intents,
+   confirmed-versus-projected state, raw-JSON conflicts, and the preview/commit boundary.
+2. **Plan 062 — typed CommandBus and FocusService.** Execute only after 059 is verified and deleted.
+   It becomes the sole command definition, dispatch, enablement, focus-target, and async-settlement
+   path used by later editor-parity work.
 
-Success criteria:
+No later Platform editor milestone may create an active-Editor pointer, a second settings mutation
+path, a React-effect transaction coordinator, or a compatibility shim for the deleted architecture.
 
-- One live text buffer per workspace document; tabs own view state only.
-- Dirty, saved, conflict, revision, and undo state have one owner.
-- File sync correctness no longer depends on watcher timing, debounce windows, or retry luck.
-- React effects no longer coordinate document/save/conflict/command transactions.
-- Command, keyboard, focus, worker, LSP, and persistence boundaries are explicit and testable.
+## Independent package closeout
 
-## Key Architecture Changes
+**Plan 055 — `ghostty-webgpu` DOM/input** may finish at any time. Its implementation and automated
+gates have landed; only the physical hardware/operator acceptance in
+`ghostty-webgpu/docs/phase-3-acceptance.md` remains. Do not repeat its implementation milestones.
+When the gate passes, update the stable package evidence and Platform brief, then delete plan 055.
 
-- Add `WorkspaceDocumentService` outside React. It owns `DocumentId`, `DocumentSession`, document version, dirty state, save state, conflict state, undo history, and per-view attachments.
-- Replace per-tab cloned sessions with `DocumentViewState`: tab id, pane id, cursor/selection policy, scroll, folds, reveal target, and editor instance metadata.
-- Add `FileSyncService` as the only bridge between document state and server files. Its API uses `{ path, version, writeId, origin }`, and file watcher events become invalidation hints, not correctness proof.
-- Add a typed `CommandBus`. Commands declare id, target, preconditions, transaction effects, async behavior, and undo category. Keyboard handlers only resolve and dispatch commands.
-- Replace focus counters and active-dispatch pointers with `FocusService`: current focus owner, requested transition, transition result, and explicit editor-focus acknowledgements.
-- Keep TanStack Query for server state: tree, git, search results, metadata. Do not use query cache as authoritative document text.
-- Keep Zustand only for UI projections and ephemeral UI state. It should subscribe to domain services, not own domain facts.
-- Consolidate LSP behind one app-facing `LspService`. Server owns process/proxy/session lifecycle; editor packages own presentation plugins only.
-- Keep plugin APIs internal unless rewritten as a capability-based extension protocol with lifecycle, ownership, async, and cleanup guarantees.
-- Split persistence into durable workspace layout, session recovery, cache, and ephemeral UI. Do not persist runtime service internals.
+The `ghostty-webgpu` xterm-facade program is a separate package lane. Plan 008 is partially landed
+but blocked because the pinned native ABI cannot implement xterm's row-preserving `clear()` exactly.
+Resolve that native/upstream contract honestly before continuing. Plans 009–015 remain in their
+package-defined dependency order and are not prerequisites for current Platform work.
 
-## 12-Week Implementation Roadmap
+## Ordered Platform editor lane after plan 062
 
-- Week 1: Baseline and invariants.
-  - Capture current behavior with characterization tests for open/edit/save/reopen, multi-tab same file, split panes, external file change, conflict markers, undo/redo, search buffer, LSP attachment, and dirty-close.
-  - Write a short ownership document defining the single owner for text, dirty, conflict, save, focus, command, query, worker, and persistence state.
-  - Establish milestone gate: `bun run typecheck`, `bun run test`, targeted web/server/editor tests.
+For one implementer, use this order. Items marked lockstep must finish and verify in both repositories
+before either half is treated as landed.
 
-- Weeks 2-3: Workspace document model.
-  - Implement `WorkspaceDocumentService` with one `DocumentSession` per `DocumentId`.
-  - Migrate editor document state behind an adapter so existing UI can read projections while writes go through the service.
-  - Remove per-tab session cloning. Tabs attach view state to the shared document buffer.
-  - Make dirty state derived from document service state only.
-  - Gate: multi-tab same-file edits, undo/redo, save, close, and reopen behave identically or better than baseline.
+1. **Plan 063 — lockstep WorkspaceEdit transactions (Platform + Editor).** Highest-priority shared
+   correctness milestone. Land the Editor primitive and Platform transaction/applicator as one
+   change. Do not run it concurrently with 060, 061, or 064.
+2. **Plan 060 — persisted visible editor snapshot (Platform + Editor).** Reconcile both old commit
+   stamps first. It owns only a capped, unvalidated visual first-paint cache.
+3. **Plan 061 — Foresight prepared editor opens (Platform + Editor).** Requires 060 and 062. Live
+   prepared artifacts use exact revision identity and must not validate or promote 060's visual rows.
+4. **Plan 064 — anchored diagnostic peek.** Requires 062. Run its real-browser composition gate
+   first. Use ordinary React composition if it passes; add the one named managed-geometry handle in
+   Editor only if the gate proves it necessary. Never restore generic block surfaces.
+5. **Plan 056 — multi-step chord keymap (Platform).** Reconcile against the landed typed bus and
+   FocusService, then implement one chord state machine without another dispatch owner.
+6. **Plan 057 — editor-native VS Code keymap (Platform + Editor).** Requires 056 and 062. Extend the
+   same target/enablement runtime and complete the single-dispatcher takeover in lockstep.
 
-- Weeks 4-5: Deterministic file sync.
-  - Introduce `FileSyncService` and server contract additions for file version, write id, origin, and monotonic event sequence.
-  - Convert watcher events into “maybe stale” notifications that trigger deterministic reconciliation.
-  - Model file states explicitly: clean, dirty, saving, saved, externally changed, conflicted, deleted, recreated.
-  - Remove correctness dependencies on fixed retry delays and debounce timing.
-  - Gate: fake-timer and integration tests prove save/external-change/conflict ordering without relying on wall-clock sleeps.
+Plans 056 and 064 are logically independent after 062, but they should still be serialized in one
+Platform worktree. Plans 063, 060, 061, 064, and 057 all touch Editor-facing ownership or APIs and
+must not be executed concurrently without a fresh overlap reconciliation.
 
-- Weeks 6-7: Commands, keyboard, focus, and undo boundaries.
-  - Add `CommandBus` and migrate editor/workspace commands into typed command definitions.
-  - Add `FocusService` and replace focus request counters/active editor dispatch pointers.
-  - Route keyboard input through target resolution: editor, tree, search, terminal, command palette, global.
-  - Define undo categories: text edit, view-only action, file operation, workspace operation. Only text edit undo is in `DocumentSession`; cross-resource undo is explicit and separate.
-  - Gate: command tests cover disabled states, focus transitions, conflicting shortcuts, async command failure, and dirty-close behavior.
+## Environments and remote-access lane
 
-- Weeks 8-9: React shell cleanup.
-  - Split the workspace file viewer into rendering components plus service adapters. UI components do not directly coordinate query cache, document service, conflict service, and command execution in one place.
-  - Move transaction logic out of effects into domain services and event handlers.
-  - Use React effects only for subscription lifecycle, DOM integration, and non-critical resource loading.
-  - Apply React performance rules while refactoring: avoid derived-state effects, avoid inline component definitions, subscribe to narrow selectors, and defer expensive non-urgent rendering with transitions where useful.
-  - Gate: React tests verify rendering from service projections; no lost edits during mount/unmount, pane changes, or tab switches.
+[`docs/environments-and-remote-plan.md`](docs/environments-and-remote-plan.md) remains a reviewed
+design, not an executable plan. Promote one milestone at a time into `plans/` with current file
+paths, invariants, focused verification, cleanup instructions, and STOP conditions. Do not implement
+directly from the strategy document.
 
-- Week 10: Worker and async ownership.
-  - Add a `WorkerManager` abstraction with service name, owner document id, priority, cancellation signal, memory budget, and stale-result policy.
-  - Move syntax, tree-sitter, minimap, and LSP requests behind explicit ownership and cancellation.
-  - Keep version guards, but add real cancellation where supported and budget enforcement where cancellation is cooperative.
-  - Gate: tests cover stale worker results, document close while work is pending, rapid edits, large-file syntax, and minimap invalidation.
+The promotion and implementation order is:
 
-- Week 11: Package and plugin boundaries.
-  - Collapse duplicate LSP-facing app APIs into one route through `LspService`.
-  - Move shared protocol types into contracts where they cross app/server/editor boundaries.
-  - Keep editor plugin host internal. Any plugin-facing API must use explicit capabilities, stable ids, lifecycle cleanup, and async phase boundaries.
-  - Gate: package dependency graph has no duplicate public LSP story and no app-level imports that bypass the chosen service boundary.
+1. **Environment M1 — runtime origin and one active environment.** No network exposure. Replace
+   import-time client/transport ownership and add deterministic teardown.
+2. **Environment M2 — identity and per-environment state.** Requires M1. Add server identity,
+   identity-drift refusal, scoped persistence, and one QueryClient per environment. No migration
+   layer; clear obsolete developer state.
+3. **Environment M3 — selection UI and honest local failure.** Requires M2 and plan 062 so titlebar
+   and palette actions use the typed command runtime. Still loopback-only.
+4. **Environment M4 — real sessions on loopback.** Requires M3. Pairing, revocation, short-lived WS
+   credentials, rate limiting, fd-3 desktop bootstrap, and credential-log hygiene move together as
+   one security boundary.
+5. **Environment M5 — trusted-network remote access.** Requires M4. Relax loopback only behind
+   explicit session-backed opt-in and TLS or a trusted mesh. Plaintext non-loopback access is a hard
+   refusal.
 
-- Week 12: Hardening, deletion, and acceptance.
-  - Delete compatibility shims for old per-tab document sessions, old dirty sets, timing-based sync fallbacks, and obsolete command/focus paths.
-  - Run full validation, large-file manual smoke tests, and regression scenarios from Week 1.
-  - Produce final architecture notes documenting ownership, state transitions, sync protocol, and command/focus model.
-  - Gate: branch is mergeable with no known correctness regressions in core editor workflows.
+Environment M1–M2 overlap the global client, query, and persistence seams used by plans 060–061;
+serialize their implementation with those plans. M4–M5 form one security chain and must not be
+split into independently deployable half-states. Environment M6 cross-environment simultaneous
+reads is deferred until repeated product demand proves it necessary; do not add scoped-ref or
+multi-origin compatibility machinery now.
 
-## Test Plan
+## Verification boundaries
 
-- Run after every milestone: `bun run typecheck`, `bun run test`, plus targeted package tests for web, server, and editor.
-- Add service-level tests for document ownership, file sync state transitions, command dispatch, focus transitions, persistence hydration, and worker cancellation.
-- Add race tests with fake timers and controlled promises for save vs external edit, watcher event ordering, stale worker responses, tab close during save, and conflict resolution.
-- Add integration tests for core workflows: open file, edit, save, reopen, split pane, same file in two tabs, search result open, LSP hover/definition, external delete/recreate, dirty close.
-- Keep performance checks as acceptance gates, not the main driver: large file open, rapid typing, syntax update latency, minimap update latency, search buffer responsiveness.
+- **Platform-only:** verify the narrow Platform tests/typechecks named by the active plan. Plan 056
+  stays inside this boundary.
+- **Platform + Editor lockstep:** plans 060, 061, 063, 057, and any plan-064 path that changes Editor
+  require focused checks and diff review in both worktrees. Neither repository's half is complete
+  alone.
+- **`ghostty-webgpu`:** run its package gates in that repository. Plan 055 additionally requires the
+  physical acceptance record and a Platform documentation/index closeout.
+- **Environment M1–M3:** verify with two isolated loopback servers and distinct databases. No test
+  or demo may bind non-loopback before M5.
+- **Environment M4–M5:** treat auth, pairing, revocation, Origin enforcement, TLS/mesh refusal,
+  secret storage, and log redaction as one end-to-end security boundary.
+- Preserve pre-existing dirty work in every linked worktree. Use baseline deltas and the narrowest
+  checks that can catch a plausible regression; never use a bare root test count as completion proof.
 
-## Assumptions
+## Promotion, rewrite, defer, and deletion decisions
 
-- Existing dirty worktree changes are user-owned and must not be reverted.
-- The implementation happens on a feature branch where temporary breakage is allowed between milestones.
-- React 19, Vite, Bun, TanStack Query, Zustand, and the existing editor packages remain in use; their responsibilities change rather than being replaced wholesale.
-- The 12-week plan prioritizes correctness and ownership over UI polish or feature expansion.
-- Public extension/plugin support is not promised in this overhaul; plugin APIs remain internal unless explicitly redesigned.
+- **Deleted:** completed plan 038 and superseded plan 058.
+- **Close and delete after physical evidence:** plan 055.
+- **Rewrite before execution:** plans 059, 056, 060, and 061 need drift reconciliation; plans 062,
+  063, and 064 already encode their current architectural ownership but still require normal drift
+  checks.
+- **Promote:** environment milestones M1–M5, one executable plan at a time.
+- **Deferred:** environment M6 and all compatibility work for simultaneous origins or obsolete
+  per-tab/active-editor/one-server architecture.
+- **Package-blocked:** `ghostty-webgpu` plan 008 until an exact native `clear()` contract exists;
+  plans 009–015 remain downstream.

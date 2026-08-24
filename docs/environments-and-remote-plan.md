@@ -1,5 +1,11 @@
 # Environments and Remote Access — Implementation Plan
 
+> **STATUS: REVIEWED STRATEGY; NOT EXECUTABLE (reconciled 2026-08-24).** None of M1–M5 has landed:
+> `serverUrl` is still an import-time constant, the client has no environment registry or scoped
+> storage, and the silent-clean-close authorization heuristic still exists. Root [`PLAN.md`](../PLAN.md)
+> owns cross-project order. Promote M1–M5 one at a time into `plans/` before implementation; M6 is
+> explicitly deferred. Do not add compatibility machinery for simultaneous origins.
+
 ## 0. Skeptic's preface: what this actually buys us
 
 The reference built environments for a chat client. We are an editor, a workbench, a terminal, an LSP host, a git client, and a chat client. That difference cuts both ways: the prize is bigger and so is the bill.
@@ -348,7 +354,9 @@ Three jobs, three homes — the same split the reference gets right (`Connection
 
 ## 6. Milestones
 
-Each is independently shippable. Nothing touches the network before M5.
+Each is independently verifiable, but the sequence is strict. Nothing touches the network before M5.
+These sections are design inputs, not executable handoff plans; promotion into `plans/` must refresh
+paths, ownership, focused checks, cleanup instructions, and STOP conditions against live source.
 
 ### M1 — Runtime origin, one environment at a time
 

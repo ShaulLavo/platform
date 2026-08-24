@@ -1,5 +1,9 @@
 > [!IMPORTANT]
-> **STATUS: 🟢 CURRENT (written 2026-08-10).** Living plan. Companion analysis: [editor-parity-gap-matrix.md](editor-parity-gap-matrix.md) — every non-have row there is assigned to a wave here. The beyond-parity vision layer lives in [editor-1000-parity-plan.md](editor-1000-parity-plan.md) (this plan is its dimension D1). Supersedes the stale sections of `git-feature-comparison.md`, `command-palette-vscode-parity-backlog.md`, and `vscode-keymap-development.md` where they disagree (corrections listed in the matrix).
+> **STATUS: 🟢 CURRENT (reconciled 2026-08-24).** Living product roadmap, not an executable plan.
+> E0 is complete and E1 is partially landed. Root [`PLAN.md`](../PLAN.md) is the only execution
+> scheduler; linked files under `plans/` are the executable handoffs. Companion analysis:
+> [editor-parity-gap-matrix.md](editor-parity-gap-matrix.md). The beyond-parity vision layer lives in
+> [editor-1000-parity-plan.md](editor-1000-parity-plan.md) (this plan is its dimension D1).
 
 # Editor Mode Parity Plan — VS Code / NeuralInverse / Athas
 
@@ -24,26 +28,29 @@ Scoreboard after a verified sweep of 448 features: **80 have · 109 partial · 2
 
 - **The server is ahead of the client.** The native TS session already answers signatureHelp, rename, codeAction, documentSymbol; the stdio proxy passes any LSP method through; the git service has applyPatch, branches, worktrees, file-at-ref with no UI consumers. Many "missing" features are client-UI-plus-wiring, not full-stack builds.
 - **The engine has narrow ready seams, not a generic surface host.** Injected rows, inline replacements, gutters, highlighters, and decorations cover their specific text/paint jobs. The broad block/zone system was removed and is not a compatibility target. Any floating React product surface starts with a named-consumer composition gate; [plan 064](../plans/064-anchored-diagnostic-peek.md) applies that rule to one diagnostic peek. Data is even pre-computed in places (tree-sitter worker already ships bracket ranges with zero consumers).
-- **PLAN.md is the spine.** The 12-week state-correctness roadmap (WorkspaceDocumentService, FileSyncService, CommandBus, FocusService, LspService) is a prerequisite, not a competitor: splits, chords, when-clauses, changesets, workspace problems all land **on those seams**. Do not build parity features on the current React-effect wiring that PLAN.md is scheduled to delete.
+- **PLAN.md is the spine.** The reconciled cross-project roadmap schedules the remaining CommandBus,
+  FocusService, WorkspaceEdit, keymap, and diagnostic-surface work. The document/file-sync foundation
+  and multi-server-per-document LSP are already live. Do not rebuild their obsolete ownership or add
+  parity features on React-effect wiring scheduled for removal.
 
 ## Shared substrates and consumer gates
 
 The critic pass found the same infrastructure hiding inside dozens of feature requests. Each shared substrate is listed in the wave where it lands; violating that list means five features each half-build the same thing. S3 keeps its roadmap number for continuity but is the exception: it is one consumer decision and implementation, not a build-once surface promise.
 
-| #   | Substrate                                                                                                          | Unlocks                                                                                                                             | Wave |
-| --- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | ---- |
-| S1  | Command registry with metadata (title, category, when, keybinding) on the PLAN.md CommandBus                       | real palette, keybindings editor, menus, chords                                                                                     | E3   |
-| S2  | Status bar strip (data source already exists)                                                                      | 6 domains' indicators: cursor/indent/encoding/EOL/language/branch/sync/problems/LSP/debug/chat                                      | E3   |
-| S3  | [Diagnostic-peek composition gate and selected implementation](../plans/064-anchored-diagnostic-peek.md)           | One E2 marker peek; ordinary composition is S, managed geometry only after a proved gate failure is M; no later surface inherits it | E2   |
-| S4  | Language configuration engine (per-language: pairs, onEnter, word patterns; comment tokens exist)                  | auto-close/type-over/surround, auto-indent, word-part ops                                                                           | E1   |
-| S5  | WorkspaceEdit applicator + Refactor Preview (honors dirty buffers + unopened files, one undo unit, resource edits) | rename, code actions, organize imports, fix-on-save, AI changesets, search-replace preview, update-imports-on-move                  | E2   |
-| S6  | Inline-suggestion (ghost text) surface in the engine                                                               | AI completions, FIM, NES, word-based fallback                                                                                       | E7   |
-| S7  | Editor groups model (split tree over shared buffers — EditorViewSession + panes package exist)                     | splits/grid, open-to-side everywhere, side-by-side terminal-in-editor, merge editor layout                                          | E3   |
-| S8  | Workspace-wide problems aggregation store                                                                          | Problems panel, tree/tab badges, problem matchers output, Checks-style views                                                        | E6   |
-| S9  | Git log/graph server endpoint                                                                                      | graph view, timeline, blame, commit details, incoming/outgoing                                                                      | E5   |
-| S10 | Quick-input framework + palette provider registry                                                                  | all pickers, multi-step wizards, git/task/debug quick-picks, MRU                                                                    | E3   |
-| S11 | Non-text document surface + editor associations ("Open With")                                                      | image/PDF/hex/CSV viewers, simple browser, database client, notebook (if ever)                                                      | E4   |
-| S12 | LSP client capability breadth + multi-server-per-document (the PLAN.md LspService)                                 | semantic tokens, resolve, snippets, eslint+ts concurrently, pull diagnostics                                                        | E2   |
+| #   | Substrate                                                                                                    | Unlocks                                                                                                                             | Wave |
+| --- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | ---- |
+| S1  | [Typed CommandBus and FocusService cutover](../plans/062-typed-command-focus-cutover.md)                     | real palette, keybindings editor, menus, chords                                                                                     | E3   |
+| S2  | Status bar strip (data source already exists)                                                                | 6 domains' indicators: cursor/indent/encoding/EOL/language/branch/sync/problems/LSP/debug/chat                                      | E3   |
+| S3  | [Diagnostic-peek composition gate and selected implementation](../plans/064-anchored-diagnostic-peek.md)     | One E2 marker peek; ordinary composition is S, managed geometry only after a proved gate failure is M; no later surface inherits it | E2   |
+| S4  | Language configuration engine (per-language: pairs, onEnter, word patterns; comment tokens exist)            | auto-close/type-over/surround, auto-indent, word-part ops                                                                           | E1   |
+| S5  | [Lockstep WorkspaceEdit applicator](../plans/063-lockstep-workspace-edit-transactions.md) + Refactor Preview | rename, code actions, organize imports, fix-on-save, AI changesets, search-replace preview, update-imports-on-move                  | E2   |
+| S6  | Inline-suggestion (ghost text) surface in the engine                                                         | AI completions, FIM, NES, word-based fallback                                                                                       | E7   |
+| S7  | Editor groups model (split tree over shared buffers — EditorViewSession + panes package exist)               | splits/grid, open-to-side everywhere, side-by-side terminal-in-editor, merge editor layout                                          | E3   |
+| S8  | Workspace-wide problems aggregation store                                                                    | Problems panel, tree/tab badges, problem matchers output, Checks-style views                                                        | E6   |
+| S9  | Git log/graph server endpoint                                                                                | graph view, timeline, blame, commit details, incoming/outgoing                                                                      | E5   |
+| S10 | Quick-input framework + palette provider registry                                                            | all pickers, multi-step wizards, git/task/debug quick-picks, MRU                                                                    | E3   |
+| S11 | Non-text document surface + editor associations ("Open With")                                                | image/PDF/hex/CSV viewers, simple browser, database client, notebook (if ever)                                                      | E4   |
+| S12 | LSP capability breadth on the landed multi-server-per-document runtime                                       | semantic tokens, resolve, snippets, eslint+ts concurrently, pull diagnostics                                                        | E2   |
 
 ## The waves
 
@@ -93,7 +100,9 @@ Substrate S4 first, then:
 
 ### E2 — Language intelligence completion
 
-Run S3's go/no-go before the marker peek; build S5 and S12 for the broader wave — S12 means landing the PLAN.md LspService with multi-server-per-document (eslint + ts concurrently, provider merging). Then:
+Run S3's go/no-go before the marker peek and build S5 for the broader wave. Reuse the landed
+multi-server-per-document runtime for S12 capability breadth; do not restore one-server ownership.
+Then:
 
 - Formatting: document/range commands, default-formatter pick, **format-on-save + save participants** (trim trailing, final newline — the "file hygiene" items), format-on-type (M total)
 - Rename with prepare + inline widget + multi-file preview via S5 (L→M once S5 exists)

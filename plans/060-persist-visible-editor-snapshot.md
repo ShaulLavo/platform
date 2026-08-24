@@ -8,7 +8,7 @@
 > API/benchmark rather than this deleted plan, following the repository's cleanup policy. Because
 > root `PLAN.md` is the authoritative scheduler, also close/remove its 060 execution item if one was
 > added before implementation and leave 061 as the next item in the approved 060 -> 061 sequence,
-> subject to the recorded Plan 058 command-boundary ordering.
+> subject to the recorded Plan 062 command-boundary ordering.
 >
 > **Platform drift check (run first)**:
 >
@@ -1157,7 +1157,7 @@ viewport mocking helpers in `test/pluginLifecycle.test.ts`, covering:
 - [ ] This plan is deleted, its `plans/README.md` row is removed, and Plan 061's row/note now refer
       to the landed paint/benchmark contract rather than deleted Plan 060.
 - [ ] Root `PLAN.md`, if it scheduled the approved sequence, closes 060 and leaves 061 next within
-      that sequence, subject to Plan 058 ordering.
+      that sequence, subject to Plan 062 ordering.
 
 ## STOP conditions
 
