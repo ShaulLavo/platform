@@ -11,6 +11,7 @@ import { SettingsStore } from '../store'
 
 const stores: SettingsStore[] = []
 const roots: string[] = []
+let writeSequence = 0
 
 async function createSettings() {
   const root = await mkdtemp(path.join(tmpdir(), 'settings-store-'))
@@ -32,8 +33,16 @@ function instanceWithToken(value: string) {
   }
 }
 
-const writeInstances = (store: SettingsStore, instances: unknown) =>
-  store.write({ edits: [{ key: 'providers.instances', value: instances, target: 'user' }] })
+const writeInstances = (store: SettingsStore, instances: unknown) => {
+  const { revision } = store.rawLayer('user')
+  writeSequence += 1
+  return store.writeRaw({
+    baseRevision: revision,
+    target: 'user',
+    text: `${JSON.stringify({ 'providers.instances': instances }, null, 2)}\n`,
+    writeId: `provider-test-${writeSequence}`,
+  })
+}
 
 /** The one variable `instanceWithToken` sets, wherever that list came from. */
 function environmentValue(instances: unknown): unknown {
@@ -53,7 +62,7 @@ describe('provider instances from settings', () => {
   it('tells a subscriber about every write, so a saved list is not inert', async () => {
     const settings = await createSettings()
     const seen: number[] = []
-    settings.onChange((next) => seen.push(next.values['providers.instances'].length))
+    settings.onChange((event) => seen.push(event.snapshot.values['providers.instances'].length))
 
     await writeInstances(settings, [{ driverKind: 'codex', providerInstanceId: 'codex-work' }])
 
@@ -169,14 +178,26 @@ describe('provider secrets stay out of the document', () => {
     expect(environmentValue(settings.providerInstancesForSpawnSync())).toBe('sk-first')
   })
 
-  it('clears the secret when the value is emptied', async () => {
+  it('preserves a stored secret when a semantic toggle edits only enabled', async () => {
     const settings = await createSettings()
     await writeInstances(settings, [instanceWithToken('sk-live-abc123')])
-    await writeInstances(settings, [instanceWithToken('')])
+    const instanceId = settings.snapshot().values['providers.instances'][0]?.providerInstanceId
+    expect(instanceId).toBe('codex-work')
+    await settings.write({
+      mutationId: 'toggle-provider',
+      operations: [
+        {
+          enabled: false,
+          kind: 'provider.setEnabled',
+          providerInstanceId: instanceId!,
+        },
+      ],
+      target: 'user',
+    })
 
-    expect(settings.snapshot().values['providers.instances'][0]?.environment[0]?.value).toBe('')
+    expect(settings.snapshot().values['providers.instances'][0]?.enabled).toBe(false)
     const forSpawn = await settings.providerInstancesForSpawn()
-    expect(forSpawn[0]?.environment[0]?.value).toBe('')
+    expect(forSpawn[0]?.environment[0]?.value).toBe('sk-live-abc123')
   })
 })
 

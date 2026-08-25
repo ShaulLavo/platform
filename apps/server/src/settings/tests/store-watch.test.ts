@@ -1,14 +1,55 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { SettingsSnapshot } from '@workspace/contracts'
+import type { WideEvent } from 'evlog'
+import { readFsLogs } from 'evlog/fs'
 import { afterEach, describe, expect, it } from 'vitest'
-import { SettingsFileLayer } from '../layer'
+import {
+  flushObservability,
+  initializeObservability,
+  resetObservabilityForTests,
+} from '../../observability/runtime'
+import { SettingsFileLayer, type SettingsLayerReader } from '../layer'
 import { SettingsStore } from '../store'
+import { settingsErrors } from '../structured-errors'
 
 const stores: SettingsStore[] = []
 const layers: SettingsFileLayer[] = []
 const roots: string[] = []
+let mutationSequence = 0
+
+type Deferred = {
+  readonly promise: Promise<void>
+  readonly resolve: () => void
+}
+
+function deferred(): Deferred {
+  let resolve = () => {}
+  const promise = new Promise<void>((done) => {
+    resolve = done
+  })
+
+  return { promise, resolve }
+}
+
+function setKeybinding(store: SettingsStore, command: string, keys: string | null) {
+  mutationSequence += 1
+  return store.write({
+    mutationId: `store-watch-${mutationSequence}`,
+    operations: [{ command, keys, kind: 'keybinding.set' }],
+    target: 'user',
+  })
+}
+
+function setModelOrderEmpty(store: SettingsStore) {
+  mutationSequence += 1
+  return store.write({
+    mutationId: `store-watch-${mutationSequence}`,
+    operations: [{ kind: 'model.setOrder', order: [] }],
+    target: 'user',
+  })
+}
 
 async function tempRoot() {
   const root = await mkdtemp(path.join(tmpdir(), 'settings-watch-'))
@@ -19,9 +60,14 @@ async function tempRoot() {
 
 function createStore(
   root: string,
-  options: { watch?: boolean; policy?: Record<string, unknown> } = {},
+  options: {
+    layerReader?: SettingsLayerReader
+    watch?: boolean
+    policy?: Record<string, unknown>
+  } = {},
 ) {
   const store = new SettingsStore({
+    layerReader: options.layerReader,
     policy: options.policy,
     userFilePath: path.join(root, 'settings.json'),
     watch: options.watch ?? true,
@@ -47,10 +93,10 @@ function nextChange(store: SettingsStore, timeoutMs = 10_000): Promise<SettingsS
       stop()
       reject(new Error('settings store never reported a change'))
     }, timeoutMs)
-    const stop = store.onChange((snapshot) => {
+    const stop = store.onChange((event) => {
       clearTimeout(timer)
       stop()
-      resolve(snapshot)
+      resolve(event.snapshot)
     })
   })
 }
@@ -58,6 +104,7 @@ function nextChange(store: SettingsStore, timeoutMs = 10_000): Promise<SettingsS
 afterEach(async () => {
   for (const store of stores.splice(0)) store.close()
   for (const layer of layers.splice(0)) layer.close()
+  await resetObservabilityForTests()
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
 })
 
@@ -189,6 +236,49 @@ describe('external edits', () => {
     expect(snapshot.values['keybindings.overrides']).toEqual({
       'workspace.saveFile': 'Mod+Alt+S',
     })
+    expect(snapshot.serverVersion.sequence).toBe(1)
+  })
+
+  it('queues a newer watcher read behind an older read already in flight', async () => {
+    const root = await tempRoot()
+    const file = path.join(root, 'settings.json')
+    await writeFile(file, '{ "editor.fontSize": 18 }\n', 'utf8')
+    const firstStarted = deferred()
+    const releaseFirst = deferred()
+    const secondStarted = deferred()
+    const releaseSecond = deferred()
+    let reads = 0
+    const store = createStore(root, {
+      layerReader: async (_context, read) => {
+        reads += 1
+        const captured = await read()
+        if (reads === 1) {
+          firstStarted.resolve()
+          await releaseFirst.promise
+        }
+        if (reads === 2) {
+          secondStarted.resolve()
+          await releaseSecond.promise
+        }
+
+        return captured
+      },
+    })
+    const seen: number[] = []
+    store.onChange((event) => seen.push(event.snapshot.values['editor.fontSize']))
+
+    await writeFile(file, '{ "editor.fontSize": 19 }\n', 'utf8')
+    await firstStarted.promise
+    await writeFile(file, '{ "editor.fontSize": 20 }\n', 'utf8')
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    releaseFirst.resolve()
+    await secondStarted.promise
+    const changed = nextChange(store)
+    releaseSecond.resolve()
+    const snapshot = await changed
+
+    expect(snapshot.values['editor.fontSize']).toBe(20)
+    expect(seen).toEqual([20])
   })
 
   it('delivers an edit that landed between the read and the watcher', async () => {
@@ -251,9 +341,7 @@ describe('external edits', () => {
     const filePath = path.join(root, 'settings.json')
     const store = createStore(root)
 
-    await store.write({
-      edits: [{ key: 'keybindings.overrides', target: 'user', value: { 'a.one': 'Mod+1' } }],
-    })
+    await setKeybinding(store, 'a.one', 'Mod+1')
     const written = await readFile(filePath, 'utf8')
 
     const away = nextChange(store)
@@ -274,16 +362,90 @@ describe('external edits', () => {
     const root = await tempRoot()
     const store = createStore(root)
     const seen: number[] = []
-    store.onChange(() => seen.push(1))
+    store.onChange((event) => seen.push(event.snapshot.serverVersion.sequence))
 
-    await store.write({
-      edits: [{ key: 'keybindings.overrides', target: 'user', value: { 'a.one': 'Mod+1' } }],
-    })
+    await setKeybinding(store, 'a.one', 'Mod+1')
     await new Promise((resolve) => setTimeout(resolve, 400))
 
     // Exactly one: the write itself. The watch event its own rename produced
     // must not arrive as a second, spurious change.
     expect(seen).toEqual([1])
+  })
+
+  it('rearms a leaf symlink watcher after a canonical write replaces its target', async () => {
+    const root = await tempRoot()
+    const real = path.join(root, 'real.json')
+    const alias = path.join(root, 'alias.json')
+    await writeFile(real, '{ "editor.fontSize": 18 }\n', 'utf8')
+    await symlink('real.json', alias, 'file')
+    const store = new SettingsStore({
+      secretsFilePath: path.join(root, 'secrets.json'),
+      userFilePath: alias,
+    })
+    stores.push(store)
+
+    await store.write({
+      mutationId: 'leaf-symlink-watcher-write',
+      operations: [{ key: 'editor.lineHeight', kind: 'set', value: 30 }],
+      target: 'user',
+    })
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    const seen: number[] = []
+    store.onChange((event) => seen.push(event.snapshot.values['editor.fontSize']))
+    const changed = nextChange(store)
+
+    const externalStage = path.join(root, 'external-settings.stage')
+    await writeFile(externalStage, '{ "editor.fontSize": 27 }\n', 'utf8')
+    await rename(externalStage, real)
+
+    expect((await changed).values['editor.fontSize']).toBe(27)
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    expect(seen).toEqual([27])
+  })
+})
+
+describe('watcher read failures', () => {
+  it('records one warning and retries a transient read through to an update', async () => {
+    const root = await tempRoot()
+    const logDir = await tempRoot()
+    const file = path.join(root, 'settings.json')
+    await writeFile(file, '{ "editor.fontSize": 18 }\n', 'utf8')
+    let readAttempts = 0
+    initializeObservability({
+      OBSERVABILITY_CONSOLE: 'false',
+      OBSERVABILITY_DIR: logDir,
+      OBSERVABILITY_ENABLED: 'true',
+      OBSERVABILITY_INFO_SAMPLE_RATE: '100',
+      NODE_ENV: 'production',
+    })
+    const store = createStore(root, {
+      layerReader: async (_context, read) => {
+        readAttempts += 1
+        if (readAttempts === 1) throw settingsErrors.WRITE_CONTENDED({})
+
+        return read()
+      },
+    })
+    const changed = nextChange(store)
+    await writeFile(file, '{ "editor.fontSize": 24 }\n', 'utf8')
+
+    expect((await changed).values['editor.fontSize']).toBe(24)
+    expect(readAttempts).toBeGreaterThanOrEqual(2)
+    await flushObservability()
+    const warnings: WideEvent[] = []
+    for await (const event of readFsLogs({ dir: logDir })) {
+      if (event.action === 'settings.layer.reload_failed') warnings.push(event)
+    }
+
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toMatchObject({
+      area: 'settings',
+      error: { code: expect.any(String), name: expect.any(String) },
+      level: 'warn',
+      operation: 'watcher-read',
+      settings: { layer: 'user' },
+    })
+    expect(JSON.stringify(warnings)).not.toContain(root)
   })
 })
 
@@ -297,9 +459,9 @@ describe('a malformed file', () => {
     // whatever keybindings it can get.
     expect(store.snapshot().values['keybindings.overrides']).toEqual({})
 
-    await expect(
-      store.write({ edits: [{ key: 'models.hidden', target: 'user', value: [] }] }),
-    ).rejects.toMatchObject({ code: 'settings.FILE_MALFORMED' })
+    await expect(setModelOrderEmpty(store)).rejects.toMatchObject({
+      code: 'settings.FILE_MALFORMED',
+    })
   })
 
   it('treats an empty file as an empty document and still writes', async () => {
@@ -309,9 +471,7 @@ describe('a malformed file', () => {
 
     // The most common outcome of a crashed editor save. Treating it as a parse
     // error would deadlock every write with no way back from inside the app.
-    await expect(
-      store.write({ edits: [{ key: 'models.hidden', target: 'user', value: [] }] }),
-    ).resolves.toBeDefined()
+    await expect(setModelOrderEmpty(store)).resolves.toBeDefined()
   })
 })
 
@@ -326,9 +486,9 @@ describe('the policy layer', () => {
     expect(store.snapshot().values['keybindings.overrides']).toEqual({ 'a.locked': 'Mod+L' })
     // Accepting the write and then resolving back to the policy value would look
     // like a silent failure, which is worse than a refusal.
-    await expect(
-      store.write({ edits: [{ key: 'keybindings.overrides', target: 'user', value: {} }] }),
-    ).rejects.toMatchObject({ code: 'settings.POLICY_CONTROLLED' })
+    await expect(setKeybinding(store, 'a.locked', 'Mod+L')).rejects.toMatchObject({
+      code: 'settings.POLICY_CONTROLLED',
+    })
   })
 })
 
@@ -337,9 +497,7 @@ describe('the settings file itself', () => {
     const root = await tempRoot()
     const store = createStore(root, { watch: false })
 
-    await store.write({
-      edits: [{ key: 'keybindings.overrides', target: 'user', value: { 'a.one': 'Mod+1' } }],
-    })
+    await setKeybinding(store, 'a.one', 'Mod+1')
 
     const text = await readFile(path.join(root, 'settings.json'), 'utf8')
     expect(text).toContain('"keybindings.overrides"')

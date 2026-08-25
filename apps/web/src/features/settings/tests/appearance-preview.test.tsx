@@ -1,0 +1,88 @@
+import { act, renderHook } from '@testing-library/react'
+import type { ReactNode } from 'react'
+
+import { expect, test } from '../../../../test/fixtures'
+import { settingsSnapshot } from '../../../../test/factories/settings'
+import { AppProviders, createTestQueryClient, seedBootMirrorTheme } from '../../../../test/render'
+import { useTheme } from '@/features/settings/hooks/use-theme'
+import {
+  resetSettingsIntentStore,
+  useSettingsIntentStore,
+} from '@/features/settings/state/intent-store'
+import { resetSettingsSnapshotAdmission } from '@/features/settings/state/snapshot-admission'
+import { settingsKeys } from '@/features/settings/utils/query-keys'
+
+test('theme preview is transient and writes no settings intent', () => {
+  const queryClient = createTestQueryClient()
+  queryClient.setQueryData(
+    settingsKeys.document(),
+    settingsSnapshot({
+      userRaw: { 'workbench.colorTheme': 'light' },
+      values: { 'workbench.colorTheme': 'light' },
+    }),
+  )
+  resetSettingsIntentStore()
+  const theme = renderHook(() => useTheme(), { wrapper: wrapper(queryClient) })
+
+  act(() => theme.result.current.previewTheme('dark'))
+  expect(document.documentElement.classList.contains('dark')).toBe(true)
+  expect(theme.result.current.theme).toBe('light')
+  expect(useSettingsIntentStore.getState().active).toEqual([])
+
+  act(() => theme.result.current.clearThemePreview())
+  expect(document.documentElement.classList.contains('light')).toBe(true)
+  expect(useSettingsIntentStore.getState().active).toEqual([])
+
+  theme.unmount()
+  resetSettingsSnapshotAdmission(queryClient)
+  resetSettingsIntentStore()
+  queryClient.clear()
+})
+
+test('committing the effective theme is a noop that clears hover preview', () => {
+  const queryClient = createTestQueryClient()
+  queryClient.setQueryData(
+    settingsKeys.document(),
+    settingsSnapshot({
+      userRaw: { 'workbench.colorTheme': 'light' },
+      values: { 'workbench.colorTheme': 'light' },
+    }),
+  )
+  resetSettingsIntentStore()
+  const theme = renderHook(() => useTheme(), { wrapper: wrapper(queryClient) })
+
+  act(() => theme.result.current.previewTheme('dark'))
+  let submission
+  act(() => {
+    submission = theme.result.current.setTheme('light')
+  })
+
+  expect(submission).toEqual({ kind: 'noop' })
+  expect(document.documentElement.classList.contains('light')).toBe(true)
+  expect(useSettingsIntentStore.getState().active).toEqual([])
+
+  theme.unmount()
+  resetSettingsSnapshotAdmission(queryClient)
+  resetSettingsIntentStore()
+  queryClient.clear()
+})
+
+test('before confirmed settings arrive, the provider keeps the seeded boot theme', () => {
+  const queryClient = createTestQueryClient()
+  seedBootMirrorTheme('dark')
+  const theme = renderHook(() => useTheme(), { wrapper: wrapper(queryClient) })
+
+  expect(theme.result.current.theme).toBe('dark')
+  expect(theme.result.current.resolvedTheme).toBe('dark')
+  expect(document.documentElement.classList.contains('dark')).toBe(true)
+
+  theme.unmount()
+  resetSettingsSnapshotAdmission(queryClient)
+  queryClient.clear()
+})
+
+function wrapper(queryClient: ReturnType<typeof createTestQueryClient>) {
+  return ({ children }: { readonly children: ReactNode }) => (
+    <AppProviders queryClient={queryClient}>{children}</AppProviders>
+  )
+}

@@ -31,9 +31,13 @@ export type TestServer = {
 // Boots a real server against a throwaway workspace. No network, no mocks: the
 // app routes, valibot contracts, and filesystem are the genuine article.
 export async function makeTestServer({
+  filesystemWatch = false,
   providerAdapter = new MockProviderAdapter(),
+  settingsWatch = false,
 }: {
+  filesystemWatch?: boolean
   providerAdapter?: MockProviderAdapter
+  settingsWatch?: boolean
 } = {}): Promise<TestServer> {
   const root = await mkdtemp(path.join(tmpdir(), 'web-itest-'))
   const database = createMetadataDatabase({ databasePath: ':memory:' })
@@ -50,8 +54,8 @@ export async function makeTestServer({
       // read the developer's own machine, and answer differently per checkout.
       providerAdapterRegistry: new ProviderAdapterRegistry([providerAdapter]),
     },
-    settings: testSettingsOptions(root),
-    watch: false,
+    settings: testSettingsOptions(root, { watch: settingsWatch }),
+    watch: filesystemWatch,
     workspaceRoot: root,
   })
 

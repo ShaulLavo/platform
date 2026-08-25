@@ -3,12 +3,11 @@ import { CommandPalette } from '@/components/command-palette'
 import { useEditorTabActions } from '@/features/editor/hooks/use-editor-tab-actions'
 import { useMenuCommand } from '@/features/menus/providers/command-context'
 import { SettingsDialog } from '@/features/settings/components/dialog'
-import { useSettings } from '@/features/settings/hooks/use-settings'
+import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 import { useSettingsStream } from '@/features/settings/hooks/use-settings-stream'
 import { resolvedPlatformKeyBindings } from '@/keymap/active-bindings'
 import { usePlatformCommandDispatch } from '@/keymap/commands'
 import type { PlatformKeyBinding } from '@/keymap/types'
-import { DEFAULT_SETTING_VALUES } from '@workspace/contracts'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
@@ -56,9 +55,7 @@ export function AppCommandSurface({ bindings }: AppCommandSurfaceProps) {
   // One subscription for the whole app: every settings consumer reads the same
   // query, so the stream only has to land in the cache once.
   useSettingsStream()
-  const overrides =
-    useSettings().data?.values['keybindings.overrides'] ??
-    DEFAULT_SETTING_VALUES['keybindings.overrides']
+  const overrides = useSettingValue('keybindings.overrides')
   // Stable identity: the menu store and the keymap effect both diff by reference.
   const keyBindings = useMemo(
     () => resolvedPlatformKeyBindings(bindings, overrides),

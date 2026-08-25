@@ -1,6 +1,6 @@
 import { DEFAULT_SETTING_VALUES, type SettingId, type SettingsValues } from '@workspace/contracts'
 
-import { useSettings } from './use-settings'
+import { useSettingsProjection } from '@/features/settings/hooks/use-settings-projection'
 
 /**
  * One setting, typed, with the registry default until the snapshot lands.
@@ -9,7 +9,7 @@ import { useSettings } from './use-settings'
  * index the raw document or know the query key.
  */
 export function useSettingValue<K extends SettingId>(key: K): SettingsValues[K] {
-  const settings = useSettings()
+  const projection = useSettingsProjection()
 
-  return settings.data?.values[key] ?? DEFAULT_SETTING_VALUES[key]
+  return projection?.values[key] ?? DEFAULT_SETTING_VALUES[key]
 }

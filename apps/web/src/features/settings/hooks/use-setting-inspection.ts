@@ -8,10 +8,10 @@ import {
   type SettingInspection as SettingInspectionResult,
   type SettingScope,
   type SettingsLayerId,
-  type SettingsSnapshot,
 } from '@workspace/contracts'
 
-import type { SettingsScope } from '../state/scope-store'
+import type { SettingsProjection } from '@/features/settings/hooks/use-settings-projection'
+import type { SettingsScope } from '@/features/settings/state/scope-store'
 
 export type SettingInspection = {
   /**
@@ -49,7 +49,7 @@ export type SettingInspection = {
  */
 export function settingInspection(
   id: SettingId,
-  snapshot: SettingsSnapshot,
+  snapshot: SettingsProjection,
   scope: SettingsScope,
 ): SettingInspection {
   const descriptor = descriptorFor(id)

@@ -1,4 +1,4 @@
-import type { Theme } from '@/components/theme-context'
+import type { Theme } from '@/features/settings/providers/theme-context'
 import type { TreeEntry } from '@/lib/file-system-types'
 import type { PlatformCommandDispatch } from '@/keymap/use-app-keymap'
 import type { PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'

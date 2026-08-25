@@ -3,7 +3,8 @@ import type { Icon } from '@phosphor-icons/react'
 import type { RegisterableHotkey } from '@tanstack/react-hotkeys'
 import type { QueryClient } from '@tanstack/react-query'
 
-import type { Theme } from '@/components/theme-context'
+import type { Theme } from '@/features/settings/providers/theme-context'
+import type { SettingsSubmission } from '@/features/settings/state/intent-store'
 import type { FocusArea } from '@/features/workspace/providers/focus-state'
 import type { TreeCommandKind } from '@/features/workspace/state/tree-command-store'
 import type { ChatModePanels } from '@/features/chat-mode/utils/panels'
@@ -60,7 +61,7 @@ export type WorkspaceCommandContext = {
   readonly setChatModePanels: (panels: ChatModePanels) => void
   readonly setDiffViewMode: (mode: EditorDiffViewMode) => void
   readonly setFocusArea: (area: FocusArea) => void
-  readonly setTheme: (theme: Theme) => void
+  readonly setTheme: (theme: Theme, initiator?: string) => SettingsSubmission
   readonly setUiMode: (mode: WorkspaceUiMode) => void
   readonly setWallpaperEnabled: (enabled: boolean) => void
   readonly setWorkbenchPanels: (panels: WorkbenchPanels) => void

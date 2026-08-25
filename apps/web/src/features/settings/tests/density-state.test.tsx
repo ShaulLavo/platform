@@ -106,7 +106,7 @@ function settingsSnapshot(density: SettingsValues['workbench.density']): Setting
   return {
     diagnostics: [],
     layers: [],
-    revision: '',
+    serverVersion: { epoch: 'density-test', sequence: density === 'compact' ? 1 : 2 },
     values: settingsValues(density),
   }
 }

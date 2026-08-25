@@ -11,9 +11,7 @@ import { useUnsavedWorkGuard } from '@/features/workspace/hooks/use-unsaved-work
 import { useAddressProjection } from '@/features/address/hooks/use-projection'
 import { useAddressRestore } from '@/features/address/hooks/use-restore'
 import { useWorkspaceCachePersistence } from '@/features/workspace/hooks/use-cache-persistence'
-import { DEFAULT_SETTING_VALUES } from '@workspace/contracts'
-
-import { useSettings } from '@/features/settings/hooks/use-settings'
+import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 import { resolvedPlatformKeyBindings } from '@/keymap/active-bindings'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
 import { editorKeymapLayersFromPlatform } from '@/keymap/editor-keymap'
@@ -28,9 +26,7 @@ export function AppRuntimeContent() {
   // settings panel wrote the override, the app keymap honoured it, and the
   // editor kept its own keymap from the defaults — so the row hid itself rather
   // than appear to work and do nothing.
-  const keybindingOverrides =
-    useSettings().data?.values['keybindings.overrides'] ??
-    DEFAULT_SETTING_VALUES['keybindings.overrides']
+  const keybindingOverrides = useSettingValue('keybindings.overrides')
   const editorKeymapLayers = useMemo(
     () =>
       editorKeymapLayersFromPlatform(

@@ -2,7 +2,7 @@ import { use, useCallback } from 'react'
 
 import { useFocus } from '@/features/workspace/providers/focus-state'
 import { TreeCommandsContext } from '@/features/workspace/providers/tree-commands-context'
-import { useTheme } from '@/components/theme-context'
+import { useTheme } from '@/features/settings/hooks/use-theme'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { useOpenFileAtRef } from '@/features/git/hooks/use-open-file-at-ref'
@@ -15,13 +15,12 @@ import {
 import { log } from '@/lib/client-logging'
 import { useQueryClient } from '@tanstack/react-query'
 
-import type { WorkspaceCommandContext } from './define-command'
-import { editorCommandIdFromPlatform } from './editor-keymap'
-import { platformCommand } from './table'
-import type { PlatformCommandId, WorkspaceCommandId } from './types'
-import type { PlatformCommandDispatch } from './use-app-keymap'
-import { DEFAULT_SETTING_VALUES } from '@workspace/contracts'
-import { useSettings } from '@/features/settings/hooks/use-settings'
+import type { WorkspaceCommandContext } from '@/keymap/define-command'
+import { editorCommandIdFromPlatform } from '@/keymap/editor-keymap'
+import { platformCommand } from '@/keymap/table'
+import type { PlatformCommandId, WorkspaceCommandId } from '@/keymap/types'
+import type { PlatformCommandDispatch } from '@/keymap/use-app-keymap'
+import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 import { useSettingsActions } from '@/features/settings/hooks/use-settings-actions'
 import { clientErrors } from '@/lib/structured-errors'
 
@@ -44,13 +43,9 @@ export function usePlatformCommandDispatch({
     })
   }
   const { setTheme } = useTheme()
-  const settings = useSettings()
   const { setSetting } = useSettingsActions()
-  const diffViewMode =
-    settings.data?.values['editor.diff.viewMode'] ?? DEFAULT_SETTING_VALUES['editor.diff.viewMode']
-  const wallpaperEnabled =
-    settings.data?.values['workbench.wallpaper.enabled'] ??
-    DEFAULT_SETTING_VALUES['workbench.wallpaper.enabled']
+  const diffViewMode = useSettingValue('editor.diff.viewMode')
+  const wallpaperEnabled = useSettingValue('workbench.wallpaper.enabled')
   const requestEditorFocus = useFocus((state) => state.requestEditorFocus)
   const dispatchEditorCommand = useFocus((state) => state.dispatchEditorCommand)
   const setFocusArea = useFocus((state) => state.setFocusArea)
@@ -95,11 +90,13 @@ export function usePlatformCommandDispatch({
         requestFileTreeCommand: treeCommands.request,
         rootPath: workspace.rootFolder?.path ?? null,
         setChatModePanels: workspace.setChatModePanels,
-        setDiffViewMode: (mode) => setSetting('editor.diff.viewMode', mode),
+        setDiffViewMode: (mode) =>
+          setSetting('editor.diff.viewMode', mode, undefined, workspaceCommand),
         setFocusArea,
-        setTheme,
+        setTheme: (theme) => setTheme(theme, workspaceCommand),
         setUiMode: workspace.setUiMode,
-        setWallpaperEnabled: (enabled) => setSetting('workbench.wallpaper.enabled', enabled),
+        setWallpaperEnabled: (enabled) =>
+          setSetting('workbench.wallpaper.enabled', enabled, undefined, workspaceCommand),
         setWorkbenchPanels: workspace.setWorkbenchPanels,
         showCommandPalette,
         showSettings,

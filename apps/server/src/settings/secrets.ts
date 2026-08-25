@@ -1,13 +1,5 @@
 import { isRecord, REDACTED_SETTINGS_VALUE } from '@workspace/contracts'
-import {
-  parseSettingsDocument,
-  readSettingsFile,
-  readSettingsFileSync,
-  writeSettingsFile,
-} from './json-document'
-
-/** Owner-only. This file holds API tokens and lives in the user's home directory. */
-const SECRETS_FILE_MODE = 0o600
+import { parseSettingsDocument, readSettingsFile, readSettingsFileSync } from './json-document'
 
 /**
  * Identifies one secret. Deliberately the same pair `restoreRedactedSecrets`
@@ -61,35 +53,28 @@ export class SecretStore {
     return secrets
   }
 
-  /** A `null` value deletes the entry; the file never keeps an emptied secret. */
-  async write(edits: ReadonlyMap<SecretRef, string | null>): Promise<void> {
-    if (edits.size === 0) return
-
-    const current = await this.read()
+  async prepare(edits: ReadonlyMap<SecretRef, string | null>): Promise<{
+    readonly changed: boolean
+    readonly expectedRevision: string | null
+    readonly text: string
+  }> {
+    const source = await readSettingsFile(this.filePath)
+    const current = this.toSecrets(source.text)
+    const next = new Map(current)
     for (const [ref, value] of edits) {
       if (value === null || value === '') {
-        current.delete(ref)
+        next.delete(ref)
         continue
       }
 
-      current.set(ref, value)
+      next.set(ref, value)
     }
 
-    await this.persist(current)
-  }
-
-  private async persist(secrets: ReadonlyMap<SecretRef, string>): Promise<void> {
-    // Plain JSON, sorted: this file is never hand-edited, so comment
-    // preservation buys nothing and a stable key order keeps diffs quiet.
-    const entries = [...secrets.entries()].sort(([a], [b]) => a.localeCompare(b))
-    const text = `${JSON.stringify(Object.fromEntries(entries), null, 2)}\n`
-
-    await writeSettingsFile(this.filePath, text, {
-      mode: SECRETS_FILE_MODE,
-      onRevisionMismatch: () => {
-        throw new Error('unreachable: secrets are written without a revision guard')
-      },
-    })
+    return {
+      changed: !secretMapsEqual(current, next),
+      expectedRevision: source.revision,
+      text: serializeSecrets(next),
+    }
   }
 }
 
@@ -124,48 +109,10 @@ function mapEnvironment(
 }
 
 /**
- * Splits an incoming provider list into what the document stores and what the
- * secret store stores.
+ * Splits provider values typed into the raw JSON hatch.
  *
- * The document always holds an empty value — no secret, and no fake marker
- * either. Whether a variable is *set* is a fact about the secret store, which is
- * where the snapshot reads it from. That keeps the file honest for a person
- * reading it and keeps "not set" distinguishable from "set to something I am not
- * showing you", which is the distinction the wire protocol was careful about.
- *
- * A value that comes back as the mask means "keep what is stored", so it
- * produces no secret edit at all. Without that rule the first save after a read
- * would wipe every secret.
- */
-export function extractProviderSecrets(instances: unknown): {
-  readonly instances: unknown
-  readonly secrets: Map<SecretRef, string | null>
-} {
-  const secrets = new Map<SecretRef, string | null>()
-  const stripped = mapEnvironment(instances, (ref, value) => {
-    if (value !== REDACTED_SETTINGS_VALUE) secrets.set(ref, value === '' ? null : value)
-
-    return ''
-  })
-
-  return { instances: stripped, secrets }
-}
-
-/**
- * The same split for the raw JSON hatch, with one rule reversed.
- *
- * `extractProviderSecrets` reads `''` as "the user cleared this variable" and
- * deletes the stored secret. That is right for the keyed path, where the client
- * holds the mask for every variable that is set, so an empty value can only have
- * been typed. The document on disk holds `''` for *both* "set, stored
- * elsewhere" and "never set" — that is the whole point of the split — so in raw
- * text an empty value says nothing. Deleting on it would wipe every provider
- * credential the first time someone opened the raw editor and changed an
- * unrelated key.
- *
- * So: a value that is actually there is absorbed into the secret store and
- * blanked in the document, and anything else is left alone. There are no
- * deletions from this path.
+ * Non-empty literals move to the secret store; empty values and masks preserve
+ * existing secrets. Semantic provider intent carries no credential values.
  */
 export function extractRawProviderSecrets(instances: unknown): {
   readonly instances: unknown
@@ -192,4 +139,25 @@ export function applyProviderSecrets<T>(instances: T, secrets: ReadonlyMap<Secre
  */
 export function maskProviderSecrets<T>(instances: T, secrets: ReadonlySet<SecretRef>): T {
   return mapEnvironment(instances, (ref) => (secrets.has(ref) ? REDACTED_SETTINGS_VALUE : '')) as T
+}
+
+function serializeSecrets(secrets: ReadonlyMap<SecretRef, string>): string {
+  // This file is not hand-edited. Stable key order makes recovery hashes and
+  // operator diffs deterministic without exposing any value to telemetry.
+  const entries = [...secrets.entries()].sort(([a], [b]) => a.localeCompare(b))
+
+  return `${JSON.stringify(Object.fromEntries(entries), null, 2)}\n`
+}
+
+function secretMapsEqual(
+  left: ReadonlyMap<SecretRef, string>,
+  right: ReadonlyMap<SecretRef, string>,
+): boolean {
+  if (left.size !== right.size) return false
+
+  for (const [ref, value] of left) {
+    if (right.get(ref) !== value) return false
+  }
+
+  return true
 }

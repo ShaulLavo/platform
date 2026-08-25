@@ -85,14 +85,16 @@ export function clientErrorMessage(input: unknown): string {
 export function reportError(error: ClientError): void {
   if (isAbortError(error.cause)) return
 
-  reportClientError({
-    area: 'client-error-taxonomy',
-    category: error.category,
-    cause: error.cause,
-    context: error.context,
-    message: error.message,
-    operation: error.operation ?? 'report',
-  })
+  if (!clientErrorMetadata(error.cause)) {
+    reportClientError({
+      area: 'client-error-taxonomy',
+      category: error.category,
+      cause: error.cause,
+      context: error.context,
+      message: error.message,
+      operation: error.operation ?? 'report',
+    })
+  }
 
   if (!shouldToastCategory(error.category)) return
 

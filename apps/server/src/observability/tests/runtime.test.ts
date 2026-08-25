@@ -7,7 +7,8 @@ import type { WideEvent } from 'evlog'
 
 import { closeTestApps, createTestApp } from '../../../test/server'
 import { flushObservability, initializeObservability, resetObservabilityForTests } from '../runtime'
-import { testSettingsOptions } from '../../settings/testing'
+import { settingsErrors } from '../../settings/structured-errors'
+import { testSettingsOptions, type TestSettingsOverrides } from '../../settings/testing'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
 const roots: string[] = []
@@ -206,6 +207,156 @@ describe('observability runtime', () => {
     expect(text.toLowerCase()).not.toContain('authorization')
   })
 
+  it('records one value-free settings context for parse rejection and raw conflict', async () => {
+    const root = await fixtureRoot()
+    const logDir = await fixtureRoot()
+    const hiddenValue = 'SETTING_VALUE_MUST_NOT_BE_LOGGED'
+    initializeObservability(testObservabilityEnv(logDir))
+    const app = testApp(root)
+    const headers = trustedOriginHeaders({ 'content-type': 'application/json' })
+
+    const invalid = await app.handle(
+      new Request('http://local/settings/write', {
+        body: JSON.stringify({
+          mutationId: 'invalid-settings-request',
+          operations: [{ key: 'editor.fontSize', kind: 'set', value: hiddenValue }],
+          target: 'user',
+        }),
+        headers,
+        method: 'POST',
+      }),
+    )
+    const firstRaw = await app.handle(
+      new Request('http://local/settings/raw', {
+        body: JSON.stringify({
+          baseRevision: '',
+          target: 'user',
+          text: '{ "editor.fontSize": 20 }\n',
+          writeId: 'raw-first',
+        }),
+        headers,
+        method: 'POST',
+      }),
+    )
+    const staleRaw = await app.handle(
+      new Request('http://local/settings/raw', {
+        body: JSON.stringify({
+          baseRevision: '',
+          target: 'user',
+          text: '{ "editor.lineHeight": 30 }\n',
+          writeId: 'raw-conflict',
+        }),
+        headers,
+        method: 'POST',
+      }),
+    )
+
+    expect(invalid.status).toBe(400)
+    expect(firstRaw.status).toBe(200)
+    expect(staleRaw.status).toBe(409)
+    await Promise.all([invalid.text(), firstRaw.text(), staleRaw.text()])
+    const events = await flushedEvents(logDir)
+    const invalidEvent = events.find(
+      (event) => event.path === '/settings/write' && event.status === 400,
+    ) as (WideEvent & Record<string, unknown>) | undefined
+    const conflictEvent = events.find(
+      (event) => event.path === '/settings/raw' && event.status === 409,
+    ) as (WideEvent & Record<string, unknown>) | undefined
+
+    expect(invalidEvent?.settings).toEqual({
+      affectedDomainIds: [],
+      coordinatorWaitMs: 0,
+      error: { code: 'settings.WRITE_INVALID', status: 400 },
+      mutationId: 'invalid-settings-request',
+      operationKinds: ['set'],
+      outcome: 'rejected',
+      rebaseAttempts: 0,
+      settingIds: ['editor.fontSize'],
+      target: 'user',
+    })
+    expect(conflictEvent?.settings).toEqual({
+      coordinatorWaitMs: expect.any(Number),
+      error: { code: 'settings.RAW_REVISION_STALE', status: 409 },
+      mutationId: 'raw-conflict',
+      operationKinds: ['raw.replace'],
+      outcome: 'raw-conflict',
+      rebaseAttempts: 0,
+      settingIds: ['editor.lineHeight'],
+      target: 'user',
+    })
+    const serialized = JSON.stringify([invalidEvent, conflictEvent])
+    expect(serialized).not.toContain(hiddenValue)
+    expect(serialized).not.toContain(root)
+    expect(serialized).not.toContain('editor.lineHeight": 30')
+  })
+
+  it('records complete settings context when transaction recovery blocks a later write', async () => {
+    const root = await fixtureRoot()
+    const logDir = await fixtureRoot()
+    initializeObservability(testObservabilityEnv(logDir))
+    const app = testApp(root, {
+      transactionHooks: {
+        afterBoundary(boundary) {
+          if (boundary !== 'settings-directory-synced') return
+
+          throw settingsErrors.TRANSACTION_RECOVERY_INVALID({ detail: 'injected interruption' })
+        },
+      },
+    })
+    const headers = trustedOriginHeaders({ 'content-type': 'application/json' })
+    const interrupted = await app.handle(
+      new Request('http://local/settings/raw', {
+        body: JSON.stringify({
+          baseRevision: '',
+          target: 'user',
+          text: JSON.stringify({
+            'providers.instances': [
+              {
+                driverKind: 'codex',
+                environment: [{ name: 'CODEX_TOKEN', value: 'test-credential' }],
+                providerInstanceId: 'codex-work',
+              },
+            ],
+          }),
+          writeId: 'interrupt-settings-transaction',
+        }),
+        headers,
+        method: 'POST',
+      }),
+    )
+    const blocked = await app.handle(
+      new Request('http://local/settings/write', {
+        body: JSON.stringify({
+          mutationId: 'blocked-after-interruption',
+          operations: [{ key: 'editor.fontSize', kind: 'set', value: 18 }],
+          target: 'user',
+        }),
+        headers,
+        method: 'POST',
+      }),
+    )
+
+    expect(interrupted.status).toBe(500)
+    expect(blocked.status).toBe(503)
+    await Promise.all([interrupted.text(), blocked.text()])
+    const events = await flushedEvents(logDir)
+    const blockedEvent = events.find(
+      (event) => event.path === '/settings/write' && event.status === 503,
+    ) as (WideEvent & Record<string, unknown>) | undefined
+
+    expect(blockedEvent?.settings).toEqual({
+      affectedDomainIds: [],
+      coordinatorWaitMs: 0,
+      error: { code: 'settings.TRANSACTION_RECOVERY_REQUIRED', status: 503 },
+      mutationId: 'blocked-after-interruption',
+      operationKinds: ['set'],
+      outcome: 'rejected',
+      rebaseAttempts: 0,
+      settingIds: ['editor.fontSize'],
+      target: 'user',
+    })
+  })
+
   it('persists client logs in the shared file drain with a client source marker', async () => {
     const root = await fixtureRoot()
     const logDir = await fixtureRoot()
@@ -365,12 +516,12 @@ describe('observability runtime', () => {
   })
 })
 
-function testApp(root: string) {
+function testApp(root: string, settings: TestSettingsOverrides = {}) {
   return createTestApp({
     auth: {
       allowedOrigins: [TRUSTED_ORIGIN],
     },
-    settings: testSettingsOptions(root),
+    settings: testSettingsOptions(root, settings),
     watch: false,
     workspaceRoot: root,
   })

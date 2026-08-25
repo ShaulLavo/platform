@@ -1,112 +1,209 @@
+import { createHash, randomUUID } from 'node:crypto'
+import { existsSync } from 'node:fs'
+import { stat } from 'node:fs/promises'
 import {
+  applySettingsOperations,
   descriptorFor,
+  errorNumberField,
+  errorStringField,
+  isRecord,
   isSettingId,
   layerAllowsScope,
   resolveSettings,
+  SETTING_IDS,
   type SettingId,
+  type SettingsEvent,
   type SettingsLayer,
   type SettingsLayerId,
+  type SettingsMutationRequest,
+  type SettingsMutationResult,
+  type SettingsOperation,
+  type SettingsRawWriteRequest,
+  type SettingsRawWriteResult,
+  type SettingsServerVersion,
   type SettingsSnapshot,
   type SettingsValues,
-  type SettingsWriteRequest,
   type SettingsWriteTarget,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 import { errorSummary, recordRequestContext, recordRequestWarning } from '../observability'
-import { SettingsFileLayer } from './layer'
-import { editSettingsText, parseSettingsDocument, type DocumentEdit } from './json-document'
+import {
+  discardStagedSettingsFile,
+  editSettingsText,
+  parseSettingsDocument,
+  stageSettingsFile,
+  tryCommitStagedSettingsFile,
+  type DocumentEdit,
+  type StagedSettingsFile,
+} from './json-document'
+import {
+  SettingsFileLayer,
+  type LayerChange,
+  type LayerContents,
+  type LayerWriteContext,
+  type SettingsLayerReader,
+} from './layer'
 import { settingsPaths, type SettingsPathOptions } from './paths'
 import {
   applyProviderSecrets,
-  extractProviderSecrets,
   extractRawProviderSecrets,
   maskProviderSecrets,
   SecretStore,
   type SecretRef,
 } from './secrets'
-import { settingsErrors } from './structured-errors'
+import {
+  rawRevisionStaleError,
+  settingsErrors,
+  settingsWriteContendedError,
+} from './structured-errors'
+import {
+  commitSettingsSecretTransactionOwned,
+  recoverSettingsTransactionSync,
+  settingsTransactionJournalPath,
+  withSettingsSecretTransactionOwner,
+  type SettingsSecretTransaction,
+  type SettingsSecretTransactionResult,
+  type SettingsTransactionHooks,
+} from './transaction'
+import { canonicalSettingsPathSync } from './write-coordinator'
 
-// `as const` matters: annotating this as `SettingId` widens the key and turns
-// every `values[PROVIDER_INSTANCES]` lookup into a union of every setting type.
 const PROVIDER_INSTANCES = 'providers.instances' as const
-
-/**
- * A ref set that answers "yes" for every ref, so the mask can be driven to its
- * safe direction through the one existing masking call rather than a second one.
- *
- * `has` is the only member `maskProviderSecrets` touches; the cast is what lets
- * a predicate stand in for a `Set` without widening that function's contract.
- */
 const EVERY_SECRET_REF = { has: () => true } as unknown as ReadonlySet<SecretRef>
+const DEFAULT_RECEIPT_LIMIT = 512
+const DEFAULT_REBASE_ATTEMPTS = 8
+const DEFAULT_REBASE_BUDGET_MS = 2_000
+const storesBySecretsPath = new Map<string, Set<SettingsStore>>()
 
-export type SettingsStoreOptions = SettingsPathOptions & {
-  /** Parsed strictly by the caller: a malformed policy is an operator error, not a user's. */
-  readonly policy?: Record<string, unknown>
-  readonly watch?: boolean
+export type SettingsWriteStageContext = {
+  readonly attempt: number
+  readonly id: string
+  readonly kind: 'raw' | 'semantic'
+  readonly staged: StagedSettingsFile
+  readonly target: SettingsWriteTarget
 }
 
-/**
- * Server-authoritative settings over layered JSON files.
- *
- * The file is the source of truth in both directions: the UI writes it and the
- * watcher reads it back, so a hand-edit and a click are the same event by the
- * time anything downstream sees them.
- */
+export type SettingsWriteHooks = {
+  readonly afterStage?: (context: SettingsWriteStageContext) => void | Promise<void>
+}
+
+export type SettingsStoreOptions = SettingsPathOptions & {
+  /** Test seam for deterministic watcher read failures. */
+  readonly layerReader?: SettingsLayerReader
+  readonly policy?: Record<string, unknown>
+  readonly receiptLimit?: number
+  readonly rebaseAttempts?: number
+  readonly rebaseBudgetMs?: number
+  readonly transactionHooks?: SettingsTransactionHooks
+  readonly watch?: boolean
+  readonly writeHooks?: SettingsWriteHooks
+}
+
+type WriteKind = 'raw' | 'semantic'
+
+type WriteReceipt = {
+  readonly appliedVersion: SettingsServerVersion
+  readonly changedSettingIds: readonly SettingId[]
+  readonly fingerprint: string
+  readonly kind: WriteKind
+}
+
+type WriteMetrics = {
+  readonly coordinatorWaitMs: number
+  readonly rebaseAttempts: number
+}
+
+type WriteExecution = {
+  readonly metrics: WriteMetrics
+  readonly receipt: WriteReceipt
+  readonly snapshot: SettingsSnapshot
+}
+
+type IdempotentWrite = WriteExecution & {
+  readonly duplicate: boolean
+}
+
+type InFlightWrite = {
+  readonly fingerprint: string
+  readonly kind: WriteKind
+  readonly promise: Promise<WriteExecution>
+}
+
+type PreparedReduction = {
+  readonly changedSettingIds: readonly SettingId[]
+  readonly edits: readonly DocumentEdit[]
+  readonly secretEdits: ReadonlyMap<SecretRef, string | null>
+}
+
+type PreparedRawDocument = {
+  readonly raw: Readonly<Record<string, unknown>>
+  readonly registeredSettingIds: readonly SettingId[]
+  readonly secretEdits: ReadonlyMap<SecretRef, string | null>
+  readonly text: string
+}
+
+type SemanticAttemptState = {
+  current: LayerContents
+  rebases: number
+}
+
+/** Server-authoritative settings over layered JSON files. */
 export class SettingsStore {
-  private readonly user: SettingsFileLayer
-  private readonly workspace: SettingsFileLayer | null
+  private readonly epoch = randomUUID()
+  private readonly inFlightWrites = new Map<string, InFlightWrite>()
+  private readonly listeners = new Set<(event: SettingsEvent) => void>()
+  private readonly policy: Record<string, unknown>
+  private readonly rebaseAttempts: number
+  private readonly rebaseBudgetMs: number
+  private readonly receiptLimit: number
+  private readonly receipts = new Map<string, WriteReceipt>()
   private readonly secretStore: SecretStore
   private readonly secretsPath: string
-  private readonly policy: Record<string, unknown>
-  private readonly listeners = new Set<(snapshot: SettingsSnapshot) => void>()
+  private readonly settingsFilePaths: readonly string[]
+  private readonly transactionHooks: SettingsTransactionHooks
+  private readonly user: SettingsFileLayer
+  private readonly workspace: SettingsFileLayer | null
+  private readonly writeHooks: SettingsWriteHooks
 
-  private resolved: SettingsValues | null = null
   private cachedSnapshot: SettingsSnapshot | null = null
-  /**
-   * Which secrets exist, so the synchronous snapshot can mask without an await.
-   * Only the refs are held — never the values.
-   */
+  private resolved: SettingsValues | null = null
   private secretRefs: ReadonlySet<SecretRef> = new Set()
-  /**
-   * Set when a reload could not read the secret store, which makes `secretRefs`
-   * a stale answer to "which variables are set". While it is set the snapshot
-   * masks every variable rather than trusting those refs — see `maskingRefs`.
-   */
   private secretRefsStale = false
+  private recoveryBlocked = false
+  private sequence = 0
 
   constructor(options: SettingsStoreOptions) {
     const paths = settingsPaths(options)
-    this.secretsPath = paths.secrets
-    this.user = new SettingsFileLayer('user', paths.user)
-    this.workspace = paths.workspace ? new SettingsFileLayer('workspace', paths.workspace) : null
-    this.secretStore = new SecretStore(paths.secrets)
-    this.policy = options.policy ?? {}
+    const configuredSettingsPaths = paths.workspace ? [paths.user, paths.workspace] : [paths.user]
+    const settingsFilePaths = configuredSettingsPaths.map(canonicalSettingsPathSync)
+    const secretsPath = canonicalSettingsPathSync(paths.secrets)
+    recoverSettingsTransactionSync(settingsFilePaths, secretsPath)
 
-    // Read synchronously at construction: the provider registry is built from
-    // these values inside the same synchronous `createApp` call.
+    this.secretsPath = secretsPath
+    this.settingsFilePaths = settingsFilePaths
+    this.user = new SettingsFileLayer('user', paths.user, options.layerReader)
+    this.workspace = paths.workspace
+      ? new SettingsFileLayer('workspace', paths.workspace, options.layerReader)
+      : null
+    this.secretStore = new SecretStore(secretsPath)
+    this.policy = options.policy ?? {}
+    this.receiptLimit = positiveInteger(options.receiptLimit, DEFAULT_RECEIPT_LIMIT)
+    this.rebaseAttempts = positiveInteger(options.rebaseAttempts, DEFAULT_REBASE_ATTEMPTS)
+    this.rebaseBudgetMs = positiveNumber(options.rebaseBudgetMs, DEFAULT_REBASE_BUDGET_MS)
+    this.transactionHooks = options.transactionHooks ?? {}
+    this.writeHooks = options.writeHooks ?? {}
+
     for (const layer of this.fileLayers()) layer.loadSync()
-    // Deliberately *not* the tolerant treatment `invalidate()` gets. A reload
-    // has a running app to keep serving; construction has nothing yet, and
-    // starting with an unreadable secret store hands every provider spawn an
-    // empty credential — a failure that shows up far from its cause. Refusing to
-    // start is better, as long as it names the file instead of raising EISDIR.
-    try {
-      this.secretRefs = new Set(this.secretStore.readSync().keys())
-    } catch (error) {
-      throw settingsErrors.SECRETS_UNREADABLE({
-        file: paths.secrets,
-        detail: error instanceof Error ? error.message : String(error),
-        cause: error instanceof Error ? error : undefined,
-      })
-    }
+    this.loadSecretRefsAtStartup(secretsPath)
+    registerSettingsStore(this.secretsPath, this)
 
     if (options.watch === false) return
     for (const layer of this.fileLayers()) {
-      layer.watch(() => this.invalidate())
+      layer.watch((change) => this.publishLayerChange(change))
     }
   }
 
   snapshot(): SettingsSnapshot {
+    this.assertOperational()
     if (this.cachedSnapshot) return this.cachedSnapshot
 
     const resolution = resolveSettings(this.layers(), { previous: this.resolved ?? undefined })
@@ -114,8 +211,6 @@ export class SettingsStore {
     this.cachedSnapshot = {
       values: {
         ...resolution.values,
-        // Masked here rather than at the route, so there is exactly one place a
-        // provider environment can leave the process and it is the safe one.
         [PROVIDER_INSTANCES]: maskProviderSecrets(
           resolution.values[PROVIDER_INSTANCES],
           this.maskingRefs(),
@@ -123,160 +218,99 @@ export class SettingsStore {
       },
       diagnostics: [...resolution.diagnostics],
       layers: this.layerSnapshots(),
-      revision: this.user.snapshot().revision ?? '',
+      serverVersion: this.serverVersion(),
     }
 
     return this.cachedSnapshot
   }
 
-  /**
-   * Provider instances with their secrets put back, for the spawn path only.
-   * Never handed to a route — the document the client sees has names, not values.
-   */
   async providerInstancesForSpawn(): Promise<SettingsValues[typeof PROVIDER_INSTANCES]> {
+    this.assertOperational()
     const secrets = await this.secretStore.read()
 
     return applyProviderSecrets(this.snapshot().values[PROVIDER_INSTANCES], secrets)
   }
 
-  /**
-   * The same values, for the one caller that cannot await: `createApp` is
-   * synchronous and builds the provider registry inline, so without this the
-   * registry's first spawn gets the masked document and every provider starts
-   * with the redaction glyph for a credential.
-   */
   providerInstancesForSpawnSync(): SettingsValues[typeof PROVIDER_INSTANCES] {
+    this.assertOperational()
     return applyProviderSecrets(
       this.snapshot().values[PROVIDER_INSTANCES],
       this.secretStore.readSync(),
     )
   }
 
-  async write(request: SettingsWriteRequest): Promise<SettingsSnapshot> {
-    const byTarget = new Map<SettingsWriteTarget, DocumentEdit[]>()
-    const secretEdits = new Map<SecretRef, string | null>()
-    // `''` is what the snapshot reports for a file that does not exist yet, and
-    // `null` is what the disk reports for the same thing. Without this they
-    // compare unequal and the first write on a fresh install is refused.
-    const baseRevision =
-      request.baseRevision === undefined ? undefined : request.baseRevision || null
+  async write(
+    request: SettingsMutationRequest,
+    signal?: AbortSignal,
+  ): Promise<SettingsMutationResult> {
+    try {
+      this.assertOperational()
+      const touchedSettingIds = applySettingsOperations({}, request.operations).touchedSettingIds
+      const fingerprint = semanticFingerprint(request)
+      const write = await this.runIdempotentWrite('semantic', request.mutationId, fingerprint, () =>
+        this.validateAndApplySemanticWrite(request, touchedSettingIds, fingerprint, signal),
+      )
+      recordRequestContext(successLogContext(write))
 
-    for (const edit of request.edits) {
-      this.assertWritable(edit.key, edit.target)
-      const prepared = this.prepare(edit.key, edit.value, secretEdits)
-      const existing = byTarget.get(edit.target)
-      if (existing) {
-        existing.push(prepared)
-        continue
+      return {
+        mutationId: request.mutationId,
+        appliedVersion: write.receipt.appliedVersion,
+        changedSettingIds: write.receipt.changedSettingIds,
+        duplicate: write.duplicate,
+        snapshot: write.snapshot,
       }
-
-      byTarget.set(edit.target, [prepared])
+    } catch (error) {
+      this.blockIfRecoveryPending()
+      recordRequestContext(failureLogContext(error))
+      throw error
     }
-
-    // Secrets first: a settings file naming a variable whose value never landed
-    // is recoverable, the reverse leaves a secret with nothing referencing it.
-    await this.secretStore.write(secretEdits)
-    for (const [target, edits] of byTarget) {
-      // Only the user layer: `revision` on the snapshot is that layer's, so it
-      // is the only one the client's `baseRevision` can be talking about.
-      await this.layerFor(target).write(edits, target === 'user' ? baseRevision : undefined)
-    }
-
-    this.invalidate()
-    recordRequestContext({
-      area: 'settings',
-      operation: 'write',
-      settings: {
-        // Ids and counts only. Values never reach the log — some of them are the
-        // provider environment, and this file is one the agent itself can read.
-        settingIds: request.edits.map((edit) => edit.key),
-        secretsChanged: secretEdits.size,
-      },
-    })
-
-    return this.snapshot()
   }
 
-  /**
-   * The raw file text, for the JSON escape hatch.
-   *
-   * Safe to serve only because secrets are not in this file — the split is what
-   * lets the hatch, the export, and the editor tab exist at all.
-   */
   rawLayer(target: SettingsWriteTarget): { text: string; revision: string } {
+    this.assertOperational()
     const contents = this.layerFor(target).snapshot()
 
     return { text: contents.text, revision: contents.revision ?? '' }
   }
 
-  /**
-   * Whole-text replace, for the JSON escape hatch.
-   *
-   * Runs the same secret split the keyed path runs. Without it this is the one
-   * route that can land a provider credential in the settings document, where it
-   * would sit in cleartext in the very file `GET /settings/raw`, the JSON tab and
-   * export all serve — and then be replaced by an empty string at spawn, because
-   * `applyProviderSecrets` reads every environment value from the secret store.
-   * The file says the variable is set, the provider starts without it, and
-   * nothing anywhere says why.
-   *
-   * Unknown, out-of-scope and policy-controlled keys are deliberately *not*
-   * refused here the way `write` refuses them: the resolver reports each as a
-   * diagnostic and drops it, and keeping another build's keys in the file is
-   * this hatch's job.
-   */
-  async writeRaw(
-    target: SettingsWriteTarget,
-    text: string,
-    baseRevision?: string,
-  ): Promise<SettingsSnapshot> {
-    const document = this.splitRawSecrets(target, text)
+  async writeRaw(request: SettingsRawWriteRequest): Promise<SettingsRawWriteResult> {
+    try {
+      this.assertOperational()
+      const fingerprint = rawFingerprint(request)
+      const write = await this.runIdempotentWrite('raw', request.writeId, fingerprint, () =>
+        this.prepareAndApplyRawWrite(request, fingerprint),
+      )
+      recordRequestContext(successLogContext(write))
 
-    // Secrets first, for the reason `write` gives: a document naming a variable
-    // whose value never landed is recoverable, the reverse is not.
-    await this.secretStore.write(document.secrets)
-    // Same `''`-is-not-a-revision normalization `write` does, for the same
-    // reason: the snapshot reports `''` for a file that does not exist and the
-    // disk reports `null`, so without this the first raw save on a fresh
-    // install refuses itself — which is exactly the save that repairs a
-    // document the keyed path will not touch.
-    await this.layerFor(target).writeText(
-      document.text,
-      baseRevision === undefined ? undefined : baseRevision || null,
-    )
-    this.invalidate()
-    recordRequestContext({
-      area: 'settings',
-      operation: 'write-raw',
-      settings: {
-        // Ids and counts only. This route carries the whole document, so a value
-        // in the log would be the exact leak the split exists to prevent.
-        target,
-        settingIds: document.settingIds,
-        secretsChanged: document.secrets.size,
-      },
-    })
-
-    return this.snapshot()
+      return {
+        writeId: request.writeId,
+        appliedVersion: write.receipt.appliedVersion,
+        changedSettingIds: write.receipt.changedSettingIds,
+        duplicate: write.duplicate,
+        snapshot: write.snapshot,
+      }
+    } catch (error) {
+      this.blockIfRecoveryPending()
+      recordRequestContext(failureLogContext(error))
+      throw error
+    }
   }
 
-  onChange(listener: (snapshot: SettingsSnapshot) => void): () => void {
+  onChange(listener: (event: SettingsEvent) => void): () => void {
+    this.assertOperational()
     this.listeners.add(listener)
 
     return () => this.listeners.delete(listener)
   }
 
-  async *changes(signal?: AbortSignal): AsyncGenerator<SettingsSnapshot> {
-    const queue: SettingsSnapshot[] = []
+  async *changes(signal?: AbortSignal): AsyncGenerator<SettingsEvent> {
+    this.assertOperational()
+    const queue: SettingsEvent[] = []
     let wake: (() => void) | null = null
-    const stop = this.onChange((snapshot) => {
-      queue.push(snapshot)
+    const stop = this.onChange((event) => {
+      queue.push(event)
       wake?.()
     })
-    // Registered once, not per park. `{ once: true }` only removes a listener
-    // that actually fired, and this one does not fire on the ordinary wake — so
-    // arming it inside the loop left one dead listener per delivered snapshot,
-    // for the life of the connection.
     const onAbort = () => wake?.()
     signal?.addEventListener('abort', onAbort, { once: true })
 
@@ -290,7 +324,7 @@ export class SettingsStore {
           continue
         }
 
-        yield queue.shift() as SettingsSnapshot
+        yield queue.shift() as SettingsEvent
       }
     } finally {
       signal?.removeEventListener('abort', onAbort)
@@ -299,68 +333,474 @@ export class SettingsStore {
   }
 
   close(): void {
+    unregisterSettingsStore(this.secretsPath, this)
     for (const layer of this.fileLayers()) layer.close()
     this.listeners.clear()
   }
 
-  private prepare(
-    key: SettingId,
-    value: unknown,
-    secretEdits: Map<SecretRef, string | null>,
-  ): DocumentEdit {
-    if (value === undefined) return { key }
+  private assertOperational() {
+    if (!this.recoveryBlocked) return
 
-    const descriptor = descriptorFor(key)
-    const parsed = v.safeParse(descriptor.schema, value)
-    if (!parsed.success) {
-      throw settingsErrors.WRITE_INVALID({
-        key,
-        reason: v.summarize(parsed.issues).replaceAll('\n', ' '),
+    throw settingsErrors.TRANSACTION_RECOVERY_REQUIRED({})
+  }
+
+  private blockIfRecoveryPending() {
+    if (!existsSync(settingsTransactionJournalPath(this.secretsPath))) return
+
+    for (const store of storesBySecretsPath.get(this.secretsPath) ?? []) {
+      store.recoveryBlocked = true
+      for (const layer of store.fileLayers()) layer.close()
+    }
+  }
+
+  private async applySemanticWrite(
+    request: SettingsMutationRequest,
+    fingerprint: string,
+    signal?: AbortSignal,
+  ): Promise<WriteExecution> {
+    const layer = this.layerFor(request.target)
+
+    return layer.coordinateWrite((context) =>
+      this.runSemanticAttempts(layer, context, request, fingerprint, performance.now(), signal),
+    )
+  }
+
+  private async validateAndApplySemanticWrite(
+    request: SettingsMutationRequest,
+    touchedSettingIds: readonly SettingId[],
+    fingerprint: string,
+    signal?: AbortSignal,
+  ): Promise<WriteExecution> {
+    this.assertRequestWritable(touchedSettingIds, request.target)
+
+    return this.applySemanticWrite(request, fingerprint, signal)
+  }
+
+  private async runSemanticAttempts(
+    layer: SettingsFileLayer,
+    context: LayerWriteContext,
+    request: SettingsMutationRequest,
+    fingerprint: string,
+    startedAt: number,
+    signal?: AbortSignal,
+  ): Promise<WriteExecution> {
+    this.assertOperational()
+    const state: SemanticAttemptState = { current: context.current, rebases: 0 }
+
+    try {
+      return await this.executeSemanticAttempts(
+        layer,
+        context,
+        request,
+        fingerprint,
+        startedAt,
+        state,
+        signal,
+      )
+    } catch (error) {
+      throw attachWriteMetrics(error, context.coordinatorWaitMs, state.rebases)
+    }
+  }
+
+  private async executeSemanticAttempts(
+    layer: SettingsFileLayer,
+    context: LayerWriteContext,
+    request: SettingsMutationRequest,
+    fingerprint: string,
+    startedAt: number,
+    state: SemanticAttemptState,
+    signal?: AbortSignal,
+  ): Promise<WriteExecution> {
+    while (this.canAttempt(state.rebases, startedAt, signal)) {
+      this.acceptFreshIfNeeded(layer, state.current)
+      this.assertCurrentDocumentValid(state.current)
+      const prepared = this.prepareReduction(state.current.raw, request.operations)
+      if (prepared.changedSettingIds.length === 0 && prepared.secretEdits.size === 0) {
+        return this.acceptNoop(
+          layer,
+          state.current,
+          'semantic',
+          fingerprint,
+          context,
+          state.rebases,
+        )
+      }
+
+      const text = editSettingsText(state.current.text, prepared.edits)
+      const outcome = await this.commitSemanticAttempt(
+        context.destination,
+        state.current,
+        text,
+        prepared.secretEdits,
+        request,
+        state.rebases + 1,
+      )
+      if (outcome.kind === 'committed') {
+        return this.acceptCommittedWrite(
+          layer,
+          text,
+          outcome.revision,
+          request.mutationId,
+          'semantic',
+          fingerprint,
+          context.coordinatorWaitMs,
+          state.rebases,
+        )
+      }
+
+      state.rebases += 1
+      state.current = await layer.readFresh()
+    }
+
+    this.acceptFreshIfNeeded(layer, state.current)
+    throw settingsWriteContendedError(state.rebases, context.coordinatorWaitMs)
+  }
+
+  private async commitSemanticAttempt(
+    destination: string,
+    current: LayerContents,
+    text: string,
+    secretEdits: ReadonlyMap<SecretRef, string | null>,
+    request: SettingsMutationRequest,
+    attempt: number,
+  ): Promise<
+    | { readonly kind: 'committed'; readonly revision: string }
+    | { readonly kind: 'revision-mismatch' }
+  > {
+    if (secretEdits.size > 0) {
+      return withSettingsSecretTransactionOwner(this.secretsPath, async () => {
+        recoverSettingsTransactionSync(this.settingsFilePaths, this.secretsPath)
+        const secrets = await this.secretStore.prepare(secretEdits)
+        if (!secrets.changed) {
+          return this.commitStagedSemanticSettings(destination, current, text, request, attempt)
+        }
+
+        const outcome = await this.commitSecretTransaction({
+          allowedSettingsPaths: this.settingsFilePaths,
+          expectedSecretsRevision: secrets.expectedRevision,
+          expectedSettingsRevision: current.revision,
+          id: request.mutationId,
+          secretsPath: this.secretsPath,
+          secretsText: secrets.text,
+          settingsPath: destination,
+          settingsText: text,
+        })
+        if (outcome.kind === 'revision-mismatch') return { kind: 'revision-mismatch' }
+
+        return { kind: 'committed', revision: outcome.settingsRevision }
       })
     }
 
-    if (key !== PROVIDER_INSTANCES) return { key, value: parsed.output }
-
-    const split = extractProviderSecrets(parsed.output)
-    for (const [ref, secret] of split.secrets) secretEdits.set(ref, secret)
-
-    return { key, value: split.instances }
+    return this.commitStagedSemanticSettings(destination, current, text, request, attempt)
   }
 
-  /**
-   * Takes any provider credential out of incoming raw text before it reaches
-   * disk, and returns the text to actually write.
-   *
-   * A malformed document is handed straight back: `writeText` raises the typed
-   * FILE_MALFORMED for it, and storing a secret for a document that is about to
-   * be refused would leave a value with nothing referencing it.
-   */
-  private splitRawSecrets(
-    target: SettingsWriteTarget,
+  private async commitStagedSemanticSettings(
+    destination: string,
+    current: LayerContents,
     text: string,
-  ): { text: string; secrets: Map<SecretRef, string>; settingIds: string[] } {
-    const parsed = parseSettingsDocument(text)
-    if (parsed.parseErrors.length > 0) return { text, secrets: new Map(), settingIds: [] }
+    request: SettingsMutationRequest,
+    attempt: number,
+  ): Promise<
+    | { readonly kind: 'committed'; readonly revision: string }
+    | { readonly kind: 'revision-mismatch' }
+  > {
+    const staged = await stageSettingsFile(destination, text, await fileMode(destination))
+    try {
+      await this.writeHooks.afterStage?.({
+        attempt,
+        id: request.mutationId,
+        kind: 'semantic',
+        staged,
+        target: request.target,
+      })
+      const outcome = await tryCommitStagedSettingsFile(staged, current.revision)
+      if (outcome.kind === 'committed') return outcome
 
-    const settingIds = Object.keys(parsed.values)
+      await discardStagedSettingsFile(staged)
+      return { kind: 'revision-mismatch' }
+    } catch (error) {
+      await discardStagedSettingsFile(staged)
+      throw error
+    }
+  }
+
+  private async applyRawWrite(
+    request: SettingsRawWriteRequest,
+    document: PreparedRawDocument,
+    fingerprint: string,
+  ): Promise<WriteExecution> {
+    const layer = this.layerFor(request.target)
+
+    return layer.coordinateWrite((context) =>
+      this.applyRawWriteCoordinated(request, document, fingerprint, layer, context),
+    )
+  }
+
+  private async applyRawWriteCoordinated(
+    request: SettingsRawWriteRequest,
+    document: PreparedRawDocument,
+    fingerprint: string,
+    layer: SettingsFileLayer,
+    context: LayerWriteContext,
+  ): Promise<WriteExecution> {
+    try {
+      this.assertOperational()
+      this.acceptFreshIfNeeded(layer, context.current)
+      if (document.secretEdits.size > 0) {
+        return withSettingsSecretTransactionOwner(this.secretsPath, async () => {
+          recoverSettingsTransactionSync(this.settingsFilePaths, this.secretsPath)
+          const secrets = await this.secretStore.prepare(document.secretEdits)
+          return this.applyPreparedRawWrite(request, document, layer, context, secrets, fingerprint)
+        })
+      }
+
+      return this.applyPreparedRawWrite(
+        request,
+        document,
+        layer,
+        context,
+        { changed: false, expectedRevision: null, text: '' },
+        fingerprint,
+      )
+    } catch (error) {
+      throw attachWriteMetrics(error, context.coordinatorWaitMs, 0)
+    }
+  }
+
+  private async applyPreparedRawWrite(
+    request: SettingsRawWriteRequest,
+    document: PreparedRawDocument,
+    layer: SettingsFileLayer,
+    context: LayerWriteContext,
+    secrets: {
+      readonly changed: boolean
+      readonly expectedRevision: string | null
+      readonly text: string
+    },
+    fingerprint: string,
+  ): Promise<WriteExecution> {
+    if (context.current.text === document.text && !secrets.changed) {
+      return this.acceptNoop(layer, context.current, 'raw', fingerprint, context, 0)
+    }
+
+    const expectedRevision = request.baseRevision || null
+    if (context.current.revision !== expectedRevision) {
+      throw rawRevisionStaleError({
+        coordinatorWaitMs: context.coordinatorWaitMs,
+        foundRevision: context.current.revision ?? '',
+        target: request.target,
+      })
+    }
+
+    const revision = await this.commitRawDocument(
+      layer,
+      context.current,
+      document,
+      secrets,
+      request,
+      context.destination,
+      context.coordinatorWaitMs,
+    )
+    return this.acceptCommittedWrite(
+      layer,
+      document.text,
+      revision,
+      request.writeId,
+      'raw',
+      fingerprint,
+      context.coordinatorWaitMs,
+      0,
+      secrets.changed ? [PROVIDER_INSTANCES] : [],
+    )
+  }
+
+  private async prepareAndApplyRawWrite(
+    request: SettingsRawWriteRequest,
+    fingerprint: string,
+  ): Promise<WriteExecution> {
+    const document = this.prepareRawDocument(request.target, request.text)
+    recordRequestContext({ settings: { settingIds: document.registeredSettingIds } })
+
+    return this.applyRawWrite(request, document, fingerprint)
+  }
+
+  private async commitRawDocument(
+    layer: SettingsFileLayer,
+    current: LayerContents,
+    document: PreparedRawDocument,
+    secrets: {
+      readonly changed: boolean
+      readonly expectedRevision: string | null
+      readonly text: string
+    },
+    request: SettingsRawWriteRequest,
+    destination: string,
+    coordinatorWaitMs: number,
+  ): Promise<string> {
+    if (secrets.changed) {
+      const outcome = await this.commitSecretTransaction({
+        allowedSettingsPaths: this.settingsFilePaths,
+        expectedSecretsRevision: secrets.expectedRevision,
+        expectedSettingsRevision: current.revision,
+        id: request.writeId,
+        secretsPath: this.secretsPath,
+        secretsText: secrets.text,
+        settingsPath: destination,
+        settingsText: document.text,
+      })
+      if (outcome.kind === 'committed') return outcome.settingsRevision
+      if (outcome.source === 'secrets') throw settingsWriteContendedError(1, coordinatorWaitMs)
+
+      await this.refreshAfterRawConflict(layer)
+      throw rawRevisionStaleError({
+        coordinatorWaitMs,
+        foundRevision: outcome.foundRevision ?? '',
+        target: request.target,
+      })
+    }
+
+    const staged = await stageSettingsFile(destination, document.text, await fileMode(destination))
+    try {
+      await this.writeHooks.afterStage?.({
+        attempt: 1,
+        id: request.writeId,
+        kind: 'raw',
+        staged,
+        target: request.target,
+      })
+      const outcome = await tryCommitStagedSettingsFile(staged, current.revision)
+      if (outcome.kind === 'committed') return outcome.revision
+
+      await discardStagedSettingsFile(staged)
+      await this.refreshAfterRawConflict(layer)
+      throw rawRevisionStaleError({
+        coordinatorWaitMs,
+        foundRevision: outcome.foundRevision ?? '',
+        target: request.target,
+      })
+    } catch (error) {
+      await discardStagedSettingsFile(staged)
+      throw error
+    }
+  }
+
+  private async refreshAfterRawConflict(layer: SettingsFileLayer) {
+    this.acceptFreshIfNeeded(layer, await layer.readFresh())
+  }
+
+  private async commitSecretTransaction(
+    transaction: SettingsSecretTransaction,
+  ): Promise<SettingsSecretTransactionResult> {
+    try {
+      return await commitSettingsSecretTransactionOwned(transaction, this.transactionHooks)
+    } catch (error) {
+      this.blockIfRecoveryPending()
+      throw error
+    }
+  }
+
+  private acceptNoop(
+    layer: SettingsFileLayer,
+    current: LayerContents,
+    kind: WriteKind,
+    fingerprint: string,
+    context: LayerWriteContext,
+    rebaseAttempts: number,
+  ): WriteExecution {
+    const changed = this.acceptFreshIfNeeded(layer, current)
+    const snapshot = changed?.snapshot ?? this.snapshot()
+    const changedSettingIds = changed?.changedSettingIds ?? []
+
+    return execution(
+      kind,
+      fingerprint,
+      changedSettingIds,
+      snapshot,
+      context.coordinatorWaitMs,
+      rebaseAttempts,
+    )
+  }
+
+  private acceptCommittedWrite(
+    layer: SettingsFileLayer,
+    text: string,
+    revision: string,
+    originMutationId: string,
+    kind: WriteKind,
+    fingerprint: string,
+    coordinatorWaitMs: number,
+    rebaseAttempts: number,
+    additionalChangedSettingIds: readonly SettingId[] = [],
+  ): WriteExecution {
+    const change = layer.acceptCommitted(text, revision)
+    const changedSettingIds = mergeSettingIds(
+      changedRegisteredSettingIds(change.previous.raw, change.next.raw),
+      additionalChangedSettingIds,
+    )
+    const event = this.publish(changedSettingIds, originMutationId)
+
+    return execution(
+      kind,
+      fingerprint,
+      event.changedSettingIds,
+      event.snapshot,
+      coordinatorWaitMs,
+      rebaseAttempts,
+    )
+  }
+
+  private acceptFreshIfNeeded(
+    layer: SettingsFileLayer,
+    current: LayerContents,
+  ): SettingsEvent | null {
+    const previous = layer.snapshot()
+    if (sameLayerBytes(previous, current)) return null
+
+    const change = layer.acceptFresh(current)
+    return this.publish(changedRegisteredSettingIds(change.previous.raw, change.next.raw))
+  }
+
+  private prepareReduction(
+    current: Readonly<Record<string, unknown>>,
+    operations: readonly SettingsOperation[],
+  ): PreparedReduction {
+    const reduction = applySettingsOperations(current, operations)
+    let raw = reduction.raw
+    const secretEdits = new Map<SecretRef, string | null>()
+    if (reduction.touchedSettingIds.includes(PROVIDER_INSTANCES)) {
+      // Disk raw already stores existing credentials as ''. Treating that as an
+      // explicit clear would wipe every secret on an enabled toggle.
+      const split = extractRawProviderSecrets(raw[PROVIDER_INSTANCES])
+      for (const [ref, value] of split.secrets) secretEdits.set(ref, value)
+      if (split.instances !== raw[PROVIDER_INSTANCES]) {
+        raw = { ...raw, [PROVIDER_INSTANCES]: split.instances }
+      }
+    }
+
+    this.assertReductionValid(raw)
+    const changedSettingIds = reduction.touchedSettingIds.filter((id) =>
+      settingChanged(current, raw, id),
+    )
+    const edits = changedSettingIds.map((key) => documentEdit(raw, key))
+
+    return { changedSettingIds, edits, secretEdits }
+  }
+
+  private prepareRawDocument(target: SettingsWriteTarget, text: string): PreparedRawDocument {
+    const parsed = parseSettingsDocument(text)
+    if (parsed.parseErrors.length > 0) {
+      throw settingsErrors.FILE_MALFORMED({ detail: parsed.parseErrors[0].message })
+    }
+
+    const registeredSettingIds = Object.keys(parsed.values).filter(isSettingId)
     if (!Object.hasOwn(parsed.values, PROVIDER_INSTANCES)) {
-      return { text, secrets: new Map(), settingIds }
+      return { raw: parsed.values, registeredSettingIds, secretEdits: new Map(), text }
     }
 
     const split = extractRawProviderSecrets(parsed.values[PROVIDER_INSTANCES])
-    // Nothing to absorb: hand the user's bytes straight back. `editSettingsText`
-    // re-serializes the subtree it touches, so rewriting on every save would
-    // reformat `providers.instances` and drop any comment inside it — on a save
-    // that changed nothing. Byte fidelity is the hatch's whole job.
-    if (split.secrets.size === 0) return { text, secrets: split.secrets, settingIds }
-
-    // `providers.instances` is application-scoped precisely because it reaches
-    // process spawn, and a workspace file ships inside a cloned repository. The
-    // resolver already refuses to *apply* it from there — but that happens after
-    // the bytes are on disk, which for this key means a credential committed to
-    // someone's repo. Naming the key from a workspace file stays legal, because
-    // "set here, not applied" is a diagnostic the page is built to show; only
-    // carrying a value is not.
+    if (split.secrets.size === 0) {
+      return { raw: parsed.values, registeredSettingIds, secretEdits: split.secrets, text }
+    }
     if (target !== 'user') {
       throw settingsErrors.SCOPE_NOT_ALLOWED({
         key: PROVIDER_INSTANCES,
@@ -369,13 +809,39 @@ export class SettingsStore {
       })
     }
 
+    const strippedText = editSettingsText(text, [
+      { key: PROVIDER_INSTANCES, value: split.instances },
+    ])
     return {
-      // `editSettingsText`, not a re-serialize: the hatch has to hand the user's
-      // comments and key order back unchanged.
-      text: editSettingsText(text, [{ key: PROVIDER_INSTANCES, value: split.instances }]),
-      secrets: split.secrets,
-      settingIds,
+      raw: parseSettingsDocument(strippedText).values,
+      registeredSettingIds,
+      secretEdits: split.secrets,
+      text: strippedText,
     }
+  }
+
+  private assertCurrentDocumentValid(current: LayerContents) {
+    if (current.parseErrors.length === 0) return
+
+    throw settingsErrors.FILE_MALFORMED({ detail: current.parseErrors[0].message })
+  }
+
+  private assertReductionValid(raw: Readonly<Record<string, unknown>>) {
+    for (const id of SETTING_IDS) {
+      if (!Object.hasOwn(raw, id)) continue
+      const parsed = v.safeParse(descriptorFor(id).schema, raw[id])
+      if (parsed.success) continue
+
+      throw settingsErrors.WRITE_INVALID({
+        key: id,
+        reason: validationReason(parsed.issues),
+      })
+    }
+  }
+
+  private assertRequestWritable(ids: readonly SettingId[], target: SettingsWriteTarget) {
+    this.layerFor(target)
+    for (const id of ids) this.assertWritable(id, target)
   }
 
   private assertWritable(key: SettingId, target: SettingsWriteTarget) {
@@ -386,6 +852,147 @@ export class SettingsStore {
     if (layerAllowsScope(target, scope)) return
 
     throw settingsErrors.SCOPE_NOT_ALLOWED({ key, scope, target })
+  }
+
+  private async runIdempotentWrite(
+    kind: WriteKind,
+    id: string,
+    fingerprint: string,
+    operation: () => Promise<WriteExecution>,
+  ): Promise<IdempotentWrite> {
+    const retained = this.receipts.get(id)
+    if (retained) return this.duplicateWrite(retained, kind, fingerprint)
+
+    const inFlight = this.inFlightWrites.get(id)
+    if (inFlight) return this.awaitDuplicateWrite(inFlight, kind, fingerprint)
+
+    const promise = Promise.resolve().then(operation)
+    const marker = { fingerprint, kind, promise }
+    this.inFlightWrites.set(id, marker)
+
+    try {
+      const completed = await promise
+      this.rememberReceipt(id, completed.receipt)
+      return { ...completed, duplicate: false }
+    } finally {
+      if (this.inFlightWrites.get(id) === marker) this.inFlightWrites.delete(id)
+    }
+  }
+
+  private duplicateWrite(
+    receipt: WriteReceipt,
+    kind: WriteKind,
+    fingerprint: string,
+  ): IdempotentWrite {
+    this.assertFingerprint(receipt, kind, fingerprint)
+
+    return {
+      duplicate: true,
+      metrics: { coordinatorWaitMs: 0, rebaseAttempts: 0 },
+      receipt,
+      snapshot: this.snapshot(),
+    }
+  }
+
+  private async awaitDuplicateWrite(
+    inFlight: InFlightWrite,
+    kind: WriteKind,
+    fingerprint: string,
+  ): Promise<IdempotentWrite> {
+    this.assertFingerprint(inFlight, kind, fingerprint)
+    const completed = await inFlight.promise
+
+    return { ...completed, duplicate: true, snapshot: this.snapshot() }
+  }
+
+  private assertFingerprint(
+    retained: Pick<WriteReceipt, 'fingerprint' | 'kind'>,
+    kind: WriteKind,
+    fingerprint: string,
+  ) {
+    if (retained.kind === kind && retained.fingerprint === fingerprint) return
+
+    throw settingsErrors.ID_COLLISION({})
+  }
+
+  private rememberReceipt(id: string, receipt: WriteReceipt) {
+    this.receipts.set(id, receipt)
+    while (this.receipts.size > this.receiptLimit) {
+      const oldest = this.receipts.keys().next().value
+      if (typeof oldest !== 'string') return
+      this.receipts.delete(oldest)
+    }
+  }
+
+  private canAttempt(rebases: number, startedAt: number, signal?: AbortSignal) {
+    if (signal?.aborted) return false
+    if (rebases >= this.rebaseAttempts) return false
+
+    return performance.now() - startedAt <= this.rebaseBudgetMs
+  }
+
+  private publishLayerChange(change: LayerChange) {
+    this.publish(changedRegisteredSettingIds(change.previous.raw, change.next.raw))
+  }
+
+  private publish(
+    changedSettingIds: readonly SettingId[],
+    originMutationId?: string,
+  ): SettingsEvent {
+    this.sequence += 1
+    this.cachedSnapshot = null
+    this.reloadSecretRefs()
+    const event: SettingsEvent = {
+      changedSettingIds,
+      originMutationId,
+      snapshot: this.snapshot(),
+    }
+
+    for (const listener of this.listeners) this.notifyListener(listener, event)
+    return event
+  }
+
+  private notifyListener(listener: (event: SettingsEvent) => void, event: SettingsEvent) {
+    try {
+      listener(event)
+    } catch (error) {
+      recordRequestContext({
+        area: 'settings',
+        operation: 'notify',
+        settingsListenerError: error,
+      })
+    }
+  }
+
+  private loadSecretRefsAtStartup(filePath: string) {
+    try {
+      this.secretRefs = new Set(this.secretStore.readSync().keys())
+    } catch (error) {
+      throw settingsErrors.SECRETS_UNREADABLE({
+        file: filePath,
+        detail: error instanceof Error ? error.message : String(error),
+        cause: error instanceof Error ? error : undefined,
+      })
+    }
+  }
+
+  private reloadSecretRefs() {
+    try {
+      this.secretRefs = new Set(this.secretStore.readSync().keys())
+      this.secretRefsStale = false
+    } catch (error) {
+      this.secretRefsStale = true
+      recordRequestWarning('settings.secrets.unreadable', {
+        area: 'settings',
+        operation: 'invalidate',
+        settings: { secretRefsStale: true },
+        error: errorSummary(error),
+      })
+    }
+  }
+
+  private maskingRefs(): ReadonlySet<SecretRef> {
+    return this.secretRefsStale ? EVERY_SECRET_REF : this.secretRefs
   }
 
   private layerFor(target: SettingsWriteTarget): SettingsFileLayer {
@@ -414,88 +1021,225 @@ export class SettingsStore {
   }
 
   private layerSnapshots() {
-    const files = this.fileLayers().map((layer) => {
-      const contents = layer.snapshot()
-
-      return {
-        id: layer.id as SettingsLayerId,
-        present: contents.present,
-        raw: contents.raw as Record<string, unknown>,
-        file: {
-          text: contents.text,
-          revision: contents.revision ?? '',
-          parseErrors: [...contents.parseErrors],
-          keyRanges: { ...contents.keyRanges },
-        },
-      }
-    })
+    const files = this.fileLayers().map((layer) => layerSnapshot(layer))
     if (Object.keys(this.policy).length === 0) return files
 
     return [...files, { id: 'policy' as SettingsLayerId, present: true, raw: this.policy }]
   }
 
-  /**
-   * Which refs the mask treats as set.
-   *
-   * While the read is stale the honest answer is "unknown", and the two ways of
-   * saying that are not equivalent on the way back in: `REDACTED` round-trips
-   * through `extractProviderSecrets` as *leave the stored secret alone*, `''` as
-   * *delete it*. So an unknown answer masks everything rather than trusting refs
-   * that may no longer match the file.
-   */
-  private maskingRefs(): ReadonlySet<SecretRef> {
-    return this.secretRefsStale ? EVERY_SECRET_REF : this.secretRefs
+  private serverVersion(): SettingsServerVersion {
+    return { epoch: this.epoch, sequence: this.sequence }
+  }
+}
+
+function execution(
+  kind: WriteKind,
+  fingerprint: string,
+  changedSettingIds: readonly SettingId[],
+  snapshot: SettingsSnapshot,
+  coordinatorWaitMs: number,
+  rebaseAttempts: number,
+): WriteExecution {
+  return {
+    metrics: { coordinatorWaitMs, rebaseAttempts },
+    receipt: { appliedVersion: snapshot.serverVersion, changedSettingIds, fingerprint, kind },
+    snapshot,
+  }
+}
+
+function registerSettingsStore(secretsPath: string, store: SettingsStore) {
+  const stores = storesBySecretsPath.get(secretsPath)
+  if (stores) {
+    stores.add(store)
+    return
   }
 
-  /**
-   * Re-read on every invalidation, not only when *we* wrote a secret. The secret
-   * file has no watcher, so a hand-edit is otherwise invisible: the page would
-   * show a set variable as empty, and the next save of that row sends `''` back,
-   * which the write path reads as "delete it".
-   *
-   * A failed read must not abort the invalidation: the settings file is already
-   * on disk by then, so unwinding here leaves the change written and nobody
-   * told. It degrades instead — flag the refs stale, keep going, recover on the
-   * next read that works.
-   */
-  private reloadSecretRefs() {
-    try {
-      this.secretRefs = new Set(this.secretStore.readSync().keys())
-      this.secretRefsStale = false
-    } catch (error) {
-      this.secretRefsStale = true
-      recordRequestWarning('settings.secrets.unreadable', {
-        area: 'settings',
-        operation: 'invalidate',
-        settings: {
-          // The path only. Nothing from inside the file reaches a log — this
-          // recorder does not redact, and its contents are credentials.
-          secretsPath: this.secretsPath,
-          secretRefsStale: true,
-        },
-        error: errorSummary(error),
-      })
-    }
-  }
+  storesBySecretsPath.set(secretsPath, new Set([store]))
+}
 
-  private invalidate() {
-    this.cachedSnapshot = null
-    this.reloadSecretRefs()
-    const snapshot = this.snapshot()
+function unregisterSettingsStore(secretsPath: string, store: SettingsStore) {
+  const stores = storesBySecretsPath.get(secretsPath)
+  if (!stores) return
 
-    for (const listener of this.listeners) {
-      // The file is already written by the time listeners run. Letting one throw
-      // out of here would report "save failed" for a save that happened, and the
-      // user would retry a write already on disk.
-      try {
-        listener(snapshot)
-      } catch (error) {
-        recordRequestContext({
-          area: 'settings',
-          operation: 'notify',
-          settingsListenerError: error,
-        })
-      }
-    }
+  stores.delete(store)
+  if (stores.size === 0) storesBySecretsPath.delete(secretsPath)
+}
+
+function layerSnapshot(layer: SettingsFileLayer) {
+  const contents = layer.snapshot()
+
+  return {
+    id: layer.id,
+    present: contents.present,
+    raw: contents.raw as Record<string, unknown>,
+    file: {
+      text: contents.text,
+      revision: contents.revision ?? '',
+      parseErrors: [...contents.parseErrors],
+      keyRanges: { ...contents.keyRanges },
+    },
   }
+}
+
+function changedRegisteredSettingIds(
+  previous: Readonly<Record<string, unknown>>,
+  next: Readonly<Record<string, unknown>>,
+): SettingId[] {
+  return SETTING_IDS.filter((id) => settingChanged(previous, next, id))
+}
+
+function mergeSettingIds(
+  first: readonly SettingId[],
+  second: readonly SettingId[],
+): readonly SettingId[] {
+  if (second.length === 0) return first
+  const included = new Set([...first, ...second])
+
+  return SETTING_IDS.filter((id) => included.has(id))
+}
+
+function settingChanged(
+  previous: Readonly<Record<string, unknown>>,
+  next: Readonly<Record<string, unknown>>,
+  id: SettingId,
+) {
+  if (Object.hasOwn(previous, id) !== Object.hasOwn(next, id)) return true
+
+  return !jsonEqual(previous[id], next[id])
+}
+
+function documentEdit(raw: Readonly<Record<string, unknown>>, key: SettingId): DocumentEdit {
+  if (!Object.hasOwn(raw, key)) return { key }
+
+  return { key, value: raw[key] }
+}
+
+function sameLayerBytes(left: LayerContents, right: LayerContents) {
+  return left.revision === right.revision && left.text === right.text
+}
+
+function jsonEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true
+  if (Array.isArray(left) || Array.isArray(right)) return arraysEqual(left, right)
+  if (!isRecord(left) || !isRecord(right)) return false
+
+  return recordsEqual(left, right)
+}
+
+function arraysEqual(left: unknown, right: unknown): boolean {
+  if (!Array.isArray(left) || !Array.isArray(right)) return false
+  if (left.length !== right.length) return false
+
+  return left.every((value, index) => jsonEqual(value, right[index]))
+}
+
+function recordsEqual(
+  left: Readonly<Record<string, unknown>>,
+  right: Readonly<Record<string, unknown>>,
+) {
+  const keys = Object.keys(left)
+  if (keys.length !== Object.keys(right).length) return false
+
+  return keys.every((key) => Object.hasOwn(right, key) && jsonEqual(left[key], right[key]))
+}
+
+function semanticFingerprint(request: SettingsMutationRequest): string {
+  return fingerprint({ operations: request.operations, target: request.target })
+}
+
+function rawFingerprint(request: SettingsRawWriteRequest): string {
+  return fingerprint({
+    baseRevision: request.baseRevision,
+    target: request.target,
+    textHash: createHash('sha256').update(request.text).digest('hex'),
+  })
+}
+
+function fingerprint(value: unknown): string {
+  return createHash('sha256').update(stableSerialize(value)).digest('hex')
+}
+
+function stableSerialize(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`
+  if (!isRecord(value)) return JSON.stringify(value) ?? 'null'
+
+  const entries = Object.keys(value)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`)
+
+  return `{${entries.join(',')}}`
+}
+
+function successLogContext(write: IdempotentWrite) {
+  return {
+    settings: {
+      appliedSequence: write.receipt.appliedVersion.sequence,
+      coordinatorWaitMs: write.metrics.coordinatorWaitMs,
+      epoch: write.receipt.appliedVersion.epoch,
+      outcome: write.duplicate ? 'duplicate-ack' : 'applied',
+      rebaseAttempts: write.metrics.rebaseAttempts,
+    },
+  }
+}
+
+function failureLogContext(error: unknown) {
+  const code = errorStringField(error, 'code')
+  const status = errorNumberField(error, 'statusCode') ?? errorNumberField(error, 'status')
+
+  return {
+    settings: {
+      error: { code, status },
+      coordinatorWaitMs: numberErrorField(error, 'coordinatorWaitMs') ?? 0,
+      outcome: failureOutcome(code),
+      rebaseAttempts: numberErrorField(error, 'attempts') ?? 0,
+    },
+  }
+}
+
+function failureOutcome(code: string | undefined) {
+  if (code === 'settings.WRITE_CONTENDED') return 'contended'
+  if (code === 'settings.RAW_REVISION_STALE') return 'raw-conflict'
+
+  return 'rejected'
+}
+
+function numberErrorField(error: unknown, key: string) {
+  if (!isRecord(error)) return undefined
+  const value = error[key]
+
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function attachWriteMetrics(error: unknown, coordinatorWaitMs: number, attempts: number) {
+  if (!isRecord(error)) return error
+
+  if (numberErrorField(error, 'coordinatorWaitMs') === undefined) {
+    Object.assign(error, { coordinatorWaitMs })
+  }
+  if (numberErrorField(error, 'attempts') === undefined) Object.assign(error, { attempts })
+
+  return error
+}
+
+async function fileMode(filePath: string): Promise<number | undefined> {
+  try {
+    return (await stat(filePath)).mode & 0o777
+  } catch (error) {
+    if (isRecord(error) && error.code === 'ENOENT') return undefined
+    throw error
+  }
+}
+
+function positiveInteger(value: number | undefined, fallback: number) {
+  return value !== undefined && Number.isInteger(value) && value > 0 ? value : fallback
+}
+
+function positiveNumber(value: number | undefined, fallback: number) {
+  return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback
+}
+
+function validationReason(issues: readonly { readonly message: string }[]) {
+  const messages = issues.slice(0, 3).map((issue) => issue.message.split(' but received ')[0])
+
+  return messages.join('; ')
 }

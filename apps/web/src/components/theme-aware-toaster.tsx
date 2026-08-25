@@ -1,4 +1,4 @@
-import { useTheme } from '@/components/theme-context'
+import { useTheme } from '@/features/settings/hooks/use-theme'
 import { Toaster } from '@workspace/ui/components/sonner'
 
 export function ThemeAwareToaster() {

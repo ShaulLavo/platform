@@ -75,7 +75,7 @@ import {
   type FileListSortKey,
 } from '@/features/file-picker/utils/sort-entries'
 import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
-import { useSettings } from '@/features/settings/hooks/use-settings'
+import { useSettingsProjection } from '@/features/settings/hooks/use-settings-projection'
 import { useSettingsActions } from '@/features/settings/hooks/use-settings-actions'
 
 type FilePickerDialogProps = {
@@ -102,13 +102,12 @@ export function FilePickerDialog({
   onPick,
 }: FilePickerDialogProps) {
   const showHidden = useSettingValue('files.showHidden')
-  const settings = useSettings()
+  const settings = useSettingsProjection()
   const settingsActions = useSettingsActions()
   const session = useFilePickerSession(value)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const commitStartedRef = useRef(false)
-  const hiddenWriteStartedRef = useRef(false)
   const [sort, setSort] = useState<FileListSort | null>(null)
   const {
     refresh: refreshServerInfo,
@@ -199,10 +198,10 @@ export function FilePickerDialog({
   const selectedPickable =
     toPickedEntry(selectedEntry, mode, accept) ?? currentPickableEntry(currentEntry, mode)
   const homePath = serverInfo?.homePath ?? ROOT_PATH
-  const settingsLayers = settings.data?.layers ?? []
+  const settingsLayers = settings?.layers ?? []
   const hiddenWriteTarget = deriveWriteTarget('files.showHidden', settingsLayers)
   const hiddenManagedByPolicy = policyControlledIds(settingsLayers).includes('files.showHidden')
-  const hiddenSettingDisabled = settingsActions.isSaving || !settings.data || hiddenManagedByPolicy
+  const hiddenSettingDisabled = !settings || hiddenManagedByPolicy
   const copy = pickerCopy(mode)
   const displayedIconMode = iconMode ?? (mode === 'file' ? 'vscode' : 'default')
   // The list rows consume these actions through context, so identity must stay
@@ -220,10 +219,6 @@ export function FilePickerDialog({
   useEffect(() => {
     if (open) commitStartedRef.current = false
   }, [open])
-
-  useEffect(() => {
-    if (!settingsActions.isSaving) hiddenWriteStartedRef.current = false
-  }, [settingsActions.isSaving])
 
   useEffect(() => {
     if (!selectedEntry || !isDirectoryEntry(selectedEntry)) return
@@ -424,9 +419,8 @@ export function FilePickerDialog({
   }
 
   function toggleHiddenFiles() {
-    if (hiddenSettingDisabled || hiddenWriteStartedRef.current) return
+    if (hiddenSettingDisabled) return
 
-    hiddenWriteStartedRef.current = true
     settingsActions.setSetting('files.showHidden', !showHidden, hiddenWriteTarget)
   }
 

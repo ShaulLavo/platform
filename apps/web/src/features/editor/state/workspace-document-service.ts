@@ -17,6 +17,21 @@ import {
 
 type LiveDocumentSyncState = 'idle' | 'saving' | 'conflict'
 
+export type SettingsDocumentSync =
+  | {
+      kind: 'settings'
+      revision: string
+      state: Exclude<LiveDocumentSyncState, 'conflict'>
+      target: SettingsWriteTarget
+    }
+  | {
+      confirmedText: string | null
+      kind: 'settings'
+      revision: string | null
+      state: 'conflict'
+      target: SettingsWriteTarget
+    }
+
 /**
  * Where a document's contents came from, and therefore where a save sends them.
  *
@@ -36,13 +51,7 @@ type LiveDocumentSync =
       path: string
       state: LiveDocumentSyncState
     }
-  | {
-      kind: 'settings'
-      /** The revision the buffer was seeded from; the raw write guards on it. */
-      revision: string
-      state: LiveDocumentSyncState
-      target: SettingsWriteTarget
-    }
+  | SettingsDocumentSync
   | {
       kind: 'none'
     }
@@ -305,10 +314,55 @@ export class WorkspaceDocumentService {
 
     return this.applySaved(
       document,
-      { ...document.sync, revision, state: 'idle' },
+      { kind: 'settings', revision, state: 'idle', target: document.sync.target },
       savedContentRevision,
       savedText,
     )
+  }
+
+  markSettingsConflict(
+    documentId: string,
+    confirmedText: string | null,
+    revision: string | null,
+  ): boolean {
+    const document = this.liveDocumentsById.get(documentId)
+    if (!document) return false
+    if (document.sync.kind !== 'settings') return false
+
+    this.liveDocumentsById.set(documentId, {
+      ...document,
+      sync: {
+        confirmedText,
+        kind: 'settings',
+        revision,
+        state: 'conflict',
+        target: document.sync.target,
+      },
+    })
+    return true
+  }
+
+  reloadSettingsDocument(documentId: string): boolean {
+    const document = this.liveDocumentsById.get(documentId)
+    if (!document) return false
+    if (document.sync.kind !== 'settings' || document.sync.state !== 'conflict') return false
+    if (document.sync.confirmedText === null || document.sync.revision === null) return false
+
+    const { confirmedText, revision, target } = document.sync
+    const buffer = createEditorTextBuffer(confirmedText)
+    buffer.markClean()
+    const contentRevision = contentRevisionForText(confirmedText)
+    this.liveDocumentsById.set(documentId, {
+      ...document,
+      buffer,
+      contentRevision,
+      localRevision: buffer.getRevision(),
+      sync: { kind: 'settings', revision, state: 'idle', target },
+    })
+    this.setContentRevision(documentId, contentRevision)
+    this.deleteDirtyPath(document.path)
+    this.rebindViewsForDocument(documentId)
+    return true
   }
 
   /**
@@ -364,6 +418,9 @@ export class WorkspaceDocumentService {
     if (!document) return false
     if (document.sync.kind !== 'settings') return false
     if (document.sync.revision === revision) return false
+    if (document.sync.state === 'conflict') {
+      return this.markSettingsConflict(documentId, text, revision)
+    }
     if (document.buffer.isDirty()) return false
 
     const buffer = createEditorTextBuffer(text)
@@ -374,7 +431,7 @@ export class WorkspaceDocumentService {
       buffer,
       contentRevision,
       localRevision: buffer.getRevision(),
-      sync: { ...document.sync, revision },
+      sync: { kind: 'settings', revision, state: 'idle', target: document.sync.target },
     })
     this.setContentRevision(documentId, contentRevision)
     this.deleteDirtyPath(document.path)

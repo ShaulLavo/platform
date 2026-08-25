@@ -58,7 +58,9 @@ test('the toggle starts from a setting changed after mount, not the mounted valu
   // The settings page's write path, then the refresh the settings stream does
   // in production — the command must see the new value, not the mounted one.
   await saveSettings({
-    edits: [{ key: 'workbench.wallpaper.enabled', target: 'user', value: !mounted }],
+    mutationId: 'command-dispatch-external-wallpaper',
+    operations: [{ key: 'workbench.wallpaper.enabled', kind: 'set', value: !mounted }],
+    target: 'user',
   })
   await queryClient.invalidateQueries({ queryKey: settingsKeys.document() })
   await waitFor(async () => expect(await stored('workbench.wallpaper.enabled')).toBe(!mounted))

@@ -17,10 +17,11 @@ function ingestRequest(query = '') {
   return new Request(`http://localhost:3001/_log/ingest${query}`, { method: 'POST' })
 }
 
-function clientPayload() {
+function clientPayload(eventId?: string) {
   return {
     action: 'app.bootstrap',
     area: 'app',
+    eventId,
     level: 'info',
     timestamp: new Date().toISOString(),
   }
@@ -48,5 +49,36 @@ describe('recordClientLog', () => {
 
     const client = emitted[0]?.fields.client as { instanceId: string }
     expect(client.instanceId).toHaveLength(64)
+  })
+
+  test('deduplicates retries by client instance and event id', () => {
+    emitted.length = 0
+    const payload = clientPayload('retry-1')
+
+    recordClientLog(payload, ingestRequest('?instance=tab-dedupe'))
+    recordClientLog(payload, ingestRequest('?instance=tab-dedupe'))
+
+    expect(emitted).toHaveLength(1)
+  })
+
+  test('preserves the same event id from another client instance', () => {
+    emitted.length = 0
+    const payload = clientPayload('shared-event')
+
+    recordClientLog(payload, ingestRequest('?instance=tab-one'))
+    recordClientLog(payload, ingestRequest('?instance=tab-two'))
+
+    expect(emitted).toHaveLength(2)
+  })
+
+  test('bounds dedupe retention and admits an evicted event again', () => {
+    emitted.length = 0
+    for (let index = 0; index <= 1_024; index += 1) {
+      recordClientLog(clientPayload(`bounded-${index}`), ingestRequest('?instance=tab-bounded'))
+    }
+
+    recordClientLog(clientPayload('bounded-0'), ingestRequest('?instance=tab-bounded'))
+
+    expect(emitted).toHaveLength(1_026)
   })
 })

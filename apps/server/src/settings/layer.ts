@@ -1,18 +1,16 @@
 import { watch, type FSWatcher } from 'node:fs'
 import path from 'node:path'
-import type { SettingsLayerId } from '@workspace/contracts'
-import { runDetached } from '../observability'
+import { errorStringField, type SettingsLayerId } from '@workspace/contracts'
+import { recordRequestWarning, runDetached } from '../observability'
 import {
-  editSettingsText,
   parseSettingsDocument,
   readSettingsFile,
   readSettingsFileSync,
-  writeSettingsFile,
-  type DocumentEdit,
+  type SettingsFileContents,
   type SettingsParseError,
   type SettingsTextRange,
 } from './json-document'
-import { settingsErrors } from './structured-errors'
+import { withSettingsWriteCoordinator } from './write-coordinator'
 
 /**
  * `fs.watch` fires more than once per editor save, and sometimes before the new
@@ -20,6 +18,8 @@ import { settingsErrors } from './structured-errors'
  * hand-edit feels live.
  */
 const RELOAD_DEBOUNCE_MS = 100
+const RELOAD_RETRY_MS = 50
+const MAX_RELOAD_READ_FAILURES = 3
 
 /**
  * `fs.watch` under Bun is not live when it returns: a change landing in the
@@ -47,6 +47,22 @@ export type LayerContents = {
   readonly present: boolean
 }
 
+export type LayerChange = {
+  readonly next: LayerContents
+  readonly previous: LayerContents
+}
+
+export type LayerWriteContext = {
+  readonly current: LayerContents
+  readonly coordinatorWaitMs: number
+  readonly destination: string
+}
+
+export type SettingsLayerReader = (
+  context: { readonly filePath: string; readonly layer: SettingsLayerId },
+  read: () => Promise<SettingsFileContents>,
+) => Promise<SettingsFileContents>
+
 const EMPTY: LayerContents = {
   raw: {},
   parseErrors: [],
@@ -69,11 +85,17 @@ export class SettingsFileLayer {
   readonly filePath: string
 
   private contents: LayerContents = EMPTY
+  private readonly reader: SettingsLayerReader | null
   private watcher: FSWatcher | null = null
   private directoryWatcher: FSWatcher | null = null
   private debounce: ReturnType<typeof setTimeout> | null = null
   private catchUpTimer: ReturnType<typeof setTimeout> | null = null
-  private onChange: (() => void) | null = null
+  private retryTimer: ReturnType<typeof setTimeout> | null = null
+  private onChange: ((change: LayerChange) => void) | null = null
+  private readFailureCount = 0
+  private readFailureReported = false
+  private reloading = false
+  private reloadQueued = false
   /**
    * Bumped on every applied change to `contents`, so a reload can tell whether
    * the layer moved underneath its own `await`.
@@ -88,9 +110,10 @@ export class SettingsFileLayer {
    */
   private selfWrittenRevision: string | null = null
 
-  constructor(id: SettingsLayerId, filePath: string) {
+  constructor(id: SettingsLayerId, filePath: string, reader?: SettingsLayerReader) {
     this.id = id
     this.filePath = filePath
+    this.reader = reader ?? null
   }
 
   snapshot(): LayerContents {
@@ -105,103 +128,49 @@ export class SettingsFileLayer {
     this.apply(this.toContents(readSettingsFileSync(this.filePath)))
   }
 
-  /**
-   * Applies edits to the file's text.
-   *
-   * Refuses outright when the document has syntax errors: an edit computed from
-   * a partial parse tree corrupts the parts that did parse. Read-tolerance and
-   * write-refusal are two halves of one rule — shipping only the first gives
-   * data loss, only the second gives a settings file nobody can fix.
-   *
-   * `baseRevision` is the revision the *caller's* values were computed against.
-   * Guarding on our own fresh read instead would compare the file to itself and
-   * always pass, which silently loses whatever landed in between — and the
-   * collection-valued edits are whole-value replaces, so "in between" means the
-   * user's other keybinding, not a merge conflict.
-   */
-  async write(edits: readonly DocumentEdit[], baseRevision?: string | null): Promise<void> {
-    const done = await this.beginWrite()
+  /** Runs one fresh read and write transaction under the process-wide path lock. */
+  async coordinateWrite<T>(operation: (context: LayerWriteContext) => Promise<T>): Promise<T> {
+    return withSettingsWriteCoordinator(this.filePath, async (lease) => {
+      const done = await this.beginWrite()
 
-    try {
-      const current = await this.read()
-      if (current.parseErrors.length > 0) {
-        throw settingsErrors.FILE_MALFORMED({
-          file: this.filePath,
-          detail: current.parseErrors[0].message,
+      try {
+        return await operation({
+          current: await this.read(),
+          coordinatorWaitMs: lease.waitMs,
+          destination: lease.canonicalPath,
         })
+      } finally {
+        done()
       }
-
-      const text = editSettingsText(current.text, edits)
-      const revision = await writeSettingsFile(this.filePath, text, {
-        expectedRevision: baseRevision === undefined ? current.revision : baseRevision,
-        onRevisionMismatch: () => {
-          throw settingsErrors.REVISION_STALE({ file: this.filePath })
-        },
-      })
-
-      this.selfWrittenRevision = revision
-      const parsed = parseSettingsDocument(text)
-      this.apply({
-        raw: parsed.values,
-        parseErrors: parsed.parseErrors,
-        keyRanges: parsed.keyRanges,
-        revision,
-        text,
-        present: true,
-      })
-      this.rearmWatchers()
-    } finally {
-      done()
-    }
+    })
   }
 
-  /**
-   * Replaces the whole document, for the JSON escape hatch.
-   *
-   * Unlike `write`, a malformed *current* file is not a reason to refuse — the
-   * user is very likely opening the raw editor precisely to fix it. What is
-   * refused is malformed *incoming* text, so the hatch cannot be the way a
-   * broken document gets saved.
-   */
-  async writeText(text: string, baseRevision?: string | null): Promise<void> {
-    const incoming = parseSettingsDocument(text)
-    if (incoming.parseErrors.length > 0) {
-      throw settingsErrors.FILE_MALFORMED({
-        file: this.filePath,
-        detail: incoming.parseErrors[0].message,
-      })
-    }
-
-    const done = await this.beginWrite()
-
-    try {
-      const revision = await writeSettingsFile(this.filePath, text, {
-        // `??` treated the `''` a fresh install reports as a real revision, so
-        // the first raw save on a machine with no settings file compared `''`
-        // against the disk's `null` and refused itself. Only an *omitted*
-        // revision means "no guard requested"; see `write` above for the rest.
-        expectedRevision: baseRevision === undefined ? (await this.read()).revision : baseRevision,
-        onRevisionMismatch: () => {
-          throw settingsErrors.REVISION_STALE({ file: this.filePath })
-        },
-      })
-
-      this.selfWrittenRevision = revision
-      this.apply({
-        raw: incoming.values,
-        parseErrors: [],
-        keyRanges: incoming.keyRanges,
-        revision,
-        text,
-        present: true,
-      })
-      this.rearmWatchers()
-    } finally {
-      done()
-    }
+  async readFresh(): Promise<LayerContents> {
+    return this.read()
   }
 
-  watch(onChange: () => void): void {
+  /** Makes committed bytes authoritative in-memory and suppresses their watcher echo. */
+  acceptCommitted(text: string, revision: string): LayerChange {
+    const parsed = parseSettingsDocument(text)
+    this.selfWrittenRevision = revision
+    const change = this.accept({
+      raw: parsed.values,
+      parseErrors: parsed.parseErrors,
+      keyRanges: parsed.keyRanges,
+      revision,
+      text,
+      present: true,
+    })
+
+    return change
+  }
+
+  /** Admits a fresh coordinated read when another store moved the shared file. */
+  acceptFresh(contents: LayerContents): LayerChange {
+    return this.accept(contents)
+  }
+
+  watch(onChange: (change: LayerChange) => void): void {
     this.onChange = onChange
     this.watchFile()
     this.watchDirectory()
@@ -212,6 +181,7 @@ export class SettingsFileLayer {
     if (this.debounce) clearTimeout(this.debounce)
     this.debounce = null
     this.stopCatchUp()
+    this.stopRetry()
     this.watcher?.close()
     this.directoryWatcher?.close()
     this.watcher = null
@@ -220,7 +190,13 @@ export class SettingsFileLayer {
   }
 
   private async read(): Promise<LayerContents> {
-    return this.toContents(await readSettingsFile(this.filePath))
+    const source = this.reader
+      ? await this.reader({ filePath: this.filePath, layer: this.id }, () =>
+          readSettingsFile(this.filePath),
+        )
+      : await readSettingsFile(this.filePath)
+
+    return this.toContents(source)
   }
 
   /**
@@ -291,8 +267,8 @@ export class SettingsFileLayer {
    */
   private rearmWatchers() {
     if (!this.onChange) return
-    if (this.watcher && this.directoryWatcher) return
 
+    // A live handle can already be detached after an atomic replacement.
     this.watcher?.close()
     this.directoryWatcher?.close()
     this.watcher = null
@@ -332,6 +308,14 @@ export class SettingsFileLayer {
   private apply(next: LayerContents) {
     this.contents = next
     this.generation += 1
+  }
+
+  private accept(next: LayerContents): LayerChange {
+    const previous = this.contents
+    this.apply(next)
+    this.rearmWatchers()
+
+    return { next, previous }
   }
 
   /**
@@ -399,18 +383,45 @@ export class SettingsFileLayer {
   }
 
   private scheduleReload() {
+    if (this.reloading) {
+      this.reloadQueued = true
+      return
+    }
     if (this.debounce) clearTimeout(this.debounce)
     this.debounce = setTimeout(() => {
       this.debounce = null
-      runDetached(() => this.reload(), {
-        area: 'settings',
-        layer: this.id,
-        operation: 'reload',
-      })
+      this.requestReload()
     }, RELOAD_DEBOUNCE_MS)
   }
 
-  private async reload() {
+  private requestReload() {
+    if (!this.onChange) return
+    if (this.reloading) {
+      this.reloadQueued = true
+      return
+    }
+
+    this.reloading = true
+    runDetached(() => this.reloadQueuedReads(), {
+      area: 'settings',
+      layer: this.id,
+      operation: 'reload',
+    })
+  }
+
+  private async reloadQueuedReads() {
+    try {
+      do {
+        this.reloadQueued = false
+        await this.reloadOnce()
+      } while (this.reloadQueued)
+    } finally {
+      this.reloading = false
+      if (this.reloadQueued) this.requestReload()
+    }
+  }
+
+  private async reloadOnce() {
     // Before the generation is captured, so a write that lands first is read as
     // the current state rather than as a change to publish.
     //
@@ -420,8 +431,18 @@ export class SettingsFileLayer {
     // wake in the same turn write B is admitted and read across B's rename.
     while (this.writing) await this.writing
     const generation = this.generation
-    const next = await this.read().catch(() => null)
-    if (!next) return
+    let next: LayerContents
+    try {
+      next = await this.read()
+    } catch (error) {
+      this.handleReadFailure(error)
+      return
+    }
+    this.clearReadFailure()
+
+    // An event landed while this read was pending. Its bytes may already be
+    // older than the file, so let the queued read be the one that publishes.
+    if (this.reloadQueued) return
 
     // Discard a read the layer outran. `write` re-reads, edits and renames, so a
     // reload that started before it can resolve holding the pre-write bytes --
@@ -442,7 +463,41 @@ export class SettingsFileLayer {
 
     if (next.revision === this.contents.revision) return
 
-    this.apply(next)
-    this.onChange?.()
+    const change = this.accept(next)
+    this.onChange?.(change)
+  }
+
+  private handleReadFailure(error: unknown) {
+    this.readFailureCount += 1
+    if (!this.readFailureReported) {
+      this.readFailureReported = true
+      recordRequestWarning('settings.layer.reload_failed', {
+        area: 'settings',
+        operation: 'watcher-read',
+        settings: { layer: this.id },
+        error: {
+          code: errorStringField(error, 'code'),
+          name: error instanceof Error ? error.name : typeof error,
+        },
+      })
+    }
+    if (this.readFailureCount >= MAX_RELOAD_READ_FAILURES) return
+    if (!this.onChange || this.retryTimer) return
+
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null
+      this.requestReload()
+    }, RELOAD_RETRY_MS)
+  }
+
+  private clearReadFailure() {
+    this.readFailureCount = 0
+    this.readFailureReported = false
+    this.stopRetry()
+  }
+
+  private stopRetry() {
+    if (this.retryTimer) clearTimeout(this.retryTimer)
+    this.retryTimer = null
   }
 }

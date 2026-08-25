@@ -1,4 +1,5 @@
-import { useEffect, useRef, type RefObject } from 'react'
+import { isHighlightNavigationKey } from '@/features/command-palette/command-palette-utils'
+import { useEffect, useRef, useState } from 'react'
 
 /**
  * The value of the row the palette currently highlights, reported however the
@@ -13,13 +14,12 @@ import { useEffect, useRef, type RefObject } from 'react'
  */
 export function useHighlightedPaletteValue({
   enabled,
-  listRef,
   onHighlight,
 }: {
   readonly enabled: boolean
-  readonly listRef: RefObject<HTMLElement | null>
   readonly onHighlight: (value: string) => void
 }) {
+  const [list, setList] = useState<HTMLElement | null>(null)
   // The observer must not be torn down and rebuilt every render just because the
   // callback is a new closure; the latest one is read at report time instead.
   const onHighlightRef = useRef(onHighlight)
@@ -28,8 +28,9 @@ export function useHighlightedPaletteValue({
   })
 
   useEffect(() => {
-    const list = listRef.current
     if (!enabled || !list) return
+    let active = true
+    let reportQueued = false
 
     const reportHighlightedValue = () => {
       const value = list
@@ -39,13 +40,41 @@ export function useHighlightedPaletteValue({
 
       onHighlightRef.current(value)
     }
+    const queueHighlightReport = () => {
+      if (reportQueued) return
+
+      // Cmdk updates selection later in the event; read after its handler runs.
+      reportQueued = true
+      globalThis.queueMicrotask(() => {
+        reportQueued = false
+        if (!active) return
+
+        reportHighlightedValue()
+      })
+    }
+    const handleNavigationKey = (event: KeyboardEvent) => {
+      if (!isHighlightNavigationKey(event)) return
+
+      queueHighlightReport()
+    }
 
     reportHighlightedValue()
     const observer = new MutationObserver(reportHighlightedValue)
-    observer.observe(list, { attributeFilter: ['data-selected'], subtree: true })
+    observer.observe(list, {
+      attributeFilter: ['aria-selected', 'data-selected'],
+      subtree: true,
+    })
+    const commandRoot = list.closest<HTMLElement>('[cmdk-root]')
+    commandRoot?.addEventListener('keydown', handleNavigationKey)
+    commandRoot?.addEventListener('pointermove', queueHighlightReport)
 
     return () => {
+      active = false
       observer.disconnect()
+      commandRoot?.removeEventListener('keydown', handleNavigationKey)
+      commandRoot?.removeEventListener('pointermove', queueHighlightReport)
     }
-  }, [enabled, listRef])
+  }, [enabled, list])
+
+  return setList
 }

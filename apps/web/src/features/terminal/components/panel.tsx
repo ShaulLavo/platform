@@ -11,7 +11,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react'
 
-import { useTheme } from '@/components/theme-context'
+import { useTheme } from '@/features/settings/hooks/use-theme'
 import { useFocus } from '@/features/workspace/providers/focus-state'
 import { useContextMenu } from '@/features/menus/hooks/use-context-menu'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'

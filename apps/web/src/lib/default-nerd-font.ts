@@ -41,6 +41,7 @@ export const DEFAULT_MONO_FONT_VARIABLE = '--font-mono'
 
 type CssVariableTarget = {
   readonly style: {
+    getPropertyValue?(name: string): string
     setProperty(name: string, value: string): void
   }
 }
@@ -94,7 +95,9 @@ export async function loadNerdFont(fontId: string, options: DefaultNerdFontOptio
     })
     await fontFace.load()
     fonts.add(fontFace)
-    applyMonoFontStack(root, fontStack(fontId))
+    if (monoFontStackStillCurrent(root, fontStack(fontId))) {
+      applyMonoFontStack(root, fontStack(fontId))
+    }
 
     return true
   } catch {
@@ -104,6 +107,13 @@ export async function loadNerdFont(fontId: string, options: DefaultNerdFontOptio
 
 function applyMonoFontStack(root: CssVariableTarget | null, stack: string) {
   root?.style.setProperty(DEFAULT_MONO_FONT_VARIABLE, stack)
+}
+
+function monoFontStackStillCurrent(root: CssVariableTarget | null, stack: string) {
+  const current = root?.style.getPropertyValue?.(DEFAULT_MONO_FONT_VARIABLE)
+  if (current === undefined) return true
+
+  return current === stack
 }
 
 function fontUrl(fontId: string) {

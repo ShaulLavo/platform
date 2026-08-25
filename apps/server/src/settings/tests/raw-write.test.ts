@@ -1,11 +1,23 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
+import type { SettingsEvent } from '@workspace/contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import { SettingsStore } from '../store'
 
 const roots: string[] = []
 const stores: SettingsStore[] = []
+let writeSequence = 0
+
+function writeRaw(store: SettingsStore, text: string, baseRevision: string) {
+  writeSequence += 1
+  return store.writeRaw({
+    baseRevision,
+    target: 'user',
+    text,
+    writeId: `raw-test-${writeSequence}`,
+  })
+}
 
 async function tempRoot() {
   const root = await mkdtemp(path.join(tmpdir(), 'settings-raw-'))
@@ -43,18 +55,36 @@ describe('the revision a fresh install reports', () => {
     // `''` is what a file that does not exist reports; the disk reports `null`.
     expect(revision).toBe('')
 
-    const snapshot = await store.writeRaw('user', '{ "editor.fontSize": 21 }\n', revision)
-    expect(snapshot.values['editor.fontSize']).toBe(21)
+    const result = await writeRaw(store, '{ "editor.fontSize": 21 }\n', revision)
+    expect(result.snapshot.values['editor.fontSize']).toBe(21)
   })
 
   it('still refuses a raw save whose base revision is genuinely stale', async () => {
     const root = await tempRoot()
     const store = createStore(root)
-    await store.writeRaw('user', '{ "editor.fontSize": 20 }\n', '')
+    await writeRaw(store, '{ "editor.fontSize": 20 }\n', '')
 
     await expect(
-      store.writeRaw('user', '{ "editor.fontSize": 30 }\n', 'not-the-current-revision'),
-    ).rejects.toMatchObject({ code: 'settings.REVISION_STALE' })
+      writeRaw(store, '{ "editor.fontSize": 30 }\n', 'not-the-current-revision'),
+    ).rejects.toMatchObject({ code: 'settings.RAW_REVISION_STALE' })
+  })
+
+  it('admits the latest confirmed bytes before reporting a cross-store conflict', async () => {
+    const root = await tempRoot()
+    const first = createStore(root)
+    const stale = createStore(root)
+    const events: SettingsEvent[] = []
+    stale.onChange((event) => events.push(event))
+    await writeRaw(first, '{ "editor.fontSize": 22 }\n', '')
+
+    await expect(writeRaw(stale, '{ "editor.lineHeight": 33 }\n', '')).rejects.toMatchObject({
+      code: 'settings.RAW_REVISION_STALE',
+    })
+
+    expect(stale.rawLayer('user')).toEqual(first.rawLayer('user'))
+    expect(stale.snapshot().values['editor.fontSize']).toBe(22)
+    expect(events).toHaveLength(1)
+    expect(events[0]?.originMutationId).toBeUndefined()
   })
 })
 
@@ -71,16 +101,16 @@ describe('two writes that overlap', () => {
     await writeFile(file, '{}\n', 'utf8')
 
     const store = createStore(root)
-    const base = store.snapshot().revision
+    const base = store.rawLayer('user').revision
 
     const outcomes = await Promise.allSettled([
-      store.writeRaw('user', '{ "editor.fontSize": 20 }\n', base),
-      store.writeRaw('user', '{ "editor.lineHeight": 30 }\n', base),
+      writeRaw(store, '{ "editor.fontSize": 20 }\n', base),
+      writeRaw(store, '{ "editor.lineHeight": 30 }\n', base),
     ])
 
     expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1)
     const refused = outcomes.find((outcome) => outcome.status === 'rejected')
-    expect(refused?.reason).toMatchObject({ code: 'settings.REVISION_STALE' })
+    expect(refused?.reason).toMatchObject({ code: 'settings.RAW_REVISION_STALE' })
 
     // Whichever won, the file is one of the two documents whole — never a third
     // one made of both, and never the loser's silently discarded.
@@ -94,8 +124,16 @@ describe('two writes that overlap', () => {
     const store = createStore(root)
 
     await Promise.all([
-      store.write({ edits: [{ key: 'editor.fontSize', value: 20, target: 'user' }] }),
-      store.write({ edits: [{ key: 'editor.lineHeight', value: 30, target: 'user' }] }),
+      store.write({
+        mutationId: 'font-size',
+        operations: [{ key: 'editor.fontSize', kind: 'set', value: 20 }],
+        target: 'user',
+      }),
+      store.write({
+        mutationId: 'line-height',
+        operations: [{ key: 'editor.lineHeight', kind: 'set', value: 30 }],
+        target: 'user',
+      }),
     ])
 
     // Unguarded writes are allowed to both succeed — what they may not do is

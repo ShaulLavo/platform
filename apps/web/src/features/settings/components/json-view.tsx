@@ -5,10 +5,11 @@ import type { EditorKeymapLayer } from '@singapor/core'
 import type { SettingsDiagnostic, SettingsLayerFile } from '@workspace/contracts'
 
 import { JsonLoading } from '@/features/settings/components/json-loading'
-import { settingsJsonDocumentId } from '../utils/json-document'
-import { SETTINGS_LANGUAGE_SERVER_TARGET } from '../utils/language-server'
-import type { SettingsScope } from '../state/scope-store'
-import { useSettingsDiagnosticsPlugin } from '../hooks/use-settings-diagnostics-plugin'
+import { RawConflictBanner } from '@/features/settings/components/raw-conflict-banner'
+import { useSettingsDiagnosticsPlugin } from '@/features/settings/hooks/use-settings-diagnostics-plugin'
+import type { SettingsScope } from '@/features/settings/state/scope-store'
+import { settingsJsonDocumentId } from '@/features/settings/utils/json-document'
+import { SETTINGS_LANGUAGE_SERVER_TARGET } from '@/features/settings/utils/language-server'
 
 /**
  * The settings document as text, in the same editor everything else opens in.
@@ -49,16 +50,21 @@ export function SettingsJsonView({
   }
 
   return (
-    <Editor
-      active
-      additionalPlugins={diagnosticsPlugins}
-      document={liveDocument}
-      keymapLayers={editorKeymapLayers}
-      languageServerTarget={SETTINGS_LANGUAGE_SERVER_TARGET}
-      rootPath={rootPath}
-      tabId={tabId}
-      onDirtyChange={setLiveEditorDocumentDirty}
-      onTextChange={(_tabId, path) => recordLiveEditorDocumentTextChange(path)}
-    />
+    <div className='flex h-full min-h-0 flex-col'>
+      <RawConflictBanner documentId={settingsJsonDocumentId(scope)} />
+      <div className='min-h-0 flex-1'>
+        <Editor
+          active
+          additionalPlugins={diagnosticsPlugins}
+          document={liveDocument}
+          keymapLayers={editorKeymapLayers}
+          languageServerTarget={SETTINGS_LANGUAGE_SERVER_TARGET}
+          rootPath={rootPath}
+          tabId={tabId}
+          onDirtyChange={setLiveEditorDocumentDirty}
+          onTextChange={(_tabId, path) => recordLiveEditorDocumentTextChange(path)}
+        />
+      </div>
+    </div>
   )
 }

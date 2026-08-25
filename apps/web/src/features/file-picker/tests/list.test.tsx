@@ -50,7 +50,9 @@ test('exposes complete positions for virtualized options', () => {
 test('keeps cozy painted rows aligned with the virtual list height', async ({ client }) => {
   expect(client).toBeDefined()
   await saveSettings({
-    edits: [{ key: 'workbench.density', target: 'user', value: 'cozy' }],
+    mutationId: 'file-picker-density-cozy',
+    operations: [{ key: 'workbench.density', kind: 'set', value: 'cozy' }],
+    target: 'user',
   })
   const entries = [entry('alpha.ts'), entry('beta.ts')]
 
@@ -142,7 +144,7 @@ function settingsSnapshot(
   return {
     diagnostics: [],
     layers: [],
-    revision: '',
+    serverVersion: { epoch: 'file-picker-test', sequence: density === 'compact' ? 1 : 2 },
     values: { ...DEFAULT_SETTING_VALUES, 'workbench.density': density },
   }
 }

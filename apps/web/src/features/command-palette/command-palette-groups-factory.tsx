@@ -1,4 +1,4 @@
-import type { Theme } from '@/components/theme-context'
+import type { Theme } from '@/features/settings/providers/theme-context'
 import type { FlatDocumentSymbol } from '@/features/command-palette/document-symbols'
 import { GotoLineGroups } from '@/features/command-palette/goto-line-groups'
 

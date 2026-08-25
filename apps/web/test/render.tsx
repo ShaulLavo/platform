@@ -3,9 +3,10 @@ import { render, type RenderOptions, type RenderResult } from '@testing-library/
 import { TooltipProvider } from '@workspace/ui/components/tooltip'
 import type { ReactElement, ReactNode } from 'react'
 
-import { ThemeProvider } from '@/components/theme-provider'
 import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-color-theme'
 import { MenuCommandProvider } from '@/features/menus/providers/command-provider'
+import { AppearanceProvider } from '@/features/settings/providers/appearance-provider'
+import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
 
 // Retry/gc off so failing queries surface immediately and no timers outlive a test.
 export function createTestQueryClient() {
@@ -34,13 +35,13 @@ export function AppProviders({
 }) {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
+      <AppearanceProvider bootDensity={readSettingsMirror()['workbench.density']}>
         <EditorColorThemeProvider>
           <MenuCommandProvider>
             <TooltipProvider delay={0}>{children}</TooltipProvider>
           </MenuCommandProvider>
         </EditorColorThemeProvider>
-      </ThemeProvider>
+      </AppearanceProvider>
     </QueryClientProvider>
   )
 }

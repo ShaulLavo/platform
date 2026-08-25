@@ -2,10 +2,10 @@ import type { ProviderInstanceConfig } from '@workspace/contracts'
 import { Badge } from '@workspace/ui/components/badge'
 import { Switch } from '@workspace/ui/components/switch'
 
-import { useSettingsActions } from '../hooks/use-settings-actions'
+import { useSettingsActions } from '@/features/settings/hooks/use-settings-actions'
 
 export function ProviderRow({ instance }: { instance: ProviderInstanceConfig }) {
-  const { isSaving, setProviderEnabled } = useSettingsActions()
+  const { setProviderEnabled } = useSettingsActions()
   const label = instance.displayLabel ?? instance.providerInstanceId
 
   return (
@@ -20,7 +20,6 @@ export function ProviderRow({ instance }: { instance: ProviderInstanceConfig }) 
       <Switch
         aria-label={`Enable ${label}`}
         checked={instance.enabled}
-        disabled={isSaving}
         onCheckedChange={(checked) => setProviderEnabled(instance, checked)}
       />
     </div>

@@ -27,8 +27,9 @@
 - **Effort**: XL, lockstep across two repositories
 - **Risk**: HIGH — protocol versions, dirty memory, reversible disk mutation, resource
   operations, watcher replay, and undo meet at one boundary
-- **Depends on**: plan 062, which depends on plan 059; plan 062's typed CommandBus and command
-  metadata must exist before the explicit workspace undo/redo commands are registered
+- **Depends on**: plan 062; its typed CommandBus and command metadata must exist before the
+  explicit workspace undo/redo commands are registered. The semantic settings foundation is
+  already landed.
 - **Ordering with 060/061/064**: no semantic dependency, but do not execute concurrently. If 060,
   061, or 064 lands first, re-run this plan's drift check over shared Editor/WDS/provider/plugin
   files. If this plan lands first, reconcile 061 against the new prepared-open/document transaction
@@ -1511,8 +1512,9 @@ the feature/kind layout and ownership above. Reconcile before creating a near-du
 
 ## Milestone 0 — Reconcile dependencies and freeze contracts
 
-1. Confirm plan 059 and plan 062 are complete. Confirm root `PLAN.md` explicitly schedules this
-   plan. If not, STOP; do not build a temporary command/focus/undo path.
+1. Confirm plan 062 is complete and the landed settings regression gate remains green. Confirm
+   root `PLAN.md` explicitly schedules this plan. If not, STOP; do not build a temporary
+   command/focus/undo path.
 2. Re-run the drift and baselines above. Save the current source status separately from planning
    files. If plan 064's GO path landed, merge its `types.ts`/`plugin.ts`/`index.ts` and Platform
    `use-lsp-plugin.ts`/`language-server-plugin.ts` changes into the same option object rather than

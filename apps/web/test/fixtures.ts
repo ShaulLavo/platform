@@ -2,16 +2,19 @@ import { test as base } from 'vitest'
 
 import { getClient, setClient } from '@/lib/client'
 
-import { createInProcessClient } from './client'
+import { createControlledInProcessClient, createInProcessClient } from './client'
 import { makeTestServer, type TestServer } from './server'
 
 type TestClient = ReturnType<typeof createInProcessClient>
+type ControlledTestClient = ReturnType<typeof createControlledInProcessClient>
 
 type Fixtures = {
   /** Real in-process server bound to an isolated temp workspace. */
   server: TestServer
   /** Eden client wired to `server` — typed, real routes, zero network. */
   client: TestClient
+  /** Opt-in real client whose settings SSE response can be ended deterministically. */
+  controlledClient: ControlledTestClient
 }
 
 // The project's own test entry point. Tests import { test, expect } from here,
@@ -33,6 +36,13 @@ export const test = base.extend<Fixtures>({
     const client = createInProcessClient(server)
     setClient(client)
     await provide(client)
+    setClient(previous)
+  },
+  controlledClient: async ({ server }, provide) => {
+    const previous = getClient()
+    const controlled = createControlledInProcessClient(server)
+    setClient(controlled.client)
+    await provide(controlled)
     setClient(previous)
   },
 })

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { errorNumberField, errorStringField, isRecord } from '@workspace/contracts'
 import { log, type LogLevel } from 'evlog'
 
@@ -14,6 +15,7 @@ export type ClientLogIngestResult =
 
 const validLogLevels: ReadonlySet<LogLevel> = new Set(['debug', 'error', 'info', 'warn'])
 const maxInstanceIdLength = 64
+const maxRememberedClientEvents = 1_024
 const maxTimestampSkewMs = 24 * 60 * 60 * 1_000
 const maxArrayItems = 25
 const maxObjectKeys = 50
@@ -40,12 +42,14 @@ const sensitiveFields = new Set([
   'token',
   'x-api-key',
 ])
+const rememberedClientEvents = new Map<string, true>()
 
 export function recordClientLog(payload: unknown, request: Request): ClientLogIngestResult {
   const events = clientLogEvents(payload, request)
   if (!events) return { ok: false, message: 'Invalid client log payload.' }
 
   for (const event of events) {
+    if (event.dedupeKey && !rememberClientEvent(event.dedupeKey)) continue
     emitClientLog(event.level, event.fields)
   }
 
@@ -86,8 +90,10 @@ function clientLogEvent(payload: unknown, request: Request): ClientLogEvent | nu
   const safePayload = clientFields(sanitizeClientPayload(eventPayload))
   const clientService = stringField(eventPayload.service) ?? `${config.service}-web`
   const url = new URL(request.url)
+  const eventId = stringField(eventPayload.eventId)
 
   return {
+    dedupeKey: eventId ? clientDedupeKey(url, eventId) : null,
     level,
     fields: {
       ...safePayload,
@@ -106,15 +112,39 @@ function clientLogEvent(payload: unknown, request: Request): ClientLogEvent | nu
 // attributed to the app instance that produced it.
 function clientEnvelope(service: string, timestamp: string, url: URL) {
   const envelope: Record<string, unknown> = { service, timestamp }
-  const instanceId = stringField(url.searchParams.get('instance'))
-  if (instanceId) envelope.instanceId = instanceId.slice(0, maxInstanceIdLength)
+  const instanceId = clientInstanceId(url)
+  if (instanceId) envelope.instanceId = instanceId
 
   return envelope
 }
 
+function clientInstanceId(url: URL) {
+  return stringField(url.searchParams.get('instance'))?.slice(0, maxInstanceIdLength) ?? null
+}
+
+function clientDedupeKey(url: URL, eventId: string) {
+  const instanceId = stringField(url.searchParams.get('instance')) ?? ''
+
+  return createHash('sha256').update(instanceId).update('\0').update(eventId).digest('hex')
+}
+
 type ClientLogEvent = {
+  dedupeKey: string | null
   fields: Record<string, unknown>
   level: LogLevel
+}
+
+function rememberClientEvent(key: string) {
+  if (rememberedClientEvents.has(key)) return false
+
+  rememberedClientEvents.set(key, true)
+  while (rememberedClientEvents.size > maxRememberedClientEvents) {
+    const oldest = rememberedClientEvents.keys().next().value
+    if (typeof oldest !== 'string') break
+    rememberedClientEvents.delete(oldest)
+  }
+
+  return true
 }
 
 function emitClientLog(level: LogLevel, fields: Record<string, unknown>) {

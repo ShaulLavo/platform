@@ -78,9 +78,12 @@ test('shows a diagnostic for a key the settings file holds but cannot apply', as
   // holding a key this build does not register. The resolver keeps it in the
   // file and reports it rather than applying it, and the page has to say so —
   // otherwise a renamed key just looks like a setting that stopped working.
+  const before = await fetchSettings()
   await getClient().settings.raw.post({
+    baseRevision: before.layers.find((layer) => layer.id === 'user')?.file?.revision ?? '',
     target: 'user',
     text: '{ "editor.fromANewerBuild": true }',
+    writeId: 'page-unknown-setting',
   })
 
   renderWithProviders(<SettingsPage />)
@@ -92,10 +95,12 @@ test('shows a diagnostic for a key the settings file holds but cannot apply', as
 test('reset all clears every key from the layer in one write', async ({ client }) => {
   expect(client).toBeDefined()
   await saveSettings({
-    edits: [
-      { key: 'workbench.colorTheme', target: 'user', value: 'light' },
-      { key: 'workbench.surface.opacity', target: 'user', value: 40 },
+    mutationId: 'page-reset-all-seed',
+    operations: [
+      { key: 'workbench.colorTheme', kind: 'set', value: 'light' },
+      { key: 'workbench.surface.opacity', kind: 'set', value: 40 },
     ],
+    target: 'user',
   })
 
   renderWithProviders(<SettingsPage />)

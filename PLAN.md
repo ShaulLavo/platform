@@ -15,17 +15,19 @@ Git history is the archive.
 - Editor BiDi geometry Tiers A and B are complete; Editor has no standalone BiDi execution plan.
 - Multi-server-per-document LSP and schema-aware settings JSON support are live. Do not rebuild a
   one-server compatibility layer.
+- Conflict-proof settings persistence is live: normal writes use one semantic intent pipeline,
+  confirmed and projected state are separate, raw JSON retains compare-and-swap conflicts, and the
+  consolidated appearance provider owns transient preview plus commit handoff. Completed plan 059
+  has been deleted.
 - Editor-parity wave E0 is complete.
 - The earlier command/focus draft, plan 058, is deleted. Plan 062 is the only command/focus cutover.
 
 ## Shared prerequisites
 
-1. **Plan 059 — conflict-proof optimistic settings.** Reconcile its stamped paths and assumptions
-   against current source, then implement it before plan 062. It owns semantic settings intents,
-   confirmed-versus-projected state, raw-JSON conflicts, and the preview/commit boundary.
-2. **Plan 062 — typed CommandBus and FocusService.** Execute only after 059 is verified and deleted.
-   It becomes the sole command definition, dispatch, enablement, focus-target, and async-settlement
-   path used by later editor-parity work.
+1. **Plan 062 — typed CommandBus and FocusService.** Its settings dependency is landed. Reconcile
+   the plan against the current semantic settings actions, theme context, and preview/commit
+   boundary, then make it the sole command definition, dispatch, enablement, focus-target, and
+   async-settlement path used by later editor-parity work.
 
 No later Platform editor milestone may create an active-Editor pointer, a second settings mutation
 path, a React-effect transaction coordinator, or a compatibility shim for the deleted architecture.
@@ -37,10 +39,12 @@ gates have landed; only the physical hardware/operator acceptance in
 `ghostty-webgpu/docs/phase-3-acceptance.md` remains. Do not repeat its implementation milestones.
 When the gate passes, update the stable package evidence and Platform brief, then delete plan 055.
 
-The `ghostty-webgpu` xterm-facade program is a separate package lane. Plan 008 is partially landed
-but blocked because the pinned native ABI cannot implement xterm's row-preserving `clear()` exactly.
-Resolve that native/upstream contract honestly before continuing. Plans 009–015 remain in their
-package-defined dependency order and are not prerequisites for current Platform work.
+The `ghostty-webgpu` xterm-facade program is a separate package lane. Plan 008 remains blocked: the
+temporary Ghostty fork proves native row-preserving compaction, and an uncommitted follow-up fixes
+in-range selection coordinates, but released xterm also exposes aliased stale backing rows after
+`clear()`. Ghostty's PageList cannot represent that contract without a native row-slot redesign;
+the current official parent has no clear API. Plans 009–015 remain in their package-defined
+dependency order and are not prerequisites for current Platform work.
 
 ## Ordered Platform editor lane after plan 062
 
@@ -115,11 +119,11 @@ multi-origin compatibility machinery now.
 
 - **Deleted:** completed plan 038 and superseded plan 058.
 - **Close and delete after physical evidence:** plan 055.
-- **Rewrite before execution:** plans 059, 056, 060, and 061 need drift reconciliation; plans 062,
-  063, and 064 already encode their current architectural ownership but still require normal drift
-  checks.
+- **Rewrite before execution:** plans 056, 060, and 061 need drift reconciliation. Plan 062 is ready
+  for reconciliation against the landed settings APIs; plans 063 and 064 already encode their
+  current architectural ownership but still require normal drift checks.
 - **Promote:** environment milestones M1–M5, one executable plan at a time.
 - **Deferred:** environment M6 and all compatibility work for simultaneous origins or obsolete
   per-tab/active-editor/one-server architecture.
-- **Package-blocked:** `ghostty-webgpu` plan 008 until an exact native `clear()` contract exists;
-  plans 009–015 remain downstream.
+- **Package-blocked:** `ghostty-webgpu` plan 008 needs native stale-row alias and marker semantics
+  for exact `clear()` compatibility; plans 009–015 remain downstream.

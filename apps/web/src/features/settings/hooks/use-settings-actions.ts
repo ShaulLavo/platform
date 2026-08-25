@@ -1,164 +1,305 @@
 import {
-  DEFAULT_SETTING_VALUES,
-  descriptorFor,
-  layerAllowsScope,
   SETTING_IDS,
+  deriveWriteTarget,
+  descriptorFor,
+  errorNumberField,
+  errorStringField,
+  layerAllowsScope,
   settingRowIds,
   type ModelRef,
   type ProviderInstanceConfig,
+  type ScalarSettingId,
   type SettingId,
-  type SettingsEdit,
-  type SettingsSnapshot,
+  type SettingsOperation,
   type SettingsValues,
   type SettingsWriteTarget,
 } from '@workspace/contracts'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useMutationState, useQueryClient } from '@tanstack/react-query'
 
 import type { PlatformCommandId } from '@/keymap/types'
-
-import { providerQueryKeys } from '@/features/chat/utils/provider-query'
-
-import { saveSettings } from '@/features/settings/utils/api'
-import { notifySaveError } from '@/features/settings/utils/notify-save-error'
-import { settingsKeys } from '@/features/settings/utils/query-keys'
-import { isDefaultValue } from '../utils/default-value'
 import {
-  withMovedModel,
-  withKeybindingOverride,
-  withModelHidden,
-  withoutKeybindingOverride,
-  withProviderEnabled,
-} from '../utils/patch'
+  discardFailedSettingsIntent,
+  failSettingsIntent,
+  markSettingsIntentTransportStarted,
+  retrySettingsIntent,
+  settingsIntentTransportStartedAt,
+  settingsIntentStatus,
+  settleSettingsIntentTransport,
+  submitSettingsIntent,
+  type ActiveSettingsIntent,
+  type SettingsSubmission,
+} from '@/features/settings/state/intent-store'
+import { saveSettings } from '@/features/settings/utils/api'
+import { settingsMutationLogContext } from '@/features/settings/utils/mutation-observability'
+import {
+  settingsDurationBetween,
+  settingsDurationSince,
+  settingsMutationFailureOutcome,
+  settingsMutationSuccessOutcome,
+  settingsNow,
+  settingsResultRequiresActiveEpochRetry,
+  settingsRetryDelay,
+  shouldRetrySettingsTransport,
+} from '@/features/settings/utils/mutation-policy'
+import { dismissSaveError, notifySaveError } from '@/features/settings/utils/notify-save-error'
+import { providerEnabledOperation } from '@/features/settings/utils/operations'
+import { admitSettingsMutationResult } from '@/features/settings/state/snapshot-admission'
+import { annotateClientError, clientErrorMetadata } from '@/lib/client-error-context'
+import { log } from '@/lib/client-logging'
+import { clientInstanceId } from '@/lib/instance-id'
+import { createClientInvariantError } from '@/lib/structured-errors'
 
-/**
- * Domain actions over the settings document. Rows call this directly instead of
- * receiving callbacks, so a toggle deep in the panel never has to be threaded
- * down from whoever owns the query.
- */
+import { useSettingsProjection } from '@/features/settings/hooks/use-settings-projection'
+import { withMovedModel } from '@/features/settings/utils/patch'
+
+export const SETTINGS_MUTATION_KEY = ['settings', 'mutation'] as const
+export const SETTINGS_MUTATION_SCOPE = 'settings-document'
+
+/** Semantic settings actions shared by commands and settings controls. */
 export function useSettingsActions() {
   const queryClient = useQueryClient()
-  const mutation = useMutation({
-    mutationFn: saveSettings,
-    onError: notifySaveError,
-    // The response is the whole snapshot, so it replaces the cache outright
-    // instead of invalidating and paying for a second round trip.
-    onSuccess: (snapshot) => {
-      queryClient.setQueryData(settingsKeys.document(), snapshot)
-      // The composer's provider list is cached for 60s, so without this a
-      // provider disabled here stays in the picker for up to a minute — the
-      // server reconciles immediately and the UI disagrees with it.
-      void queryClient.invalidateQueries({ queryKey: providerQueryKeys.all })
+  const projection = useSettingsProjection()
+  const transport = useMutation({
+    mutationFn: (entry: ActiveSettingsIntent) => transportSettingsIntent(entry),
+    mutationKey: SETTINGS_MUTATION_KEY,
+    onError: (error, entry) => {
+      logSettingsMutationFailure(entry, error)
+      if (settingsIntentStatus(entry.request.mutationId) === 'acknowledged') return
+
+      const failed = failSettingsIntent(entry.request.mutationId, error)
+      if (!failed) return
+      if (failed.superseded) return
+
+      notifySaveError({
+        discard: () => discardFailedMutation(failed.request.mutationId),
+        error,
+        mutationId: failed.request.mutationId,
+        retry: () => retryFailedIntent(failed.request.mutationId, transport.mutate),
+      })
     },
+    onSettled: (_result, _error, entry) => {
+      settleSettingsIntentTransport(entry.request.mutationId)
+    },
+    onSuccess: async ({ result: initialResult, startedAt }, entry) => {
+      let admitted
+      try {
+        admitted = await admitSuccessfulMutation(queryClient, entry, initialResult)
+      } catch (error) {
+        annotateSettingsTransportError(entry, startedAt, error)
+        logSettingsMutationFailure(entry, error)
+        const failed = failSettingsIntent(entry.request.mutationId, error)
+        if (!failed || failed.superseded) return
+
+        notifySaveError({
+          discard: () => discardFailedMutation(failed.request.mutationId),
+          error,
+          mutationId: failed.request.mutationId,
+          retry: () => retryFailedIntent(failed.request.mutationId, transport.mutate),
+        })
+        return
+      }
+
+      const { admission, result } = admitted
+      log.info({
+        action: 'settings.write',
+        appliedEpoch: result.appliedVersion.epoch,
+        appliedSequence: result.appliedVersion.sequence,
+        area: 'settings',
+        clientInstanceId: clientInstanceId(),
+        durationMs: settingsDurationSince(startedAt),
+        duplicate: result.duplicate,
+        ...settingsMutationLogContext(entry),
+        outcome: settingsMutationSuccessOutcome(result, admission.snapshot),
+        queueWaitMs: settingsDurationBetween(entry.enqueuedAt, startedAt),
+        snapshotEpoch: admission.snapshot?.serverVersion.epoch,
+        snapshotSequence: admission.snapshot?.serverVersion.sequence,
+      })
+    },
+    retry: shouldRetrySettingsTransport,
+    retryDelay: settingsRetryDelay,
+    scope: { id: SETTINGS_MUTATION_SCOPE },
+  })
+  const pendingTransports = useMutationState({
+    filters: { mutationKey: SETTINGS_MUTATION_KEY, status: 'pending' },
+    select: () => true,
   })
 
-  const cached = () => queryClient.getQueryData<SettingsSnapshot>(settingsKeys.document())
-  const values = () => cached()?.values ?? DEFAULT_SETTING_VALUES
+  const submit = (
+    target: SettingsWriteTarget,
+    operations: readonly SettingsOperation[],
+    initiator?: string,
+    beforePublish?: (entry: ActiveSettingsIntent) => void,
+  ): SettingsSubmission => {
+    const { entry, supersededMutationIds } = submitSettingsIntent(
+      target,
+      operations,
+      initiator,
+      beforePublish,
+    )
+    for (const mutationId of supersededMutationIds) dismissSaveError(mutationId)
+    transport.mutate(entry)
 
-  /**
-   * Every write carries the revision its values were read from.
-   *
-   * The collection edits below send a whole rebuilt value, so without this a
-   * keybinding added by hand between the last snapshot and this click is
-   * overwritten silently. With it the server refuses and the user is told.
-   */
-  const save = (edits: readonly SettingsEdit[]) => {
-    mutation.mutate({ baseRevision: cached()?.revision, edits })
+    return {
+      kind: 'submitted',
+      mutationId: entry.request.mutationId,
+      settled: entry.settled,
+    }
   }
 
-  const setSetting = <K extends SettingId>(
+  const targetFor = (key: SettingId) => deriveWriteTarget(key, projection?.layers ?? [])
+
+  const setSetting = <K extends ScalarSettingId>(
     key: K,
     value: SettingsValues[K],
-    target: SettingsWriteTarget = 'user',
-  ) => {
-    save([{ key, target, value }])
+    target: SettingsWriteTarget = targetFor(key),
+    initiator?: string,
+  ): SettingsSubmission => {
+    const operation = { kind: 'set', key, value } as SettingsOperation
+    return submit(target, [operation], initiator)
   }
 
-  /**
-   * The edit for a collection, which is a reset once the collection is empty again.
-   *
-   * The collection actions rebuild the whole value, so un-hiding the last model
-   * wrote `[]` — a key present in the file, holding the registry default. The
-   * page reads "modified" as *this layer sets the key*, because that is what its
-   * Reset removes, so the row stayed marked forever with nothing left to undo.
-   * Sending no value drops the key instead, and the row goes back to clean.
-   */
-  const saveCollection = <K extends SettingId>(
-    key: K,
-    value: SettingsValues[K],
-    target: SettingsWriteTarget = 'user',
-  ) => {
-    save([isDefaultValue(key, value) ? { key, target } : { key, target, value }])
+  const setColorTheme = (
+    theme: SettingsValues['workbench.colorTheme'],
+    initiator?: string,
+    beforePublish?: (entry: ActiveSettingsIntent) => void,
+  ): SettingsSubmission => {
+    if (projection?.values['workbench.colorTheme'] === theme) return { kind: 'noop' }
+
+    const operation: SettingsOperation = {
+      key: 'workbench.colorTheme',
+      kind: 'set',
+      value: theme,
+    }
+    return submit(targetFor('workbench.colorTheme'), [operation], initiator, beforePublish)
   }
 
   return {
-    isSaving: mutation.isPending,
-    /** The one write path. Commands and the page both go through it, so the
-     * keyboard and the settings UI can never disagree about a value. */
-    setSetting,
-    setColorTheme: (theme: SettingsValues['workbench.colorTheme']) =>
-      setSetting('workbench.colorTheme', theme),
-    /**
-     * Omitting the value is what removes the key from the file entirely, which
-     * is what keeps the registry default live rather than freezing today's.
-     *
-     * Resets the whole row, not the key: the Models row writes both the hidden
-     * list and the ordering, and a Reset that cleared the switches while leaving
-     * the ordering behind would be a reset only in name.
-     */
-    resetSetting: (key: SettingId, target: SettingsWriteTarget = 'user') => {
-      save(settingRowIds(key).map((id) => ({ key: id, target })))
-    },
-    /**
-     * Clears every key from one layer in a single write.
-     *
-     * One request rather than a loop: the store applies all edits to the file in
-     * one pass, so a half-reset cannot survive a failure partway through.
-     */
+    isSaving: pendingTransports.length > 0,
+    moveModel: (ref: ModelRef, direction: -1 | 1, displayed: readonly ModelRef[]) =>
+      submit(targetFor('models.order'), [
+        { kind: 'model.setOrder', order: withMovedModel(displayed, ref, direction) },
+      ]),
     resetAll: (target: SettingsWriteTarget = 'user') => {
-      // Only the keys this layer is allowed to carry. The store validates every
-      // edit before writing any, so one `application` key in a workspace reset
-      // rejects the whole request — and this is the documented way out of a
-      // settings file too broken to edit, so it has to be the thing that works.
-      const resettable = SETTING_IDS.filter((key) =>
-        layerAllowsScope(target, descriptorFor(key).scope),
-      )
-
-      save(resettable.map((key) => ({ key, target })))
+      const keys = SETTING_IDS.filter((key) => layerAllowsScope(target, descriptorFor(key).scope))
+      return submit(target, [{ kind: 'reset', keys }])
     },
-    resetKeybinding: (command: PlatformCommandId) => {
-      saveCollection(
-        'keybindings.overrides',
-        withoutKeybindingOverride(values()['keybindings.overrides'], command),
-      )
-    },
-    /** `null` unbinds the command; resetting is what restores its default. */
-    setKeybinding: (command: PlatformCommandId, keys: string | null) => {
-      saveCollection(
-        'keybindings.overrides',
-        withKeybindingOverride(values()['keybindings.overrides'], command, keys),
-      )
-    },
-    /**
-     * Moves a model one place in the list the user is looking at.
-     *
-     * `displayed` is that list, and it has to come from the caller: the stored
-     * order is sparse, so it cannot say where a model sits on screen, and a move
-     * computed from it lands somewhere else entirely.
-     */
-    moveModel: (ref: ModelRef, direction: -1 | 1, displayed: readonly ModelRef[]) => {
-      saveCollection('models.order', withMovedModel(displayed, ref, direction))
-    },
-    setModelHidden: (ref: ModelRef, hidden: boolean) => {
-      saveCollection('models.hidden', withModelHidden(values()['models.hidden'], ref, hidden))
-    },
-    // Takes the whole instance, not just its id: a built-in the settings
-    // document has never mentioned has to be appended, and only the caller
-    // knows what its configuration is.
-    setProviderEnabled: (instance: ProviderInstanceConfig, enabled: boolean) => {
-      saveCollection(
-        'providers.instances',
-        withProviderEnabled(values()['providers.instances'], instance, enabled),
-      )
-    },
+    resetKeybinding: (command: PlatformCommandId) =>
+      submit(targetFor('keybindings.overrides'), [{ kind: 'keybinding.remove', command }]),
+    resetSetting: (key: SettingId, target: SettingsWriteTarget = 'user') =>
+      submit(target, [{ kind: 'reset', keys: settingRowIds(key) }]),
+    setColorTheme,
+    setKeybinding: (command: PlatformCommandId, keys: string | null) =>
+      submit(targetFor('keybindings.overrides'), [{ command, keys, kind: 'keybinding.set' }]),
+    setModelHidden: (ref: ModelRef, hidden: boolean) =>
+      submit(targetFor('models.hidden'), [{ hidden, kind: 'model.setHidden', ref }]),
+    setProviderEnabled: (instance: ProviderInstanceConfig, enabled: boolean) =>
+      submit(targetFor('providers.instances'), [providerEnabledOperation(instance, enabled)]),
+    setSetting,
   }
+}
+
+function retryFailedIntent(mutationId: string, mutate: (entry: ActiveSettingsIntent) => void) {
+  const entry = retrySettingsIntent(mutationId)
+  if (!entry) return
+
+  dismissSaveError(mutationId)
+  mutate(entry)
+}
+
+function discardFailedMutation(mutationId: string) {
+  discardFailedSettingsIntent(mutationId)
+  dismissSaveError(mutationId)
+}
+
+async function transportSettingsIntent(entry: ActiveSettingsIntent) {
+  const startedAt = markSettingsIntentTransportStarted(entry.request.mutationId, settingsNow())
+  try {
+    const result = await saveSettings(entry.request)
+    return { result, startedAt }
+  } catch (error) {
+    annotateSettingsTransportError(entry, startedAt, error)
+    throw error
+  }
+}
+
+async function admitSuccessfulMutation(
+  queryClient: ReturnType<typeof useQueryClient>,
+  entry: ActiveSettingsIntent,
+  initialResult: Awaited<ReturnType<typeof saveSettings>>,
+) {
+  let result = initialResult
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const admission = await awaitSettingsAdmission(queryClient, result)
+    if (!settingsResultRequiresActiveEpochRetry(result, admission)) return { admission, result }
+
+    result = await retrySettingsTransport(entry)
+  }
+
+  throw createClientInvariantError('Settings mutation could not establish an active epoch')
+}
+
+async function retrySettingsTransport(entry: ActiveSettingsIntent) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await saveSettings(entry.request)
+    } catch (error) {
+      if (!shouldRetrySettingsTransport(attempt, error) || attempt === 2) throw error
+
+      await new Promise<void>((resolve) =>
+        globalThis.setTimeout(resolve, settingsRetryDelay(attempt)),
+      )
+    }
+  }
+
+  throw createClientInvariantError('Settings mutation retry ended without a result')
+}
+
+async function awaitSettingsAdmission(
+  queryClient: ReturnType<typeof useQueryClient>,
+  result: Awaited<ReturnType<typeof saveSettings>>,
+) {
+  const admission = await admitSettingsMutationResult(queryClient, result)
+  if (!admission.recoveryPending || !admission.confirmation) return admission
+
+  return admission.confirmation
+}
+
+function annotateSettingsTransportError(
+  entry: ActiveSettingsIntent,
+  startedAt: number,
+  error: unknown,
+) {
+  annotateClientError(error, {
+    context: {
+      ...settingsMutationLogContext(entry),
+      clientInstanceId: clientInstanceId(),
+      queueWaitMs: settingsDurationBetween(entry.enqueuedAt, startedAt),
+    },
+    operation: 'settings.write',
+  })
+}
+
+function logSettingsMutationFailure(entry: ActiveSettingsIntent, error: unknown) {
+  const acknowledged = settingsIntentStatus(entry.request.mutationId) === 'acknowledged'
+  const startedAt = settingsIntentTransportStartedAt(entry.request.mutationId) ?? entry.enqueuedAt
+  const metadata = clientErrorMetadata(error)
+  const event = {
+    action: 'settings.write',
+    area: 'settings',
+    clientInstanceId: clientInstanceId(),
+    durationMs: settingsDurationSince(startedAt),
+    errorCode: errorStringField(error, 'code'),
+    errorStatus: errorNumberField(error, 'status') ?? errorNumberField(error, 'statusCode'),
+    ...settingsMutationLogContext(entry),
+    ...metadata?.context,
+    outcome: acknowledged
+      ? 'acknowledged-after-newer-confirmed'
+      : settingsMutationFailureOutcome(error),
+  }
+  if (acknowledged) {
+    log.info(event)
+    return
+  }
+
+  log.warn(event)
 }

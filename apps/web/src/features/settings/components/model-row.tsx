@@ -6,7 +6,7 @@ import type { ModelRef } from '@workspace/contracts'
 
 import type { ModelPreferenceRow } from '@/features/chat/utils/model-preferences'
 
-import { useSettingsActions } from '../hooks/use-settings-actions'
+import { useSettingsActions } from '@/features/settings/hooks/use-settings-actions'
 
 export function ModelRow({
   canMoveDown,
@@ -20,7 +20,7 @@ export function ModelRow({
   displayed: readonly ModelRef[]
   row: ModelPreferenceRow
 }) {
-  const { isSaving, moveModel, setModelHidden } = useSettingsActions()
+  const { moveModel, setModelHidden } = useSettingsActions()
 
   return (
     <div className='border-border compact:px-2 compact:py-1.5 flex items-center gap-2 border-b px-3 py-2 last:border-b-0'>
@@ -36,7 +36,7 @@ export function ModelRow({
       <div className='flex items-center'>
         <Button
           aria-label={`Move ${row.label} up`}
-          disabled={isSaving || !canMoveUp}
+          disabled={!canMoveUp}
           onClick={() => moveModel(row.ref, -1, displayed)}
           size='icon-sm'
           variant='ghost'
@@ -45,7 +45,7 @@ export function ModelRow({
         </Button>
         <Button
           aria-label={`Move ${row.label} down`}
-          disabled={isSaving || !canMoveDown}
+          disabled={!canMoveDown}
           onClick={() => moveModel(row.ref, 1, displayed)}
           size='icon-sm'
           variant='ghost'
@@ -61,7 +61,6 @@ export function ModelRow({
       <Switch
         aria-label={`Show ${row.label}`}
         checked={!row.hidden}
-        disabled={isSaving}
         onCheckedChange={(checked) => setModelHidden(row.ref, !checked)}
       />
     </div>

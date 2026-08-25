@@ -16,8 +16,7 @@ a bare root `bun run verify`.
 | Plan                                                                                     | State                                         |
 | ---------------------------------------------------------------------------------------- | --------------------------------------------- |
 | [055 — ghostty-webgpu DOM/input](055-ghostty-webgpu-dom-input.md)                        | **IMPLEMENTED — PHYSICAL OPERATOR GATE OPEN** |
-| [059 — conflict-proof optimistic settings](059-conflict-proof-optimistic-settings.md)    | **RECONCILE DRIFT — THEN EXECUTE BEFORE 062** |
-| [062 — typed CommandBus and FocusService](062-typed-command-focus-cutover.md)            | **BLOCKED ON 059 — THEN RECONCILE**           |
+| [062 — typed CommandBus and FocusService](062-typed-command-focus-cutover.md)            | **READY — RECONCILE LANDED SETTINGS APIS**    |
 | [063 — lockstep WorkspaceEdit transactions](063-lockstep-workspace-edit-transactions.md) | **AFTER 062 — EDITOR LOCKSTEP**               |
 | [064 — anchored diagnostic peek](064-anchored-diagnostic-peek.md)                        | **SCHEDULED AFTER 061 — GO/NO-GO**            |
 | [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                          | **SCHEDULED AFTER 064 — RECONCILE**           |
@@ -27,11 +26,11 @@ a bare root `bun run verify`.
 
 ## Dependency notes
 
-- Execute 059 before 062 because both plans touch theme commands, command-palette
-  preview, and `useSettingsActions`. Plan 062 consumes 059's async intent API,
-  theme context location, and preview/commit boundary; it must not restore
-  persistent preview dispatch or a second mutation path. Plan 062 is the sole
-  command/focus cutover plan; its earlier superseded draft has been deleted.
+- Plan 062's settings dependency is landed in `features/settings/hooks/use-settings-actions.ts`,
+  `features/settings/state/intent-store.ts`, and the appearance provider/context. Reconcile those
+  current APIs before execution; do not restore persistent preview dispatch, duplicate settings
+  error reporting, or a second mutation path. Plan 062 remains the sole command/focus cutover plan;
+  its earlier superseded draft has been deleted.
 - Execute 062 before 056 so the chord machine targets the typed command bus and acknowledged
   focus service instead of introducing another active-Editor dispatch pointer.
 - Execute 063 only after 062, in the position scheduled by root `PLAN.md`. Plan 063 adds explicit

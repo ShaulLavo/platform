@@ -30,8 +30,7 @@ export const settingsErrors = defineErrorCatalog('settings', {
   },
   FILE_MALFORMED: {
     status: 409,
-    message: ({ file, detail }: { file: string; detail: string }) =>
-      `Settings file has syntax errors: ${file} (${detail})`,
+    message: ({ detail }: { detail: string }) => `Settings file has syntax errors (${detail})`,
     why: 'Editing a document the parser could not fully read would compute the edit against a broken tree and corrupt the parts it did understand.',
     fix: 'Fix the JSON syntax in the named file, or delete the file to start from defaults.',
   },
@@ -42,11 +41,42 @@ export const settingsErrors = defineErrorCatalog('settings', {
     why: 'Starting with an unreadable secret store would hand every provider spawn an empty credential, which fails later and far from this cause. A reload degrades instead; construction has nothing to keep serving.',
     fix: 'Repair or delete the named file. A secret store that does not exist is the normal empty case and starts fine.',
   },
-  REVISION_STALE: {
+  RAW_REVISION_STALE: {
     status: 409,
-    message: ({ file }: { file: string }) => `Settings file changed since it was read: ${file}`,
-    why: 'The file moved between the read the edit was computed against and the write, so applying it would silently discard whatever landed in between.',
-    fix: 'Re-read the settings and apply the change again.',
+    message: ({ target }: { target: string }) =>
+      `The ${target} settings document changed while this edit was open`,
+    why: 'Raw JSON replaces a whole document, so saving bytes based on an older revision could discard another edit.',
+    fix: 'Reload, compare, or explicitly overwrite against the newly confirmed revision.',
+  },
+  WRITE_CONTENDED: {
+    status: 503,
+    message: () => 'Settings kept changing before the update could be committed',
+    why: 'Another process repeatedly replaced the settings document while this update was being staged.',
+    fix: 'Stop the competing writer, then retry the same settings action.',
+  },
+  ID_COLLISION: {
+    status: 409,
+    message: () => 'A settings write id was reused for different content',
+    why: 'Write ids make uncertain retries idempotent. Reusing one for another request would make acknowledgement ambiguous.',
+    fix: 'Retry the original request unchanged, or create a new id for a different request.',
+  },
+  TRANSACTION_RECOVERY_INVALID: {
+    status: 500,
+    message: ({ detail }: { detail: string }) => `Settings transaction recovery failed: ${detail}`,
+    why: 'A staged settings-and-secrets transaction is incomplete or does not match its journal hashes.',
+    fix: 'Preserve the journal and staged files, then repair the named transaction artifacts before restarting.',
+  },
+  TRANSACTION_RECOVERY_CONFLICT: {
+    status: 500,
+    message: () => 'Settings transaction recovery found an unrelated external change',
+    why: 'At least one destination matches neither the old nor new hash recorded by the interrupted transaction, so recovery cannot overwrite it safely.',
+    fix: 'Reconcile the settings, secrets, and transaction journal manually, then restart.',
+  },
+  TRANSACTION_RECOVERY_REQUIRED: {
+    status: 503,
+    message: () => 'Settings are unavailable until an interrupted transaction is recovered',
+    why: 'A durable settings-and-secrets journal remains after an uncertain write, so another live mutation could make safe recovery impossible.',
+    fix: 'Restart Platform to recover the journal before reading or changing settings again.',
   },
   POLICY_CONTROLLED: {
     status: 403,
@@ -61,3 +91,15 @@ export const settingsErrors = defineErrorCatalog('settings', {
     fix: 'Pass `settings.userFilePath` to createApp, or set PLATFORM_SETTINGS_FILE.',
   },
 })
+
+export function rawRevisionStaleError(metadata: {
+  readonly coordinatorWaitMs: number
+  readonly foundRevision: string
+  readonly target: 'user' | 'workspace'
+}) {
+  return Object.assign(settingsErrors.RAW_REVISION_STALE({ target: metadata.target }), metadata)
+}
+
+export function settingsWriteContendedError(attempts: number, coordinatorWaitMs: number) {
+  return Object.assign(settingsErrors.WRITE_CONTENDED({}), { attempts, coordinatorWaitMs })
+}

@@ -1,23 +1,26 @@
 import { descriptorFor, type SettingId } from '@workspace/contracts'
 import { Button } from '@workspace/ui/components/button'
 import { Input } from '@workspace/ui/components/input'
+import { OrbitLoader } from '@workspace/ui/components/orbit-loader'
 import { XIcon } from '@phosphor-icons/react'
 import { useRef, useState } from 'react'
 
-import { useHasWorkspace } from '../hooks/use-has-workspace'
-import { useSettings } from '../hooks/use-settings'
-import { useSettingsScope } from '../state/scope-store'
-import { matchingSettingIds } from '../utils/search'
-import { DiagnosticsBanner } from './diagnostics-banner'
-import { MalformedBanner } from './malformed-banner'
-import { PageActions } from './page-actions'
+import { DiagnosticsBanner } from '@/features/settings/components/diagnostics-banner'
+import { MalformedBanner } from '@/features/settings/components/malformed-banner'
+import { PageActions } from '@/features/settings/components/page-actions'
 import { PageLoading } from '@/features/settings/components/page-loading'
-import { ScopeTabs } from './scope-tabs'
-import { SettingsJsonView } from './json-view'
-import { SettingRow } from './setting-row'
-import { Status } from './status'
-import { ViewToggle } from './view-toggle'
-import { useSettingsView } from '../state/view-store'
+import { ScopeTabs } from '@/features/settings/components/scope-tabs'
+import { SettingsJsonView } from '@/features/settings/components/json-view'
+import { SettingRow } from '@/features/settings/components/setting-row'
+import { Status } from '@/features/settings/components/status'
+import { ViewToggle } from '@/features/settings/components/view-toggle'
+import { useHasWorkspace } from '@/features/settings/hooks/use-has-workspace'
+import { useSettingsActions } from '@/features/settings/hooks/use-settings-actions'
+import { useSettingsDocument } from '@/features/settings/hooks/use-settings-document'
+import { useSettingsProjection } from '@/features/settings/hooks/use-settings-projection'
+import { useSettingsScope } from '@/features/settings/state/scope-store'
+import { useSettingsView } from '@/features/settings/state/view-store'
+import { matchingSettingIds } from '@/features/settings/utils/search'
 import type { EditorKeymapLayer } from '@singapor/core'
 import type { EditorRenderDocument } from '@/features/editor/utils/render-document'
 import {
@@ -42,7 +45,9 @@ export function SettingsPage({
   rootPath?: string
   tabId?: string
 } = {}) {
-  const settings = useSettings()
+  const document = useSettingsDocument()
+  const projection = useSettingsProjection()
+  const { isSaving } = useSettingsActions()
   const scope = useSettingsScope()
   const hasWorkspace = useHasWorkspace()
   const [query, setQuery] = useState('')
@@ -53,8 +58,8 @@ export function SettingsPage({
   // The dialog mount has no tab to bind an editor to, so it only has the form.
   const showJson = view === 'json' && tabId !== ''
 
-  if (settings.isPending) return <PageLoading showJson={showJson} />
-  if (settings.isError) return <Status tone='destructive'>Settings could not be loaded.</Status>
+  if (document.isError) return <Status tone='destructive'>Settings could not be loaded.</Status>
+  if (document.isPending || !projection) return <PageLoading showJson={showJson} />
 
   // `matchingSettingIds` already searches rows rather than keys, so a key edited
   // from another row is folded into its owner here rather than dropped.
@@ -62,7 +67,7 @@ export function SettingsPage({
     (id) => (descriptorFor(id).visibility ?? 'user') !== 'internal',
   )
   const categories = groupByCategory(visible)
-  const selectedFile = settings.data.layers.find((layer) => layer.id === scope)?.file ?? null
+  const selectedFile = document.data.layers.find((layer) => layer.id === scope)?.file ?? null
   // An address can narrow the page to one category. Unknown or absent means all of
   // them, so a stale link degrades to the full page rather than to nothing.
   const shown = selectedCategory
@@ -96,6 +101,12 @@ export function SettingsPage({
             {selectedCategory ? `${shownCount(shown)} of ` : ''}
             {visible.length} {visible.length === 1 ? 'setting' : 'settings'}
           </p>
+          {isSaving ? (
+            <span className='text-muted-foreground flex items-center gap-1 text-xs'>
+              <OrbitLoader className='size-3' label='Saving settings' />
+              Saving
+            </span>
+          ) : null}
           {/* The only way out of a category a link pinned. Without it the page showed
               one section while the header counted every setting, and nothing in the UI
               could clear it — `selectSettingsCategory` had no caller but the applier. */}
@@ -121,11 +132,11 @@ export function SettingsPage({
       {showJson ? (
         <div className='flex min-h-0 flex-1 flex-col'>
           <div className='compact:px-3 compact:pt-3 px-4 pt-4'>
-            <MalformedBanner layers={settings.data.layers} />
+            <MalformedBanner layers={document.data.layers} />
           </div>
           <div className='min-h-0 flex-1'>
             <SettingsJsonView
-              diagnostics={settings.data.diagnostics}
+              diagnostics={document.data.diagnostics}
               editorKeymapLayers={editorKeymapLayers}
               file={selectedFile}
               liveDocument={liveDocument}
@@ -147,8 +158,8 @@ export function SettingsPage({
             searchRef.current?.focus()
           }}
         >
-          <MalformedBanner layers={settings.data.layers} />
-          <DiagnosticsBanner diagnostics={settings.data.diagnostics} />
+          <MalformedBanner layers={document.data.layers} />
+          <DiagnosticsBanner diagnostics={projection.diagnostics} />
           {shown.length === 0 ? (
             <Status>{emptySettingsMessage(query, selectedCategory)}</Status>
           ) : (
@@ -156,7 +167,7 @@ export function SettingsPage({
               <section className='compact:mb-4 mb-6' key={category}>
                 <h2 className='text-foreground mb-1 text-sm font-semibold'>{category}</h2>
                 {ids.map((id) => (
-                  <SettingRow id={id} key={id} snapshot={settings.data} />
+                  <SettingRow id={id} key={id} snapshot={projection} />
                 ))}
               </section>
             ))

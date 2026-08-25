@@ -417,7 +417,7 @@ function settingsSnapshot(density: SettingsValues['workbench.density']): Setting
   return {
     diagnostics: [],
     layers: [],
-    revision: density,
+    serverVersion: { epoch: 'tree-pane-test', sequence: density === 'cozy' ? 1 : 2 },
     values: { ...DEFAULT_SETTING_VALUES, 'workbench.density': density },
   }
 }

@@ -1,27 +1,30 @@
 import {
   descriptorFor,
+  SCALAR_SETTING_IDS,
   settingControl,
   settingRowIds,
   type SettingId,
-  type SettingsSnapshot,
+  type ScalarSettingId,
+  type SettingsValues,
   type SettingValue,
 } from '@workspace/contracts'
 
-import { useSettingsActions } from '../hooks/use-settings-actions'
-import { settingInspection } from '../hooks/use-setting-inspection'
-import { useSettingsScope } from '../state/scope-store'
-import { settingRowTitle } from '../utils/humanize'
-import { KeybindingSection } from './keybinding-section'
-import { ModelSection } from './model-section'
-import { ProviderSection } from './provider-section'
-import { RowActions } from './row-actions'
-import { BooleanWidget } from './widgets/boolean-widget'
-import { EnumWidget } from './widgets/enum-widget'
-import { FontWidget } from './widgets/font-widget'
-import { NumberWidget } from './widgets/number-widget'
-import { StringWidget } from './widgets/string-widget'
+import { KeybindingSection } from '@/features/settings/components/keybinding-section'
+import { ModelSection } from '@/features/settings/components/model-section'
+import { ProviderSection } from '@/features/settings/components/provider-section'
+import { RowActions } from '@/features/settings/components/row-actions'
+import { BooleanWidget } from '@/features/settings/components/widgets/boolean-widget'
+import { EnumWidget } from '@/features/settings/components/widgets/enum-widget'
+import { FontWidget } from '@/features/settings/components/widgets/font-widget'
+import { NumberWidget } from '@/features/settings/components/widgets/number-widget'
+import { StringWidget } from '@/features/settings/components/widgets/string-widget'
+import { settingInspection } from '@/features/settings/hooks/use-setting-inspection'
+import { useSettingsActions } from '@/features/settings/hooks/use-settings-actions'
+import type { SettingsProjection } from '@/features/settings/hooks/use-settings-projection'
+import { useSettingsScope } from '@/features/settings/state/scope-store'
+import { settingRowTitle } from '@/features/settings/utils/humanize'
 
-export function SettingRow({ id, snapshot }: { id: SettingId; snapshot: SettingsSnapshot }) {
+export function SettingRow({ id, snapshot }: { id: SettingId; snapshot: SettingsProjection }) {
   const descriptor = descriptorFor(id)
   const scope = useSettingsScope()
   const { setSetting } = useSettingsActions()
@@ -85,7 +88,11 @@ export function SettingRow({ id, snapshot }: { id: SettingId; snapshot: Settings
         <SettingControl
           disabled={disabledReason !== null}
           id={id}
-          onChange={(next) => setSetting(id, next, scope)}
+          onChange={(next) => {
+            if (!SCALAR_SETTING_IDS.includes(id as ScalarSettingId)) return
+
+            setSetting(id as ScalarSettingId, next as SettingsValues[ScalarSettingId], scope)
+          }}
           value={value}
         />
         <RowActions id={id} isModified={isModified} value={value} />

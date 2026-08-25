@@ -1,10 +1,11 @@
 import { initLogger, log as evlog, type LogLevel } from 'evlog'
 import { createHttpLogDrain } from 'evlog/http'
+import { errorNumberField, errorStringField } from '@workspace/contracts'
 import { observabilityEnabledFromEnv } from '@workspace/observability/env'
 
-import { serverUrl } from './client'
-import { annotateClientError } from './client-error-context'
-import { clientInstanceId, instanceQueryParam } from './instance-id'
+import { annotateClientError } from '@/lib/client-error-context'
+import { serverUrl } from '@/lib/client'
+import { clientInstanceId, instanceQueryParam } from '@/lib/instance-id'
 
 export type ClientLogLevel = LogLevel
 
@@ -49,6 +50,7 @@ const sensitiveFields = new Set([
 ])
 
 let initialized = false
+let clientEventSequence = 0
 
 export const log: ClientLogApi = {
   debug: createClientLogMethod('debug'),
@@ -87,6 +89,7 @@ export async function observeClientOperation<T>(
   event: ClientLogEvent & { readonly signal?: AbortSignal },
   operation: () => Promise<T>,
   summarize?: (result: T) => Record<string, unknown>,
+  classifyError?: (error: unknown) => string,
 ): Promise<T> {
   const startedAt = performance.now()
   const { level, signal, ...baseEvent } = event
@@ -115,7 +118,7 @@ export async function observeClientOperation<T>(
         ...baseEvent,
         durationMs: elapsedMs(startedAt),
         error: errorSummary(error),
-        outcome: 'error',
+        outcome: classifyError?.(error) ?? 'error',
       })
     }
 
@@ -138,10 +141,20 @@ function emitClientLog(level: ClientLogLevel, event: ClientLogInput): void {
   if (!clientLoggingEnabled()) return
 
   try {
-    evlog[level](safeClientEvent(event))
+    evlog[level](safeClientEvent(withClientEventId(event)))
   } catch {
     // Logging must never affect user-facing app flows.
   }
+}
+
+function withClientEventId(event: ClientLogInput) {
+  if (typeof event.eventId === 'string' && event.eventId.length > 0) return event
+
+  clientEventSequence += 1
+  const eventId = globalThis.crypto?.randomUUID?.()
+  if (eventId) return { ...event, eventId }
+
+  return { ...event, eventId: `${clientInstanceId()}:${clientEventSequence}` }
 }
 
 // The instance id rides the endpoint URL instead of a header because the
@@ -226,16 +239,22 @@ function summarizeResult<T>(
 }
 
 function errorSummary(error: unknown) {
+  const code = errorStringField(error, 'code')
+  const status = errorNumberField(error, 'status') ?? errorNumberField(error, 'statusCode')
   if (error instanceof Error) {
     return {
+      code,
       message: limitString(error.message),
       name: error.name,
+      status,
     }
   }
 
   return {
+    code,
     message: limitString(String(error)),
     name: typeof error,
+    status,
   }
 }
 

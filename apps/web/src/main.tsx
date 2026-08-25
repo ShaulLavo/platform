@@ -3,11 +3,10 @@ import { createRoot } from 'react-dom/client'
 import { QueryClientProvider } from '@tanstack/react-query'
 
 import '@workspace/ui/globals.css'
-import { App } from './App.tsx'
+import { App } from '@/App'
 import { restoreAddressFromStorage } from '@/features/address/state/storage.ts'
 import { LoggingErrorBoundary } from '@/components/logging-error-boundary.tsx'
 import { ThemeAwareToaster } from '@/components/theme-aware-toaster.tsx'
-import { ThemeProvider } from '@/components/theme-provider.tsx'
 import {
   AppearanceProvider,
   bootAppearance,
@@ -78,16 +77,14 @@ createRoot(document.getElementById('root')!, {
     <LoggingErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <AppearanceProvider bootDensity={boot['workbench.density']}>
-          <ThemeProvider>
-            <EditorColorThemeProvider>
-              <TooltipProvider delay={600}>
-                {/* `ThemeAwareToaster` stays a sibling of the app so an in-flight toast
-                    keeps its identity across an address change. */}
-                <App />
-                <ThemeAwareToaster />
-              </TooltipProvider>
-            </EditorColorThemeProvider>
-          </ThemeProvider>
+          <EditorColorThemeProvider>
+            <TooltipProvider delay={600}>
+              {/* `ThemeAwareToaster` stays a sibling of the app so an in-flight toast
+                  keeps its identity across an address change. */}
+              <App />
+              <ThemeAwareToaster />
+            </TooltipProvider>
+          </EditorColorThemeProvider>
         </AppearanceProvider>
       </QueryClientProvider>
     </LoggingErrorBoundary>

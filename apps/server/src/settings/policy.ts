@@ -21,8 +21,7 @@ export function settingsPolicyFromEnv(env: NodeJS.ProcessEnv): Record<string, un
   const parsed = parseJson(raw)
   if (!isRecord(parsed)) {
     throw settingsErrors.FILE_MALFORMED({
-      file: 'PLATFORM_SETTINGS_POLICY',
-      detail: 'policy must be a JSON object of setting id to value',
+      detail: 'PLATFORM_SETTINGS_POLICY must be a JSON object of setting id to value',
     })
   }
 
@@ -34,8 +33,7 @@ function parseJson(raw: string): unknown {
     return JSON.parse(raw)
   } catch (error) {
     throw settingsErrors.FILE_MALFORMED({
-      file: 'PLATFORM_SETTINGS_POLICY',
-      detail: error instanceof Error ? error.message : 'not valid JSON',
+      detail: `PLATFORM_SETTINGS_POLICY: ${error instanceof Error ? error.message : 'not valid JSON'}`,
     })
   }
 }

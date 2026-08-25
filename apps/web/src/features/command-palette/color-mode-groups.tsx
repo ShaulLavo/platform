@@ -1,4 +1,4 @@
-import type { Theme } from '@/components/theme-context'
+import type { Theme } from '@/features/settings/providers/theme-context'
 import { CommandIcon } from '@phosphor-icons/react'
 import { CommandGroup, CommandItem, CommandShortcut } from '@workspace/ui/components/command'
 

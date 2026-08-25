@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 
-import { useTheme } from '@/components/theme-context'
+import { useTheme } from '@/features/settings/hooks/use-theme'
 import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'

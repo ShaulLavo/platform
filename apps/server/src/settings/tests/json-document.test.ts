@@ -3,10 +3,12 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  discardStagedSettingsFile,
   editSettingsText,
   parseSettingsDocument,
   readSettingsFile,
-  writeSettingsFile,
+  stageSettingsFile,
+  tryCommitStagedSettingsFile,
 } from '../json-document'
 
 const roots: string[] = []
@@ -16,10 +18,6 @@ async function tempFile(name = 'settings.json') {
   roots.push(root)
 
   return path.join(root, name)
-}
-
-const refuse = (found: string | null): never => {
-  throw new Error(`revision mismatch: ${found}`)
 }
 
 afterEach(async () => {
@@ -136,48 +134,43 @@ describe('settings file io', () => {
     roots.push(root)
     const filePath = path.join(root, 'nested', 'deeper', 'settings.json')
 
-    await writeSettingsFile(filePath, '{}\n', { onRevisionMismatch: refuse })
+    const staged = await stageSettingsFile(filePath, '{}\n')
+    await tryCommitStagedSettingsFile(staged, undefined)
 
     expect(await readFile(filePath, 'utf8')).toBe('{}\n')
   })
 
   it('round-trips the revision it returns', async () => {
     const filePath = await tempFile()
-    const revision = await writeSettingsFile(filePath, '{ "a.b": 1 }', {
-      onRevisionMismatch: refuse,
-    })
+    const staged = await stageSettingsFile(filePath, '{ "a.b": 1 }')
+    const result = await tryCommitStagedSettingsFile(staged, undefined)
 
-    expect((await readSettingsFile(filePath)).revision).toBe(revision)
+    expect(result.kind).toBe('committed')
+    expect((await readSettingsFile(filePath)).revision).toBe(staged.revision)
   })
 
   it('refuses when the file changed since the revision was taken', async () => {
     const filePath = await tempFile()
-    const revision = await writeSettingsFile(filePath, '{ "a.b": 1 }', {
-      onRevisionMismatch: refuse,
-    })
+    const first = await stageSettingsFile(filePath, '{ "a.b": 1 }')
+    await tryCommitStagedSettingsFile(first, undefined)
     // A hand-edit landing between the store's read and its rename.
     await writeFile(filePath, '{ "a.b": 2 }', 'utf8')
 
-    await expect(
-      writeSettingsFile(filePath, '{ "a.b": 3 }', {
-        expectedRevision: revision,
-        onRevisionMismatch: refuse,
-      }),
-    ).rejects.toThrow('revision mismatch')
+    const staged = await stageSettingsFile(filePath, '{ "a.b": 3 }')
+    const result = await tryCommitStagedSettingsFile(staged, first.revision)
+    expect(result.kind).toBe('revision-mismatch')
+    await discardStagedSettingsFile(staged)
     // The hand-edit survived; the write did not clobber it.
     expect(await readFile(filePath, 'utf8')).toBe('{ "a.b": 2 }')
   })
 
   it('accepts a write whose expected revision still matches', async () => {
     const filePath = await tempFile()
-    const revision = await writeSettingsFile(filePath, '{ "a.b": 1 }', {
-      onRevisionMismatch: refuse,
-    })
+    const first = await stageSettingsFile(filePath, '{ "a.b": 1 }')
+    await tryCommitStagedSettingsFile(first, undefined)
 
-    await writeSettingsFile(filePath, '{ "a.b": 2 }', {
-      expectedRevision: revision,
-      onRevisionMismatch: refuse,
-    })
+    const second = await stageSettingsFile(filePath, '{ "a.b": 2 }')
+    await tryCommitStagedSettingsFile(second, first.revision)
 
     expect(await readFile(filePath, 'utf8')).toBe('{ "a.b": 2 }')
   })
@@ -185,10 +178,8 @@ describe('settings file io', () => {
   it('expects no file when the revision is null', async () => {
     const filePath = await tempFile()
 
-    await writeSettingsFile(filePath, '{ "a.b": 1 }', {
-      expectedRevision: null,
-      onRevisionMismatch: refuse,
-    })
+    const staged = await stageSettingsFile(filePath, '{ "a.b": 1 }')
+    await tryCommitStagedSettingsFile(staged, null)
 
     expect((await readSettingsFile(filePath)).text).toBe('{ "a.b": 1 }')
   })
@@ -196,7 +187,8 @@ describe('settings file io', () => {
   it('carries the requested mode through the rename', async () => {
     const filePath = await tempFile('secrets.json')
 
-    await writeSettingsFile(filePath, '{}', { mode: 0o600, onRevisionMismatch: refuse })
+    const staged = await stageSettingsFile(filePath, '{}', 0o600)
+    await tryCommitStagedSettingsFile(staged, undefined)
 
     // A rename carries the temp file's permissions, so writing the mode only on
     // the destination would silently widen them on every save.
@@ -205,7 +197,8 @@ describe('settings file io', () => {
 
   it('leaves no temp file behind', async () => {
     const filePath = await tempFile()
-    await writeSettingsFile(filePath, '{}', { onRevisionMismatch: refuse })
+    const staged = await stageSettingsFile(filePath, '{}')
+    await tryCommitStagedSettingsFile(staged, undefined)
 
     const { readdir } = await import('node:fs/promises')
     const entries = await readdir(path.dirname(filePath))

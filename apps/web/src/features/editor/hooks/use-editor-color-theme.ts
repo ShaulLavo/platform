@@ -12,7 +12,7 @@ import {
 import type { EditorTheme } from '@singapor/core'
 import type { VscodeThemeDefinition, VscodeThemeRegistration } from '@singapor/core/shiki'
 
-import { useTheme } from '@/components/theme-context'
+import { useTheme } from '@/features/settings/hooks/use-theme'
 import {
   getCommittedEditorThemeId,
   getSelectedEditorThemeId,

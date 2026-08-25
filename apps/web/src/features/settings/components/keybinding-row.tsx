@@ -5,8 +5,8 @@ import { Button } from '@workspace/ui/components/button'
 import type { CommandKeyBindingRow } from '@/keymap/active-bindings'
 import { platformCommandSpec } from '@/keymap/command-registry'
 
-import { useSettingsActions } from '../hooks/use-settings-actions'
-import { ChordRecorder } from './widgets/chord-recorder'
+import { ChordRecorder } from '@/features/settings/components/widgets/chord-recorder'
+import { useSettingsActions } from '@/features/settings/hooks/use-settings-actions'
 
 export function KeybindingRow({
   binding,
@@ -16,7 +16,7 @@ export function KeybindingRow({
   /** How many other commands lost this chord to this one. */
   claimedFrom: number
 }) {
-  const { isSaving, resetKeybinding, setKeybinding } = useSettingsActions()
+  const { resetKeybinding, setKeybinding } = useSettingsActions()
   // A command the registry carries no spec for falls back to its id, and
   // repeating the id underneath would print the same string twice.
   const spec = platformCommandSpec(binding.command)
@@ -42,7 +42,6 @@ export function KeybindingRow({
 
       <ChordRecorder
         conflictCount={claimedFrom}
-        disabled={isSaving}
         id={binding.command}
         onChange={(next) => setKeybinding(binding.command, next)}
         value={binding.keys ?? ''}
@@ -53,7 +52,7 @@ export function KeybindingRow({
           say both. */}
       <Button
         aria-label={`Unbind ${title}`}
-        disabled={isSaving || binding.keys === null}
+        disabled={binding.keys === null}
         onClick={() => setKeybinding(binding.command, null)}
         size='icon-sm'
         variant='ghost'
@@ -62,7 +61,7 @@ export function KeybindingRow({
       </Button>
       <Button
         aria-label={`Reset ${title}`}
-        disabled={isSaving || binding.source !== 'user'}
+        disabled={binding.source !== 'user'}
         onClick={() => resetKeybinding(binding.command)}
         size='icon-sm'
         variant='ghost'

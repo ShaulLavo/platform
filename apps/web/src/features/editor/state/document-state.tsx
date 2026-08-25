@@ -50,6 +50,12 @@ type EditorDocumentStoreActions = {
     savedContentRevision: string
     savedText: string
   }) => boolean
+  markSettingsDocumentConflict: (
+    documentId: string,
+    confirmedText: string | null,
+    revision: string | null,
+  ) => boolean
+  reloadSettingsDocument: (documentId: string) => boolean
   /** Re-seeds a synthetic buffer from text the server rewrote; see the service. */
   replaceUnsyncedEditorDocumentText: (documentId: string, text: string) => boolean
   /** Brings a clean settings buffer back in step with the file; see the service. */
@@ -176,6 +182,16 @@ export function createEditorDocumentStore(options: CreateEditorDocumentStoreOpti
           const marked = service.markSettingsSaved(input)
           publish()
           return marked
+        },
+        markSettingsDocumentConflict: (documentId, confirmedText, revision) => {
+          const marked = service.markSettingsConflict(documentId, confirmedText, revision)
+          if (marked) publish()
+          return marked
+        },
+        reloadSettingsDocument: (documentId) => {
+          const reloaded = service.reloadSettingsDocument(documentId)
+          if (reloaded) publish()
+          return reloaded
         },
         replaceUnsyncedEditorDocumentText: (documentId, text) => {
           const replaced = service.replaceUnsyncedDocumentText(documentId, text)

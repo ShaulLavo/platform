@@ -1,8 +1,18 @@
-import type { SettingsEdit, SettingsSnapshot, SettingsWriteTarget } from '@workspace/contracts'
+import {
+  errorNumberField,
+  errorStringField,
+  type SettingsMutationRequest,
+  type SettingsMutationResult,
+  type SettingsRawWriteRequest,
+  type SettingsRawWriteResult,
+  type SettingsSnapshot,
+} from '@workspace/contracts'
 
 import { getClient } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
+import { toClientError } from '@/lib/client-error-taxonomy'
 import { unwrapEdenResponse } from '@/lib/eden-events'
+import { createClientInvariantError } from '@/lib/structured-errors'
 
 export async function fetchSettings(signal?: AbortSignal): Promise<SettingsSnapshot> {
   return observeClientOperation(
@@ -19,74 +29,81 @@ export async function fetchSettings(signal?: AbortSignal): Promise<SettingsSnaps
   )
 }
 
-export type SaveSettingsRequest = {
-  readonly edits: readonly SettingsEdit[]
-  /**
-   * The revision the edits were computed against.
-   *
-   * Load-bearing, not decorative: the collection-valued edits send the whole
-   * value built from the cached snapshot, so a hand-edit that landed since that
-   * snapshot is overwritten rather than merged. This is what turns that into a
-   * refusal the user can see.
-   */
-  readonly baseRevision?: string
+export async function saveSettings(
+  request: SettingsMutationRequest,
+): Promise<SettingsMutationResult> {
+  const response = await getClient().settings.write.post(request)
+
+  return unwrapEdenResponse(response, {
+    requireData: true,
+    emptyMessage: 'settings server returned an empty response',
+  })
 }
 
-/**
- * The server answers with the whole snapshot, so the caller never has to merge
- * its own edits back into the cache — the response is the new truth.
- */
-export async function saveSettings({
-  baseRevision,
-  edits,
-}: SaveSettingsRequest): Promise<SettingsSnapshot> {
+/** Whole-document compare-and-swap for the raw JSON editor. */
+export async function saveSettingsText(
+  request: SettingsRawWriteRequest,
+): Promise<SettingsRawWriteResult> {
   return observeClientOperation(
-    // Ids only. A settings value can be a provider environment, and this event
-    // ends up in a log file the agent itself reads.
-    { action: 'settings.write', area: 'settings', settingIds: edits.map((edit) => edit.key) },
-    async () => {
-      const response = await getClient().settings.write.post({ baseRevision, edits: [...edits] })
+    {
+      action: 'settings.write-raw',
+      area: 'settings',
+      target: request.target,
+      writeId: request.writeId,
+    },
+    () => postRawWithRetry(request),
+    summarizeRawWriteResult,
+    rawWriteFailureOutcome,
+  )
+}
 
+async function postRawWithRetry(request: SettingsRawWriteRequest) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await getClient().settings.raw.post(request)
       return unwrapEdenResponse(response, {
         requireData: true,
         emptyMessage: 'settings server returned an empty response',
       })
-    },
-    summarizeSettings,
-  )
+    } catch (error) {
+      if (!shouldRetryRawTransport(error) || attempt === 2) throw error
+
+      await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 100 * 2 ** attempt))
+    }
+  }
+
+  throw createClientInvariantError('Raw settings retry ended without a result')
 }
 
-/**
- * Replaces one layer's file wholesale, for the JSON view.
- *
- * `baseRevision` is what makes this safe to offer: the raw write is a
- * whole-document replace, so a buffer seeded before someone else's change would
- * otherwise delete their keys without either side seeing anything. The server
- * refuses a stale one instead.
- */
-export async function saveSettingsText({
-  baseRevision,
-  target,
-  text,
-}: {
-  readonly baseRevision?: string
-  readonly target: SettingsWriteTarget
-  readonly text: string
-}): Promise<SettingsSnapshot> {
-  return observeClientOperation(
-    // No text and no ids: this request body is the entire settings document, and
-    // the log is a file the agent itself reads.
-    { action: 'settings.write-raw', area: 'settings' },
-    async () => {
-      const response = await getClient().settings.raw.post({ baseRevision, target, text })
+function shouldRetryRawTransport(error: unknown) {
+  if (errorStringField(error, 'code') === 'settings.RAW_REVISION_STALE') return false
+  if (toClientError(error).category === 'connectivity') return true
 
-      return unwrapEdenResponse(response, {
-        requireData: true,
-        emptyMessage: 'settings server returned an empty response',
-      })
-    },
-    summarizeSettings,
-  )
+  const status = errorNumberField(error, 'status') ?? errorNumberField(error, 'statusCode')
+  return status !== undefined && status >= 500
+}
+
+function summarizeRawWriteResult(result: SettingsRawWriteResult) {
+  return {
+    appliedEpoch: result.appliedVersion.epoch,
+    appliedSequence: result.appliedVersion.sequence,
+    changedSettingIds: result.changedSettingIds,
+    duplicate: result.duplicate,
+    outcome: result.duplicate ? 'duplicate-ack' : 'applied',
+    snapshotEpoch: result.snapshot.serverVersion.epoch,
+    snapshotSequence: result.snapshot.serverVersion.sequence,
+  }
+}
+
+function rawWriteFailureOutcome(error: unknown) {
+  const code = errorStringField(error, 'code')
+  if (code === 'settings.RAW_REVISION_STALE') return 'raw-conflict'
+  if (code === 'settings.WRITE_CONTENDED') return 'contended'
+
+  const status = errorNumberField(error, 'status') ?? errorNumberField(error, 'statusCode')
+  if (status !== undefined && status >= 400 && status < 500) return 'rejected'
+
+  return 'transport-failed'
 }
 
 function summarizeSettings(snapshot: SettingsSnapshot) {
@@ -95,5 +112,7 @@ function summarizeSettings(snapshot: SettingsSnapshot) {
     hiddenModelCount: snapshot.values['models.hidden'].length,
     keybindingOverrideCount: Object.keys(snapshot.values['keybindings.overrides']).length,
     providerInstanceCount: snapshot.values['providers.instances'].length,
+    settingsEpoch: snapshot.serverVersion.epoch,
+    settingsSequence: snapshot.serverVersion.sequence,
   }
 }

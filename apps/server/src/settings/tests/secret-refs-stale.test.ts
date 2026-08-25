@@ -18,6 +18,7 @@ const SECRET = 'sk-live-abc123'
 
 const stores: SettingsStore[] = []
 const roots: string[] = []
+let writeSequence = 0
 
 async function tempRoot() {
   const root = await mkdtemp(path.join(tmpdir(), 'settings-stale-'))
@@ -35,23 +36,24 @@ function createStore(root: string) {
 
 /** One instance with a variable that has a secret and one that does not. */
 function writeProviderWithSecret(store: SettingsStore) {
-  return store.write({
-    edits: [
+  writeSequence += 1
+  const text = `${JSON.stringify({
+    'providers.instances': [
       {
-        key: 'providers.instances',
-        target: 'user',
-        value: [
-          {
-            providerInstanceId: 'codex-work',
-            driverKind: 'codex',
-            environment: [
-              { name: API_KEY, value: SECRET },
-              { name: PROXY, value: '' },
-            ],
-          },
+        providerInstanceId: 'codex-work',
+        driverKind: 'codex',
+        environment: [
+          { name: API_KEY, value: SECRET },
+          { name: PROXY, value: '' },
         ],
       },
     ],
+  })}\n`
+  return store.writeRaw({
+    baseRevision: store.rawLayer('user').revision,
+    target: 'user',
+    text,
+    writeId: `secret-ref-${writeSequence}`,
   })
 }
 
@@ -79,8 +81,11 @@ async function repairSecretStore(root: string) {
 
 /** A settings write that touches no secret, purely to drive `invalidate()`. */
 function touchSettings(store: SettingsStore, binding: string) {
+  writeSequence += 1
   return store.write({
-    edits: [{ key: 'keybindings.overrides', target: 'user', value: { 'a.one': binding } }],
+    mutationId: `touch-${writeSequence}`,
+    operations: [{ command: 'a.one', keys: binding, kind: 'keybinding.set' }],
+    target: 'user',
   })
 }
 
@@ -110,10 +115,8 @@ describe('masking a provider environment', () => {
     await breakSecretStore(root)
     await touchSettings(store, 'Mod+1')
 
-    // `REDACTED` round-trips through `extractProviderSecrets` as "leave the
-    // stored secret alone"; `''` round-trips as "delete it". With the ref set
-    // untrustworthy, the empty string would invite the next save of this row to
-    // wipe a credential that is still on disk.
+    // An unreadable ref set cannot distinguish unset values from credentials
+    // held in the secret store, so the safe projection masks every variable.
     expect(environmentOf(store)).toEqual({
       [API_KEY]: REDACTED_SETTINGS_VALUE,
       [PROXY]: REDACTED_SETTINGS_VALUE,
@@ -134,7 +137,7 @@ describe('masking a provider environment', () => {
     expect(environmentOf(store)).toEqual({ [API_KEY]: REDACTED_SETTINGS_VALUE, [PROXY]: '' })
   })
 
-  it('records one wide event naming the file, and nothing from inside it', async () => {
+  it('records one wide event without the file contents or absolute path', async () => {
     const root = await tempRoot()
     const logDir = await tempRoot()
     const store = createStore(root)
@@ -156,9 +159,10 @@ describe('masking a provider environment', () => {
       area: 'settings',
       level: 'warn',
       operation: 'invalidate',
-      settings: { secretRefsStale: true, secretsPath: path.join(root, 'secrets.json') },
+      settings: { secretRefsStale: true },
     })
     expect(JSON.stringify(warning)).not.toContain(SECRET)
+    expect(JSON.stringify(warning)).not.toContain(path.join(root, 'secrets.json'))
   })
 })
 

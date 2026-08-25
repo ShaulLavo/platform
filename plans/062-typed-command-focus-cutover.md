@@ -15,14 +15,18 @@
 > breakage is acceptable only inside the atomic cutover step; that step must end
 > with its structural grep and typecheck green.
 >
-> **Hard dependency**: plan 059 must be implemented and verified first. This
-> plan consumes its single semantic settings-intent path, projected settings
-> state, consolidated appearance provider, in-memory color-mode preview, and
-> `mutationId`/`settled` result. It must not recreate `setSettingAsync`, call
-> `mutateAsync` through a second path, restore command dispatch on palette
-> highlight, or duplicate settings error reporting.
+> **Landed dependency**: the semantic settings foundation is implemented and
+> verified. This plan consumes the single intent path in
+> `features/settings/hooks/use-settings-actions.ts`, projected state from
+> `features/settings/hooks/use-settings-projection.ts`, and appearance ownership
+> in `features/settings/providers/appearance-provider.tsx` and
+> `theme-context.ts`. It also consumes in-memory color-mode preview and the
+> `mutationId`/`settled` result.
+> It must not recreate `setSettingAsync`, call `mutateAsync` through a second
+> path, restore command dispatch on palette highlight, or duplicate settings
+> error reporting.
 >
-> **Drift check (run first after plan 059 lands)**:
+> **Drift check (run first against the landed settings foundation)**:
 >
 > ```bash
 > cd /Users/shaul/Desktop/D/platform
@@ -60,20 +64,20 @@
 > ```
 >
 > At planning time `HEAD` was `bcd4a5b0` and the Platform worktree was clean.
-> Drift produced by a completed plan 059 is expected. Read its landed API and
-> verify the semantic preconditions in Step 0. If any other in-scope dirty edit
-> overlaps a symbol named below, STOP and ask the operator to reconcile
-> ownership. Never revert, stash, overwrite, or format unrelated work.
+> Drift produced by the landed settings foundation is expected. Read its current
+> APIs and verify the semantic preconditions in Step 0. If any other in-scope
+> dirty edit overlaps a symbol named below, STOP and ask the operator to
+> reconcile ownership. Never revert, stash, overwrite, or format unrelated work.
 
 ## Status
 
-- **State**: Blocked on plan 059; executable immediately after its semantic
+- **State**: Ready for drift reconciliation and execution after its semantic
   preflight passes
 - **Priority**: P1
 - **Effort**: XL
 - **Risk**: HIGH — trusted-key suppression, multiple Editor mounts, shadow-DOM
   tree focus, floating UI, dirty close, and async persistence meet here
-- **Depends on**: plan 059 complete and reconciled
+- **Depends on**: landed semantic settings and appearance foundation; dependency satisfied
 - **Replaces**: the earlier command/focus draft, now deleted; do not recreate its mutation design
 - **Blocks**: plan 056 until it is rebased onto this bus; plan 057 until it is
   rebased onto this bus and FocusService; plan 061 should execute after both 060
@@ -101,7 +105,7 @@ After this plan:
    until plan 057's explicit takeover.
 6. Async file/settings/focus work settles through the dispatch ticket. No
    command-local detached catch logs success before failure, and settings
-   failures remain owned and reported once by plan 059's intent runtime.
+   failures remain owned and reported once by the landed settings intent runtime.
 7. Dirty close distinguishes immediate close, deferred dialog ownership, busy,
    and missing targets. Deferred means the exact dialog acknowledged focus, not
    that the user has already chosen Save or Discard.
@@ -124,7 +128,7 @@ The load-bearing requirements are:
 
 Use this migration-free order:
 
-1. Execute and verify plan 059.
+1. Verify the landed settings foundation in Step 0.
 2. Execute this plan as one command/focus cutover.
 3. Reconcile and execute plan 056. Its chord machine dispatches this bus and
    suppresses a completed binding from `ticket.claimed`; it must not introduce
@@ -207,9 +211,9 @@ implementation or copy that transaction into `workspace-commands.ts`. Root
 - Detached workspace promises live in `workspace-commands.ts:81-112`, with
   save/save-all/open-HEAD/revert/clipboard callers at current lines 307-340,
   362-388, and 569-587.
-- Before plan 059, settings commands hide settlement behind
-  `use-settings-actions.ts`. After plan 059 there must be one semantic intent
-  result; this plan consumes it rather than adding a mutation path.
+- Settings commands now receive one semantic `SettingsSubmission` from
+  `use-settings-actions.ts`; this plan consumes its no-op or
+  `{ mutationId, settled }` result rather than adding a mutation path.
 - `use-dirty-tab-close.tsx:54-93` flattens busy, missing, deferred, and closed
   into a boolean. `workspace.closeCurrentTab` ignores that boolean and
   `keymap/commands.ts` carries a direct-close fallback.
@@ -370,7 +374,7 @@ Required behavior:
    outcome, and duration. Never log settings values, clipboard text, session
    content, or command arguments.
 7. Convert thrown/rejected Platform work with `toClientError`, call
-   `reportError` once, and end the same event. For plan 059 settings-intent
+   `reportError` once, and end the same event. For landed settings-intent
    failures, return `owner: 'domain'` with `mutationId`; the settings runtime
    already owns canonical logging, Retry/Discard, and user feedback, so the bus
    must not report it again.
@@ -391,7 +395,7 @@ Build one provider-local runtime grouped by domain capability:
 - existing `useOpenFileAtRef()` and workspace-root opener;
 - the real dirty-close action from `EditorTabActionsProvider`;
 - shell actions for palette and folderless settings;
-- plan 059's existing semantic settings and appearance actions.
+- the landed semantic settings and appearance actions.
 
 Capture mutable workspace/document/UI values once per inspection. Do not rebuild
 17 callbacks per invocation, prop-drill individual command actions, or move
@@ -502,10 +506,10 @@ folderless Settings state, and app keymap. `AppCommandSurface` disappears.
   and close only on handled/deferred, subject to `keepsPaletteOpen`. Disabled,
   unhandled, cancelled, and failed results keep the palette open and do not
   record MRU.
-- Plan 059 color-mode hover calls only `previewTheme`; selection dispatches one
+- Landed color-mode hover calls only `previewTheme`; selection dispatches one
   real theme command. Editor color-theme hover remains in-memory. Closing by
   selection, Escape, outside click, or unmount clears hover preview, but never a
-  plan 059 commit-handoff latch.
+  appearance-provider commit-handoff latch.
 - Direct palette actions choose an explicit destination: file/line/symbol to
   the selected Editor, script to terminal, and session/draft to the composer
   keyed to the selected project. A cross-project session first awaits the
@@ -584,7 +588,7 @@ Focus destinations for those handlers are exact:
 If an exact destination is not valid, return target-unavailable; do not mark a
 layout mutation itself as focus success.
 
-For plan 059 settings/appearance actions:
+For landed settings/appearance actions:
 
 - `{ kind: 'noop' }` returns immediate handled without transport.
 - `{ kind: 'submitted', mutationId, settled }` returns started immediately;
@@ -762,9 +766,8 @@ Also delete:
 - titlebar `TitlebarMenuContext.runCommand`, callback-taking `commandRadio`, and
   `runChoice`.
 - terminal's direct post-menu `terminalRef.current?.focus()` restoration.
-- dead palette `previewPlatformCommand` action if plan 059 has not already
-  removed it; preview APIs must be in-memory appearance/theme actions, not
-  command execution.
+- any reintroduced palette `previewPlatformCommand` action; preview APIs must
+  remain in-memory appearance/theme actions, not command execution.
 - `editorBackedDocumentPath` and its pointer-based commentary from
   `features/editor/utils/file-backed-document.ts`; file-backed and saveable path
   helpers remain, while Editor availability comes from target capability.
@@ -858,8 +861,8 @@ touching it.
 - `apps/web/src/keymap/workspace-commands.ts`
 - `apps/web/src/features/chat-mode/providers/session-context.ts` (stale
   `AppCommandSurface` comment only)
-- `apps/web/src/features/settings/hooks/use-settings-actions.ts` (only if plan
-  059's semantic methods need existing settlement return plumbing)
+- `apps/web/src/features/settings/hooks/use-settings-actions.ts` (only if the
+  landed semantic methods need existing settlement return plumbing)
 
 ### Focus targets and close behavior
 
@@ -1030,8 +1033,8 @@ bun --bun vitest run --project dom \
   src/lib/focus/tests/service.test.tsx
 ```
 
-Plan 059 regression gate (these files are created by that dependency and are
-verification-only in this plan):
+Landed settings regression gate (these files are verification-only in this
+plan):
 
 ```bash
 bun --bun vitest run --project dom \
@@ -1069,9 +1072,9 @@ identity with the recorded baseline rather than absolute test counts.
 
 ## Execution steps
 
-### Step 0: Verify plan 059 and capture the baseline
+### Step 0: Verify the landed settings foundation and capture the baseline
 
-Before changing code, inspect the landed plan 059 implementation and prove:
+Before changing code, inspect the landed settings implementation and prove:
 
 - color-mode preview is in-memory and performs no dispatch/write;
 - theme commit returns no-op or submitted `{ mutationId, settled }` semantics;
@@ -1139,7 +1142,7 @@ CommandBus tests must prove:
 - a started result is claimed synchronously and its completion waits;
 - sync throw and rejected started completion resolve failed, report once, and
   never create an unhandled rejection;
-- a domain-owned plan 059 failure is not reported again;
+- a domain-owned settings failure is not reported again;
 - exactly one wide event ends with source, target, execution, undo, outcome, and
   duration;
 - dirty-close deferred is distinct from handled.
@@ -1187,7 +1190,7 @@ make an intermediate state compile.
 8. Remove palette dispatch/binding props and local enablement. Inspect every
    command/view row through the bus using the captured palette origin. Await
    completion for MRU/close. Give every direct quick action its exact focus
-   destination. Preserve plan 059 preview/commit semantics and add unmount
+   destination. Preserve the landed preview/commit semantics and add unmount
    cleanup.
 9. Change `useAppKeymap` to dispatch before suppression. Reserved null bindings
    still suppress immediately; a command uses its binding's prevent/stop policy
@@ -1231,7 +1234,7 @@ Required focused assertions:
 - disabled or sync-unhandled commands do not prevent/stop; claimed commands and
   reserved null bindings do;
 - all 39 async commands settle through tickets; bus-owned rejection reports
-  once, while plan 059 failure remains domain-owned once;
+  once, while a settings failure remains domain-owned once;
 - palette waits, records/closes only on handled/deferred, and clears both kinds
   of hover preview on every dismissal path;
 - close returns closed/deferred/busy/not-found; the dirty case waits for the
@@ -1241,7 +1244,7 @@ Required focused assertions:
   composer respectively.
 
 Run the focused node and DOM commands from **Verification commands**. Then rerun
-plan 059's focused settings/appearance gates.
+the landed settings/appearance regression gates.
 
 ### Step 4: Prove real focus and trusted-key behavior
 
@@ -1306,7 +1309,7 @@ verified. The earlier superseded draft is deleted and must not be restored.
 - [ ] Every async-row Platform handler returns a synchronous start result, and
       each started operation settles through non-rejecting completion with
       failure reported exactly once under its real owner.
-- [ ] Plan 059 preview remains write-free and its mutation path remains singular.
+- [ ] Settings preview remains write-free and its mutation path remains singular.
 - [ ] Dirty close distinguishes closed/deferred/busy/not-found and deferred
       waits for exact dialog focus ownership.
 - [ ] Focus ownership comes only from actual `focusin`; requests resolve
@@ -1328,9 +1331,9 @@ verified. The earlier superseded draft is deleted and must not be restored.
 
 STOP and report rather than improvise when:
 
-- plan 059 is not complete, color-mode preview still dispatches/writes, or the
-  semantic settings action cannot expose its existing settlement without a
-  second mutation path;
+- the landed settings foundation has regressed, color-mode preview
+  dispatches/writes, or the semantic settings action cannot expose its existing
+  settlement without a second mutation path;
 - plan 056/057 has already introduced `activeEditorSurface`, another target
   registry, conflicting `when` semantics, chords, or native takeover without
   reconciliation;

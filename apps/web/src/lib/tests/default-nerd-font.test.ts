@@ -4,7 +4,9 @@ import {
   DEFAULT_MONO_FONT_STACK,
   DEFAULT_MONO_FONT_VARIABLE,
   DEFAULT_NERD_FONT_FAMILY,
+  fontStack,
   loadDefaultNerdFont,
+  loadNerdFont,
 } from '../default-nerd-font'
 
 describe('loadDefaultNerdFont', () => {
@@ -57,6 +59,39 @@ describe('loadDefaultNerdFont', () => {
     expect(state.requests).toHaveLength(0)
     expect(state.variables.get(DEFAULT_MONO_FONT_VARIABLE)).toBe(DEFAULT_MONO_FONT_STACK)
   })
+
+  it('does not let an older font request overwrite a newer stack', async () => {
+    const olderResponse = deferred<Response>()
+    const newerResponse = deferred<Response>()
+    const state = fontLoaderState({
+      fetcher: (async (input) => {
+        if (String(input).endsWith('/Older')) return olderResponse.promise
+
+        return newerResponse.promise
+      }) as typeof fetch,
+    })
+    const older = loadNerdFont('Older', {
+      FontFace: state.FontFace,
+      fetcher: state.fetcher,
+      fonts: state.fonts,
+      root: state.root,
+      url: 'http://server.test/fonts/Older',
+    })
+    const newer = loadNerdFont('Newer', {
+      FontFace: state.FontFace,
+      fetcher: state.fetcher,
+      fonts: state.fonts,
+      root: state.root,
+      url: 'http://server.test/fonts/Newer',
+    })
+
+    newerResponse.resolve(successfulResponse())
+    await newer
+    olderResponse.resolve(successfulResponse())
+    await older
+
+    expect(state.variables.get(DEFAULT_MONO_FONT_VARIABLE)).toBe(fontStack('Newer'))
+  })
 })
 
 type FakeFontFace = {
@@ -103,6 +138,9 @@ function fontLoaderState(options: { fetcher?: typeof fetch } = {}) {
     requests,
     root: {
       style: {
+        getPropertyValue(name: string) {
+          return variables.get(name) ?? ''
+        },
         setProperty(name: string, value: string) {
           variables.set(name, value)
         },
@@ -117,4 +155,17 @@ function successfulFontFetch(requests: string[]): typeof fetch {
     requests.push(String(input))
     return new Response(new Uint8Array([1, 2, 3]).buffer)
   }) as typeof fetch
+}
+
+function successfulResponse() {
+  return new Response(new Uint8Array([1, 2, 3]).buffer)
+}
+
+function deferred<T>() {
+  let resolve: (value: T) => void = () => undefined
+  const promise = new Promise<T>((settle) => {
+    resolve = settle
+  })
+
+  return { promise, resolve }
 }

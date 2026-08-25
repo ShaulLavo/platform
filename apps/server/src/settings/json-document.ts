@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
-import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import {
   applyEdits,
@@ -149,47 +149,66 @@ export async function readSettingsFile(filePath: string): Promise<SettingsFileCo
   }
 }
 
-export type WriteSettingsFileOptions = {
-  /**
-   * The revision the edits were computed against. The write is refused when the
-   * file moved underneath, so a hand-edit landing between our read and our
-   * rename is reported rather than silently overwritten.
-   */
-  readonly expectedRevision?: string | null
-  /** Secrets pass `0o600`; the settings document takes the default. */
+export type StagedSettingsFile = {
+  readonly destination: string
   readonly mode?: number
-  readonly onRevisionMismatch: (found: string | null) => never
+  readonly revision: string
+  readonly temporary: string
+  readonly text: string
 }
 
-/**
- * Atomic write: temp file in the target directory, then rename.
- *
- * The temp file is created with the final mode rather than chmod-ed afterwards,
- * because a rename carries the temp file's permissions — writing 0600 only on
- * the destination would silently widen them on every save.
- */
-export async function writeSettingsFile(
+/** Writes and fsyncs the new bytes without making them visible yet. */
+export async function stageSettingsFile(
   filePath: string,
   text: string,
-  options: WriteSettingsFileOptions,
-): Promise<string> {
-  await mkdir(path.dirname(filePath), { recursive: true })
-  await assertRevisionUnchanged(filePath, options)
-
-  const temporary = path.join(
-    path.dirname(filePath),
-    `.${path.basename(filePath)}.${randomUUID()}.tmp`,
-  )
+  mode?: number,
+): Promise<StagedSettingsFile> {
+  const directory = path.dirname(filePath)
+  await mkdir(directory, { recursive: true })
+  const temporary = path.join(directory, `.${path.basename(filePath)}.${randomUUID()}.tmp`)
+  const handle = await open(temporary, 'wx', mode)
 
   try {
-    await writeFile(temporary, text, { encoding: 'utf8', mode: options.mode })
-    await rename(temporary, filePath)
-
-    return textFileVersion(text)
+    await handle.writeFile(text, 'utf8')
+    await handle.sync()
   } catch (error) {
+    await handle.close().catch(() => {})
     await rm(temporary, { force: true }).catch(() => {})
     throw error
   }
+
+  await handle.close()
+  return {
+    destination: filePath,
+    mode,
+    revision: textFileVersion(text),
+    temporary,
+    text,
+  }
+}
+
+export async function tryCommitStagedSettingsFile(
+  staged: StagedSettingsFile,
+  expectedRevision: string | null | undefined,
+): Promise<
+  | { readonly kind: 'committed'; readonly revision: string }
+  | { readonly foundRevision: string | null; readonly kind: 'revision-mismatch' }
+> {
+  if (expectedRevision !== undefined) {
+    const current = await currentSettingsFileRevision(staged.destination)
+    if (current !== expectedRevision) {
+      return { foundRevision: current, kind: 'revision-mismatch' }
+    }
+  }
+
+  await rename(staged.temporary, staged.destination)
+  await fsyncDirectory(path.dirname(staged.destination))
+
+  return { kind: 'committed', revision: staged.revision }
+}
+
+export async function discardStagedSettingsFile(staged: StagedSettingsFile): Promise<void> {
+  await rm(staged.temporary, { force: true }).catch(() => {})
 }
 
 /**
@@ -197,16 +216,7 @@ export async function writeSettingsFile(
  * caller read earlier. The gap between a store's read and its write is exactly
  * where a hand-edit lands, and a counter-style revision cannot see it.
  */
-async function assertRevisionUnchanged(filePath: string, options: WriteSettingsFileOptions) {
-  if (options.expectedRevision === undefined) return
-
-  const current = await currentRevision(filePath)
-  if (current === options.expectedRevision) return
-
-  options.onRevisionMismatch(current)
-}
-
-async function currentRevision(filePath: string): Promise<string | null> {
+export async function currentSettingsFileRevision(filePath: string): Promise<string | null> {
   try {
     await stat(filePath)
 
@@ -214,6 +224,16 @@ async function currentRevision(filePath: string): Promise<string | null> {
   } catch (error) {
     if (isMissingFile(error)) return null
     throw error
+  }
+}
+
+export async function fsyncDirectory(directory: string): Promise<void> {
+  const handle = await open(directory, 'r')
+
+  try {
+    await handle.sync()
+  } finally {
+    await handle.close()
   }
 }
 

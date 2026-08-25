@@ -13,10 +13,26 @@ import type { SettingsStoreOptions } from './store'
  * Watching is off: a test wants deterministic reads, not a debounce racing its
  * assertions.
  */
-export function testSettingsOptions(root: string): SettingsStoreOptions {
+export type TestSettingsOverrides = Pick<
+  SettingsStoreOptions,
+  | 'receiptLimit'
+  | 'layerReader'
+  | 'rebaseAttempts'
+  | 'rebaseBudgetMs'
+  | 'transactionHooks'
+  | 'watch'
+  | 'workspaceRoot'
+  | 'writeHooks'
+>
+
+export function testSettingsOptions(
+  root: string,
+  overrides: TestSettingsOverrides = {},
+): SettingsStoreOptions {
   return {
     userFilePath: path.join(root, '.platform-test', 'settings.json'),
     secretsFilePath: path.join(root, '.platform-test', 'secrets.json'),
     watch: false,
+    ...overrides,
   }
 }

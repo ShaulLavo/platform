@@ -1,12 +1,11 @@
 import { useEffect } from 'react'
 
 import { useEditorDocumentState } from '@/features/editor/state/document-state'
+import { useSettingsDocument } from '@/features/settings/hooks/use-settings-document'
+import { useSettingsScope } from '@/features/settings/state/scope-store'
+import { useSettingsView } from '@/features/settings/state/view-store'
 import { isSettingsDocumentId } from '@/features/settings/utils/document'
-
-import { useSettings } from './use-settings'
-import { useSettingsScope } from '../state/scope-store'
-import { useSettingsView } from '../state/view-store'
-import { settingsJsonDocumentId } from '../utils/json-document'
+import { settingsJsonDocumentId } from '@/features/settings/utils/json-document'
 
 /**
  * Seeds and attaches the buffer behind the settings tab's JSON view.
@@ -29,7 +28,7 @@ import { settingsJsonDocumentId } from '../utils/json-document'
 export function useSettingsJsonDocument(tabId: string, tabPath: string) {
   const scope = useSettingsScope()
   const view = useSettingsView()
-  const settings = useSettings()
+  const settings = useSettingsDocument()
   const active = isSettingsDocumentId(tabPath) && view === 'json'
   const documentId = active ? settingsJsonDocumentId(scope) : null
   const file = active ? settings.data?.layers.find((layer) => layer.id === scope)?.file : undefined

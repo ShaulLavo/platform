@@ -43,7 +43,6 @@ function CommandPaletteActionsProvider({
 
 function commandPaletteActions(): CommandPaletteActions {
   return {
-    previewPlatformCommand: vi.fn(),
     previewColorTheme: vi.fn(),
     selectColorTheme: vi.fn(),
     selectCommand: vi.fn(),

@@ -8,7 +8,6 @@ import type { FlatDocumentSymbol } from '@/features/command-palette/document-sym
 import type { PlatformCommandId } from '@/keymap/types'
 
 export type CommandPaletteActions = {
-  readonly previewPlatformCommand: (command: PlatformCommandId) => void
   readonly previewColorTheme: (themeId: string) => void
   readonly selectColorTheme: (themeId: string) => void
   readonly selectCommand: (item: CommandPaletteItem) => void
