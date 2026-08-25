@@ -60,7 +60,7 @@
     "@workspace/tree": "workspace:*",
     "@workspace/ui": "workspace:*",
     "evlog": "^2.22.3",
-    "ghostty-web": "^0.4.0",
+    "ghostty-webgpu": "0.1.0",
     "js.foresight": "^4.2.1",
     "lexical": "^0.45.0",
     "react": "^19.2.7",

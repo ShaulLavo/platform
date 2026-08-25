@@ -1,5 +1,5 @@
 import { waitFor } from '@testing-library/react'
-import type { ILink, ILinkProvider, Terminal } from 'ghostty-web'
+import type { GhosttyWebGpuTerminal, LinkLineSnapshot, LinkProvider } from 'ghostty-webgpu'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { useEffect, useEffectEvent, type ReactNode } from 'react'
@@ -48,34 +48,30 @@ test('a link range is 0-based and inclusive at both ends', async () => {
   await waitFor(() => expect(terminal.providers).toHaveLength(1))
   const link = (await provideLinks(terminal, 0))?.[0]
 
-  expect(link?.range).toEqual({ end: { x: 14, y: 0 }, start: { x: 5, y: 0 } })
+  expect(link?.range).toEqual({ end: 14, start: 5 })
   // The cells the range names must be exactly the link's own text — an
   // exclusive end or a 1-based column would paint the underline off by one.
-  expect(row.slice(link?.range.start.x, (link?.range.end.x ?? 0) + 1)).toBe(link?.text)
+  expect(row.slice(link?.range.start, (link?.range.end ?? 0) + 1)).toBe(link?.text)
 })
 
-test('a plain click is left to the terminal and only a modifier opens the file', async ({
+test('an activated native link opens the file without a second modifier gate', async ({
   client,
   server,
 }) => {
   await writeWorkspaceFile(server.root, 'src/a.ts')
-  await writeWorkspaceFile(server.root, 'src/b.ts')
   // Requesting the client fixture is what points the app's RPC singleton at
-  // this server, and it doubles as the precondition: both files are really there.
-  expect((await client.fs.stat.get({ query: { path: 'repo/src/b.ts' } })).data?.type).toBe('file')
-  const terminal = fakeTerminal(['  at src/a.ts:3', '  at src/b.ts:4'])
+  // this server, and it doubles as the precondition: the file is really there.
+  expect((await client.fs.stat.get({ query: { path: 'repo/src/a.ts' } })).data?.type).toBe('file')
+  const terminal = fakeTerminal(['  at src/a.ts:3'])
   const opened = openedPaths()
   const { getByTestId } = renderTerminalLinks(terminal, opened)
   await waitFor(() => expect(terminal.providers).toHaveLength(1))
 
-  await activateLink(terminal, 0, clickEvent({}))
-  // The modifier click that follows is the control: waiting for `b` to land
-  // proves an open is observable here, so `a`'s absence is a real negative.
-  await activateLink(terminal, 1, clickEvent({ ctrlKey: true }))
+  await activateLink(terminal, 0, clickEvent())
 
-  await waitFor(() => expect(getByTestId('selected-path')).toHaveTextContent('/repo/src/b.ts'))
-  expect(opened.paths).toEqual(['/repo/src/b.ts'])
-  expect(getByTestId('definition-target')).toHaveTextContent('@3')
+  await waitFor(() => expect(getByTestId('selected-path')).toHaveTextContent('/repo/src/a.ts'))
+  expect(opened.paths).toEqual(['/repo/src/a.ts'])
+  expect(getByTestId('definition-target')).toHaveTextContent('@2')
 })
 
 test('a path that is not on disk reports instead of opening a phantom tab', async ({
@@ -94,8 +90,8 @@ test('a path that is not on disk reports instead of opening a phantom tab', asyn
   const { getByTestId } = renderTerminalLinks(terminal, opened)
   await waitFor(() => expect(terminal.providers).toHaveLength(1))
 
-  await activateLink(terminal, 0, clickEvent({ metaKey: true }))
-  await activateLink(terminal, 1, clickEvent({ metaKey: true }))
+  await activateLink(terminal, 0, clickEvent())
+  await activateLink(terminal, 1, clickEvent())
 
   await waitFor(() => expect(getByTestId('selected-path')).toHaveTextContent('/repo/src/a.ts'))
   expect(opened.paths).toEqual(['/repo/src/a.ts'])
@@ -127,7 +123,13 @@ function renderTerminalLinks(terminal: FakeTerminal, opened: OpenedPaths = opene
   )
 }
 
-function TerminalLinkHost({ rootPath, terminal }: { rootPath: string; terminal: Terminal }) {
+function TerminalLinkHost({
+  rootPath,
+  terminal,
+}: {
+  rootPath: string
+  terminal: GhosttyWebGpuTerminal
+}) {
   const registerTerminalLinks = useTerminalLinks(rootPath)
   // Mirrors the panel: ghostty hands the terminal over once, long after mount.
   const registerWhenReady = useEffectEvent(() => registerTerminalLinks(terminal))
@@ -197,14 +199,15 @@ function createWorkspaceStore() {
   })
 }
 
-function provideLinks(terminal: FakeTerminal, row: number) {
-  return new Promise<ILink[] | undefined>((resolve) => {
-    terminal.providers[0]?.provideLinks(row, resolve)
-  })
+async function provideLinks(terminal: FakeTerminal, row: number) {
+  const provider = terminal.providers[0]
+  const content = terminal.rows[row]
+  if (!provider || content === undefined) return undefined
+  return provider.provideLinks(linkLine(content), row)
 }
 
-function clickEvent({ ctrlKey = false, metaKey = false }) {
-  return new MouseEvent('click', { ctrlKey, metaKey })
+function clickEvent() {
+  return new MouseEvent('click')
 }
 
 type OpenedPaths = {
@@ -212,40 +215,45 @@ type OpenedPaths = {
 }
 
 type FakeTerminal = {
-  readonly providers: ILinkProvider[]
-  readonly terminal: Terminal
+  readonly providers: LinkProvider<Event>[]
+  readonly rows: readonly string[]
+  readonly terminal: GhosttyWebGpuTerminal
 }
 
 /**
  * ghostty is a WASM terminal painting a canvas, neither of which exists here.
- * The provider only ever touches `registerLinkProvider` and the buffer, so the
- * fake is exactly that surface — everything else stays real.
+ * The provider only touches `registerLinkProvider`, so the fake is exactly that
+ * surface and the line snapshots come from the native provider boundary.
  */
 function fakeTerminal(rows: readonly string[]): FakeTerminal {
-  const providers: ILinkProvider[] = []
+  const providers: LinkProvider<Event>[] = []
   const terminal = {
-    buffer: { active: { getLine: (index: number) => bufferLine(rows[index]) } },
-    registerLinkProvider: (provider: ILinkProvider) => providers.push(provider),
+    registerLinkProvider: (provider: LinkProvider<Event>) => {
+      providers.push(provider)
+      return { dispose: () => {}, token: Symbol('test-link-provider') }
+    },
   }
 
-  return { providers, terminal: terminal as unknown as Terminal }
+  return { providers, rows, terminal: terminal as unknown as GhosttyWebGpuTerminal }
 }
 
-function bufferLine(content: string | undefined) {
-  if (content === undefined) return undefined
-
-  const codepoints = [...content.padEnd(COLUMNS, ' ')].map(
-    (character) => character.codePointAt(0) ?? 0,
+function linkLine(content: string): LinkLineSnapshot {
+  const text = content.padEnd(COLUMNS, ' ')
+  const cells = [...text].map((value) => ({ text: value }))
+  const textStartByCell = cells.map((_cell, index) => index)
+  const textEndByCell = cells.map((_cell, index) => index + 1)
+  const startCellByTextBoundary = Array.from({ length: text.length + 1 }, (_value, index) =>
+    index < cells.length ? index : undefined,
   )
-
+  const endCellByTextBoundary = Array.from({ length: text.length + 1 }, (_value, index) =>
+    index > 0 ? index - 1 : undefined,
+  )
   return {
-    getCell: (x: number) => {
-      const codepoint = codepoints[x]
-      if (codepoint === undefined) return undefined
-
-      return { getCodepoint: () => codepoint }
-    },
-    isWrapped: false,
-    length: codepoints.length,
+    cells,
+    endCellByTextBoundary,
+    startCellByTextBoundary,
+    text,
+    textEndByCell,
+    textStartByCell,
   }
 }

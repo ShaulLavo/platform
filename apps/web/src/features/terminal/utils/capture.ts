@@ -10,8 +10,8 @@ import {
  * nothing else about the emulator leaks into the chat-facing contract.
  */
 export type TerminalSelectionSource = {
-  readonly getSelection: () => string
-  readonly getSelectionPosition: () => TerminalSelectionRange | undefined
+  readonly getSelection: () => string | undefined
+  readonly selectionCoordinates: () => TerminalSelectionRange | undefined
 }
 
 type TerminalSelectionRange = {
@@ -27,10 +27,10 @@ export function captureTerminalSelection(
   terminal: TerminalSelectionSource,
   source: string,
 ): TerminalContextSelection | null {
-  const text = normalizeTerminalContextText(terminal.getSelection())
+  const text = normalizeTerminalContextText(terminal.getSelection() ?? '')
   if (text.length === 0) return null
 
-  const lineStart = selectionStartLine(terminal.getSelectionPosition())
+  const lineStart = selectionStartLine(terminal.selectionCoordinates())
 
   return normalizeTerminalContextSelection({
     // Derived from the captured text, not from the range's end: ghostty's end

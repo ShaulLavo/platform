@@ -1,62 +1,106 @@
-import type { ITheme } from 'ghostty-web'
+import type { TerminalColor, TerminalTheme } from 'ghostty-webgpu'
 
-const TERMINAL_THEME_VARIABLES = {
-  background: '--terminal-canvas-background',
-  foreground: '--terminal-foreground',
+const THEME_COLOR_VARIABLES = {
+  background: '--terminal-cursor-accent',
   cursor: '--terminal-cursor',
-  cursorAccent: '--terminal-cursor-accent',
+  foreground: '--terminal-foreground',
   selectionBackground: '--terminal-selection',
   selectionForeground: '--terminal-selection-foreground',
-  black: '--terminal-ansi-black',
-  red: '--terminal-ansi-red',
-  green: '--terminal-ansi-green',
-  yellow: '--terminal-ansi-yellow',
-  blue: '--terminal-ansi-blue',
-  magenta: '--terminal-ansi-magenta',
-  cyan: '--terminal-ansi-cyan',
-  white: '--terminal-ansi-white',
-  brightBlack: '--terminal-ansi-bright-black',
-  brightRed: '--terminal-ansi-bright-red',
-  brightGreen: '--terminal-ansi-bright-green',
-  brightYellow: '--terminal-ansi-bright-yellow',
-  brightBlue: '--terminal-ansi-bright-blue',
-  brightMagenta: '--terminal-ansi-bright-magenta',
-  brightCyan: '--terminal-ansi-bright-cyan',
-  brightWhite: '--terminal-ansi-bright-white',
-} as const satisfies Record<keyof ITheme, string>
+} as const satisfies Record<ThemeColorKey, string>
 
-const FALLBACK_TERMINAL_THEME: ITheme = {
-  background: '#0e1013',
-  foreground: '#d7dde5',
-  cursor: '#f4f7fb',
-  cursorAccent: '#0e1013',
-  selectionBackground: '#33455a',
-  selectionForeground: '#ffffff',
+const PALETTE_VARIABLES = [
+  '--terminal-ansi-black',
+  '--terminal-ansi-red',
+  '--terminal-ansi-green',
+  '--terminal-ansi-yellow',
+  '--terminal-ansi-blue',
+  '--terminal-ansi-magenta',
+  '--terminal-ansi-cyan',
+  '--terminal-ansi-white',
+  '--terminal-ansi-bright-black',
+  '--terminal-ansi-bright-red',
+  '--terminal-ansi-bright-green',
+  '--terminal-ansi-bright-yellow',
+  '--terminal-ansi-bright-blue',
+  '--terminal-ansi-bright-magenta',
+  '--terminal-ansi-bright-cyan',
+  '--terminal-ansi-bright-white',
+] as const
+
+type ThemeColorKey =
+  | 'background'
+  | 'cursor'
+  | 'foreground'
+  | 'selectionBackground'
+  | 'selectionForeground'
+
+function colorChannel(value: string): number | undefined {
+  const channel = Number(value.trim())
+  if (!Number.isFinite(channel)) return undefined
+  return Math.max(0, Math.min(255, Math.round(channel)))
 }
 
-/**
- * Builds the terminal palette from the app's CSS design tokens so the terminal
- * stays in sync with the active light/dark theme. ghostty parses CSS color
- * strings, so the hex values defined in `globals.css` are used directly.
- */
-export function readTerminalTheme(root: HTMLElement | null = documentRoot()): ITheme {
-  if (!root) return FALLBACK_TERMINAL_THEME
+function hexColor(value: string): TerminalColor | undefined {
+  const match = value.match(/^#([\da-f]{3}|[\da-f]{6})$/iu)
+  const digits = match?.[1]
+  if (!digits) return undefined
 
-  const computed = getComputedStyle(root)
-  const theme: ITheme = {}
-
-  for (const [key, variable] of Object.entries(TERMINAL_THEME_VARIABLES)) {
-    const value = computed.getPropertyValue(variable).trim()
-    if (value) {
-      theme[key as keyof ITheme] = value
-    }
+  const expanded = digits.length === 3 ? [...digits].map((part) => part + part).join('') : digits
+  return {
+    b: Number.parseInt(expanded.slice(4, 6), 16),
+    g: Number.parseInt(expanded.slice(2, 4), 16),
+    r: Number.parseInt(expanded.slice(0, 2), 16),
   }
-
-  return { ...FALLBACK_TERMINAL_THEME, ...theme }
 }
 
-function documentRoot() {
-  if (typeof document === 'undefined') return null
+function rgbColor(value: string): TerminalColor | undefined {
+  const match = value.match(/^rgba?\(([^)]+)\)$/iu)
+  const parts = match?.[1]?.split(',')
+  if (!parts || parts.length < 3) return undefined
 
-  return document.documentElement
+  const red = colorChannel(parts[0] ?? '')
+  const green = colorChannel(parts[1] ?? '')
+  const blue = colorChannel(parts[2] ?? '')
+  if (red === undefined || green === undefined || blue === undefined) return undefined
+  return { b: blue, g: green, r: red }
+}
+
+function parseColor(value: string): TerminalColor | undefined {
+  const trimmed = value.trim()
+  return hexColor(trimmed) ?? rgbColor(trimmed)
+}
+
+function readColor(
+  computed: CSSStyleDeclaration,
+  variable: string,
+  fallback: TerminalColor,
+): TerminalColor {
+  return parseColor(computed.getPropertyValue(variable)) ?? fallback
+}
+
+function readPalette(
+  computed: CSSStyleDeclaration,
+  fallback: readonly TerminalColor[],
+): readonly TerminalColor[] {
+  const palette = fallback.slice()
+  for (const [index, variable] of PALETTE_VARIABLES.entries()) {
+    palette[index] = readColor(computed, variable, fallback[index]!)
+  }
+  return palette
+}
+
+export function readTerminalTheme(root: HTMLElement, fallback: TerminalTheme): TerminalTheme {
+  const computed = getComputedStyle(root)
+  const colors = Object.fromEntries(
+    Object.entries(THEME_COLOR_VARIABLES).map(([key, variable]) => [
+      key,
+      readColor(computed, variable, fallback[key as ThemeColorKey]),
+    ]),
+  ) as Record<ThemeColorKey, TerminalColor>
+
+  return {
+    ...fallback,
+    ...colors,
+    palette: readPalette(computed, fallback.palette),
+  }
 }

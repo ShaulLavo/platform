@@ -1,8 +1,11 @@
-import type { ILink, Terminal } from 'ghostty-web'
+import type { GhosttyWebGpuTerminal, ProvidedLink } from 'ghostty-webgpu'
 import { useEffectEvent } from 'react'
 
 import { useOpenFileReference } from '@/features/chat/hooks/use-open-file-reference'
-import { readTerminalPathLinks, type TerminalPathLink } from '@/features/terminal/utils/links'
+import {
+  readTerminalSnapshotPathLinks,
+  type TerminalSnapshotPathLink,
+} from '@/features/terminal/utils/links'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
 import { statPath } from '@/lib/file-server'
@@ -20,10 +23,9 @@ const STAT_TIMEOUT_MS = 2000
 export function useTerminalLinks(rootPath: string) {
   const { openFileReference } = useOpenFileReference()
 
-  // ghostty has no way to unregister a provider, so it outlives the render that
-  // registered it. Reading the open command through an effect event keeps a
-  // click pointed at the current editor instead of the one that existed then.
-  const openTerminalPathLink = useEffectEvent(async (link: TerminalPathLink) => {
+  // Reading the open command through an effect event keeps a click pointed at
+  // the current editor instead of the one that existed at registration.
+  const openTerminalPathLink = useEffectEvent(async (link: TerminalSnapshotPathLink) => {
     const target = await statTerminalLinkTarget(link.reference.path)
 
     log.info({
@@ -46,43 +48,34 @@ export function useTerminalLinks(rootPath: string) {
     openFileReference(link.reference)
   })
 
-  return (terminal: Terminal) => {
+  return (terminal: GhosttyWebGpuTerminal) => {
     terminal.registerLinkProvider({
-      provideLinks: (row, callback) => {
-        // Scrollback rows always report `isWrapped: false` from ghostty, so a
-        // path only reassembles across a soft wrap while it is still on screen.
-        const links = readTerminalPathLinks({
-          getLine: (index) => terminal.buffer.active.getLine(index),
+      provideLinks: (line) => {
+        const links = readTerminalSnapshotPathLinks({
+          line,
           rootPath,
-          row,
         })
-        if (links.length === 0) {
-          callback(undefined)
-          return
-        }
+        if (links.length === 0) return undefined
 
-        callback(links.map((link) => ghosttyLink(link, openTerminalPathLink)))
+        return links.map((link) => ghosttyLink(link, openTerminalPathLink))
       },
     })
   }
 }
 
-function ghosttyLink(link: TerminalPathLink, open: (link: TerminalPathLink) => void): ILink {
+function ghosttyLink(
+  link: TerminalSnapshotPathLink,
+  open: (link: TerminalSnapshotPathLink) => void,
+): ProvidedLink<Event> {
   return {
-    // ghostty hands every click to the link it hit; gating on the modifier is
-    // the provider's job, the same as in its built-in URL provider.
-    activate: (event) => {
-      if (!event.ctrlKey && !event.metaKey) return
-
-      open(link)
-    },
+    activate: () => open(link),
     range: link.range,
     text: link.text,
   }
 }
 
 /**
- * The shell's cwd is invisible from here — ghostty-web reports no OSC 7 — so a
+ * The shell's cwd is invisible from here — ghostty-webgpu reports no OSC 7 — so a
  * relative path resolves against the panel's root and is wrong for anything the
  * user `cd`-ed into. Confirming the file exists is what keeps that from opening
  * a tab on a path nothing ever wrote; the click reports the miss instead.

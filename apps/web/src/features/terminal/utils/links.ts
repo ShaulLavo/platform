@@ -2,6 +2,7 @@ import {
   resolveInlineCodeFileReference,
   type MarkdownFileReference,
 } from '@/features/chat/utils/markdown-file-links'
+import type { LinkLineSnapshot } from 'ghostty-webgpu'
 
 /**
  * The slice of ghostty's `IBufferLine` link detection reads — the cell-level
@@ -25,6 +26,12 @@ export type TerminalLinkRange = {
 
 export type TerminalPathLink = {
   readonly range: TerminalLinkRange
+  readonly reference: MarkdownFileReference
+  readonly text: string
+}
+
+export type TerminalSnapshotPathLink = {
+  readonly range: { readonly end: number; readonly start: number }
   readonly reference: MarkdownFileReference
   readonly text: string
 }
@@ -131,7 +138,7 @@ const HOSTNAME_TLDS = new Set([
  * (user agents, host:port pairs, `ERROR:`-prefixed paths) is decided here.
  *
  * Known limitation: a relative path resolves against `rootPath`, the panel's
- * root, because ghostty-web reports no OSC 7 cwd. After `cd apps/web`, output
+ * root, because ghostty-webgpu reports no OSC 7 cwd. After `cd apps/web`, output
  * saying `src/foo.ts:3` means `<root>/apps/web/src/foo.ts` and this resolves it
  * to `<root>/src/foo.ts`. Nothing here can tell the two apart, so the click path
  * (`use-terminal-links.ts`) stats the file and surfaces a not-found error rather
@@ -157,6 +164,27 @@ export function readTerminalPathLinks({
     links.push({ range: linkRange(line, match), reference, text: match.text })
   }
 
+  return links
+}
+
+/** Native link providers resolve one rendered row at a time. */
+export function readTerminalSnapshotPathLinks({
+  line,
+  rootPath,
+}: {
+  readonly line: LinkLineSnapshot
+  readonly rootPath: string | null
+}): TerminalSnapshotPathLink[] {
+  const links: TerminalSnapshotPathLink[] = []
+  for (const match of pathMatches(line.text)) {
+    const reference = resolveInlineCodeFileReference(match.text, rootPath)
+    if (!reference) continue
+
+    const start = line.startCellByTextBoundary[match.start]
+    const end = line.endCellByTextBoundary[match.end]
+    if (start === undefined || end === undefined) continue
+    links.push({ range: { end, start }, reference, text: match.text })
+  }
   return links
 }
 

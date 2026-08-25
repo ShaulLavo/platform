@@ -1,4 +1,4 @@
-import type { Terminal } from 'ghostty-web'
+import type { GhosttyWebGpuTerminal } from 'ghostty-webgpu'
 
 import type { TerminalContextSelection } from '@/features/chat/utils/terminal-context'
 
@@ -22,29 +22,33 @@ export type TerminalMenuTarget = {
   readonly contextSelection: TerminalContextSelection | null
   readonly hasScrollback: boolean
   readonly selection: string
-  readonly terminal: Terminal
+  readonly terminal: GhosttyWebGpuTerminal
 }
 
-export function readTerminalMenuTarget(terminal: Terminal, sessionId: string): TerminalMenuTarget {
+export function readTerminalMenuTarget(
+  terminal: GhosttyWebGpuTerminal,
+  sessionId: string,
+  hasScrollback: boolean,
+): TerminalMenuTarget {
   return {
     contextSelection: captureTerminalSelection(terminal, sessionId),
-    hasScrollback: terminal.getScrollbackLength() > 0,
-    selection: terminal.getSelection(),
+    hasScrollback,
+    selection: terminal.getSelection() ?? '',
     terminal,
   }
 }
 
-export function clearTerminal(terminal: Terminal) {
-  terminal.input(FORM_FEED, true)
+export function clearTerminal(terminal: GhosttyWebGpuTerminal) {
+  terminal.sendInput(FORM_FEED)
 }
 
 /**
  * Rebuilds the emulator, then asks the shell to redraw: a bare reset leaves the
  * viewport blank with no prompt until the next command produces output.
  */
-export function resetTerminal(terminal: Terminal) {
+export function resetTerminal(terminal: GhosttyWebGpuTerminal) {
   terminal.reset()
-  terminal.input(FORM_FEED, true)
+  terminal.sendInput(FORM_FEED)
 }
 
 /**
@@ -52,7 +56,7 @@ export function resetTerminal(terminal: Terminal) {
  * click that activated this item is still propagating. Selecting on the next
  * task lets that handler run first, against the empty selection it expects.
  */
-export function selectAllInTerminal(terminal: Terminal) {
+export function selectAllInTerminal(terminal: GhosttyWebGpuTerminal) {
   window.setTimeout(() => terminal.selectAll(), 0)
 }
 
@@ -62,7 +66,7 @@ export function selectAllInTerminal(terminal: Terminal) {
  * `Terminal.paste` wraps the text in bracketed-paste markers when the program
  * on the other end asked for them, so multi-line pastes stay inert.
  */
-export async function pasteFromClipboard(terminal: Terminal) {
+export async function pasteFromClipboard(terminal: GhosttyWebGpuTerminal) {
   const text = await readClipboardText()
   if (!text) return
 

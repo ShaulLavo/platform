@@ -37,7 +37,7 @@ test('nothing selected captures nothing', () => {
 
 test('a selection with no reported position starts at the first line', () => {
   const capture = captureTerminalSelection(
-    { getSelection: () => 'orphaned output', getSelectionPosition: () => undefined },
+    { getSelection: () => 'orphaned output', selectionCoordinates: () => undefined },
     'terminal-1',
   )
 
@@ -53,6 +53,6 @@ function terminal({
 }): TerminalSelectionSource {
   return {
     getSelection: () => selection,
-    getSelectionPosition: () => ({ start: { y: startRow } }),
+    selectionCoordinates: () => ({ start: { y: startRow } }),
   }
 }

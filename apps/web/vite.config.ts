@@ -26,7 +26,7 @@ export default defineConfig({
   },
   optimizeDeps: {
     // Theme subpaths are loaded after boot and must survive optimizer cache invalidation.
-    exclude: ['@shikijs/themes', 'ghostty-web'],
+    exclude: ['@shikijs/themes', 'ghostty-webgpu'],
   },
   plugins: [
     editorSourcePlugin(editorSourceModules),

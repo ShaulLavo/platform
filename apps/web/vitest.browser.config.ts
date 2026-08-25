@@ -31,7 +31,7 @@ export default defineConfig({
     'import.meta.env.VITE_SERVER_URL': JSON.stringify(browserFileServerUrl),
   },
   optimizeDeps: {
-    exclude: ['@singapor/tree-sitter', '@singapor/tree-sitter-languages'],
+    exclude: ['@singapor/tree-sitter', '@singapor/tree-sitter-languages', 'ghostty-webgpu'],
     include: [
       '@phosphor-icons/react',
       '@tanstack/react-hotkeys',

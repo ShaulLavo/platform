@@ -1,6 +1,11 @@
 import { parseTerminalServerMessage, type TerminalServerMessage } from '@workspace/contracts'
 import { cn } from '@workspace/ui/lib/utils'
-import { FitAddon, init, Terminal, type IDisposable } from 'ghostty-web'
+import {
+  GhosttyRuntime,
+  GhosttyWebGpuTerminal,
+  type GhosttyWebGpuTerminalSubscription,
+  type TerminalCursorStyle,
+} from 'ghostty-webgpu'
 import {
   useEffect,
   useEffectEvent,
@@ -37,8 +42,6 @@ type TerminalDimensions = {
   rows: number
 }
 
-type TerminalCursorStyle = 'block' | 'underline' | 'bar' | 'outline'
-
 type TerminalCursorOptions = {
   cursorBlink: boolean
   cursorStyle: TerminalCursorStyle
@@ -68,7 +71,7 @@ function terminalFocusIdentity(rootPath: string, sessionId: string) {
   return `${rootPath}\u0000${sessionId}`
 }
 
-let ghosttyInitPromise: Promise<void> | null = null
+let ghosttyRuntimePromise: Promise<GhosttyRuntime> | null = null
 
 export function TerminalPanel({
   active = true,
@@ -78,12 +81,11 @@ export function TerminalPanel({
   ...sectionProps
 }: TerminalPanelProps) {
   const focus = useFocusService()
-  const activationFrameRef = useRef<number | null>(null)
-  const fitAddonRef = useRef<FitAddon | null>(null)
   const hostRef = useRef<HTMLDivElement | null>(null)
   const restoreFocusAfterRemountRef = useRef<string | null>(null)
+  const scrollbackLengthRef = useRef(0)
   const sendInputRef = useRef<TerminalInputSender | null>(null)
-  const terminalRef = useRef<Terminal | null>(null)
+  const terminalRef = useRef<GhosttyWebGpuTerminal | null>(null)
   const { resolvedTheme } = useTheme()
   // Read as primitives, not an object: an object literal is a new value every
   // render, which would make the effect below run on every render and, worse,
@@ -95,7 +97,7 @@ export function TerminalPanel({
   const [menuTarget, setMenuTarget] = useState<TerminalMenuTarget | null>(null)
   const [socketConnected, setSocketConnected] = useState(false)
   const focusIdentity = terminalFocusIdentity(rootPath, sessionId)
-  const terminalMountIdentity = `${focusIdentity}\u0000${resolvedTheme}`
+  const terminalMountIdentity = `${focusIdentity}\u0000${scrollback}`
   const [readyTerminalIdentity, setReadyTerminalIdentity] = useState<string | null>(null)
   const registerTerminalLinks = useTerminalLinks(rootPath)
   useTerminalCommandInbox({ active: active && socketConnected, sendInputRef })
@@ -119,44 +121,33 @@ export function TerminalPanel({
     },
     active && readyTerminalIdentity === terminalMountIdentity,
   )
-  const captureTerminalRemountFocus = useEffectEvent((mountedFocusIdentity: string) => {
-    restoreFocusAfterRemountRef.current = terminalFocused ? mountedFocusIdentity : null
-  })
-  const fitTerminalAfterFrame = useEffectEvent(() => {
-    if (activationFrameRef.current !== null) {
-      window.cancelAnimationFrame(activationFrameRef.current)
-    }
-
-    activationFrameRef.current = window.requestAnimationFrame(() => {
-      activationFrameRef.current = null
-      fitAddonRef.current?.fit()
-    })
-  })
-  const fitTerminalIfActive = useEffectEvent(() => {
-    if (active) fitTerminalAfterFrame()
+  const captureTerminalRemountFocus = useEffectEvent(() => {
+    restoreFocusAfterRemountRef.current = terminalFocused ? focusIdentity : null
   })
   // ghostty resolves long after the effect that asked for it, so the handover
   // runs as an effect event and sees the current render rather than the one
   // that started the mount.
   const handleTerminalReady = useEffectEvent(
-    (terminal: Terminal, fitAddon: FitAddon, sendInput: TerminalInputSender) => {
-      fitAddonRef.current = fitAddon
+    (terminal: GhosttyWebGpuTerminal, sendInput: TerminalInputSender) => {
       terminalRef.current = terminal
       sendInputRef.current = sendInput
       setReadyTerminalIdentity(terminalMountIdentity)
       // At handover rather than at construction: ghostty resolves long after the
       // mount effect started, and this is an effect event, so it sees the
       // current settings rather than the ones the mount began with.
-      applyTerminalAppearance(terminal, { cursorBlink, fontSize, scrollback })
+      applyTerminalAppearance(terminal, { cursorBlink, fontSize })
       applyTerminalCursorOptions(terminal, terminalCursorOptions(terminalFocused, cursorBlink))
+      applyTerminalTheme(terminal, hostRef.current)
       registerTerminalLinks(terminal)
-      fitTerminalIfActive()
     },
   )
   // State, not just the ref: a script queued before the socket opened has to
   // wake the effect that runs it, and writing a ref never re-renders.
   const handleTerminalConnectedChange = useEffectEvent((connected: boolean) => {
     setSocketConnected(connected)
+  })
+  const handleTerminalScrollbackLengthChange = useEffectEvent((length: number) => {
+    scrollbackLengthRef.current = length
   })
   const handleTerminalFocus = () => {
     applyTerminalCursorOptions(terminalRef.current, terminalCursorOptions(true, cursorBlink))
@@ -177,7 +168,7 @@ export function TerminalPanel({
     event.stopPropagation()
     // Snapshotted here because ghostty drops the selection from a document
     // `click` handler the moment a portalled menu item is pressed.
-    setMenuTarget(readTerminalMenuTarget(terminal, sessionId))
+    setMenuTarget(readTerminalMenuTarget(terminal, sessionId, scrollbackLengthRef.current > 0))
     contextMenu.openAtEvent(event, event.currentTarget)
   }
   const handleTerminalMenuOpenChange = (open: boolean) => {
@@ -187,13 +178,13 @@ export function TerminalPanel({
     setMenuTarget(null)
   }
 
-  // ghostty-web bakes the theme into its WASM terminal at construction and has
-  // no runtime theme API, so a live theme switch is applied by rebuilding the
-  // terminal: the new instance reads the active CSS palette and the server
-  // replays its buffer on reconnect (same as a page refresh).
   useEffect(() => {
-    applyTerminalAppearance(terminalRef.current, { cursorBlink, fontSize, scrollback })
-  }, [cursorBlink, fontSize, scrollback])
+    applyTerminalAppearance(terminalRef.current, { cursorBlink, fontSize })
+  }, [cursorBlink, fontSize])
+
+  useEffect(() => {
+    applyTerminalTheme(terminalRef.current, hostRef.current)
+  }, [resolvedTheme])
 
   useEffect(() => {
     const host = hostRef.current
@@ -202,40 +193,24 @@ export function TerminalPanel({
     const unmountTerminal = mountTerminal({
       host,
       rootPath,
+      scrollback,
       sessionId,
       onConnectedChange: handleTerminalConnectedChange,
       onReady: handleTerminalReady,
+      onScrollbackLengthChange: handleTerminalScrollbackLengthChange,
     })
 
     return () => {
-      captureTerminalRemountFocus(focusIdentity)
+      captureTerminalRemountFocus()
       setReadyTerminalIdentity((current) => (current === terminalMountIdentity ? null : current))
-      if (activationFrameRef.current !== null) {
-        window.cancelAnimationFrame(activationFrameRef.current)
-        activationFrameRef.current = null
-      }
-
+      scrollbackLengthRef.current = 0
       terminalRef.current = null
-      fitAddonRef.current = null
       // The open menu holds the terminal it was opened against. Dropping it
-      // here keeps a theme switch from leaving items pointed at a disposed one.
+      // here keeps a settings-driven remount from leaving items pointed at a disposed one.
       setMenuTarget(null)
       unmountTerminal()
     }
-  }, [focusIdentity, resolvedTheme, rootPath, sessionId, terminalMountIdentity])
-
-  useEffect(() => {
-    if (!active) return
-
-    fitTerminalAfterFrame()
-
-    return () => {
-      if (activationFrameRef.current !== null) {
-        window.cancelAnimationFrame(activationFrameRef.current)
-        activationFrameRef.current = null
-      }
-    }
-  }, [active])
+  }, [rootPath, scrollback, sessionId, terminalMountIdentity])
 
   useEffect(() => {
     if (!terminalFocusTargetToken) return
@@ -291,70 +266,82 @@ type TerminalPanelProps = ComponentPropsWithoutRef<'section'> & {
 function mountTerminal({
   host,
   rootPath,
+  scrollback,
   sessionId,
   onConnectedChange,
   onReady,
+  onScrollbackLengthChange,
 }: {
   host: HTMLDivElement
   rootPath: string
+  scrollback: number
   sessionId: string
   onConnectedChange: (connected: boolean) => void
-  onReady: (terminal: Terminal, fitAddon: FitAddon, sendInput: TerminalInputSender) => void
+  onReady: (terminal: GhosttyWebGpuTerminal, sendInput: TerminalInputSender) => void
+  onScrollbackLengthChange: (length: number) => void
 }) {
   let cancelled = false
-  let dataDisposable: IDisposable | null = null
-  let fitAddon: FitAddon | null = null
-  let resizeDisposable: IDisposable | null = null
+  let dataDisposable: GhosttyWebGpuTerminalSubscription | null = null
+  let resizeDisposable: GhosttyWebGpuTerminalSubscription | null = null
+  let scrollDisposable: GhosttyWebGpuTerminalSubscription | null = null
   let socket: EdenServerSocket | null = null
-  let terminal: Terminal | null = null
+  let terminal: GhosttyWebGpuTerminal | null = null
   let terminalDimensions: TerminalDimensions | null = null
+  const inputDecoder = new TextDecoder()
 
-  void initializeGhostty()
-    .then(() => {
-      if (cancelled) return
+  const open = async () => {
+    const runtime = await initializeGhostty()
+    if (cancelled) return
 
-      terminal = createTerminal(host)
-      fitAddon = new FitAddon()
-      terminal.loadAddon(fitAddon)
-      terminal.open(host)
-      fitAddon.fit()
-      terminalDimensions = currentTerminalDimensions(terminal)
-      fitAddon.observeResize()
-      // The socket is opened below, so the sender is deliberately late-bound:
-      // a command queued before the connection lands must not be written into a
-      // null socket and silently dropped.
-      onReady(terminal, fitAddon, (data) => {
-        if (!socket) return false
+    const nextTerminal = await createTerminal(runtime, scrollback)
+    if (cancelled) {
+      nextTerminal.dispose()
+      return
+    }
 
-        return sendTerminalClientMessage(socket, { data, type: 'input' })
-      })
-      dataDisposable = terminal.onData((data) =>
-        sendTerminalClientMessage(socket, { type: 'input', data }),
-      )
-      resizeDisposable = terminal.onResize((dimensions) => {
-        terminalDimensions = dimensions
-        sendTerminalResize(socket, dimensions)
-      })
-      socket = openTerminalSocket({
-        getTerminalDimensions: () => terminalDimensions,
-        isCancelled: () => cancelled,
-        onConnectedChange,
-        rootPath,
-        sessionId,
-        terminal,
-      })
+    terminal = nextTerminal
+    dataDisposable = terminal.onData((bytes) => {
+      const data = inputDecoder.decode(bytes)
+      if (data.length === 0) return
+      sendTerminalClientMessage(socket, { data, type: 'input' })
     })
-    .catch((error: unknown) => {
-      if (cancelled) return
-
-      reportError(toClientError(error))
+    resizeDisposable = terminal.onResize((dimensions) => {
+      terminalDimensions = dimensions
+      sendTerminalResize(socket, dimensions)
     })
+    scrollDisposable = terminal.on('scroll', ({ scrollbackLength }) => {
+      onScrollbackLengthChange(scrollbackLength)
+    })
+    await terminal.open(host)
+    if (cancelled) return
+
+    applyTerminalTheme(terminal, host)
+    terminalDimensions = currentTerminalDimensions(terminal)
+    // The socket is opened below, so the sender is deliberately late-bound:
+    // a command queued before the connection lands must not be written into a
+    // null socket and silently dropped.
+    onReady(terminal, (data) => sendTerminalClientMessage(socket, { data, type: 'input' }))
+    socket = openTerminalSocket({
+      getTerminalDimensions: () => terminalDimensions,
+      isCancelled: () => cancelled,
+      onConnectedChange,
+      rootPath,
+      sessionId,
+      terminal,
+    })
+  }
+
+  void open().catch((error: unknown) => {
+    if (cancelled) return
+
+    reportError(toClientError(error))
+  })
 
   return () => {
     cancelled = true
     dataDisposable?.dispose()
     resizeDisposable?.dispose()
-    fitAddon?.dispose()
+    scrollDisposable?.dispose()
     terminal?.dispose()
     closeTerminalSocket(socket)
     host.replaceChildren()
@@ -374,7 +361,7 @@ function openTerminalSocket({
   onConnectedChange: (connected: boolean) => void
   rootPath: string
   sessionId: string
-  terminal: Terminal
+  terminal: GhosttyWebGpuTerminal
 }) {
   const socket = connectTerminalSocket(rootPath, sessionId)
 
@@ -409,7 +396,7 @@ function handleTerminalServerMessage({
   terminal,
 }: {
   message: TerminalServerMessage
-  terminal: Terminal
+  terminal: GhosttyWebGpuTerminal
 }) {
   if (message.type === 'output') {
     terminal.write(message.data)
@@ -428,67 +415,80 @@ function handleTerminalServerMessage({
   terminal.writeln(message.message)
 }
 
-function createTerminal(root: HTMLElement) {
-  return new Terminal({
-    allowTransparency: true,
-    // Constructed unfocused; the real values arrive at handover, before paint.
-    cursorBlink: false,
-    cursorStyle: patchedTerminalCursorStyle(UNFOCUSED_TERMINAL_CURSOR_STYLE),
-    fontFamily: DEFAULT_MONO_FONT_STACK,
-    fontSize: DEFAULT_TERMINAL_FONT_SIZE,
-    scrollback: DEFAULT_TERMINAL_SCROLLBACK,
-    smoothScrollDuration: 80,
-    theme: readTerminalTheme(root),
+function createTerminal(runtime: GhosttyRuntime, scrollback: number) {
+  return GhosttyWebGpuTerminal.create({
+    appearance: {
+      // Constructed unfocused; the real values arrive at handover, before paint.
+      cursor: { blink: false, style: UNFOCUSED_TERMINAL_CURSOR_STYLE },
+      font: {
+        boldWeight: 700,
+        family: DEFAULT_MONO_FONT_STACK,
+        letterSpacing: 0,
+        lineHeight: 1,
+        size: DEFAULT_TERMINAL_FONT_SIZE,
+        weight: 400,
+      },
+      scrollbackLimit: scrollback,
+    },
+    links: { activateUri: openTerminalUri },
+    runtime: { kind: 'borrowed', runtime },
   })
 }
 
 /** Construction defaults; the real values arrive at handover, before first paint. */
 const DEFAULT_TERMINAL_FONT_SIZE = 12
-const DEFAULT_TERMINAL_SCROLLBACK = 10_000
 
 export type TerminalAppearance = {
   readonly cursorBlink: boolean
   readonly fontSize: number
-  readonly scrollback: number
 }
 
-/**
- * Pushes appearance settings into a live terminal.
- *
- * Mutating `terminal.options.*` rather than re-creating the Terminal, because
- * re-creating it clears the scrollback — the user's output is the one thing a
- * font-size change must not cost them.
- */
-export function applyTerminalAppearance(terminal: Terminal | null, appearance: TerminalAppearance) {
+/** Pushes live appearance settings without rebuilding the terminal. */
+export function applyTerminalAppearance(
+  terminal: GhosttyWebGpuTerminal | null,
+  appearance: TerminalAppearance,
+) {
   if (!terminal) return
 
-  terminal.options.fontSize = appearance.fontSize
-  terminal.options.scrollback = appearance.scrollback
-  terminal.options.cursorBlink = appearance.cursorBlink
+  terminal.setFont({ size: appearance.fontSize })
+  terminal.setCursor({ blink: appearance.cursorBlink })
 }
 
-function applyTerminalCursorOptions(terminal: Terminal | null, options: TerminalCursorOptions) {
+function applyTerminalCursorOptions(
+  terminal: GhosttyWebGpuTerminal | null,
+  options: TerminalCursorOptions,
+) {
   if (!terminal) return
 
-  terminal.options.cursorStyle = patchedTerminalCursorStyle(options.cursorStyle)
-  terminal.options.cursorBlink = options.cursorBlink
+  terminal.setCursor({ blink: options.cursorBlink, style: options.cursorStyle })
 }
 
-function patchedTerminalCursorStyle(style: TerminalCursorStyle) {
-  // ghostty-web is patched to support outline before its published types do.
-  return style as Terminal['options']['cursorStyle']
+function applyTerminalTheme(terminal: GhosttyWebGpuTerminal | null, root: HTMLElement | null) {
+  if (!terminal || !root) return
+  terminal.setTheme(readTerminalTheme(root, terminal.appearance.theme))
 }
 
-function currentTerminalDimensions(terminal: Terminal) {
+function currentTerminalDimensions(terminal: GhosttyWebGpuTerminal) {
+  const grid = terminal.appearance.grid
   return {
-    cols: terminal.cols,
-    rows: terminal.rows,
+    cols: grid.columns,
+    rows: grid.rows,
   }
 }
 
 function initializeGhostty() {
-  ghosttyInitPromise ??= init()
-  return ghosttyInitPromise
+  if (ghosttyRuntimePromise) return ghosttyRuntimePromise
+
+  const loading = GhosttyRuntime.create()
+  ghosttyRuntimePromise = loading
+  void loading.catch(() => {
+    if (ghosttyRuntimePromise === loading) ghosttyRuntimePromise = null
+  })
+  return loading
+}
+
+function openTerminalUri(uri: string) {
+  window.open(uri, '_blank', 'noopener,noreferrer')
 }
 
 function sendTerminalResize(
