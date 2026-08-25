@@ -1,5 +1,6 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { createEditorTextBuffer, createEditorViewSession } from '@singapor/core'
 
 import { getClient } from '@/lib/client'
 
@@ -13,6 +14,12 @@ import {
   EditorWorkspaceStateContext,
 } from '@/features/editor/state/workspace-state'
 import { readWorkspaceCache } from '@/features/workspace/state/cache'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { selectSettingsScope } from '@/features/settings/state/scope-store'
+import { selectSettingsView } from '@/features/settings/state/view-store'
+import { settingsJsonDocumentId } from '@/features/settings/utils/json-document'
+import { FocusService } from '@/lib/focus/state/service'
+import { matchesActiveSurface } from '@/lib/focus/utils/active-surface'
 
 test('renders a row per user-visible setting and writes a toggle through', async ({ client }) => {
   expect(client).toBeDefined()
@@ -310,4 +317,56 @@ test('every visible row is reachable and operable from the keyboard', async ({ c
     const snapshot = await fetchSettings()
     expect(snapshot.values['workbench.wallpaper.enabled']).toBe(false)
   })
+})
+
+test('settings JSON exposes its nested editor as the sole active surface', async ({ client }) => {
+  expect(client).toBeDefined()
+  const focus = new FocusService()
+  const path = settingsJsonDocumentId('user')
+  const buffer = createEditorTextBuffer('{}')
+  const liveDocument = {
+    buffer,
+    id: path,
+    path,
+    view: createEditorViewSession(buffer, 'settings-focus-test'),
+  }
+  selectSettingsScope('user')
+  selectSettingsView('json')
+  const rendered = renderWithProviders(
+    <EditorStateProvider>
+      <div data-workbench>
+        <SettingsPage liveDocument={liveDocument} rootPath='/repo' tabId='settings-tab' />
+      </div>
+    </EditorStateProvider>,
+    { focusService: focus },
+  )
+
+  try {
+    await waitFor(() => {
+      expect(
+        focus.resolveTarget({
+          compatible: (target) => target.id.kind === 'editor' && target.id.tabId === 'settings-tab',
+        }),
+      ).not.toBeNull()
+    })
+    const ticket = focus.request({
+      kind: 'match',
+      matches: (target) =>
+        matchesActiveSurface(target, {
+          diffPath: null,
+          layout: 'workbench',
+          searchRoot: null,
+          tabId: 'settings-tab',
+        }),
+    })
+
+    await expect(ticket.completion).resolves.toMatchObject({
+      status: 'acknowledged',
+      targetId: { kind: 'editor', surface: 'settings', tabId: 'settings-tab' },
+    })
+  } finally {
+    rendered.unmount()
+    selectSettingsScope('user')
+    selectSettingsView('form')
+  }
 })

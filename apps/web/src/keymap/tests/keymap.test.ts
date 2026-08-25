@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest'
 
-import { commandDisabledReason } from '@/keymap/command-enablement'
-
 import {
   activePlatformKeyBindings,
   commandKeyBindings,
@@ -90,6 +88,28 @@ describe('resolvedPlatformKeyBindings', () => {
         preventDefault: true,
         vscodeCommandId: 'workbench.action.gotoSymbol',
       }),
+    )
+  })
+
+  it('keeps a keyless editor command scoped to the editor when rebound', () => {
+    const resolved = resolvedPlatformKeyBindings(
+      defaultPlatformKeyBindings('linux'),
+      { 'editor.editor.action.peekDefinition': 'F1' },
+      'linux',
+    )
+
+    expect(resolved).toContainEqual(
+      expect.objectContaining({
+        command: 'editor.editor.action.peekDefinition',
+        keys: 'F1',
+        pane: 'editor',
+      }),
+    )
+    expect(commands(activePlatformKeyBindings(resolved, 'global'))).toContain(
+      'workspace.showCommandPalette',
+    )
+    expect(commands(activePlatformKeyBindings(resolved, 'editor'))).toContain(
+      'editor.editor.action.peekDefinition',
     )
   })
 
@@ -655,29 +675,6 @@ describe('defaultPlatformKeyBindings', () => {
         keys: 'Mod+Shift+ArrowUp',
       }),
     )
-  })
-})
-
-describe('command palette command availability', () => {
-  it('uses editor state for editor-sensitive commands', () => {
-    expect(
-      commandDisabledReason('workspace.saveFile', {
-        activeFilePath: null,
-        hasWorkspace: true,
-      }),
-    ).toBe('Nothing here can be saved.')
-    expect(
-      commandDisabledReason('workspace.saveFile', {
-        activeFilePath: '/repo/src/app.ts',
-        hasWorkspace: true,
-      }),
-    ).toBeNull()
-    expect(
-      commandDisabledReason('workspace.focusEditor', {
-        activeFilePath: null,
-        hasWorkspace: false,
-      }),
-    ).toBe('No workspace open.')
   })
 })
 

@@ -32,65 +32,76 @@ import {
   type SessionTraversalDirection,
 } from '@/features/chat-mode/state/session-commands'
 import { useSessionIsolationStore } from '@/features/chat-mode/state/session-isolation-store'
-import { setChatModeSessionRailOpen } from '@/features/chat-mode/utils/panels'
-import { compareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'
+import { setChatModeSessionRailOpen, showChatModeToolTab } from '@/features/chat-mode/utils/panels'
+import {
+  compareSavedDocumentId,
+  parseCompareSavedDocumentId,
+} from '@/features/editor/utils/compare-saved-document'
 import {
   fileBackedDocumentPath,
   savableDocumentPath,
 } from '@/features/editor/utils/file-backed-document'
 import { activeSettingsBufferId } from '@/features/settings/state/active-buffer'
 import { saveAllEditorDocuments, saveSelectedEditorDocument } from '@/features/editor/utils/save'
-import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import type { EditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import { nextEditorDiffViewMode } from '@/features/editor/utils/diff-view-mode'
+import { parseDiffDocumentId } from '@/features/git/utils/diff-document'
+import { parseSearchBufferDocumentId } from '@/features/search/utils/buffer-document'
 import {
+  activeEditorTabForWorkbenchPanels,
   openEditorPathInWorkbenchPanels,
   setWorkbenchBottomTab,
   setWorkbenchSidebarTab,
 } from '@/features/workbench/utils/panels'
-import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { fetchFile } from '@/lib/file-server'
 import { setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'
+import type {
+  AsyncCommandSettlement,
+  AsyncCommandStart,
+  ImmediateCommandDisposition,
+} from '@/keymap/state/command-bus'
+import {
+  focusTargetById,
+  focusTargetIdsEqual,
+  registeredFocusTarget,
+  type FocusDestination,
+  type FocusIntent,
+  type FocusTargetId,
+  type FocusTargetToken,
+  type FocusTransitionTicket,
+  type FocusTransitionOutcome,
+} from '@/lib/focus/state/service'
+import { matchesActiveSurface } from '@/lib/focus/utils/active-surface'
 import { toggledWorkspaceUiMode } from '@/lib/ui-mode'
 
-import { defineCommand, type WorkspaceCommandContext } from './define-command'
+import {
+  defineCommand,
+  type WorkspaceCommandHandlerContext,
+  type WorkspaceCommandRuntime,
+} from './define-command'
 import { SESSION_JUMP_POSITIONS, sessionJumpCommandId } from './types'
+
+const handled = { status: 'handled' } as const
+const declined = { reason: 'handler-declined', status: 'unhandled' } as const
+type StartedCommand = Extract<AsyncCommandStart, { readonly status: 'started' }>
 
 /**
  * Session traversal only means something while the chat layout is the one on screen —
  * in the workbench there is no rail to count rows in and no stage to hand them to.
  */
-function runSessionCommand(context: WorkspaceCommandContext, run: () => boolean) {
-  if (context.uiMode !== 'chat') return false
+function runSessionCommand(context: WorkspaceCommandHandlerContext, run: () => boolean) {
+  if (context.snapshot.uiMode !== 'chat') return declined
 
-  return run()
+  return dispositionFor(run())
 }
 
 function sessionTraversalHandler(direction: SessionTraversalDirection) {
-  return (context: WorkspaceCommandContext) =>
+  return (context: WorkspaceCommandHandlerContext) =>
     runSessionCommand(context, () => selectAdjacentSession(direction))
 }
 
-function closeSelectedTab(activeTabId: string | null, requestCloseTab: RequestCloseTab) {
-  if (!activeTabId) return false
-
-  requestCloseTab(activeTabId)
-  return true
-}
-
-function runFileLifecycle(activeFilePath: string | null, operation: () => Promise<boolean>) {
-  if (!fileBackedDocumentPath(activeFilePath)) return false
-
-  void operation().catch(reportCommandError)
-  return true
-}
-
-/** The same shape as `runFileLifecycle`, for the wider `saveable` gate. */
-function runSaveLifecycle(activeFilePath: string | null, operation: () => Promise<boolean>) {
-  if (!savableDocumentPath(activeFilePath)) return false
-
-  void operation().catch(reportCommandError)
-  return true
+function dispositionFor(accepted: boolean): ImmediateCommandDisposition {
+  return accepted ? handled : declined
 }
 
 async function revertSelectedEditorDocument(
@@ -107,15 +118,181 @@ async function revertSelectedEditorDocument(
   return true
 }
 
-function reportCommandError(error: unknown) {
-  reportError(toClientError(error))
+function operationStart(operation: Promise<boolean>): StartedCommand {
+  return {
+    completion: operation.then((accepted) => dispositionFor(accepted)),
+    status: 'started',
+  }
+}
+
+function resolvedOperationStart(operation: Promise<void>): StartedCommand {
+  return {
+    completion: operation.then(() => handled),
+    status: 'started',
+  }
+}
+
+function focusStart(
+  runtime: WorkspaceCommandRuntime,
+  destination: FocusDestination,
+  intent: FocusIntent = 'focus',
+  acknowledged: ImmediateCommandDisposition = handled,
+): StartedCommand {
+  return transitionStart(runtime.focus.request(destination, intent), acknowledged)
+}
+
+function transitionStart(
+  ticket: FocusTransitionTicket,
+  acknowledged: ImmediateCommandDisposition = handled,
+): StartedCommand {
+  return {
+    completion: ticket.completion.then((outcome) => focusSettlement(outcome, acknowledged)),
+    status: 'started',
+  }
+}
+
+function focusIdStart(
+  runtime: WorkspaceCommandRuntime,
+  id: FocusTargetId,
+  intent: FocusIntent = 'focus',
+  acknowledged: ImmediateCommandDisposition = handled,
+) {
+  return focusStart(runtime, focusTargetById(id), intent, acknowledged)
+}
+
+function focusIdInLayoutStart(
+  runtime: WorkspaceCommandRuntime,
+  id: FocusTargetId,
+  layout: 'chat' | 'workbench',
+  intent: FocusIntent = 'focus',
+  acknowledged: ImmediateCommandDisposition = handled,
+) {
+  return focusStart(
+    runtime,
+    {
+      isValid: () => runtime.workspace.getState().uiMode === layout,
+      kind: 'match',
+      matches: (target) => target.layout === layout && focusTargetIdsEqual(target.id, id),
+    },
+    intent,
+    acknowledged,
+  )
+}
+
+function focusSettlement(
+  outcome: FocusTransitionOutcome,
+  acknowledged: ImmediateCommandDisposition,
+): AsyncCommandSettlement {
+  if (outcome.status === 'acknowledged') return acknowledged
+  if (outcome.status === 'superseded') {
+    return { reason: 'domain-discarded', status: 'cancelled' }
+  }
+
+  return declined
+}
+
+function settingStart(
+  submission: ReturnType<WorkspaceCommandRuntime['settings']['setTheme']>,
+): AsyncCommandStart {
+  if (submission.kind === 'noop') return handled
+
+  return {
+    completion: submission.settled.then((settlement) => {
+      if (settlement === 'acknowledged') return handled
+      if (settlement === 'discarded') {
+        return { reason: 'domain-discarded', status: 'cancelled' } as const
+      }
+
+      return {
+        failure: { operationId: submission.mutationId, owner: 'domain' },
+        status: 'failed',
+      } as const
+    }),
+    status: 'started',
+  }
+}
+
+function focusActiveSurface(runtime: WorkspaceCommandRuntime): StartedCommand {
+  let workspace = runtime.workspace.getState()
+  if (workspace.uiMode === 'chat') {
+    workspace.setChatModePanels(showChatModeToolTab(workspace.chatModePanels, 'editor'))
+    workspace = runtime.workspace.getState()
+  }
+  const activeTab = activeEditorTabForWorkbenchPanels(workspace.workbenchPanels)
+  if (!activeTab) {
+    return focusStart(runtime, { isValid: () => false, kind: 'match', matches: () => false })
+  }
+  const layout = workspace.uiMode
+
+  const activeDiffPath =
+    parseCompareSavedDocumentId(activeTab.path) ?? parseDiffDocumentId(activeTab.path)?.path ?? null
+  const activeSearchRoot = parseSearchBufferDocumentId(activeTab.path)?.rootPath ?? null
+  const identity = {
+    diffPath: activeDiffPath,
+    layout,
+    searchRoot: activeSearchRoot,
+    tabId: activeTab.id,
+  } as const
+
+  return focusStart(runtime, {
+    isValid: () => {
+      const current = activeEditorTabForWorkbenchPanels(
+        runtime.workspace.getState().workbenchPanels,
+      )
+      return (
+        runtime.workspace.getState().uiMode === layout &&
+        current?.id === activeTab.id &&
+        current.path === activeTab.path
+      )
+    },
+    kind: 'match',
+    matches: (target) => matchesActiveSurface(target, identity),
+  })
+}
+
+function focusAppShell(runtime: WorkspaceCommandRuntime): StartedCommand {
+  return focusIdStart(runtime, { kind: 'app-shell' })
+}
+
+function focusActiveSurfaceOrShell(runtime: WorkspaceCommandRuntime): StartedCommand {
+  if (activeEditorTabForWorkbenchPanels(runtime.workspace.getState().workbenchPanels)) {
+    return focusActiveSurface(runtime)
+  }
+
+  return focusAppShell(runtime)
+}
+
+function focusWorkbench(runtime: WorkspaceCommandRuntime): StartedCommand {
+  const last = runtime.focus.getSnapshot().lastCommandTarget
+  if (
+    last?.layout === 'workbench' &&
+    workbenchFocusArea(last.area) &&
+    runtime.focus.isRegistered(last.token)
+  ) {
+    return focusStart(runtime, registeredFocusTarget(last.token))
+  }
+
+  return focusActiveSurfaceOrShell(runtime)
+}
+
+function workbenchFocusArea(area: string) {
+  return !['chat', 'command-palette', 'dialog', 'global', 'settings'].includes(area)
+}
+
+function chatFocusStart(
+  runtime: WorkspaceCommandRuntime,
+  rootPath: string | null,
+  layout: 'chat' | 'workbench',
+) {
+  if (!rootPath) return declined
+
+  return focusIdInLayoutStart(runtime, { key: rootPath, kind: 'chat-composer' }, layout)
 }
 
 /**
  * The nine jump slots are one shape, so they are written once. They are hidden
- * from the palette for the same reason as their four named siblings: outside
- * chat mode `runSessionCommand` returns false, and `requires` has no chat-mode
- * state to model, so a visible row would look enabled and do nothing.
+ * from the palette for the same reason as their four named siblings: they are
+ * keyboard navigation for the visible chat rail, not general palette actions.
  */
 function sessionJumpCommands() {
   return SESSION_JUMP_POSITIONS.map((position) =>
@@ -125,7 +302,10 @@ function sessionJumpCommands() {
       hiddenInPalette: true,
       id: sessionJumpCommandId(position),
       keys: [{ hotkey: `Mod+Alt+${position}`, preventDefault: true }],
-      requires: 'workspace',
+      execution: 'sync',
+      target: 'workspace',
+      undoCategory: 'view-only',
+      when: ['workspaceOpen', 'chatMode'],
       run: (context) => runSessionCommand(context, () => jumpToSession(position)),
       title: `Go to session ${position}`,
     }),
@@ -147,11 +327,14 @@ export const workspaceCommands = [
         vscodeCommandId: 'workbench.action.quickOpen',
       },
     ],
-    requires: 'workspace',
-    run: ({ showCommandPalette }) => {
-      showCommandPalette('')
-      return true
-    },
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen'],
+    run: ({ invocation, runtime }) =>
+      transitionStart(
+        runtime.shell.showCommandPalette('', invocation.origin as FocusTargetToken | null),
+      ),
     title: 'Quick Open',
     vscodeCommandIds: ['workbench.action.quickOpen'],
   }),
@@ -176,11 +359,14 @@ export const workspaceCommands = [
         vscodeCommandId: 'workbench.action.showCommands',
       },
     ],
-    requires: 'nothing',
-    run: ({ showCommandPalette }) => {
-      showCommandPalette('>')
-      return true
-    },
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: [],
+    run: ({ invocation, runtime }) =>
+      transitionStart(
+        runtime.shell.showCommandPalette('>', invocation.origin as FocusTargetToken | null),
+      ),
     title: 'Show command palette',
     vscodeCommandIds: ['workbench.action.showCommands'],
   }),
@@ -200,11 +386,12 @@ export const workspaceCommands = [
         vscodeCommandId: 'workbench.action.openSettings',
       },
     ],
-    requires: 'nothing',
-    run: ({ showSettings }) => {
-      showSettings()
-      return true
-    },
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: [],
+    run: ({ invocation, runtime }) =>
+      transitionStart(runtime.shell.showSettings(invocation.origin as FocusTargetToken | null)),
     title: 'Settings',
     vscodeCommandIds: ['workbench.action.openSettings'],
   }),
@@ -213,10 +400,13 @@ export const workspaceCommands = [
     description: 'Open the workspace file picker.',
     icon: FolderOpenIcon,
     id: 'workspace.openFilePicker',
-    requires: 'nothing',
-    run: ({ openPicker }) => {
-      openPicker()
-      return true
+    execution: 'sync',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: [],
+    run: ({ runtime }) => {
+      runtime.shell.openPicker()
+      return handled
     },
     title: 'Open file picker',
     vscodeCommandIds: ['workbench.action.quickOpen'],
@@ -226,13 +416,15 @@ export const workspaceCommands = [
     description: 'Open workspace search results in an editor tab.',
     icon: FileMagnifyingGlassIcon,
     id: 'workspace.openSearchEditor',
-    requires: 'workspace',
-    run: ({ openSearchEditor, requestEditorFocus, rootPath }) => {
-      if (!rootPath) return false
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen'],
+    run: ({ runtime, snapshot }) => {
+      if (!snapshot.rootPath) return declined
 
-      openSearchEditor(rootPath)
-      requestEditorFocus()
-      return true
+      runtime.editor.openSearchEditor(snapshot.rootPath)
+      return focusActiveSurface(runtime)
     },
     title: 'Open Search Editor',
     vscodeCommandIds: ['search.action.openNewEditor'],
@@ -242,13 +434,14 @@ export const workspaceCommands = [
     description: 'Switch to the previously active editor.',
     icon: ClockCounterClockwiseIcon,
     id: 'workspace.quickOpenPreviousEditor',
-    requires: 'workspace',
-    run: ({ requestEditorFocus, selectPreviousEditor }) => {
-      const selected = selectPreviousEditor()
-      if (!selected) return false
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['tabOpen'],
+    run: ({ runtime }) => {
+      if (!runtime.editor.selectPreviousEditor()) return declined
 
-      requestEditorFocus()
-      return true
+      return focusActiveSurface(runtime)
     },
     title: 'Quick open previous editor',
     vscodeCommandIds: ['workbench.action.quickOpenPreviousEditor'],
@@ -259,11 +452,14 @@ export const workspaceCommands = [
     icon: SquaresFourIcon,
     id: 'workspace.quickOpenView',
     keepsPaletteOpen: true,
-    requires: 'workspace',
-    run: ({ showCommandPalette }) => {
-      showCommandPalette('view ')
-      return true
-    },
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen'],
+    run: ({ invocation, runtime }) =>
+      transitionStart(
+        runtime.shell.showCommandPalette('view ', invocation.origin as FocusTargetToken | null),
+      ),
     title: 'Open view',
     vscodeCommandIds: ['workbench.action.quickOpenView'],
   }),
@@ -280,12 +476,16 @@ export const workspaceCommands = [
         vscodeCommandId: 'workbench.action.gotoSymbol',
       },
     ],
-    requires: 'file',
-    run: ({ activeFilePath, showCommandPalette }) => {
-      if (!fileBackedDocumentPath(activeFilePath)) return false
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['fileBackedTab'],
+    run: ({ invocation, runtime, snapshot }) => {
+      if (!fileBackedDocumentPath(snapshot.activeFilePath)) return declined
 
-      showCommandPalette('@')
-      return true
+      return transitionStart(
+        runtime.shell.showCommandPalette('@', invocation.origin as FocusTargetToken | null),
+      )
     },
     title: 'Go to symbol in editor',
     vscodeCommandIds: ['workbench.action.gotoSymbol'],
@@ -296,11 +496,14 @@ export const workspaceCommands = [
     icon: CardsIcon,
     id: 'workspace.showAllEditors',
     keepsPaletteOpen: true,
-    requires: 'workspace',
-    run: ({ showCommandPalette }) => {
-      showCommandPalette('edt ')
-      return true
-    },
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen'],
+    run: ({ invocation, runtime }) =>
+      transitionStart(
+        runtime.shell.showCommandPalette('edt ', invocation.origin as FocusTargetToken | null),
+      ),
     title: 'Show all editors',
     vscodeCommandIds: ['workbench.action.showAllEditors'],
   }),
@@ -314,15 +517,19 @@ export const workspaceCommands = [
     ],
     // Not `file`: the raw settings.json buffer has no path on disk and is saved
     // through the settings route, which is a save the user expects Mod+S to do.
-    requires: 'saveable',
-    run: ({ activeFilePath, documentStore, queryClient }) => {
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'file-operation',
+    when: ['saveableTab'],
+    run: ({ runtime, snapshot }) => {
       // The settings tab is one document with two views, and only the JSON view
       // has a buffer. Resolving here rather than in `save.ts` keeps the fact
       // that the settings page has modes inside the feature that owns them.
-      const path = activeSettingsBufferId(activeFilePath) ?? activeFilePath
+      const path = activeSettingsBufferId(snapshot.activeFilePath) ?? snapshot.activeFilePath
+      if (!savableDocumentPath(path)) return declined
 
-      return runSaveLifecycle(path, () =>
-        saveSelectedEditorDocument(documentStore, queryClient, path),
+      return operationStart(
+        saveSelectedEditorDocument(runtime.documents.store, runtime.documents.queryClient, path),
       )
     },
     title: 'Save',
@@ -333,11 +540,14 @@ export const workspaceCommands = [
     description: 'Save all dirty editors.',
     icon: FloppyDiskBackIcon,
     id: 'workspace.saveAllFiles',
-    requires: 'workspace',
-    run: ({ documentStore, queryClient }) => {
-      void saveAllEditorDocuments(documentStore, queryClient).catch(reportCommandError)
-      return true
-    },
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'file-operation',
+    when: ['workspaceOpen'],
+    run: ({ runtime }) =>
+      resolvedOperationStart(
+        saveAllEditorDocuments(runtime.documents.store, runtime.documents.queryClient),
+      ),
     title: 'Save all',
     vscodeCommandIds: ['workbench.action.files.saveAll'],
   }),
@@ -345,16 +555,20 @@ export const workspaceCommands = [
     category: 'Workspace',
     description: 'Diff the active editor against the file on disk.',
     id: 'workspace.compareWithSaved',
-    requires: 'file',
-    run: ({ activeFilePath, requestEditorFocus, setWorkbenchPanels, workbenchPanels }) => {
-      const path = fileBackedDocumentPath(activeFilePath)
-      if (!path) return false
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['fileBackedTab'],
+    run: ({ runtime, snapshot }) => {
+      const path = fileBackedDocumentPath(snapshot.activeFilePath)
+      if (!path) return declined
 
-      setWorkbenchPanels(
-        openEditorPathInWorkbenchPanels(workbenchPanels, compareSavedDocumentId(path)),
-      )
-      requestEditorFocus()
-      return true
+      runtime.workspace
+        .getState()
+        .setWorkbenchPanels(
+          openEditorPathInWorkbenchPanels(snapshot.workbenchPanels, compareSavedDocumentId(path)),
+        )
+      return focusActiveSurface(runtime)
     },
     title: 'Compare with saved',
     vscodeCommandIds: ['workbench.files.action.compareWithSaved'],
@@ -363,13 +577,22 @@ export const workspaceCommands = [
     category: 'Workspace',
     description: 'Open the committed version of the active file, read-only.',
     id: 'workspace.openFileAtHead',
-    requires: 'file',
-    run: ({ activeFilePath, openFileAtRef }) => {
-      const path = fileBackedDocumentPath(activeFilePath)
-      if (!path) return false
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['fileBackedTab'],
+    run: ({ runtime, snapshot }) => {
+      const path = fileBackedDocumentPath(snapshot.activeFilePath)
+      if (!path) return declined
 
-      void openFileAtRef(path, 'HEAD').catch(reportCommandError)
-      return true
+      return {
+        completion: runtime.files.openFileAtRef(path, 'HEAD').then(async (opened) => {
+          if (!opened) return declined
+
+          return focusActiveSurface(runtime).completion
+        }),
+        status: 'started',
+      }
     },
     title: 'Open file at HEAD',
     vscodeCommandIds: ['git.openFile'],
@@ -379,11 +602,21 @@ export const workspaceCommands = [
     description: 'Reload the active editor from disk.',
     icon: ArrowCounterClockwiseIcon,
     id: 'workspace.revertFile',
-    requires: 'file',
-    run: ({ activeFilePath, documentStore, queryClient }) =>
-      runFileLifecycle(activeFilePath, () =>
-        revertSelectedEditorDocument(documentStore, queryClient, activeFilePath),
-      ),
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'file-operation',
+    when: ['fileBackedTab'],
+    run: ({ runtime, snapshot }) => {
+      if (!fileBackedDocumentPath(snapshot.activeFilePath)) return declined
+
+      return operationStart(
+        revertSelectedEditorDocument(
+          runtime.documents.store,
+          runtime.documents.queryClient,
+          snapshot.activeFilePath,
+        ),
+      )
+    },
     title: 'Revert file',
     vscodeCommandIds: ['workbench.action.files.revert'],
   }),
@@ -392,8 +625,15 @@ export const workspaceCommands = [
     description: 'Reopen the most recently closed editor tab.',
     icon: ArrowClockwiseIcon,
     id: 'workspace.reopenClosedEditor',
-    requires: 'workspace',
-    run: ({ reopenClosedEditor }) => reopenClosedEditor(),
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen'],
+    run: ({ runtime }) => {
+      if (!runtime.editor.reopenClosedEditor()) return declined
+
+      return focusActiveSurface(runtime)
+    },
     title: 'Reopen closed editor',
     vscodeCommandIds: ['workbench.action.reopenClosedEditor'],
   }),
@@ -409,20 +649,21 @@ export const workspaceCommands = [
         vscodeCommandId: 'workbench.action.toggleSidebarVisibility',
       },
     ],
-    requires: 'workspace',
-    run: ({
-      requestFileTreeCommand,
-      rootPath,
-      setFocusArea,
-      setWorkbenchPanels,
-      workbenchPanels,
-    }) => {
-      if (!rootPath) return false
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen'],
+    run: ({ runtime, snapshot }) => {
+      if (!snapshot.rootPath) return declined
 
-      setWorkbenchPanels(setWorkbenchSidebarTab(workbenchPanels, 'files'))
-      setFocusArea('file-tree')
-      requestFileTreeCommand('focus', rootPath)
-      return true
+      const workspace = runtime.workspace.getState()
+      workspace.setUiMode('workbench')
+      workspace.setWorkbenchPanels(setWorkbenchSidebarTab(snapshot.workbenchPanels, 'files'))
+      return focusIdInLayoutStart(
+        runtime,
+        { kind: 'file-tree', rootPath: snapshot.rootPath },
+        'workbench',
+      )
     },
     title: 'Toggle Files pane',
     vscodeCommandIds: ['workbench.action.toggleSidebarVisibility'],
@@ -432,11 +673,24 @@ export const workspaceCommands = [
     description: 'Show or hide the active workspace panel.',
     icon: SquareHalfBottomIcon,
     id: 'workspace.togglePanel',
-    requires: 'workspace',
-    run: ({ setFocusArea, setWorkbenchPanels, workbenchPanels }) => {
-      setWorkbenchPanels(setWorkbenchBottomTab(workbenchPanels, 'terminal'))
-      setFocusArea('terminal')
-      return true
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen'],
+    run: ({ runtime, snapshot }) => {
+      if (!snapshot.rootPath) return declined
+
+      const workspace = runtime.workspace.getState()
+      workspace.setUiMode('workbench')
+      workspace.setWorkbenchPanels(setWorkbenchBottomTab(snapshot.workbenchPanels, 'terminal'))
+      return focusStart(runtime, {
+        isValid: () => runtime.workspace.getState().uiMode === 'workbench',
+        kind: 'match',
+        matches: (target) =>
+          target.id.kind === 'terminal' &&
+          target.id.rootPath === snapshot.rootPath &&
+          target.layout === 'workbench',
+      })
     },
     title: 'Toggle panel',
     vscodeCommandIds: ['workbench.action.togglePanel'],
@@ -446,11 +700,11 @@ export const workspaceCommands = [
     description: 'Focus the primary editor group.',
     icon: CrosshairIcon,
     id: 'workspace.focusFirstEditorGroup',
-    requires: 'workspace',
-    run: ({ requestEditorFocus }) => {
-      requestEditorFocus()
-      return true
-    },
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['tabOpen'],
+    run: ({ runtime }) => focusActiveSurface(runtime),
     title: 'Focus first editor group',
     vscodeCommandIds: ['workbench.action.focusFirstEditorGroup'],
   }),
@@ -459,11 +713,11 @@ export const workspaceCommands = [
     description: 'Focus the current editor group in single-group mode.',
     icon: CrosshairIcon,
     id: 'workspace.focusSecondEditorGroup',
-    requires: 'workspace',
-    run: ({ requestEditorFocus }) => {
-      requestEditorFocus()
-      return true
-    },
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['tabOpen'],
+    run: ({ runtime }) => focusActiveSurface(runtime),
     title: 'Focus second editor group',
     vscodeCommandIds: ['workbench.action.focusSecondEditorGroup'],
   }),
@@ -472,11 +726,11 @@ export const workspaceCommands = [
     description: 'Focus the current editor group in single-group mode.',
     icon: CrosshairIcon,
     id: 'workspace.focusThirdEditorGroup',
-    requires: 'workspace',
-    run: ({ requestEditorFocus }) => {
-      requestEditorFocus()
-      return true
-    },
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['tabOpen'],
+    run: ({ runtime }) => focusActiveSurface(runtime),
     title: 'Focus third editor group',
     vscodeCommandIds: ['workbench.action.focusThirdEditorGroup'],
   }),
@@ -485,11 +739,11 @@ export const workspaceCommands = [
     description: 'Move keyboard focus to the editor.',
     icon: CrosshairIcon,
     id: 'workspace.focusEditor',
-    requires: 'workspace',
-    run: ({ requestEditorFocus }) => {
-      requestEditorFocus()
-      return true
-    },
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['tabOpen'],
+    run: ({ runtime }) => focusActiveSurface(runtime),
     title: 'Focus editor',
   }),
   defineCommand({
@@ -498,20 +752,21 @@ export const workspaceCommands = [
     icon: CrosshairIcon,
     id: 'workspace.focusFileTree',
     keys: [{ hotkey: 'Mod+Shift+E', preventDefault: true }],
-    requires: 'workspace',
-    run: ({
-      requestFileTreeCommand,
-      rootPath,
-      setFocusArea,
-      setWorkbenchPanels,
-      workbenchPanels,
-    }) => {
-      if (!rootPath) return false
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen'],
+    run: ({ runtime, snapshot }) => {
+      if (!snapshot.rootPath) return declined
 
-      setWorkbenchPanels(setWorkbenchSidebarTab(workbenchPanels, 'files'))
-      setFocusArea('file-tree')
-      requestFileTreeCommand('focus', rootPath)
-      return true
+      const workspace = runtime.workspace.getState()
+      workspace.setUiMode('workbench')
+      workspace.setWorkbenchPanels(setWorkbenchSidebarTab(snapshot.workbenchPanels, 'files'))
+      return focusIdInLayoutStart(
+        runtime,
+        { kind: 'file-tree', rootPath: snapshot.rootPath },
+        'workbench',
+      )
     },
     title: 'Focus file tree',
   }),
@@ -521,13 +776,22 @@ export const workspaceCommands = [
     icon: FileMagnifyingGlassIcon,
     id: 'workspace.findInFileTree',
     keys: [{ hotkey: 'Mod+F', pane: 'file-tree', preventDefault: true }],
-    requires: 'workspace',
-    run: ({ requestFileTreeCommand, rootPath, setWorkbenchPanels, workbenchPanels }) => {
-      if (!rootPath) return false
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen'],
+    run: ({ runtime, snapshot }) => {
+      if (!snapshot.rootPath) return declined
 
-      setWorkbenchPanels(setWorkbenchSidebarTab(workbenchPanels, 'files'))
-      requestFileTreeCommand('open-search', rootPath)
-      return true
+      const workspace = runtime.workspace.getState()
+      workspace.setUiMode('workbench')
+      workspace.setWorkbenchPanels(setWorkbenchSidebarTab(snapshot.workbenchPanels, 'files'))
+      return focusIdInLayoutStart(
+        runtime,
+        { kind: 'file-tree', rootPath: snapshot.rootPath },
+        'workbench',
+        'open-search',
+      )
     },
     title: 'Filter files in tree',
   }),
@@ -536,20 +800,23 @@ export const workspaceCommands = [
     description: 'Focus and reveal the active editor file in the file tree.',
     icon: CrosshairIcon,
     id: 'workspace.revealActiveFileInTree',
-    requires: 'file',
-    run: ({
-      activeFilePath,
-      requestFileTreeCommand,
-      rootPath,
-      setWorkbenchPanels,
-      workbenchPanels,
-    }) => {
-      if (!fileBackedDocumentPath(activeFilePath)) return false
-      if (!rootPath) return false
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['fileBackedTab'],
+    run: ({ runtime, snapshot }) => {
+      if (!fileBackedDocumentPath(snapshot.activeFilePath)) return declined
+      if (!snapshot.rootPath) return declined
 
-      setWorkbenchPanels(setWorkbenchSidebarTab(workbenchPanels, 'files'))
-      requestFileTreeCommand('reveal-active', rootPath)
-      return true
+      const workspace = runtime.workspace.getState()
+      workspace.setUiMode('workbench')
+      workspace.setWorkbenchPanels(setWorkbenchSidebarTab(snapshot.workbenchPanels, 'files'))
+      return focusIdInLayoutStart(
+        runtime,
+        { kind: 'file-tree', rootPath: snapshot.rootPath },
+        'workbench',
+        'reveal-active',
+      )
     },
     title: 'Reveal active file in tree',
   }),
@@ -558,11 +825,21 @@ export const workspaceCommands = [
     description: 'Move keyboard focus to the Git panel.',
     icon: CrosshairIcon,
     id: 'workspace.focusGit',
-    requires: 'workspace',
-    run: ({ setFocusArea, setWorkbenchPanels, workbenchPanels }) => {
-      setWorkbenchPanels(setWorkbenchSidebarTab(workbenchPanels, 'git'))
-      setFocusArea('git')
-      return true
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen'],
+    run: ({ runtime, snapshot }) => {
+      if (!snapshot.rootPath) return declined
+
+      const workspace = runtime.workspace.getState()
+      workspace.setUiMode('workbench')
+      workspace.setWorkbenchPanels(setWorkbenchSidebarTab(snapshot.workbenchPanels, 'git'))
+      return focusIdInLayoutStart(
+        runtime,
+        { kind: 'git', rootPath: snapshot.rootPath },
+        'workbench',
+      )
     },
     title: 'Focus Git',
   }),
@@ -571,9 +848,12 @@ export const workspaceCommands = [
     description:
       'Copy a link to exactly where you are — no absolute paths, no dev-only parameters.',
     id: 'workspace.copyAddress',
-    requires: 'workspace',
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'workspace-operation',
+    when: ['workspaceOpen'],
     run: () => {
-      if (!navigator.clipboard?.writeText) return false
+      if (!navigator.clipboard?.writeText) return declined
 
       // The address bar already holds the full address — thread, tool pane, filters and
       // all. Rebuilding a workbench-only subset here copied a strictly weaker link than
@@ -582,8 +862,7 @@ export const workspaceCommands = [
       // Through `shareableAddress`, not the raw location: a copied link needs an origin
       // to be openable at all, and it must not carry the dev params, which belong to the
       // session someone typed them into rather than to everyone they send the link to.
-      void navigator.clipboard.writeText(shareableAddress()).catch(reportCommandError)
-      return true
+      return resolvedOperationStart(navigator.clipboard.writeText(shareableAddress()))
     },
     title: 'Copy address',
   }),
@@ -600,10 +879,13 @@ export const workspaceCommands = [
     description: 'Go back to the previous document.',
     id: 'workspace.navigateBack',
     keys: [{ hotkey: 'Mod+[' }],
-    requires: 'workspace',
+    execution: 'sync',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen'],
     run: () => {
       history.back()
-      return true
+      return handled
     },
     title: 'Back',
   }),
@@ -612,10 +894,13 @@ export const workspaceCommands = [
     description: 'Go forward again.',
     id: 'workspace.navigateForward',
     keys: [{ hotkey: 'Mod+]' }],
-    requires: 'workspace',
+    execution: 'sync',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen'],
     run: () => {
       history.forward()
-      return true
+      return handled
     },
     title: 'Forward',
   }),
@@ -626,12 +911,18 @@ export const workspaceCommands = [
     category: 'Workspace',
     description: 'Bring the chat composer on screen.',
     id: 'workspace.revealChat',
-    requires: 'workspace',
-    run: ({ setWorkbenchPanels, uiMode, workbenchPanels }) => {
-      if (uiMode === 'chat') return true
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen'],
+    run: ({ runtime, snapshot }) => {
+      if (snapshot.uiMode !== 'chat') {
+        runtime.workspace
+          .getState()
+          .setWorkbenchPanels(setWorkbenchSidebarTab(snapshot.workbenchPanels, 'chat'))
+      }
 
-      setWorkbenchPanels(setWorkbenchSidebarTab(workbenchPanels, 'chat'))
-      return true
+      return chatFocusStart(runtime, snapshot.rootPath, snapshot.uiMode)
     },
     title: 'Show chat',
   }),
@@ -642,12 +933,24 @@ export const workspaceCommands = [
     category: 'Workspace',
     description: 'Bring the workbench terminal on screen.',
     id: 'workspace.revealTerminal',
-    requires: 'workspace',
-    run: ({ setFocusArea, setUiMode, setWorkbenchPanels, workbenchPanels }) => {
-      setUiMode('workbench')
-      setWorkbenchPanels(setWorkbenchBottomTab(workbenchPanels, 'terminal'))
-      setFocusArea('terminal')
-      return true
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen'],
+    run: ({ runtime, snapshot }) => {
+      if (!snapshot.rootPath) return declined
+
+      const workspace = runtime.workspace.getState()
+      workspace.setUiMode('workbench')
+      workspace.setWorkbenchPanels(setWorkbenchBottomTab(snapshot.workbenchPanels, 'terminal'))
+      return focusStart(runtime, {
+        isValid: () => runtime.workspace.getState().uiMode === 'workbench',
+        kind: 'match',
+        matches: (target) =>
+          target.id.kind === 'terminal' &&
+          target.id.rootPath === snapshot.rootPath &&
+          target.layout === 'workbench',
+      })
     },
     title: 'Show terminal',
   }),
@@ -658,11 +961,14 @@ export const workspaceCommands = [
     category: 'Workspace',
     description: 'Run the next session on its own branch in a separate checkout.',
     id: 'workspace.newIsolatedSession',
-    requires: 'workspace',
-    run: ({ setUiMode }) => {
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'workspace-operation',
+    when: ['workspaceOpen'],
+    run: ({ runtime, snapshot }) => {
       useSessionIsolationStore.getState().setIsolateNextSession(true)
-      setUiMode('chat')
-      return true
+      runtime.workspace.getState().setUiMode('chat')
+      return chatFocusStart(runtime, snapshot.rootPath, 'chat')
     },
     title: 'New session in its own worktree',
   }),
@@ -674,8 +980,26 @@ export const workspaceCommands = [
     // A tab, not a file: this runs on `activeTabId` and never looks at a path,
     // and a diff, a settings page and a search buffer all close exactly like a
     // file does.
-    requires: 'tab',
-    run: ({ activeTabId, requestCloseTab }) => closeSelectedTab(activeTabId, requestCloseTab),
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['tabOpen'],
+    run: ({ runtime, snapshot }) => {
+      if (!snapshot.activeTabId) return declined
+
+      const result = runtime.tabs.requestCloseTab(snapshot.activeTabId)
+      if (result.status === 'rejected') return declined
+      if (result.status === 'deferred') {
+        return focusIdStart(
+          runtime,
+          { dialogTarget: result.dialogTarget, kind: 'unsaved-dialog' },
+          'focus',
+          { reason: 'dirty-close', status: 'deferred' },
+        )
+      }
+
+      return focusActiveSurfaceOrShell(runtime)
+    },
     title: 'Close current tab',
     vscodeCommandIds: ['workbench.action.closeActiveEditor'],
   }),
@@ -685,12 +1009,19 @@ export const workspaceCommands = [
     icon: GitDiffIcon,
     id: 'workspace.toggleDiffViewMode',
     keys: [{ hotkey: 'Mod+Shift+D' }],
-    requires: 'workspace',
-    run: ({ diffViewMode, setDiffViewMode }) => {
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'workspace-operation',
+    when: ['workspaceOpen'],
+    run: ({ runtime, snapshot }) => {
       // Through the settings write path: the command and the settings page are two
       // front doors onto one value.
-      setDiffViewMode(nextEditorDiffViewMode(diffViewMode))
-      return true
+      return settingStart(
+        runtime.settings.setDiffViewMode(
+          nextEditorDiffViewMode(snapshot.diffViewMode),
+          'workspace.toggleDiffViewMode',
+        ),
+      )
     },
     title: 'Toggle diff view mode',
   }),
@@ -699,10 +1030,16 @@ export const workspaceCommands = [
     description: 'Switch between the Workbench and Chat layouts.',
     id: 'workspace.toggleUiMode',
     keys: [{ hotkey: 'Mod+Shift+M', preventDefault: true }],
-    requires: 'workspace',
-    run: ({ setUiMode, uiMode }) => {
-      setUiMode(toggledWorkspaceUiMode(uiMode))
-      return true
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen'],
+    run: ({ runtime, snapshot }) => {
+      const nextMode = toggledWorkspaceUiMode(snapshot.uiMode)
+      runtime.workspace.getState().setUiMode(nextMode)
+      if (nextMode === 'chat') return chatFocusStart(runtime, snapshot.rootPath, 'chat')
+
+      return focusWorkbench(runtime)
     },
     title: 'Toggle Chat mode',
   }),
@@ -710,10 +1047,13 @@ export const workspaceCommands = [
     category: 'Workspace',
     description: 'Show sessions, chat, and tools in the chat layout.',
     id: 'workspace.showChatMode',
-    requires: 'workspace',
-    run: ({ setUiMode }) => {
-      setUiMode('chat')
-      return true
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen'],
+    run: ({ runtime, snapshot }) => {
+      runtime.workspace.getState().setUiMode('chat')
+      return chatFocusStart(runtime, snapshot.rootPath, 'chat')
     },
     title: 'Chat mode',
   }),
@@ -721,10 +1061,13 @@ export const workspaceCommands = [
     category: 'Workspace',
     description: 'Show the editor-centred workbench layout.',
     id: 'workspace.showWorkbenchMode',
-    requires: 'workspace',
-    run: ({ setUiMode }) => {
-      setUiMode('workbench')
-      return true
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen'],
+    run: ({ runtime }) => {
+      runtime.workspace.getState().setUiMode('workbench')
+      return focusWorkbench(runtime)
     },
     title: 'Workbench mode',
   }),
@@ -734,11 +1077,14 @@ export const workspaceCommands = [
     icon: PaletteIcon,
     id: 'workspace.selectColorMode',
     keepsPaletteOpen: true,
-    requires: 'nothing',
-    run: ({ showCommandPalette }) => {
-      showCommandPalette('color ')
-      return true
-    },
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: [],
+    run: ({ invocation, runtime }) =>
+      transitionStart(
+        runtime.shell.showCommandPalette('color ', invocation.origin as FocusTargetToken | null),
+      ),
     title: 'Choose color mode',
   }),
   defineCommand({
@@ -747,11 +1093,14 @@ export const workspaceCommands = [
     icon: PaletteIcon,
     id: 'workspace.selectColorTheme',
     keepsPaletteOpen: true,
-    requires: 'nothing',
-    run: ({ showCommandPalette }) => {
-      showCommandPalette('theme ')
-      return true
-    },
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: [],
+    run: ({ invocation, runtime }) =>
+      transitionStart(
+        runtime.shell.showCommandPalette('theme ', invocation.origin as FocusTargetToken | null),
+      ),
     title: 'Choose color theme',
   }),
   defineCommand({
@@ -760,11 +1109,11 @@ export const workspaceCommands = [
     hiddenInPalette: true,
     icon: MoonIcon,
     id: 'workspace.setDarkTheme',
-    requires: 'nothing',
-    run: ({ setTheme }) => {
-      setTheme('dark')
-      return true
-    },
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'workspace-operation',
+    when: [],
+    run: ({ runtime }) => settingStart(runtime.settings.setTheme('dark', 'workspace.setDarkTheme')),
     title: 'Dark color mode',
   }),
   defineCommand({
@@ -773,11 +1122,12 @@ export const workspaceCommands = [
     hiddenInPalette: true,
     icon: SunIcon,
     id: 'workspace.setLightTheme',
-    requires: 'nothing',
-    run: ({ setTheme }) => {
-      setTheme('light')
-      return true
-    },
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'workspace-operation',
+    when: [],
+    run: ({ runtime }) =>
+      settingStart(runtime.settings.setTheme('light', 'workspace.setLightTheme')),
     title: 'Light color mode',
   }),
   defineCommand({
@@ -786,11 +1136,12 @@ export const workspaceCommands = [
     hiddenInPalette: true,
     icon: DesktopIcon,
     id: 'workspace.setSystemTheme',
-    requires: 'nothing',
-    run: ({ setTheme }) => {
-      setTheme('system')
-      return true
-    },
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'workspace-operation',
+    when: [],
+    run: ({ runtime }) =>
+      settingStart(runtime.settings.setTheme('system', 'workspace.setSystemTheme')),
     title: 'System color mode',
   }),
   defineCommand({
@@ -798,13 +1149,20 @@ export const workspaceCommands = [
     description: 'Show or hide the background image or video.',
     icon: ImageIcon,
     id: 'workspace.toggleWallpaper',
-    requires: 'nothing',
-    run: ({ setWallpaperEnabled, wallpaperEnabled }) => {
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'workspace-operation',
+    when: [],
+    run: ({ runtime, snapshot }) => {
       // Through the settings write path, not a store setter. The command and the
       // settings page are two front doors onto one value; if they wrote to
       // different places they would disagree the first time either was used.
-      setWallpaperEnabled(!wallpaperEnabled)
-      return true
+      return settingStart(
+        runtime.settings.setWallpaperEnabled(
+          !snapshot.wallpaperEnabled,
+          'workspace.toggleWallpaper',
+        ),
+      )
     },
     title: 'Toggle wallpaper',
   }),
@@ -816,7 +1174,10 @@ export const workspaceCommands = [
     hiddenInPalette: true,
     id: 'workspace.newSession',
     keys: [{ hotkey: 'Mod+Alt+N', preventDefault: true }],
-    requires: 'workspace',
+    execution: 'sync',
+    target: 'workspace',
+    undoCategory: 'workspace-operation',
+    when: ['workspaceOpen', 'chatMode'],
     run: (context) => runSessionCommand(context, startScopedSessionDraft),
     title: 'New session',
   }),
@@ -826,7 +1187,10 @@ export const workspaceCommands = [
     hiddenInPalette: true,
     id: 'workspace.nextSession',
     keys: [{ hotkey: 'Mod+Alt+]', preventDefault: true }],
-    requires: 'workspace',
+    execution: 'sync',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen', 'chatMode'],
     run: sessionTraversalHandler('next'),
     title: 'Next session',
   }),
@@ -836,7 +1200,10 @@ export const workspaceCommands = [
     hiddenInPalette: true,
     id: 'workspace.previousSession',
     keys: [{ hotkey: 'Mod+Alt+[', preventDefault: true }],
-    requires: 'workspace',
+    execution: 'sync',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen', 'chatMode'],
     run: sessionTraversalHandler('previous'),
     title: 'Previous session',
   }),
@@ -846,15 +1213,20 @@ export const workspaceCommands = [
     hiddenInPalette: true,
     id: 'workspace.toggleSessionRail',
     keys: [{ hotkey: 'Mod+Alt+B', preventDefault: true }],
-    requires: 'workspace',
+    execution: 'sync',
+    target: 'workspace',
+    undoCategory: 'view-only',
+    when: ['workspaceOpen', 'chatMode'],
     run: (context) =>
       runSessionCommand(context, () => {
-        context.setChatModePanels(
-          setChatModeSessionRailOpen(
-            context.chatModePanels,
-            !context.chatModePanels.sessionRailOpen,
-          ),
-        )
+        context.runtime.workspace
+          .getState()
+          .setChatModePanels(
+            setChatModeSessionRailOpen(
+              context.snapshot.chatModePanels,
+              !context.snapshot.chatModePanels.sessionRailOpen,
+            ),
+          )
 
         return true
       }),

@@ -25,11 +25,13 @@ export function DiffEditor({
   languageServer = null,
   mode,
   regions,
+  tabId,
 }: {
   file: DiffFile | null
   languageServer?: DiffLanguageServerContext | null
   mode: EditorDiffViewMode
   regions?: DiffRegionStore
+  tabId?: string
 }) {
   const { editorTheme, registration, shikiTheme } = useEditorColorTheme()
   // Theme selection and its async Shiki registration landing both require new per-file sessions.
@@ -54,6 +56,7 @@ export function DiffEditor({
           side='stacked'
           syntaxBackend={syntax.backend}
           syntaxHighlight={syntax.enabled}
+          tabId={tabId}
           theme={editorTheme}
         />
       </div>
@@ -71,6 +74,7 @@ export function DiffEditor({
             side='old'
             syntaxBackend={syntax.backend}
             syntaxHighlight={syntax.enabled}
+            tabId={tabId}
             theme={editorTheme}
             onFocus={panes.handleFocus}
             onRegisterEditor={panes.registerEditor}
@@ -86,6 +90,7 @@ export function DiffEditor({
             side='new'
             syntaxBackend={syntax.backend}
             syntaxHighlight={syntax.enabled}
+            tabId={tabId}
             theme={editorTheme}
             onFocus={panes.handleFocus}
             onRegisterEditor={panes.registerEditor}

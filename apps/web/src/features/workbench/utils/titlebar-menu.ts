@@ -32,7 +32,6 @@ export type TitlebarMenuContext = {
   readonly copyWorkspacePath: () => void
   /** Every root the menu can switch to, active one first. Empty drops the submenu. */
   readonly projects: readonly ProjectMenuEntry[]
-  readonly runCommand: (command: PlatformCommandId) => void
   readonly selectProject: (rootPath: string) => void
   readonly uiMode: WorkspaceUiMode
   /** Absolute path of the open root, or null when no workspace is open. */
@@ -72,19 +71,14 @@ export function titlebarMenu(context: TitlebarMenuContext): Menu {
         icon: CommandIcon,
         label: 'Command Palette…',
       }),
-      commandRadio('uiMode', uiModeCommand(context.uiMode), uiModeChoices, context.runCommand),
+      commandRadio('uiMode', uiModeCommand(context.uiMode), uiModeChoices),
       submenuItem({
         icon: PaletteIcon,
         id: 'colorMode',
         label: 'Color Mode',
         sections: [
           section('colorModeChoices', [
-            commandRadio(
-              'colorMode',
-              colorModeCommand(context.colorMode),
-              colorModeChoices,
-              context.runCommand,
-            ),
+            commandRadio('colorMode', colorModeCommand(context.colorMode), colorModeChoices),
           ]),
         ],
       }),
@@ -148,30 +142,18 @@ function commandRadio(
   id: string,
   value: PlatformCommandId,
   choices: readonly CommandChoice[],
-  runCommand: (command: PlatformCommandId) => void,
 ): MenuRadioGroupItem {
   return {
     id,
     kind: 'radio-group',
     options: choices.map((choice) => ({
+      command: choice.command,
       icon: choice.icon,
       label: choice.label,
       value: choice.command,
     })),
-    select: (next) => runChoice(choices, next, runCommand),
     value,
   }
-}
-
-function runChoice(
-  choices: readonly CommandChoice[],
-  value: string,
-  runCommand: (command: PlatformCommandId) => void,
-) {
-  const choice = choices.find((candidate) => candidate.command === value)
-  if (!choice) return
-
-  runCommand(choice.command)
 }
 
 function uiModeCommand(uiMode: WorkspaceUiMode): PlatformCommandId {

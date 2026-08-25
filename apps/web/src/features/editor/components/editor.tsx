@@ -3,7 +3,7 @@ import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
 } from '@singapor/lsp-plugin'
-import { useCallback, useEffect, useLayoutEffect, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useMemo } from 'react'
 
 import { EditorFrame } from '@/features/editor/components/frame'
 import {
@@ -24,7 +24,11 @@ import {
 import { useLanguageServerPlugin } from '@/features/editor/hooks/use-lsp-plugin'
 import type { LanguageServerDocumentTarget } from '@/features/editor/utils/language-server-plugin'
 import { editorPerformanceLayoutVariant } from '@/features/editor/state/performance-trace'
-import { useFocus } from '@/features/workspace/providers/focus-state'
+import {
+  fileBackedDocumentPath,
+  savableDocumentPath,
+} from '@/features/editor/utils/file-backed-document'
+import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 import type {
   DocumentSessionChange,
   EditorKeymapLayer,
@@ -68,10 +72,6 @@ export function Editor({
   onStatusSourceChange,
   onTextChange,
 }: EditorProps) {
-  const editorActive = useFocus((state) => state.activeArea === 'editor' && active)
-  const editorFocusRequestId = useFocus((state) => state.consumeEditorFocusRequest())
-  const setActiveEditorCommandDispatch = useFocus((state) => state.setActiveEditorCommandDispatch)
-  const setFocusArea = useFocus((state) => state.setFocusArea)
   const { editorTheme } = useEditorColorTheme()
   const { languageServer, languageServerStatusSource } = useLanguageServerPlugin({
     enabled: active,
@@ -147,6 +147,30 @@ export function Editor({
     rowPositioning,
     theme: editorTheme,
   })
+  const settingsSurface =
+    savableDocumentPath(liveDocument.path) !== null &&
+    fileBackedDocumentPath(liveDocument.path) === null
+  const focusTarget = useFocusTarget<HTMLDivElement>({
+    area: 'editor',
+    capabilities: {
+      editor: {
+        dispatch: controller.commands.dispatchCommand,
+        writable: true,
+      },
+    },
+    id: {
+      key: liveDocument.id,
+      kind: 'editor',
+      surface: settingsSurface ? 'settings' : 'document',
+      tabId,
+    },
+    onIntent: (intent) => {
+      if (intent !== 'focus') return false
+
+      controller.commands.focus()
+      return true
+    },
+  })
   const selection = useMemo(
     () =>
       definitionTarget
@@ -191,32 +215,16 @@ export function Editor({
     controller.commands.setSelection(selection.anchor, selection.head, selection.anchor)
   }, [controller, selection])
 
-  useEffect(() => {
-    if (!active) return
-    if (editorFocusRequestId === 0) return
-
-    controller.commands.focus()
-  }, [active, controller, editorFocusRequestId])
-
-  useEffect(() => {
-    if (!active) return
-
-    setActiveEditorCommandDispatch(controller.commands.dispatchCommand)
-
-    return () => setActiveEditorCommandDispatch(null)
-  }, [active, controller, setActiveEditorCommandDispatch])
-
   useCommitMessageEditorFocus({
     controller,
     document: liveDocument,
   })
 
-  const handleActivate = useCallback(
-    function handleActivate() {
-      setFocusArea('editor')
-    },
-    [setFocusArea],
+  return (
+    <EditorFrame
+      active={active && focusTarget.focused}
+      controller={controller}
+      targetRef={active ? focusTarget.ref : undefined}
+    />
   )
-
-  return <EditorFrame active={editorActive} controller={controller} onActivate={handleActivate} />
 }

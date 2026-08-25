@@ -1,7 +1,21 @@
 import { editorTextMenu } from '@/features/editor/utils/text-menu'
 import type { MenuCommandItem } from '@/features/menus/utils/model'
-import { commandDisabledReason } from '@/keymap/command-enablement'
+import { platformCommand } from '@/keymap/table'
+import type { PlatformCommandId } from '@/keymap/types'
+import {
+  commandWhenDisabledReason,
+  commandWhenDisabledReasons,
+  type CommandWhenSnapshot,
+  type CommandWhenTarget,
+} from '@/keymap/utils/when'
 import { expect, test } from '../../../../../test/fixtures'
+
+const OPEN_FILE_SNAPSHOT: CommandWhenSnapshot = {
+  activeFilePath: '/repo/src/app.ts',
+  activeTabId: 'tab-1',
+  chatMode: false,
+  workspaceOpen: true,
+}
 
 test('sections run navigate, edit, file, then palette', () => {
   expect(editorTextMenu().map((entry) => entry.id)).toEqual(['navigate', 'edit', 'file', 'palette'])
@@ -42,6 +56,10 @@ test('every item runs a command rather than a local callback', () => {
   expect(items().every((item) => item.kind === 'command')).toBe(true)
 })
 
+test('every item resolves through the platform command registry', () => {
+  expect(items().every((item) => platformCommand(item.command) !== null)).toBe(true)
+})
+
 test('the navigate and edit items route to the editor command handlers', () => {
   expect(commands('navigate')).toEqual([
     'editor.goToDefinition',
@@ -64,20 +82,35 @@ test('nothing is a placeholder for a feature that does not exist', () => {
   expect(items().filter((item) => item.unavailable)).toEqual([])
 })
 
-test('every editor item is disabled while no file-backed surface is active', () => {
-  const context = { activeFilePath: null, hasWorkspace: true }
+test('read-only editor targets allow navigation and occurrence selection but reject text edits', () => {
+  const target = { kind: 'editor', writable: false } satisfies CommandWhenTarget
 
-  expect(
-    [...commands('navigate'), ...commands('edit')].every(
-      (command) => commandDisabledReason(command, context) !== null,
-    ),
-  ).toBe(true)
+  expect(commands('navigate').map((command) => disabledReason(command, target))).toEqual([
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+  ])
+  expect(commands('edit').map((command) => disabledReason(command, target))).toEqual([
+    null,
+    commandWhenDisabledReasons.editorWritable,
+    commandWhenDisabledReasons.editorWritable,
+    commandWhenDisabledReasons.editorWritable,
+    commandWhenDisabledReasons.editorWritable,
+  ])
 })
 
 test('the palette item survives a workspace with nothing open', () => {
-  const context = { activeFilePath: null, hasWorkspace: false }
+  const snapshot: CommandWhenSnapshot = {
+    activeFilePath: null,
+    activeTabId: null,
+    chatMode: false,
+    workspaceOpen: false,
+  }
 
-  expect(commandDisabledReason('workspace.showCommandPalette', context)).toBeNull()
+  expect(disabledReason('workspace.showCommandPalette', { kind: 'workspace' }, snapshot)).toBeNull()
 })
 
 function items(): readonly MenuCommandItem[] {
@@ -96,4 +129,15 @@ function labels(sectionId: string) {
 
 function commands(sectionId: string) {
   return sectionItems(sectionId).map((item) => item.command)
+}
+
+function disabledReason(
+  commandId: PlatformCommandId,
+  target: CommandWhenTarget,
+  snapshot: CommandWhenSnapshot = OPEN_FILE_SNAPSHOT,
+) {
+  const command = platformCommand(commandId)
+  if (!command) return 'Command is not registered.'
+
+  return commandWhenDisabledReason(command.when, snapshot, target)
 }

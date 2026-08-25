@@ -1,12 +1,19 @@
-import { commandDisabledReason } from '@/keymap/command-enablement'
 import { describe, expect, it } from 'vitest'
 
-import { conflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
-import { commandPaletteItems } from '@/features/command-palette/command-palette-utils'
 import { platformCommandSpecs } from '@/keymap/command-registry'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
-import { commandRequirement, platformCommands } from '@/keymap/table'
-import type { PlatformCommandId } from '@/keymap/types'
+import type { CommandUndoCategory, CommandWhen } from '@/keymap/define-command'
+import {
+  hiddenPaletteCommandIds,
+  platformCommand,
+  platformCommands,
+  type CommandEntry,
+} from '@/keymap/table'
+import {
+  SESSION_JUMP_POSITIONS,
+  sessionJumpCommandId,
+  type PlatformCommandId,
+} from '@/keymap/types'
 
 /** Every chord the app claims from the browser without dispatching anything. */
 const RESERVED_CHORDS = [
@@ -26,8 +33,152 @@ const MAC_ONLY_RESERVED_CHORD = 'Mod+Alt+Tab'
 const SESSION_COMMAND_PATTERN =
   /^workspace\.(new|next|previous)Session$|^workspace\.toggleSessionRail$|^workspace\.jumpToSession\d$/
 
+const TEXT_MENU_EDITOR_COMMANDS = [
+  'editor.editor.action.goToImplementation',
+  'editor.editor.action.goToTypeDefinition',
+  'editor.editor.action.peekDefinition',
+  'editor.editor.action.revealDefinitionAside',
+] as const
+
+const ASYNC_COMMAND_IDS = [
+  'workspace.showQuickAccess',
+  'workspace.showCommandPalette',
+  'workspace.showSettings',
+  'workspace.openSearchEditor',
+  'workspace.quickOpenPreviousEditor',
+  'workspace.quickOpenView',
+  'workspace.gotoSymbol',
+  'workspace.showAllEditors',
+  'workspace.saveFile',
+  'workspace.saveAllFiles',
+  'workspace.compareWithSaved',
+  'workspace.openFileAtHead',
+  'workspace.revertFile',
+  'workspace.reopenClosedEditor',
+  'workspace.toggleSidebarVisibility',
+  'workspace.togglePanel',
+  'workspace.focusFirstEditorGroup',
+  'workspace.focusSecondEditorGroup',
+  'workspace.focusThirdEditorGroup',
+  'workspace.focusEditor',
+  'workspace.focusFileTree',
+  'workspace.findInFileTree',
+  'workspace.revealActiveFileInTree',
+  'workspace.focusGit',
+  'workspace.copyAddress',
+  'workspace.revealChat',
+  'workspace.revealTerminal',
+  'workspace.newIsolatedSession',
+  'workspace.closeCurrentTab',
+  'workspace.toggleDiffViewMode',
+  'workspace.toggleUiMode',
+  'workspace.showChatMode',
+  'workspace.showWorkbenchMode',
+  'workspace.selectColorMode',
+  'workspace.selectColorTheme',
+  'workspace.setDarkTheme',
+  'workspace.setLightTheme',
+  'workspace.setSystemTheme',
+  'workspace.toggleWallpaper',
+] as const satisfies readonly PlatformCommandId[]
+
+const TEXT_EDIT_COMMAND_IDS = [
+  'editor.undo',
+  'editor.redo',
+  'editor.replaceOne',
+  'editor.replaceAll',
+  'editor.deleteWordLeft',
+  'editor.deleteWordRight',
+  'editor.editor.action.deleteLines',
+  'editor.editor.action.copyLinesUpAction',
+  'editor.editor.action.copyLinesDownAction',
+  'editor.editor.action.moveLinesUpAction',
+  'editor.editor.action.moveLinesDownAction',
+  'editor.editor.action.insertLineBefore',
+  'editor.editor.action.insertLineAfter',
+  'editor.editor.action.commentLine',
+  'editor.editor.action.blockComment',
+  'editor.editor.action.indentLines',
+  'editor.editor.action.outdentLines',
+  'editor.editor.action.trimTrailingWhitespace',
+  'editor.editor.action.sortLinesAscending',
+  'editor.editor.action.sortLinesDescending',
+  'editor.editor.action.joinLines',
+  'editor.editor.action.duplicateSelection',
+  'editor.editor.action.transformToUppercase',
+  'editor.editor.action.transformToLowercase',
+  'editor.editor.action.transformToTitlecase',
+  'editor.editor.action.rename',
+  'editor.editor.action.formatDocument',
+  'editor.deleteBackward',
+  'editor.deleteForward',
+  'editor.indentSelection',
+  'editor.outdentSelection',
+] as const satisfies readonly PlatformCommandId[]
+
+const FILE_OPERATION_COMMAND_IDS = [
+  'workspace.saveFile',
+  'workspace.saveAllFiles',
+  'workspace.revertFile',
+] as const satisfies readonly PlatformCommandId[]
+
+const WORKSPACE_OPERATION_COMMAND_IDS = [
+  'workspace.copyAddress',
+  'workspace.newIsolatedSession',
+  'workspace.toggleDiffViewMode',
+  'workspace.setDarkTheme',
+  'workspace.setLightTheme',
+  'workspace.setSystemTheme',
+  'workspace.toggleWallpaper',
+  'workspace.newSession',
+] as const satisfies readonly PlatformCommandId[]
+
+const FILE_BACKED_COMMAND_IDS = [
+  'workspace.gotoSymbol',
+  'workspace.compareWithSaved',
+  'workspace.openFileAtHead',
+  'workspace.revertFile',
+  'workspace.revealActiveFileInTree',
+] as const satisfies readonly PlatformCommandId[]
+
+const TAB_OPEN_COMMAND_IDS = [
+  'workspace.quickOpenPreviousEditor',
+  'workspace.focusFirstEditorGroup',
+  'workspace.focusSecondEditorGroup',
+  'workspace.focusThirdEditorGroup',
+  'workspace.focusEditor',
+  'workspace.closeCurrentTab',
+] as const satisfies readonly PlatformCommandId[]
+
+const CHAT_MODE_COMMAND_IDS = [
+  'workspace.newSession',
+  'workspace.nextSession',
+  'workspace.previousSession',
+  'workspace.toggleSessionRail',
+  ...SESSION_JUMP_POSITIONS.map(sessionJumpCommandId),
+] satisfies readonly PlatformCommandId[]
+
 function reservedBindings(platform: 'linux' | 'mac' | 'windows') {
   return defaultPlatformKeyBindings(platform).filter((binding) => binding.command === null)
+}
+
+function commandIdsWhere(predicate: (command: CommandEntry) => boolean) {
+  return platformCommands
+    .filter(predicate)
+    .map((command) => command.id)
+    .toSorted()
+}
+
+function expectedCommandIds(ids: readonly PlatformCommandId[]) {
+  return ids.toSorted()
+}
+
+function commandIdsWithUndoCategory(category: CommandUndoCategory) {
+  return commandIdsWhere((command) => command.undoCategory === category)
+}
+
+function commandIdsWithWhen(condition: CommandWhen) {
+  return commandIdsWhere((command) => command.when.includes(condition))
 }
 
 describe('command table', () => {
@@ -39,21 +190,64 @@ describe('command table', () => {
     expect(new Set(ids).size).toBe(ids.length)
   })
 
-  // The editor text menu is built entirely from ids the language-server plugin handles and the
-  // table never sees, so this fallback is what gates that whole menu.
-  it('gives an editor command with no table entry the same gate as a registered one', () => {
-    const unregistered = 'editor.someUnregisteredCommand' as PlatformCommandId
+  it('has complete execution metadata on all 140 rows', () => {
+    expect(platformCommands).toHaveLength(140)
 
-    expect(commandRequirement(unregistered)).toBe('editor')
-    expect(commandDisabledReason(unregistered, { activeFilePath: null, hasWorkspace: true })).toBe(
-      'No text editor is active.',
+    for (const command of platformCommands) {
+      expect(['async', 'sync']).toContain(command.execution)
+      expect(['editor', 'workspace']).toContain(command.target)
+      expect(['file-operation', 'text-edit', 'view-only', 'workspace-operation']).toContain(
+        command.undoCategory,
+      )
+      expect(Array.isArray(command.when)).toBe(true)
+    }
+  })
+
+  it('keeps the exact async settlement boundary', () => {
+    expect(commandIdsWhere((command) => command.execution === 'async')).toEqual(
+      expectedCommandIds(ASYNC_COMMAND_IDS),
     )
-    expect(
-      commandDisabledReason(unregistered, {
-        activeFilePath: conflictDiffDocumentId('conflict-1'),
-        hasWorkspace: true,
-      }),
-    ).toBeNull()
+  })
+
+  it('keeps non-default undo ownership on the intended commands', () => {
+    expect(commandIdsWithUndoCategory('text-edit')).toEqual(
+      expectedCommandIds(TEXT_EDIT_COMMAND_IDS),
+    )
+    expect(commandIdsWithUndoCategory('file-operation')).toEqual(
+      expectedCommandIds(FILE_OPERATION_COMMAND_IDS),
+    )
+    expect(commandIdsWithUndoCategory('workspace-operation')).toEqual(
+      expectedCommandIds(WORKSPACE_OPERATION_COMMAND_IDS),
+    )
+  })
+
+  it('derives editor writability only from text-edit ownership', () => {
+    for (const command of platformCommands) {
+      if (command.target !== 'editor') continue
+
+      const when =
+        command.undoCategory === 'text-edit' ? ['editorTarget', 'editorWritable'] : ['editorTarget']
+      expect({ id: command.id, when: command.when }).toEqual({ id: command.id, when })
+    }
+  })
+
+  it('keeps the narrow workspace guards on their intended commands', () => {
+    expect(commandIdsWithWhen('fileBackedTab')).toEqual(expectedCommandIds(FILE_BACKED_COMMAND_IDS))
+    expect(commandIdsWithWhen('saveableTab')).toEqual(['workspace.saveFile'])
+    expect(commandIdsWithWhen('tabOpen')).toEqual(expectedCommandIds(TAB_OPEN_COMMAND_IDS))
+    expect(commandIdsWithWhen('chatMode')).toEqual(expectedCommandIds(CHAT_MODE_COMMAND_IDS))
+  })
+
+  it('registers the four hidden Editor commands exposed by the text menu', () => {
+    for (const id of TEXT_MENU_EDITOR_COMMANDS) {
+      expect(platformCommand(id)).toMatchObject({
+        execution: 'sync',
+        hiddenInPalette: true,
+        target: 'editor',
+        undoCategory: 'view-only',
+        when: ['editorTarget'],
+      })
+    }
   })
 
   it('keeps the browser-hostile chords reserved', () => {
@@ -81,10 +275,12 @@ describe('command table', () => {
       ]),
     )
 
-    const items = commandPaletteItems(platformCommandSpecs, defaultPlatformKeyBindings('linux'))
-    expect(items.map((item) => item.id)).toEqual(
-      expect.arrayContaining(['workspace.findInFileTree', 'workspace.revealActiveFileInTree']),
-    )
-    expect(items.filter((item) => SESSION_COMMAND_PATTERN.test(item.id))).toEqual([])
+    expect(hiddenPaletteCommandIds.has('workspace.findInFileTree')).toBe(false)
+    expect(hiddenPaletteCommandIds.has('workspace.revealActiveFileInTree')).toBe(false)
+    expect(
+      platformCommands
+        .filter((command) => SESSION_COMMAND_PATTERN.test(command.id))
+        .every((command) => hiddenPaletteCommandIds.has(command.id)),
+    ).toBe(true)
   })
 })

@@ -1,19 +1,15 @@
-import { useFocus } from '@/features/workspace/providers/focus-state'
-import { useAppKeymap, type PlatformCommandDispatch } from '@/keymap/use-app-keymap'
-import type { PlatformKeyBinding } from '@/keymap/types'
+import { useCommand } from '@/keymap/hooks/use-command'
+import { useAppKeymap } from '@/keymap/use-app-keymap'
+import { useFocusSnapshot } from '@/lib/focus/hooks/use-snapshot'
 
-type AppKeymapControllerProps = {
-  bindings: readonly PlatformKeyBinding[]
-  dispatch: PlatformCommandDispatch
-}
-
-export function AppKeymapController({ bindings, dispatch }: AppKeymapControllerProps) {
-  const focusedPane = useFocus((state) => state.activeArea)
+export function AppKeymapController() {
+  const { bindings, bus } = useCommand()
+  const focus = useFocusSnapshot()
 
   useAppKeymap({
     bindings,
-    dispatch,
-    focusedPane,
+    bus,
+    focusedPane: focus.currentOwner?.area ?? 'global',
   })
 
   return null

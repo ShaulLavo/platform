@@ -6,7 +6,7 @@ import {
   type SettingsValues,
 } from '@workspace/contracts'
 import type { GitStatusEntry } from '@workspace/tree'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, expect, test } from 'vitest'
@@ -20,9 +20,9 @@ import {
   FileTreeActionsContext,
   type FileTreeActions,
 } from '@/features/workspace/providers/actions-context'
-import { FocusProvider } from '@/features/workspace/providers/focus-provider'
-import { TreeCommandsContext } from '@/features/workspace/providers/tree-commands-context'
-import { createTreeCommandStore } from '@/features/workspace/state/tree-command-store'
+import { useCommand } from '@/keymap/hooks/use-command'
+import type { PlatformCommandBus } from '@/keymap/providers/command-context'
+import { FocusService } from '@/lib/focus/state/service'
 import type { TreeEntry, TreeResult } from '@/lib/file-system-types'
 import { treeModel } from '@/lib/tree-model'
 import { AppProviders, createTestQueryClient, seedBootMirrorTheme } from '../../../../test/render'
@@ -39,22 +39,30 @@ const fileTreeActions: FileTreeActions = {
 }
 
 let root: Root | null = null
+let treeCommandBus: PlatformCommandBus | null = null
 
 afterEach(() => {
   flushSync(() => root?.unmount())
   root = null
+  treeCommandBus = null
   document.body.replaceChildren()
   delete document.documentElement.dataset.density
   localStorage.clear()
 })
 
-test('the live navigator retains search, consumes queued focus, reveals, and creates at root', async () => {
-  const commandStore = createTreeCommandStore()
-  commandStore.request('focus', ROOT_PATH)
-  mountTreePane(commandStore)
+test('the live navigator retains search, consumes requested focus, reveals, and creates at root', async () => {
+  const focusService = new FocusService()
+  const queryClient = createTestQueryClient()
+  mountTreePane(focusService, queryClient, { treeMounted: false })
+  await expect.poll(() => treeCommandBus).not.toBeNull()
+
+  const focusTicket = treeCommandBus!.dispatch('workspace.focusFileTree', invocation())
+  expect(focusTicket.claimed).toBe(true)
+  renderTreePane(focusService, queryClient)
 
   const shadowRoot = await fileTreeShadowRoot()
   await expect.poll(() => activeTreePath(shadowRoot)).toBe('src/')
+  await expect(focusTicket.completion).resolves.toEqual({ status: 'handled' })
 
   clickToolbarButton('Filter files')
   const searchInput = searchField(shadowRoot)
@@ -135,8 +143,31 @@ test('the live navigator retains search, consumes queued focus, reveals, and cre
   await expect.poll(() => renameField(shadowRoot)).toBeNull()
 })
 
+test('a failed command-bus tree reveal rejects without changing focus ownership', async () => {
+  const focusService = new FocusService()
+  mountTreePane(focusService, createTestQueryClient(), {
+    commandSnapshot: { activeFilePath: UNLOADED_FILE_PATH },
+  })
+
+  await fileTreeShadowRoot()
+  await expect.poll(() => treeCommandBus).not.toBeNull()
+  const focusTicket = treeCommandBus!.dispatch('workspace.focusFileTree', invocation())
+  await expect(focusTicket.completion).resolves.toEqual({ status: 'handled' })
+  const owner = focusService.getSnapshot().currentOwner
+  expect(owner?.id).toEqual({ kind: 'file-tree', rootPath: ROOT_PATH })
+
+  const revealTicket = treeCommandBus!.dispatch('workspace.revealActiveFileInTree', invocation())
+
+  expect(revealTicket.claimed).toBe(true)
+  await expect(revealTicket.completion).resolves.toEqual({
+    reason: 'handler-declined',
+    status: 'unhandled',
+  })
+  expect(focusService.getSnapshot().currentOwner?.token).toBe(owner?.token)
+})
+
 test('selecting an editor tab expands and animates its file into view without stealing focus', async () => {
-  mountTreePane(createTreeCommandStore())
+  mountTreePane()
 
   const shadowRoot = await fileTreeShadowRoot()
   const scroller = treeScroller(shadowRoot)
@@ -178,7 +209,7 @@ test('selecting an editor tab expands and animates its file into view without st
 test('live density changes preserve the compact and cozy tree geometry and typography', async () => {
   const queryClient = createTestQueryClient()
   setWorkbenchDensity(queryClient, 'compact')
-  mountTreePane(createTreeCommandStore(), queryClient)
+  mountTreePane(new FocusService(), queryClient)
 
   const shadowRoot = await fileTreeShadowRoot()
   const treeHost = document.querySelector<HTMLElement>('file-tree-container')
@@ -277,30 +308,67 @@ function TreePaneHarness() {
   )
 }
 
+function TreeCommandBusCapture() {
+  const { bus } = useCommand()
+
+  useEffect(() => {
+    treeCommandBus = bus
+    return () => {
+      if (treeCommandBus === bus) treeCommandBus = null
+    }
+  }, [bus])
+
+  return null
+}
+
 function mountTreePane(
-  commandStore: ReturnType<typeof createTreeCommandStore>,
+  focusService: FocusService = new FocusService(),
   queryClient: QueryClient = createTestQueryClient(),
+  options: {
+    readonly commandSnapshot?: { readonly activeFilePath: string | null }
+    readonly treeMounted?: boolean
+  } = {},
 ) {
   seedBootMirrorTheme('dark')
   const host = document.createElement('main')
   document.body.append(host)
   root = createRoot(host)
 
+  renderTreePane(focusService, queryClient, options)
+}
+
+function renderTreePane(
+  focusService: FocusService,
+  queryClient: QueryClient,
+  options: {
+    readonly commandSnapshot?: { readonly activeFilePath: string | null }
+    readonly treeMounted?: boolean
+  } = {},
+) {
   flushSync(() => {
     root?.render(
-      <AppProviders queryClient={queryClient}>
+      <AppProviders
+        command={{ rootPath: ROOT_PATH, snapshot: options.commandSnapshot }}
+        focusService={focusService}
+        queryClient={queryClient}
+      >
         <EditorStateProvider>
-          <FocusProvider>
-            <TreeCommandsContext value={commandStore}>
-              <FileTreeActionsContext value={fileTreeActions}>
+          <TreeCommandBusCapture />
+          <FileTreeActionsContext value={fileTreeActions}>
+            {options.treeMounted === false ? null : (
+              <div data-workbench=''>
                 <TreePaneHarness />
-              </FileTreeActionsContext>
-            </TreeCommandsContext>
-          </FocusProvider>
+              </div>
+            )}
+          </FileTreeActionsContext>
         </EditorStateProvider>
       </AppProviders>,
     )
   })
+}
+
+function invocation() {
+  return { source: { caller: 'tree-pane-browser', kind: 'programmatic' } } as const
 }
 
 function navigatorModel() {

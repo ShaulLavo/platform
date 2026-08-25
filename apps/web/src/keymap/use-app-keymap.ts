@@ -1,7 +1,8 @@
 import { useEffect, useMemo } from 'react'
 import { detectPlatform } from '@tanstack/react-hotkeys'
 
-import type { FocusArea } from '@/features/workspace/providers/focus-state'
+import type { PlatformCommandBus } from '@/keymap/providers/command-context'
+import type { FocusArea } from '@/lib/focus/state/service'
 
 import {
   activePlatformKeyBindings,
@@ -9,16 +10,11 @@ import {
   platformKeyBindingForKeyboardEvent,
 } from './active-bindings'
 import { isEditorPlatformCommandId } from './editor-keymap'
-import type { ParsedPlatformKeyBinding, PlatformCommandId, PlatformKeyBinding } from './types'
+import type { ParsedPlatformKeyBinding, PlatformKeyBinding } from './types'
 
 type PlatformName = ReturnType<typeof detectPlatform>
 
 const NON_TEXT_INPUT_TYPES = new Set(['button', 'reset', 'submit'])
-
-export type PlatformCommandDispatch = (
-  command: PlatformCommandId,
-  event?: KeyboardEvent,
-) => boolean | void
 
 /**
  * Runs `bindings` as the document keymap. The table arrives already resolved
@@ -28,11 +24,11 @@ export type PlatformCommandDispatch = (
  */
 export function useAppKeymap({
   bindings,
-  dispatch,
+  bus,
   focusedPane,
 }: {
   readonly bindings: readonly PlatformKeyBinding[]
-  readonly dispatch: PlatformCommandDispatch
+  readonly bus: PlatformCommandBus
   readonly focusedPane: FocusArea
 }) {
   const platform = detectPlatform()
@@ -43,11 +39,11 @@ export function useAppKeymap({
   )
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => runAppKeymap(activeBindings, dispatch, event)
+    const onKeyDown = (event: KeyboardEvent) => runAppKeymap(activeBindings, bus, event)
     document.addEventListener('keydown', onKeyDown)
 
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [activeBindings, dispatch])
+  }, [activeBindings, bus])
 }
 
 export function appKeyBindingsForPane(
@@ -71,7 +67,7 @@ function isAppKeyBinding(binding: PlatformKeyBinding) {
 
 function runAppKeymap(
   bindings: readonly ParsedPlatformKeyBinding[],
-  dispatch: PlatformCommandDispatch,
+  bus: PlatformCommandBus,
   event: KeyboardEvent,
 ) {
   const match = platformKeyBindingForKeyboardEvent(bindings, event)
@@ -79,24 +75,35 @@ function runAppKeymap(
   if (!match.firesWhileTyping && eventTargetsTextEntry(event)) return
 
   const { binding } = match
+  // Reserved chords protect browser-owned keys even though no command runs.
+  if (!binding.command) {
+    suppressEvent(binding, event)
+    return
+  }
+
+  const ticket = bus.dispatch(binding.command, {
+    event,
+    source: { kind: 'keybinding' },
+  })
+  if (!ticket.claimed) return
+
+  suppressEvent(binding, event)
+}
+
+function suppressEvent(binding: ParsedPlatformKeyBinding['binding'], event: KeyboardEvent) {
   if (binding.preventDefault !== false) event.preventDefault()
   if (binding.stopPropagation !== false) event.stopPropagation()
-  // A no-op binding exists to keep the browser off a key we do not implement
-  // yet, so it swallows the event and dispatches nothing.
-  if (!binding.command) return
-
-  dispatch(binding.command, event)
 }
 
 /**
- * `document.activeElement` is checked alongside the event target because a key
- * pressed while a scroll container has the event still belongs to whichever
- * field holds the caret.
+ * The composed path matters for shadow-DOM fields: document listeners see the
+ * host as both the active element and retargeted event target.
  */
 function eventTargetsTextEntry(event: KeyboardEvent) {
   if (isTextEntryElement(document.activeElement)) return true
+  if (isTextEntryElement(event.target)) return true
 
-  return isTextEntryElement(event.target)
+  return event.composedPath().some((target) => isTextEntryElement(target ?? null))
 }
 
 function isTextEntryElement(target: EventTarget | null) {

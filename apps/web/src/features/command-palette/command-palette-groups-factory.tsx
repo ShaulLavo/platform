@@ -24,7 +24,6 @@ import type {
 } from '@/features/chat-mode/utils/session-rail-model'
 
 type CommandPaletteGroupsFactoryProps = {
-  readonly activeFilePath: string | null
   readonly commandGroups: readonly (readonly [string, readonly CommandPaletteItem[]])[]
   readonly currentTheme: Theme
   readonly editorItems: readonly EditorPaletteItem[]
@@ -41,7 +40,6 @@ type CommandPaletteGroupsFactoryProps = {
 }
 
 export function CommandPaletteGroupsFactory({
-  activeFilePath,
   commandGroups,
   currentTheme,
   editorItems,
@@ -57,17 +55,11 @@ export function CommandPaletteGroupsFactory({
   symbolsPending,
 }: CommandPaletteGroupsFactoryProps) {
   if (mode === 'commands') {
-    return (
-      <CommandGroups
-        groups={commandGroups}
-        activeFilePath={activeFilePath}
-        hasWorkspace={hasWorkspace}
-      />
-    )
+    return <CommandGroups groups={commandGroups} />
   }
 
   if (mode === 'views') {
-    return <ViewGroups hasWorkspace={hasWorkspace} />
+    return <ViewGroups />
   }
 
   if (mode === 'colorMode') {

@@ -19,7 +19,9 @@ import { renderWithProviders } from '../../../test/render'
 test('renders app-owned window chrome as the only native drag region', () => {
   const store = createTitlebarStore()
 
-  renderWithProviders(<TitlebarTestProvider store={store} />)
+  renderWithProviders(<TitlebarTestProvider store={store} />, {
+    command: { runtime: { workspace: store } },
+  })
 
   const toolbar = screen.getByRole('banner', { name: 'Window toolbar' })
   expect(toolbar).toHaveClass(NATIVE_WINDOW_DRAG_CLASS)

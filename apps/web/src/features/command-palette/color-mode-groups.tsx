@@ -11,22 +11,27 @@ type ColorModeGroupsProps = {
 }
 
 export function ColorModeGroups({ currentTheme }: ColorModeGroupsProps) {
-  const { selectPlatformCommand } = useCommandPaletteActions()
+  const { disabledReasonForCommand, selectPlatformCommand } = useCommandPaletteActions()
 
   return (
     <CommandGroup heading='Color Mode'>
-      {colorModePaletteItems.map((item) => (
-        <CommandItem
-          key={item.value}
-          keywords={[item.title, item.description, item.command]}
-          value={item.value}
-          onSelect={() => selectPlatformCommand(item.command)}
-        >
-          <CommandIcon className='text-muted-foreground' />
-          <RowLabel label={item.title} description={item.description} />
-          {item.mode === currentTheme && <CommandShortcut>active</CommandShortcut>}
-        </CommandItem>
-      ))}
+      {colorModePaletteItems.map((item) => {
+        const disabledReason = disabledReasonForCommand(item.command)
+
+        return (
+          <CommandItem
+            disabled={Boolean(disabledReason)}
+            key={item.value}
+            keywords={[item.title, item.description, item.command]}
+            value={item.value}
+            onSelect={() => void selectPlatformCommand(item.command)}
+          >
+            <CommandIcon className='text-muted-foreground' />
+            <RowLabel label={item.title} description={disabledReason ?? item.description} />
+            {item.mode === currentTheme && <CommandShortcut>active</CommandShortcut>}
+          </CommandItem>
+        )
+      })}
     </CommandGroup>
   )
 }

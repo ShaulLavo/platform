@@ -1,16 +1,6 @@
 import type { Theme } from '@/features/settings/providers/theme-context'
 import type { TreeEntry } from '@/lib/file-system-types'
-import type { PlatformCommandDispatch } from '@/keymap/use-app-keymap'
-import type { PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
-
-export type CommandPaletteProps = {
-  readonly bindings: readonly PlatformKeyBinding[]
-  readonly dispatch: PlatformCommandDispatch
-  readonly onOpenChange: (open: boolean) => void
-  readonly onSearchChange: (search: string) => void
-  readonly open: boolean
-  readonly search: string
-}
+import type { PlatformCommandId } from '@/keymap/types'
 
 export type CommandPaletteSelection = {
   readonly command: PlatformCommandId

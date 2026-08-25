@@ -26,9 +26,11 @@ import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 export function DiffView({
   documentInfo,
   rootPath,
+  tabId,
 }: {
   documentInfo: DiffDocumentInfo
   rootPath: string
+  tabId?: string
 }) {
   const { diffs, failure, pending } = useDiffDocumentDiffs(documentInfo)
   const mode = useSettingValue('editor.diff.viewMode')
@@ -87,6 +89,7 @@ export function DiffView({
           languageServer={file ? languageServer : null}
           mode={mode}
           regions={regions}
+          tabId={tabId}
         />
       </div>
       {file ? (

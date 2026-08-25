@@ -3,7 +3,7 @@ import { Button } from '@workspace/ui/components/button'
 import { Input } from '@workspace/ui/components/input'
 import { OrbitLoader } from '@workspace/ui/components/orbit-loader'
 import { XIcon } from '@phosphor-icons/react'
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 
 import { DiagnosticsBanner } from '@/features/settings/components/diagnostics-banner'
 import { MalformedBanner } from '@/features/settings/components/malformed-banner'
@@ -27,6 +27,7 @@ import {
   selectSettingsCategory,
   useSettingsCategory,
 } from '@/features/settings/state/category-store'
+import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 
 /**
  * The settings tab: one document, two views.
@@ -52,11 +53,35 @@ export function SettingsPage({
   const hasWorkspace = useHasWorkspace()
   const [query, setQuery] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
-  // Above the early returns: hooks cannot sit behind a conditional exit.
+  const rootRef = useRef<HTMLDivElement | null>(null)
   const selectedCategory = useSettingsCategory()
   const view = useSettingsView()
   // The dialog mount has no tab to bind an editor to, so it only has the form.
   const showJson = view === 'json' && tabId !== ''
+  const { ref: focusTargetRef } = useFocusTarget<HTMLDivElement>(
+    {
+      area: 'settings',
+      id: { kind: 'settings-page', tabId },
+      onIntent: (intent) => {
+        if (intent !== 'focus') return false
+
+        const target = searchRef.current ?? rootRef.current
+        if (!target) return false
+
+        target.focus()
+        return true
+      },
+    },
+    tabId !== '' && !showJson,
+  )
+  // JSON has a nested Editor target. Its parent must not become an ambiguous peer.
+  const setRootRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      rootRef.current = element
+      focusTargetRef(element)
+    },
+    [focusTargetRef],
+  )
 
   if (document.isError) return <Status tone='destructive'>Settings could not be loaded.</Status>
   if (document.isPending || !projection) return <PageLoading showJson={showJson} />
@@ -75,7 +100,7 @@ export function SettingsPage({
     : [...categories]
 
   return (
-    <div className='flex h-full min-h-0 flex-col'>
+    <div className='flex h-full min-h-0 flex-col' ref={setRootRef} tabIndex={-1}>
       <header className='border-border compact:gap-1.5 compact:px-3 compact:pb-3 flex shrink-0 flex-col gap-2 border-b px-4 pt-2 pb-4'>
         {/* The tab's own action strip, above the scope tabs: these act on the tab,
             the row below picks which file the tab is showing. */}

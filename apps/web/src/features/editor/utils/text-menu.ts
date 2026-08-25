@@ -21,10 +21,10 @@ import { commandItem, section, type Menu } from '@/features/menus/utils/model'
 /**
  * The menu for a right-click inside editor text.
  *
- * Every item is a registered editor command, so availability comes from the
- * same rule the command palette uses: `editor.*` commands are disabled unless a
- * text editor is active, which drops the whole menu to disabled on diffs,
- * search-result buffers and other surfaces that hold no dispatchable editor.
+ * Every item is a registered Platform command, so availability comes from the
+ * same target capabilities and command conditions the command palette uses.
+ * Navigation remains available on read-only diffs and search results, while
+ * text-edit commands require a writable editor.
  *
  * These commands act on the caret and selection, not on the point that was
  * right-clicked — the editor ignores non-primary mouse buttons when it maps a
@@ -40,10 +40,6 @@ export function editorTextMenu(): Menu {
         icon: ArrowSquareOutIcon,
         label: 'Go to Definition',
       }),
-      // Not in the platform command registry, so the label is spelled out here.
-      // The editor's language-server plugin registers the handler, and the
-      // `editor.` prefix is what drives the disabled rule, not registry
-      // membership — see `commandDisabledReason`.
       commandItem('editor.editor.action.goToTypeDefinition', {
         icon: BracketsCurlyIcon,
         label: 'Go to Type Definition',

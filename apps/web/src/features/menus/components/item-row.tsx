@@ -1,4 +1,4 @@
-import type { ResolvedMenuItem } from '@/features/menus/utils/resolve'
+import type { ResolvedMenuInvocation, ResolvedMenuItem } from '@/features/menus/utils/resolve'
 import {
   ContextMenuCheckboxItem,
   ContextMenuItem,
@@ -17,7 +17,11 @@ export function MenuItemRow({
   onInvoke,
 }: {
   readonly item: ResolvedMenuItem
-  readonly onInvoke: (item: ResolvedMenuItem, value?: string) => void
+  readonly onInvoke: (
+    item: ResolvedMenuItem,
+    value?: string,
+    invocation?: ResolvedMenuInvocation,
+  ) => void
 }) {
   if (item.kind === 'submenu') {
     return (
@@ -40,9 +44,10 @@ export function MenuItemRow({
       <ContextMenuCheckboxItem
         checked={item.checked}
         disabled={item.disabled}
-        onCheckedChange={(checked) => {
-          onInvoke(item, String(checked))
+        onClickCapture={() => {
+          const checked = !item.checked
           item.toggle(checked)
+          onInvoke(item, String(checked))
         }}
       >
         {item.icon ? <item.icon /> : null}
@@ -53,15 +58,17 @@ export function MenuItemRow({
 
   if (item.kind === 'radio-group') {
     return (
-      <ContextMenuRadioGroup
-        onValueChange={(value) => {
-          onInvoke(item, value)
-          item.select(value)
-        }}
-        value={item.value}
-      >
+      <ContextMenuRadioGroup value={item.value}>
         {item.options.map((option) => (
-          <ContextMenuRadioItem disabled={option.disabled} key={option.value} value={option.value}>
+          <ContextMenuRadioItem
+            disabled={option.disabled}
+            key={option.value}
+            value={option.value}
+            onClickCapture={() => {
+              const invocation = item.select(option.value)
+              onInvoke(item, option.value, invocation)
+            }}
+          >
             {option.icon ? <option.icon /> : null}
             <span>{option.label}</span>
           </ContextMenuRadioItem>
@@ -73,9 +80,9 @@ export function MenuItemRow({
   return (
     <ContextMenuItem
       disabled={item.disabled}
-      onClick={() => {
-        onInvoke(item)
-        item.run()
+      onClickCapture={() => {
+        const invocation = item.run()
+        onInvoke(item, undefined, invocation)
       }}
       variant={item.destructive ? 'destructive' : 'default'}
     >

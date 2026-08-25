@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { UnsavedChangesDialog } from '@/features/editor/components/unsaved-changes-dialog'
@@ -9,28 +9,66 @@ import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
 import {
+  activeEditorTabForWorkbenchPanels,
   editorPathCountsForWorkbenchPanels,
   editorTabRecordsForWorkbenchPanels,
   type WorkbenchPanels,
 } from '@/features/workbench/utils/panels'
+import { showChatModeToolTab } from '@/features/chat-mode/utils/panels'
+import { parseCompareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'
+import { parseDiffDocumentId } from '@/features/git/utils/diff-document'
+import { parseSearchBufferDocumentId } from '@/features/search/utils/buffer-document'
 import { errorMessage } from '@/lib/file-server'
+import { useFocusService } from '@/lib/focus/hooks/use-service'
+import {
+  focusTargetById,
+  registeredFocusTarget,
+  type FocusDestination,
+  type FocusService,
+  type FocusTargetToken,
+} from '@/lib/focus/state/service'
+import { matchesActiveSurface } from '@/lib/focus/utils/active-surface'
 
-export type RequestCloseTab = (tabId: string) => boolean
-export type RequestCloseTabs = (tabIds: readonly string[]) => boolean
+declare const unsavedDialogTargetBrand: unique symbol
+
+export type UnsavedDialogTarget = {
+  readonly [unsavedDialogTargetBrand]: true
+}
+
+export type CloseRequestResult =
+  | { readonly status: 'closed'; readonly tabIds: readonly string[] }
+  | {
+      readonly status: 'deferred'
+      readonly dialogTarget: UnsavedDialogTarget
+      readonly tabIds: readonly string[]
+    }
+  | { readonly status: 'rejected'; readonly reason: 'busy' | 'not-found' }
+
+export type RequestCloseTab = (tabId: string) => CloseRequestResult
+export type RequestCloseTabs = (tabIds: readonly string[]) => CloseRequestResult
 
 type PendingClose = {
+  dialogTarget: UnsavedDialogTarget
   path: string
   tabIds: readonly string[]
 }
 
+type PendingCloseFocus =
+  | { readonly cancelled: boolean; readonly kind: 'finish' }
+  | { readonly dialogTarget: UnsavedDialogTarget; readonly kind: 'dialog' }
+
 const EMPTY_PENDING_CLOSES: readonly PendingClose[] = []
 
 export function useDirtyTabCloseRequest() {
+  const focus = useFocusService()
   const documentStore = useEditorDocumentStoreApi()
   const workspaceStore = useEditorWorkspaceStoreApi()
   const queryClient = useQueryClient()
   const { closeTab, discardAndCloseTab } = useEditorCommands()
-  const [pendingCloses, setPendingCloses] = useState<readonly PendingClose[]>([])
+  const closeOriginRef = useRef<FocusTargetToken | null>(null)
+  const pendingFocusRef = useRef<PendingCloseFocus | null>(null)
+  const pendingClosesRef = useRef<readonly PendingClose[]>(EMPTY_PENDING_CLOSES)
+  const [pendingCloses, setPendingCloses] = useState(EMPTY_PENDING_CLOSES)
   const pendingClose = pendingCloses[0] ?? null
   const pendingPath = pendingClose?.path ?? null
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -38,26 +76,77 @@ export function useDirtyTabCloseRequest() {
   // Savable, not file-backed: closing a dirty settings.json tab has to offer
   // Save, and that save goes to the settings route rather than the fs one.
   const canSavePendingPath = savableDocumentPath(pendingPath) !== null
+  const publishPendingCloses = useCallback((next: readonly PendingClose[]) => {
+    pendingClosesRef.current = next
+    setPendingCloses(next)
+  }, [])
+
+  const finishPendingFocus = useCallback(
+    (cancelled: boolean) => {
+      const origin = closeOriginRef.current
+      closeOriginRef.current = null
+      if (cancelled && restoreRegisteredOrigin(focus, origin)) return
+
+      const destination = activeCloseSuccessorDestination(workspaceStore)
+      if (destination) {
+        focus.request(destination)
+        return
+      }
+
+      focus.request(focusTargetById({ kind: 'app-shell' }))
+    },
+    [focus, workspaceStore],
+  )
 
   const clearPendingClose = useCallback(() => {
-    setPendingCloses(emptyPendingCloses)
+    pendingFocusRef.current = { cancelled: true, kind: 'finish' }
+    publishPendingCloses(EMPTY_PENDING_CLOSES)
     setSaveError(null)
-  }, [])
+  }, [publishPendingCloses])
 
   const advancePendingClose = useCallback(() => {
-    setPendingCloses((closes) =>
-      closes.length <= 1 ? emptyPendingCloses(closes) : closes.slice(1),
-    )
+    const current = pendingClosesRef.current
+    const remaining = current.length <= 1 ? EMPTY_PENDING_CLOSES : current.slice(1)
+    const next = remaining[0]
+    pendingFocusRef.current = next
+      ? { dialogTarget: next.dialogTarget, kind: 'dialog' }
+      : { cancelled: false, kind: 'finish' }
+    publishPendingCloses(remaining)
     setSaveError(null)
-  }, [])
+  }, [publishPendingCloses])
+
+  useEffect(() => {
+    const pendingFocus = pendingFocusRef.current
+    if (!pendingFocus) return
+    if (pendingFocus.kind === 'dialog') {
+      if (pendingClose?.dialogTarget !== pendingFocus.dialogTarget) return
+
+      pendingFocusRef.current = null
+      focus.request(
+        focusTargetById({
+          dialogTarget: pendingFocus.dialogTarget,
+          kind: 'unsaved-dialog',
+        }),
+      )
+      return
+    }
+    if (pendingClose) return
+
+    pendingFocusRef.current = null
+    finishPendingFocus(pendingFocus.cancelled)
+  }, [finishPendingFocus, focus, pendingClose])
 
   const requestCloseTabs = useCallback<RequestCloseTabs>(
     (tabIds) => {
-      if (pendingCloses.length > 0) return false
+      if (pendingClosesRef.current.length > 0) {
+        return { status: 'rejected', reason: 'busy' }
+      }
+
+      const origin = captureDirtyCloseOrigin(focus)
 
       const workspace = workspaceStore.getState()
       const openTabs = openTabCloseTargets(tabIds, workspace.workbenchPanels)
-      if (openTabs.length === 0) return false
+      if (openTabs.length === 0) return { status: 'rejected', reason: 'not-found' }
       const state = documentStore.getState()
       const pending: PendingClose[] = []
       const closingPathCounts = tabClosePathCounts(openTabs)
@@ -79,12 +168,25 @@ export function useDirtyTabCloseRequest() {
         closeTab(tab.id)
       }
 
-      setPendingCloses((current) => pendingClosesForRequest(current, pending))
+      publishPendingCloses(pendingClosesForRequest(pendingClosesRef.current, pending))
       setSaveError(null)
 
-      return pending.length === 0
+      const requestedTabIds = openTabs.map((tab) => tab.id)
+      const firstPending = pending[0]
+      if (!firstPending) {
+        closeOriginRef.current = null
+        return { status: 'closed', tabIds: requestedTabIds }
+      }
+
+      closeOriginRef.current = origin
+
+      return {
+        status: 'deferred',
+        dialogTarget: firstPending.dialogTarget,
+        tabIds: requestedTabIds,
+      }
     },
-    [closeTab, documentStore, pendingCloses.length, workspaceStore],
+    [closeTab, documentStore, focus, publishPendingCloses, workspaceStore],
   )
 
   const requestCloseTab = useCallback<RequestCloseTab>(
@@ -153,6 +255,7 @@ export function useDirtyTabCloseRequest() {
         open={pendingPath !== null}
         path={pendingPath}
         saving={saving}
+        target={pendingClose?.dialogTarget ?? null}
         onCancel={handleCancel}
         onDiscard={handleDiscard}
         onOpenChange={handleOpenChange}
@@ -161,6 +264,55 @@ export function useDirtyTabCloseRequest() {
     ),
     requestCloseTab,
     requestCloseTabs,
+  }
+}
+
+function captureDirtyCloseOrigin(focus: FocusService) {
+  const current = focus.getSnapshot().currentOwner
+  if (current && !current.capabilities.overlay && focus.isRegistered(current.token)) {
+    return current.token
+  }
+
+  const last = focus.getSnapshot().lastCommandTarget
+  return last && focus.isRegistered(last.token) ? last.token : null
+}
+
+function restoreRegisteredOrigin(focus: FocusService, origin: FocusTargetToken | null) {
+  if (!origin || !focus.isRegistered(origin)) return false
+
+  focus.request(registeredFocusTarget(origin))
+  return true
+}
+
+function activeCloseSuccessorDestination(
+  workspaceStore: ReturnType<typeof useEditorWorkspaceStoreApi>,
+): FocusDestination | null {
+  let workspace = workspaceStore.getState()
+  if (workspace.uiMode === 'chat') {
+    workspace.setChatModePanels(showChatModeToolTab(workspace.chatModePanels, 'editor'))
+    workspace = workspaceStore.getState()
+  }
+
+  const activeTab = activeEditorTabForWorkbenchPanels(workspace.workbenchPanels)
+  if (!activeTab) return null
+
+  const layout = workspace.uiMode
+  const diffPath =
+    parseCompareSavedDocumentId(activeTab.path) ?? parseDiffDocumentId(activeTab.path)?.path ?? null
+  const searchRoot = parseSearchBufferDocumentId(activeTab.path)?.rootPath ?? null
+  const identity = { diffPath, layout, searchRoot, tabId: activeTab.id } as const
+  return {
+    isValid: () => {
+      const current = workspaceStore.getState()
+      const currentTab = activeEditorTabForWorkbenchPanels(current.workbenchPanels)
+      return (
+        current.uiMode === layout &&
+        currentTab?.id === activeTab.id &&
+        currentTab.path === activeTab.path
+      )
+    },
+    kind: 'match',
+    matches: (target) => matchesActiveSurface(target, identity),
   }
 }
 
@@ -253,14 +405,19 @@ function tabClosePathCounts(tabs: readonly { path: string }[]) {
 function appendPendingClose(pending: PendingClose[], path: string, tabId: string) {
   const current = pending.find((close) => close.path === path)
   if (!current) {
-    pending.push({ path, tabIds: [tabId] })
+    pending.push({ dialogTarget: createUnsavedDialogTarget(), path, tabIds: [tabId] })
     return
   }
 
   pending.splice(pending.indexOf(current), 1, {
+    dialogTarget: current.dialogTarget,
     path,
     tabIds: current.tabIds.concat(tabId),
   })
+}
+
+function createUnsavedDialogTarget(): UnsavedDialogTarget {
+  return {} as UnsavedDialogTarget
 }
 
 function pendingCloseIsOpen(

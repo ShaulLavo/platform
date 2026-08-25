@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 
-import { useMenuCommand } from '@/features/menus/providers/command-context'
+import { useCommand } from '@/keymap/hooks/use-command'
 import { log } from '@/lib/client-logging'
 
 import type { TerminalContextSelection } from '@/features/chat/utils/terminal-context'
@@ -16,17 +16,28 @@ import { useComposerInboxStore } from '../state/composer-inbox-store'
  * capture surface growing a handle of its own.
  */
 export function useAttachToComposer() {
-  const runCommand = useMenuCommand((state) => state.runCommand)
+  const { bus } = useCommand()
 
   const reveal = useCallback(
     (source: string, detail: Record<string, unknown>) => {
       // After queueing: in the workbench this is what mounts the composer that
       // drains the inbox.
-      const revealed = runCommand('workspace.revealChat')
+      const ticket = bus.dispatch('workspace.revealChat', {
+        source: { caller: 'chat.attach-to-composer', kind: 'programmatic' },
+      })
 
-      log.info({ action: 'chat.composer_attach', area: 'chat', revealed, source, ...detail })
+      void ticket.completion.then((outcome) => {
+        log.info({
+          action: 'chat.composer_attach',
+          area: 'chat',
+          claimed: ticket.claimed,
+          revealOutcome: outcome.status,
+          source,
+          ...detail,
+        })
+      })
     },
-    [runCommand],
+    [bus],
   )
 
   const attachTerminalContext = useCallback(

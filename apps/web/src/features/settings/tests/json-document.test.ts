@@ -8,7 +8,6 @@ import {
 import { documentLabel } from '@/features/workspace/utils/document-label'
 import { settingsDocumentId } from '@/features/settings/utils/document'
 import {
-  editorBackedDocumentPath,
   fileBackedDocumentPath,
   savableDocumentPath,
 } from '@/features/editor/utils/file-backed-document'
@@ -43,11 +42,10 @@ test('a settings buffer names its scope', () => {
  * The three questions the command gates ask, and the one tab that answers them
  * differently from every other surface: it is savable without being a file.
  */
-test('a raw settings buffer is savable and editable but is not a file', () => {
+test('a raw settings buffer is savable but is not a file', () => {
   const id = settingsJsonDocumentId('user')
 
   expect(savableDocumentPath(id)).toBe(id)
-  expect(editorBackedDocumentPath(id)).toBe(id)
   // Load-bearing: `useSelectedFile` and the prefetch both gate on this, and a
   // non-null answer here sends them to read a file named `settings-json:user`.
   expect(fileBackedDocumentPath(id)).toBe(null)

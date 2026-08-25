@@ -9,9 +9,10 @@
 - **Effort:** L
 - **Risk:** Medium
 - **Category:** Feature
-- **Depends on:** nothing. The Editor repo changes by zero lines (§6).
+- **Depends on:** the landed typed `CommandBus` and deepest-target `FocusService`. The Editor repo
+  changes by zero lines (§6).
 - **Blocks:** the editor-native VS Code keymap (§6, "Companion plan"), and three `cmd+k` defaults already listed as blocked in `docs/vscode-keymap-development.md`
-- **Planned against:** platform `546a4c84`, Editor `899b3f3`, `@tanstack/react-hotkeys@0.10.0`, `@tanstack/hotkeys@0.8.0`, 2026-08-22
+- **Planned against:** platform `546a4c84`, Editor `899b3f3`, `@tanstack/react-hotkeys@0.10.0`, `@tanstack/hotkeys@0.8.0`, 2026-08-22; command/focus boundary reconciled 2026-08-25
 
 ## Problem statement
 
@@ -92,9 +93,11 @@ Where they disagree, this plan's choice and reason are in the semantics table (r
 | Per-stroke keyboard-event matching                    | `@tanstack/react-hotkeys` `matchesKeyboardEvent`                                   |
 | Stored value shape and validation                     | `packages/contracts/src/settings.ts`                                               |
 | Glyph rendering of one or many strokes                | `apps/web/src/keymap/utils/format-keys.ts` (NEW, moved)                            |
-| Editor command dispatch from a chord                  | existing `dispatchEditorCommand`, plus a new capability field                      |
+| Editor command dispatch from a chord                  | landed `CommandBus`, resolving one registered FocusService target                  |
 
-This plan must not add a second keymap owner, a keybinding store, a context-expression evaluator, or a `when`-clause model. It must not change the listener phase for the unarmed path.
+This plan must not add a second keymap owner, keybinding store, command registry, target registry,
+or context-expression evaluator. Extend the current closed `CommandWhen` union only when a chord
+needs a new fact. Do not change the listener phase for the unarmed path.
 
 ## Current architecture
 
@@ -102,17 +105,20 @@ This plan must not add a second keymap owner, a keybinding store, a context-expr
 
 ```
 platformCommands (table.ts)
-  → defaultPlatformKeyBindings(platform)            default-bindings.ts:25-32
-  → AppRuntimeContent
-      ├─ AppCommandSurface (bindings prop)          app-command-surface.tsx:21
-      └─ editorKeymapLayers (resolves overrides AGAIN)  app-runtime-content.tsx:31-40
+  → defaultPlatformKeyBindings(platform)                   default-bindings.ts
+  → CommandProvider resolves user overrides once
+      ├─ AppKeymapController → useAppKeymap → CommandBus   synchronous claim
+      ├─ palette / menus → useCommand → CommandBus         inspect + dispatch
+      └─ editorKeymapLayersFromPlatform                    current layer bridge
 ```
 
 On mac `hotkey === keys` for all 124 bindings; on linux 11 differ (`hotkey: 'Control+Y'` vs `keys: 'Mod+Y'`). Both render identically through `hotkeyTokenLabel`, so `commandShortcut`'s `typeof binding.hotkey === 'string'` branch (`shortcut.ts:14`) is output-equivalent to reading `keys`. Deleting `hotkey` is display-safe — but the before/after table dump in Phase 1 must be run **per platform**, because the two representations legitimately diverge off mac.
 
 ### Override resolution — and the early return that decides the design
 
-`app-command-surface.tsx:52-66` is the documented single reader, feeding the keymap, palette and menus store. Inside:
+`CommandProvider` is the single runtime reader: it passes one resolved binding table to the app
+keymap, palette, menus, and Editor layer bridge. The underlying `keyBindingResolution` retains this
+load-bearing early return:
 
 ```ts
 const entries = appliedOverrides(overrides)
@@ -319,18 +325,13 @@ export function chordTransition(
 ): ChordAction
 ```
 
-```ts
-// apps/web/src/features/workspace/providers/focus-state.ts  (CHANGED)
-export type EditorSurfaceCapability = 'editable' | 'readonly'
-
-export type ActiveEditorSurface = {
-  readonly capability: EditorSurfaceCapability
-  readonly dispatch: (command: EditorCommandId, context?: EditorCommandContext) => boolean
-}
-// Replaces `activeEditorCommandDispatch` (:20) and `setActiveEditorCommandDispatch` (:29, :73).
-// The capability restores the gate `readonlyEditorKeymapLayers` applies to the layer path,
-// which a chord routed through the app listener would otherwise bypass.
-```
+The landed command/focus boundary already carries the editor capability. Each editor surface
+registers a `FocusTargetSnapshot` with an identity-safe token and optional
+`capabilities.editor = { dispatch, writable }`. `CommandBus.inspect()` captures a fresh snapshot,
+resolves the deepest eligible target, and applies `when`; `dispatch()` returns a synchronous
+`ticket.claimed` before async settlement. A chord completion must call that same bus with the
+keyboard event and suppress the event only when the ticket is claimed. It must not add mutable
+active-surface state or a fallback dispatcher.
 
 ### Match algorithm
 
@@ -490,11 +491,11 @@ Nothing is logged on arm — one enriched event per operation, per the evlog con
 | 12  | `event.repeat`                                   | Unarmed: ignored. Armed: swallowed, chord stays armed, timer **not** reset.                                                                                                                                                                          | Nothing in `apps/web/src` reads `event.repeat` today. Without this, holding a prefix a fraction too long cancels the chord.                                                                                                                                                                                                                                                                                                                                                                                                              |
 | 13  | IME composition                                  | Both listeners return immediately on `event.isComposing \|\| event.keyCode === 229`.                                                                                                                                                                 | An IME owns the keystroke. **`keyCode === 229` is not optional:** the editor's own guard (`inputSelectionController.ts:2661-2665`) gates on `isComposing \|\| compositionActive` and _not_ on 229, so the first keydown of a composition escapes it — and this repo's own chat composer already documents the fix at `chat-input-submit-plugin.tsx:98-103` ("the pre-`isComposing` signal every IME still sends"). VS Code checks both. A deliberate change for single hotkeys too, and a bug fix: the keymap has zero IME guards today. |
 | 14  | Typing gate                                      | First stroke only, unchanged from `hotkeyFiresWhileTyping`. Once armed, every subsequent stroke fires regardless of caret position.                                                                                                                  | Rule 3(a) makes stroke 1 always Ctrl/Meta, so `firesWhileTyping` is always true for a prefix — no editor bypass needed.                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| 15  | Pane pinning                                     | The trie is memoised on `[bindings, focusedPane, platform]`; listener A's cleanup calls `disarm('superseded')`.                                                                                                                                      | Roughly ten call sites write `setFocusArea`. Completing against a different pane's table would run a command the user could not have predicted.                                                                                                                                                                                                                                                                                                                                                                                          |
+| 15  | Pane pinning                                     | The trie is memoised on `[bindings, focusedPane, platform]`; listener A's cleanup calls `disarm('superseded')`.                                                                                                                                      | `focusedPane` comes from `FocusService.currentOwner.area`. Completing against a different registered owner would run a command the user could not have predicted.                                                                                                                                                                                                                                                                                                                                                                        |
 | 16  | Timeout                                          | 5000 ms, real `setTimeout`, restarted at every stroke. Armed only when the pending node has at least one reachable binding. Not a settings key.                                                                                                      | VS Code's value (`abstractKeybindingService.ts:185`), reached there by a 500 ms poll; a single timer is strictly better. The conditional arming is Zed's idea (`window.rs:5336-5338`) and is worth taking. Not a key because CLAUDE.md forbids inert knobs.                                                                                                                                                                                                                                                                              |
 | 17  | Other cancellations                              | `window` blur, `document` `visibilitychange` to hidden, `document` `pointerdown` capture.                                                                                                                                                            | VS Code checks document focus on every poll; an explicit blur listener is the same guarantee without polling. Pointerdown keeps an armed chord from stealing a key after the user clicks into a dialog or the recorder.                                                                                                                                                                                                                                                                                                                  |
 | 18  | Chords in the terminal                           | **Intended: yes.** Not reachable until the ghostty host is replaced. See D2 — this plan states the seam; the knob ships with the host swap.                                                                                                          | The old `ghostty-web` swallows every Ctrl/Meta key before document bubble, so the app keymap is already dead there today. Not a regression, and not a designed limitation either.                                                                                                                                                                                                                                                                                                                                                        |
-| 19  | Chord-bound `editor.*` commands                  | Allowed. Never handed to `@singapor/core` (§6); dispatched through `dispatchEditorCommand`, gated by the active surface's `capability`. Dead on the diff pane.                                                                                       | `usePlatformCommandDispatch` already routes them (`commands.ts:76-77`). Dead-on-diff is consistent: `DIFF_KEYMAP` gives the diff **zero** bindings on purpose.                                                                                                                                                                                                                                                                                                                                                                           |
+| 19  | Chord-bound `editor.*` commands                  | Allowed. Never handed to the Editor layer (§6); dispatched through the sole `CommandBus`, gated by the resolved target's `editorWritable` condition and capability. Read-only targets decline editing commands.                                      | This preserves one target/enablement/claim path for keybindings, palette, and menus. A chord must not infer an editor from mount order or keep a private last-focused pointer.                                                                                                                                                                                                                                                                                                                                                           |
 | 20  | Depth cap                                        | 2 strokes, enforced in the contract regex, `isBindableChord`, and the recorder. The trie itself is N-capable.                                                                                                                                        | VS Code caps its own recorder at two. A deeper prefix tree is a keymap no settings column can render. Product policy, not architecture.                                                                                                                                                                                                                                                                                                                                                                                                  |
 | 21  | Grammar validation                               | Per stroke, never on the whole string.                                                                                                                                                                                                               | Measured: the whole-string verdict is unusable in both directions. The existing warning-is-fatal rule is kept.                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | 22  | Exactly one dispatch per completed chord         | Listener B clears `pendingRef` and calls `stopImmediatePropagation` before dispatching; listener A returns early whenever `pendingRef.current` is set.                                                                                               | Guards against both listeners firing on the completing event.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -546,7 +547,11 @@ export const keybindingOverridesSchema = v.record(
 
 ### What makes it possible
 
-Platform already authors **100%** of the editor's bindings. All three mounts pass `defaultBindings: false` (`editor.tsx:123`, `diff-options.ts:33`, `result-file-editor.tsx:112`), and `resolveEditorKeymap` drops core layers entirely when it is false (`Editor/packages/editor/src/editor/keymap.ts:132-135`). The 111 `editor.*` bindings come from `apps/web/src/keymap/editor-commands.ts`. Dispatch already exists: `commands.ts:76-77` routes any `editor.*` id through `dispatchEditorCommand`.
+Platform already authors **100%** of the editor's bindings. All three mounts pass
+`defaultBindings: false`, and `resolveEditorKeymap` drops core layers entirely when it is false.
+The `editor.*` rows come from `apps/web/src/keymap/editor-commands.ts`. The sole runtime dispatch is
+already in place: `CommandBus` resolves a FocusService editor target and calls its registered
+capability.
 
 ### What platform changes
 
@@ -575,7 +580,7 @@ export function editorKeyBindingFromPlatform(binding: PlatformKeyBinding): Edito
 ```ts
 // `editor.*` single strokes are handed to @singapor/core as a keymap layer; its bindings are
 // one stroke by type. A chord-bound editor command stays here and reaches the editor through
-// `dispatchEditorCommand` instead.
+// the sole CommandBus instead.
 function isAppKeyBinding(binding: PlatformKeyBinding) {
   if (binding.chord.length > 1) return true
 
@@ -583,7 +588,11 @@ function isAppKeyBinding(binding: PlatformKeyBinding) {
 }
 ```
 
-**3. The focus store's registration grows a capability.** `readonlyEditorKeymapLayers` filters the _layer_ path for the read-only search surface. A chord routed through the app listener bypasses that filter, and pane scoping cannot distinguish the search surface from a real editor — `result-editor-surface.tsx:176,178` sets `setFocusArea('editor')` too. So `activeEditorCommandDispatch` becomes `activeEditorSurface`, registered at `editor.tsx:201-203` (`'editable'`) and `result-file-editor.tsx:153-154` (`'readonly'`), cleared at `result-editor-surface.tsx:151`. A new `editorCommandAllowedForCapability` in `editor-keymap.ts` relocates `readonlyEditorKeymapLayers`' rule from layer-build time to dispatch time.
+**3. Reuse the registered editor capability.** `readonlyEditorKeymapLayers` still filters the
+single-stroke layer path. The chord path bypasses that layer, so it must dispatch through
+`CommandBus`; the bus resolves the exact FocusService target and applies the existing
+`editorWritable` condition before calling `capabilities.editor.dispatch`. Add no second capability
+model and no feature-local focus state.
 
 ### The negative instruction that must survive into the code
 
@@ -591,7 +600,10 @@ function isAppKeyBinding(binding: PlatformKeyBinding) {
 
 ### Explicitly not done here
 
-`editorKeymapLayersFromPlatform` stays. The second override resolution at `app-runtime-content.tsx:31-40` stays. The `editorKeymapLayers` prop — verified to touch **21 files across 6 features** — stays. Collapsing matching onto one owner is the correct end state and answers `docs/vscode-keymap-development.md:126`, but it bundles a repo-wide refactor with unresolved chord correctness. See D7.
+`editorKeymapLayersFromPlatform` stays for single-stroke Editor-native handling. The resolved
+binding table already has one owner in `CommandProvider`; do not recreate the deleted prop-driven
+runtime or resolve overrides privately. The companion takeover plan removes the remaining Editor
+layer bridge after chord correctness is proven. See D7.
 
 ### Companion plan — `plans/057-editor-native-vscode-keymap.md`
 
@@ -615,12 +627,8 @@ Fixing that means `EditorKeyBinding` grows a sequence form so standalone embedde
 | `apps/web/src/keymap/default-bindings.ts`                                   | Emit `chord` + joined `keys`; `ReservedChord` → `ReservedHotkey`                                                                                                                                                                                                                                                                                                | "Chord" now means a sequence; `:18` and `:96` currently use it for one keystroke.                                                                     |
 | `apps/web/src/keymap/workspace-commands.ts`                                 | 18 literals; `workspace.showSettings` gains a **second** default `{ chord: ['Mod+K','Mod+S'], vscodeCommandId: 'workbench.action.openGlobalKeybindings' }` **after** `Mod+,`                                                                                                                                                                                    | Ships the mechanism with a real user. Order matters: `commandShortcut`'s `.find` returns the first, so the printed hint stays `⌘,`.                   |
 | `apps/web/src/keymap/editor-commands.ts`                                    | 112 literals (mechanical)                                                                                                                                                                                                                                                                                                                                       | Own commit; verify with a before/after table dump.                                                                                                    |
-| `apps/web/src/keymap/editor-keymap.ts`                                      | Multi-stroke guard + `chord[0]`; new `editorCommandAllowedForCapability`                                                                                                                                                                                                                                                                                        | Keeps a chord string out of `RegisterableHotkey`; restores the read-only gate.                                                                        |
+| `apps/web/src/keymap/editor-keymap.ts`                                      | Multi-stroke guard + `chord[0]`                                                                                                                                                                                                                                                                                                                                 | Keeps a chord string out of `RegisterableHotkey`; the bus already owns the read-only gate.                                                            |
 | `apps/web/src/app-keymap-controller.tsx`                                    | Renders `<PendingChordIndicator>`                                                                                                                                                                                                                                                                                                                               | Already mounted app-wide. No new mount point, no store, no prop drilling.                                                                             |
-| `apps/web/src/features/workspace/providers/focus-state.ts`                  | `activeEditorSurface: ActiveEditorSurface \| null`                                                                                                                                                                                                                                                                                                              | Carries the capability the chord dispatch path needs.                                                                                                 |
-| `apps/web/src/features/editor/components/editor.tsx`                        | `:201-203` registers `{ capability: 'editable', dispatch }`                                                                                                                                                                                                                                                                                                     | Call site 1 of 3.                                                                                                                                     |
-| `apps/web/src/features/search/components/result-file-editor.tsx`            | `:153-154` registers `{ capability: 'readonly', dispatch }`                                                                                                                                                                                                                                                                                                     | Call site 2 of 3.                                                                                                                                     |
-| `apps/web/src/features/search/components/result-editor-surface.tsx`         | `:151` clears the new shape                                                                                                                                                                                                                                                                                                                                     | Call site 3 of 3.                                                                                                                                     |
 | `apps/web/src/features/menus/utils/shortcut.ts`                             | **DELETED**                                                                                                                                                                                                                                                                                                                                                     | Moved.                                                                                                                                                |
 | `apps/web/src/features/menus/utils/resolve.ts`                              | `:155` import moves                                                                                                                                                                                                                                                                                                                                             | `trailing: string \| null` unchanged.                                                                                                                 |
 | `apps/web/src/features/command-palette/command-palette-utils.ts`            | `:7` import moves                                                                                                                                                                                                                                                                                                                                               | Unchanged otherwise.                                                                                                                                  |
@@ -645,7 +653,7 @@ Fixing that means `EditorKeyBinding` grows a sequence form so standalone embedde
 | `apps/web/src/keymap/tests/chord.test.ts`                                   | **NEW** (node)                                                                                                                                                                                                                                                                                                                                                  | §9.                                                                                                                                                   |
 | `apps/web/src/keymap/tests/keymap-trie.test.ts`                             | **NEW** (node)                                                                                                                                                                                                                                                                                                                                                  | §9.                                                                                                                                                   |
 | `apps/web/src/keymap/tests/chord-machine.test.ts`                           | **NEW** (node)                                                                                                                                                                                                                                                                                                                                                  | §9.                                                                                                                                                   |
-| `apps/web/src/keymap/tests/keymap.test.ts`                                  | Rewrite `binding()`, `keysFor`, `matchFor`/`matchedCommand`, `duplicateBindingSlots` → prefix-aware `conflictingBindingSlots`; add hygiene test; **delete** `describe('command palette command availability')` at `:661-682`                                                                                                                                    | That block is a verbatim subset of `command-enablement.test.ts:27-41`.                                                                                |
+| `apps/web/src/keymap/tests/keymap.test.ts`                                  | Rewrite `binding()`, `keysFor`, `matchFor`/`matchedCommand`, `duplicateBindingSlots` → prefix-aware `conflictingBindingSlots`; add hygiene and claim/suppression tests                                                                                                                                                                                          | Keep chord matching and bus-claim behavior at their actual boundaries.                                                                                |
 | `apps/web/src/keymap/tests/use-app-keymap.test.tsx`                         | `pressSequence` helper; arm/complete/unmatched/Escape/timeout/blur/pane-change/repeat cases                                                                                                                                                                                                                                                                     | The five existing single-key cases stay as regressions.                                                                                               |
 | `apps/web/src/keymap/tests/command-table.test.ts`                           | `RESERVED_CHORDS` → `RESERVED_HOTKEYS`                                                                                                                                                                                                                                                                                                                          | Vocabulary.                                                                                                                                           |
 | `apps/web/src/keymap/tests/session-commands.test.ts`                        | `boundCommands()` becomes `Map<command, string[]>`                                                                                                                                                                                                                                                                                                              | Today a second binding per command is silently overwritten.                                                                                           |
@@ -808,19 +816,25 @@ Valibot's `record` fails `safeParse` for the entire value on one bad entry, so a
 **D4 — Recorder terminating gesture. DECIDED: commit immediately unless the stroke is a live chord prefix; otherwise `Enter` commits, `Backspace` pops, `Escape` cancels.**
 An auto-commit window silently produces a single-key binding for a slow user. Unconditional `Enter` costs a keypress on every single-key rebind, the common case. The prefix-conditional rule costs nothing on the common path and keeps two existing tests passing verbatim.
 
-**D5 — Chord-bound `editor.*` commands. DECIDED: allowed, capability-gated, dead on the diff pane.**
-`diff-pane.tsx:90` deliberately never registers a dispatch and gets zero bindings via `DIFF_KEYMAP`. A chord-bound editor command being a no-op there is consistent with that design. **Accepted looseness:** the chord path is scoped by `pane: 'editor'` rather than DOM containment, which `getHotkeyManager`'s `target` gave the layer path for free.
+**D5 — Chord-bound `editor.*` commands. DECIDED: allowed through the landed target runtime.**
+The chord path calls `CommandBus` with the keyboard event. FocusService resolves the origin/deepest
+registered editor target, the bus evaluates its writable condition, and the target capability may
+still decline the command. This is exact-target routing, including read-only diff and search-result
+surfaces; mount order is never a routing signal.
 
-**Sharper than it first looks:** `activeEditorCommandDispatch` is a single last-writer-wins slot, and **four** surfaces can be mounted concurrently writing it — `SidebarPanel` and `CodePanel` are always-mounted siblings (`workbench/components/layout.tsx:74`, `:91`), `result-file-editor.tsx:150-155` writes it, and `settings/components/json-view.tsx:52` renders `<Editor active>` with `active` hardcoded. Adding `capability` does not fix that; it only stops a read-only surface running an editing command. Genuine per-surface routing needs an element-keyed registry resolved from `event.target.closest(...)`, which is D7's territory. **Accepted for this plan** because a chord-bound editor command is a new capability with no existing behaviour to regress, and because `editor.tsx:203`'s unconditional `setActiveEditorCommandDispatch(null)` on cleanup is a pre-existing race this plan does not touch.
-
-**D16 — `requires` is dead in the keystroke path. NOTED, not fixed.**
-`commandDisabledReason` (`command-enablement.ts:21-34`) is called by the palette and the menus only; `runAppKeymap` never calls it. A disabled command's key still `preventDefault`s and dispatches today. Chords inherit that unchanged — a chord completing into a disabled command swallows the keystroke and runs a no-op. Fixing it means deciding whether an unavailable command should release its key to the browser, which is a behaviour change for all 124 bindings and does not belong in a chord plan. **Spin off a separate task.**
+**D16 — Enablement in the keystroke path. CLOSED by the landed bus.**
+`CommandBus.inspect()` evaluates the same `CommandWhen` conditions for keybindings, palette, and
+menus. `useAppKeymap` suppresses only when `ticket.claimed` is true. Chord completion must preserve
+that contract: an unavailable or declined command releases the completing event unless the armed
+state's explicit swallow rule applies.
 
 **D6 — `keybindings.chordTimeout` setting. DECIDED: no. Ship 5000 ms as a constant.**
 Nobody has asked, VS Code has none, and CLAUDE.md's rule is that an inert key is worse than no key.
 
 **D7 — Matcher unification. DECIDED: out of scope; own plan.**
-The end state is right and answers `docs/vscode-keymap-development.md:126`, but it deletes a prop across 21 files in 6 features, changes the focus store API, reimplements the editor's `preventDefault ?? handled` rule by hand, and must invent a third capability for the diff pane's deliberate zero-binding keymap.
+The target and dispatch unification has landed. The remaining companion work deletes the
+single-stroke Editor layer bridge, imports the Editor-native pack, and preserves the bus's existing
+handled/claim contract. It must not create another focus or capability API.
 
 **D8 — Pending indicator. DECIDED: `<output aria-live='polite'>` pill, bottom-left, `surface-vibrancy`, rendered by `AppKeymapController`.**
 This app has no global status bar. The `<output aria-live='polite'>` shape follows the precedent at `tree-search-actions.tsx:51-56`. `surface-vibrancy` is the codebase's floating-surface material and is self-contained — no `bg-popover` alongside it. Copy: `⌘K pressed — waiting for the next key (3 available)`, count from `node.continuations`. **No toast on unmatched** — a toast plus a live region would double-announce.
@@ -828,15 +842,16 @@ This app has no global status bar. The `<output aria-live='polite'>` shape follo
 **D9 — `use-prompt-stash.ts:42` outranks everything. DECIDED: leave it, note it.**
 It registers on **`window`** in capture, so it beats `document` capture in any phase, and calls `preventDefault()` without `stopPropagation()` — so `Mod+S` in the chat composer currently both stashes the prompt **and** fires `workspace.saveFile`. A pre-existing double dispatch this plan surfaces but does not cause. **Spin off a separate task** to convert it into a real pane-scoped binding.
 
-**D10 — Trusted keyboard input in tests. DECIDED: accept the gap.**
-Everything is verified with synthetic events. Browser-level behaviour (Chrome consuming a prefix, dead-key composition mid-chord, real IME) is unproven. A `proofKeyPress` browser command wired to `context.page.keyboard` is the only route and is net-new infrastructure. **Follow-up, not a blocker** — the arming-only capture design keeps the untested surface small.
+**D10 — Trusted keyboard input in tests. REQUIRED.**
+`proofKeyPress` is now available in `vitest.browser.config.ts` and already proves the single-stroke
+claim/suppression contract. Extend that real-browser suite for prefix arming, completion, timeout,
+and unmatched-stroke swallowing; synthetic events alone are insufficient.
 
 **D11 — Cross-pane prefix conflicts are arbitrated but not reported. ACCEPTED.**
 `collidesWith` requires equal panes, so a user's `any`-pane `Mod+K` and an `editor`-pane `Mod+K Mod+S` produce no `shadowedBy` row; the trie drops one by rule 4 and logs a warn. Revisit if the warn ever fires in practice.
 
-**D12 — `'problems'` is a `FocusArea` with no writer** (`focus-state.ts:13`). A pane-scoped chord targeting it can never resolve. Not caused by chords; do not ship a `problems`-scoped chord.
-
-**D13 — `FocusArea` has no chat member.** The chat composer resolves to `'global'`, so per-pane chords are unexpressible there and a chord armed in the composer completes against the global table. Accepted for v1.
+**D12/D13 — Problems and chat pane ownership. CLOSED by FocusService.** Both are registered
+`FocusArea` members. Chord pane selection reads `currentOwner.area`; do not add special-case writers.
 
 **D14 — 143 mechanical literals** (18 in `workspace-commands.ts`, 112 in `editor-commands.ts`, 13 in `default-bindings.ts`). Compiler-enumerated, but a careless `sed` silently rebinds a key rather than failing. **Mitigation is Phase 1's exit criterion.**
 

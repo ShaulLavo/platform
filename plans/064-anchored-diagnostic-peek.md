@@ -2,7 +2,9 @@
 
 > **Executor instructions**: Read this plan completely before editing. Then read
 > both `/Users/shaul/Desktop/D/platform/AGENTS.md` and
-> `/Users/shaul/Desktop/D/Editor/AGENTS.md`, Platform `PLAN.md`, plan 062,
+> `/Users/shaul/Desktop/D/Editor/AGENTS.md`, Platform `PLAN.md`,
+> `apps/web/src/keymap/state/command-bus.ts`, `apps/web/src/lib/focus/state/service.ts`,
+> `apps/web/src/keymap/tests/command-focus.browser.tsx`,
 > `docs/editor-parity-implementation-plan.md`, Editor
 > `docs/positions/anchors.md`, Editor `docs/display/transforms.md`, and
 > `/Users/shaul/.agents/skills/never-nester/SKILL.md`. Follow the steps in
@@ -15,12 +17,10 @@
 > quick-diff, test failures, comments, and extension hosting do not inherit this
 > contract. They need their own ordinary-React go/no-go decision later.
 >
-> **Hard dependency**: plan 062 must be implemented and verified first, and the
-> root `PLAN.md` must explicitly schedule this currently-unscheduled parity
-> work. The deepest-target FocusService and explicit overlay-origin restoration
-> from plan 062 are part of this plan's acceptance contract. Do not rebuild them
-> locally and do not execute this plan against the current focus counter and
-> active-Editor pointer.
+> **Hard dependency**: the landed typed command/focus runtime must remain verified, and root
+> `PLAN.md` must schedule this parity work. Its deepest-target FocusService and explicit
+> overlay-origin restoration are part of this plan's acceptance contract. Do not rebuild them
+> locally or add a compatibility focus/dispatch path.
 >
 > **Mandatory gate**: source inspection already proves that marker navigation
 > exposes no chosen-diagnostic event and `trackRanges` drops a collapsed span.
@@ -35,13 +35,14 @@
 > provenance, collapsed-point tracking, or hypothetical reuse is not a GO
 > reason. Never implement both paths.
 >
-> **Drift checks (run first, after plan 062 lands)**:
+> **Drift checks (run first)**:
 >
 > ```bash
 > cd /Users/shaul/Desktop/D/platform
 > git diff --stat bcd4a5b0 -- \
 >   PLAN.md \
->   plans/062-typed-command-focus-cutover.md \
+>   apps/web/src/keymap/state/command-bus.ts \
+>   apps/web/src/keymap/tests/command-focus.browser.tsx \
 >   apps/web/src/features/editor \
 >   apps/web/src/features/workbench/components/file-editor-body.tsx \
 >   apps/web/src/features/workbench/components/diagnostics-panel.tsx \
@@ -66,9 +67,9 @@
 > git status --short > /tmp/plan-064-editor-before.txt
 > ```
 >
-> Platform drift produced by plan 062 is expected; reconcile against its landed
+> Command/focus drift from the planning base is expected; reconcile against the landed
 > FocusService names and behavior before continuing. At planning time Platform
-> had user-owned changes in `plans/README.md` plus untracked plans 062 and 063.
+> had user-owned planning changes.
 > Editor had user-owned, out-of-scope changes in `documentTextSnapshot.ts`, the
 > piece-table walker, Shiki worker/token files, and their tests. Never revert,
 > stash, overwrite, or format those edits. If later drift overlaps a symbol or
@@ -77,12 +78,12 @@
 
 ## Status
 
-- **State**: After plan 062; mandatory managed-geometry go/no-go; unscheduled
+- **State**: Scheduled after plan 061; mandatory managed-geometry go/no-go
 - **Priority**: P2
 - **Effort**: M after a GO decision; S if the gate returns NO-GO
 - **Risk**: HIGH — edit-stable anchors, virtualized/BiDi geometry, cross-package
   ownership, React cleanup, and actual DOM focus meet at one boundary
-- **Depends on**: plan 062 complete; root `PLAN.md` explicitly schedules plan 064
+- **Depends on**: the landed typed command/focus runtime; root `PLAN.md` schedules plan 064
 - **Category**: direction / architecture / E2 parity
 - **Planned at**: Platform `bcd4a5b0`, Editor `f19086e`, 2026-08-24
 
@@ -143,10 +144,9 @@ this API.
 - `features/editor/utils/diff-language-plugin.ts:51-95,187-206` is the precedent
   for a Platform-authored view contribution reading `scrollElement`, querying
   `getRangeClientRect`, following contribution updates, and cleaning up.
-- Before plan 062, `EditorFrame` claims every bubbled focus/pointer event as
-  Editor focus. Plan 062 replaces that with deepest registered targets and
-  retains the last compatible Editor while an overlay owns focus. This is why
-  plan 062 is a hard dependency rather than a file-level convenience.
+- FocusService now resolves the deepest registered target and retains the last compatible Editor
+  while an overlay owns focus. That landed behavior is a hard dependency rather than a file-level
+  convenience.
 
 ### Editor has the composition pieces; two narrow gaps are source-proven
 
@@ -558,7 +558,7 @@ Modify:
   existing pure diagnostic label/message/target helpers to the qualifying
   shared `@/lib/diagnostic` module; do not redesign the panel)
 
-Use plan 062's landed `apps/web/src/lib/focus` hooks and service. If using them
+Use the landed `apps/web/src/lib/focus` hooks and service. If using them
 requires changing a focus-service production file rather than registering a
 normal target from the new hook/component, stop and amend this scope first.
 
@@ -593,14 +593,14 @@ normal target from the new hook/component, stop and amend this scope first.
 
 ### Step 0: Run and record the ordinary-React gate
 
-After plan 062 and root scheduling are confirmed, create only the temporary
+After the landed focus runtime and root scheduling are confirmed, create only the temporary
 real-browser test `diagnostic-peek-gate.browser.tsx`. Build a disposable
 Platform-authored view contribution inside the test and render a plain React
 child through `EditorFrame`. Supply a synthetic immutable marker event; marker
 provenance is already a source-proven producer gap and is deliberately outside
 this geometry decision. The spike may use only current public APIs:
 `trackRanges`, `getRangeClientRect`, the exposed `scrollElement`, contribution
-updates/dispose, controller snapshots, and plan 062's public FocusService.
+updates/dispose, controller snapshots, and the public FocusService.
 
 The scratch test may create one disposable external source and bridge its
 immutable `{ visible | hidden | invalid }` snapshot into React with
@@ -665,7 +665,7 @@ cmp /tmp/plan-064-editor-before.txt /tmp/plan-064-editor-after-gate.txt
 ```
 
 The first command supplies the recorded pass/failure. The last three commands
-must exit 0 after removing the scratch test, relative to the post-plan-062 and
+must exit 0 after removing the scratch test, relative to the post-command-cutover and
 pre-gate snapshots; use explicit path diffs if user-owned edits preclude the
 status comparison. Fill the path decision in **Gate record** before Step 1.
 
@@ -814,7 +814,7 @@ retaining source state; invalid geometry closes.
 
 ### Step 5: Settle focus, input ownership, and cleanup
 
-Register the peek root as a narrow plan-062 overlay focus target keyed by the
+Register the peek root as a narrow FocusService overlay target keyed by the
 owning tab/view. Capture the source Editor target at the open edge. Passive open
 must not call `.focus()`. The root is a sibling of `EditorHost`, so once a
 button/link owns focus the Editor's hidden input and native clipboard,
@@ -838,7 +838,7 @@ counts. Assert exactly one active descriptor/tracker, source listener, surface,
 and focus registration throughout; Path B additionally has exactly one geometry
 subscription/handle and Path A has none.
 
-**Verify**: run the Platform browser test and the focused plan-062 FocusService
+**Verify**: run the Platform browser test and the focused FocusService
 test(s) touched by this integration. All exit 0.
 
 ### Step 6: Run the lockstep acceptance and structural rejection gate
@@ -986,7 +986,7 @@ archive. Do not leave a completed-plan ledger.
 
 ## Done criteria
 
-- [ ] Plan 062 is complete and root `PLAN.md` explicitly schedules plan 064.
+- [ ] The typed command/focus runtime remains green and root `PLAN.md` schedules plan 064.
 - [ ] **Gate record** selects Path A or Path B before any production diff and,
       for Path B, names the exact native geometry/lifecycle failure.
 - [ ] Path A adds only the shared descriptor plus `trackPoint` and uses the
@@ -1011,8 +1011,8 @@ archive. Do not leave a completed-plan ledger.
 
 Stop and report instead of broadening the design if:
 
-- Root `PLAN.md` has not scheduled the work, plan 062 is incomplete, or its
-  landed FocusService lacks deepest-target ownership and explicit restoration.
+- Root `PLAN.md` has not scheduled the work, or the landed FocusService lacks deepest-target
+  ownership and explicit restoration.
 - The gate passes with ordinary React composition but implementation starts a
   managed geometry handle instead of Path A.
 - The gate failure is aesthetic, placement-policy-only, or hypothetical future

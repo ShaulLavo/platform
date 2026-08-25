@@ -3,9 +3,20 @@ import {
   searchBufferDocumentLabel,
   searchBufferDocumentTitle,
 } from '@/features/search/utils/buffer-document'
-import { commandDisabledReason, type CommandDisabledContext } from '@/keymap/command-enablement'
 import { commandShortcut } from '@/features/menus/utils/shortcut'
+import type { EditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
+import { activeEditorTabForWorkbenchPanels } from '@/features/workbench/utils/panels'
+import { parseCompareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'
+import { parseDiffDocumentId } from '@/features/git/utils/diff-document'
 import { isFileEntry } from '@/lib/file-system-types'
+import type { CommandInvocation, CommandOutcome } from '@/keymap/state/command-bus'
+import type { OpenWorkspaceRootResult } from '@/features/workspace/hooks/use-open-root'
+import type {
+  FocusDestination,
+  FocusTargetToken,
+  FocusTransitionOutcome,
+} from '@/lib/focus/state/service'
+import { matchesActiveSurface } from '@/lib/focus/utils/active-surface'
 import type { LoadState } from '@/lib/load-state'
 import { basename, displayPath, toTreePath } from '@/lib/path-formatters'
 import type { TreeModel } from '@/lib/tree-model'
@@ -265,13 +276,6 @@ function commandKeywords(spec: CommandSpec) {
   ]
 }
 
-export function commandPaletteItemDisabledReason(
-  item: CommandPaletteItem,
-  context: CommandDisabledContext,
-) {
-  return commandDisabledReason(item.command.command, context)
-}
-
 export function quickAccessMode(search: string): QuickAccessMode {
   if (search.startsWith('view ')) return 'views'
   if (search.startsWith('color ')) return 'colorMode'
@@ -414,6 +418,49 @@ export function sessionProjectItemValue(projectId: string) {
 
 export function commandKeepsPaletteOpen(command: PlatformCommandId) {
   return paletteModeCommands.has(command)
+}
+
+export function paletteCommandInvocation(origin: FocusTargetToken | null): CommandInvocation {
+  return { origin, source: { kind: 'palette' } }
+}
+
+export function paletteCommandSucceeded(outcome: CommandOutcome) {
+  return outcome.status === 'handled' || outcome.status === 'deferred'
+}
+
+export function focusTransitionAcknowledged(outcome: FocusTransitionOutcome) {
+  return outcome.status === 'acknowledged'
+}
+
+export function workspaceRootOpened(outcome: OpenWorkspaceRootResult) {
+  return outcome === 'already-open' || outcome === 'opened'
+}
+
+export function activeEditorFocusDestination(
+  workspace: EditorWorkspaceStoreApi,
+): FocusDestination | null {
+  const workspaceState = workspace.getState()
+  const activeTab = activeEditorTabForWorkbenchPanels(workspaceState.workbenchPanels)
+  if (!activeTab) return null
+  const layout = workspaceState.uiMode
+
+  const diffPath =
+    parseCompareSavedDocumentId(activeTab.path) ?? parseDiffDocumentId(activeTab.path)?.path ?? null
+  const searchRoot = parseSearchBufferDocumentId(activeTab.path)?.rootPath ?? null
+  const identity = { diffPath, layout, searchRoot, tabId: activeTab.id } as const
+
+  return {
+    isValid: () => {
+      const current = activeEditorTabForWorkbenchPanels(workspace.getState().workbenchPanels)
+      return (
+        workspace.getState().uiMode === layout &&
+        current?.id === activeTab.id &&
+        current.path === activeTab.path
+      )
+    },
+    kind: 'match',
+    matches: (target) => matchesActiveSurface(target, identity),
+  }
 }
 
 export function symbolDescription(symbol: { containerName: string | null; kind: number }) {

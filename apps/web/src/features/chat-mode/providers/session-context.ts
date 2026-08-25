@@ -29,11 +29,9 @@ export const ChatModeSessionContext = createContext<ChatModeSession | null>(null
 /**
  * The session when there is one, `null` when there is not.
  *
- * For surfaces that render outside chat mode. `AppCommandSurface` — and so the
- * command palette — is a sibling of `WorkspaceView`, not a descendant, so it
- * mounts above `ChatModeSessionProvider` in both layouts. Anything it reaches
- * has to cope with the provider being absent rather than throw the whole palette
- * away.
+ * For surfaces that render outside chat mode. `CommandProvider` and its palette
+ * wrap the workspace, while `ChatModeSessionProvider` exists only inside the
+ * chat-mode surface. Shared consumers must tolerate the provider being absent.
  */
 export function useOptionalChatModeSession() {
   return use(ChatModeSessionContext)

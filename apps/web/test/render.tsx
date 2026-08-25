@@ -4,9 +4,11 @@ import { TooltipProvider } from '@workspace/ui/components/tooltip'
 import type { ReactElement, ReactNode } from 'react'
 
 import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-color-theme'
-import { MenuCommandProvider } from '@/features/menus/providers/command-provider'
 import { AppearanceProvider } from '@/features/settings/providers/appearance-provider'
 import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
+import { FocusProvider } from '@/lib/focus/providers/provider'
+import type { FocusService } from '@/lib/focus/state/service'
+import { TestCommandProvider, type TestCommandRuntimeOptions } from './factories/command-runtime'
 
 // Retry/gc off so failing queries surface immediately and no timers outlive a test.
 export function createTestQueryClient() {
@@ -16,6 +18,8 @@ export function createTestQueryClient() {
 }
 
 export type RenderWithProvidersOptions = Omit<RenderOptions, 'wrapper'> & {
+  command?: TestCommandRuntimeOptions | false
+  focusService?: FocusService
   queryClient?: QueryClient
   theme?: 'dark' | 'light'
 }
@@ -28,20 +32,32 @@ export type RenderWithProvidersResult = RenderResult & { queryClient: QueryClien
 // drifting copy of this stack.
 export function AppProviders({
   children,
+  command,
+  focusService,
   queryClient,
 }: {
   readonly children: ReactNode
+  readonly command?: TestCommandRuntimeOptions | false
+  readonly focusService?: FocusService
   readonly queryClient: QueryClient
 }) {
+  const content = <TooltipProvider delay={0}>{children}</TooltipProvider>
+
   return (
     <QueryClientProvider client={queryClient}>
-      <AppearanceProvider bootDensity={readSettingsMirror()['workbench.density']}>
-        <EditorColorThemeProvider>
-          <MenuCommandProvider>
-            <TooltipProvider delay={0}>{children}</TooltipProvider>
-          </MenuCommandProvider>
-        </EditorColorThemeProvider>
-      </AppearanceProvider>
+      <FocusProvider service={focusService}>
+        <AppearanceProvider bootDensity={readSettingsMirror()['workbench.density']}>
+          <EditorColorThemeProvider>
+            {command === false ? (
+              content
+            ) : (
+              <TestCommandProvider options={command} queryClient={queryClient}>
+                {content}
+              </TestCommandProvider>
+            )}
+          </EditorColorThemeProvider>
+        </AppearanceProvider>
+      </FocusProvider>
     </QueryClientProvider>
   )
 }
@@ -75,6 +91,8 @@ type HappyDomDeviceApi = { settings: { device: { prefersColorScheme: string } } 
 export function renderWithProviders(
   ui: ReactElement,
   {
+    command,
+    focusService,
     queryClient = createTestQueryClient(),
     theme = 'dark',
     ...options
@@ -83,7 +101,11 @@ export function renderWithProviders(
   seedBootMirrorTheme(theme)
 
   function Wrapper({ children }: { children: ReactNode }) {
-    return <AppProviders queryClient={queryClient}>{children}</AppProviders>
+    return (
+      <AppProviders command={command} focusService={focusService} queryClient={queryClient}>
+        {children}
+      </AppProviders>
+    )
   }
 
   return { queryClient, ...render(ui, { wrapper: Wrapper, ...options }) }

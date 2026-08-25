@@ -15,7 +15,6 @@ import {
   type PointerEvent,
 } from 'react'
 
-import { useFocus } from '@/features/workspace/providers/focus-state'
 import { editorTreeSitterSyntaxProvider } from '@/features/editor/state/syntax-highlighting'
 import { createPlatformSearchResultEditorLoggingPlugin } from '@/features/editor/utils/plugins'
 import { useSearchResultActions } from '@/features/search/hooks/use-result-actions'
@@ -51,6 +50,7 @@ import {
   type SearchResultFileBlock,
   type SearchResultFileDocumentLine,
 } from '@/features/search/utils/result-view-model'
+import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 
 type SearchResultFileEditorProps = {
   active: boolean
@@ -75,8 +75,6 @@ export const SearchResultFileEditor = memo(
     replaceVisible,
   }: SearchResultFileEditorProps) => {
     const { openTarget, replaceMatch, selectResultWithoutReveal } = useSearchResultActions()
-    const setFocusArea = useFocus((state) => state.setFocusArea)
-    const setActiveEditorCommandDispatch = useFocus((state) => state.setActiveEditorCommandDispatch)
     const fileDocument = useMemo(() => searchResultFileDocument(file), [file])
     const visibleDocument = useMemo(
       () => searchResultFileDocumentWindow(fileDocument, lineWindow),
@@ -133,6 +131,26 @@ export const SearchResultFileEditor = memo(
       textMetrics: SEARCH_RESULT_FILE_EDITOR_TEXT_METRICS,
       theme: editorTheme,
     })
+    const focusTarget = useFocusTarget<HTMLDivElement>({
+      area: 'editor',
+      capabilities: {
+        editor: {
+          dispatch: controller.commands.dispatchCommand,
+          writable: false,
+        },
+      },
+      id: {
+        key: document.documentId,
+        kind: 'editor',
+        surface: 'search-result',
+      },
+      onIntent: (intent) => {
+        if (intent !== 'focus') return false
+
+        controller.commands.focus()
+        return true
+      },
+    })
     const pendingActivationFrameRef = useRef<number | null>(null)
     const lineActionRowsRef = useRef(new Map<SearchResultId, HTMLDivElement>())
     const hoveredLineActionRowRef = useRef<HTMLDivElement | null>(null)
@@ -144,13 +162,6 @@ export const SearchResultFileEditor = memo(
       hoveredLineActionRowRef.current = nextRow
       nextRow?.setAttribute('data-hovered', 'true')
     }, [])
-
-    useEffect(() => {
-      if (!active) return
-
-      setActiveEditorCommandDispatch(controller.commands.dispatchCommand)
-      return () => setActiveEditorCommandDispatch(null)
-    }, [active, controller, setActiveEditorCommandDispatch])
 
     useEffect(
       () => () => {
@@ -167,10 +178,6 @@ export const SearchResultFileEditor = memo(
       },
       [setHoveredLineActionRow],
     )
-
-    const handleActivate = useCallback(() => {
-      setFocusArea('editor')
-    }, [setFocusArea])
 
     const handlePointerUp = useCallback(
       (event: PointerEvent<HTMLDivElement>) => {
@@ -249,14 +256,13 @@ export const SearchResultFileEditor = memo(
     return (
       <div
         className='ml-5 min-w-0 rounded-sm border-l border-transparent px-2 py-0.5'
+        ref={focusTarget.ref}
         onBeforeInputCapture={preventReadonlyInput}
         onDropCapture={preventReadonlyInput}
-        onFocusCapture={handleActivate}
         onKeyDownCapture={handleKeyDownCapture}
         onPasteCapture={preventReadonlyInput}
         onPointerLeave={handlePointerLeave}
         onPointerMoveCapture={handlePointerMove}
-        onPointerDownCapture={handleActivate}
         onPointerUpCapture={handlePointerUp}
       >
         <div

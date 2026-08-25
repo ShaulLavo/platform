@@ -1,10 +1,10 @@
-import type { FocusArea } from '@/features/workspace/providers/focus-state'
-import type { EditorCommandId } from '@singapor/core'
+import type { FocusArea } from '@/lib/focus/state/service'
 import type { HotkeyMeta, ParsedHotkey, RegisterableHotkey } from '@tanstack/react-hotkeys'
 
 // `import type` on purpose: it is erased, so the command table can keep reading
 // `SESSION_JUMP_POSITIONS` from here without a runtime cycle.
 import type { WorkspaceCommandId } from './workspace-commands'
+import type { editorCommands } from './editor-commands'
 
 /** `user` bindings come from the settings document and stand in for a default. */
 export type KeyBindingSource = 'default' | 'user'
@@ -26,9 +26,27 @@ export function sessionJumpCommandId(position: SessionJumpPosition): SessionJump
 
 export type { WorkspaceCommandId }
 
-export type EditorPlatformCommandId = `editor.${EditorCommandId}`
+export type EditorPlatformCommandId = (typeof editorCommands)[number]['id']
 
 export type PlatformCommandId = WorkspaceCommandId | EditorPlatformCommandId
+
+/** Every menu surface recorded as the source of a Platform command. */
+export type MenuSurfaceId =
+  | 'chat.composer'
+  | 'chat.message'
+  | 'chat.project'
+  | 'chat.session'
+  | 'editor.gutter'
+  | 'editor.tab'
+  | 'editor.text'
+  | 'files.empty'
+  | 'files.row'
+  | 'git.file'
+  | 'git.group'
+  | 'pane.header'
+  | 'sidebar.rail'
+  | 'terminal'
+  | 'titlebar'
 
 export type PlatformKeyBinding = {
   readonly keys: string

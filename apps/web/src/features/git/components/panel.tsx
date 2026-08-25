@@ -1,10 +1,9 @@
 import { EmptyState } from '@workspace/ui/components/empty-state'
 import { cn } from '@workspace/ui/lib/utils'
-import { memo, useMemo, type ComponentProps } from 'react'
+import { memo, useCallback, useMemo, useRef, type ComponentProps, type ReactNode } from 'react'
 import { useIsFetching } from '@tanstack/react-query'
 
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
-import { useFocus } from '@/features/workspace/providers/focus-state'
 import { errorMessage } from '@/lib/file-server'
 import { useStatus } from '@/features/git/hooks'
 import { useGitState } from '@/features/git/state/store'
@@ -16,6 +15,7 @@ import { Header } from '@/features/git/components/header'
 import { PanelLoading } from '@/features/git/components/panel-loading'
 import { parseDiffDocumentId } from '@/features/git/utils/diff-document'
 import { diffDocumentQueryKey } from '@/features/git/utils/diff-document-query'
+import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 import { queryHasNoData } from '@/lib/query-state'
 
 const DISABLED_DIFF_QUERY = ['git', 'diffs', 'disabled'] as const
@@ -35,7 +35,26 @@ function PanelContent({ className, rootPath }: ComponentProps<'section'> & { roo
   const rows = useMemo(() => changeRows(files), [files])
   const hasLocalChanges = rows.staged.length > 0 || rows.worktree.length > 0
   const panelOpen = useGitState((state) => state.panelOpen)
-  const setFocusArea = useFocus((state) => state.setFocusArea)
+  const rootRef = useRef<HTMLElement | null>(null)
+  const { ref: focusTargetRef } = useFocusTarget<HTMLElement>({
+    area: 'git',
+    id: { kind: 'git', rootPath },
+    onIntent: (intent) => {
+      if (intent !== 'focus') return false
+      if (!rootRef.current) return false
+
+      rootRef.current.focus()
+      return true
+    },
+  })
+  // Stable identity keeps the target registration mounted across query updates.
+  const setRootRef = useCallback(
+    (element: HTMLElement | null) => {
+      rootRef.current = element
+      focusTargetRef(element)
+    },
+    [focusTargetRef],
+  )
   const selectedDocumentPath = useEditorWorkspaceState((state) => state.selectedFilePath)
   const selectedDiff = parseDiffDocumentId(selectedDocumentPath)
   const selectedDiffQueryKey = selectedDiff
@@ -49,30 +68,40 @@ function PanelContent({ className, rootPath }: ComponentProps<'section'> & { roo
     }) > 0
   const loadingDiff = selectedDiffPending && selectedDiff?.kind === 'snapshot' ? selectedDiff : null
 
+  function renderRoot(children: ReactNode) {
+    return (
+      <section
+        className={cn('flex h-full min-h-0 flex-col text-foreground', className)}
+        ref={setRootRef}
+        tabIndex={-1}
+      >
+        {children}
+      </section>
+    )
+  }
+
   if (status.isPending) {
-    return <PanelLoading className={className} />
+    return renderRoot(<PanelLoading />)
   }
   if (status.isError) {
-    return (
+    return renderRoot(
       <EmptyState
         align='start'
-        className={className}
+        className='min-h-0 flex-1'
         description={errorMessage(status.error)}
         title='Git is unavailable'
         tone='error'
-      />
+      />,
     )
   }
   if (!repository) {
-    return <EmptyState align='start' className={className} title='No Git repository' />
+    return renderRoot(
+      <EmptyState align='start' className='min-h-0 flex-1' title='No Git repository' />,
+    )
   }
 
-  return (
-    <section
-      className={cn('flex h-full min-h-0 flex-col text-foreground', className)}
-      onFocusCapture={() => setFocusArea('git')}
-      onPointerDownCapture={() => setFocusArea('git')}
-    >
+  return renderRoot(
+    <>
       <Header repository={repository} rootPath={rootPath} />
       {panelOpen ? (
         <>
@@ -104,6 +133,6 @@ function PanelContent({ className, rootPath }: ComponentProps<'section'> & { roo
       ) : (
         <div aria-hidden='true' className='min-h-0 flex-1' />
       )}
-    </section>
+    </>,
   )
 }

@@ -2,28 +2,6 @@ import type { Icon } from '@phosphor-icons/react'
 
 import type { PlatformCommandId } from '@/keymap/types'
 
-/**
- * Every context menu in the app. Used for logging and as the seam a runtime
- * contribution registry would slot into if menus ever need to be assembled
- * from outside the app bundle. Nothing dispatches on it at render time.
- */
-export type MenuSurfaceId =
-  | 'chat.composer'
-  | 'chat.message'
-  | 'chat.project'
-  | 'chat.session'
-  | 'editor.gutter'
-  | 'editor.tab'
-  | 'editor.text'
-  | 'files.empty'
-  | 'files.row'
-  | 'git.file'
-  | 'git.group'
-  | 'pane.header'
-  | 'sidebar.rail'
-  | 'terminal'
-  | 'titlebar'
-
 type MenuItemShared = {
   readonly icon?: Icon
   /**
@@ -69,6 +47,8 @@ export type MenuCheckboxItem = MenuItemShared & {
 export type MenuRadioItem = {
   readonly value: string
   readonly label: string
+  /** Runs through the shared command bus; omitted for a local radio action. */
+  readonly command?: PlatformCommandId
   readonly icon?: Icon
   readonly disabled?: boolean
 }
@@ -78,7 +58,8 @@ export type MenuRadioGroupItem = MenuItemShared & {
   readonly id: string
   readonly value: string
   readonly options: readonly MenuRadioItem[]
-  readonly select: (value: string) => void
+  /** Handles options without a command. Command-backed options bypass it. */
+  readonly select?: (value: string) => void
 }
 
 export type MenuSubmenuItem = MenuItemShared & {

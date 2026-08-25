@@ -87,12 +87,7 @@ export function AppearanceProvider({
   }, [])
 
   const setTheme = (theme: Theme, initiator?: string): SettingsSubmission => {
-    if (theme === committedTheme) {
-      clearThemePreview()
-      return { kind: 'noop' }
-    }
-
-    const submission = setColorTheme(theme, initiator, (entry) => {
+    const submission = setColorTheme(theme, committedTheme, initiator, (entry) => {
       setPreview({ handingOffTo: entry.request.mutationId, mode: theme })
     })
     if (submission.kind === 'noop') {

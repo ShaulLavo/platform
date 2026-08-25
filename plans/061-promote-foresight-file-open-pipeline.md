@@ -4,9 +4,8 @@
 > confirm the expected result before moving to the next step. If anything in the "STOP conditions"
 > section occurs, stop and report; do not improvise. When done, delete this completed plan, remove
 > its row from `plans/README.md`, and remove the now-finished 060/061 dependency note, following the
-> repository's cleanup policy. Reconcile the command-boundary handoff against landed Plan 062: keep
-> the activation transaction in its typed file-tab handler/context and do not recreate the deleted
-> command-factory path. Also
+> repository's cleanup policy. Keep the activation transaction in the landed typed file-tab
+> handler/context and do not recreate the deleted command-factory path. Also
 > close/remove the finished 061 item from authoritative root `PLAN.md` if the approved 060 -> 061
 > sequence was scheduled there.
 >
@@ -137,8 +136,8 @@
 > post-060 Platform and Editor HEADs/diffs as this plan's execution baseline. Treat the landed paint
 > API, React forwarding, overlay, and benchmark changes as required inputs—not drift to remove.
 
-> **Command-boundary handoff**: Plan 062 must land first. Implement Step 4 in its typed file-tab
-> activation handler/context and do not recreate today's command factory path. Preserve
+> **Command-boundary handoff**: the typed CommandBus/file-tab boundary is landed. Implement Step 4
+> in that handler/context and do not recreate a command factory path. Preserve
 > “claim/ensure before active-selection publication” as a domain-command invariant and add a focused
 > regression test; never move the transaction back into a React effect.
 
@@ -150,7 +149,7 @@
 | Effort                  | L                                                                             |
 | Risk                    | High                                                                          |
 | Execution order         | After Plan 060 (shared paint signal/benchmark and overlapping Editor changes) |
-| Command-boundary order  | After Plan 062; extend its typed activation handler/context                   |
+| Command-boundary order  | Extend the landed typed activation handler/context                            |
 | Functional dependency   | None on Plan 060's persisted snapshot data                                    |
 | Roadmap status          | Executable plan written; not yet scheduled in root `PLAN.md`                  |
 | Planned Platform commit | `36bf483c`                                                                    |
@@ -1699,7 +1698,7 @@ run the final paired gate:
 - [ ] No user-owned Editor selection/reveal/cursor-history change was reverted or rewritten.
 - [ ] This plan is deleted, its `plans/README.md` row is removed, and the completed 060/061 dependency
       note is removed after verified completion.
-- [ ] The landed Plan 062 typed activation boundary remains the sole command path and has a focused
+- [ ] The landed typed activation boundary remains the sole command path and has a focused
       claim/ensure-before-publication regression test.
 - [ ] Root `PLAN.md`, if it scheduled the approved sequence, closes/removes completed 061.
 

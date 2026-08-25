@@ -45,14 +45,16 @@ function storeWithRoot(path: string | null) {
 }
 
 function renderMenu(rootPath: string | null) {
+  const store = storeWithRoot(rootPath)
   // Real editor stack with the workspace store swapped, so the menu gets the
   // document and ui stores it needs to open a root.
   return renderWithProviders(
     <EditorStateProvider>
-      <EditorWorkspaceStateContext.Provider value={storeWithRoot(rootPath)}>
+      <EditorWorkspaceStateContext.Provider value={store}>
         <WorkspaceProjectMenu workspaceTitle='platform' />
       </EditorWorkspaceStateContext.Provider>
     </EditorStateProvider>,
+    { command: { runtime: { workspace: store } } },
   )
 }
 

@@ -25,6 +25,7 @@ import {
   type DiffScrollPosition,
 } from '@/features/editor/utils/diff-scroll-bridge'
 import { log } from '@/lib/client-logging'
+import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 
 /**
  * One side of a diff: a real read-only `Editor` holding a synthetic buffer of the projected rows,
@@ -42,6 +43,7 @@ export function DiffPane({
   side,
   syntaxBackend,
   syntaxHighlight = true,
+  tabId,
   theme,
   onFocus,
   onRegisterEditor,
@@ -54,6 +56,7 @@ export function DiffPane({
   side: DiffGutterSide
   syntaxBackend: DiffSyntaxBackend
   syntaxHighlight?: boolean
+  tabId?: string
   theme: EditorTheme
   onFocus?: (side: DiffGutterSide) => void
   onRegisterEditor?: (side: DiffGutterSide, editor: Editor | null) => void
@@ -101,6 +104,28 @@ export function DiffPane({
     // `'none'`, which short-circuits before `domSelection.addRange` and leaves copy depending
     // entirely on the hidden textarea; copying a diff selection is the point here.
   })
+  const focusTarget = useFocusTarget<HTMLDivElement>({
+    area: 'editor',
+    capabilities: {
+      editor: {
+        dispatch: controller.commands.dispatchCommand,
+        writable: false,
+      },
+    },
+    id: {
+      key: file?.path ?? '',
+      kind: 'editor',
+      side,
+      surface: 'diff',
+      tabId,
+    },
+    onIntent: (intent) => {
+      if (intent !== 'focus') return false
+
+      controller.commands.focus()
+      return true
+    },
+  })
 
   // `setText` clears tokens on its way through `setContent`, so they go back on in the same
   // statement pair — an expansion toggle would otherwise repaint uncoloured until the next parse.
@@ -147,11 +172,12 @@ export function DiffPane({
       side,
       violations,
     })
-  }, [file?.cacheKey, file?.path, plugin, rows, side])
+  }, [file, plugin, rows, side])
 
   return (
     <div
       className={`editor-diff-pane editor-diff-pane-${side} flex h-full min-h-0 w-full min-w-0 overflow-hidden`}
+      ref={file ? focusTarget.ref : undefined}
       onFocusCapture={onFocus ? () => onFocus(side) : undefined}
     >
       <EditorHost

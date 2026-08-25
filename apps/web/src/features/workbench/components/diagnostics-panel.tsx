@@ -5,6 +5,7 @@ import type {
 } from '@singapor/lsp-plugin'
 import { EmptyState } from '@workspace/ui/components/empty-state'
 import { cn } from '@workspace/ui/lib/utils'
+import { useCallback, useRef } from 'react'
 
 import { useEditorLanguageServerStatus } from '@/features/editor/hooks/use-editor-language-server-status'
 import { useEditorCommands } from '@/features/editor/state/commands'
@@ -12,10 +13,31 @@ import { createEditorLanguageServerStatusSource } from '@/features/editor/state/
 import type { EditorStatusBarSource } from '@/features/editor/state/status-bar-source'
 import { useEditorUiState, useEditorUiStoreApi } from '@/features/editor/state/ui-state'
 import { DiagnosticsLoading } from '@/features/workbench/components/diagnostics-loading'
+import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 
 const idleLanguageServerStatusSource = createEditorLanguageServerStatusSource()
 
 export function DiagnosticsPanel() {
+  const rootRef = useRef<HTMLElement | null>(null)
+  const { ref: focusTargetRef } = useFocusTarget<HTMLElement>({
+    area: 'problems',
+    id: { kind: 'problems' },
+    onIntent: (intent) => {
+      if (intent !== 'focus') return false
+      if (!rootRef.current) return false
+
+      rootRef.current.focus()
+      return true
+    },
+  })
+  // Stable identity keeps the target registration mounted across renders.
+  const setRootRef = useCallback(
+    (element: HTMLElement | null) => {
+      rootRef.current = element
+      focusTargetRef(element)
+    },
+    [focusTargetRef],
+  )
   const statusBarSource = useEditorUiState((state) => state.statusBarSource)
   const commands = useEditorCommands()
   const uiStore = useEditorUiStoreApi()
@@ -28,7 +50,11 @@ export function DiagnosticsPanel() {
   }
 
   return (
-    <section className='flex h-full min-h-0 min-w-0 flex-col overflow-hidden'>
+    <section
+      className='flex h-full min-h-0 min-w-0 flex-col overflow-hidden'
+      ref={setRootRef}
+      tabIndex={-1}
+    >
       {statusBarSource ? (
         renderDiagnosticsStatus({
           languageServerStatus,

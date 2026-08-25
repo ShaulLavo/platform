@@ -1,74 +1,84 @@
-import { isCommandDisabled } from '@/keymap/command-enablement'
-import { useEditorCommands } from '@/features/editor/state/commands'
-import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
-import { useWorkspaceTreeState } from '@/features/workspace/hooks/use-tree'
-import { platformCommandSpecs } from '@/keymap/command-registry'
 import {
   CommandDialog,
   CommandEmpty,
   CommandInput,
   CommandList,
 } from '@workspace/ui/components/command'
+import { useEffect, useMemo } from 'react'
 
 import { CommandPaletteGroupsFactory } from '@/features/command-palette/command-palette-groups-factory'
-import { useCommandPaletteScripts } from '@/features/command-palette/use-command-palette-scripts'
-import { useSaveProjectScript } from '@/features/chat-mode/hooks/use-save-project-script'
-import { useHighlightedPaletteValue } from '@/features/command-palette/hooks/use-highlighted-palette-value'
-import { useRecentCommandIds } from '@/features/command-palette/hooks/use-recent-command-ids'
-import { recordCommandUse } from '@/features/command-palette/state/recent-commands-store'
-import { useTerminalCommandInboxStore } from '@/features/terminal/state/command-inbox-store'
-import type {
-  CommandPaletteItem,
-  CommandPaletteProps,
-} from '@/features/command-palette/command-palette-types'
 import {
+  activeEditorFocusDestination,
   colorThemeIdFromItemValue,
   commandKeepsPaletteOpen,
-  commandPaletteItemDisabledReason,
   commandPaletteItems,
   editorPaletteItems,
   emptyLabelForMode,
   fileUriForPath,
+  focusTransitionAcknowledged,
   groupedCommandItems,
   isColorPreviewMode,
+  paletteCommandInvocation,
+  paletteCommandSucceeded,
   paletteOwnsItemOrder,
   placeholderForMode,
   previewColorModeItem,
   quickAccessFilter,
   quickAccessMode,
   quickAccessQuery,
+  workspaceRootOpened,
 } from '@/features/command-palette/command-palette-utils'
+import { useHighlightedPaletteValue } from '@/features/command-palette/hooks/use-highlighted-palette-value'
+import { useRecentCommandIds } from '@/features/command-palette/hooks/use-recent-command-ids'
+import {
+  CommandPaletteActionsContext,
+  type CommandPaletteActions,
+} from '@/features/command-palette/providers/actions-context'
+import { recordCommandUse } from '@/features/command-palette/state/recent-commands-store'
 import { useCommandPaletteFiles } from '@/features/command-palette/use-command-palette-files'
+import { useCommandPaletteScripts } from '@/features/command-palette/use-command-palette-scripts'
 import { useCommandPaletteSessions } from '@/features/command-palette/use-command-palette-sessions'
 import { useCommandPaletteSymbols } from '@/features/command-palette/use-command-palette-symbols'
+import { useSaveProjectScript } from '@/features/chat-mode/hooks/use-save-project-script'
 import { openSessionRow, startSessionDraft } from '@/features/chat-mode/state/session-commands'
+import { showChatModeToolTab } from '@/features/chat-mode/utils/panels'
 import {
   clearEditorThemePreview,
   previewEditorTheme,
   setSelectedEditorThemeId,
 } from '@/features/editor/state/color-theme-store'
-import { useOpenWorkspaceRoot } from '@/features/workspace/hooks/use-open-root'
+import { useEditorCommands } from '@/features/editor/state/commands'
 import {
-  CommandPaletteActionsContext,
-  type CommandPaletteActions,
-} from '@/features/command-palette/providers/actions-context'
+  useEditorWorkspaceState,
+  useEditorWorkspaceStoreApi,
+} from '@/features/editor/state/workspace-state'
 import { useTheme } from '@/features/settings/hooks/use-theme'
-import { useEffect, useMemo } from 'react'
+import { useTerminalCommandInboxStore } from '@/features/terminal/state/command-inbox-store'
+import { useWorkspaceTreeState } from '@/features/workspace/hooks/use-tree'
+import { useCommand } from '@/keymap/hooks/use-command'
+import { platformCommandSpecs } from '@/keymap/command-registry'
+import { useFocusService } from '@/lib/focus/hooks/use-service'
+import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 
-export function CommandPaletteContent({
-  bindings,
-  dispatch,
-  onOpenChange,
-  onSearchChange,
-  open,
-  search,
-}: CommandPaletteProps) {
+export function CommandPaletteContent() {
+  const {
+    bindings,
+    bus,
+    closePalette,
+    openWorkspaceRoot,
+    paletteOpen: open,
+    paletteOrigin,
+    paletteSearch: search,
+    setPaletteOpen,
+    setPaletteSearch,
+  } = useCommand()
+  const focus = useFocusService()
+  const workspace = useEditorWorkspaceStoreApi()
   const { clearThemePreview, previewTheme, resolvedTheme, theme } = useTheme()
   const hasWorkspace = useEditorWorkspaceState((state) => Boolean(state.rootFolder))
   const rootFolder = useEditorWorkspaceState((state) => state.rootFolder)
   const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
   const selectedFilePath = useEditorWorkspaceState((state) => state.selectedFilePath)
-  const activeFilePath = selectedFilePath
   const { openDefinition, selectFile } = useEditorCommands()
   const mode = quickAccessMode(search)
   const query = quickAccessQuery(search)
@@ -90,7 +100,7 @@ export function CommandPaletteContent({
   const { selectedFileBackedPath, symbolQuery, symbolsEnabled } = useCommandPaletteSymbols({
     mode,
     rootPath: rootFolder?.path ?? null,
-    selectedFilePath: activeFilePath,
+    selectedFilePath,
   })
   const { projects: sessionProjects, sessions: sessionItems } = useCommandPaletteSessions()
   const queueTerminalCommand = useTerminalCommandInboxStore((state) => state.queueCommand)
@@ -99,36 +109,56 @@ export function CommandPaletteContent({
     enabled: open && mode === 'scripts',
     rootPath: rootFolder?.path ?? null,
   })
-  // Chat mode registers the project opener only while it is mounted, and the palette
-  // can open a session from the workbench — so it brings its own.
-  const openWorkspaceRoot = useOpenWorkspaceRoot()
   const commandItems = commandPaletteItems(platformCommandSpecs, bindings)
   const recentCommandIds = useRecentCommandIds()
   const groups = groupedCommandItems(commandItems, search, recentCommandIds)
+  const { ref: paletteTargetRef } = useFocusTarget<HTMLDivElement>({
+    area: 'command-palette',
+    capabilities: { overlay: true },
+    id: { kind: 'command-palette' },
+    onIntent: (intent, element) => {
+      if (intent !== 'focus') return false
 
-  // Cancel any hover-preview when the palette closes without a selection; the
-  // commit path in `selectColorTheme` clears the preview itself.
+      const input = element.querySelector<HTMLElement>('[data-slot="command-input"]')
+      if (!input) return false
+
+      input.focus()
+      return true
+    },
+  })
+
   useEffect(() => {
-    if (open) return
-    clearEditorThemePreview()
-    clearThemePreview()
-  }, [clearThemePreview, open])
+    if (mode !== 'colorTheme') clearEditorThemePreview()
+    if (mode !== 'colorMode') clearThemePreview()
+  }, [clearThemePreview, mode])
 
-  useEffect(() => {
-    if (open && mode === 'colorMode') return clearThemePreview
+  useEffect(
+    () => () => {
+      clearEditorThemePreview()
+      clearThemePreview()
+    },
+    [clearThemePreview],
+  )
 
-    clearThemePreview()
-  }, [clearThemePreview, mode, open])
+  function previewHighlightedColorTheme(value: string) {
+    const themeId = colorThemeIdFromItemValue(value)
+    if (!themeId) return
 
-  // Preview follows the highlighted row rather than the pointer, so arrowing
-  // through the list previews exactly like moving the mouse over it does.
+    previewEditorTheme(resolvedTheme, themeId)
+  }
+
+  function previewHighlightedColorMode(value: string) {
+    previewColorModeItem(value, previewTheme)
+  }
+
   const highlightedListRef = useHighlightedPaletteValue({
-    enabled: open && isColorPreviewMode(mode),
+    enabled: isColorPreviewMode(mode),
     onHighlight: (value) => {
       if (mode === 'colorTheme') {
         previewHighlightedColorTheme(value)
         return
       }
+
       previewHighlightedColorMode(value)
     },
   })
@@ -139,100 +169,103 @@ export function CommandPaletteContent({
     setSelectedFileItemValue(value)
   }
 
-  function previewHighlightedColorTheme(value: string) {
-    const themeId = colorThemeIdFromItemValue(value)
-    if (!themeId) return
-
-    previewEditorTheme(resolvedTheme, themeId)
-  }
-
-  function previewHighlightedColorMode(value: string) {
-    // Highlight is transient; selection remains the one command/mutation boundary.
-    previewColorModeItem(value, previewTheme)
-  }
-
   function handleSearchChange(value: string) {
-    if (quickAccessMode(value) === 'files') {
-      setSelectedFileItemValue(null)
+    if (quickAccessMode(value) === 'files') setSelectedFileItemValue(null)
+
+    setPaletteSearch(value)
+  }
+
+  // Context identity must stay stable while cmdk updates its controlled input.
+  const actions = useMemo<CommandPaletteActions>(() => {
+    async function focusSelectedEditor() {
+      const workspaceState = workspace.getState()
+      if (workspaceState.uiMode === 'chat') {
+        workspaceState.setChatModePanels(
+          showChatModeToolTab(workspaceState.chatModePanels, 'editor'),
+        )
+      }
+
+      const destination = activeEditorFocusDestination(workspace)
+      if (!destination) return false
+
+      const outcome = await focus.request(destination).completion
+      return focusTransitionAcknowledged(outcome)
     }
 
-    onSearchChange(value)
-  }
+    async function revealDestination(
+      command: 'workspace.revealTerminal' | 'workspace.showChatMode',
+    ) {
+      const ticket = bus.dispatch(command, paletteCommandInvocation(paletteOrigin))
+      const outcome = await ticket.completion
+      if (!paletteCommandSucceeded(outcome)) return false
 
-  // Stable action identity keeps palette rows from repainting on root input state updates.
-  const actions = useMemo<CommandPaletteActions>(
-    () => ({
+      closePalette(false)
+      return true
+    }
+
+    async function openSessionProject(projectId: (typeof sessionProjects)[number]['id']) {
+      const project = sessionProjects.find((candidate) => candidate.id === projectId)
+      if (!project) return false
+      if (workspace.getState().rootFolder?.path === project.workspaceRoot) return true
+
+      const outcome = await openWorkspaceRoot(project.workspaceRoot)
+      return workspaceRootOpened(outcome)
+    }
+
+    return {
+      disabledReasonForCommand: (command) => {
+        const inspection = bus.inspect(command, paletteCommandInvocation(paletteOrigin))
+        return inspection.status === 'disabled' ? inspection.reason : null
+      },
       previewColorTheme: (themeId) => {
         previewEditorTheme(resolvedTheme, themeId)
       },
       selectColorTheme: (themeId) => {
         setSelectedEditorThemeId(resolvedTheme, themeId)
-        onOpenChange(false)
+        closePalette(true)
       },
-      selectCommand: (item) => {
-        const disabledReason = commandPaletteItemDisabledReason(item, {
-          activeFilePath,
-          hasWorkspace,
-        })
-        if (disabledReason) return
-
-        const handled = dispatch(item.command.command)
-        if (handled === false) return
-
-        recordCommandUse(item.command.command)
-        if (commandPaletteItemKeepsOpen(item)) return
-
-        onOpenChange(false)
-      },
-      selectFile: (path) => {
+      selectFile: async (path) => {
         selectFile(path)
-        onOpenChange(false)
-      },
-      selectPlatformCommand: (command) => {
-        if (isCommandDisabled(command, { activeFilePath, hasWorkspace })) return
+        if (!(await focusSelectedEditor())) return
 
-        const handled = dispatch(command)
-        if (handled === false) return
-
-        recordCommandUse(command)
-        if (commandKeepsPaletteOpen(command)) return
-
-        onOpenChange(false)
+        closePalette(false)
       },
-      selectScript: (script) => {
-        // Running it is what saves it. Otherwise `project.scripts` has no writer
-        // at all and the palette's saved group is permanently empty.
-        saveProjectScript(script)
-        // The terminal is the surface that can actually run it; the inbox is what
-        // lets the pick land before one exists. Revealing the panel is what turns
-        // a queued command into a visible one.
-        queueTerminalCommand(script.command)
-        dispatch('workspace.revealTerminal')
-        onOpenChange(false)
-      },
-      selectSession: (session) => {
-        // Chat mode first: the stage that will show this session has to exist before
-        // the pick lands, or the user is left staring at the editor.
-        dispatch('workspace.showChatMode')
-        openSessionRow(session, { openProject: openWorkspaceRoot })
-        onOpenChange(false)
-      },
-      selectGotoLine: (target) => {
+      selectGotoLine: async (target) => {
         if (!selectedFileBackedPath) return
 
-        // The editor takes zero-based positions; the palette takes the numbers shown in the
-        // gutter, so the conversion happens here, at the boundary between them.
         const position = { character: target.column - 1, line: target.line - 1 }
         const handled = openDefinition({
           path: selectedFileBackedPath,
           range: { end: position, start: position },
           uri: fileUriForPath(selectedFileBackedPath),
         })
-        if (handled === false) return
+        if (!handled) return
+        if (!(await focusSelectedEditor())) return
 
-        onOpenChange(false)
+        closePalette(false)
       },
-      selectSymbol: (symbol) => {
+      selectPlatformCommand: async (command) => {
+        const ticket = bus.dispatch(command, paletteCommandInvocation(paletteOrigin))
+        const outcome = await ticket.completion
+        if (!paletteCommandSucceeded(outcome)) return
+
+        recordCommandUse(command)
+        if (commandKeepsPaletteOpen(command)) return
+
+        closePalette(true)
+      },
+      selectScript: async (script) => {
+        saveProjectScript(script)
+        queueTerminalCommand(script.command)
+        await revealDestination('workspace.revealTerminal')
+      },
+      selectSession: async (session) => {
+        if (!(await openSessionProject(session.projectId))) return
+
+        openSessionRow(session)
+        await revealDestination('workspace.showChatMode')
+      },
+      selectSymbol: async (symbol) => {
         if (!selectedFileBackedPath) return
 
         const handled = openDefinition({
@@ -240,30 +273,33 @@ export function CommandPaletteContent({
           range: symbol.selectionRange,
           uri: fileUriForPath(selectedFileBackedPath),
         })
-        if (handled === false) return
+        if (!handled) return
+        if (!(await focusSelectedEditor())) return
 
-        onOpenChange(false)
+        closePalette(false)
       },
-      startSessionDraft: (projectId) => {
-        dispatch('workspace.showChatMode')
-        startSessionDraft(projectId, { openProject: openWorkspaceRoot })
-        onOpenChange(false)
+      startSessionDraft: async (projectId) => {
+        if (!(await openSessionProject(projectId))) return
+
+        startSessionDraft(projectId)
+        await revealDestination('workspace.showChatMode')
       },
-    }),
-    [
-      activeFilePath,
-      dispatch,
-      hasWorkspace,
-      onOpenChange,
-      openDefinition,
-      openWorkspaceRoot,
-      queueTerminalCommand,
-      saveProjectScript,
-      resolvedTheme,
-      selectFile,
-      selectedFileBackedPath,
-    ],
-  )
+    }
+  }, [
+    bus,
+    closePalette,
+    focus,
+    openDefinition,
+    openWorkspaceRoot,
+    paletteOrigin,
+    queueTerminalCommand,
+    resolvedTheme,
+    saveProjectScript,
+    selectFile,
+    selectedFileBackedPath,
+    sessionProjects,
+    workspace,
+  ])
 
   return (
     <CommandDialog
@@ -274,20 +310,19 @@ export function CommandPaletteContent({
         shouldFilter: !paletteOwnsItemOrder(mode),
         value: selectedCommandValue,
       }}
-      // Drop the frosted overlay while picking colors so the live hover-preview
-      // of the editor behind the palette is visible, not blurred.
+      contentRef={paletteTargetRef}
+      finalFocus={false}
+      onOpenChange={setPaletteOpen}
+      open={open}
       overlayClassName={
         isColorPreviewMode(mode) ? 'supports-backdrop-filter:backdrop-blur-none' : undefined
       }
-      open={open}
-      onOpenChange={onOpenChange}
     >
       <CommandInput
         placeholder={placeholderForMode(mode)}
         value={search}
         onValueChange={handleSearchChange}
       />
-      {/* VS Code's quick-input list height, floored so a short window still fits. */}
       <CommandList className='max-h-[min(440px,calc(100vh-8rem))] py-1' ref={highlightedListRef}>
         <CommandEmpty>{emptyLabelForMode(mode)}</CommandEmpty>
         <CommandPaletteActionsContext value={actions}>
@@ -299,7 +334,6 @@ export function CommandPaletteContent({
             fileQuery={fileQuery}
             fileSearchError={fileSearchQuery.isError}
             hasWorkspace={hasWorkspace}
-            activeFilePath={activeFilePath}
             mode={mode}
             scriptItems={scriptItems}
             sessionItems={sessionItems}
@@ -311,10 +345,4 @@ export function CommandPaletteContent({
       </CommandList>
     </CommandDialog>
   )
-}
-
-function commandPaletteItemKeepsOpen(item: CommandPaletteItem) {
-  if (item.command.kind !== 'platform') return false
-
-  return commandKeepsPaletteOpen(item.command.command)
 }

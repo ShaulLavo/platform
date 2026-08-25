@@ -1,8 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { useFocus } from '@/features/workspace/providers/focus-state'
 import { logsKeys } from '@/lib/query-keys'
+import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 import { logDashboardFilters } from '@/features/logs/utils/filter-params'
 import { logFilterQuery, logToolbarOptionFilters } from '@/features/logs/utils/filter-params'
 import { useLogSummary } from '@/features/logs/hooks/use-summary'
@@ -17,7 +17,26 @@ type LogsPanelProps = {
 
 export const LogsPanel = memo(({ active }: LogsPanelProps) => {
   const queryClient = useQueryClient()
-  const setFocusArea = useFocus((state) => state.setFocusArea)
+  const rootRef = useRef<HTMLElement | null>(null)
+  const { ref: focusTargetRef } = useFocusTarget<HTMLElement>({
+    area: 'logs',
+    id: { kind: 'logs' },
+    onIntent: (intent) => {
+      if (intent !== 'focus') return false
+      if (!rootRef.current) return false
+
+      rootRef.current.focus()
+      return true
+    },
+  })
+  // Stable identity keeps the target registration mounted across renders.
+  const setRootRef = useCallback(
+    (element: HTMLElement | null) => {
+      rootRef.current = element
+      focusTargetRef(element)
+    },
+    [focusTargetRef],
+  )
   const filtersState = useLogsFilters()
   const [inspectedEventId, setInspectedEventId] = useState<string | null>(null)
   const [now, setNow] = useState(Date.now)
@@ -46,8 +65,8 @@ export const LogsPanel = memo(({ active }: LogsPanelProps) => {
   return (
     <section
       className='text-foreground flex h-full min-h-0 flex-col'
-      onFocusCapture={() => setFocusArea('logs')}
-      onPointerDownCapture={() => setFocusArea('logs')}
+      ref={setRootRef}
+      tabIndex={-1}
     >
       <LogsToolbar
         areas={optionSummary.data?.areas ?? []}

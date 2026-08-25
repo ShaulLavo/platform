@@ -33,6 +33,8 @@ function CommandDialog({
   children,
   className,
   commandProps,
+  contentRef,
+  finalFocus,
   overlayClassName,
   showCloseButton = false,
   ...props
@@ -41,6 +43,8 @@ function CommandDialog({
   description?: string
   className?: string
   commandProps?: Omit<React.ComponentProps<typeof CommandPrimitive>, 'children'>
+  contentRef?: React.Ref<HTMLDivElement>
+  finalFocus?: React.ComponentProps<typeof DialogContent>['finalFocus']
   overlayClassName?: string
   showCloseButton?: boolean
   children: React.ReactNode
@@ -60,6 +64,8 @@ function CommandDialog({
           className,
         )}
         overlayClassName={overlayClassName}
+        finalFocus={finalFocus}
+        ref={contentRef}
         showCloseButton={showCloseButton}
       >
         <Command {...commandProps}>{children}</Command>

@@ -9,8 +9,10 @@
 - **Effort:** XL
 - **Risk:** HIGH — two of the failure modes (§6 H1, H2) are invisible to `dom` tests and read to a user as "the editor is broken"
 - **Category:** Direction
-- **Depends on:** `plans/056-multi-step-chord-keymap.md` complete. VS Code's chorded families cannot be expressed before the chord machine exists, and the fold family (§5) is the reason the takeover is survivable.
-- **Planned against:** platform `546a4c84`, Editor `899b3f3`, 2026-08-22
+- **Depends on:** `plans/056-multi-step-chord-keymap.md` complete and the landed typed
+  `CommandBus`/`FocusService` runtime. VS Code's chorded families cannot be expressed before the
+  chord machine exists, and the fold family (§5) is the reason the takeover is survivable.
+- **Planned against:** platform `546a4c84`, Editor `899b3f3`, 2026-08-22; command/focus boundary reconciled 2026-08-25
 
 ## Decision record
 
@@ -156,18 +158,17 @@ export type EditorKeymapPack = {
 **Decision: a closed string union of predicate keys, ANDed, with `!` negation via a template-literal member.** No parser, no user-authored `when`, no `or` — two rows express `or`, which is what VS Code's backwards candidate scan amounts to.
 
 ```ts
-// apps/web/src/keymap/when.ts   (pure, React-free)
-export type WhenKey =
-  // workspace facts — already assembled per dispatch at keymap/commands.ts:81-110 and
-  // thrown away. `requires` (define-command.ts:33) expands into these, so this ABSORBS
-  // an existing mechanism rather than adding a third beside `pane`.
-  | 'hasWorkspace'
-  | 'hasEditorTab'
-  | 'hasEditorSurface'
-  | 'hasSavableFile'
-  | 'hasFileOnDisk'
-  // editor-surface facts — from the surface registry and Editor.ts:691
+// apps/web/src/keymap/define-command.ts + utils/when.ts   (pure evaluation)
+export type CommandWhenKey =
+  // landed workspace and target facts
+  | 'workspaceOpen'
+  | 'tabOpen'
+  | 'editorTarget'
+  | 'saveableTab'
+  | 'fileBackedTab'
   | 'editorWritable'
+  | 'chatMode'
+  // editor-surface facts — from the resolved FocusService target and Editor.ts:691
   | 'editorHasSelection'
   | 'editorHasMultipleSelections'
   | 'editorTabMovesFocus'
@@ -175,12 +176,17 @@ export type WhenKey =
   | 'findWidgetVisible'
   | 'inlineSuggestionVisible'
 
-export type WhenTerm = WhenKey | `!${WhenKey}`
+export type CommandWhen = CommandWhenKey | `!${CommandWhenKey}`
 ```
 
-`when` is evaluated **at both steps of a chord**, freshly, pulled at keystroke time through the surface registry — no store, no subscription. This is what VS Code does. **A candidate whose `when` fails does not consume the chord**: the resolver skips it and, if no candidate survives, the prefix falls through untouched.
+`when` is evaluated **at both steps of a chord**, freshly, through the sole CommandBus snapshot and
+resolved FocusService target — no store or subscription. This is what VS Code does. **A candidate
+whose `when` fails does not consume the chord**: the resolver skips it and, if no candidate survives,
+the prefix falls through untouched.
 
-`commandDisabledReason` (`command-enablement.ts:21-34`) is re-expressed over the same context, which also closes plan 056's D16 — `requires` currently never runs in the keystroke path, so a disabled command's key swallows and dispatches a no-op today.
+The landed `CommandBus.inspect()` already applies `CommandWhen` to keybindings, palette, and menus,
+and `useAppKeymap` suppresses only a synchronously claimed ticket. Extend that evaluator; do not add
+a parallel availability helper or reinterpret conditions in the chord machine.
 
 ## Settings surface
 
@@ -211,10 +217,10 @@ The preset resolves **below** user overrides: preset → `resolvedPlatformKeyBin
 | **H1**  | **Bare keys go dead**                | `eventTargetsTextEntry` (`use-app-keymap.ts:79,96-109`) returns true for any `<textarea>`, and the editor's focus target is one (`virtualizedTextViewHelpers.ts:162-163`). **Measured 39/88 mac, 38/70 win, 37/72 linux**: every arrow and Shift+arrow, Home/End, PageUp/PageDown, Backspace, Delete, Tab, F2, F3, Alt+Enter, Alt+Z… Silent; reads as "the editor is broken".                                         | `inEditorSurface(event)` exemption keyed on `[data-editor-surface]`, **in the same commit as the filter removal**. Verified by a **real-browser** test — happy-dom will not catch it.                                         |
 | **H2**  | **Keyboard trap on Tab**             | `applyIndentCommand` returns `false` when `tabMovesFocus`, and `inputSelectionController.ts:1004-1010` states the mechanism verbatim: _"Refusing the command rather than consuming it is the whole mechanism: an unhandled key is not default-prevented."_ Platform prevents unconditionally (`use-app-keymap.ts:82`). Compounding: `toggleTabFocusMode` is one of the 35 orphans, so the exit does not exist either. | Prevent-if-handled **plus** binding `editor.action.toggleTabFocusMode`. **Both or neither.**                                                                                                                                  |
 | **H3**  | Escape stops closing dialogs         | **REFUTED.** base-ui's `closeOnEscapeKeyDown` is a plain bubble-phase `document` listener (`useDismiss.js:416`, no capture flag) and never reads `defaultPrevented`. `stopPropagation()` from another listener on the same node does not suppress it. **Do not carry this claim into the work.** Keep prevent-if-handled anyway — its justification is H2 and `closeFind` returning false when the widget is shut.    |
-| **H4**  | Wrong-editor dispatch                | `activeEditorCommandDispatch` is one last-writer-wins slot with **four** concurrent writers: `SidebarPanel` and `CodePanel` are always-mounted siblings (`workbench/components/layout.tsx:74`, `:91`), `result-file-editor.tsx:150-155`, and `settings/components/json-view.tsx:52` (`active` hardcoded).                                                                                                             | Element-keyed registry resolved from `event.target.closest('[data-editor-surface]')`, with `lastFocused` as the eventless fallback for palette/menu dispatch.                                                                 |
-| **H5**  | Null-clear races activation          | `editor.tsx:203` returns `() => setActiveEditorCommandDispatch(null)` with no identity check; a deactivating editor nulls a newcomer's dispatch.                                                                                                                                                                                                                                                                      | Registry `delete(element)` is identity-scoped by construction.                                                                                                                                                                |
-| **H6**  | Diff panes invisible to routing      | `diff-pane.tsx` calls neither `setActiveEditorCommandDispatch` nor `setFocusArea`, and `diff-editor.tsx:51/67/81` mounts up to **three**. Combined with `clearFocusArea` having **zero callers** (`focus-state.ts:25,58-64`), `activeArea` stays `'editor'` from whatever last claimed it — so `Mod+Z` in a diff undoes in the file editor behind it.                                                                 | Register diff panes as `readonly`; wire `clearFocusArea` or delete it and have every surface set its own area on `focusin`.                                                                                                   |
-| **H7**  | Splits                               | Do not exist yet — `code-panel.tsx:43` hardcodes `active`. The single slot is exactly what a split invalidates.                                                                                                                                                                                                                                                                                                       | The registry is split-ready by construction.                                                                                                                                                                                  |
+| **H4**  | Wrong-editor routing                 | **Closed foundation.** FocusService resolves the event origin, current owner, exact destination, and deepest registered target; editor capabilities live on that target.                                                                                                                                                                                                                                              | Preserve the sole service and route every takeover command through CommandBus. Do not infer a target from mount order or keep another last-focused pointer.                                                                   |
+| **H5**  | Stale-unmount race                   | **Closed foundation.** Focus targets use identity-safe registration tokens, so an older cleanup cannot remove a newer target.                                                                                                                                                                                                                                                                                         | Extend target capabilities in place if needed; do not add a second registry.                                                                                                                                                  |
+| **H6**  | Diff panes leak commands             | **Closed foundation.** Diff sides register exact read-only targets, including tab and side identity, and writable conditions are evaluated by CommandBus.                                                                                                                                                                                                                                                             | Preserve exact destination identity and verify `Mod+Z` remains unclaimed on a read-only diff.                                                                                                                                 |
+| **H7**  | Splits                               | FocusService is already target-per-DOM-owner and therefore split-ready.                                                                                                                                                                                                                                                                                                                                               | The takeover may add target facts, never singleton active-surface state.                                                                                                                                                      |
 | **H8**  | Terminal                             | ghostty's `handleKeyDown` reaches the encoder branch for every ctrl/alt/meta chord and ends `preventDefault(), stopPropagation()` on its container, below `document`. **Ctrl/meta chords in the terminal never reach platform's bubble listener today.** Platform never sets `attachCustomKeyEventHandler` (grep: zero hits).                                                                                         | Unchanged by this plan. Chord arming in the terminal is 056's D2 and is gated on the ghostty-webgpu host swap (`plans/055`), not on this plan.                                                                                |
 | **H11** | Loss of the stop-on-handled shield   | `keymap.ts:104-105` + `shouldStopPropagation` (`:126-130`) is undocumented and is the only thing keeping the two dispatchers from double-firing today. After the flip every editor key runs the full document path.                                                                                                                                                                                                   | Intended, but any future `document` listener registered after the keymap now sees keys it never used to. Note it in the keymap module header.                                                                                 |
 | **H12** | Hotkey manager is a global singleton | `getHotkeyManager()` is process-wide with exactly one call site in either repo (`keymap.ts:99`). Two `@tanstack/hotkeys@0.8.0` module instances exist; `vite.config.ts:39` dedupes only react/react-dom.                                                                                                                                                                                                              | Platform never imports `getHotkeyManager` (grep: zero). Keep that an explicit invariant: **only data and types cross the repo boundary, never state.** After the takeover the manager has zero live registrations in the app. |
@@ -247,11 +253,18 @@ Import `@singapor/core/keymap`. `editor-commands.ts` stops declaring keys and ke
 
 Delete `hotkey` from `EditorKeyBinding`; the union collapses to `key`. `bun run build`. **Mandatory. If this is not done, the plan is not done.**
 
-### Phase 4 — Editor-surface registry _(platform only; keymap untouched, `EditorKeymapController` still on)_
+### Phase 4 — Reconcile landed editor targets _(platform only; keymap untouched, `EditorKeymapController` still on)_
 
-New `apps/web/src/keymap/state/editor-surface-registry.ts`. Stamp `data-editor-surface` and register in `features/editor/components/frame.tsx` — already "the one element we own that sees every right-click inside the editor" (`:24-25`). Register **every** mount site: `editor.tsx`, `result-file-editor.tsx`, `settings/components/json-view.tsx:52`, `diff-pane.tsx:148` (up to three via `diff-editor.tsx:51/67/81`). Route `usePlatformCommandDispatch`'s `editor.*` branch (`commands.ts:76-77`) by `event.target.closest()` with `lastFocused` as the eventless fallback. Delete `activeEditorCommandDispatch` (`focus-state.ts:20,66-67,73-74`). Wire or delete `clearFocusArea`.
+Audit every Editor mount against `apps/web/src/lib/focus/state/service.ts` and its existing
+`useFocusTarget` registration: document editors, read-only search results, settings JSON, and every
+diff side must retain exact IDs plus `{ dispatch, writable }`. Add `data-editor-surface` to the
+owned frame only for DOM containment in the takeover listener; it is not a second registry.
+Eventless palette/menu commands continue through `CommandBus`, whose resolver uses FocusService's
+captured origin/current owner. Extend `FocusEditorCapability` or the command snapshot only for a
+new fact proven necessary by the native pack.
 
-**Exit:** no key behaviour changes at all; the palette and menus target the focused editor. **Independently valuable — this alone fixes H4, H5 and H6.**
+**Exit:** no key behaviour changes; keyboard, palette, and menu dispatch all resolve the same exact
+editor target. FocusService identity-safety and deepest-target tests remain green.
 
 ### Phase 5 — Preset setting and the unmapped ledger
 
@@ -261,7 +274,15 @@ New `apps/web/src/keymap/state/editor-surface-registry.ts`. Stamp `data-editor-s
 
 ### Phase 6 — The takeover _(one commit; half of it is a broken editor until the last line)_
 
-Delete `isAppKeyBinding` (`use-app-keymap.ts:57,68-70` + import at `:11`). Add the `[data-editor-surface]` exemption to `eventTargetsTextEntry` (H1). Consume the dispatch return discarded at `:88` for prevent-if-handled (H2). Collapse all three `useEditor` sites onto one `DISABLED_EDITOR_KEYMAP` (`editor.tsx:136`, `result-file-editor.tsx:127`, `diff-pane.tsx:90`); delete `diff-options.ts:32-35` (byte-equivalent to `{ enabled: false }`). Absorb the 35 orphans. Bind `goToDefinition` to F12 and delete the reservation at `default-bindings.ts:106`. Bind `toggleTabFocusMode`. Replace `readonlyEditorKeymapLayers` with `when: ['editorWritable']`; delete `editor-keymap.ts:16-51`. Delete `app-runtime-content.tsx:19,34-40,87` — the duplicate override resolution. Delete the **21-file** `editorKeymapLayers` prop chain (23 files contain the identifier):
+Delete `isAppKeyBinding` from `use-app-keymap.ts`. Add the `[data-editor-surface]` exemption to
+`eventTargetsTextEntry` (H1). Preserve the landed prevent-if-claimed contract: CommandBus calls the
+resolved Editor capability synchronously, `ticket.claimed` reflects its boolean result, and the app
+listener suppresses only a claimed command (H2). Collapse all three `useEditor` sites onto one
+`DISABLED_EDITOR_KEYMAP`; delete `diff-options.ts` if it remains byte-equivalent. Absorb the 35
+orphans. Bind `goToDefinition` to F12 and delete its reservation. Bind `toggleTabFocusMode`. Replace
+`readonlyEditorKeymapLayers` with `when: ['editorWritable']`; delete only the now-unused bridge code
+in `editor-keymap.ts`. Delete the duplicate `editorKeymapLayers` prop chain wherever the drift check
+finds it; do not delete `CommandProvider`'s one resolved binding table.
 
 `components/app-runtime-content.tsx` · `components/app-workspace.tsx` · `features/chat-mode/components/{layout,surface-view,tool-pane}.tsx` · `features/editor/components/editor.tsx` · `features/search/components/{result-editor-surface,result-editor-virtual-window,result-file-editor-pool-slot,result-file-editor}.tsx` · `features/settings/components/{json-view,page}.tsx` · `features/workbench/components/{code-panel,editor-surface-layout-view,editor-surface-tab-body,file-editor-body,layout,sidebar-panel}.tsx` · `features/workspace/components/{search-pane,search-results,view}.tsx`
 
@@ -269,7 +290,10 @@ Delete `isAppKeyBinding` (`use-app-keymap.ts:57,68-70` + import at `:11`). Add t
 
 ### Phase 7 — `when` predicate union
 
-Ship `when.ts` with the workspace keys plus `editorWritable` and `editorTabMovesFocus` — all answerable from the Phase 4 registry and `Editor.ts:691`. Re-express `commandDisabledReason` over `KeymapContext`; expand `requires` into `WhenTerm[]`.
+Extend `CommandWhen` and `utils/when.ts` with `editorTabMovesFocus` and any other proven Editor read
+facts. `editorWritable` and the shared evaluator already exist. Keep evaluation in
+`CommandBus.inspect()`; the chord trie may filter candidates by bus inspection but may not own a
+second context model.
 
 **Exit:** each key lands with the binding that needs it; `readonlySafeEditorCommandPacks` has no platform consumer left; 056's D16 is closed.
 
@@ -315,22 +339,22 @@ Editor-side: the nine `packages/editor/test/*` files asserting on `defaultEditor
 
 ## Drift check
 
-| Location                                                           | Must still say                                                                | Why it matters                                                                                                                      |
-| ------------------------------------------------------------------ | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `.github/workflows/ci.yml:19`                                      | `EDITOR_REF: main`                                                            | If it becomes pinned, §3's three-step dance collapses to one atomic change. **Check this first — it changes the whole plan shape.** |
-| `apps/web/vite.config.ts:74-99`                                    | `editorSourcePlugin`, `apply: 'serve'`, all-or-nothing per package            | The `./keymap` subpath needs its `exports` entry before dev resolution works.                                                       |
-| `Editor/packages/editor/package.json`                              | `exports` has no `./keymap`; `files: ["README.md","dist"]`                    | Phase 1's first edit.                                                                                                               |
-| platform `package.json` `workspaces.packages`                      | excludes `packages/editor-*`                                                  | Platform never typechecks Editor source; breakage is invisible until a rebuild.                                                     |
-| `Editor/packages/editor/src/editor/keymap.ts:663-685`              | `foldingBindings` uses `Mod+Alt+<digit>`                                      | The collision this plan dissolves.                                                                                                  |
-| `apps/web/src/keymap/workspace-commands.ts:127`, `:828`, `:838`    | `Mod+Alt+${position}`, `Mod+Alt+]`, `Mod+Alt+[`                               | The other half of the collision.                                                                                                    |
-| `apps/web/src/keymap/editor-commands.ts`                           | `grep -c fold` returns **0**                                                  | The folding-has-no-keys premise.                                                                                                    |
-| `apps/web/src/keymap/active-bindings.ts:168`, `:257`               | the empty-override early return; strictly-greater tie-break                   | Why collision detection must move onto the merge path before a preset ships.                                                        |
-| `apps/web/src/keymap/use-app-keymap.ts:57`, `:68-70`, `:79`, `:88` | `isAppKeyBinding`; the text-entry gate; the discarded dispatch return         | Phase 6's four edits. H1 and H2 both live here.                                                                                     |
-| `Editor/.../virtualizedTextViewHelpers.ts:162-163`                 | the focus target is a `<textarea>`                                            | H1's mechanism. Re-measure the 39/88 figure if the element changes.                                                                 |
-| `Editor/.../inputSelectionController.ts:1004-1010`                 | "Refusing the command rather than consuming it is the whole mechanism"        | H2's mechanism, stated by the Editor itself.                                                                                        |
-| `Editor/packages/find/src/findWidget.ts:208-209`                   | `stopPropagation()` as the first statement                                    | H13.                                                                                                                                |
-| `focus-state.ts:25`, `:58-64`                                      | `clearFocusArea` has zero callers                                             | H6.                                                                                                                                 |
-| `packages/lsp-plugin/test/codeActions.test.ts:5`, `:233`           | imports `readonlySafeEditorCommandPacks`                                      | The consumer outside `packages/editor` that must move with it.                                                                      |
-| `packages/solid/src/index.ts:55,70,227,248`                        | forwards `keymap` as a first-class layer                                      | Why Phase 8 is an `EditorOptions` field, not a React-package addition.                                                              |
-| `apps/web/vitest.browser.config.ts:46-53`                          | exactly four `browser.commands`, all mouse                                    | `proofKeyPress` is a hard prerequisite for Phase 6.                                                                                 |
-| `Editor/packages/editor/dist` freshness                            | `defaultEditorKeyBindings('mac')` from `dist` returns the same count as `src` | A stale dist silently narrows the Phase 0 oracle.                                                                                   |
+| Location                                                        | Must still say                                                                 | Why it matters                                                                                                                      |
+| --------------------------------------------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `.github/workflows/ci.yml:19`                                   | `EDITOR_REF: main`                                                             | If it becomes pinned, §3's three-step dance collapses to one atomic change. **Check this first — it changes the whole plan shape.** |
+| `apps/web/vite.config.ts:74-99`                                 | `editorSourcePlugin`, `apply: 'serve'`, all-or-nothing per package             | The `./keymap` subpath needs its `exports` entry before dev resolution works.                                                       |
+| `Editor/packages/editor/package.json`                           | `exports` has no `./keymap`; `files: ["README.md","dist"]`                     | Phase 1's first edit.                                                                                                               |
+| platform `package.json` `workspaces.packages`                   | excludes `packages/editor-*`                                                   | Platform never typechecks Editor source; breakage is invisible until a rebuild.                                                     |
+| `Editor/packages/editor/src/editor/keymap.ts:663-685`           | `foldingBindings` uses `Mod+Alt+<digit>`                                       | The collision this plan dissolves.                                                                                                  |
+| `apps/web/src/keymap/workspace-commands.ts:127`, `:828`, `:838` | `Mod+Alt+${position}`, `Mod+Alt+]`, `Mod+Alt+[`                                | The other half of the collision.                                                                                                    |
+| `apps/web/src/keymap/editor-commands.ts`                        | `grep -c fold` returns **0**                                                   | The folding-has-no-keys premise.                                                                                                    |
+| `apps/web/src/keymap/active-bindings.ts:168`, `:257`            | the empty-override early return; strictly-greater tie-break                    | Why collision detection must move onto the merge path before a preset ships.                                                        |
+| `apps/web/src/keymap/use-app-keymap.ts`                         | `isAppKeyBinding`; the text-entry gate; suppression only when `ticket.claimed` | Phase 6 removes the bridge while preserving the landed H1/H2 claim contract.                                                        |
+| `Editor/.../virtualizedTextViewHelpers.ts:162-163`              | the focus target is a `<textarea>`                                             | H1's mechanism. Re-measure the 39/88 figure if the element changes.                                                                 |
+| `Editor/.../inputSelectionController.ts:1004-1010`              | "Refusing the command rather than consuming it is the whole mechanism"         | H2's mechanism, stated by the Editor itself.                                                                                        |
+| `Editor/packages/find/src/findWidget.ts:208-209`                | `stopPropagation()` as the first statement                                     | H13.                                                                                                                                |
+| `apps/web/src/lib/focus/state/service.ts`                       | identity-safe tokens, exact editor target IDs, `{ dispatch, writable }`        | H4-H7 are landed prerequisites, not work to recreate.                                                                               |
+| `packages/lsp-plugin/test/codeActions.test.ts:5`, `:233`        | imports `readonlySafeEditorCommandPacks`                                       | The consumer outside `packages/editor` that must move with it.                                                                      |
+| `packages/solid/src/index.ts:55,70,227,248`                     | forwards `keymap` as a first-class layer                                       | Why Phase 8 is an `EditorOptions` field, not a React-package addition.                                                              |
+| `apps/web/vitest.browser.config.ts`                             | `proofKeyPress` and the command/focus browser acceptance file                  | Extend the existing trusted-input infrastructure for Phase 6.                                                                       |
+| `Editor/packages/editor/dist` freshness                         | `defaultEditorKeyBindings('mac')` from `dist` returns the same count as `src`  | A stale dist silently narrows the Phase 0 oracle.                                                                                   |

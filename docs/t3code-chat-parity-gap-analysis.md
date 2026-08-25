@@ -453,7 +453,7 @@ both suites re-verified green for this measurement.
 > a feature complete on both ends with nothing joining them, passing every test it has — is the one this codebase
 > keeps producing, and the list is the cheapest reminder of what it looks like.
 >
-> How N1 closed them: settings is a `Mod+,` dialog mounted in `AppCommandSurface` (above the `rootFolder` branch, so
+> How N1 closed them: settings is a `Mod+,` dialog owned by `CommandProvider` (above the `rootFolder` branch, so
 > it works with no folder open) plus a titlebar item and a palette entry; the rail unions server message matches into
 > its own title/branch filter and renders a highlighted snippet per row; `threadDetailPage` became a WS request
 > variant (protocol version 2) feeding a per-thread loader and an overlay "Load earlier" that the scroll machine

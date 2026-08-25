@@ -1,5 +1,4 @@
 import { waitFor } from '@testing-library/react'
-import { render } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { vi } from 'vitest'
 import { Editor } from '@singapor/core'
@@ -13,6 +12,7 @@ import { createDiffRegionStore, createTextDiff, type DiffSyntaxBackend } from '@
 import { DiffPane } from '@/features/editor/components/diff-pane'
 import { expect, test } from '../../../../../test/fixtures'
 import { stubHighlightApi } from '../../../../../test/env/highlight-api'
+import { renderWithProviders } from '../../../../../test/render'
 
 // The plugin parses per side and publishes projected tokens; the host is what puts them on the
 // editor. `setText` clears tokens on its way through, and the parse lands after the first push —
@@ -23,7 +23,7 @@ test('the tokens the plugin projects are applied to the editor', async () => {
   stubHighlightApi()
   const setTokens = vi.spyOn(Editor.prototype, 'setTokens')
   try {
-    render(
+    renderWithProviders(
       <StrictMode>
         <DiffPane
           file={createTextDiff({

@@ -29,12 +29,10 @@ import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-th
 import { useWorkbenchDensity } from '@/features/settings/hooks/use-workbench-density'
 import { useFileTreeMutationEvents } from '@/features/workspace/hooks/use-file-tree-mutation-events'
 import { useFsActions } from '@/features/workspace/hooks/use-fs-actions'
-import { useTreeCommandRequest } from '@/features/workspace/hooks/use-tree-command-request'
 import { useTreeSearchSession } from '@/features/workspace/hooks/use-tree-search-session'
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
-import { useFocus } from '@/features/workspace/providers/focus-state'
 import { preparedTreeInputForPaths } from '@/features/workspace/state/prepared-tree-input-cache'
 import { treeCommandFocusCandidate } from '@/features/workspace/utils/tree-commands'
 import { treeGitStatusPatch } from '@/features/workspace/utils/tree-git-status-patch'
@@ -46,6 +44,7 @@ import type { LoadState } from '@/lib/load-state'
 import { canonicalTreePath } from '@/lib/path-formatters'
 import { fileSystemKeys } from '@/lib/query-keys'
 import { queryHasNoData } from '@/lib/query-state'
+import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 import {
   moveTreeModelPaths,
   treePathForSelectedPath,
@@ -122,7 +121,6 @@ function ReadyTreePane({
   const { selectFile } = useEditorCommands()
   const { loadDirectory, publishVisibleItemCount: publishVisibleItemCountAction } =
     useFileTreeActions()
-  const setFocusArea = useFocus((store) => store.setFocusArea)
   const queryClient = useQueryClient()
   const expandedDirectoryPathsRef = useRef<ReadonlySet<string> | undefined>(undefined)
   const modelRef = useRef(model)
@@ -227,8 +225,6 @@ function ReadyTreePane({
     tree.setLoadingPaths(loadingTreePath ? [loadingTreePath] : [])
   }, [loadingTreePath, tree])
   const searchSession = useTreeSearchSession(tree)
-  const { acknowledge: acknowledgeTreeCommand, request: treeCommandRequest } =
-    useTreeCommandRequest(rootPath)
 
   useFileTreeMutationEvents({ rootPath, tree })
 
@@ -255,16 +251,18 @@ function ReadyTreePane({
     return true
   }
 
-  const executePendingTreeCommand = useEffectEvent(
-    (kind: 'focus' | 'open-search' | 'reveal-active') => {
-      if (kind === 'open-search') {
+  const { ref: treeFocusTargetRef } = useFocusTarget<HTMLDivElement>({
+    area: 'file-tree',
+    id: { kind: 'file-tree', rootPath },
+    onIntent: (intent) => {
+      if (intent === 'open-search') {
         tree.openSearch()
-        return
+        return true
       }
 
-      focusTreeForCommand(kind === 'reveal-active')
+      return focusTreeForCommand(intent === 'reveal-active')
     },
-  )
+  })
 
   // No dependency list: every value here is a fresh identity per render, and
   // the body only mirrors the latest render into refs that captured-once tree
@@ -311,13 +309,6 @@ function ReadyTreePane({
   }, [gitStatus, tree])
 
   useEffect(() => {
-    if (!treeCommandRequest) return
-
-    executePendingTreeCommand(treeCommandRequest.kind)
-    acknowledgeTreeCommand(treeCommandRequest.id)
-  }, [acknowledgeTreeCommand, treeCommandRequest])
-
-  useEffect(() => {
     return tree.subscribe(() => {
       loadExpandedDirectoriesForCurrentModel(tree)
       publishVisibleTreeItemCount(tree)
@@ -325,11 +316,7 @@ function ReadyTreePane({
   }, [tree])
 
   return (
-    <div
-      className='h-full'
-      onFocusCapture={() => setFocusArea('file-tree')}
-      onPointerDownCapture={() => setFocusArea('file-tree')}
-    >
+    <div className='h-full' ref={treeFocusTargetRef}>
       <FileTree
         aria-label='Folder tree'
         className='block h-full'

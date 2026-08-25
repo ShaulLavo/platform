@@ -18,6 +18,18 @@ import { platformCommandSpecs } from '@/keymap/command-registry'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
 
 const RECENTS = ['workspace.showSettings', 'workspace.showChatMode'] as const
+const COMMAND_PALETTE_ACTIONS: CommandPaletteActions = {
+  disabledReasonForCommand: () => null,
+  previewColorTheme: () => undefined,
+  selectColorTheme: () => undefined,
+  selectFile: () => Promise.resolve(),
+  selectGotoLine: () => Promise.resolve(),
+  selectPlatformCommand: () => Promise.resolve(),
+  selectScript: () => Promise.resolve(),
+  selectSession: () => Promise.resolve(),
+  selectSymbol: () => Promise.resolve(),
+  startSessionDraft: () => Promise.resolve(),
+}
 
 /**
  * cmdk re-sorts the rendered list by its own match score whenever it filters, so the
@@ -33,12 +45,8 @@ function renderCommandList(search: string, shouldFilter: boolean) {
           would pass for the wrong reason. */}
       <CommandInput value={search} onValueChange={() => {}} />
       <CommandList>
-        <CommandPaletteActionsContext value={{} as CommandPaletteActions}>
-          <CommandGroups
-            activeFilePath='/repo/src/app.ts'
-            groups={groupedCommandItems(items, search, RECENTS)}
-            hasWorkspace
-          />
+        <CommandPaletteActionsContext value={COMMAND_PALETTE_ACTIONS}>
+          <CommandGroups groups={groupedCommandItems(items, search, RECENTS)} />
         </CommandPaletteActionsContext>
       </CommandList>
     </Command>,

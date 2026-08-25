@@ -15,7 +15,15 @@ import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
  * the file cache and the working side from the live buffer, so the diff keeps answering "what have
  * I changed" as you keep typing.
  */
-export function CompareSavedView({ path, rootPath }: { path: string; rootPath: string }) {
+export function CompareSavedView({
+  path,
+  rootPath,
+  tabId,
+}: {
+  path: string
+  rootPath: string
+  tabId?: string
+}) {
   const mode = useSettingValue('editor.diff.viewMode')
   const { fileState } = useSelectedFile(path)
   const buffer = useEditorDocumentState((state) => state.liveDocumentsById[path]?.buffer ?? null)
@@ -47,13 +55,13 @@ export function CompareSavedView({ path, rootPath }: { path: string; rootPath: s
     return <CompareNotice message='Could not read the saved file.' tone='error' />
   }
   if (!file) {
-    if (buffer) return <DiffEditor file={null} mode={mode} />
+    if (buffer) return <DiffEditor file={null} mode={mode} tabId={tabId} />
 
     return <CompareNotice message='Open the file to compare it with disk.' />
   }
   if (file.hunks.length === 0) return <CompareNotice message='No unsaved changes.' />
 
-  return <DiffEditor file={file} languageServer={languageServer} mode={mode} />
+  return <DiffEditor file={file} languageServer={languageServer} mode={mode} tabId={tabId} />
 }
 
 function CompareNotice({ message, tone }: { message: string; tone?: 'error' }) {

@@ -250,7 +250,7 @@ Folder shape follows house conventions: `components/` render-only `.tsx`, `hooks
 | `apps/web/src/lib/query-keys.ts`                               | Notes query keys.                                                                |
 | `apps/web/src/features/workbench/utils/panels.ts`              | Add the backlinks tab to the closed union.                                       |
 | `apps/web/src/features/workbench/components/sidebar-panel.tsx` | Render branch for the backlinks tab.                                             |
-| `apps/web/src/features/workspace/providers/focus-state.ts`     | A notes `FocusArea`.                                                             |
+| `apps/web/src/lib/focus/state/service.ts`                      | A notes `FocusArea` and typed target identity.                                   |
 | `docs/settings-reference.md`                                   | Regenerate with `bun run settings:reference`.                                    |
 
 ### What it ports

@@ -31,40 +31,11 @@ export function fileBackedDocumentPath(path: string | null | undefined) {
 }
 
 /**
- * Is this document id a surface an `editor.*` command can act on?
- *
- * A superset of the file-backed ids, because "has a text editor in it" and "is a file on disk" are
- * different questions: a conflict tab and a git-ref tab both own an unsynced document and attach a
- * view by document id rather than by file path (`EditorSurfaceTabBody`), so they take every editor
- * command while being unsavable.
- *
- * Diff ids are deliberately *not* here even though a diff is drawn by real `Editor`s now. Those
- * panes call `useEditor` directly and never register with `setActiveEditorCommandDispatch`, so
- * `dispatchEditorCommand` has nothing to reach on a diff tab — enabling the commands there would
- * advertise a no-op. The same holds for a search-results buffer, with a wrinkle: its surface does
- * register a dispatch, but only while a result row is focused, which is state no document id can
- * report. It stays out rather than flickering between honest and wrong.
- */
-export function editorBackedDocumentPath(path: string | null | undefined) {
-  if (!path) return null
-  if (path.startsWith(CONFLICT_DIFF_DOCUMENT_PREFIX)) return path
-  if (path.startsWith(REF_DOCUMENT_PREFIX)) return path
-  if (path.startsWith(SETTINGS_JSON_DOCUMENT_PREFIX)) return path
-  // The settings tab holds a real editor whenever its JSON view is showing. The
-  // id cannot say which view that is, so it answers yes and the commands are a
-  // no-op over the form — the same thing VS Code's settings tab does.
-  if (isSettingsDocumentId(path)) return path
-
-  return fileBackedDocumentPath(path)
-}
-
-/**
  * Is this document id something a save can be written back to?
  *
- * Wider than file-backed and narrower than editor-backed. A raw settings.json
+ * Wider than file-backed. A raw settings.json
  * buffer is written through `POST /settings/raw` rather than the fs routes, so it
- * takes a save while having no path on disk; a conflict or git-ref buffer is a
- * live editor with nowhere to put the bytes.
+ * takes a save while having no path on disk.
  *
  * This is the enablement-side approximation of the question `save.ts` asks of the
  * document itself. It has to be answerable from the id alone because the palette

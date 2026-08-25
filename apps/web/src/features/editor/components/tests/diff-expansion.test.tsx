@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react'
+import { waitFor } from '@testing-library/react'
 import { StrictMode } from 'react'
 import userEvent from '@testing-library/user-event'
 import type { Editor } from '@singapor/core'
@@ -9,6 +9,7 @@ import { DiffPane } from '@/features/editor/components/diff-pane'
 import { log } from '@/lib/client-logging'
 import { expect, test } from '../../../../../test/fixtures'
 import { stubHighlightApi } from '../../../../../test/env/highlight-api'
+import { renderWithProviders } from '../../../../../test/render'
 
 // Expanding a collapsed region rewrites the whole buffer. The reader is somewhere in it, and the
 // two ways of pushing text back in do not agree about that: `openDocument` takes no scroll position
@@ -66,7 +67,7 @@ async function mountStackedDiff() {
     oldFile: { path: 'repo/a.ts', text: text() },
   })
   let mounted: Editor | null = null
-  render(
+  renderWithProviders(
     // The app mounts under StrictMode, which mounts, tears down and remounts. Anything that only
     // survives the first mount is invisible without it.
     <StrictMode>

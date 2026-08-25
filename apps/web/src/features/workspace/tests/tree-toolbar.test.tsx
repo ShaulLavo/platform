@@ -1,13 +1,9 @@
-import { act, fireEvent, renderHook, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, renderHook, screen } from '@testing-library/react'
 import { FileTreeModel } from '@workspace/tree'
-import type { ReactNode } from 'react'
 import { vi } from 'vitest'
 
 import { TreeToolbar } from '@/features/workspace/components/tree-toolbar'
 import { useFileTreeMutationEvents } from '@/features/workspace/hooks/use-file-tree-mutation-events'
-import { useTreeCommandRequest } from '@/features/workspace/hooks/use-tree-command-request'
-import { TreeCommandsContext } from '@/features/workspace/providers/tree-commands-context'
-import { createTreeCommandStore } from '@/features/workspace/state/tree-command-store'
 import { log } from '@/lib/client-logging'
 
 import { expect, test } from '../../../../test/fixtures'
@@ -53,29 +49,6 @@ test('disables traversal and clear while the retained query is empty', () => {
   expect(screen.getByRole('button', { name: 'Close file filter' })).toBeEnabled()
 })
 
-test('delivers a pre-mount tree request to its matching root', () => {
-  const store = createTreeCommandStore()
-  store.request('focus', '/repo')
-  const { result } = renderHook(() => useTreeCommandRequest('/repo'), {
-    wrapper: treeCommandWrapper(store),
-  })
-
-  expect(result.current.request).toEqual({ id: 1, kind: 'focus', rootPath: '/repo' })
-  act(() => result.current.acknowledge(1))
-  expect(result.current.request).toBeNull()
-})
-
-test('discards a pending request owned by another root', async () => {
-  const store = createTreeCommandStore()
-  store.request('focus', '/old-root')
-  const { result } = renderHook(() => useTreeCommandRequest('/current-root'), {
-    wrapper: treeCommandWrapper(store),
-  })
-
-  expect(result.current.request).toBeNull()
-  await waitFor(() => expect(store.getSnapshot()).toBeNull())
-})
-
 test('logs one wide event for a batch and unsubscribes on unmount', () => {
   const tree = new FileTreeModel({ paths: ['a.ts', 'old/'] })
   const info = vi.spyOn(log, 'info').mockImplementation(() => {})
@@ -119,11 +92,5 @@ function toolbarActions() {
     onOpenSearch: vi.fn(),
     onPreviousMatch: vi.fn(),
     onRevealActiveFile: vi.fn(),
-  }
-}
-
-function treeCommandWrapper(store: ReturnType<typeof createTreeCommandStore>) {
-  return function TreeCommandWrapper({ children }: { readonly children: ReactNode }) {
-    return <TreeCommandsContext value={store}>{children}</TreeCommandsContext>
   }
 }

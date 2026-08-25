@@ -1,9 +1,16 @@
-import { useState, type ReactElement } from 'react'
+import { useRef, useState, type ReactElement } from 'react'
 
 import { useResolvedMenu } from '@/features/menus/hooks/use-resolved-menu'
-import type { Menu, MenuSurfaceId } from '@/features/menus/utils/model'
-import type { ResolvedMenuItem } from '@/features/menus/utils/resolve'
+import type { Menu } from '@/features/menus/utils/model'
+import type { ResolvedMenuInvocation, ResolvedMenuItem } from '@/features/menus/utils/resolve'
 import type { MenuAnchor } from '@/features/menus/utils/virtual-anchor'
+import type { MenuSurfaceId } from '@/keymap/types'
+import { useFocusService } from '@/lib/focus/hooks/use-service'
+import {
+  registeredFocusTarget,
+  type FocusService,
+  type FocusTargetToken,
+} from '@/lib/focus/state/service'
 import { log } from '@/lib/client-logging'
 import {
   ContextMenu,
@@ -46,7 +53,19 @@ export function MenuSurface({
   readonly surface: MenuSurfaceId
   readonly trigger?: ReactElement
 }) {
-  const sections = useResolvedMenu(menu)
+  const focusService = useFocusService()
+  const [originState, setOriginState] = useState(() => ({
+    controlledOpen: open,
+    origin: open ? captureMenuOrigin(focusService, anchor) : null,
+  }))
+  if (open !== originState.controlledOpen) {
+    setOriginState({
+      controlledOpen: open,
+      origin: open ? captureMenuOrigin(focusService, anchor) : originState.origin,
+    })
+  }
+  const pendingCommand = useRef<ResolvedMenuInvocation>(undefined)
+  const sections = useResolvedMenu(menu, surface, originState.origin)
 
   /**
    * Closing clears the consumer's anchor while Base UI's exit animation is
@@ -63,24 +82,62 @@ export function MenuSurface({
    * Logging only — the row itself runs the item. Every kind reports, so a menu
    * whose only affordance is a radio group is not invisible in the logs.
    */
-  function handleInvoke(item: ResolvedMenuItem, value?: string) {
+  function handleInvoke(
+    item: ResolvedMenuItem,
+    value?: string,
+    invocation?: ResolvedMenuInvocation,
+  ) {
+    if (invocation) pendingCommand.current = invocation
+    let command = item.kind === 'run' ? item.command : null
+    if (item.kind === 'radio-group') {
+      command = item.options.find((option) => option.value === value)?.command ?? null
+    }
+
     log.info({
       action: 'menu.invoke',
       area: 'command',
-      command: item.kind === 'run' ? item.command : null,
+      command,
       item: item.key,
       menu: surface,
       value,
     })
   }
 
+  function handleOpenChange(next: boolean, details: { readonly trigger?: Element }) {
+    if (next) {
+      pendingCommand.current = undefined
+      setOriginState({
+        controlledOpen: open === undefined ? undefined : true,
+        origin: captureMenuOrigin(focusService, anchor, details.trigger),
+      })
+      onOpenChange?.(true)
+      return
+    }
+
+    const origin = originState.origin
+    const command = pendingCommand.current
+    pendingCommand.current = undefined
+    setOriginState({
+      controlledOpen: open === undefined ? undefined : false,
+      origin,
+    })
+    onOpenChange?.(false)
+    if (!command) {
+      restoreMenuOrigin(focusService, origin)
+      return
+    }
+
+    void command.completion.then(() => restoreMenuOrigin(focusService, origin))
+  }
+
   return (
-    <ContextMenu onOpenChange={onOpenChange} open={open}>
+    <ContextMenu onOpenChange={handleOpenChange} open={open}>
       {trigger ? <ContextMenuTrigger render={trigger} /> : null}
       <ContextMenuContent
         anchor={anchor ?? lastAnchor ?? undefined}
         className={className}
         data-menu-surface={surface}
+        finalFocus={false}
         {...popupProps}
       >
         {sections.map((section, index) => (
@@ -89,4 +146,29 @@ export function MenuSurface({
       </ContextMenuContent>
     </ContextMenu>
   )
+}
+
+function captureMenuOrigin(
+  focusService: FocusService,
+  anchor?: MenuAnchor | null,
+  trigger?: Element,
+): FocusTargetToken | null {
+  const anchorOrigin = anchor?.contextElement
+    ? focusService.captureOrigin(anchor.contextElement)
+    : null
+  if (anchorOrigin) return anchorOrigin
+
+  const triggerOrigin = trigger ? focusService.captureOrigin(trigger) : null
+  if (triggerOrigin) return triggerOrigin
+
+  return focusService.captureOrigin()
+}
+
+function restoreMenuOrigin(focusService: FocusService, origin: FocusTargetToken | null) {
+  if (!origin || !focusService.isRegistered(origin)) return
+
+  const currentOwner = focusService.getSnapshot().currentOwner
+  if (currentOwner) return
+
+  void focusService.request(registeredFocusTarget(origin)).completion
 }

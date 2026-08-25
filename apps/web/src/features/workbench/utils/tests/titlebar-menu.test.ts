@@ -55,7 +55,9 @@ test('a qualified project carries its parent hint in the label', () => {
 
 test('picking a project opens that root', () => {
   const opened: string[] = []
-  projectRadio(menuContext({ selectProject: (path) => opened.push(path) })).select('/work/web')
+  const select = projectRadio(menuContext({ selectProject: (path) => opened.push(path) })).select
+  expect(select).toBeTypeOf('function')
+  select?.('/work/web')
 
   expect(opened).toEqual(['/work/web'])
 })
@@ -69,28 +71,22 @@ test('the ui mode radio offers both modes and checks the active one', () => {
 
   expect(group.value).toBe('workspace.showChatMode')
   expect(group.options.map((option) => option.label)).toEqual(['Workbench Mode', 'Chat Mode'])
-})
-
-test('picking a ui mode runs that mode command', () => {
-  const ran: string[] = []
-  const group = radioGroup(menuContext({ runCommand: (id) => ran.push(id) }), 'view', 'uiMode')
-  group.select('workspace.showChatMode')
-
-  expect(ran).toEqual(['workspace.showChatMode'])
-})
-
-test('a value outside the radio set runs nothing', () => {
-  const ran: string[] = []
-  const group = radioGroup(menuContext({ runCommand: (id) => ran.push(id) }), 'view', 'uiMode')
-  group.select('workspace.closeCurrentTab')
-
-  expect(ran).toEqual([])
+  expect(group.options.map((option) => option.command)).toEqual([
+    'workspace.showWorkbenchMode',
+    'workspace.showChatMode',
+  ])
+  expect(group.select).toBeUndefined()
 })
 
 test('the color mode submenu offers light, dark, and system', () => {
   const group = colorModeRadio(menuContext())
 
   expect(group.options.map((option) => option.label)).toEqual(['Light', 'Dark', 'System'])
+  expect(group.options.map((option) => option.command)).toEqual([
+    'workspace.setLightTheme',
+    'workspace.setDarkTheme',
+    'workspace.setSystemTheme',
+  ])
 })
 
 test('the color mode radio checks the current theme', () => {
@@ -99,15 +95,6 @@ test('the color mode radio checks the current theme', () => {
   expect(colorModeRadio(menuContext({ colorMode: 'system' })).value).toBe(
     'workspace.setSystemTheme',
   )
-})
-
-test('picking a color mode runs that theme command', () => {
-  const ran: string[] = []
-  colorModeRadio(menuContext({ runCommand: (id) => ran.push(id) })).select(
-    'workspace.setLightTheme',
-  )
-
-  expect(ran).toEqual(['workspace.setLightTheme'])
 })
 
 test('Copy Workspace Path is disabled with no workspace open', () => {
@@ -186,7 +173,6 @@ function menuContext(overrides: Partial<TitlebarMenuContext> = {}): TitlebarMenu
     colorMode: 'system',
     copyWorkspacePath: () => {},
     projects,
-    runCommand: () => {},
     selectProject: () => {},
     uiMode: 'workbench',
     workspacePath: '/repo',

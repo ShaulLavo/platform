@@ -1,8 +1,9 @@
 import { CommandPaletteContent } from '@/features/command-palette/content'
-import type { CommandPaletteProps } from '@/features/command-palette/command-palette-types'
+import { useCommand } from '@/keymap/hooks/use-command'
 
-export function CommandPalette(props: CommandPaletteProps) {
-  if (!props.open) return null
+export function CommandPalette() {
+  const { paletteOpen } = useCommand()
+  if (!paletteOpen) return null
 
-  return <CommandPaletteContent {...props} />
+  return <CommandPaletteContent />
 }

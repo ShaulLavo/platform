@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react'
+import { waitFor } from '@testing-library/react'
 import { StrictMode } from 'react'
 import type { Editor } from '@singapor/core'
 import {
@@ -11,6 +11,7 @@ import {
 import { DiffPane } from '@/features/editor/components/diff-pane'
 import { expect, test } from '../../../../../test/fixtures'
 import { stubHighlightApi } from '../../../../../test/env/highlight-api'
+import { renderWithProviders } from '../../../../../test/render'
 
 // The point of holding the diff in a real document rather than as injected rows: a deletion is an
 // ordinary buffer line, so it selects and copies like any other text. Nothing here mocks the
@@ -47,7 +48,7 @@ async function mountStackedDiff() {
     oldFile: { path: 'repo/a.ts', text: OLD_TEXT },
   })
   let mounted: Editor | null = null
-  render(
+  renderWithProviders(
     // As the app mounts it: StrictMode's mount -> unmount -> mount is the development path, and
     // what survives only the first mount is what breaks there.
     <StrictMode>

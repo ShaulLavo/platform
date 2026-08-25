@@ -16,37 +16,34 @@ a bare root `bun run verify`.
 | Plan                                                                                     | State                                         |
 | ---------------------------------------------------------------------------------------- | --------------------------------------------- |
 | [055 — ghostty-webgpu DOM/input](055-ghostty-webgpu-dom-input.md)                        | **IMPLEMENTED — PHYSICAL OPERATOR GATE OPEN** |
-| [062 — typed CommandBus and FocusService](062-typed-command-focus-cutover.md)            | **READY — RECONCILE LANDED SETTINGS APIS**    |
-| [063 — lockstep WorkspaceEdit transactions](063-lockstep-workspace-edit-transactions.md) | **AFTER 062 — EDITOR LOCKSTEP**               |
+| [063 — lockstep WorkspaceEdit transactions](063-lockstep-workspace-edit-transactions.md) | **NEXT — EDITOR LOCKSTEP**                    |
 | [064 — anchored diagnostic peek](064-anchored-diagnostic-peek.md)                        | **SCHEDULED AFTER 061 — GO/NO-GO**            |
 | [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                          | **SCHEDULED AFTER 064 — RECONCILE**           |
-| [057 — editor-native VS Code keymap](057-editor-native-vscode-keymap.md)                 | **BLOCKED ON 062 + 056 — RECONCILE**          |
+| [057 — editor-native VS Code keymap](057-editor-native-vscode-keymap.md)                 | **BLOCKED ON 056 — RUNTIME RECONCILED**       |
 | [060 — persisted visible editor snapshot](060-persist-visible-editor-snapshot.md)        | **SCHEDULED AFTER 063 — RECONCILE**           |
-| [061 — Foresight prepared editor opens](061-promote-foresight-file-open-pipeline.md)     | **SCHEDULED AFTER 060 + 062**                 |
+| [061 — Foresight prepared editor opens](061-promote-foresight-file-open-pipeline.md)     | **SCHEDULED AFTER 060**                       |
 
 ## Dependency notes
 
-- Plan 062's settings dependency is landed in `features/settings/hooks/use-settings-actions.ts`,
-  `features/settings/state/intent-store.ts`, and the appearance provider/context. Reconcile those
-  current APIs before execution; do not restore persistent preview dispatch, duplicate settings
-  error reporting, or a second mutation path. Plan 062 remains the sole command/focus cutover plan;
-  its earlier superseded draft has been deleted.
-- Execute 062 before 056 so the chord machine targets the typed command bus and acknowledged
-  focus service instead of introducing another active-Editor dispatch pointer.
-- Execute 063 only after 062, in the position scheduled by root `PLAN.md`. Plan 063 adds explicit
+- The sole command/focus runtime is landed in `keymap/table.ts`, `keymap/state/command-bus.ts`,
+  `keymap/providers/command-provider.tsx`, and `lib/focus/`. Settings commands use the semantic
+  submission returned by `use-settings-actions.ts` and await `settled`; do not restore persistent
+  preview dispatch, duplicate settings error reporting, or a second mutation path.
+- Plan 056 must extend that typed bus and acknowledged focus service instead of introducing another
+  active-Editor dispatch owner.
+- Execute 063 in the position scheduled by root `PLAN.md`. It adds explicit
   workspace undo/redo through the typed bus, consumes a lockstep sibling Editor API, and must not
   create a legacy command path, parse LSP in Platform, or ship either repository's half alone.
   Do not execute it concurrently with 060/061/064 because they overlap Editor attachment/provider,
   LSP-plugin, and document-service surfaces; reconcile whichever plan runs second.
-- Plan 064 follows 062 because its interactive React overlay needs the landed
-  deepest-target FocusService and exact origin restoration. Its first step may
+- Plan 064's interactive React overlay uses the landed deepest-target FocusService and exact origin
+  restoration. Its first step may
   reject a managed geometry handle if ordinary React composition passes the
   real-browser gate; the selected narrow path still lands the named diagnostic
   peek lockstep. Root `PLAN.md` schedules it after the 060 → 061 sequence.
-- Reconcile 056 against 062 before execution, then reconcile and execute 057 against both. Plan
-  057 must extend the same target registry and enablement evaluator rather than creating parallel
-  ownership.
-- Execute 061 only after both 060 and 062. Its ready live/clean view must still
+- Plan 056 is reconciled to the landed command/focus runtime. Execute 057 only after 056; it must
+  extend the same target registry and enablement evaluator rather than creating parallel ownership.
+- Execute 061 only after 060. Its ready live/clean view must still
   be claimed and ensured before active selection publication, but that
   transaction stays in the shared Editor domain action used by local UI and the
   typed bus; do not add a bus-only activation implementation.

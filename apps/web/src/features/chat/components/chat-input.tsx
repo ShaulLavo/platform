@@ -50,6 +50,7 @@ import { ChatInputCommandMenu } from './chat-input-command-menu'
 import { ChatInputEditor } from './chat-input-editor'
 import { ChatInputTerminalContextList } from './chat-input-terminal-context-list'
 import { CHAT_INPUT_EDITOR_NODES } from './chat-input-mention-node'
+import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 
 export type ChatInputSubmitPayload = {
   attachments: ChatAttachmentUpload[]
@@ -111,15 +112,31 @@ export function ChatInput({
   const removeTerminalContext = useChatInputDraftStore((store) => store.removeTerminalContext)
   const setInteractionMode = useChatInputDraftStore((store) => store.setInteractionMode)
   const editorRef = useRef<LexicalEditor | null>(null)
+  // State as well as the ref: the inbox only splices text once a caret exists,
+  // and a ref cannot wake the effect that is waiting for one.
+  const [editorReady, setEditorReady] = useState(false)
+  const focusTarget = useFocusTarget<HTMLDivElement>(
+    {
+      area: 'chat',
+      id: { kind: 'chat-composer', key: rootPath },
+      onIntent: (intent) => {
+        if (intent !== 'focus') return false
+
+        const editor = editorRef.current
+        if (!editor) return false
+
+        editor.focus()
+        return true
+      },
+    },
+    editorReady,
+  )
   const submitButtonRef = useRef<HTMLButtonElement | null>(null)
   const initialDraft = useMemo(() => readChatInputDraftPrompt(draftTarget), [draftTarget])
   const [activeCommandItemId, setActiveCommandItemId] = useState<string | null>(null)
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
   const [dropTargetActive, setDropTargetActive] = useState(false)
   const [editorFocused, setEditorFocused] = useState(false)
-  // State as well as the ref: the inbox only splices text once a caret exists,
-  // and a ref cannot wake the effect that is waiting for one.
-  const [editorReady, setEditorReady] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [trigger, setTrigger] = useState<ChatInputTrigger | null>(null)
   // Captured terminal output is content in its own right: "look at this" with a
@@ -395,6 +412,7 @@ export function ChatInput({
                 editorFocused && 'border-foreground/25 ring-2 ring-foreground/[0.07]',
                 dropTargetActive && 'border-primary',
               )}
+              ref={focusTarget.ref}
               onDragLeave={handleComposerDragLeave}
               onDragOver={handleComposerDragOver}
               onDrop={handleComposerDrop}

@@ -27,11 +27,11 @@ export function TreeRowMenu({
 
   return (
     <MenuSurface
-      anchor={rectAnchor(menuContext.anchorRect)}
+      anchor={rectAnchor(menuContext.anchorRect, menuContext.anchorElement)}
       className='w-56'
       menu={menu}
-      // Base UI owns dismissal; closing here unmounts us via the tree.
-      onOpenChange={(next) => next || menuContext.close({ restoreFocus: true })}
+      // MenuSurface restores its captured FocusService origin after dismissal.
+      onOpenChange={(next) => next || menuContext.close({ restoreFocus: false })}
       open
       // The popup portals to <body>; without this the tree's composedPath
       // outside-click check would treat our own items as outside clicks.

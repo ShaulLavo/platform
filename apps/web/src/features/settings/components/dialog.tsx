@@ -6,8 +6,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@workspace/ui/components/dialog'
+import { useCallback, useRef } from 'react'
 
 import { SettingsPage } from '@/features/settings/components/page'
+import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 
 /**
  * Settings with no folder open.
@@ -25,9 +27,40 @@ export function SettingsDialog({
   readonly onOpenChange: (open: boolean) => void
   readonly open: boolean
 }) {
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const { ref: focusTargetRef } = useFocusTarget<HTMLDivElement>({
+    area: 'settings',
+    capabilities: { overlay: true },
+    id: { kind: 'settings-dialog' },
+    onIntent: (intent) => {
+      if (intent !== 'focus') return false
+
+      const target =
+        rootRef.current?.querySelector<HTMLInputElement>('input[aria-label="Search settings"]') ??
+        rootRef.current
+      if (!target) return false
+
+      target.focus()
+      return true
+    },
+  })
+  // The closed dialog must not remain a live overlay target.
+  const setRootRef = useCallback(
+    (element: HTMLDivElement | null) => {
+      rootRef.current = element
+      focusTargetRef(open ? element : null)
+    },
+    [focusTargetRef, open],
+  )
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='flex h-[min(720px,calc(100svh-4rem))] w-[min(880px,calc(100vw-3rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none'>
+      <DialogContent
+        className='flex h-[min(720px,calc(100svh-4rem))] w-[min(880px,calc(100vw-3rem))] max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none'
+        finalFocus={false}
+        ref={setRootRef}
+        tabIndex={-1}
+      >
         <DialogHeader className='border-border/60 compact:px-3 compact:py-2 gap-1 border-b px-4 py-3'>
           <DialogTitle className='compact:gap-1.5 flex items-center gap-2 text-sm'>
             <span className='border-info/20 bg-info/10 text-info compact:size-6 flex size-7 items-center justify-center rounded-md border'>

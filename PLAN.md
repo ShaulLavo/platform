@@ -20,14 +20,17 @@ Git history is the archive.
   consolidated appearance provider owns transient preview plus commit handoff. Completed plan 059
   has been deleted.
 - Editor-parity wave E0 is complete.
-- The earlier command/focus draft, plan 058, is deleted. Plan 062 is the only command/focus cutover.
+- The sole typed command/focus runtime is live. `platformCommands` is the command definition table,
+  `CommandBus` owns synchronous claims plus non-rejecting async settlement, and `FocusService` owns
+  deepest registered targets, actual DOM focus, and explicit origin restoration. The superseded
+  draft and completed implementation plan have been deleted.
 
-## Shared prerequisites
+## Shared runtime boundary
 
-1. **Plan 062 — typed CommandBus and FocusService.** Its settings dependency is landed. Reconcile
-   the plan against the current semantic settings actions, theme context, and preview/commit
-   boundary, then make it the sole command definition, dispatch, enablement, focus-target, and
-   async-settlement path used by later editor-parity work.
+The typed command/focus foundation is landed in `apps/web/src/keymap/table.ts`,
+`apps/web/src/keymap/state/command-bus.ts`, `apps/web/src/keymap/providers/command-provider.tsx`, and
+`apps/web/src/lib/focus/`. Settings commands submit through the semantic intent API and await its
+`settled` result; no command may add another settings mutation or error-reporting path.
 
 No later Platform editor milestone may create an active-Editor pointer, a second settings mutation
 path, a React-effect transaction coordinator, or a compatibility shim for the deleted architecture.
@@ -46,7 +49,7 @@ in-range selection coordinates, but released xterm also exposes aliased stale ba
 the current official parent has no clear API. Plans 009–015 remain in their package-defined
 dependency order and are not prerequisites for current Platform work.
 
-## Ordered Platform editor lane after plan 062
+## Ordered Platform editor lane
 
 For one implementer, use this order. Items marked lockstep must finish and verify in both repositories
 before either half is treated as landed.
@@ -56,17 +59,18 @@ before either half is treated as landed.
    change. Do not run it concurrently with 060, 061, or 064.
 2. **Plan 060 — persisted visible editor snapshot (Platform + Editor).** Reconcile both old commit
    stamps first. It owns only a capped, unvalidated visual first-paint cache.
-3. **Plan 061 — Foresight prepared editor opens (Platform + Editor).** Requires 060 and 062. Live
+3. **Plan 061 — Foresight prepared editor opens (Platform + Editor).** Requires 060 and the landed
+   typed command runtime. Live
    prepared artifacts use exact revision identity and must not validate or promote 060's visual rows.
-4. **Plan 064 — anchored diagnostic peek.** Requires 062. Run its real-browser composition gate
+4. **Plan 064 — anchored diagnostic peek.** Uses the landed FocusService. Run its real-browser composition gate
    first. Use ordinary React composition if it passes; add the one named managed-geometry handle in
    Editor only if the gate proves it necessary. Never restore generic block surfaces.
-5. **Plan 056 — multi-step chord keymap (Platform).** Reconcile against the landed typed bus and
-   FocusService, then implement one chord state machine without another dispatch owner.
-6. **Plan 057 — editor-native VS Code keymap (Platform + Editor).** Requires 056 and 062. Extend the
+5. **Plan 056 — multi-step chord keymap (Platform).** Extend the landed typed bus and FocusService
+   integration with one chord state machine and no additional dispatch owner.
+6. **Plan 057 — editor-native VS Code keymap (Platform + Editor).** Requires 056. Extend the
    same target/enablement runtime and complete the single-dispatcher takeover in lockstep.
 
-Plans 056 and 064 are logically independent after 062, but they should still be serialized in one
+Plans 056 and 064 are logically independent, but they should still be serialized in one
 Platform worktree. Plans 063, 060, 061, 064, and 057 all touch Editor-facing ownership or APIs and
 must not be executed concurrently without a fresh overlap reconciliation.
 
@@ -84,7 +88,7 @@ The promotion and implementation order is:
 2. **Environment M2 — identity and per-environment state.** Requires M1. Add server identity,
    identity-drift refusal, scoped persistence, and one QueryClient per environment. No migration
    layer; clear obsolete developer state.
-3. **Environment M3 — selection UI and honest local failure.** Requires M2 and plan 062 so titlebar
+3. **Environment M3 — selection UI and honest local failure.** Requires M2; titlebar
    and palette actions use the typed command runtime. Still loopback-only.
 4. **Environment M4 — real sessions on loopback.** Requires M3. Pairing, revocation, short-lived WS
    credentials, rate limiting, fd-3 desktop bootstrap, and credential-log hygiene move together as
@@ -119,9 +123,10 @@ multi-origin compatibility machinery now.
 
 - **Deleted:** completed plan 038 and superseded plan 058.
 - **Close and delete after physical evidence:** plan 055.
-- **Rewrite before execution:** plans 056, 060, and 061 need drift reconciliation. Plan 062 is ready
-  for reconciliation against the landed settings APIs; plans 063 and 064 already encode their
-  current architectural ownership but still require normal drift checks.
+- **Rewrite before execution:** plans 060 and 061 need drift reconciliation. Plan 056's
+  command/focus boundary is reconciled to the landed runtime but still requires its normal drift
+  check; plans 063 and 064 already encode their current architectural ownership and also require
+  normal drift checks.
 - **Promote:** environment milestones M1–M5, one executable plan at a time.
 - **Deferred:** environment M6 and all compatibility work for simultaneous origins or obsolete
   per-tab/active-editor/one-server architecture.

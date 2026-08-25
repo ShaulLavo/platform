@@ -12,7 +12,7 @@ type CommandPaletteRowProps = {
 }
 
 export function CommandPaletteRow({ disabledReason, item }: CommandPaletteRowProps) {
-  const { selectCommand } = useCommandPaletteActions()
+  const { selectPlatformCommand } = useCommandPaletteActions()
   const disabled = Boolean(disabledReason)
 
   return (
@@ -20,7 +20,7 @@ export function CommandPaletteRow({ disabledReason, item }: CommandPaletteRowPro
       disabled={disabled}
       keywords={item.keywords}
       value={item.id}
-      onSelect={() => selectCommand(item)}
+      onSelect={() => void selectPlatformCommand(item.command.command)}
     >
       <CommandPaletteIcon category={item.category} command={item.command.command} />
       <RowLabel

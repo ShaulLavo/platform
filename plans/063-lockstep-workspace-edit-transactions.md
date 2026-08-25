@@ -21,15 +21,14 @@
 
 ## Status
 
-- **State**: Blocked on plan 062 and authoritative `PLAN.md` scheduling; executable after both
-  are reconciled
+- **State**: Scheduled next by authoritative `PLAN.md`; executable after the normal drift and
+  baseline reconciliation
 - **Priority**: P1
 - **Effort**: XL, lockstep across two repositories
 - **Risk**: HIGH — protocol versions, dirty memory, reversible disk mutation, resource
   operations, watcher replay, and undo meet at one boundary
-- **Depends on**: plan 062; its typed CommandBus and command metadata must exist before the
-  explicit workspace undo/redo commands are registered. The semantic settings foundation is
-  already landed.
+- **Depends on**: the landed typed CommandBus, command metadata, and semantic settings foundation.
+  Extend them for the explicit workspace undo/redo commands.
 - **Ordering with 060/061/064**: no semantic dependency, but do not execute concurrently. If 060,
   061, or 064 lands first, re-run this plan's drift check over shared Editor/WDS/provider/plugin
   files. If this plan lands first, reconcile 061 against the new prepared-open/document transaction
@@ -43,7 +42,7 @@ During planning, Editor's concurrent allocation work landed cleanly as `c8c36b9`
 `documentTextSnapshot.ts`, the piece-table walker, Shiki/token files, and tests. This plan was
 re-audited against that head and deliberately uses the current snapshot range/chunk contract
 without editing `documentTextSnapshot.ts`. Platform's prepared-input/diff/workbench/tree/UI change
-set and plans 062–064 were committed through `bf863b7b` while this plan was reviewed. The plan was
+set and the then-current planning files were committed through `bf863b7b` while this plan was reviewed. The plan was
 reconciled to those files, including the current `use-diff-language.ts` connection shape; do not
 restore an earlier diff-loading or pending-input design. If a later commit moves a named contract,
 STOP and reconcile rather than absorbing it silently. Record both worktrees before editing:
@@ -73,8 +72,8 @@ git diff --stat c8c36b9 -- \
   packages/lsp-plugin/package.json
 ```
 
-Completed plan 062 drift is expected. Read its landed command IDs, async ticket result, undo
-category, and provider locations instead of restoring names from this planning snapshot. Drift
+Typed command/focus runtime drift is expected. Read the landed command IDs, non-rejecting async
+ticket result, undo category, and provider locations instead of restoring names from this planning snapshot. Drift
 from 060/061/064 is also expected only if those plans were explicitly scheduled first. If any other
 in-scope dirty edit overlaps a symbol named below, STOP and ask the operator to reconcile
 ownership. Never revert, stash, overwrite, or format unrelated work.
@@ -1305,7 +1304,7 @@ points, STOP — this design is not that guarantee.
   group. A multi-live-buffer-only group stores no server operation ID; its guarded Editor receipts
   are sealed after the WDS batch and still undo/redo as one Platform command. Native `Mod+Z` has no
   per-buffer leg to expose.
-- Plan 062's CommandBus gains keyless `workspace.undoWorkspaceEdit` and
+- The sole command table gains keyless `workspace.undoWorkspaceEdit` and
   `workspace.redoWorkspaceEdit` rows with `undoCategory: 'workspace-operation'`. A success toast may
   invoke the same command; do not add a second handler.
 - Maintain one ephemeral LIFO stack per workspace, capped by
@@ -1416,7 +1415,7 @@ the client can distinguish eviction from process restart without guessing.
 
 ## Implementation scope
 
-The executor may adjust a path when plan 062/061 moved the same responsibility, but must preserve
+The executor may adjust a path when the landed command runtime or plan 061 moved the same responsibility, but must preserve
 the feature/kind layout and ownership above. Reconcile before creating a near-duplicate.
 
 ### Editor worktree
@@ -1484,7 +1483,7 @@ the feature/kind layout and ownership above. Reconcile before creating a near-du
   - extend `state/file-sync-service.ts`, `state/workspace-document-service.ts`,
     `state/document-state.tsx`, and `state/commands.ts`
   - add `providers/workspace-edit-context.ts` and `providers/workspace-edit-provider.tsx`; mount
-    them at the existing Editor provider boundary after reconciling plan 062
+    them at the existing Editor provider boundary after reconciling current providers
   - add pure URI/path/risk helpers under `features/editor/utils/`, not `lib/`, unless a second
     outside feature consumes them in the same change
   - add `components/workspace-edit-preview-dialog.tsx` and a separate recovery component only if
@@ -1504,15 +1503,15 @@ the feature/kind layout and ownership above. Reconcile before creating a near-du
     option through `FileSystemServiceOptions`, `AppOptions`, `apps/web/test/server.ts`, and its
     callers; failure selection is constructor-injected and never request-controlled
 - Consolidation and commands:
-  - register `workspace.undoWorkspaceEdit`/`workspace.redoWorkspaceEdit` through plan 062's one
-    registry/bus
+  - register `workspace.undoWorkspaceEdit`/`workspace.redoWorkspaceEdit` through the one
+    `platformCommands` table and CommandBus
   - route search replace through `WorkspaceEditService`; delete its current per-file partial-success
     persistence loop and update its tests
   - do not put a store, subscription, or mutable transaction registry in `utils/`
 
 ## Milestone 0 — Reconcile dependencies and freeze contracts
 
-1. Confirm plan 062 is complete and the landed settings regression gate remains green. Confirm
+1. Confirm the sole typed command/focus runtime and landed settings regression gate remain green. Confirm
    root `PLAN.md` explicitly schedules this plan. If not, STOP; do not build a temporary
    command/focus/undo path.
 2. Re-run the drift and baselines above. Save the current source status separately from planning
@@ -1541,7 +1540,7 @@ rg -n "workspaceEditPlan|workspaceEditForDocument|formattingEdits" \
   packages/lsp-plugin/src packages/lsp-plugin/test
 ```
 
-Expected before edits: the first command proves the plan-062 registry is present but the two new
+Expected before edits: the first command proves the landed registry is present but the two new
 rows are absent; the second identifies the current flattened/local application path. Any second
 production command registry or already-divergent WorkspaceEdit implementation is a STOP.
 
@@ -2457,7 +2456,7 @@ Preview requirements:
   opacity/backdrop blur;
 - every updating file/operation count uses `tabular-nums`;
 - Cancel while awaiting confirmation, disabled close/cancel after point of no return, focus restored
-  through plan 062's FocusService.
+  through the public FocusService.
 
 On provider/root startup, query the root-scoped recovery summaries and restore a persistent surface
 for every partial journal; reload never loses the only operation ID. It never recreates Undo or
@@ -2553,7 +2552,7 @@ No fixed delay is allowed. Add `use-events.test.ts` cases:
 
 ### Explicit undo/redo commands
 
-Register the two keyless commands in plan 062's sole table/handler system. Enablement comes from the
+Register the two keyless commands in the sole `platformCommands` table/handler system. Enablement comes from the
 active workspace's group stack and busy state. The CommandBus ticket owns async settlement and one
 wide event. Do not add a window listener, second registry, or detached promise. Tests cover disabled,
 busy, successful, drift-refused, partial-recovery, and root-scoped behavior.
@@ -2872,7 +2871,8 @@ format/lint/typecheck/test gate, not a run against a drifting Editor `main`.
 
 Stop and report instead of improvising if any condition holds:
 
-1. Plan 062 or root `PLAN.md` scheduling is absent, or an in-scope user edit cannot be reconciled.
+1. The sole typed command/focus runtime or root `PLAN.md` scheduling is absent, or an in-scope user
+   edit cannot be reconciled.
 2. Editor cannot expose one lossless readonly ordered plan, guarded reciprocal receipt, mounted-view
    subscription bridge, and external history barrier without Platform parsing LSP or mutating piece
    tables/history itself.

@@ -3,75 +3,126 @@ import type { Icon } from '@phosphor-icons/react'
 import type { RegisterableHotkey } from '@tanstack/react-hotkeys'
 import type { QueryClient } from '@tanstack/react-query'
 
+import type { EditorCommands } from '@/features/editor/state/commands'
+import type { EditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
 import type { Theme } from '@/features/settings/providers/theme-context'
 import type { SettingsSubmission } from '@/features/settings/state/intent-store'
-import type { FocusArea } from '@/features/workspace/providers/focus-state'
-import type { TreeCommandKind } from '@/features/workspace/state/tree-command-store'
 import type { ChatModePanels } from '@/features/chat-mode/utils/panels'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import type { EditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import type { EditorDiffViewMode } from '@/features/editor/utils/diff-view-mode'
 import type { WorkbenchPanels } from '@/features/workbench/utils/panels'
+import type {
+  AsyncCommandStart,
+  CommandHandlerContext,
+  CommandInvocation,
+  ImmediateCommandDisposition,
+} from '@/keymap/state/command-bus'
+import type { FocusService, FocusTargetToken, ResolvedFocusTarget } from '@/lib/focus/state/service'
 import type { WorkspaceUiMode } from '@/lib/ui-mode'
 
 type CommandPlatformName = 'linux' | 'mac' | 'windows'
 
-/**
- * What has to be true before a command can run. `commandDisabledReason` is a
- * lookup on this and nothing else, so the gate lives on the command instead of
- * in a set of ids kept somewhere else.
- *
- * `tab`, `editor`, `saveable` and `file` are four different questions, and a
- * command that asks a wider one than it needs is wrong in the palette and the
- * menus even when its handler is right: `closeCurrentTab` needs only a tab to
- * close, `editor.*` needs a text editor to act on, `saveFile` needs somewhere to
- * write the bytes back to, and `revertFile` needs an actual path on disk.
- *
- * They nest: `file` implies `saveable` implies `tab`, and `file` implies
- * `editor` implies `tab`. `saveable` and `editor` do not imply each other —
- * a raw settings buffer is both, a conflict buffer is only an editor.
- */
-export type CommandRequirement = 'editor' | 'file' | 'nothing' | 'saveable' | 'tab' | 'workspace'
+export type CommandTargetKind = 'editor' | 'workspace'
 
-/** One default key for a command. `vscodeCommandId` is per key, not per command. */
+export type CommandWhen =
+  | 'chatMode'
+  | 'editorTarget'
+  | 'editorWritable'
+  | 'fileBackedTab'
+  | 'saveableTab'
+  | 'tabOpen'
+  | 'workspaceOpen'
+
+export type CommandExecution = 'async' | 'sync'
+
+export type CommandUndoCategory =
+  | 'file-operation'
+  | 'text-edit'
+  | 'view-only'
+  | 'workspace-operation'
+
+/** One default key for a command. */
 export type CommandKeyDefault = {
   readonly hotkey: RegisterableHotkey
-  readonly pane?: FocusArea | 'any'
+  readonly pane?: import('@/lib/focus/state/service').FocusArea | 'any'
   readonly platforms?: readonly CommandPlatformName[]
   readonly preventDefault?: boolean
   readonly stopPropagation?: boolean
+  /** VS Code command represented by this specific default binding, used for keymap import/export. */
   readonly vscodeCommandId?: string
 }
 
-export type WorkspaceCommandContext = {
+export type WorkspaceCommandSnapshot = {
   readonly activeFilePath: string | null
   readonly activeTabId: string | null
+  readonly chatMode: boolean
   readonly chatModePanels: ChatModePanels
   readonly diffViewMode: EditorDiffViewMode
-  readonly documentStore: EditorDocumentStoreApi
-  readonly openPicker: () => void
-  readonly openFileAtRef: (path: string, ref: string) => Promise<boolean>
-  readonly openSearchEditor: (rootPath: string) => void
-  readonly queryClient: QueryClient
-  readonly reopenClosedEditor: () => boolean
-  readonly requestCloseTab: RequestCloseTab
-  readonly requestEditorFocus: () => void
-  readonly requestFileTreeCommand: (kind: TreeCommandKind, rootPath: string) => void
   readonly rootPath: string | null
-  readonly setChatModePanels: (panels: ChatModePanels) => void
-  readonly setDiffViewMode: (mode: EditorDiffViewMode) => void
-  readonly setFocusArea: (area: FocusArea) => void
-  readonly setTheme: (theme: Theme, initiator?: string) => SettingsSubmission
-  readonly setUiMode: (mode: WorkspaceUiMode) => void
-  readonly setWallpaperEnabled: (enabled: boolean) => void
-  readonly setWorkbenchPanels: (panels: WorkbenchPanels) => void
-  readonly showCommandPalette: (initialSearch?: string) => void
-  readonly showSettings: () => void
-  readonly selectPreviousEditor: () => boolean
   readonly uiMode: WorkspaceUiMode
   readonly wallpaperEnabled: boolean
   readonly workbenchPanels: WorkbenchPanels
+  readonly workspaceOpen: boolean
 }
+
+export type WorkspaceCommandRuntime = {
+  readonly documents: {
+    readonly queryClient: QueryClient
+    readonly store: EditorDocumentStoreApi
+  }
+  readonly editor: EditorCommands
+  readonly files: {
+    readonly openFileAtRef: (path: string, ref: string) => Promise<boolean>
+  }
+  readonly focus: FocusService
+  readonly settings: {
+    readonly readSnapshot: () => {
+      readonly diffViewMode: EditorDiffViewMode
+      readonly wallpaperEnabled: boolean
+    }
+    readonly setDiffViewMode: (mode: EditorDiffViewMode, initiator?: string) => SettingsSubmission
+    readonly setTheme: (theme: Theme, initiator?: string) => SettingsSubmission
+    readonly setWallpaperEnabled: (enabled: boolean, initiator?: string) => SettingsSubmission
+  }
+  readonly shell: {
+    readonly openPicker: () => void
+    readonly openWorkspaceRoot: (
+      rootPath: string,
+    ) => Promise<'already-open' | 'failed' | 'opened' | 'superseded'>
+    readonly showCommandPalette: (
+      initialSearch?: string,
+      origin?: FocusTargetToken | null,
+    ) => import('@/lib/focus/state/service').FocusTransitionTicket
+    readonly showSettings: (
+      origin?: FocusTargetToken | null,
+    ) => import('@/lib/focus/state/service').FocusTransitionTicket
+  }
+  readonly tabs: {
+    readonly requestCloseTab: RequestCloseTab
+  }
+  readonly workspace: EditorWorkspaceStoreApi
+}
+
+export type PlatformCommandTarget =
+  | {
+      readonly focusTarget: ResolvedFocusTarget
+      readonly kind: 'editor'
+      readonly logIdentity: string
+      readonly token: FocusTargetToken
+      readonly writable: boolean
+    }
+  | {
+      readonly kind: 'workspace'
+      readonly logIdentity: 'workspace'
+    }
+
+export type WorkspaceCommandHandlerContext = CommandHandlerContext<
+  WorkspaceCommandRuntime,
+  WorkspaceCommandSnapshot,
+  PlatformCommandTarget,
+  CommandInvocation
+>
 
 type CommandBase<Id extends string> = {
   readonly id: Id
@@ -83,49 +134,65 @@ type CommandBase<Id extends string> = {
   readonly vscodeCommandIds?: readonly string[]
   readonly icon?: Icon
   readonly keys?: readonly CommandKeyDefault[]
-  readonly requires: CommandRequirement
+  readonly execution: CommandExecution
+  readonly target: CommandTargetKind
+  readonly undoCategory: CommandUndoCategory
+  readonly when: readonly CommandWhen[]
   /** Running it only switches palette mode, so the palette stays open. */
   readonly keepsPaletteOpen?: boolean
   /** Not offered in the `>` command list. */
   readonly hiddenInPalette?: boolean
 }
 
-export type WorkspaceCommand<Id extends string = string> = CommandBase<Id> & {
-  readonly kind: 'workspace'
-  readonly run: (context: WorkspaceCommandContext) => boolean | void
+export type WorkspaceCommand<
+  Id extends string = string,
+  Execution extends CommandExecution = CommandExecution,
+> = Omit<CommandBase<Id>, 'execution'> & {
+  readonly execution: Execution
+  readonly run: (
+    context: WorkspaceCommandHandlerContext,
+  ) => Execution extends 'sync' ? ImmediateCommandDisposition : AsyncCommandStart
 }
 
 export type EditorCommand<Id extends string = string> = CommandBase<Id> & {
-  readonly kind: 'editor'
+  readonly execution: 'sync'
+  readonly target: 'editor'
 }
 
 export type PlatformCommand = EditorCommand | WorkspaceCommand
 
-export function defineCommand<const Id extends `workspace.${string}`>(
-  command: Omit<WorkspaceCommand<Id>, 'kind'>,
-): WorkspaceCommand<Id> {
-  return { ...command, kind: 'workspace' }
+export function defineCommand<
+  const Id extends `workspace.${string}`,
+  const Execution extends CommandExecution,
+>(command: WorkspaceCommand<Id, Execution>): WorkspaceCommand<Id, Execution> {
+  return command
 }
 
 /**
  * Takes the bare `EditorCommandId` and prefixes it, so an editor command can
  * only be declared for something `@singapor/core` actually implements. Every
- * editor command needs a text editor to act on — not a file on disk, which is
- * the narrower thing: a conflict tab is unsaved and unsavable and still takes
- * all of these. Every one of its keys belongs to the editor pane. Neither is
- * worth restating 80 times.
+ * editor command needs a registered Editor target to act on. Every one of its
+ * keys belongs to the editor pane. Target, execution, and the writable gate are
+ * derived here so they cannot drift across Editor rows.
  */
 export function defineEditorCommand<const Id extends EditorCommandId>(
-  command: Omit<EditorCommand<`editor.${Id}`>, 'category' | 'id' | 'kind' | 'requires'> & {
+  command: Omit<
+    EditorCommand<`editor.${Id}`>,
+    'category' | 'execution' | 'id' | 'target' | 'when'
+  > & {
     readonly id: Id
   },
 ): EditorCommand<`editor.${Id}`> {
+  const when: CommandWhen[] = ['editorTarget']
+  if (command.undoCategory === 'text-edit') when.push('editorWritable')
+
   return {
     ...command,
     category: 'Editor',
+    execution: 'sync',
     id: `editor.${command.id}`,
     keys: command.keys?.map((key) => ({ pane: 'editor', ...key })),
-    kind: 'editor',
-    requires: 'editor',
+    target: 'editor',
+    when,
   }
 }

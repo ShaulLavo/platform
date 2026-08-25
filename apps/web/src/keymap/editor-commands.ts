@@ -23,6 +23,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: ArrowArcLeftIcon,
     id: 'undo',
+    undoCategory: 'text-edit',
     keys: [{ hotkey: 'Mod+Z', vscodeCommandId: 'undo' }],
     title: 'Undo',
     vscodeCommandIds: ['undo'],
@@ -30,6 +31,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: ArrowArcRightIcon,
     id: 'redo',
+    undoCategory: 'text-edit',
     keys: [
       { hotkey: 'Mod+Shift+Z', vscodeCommandId: 'redo' },
       { hotkey: 'Control+Y', platforms: ['windows', 'linux'], vscodeCommandId: 'redo' },
@@ -40,6 +42,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: MagnifyingGlassIcon,
     id: 'find',
+    undoCategory: 'view-only',
     keys: [{ hotkey: 'Mod+F', vscodeCommandId: 'actions.find' }],
     title: 'Find',
     vscodeCommandIds: ['actions.find'],
@@ -47,6 +50,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: SwapIcon,
     id: 'findReplace',
+    undoCategory: 'view-only',
     keys: [
       {
         hotkey: 'Mod+H',
@@ -65,6 +69,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: MagnifyingGlassIcon,
     id: 'findNext',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'F3', vscodeCommandId: 'editor.action.nextMatchFindAction' },
       { hotkey: 'Mod+G', platforms: ['mac'], vscodeCommandId: 'editor.action.nextMatchFindAction' },
@@ -75,6 +80,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: MagnifyingGlassIcon,
     id: 'findPrevious',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'Shift+F3', vscodeCommandId: 'editor.action.previousMatchFindAction' },
       {
@@ -89,18 +95,49 @@ export const editorCommands = [
   defineEditorCommand({
     icon: ArrowSquareOutIcon,
     id: 'goToDefinition',
+    undoCategory: 'view-only',
     title: 'Go to definition',
     vscodeCommandIds: ['editor.action.revealDefinition'],
   }),
   defineEditorCommand({
+    hiddenInPalette: true,
+    id: 'editor.action.goToImplementation',
+    undoCategory: 'view-only',
+    title: 'Go to implementation',
+    vscodeCommandIds: ['editor.action.goToImplementation'],
+  }),
+  defineEditorCommand({
+    hiddenInPalette: true,
+    id: 'editor.action.goToTypeDefinition',
+    undoCategory: 'view-only',
+    title: 'Go to type definition',
+    vscodeCommandIds: ['editor.action.goToTypeDefinition'],
+  }),
+  defineEditorCommand({
+    hiddenInPalette: true,
+    id: 'editor.action.peekDefinition',
+    undoCategory: 'view-only',
+    title: 'Peek definition',
+    vscodeCommandIds: ['editor.action.peekDefinition'],
+  }),
+  defineEditorCommand({
+    hiddenInPalette: true,
+    id: 'editor.action.revealDefinitionAside',
+    undoCategory: 'view-only',
+    title: 'Open definition to the side',
+    vscodeCommandIds: ['editor.action.revealDefinitionAside'],
+  }),
+  defineEditorCommand({
     icon: ChatTextIcon,
     id: 'editor.action.showHover',
+    undoCategory: 'view-only',
     title: 'Show hover',
     vscodeCommandIds: ['editor.action.showHover'],
   }),
   defineEditorCommand({
     icon: LinkIcon,
     id: 'editor.action.goToReferences',
+    undoCategory: 'view-only',
     keys: [
       {
         hotkey: 'Shift+F12',
@@ -113,6 +150,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'closeFind',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'Escape', vscodeCommandId: 'closeFindWidget' },
       { hotkey: 'Shift+Escape', vscodeCommandId: 'closeFindWidget' },
@@ -122,6 +160,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'toggleFindCaseSensitive',
+    undoCategory: 'view-only',
     keys: [
       {
         hotkey: 'Alt+C',
@@ -135,6 +174,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'toggleFindWholeWord',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'Alt+W', platforms: ['windows', 'linux'], vscodeCommandId: 'toggleFindWholeWord' },
       { hotkey: 'Mod+Alt+W', platforms: ['mac'], vscodeCommandId: 'toggleFindWholeWord' },
@@ -144,6 +184,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'toggleFindRegex',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'Alt+R', platforms: ['windows', 'linux'], vscodeCommandId: 'toggleFindRegex' },
       { hotkey: 'Mod+Alt+R', platforms: ['mac'], vscodeCommandId: 'toggleFindRegex' },
@@ -153,6 +194,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'toggleFindInSelection',
+    undoCategory: 'view-only',
     keys: [
       {
         hotkey: 'Alt+L',
@@ -166,6 +208,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'togglePreserveCase',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'Alt+P', platforms: ['windows', 'linux'], vscodeCommandId: 'togglePreserveCase' },
       { hotkey: 'Mod+Alt+P', platforms: ['mac'], vscodeCommandId: 'togglePreserveCase' },
@@ -176,6 +219,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: SwapIcon,
     id: 'replaceOne',
+    undoCategory: 'text-edit',
     keys: [{ hotkey: 'Mod+Shift+1', vscodeCommandId: 'editor.action.replaceOne' }],
     title: 'Replace',
     vscodeCommandIds: ['editor.action.replaceOne'],
@@ -183,6 +227,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: SwapIcon,
     id: 'replaceAll',
+    undoCategory: 'text-edit',
     keys: [{ hotkey: 'Mod+Alt+Enter', vscodeCommandId: 'editor.action.replaceAll' }],
     title: 'Replace all',
     vscodeCommandIds: ['editor.action.replaceAll'],
@@ -190,6 +235,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: SelectionIcon,
     id: 'selectAllMatches',
+    undoCategory: 'view-only',
     keys: [{ hotkey: 'Alt+Enter', vscodeCommandId: 'editor.action.selectAllMatches' }],
     title: 'Select all matches',
     vscodeCommandIds: ['editor.action.selectAllMatches'],
@@ -197,6 +243,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: SelectionIcon,
     id: 'selectAll',
+    undoCategory: 'view-only',
     keys: [{ hotkey: 'Mod+A', vscodeCommandId: 'editor.action.selectAll' }],
     title: 'Select all',
     vscodeCommandIds: ['editor.action.selectAll'],
@@ -204,6 +251,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: CursorClickIcon,
     id: 'addNextOccurrence',
+    undoCategory: 'view-only',
     keys: [{ hotkey: 'Mod+D', vscodeCommandId: 'editor.action.addSelectionToNextFindMatch' }],
     title: 'Add next occurrence',
     vscodeCommandIds: ['editor.action.addSelectionToNextFindMatch'],
@@ -211,11 +259,13 @@ export const editorCommands = [
   defineEditorCommand({
     icon: CursorClickIcon,
     id: 'clearSecondarySelections',
+    undoCategory: 'view-only',
     title: 'Clear secondary selections',
     vscodeCommandIds: ['removeSecondaryCursors'],
   }),
   defineEditorCommand({
     id: 'deleteWordLeft',
+    undoCategory: 'text-edit',
     keys: [
       { hotkey: 'Alt+Backspace', platforms: ['mac'], vscodeCommandId: 'deleteWordLeft' },
       {
@@ -229,6 +279,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'deleteWordRight',
+    undoCategory: 'text-edit',
     keys: [
       { hotkey: 'Alt+Delete', platforms: ['mac'], vscodeCommandId: 'deleteWordRight' },
       { hotkey: 'Mod+Delete', platforms: ['windows', 'linux'], vscodeCommandId: 'deleteWordRight' },
@@ -239,6 +290,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: TrashIcon,
     id: 'editor.action.deleteLines',
+    undoCategory: 'text-edit',
     keys: [{ hotkey: 'Mod+Shift+K', vscodeCommandId: 'editor.action.deleteLines' }],
     title: 'Delete line',
     vscodeCommandIds: ['editor.action.deleteLines'],
@@ -246,6 +298,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: CopySimpleIcon,
     id: 'editor.action.copyLinesUpAction',
+    undoCategory: 'text-edit',
     keys: [
       {
         hotkey: 'Alt+Shift+ArrowUp',
@@ -264,6 +317,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: CopySimpleIcon,
     id: 'editor.action.copyLinesDownAction',
+    undoCategory: 'text-edit',
     keys: [
       {
         hotkey: 'Alt+Shift+ArrowDown',
@@ -282,6 +336,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: ArrowsOutLineVerticalIcon,
     id: 'editor.action.moveLinesUpAction',
+    undoCategory: 'text-edit',
     keys: [{ hotkey: 'Alt+ArrowUp', vscodeCommandId: 'editor.action.moveLinesUpAction' }],
     title: 'Move line up',
     vscodeCommandIds: ['editor.action.moveLinesUpAction'],
@@ -289,6 +344,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: ArrowsOutLineVerticalIcon,
     id: 'editor.action.moveLinesDownAction',
+    undoCategory: 'text-edit',
     keys: [{ hotkey: 'Alt+ArrowDown', vscodeCommandId: 'editor.action.moveLinesDownAction' }],
     title: 'Move line down',
     vscodeCommandIds: ['editor.action.moveLinesDownAction'],
@@ -296,6 +352,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: ArrowLineUpIcon,
     id: 'editor.action.insertLineBefore',
+    undoCategory: 'text-edit',
     keys: [{ hotkey: 'Mod+Shift+Enter', vscodeCommandId: 'editor.action.insertLineBefore' }],
     title: 'Insert line above',
     vscodeCommandIds: ['editor.action.insertLineBefore'],
@@ -303,6 +360,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: ArrowLineDownIcon,
     id: 'editor.action.insertLineAfter',
+    undoCategory: 'text-edit',
     keys: [{ hotkey: 'Mod+Enter', vscodeCommandId: 'editor.action.insertLineAfter' }],
     title: 'Insert line below',
     vscodeCommandIds: ['editor.action.insertLineAfter'],
@@ -310,6 +368,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: ChatTextIcon,
     id: 'editor.action.commentLine',
+    undoCategory: 'text-edit',
     keys: [{ hotkey: 'Mod+/', vscodeCommandId: 'editor.action.commentLine' }],
     title: 'Toggle line comment',
     vscodeCommandIds: ['editor.action.commentLine'],
@@ -317,6 +376,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: ChatTextIcon,
     id: 'editor.action.blockComment',
+    undoCategory: 'text-edit',
     keys: [
       {
         hotkey: 'Alt+Shift+A',
@@ -335,6 +395,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: TextIndentIcon,
     id: 'editor.action.indentLines',
+    undoCategory: 'text-edit',
     keys: [{ hotkey: 'Mod+]', vscodeCommandId: 'editor.action.indentLines' }],
     title: 'Indent line',
     vscodeCommandIds: ['editor.action.indentLines'],
@@ -342,6 +403,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: TextOutdentIcon,
     id: 'editor.action.outdentLines',
+    undoCategory: 'text-edit',
     keys: [{ hotkey: 'Mod+[', vscodeCommandId: 'editor.action.outdentLines' }],
     title: 'Outdent line',
     vscodeCommandIds: ['editor.action.outdentLines'],
@@ -349,6 +411,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: CursorClickIcon,
     id: 'editor.action.insertCursorAbove',
+    undoCategory: 'view-only',
     keys: [
       {
         hotkey: 'Mod+Alt+ArrowUp',
@@ -372,6 +435,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: CursorClickIcon,
     id: 'editor.action.insertCursorBelow',
+    undoCategory: 'view-only',
     keys: [
       {
         hotkey: 'Mod+Alt+ArrowDown',
@@ -395,6 +459,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: SelectionIcon,
     id: 'editor.action.selectHighlights',
+    undoCategory: 'view-only',
     keys: [{ hotkey: 'Mod+Shift+L', vscodeCommandId: 'editor.action.selectHighlights' }],
     title: 'Select all occurrences',
     vscodeCommandIds: ['editor.action.selectHighlights'],
@@ -402,6 +467,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: SwapIcon,
     id: 'editor.action.changeAll',
+    undoCategory: 'view-only',
     keys: [{ hotkey: 'Mod+F2', vscodeCommandId: 'editor.action.changeAll' }],
     title: 'Change all occurrences',
     vscodeCommandIds: ['editor.action.changeAll'],
@@ -410,6 +476,7 @@ export const editorCommands = [
   // layout-dependent (see PunctuationKey). Mod+\ is unclaimed and keeps the backslash mnemonic.
   defineEditorCommand({
     id: 'editor.action.jumpToBracket',
+    undoCategory: 'view-only',
     keys: [{ hotkey: 'Mod+\\', vscodeCommandId: 'editor.action.jumpToBracket' }],
     title: 'Go to bracket',
     vscodeCommandIds: ['editor.action.jumpToBracket'],
@@ -417,6 +484,7 @@ export const editorCommands = [
   // VS Code's subword motion, which it ships on Ctrl+Alt+Arrow on macOS.
   defineEditorCommand({
     id: 'cursorWordPartLeft',
+    undoCategory: 'view-only',
     keys: [
       {
         hotkey: 'Control+Alt+ArrowLeft',
@@ -429,6 +497,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'cursorWordPartRight',
+    undoCategory: 'view-only',
     keys: [
       {
         hotkey: 'Control+Alt+ArrowRight',
@@ -441,21 +510,25 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'editor.action.trimTrailingWhitespace',
+    undoCategory: 'text-edit',
     title: 'Trim trailing whitespace',
     vscodeCommandIds: ['editor.action.trimTrailingWhitespace'],
   }),
   defineEditorCommand({
     id: 'editor.action.sortLinesAscending',
+    undoCategory: 'text-edit',
     title: 'Sort lines ascending',
     vscodeCommandIds: ['editor.action.sortLinesAscending'],
   }),
   defineEditorCommand({
     id: 'editor.action.sortLinesDescending',
+    undoCategory: 'text-edit',
     title: 'Sort lines descending',
     vscodeCommandIds: ['editor.action.sortLinesDescending'],
   }),
   defineEditorCommand({
     id: 'editor.action.joinLines',
+    undoCategory: 'text-edit',
     keys: [{ hotkey: 'Control+J', platforms: ['mac'], vscodeCommandId: 'editor.action.joinLines' }],
     title: 'Join lines',
     vscodeCommandIds: ['editor.action.joinLines'],
@@ -464,26 +537,31 @@ export const editorCommands = [
   // taking that key would replace a line command with a selection one.
   defineEditorCommand({
     id: 'editor.action.duplicateSelection',
+    undoCategory: 'text-edit',
     title: 'Duplicate selection',
     vscodeCommandIds: ['editor.action.duplicateSelection'],
   }),
   defineEditorCommand({
     id: 'editor.action.transformToUppercase',
+    undoCategory: 'text-edit',
     title: 'Transform to uppercase',
     vscodeCommandIds: ['editor.action.transformToUppercase'],
   }),
   defineEditorCommand({
     id: 'editor.action.transformToLowercase',
+    undoCategory: 'text-edit',
     title: 'Transform to lowercase',
     vscodeCommandIds: ['editor.action.transformToLowercase'],
   }),
   defineEditorCommand({
     id: 'editor.action.transformToTitlecase',
+    undoCategory: 'text-edit',
     title: 'Transform to title case',
     vscodeCommandIds: ['editor.action.transformToTitlecase'],
   }),
   defineEditorCommand({
     id: 'editor.action.rename',
+    undoCategory: 'text-edit',
     keys: [{ hotkey: 'F2', vscodeCommandId: 'editor.action.rename' }],
     title: 'Rename symbol',
     vscodeCommandIds: ['editor.action.rename'],
@@ -491,23 +569,27 @@ export const editorCommands = [
   // VS Code writes this Shift+Alt+F; the hotkey layer canonicalises modifiers as Alt+Shift.
   defineEditorCommand({
     id: 'editor.action.formatDocument',
+    undoCategory: 'text-edit',
     keys: [{ hotkey: 'Alt+Shift+F', vscodeCommandId: 'editor.action.formatDocument' }],
     title: 'Format document',
     vscodeCommandIds: ['editor.action.formatDocument'],
   }),
   defineEditorCommand({
     id: 'editor.action.toggleWordWrap',
+    undoCategory: 'view-only',
     keys: [{ hotkey: 'Alt+Z', vscodeCommandId: 'editor.action.toggleWordWrap' }],
     title: 'Toggle word wrap',
     vscodeCommandIds: ['editor.action.toggleWordWrap'],
   }),
   defineEditorCommand({
     id: 'editor.action.moveSelectionToNextFindMatch',
+    undoCategory: 'view-only',
     title: 'Move last selection to next find match',
     vscodeCommandIds: ['editor.action.moveSelectionToNextFindMatch'],
   }),
   defineEditorCommand({
     id: 'deleteBackward',
+    undoCategory: 'text-edit',
     keys: [
       { hotkey: 'Backspace' },
       { hotkey: 'Shift+Backspace' },
@@ -517,6 +599,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'deleteForward',
+    undoCategory: 'text-edit',
     keys: [{ hotkey: 'Delete' }, { hotkey: 'Control+D', platforms: ['mac'] }],
     title: 'Delete forward',
   }),
@@ -526,6 +609,7 @@ export const editorCommands = [
   defineEditorCommand({
     icon: TextIndentIcon,
     id: 'indentSelection',
+    undoCategory: 'text-edit',
     keys: [{ hotkey: 'Tab', vscodeCommandId: 'tab' }],
     title: 'Indent selection',
     vscodeCommandIds: ['tab'],
@@ -533,12 +617,14 @@ export const editorCommands = [
   defineEditorCommand({
     icon: TextOutdentIcon,
     id: 'outdentSelection',
+    undoCategory: 'text-edit',
     keys: [{ hotkey: 'Shift+Tab', vscodeCommandId: 'outdent' }],
     title: 'Outdent selection',
     vscodeCommandIds: ['outdent'],
   }),
   defineEditorCommand({
     id: 'cursorLeft',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'ArrowLeft', vscodeCommandId: 'cursorLeft' },
       { hotkey: 'Control+B', platforms: ['mac'], vscodeCommandId: 'cursorLeft' },
@@ -548,6 +634,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'cursorRight',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'ArrowRight', vscodeCommandId: 'cursorRight' },
       { hotkey: 'Control+F', platforms: ['mac'], vscodeCommandId: 'cursorRight' },
@@ -557,6 +644,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'cursorUp',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'ArrowUp', vscodeCommandId: 'cursorUp' },
       { hotkey: 'Control+P', platforms: ['mac'], vscodeCommandId: 'cursorUp' },
@@ -566,6 +654,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'cursorDown',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'ArrowDown', vscodeCommandId: 'cursorDown' },
       { hotkey: 'Control+N', platforms: ['mac'], vscodeCommandId: 'cursorDown' },
@@ -575,30 +664,35 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'selectLeft',
+    undoCategory: 'view-only',
     keys: [{ hotkey: 'Shift+ArrowLeft', vscodeCommandId: 'cursorLeftSelect' }],
     title: 'Select left',
     vscodeCommandIds: ['cursorLeftSelect'],
   }),
   defineEditorCommand({
     id: 'selectRight',
+    undoCategory: 'view-only',
     keys: [{ hotkey: 'Shift+ArrowRight', vscodeCommandId: 'cursorRightSelect' }],
     title: 'Select right',
     vscodeCommandIds: ['cursorRightSelect'],
   }),
   defineEditorCommand({
     id: 'selectUp',
+    undoCategory: 'view-only',
     keys: [{ hotkey: 'Shift+ArrowUp', vscodeCommandId: 'cursorUpSelect' }],
     title: 'Select up',
     vscodeCommandIds: ['cursorUpSelect'],
   }),
   defineEditorCommand({
     id: 'selectDown',
+    undoCategory: 'view-only',
     keys: [{ hotkey: 'Shift+ArrowDown', vscodeCommandId: 'cursorDownSelect' }],
     title: 'Select down',
     vscodeCommandIds: ['cursorDownSelect'],
   }),
   defineEditorCommand({
     id: 'cursorWordLeft',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'Alt+ArrowLeft', platforms: ['mac'], vscodeCommandId: 'cursorWordLeft' },
       {
@@ -612,6 +706,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'cursorWordRight',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'Alt+ArrowRight', platforms: ['mac'], vscodeCommandId: 'cursorWordEndRight' },
       {
@@ -625,6 +720,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'selectWordLeft',
+    undoCategory: 'view-only',
     keys: [
       {
         hotkey: 'Alt+Shift+ArrowLeft',
@@ -642,6 +738,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'selectWordRight',
+    undoCategory: 'view-only',
     keys: [
       {
         hotkey: 'Alt+Shift+ArrowRight',
@@ -659,6 +756,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'cursorLineStart',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'Home', vscodeCommandId: 'cursorHome' },
       { hotkey: 'Mod+ArrowLeft', platforms: ['mac'], vscodeCommandId: 'cursorHome' },
@@ -669,6 +767,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'cursorLineEnd',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'End', vscodeCommandId: 'cursorEnd' },
       { hotkey: 'Mod+ArrowRight', platforms: ['mac'], vscodeCommandId: 'cursorEnd' },
@@ -679,6 +778,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'selectLineStart',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'Shift+Home', vscodeCommandId: 'cursorHomeSelect' },
       { hotkey: 'Mod+Shift+ArrowLeft', platforms: ['mac'], vscodeCommandId: 'cursorHomeSelect' },
@@ -689,6 +789,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'selectLineEnd',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'Shift+End', vscodeCommandId: 'cursorEndSelect' },
       { hotkey: 'Mod+Shift+ArrowRight', platforms: ['mac'], vscodeCommandId: 'cursorEndSelect' },
@@ -699,30 +800,35 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'cursorPageUp',
+    undoCategory: 'view-only',
     keys: [{ hotkey: 'PageUp', vscodeCommandId: 'cursorPageUp' }],
     title: 'Move cursor page up',
     vscodeCommandIds: ['cursorPageUp'],
   }),
   defineEditorCommand({
     id: 'cursorPageDown',
+    undoCategory: 'view-only',
     keys: [{ hotkey: 'PageDown', vscodeCommandId: 'cursorPageDown' }],
     title: 'Move cursor page down',
     vscodeCommandIds: ['cursorPageDown'],
   }),
   defineEditorCommand({
     id: 'selectPageUp',
+    undoCategory: 'view-only',
     keys: [{ hotkey: 'Shift+PageUp', vscodeCommandId: 'cursorPageUpSelect' }],
     title: 'Select page up',
     vscodeCommandIds: ['cursorPageUpSelect'],
   }),
   defineEditorCommand({
     id: 'selectPageDown',
+    undoCategory: 'view-only',
     keys: [{ hotkey: 'Shift+PageDown', vscodeCommandId: 'cursorPageDownSelect' }],
     title: 'Select page down',
     vscodeCommandIds: ['cursorPageDownSelect'],
   }),
   defineEditorCommand({
     id: 'cursorDocumentStart',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'Mod+ArrowUp', platforms: ['mac'], vscodeCommandId: 'cursorTop' },
       { hotkey: 'Control+Home', platforms: ['windows', 'linux'], vscodeCommandId: 'cursorTop' },
@@ -732,6 +838,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'cursorDocumentEnd',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'Mod+ArrowDown', platforms: ['mac'], vscodeCommandId: 'cursorBottom' },
       { hotkey: 'Control+End', platforms: ['windows', 'linux'], vscodeCommandId: 'cursorBottom' },
@@ -741,6 +848,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'selectDocumentStart',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'Mod+Shift+ArrowUp', platforms: ['mac'], vscodeCommandId: 'cursorTopSelect' },
       {
@@ -754,6 +862,7 @@ export const editorCommands = [
   }),
   defineEditorCommand({
     id: 'selectDocumentEnd',
+    undoCategory: 'view-only',
     keys: [
       { hotkey: 'Mod+Shift+ArrowDown', platforms: ['mac'], vscodeCommandId: 'cursorBottomSelect' },
       {

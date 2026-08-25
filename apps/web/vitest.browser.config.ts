@@ -32,7 +32,15 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: ['@singapor/tree-sitter', '@singapor/tree-sitter-languages'],
-    include: ['@phosphor-icons/react', '@tanstack/react-hotkeys'],
+    include: [
+      '@phosphor-icons/react',
+      '@tanstack/react-hotkeys',
+      '@workspace/ui > @base-ui/react/merge-props',
+      '@workspace/ui > @base-ui/react/select',
+      '@workspace/ui > @base-ui/react/switch',
+      '@workspace/ui > @base-ui/react/use-render',
+      '@workspace/ui > cmdk',
+    ],
   },
   test: {
     name: 'browser',
@@ -45,6 +53,8 @@ export default defineConfig({
       api: { host: '127.0.0.1', port: Number(browserTestPort) },
       commands: {
         diffMouseWheel,
+        proofContextClick,
+        proofKeyPress,
         proofMouseDrag,
         proofMouseHover,
         proofMouseUp,
@@ -66,12 +76,33 @@ type ProofMouseCommandContext = {
   readonly frame: () => Promise<ProofMouseFrame>
   readonly page: {
     readonly mouse: {
+      readonly click: (
+        x: number,
+        y: number,
+        options?: { readonly button?: 'left' | 'middle' | 'right' },
+      ) => Promise<void>
       readonly down: () => Promise<void>
       readonly move: (x: number, y: number, options?: { readonly steps?: number }) => Promise<void>
       readonly up: () => Promise<void>
       readonly wheel: (deltaX: number, deltaY: number) => Promise<void>
     }
   }
+}
+
+type ProofKeyCommandContext = {
+  readonly page: {
+    readonly keyboard: {
+      readonly press: (key: string) => Promise<void>
+    }
+  }
+}
+
+type ProofKeyPressInput = {
+  readonly key: string
+}
+
+type ProofContextClickInput = {
+  readonly selector: string
 }
 
 type DiffMouseWheelInput = {
@@ -142,6 +173,18 @@ type ProofMouseDragStep =
       readonly kind: 'pause'
       readonly ms?: number
     }
+
+async function proofKeyPress(context: ProofKeyCommandContext, input: ProofKeyPressInput) {
+  await context.page.keyboard.press(input.key)
+}
+
+async function proofContextClick(context: ProofMouseCommandContext, input: ProofContextClickInput) {
+  const frame = await context.frame()
+  const transform = await proofMouseFrameTransform(frame)
+  const point = await pointForSelector(frame, transform, input.selector)
+
+  await context.page.mouse.click(point.x, point.y, { button: 'right' })
+}
 
 /**
  * A real wheel over an element, which nothing reachable from the test page can produce.

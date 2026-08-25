@@ -38,7 +38,7 @@ test('the pane view is the checked radio value', () => {
 
 test('choosing a view hands the raw value to the host', () => {
   const chosen: string[] = []
-  viewGroup(menuContext({ selectView: (value) => chosen.push(value) })).select('problems')
+  viewGroup(menuContext({ selectView: (value) => chosen.push(value) })).select?.('problems')
 
   expect(chosen).toEqual(['problems'])
 })

@@ -1,8 +1,4 @@
-import {
-  hiddenPaletteCommandIds,
-  paletteModeCommandIds,
-  workspaceOptionalCommandIds,
-} from '@/keymap/table'
+import { hiddenPaletteCommandIds, paletteModeCommandIds } from '@/keymap/table'
 import type { PlatformCommandId } from '@/keymap/types'
 
 import type {
@@ -15,7 +11,6 @@ import type {
 // palette-mode in one file and not in the other.
 export const paletteModeCommands: ReadonlySet<PlatformCommandId> = paletteModeCommandIds
 export const hiddenCommandPaletteCommands: ReadonlySet<PlatformCommandId> = hiddenPaletteCommandIds
-export const workspaceOptionalCommands: ReadonlySet<PlatformCommandId> = workspaceOptionalCommandIds
 
 export const viewPaletteItems: readonly ViewPaletteItem[] = [
   {

@@ -1,7 +1,6 @@
 import { TerminalIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 
-import { useFocus } from '@/features/workspace/providers/focus-state'
 import { TerminalPanel } from '@/features/terminal/components/panel'
 import { DiagnosticsPanel } from '@/features/workbench/components/diagnostics-panel'
 import {
@@ -21,11 +20,8 @@ export function BottomPanel({
   readonly rootPath: string
   readonly onPanelsChange: (panels: WorkbenchPanels) => void
 }) {
-  const setFocusArea = useFocus((state) => state.setFocusArea)
-
   function selectTab(tab: WorkbenchBottomTab) {
     onPanelsChange(setWorkbenchBottomTab(panels, tab))
-    setFocusArea(tab === 'terminal' ? 'terminal' : 'global')
   }
 
   return (

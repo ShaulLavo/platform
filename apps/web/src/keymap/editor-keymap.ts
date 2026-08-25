@@ -9,9 +9,10 @@ import {
   type EditorKeymapLayer,
 } from '@singapor/core'
 
-import type { EditorPlatformCommandId, PlatformCommandId, PlatformKeyBinding } from './types'
+import type { PlatformCommandId, PlatformKeyBinding } from './types'
 
 const EDITOR_COMMAND_PREFIX = 'editor.'
+type EditorAdapterPlatformCommandId = `editor.${EditorCommandId}`
 
 function editorKeyBindingsFromPlatform(
   bindings: readonly PlatformKeyBinding[],
@@ -51,15 +52,15 @@ export function readonlyEditorKeymapLayers(
 }
 
 export function isEditorPlatformCommandId(
-  command: PlatformCommandId | null,
-): command is EditorPlatformCommandId {
+  command: EditorAdapterPlatformCommandId | PlatformCommandId | null,
+): command is EditorAdapterPlatformCommandId {
   if (!command) return false
 
   return command.startsWith(EDITOR_COMMAND_PREFIX)
 }
 
 export function editorCommandIdFromPlatform(
-  command: PlatformCommandId | null,
+  command: EditorAdapterPlatformCommandId | PlatformCommandId | null,
 ): EditorCommandId | null {
   if (!isEditorPlatformCommandId(command)) return null
 

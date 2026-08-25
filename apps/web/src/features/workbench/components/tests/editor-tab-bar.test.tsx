@@ -4,6 +4,7 @@ import { vi } from 'vitest'
 import type { EditorTabModel } from '@/features/workspace/utils/tab-types'
 import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import { EditorTabActionsContext } from '@/features/editor/providers/tab-actions-context'
+import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
 import { EditorTabBar } from '@/features/workbench/components/editor-tab-bar'
 import { expect, test } from '../../../../../test/fixtures'
 import { renderWithProviders } from '../../../../../test/render'
@@ -83,14 +84,14 @@ test('requests bulk close ids from the tab context menu', () => {
 function TestEditorTabs({
   loadingTabId,
   tabs,
-  onCloseTab = () => true,
-  onCloseTabs = () => true,
+  onCloseTab = (tabId) => ({ status: 'closed', tabIds: [tabId] }),
+  onCloseTabs = (tabIds) => ({ status: 'closed', tabIds }),
   onSelectTab = () => undefined,
 }: {
   readonly loadingTabId?: string | null
   readonly tabs: readonly EditorTabModel[]
-  readonly onCloseTab?: (tabId: string) => boolean
-  readonly onCloseTabs?: (tabIds: readonly string[]) => boolean
+  readonly onCloseTab?: RequestCloseTab
+  readonly onCloseTabs?: RequestCloseTabs
   readonly onSelectTab?: (tabId: string) => void
 }) {
   return (

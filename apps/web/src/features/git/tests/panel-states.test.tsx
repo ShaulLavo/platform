@@ -4,7 +4,6 @@ import path from 'node:path'
 
 import { screen, waitFor } from '@testing-library/react'
 
-import { FocusProvider } from '@/features/workspace/providers/focus-provider'
 import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import { Panel } from '@/features/git/components/panel'
 import { GitStoreProvider } from '@/features/git/providers/store-provider'
@@ -28,11 +27,9 @@ test('the git panel loading state is not its empty state', async ({ client, serv
 
   renderWithProviders(
     <EditorStateProvider>
-      <FocusProvider>
-        <GitStoreProvider rootPath='repo'>
-          <Panel rootPath='repo' />
-        </GitStoreProvider>
-      </FocusProvider>
+      <GitStoreProvider rootPath='repo'>
+        <Panel rootPath='repo' />
+      </GitStoreProvider>
     </EditorStateProvider>,
   )
 

@@ -2,7 +2,6 @@ import type { EditorKeymapLayer } from '@singapor/core'
 import {
   memo,
   useCallback,
-  useEffect,
   useId,
   useLayoutEffect,
   useMemo,
@@ -10,7 +9,6 @@ import {
   type KeyboardEvent,
 } from 'react'
 
-import { useFocus } from '@/features/workspace/providers/focus-state'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import type { WorkspaceSearchFileGroup } from '@/features/search/state/buffer-state'
 import { useSearchResultActions } from '@/features/search/hooks/use-result-actions'
@@ -65,8 +63,6 @@ export const SearchResultEditorSurface = memo(
     const actions = useSearchResultActions()
     const treeId = useId()
     const parentRef = useRef<HTMLDivElement | null>(null)
-    const setFocusArea = useFocus((state) => state.setFocusArea)
-    const setActiveEditorCommandDispatch = useFocus((state) => state.setActiveEditorCommandDispatch)
     const readonlyKeymapLayers = useMemo(
       () => readonlyEditorKeymapLayers(keymapLayers),
       [keymapLayers],
@@ -145,12 +141,6 @@ export const SearchResultEditorSurface = memo(
       return () => window.cancelAnimationFrame(frame)
     }, [displayedResultsQuery])
 
-    useEffect(() => {
-      if (activeRow?.type === 'file-results') return
-
-      setActiveEditorCommandDispatch(null)
-    }, [activeRow, setActiveEditorCommandDispatch])
-
     function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
       handleSearchResultSurfaceKeyDown({
         activeResultId,
@@ -173,9 +163,7 @@ export const SearchResultEditorSurface = memo(
         ref={parentRef}
         role='tree'
         tabIndex={0}
-        onFocusCapture={() => setFocusArea('editor')}
         onKeyDown={handleKeyDown}
-        onPointerDownCapture={() => setFocusArea('editor')}
       >
         <SearchResultActionsContext value={editorActions}>
           <SearchResultEditorVirtualWindow

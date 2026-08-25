@@ -1,0 +1,331 @@
+import type { QueryClient } from '@tanstack/react-query'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+
+import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
+import { createEditorCommands, type EditorCommands } from '@/features/editor/state/commands'
+import {
+  createEditorDocumentStore,
+  type EditorDocumentStoreApi,
+} from '@/features/editor/state/document-state'
+import { createEditorUiStore } from '@/features/editor/state/ui-state'
+import {
+  createEditorWorkspaceStore,
+  type EditorWorkspaceStoreApi,
+} from '@/features/editor/state/workspace-state'
+import { DEFAULT_DIFF_VIEW_MODE } from '@/features/editor/utils/diff-view-mode'
+import { createSearchBufferStore } from '@/features/search/state/buffer-state'
+import type { SettingsSubmission } from '@/features/settings/state/intent-store'
+import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/layout'
+import { emptyWorkspaceSlice, type CachedWorkspaceState } from '@/features/workspace/state/cache'
+import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
+import type { WorkspaceCommandRuntime, WorkspaceCommandSnapshot } from '@/keymap/define-command'
+import {
+  CommandContext,
+  type CommandContextValue,
+  type PlatformCommandBus,
+} from '@/keymap/providers/command-context'
+import { createCommandBus } from '@/keymap/state/command-bus'
+import type { PlatformKeyBinding } from '@/keymap/types'
+import {
+  captureCommandSnapshot,
+  dispatchEditor,
+  lookupPlatformCommand,
+  openWorkspaceSettings,
+  resolveCommandTarget,
+} from '@/keymap/state/runtime'
+import { useFocusService } from '@/lib/focus/hooks/use-service'
+import {
+  focusTargetById,
+  registeredFocusTarget,
+  type FocusService,
+  type FocusTargetToken,
+} from '@/lib/focus/state/service'
+
+export type TestCommandRuntimeOverrides = {
+  readonly documents?: Partial<WorkspaceCommandRuntime['documents']>
+  readonly editor?: Partial<WorkspaceCommandRuntime['editor']>
+  readonly files?: Partial<WorkspaceCommandRuntime['files']>
+  readonly settings?: Partial<WorkspaceCommandRuntime['settings']>
+  readonly shell?: Partial<WorkspaceCommandRuntime['shell']>
+  readonly tabs?: Partial<WorkspaceCommandRuntime['tabs']>
+  readonly workspace?: EditorWorkspaceStoreApi
+}
+
+export type TestCommandSnapshotSource =
+  | Partial<WorkspaceCommandSnapshot>
+  | (() => Partial<WorkspaceCommandSnapshot>)
+
+export type TestCommandRuntimeOptions = {
+  readonly bindings?: readonly PlatformKeyBinding[]
+  readonly paletteOpen?: boolean
+  readonly paletteOrigin?: FocusTargetToken | null
+  readonly paletteSearch?: string
+  readonly rootPath?: string | null
+  readonly runtime?: TestCommandRuntimeOverrides
+  readonly snapshot?: TestCommandSnapshotSource
+}
+
+export type TestCommandRuntime = {
+  readonly bindings: readonly PlatformKeyBinding[]
+  readonly bus: PlatformCommandBus
+  readonly captureSnapshot: () => WorkspaceCommandSnapshot
+  readonly runtime: WorkspaceCommandRuntime
+}
+
+export function createTestCommandRuntime({
+  focus,
+  options = {},
+  queryClient,
+}: {
+  readonly focus: FocusService
+  readonly options?: TestCommandRuntimeOptions
+  readonly queryClient: QueryClient
+}): TestCommandRuntime {
+  const runtime = createRuntime(focus, queryClient, options)
+  const captureSnapshot = () => ({
+    ...captureCommandSnapshot(runtime),
+    ...snapshotPatch(options.snapshot),
+  })
+  const bus = createCommandBus({
+    captureSnapshot,
+    dispatchEditor,
+    lookup: lookupPlatformCommand,
+    now: Date.now,
+    resolveTarget: ({ entry, invocation, snapshot }) =>
+      resolveCommandTarget(runtime, entry.target, invocation, snapshot),
+    runtime,
+    targetIsAvailable: (target) =>
+      target.kind === 'workspace' || runtime.focus.isRegistered(target.token),
+  })
+
+  return {
+    bindings: options.bindings ?? defaultPlatformKeyBindings(),
+    bus,
+    captureSnapshot,
+    runtime,
+  }
+}
+
+export function TestCommandProvider({
+  children,
+  options = {},
+  queryClient,
+}: {
+  readonly children: ReactNode
+  readonly options?: TestCommandRuntimeOptions
+  readonly queryClient: QueryClient
+}) {
+  const focus = useFocusService()
+  const [paletteOpen, setPaletteOpenState] = useState(options.paletteOpen ?? false)
+  const [paletteOrigin, setPaletteOrigin] = useState(options.paletteOrigin ?? null)
+  const [paletteSearch, setPaletteSearch] = useState(options.paletteSearch ?? '')
+  const paletteRestoreRef = useRef<FocusTargetToken | null | undefined>(undefined)
+  const [commandRuntime] = useState(() => {
+    const showCommandPalette = options.runtime?.shell?.showCommandPalette
+    if (showCommandPalette) return createTestCommandRuntime({ focus, options, queryClient })
+
+    const runtime = withShellOverride(options.runtime, {
+      showCommandPalette: (initialSearch = '', origin) => {
+        setPaletteOrigin(origin ?? focus.captureOrigin())
+        setPaletteSearch(initialSearch)
+        setPaletteOpenState(true)
+        return focus.request(focusTargetById({ kind: 'command-palette' }))
+      },
+    })
+    return createTestCommandRuntime({
+      focus,
+      options: { ...options, runtime },
+      queryClient,
+    })
+  })
+
+  function closePalette(restoreOrigin: boolean) {
+    paletteRestoreRef.current = restoreOrigin ? paletteOrigin : undefined
+    setPaletteOpenState(false)
+    setPaletteOrigin(null)
+  }
+
+  function setPaletteOpen(open: boolean) {
+    if (open) {
+      paletteRestoreRef.current = undefined
+      setPaletteOpenState(true)
+      return
+    }
+
+    closePalette(true)
+  }
+
+  useEffect(() => {
+    if (paletteOpen) {
+      paletteRestoreRef.current = undefined
+      return
+    }
+
+    const origin = paletteRestoreRef.current
+    if (origin === undefined) return
+
+    paletteRestoreRef.current = undefined
+    restoreOriginTarget(focus, origin)
+  }, [focus, paletteOpen])
+
+  const value: CommandContextValue = {
+    bindings: commandRuntime.bindings,
+    bus: commandRuntime.bus,
+    closePalette,
+    openWorkspaceRoot: commandRuntime.runtime.shell.openWorkspaceRoot,
+    paletteOpen,
+    paletteOrigin,
+    paletteSearch,
+    setPaletteOpen,
+    setPaletteSearch,
+  }
+
+  return <CommandContext value={value}>{children}</CommandContext>
+}
+
+function createRuntime(
+  focus: FocusService,
+  queryClient: QueryClient,
+  options: TestCommandRuntimeOptions,
+): WorkspaceCommandRuntime {
+  const overrides = options.runtime
+  const workspace = overrides?.workspace ?? createTestWorkspaceStore(options.rootPath ?? null)
+  const documents: WorkspaceCommandRuntime['documents'] = {
+    queryClient,
+    store: createEditorDocumentStore(),
+    ...overrides?.documents,
+  }
+  const editor = createTestEditor(documents.store, workspace, overrides?.editor)
+  const files: WorkspaceCommandRuntime['files'] = {
+    openFileAtRef: async () => false,
+    ...overrides?.files,
+  }
+  const settings: WorkspaceCommandRuntime['settings'] = {
+    setDiffViewMode: noopSettingsSubmission,
+    setTheme: noopSettingsSubmission,
+    setWallpaperEnabled: noopSettingsSubmission,
+    ...overrides?.settings,
+    readSnapshot: overrides?.settings?.readSnapshot ?? defaultSettingsSnapshot,
+  }
+  const shell: WorkspaceCommandRuntime['shell'] = {
+    openPicker: () => workspace.getState().openPicker(),
+    openWorkspaceRoot: (rootPath) => openTestWorkspaceRoot(rootPath, editor, workspace),
+    showCommandPalette: () => focus.request(focusTargetById({ kind: 'command-palette' })),
+    showSettings: () => showTestSettings(editor, focus, workspace),
+    ...overrides?.shell,
+  }
+  const tabs: WorkspaceCommandRuntime['tabs'] = {
+    requestCloseTab: (tabId) => closeTestTab(tabId, editor, workspace),
+    ...overrides?.tabs,
+  }
+
+  return { documents, editor, files, focus, settings, shell, tabs, workspace }
+}
+
+function createTestEditor(
+  documentStore: EditorDocumentStoreApi,
+  workspaceStore: EditorWorkspaceStoreApi,
+  overrides?: Partial<EditorCommands>,
+): EditorCommands {
+  const editor = createEditorCommands({
+    documentStore,
+    searchStore: createSearchBufferStore({ rootPath: workspaceStore.getState().rootFolder?.path }),
+    uiStore: createEditorUiStore(),
+    workspaceStore,
+  })
+
+  return { ...editor, ...overrides }
+}
+
+function createTestWorkspaceStore(rootPath: string | null) {
+  const rootFolder = rootPath ? pickedDirectory(rootPath) : null
+  const workspaces = rootPath ? { [rootPath]: emptyWorkspaceSlice() } : {}
+  const state: CachedWorkspaceState = {
+    chatModePanels: createDefaultChatModePanels(),
+    rootFolder,
+    searchBuffers: {},
+    uiMode: 'workbench',
+    workbenchLayout: createDefaultWorkbenchLayout(),
+    workspaceOrder: rootPath ? [rootPath] : [],
+    workspaces,
+  }
+
+  return createEditorWorkspaceStore(state)
+}
+
+function pickedDirectory(path: string) {
+  return {
+    birthtimeMs: 0,
+    mtimeMs: 0,
+    name: path.split('/').filter(Boolean).at(-1) ?? path,
+    path,
+    size: 0,
+    type: 'directory' as const,
+    version: '',
+  }
+}
+
+function noopSettingsSubmission(): SettingsSubmission {
+  return { kind: 'noop' }
+}
+
+function defaultSettingsSnapshot() {
+  return { diffViewMode: DEFAULT_DIFF_VIEW_MODE, wallpaperEnabled: true } as const
+}
+
+async function openTestWorkspaceRoot(
+  rootPath: string,
+  editor: EditorCommands,
+  workspace: EditorWorkspaceStoreApi,
+) {
+  if (workspace.getState().rootFolder?.path === rootPath) return 'already-open' as const
+
+  editor.switchRootFolder(pickedDirectory(rootPath))
+  return 'opened' as const
+}
+
+function showTestSettings(
+  editor: EditorCommands,
+  focus: FocusService,
+  workspace: EditorWorkspaceStoreApi,
+) {
+  if (!workspace.getState().rootFolder) {
+    return focus.request(focusTargetById({ kind: 'settings-dialog' }))
+  }
+
+  return openWorkspaceSettings(focus, workspace, editor)
+}
+
+function closeTestTab(tabId: string, editor: EditorCommands, workspace: EditorWorkspaceStoreApi) {
+  const open = workspace.getState().workbenchPanels.editorTabs.some((tab) => tab.id === tabId)
+  if (!open) return { reason: 'not-found', status: 'rejected' } as const
+
+  editor.closeTab(tabId)
+  return { status: 'closed', tabIds: [tabId] } as const
+}
+
+function snapshotPatch(source?: TestCommandSnapshotSource) {
+  if (!source) return {}
+
+  return typeof source === 'function' ? source() : source
+}
+
+function withShellOverride(
+  runtime: TestCommandRuntimeOverrides | undefined,
+  shell: Partial<WorkspaceCommandRuntime['shell']>,
+): TestCommandRuntimeOverrides {
+  return {
+    ...runtime,
+    shell: { ...runtime?.shell, ...shell },
+  }
+}
+
+function restoreOriginTarget(focus: FocusService, origin: FocusTargetToken | null) {
+  if (!origin || !focus.isRegistered(origin)) return
+
+  const current = focus.getSnapshot().currentOwner
+  if (current?.token === origin) return
+  if (current && current.id.kind !== 'command-palette') return
+
+  focus.request(registeredFocusTarget(origin))
+}

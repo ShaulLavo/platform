@@ -4,7 +4,6 @@ import { useTheme } from '@/features/settings/hooks/use-theme'
 import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
-import { useMenuCommand } from '@/features/menus/providers/command-context'
 import { projectMenuModel } from '@/features/workbench/utils/project-menu-model'
 import { titlebarMenu } from '@/features/workbench/utils/titlebar-menu'
 import { useOpenWorkspaceRoot } from '@/features/workspace/hooks/use-open-root'
@@ -21,7 +20,6 @@ export function useTitlebarMenu(open: boolean) {
   const rootFolder = useEditorWorkspaceState((state) => state.rootFolder)
   const uiMode = useEditorWorkspaceState((state) => state.uiMode)
   const projects = useChatProjectionStore(selectChatProjects)
-  const runCommand = useMenuCommand((state) => state.runCommand)
   const openWorkspaceRoot = useOpenWorkspaceRoot()
   const { theme } = useTheme()
   const recentFolders = useQuery(recentFoldersQueryOptions({ enabled: open }))
@@ -42,7 +40,6 @@ export function useTitlebarMenu(open: boolean) {
       projects,
       recentFolders: recentFolders.data ?? EMPTY_FOLDERS,
     }),
-    runCommand,
     selectProject,
     uiMode,
     workspacePath,

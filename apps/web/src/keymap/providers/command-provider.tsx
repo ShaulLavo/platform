@@ -1,0 +1,339 @@
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { DEFAULT_SETTING_VALUES, type SettingsSnapshot } from '@workspace/contracts'
+
+import { AppKeymapController } from '@/app-keymap-controller'
+import { CommandPalette } from '@/components/command-palette'
+import { useEditorTabActions } from '@/features/editor/hooks/use-editor-tab-actions'
+import { useEditorCommands } from '@/features/editor/state/commands'
+import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
+import { useEditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
+import { useOpenFileAtRef } from '@/features/git/hooks/use-open-file-at-ref'
+import { SettingsDialog } from '@/features/settings/components/dialog'
+import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
+import { useSettingsActions } from '@/features/settings/hooks/use-settings-actions'
+import { useSettingsStream } from '@/features/settings/hooks/use-settings-stream'
+import { useTheme } from '@/features/settings/hooks/use-theme'
+import { readLiveSettingsProjection } from '@/features/settings/state/live-projection'
+import { useOpenWorkspaceRoot } from '@/features/workspace/hooks/use-open-root'
+import { resolvedPlatformKeyBindings } from '@/keymap/active-bindings'
+import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
+import type { WorkspaceCommandRuntime, WorkspaceCommandSnapshot } from '@/keymap/define-command'
+import { CommandContext, type CommandContextValue } from '@/keymap/providers/command-context'
+import { createCommandBus } from '@/keymap/state/command-bus'
+import {
+  captureCommandSnapshot,
+  dispatchEditor,
+  lookupPlatformCommand,
+  openWorkspaceSettings,
+  resolveCommandTarget,
+} from '@/keymap/state/runtime'
+import { useFocusService } from '@/lib/focus/hooks/use-service'
+import {
+  focusTargetById,
+  registeredFocusTarget,
+  type FocusTargetToken,
+} from '@/lib/focus/state/service'
+
+type RuntimeAdapters = {
+  readonly editor: ReturnType<typeof useEditorCommands>
+  readonly openFileAtRef: ReturnType<typeof useOpenFileAtRef>
+  readonly openWorkspaceRoot: ReturnType<typeof useOpenWorkspaceRoot>
+  readonly requestCloseTab: ReturnType<typeof useEditorTabActions>['requestCloseTab']
+  readonly setDiffViewMode: ReturnType<typeof useSettingsActions>['setSetting']
+  readonly setTheme: ReturnType<typeof useTheme>['setTheme']
+  readonly setWallpaperEnabled: ReturnType<typeof useSettingsActions>['setSetting']
+}
+
+type SnapshotSettings = {
+  readonly diffViewMode: WorkspaceCommandSnapshot['diffViewMode']
+  readonly wallpaperEnabled: boolean
+}
+
+function runtimeAdapters({
+  editor,
+  openFileAtRef,
+  openWorkspaceRoot,
+  requestCloseTab,
+  settings,
+  theme,
+}: {
+  readonly editor: ReturnType<typeof useEditorCommands>
+  readonly openFileAtRef: ReturnType<typeof useOpenFileAtRef>
+  readonly openWorkspaceRoot: ReturnType<typeof useOpenWorkspaceRoot>
+  readonly requestCloseTab: ReturnType<typeof useEditorTabActions>['requestCloseTab']
+  readonly settings: ReturnType<typeof useSettingsActions>
+  readonly theme: ReturnType<typeof useTheme>
+}): RuntimeAdapters {
+  return {
+    editor,
+    openFileAtRef,
+    openWorkspaceRoot,
+    requestCloseTab,
+    setDiffViewMode: settings.setSetting,
+    setTheme: theme.setTheme,
+    setWallpaperEnabled: settings.setSetting,
+  }
+}
+
+export function CommandProvider({ children }: { readonly children: ReactNode }) {
+  const focus = useFocusService()
+  const documentStore = useEditorDocumentStoreApi()
+  const workspace = useEditorWorkspaceStoreApi()
+  const queryClient = useQueryClient()
+  const editor = useEditorCommands()
+  const openFileAtRef = useOpenFileAtRef()
+  const openWorkspaceRoot = useOpenWorkspaceRoot()
+  const { requestCloseTab } = useEditorTabActions()
+  const settings = useSettingsActions()
+  const theme = useTheme()
+  const diffViewMode = useSettingValue('editor.diff.viewMode')
+  const wallpaperEnabled = useSettingValue('workbench.wallpaper.enabled')
+  const overrides = useSettingValue('keybindings.overrides')
+  const [paletteOpen, setPaletteOpenState] = useState(false)
+  const [paletteSearch, setPaletteSearch] = useState('')
+  const [paletteOrigin, setPaletteOrigin] = useState<FocusTargetToken | null>(null)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsOrigin, setSettingsOrigin] = useState<FocusTargetToken | null>(null)
+  const adaptersRef = useRef(
+    runtimeAdapters({
+      editor,
+      openFileAtRef,
+      openWorkspaceRoot,
+      requestCloseTab,
+      settings,
+      theme,
+    }),
+  )
+  const snapshotSettingsRef = useRef<SnapshotSettings>({ diffViewMode, wallpaperEnabled })
+  const paletteOpenRef = useRef(false)
+  const paletteRestoreRef = useRef<FocusTargetToken | null | undefined>(undefined)
+  const settingsOpenRef = useRef(false)
+  const settingsRestoreRef = useRef<FocusTargetToken | null | undefined>(undefined)
+
+  useLayoutEffect(() => {
+    adaptersRef.current = runtimeAdapters({
+      editor,
+      openFileAtRef,
+      openWorkspaceRoot,
+      requestCloseTab,
+      settings,
+      theme,
+    })
+    snapshotSettingsRef.current = { diffViewMode, wallpaperEnabled }
+  }, [
+    diffViewMode,
+    editor,
+    openFileAtRef,
+    openWorkspaceRoot,
+    requestCloseTab,
+    settings,
+    theme,
+    wallpaperEnabled,
+  ])
+
+  useSettingsStream()
+
+  const [runtime] = useState<WorkspaceCommandRuntime>(() => ({
+    documents: { queryClient, store: documentStore },
+    editor: {
+      closeTab: (...args) => adaptersRef.current.editor.closeTab(...args),
+      discardAndCloseTab: (...args) => adaptersRef.current.editor.discardAndCloseTab(...args),
+      discardLiveEditorDocument: (...args) =>
+        adaptersRef.current.editor.discardLiveEditorDocument(...args),
+      moveTabToPane: (...args) => adaptersRef.current.editor.moveTabToPane(...args),
+      moveTabToSplit: (...args) => adaptersRef.current.editor.moveTabToSplit(...args),
+      openDefinition: (...args) => adaptersRef.current.editor.openDefinition(...args),
+      openFileSurface: (...args) => adaptersRef.current.editor.openFileSurface(...args),
+      openSearchEditor: (...args) => adaptersRef.current.editor.openSearchEditor(...args),
+      openSettingsEditor: (...args) => adaptersRef.current.editor.openSettingsEditor(...args),
+      reopenClosedEditor: (...args) => adaptersRef.current.editor.reopenClosedEditor(...args),
+      renameLiveEditorDocument: (...args) =>
+        adaptersRef.current.editor.renameLiveEditorDocument(...args),
+      reorderTab: (...args) => adaptersRef.current.editor.reorderTab(...args),
+      selectFile: (...args) => adaptersRef.current.editor.selectFile(...args),
+      selectPreviousEditor: (...args) => adaptersRef.current.editor.selectPreviousEditor(...args),
+      selectTab: (...args) => adaptersRef.current.editor.selectTab(...args),
+      setActivePane: (...args) => adaptersRef.current.editor.setActivePane(...args),
+      splitTab: (...args) => adaptersRef.current.editor.splitTab(...args),
+      switchRootFolder: (...args) => adaptersRef.current.editor.switchRootFolder(...args),
+    },
+    files: {
+      openFileAtRef: (path, ref) => adaptersRef.current.openFileAtRef(path, ref),
+    },
+    focus,
+    settings: {
+      readSnapshot: () => readCommandSettingsSnapshot(queryClient, snapshotSettingsRef.current),
+      setDiffViewMode: (mode, initiator) =>
+        adaptersRef.current.setDiffViewMode('editor.diff.viewMode', mode, undefined, initiator),
+      setTheme: (value, initiator) => adaptersRef.current.setTheme(value, initiator),
+      setWallpaperEnabled: (enabled, initiator) =>
+        adaptersRef.current.setWallpaperEnabled(
+          'workbench.wallpaper.enabled',
+          enabled,
+          undefined,
+          initiator,
+        ),
+    },
+    shell: {
+      openPicker: () => workspace.getState().openPicker(),
+      openWorkspaceRoot: (rootPath) => adaptersRef.current.openWorkspaceRoot(rootPath),
+      showCommandPalette: (initialSearch = '', origin) => {
+        if (!paletteOpenRef.current) setPaletteOrigin(origin ?? focus.captureOrigin())
+
+        paletteOpenRef.current = true
+        setPaletteSearch(initialSearch)
+        setPaletteOpenState(true)
+        return focus.request(focusTargetById({ kind: 'command-palette' }))
+      },
+      showSettings: (origin) => {
+        const rootOpen = workspace.getState().rootFolder !== null
+        if (rootOpen) {
+          return openWorkspaceSettings(focus, workspace, adaptersRef.current.editor)
+        }
+        if (!settingsOpenRef.current) setSettingsOrigin(origin ?? focus.captureOrigin())
+
+        settingsOpenRef.current = true
+        setSettingsOpen(true)
+        return focus.request(focusTargetById({ kind: 'settings-dialog' }))
+      },
+    },
+    tabs: {
+      requestCloseTab: (tabId) => adaptersRef.current.requestCloseTab(tabId),
+    },
+    workspace,
+  }))
+  const [bus] = useState(() =>
+    createCommandBus({
+      captureSnapshot: captureCommandSnapshot,
+      dispatchEditor,
+      lookup: lookupPlatformCommand,
+      now: () => performance.now(),
+      resolveTarget: ({ entry, invocation, snapshot }) =>
+        resolveCommandTarget(runtime, entry.target, invocation, snapshot),
+      runtime,
+      targetIsAvailable: (target) =>
+        target.kind === 'workspace' || runtime.focus.isRegistered(target.token),
+    }),
+  )
+  const defaults = useMemo(() => defaultPlatformKeyBindings(), [])
+  // Stable identity is required by the document listener and every shortcut-hint consumer.
+  const bindings = useMemo(
+    () => resolvedPlatformKeyBindings(defaults, overrides),
+    [defaults, overrides],
+  )
+
+  const closePalette = (restoreOrigin: boolean) => {
+    paletteRestoreRef.current = restoreOrigin ? paletteOrigin : undefined
+    paletteOpenRef.current = false
+    setPaletteOpenState(false)
+    setPaletteOrigin(null)
+  }
+  const setPaletteOpen = (open: boolean) => {
+    if (open) return
+
+    closePalette(true)
+  }
+  const handleSettingsOpenChange = (open: boolean) => {
+    settingsOpenRef.current = open
+    setSettingsOpen(open)
+    if (open) {
+      settingsRestoreRef.current = undefined
+      return
+    }
+
+    settingsRestoreRef.current = settingsOrigin
+    setSettingsOrigin(null)
+  }
+
+  useEffect(() => {
+    if (paletteOpen) {
+      paletteRestoreRef.current = undefined
+      return
+    }
+
+    const origin = paletteRestoreRef.current
+    if (origin === undefined) return
+
+    paletteRestoreRef.current = undefined
+    restoreCapturedOrigin(focus, origin, 'command-palette')
+  }, [focus, paletteOpen])
+
+  useEffect(() => {
+    if (settingsOpen) {
+      settingsRestoreRef.current = undefined
+      return
+    }
+
+    const origin = settingsRestoreRef.current
+    if (origin === undefined) return
+
+    settingsRestoreRef.current = undefined
+    restoreCapturedOrigin(focus, origin, 'settings-dialog')
+  }, [focus, settingsOpen])
+  const value: CommandContextValue = {
+    bindings,
+    bus,
+    closePalette,
+    openWorkspaceRoot,
+    paletteOpen,
+    paletteOrigin,
+    paletteSearch,
+    setPaletteOpen,
+    setPaletteSearch,
+  }
+
+  return (
+    <CommandContext value={value}>
+      {children}
+      <AppKeymapController />
+      <CommandPalette />
+      <SettingsDialog open={settingsOpen} onOpenChange={handleSettingsOpenChange} />
+    </CommandContext>
+  )
+}
+
+function readCommandSettingsSnapshot(
+  queryClient: ReturnType<typeof useQueryClient>,
+  fallback: SnapshotSettings,
+): SnapshotSettings {
+  const projection = readLiveSettingsProjection(queryClient, fallbackSettingsSnapshot(fallback))
+  if (!projection) return fallback
+
+  return {
+    diffViewMode: projection.values['editor.diff.viewMode'],
+    wallpaperEnabled: projection.values['workbench.wallpaper.enabled'],
+  }
+}
+
+function fallbackSettingsSnapshot(fallback: SnapshotSettings): SettingsSnapshot {
+  const file = { keyRanges: {}, parseErrors: [], revision: 'command-fallback', text: '{}\n' }
+  return {
+    diagnostics: [],
+    layers: [
+      { file, id: 'user', present: false, raw: {} },
+      { file, id: 'workspace', present: false, raw: {} },
+      { id: 'policy', present: false, raw: {} },
+    ],
+    serverVersion: { epoch: 'command-fallback', sequence: 0 },
+    values: {
+      ...DEFAULT_SETTING_VALUES,
+      'editor.diff.viewMode': fallback.diffViewMode,
+      'workbench.wallpaper.enabled': fallback.wallpaperEnabled,
+    },
+  }
+}
+
+function restoreCapturedOrigin(
+  focus: ReturnType<typeof useFocusService>,
+  origin: FocusTargetToken | null,
+  departingOverlay: 'command-palette' | 'settings-dialog',
+) {
+  if (!origin || !focus.isRegistered(origin)) return
+
+  const current = focus.getSnapshot().currentOwner
+  if (current?.token === origin) return
+  if (current && current.id.kind !== departingOverlay) return
+
+  focus.request(registeredFocusTarget(origin))
+}

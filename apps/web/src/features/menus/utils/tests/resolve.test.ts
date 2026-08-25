@@ -22,20 +22,65 @@ test('an explicit label overrides the registry title', () => {
 test('dispatching a command item routes through the registry dispatch', () => {
   const dispatched: PlatformCommandId[] = []
   const menu = [section('save', [commandItem('workspace.saveFile')])]
-  const [group] = resolveMenu(menu, context({ dispatch: (id) => dispatched.push(id) }))
+  const [group] = resolveMenu(
+    menu,
+    context({
+      dispatch: (id) => {
+        dispatched.push(id)
+      },
+    }),
+  )
 
   const item = group.items[0]
-  if (item.kind !== 'run') throw new Error('expected a run item')
-  item.run()
+  expect(item.kind).toBe('run')
+  if (item.kind !== 'run') return
+  expect(item.run()?.claimed).toBe(true)
 
   expect(dispatched).toEqual(['workspace.saveFile'])
 })
 
-test('a command the registry reports unavailable resolves disabled', () => {
+test('a command the registry reports unavailable resolves disabled with its exact reason', () => {
   const menu = [section('save', [commandItem('workspace.saveFile')])]
-  const [group] = resolveMenu(menu, context({ hasWorkspace: false }))
+  const [group] = resolveMenu(menu, context({ disabled: true }))
 
-  expect(group.items[0]).toMatchObject({ disabled: true })
+  expect(group.items[0]).toMatchObject({
+    disabled: true,
+    trailing: 'Command is unavailable.',
+  })
+})
+
+test('a command-backed radio option inspects and dispatches through the same context', () => {
+  const dispatched: PlatformCommandId[] = []
+  const menu = [
+    section('theme', [
+      {
+        id: 'theme',
+        kind: 'radio-group' as const,
+        options: [
+          {
+            command: 'workspace.setDarkTheme' as const,
+            label: 'Dark',
+            value: 'workspace.setDarkTheme',
+          },
+        ],
+        value: 'workspace.setLightTheme',
+      },
+    ]),
+  ]
+  const [group] = resolveMenu(
+    menu,
+    context({
+      dispatch: (id) => {
+        dispatched.push(id)
+      },
+    }),
+  )
+  const item = group.items[0]
+  expect(item.kind).toBe('radio-group')
+  if (item.kind !== 'radio-group') return
+
+  expect(item.select('workspace.setDarkTheme')?.claimed).toBe(true)
+  expect(dispatched).toEqual(['workspace.setDarkTheme'])
 })
 
 test('an unavailable item is disabled and states why in the trailing slot', () => {
@@ -47,6 +92,20 @@ test('an unavailable item is disabled and states why in the trailing slot', () =
   const [group] = resolveMenu(menu, context())
 
   expect(group.items[0]).toMatchObject({ disabled: true, label: 'Split Right', trailing: 'soon' })
+})
+
+test('a local action return value is not mistaken for a command ticket', () => {
+  const accidentalTicket = handledTicket()
+  const menu = [
+    section('local', [
+      actionItem({ id: 'local', label: 'Local action', run: () => accidentalTicket }),
+    ]),
+  ]
+  const item = resolveMenu(menu, context())[0].items[0]
+
+  expect(item.kind).toBe('run')
+  if (item.kind !== 'run') return
+  expect(item.run()).toBeUndefined()
 })
 
 test('drops sections that filter down to nothing so no separator is left behind', () => {
@@ -72,7 +131,8 @@ test('resolves submenu sections recursively', () => {
   ]
   const item = resolveMenu(menu, context())[0].items[0]
 
-  if (item.kind !== 'submenu') throw new Error('expected a submenu item')
+  expect(item.kind).toBe('submenu')
+  if (item.kind !== 'submenu') return
   expect(item.sections.map((group) => group.id)).toEqual(['inner'])
   expect(item.sections[0].items[0]).toMatchObject({ label: 'Save' })
 })
@@ -82,16 +142,26 @@ function noop() {}
 function context(
   overrides: {
     readonly dispatch?: (command: PlatformCommandId) => void
-    readonly hasWorkspace?: boolean
+    readonly disabled?: boolean
   } = {},
 ): MenuResolveContext {
   return {
     bindings: [binding('Mod+S', 'workspace.saveFile')],
-    disabled: {
-      activeFilePath: '/repo/file.ts',
-      hasWorkspace: overrides.hasWorkspace ?? true,
+    dispatch: (command) => {
+      overrides.dispatch?.(command)
+      return handledTicket()
     },
-    dispatch: overrides.dispatch ?? noop,
+    inspect: () =>
+      overrides.disabled
+        ? { reason: 'Command is unavailable.', status: 'disabled' }
+        : { status: 'ready' },
+  }
+}
+
+function handledTicket() {
+  return {
+    claimed: true,
+    completion: Promise.resolve({ status: 'handled' as const }),
   }
 }
 

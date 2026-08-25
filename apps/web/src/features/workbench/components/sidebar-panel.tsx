@@ -8,7 +8,6 @@ import {
 import type { EditorKeymapLayer } from '@singapor/core'
 import type { ReactNode } from 'react'
 
-import { useFocus } from '@/features/workspace/providers/focus-state'
 import { SearchPane } from '@/features/workspace/components/search-pane'
 import { ChatSidePanel } from '@/features/chat/components/chat-side-panel'
 import { LogsPanel } from '@/features/logs/components/panel'
@@ -33,11 +32,8 @@ export function SidebarPanel({
   readonly rootPath: string
   readonly onPanelsChange: (panels: WorkbenchPanels) => void
 }) {
-  const setFocusArea = useFocus((state) => state.setFocusArea)
-
   function selectTab(tab: WorkbenchSidebarTab) {
     onPanelsChange(setWorkbenchSidebarTab(panels, tab))
-    setFocusArea(focusAreaForSidebarTab(tab))
   }
 
   return (
@@ -134,13 +130,4 @@ function renderSidebarPanel({
     return <SearchPane editorKeymapLayers={editorKeymapLayers} rootPath={rootPath} />
 
   return <FileNavigatorPanel rootPath={rootPath} />
-}
-
-function focusAreaForSidebarTab(tab: WorkbenchSidebarTab) {
-  if (tab === 'chat') return 'global'
-  if (tab === 'files') return 'file-tree'
-  if (tab === 'git') return 'git'
-  if (tab === 'logs') return 'logs'
-
-  return 'search'
 }

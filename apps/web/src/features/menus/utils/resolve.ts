@@ -1,7 +1,7 @@
 import type { Icon } from '@phosphor-icons/react'
 
-import { commandDisabledReason, type CommandDisabledContext } from '@/keymap/command-enablement'
 import { platformCommandSpec } from '@/keymap/command-registry'
+import type { CommandDispatchTicket } from '@/keymap/state/command-bus'
 import type { PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
 
 import type { Menu, MenuItem, MenuRadioItem, MenuSection } from './model'
@@ -10,9 +10,13 @@ import { commandShortcut } from './shortcut'
 
 export type MenuResolveContext = {
   readonly bindings: readonly PlatformKeyBinding[]
-  readonly disabled: CommandDisabledContext
-  readonly dispatch: (command: PlatformCommandId) => void
+  readonly dispatch: (command: PlatformCommandId) => CommandDispatchTicket
+  readonly inspect: (
+    command: PlatformCommandId,
+  ) => { readonly status: 'ready' } | { readonly reason: string; readonly status: 'disabled' }
 }
+
+export type ResolvedMenuInvocation = CommandDispatchTicket | void
 
 /** Command and action items collapse to one shape — both just run something. */
 export type ResolvedRunItem = {
@@ -25,7 +29,7 @@ export type ResolvedRunItem = {
   readonly disabled: boolean
   readonly destructive: boolean
   readonly command: PlatformCommandId | null
-  readonly run: () => void
+  readonly run: () => ResolvedMenuInvocation
 }
 
 export type ResolvedCheckboxItem = {
@@ -43,7 +47,7 @@ export type ResolvedRadioGroupItem = {
   readonly key: string
   readonly value: string
   readonly options: readonly MenuRadioItem[]
-  readonly select: (value: string) => void
+  readonly select: (value: string) => ResolvedMenuInvocation
 }
 
 export type ResolvedSubmenuItem = {
@@ -114,11 +118,13 @@ function resolveItem(item: MenuItem, context: MenuResolveContext): ResolvedMenuI
     }
   }
   if (item.kind === 'radio-group') {
+    const options = item.options.map((option) => resolveRadioOption(option, context))
+
     return {
       key: item.id,
       kind: 'radio-group',
-      options: item.options,
-      select: item.select,
+      options,
+      select: (value) => selectRadioOption(item, options, value, context),
       value: item.value,
     }
   }
@@ -131,7 +137,9 @@ function resolveItem(item: MenuItem, context: MenuResolveContext): ResolvedMenuI
     key: item.id,
     kind: 'run',
     label: item.label,
-    run: item.run,
+    run: () => {
+      item.run()
+    },
     trailing: item.unavailable ?? item.shortcut ?? null,
   }
 }
@@ -141,17 +149,43 @@ function resolveCommandItem(
   context: MenuResolveContext,
 ): ResolvedRunItem {
   const spec = platformCommandSpec(item.command)
-  const registryReason = commandDisabledReason(item.command, context.disabled)
+  const inspection = context.inspect(item.command)
 
   return {
     command: item.command,
     destructive: false,
-    disabled: Boolean(item.unavailable) || registryReason !== null,
+    disabled: Boolean(item.unavailable) || inspection.status === 'disabled',
     icon: item.icon,
     key: menuItemKey(item),
     kind: 'run',
     label: item.label ?? spec?.title ?? item.command,
     run: () => context.dispatch(item.command),
-    trailing: item.unavailable ?? commandShortcut(item.command, context.bindings),
+    trailing:
+      item.unavailable ??
+      (inspection.status === 'disabled'
+        ? inspection.reason
+        : commandShortcut(item.command, context.bindings)),
   }
+}
+
+function resolveRadioOption(option: MenuRadioItem, context: MenuResolveContext): MenuRadioItem {
+  if (!option.command) return option
+
+  return {
+    ...option,
+    disabled: Boolean(option.disabled) || context.inspect(option.command).status === 'disabled',
+  }
+}
+
+function selectRadioOption(
+  item: Extract<MenuItem, { kind: 'radio-group' }>,
+  options: readonly MenuRadioItem[],
+  value: string,
+  context: MenuResolveContext,
+): ResolvedMenuInvocation {
+  const option = options.find((candidate) => candidate.value === value)
+  if (!option || option.disabled) return
+  if (option.command) return context.dispatch(option.command)
+
+  item.select?.(value)
 }

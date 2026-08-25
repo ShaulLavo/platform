@@ -1,14 +1,13 @@
 import type { Icon } from '@phosphor-icons/react'
 
-import type { CommandRequirement, EditorCommand, WorkspaceCommand } from './define-command'
 import { editorCommands } from './editor-commands'
 import type { PlatformCommandId } from './types'
 import { workspaceCommands } from './workspace-commands'
 
-/** Every command, with its id narrowed to the union the app indexes commands by. */
-export type CommandEntry = EditorCommand<PlatformCommandId> | WorkspaceCommand<PlatformCommandId>
+export const platformCommands = [...workspaceCommands, ...editorCommands]
 
-export const platformCommands: readonly CommandEntry[] = [...workspaceCommands, ...editorCommands]
+/** One row from the sole live command table. */
+export type CommandEntry = (typeof platformCommands)[number]
 
 const byId = new Map(platformCommands.map((command) => [command.id, command]))
 
@@ -53,20 +52,3 @@ function idsWhere(predicate: (command: CommandEntry) => boolean): ReadonlySet<Pl
 // those exact ones.
 export const paletteModeCommandIds = idsWhere((command) => command.keepsPaletteOpen === true)
 export const hiddenPaletteCommandIds = idsWhere((command) => command.hiddenInPalette === true)
-export const workspaceOptionalCommandIds = idsWhere((command) => command.requires === 'nothing')
-
-/**
- * `EditorPlatformCommandId` is wider than the editor half of the table — it
- * covers every command `@singapor/core` implements, registered here or not — so
- * an unregistered `editor.*` id gets the same `editor` gate `defineEditorCommand`
- * stamps on the registered ones. The editor text menu leans on this: its
- * `editor.editor.action.*` items are handled by the language-server plugin and
- * are not in the table at all.
- */
-export function commandRequirement(id: PlatformCommandId): CommandRequirement {
-  const command = byId.get(id)
-  if (command) return command.requires
-  if (id.startsWith('editor.')) return 'editor'
-
-  return 'workspace'
-}

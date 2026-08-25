@@ -12,10 +12,12 @@ import {
 } from 'react'
 
 import { useTheme } from '@/features/settings/hooks/use-theme'
-import { useFocus } from '@/features/workspace/providers/focus-state'
 import { useContextMenu } from '@/features/menus/hooks/use-context-menu'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { DEFAULT_MONO_FONT_STACK } from '@/lib/default-nerd-font'
+import { useFocusService } from '@/lib/focus/hooks/use-service'
+import { useFocusTarget } from '@/lib/focus/hooks/use-target'
+import { registeredFocusTarget } from '@/lib/focus/state/service'
 import { connectTerminalSocket, type EdenServerSocket } from '@/lib/server-sockets'
 
 import { TerminalMenu } from '@/features/terminal/components/menu'
@@ -62,6 +64,10 @@ function terminalCursorOptions(focused: boolean, cursorBlink: boolean): Terminal
   }
 }
 
+function terminalFocusIdentity(rootPath: string, sessionId: string) {
+  return `${rootPath}\u0000${sessionId}`
+}
+
 let ghosttyInitPromise: Promise<void> | null = null
 
 export function TerminalPanel({
@@ -71,9 +77,11 @@ export function TerminalPanel({
   sessionId,
   ...sectionProps
 }: TerminalPanelProps) {
+  const focus = useFocusService()
   const activationFrameRef = useRef<number | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const hostRef = useRef<HTMLDivElement | null>(null)
+  const restoreFocusAfterRemountRef = useRef<string | null>(null)
   const sendInputRef = useRef<TerminalInputSender | null>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const { resolvedTheme } = useTheme()
@@ -86,11 +94,35 @@ export function TerminalPanel({
   const contextMenu = useContextMenu()
   const [menuTarget, setMenuTarget] = useState<TerminalMenuTarget | null>(null)
   const [socketConnected, setSocketConnected] = useState(false)
-  const terminalHasFocusArea = useFocus((state) => state.activeArea === 'terminal')
-  const setFocusArea = useFocus((state) => state.setFocusArea)
+  const focusIdentity = terminalFocusIdentity(rootPath, sessionId)
+  const terminalMountIdentity = `${focusIdentity}\u0000${resolvedTheme}`
+  const [readyTerminalIdentity, setReadyTerminalIdentity] = useState<string | null>(null)
   const registerTerminalLinks = useTerminalLinks(rootPath)
   useTerminalCommandInbox({ active: active && socketConnected, sendInputRef })
-  const activateTerminalAfterFrame = useEffectEvent(() => {
+  const {
+    focused: terminalFocused,
+    ref: terminalFocusTargetRef,
+    token: terminalFocusTargetToken,
+  } = useFocusTarget<HTMLElement>(
+    {
+      area: 'terminal',
+      id: { kind: 'terminal', rootPath, sessionId },
+      onIntent: (intent) => {
+        if (intent !== 'focus' || !active) return false
+
+        const terminal = terminalRef.current
+        if (!terminal) return false
+
+        terminal.focus()
+        return true
+      },
+    },
+    active && readyTerminalIdentity === terminalMountIdentity,
+  )
+  const captureTerminalRemountFocus = useEffectEvent((mountedFocusIdentity: string) => {
+    restoreFocusAfterRemountRef.current = terminalFocused ? mountedFocusIdentity : null
+  })
+  const fitTerminalAfterFrame = useEffectEvent(() => {
     if (activationFrameRef.current !== null) {
       window.cancelAnimationFrame(activationFrameRef.current)
     }
@@ -98,11 +130,10 @@ export function TerminalPanel({
     activationFrameRef.current = window.requestAnimationFrame(() => {
       activationFrameRef.current = null
       fitAddonRef.current?.fit()
-      terminalRef.current?.focus()
     })
   })
-  const activateTerminalIfActive = useEffectEvent(() => {
-    if (active) activateTerminalAfterFrame()
+  const fitTerminalIfActive = useEffectEvent(() => {
+    if (active) fitTerminalAfterFrame()
   })
   // ghostty resolves long after the effect that asked for it, so the handover
   // runs as an effect event and sees the current render rather than the one
@@ -112,12 +143,14 @@ export function TerminalPanel({
       fitAddonRef.current = fitAddon
       terminalRef.current = terminal
       sendInputRef.current = sendInput
+      setReadyTerminalIdentity(terminalMountIdentity)
       // At handover rather than at construction: ghostty resolves long after the
       // mount effect started, and this is an effect event, so it sees the
       // current settings rather than the ones the mount began with.
       applyTerminalAppearance(terminal, { cursorBlink, fontSize, scrollback })
+      applyTerminalCursorOptions(terminal, terminalCursorOptions(terminalFocused, cursorBlink))
       registerTerminalLinks(terminal)
-      activateTerminalIfActive()
+      fitTerminalIfActive()
     },
   )
   // State, not just the ref: a script queued before the socket opened has to
@@ -126,17 +159,12 @@ export function TerminalPanel({
     setSocketConnected(connected)
   })
   const handleTerminalFocus = () => {
-    setFocusArea('terminal')
     applyTerminalCursorOptions(terminalRef.current, terminalCursorOptions(true, cursorBlink))
   }
   const handleTerminalBlur = (event: FocusEvent<HTMLElement>) => {
     if (!isFocusOutsideElement(event.currentTarget, event.relatedTarget)) return
 
     applyTerminalCursorOptions(terminalRef.current, terminalCursorOptions(false, cursorBlink))
-  }
-  const handleTerminalPointerDown = () => {
-    setFocusArea('terminal')
-    applyTerminalCursorOptions(terminalRef.current, terminalCursorOptions(true, cursorBlink))
   }
   // ghostty registers its own `contextmenu` listener on the canvas and never
   // calls preventDefault — it parks a hidden textarea under the cursor so the
@@ -150,16 +178,13 @@ export function TerminalPanel({
     // Snapshotted here because ghostty drops the selection from a document
     // `click` handler the moment a portalled menu item is pressed.
     setMenuTarget(readTerminalMenuTarget(terminal, sessionId))
-    contextMenu.openAtEvent(event)
+    contextMenu.openAtEvent(event, event.currentTarget)
   }
-  // Nothing owns focus for us: the anchor path has no trigger element for Base
-  // UI to restore focus to, so the terminal would go dead after every menu.
   const handleTerminalMenuOpenChange = (open: boolean) => {
     contextMenu.onOpenChange(open)
     if (open) return
 
     setMenuTarget(null)
-    terminalRef.current?.focus()
   }
 
   // ghostty-web bakes the theme into its WASM terminal at construction and has
@@ -183,6 +208,8 @@ export function TerminalPanel({
     })
 
     return () => {
+      captureTerminalRemountFocus(focusIdentity)
+      setReadyTerminalIdentity((current) => (current === terminalMountIdentity ? null : current))
       if (activationFrameRef.current !== null) {
         window.cancelAnimationFrame(activationFrameRef.current)
         activationFrameRef.current = null
@@ -195,12 +222,12 @@ export function TerminalPanel({
       setMenuTarget(null)
       unmountTerminal()
     }
-  }, [resolvedTheme, rootPath, sessionId])
+  }, [focusIdentity, resolvedTheme, rootPath, sessionId, terminalMountIdentity])
 
   useEffect(() => {
     if (!active) return
 
-    activateTerminalAfterFrame()
+    fitTerminalAfterFrame()
 
     return () => {
       if (activationFrameRef.current !== null) {
@@ -211,11 +238,24 @@ export function TerminalPanel({
   }, [active])
 
   useEffect(() => {
+    if (!terminalFocusTargetToken) return
+
+    const restoreIdentity = restoreFocusAfterRemountRef.current
+    restoreFocusAfterRemountRef.current = null
+    if (restoreIdentity !== focusIdentity) return
+
+    const snapshot = focus.getSnapshot()
+    if (snapshot.currentOwner || snapshot.requested) return
+
+    void focus.request(registeredFocusTarget(terminalFocusTargetToken)).completion
+  }, [focus, focusIdentity, terminalFocusTargetToken])
+
+  useEffect(() => {
     applyTerminalCursorOptions(
       terminalRef.current,
-      terminalCursorOptions(terminalHasFocusArea, cursorBlink),
+      terminalCursorOptions(terminalFocused, cursorBlink),
     )
-  }, [cursorBlink, terminalHasFocusArea])
+  }, [cursorBlink, terminalFocused])
 
   return (
     <section
@@ -225,7 +265,7 @@ export function TerminalPanel({
       onBlurCapture={handleTerminalBlur}
       onContextMenuCapture={handleTerminalContextMenu}
       onFocusCapture={handleTerminalFocus}
-      onPointerDownCapture={handleTerminalPointerDown}
+      ref={terminalFocusTargetRef}
     >
       <div
         className='compact:px-2 compact:py-1 min-h-0 min-w-0 flex-1 overflow-hidden px-3 py-2 font-mono'

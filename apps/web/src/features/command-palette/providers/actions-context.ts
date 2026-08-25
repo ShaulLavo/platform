@@ -1,26 +1,25 @@
 import { createContext } from 'react'
 import type { OrchestrationProjectScript, ProjectId } from '@workspace/contracts'
 
-import type { CommandPaletteItem } from '@/features/command-palette/command-palette-types'
 import type { GotoLineTarget } from '@/features/command-palette/goto-line-target'
 import type { SessionRailItem } from '@/features/chat-mode/utils/session-rail-model'
 import type { FlatDocumentSymbol } from '@/features/command-palette/document-symbols'
 import type { PlatformCommandId } from '@/keymap/types'
 
 export type CommandPaletteActions = {
+  readonly disabledReasonForCommand: (command: PlatformCommandId) => string | null
   readonly previewColorTheme: (themeId: string) => void
   readonly selectColorTheme: (themeId: string) => void
-  readonly selectCommand: (item: CommandPaletteItem) => void
-  readonly selectFile: (path: string) => void
+  readonly selectFile: (path: string) => Promise<void>
   /** Moves the caret in the active editor to a hand-typed line and column. */
-  readonly selectGotoLine: (target: GotoLineTarget) => void
-  readonly selectPlatformCommand: (command: PlatformCommandId) => void
+  readonly selectGotoLine: (target: GotoLineTarget) => Promise<void>
+  readonly selectPlatformCommand: (command: PlatformCommandId) => Promise<void>
   /** Runs a project script in the terminal, revealing one if none is open. */
-  readonly selectScript: (script: OrchestrationProjectScript) => void
+  readonly selectScript: (script: OrchestrationProjectScript) => Promise<void>
   /** Reveals chat mode, activates the owning project, and puts the session on the stage. */
-  readonly selectSession: (session: SessionRailItem) => void
-  readonly selectSymbol: (symbol: FlatDocumentSymbol) => void
-  readonly startSessionDraft: (projectId: ProjectId) => void
+  readonly selectSession: (session: SessionRailItem) => Promise<void>
+  readonly selectSymbol: (symbol: FlatDocumentSymbol) => Promise<void>
+  readonly startSessionDraft: (projectId: ProjectId) => Promise<void>
 }
 
 export const CommandPaletteActionsContext = createContext<CommandPaletteActions | null>(null)

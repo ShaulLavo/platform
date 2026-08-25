@@ -1,11 +1,11 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useQueryClient } from '@tanstack/react-query'
 import type { SettingsMutationRequest } from '@workspace/contracts'
-import { useState } from 'react'
-import { vi } from 'vitest'
 
 import { expect, test } from '../../../../test/fixtures'
 import { createTestQueryClient, renderWithProviders } from '../../../../test/render'
+import { TestCommandProvider } from '../../../../test/factories/command-runtime'
 import { CommandPalette } from '@/components/command-palette'
 import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import {
@@ -15,12 +15,8 @@ import {
 import { resetSettingsSnapshotAdmission } from '@/features/settings/state/snapshot-admission'
 import { fetchSettings } from '@/features/settings/utils/api'
 import { settingsKeys } from '@/features/settings/utils/query-keys'
-import { FocusProvider } from '@/features/workspace/providers/focus-provider'
-import { TreeCommandsContext } from '@/features/workspace/providers/tree-commands-context'
+import { useTheme } from '@/features/settings/hooks/use-theme'
 import { writeRootFolderCache } from '@/features/workspace/state/cache'
-import { createTreeCommandStore } from '@/features/workspace/state/tree-command-store'
-import { usePlatformCommandDispatch } from '@/keymap/commands'
-import type { PlatformCommandId } from '@/keymap/types'
 
 test('real palette preview and cancel write nothing while selection dispatches one write', async ({
   controlledClient,
@@ -30,14 +26,12 @@ test('real palette preview and cancel write nothing while selection dispatches o
   const queryClient = createTestQueryClient()
   const before = await fetchSettings()
   queryClient.setQueryData(settingsKeys.document(), before)
-  const dispatches = vi.fn<(command: PlatformCommandId) => void>()
-  const firstPalette = renderPalette(queryClient, dispatches)
+  const firstPalette = renderPalette(queryClient)
   const user = userEvent.setup()
   const input = await screen.findByPlaceholderText(/Choose color mode/)
 
   expect(useSettingsIntentStore.getState().active).toEqual([])
   expect(controlledClient.controller.settingsWriteCount).toBe(0)
-  expect(dispatches).not.toHaveBeenCalled()
 
   await waitFor(() => {
     expect(highlightedPaletteItem()?.textContent).toContain('Light')
@@ -51,18 +45,16 @@ test('real palette preview and cancel write nothing while selection dispatches o
   })
   expect(useSettingsIntentStore.getState().active).toEqual([])
   expect(controlledClient.controller.settingsWriteCount).toBe(0)
-  expect(dispatches).not.toHaveBeenCalled()
 
   await user.keyboard('{Escape}')
   await waitFor(() => expect(screen.queryByPlaceholderText(/Choose color mode/)).toBeNull())
   expect(document.documentElement).toHaveClass('dark')
   expect(useSettingsIntentStore.getState().active).toEqual([])
   expect(controlledClient.controller.settingsWriteCount).toBe(0)
-  expect(dispatches).not.toHaveBeenCalled()
   expect((await fetchSettings()).serverVersion).toEqual(before.serverVersion)
   firstPalette.unmount()
 
-  const secondPalette = renderPalette(queryClient, dispatches)
+  const secondPalette = renderPalette(queryClient)
   await screen.findByPlaceholderText(/Choose color mode/)
   await user.click(screen.getByText('Dark'))
 
@@ -71,8 +63,6 @@ test('real palette preview and cancel write nothing while selection dispatches o
     expect((await fetchSettings()).values['workbench.colorTheme']).toBe('dark')
     expect(useSettingsIntentStore.getState().active).toEqual([])
   })
-  expect(dispatches).toHaveBeenCalledOnce()
-  expect(dispatches).toHaveBeenCalledWith('workspace.setDarkTheme')
   expect(controlledClient.controller.settingsWriteCount).toBe(1)
   const requests =
     (await controlledClient.controller.settingsWriteRequests()) as SettingsMutationRequest[]
@@ -92,45 +82,30 @@ test('real palette preview and cancel write nothing while selection dispatches o
   writeRootFolderCache(null)
 })
 
-function PaletteHarness({
-  observeDispatch,
-}: {
-  readonly observeDispatch: (command: PlatformCommandId) => void
-}) {
-  const [open, setOpen] = useState(true)
-  const [search, setSearch] = useState('color ')
-  const dispatchPlatformCommand = usePlatformCommandDispatch()
+function PaletteHarness() {
+  const queryClient = useQueryClient()
+  const theme = useTheme()
 
   return (
-    <CommandPalette
-      bindings={[]}
-      dispatch={(command, event) => {
-        observeDispatch(command)
-        return dispatchPlatformCommand(command, event)
+    <TestCommandProvider
+      options={{
+        paletteOpen: true,
+        paletteSearch: 'color ',
+        runtime: { settings: { setTheme: theme.setTheme } },
       }}
-      onOpenChange={setOpen}
-      onSearchChange={setSearch}
-      open={open}
-      search={search}
-    />
+      queryClient={queryClient}
+    >
+      <CommandPalette />
+    </TestCommandProvider>
   )
 }
 
-function renderPalette(
-  queryClient: ReturnType<typeof createTestQueryClient>,
-  observeDispatch: (command: PlatformCommandId) => void,
-) {
-  const treeCommandStore = createTreeCommandStore()
-
+function renderPalette(queryClient: ReturnType<typeof createTestQueryClient>) {
   return renderWithProviders(
     <EditorStateProvider>
-      <FocusProvider>
-        <TreeCommandsContext value={treeCommandStore}>
-          <PaletteHarness observeDispatch={observeDispatch} />
-        </TreeCommandsContext>
-      </FocusProvider>
+      <PaletteHarness />
     </EditorStateProvider>,
-    { queryClient, theme: 'dark' },
+    { command: false, queryClient, theme: 'dark' },
   )
 }
 

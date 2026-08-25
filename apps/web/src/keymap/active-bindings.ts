@@ -10,10 +10,10 @@ import {
 } from '@tanstack/react-hotkeys'
 import type { KeybindingOverrides } from '@workspace/contracts'
 
-import type { FocusArea } from '@/features/workspace/providers/focus-state'
+import type { FocusArea } from '@/lib/focus/state/service'
 
 import { commandHotkeyMeta } from './command-registry'
-import { platformCommands } from './table'
+import { platformCommand, platformCommands } from './table'
 import type {
   CommandKeyBinding,
   KeyBindingKeyboardEvent,
@@ -319,13 +319,17 @@ function userKeyBinding(
       hotkey,
       keys: normalizeRegisterableHotkey(hotkey, platform),
       meta: commandHotkeyMeta(command),
-      pane: template?.pane ?? 'any',
+      pane: template?.pane ?? commandDefaultPane(command),
       preventDefault: template?.preventDefault,
       source: 'user',
       stopPropagation: template?.stopPropagation,
       vscodeCommandId: template?.vscodeCommandId,
     },
   ]
+}
+
+function commandDefaultPane(command: PlatformCommandId): PlatformKeyBinding['pane'] {
+  return platformCommand(command)?.target === 'editor' ? 'editor' : 'any'
 }
 
 function rawHotkey(keys: string, platform: PlatformName): RawHotkey {

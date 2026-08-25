@@ -29,6 +29,7 @@ import {
   type ActiveSettingsIntent,
   type SettingsSubmission,
 } from '@/features/settings/state/intent-store'
+import { readLiveColorTheme } from '@/features/settings/state/live-projection'
 import { saveSettings } from '@/features/settings/utils/api'
 import { settingsMutationLogContext } from '@/features/settings/utils/mutation-observability'
 import {
@@ -160,10 +161,11 @@ export function useSettingsActions() {
 
   const setColorTheme = (
     theme: SettingsValues['workbench.colorTheme'],
+    fallback: SettingsValues['workbench.colorTheme'],
     initiator?: string,
     beforePublish?: (entry: ActiveSettingsIntent) => void,
   ): SettingsSubmission => {
-    if (projection?.values['workbench.colorTheme'] === theme) return { kind: 'noop' }
+    if (readLiveColorTheme(queryClient, fallback) === theme) return { kind: 'noop' }
 
     const operation: SettingsOperation = {
       key: 'workbench.colorTheme',

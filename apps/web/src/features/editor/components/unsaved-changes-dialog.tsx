@@ -12,6 +12,10 @@ import {
 import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
 import { documentLabel } from '@/features/workspace/utils/document-label'
 import { Spinner } from '@workspace/ui/components/spinner'
+import type { UnsavedDialogTarget } from '@/features/editor/hooks/use-dirty-tab-close'
+import { useFocusTarget } from '@/lib/focus/hooks/use-target'
+
+const CLOSED_DIALOG_TARGET = Object.freeze({})
 
 type UnsavedChangesDialogProps = {
   canSave: boolean
@@ -19,6 +23,7 @@ type UnsavedChangesDialogProps = {
   open: boolean
   path: string | null
   saving: boolean
+  target: UnsavedDialogTarget | null
   onCancel: () => void
   onDiscard: () => void
   onOpenChange: (open: boolean) => void
@@ -31,6 +36,7 @@ export function UnsavedChangesDialog({
   open,
   path,
   saving,
+  target,
   onCancel,
   onDiscard,
   onOpenChange,
@@ -43,11 +49,26 @@ export function UnsavedChangesDialog({
   const description = canSave
     ? `Save changes to ${name} before closing?`
     : `${name} has unsaved changes that cannot be saved directly.`
+  const { ref: dialogFocusTargetRef } = useFocusTarget<HTMLDivElement>({
+    area: 'dialog',
+    capabilities: { overlay: true },
+    id: { dialogTarget: target ?? CLOSED_DIALOG_TARGET, kind: 'unsaved-dialog' },
+    onIntent: (intent, element) => {
+      if (intent !== 'focus') return false
+      if (!open || !target) return false
+
+      element.focus()
+      return true
+    },
+  })
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        data-unsaved-dialog-target={target ? 'true' : undefined}
         className='bg-background w-[min(420px,calc(100vw-2rem))] max-w-none rounded-lg border text-sm shadow-xl sm:max-w-none'
+        finalFocus={false}
+        ref={dialogFocusTargetRef}
         showCloseButton={false}
       >
         <DialogHeader>

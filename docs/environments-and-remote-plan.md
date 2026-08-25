@@ -342,7 +342,10 @@ What the user sees, surface by surface:
 
 ### 5.4 Where the pairing flow lives
 
-Today `AppWorkspace` branches on `rootFolder`: `WorkspaceView` or `EmptyWorkspace` (`apps/web/src/components/app-workspace.tsx:55-66`), with `AppCommandSurface` rendered above the branch — which is exactly why settings is a dialog. Pairing needs a full surface, so it becomes a third branch at that same level: `pairing-required` / `environment-unreachable` → a surface, not a dialog.
+Today `AppWorkspace` branches on `rootFolder`: `WorkspaceView` or `EmptyWorkspace`, with
+`CommandProvider` mounted above the branch — which is exactly why settings remains a dialog.
+Pairing needs a full surface, so it becomes a third branch at that same level:
+`pairing-required` / `environment-unreachable` → a surface, not a dialog.
 
 Three jobs, three homes — the same split the reference gets right (`ConnectionsSettings.tsx:1288-1447` for management, the toolbar for selection):
 

@@ -48,9 +48,11 @@ export function FileEditorBody({
     !diffDocument && !comparePath && isSettling(fileState),
   )
 
-  if (diffDocument) return <DiffView documentInfo={diffDocument} rootPath={rootPath} />
+  if (diffDocument) {
+    return <DiffView documentInfo={diffDocument} rootPath={rootPath} tabId={tabId} />
+  }
 
-  if (comparePath) return <CompareSavedView path={comparePath} rootPath={rootPath} />
+  if (comparePath) return <CompareSavedView path={comparePath} rootPath={rootPath} tabId={tabId} />
 
   if (editorDocument) {
     return (
