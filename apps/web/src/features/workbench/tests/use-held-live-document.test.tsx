@@ -19,14 +19,14 @@ function renderHeld(liveDocument: EditorRenderDocument | null, holding: boolean)
 test('the open document stays drawn while the next one is still being read', () => {
   const open = document('a.ts')
   const { result, rerender } = renderHeld(open, true)
-  expect(result.current).toBe(open)
+  expect(result.current).toEqual({ current: true, document: open })
 
   rerender({ live: null, hold: true })
-  expect(result.current).toBe(open)
+  expect(result.current).toEqual({ current: false, document: open })
 
   const next = document('b.ts')
   rerender({ live: next, hold: true })
-  expect(result.current).toBe(next)
+  expect(result.current).toEqual({ current: true, document: next })
 })
 
 test('nothing is held once there is no document on the way', () => {
@@ -34,7 +34,7 @@ test('nothing is held once there is no document on the way', () => {
   const { result, rerender } = renderHeld(open, true)
 
   rerender({ live: null, hold: false })
-  expect(result.current).toBeNull()
+  expect(result.current).toEqual({ current: false, document: null })
 })
 
 test('a document held through a gap is dropped rather than redrawn later', () => {
@@ -42,8 +42,8 @@ test('a document held through a gap is dropped rather than redrawn later', () =>
   const { result, rerender } = renderHeld(open, true)
 
   rerender({ live: null, hold: false })
-  expect(result.current).toBeNull()
+  expect(result.current).toEqual({ current: false, document: null })
 
   rerender({ live: null, hold: true })
-  expect(result.current).toBeNull()
+  expect(result.current).toEqual({ current: false, document: null })
 })

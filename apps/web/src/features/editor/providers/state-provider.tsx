@@ -19,6 +19,7 @@ import { addressedWorkspaceCache } from '@/features/address/utils/cache'
 import { parseAddress } from '@/features/address/utils/grammar'
 import { readWorkspaceCache } from '@/features/workspace/state/cache'
 import { useEffect, useState, type ReactNode } from 'react'
+import { WorkspaceEditProvider } from '@/features/editor/providers/workspace-edit-provider'
 
 export function EditorStateProvider({ children }: { children: ReactNode }) {
   // The address is folded in HERE, not applied later in an effect. Every store below
@@ -61,7 +62,9 @@ export function EditorStateProvider({ children }: { children: ReactNode }) {
       <EditorConflictStateContext value={conflictStore}>
         <EditorDocumentStateContext value={documentStore}>
           <SearchBufferStateContext value={searchBufferStore}>
-            <EditorUiStateContext value={uiStore}>{children}</EditorUiStateContext>
+            <EditorUiStateContext value={uiStore}>
+              <WorkspaceEditProvider>{children}</WorkspaceEditProvider>
+            </EditorUiStateContext>
           </SearchBufferStateContext>
         </EditorDocumentStateContext>
       </EditorConflictStateContext>

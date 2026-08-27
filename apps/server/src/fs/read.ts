@@ -31,7 +31,8 @@ export async function readTextFile(
     const stats = await stat(target.absolutePath)
     assertFile(stats)
     if (stats.size > maxBytes) throw new FsError('FILE_TOO_LARGE')
-    const content = await readFile(target.absolutePath, 'utf8')
+    const bytes = await readFile(target.absolutePath)
+    const content = decodeTextFile(bytes)
 
     return {
       path: target.relativePath,
@@ -44,6 +45,22 @@ export async function readTextFile(
     if (error instanceof FsError) throw error
     throw mapNodeError(error)
   }
+}
+
+const textDecoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+
+function decodeTextFile(bytes: Uint8Array) {
+  let content: string
+
+  try {
+    content = textDecoder.decode(bytes)
+  } catch (error) {
+    throw new FsError('INVALID_TEXT_FILE', undefined, error)
+  }
+
+  if (content.includes('\0')) throw new FsError('INVALID_TEXT_FILE')
+
+  return content
 }
 
 export async function getBlobFile(paths: WorkspacePaths, input: string): Promise<BlobFileResult> {

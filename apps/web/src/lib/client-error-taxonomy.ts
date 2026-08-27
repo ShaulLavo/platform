@@ -38,6 +38,7 @@ type FsErrorCode =
   | 'NOT_A_FILE'
   | 'NOT_A_DIRECTORY'
   | 'FILE_TOO_LARGE'
+  | 'INVALID_TEXT_FILE'
   | 'OPERATION_FAILED'
   | 'WATCH_FAILED'
 
@@ -49,6 +50,7 @@ const categoryByFsErrorCode: Record<FsErrorCode, ErrorCategory> = {
   NOT_A_FILE: 'not_a_file',
   NOT_A_DIRECTORY: 'not_a_directory',
   FILE_TOO_LARGE: 'too_large',
+  INVALID_TEXT_FILE: 'invalid_path',
   INVALID_PATH: 'invalid_path',
   ALREADY_EXISTS: 'invalid_path',
   FILE_CHANGED: 'invalid_path',
@@ -66,6 +68,13 @@ export function toClientError(input: unknown): ClientError {
   if (isConnectivityError(input)) return categorizedClientError('connectivity', input)
 
   const code = extractFsErrorCode(input)
+  if (code === 'INVALID_TEXT_FILE') {
+    return categorizedClientError(
+      categoryByFsErrorCode[code],
+      input,
+      'The file is not valid UTF-8 text.',
+    )
+  }
   if (code) return categorizedClientError(categoryByFsErrorCode[code], input)
 
   // Structured errors from any non-fs catalog — settings, orchestration — carry

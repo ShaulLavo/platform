@@ -326,6 +326,7 @@ test('settings JSON exposes its nested editor as the sole active surface', async
   const buffer = createEditorTextBuffer('{}')
   const liveDocument = {
     buffer,
+    editability: 'editable' as const,
     id: path,
     path,
     view: createEditorViewSession(buffer, 'settings-focus-test'),

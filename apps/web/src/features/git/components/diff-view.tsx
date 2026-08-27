@@ -2,7 +2,8 @@ import { createDiffRegionStore } from '@singapor/diff'
 import { useMemo, useRef, useState } from 'react'
 
 import { DiffEditor } from '@/features/editor/components/diff-editor'
-import { useDiffOwnedText } from '@/features/editor/hooks/use-diff-owned-text'
+import { useDiffLanguageContext } from '@/features/editor/hooks/use-diff-language-context'
+import type { DiffLanguageHost } from '@/features/editor/utils/diff-language-context'
 import type { DiffDocumentInfo } from '@/features/git/utils/diff-document'
 import { useDiffDocumentDiffs } from '../hooks/use-diff-document-diffs'
 import {
@@ -25,10 +26,12 @@ import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
  */
 export function DiffView({
   documentInfo,
+  languageHost,
   rootPath,
   tabId,
 }: {
   documentInfo: DiffDocumentInfo
+  languageHost: DiffLanguageHost
   rootPath: string
   tabId?: string
 }) {
@@ -58,10 +61,11 @@ export function DiffView({
   // Only an unstaged working-tree diff draws the file as it is on disk; a staged diff draws the
   // index blob and a checkpoint a historical commit. That decides whether the new side may be
   // published to the language server under the file's own uri.
-  const languageServer = useDiffOwnedText(
+  const languageServer = useDiffLanguageContext(
     file?.newPath || file?.path || null,
     rootPath,
     documentInfo.kind === 'snapshot' && documentInfo.source === 'worktree',
+    languageHost,
   )
 
   if (failure) return <DiffNotice message={failure} tone='error' />

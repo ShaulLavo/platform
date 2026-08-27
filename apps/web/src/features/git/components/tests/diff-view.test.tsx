@@ -16,6 +16,7 @@ import type {
 } from '@/features/git/utils/diff-document'
 import type { FileDiff } from '@/features/git/utils/types'
 import { editorDiffFiles } from '@/features/git/utils/editor-diff-files'
+import { testDiffLanguageHost } from '../../../../../test/factories/diff-language-host'
 import { gitFileDiff } from '../../../../../test/factories/git-diff'
 import { expect, test } from '../../../../../test/fixtures'
 import { renderWithProviders } from '../../../../../test/render'
@@ -73,7 +74,11 @@ test('keeps the diff editor mounted with an empty model while the blob resolves'
   const [diff] = await fetchDiff('repo/lines.ts', false)
 
   const { container } = renderDiffView(
-    <DiffView documentInfo={snapshotDocument(diff!)} rootPath='repo' />,
+    <DiffView
+      documentInfo={snapshotDocument(diff!)}
+      languageHost={testDiffLanguageHost}
+      rootPath='repo'
+    />,
   )
 
   expect(container.querySelector('.editor-diff-pane')).not.toBeNull()
@@ -126,7 +131,13 @@ test('a pure rename shows the file, with a line saying where it came from', asyn
   git(repo, 'add', '-A')
   const diff = (await fetchDiff('repo/renamed.ts', true))[0]!
 
-  renderDiffView(<DiffView documentInfo={snapshotDocument(diff)} rootPath='repo' />)
+  renderDiffView(
+    <DiffView
+      documentInfo={snapshotDocument(diff)}
+      languageHost={testDiffLanguageHost}
+      rootPath='repo'
+    />,
+  )
 
   expect(await screen.findByText(/Renamed from lines\.ts/)).toBeInTheDocument()
   // The rows themselves are drawn by the editor's virtualized view, so what is checked here is
@@ -171,7 +182,9 @@ test('a binary file says so instead of rendering an empty pane', async ({ client
     newObjectId: objectId,
   })
 
-  renderDiffView(<DiffView documentInfo={documentInfo} rootPath='repo' />)
+  renderDiffView(
+    <DiffView documentInfo={documentInfo} languageHost={testDiffLanguageHost} rootPath='repo' />,
+  )
 
   expect(await screen.findByText(/Binary file/)).toBeInTheDocument()
 })
@@ -188,7 +201,9 @@ test('a document whose two sides are identical still shows the file', async ({
     newObjectId: objectId,
   })
 
-  renderDiffView(<DiffView documentInfo={documentInfo} rootPath='repo' />)
+  renderDiffView(
+    <DiffView documentInfo={documentInfo} languageHost={testDiffLanguageHost} rootPath='repo' />,
+  )
 
   expect(await screen.findByText('No content changes')).toBeInTheDocument()
   expect(screen.queryByText('No changes to show.')).not.toBeInTheDocument()

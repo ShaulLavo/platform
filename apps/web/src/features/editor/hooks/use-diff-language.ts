@@ -7,7 +7,6 @@ import {
   type DiffLanguageDocument,
   type DiffLanguageSession,
 } from '@/features/editor/state/diff-language-session'
-import type { LanguageServerDefinitionTarget } from '@singapor/lsp-plugin'
 import { documentUriToFileName } from '@singapor/lsp-plugin/paths'
 
 import { useLanguageServerMatches } from '@/features/editor/hooks/use-language-server-matches'
@@ -16,7 +15,6 @@ import {
   languageServerLaneOptions,
   type LanguageServerMatch,
 } from '@/features/editor/utils/language-server-plugin'
-import { useOptionalEditorCommands } from '@/features/editor/state/commands'
 import {
   createDiffLanguagePlugin,
   type DiffAskTarget,
@@ -39,22 +37,12 @@ import {
 } from '@/features/editor/utils/diff-position-map'
 import { hoverMarkup, type HoverResponse } from '@/features/editor/utils/hover-markup'
 import { log } from '@/lib/client-logging'
+import type {
+  DiffLanguageHost,
+  DiffLanguageServerContext,
+} from '@/features/editor/utils/diff-language-context'
 
 const EMPTY_DIFF_LINES: readonly string[] = []
-
-export type DiffLanguageServerContext = {
-  /**
-   * The absolute path an editor would have opened this file under, which is the only name the
-   * server knows it by. A diff names its files workspace-relative, and both the socket route and
-   * the request uri need the absolute form.
-   */
-  readonly documentPath: string | null
-  /** Whether the new side is the file on disk, and so may be published under its real uri. */
-  readonly newSideIsWorkingTree: boolean
-  /** The text whichever editor owns this path currently holds, or null if nothing does. */
-  readonly ownedText: string | null
-  readonly rootPath: string
-}
 
 /**
  * Hover for a diff pane, over documents the diff opens itself.
@@ -76,8 +64,9 @@ export function useDiffLanguage(
     () => createDiffPositionMap(rows, newLines, oldLines),
     [newLines, oldLines, rows],
   )
-  const commands = useOptionalEditorCommands()
-  const openDefinition = commands?.openDefinition ?? null
+  const host = languageServer?.host ?? null
+  const onApplyWorkspaceEdit = host?.applyWorkspaceEdit ?? null
+  const openDefinition = host?.openDefinition ?? null
   const documentPath = languageServer?.documentPath ?? null
   const rootPath = languageServer?.rootPath ?? null
   // Asked before connecting. A file no server claims — a `.md`, anything outside a project — must
@@ -122,7 +111,8 @@ export function useDiffLanguage(
   // instead, in `sideStates`.
   useEffect(() => {
     if (!file) return
-    if (!documentPath || !rootPath || routedMatches.length === 0) return
+    if (!documentPath || !rootPath || !onApplyWorkspaceEdit) return
+    if (routedMatches.length === 0) return
 
     const documents = diffLanguageDocuments({
       documentPath,
@@ -142,6 +132,7 @@ export function useDiffLanguage(
             sessionId: crypto.randomUUID(),
           }),
           match,
+          onApplyWorkspaceEdit,
           rootPath,
           target: { matchPath: documentPath },
         }),
@@ -156,12 +147,16 @@ export function useDiffLanguage(
       Object.assign(latest, { documents: [], drifted: new Set<DiffFileSide>(), session: null })
       session.dispose()
     }
-  }, [documentPath, file, latest, rootPath, routedMatches])
+  }, [documentPath, file, latest, onApplyWorkspaceEdit, rootPath, routedMatches])
 
   // Only whether a file could be asked about at all rebuilds the plugin; everything else is read
   // live from the holder.
   const available =
-    file !== null && documentPath !== null && rootPath !== null && routedMatches.length > 0
+    file !== null &&
+    documentPath !== null &&
+    rootPath !== null &&
+    onApplyWorkspaceEdit !== null &&
+    routedMatches.length > 0
 
   return useMemo(() => {
     if (!available) return null
@@ -222,7 +217,7 @@ type HoverHolder = {
   lastRefusal?: string
   map: DiffPositionMap
   newSideIsWorkingTree: boolean
-  openDefinition: ((target: LanguageServerDefinitionTarget) => boolean) | null
+  openDefinition: DiffLanguageHost['openDefinition']
   ownedText: string | null
   path: string
   session: DiffLanguageSession | null
@@ -265,8 +260,7 @@ async function followDefinition(
 
   const path = documentUriToFileName(location.uri)?.replace(/^\/+/, '') ?? null
   if (!path) return definitionOutcome(holder, 'unopenable-uri', { kind: 'none' })
-  // Absent only where the diff renders outside the editor's providers, which is a real place — the
-  // git panel mounts one, and so does a test. Recorded rather than silently dropped.
+  // A host may explicitly support hover without offering navigation outside the diff.
   if (!holder.openDefinition) return definitionOutcome(holder, 'no-open-command', { kind: 'none' })
 
   holder.openDefinition({ path, range: location.range, uri: location.uri })

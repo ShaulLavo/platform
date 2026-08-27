@@ -3,7 +3,9 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
 import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
-import { isDirtyLiveEditorDocument, saveEditorDocumentByPath } from '@/features/editor/utils/save'
+import { isDirtyLiveEditorDocument, saveEditorDocumentsByPath } from '@/features/editor/utils/save'
+import { useOptionalWorkspaceEditService } from '@/features/editor/providers/workspace-edit-context'
+import type { WorkspaceMutationReporter } from '@/features/editor/state/workspace-edit-service'
 import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 
@@ -24,20 +26,32 @@ export function useAutoSave() {
   const delay = useSettingValue('files.autoSaveDelay')
   const documentStore = useEditorDocumentStoreApi()
   const queryClient = useQueryClient()
+  const workspaceEdits = useOptionalWorkspaceEditService()
 
   useEffect(() => {
     if (mode === 'off') return
 
     const saveDirtyDocuments = () => {
       const state = documentStore.getState()
+      const paths: string[] = []
       for (const document of Object.values(state.liveDocumentsById)) {
         if (document.sync.kind !== 'file') continue
 
         const path = fileBackedDocumentPath(document.sync.path)
         if (!path || !isDirtyLiveEditorDocument(state, path)) continue
-
-        void saveEditorDocumentByPath(documentStore, queryClient, path)
+        paths.push(path)
       }
+
+      if (paths.length === 0) return
+      const save = (reportAffectedPaths?: WorkspaceMutationReporter) =>
+        saveEditorDocumentsByPath(documentStore, queryClient, paths, (path) =>
+          reportAffectedPaths?.([path]),
+        )
+      if (!workspaceEdits) {
+        void save().catch(() => undefined)
+        return
+      }
+      void workspaceEdits.runWorkspaceMutation(paths, save).catch(() => undefined)
     }
 
     if (mode !== 'afterDelay') {
@@ -63,5 +77,5 @@ export function useAutoSave() {
       // user already made.
       pending.flush()
     }
-  }, [delay, documentStore, mode, queryClient])
+  }, [delay, documentStore, mode, queryClient, workspaceEdits])
 }

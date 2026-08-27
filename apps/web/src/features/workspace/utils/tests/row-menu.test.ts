@@ -159,6 +159,30 @@ test('every filesystem action is disabled for a row with no resolved path', () =
   ])
 })
 
+test('the workspace mutation gate disables every tree write but keeps reads available', () => {
+  const menu = menuContext({
+    canStage: true,
+    canUnstage: true,
+    mutationsEnabled: false,
+  })
+  const disabled = allItems(menu)
+    .filter((entry) => entry.disabled)
+    .map((entry) => entry.label)
+
+  expect(disabled).toEqual([
+    'New File',
+    'New Folder',
+    'Stage Changes',
+    'Unstage Changes',
+    'Discard Changes',
+    'Rename',
+    'Duplicate',
+    'Delete',
+  ])
+  expect(item(menu, 'open', 'Open')?.disabled).toBeFalsy()
+  expect(item(menu, 'copy', 'Copy Path')?.disabled).toBeFalsy()
+})
+
 test('copying the relative path still works without a resolved path', () => {
   expect(item(menuContext({ path: null }), 'copy', 'Copy Relative Path')?.disabled).toBeFalsy()
 })
@@ -221,12 +245,14 @@ function menuContext({
   canStage = false,
   canUnstage = false,
   isDirectory = false,
+  mutationsEnabled = true,
   path = '/repo/src/a.ts',
   record = () => {},
 }: {
   canStage?: boolean
   canUnstage?: boolean
   isDirectory?: boolean
+  mutationsEnabled?: boolean
   path?: string | null
   record?: (name: string) => void
 } = {}) {
@@ -238,6 +264,7 @@ function menuContext({
     duplicate: () => record('duplicate'),
     git: { canStage, canUnstage },
     isDirectory,
+    mutationsEnabled,
     openFile: () => record('openFile'),
     path,
     relativePath: 'src/a.ts',

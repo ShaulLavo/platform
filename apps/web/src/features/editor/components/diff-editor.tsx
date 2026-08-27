@@ -7,10 +7,10 @@ import {
 import { useMemo, useState } from 'react'
 
 import { DiffPane } from '@/features/editor/components/diff-pane'
-import type { DiffLanguageServerContext } from '@/features/editor/hooks/use-diff-language'
 import { useDiffPanes } from '@/features/editor/hooks/use-diff-panes'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import { editorDiffSyntaxConfiguration } from '@/features/editor/state/syntax-highlighting'
+import type { DiffLanguageServerContext } from '@/features/editor/utils/diff-language-context'
 import type { EditorDiffViewMode } from '@/features/editor/utils/diff-view-mode'
 
 /**

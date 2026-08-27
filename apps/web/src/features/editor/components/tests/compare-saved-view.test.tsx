@@ -9,6 +9,7 @@ import {
   createEditorDocumentStore,
 } from '@/features/editor/state/document-state'
 import { expect, test } from '../../../../../test/fixtures'
+import { testDiffLanguageHost } from '../../../../../test/factories/diff-language-host'
 import { stubHighlightApi } from '../../../../../test/env/highlight-api'
 import { renderWithProviders } from '../../../../../test/render'
 
@@ -68,7 +69,7 @@ async function renderCompare(root: string, { buffer }: { buffer: string | null }
   // here to stand a buffer up in it, and that provider builds its own.
   return renderWithProviders(
     <EditorDocumentStateContext.Provider value={store}>
-      <CompareSavedView path={FILE} rootPath='repo' />
+      <CompareSavedView languageHost={testDiffLanguageHost} path={FILE} rootPath='repo' />
     </EditorDocumentStateContext.Provider>,
   )
 }

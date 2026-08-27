@@ -58,6 +58,7 @@ export function useRowMenu({
     duplicate: () => actions.duplicateEntry(treePath, isDirectory),
     git: rowGitActions(status.data?.files, path, isDirectory),
     isDirectory,
+    mutationsEnabled: actions.mutationsEnabled,
     openFile: () => selectFile(path),
     path,
     relativePath: treePath,

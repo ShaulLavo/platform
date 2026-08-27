@@ -10,6 +10,10 @@ import {
 } from '@/features/editor/utils/language-server-plugin'
 import { useLanguageServerMatches } from '@/features/editor/hooks/use-language-server-matches'
 import { createEditorLanguageServerStatusSource } from '@/features/editor/state/language-server-status-source'
+import {
+  useWorkspaceDocumentSyncController,
+  useWorkspaceEditHost,
+} from '@/features/editor/providers/workspace-edit-context'
 
 type UseLanguageServerPluginOptions = {
   enabled?: boolean
@@ -29,6 +33,8 @@ export function useLanguageServerPlugin({
   onOpenReferences,
 }: UseLanguageServerPluginOptions) {
   const languageServerStatusSource = useMemo(() => createEditorLanguageServerStatusSource(), [])
+  const onApplyWorkspaceEdit = useWorkspaceEditHost()
+  const documentSyncController = useWorkspaceDocumentSyncController()
   const target = useMemo(
     () => languageServerTarget ?? { matchPath: filePath },
     [filePath, languageServerTarget],
@@ -38,17 +44,21 @@ export function useLanguageServerPlugin({
   const languageServer = useMemo(() => {
     return createMatchedLanguageServerPlugin({
       enabled,
+      documentSyncController,
       matches,
       rootPath,
       statusSource: languageServerStatusSource,
       target,
+      onApplyWorkspaceEdit,
       onOpenDefinition,
       onOpenReferences,
     })
   }, [
     enabled,
+    documentSyncController,
     languageServerStatusSource,
     matches,
+    onApplyWorkspaceEdit,
     onOpenDefinition,
     onOpenReferences,
     rootPath,

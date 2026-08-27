@@ -43,6 +43,8 @@ type PendingBackendRequest = {
   readonly method: string
   /** Set only for a token request, so its response can be reassembled and fanned out. */
   readonly semanticTokens?: SemanticTokenRequest
+  workspaceEditCancelled?: boolean
+  workspaceEditProvenance?: WorkspaceEditProvenance
   reject?: (error: unknown) => void
   resolve?: (response: JsonRpcResponse) => void
 }
@@ -89,8 +91,29 @@ type SemanticTokenBaseline = {
 type SharedDocument = {
   backendVersion: number
   languageId: string
-  readonly owners: Set<LspProxyConnection>
+  readonly owners: Map<LspProxyConnection, OwnerDocumentState>
+  syncEpoch: number
   text: string
+}
+
+type OwnerDocumentState = {
+  clientVersion: number
+  text: string
+  contentEpoch: number
+  lastSyncEpoch: number
+  synchronizedBackendVersion: number
+}
+
+type CapturedDocumentProvenance = {
+  readonly backendVersion: number
+  readonly owner: Readonly<OwnerDocumentState> | null
+  readonly syncEpoch: number
+  readonly text: string
+}
+
+type WorkspaceEditProvenance = {
+  readonly connection: LspProxyConnection
+  readonly documents: ReadonlyMap<string, CapturedDocumentProvenance>
 }
 
 type DidOpenDocument = {
@@ -103,14 +126,16 @@ type DidOpenDocument = {
 type DidChangeDocument = {
   readonly contentChanges: readonly TextDocumentContentChange[]
   readonly uri: string
+  readonly version: number
 }
 
 type TextDocumentContentChange = {
+  readonly rangeLength?: number
   readonly range?: {
     readonly start: { readonly line: number; readonly character: number }
     readonly end: { readonly line: number; readonly character: number }
   }
-  readonly text?: string
+  readonly text: string
 }
 
 export type LspProxySocket = {
@@ -294,8 +319,10 @@ class PooledLspProxySession {
   private exitCode: number | null = null
   private exitSignal: NodeJS.Signals | null = null
   private idleTimer: ReturnType<typeof setTimeout> | null = null
+  private initializeContract: unknown | undefined
   private initializePromise: Promise<JsonRpcResponse> | null = null
   private initializeResult: JsonRpcResponse | null = null
+  private initializeSent = false
   private initializedNotificationSent = false
   private openedAt = performance.now()
   private serverBytes = 0
@@ -672,11 +699,35 @@ class PooledLspProxySession {
     message: JsonRpcRequest,
   ): Promise<void> {
     try {
-      const response = await this.ensureInitialized(message)
+      const prepared = await this.initializeRequest(message)
+      if (this.disposed || connection.isClosed) return
+      if (!this.acceptInitializeContract(prepared.params)) {
+        connection.send(
+          jsonRpcError(
+            message.id,
+            -32602,
+            'Initialize params do not match the pooled backend contract',
+          ),
+        )
+        connection.closeForProtocolError()
+        return
+      }
+
+      const response = await this.ensureInitialized(prepared)
       connection.send(JSON.stringify(responseForClient(response, message.id)))
     } catch (error) {
       connection.send(jsonRpcError(message.id, -32000, errorMessage(error)))
     }
+  }
+
+  private acceptInitializeContract(params: unknown): boolean {
+    const candidate = immutableProtocolValue(params)
+    if (this.initializeContract === undefined) {
+      this.initializeContract = candidate
+      return true
+    }
+
+    return protocolValuesEqual(this.initializeContract, candidate)
   }
 
   private ensureInitialized(message: JsonRpcRequest): Promise<JsonRpcResponse> {
@@ -687,8 +738,12 @@ class PooledLspProxySession {
     return this.initializePromise
   }
 
-  private async sendInitializeRequest(message: JsonRpcRequest): Promise<JsonRpcResponse> {
-    const prepared = await this.initializeRequest(message)
+  private sendInitializeRequest(message: JsonRpcRequest): Promise<JsonRpcResponse> {
+    if (this.disposed) {
+      if (!this.initializeSent) this.initializeContract = undefined
+      return Promise.reject(createInternalError('LSP session disposed before initialize'))
+    }
+
     const backendId = this.nextBackendRequestId()
     const response = new Promise<JsonRpcResponse>((resolve, reject) => {
       this.pendingRequests.set(backendId, {
@@ -700,7 +755,15 @@ class PooledLspProxySession {
       })
     })
 
-    this.writeToServer(JSON.stringify({ ...prepared, id: backendId }))
+    try {
+      this.writeToServer(JSON.stringify({ ...message, id: backendId }))
+      this.initializeSent = true
+    } catch (error) {
+      this.pendingRequests.delete(backendId)
+      if (!this.initializeSent) this.initializeContract = undefined
+      throw error
+    }
+
     return response
       .then((result) => {
         this.initializeResult = result
@@ -709,6 +772,7 @@ class PooledLspProxySession {
       })
       .catch((error: unknown) => {
         this.initializePromise = null
+        if (!this.initializeSent) this.initializeContract = undefined
         throw error
       })
   }
@@ -773,7 +837,8 @@ class PooledLspProxySession {
       return
     }
     if (message.method === 'textDocument/didOpen') return this.handleDidOpen(connection, message)
-    if (message.method === 'textDocument/didChange') return this.handleDidChange(message)
+    if (message.method === 'textDocument/didChange')
+      return this.handleDidChange(connection, message)
     if (message.method === 'textDocument/didClose') return this.handleDidClose(connection, message)
 
     this.writeToServer(JSON.stringify(message))
@@ -798,6 +863,11 @@ class PooledLspProxySession {
       connection.untrackRequest(clientId as JsonRpcId)
       this.dropSemanticTokenWaiter(backendId, pending.semanticTokens, connection)
       return
+    }
+
+    if (pending?.workspaceEditProvenance) {
+      delete pending.workspaceEditProvenance
+      pending.workspaceEditCancelled = true
     }
 
     this.writeToServer(
@@ -838,14 +908,13 @@ class PooledLspProxySession {
   private handleDidOpen(connection: LspProxyConnection, message: JsonRpcNotification): void {
     const document = didOpenDocument(message.params)
     if (!document) {
-      this.writeToServer(JSON.stringify(message))
+      connection.closeForProtocolError()
       return
     }
 
-    connection.addDocument(document.uri)
     const shared = this.documents.get(document.uri)
     if (shared) {
-      this.attachExistingDocument(connection, shared, document.text)
+      this.attachExistingDocument(connection, shared, document)
       return
     }
 
@@ -854,13 +923,32 @@ class PooledLspProxySession {
 
   private attachExistingDocument(
     connection: LspProxyConnection,
-    document: SharedDocument,
-    text: string,
+    shared: SharedDocument,
+    opened: DidOpenDocument,
   ): void {
-    document.owners.add(connection)
-    if (document.text === text) return
+    if (shared.owners.has(connection) || shared.languageId !== opened.languageId) {
+      connection.closeForProtocolError()
+      return
+    }
+    if (shared.text === opened.text) {
+      shared.owners.set(connection, synchronizedOwner(opened, shared))
+      connection.addDocument(opened.uri)
+      return
+    }
 
-    this.forwardFullDocumentChange(document, text)
+    const backendVersion = safeSum(shared.backendVersion, 1)
+    const syncEpoch = safeSum(shared.syncEpoch, 1)
+    if (backendVersion === null || syncEpoch === null) {
+      connection.closeForProtocolError()
+      return
+    }
+
+    this.sendFullDocumentChange(opened.uri, opened.text, backendVersion)
+    shared.backendVersion = backendVersion
+    shared.syncEpoch = syncEpoch
+    shared.text = opened.text
+    shared.owners.set(connection, synchronizedOwner(opened, shared))
+    connection.addDocument(opened.uri)
   }
 
   private openBackendDocument(
@@ -871,26 +959,61 @@ class PooledLspProxySession {
     const shared = {
       backendVersion: document.version,
       languageId: document.languageId,
-      owners: new Set([owner]),
+      owners: new Map<LspProxyConnection, OwnerDocumentState>(),
+      syncEpoch: 0,
       text: document.text,
     } satisfies SharedDocument
+    shared.owners.set(owner, synchronizedOwner(document, shared))
     this.documents.set(document.uri, shared)
+    owner.addDocument(document.uri)
     this.writeToServer(JSON.stringify(rewriteDidOpenVersion(message, shared.backendVersion)))
   }
 
-  private handleDidChange(message: JsonRpcNotification): void {
+  private handleDidChange(connection: LspProxyConnection, message: JsonRpcNotification): void {
     const change = didChangeDocument(message.params)
     if (!change) {
-      this.writeToServer(JSON.stringify(message))
+      connection.closeForProtocolError()
       return
     }
 
-    const document = this.documents.get(change.uri)
-    if (!document) return
+    const shared = this.documents.get(change.uri)
+    const owner = shared?.owners.get(connection)
+    if (!shared || !owner) {
+      connection.closeForProtocolError()
+      return
+    }
 
-    document.backendVersion += 1
-    document.text = applyContentChanges(document.text, change.contentChanges)
-    this.writeToServer(JSON.stringify(rewriteDidChangeVersion(message, document.backendVersion)))
+    const logicalDelta = change.version - owner.clientVersion
+    const backendVersion = safeSum(shared.backendVersion, logicalDelta)
+    const syncEpoch = safeSum(shared.syncEpoch, 1)
+    const contentEpoch = safeSum(owner.contentEpoch, 1)
+    const text = applyContentChangesStrict(owner.text, change.contentChanges)
+    if (
+      logicalDelta <= 0 ||
+      !Number.isSafeInteger(logicalDelta) ||
+      backendVersion === null ||
+      syncEpoch === null ||
+      contentEpoch === null ||
+      text === null
+    ) {
+      connection.closeForProtocolError()
+      return
+    }
+
+    if (ownerIsSynchronized(owner, shared)) {
+      this.writeToServer(JSON.stringify(rewriteDidChangeVersion(message, backendVersion)))
+    } else {
+      this.sendFullDocumentChange(change.uri, text, backendVersion)
+    }
+
+    shared.backendVersion = backendVersion
+    shared.syncEpoch = syncEpoch
+    shared.text = text
+    owner.clientVersion = change.version
+    owner.contentEpoch = contentEpoch
+    owner.lastSyncEpoch = syncEpoch
+    owner.synchronizedBackendVersion = backendVersion
+    owner.text = text
   }
 
   private handleDidClose(connection: LspProxyConnection, message: JsonRpcNotification): void {
@@ -930,9 +1053,7 @@ class PooledLspProxySession {
     )
   }
 
-  private forwardFullDocumentChange(document: SharedDocument, text: string): void {
-    document.backendVersion += 1
-    document.text = text
+  private sendFullDocumentChange(uri: string, text: string, version: number): void {
     this.writeToServer(
       JSON.stringify({
         jsonrpc: '2.0',
@@ -940,8 +1061,8 @@ class PooledLspProxySession {
         params: {
           contentChanges: [{ text }],
           textDocument: {
-            uri: documentUriForSharedDocument(this.documents, document),
-            version: document.backendVersion,
+            uri,
+            version,
           },
         },
       }),
@@ -950,13 +1071,33 @@ class PooledLspProxySession {
 
   private forwardClientRequest(connection: LspProxyConnection, message: JsonRpcRequest): void {
     const backendId = this.nextBackendRequestId()
-    this.pendingRequests.set(backendId, {
+    const pending: PendingBackendRequest = {
       clientId: message.id,
       connection,
       method: message.method,
-    })
+    }
+    if (workspaceEditResponseMethod(message.method)) {
+      pending.workspaceEditProvenance = this.captureWorkspaceEditProvenance(connection)
+    }
+
+    this.pendingRequests.set(backendId, pending)
     connection.trackRequest(message.id, backendId)
     this.writeToServer(JSON.stringify({ ...message, id: backendId }))
+  }
+
+  private captureWorkspaceEditProvenance(connection: LspProxyConnection): WorkspaceEditProvenance {
+    const documents = new Map<string, CapturedDocumentProvenance>()
+    for (const [uri, shared] of this.documents) {
+      const owner = shared.owners.get(connection)
+      documents.set(uri, {
+        backendVersion: shared.backendVersion,
+        owner: owner ? { ...owner } : null,
+        syncEpoch: shared.syncEpoch,
+        text: shared.text,
+      })
+    }
+
+    return { connection, documents }
   }
 
   private handleServerMessage(message: string): void {
@@ -989,7 +1130,37 @@ class PooledLspProxySession {
       return
     }
 
-    pending.connection?.send(JSON.stringify(responseForClient(message, pending.clientId)))
+    if (message.error !== undefined) {
+      pending.connection?.send(JSON.stringify(responseForClient(message, pending.clientId)))
+      return
+    }
+    if (pending.workspaceEditCancelled) {
+      pending.connection?.send(
+        jsonRpcError(pending.clientId, CONTENT_MODIFIED_CODE, 'Content modified'),
+      )
+      return
+    }
+    if (!pending.workspaceEditProvenance) {
+      pending.connection?.send(JSON.stringify(responseForClient(message, pending.clientId)))
+      return
+    }
+
+    const translated = translateWorkspaceEditResponse(
+      pending.method,
+      message.result,
+      pending.workspaceEditProvenance,
+      this.documents,
+    )
+    if (!translated.ok) {
+      pending.connection?.send(
+        jsonRpcError(pending.clientId, CONTENT_MODIFIED_CODE, 'Content modified'),
+      )
+      return
+    }
+
+    pending.connection?.send(
+      JSON.stringify(responseForClient({ ...message, result: translated.value }, pending.clientId)),
+    )
   }
 
   private handleServerRequestMessage(message: JsonRpcRequest): void {
@@ -1309,6 +1480,10 @@ class LspProxyConnection implements LspProxyClientSession {
     this.session = session
   }
 
+  get isClosed(): boolean {
+    return this.closed
+  }
+
   async handleClientMessage(message: string | ArrayBuffer | Uint8Array): Promise<void> {
     if (this.closed) return
 
@@ -1331,6 +1506,14 @@ class LspProxyConnection implements LspProxyClientSession {
   closeSocket(): void {
     if (this.closed) return
 
+    this.closed = true
+    this.socket.close()
+  }
+
+  closeForProtocolError(): void {
+    if (this.closed) return
+
+    this.session.releaseConnection(this)
     this.closed = true
     this.socket.close()
   }
@@ -1417,6 +1600,174 @@ function configurationSection(configuration: Readonly<Record<string, unknown>>, 
   }
 
   return value ?? {}
+}
+
+type WorkspaceEditTranslation =
+  | { readonly ok: true; readonly value: unknown }
+  | { readonly ok: false }
+
+function workspaceEditResponseMethod(method: string): boolean {
+  if (method === 'textDocument/rename') return true
+  if (method === 'textDocument/codeAction') return true
+
+  return method === 'codeAction/resolve'
+}
+
+function translateWorkspaceEditResponse(
+  method: string,
+  result: unknown,
+  provenance: WorkspaceEditProvenance,
+  documents: ReadonlyMap<string, SharedDocument>,
+): WorkspaceEditTranslation {
+  if (method === 'textDocument/rename') {
+    return translateWorkspaceEdit(result, provenance, documents)
+  }
+  if (method === 'textDocument/codeAction') {
+    return translateCodeActionList(result, provenance, documents)
+  }
+  if (method === 'codeAction/resolve') {
+    return translateCodeAction(result, provenance, documents)
+  }
+
+  return translated(result)
+}
+
+function translateCodeActionList(
+  value: unknown,
+  provenance: WorkspaceEditProvenance,
+  documents: ReadonlyMap<string, SharedDocument>,
+): WorkspaceEditTranslation {
+  if (!Array.isArray(value)) return translated(value)
+
+  const actions: unknown[] = []
+  for (const action of value) {
+    const result = translateCodeAction(action, provenance, documents)
+    if (!result.ok) return result
+    actions.push(result.value)
+  }
+  return translated(actions)
+}
+
+function translateCodeAction(
+  value: unknown,
+  provenance: WorkspaceEditProvenance,
+  documents: ReadonlyMap<string, SharedDocument>,
+): WorkspaceEditTranslation {
+  if (!isRecord(value)) return translated(value)
+  if (!Object.hasOwn(value, 'edit')) return translated(value)
+
+  const edit = translateWorkspaceEdit(value.edit, provenance, documents)
+  if (!edit.ok) return edit
+
+  return translated({ ...value, edit: edit.value })
+}
+
+function translateWorkspaceEdit(
+  value: unknown,
+  provenance: WorkspaceEditProvenance,
+  documents: ReadonlyMap<string, SharedDocument>,
+): WorkspaceEditTranslation {
+  if (!isRecord(value)) return translated(value)
+  if (value.documentChanges === undefined) return translated(value)
+  if (!Array.isArray(value.documentChanges)) return translated(value)
+
+  const documentChanges: unknown[] = []
+  for (const change of value.documentChanges) {
+    const result = translateDocumentChange(change, provenance, documents)
+    if (!result.ok) return result
+    documentChanges.push(result.value)
+  }
+
+  return translated({ ...value, documentChanges })
+}
+
+function translateDocumentChange(
+  value: unknown,
+  provenance: WorkspaceEditProvenance,
+  documents: ReadonlyMap<string, SharedDocument>,
+): WorkspaceEditTranslation {
+  if (!isRecord(value)) return translated(value)
+  if (!isRecord(value.textDocument)) return translated(value)
+
+  const document = value.textDocument
+  if (typeof document.uri !== 'string') return translationFailure()
+  if (document.version === null) return translated(value)
+  if (!isSafeDocumentVersion(document.version)) return translationFailure()
+
+  const version = translatedDocumentVersion(document.uri, document.version, provenance, documents)
+  if (version === null) return translationFailure()
+
+  return translated({
+    ...value,
+    textDocument: { ...document, version },
+  })
+}
+
+function translatedDocumentVersion(
+  uri: string,
+  backendVersion: number,
+  provenance: WorkspaceEditProvenance,
+  documents: ReadonlyMap<string, SharedDocument>,
+): number | null {
+  const captured = provenance.documents.get(uri)
+  if (!captured?.owner) return null
+  if (!documentProvenanceIsCurrent(uri, captured, provenance.connection, documents)) return null
+
+  const delta = backendVersion - captured.backendVersion
+  if (!Number.isSafeInteger(delta)) return null
+  if (delta < 0) return null
+
+  return safeSum(captured.owner.clientVersion, delta)
+}
+
+function documentProvenanceIsCurrent(
+  uri: string,
+  captured: CapturedDocumentProvenance,
+  connection: LspProxyConnection,
+  documents: ReadonlyMap<string, SharedDocument>,
+): boolean {
+  const capturedOwner = captured.owner
+  if (!capturedOwner) return false
+  if (!capturedOwnerIsSynchronized(capturedOwner, captured)) return false
+
+  const current = documents.get(uri)
+  const currentOwner = current?.owners.get(connection)
+  if (!current || !currentOwner) return false
+  if (current.backendVersion !== captured.backendVersion) return false
+  if (current.syncEpoch !== captured.syncEpoch) return false
+  if (current.text !== captured.text) return false
+
+  return ownerStatesEqual(currentOwner, capturedOwner)
+}
+
+function capturedOwnerIsSynchronized(
+  owner: Readonly<OwnerDocumentState>,
+  document: CapturedDocumentProvenance,
+): boolean {
+  if (owner.text !== document.text) return false
+  if (owner.lastSyncEpoch !== document.syncEpoch) return false
+
+  return owner.synchronizedBackendVersion === document.backendVersion
+}
+
+function ownerStatesEqual(
+  current: Readonly<OwnerDocumentState>,
+  captured: Readonly<OwnerDocumentState>,
+): boolean {
+  if (current.clientVersion !== captured.clientVersion) return false
+  if (current.text !== captured.text) return false
+  if (current.contentEpoch !== captured.contentEpoch) return false
+  if (current.lastSyncEpoch !== captured.lastSyncEpoch) return false
+
+  return current.synchronizedBackendVersion === captured.synchronizedBackendVersion
+}
+
+function translated(value: unknown): WorkspaceEditTranslation {
+  return { ok: true, value }
+}
+
+function translationFailure(): WorkspaceEditTranslation {
+  return { ok: false }
 }
 
 /** LSP's own codes for "you cancelled this" and "the text moved under it". */
@@ -1512,6 +1863,79 @@ function applySemanticTokenEdits(baseline: readonly number[], edits: readonly un
   return next
 }
 
+function synchronizedOwner(document: DidOpenDocument, shared: SharedDocument): OwnerDocumentState {
+  return {
+    clientVersion: document.version,
+    contentEpoch: 0,
+    lastSyncEpoch: shared.syncEpoch,
+    synchronizedBackendVersion: shared.backendVersion,
+    text: document.text,
+  }
+}
+
+function ownerIsSynchronized(owner: OwnerDocumentState, shared: SharedDocument): boolean {
+  if (owner.text !== shared.text) return false
+  if (owner.lastSyncEpoch !== shared.syncEpoch) return false
+
+  return owner.synchronizedBackendVersion === shared.backendVersion
+}
+
+function safeSum(left: number, right: number): number | null {
+  const result = left + right
+  if (!Number.isSafeInteger(result)) return null
+  if (result < 0) return null
+
+  return result
+}
+
+function immutableProtocolValue(value: unknown): unknown {
+  return freezeProtocolValue(structuredClone(value))
+}
+
+function freezeProtocolValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    for (const item of value) freezeProtocolValue(item)
+    return Object.freeze(value)
+  }
+  if (!isRecord(value)) return value
+
+  for (const item of Object.values(value)) freezeProtocolValue(item)
+  return Object.freeze(value)
+}
+
+function protocolValuesEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true
+  if (Array.isArray(left) || Array.isArray(right)) return protocolArraysEqual(left, right)
+  if (!isRecord(left) || !isRecord(right)) return false
+
+  return protocolRecordsEqual(left, right)
+}
+
+function protocolArraysEqual(left: unknown, right: unknown): boolean {
+  if (!Array.isArray(left) || !Array.isArray(right)) return false
+  if (left.length !== right.length) return false
+
+  for (let index = 0; index < left.length; index += 1) {
+    if (!protocolValuesEqual(left[index], right[index])) return false
+  }
+  return true
+}
+
+function protocolRecordsEqual(
+  left: Readonly<Record<string, unknown>>,
+  right: Readonly<Record<string, unknown>>,
+): boolean {
+  const leftKeys = Object.keys(left)
+  const rightKeys = Object.keys(right)
+  if (leftKeys.length !== rightKeys.length) return false
+
+  for (const key of leftKeys) {
+    if (!Object.hasOwn(right, key)) return false
+    if (!protocolValuesEqual(left[key], right[key])) return false
+  }
+  return true
+}
+
 function lspProxySessionKey(match: LspServerMatch): string {
   return `${match.server.id}\u0000${match.root}`
 }
@@ -1568,12 +1992,13 @@ function didOpenDocument(params: unknown): DidOpenDocument | null {
   if (typeof document.uri !== 'string') return null
   if (typeof document.languageId !== 'string') return null
   if (typeof document.text !== 'string') return null
+  if (!isSafeDocumentVersion(document.version)) return null
 
   return {
     languageId: document.languageId,
     text: document.text,
     uri: document.uri,
-    version: typeof document.version === 'number' ? document.version : 0,
+    version: document.version,
   }
 }
 
@@ -1583,18 +2008,53 @@ function didChangeDocument(params: unknown): DidChangeDocument | null {
   if (!Array.isArray(params.contentChanges)) return null
 
   const uri = params.textDocument.uri
+  const version = params.textDocument.version
   if (typeof uri !== 'string') return null
+  if (!isSafeDocumentVersion(version)) return null
+  if (!params.contentChanges.every(isTextDocumentContentChange)) return null
 
   return {
-    contentChanges: params.contentChanges.filter(isTextDocumentContentChange),
+    contentChanges: params.contentChanges,
     uri,
+    version,
   }
 }
 
 function isTextDocumentContentChange(value: unknown): value is TextDocumentContentChange {
   if (!isRecord(value)) return false
+  if (typeof value.text !== 'string') return false
+  if (value.range === undefined) return value.rangeLength === undefined
+  if (!isTextDocumentRange(value.range)) return false
+  if (value.rangeLength === undefined) return true
 
-  return typeof value.text === 'string'
+  return isSafeNonNegativeInteger(value.rangeLength)
+}
+
+function isTextDocumentRange(value: unknown): value is TextDocumentContentChange['range'] {
+  if (!isRecord(value)) return false
+  if (!isTextDocumentPosition(value.start)) return false
+
+  return isTextDocumentPosition(value.end)
+}
+
+function isTextDocumentPosition(
+  value: unknown,
+): value is { readonly line: number; readonly character: number } {
+  if (!isRecord(value)) return false
+  if (!isSafeNonNegativeInteger(value.line)) return false
+
+  return isSafeNonNegativeInteger(value.character)
+}
+
+function isSafeDocumentVersion(value: unknown): value is number {
+  return isSafeNonNegativeInteger(value)
+}
+
+function isSafeNonNegativeInteger(value: unknown): value is number {
+  if (typeof value !== 'number') return false
+  if (value < 0) return false
+
+  return Number.isSafeInteger(value)
 }
 
 function textDocumentUri(params: unknown): string | null {
@@ -1662,37 +2122,37 @@ function serverNotificationForClient(message: JsonRpcNotification, raw: string):
   return JSON.stringify({ ...message, params })
 }
 
-function documentUriForSharedDocument(
-  documents: Map<string, SharedDocument>,
-  target: SharedDocument,
-): string {
-  for (const [uri, document] of documents) {
-    if (document === target) return uri
-  }
-
-  return ''
-}
-
-function applyContentChanges(text: string, changes: readonly TextDocumentContentChange[]): string {
+function applyContentChangesStrict(
+  text: string,
+  changes: readonly TextDocumentContentChange[],
+): string | null {
   let next = text
-  for (const change of changes) next = applyContentChange(next, change)
+  for (const change of changes) {
+    const changed = applyContentChangeStrict(next, change)
+    if (changed === null) return null
+
+    next = changed
+  }
 
   return next
 }
 
-function applyContentChange(text: string, change: TextDocumentContentChange): string {
-  if (typeof change.text !== 'string') return text
+function applyContentChangeStrict(text: string, change: TextDocumentContentChange): string | null {
   if (!change.range) return change.text
 
-  const start = offsetForPosition(text, change.range.start)
-  const end = offsetForPosition(text, change.range.end)
+  const start = strictOffsetForPosition(text, change.range.start)
+  const end = strictOffsetForPosition(text, change.range.end)
+  if (start === null || end === null) return null
+  if (end < start) return null
+  if (change.rangeLength !== undefined && change.rangeLength !== end - start) return null
+
   return `${text.slice(0, start)}${change.text}${text.slice(end)}`
 }
 
-function offsetForPosition(
+function strictOffsetForPosition(
   text: string,
   position: { readonly line: number; readonly character: number },
-): number {
+): number | null {
   let line = 0
   let lineStart = 0
   for (let index = 0; index < text.length; index += 1) {
@@ -1703,11 +2163,15 @@ function offsetForPosition(
     lineStart = index + 1
   }
 
-  return line < position.line ? text.length : clampOffset(lineStart + position.character, text)
-}
+  if (line < position.line) return null
 
-function clampOffset(offset: number, text: string): number {
-  return Math.min(text.length, Math.max(0, offset))
+  const newline = text.indexOf('\n', lineStart)
+  const rawLineEnd = newline < 0 ? text.length : newline
+  const lineEnd =
+    rawLineEnd > lineStart && text[rawLineEnd - 1] === '\r' ? rawLineEnd - 1 : rawLineEnd
+  if (position.character > lineEnd - lineStart) return null
+
+  return lineStart + position.character
 }
 
 function byteLength(value: string | ArrayBuffer | Uint8Array): number {

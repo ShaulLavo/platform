@@ -10,9 +10,14 @@ import type { FileResult } from '@/lib/file-system-types'
 import {
   createEditorTextBuffer,
   createEditorViewSession,
+  acquireDocumentMutationLease,
+  releaseDocumentMutationLease,
+  type DocumentMutationLease,
   type EditorScrollPosition,
   type EditorTextBuffer,
+  type EditorTextBufferChange,
   type EditorViewSession,
+  type PieceTableSnapshot,
 } from '@singapor/core'
 
 type LiveDocumentSyncState = 'idle' | 'saving' | 'conflict'
@@ -53,6 +58,12 @@ type LiveDocumentSync =
     }
   | SettingsDocumentSync
   | {
+      affectedPaths: readonly string[]
+      kind: 'recovery-conflict'
+      operationId: string
+      path: string
+    }
+  | {
       kind: 'none'
     }
 
@@ -78,11 +89,112 @@ export type LiveEditorViewDocument = LiveEditorDocument & {
   readonly view: EditorViewSession
 }
 
+export type WorkspaceDocumentTargetStamp = {
+  readonly buffer: EditorTextBuffer
+  readonly bufferRevision: number
+  readonly contentRevision: string
+  readonly dirty: boolean
+  readonly documentId: string
+  readonly localRevision: number
+  readonly path: string
+  readonly snapshot: PieceTableSnapshot
+  readonly sync: LiveEditorDocument['sync']
+}
+
+export type WorkspaceDocumentRenameProjection = {
+  readonly from: string
+  readonly kind: 'rename'
+  readonly reservation: WorkspaceDocumentPathReservation | null
+  readonly source: WorkspaceDocumentTargetStamp | null
+  readonly to: string
+}
+
+export type WorkspaceDocumentDeleteProjection = {
+  readonly contentRevision: string | undefined
+  readonly dirty: boolean
+  readonly document: LiveEditorDocument
+  readonly kind: 'delete'
+  readonly reservation: WorkspaceDocumentPathReservation | null
+  readonly stamp: WorkspaceDocumentTargetStamp
+  readonly views: readonly EditorDocumentView[]
+}
+
+export type WorkspaceDocumentProjection =
+  | WorkspaceDocumentDeleteProjection
+  | WorkspaceDocumentRenameProjection
+
+declare const workspaceDocumentPathReservationBrand: unique symbol
+
+export type WorkspaceDocumentPathReservation = {
+  readonly [workspaceDocumentPathReservationBrand]: true
+  readonly ownerId: string
+}
+
+export type WorkspaceDocumentPathReservationRequest = {
+  readonly canonicalPath: string
+  readonly expectedDocumentId: string | null
+  readonly expectedPathOwnershipRevision: number
+}
+
+export type WorkspaceDocumentPathReservationResult =
+  | { readonly reservation: WorkspaceDocumentPathReservation; readonly status: 'acquired' }
+  | { readonly status: 'busy' | 'stale' }
+
+export type ReleaseWorkspaceDocumentPathReservationResult = {
+  readonly status: 'already-released' | 'released'
+}
+
+export type WorkspaceDocumentMutationLeaseEntry = {
+  readonly buffer: EditorTextBuffer
+  readonly lease: DocumentMutationLease
+  readonly path: string
+}
+
+export type WorkspaceDocumentMutationLeaseSet = {
+  readonly entries: readonly WorkspaceDocumentMutationLeaseEntry[]
+  readonly ownerId: string
+}
+
+export type WorkspaceDocumentMutationLeaseResult =
+  | { readonly leaseSet: WorkspaceDocumentMutationLeaseSet; readonly status: 'acquired' }
+  | { readonly path: string; readonly status: 'busy' | 'stale' }
+
+export type WorkspaceDocumentRecoveryConflictResult =
+  | { readonly conflictedPaths: readonly string[]; readonly status: 'acquired' }
+  | { readonly path: string; readonly status: 'busy' | 'stale' }
+
+export type WorkspaceDocumentRecoveryLeaseTransfer = {
+  readonly operationId: string
+}
+
+export type WorkspaceDocumentRecoveryLeaseTransferPreparationResult =
+  | {
+      readonly status: 'prepared'
+      readonly transfer: WorkspaceDocumentRecoveryLeaseTransfer
+    }
+  | { readonly path: string; readonly status: 'busy' | 'stale' }
+
+type WorkspaceDocumentRecoveryConflictEntry = {
+  readonly lease: DocumentMutationLease
+  readonly operationId: string
+  readonly previousSync: LiveDocumentSync
+}
+
+type WorkspaceDocumentRecoveryLeaseTransferData = {
+  readonly affectedPaths: readonly string[]
+  readonly leaseSet: WorkspaceDocumentMutationLeaseSet
+  readonly operationId: string
+  readonly retained: readonly {
+    readonly document: LiveEditorDocument
+    readonly entry: WorkspaceDocumentMutationLeaseEntry
+  }[]
+}
+
 export type UnsyncedLiveEditorDocumentInput = {
   content: string
   id: string
   /** Omitted for a buffer nothing can write back, such as a conflict snapshot. */
-  sync?: Exclude<LiveDocumentSync, { kind: 'file' }>
+  sync?: Exclude<LiveDocumentSync, { kind: 'file' } | { kind: 'recovery-conflict' }>
 }
 
 export type WorkspaceDocumentServiceState = {
@@ -90,6 +202,7 @@ export type WorkspaceDocumentServiceState = {
   dirtyContentRevision: number
   dirtyFilePaths: ReadonlySet<string>
   liveDocumentsById: Readonly<Record<string, LiveEditorDocument>>
+  pathOwnershipRevision: number
   scrollPositionByTabId: Readonly<Record<string, EditorScrollPosition>>
   viewsByTabId: Readonly<Record<string, EditorDocumentView>>
 }
@@ -98,7 +211,24 @@ export class WorkspaceDocumentService {
   private documentContentRevisions: Readonly<Record<string, string>> = {}
   private dirtyFilePaths: ReadonlySet<string> = new Set()
   private dirtyContentRevision = 0
+  private pathOwnershipRevision = 0
   private readonly liveDocumentsById = new Map<string, LiveEditorDocument>()
+  private readonly documentIdsByBuffer = new Map<EditorTextBuffer, string>()
+  private readonly unsubscribeByBuffer = new Map<EditorTextBuffer, () => void>()
+  private readonly recoveryConflictByBuffer = new Map<
+    EditorTextBuffer,
+    WorkspaceDocumentRecoveryConflictEntry
+  >()
+  private readonly recoveryLeaseTransfers = new WeakMap<
+    WorkspaceDocumentRecoveryLeaseTransfer,
+    WorkspaceDocumentRecoveryLeaseTransferData
+  >()
+  private readonly pathReservations = new Map<string, WorkspaceDocumentPathReservation>()
+  private readonly reservedPathsByToken = new WeakMap<
+    WorkspaceDocumentPathReservation,
+    readonly string[]
+  >()
+  private readonly ownershipRevisionByPath = new Map<string, number>()
   private readonly viewsByTabId = new Map<string, EditorDocumentView>()
   /**
    * Last known scroll position per document, seeded from the workspace cache.
@@ -107,6 +237,8 @@ export class WorkspaceDocumentService {
    */
   private readonly scrollPositionSeeds = new Map<string, EditorScrollPosition>()
   private cachedState: WorkspaceDocumentServiceState | null = null
+
+  constructor(private readonly onStateChange: () => void = () => undefined) {}
 
   /**
    * The single eviction path. Drops every live document and view outside the keep
@@ -130,6 +262,7 @@ export class WorkspaceDocumentService {
       if (documentIds.has(documentId)) continue
       if (this.isDirtyDocument(documentId)) continue
       if (document.sync.kind !== 'file') continue
+      if (!this.pathsAvailable([document.path], null)) continue
 
       this.deleteLiveDocument(documentId)
       evictedDocumentIds.push(documentId)
@@ -150,10 +283,23 @@ export class WorkspaceDocumentService {
   }
 
   deleteLiveDocument(documentId: string): { hadLiveDocument: boolean; wasDirty: boolean } {
+    this.assertPathsAvailable([documentId])
+    return this.removeLiveDocument(documentId)
+  }
+
+  private removeLiveDocument(documentId: string): {
+    hadLiveDocument: boolean
+    wasDirty: boolean
+  } {
     const document = this.liveDocumentsById.get(documentId)
     const path = document?.path ?? documentId
     const wasDirty = this.isDirtyDocument(documentId)
     const hadLiveDocument = this.liveDocumentsById.delete(documentId)
+    if (document) this.detachBuffer(document.buffer)
+    if (hadLiveDocument) {
+      this.pathOwnershipRevision += 1
+      this.advancePathOwnership(path)
+    }
 
     this.deleteDirtyPath(path)
     this.documentContentRevisions = omitKey(this.documentContentRevisions, documentId)
@@ -168,14 +314,16 @@ export class WorkspaceDocumentService {
   }
 
   ensureLiveDocument(file: FileResult): LiveEditorDocument {
+    this.assertPathsAvailable([file.path])
     const existing = this.liveDocumentsById.get(file.path)
+    if (existing?.sync.kind === 'recovery-conflict') return existing
     if (existing?.buffer.isDirty()) return existing
     if (existing && fileSyncVersion(existing) === file.version) {
       return existing
     }
 
     const record = this.createFileDocument(file)
-    this.liveDocumentsById.set(file.path, record)
+    this.setLiveDocument(record)
     this.setContentRevision(file.path, record.contentRevision)
     this.deleteDirtyPath(file.path)
     this.rebindViewsForDocument(file.path)
@@ -195,13 +343,14 @@ export class WorkspaceDocumentService {
     }
 
     const record = this.createUnsyncedDocument(input)
-    this.liveDocumentsById.set(input.id, record)
+    this.setLiveDocument(record)
     this.setContentRevision(input.id, record.contentRevision)
     this.rebindViewsForDocument(input.id)
     return record
   }
 
   ensureViewForDocument(tabId: string, documentId: string): LiveEditorViewDocument {
+    this.assertPathsAvailable([documentId])
     const document = this.getRequiredLiveDocument(documentId)
     const existing = this.viewsByTabId.get(tabId)
     if (existing?.documentId === document.id) {
@@ -231,6 +380,7 @@ export class WorkspaceDocumentService {
   }
 
   forceReplaceLiveDocument(file: FileResult): { changed: boolean; wasDirty: boolean } {
+    this.assertPathsAvailable([file.path])
     const wasDirty = this.isDirtyDocument(file.path)
     const existing = this.liveDocumentsById.get(file.path)
     if (existing && !wasDirty && fileSyncVersion(existing) === file.version) {
@@ -241,7 +391,7 @@ export class WorkspaceDocumentService {
 
     const record = this.replacementDocument(file, existing)
 
-    this.liveDocumentsById.set(file.path, record)
+    this.setLiveDocument(record)
     this.setContentRevision(file.path, record.contentRevision)
     this.deleteDirtyPath(file.path)
     this.rebindViewsForDocument(file.path)
@@ -261,6 +411,319 @@ export class WorkspaceDocumentService {
     if (!record) return null
 
     return this.viewDocumentProjection(record)
+  }
+
+  prepareTargetStamp(documentId: string): WorkspaceDocumentTargetStamp | null {
+    const document = this.liveDocumentsById.get(documentId)
+    if (!document) return null
+
+    return {
+      buffer: document.buffer,
+      bufferRevision: document.buffer.getRevision(),
+      contentRevision: document.contentRevision,
+      dirty: this.isDirtyDocument(documentId),
+      documentId,
+      localRevision: document.localRevision,
+      path: document.path,
+      snapshot: document.buffer.getSnapshot(),
+      sync: document.sync,
+    }
+  }
+
+  isTargetStampCurrent(stamp: WorkspaceDocumentTargetStamp): boolean {
+    const document = this.liveDocumentsById.get(stamp.documentId)
+    if (!document) return false
+    if (document.buffer !== stamp.buffer) return false
+    if (document.buffer.getRevision() !== stamp.bufferRevision) return false
+    if (document.buffer.getSnapshot() !== stamp.snapshot) return false
+    if (document.localRevision !== stamp.localRevision) return false
+    if (document.contentRevision !== stamp.contentRevision) return false
+    if (document.path !== stamp.path || document.sync !== stamp.sync) return false
+    return this.isDirtyDocument(stamp.documentId) === stamp.dirty
+  }
+
+  preparePathReservation(path: string): WorkspaceDocumentPathReservationRequest {
+    return {
+      canonicalPath: path,
+      expectedDocumentId: this.liveDocumentsById.has(path) ? path : null,
+      expectedPathOwnershipRevision: this.pathOwnershipRevisionFor(path),
+    }
+  }
+
+  reservePaths(
+    requests: readonly WorkspaceDocumentPathReservationRequest[],
+    ownerId: string,
+  ): WorkspaceDocumentPathReservationResult {
+    const ordered = canonicalReservationRequests(requests)
+    if (!ordered) return { status: 'stale' }
+    for (const request of ordered) {
+      if (!this.pathReservationRequestIsCurrent(request)) return { status: 'stale' }
+      if (this.pathReservations.has(request.canonicalPath)) return { status: 'busy' }
+    }
+
+    const reservation = Object.freeze({ ownerId }) as WorkspaceDocumentPathReservation
+    const paths = Object.freeze(ordered.map((request) => request.canonicalPath))
+    this.reservedPathsByToken.set(reservation, paths)
+    for (const path of paths) this.pathReservations.set(path, reservation)
+    return { reservation, status: 'acquired' }
+  }
+
+  releasePaths(
+    reservation: WorkspaceDocumentPathReservation,
+  ): ReleaseWorkspaceDocumentPathReservationResult {
+    const paths = this.reservedPathsByToken.get(reservation)
+    if (!paths) return { status: 'already-released' }
+
+    for (const path of paths) {
+      if (this.pathReservations.get(path) === reservation) this.pathReservations.delete(path)
+    }
+    this.reservedPathsByToken.delete(reservation)
+    return { status: 'released' }
+  }
+
+  acquireMutationLeases(
+    stamps: readonly WorkspaceDocumentTargetStamp[],
+    ownerId: string,
+  ): WorkspaceDocumentMutationLeaseResult {
+    const acquired: WorkspaceDocumentMutationLeaseEntry[] = []
+    const ordered = uniqueTargetStamps(stamps)
+    for (const stamp of ordered) {
+      const result = acquireDocumentMutationLease(
+        stamp.buffer,
+        stamp.bufferRevision,
+        stamp.snapshot,
+        ownerId,
+      )
+      if (result.status === 'acquired') {
+        acquired.push({ buffer: stamp.buffer, lease: result.lease, path: stamp.path })
+        continue
+      }
+
+      releaseMutationLeaseEntries(acquired)
+      return { path: stamp.path, status: result.status }
+    }
+
+    return {
+      leaseSet: Object.freeze({ entries: Object.freeze(acquired), ownerId }),
+      status: 'acquired',
+    }
+  }
+
+  releaseMutationLeases(leaseSet: WorkspaceDocumentMutationLeaseSet): boolean {
+    return releaseMutationLeaseEntries(leaseSet.entries)
+  }
+
+  retainMutationLeasesForPaths(
+    leaseSet: WorkspaceDocumentMutationLeaseSet,
+    affectedPaths: readonly string[],
+  ): WorkspaceDocumentMutationLeaseSet {
+    const affected = new Set(affectedPaths)
+    const retained: WorkspaceDocumentMutationLeaseEntry[] = []
+    for (const entry of leaseSet.entries) {
+      const documentId = this.documentIdsByBuffer.get(entry.buffer)
+      const document = documentId ? this.liveDocumentsById.get(documentId) : null
+      if (document && affected.has(document.path)) {
+        retained.push({ ...entry, path: document.path })
+        continue
+      }
+      releaseDocumentMutationLease(entry.buffer, entry.lease)
+    }
+    return Object.freeze({ entries: Object.freeze(retained), ownerId: leaseSet.ownerId })
+  }
+
+  prepareMutationLeaseRecoveryConflictTransfer(
+    leaseSet: WorkspaceDocumentMutationLeaseSet,
+    affectedPaths: readonly string[],
+    operationId: string,
+  ): WorkspaceDocumentRecoveryLeaseTransferPreparationResult {
+    const paths = Array.from(new Set(affectedPaths)).sort()
+    const affected = new Set(paths)
+    const retained = leaseSet.entries.flatMap((entry) => {
+      const documentId = this.documentIdsByBuffer.get(entry.buffer)
+      const document = documentId ? this.liveDocumentsById.get(documentId) : null
+      if (!document || !affected.has(document.path)) return []
+      return [{ document, entry }]
+    })
+    for (const { document } of retained) {
+      if (!this.recoveryConflictByBuffer.has(document.buffer)) continue
+      return { path: document.path, status: 'busy' }
+    }
+
+    const transfer = Object.freeze({ operationId })
+    this.recoveryLeaseTransfers.set(transfer, {
+      affectedPaths: paths,
+      leaseSet,
+      operationId,
+      retained,
+    })
+    return { status: 'prepared', transfer }
+  }
+
+  commitMutationLeaseRecoveryConflictTransfer(
+    transfer: WorkspaceDocumentRecoveryLeaseTransfer,
+  ): readonly string[] {
+    const prepared = this.recoveryLeaseTransfers.get(transfer)
+    if (!prepared) {
+      throw createClientInvariantError('Recovery lease transfer was not prepared')
+    }
+    this.recoveryLeaseTransfers.delete(transfer)
+
+    const retainedBuffers = new Set(prepared.retained.map(({ entry }) => entry.buffer))
+    for (const entry of prepared.leaseSet.entries) {
+      if (retainedBuffers.has(entry.buffer)) continue
+      releaseDocumentMutationLease(entry.buffer, entry.lease)
+    }
+    for (const { document, entry } of prepared.retained) {
+      this.recoveryConflictByBuffer.set(document.buffer, {
+        lease: entry.lease,
+        operationId: prepared.operationId,
+        previousSync: document.sync,
+      })
+      this.setLiveDocument({
+        ...document,
+        sync: {
+          affectedPaths: prepared.affectedPaths,
+          kind: 'recovery-conflict',
+          operationId: prepared.operationId,
+          path: document.path,
+        },
+      })
+    }
+    return prepared.retained.map(({ document }) => document.path)
+  }
+
+  markRecoveryConflict(
+    affectedPaths: readonly string[],
+    operationId: string,
+  ): WorkspaceDocumentRecoveryConflictResult {
+    const paths = Array.from(new Set(affectedPaths)).sort()
+    const documents = paths.flatMap((path) => {
+      const document = this.liveDocumentsById.get(path)
+      return document ? [document] : []
+    })
+    const acquired: Array<{
+      document: LiveEditorDocument
+      entry: WorkspaceDocumentRecoveryConflictEntry
+    }> = []
+
+    for (const document of documents) {
+      const existing = this.recoveryConflictByBuffer.get(document.buffer)
+      if (existing?.operationId === operationId) continue
+      if (existing) {
+        releaseRecoveryConflictEntries(acquired)
+        return { path: document.path, status: 'busy' }
+      }
+
+      const result = acquireDocumentMutationLease(
+        document.buffer,
+        document.buffer.getRevision(),
+        document.buffer.getSnapshot(),
+        `workspace-recovery:${operationId}`,
+      )
+      if (result.status !== 'acquired') {
+        releaseRecoveryConflictEntries(acquired)
+        return { path: document.path, status: result.status }
+      }
+      acquired.push({
+        document,
+        entry: {
+          lease: result.lease,
+          operationId,
+          previousSync: document.sync,
+        },
+      })
+    }
+
+    for (const { document, entry } of acquired) {
+      this.recoveryConflictByBuffer.set(document.buffer, entry)
+      this.setLiveDocument({
+        ...document,
+        sync: {
+          affectedPaths: paths,
+          kind: 'recovery-conflict',
+          operationId,
+          path: document.path,
+        },
+      })
+    }
+    return {
+      conflictedPaths: documents.map((document) => document.path),
+      status: 'acquired',
+    }
+  }
+
+  clearRecoveryConflict(operationId: string): readonly string[] {
+    const cleared: string[] = []
+    for (const [buffer, entry] of this.recoveryConflictByBuffer) {
+      if (entry.operationId !== operationId) continue
+      const documentId = this.documentIdsByBuffer.get(buffer)
+      const document = documentId ? this.liveDocumentsById.get(documentId) : null
+      releaseDocumentMutationLease(buffer, entry.lease)
+      this.recoveryConflictByBuffer.delete(buffer)
+      if (!document || document.sync.kind !== 'recovery-conflict') continue
+      if (document.sync.operationId !== operationId) continue
+      this.setLiveDocument({ ...document, sync: entry.previousSync })
+      cleared.push(document.path)
+    }
+    return cleared
+  }
+
+  prepareRenameProjection(
+    from: string,
+    to: string,
+    reservation: WorkspaceDocumentPathReservation | null = null,
+  ): WorkspaceDocumentRenameProjection | null {
+    if (!this.pathsAvailable([from, to], reservation)) return null
+    if (from === to) return { from, kind: 'rename', reservation, source: null, to }
+    if (this.liveDocumentsById.has(to)) return null
+
+    return { from, kind: 'rename', reservation, source: this.prepareTargetStamp(from), to }
+  }
+
+  prepareDeleteProjection(
+    path: string,
+    reservation: WorkspaceDocumentPathReservation | null = null,
+  ): WorkspaceDocumentDeleteProjection | null {
+    if (!this.pathsAvailable([path], reservation)) return null
+    const document = this.liveDocumentsById.get(path)
+    const stamp = this.prepareTargetStamp(path)
+    if (!document || !stamp) return null
+
+    const views = Array.from(this.viewsByTabId.values()).filter(
+      (view) => view.documentId === document.id,
+    )
+    return {
+      contentRevision: this.documentContentRevisions[document.id],
+      dirty: this.isDirtyDocument(document.id),
+      document,
+      kind: 'delete',
+      reservation,
+      stamp,
+      views,
+    }
+  }
+
+  commitProjection(projection: WorkspaceDocumentProjection): boolean {
+    if (!this.projectionPathsAvailable(projection)) return false
+    if (projection.kind === 'delete') return this.commitDeleteProjection(projection)
+    if (!projection.source) return true
+    if (!this.isTargetStampCurrent(projection.source)) return false
+    if (this.liveDocumentsById.has(projection.to)) return false
+
+    this.renameLiveDocumentForOwner(projection.from, projection.to)
+    return true
+  }
+
+  rollbackProjection(projection: WorkspaceDocumentProjection): boolean {
+    if (!this.projectionPathsAvailable(projection)) return false
+    if (projection.kind === 'delete') return this.rollbackDeleteProjection(projection)
+    if (!projection.source) return true
+    if (this.liveDocumentsById.has(projection.from)) return false
+
+    const current = this.liveDocumentsById.get(projection.to)
+    if (current?.buffer !== projection.source.buffer) return false
+    this.renameLiveDocumentForOwner(projection.to, projection.from)
+    return true
   }
 
   hasLiveDocument(documentId: string): boolean {
@@ -329,7 +792,7 @@ export class WorkspaceDocumentService {
     if (!document) return false
     if (document.sync.kind !== 'settings') return false
 
-    this.liveDocumentsById.set(documentId, {
+    this.setLiveDocument({
       ...document,
       sync: {
         confirmedText,
@@ -352,7 +815,7 @@ export class WorkspaceDocumentService {
     const buffer = createEditorTextBuffer(confirmedText)
     buffer.markClean()
     const contentRevision = contentRevisionForText(confirmedText)
-    this.liveDocumentsById.set(documentId, {
+    this.setLiveDocument({
       ...document,
       buffer,
       contentRevision,
@@ -383,7 +846,7 @@ export class WorkspaceDocumentService {
     const buffer = createEditorTextBuffer(text)
     buffer.markClean()
     const contentRevision = contentRevisionForText(text)
-    this.liveDocumentsById.set(documentId, {
+    this.setLiveDocument({
       ...document,
       buffer,
       contentRevision,
@@ -426,7 +889,7 @@ export class WorkspaceDocumentService {
     const buffer = createEditorTextBuffer(text)
     buffer.markClean()
     const contentRevision = contentRevisionForText(text)
-    this.liveDocumentsById.set(documentId, {
+    this.setLiveDocument({
       ...document,
       buffer,
       contentRevision,
@@ -448,12 +911,12 @@ export class WorkspaceDocumentService {
     // The write already landed on disk, so the sync metadata advances even
     // when in-flight edits make the content checks below fail.
     const synced: LiveEditorDocument = { ...document, sync }
-    this.liveDocumentsById.set(document.id, synced)
+    this.setLiveDocument(synced)
     if (document.contentRevision !== savedContentRevision) return false
     if (!textSnapshotEqualsText(document.buffer.getTextSnapshot(), savedText)) return false
 
     document.buffer.markClean()
-    this.liveDocumentsById.set(document.id, {
+    this.setLiveDocument({
       ...synced,
       localRevision: document.buffer.getRevision(),
     })
@@ -461,25 +924,16 @@ export class WorkspaceDocumentService {
     return true
   }
 
-  recordTextChange(documentId: string): void {
-    this.dirtyContentRevision += 1
-    const contentRevision = editedContentRevision(this.dirtyContentRevision)
-    const document = this.liveDocumentsById.get(documentId)
-    if (!document) {
-      this.addDirtyPath(documentId)
-      return
+  renameLiveDocument(from: string, to: string): { wasDirty: boolean } {
+    this.assertPathsAvailable([from, to])
+    const source = this.liveDocumentsById.get(from)
+    if (source?.sync.kind === 'recovery-conflict') {
+      throw createClientInvariantError('Recovery-conflicted documents cannot be renamed')
     }
-
-    this.liveDocumentsById.set(documentId, {
-      ...document,
-      contentRevision,
-      localRevision: document.buffer.getRevision(),
-    })
-    this.setContentRevision(documentId, contentRevision)
-    this.addDirtyPath(document.path)
+    return this.renameLiveDocumentForOwner(from, to)
   }
 
-  renameLiveDocument(from: string, to: string): { wasDirty: boolean } {
+  private renameLiveDocumentForOwner(from: string, to: string): { wasDirty: boolean } {
     const wasDirty = this.isDirtyDocument(from)
     const document = this.liveDocumentsById.get(from)
     const contentRevision = this.documentContentRevisions[from]
@@ -490,12 +944,17 @@ export class WorkspaceDocumentService {
 
     if (contentRevision !== undefined) this.setContentRevision(to, contentRevision)
     if (document) {
-      this.liveDocumentsById.set(to, {
+      const renamed = {
         ...document,
         id: to,
         path: to,
         sync: document.sync.kind === 'file' ? { ...document.sync, path: to } : document.sync,
-      })
+      }
+      this.liveDocumentsById.set(to, renamed)
+      this.documentIdsByBuffer.set(document.buffer, to)
+      this.pathOwnershipRevision += 1
+      this.advancePathOwnership(from)
+      this.advancePathOwnership(to)
     }
 
     for (const [tabId, view] of this.viewsByTabId) {
@@ -550,6 +1009,7 @@ export class WorkspaceDocumentService {
       dirtyContentRevision: this.dirtyContentRevision,
       dirtyFilePaths: this.dirtyFilePaths,
       liveDocumentsById: recordFromMap(this.liveDocumentsById, previous?.liveDocumentsById),
+      pathOwnershipRevision: this.pathOwnershipRevision,
       scrollPositionByTabId: this.scrollPositionsState(
         viewsByTabId,
         previous?.scrollPositionByTabId,
@@ -679,6 +1139,51 @@ export class WorkspaceDocumentService {
     return document.buffer.isDirty()
   }
 
+  private projectionPathsAvailable(projection: WorkspaceDocumentProjection): boolean {
+    if (projection.kind === 'delete') {
+      return this.pathsAvailable([projection.document.path], projection.reservation)
+    }
+    return this.pathsAvailable([projection.from, projection.to], projection.reservation)
+  }
+
+  private pathsAvailable(
+    paths: readonly string[],
+    reservationToken: WorkspaceDocumentPathReservation | null,
+  ): boolean {
+    for (const path of paths) {
+      const reservation = this.pathReservations.get(path)
+      if (!reservation) continue
+      if (reservation === reservationToken) continue
+      return false
+    }
+    return true
+  }
+
+  private assertPathsAvailable(paths: readonly string[]): void {
+    if (this.pathsAvailable(paths, null)) return
+    throw createClientInvariantError('Workspace document path is reserved by another mutation')
+  }
+
+  private pathReservationRequestIsCurrent(
+    request: WorkspaceDocumentPathReservationRequest,
+  ): boolean {
+    const documentId = this.liveDocumentsById.has(request.canonicalPath)
+      ? request.canonicalPath
+      : null
+    if (documentId !== request.expectedDocumentId) return false
+    return (
+      this.pathOwnershipRevisionFor(request.canonicalPath) === request.expectedPathOwnershipRevision
+    )
+  }
+
+  private pathOwnershipRevisionFor(path: string): number {
+    return this.ownershipRevisionByPath.get(path) ?? 0
+  }
+
+  private advancePathOwnership(path: string): void {
+    this.ownershipRevisionByPath.set(path, this.pathOwnershipRevisionFor(path) + 1)
+  }
+
   private renameDirtyPath(from: string, to: string): void {
     if (!this.dirtyFilePaths.has(from)) return
 
@@ -710,10 +1215,161 @@ export class WorkspaceDocumentService {
       [documentId]: contentRevision,
     }
   }
+
+  private commitDeleteProjection(projection: WorkspaceDocumentDeleteProjection): boolean {
+    if (!this.isTargetStampCurrent(projection.stamp)) return false
+    this.removeLiveDocument(projection.document.id)
+    return true
+  }
+
+  private rollbackDeleteProjection(projection: WorkspaceDocumentDeleteProjection): boolean {
+    if (this.liveDocumentsById.has(projection.document.id)) return false
+
+    this.setLiveDocument(projection.document)
+    if (projection.contentRevision !== undefined) {
+      this.setContentRevision(projection.document.id, projection.contentRevision)
+    }
+    if (projection.dirty) this.addDirtyPath(projection.document.path)
+    for (const view of projection.views) this.viewsByTabId.set(view.tabId, view)
+    return true
+  }
+
+  private setLiveDocument(document: LiveEditorDocument): void {
+    const previous = this.liveDocumentsById.get(document.id)
+    if (previous?.buffer !== document.buffer) this.detachPreviousBuffer(previous)
+
+    this.liveDocumentsById.set(document.id, document)
+    if (!previous) {
+      this.pathOwnershipRevision += 1
+      this.advancePathOwnership(document.path)
+    }
+    this.documentIdsByBuffer.set(document.buffer, document.id)
+    if (this.unsubscribeByBuffer.has(document.buffer)) return
+
+    const unsubscribe = document.buffer.subscribe((event) =>
+      this.acceptBufferChange(document.buffer, event),
+    )
+    this.unsubscribeByBuffer.set(document.buffer, unsubscribe)
+  }
+
+  private detachPreviousBuffer(document: LiveEditorDocument | undefined): void {
+    if (!document) return
+    this.detachBuffer(document.buffer)
+  }
+
+  private detachBuffer(buffer: EditorTextBuffer): void {
+    this.releaseRecoveryConflict(buffer)
+    this.unsubscribeByBuffer.get(buffer)?.()
+    this.unsubscribeByBuffer.delete(buffer)
+    this.documentIdsByBuffer.delete(buffer)
+  }
+
+  private releaseRecoveryConflict(buffer: EditorTextBuffer): void {
+    const conflict = this.recoveryConflictByBuffer.get(buffer)
+    if (!conflict) return
+    releaseDocumentMutationLease(buffer, conflict.lease)
+    this.recoveryConflictByBuffer.delete(buffer)
+  }
+
+  private acceptBufferChange(buffer: EditorTextBuffer, event: EditorTextBufferChange): void {
+    const documentId = this.documentIdsByBuffer.get(buffer)
+    if (!documentId) return
+
+    const document = this.liveDocumentsById.get(documentId)
+    if (!document || document.buffer !== buffer) return
+
+    const localRevision = buffer.getRevision()
+    if (localRevision <= document.localRevision) return
+
+    if (event.change.kind === 'synchronize') {
+      this.liveDocumentsById.set(documentId, { ...document, localRevision })
+      this.onStateChange()
+      return
+    }
+
+    this.acceptTextRevision(document, localRevision)
+    this.onStateChange()
+  }
+
+  private acceptTextRevision(document: LiveEditorDocument, localRevision: number): void {
+    this.dirtyContentRevision += 1
+    const contentRevision = editedContentRevision(this.dirtyContentRevision)
+    this.liveDocumentsById.set(document.id, { ...document, contentRevision, localRevision })
+    this.setContentRevision(document.id, contentRevision)
+    if (document.buffer.isDirty()) {
+      this.addDirtyPath(document.path)
+      return
+    }
+    this.deleteDirtyPath(document.path)
+  }
 }
 
 function editedContentRevision(revision: number) {
   return `e:${revision.toString(36)}`
+}
+
+function canonicalReservationRequests(
+  requests: readonly WorkspaceDocumentPathReservationRequest[],
+): readonly WorkspaceDocumentPathReservationRequest[] | null {
+  const byPath = new Map<string, WorkspaceDocumentPathReservationRequest>()
+  for (const request of requests) {
+    const existing = byPath.get(request.canonicalPath)
+    if (existing && !sameReservationRequest(existing, request)) return null
+    byPath.set(request.canonicalPath, request)
+  }
+  return Array.from(byPath.values()).toSorted((left, right) =>
+    comparePaths(left.canonicalPath, right.canonicalPath),
+  )
+}
+
+function sameReservationRequest(
+  left: WorkspaceDocumentPathReservationRequest,
+  right: WorkspaceDocumentPathReservationRequest,
+): boolean {
+  return (
+    left.expectedDocumentId === right.expectedDocumentId &&
+    left.expectedPathOwnershipRevision === right.expectedPathOwnershipRevision
+  )
+}
+
+function uniqueTargetStamps(
+  stamps: readonly WorkspaceDocumentTargetStamp[],
+): readonly WorkspaceDocumentTargetStamp[] {
+  const byBuffer = new Map<EditorTextBuffer, WorkspaceDocumentTargetStamp>()
+  for (const stamp of stamps) {
+    if (!byBuffer.has(stamp.buffer)) byBuffer.set(stamp.buffer, stamp)
+  }
+  return Array.from(byBuffer.values()).toSorted((left, right) =>
+    comparePaths(left.path, right.path),
+  )
+}
+
+function releaseMutationLeaseEntries(
+  entries: readonly WorkspaceDocumentMutationLeaseEntry[],
+): boolean {
+  let released = true
+  for (const entry of entries.toReversed()) {
+    const result = releaseDocumentMutationLease(entry.buffer, entry.lease)
+    if (result.status !== 'released') released = false
+  }
+  return released
+}
+
+function releaseRecoveryConflictEntries(
+  entries: readonly {
+    readonly document: LiveEditorDocument
+    readonly entry: WorkspaceDocumentRecoveryConflictEntry
+  }[],
+): void {
+  for (const { document, entry } of entries.toReversed()) {
+    releaseDocumentMutationLease(document.buffer, entry.lease)
+  }
+}
+
+function comparePaths(left: string, right: string): number {
+  if (left < right) return -1
+  if (left > right) return 1
+  return 0
 }
 
 function scrollPositionsEqual(

@@ -13,6 +13,12 @@ import {
   searchQuerySchema,
   treeQuerySchema,
   writeBodySchema,
+  workspaceEditPrepareBodySchema,
+  workspaceEditRecoverBodySchema,
+  workspaceEditRecoveryQuerySchema,
+  workspaceEditReleaseBodySchema,
+  workspaceEditStatusQuerySchema,
+  workspaceEditTransitionBodySchema,
 } from './contracts'
 import { errorPayload, FsError, isFsError } from './errors'
 import type { SearchStreamEvent } from './search'
@@ -83,7 +89,43 @@ export function fsRoutes(fs: FileSystemService) {
       })
       .post('/delete', ({ body }) => fs.delete(body), {
         body: deleteBodySchema,
-      }),
+      })
+      .group('/workspace-edit', (workspaceEdit) =>
+        workspaceEdit
+          .post('/prepare', ({ body }) => fs.workspaceEditPrepare(body), {
+            body: workspaceEditPrepareBodySchema,
+          })
+          .post('/commit', ({ body }) => fs.workspaceEditCommit(body), {
+            body: workspaceEditTransitionBodySchema,
+          })
+          .post('/finalize', ({ body }) => fs.workspaceEditFinalize(body), {
+            body: workspaceEditTransitionBodySchema,
+          })
+          .get('/status', ({ query }) => fs.workspaceEditStatus(query.operationId), {
+            query: workspaceEditStatusQuerySchema,
+          })
+          .post('/abort', ({ body }) => fs.workspaceEditAbort(body), {
+            body: workspaceEditTransitionBodySchema,
+          })
+          .post('/rollback', ({ body }) => fs.workspaceEditRollback(body), {
+            body: workspaceEditTransitionBodySchema,
+          })
+          .post('/undo', ({ body }) => fs.workspaceEditUndo(body), {
+            body: workspaceEditTransitionBodySchema,
+          })
+          .post('/redo', ({ body }) => fs.workspaceEditRedo(body), {
+            body: workspaceEditTransitionBodySchema,
+          })
+          .post('/recover', ({ body }) => fs.workspaceEditRecover(body), {
+            body: workspaceEditRecoverBodySchema,
+          })
+          .post('/release', ({ body }) => fs.workspaceEditRelease(body), {
+            body: workspaceEditReleaseBodySchema,
+          })
+          .get('/recovery', ({ query }) => fs.workspaceEditRecovery(query.workspace), {
+            query: workspaceEditRecoveryQuerySchema,
+          }),
+      ),
   )
 }
 

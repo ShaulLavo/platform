@@ -706,6 +706,7 @@ async function createScanContext(
 
 async function scanEntry(context: ScanContext, absolutePath: string, relativePath: string) {
   context.signal?.throwIfAborted()
+  if (context.paths.isInternalPath(relativePath)) return
   const stats = await scanEntryStats(context, absolutePath, relativePath)
   if (!stats) return
 
@@ -1034,6 +1035,7 @@ function canApplyIncrementalUpdates(readiness: WorkspaceIndexReadiness) {
 
 function shouldSkipTargetedScan(context: ScanContext, relativePath: string) {
   if (!relativePath) return false
+  if (context.paths.isInternalPath(relativePath)) return true
 
   return hasGitIgnoredAncestor(context.gitIgnore, relativePath)
 }

@@ -4,15 +4,12 @@ import type * as lsp from 'vscode-languageserver-protocol'
 
 import {
   documentText,
-  documentUriForFileName,
   fileNameForUri,
-  isInsidePath,
   lspPositionToOffset,
-  normalizeNativePath,
-  rangeFromTextSpan,
   textDocumentPositionParams,
 } from '../shared/boundary'
 import type { SessionContext } from '../shared/context'
+import { workspaceEditFromFileTextChanges } from './workspace-edit'
 
 export function handleRename(ctx: SessionContext, params: unknown): lsp.WorkspaceEdit | null {
   const request = renameParams(params)
@@ -29,44 +26,22 @@ export function handleRename(ctx: SessionContext, params: unknown): lsp.Workspac
     ctx.getLanguageService().findRenameLocations(fileName, offset, false, false, {
       providePrefixAndSuffixTextForRename: true,
     }) ?? []
-  return workspaceEditFromRenameLocations(ctx, locations, request.newName)
+  return workspaceEditFromFileTextChanges(ctx, renameFileTextChanges(locations, request.newName))
 }
 
-function workspaceEditFromRenameLocations(
-  ctx: SessionContext,
+function renameFileTextChanges(
   locations: readonly ts.RenameLocation[],
   newName: string,
-): lsp.WorkspaceEdit {
-  const changes: Record<lsp.DocumentUri, lsp.TextEdit[]> = {}
-  for (const location of locations) {
-    appendTextChange(ctx, changes, location.fileName, {
-      span: location.textSpan,
-      newText: `${location.prefixText ?? ''}${newName}${location.suffixText ?? ''}`,
-    })
-  }
-
-  return { changes }
-}
-
-function appendTextChange(
-  ctx: SessionContext,
-  changes: Record<lsp.DocumentUri, lsp.TextEdit[]>,
-  fileName: string,
-  textChange: ts.TextChange,
-): void {
-  const normalized = normalizeNativePath(fileName)
-  if (!isInsidePath(ctx.root, normalized)) return
-
-  const text = documentText(ctx, normalized)
-  if (text === null) return
-
-  const uri = documentUriForFileName(ctx, normalized)
-  const edits = changes[uri] ?? []
-  edits.push({
-    range: rangeFromTextSpan(text, textChange.span),
-    newText: textChange.newText,
-  })
-  changes[uri] = edits
+): readonly ts.FileTextChanges[] {
+  return locations.map((location) => ({
+    fileName: location.fileName,
+    textChanges: [
+      {
+        newText: `${location.prefixText ?? ''}${newName}${location.suffixText ?? ''}`,
+        span: location.textSpan,
+      },
+    ],
+  }))
 }
 
 function renameParams(params: unknown): {

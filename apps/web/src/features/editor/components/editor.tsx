@@ -48,7 +48,6 @@ type EditorProps = {
   rootPath: string
   tabId: string
   definitionTarget?: LanguageServerDefinitionTarget | null
-  onDirtyChange?: (path: string, dirty: boolean) => void
   onOpenDefinition?: (target: LanguageServerDefinitionTarget) => void | boolean
   onOpenReferences?: (result: LanguageServerReferencesResult) => void | boolean
   onScrollPositionChange?: (path: string, scrollPosition: EditorScrollPosition) => void
@@ -65,7 +64,6 @@ export function Editor({
   languageServerTarget,
   rootPath,
   tabId,
-  onDirtyChange,
   onOpenDefinition,
   onOpenReferences,
   onScrollPositionChange,
@@ -136,12 +134,12 @@ export function Editor({
       rowBackground: true,
     },
     document,
+    editability: liveDocument.editability,
     keymap: editorKeymap,
-    onChange: (state, change) => {
+    onChange: (_state, change) => {
       if (!change || change.kind === 'selection' || change.kind === 'none') return
 
       onTextChange?.(tabId, liveDocument.path, change)
-      onDirtyChange?.(liveDocument.path, state.isDirty)
     },
     plugins,
     rowPositioning,
@@ -155,7 +153,7 @@ export function Editor({
     capabilities: {
       editor: {
         dispatch: controller.commands.dispatchCommand,
-        writable: true,
+        writable: liveDocument.editability === 'editable',
       },
     },
     id: {

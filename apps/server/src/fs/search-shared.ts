@@ -12,6 +12,7 @@ import { isIgnoredPath, toPosix } from './path'
 import type { SearchMeasurementRecorder } from './search-measurement'
 import { readEntryStats, type FsEntryStats } from './stat'
 import type { GitIgnoreMatcher } from './search-gitignore'
+import type { WorkspacePaths } from './path'
 
 export type FindOptions = WorkspaceSearchQuery & {
   maxContentBytes: number
@@ -28,6 +29,7 @@ export type FindContext = {
   matcher: WorkspaceSearchMatcher
   measurement: SearchMeasurementRecorder
   options: FindOptions
+  paths: WorkspacePaths
   gitIgnore: GitIgnoreMatcher
   statCache: SearchStatCache
   warnings: WorkspaceSearchWarningEvent[]
@@ -65,6 +67,7 @@ export function isIgnoredSearchPath(
   isDirectory?: boolean,
 ) {
   if (!relativePath) return false
+  if (context.paths.isInternalPath(relativePath)) return true
   if (isIgnoredPath(relativePath)) return true
 
   return context.gitIgnore.ignores(relativePath, isDirectory)

@@ -27,6 +27,7 @@ export async function readTree(
   options: TreeReadOptions = {},
 ): Promise<FileTreeResult> {
   const target = paths.resolve(input)
+  if (paths.isInternalPath(target.relativePath)) throw new FsError('NOT_FOUND')
   const limit = createTaskLimiter(options.concurrency ?? 32)
 
   try {
@@ -77,7 +78,9 @@ async function readEntry(
   entryType: EntryTypeFilter | undefined,
   limit: TaskLimiter,
 ) {
-  const entry = await limit(() => readEntryMetadata(absoluteDirectory, relativeDirectory, name))
+  const entry = await limit(() =>
+    readEntryMetadata(paths, absoluteDirectory, relativeDirectory, name),
+  )
   if (!entry) return null
 
   if (!isDirectoryEntry(entry)) return matchingEntry(entry, entryType)
@@ -95,11 +98,13 @@ async function readEntry(
 }
 
 async function readEntryMetadata(
+  paths: WorkspacePaths,
   absoluteDirectory: string,
   relativeDirectory: string,
   name: string,
 ): Promise<FileTreeEntry | null> {
   const relativePath = joinRelative(relativeDirectory, name)
+  if (paths.isInternalPath(relativePath)) return null
   if (isIgnoredPath(relativePath, treeIgnoredNames)) return null
 
   const absolutePath = path.join(absoluteDirectory, name)

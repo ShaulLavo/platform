@@ -6,11 +6,15 @@
  * `createMetadataDatabase` refuses the default path from a test process, so a
  * call site that forgets to inject fails loudly instead of leaking.
  */
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import path from 'node:path'
 import { closeApp, createApp, type App, type AppOptions } from '../src/app'
 import { createMetadataDatabase, type MetadataDatabaseHandle } from '../src/db/client'
 
 const openApps: App[] = []
 const openDatabases: MetadataDatabaseHandle[] = []
+const openJournalRoots: string[] = []
 
 export function createTestDatabase(): MetadataDatabaseHandle {
   const database = createMetadataDatabase({ databasePath: ':memory:' })
@@ -26,10 +30,12 @@ export function createTestDatabase(): MetadataDatabaseHandle {
  */
 export function createTestApp(options: AppOptions = {}): App {
   const database = createTestDatabase()
+  const workspaceEditJournalRoot = options.workspaceEditJournalRoot ?? createTestJournalRoot()
   const app = createApp({
     ...options,
     metadataDatabase: options.metadataDatabase ?? database,
     orchestration: { database: database.db, ...options.orchestration },
+    workspaceEditJournalRoot,
   })
   openApps.push(app)
 
@@ -42,4 +48,13 @@ export async function closeTestApps(): Promise<void> {
   for (const database of openDatabases.splice(0)) {
     database.close()
   }
+  for (const root of openJournalRoots.splice(0)) {
+    rmSync(root, { force: true, recursive: true })
+  }
+}
+
+function createTestJournalRoot() {
+  const root = mkdtempSync(path.join(tmpdir(), 'platform-workspace-edit-'))
+  openJournalRoots.push(root)
+  return root
 }

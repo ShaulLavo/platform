@@ -5,6 +5,10 @@ import type {
   UnsavedDialogTarget,
 } from '@/features/editor/hooks/use-dirty-tab-close'
 import { compareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'
+import type {
+  WorkspaceEditServiceSnapshot,
+  WorkspaceMutationReporter,
+} from '@/features/editor/state/workspace-edit-service'
 import { activeEditorTabForWorkbenchPanels } from '@/features/workbench/utils/panels'
 import type { FocusArea, FocusTargetId, FocusTargetRegistration } from '@/lib/focus/state/service'
 import { FocusService } from '@/lib/focus/state/service'
@@ -166,6 +170,119 @@ test('an editor open that produces no active tab settles unavailable', async () 
   expect(focus.getSnapshot().requested).toBeNull()
 })
 
+test.each([
+  ['workspace.undoWorkspaceEdit', 'workspaceEditUndoable', 'undo'],
+  ['workspace.redoWorkspaceEdit', 'workspaceEditRedoable', 'redo'],
+] as const)(
+  'workspace history command %s settles through its coordinator',
+  async (id, when, method) => {
+    const focus = trackedFocusService()
+    const undo = vi.fn(async () => true)
+    const redo = vi.fn(async () => true)
+    const commandRuntime = createTestCommandRuntime({
+      focus,
+      options: {
+        rootPath: '/repo',
+        runtime: {
+          workspaceEdits: {
+            canMutateWorkspace: () => true,
+            getSnapshot: idleWorkspaceEditSnapshot,
+            redo,
+            runWorkspaceMutation: runTestWorkspaceMutation,
+            undo,
+          },
+        },
+        snapshot: { [when]: true },
+      },
+      queryClient: createTestQueryClient(),
+    })
+
+    const ticket = commandRuntime.bus.dispatch(id, invocation())
+
+    expect(ticket.claimed).toBe(true)
+    await expect(ticket.completion).resolves.toEqual({ status: 'handled' })
+    expect(method === 'undo' ? undo : redo).toHaveBeenCalledOnce()
+  },
+)
+
+test('workspace history commands are disabled while the coordinator has no available group', () => {
+  const focus = trackedFocusService()
+  const undo = vi.fn(async () => true)
+  const commandRuntime = createTestCommandRuntime({
+    focus,
+    options: {
+      rootPath: '/repo',
+      runtime: {
+        workspaceEdits: {
+          canMutateWorkspace: () => true,
+          getSnapshot: idleWorkspaceEditSnapshot,
+          redo: async () => false,
+          runWorkspaceMutation: runTestWorkspaceMutation,
+          undo,
+        },
+      },
+    },
+    queryClient: createTestQueryClient(),
+  })
+
+  const ticket = commandRuntime.bus.dispatch('workspace.undoWorkspaceEdit', invocation())
+
+  expect(ticket.claimed).toBe(false)
+  expect(undo).not.toHaveBeenCalled()
+})
+
+test.each(['workspace.saveFile', 'workspace.saveAllFiles'] as const)(
+  '%s is disabled while the workspace mutation gate is held',
+  (id) => {
+    const focus = trackedFocusService()
+    const commandRuntime = createTestCommandRuntime({
+      focus,
+      options: {
+        rootPath: '/repo',
+        snapshot: {
+          activeDocumentSavable: true,
+          activeFilePath: '/repo/a.ts',
+          workspaceMutable: false,
+        },
+      },
+      queryClient: createTestQueryClient(),
+    })
+
+    expect(commandRuntime.bus.dispatch(id, invocation()).claimed).toBe(false)
+  },
+)
+
+async function runTestWorkspaceMutation<T>(
+  _affectedPaths: readonly string[] | 'all',
+  operation: (reportAffectedPaths: WorkspaceMutationReporter) => Promise<T>,
+): Promise<T> {
+  return operation(() => undefined)
+}
+
+test('a recovery-conflicted active document is not exposed as savable', () => {
+  const focus = trackedFocusService()
+  const commandRuntime = createTestCommandRuntime({
+    focus,
+    options: { rootPath: '/repo' },
+    queryClient: createTestQueryClient(),
+  })
+  const path = '/repo/a.ts'
+  commandRuntime.runtime.documents.store.getState().ensureLiveEditorDocument({
+    content: 'unsaved',
+    mtimeMs: 1,
+    path,
+    size: 7,
+    version: 'v1',
+  })
+  commandRuntime.runtime.editor.openFileSurface(path)
+  commandRuntime.runtime.documents.store
+    .getState()
+    .markWorkspaceDocumentRecoveryConflict([path], 'partial')
+
+  expect(commandRuntime.captureSnapshot().activeDocumentSavable).toBe(false)
+  expect(commandRuntime.bus.dispatch('workspace.saveFile', invocation()).claimed).toBe(false)
+})
+
 test.each(['busy', 'not-found'] as const)(
   'close current tab leaves a %s rejection unclaimed',
   async (reason) => {
@@ -267,6 +384,19 @@ function closeCommandRuntime(focus: FocusService, requestCloseTab: RequestCloseT
 
 function invocation() {
   return { source: { caller: 'command-dispatch-test', kind: 'programmatic' } } as const
+}
+
+function idleWorkspaceEditSnapshot(): WorkspaceEditServiceSnapshot {
+  return {
+    canCancel: false,
+    canRedo: false,
+    canUndo: false,
+    code: null,
+    message: null,
+    phase: 'idle',
+    preview: null,
+    recovery: null,
+  }
 }
 
 function registerPassiveTarget(

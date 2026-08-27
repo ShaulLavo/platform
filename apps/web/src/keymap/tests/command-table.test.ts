@@ -41,6 +41,8 @@ const TEXT_MENU_EDITOR_COMMANDS = [
 ] as const
 
 const ASYNC_COMMAND_IDS = [
+  'workspace.undoWorkspaceEdit',
+  'workspace.redoWorkspaceEdit',
   'workspace.showQuickAccess',
   'workspace.showCommandPalette',
   'workspace.showSettings',
@@ -123,6 +125,8 @@ const FILE_OPERATION_COMMAND_IDS = [
 ] as const satisfies readonly PlatformCommandId[]
 
 const WORKSPACE_OPERATION_COMMAND_IDS = [
+  'workspace.undoWorkspaceEdit',
+  'workspace.redoWorkspaceEdit',
   'workspace.copyAddress',
   'workspace.newIsolatedSession',
   'workspace.toggleDiffViewMode',
@@ -190,8 +194,8 @@ describe('command table', () => {
     expect(new Set(ids).size).toBe(ids.length)
   })
 
-  it('has complete execution metadata on all 140 rows', () => {
-    expect(platformCommands).toHaveLength(140)
+  it('has complete execution metadata on all 142 rows', () => {
+    expect(platformCommands).toHaveLength(142)
 
     for (const command of platformCommands) {
       expect(['async', 'sync']).toContain(command.execution)
@@ -236,6 +240,8 @@ describe('command table', () => {
     expect(commandIdsWithWhen('saveableTab')).toEqual(['workspace.saveFile'])
     expect(commandIdsWithWhen('tabOpen')).toEqual(expectedCommandIds(TAB_OPEN_COMMAND_IDS))
     expect(commandIdsWithWhen('chatMode')).toEqual(expectedCommandIds(CHAT_MODE_COMMAND_IDS))
+    expect(commandIdsWithWhen('workspaceEditUndoable')).toEqual(['workspace.undoWorkspaceEdit'])
+    expect(commandIdsWithWhen('workspaceEditRedoable')).toEqual(['workspace.redoWorkspaceEdit'])
   })
 
   it('registers the four hidden Editor commands exposed by the text menu', () => {

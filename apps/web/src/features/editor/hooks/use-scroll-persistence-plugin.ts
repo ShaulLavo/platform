@@ -15,6 +15,13 @@ type ScrollPersistenceState = {
   onChange?: (path: string, scrollPosition: EditorScrollPosition) => void
 }
 
+type PendingScrollPosition = {
+  left: number
+  onChange: ScrollPersistenceState['onChange']
+  path: string
+  top: number
+}
+
 export function useScrollPersistencePlugin({
   document,
   onScrollPositionChange,
@@ -60,30 +67,36 @@ function createScrollPositionPersister(stateRef: RefObject<ScrollPersistenceStat
   let lastPath = ''
   let lastLeft = -1
   let lastTop = -1
-  let pendingPath = ''
-  let pendingLeft = 0
-  let pendingTop = 0
+  let pending: PendingScrollPosition | null = null
   let frame: number | null = null
 
   const flush = () => {
     frame = null
-    if (pendingPath === lastPath && pendingLeft === lastLeft && pendingTop === lastTop) {
+    const next = pending
+    pending = null
+    if (!next) return
+    if (next.path === lastPath && next.left === lastLeft && next.top === lastTop) {
       return
     }
 
-    lastPath = pendingPath
-    lastLeft = pendingLeft
-    lastTop = pendingTop
-    stateRef.current.onChange?.(pendingPath, { left: pendingLeft, top: pendingTop })
+    lastPath = next.path
+    lastLeft = next.left
+    lastTop = next.top
+    next.onChange?.(next.path, { left: next.left, top: next.top })
   }
 
   return {
     persistSnapshot: (snapshot: EditorViewSnapshot) => {
-      pendingPath = snapshot.documentId ?? stateRef.current.path
-      pendingLeft = snapshot.viewport.scrollLeft
-      pendingTop = capOverscrollTop(snapshot.viewport.scrollTop, snapshot)
+      // The ref can move to another tab before this frame flushes.
+      const state = stateRef.current
+      pending = {
+        left: snapshot.viewport.scrollLeft,
+        onChange: state.onChange,
+        path: snapshot.documentId ?? state.path,
+        top: capOverscrollTop(snapshot.viewport.scrollTop, snapshot),
+      }
       if (frame !== null) return
-      if (pendingPath === lastPath && pendingLeft === lastLeft && pendingTop === lastTop) return
+      if (pending.path === lastPath && pending.left === lastLeft && pending.top === lastTop) return
 
       frame = requestAnimationFrame(flush)
     },

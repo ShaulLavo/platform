@@ -46,12 +46,29 @@ export function textDocumentPositionParams(params: unknown): {
 }
 
 export function documentText(ctx: SessionContext, fileName: string): string | null {
+  return documentTextSnapshot(ctx, fileName)?.text ?? null
+}
+
+export type DocumentTextSnapshot = {
+  readonly text: string
+  readonly version: number | null
+}
+
+export function documentTextSnapshot(
+  ctx: SessionContext,
+  fileName: string,
+): DocumentTextSnapshot | null {
   const normalized = normalizeNativePath(fileName)
-  for (const document of ctx.documents.values()) {
-    if (samePath(document.fileName, normalized)) return document.text
-  }
+  const document = openDocumentForFileName(ctx, normalized)
+  if (document) return { text: document.text, version: document.version }
   if (!canReadFile(ctx, normalized)) return null
-  return ts.sys.readFile(normalized) ?? null
+
+  try {
+    const text = ts.sys.readFile(normalized)
+    return text === undefined ? null : { text, version: null }
+  } catch {
+    return null
+  }
 }
 
 export function fileNameForUri(ctx: SessionContext, uri: lsp.DocumentUri): string | null {
@@ -78,6 +95,19 @@ export function rangeFromTextSpan(text: string, span: ts.TextSpan): lsp.Range {
   return {
     start: offsetToLspPosition(text, start),
     end: offsetToLspPosition(text, end),
+  }
+}
+
+export function strictRangeFromTextSpan(text: string, span: ts.TextSpan): lsp.Range | null {
+  if (!Number.isSafeInteger(span.start)) return null
+  if (!Number.isSafeInteger(span.length)) return null
+  if (span.start < 0 || span.length < 0) return null
+  if (span.start > text.length) return null
+  if (span.length > text.length - span.start) return null
+
+  return {
+    start: offsetToLspPosition(text, span.start),
+    end: offsetToLspPosition(text, span.start + span.length),
   }
 }
 
@@ -111,6 +141,14 @@ function canReadFile(ctx: SessionContext, fileName: string): boolean {
   if (isInsidePath(ctx.root, fileName)) return true
   if (isInsidePath(ctx.workspaceRoot, fileName)) return true
   return isInsidePath(typeScriptLibDirectory(), fileName)
+}
+
+function openDocumentForFileName(ctx: SessionContext, fileName: string) {
+  for (const document of ctx.documents.values()) {
+    if (samePath(document.fileName, fileName)) return document
+  }
+
+  return null
 }
 
 function documentUriToFileName(uri: string): string | null {

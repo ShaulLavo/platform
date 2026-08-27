@@ -3,6 +3,8 @@ import type { FileTreeModel } from '@workspace/tree'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState, type RefObject } from 'react'
 
+import { useWorkspaceMutationAllowed } from '@/features/editor/hooks/use-workspace-mutation-allowed'
+import { useOptionalWorkspaceEditService } from '@/features/editor/providers/workspace-edit-context'
 import {
   containerContentsLoaded,
   duplicateTreePath,
@@ -35,6 +37,7 @@ export type DeleteTarget = {
  * paths because that is what the menu has; the server path is derived here.
  */
 export type TreeFsActions = {
+  readonly mutationsEnabled: boolean
   readonly createEntry: (containerPath: string, isFolder: boolean) => void
   readonly duplicateEntry: (treePath: string, isDirectory: boolean) => void
   readonly renameEntry: (rowPath: string) => void
@@ -60,6 +63,8 @@ export function useFsActions({
   treeRef: RefObject<FileTreeModel | null>
 }) {
   const queryClient = useQueryClient()
+  const mutationsEnabled = useWorkspaceMutationAllowed()
+  const workspaceEdits = useOptionalWorkspaceEditService()
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null)
   // Set while an inline edit is creating rather than renaming, so the commit
   // handler knows to write a new entry instead of moving an existing one.
@@ -68,7 +73,10 @@ export function useFsActions({
   const deferredCreateRef = useRef<DeferredCreate | null>(null)
 
   const createMutation = useMutation({
-    mutationFn: (request: CreateRequest) => createEntryOnDisk(rootPath, request),
+    mutationFn: (request: CreateRequest) => {
+      const path = workspacePathForTreePath(rootPath, request.treePath)
+      return runWorkspaceMutation([path], () => createEntryOnDisk(path, request.isFolder))
+    },
     onError: (error, request) => {
       // The tree already renamed the placeholder row optimistically; nothing on
       // disk backs it now, so drop it rather than leave a phantom.
@@ -81,11 +89,12 @@ export function useFsActions({
   })
 
   const renameMutation = useMutation({
-    mutationFn: (request: MoveRequest) =>
-      renamePath(
-        workspacePathForTreePath(rootPath, request.from),
-        workspacePathForTreePath(rootPath, request.to),
-      ),
+    mutationFn: (request: MoveRequest) => {
+      const from = workspacePathForTreePath(rootPath, request.from)
+      const to = workspacePathForTreePath(rootPath, request.to)
+      const affectedPaths = request.isFolder ? 'all' : [from, to]
+      return runWorkspaceMutation(affectedPaths, () => renamePath(from, to))
+    },
     onError: (error, request) => {
       // The refetched tree is identical to the one we already hold, so the path
       // sync has nothing to correct — put the row back by hand.
@@ -99,22 +108,27 @@ export function useFsActions({
   })
 
   const duplicateMutation = useMutation({
-    mutationFn: (request: MoveRequest) =>
-      copyPath(
-        workspacePathForTreePath(rootPath, request.from),
-        workspacePathForTreePath(rootPath, request.to),
-      ),
+    mutationFn: (request: MoveRequest) => {
+      const from = workspacePathForTreePath(rootPath, request.from)
+      const to = workspacePathForTreePath(rootPath, request.to)
+      const affectedPaths = request.isFolder ? 'all' : [to]
+      return runWorkspaceMutation(affectedPaths, () => copyPath(from, to))
+    },
     onError: (error) => reportError(toClientError(error)),
     onSettled: () => invalidateTreeQueries(queryClient),
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (target: DeleteTarget) => deletePath(target.path, target.isDirectory),
+    mutationFn: (target: DeleteTarget) => {
+      const affectedPaths = target.isDirectory ? 'all' : [target.path]
+      return runWorkspaceMutation(affectedPaths, () => deletePath(target.path, target.isDirectory))
+    },
     onSettled: () => invalidateTreeQueries(queryClient),
     onSuccess: () => setDeleteTarget(null),
   })
 
   function createEntry(containerPath: string, isFolder: boolean) {
+    if (!mutationsEnabled) return
     const tree = treeRef.current
     if (!tree) return
     if (containerContentsLoaded(modelRef.current.loadedDirectoryPaths, containerPath)) {
@@ -127,6 +141,14 @@ export function useFsActions({
     // `resumeDeferredCreate` start the edit once they have landed.
     deferredCreateRef.current = { containerPath, isFolder }
     expandTreeDirectory(tree, containerPath)
+  }
+
+  function runWorkspaceMutation<T>(
+    affectedPaths: readonly string[] | 'all',
+    operation: () => Promise<T>,
+  ) {
+    if (!workspaceEdits) return operation()
+    return workspaceEdits.runWorkspaceMutation(affectedPaths, operation)
   }
 
   /** Called by the pane after each model sync, once per settled tree. */
@@ -154,6 +176,7 @@ export function useFsActions({
   }
 
   function duplicateEntry(treePath: string, isDirectory: boolean) {
+    if (!mutationsEnabled) return
     duplicateMutation.mutate({
       from: canonicalTreePath(treePath),
       isFolder: isDirectory,
@@ -167,6 +190,7 @@ export function useFsActions({
 
   /** Wired into `useFileTree`'s `renaming.onRename`; paths carry no trailing slash. */
   function completeRename(event: FileTreeRenameEvent) {
+    if (!mutationsEnabled) return
     const pendingCreatePath = pendingCreatePathRef.current
     pendingCreatePathRef.current = null
     if (pendingCreatePath === event.sourcePath) {
@@ -182,7 +206,7 @@ export function useFsActions({
   }
 
   function confirmDelete() {
-    if (!deleteTarget) return
+    if (!deleteTarget || !mutationsEnabled) return
 
     deleteMutation.mutate(deleteTarget)
   }
@@ -190,8 +214,14 @@ export function useFsActions({
   const actions: TreeFsActions = {
     createEntry,
     duplicateEntry,
-    renameEntry: (rowPath) => void treeRef.current?.startRenaming(rowPath),
-    requestDelete: (target) => setDeleteTarget(target),
+    mutationsEnabled,
+    renameEntry: (rowPath) => {
+      if (!mutationsEnabled) return
+      treeRef.current?.startRenaming(rowPath)
+    },
+    requestDelete: (target) => {
+      if (mutationsEnabled) setDeleteTarget(target)
+    },
   }
 
   return {
@@ -200,6 +230,7 @@ export function useFsActions({
     resumeDeferredCreate,
     deleteDialog: {
       deleting: deleteMutation.isPending,
+      mutationsEnabled,
       error: deleteMutation.error ? errorMessage(deleteMutation.error) : null,
       onCancel: () => setDeleteTarget(null),
       onConfirm: confirmDelete,
@@ -208,9 +239,8 @@ export function useFsActions({
   }
 }
 
-function createEntryOnDisk(rootPath: string, request: CreateRequest) {
-  const path = workspacePathForTreePath(rootPath, request.treePath)
-  if (request.isFolder) return ensureFolderPath(path)
+function createEntryOnDisk(path: string, isFolder: boolean) {
+  if (isFolder) return ensureFolderPath(path)
 
   return createFileContent(path, '')
 }

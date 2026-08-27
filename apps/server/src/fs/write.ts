@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { Stats } from 'node:fs'
-import { readFile, realpath, rm, rename, writeFile } from 'node:fs/promises'
+import { chmod, open, readFile, realpath, rm, rename, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { FsError, mapNodeError } from './errors'
 import { lstatOptional, statOptional } from './mutation-target'
@@ -16,12 +16,15 @@ export async function writeTextFile(paths: WorkspacePaths, body: WriteBody) {
   try {
     const writePath = await writablePath(target.absolutePath)
     tempPath = temporaryPath(writePath)
-    await assertWritableTarget(writePath, {
+    const existing = await assertWritableTarget(writePath, {
       baseVersion: body.baseVersion,
       expectedMtimeMs: body.expectedMtimeMs,
     })
     await writeFile(tempPath, body.content, 'utf8')
+    if (existing) await chmod(tempPath, existing.mode)
+    await syncPath(tempPath)
     await rename(tempPath, writePath)
+    await syncPath(path.dirname(writePath))
     return target.relativePath
   } catch (error) {
     await removeTempFile(tempPath)
@@ -35,17 +38,29 @@ async function assertWritableTarget(
   expected: { baseVersion?: string; expectedMtimeMs?: number },
 ) {
   const stats = await statOptional(absolutePath)
-  if (!stats) return
+  if (!stats) {
+    if (expected.baseVersion !== undefined) throw new FsError('FILE_CHANGED')
+    return null
+  }
 
   assertFile(stats)
   if (expected.baseVersion !== undefined) {
     const currentVersion = await targetVersion(absolutePath, stats, expected.baseVersion)
     if (currentVersion !== expected.baseVersion) throw new FsError('FILE_CHANGED')
   }
-  if (expected.expectedMtimeMs === undefined) return
-  if (Math.abs(stats.mtimeMs - expected.expectedMtimeMs) <= 1) return
+  if (expected.expectedMtimeMs === undefined) return stats
+  if (Math.abs(stats.mtimeMs - expected.expectedMtimeMs) <= 1) return stats
 
   throw new FsError('FILE_CHANGED')
+}
+
+async function syncPath(target: string) {
+  const handle = await open(target, 'r')
+  try {
+    await handle.sync()
+  } finally {
+    await handle.close()
+  }
 }
 
 async function targetVersion(absolutePath: string, stats: Stats, baseVersion: string) {

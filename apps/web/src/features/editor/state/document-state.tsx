@@ -13,6 +13,19 @@ import {
   type LiveEditorViewDocument,
   type UnsyncedLiveEditorDocumentInput,
   type WorkspaceDocumentServiceState,
+  type WorkspaceDocumentDeleteProjection,
+  type WorkspaceDocumentProjection,
+  type WorkspaceDocumentMutationLeaseResult,
+  type WorkspaceDocumentMutationLeaseSet,
+  type WorkspaceDocumentRecoveryConflictResult,
+  type WorkspaceDocumentRecoveryLeaseTransfer,
+  type WorkspaceDocumentRecoveryLeaseTransferPreparationResult,
+  type WorkspaceDocumentPathReservation,
+  type WorkspaceDocumentPathReservationRequest,
+  type WorkspaceDocumentPathReservationResult,
+  type ReleaseWorkspaceDocumentPathReservationResult,
+  type WorkspaceDocumentRenameProjection,
+  type WorkspaceDocumentTargetStamp,
 } from '@/features/editor/state/workspace-document-service'
 
 export type { LiveEditorDocument, UnsyncedLiveEditorDocumentInput }
@@ -60,9 +73,52 @@ type EditorDocumentStoreActions = {
   replaceUnsyncedEditorDocumentText: (documentId: string, text: string) => boolean
   /** Brings a clean settings buffer back in step with the file; see the service. */
   reconcileSettingsDocument: (documentId: string, text: string, revision: string) => boolean
-  recordLiveEditorDocumentTextChange: (documentId: string) => void
+  prepareWorkspaceDocumentTarget: (documentId: string) => WorkspaceDocumentTargetStamp | null
+  isWorkspaceDocumentTargetCurrent: (stamp: WorkspaceDocumentTargetStamp) => boolean
+  prepareWorkspaceDocumentDelete: (
+    path: string,
+    reservation?: WorkspaceDocumentPathReservation | null,
+  ) => WorkspaceDocumentDeleteProjection | null
+  prepareWorkspaceDocumentRename: (
+    from: string,
+    to: string,
+    reservation?: WorkspaceDocumentPathReservation | null,
+  ) => WorkspaceDocumentRenameProjection | null
+  prepareWorkspaceDocumentPathReservation: (path: string) => WorkspaceDocumentPathReservationRequest
+  reserveWorkspaceDocumentPaths: (
+    requests: readonly WorkspaceDocumentPathReservationRequest[],
+    ownerId: string,
+  ) => WorkspaceDocumentPathReservationResult
+  releaseWorkspaceDocumentPaths: (
+    reservation: WorkspaceDocumentPathReservation,
+  ) => ReleaseWorkspaceDocumentPathReservationResult
+  acquireWorkspaceDocumentMutationLeases: (
+    stamps: readonly WorkspaceDocumentTargetStamp[],
+    ownerId: string,
+  ) => WorkspaceDocumentMutationLeaseResult
+  releaseWorkspaceDocumentMutationLeases: (leaseSet: WorkspaceDocumentMutationLeaseSet) => boolean
+  retainWorkspaceDocumentMutationLeasesForPaths: (
+    leaseSet: WorkspaceDocumentMutationLeaseSet,
+    affectedPaths: readonly string[],
+  ) => WorkspaceDocumentMutationLeaseSet
+  markWorkspaceDocumentRecoveryConflict: (
+    affectedPaths: readonly string[],
+    operationId: string,
+  ) => WorkspaceDocumentRecoveryConflictResult
+  clearWorkspaceDocumentRecoveryConflict: (operationId: string) => readonly string[]
+  prepareWorkspaceDocumentRecoveryConflictTransfer: (
+    leaseSet: WorkspaceDocumentMutationLeaseSet,
+    affectedPaths: readonly string[],
+    operationId: string,
+  ) => WorkspaceDocumentRecoveryLeaseTransferPreparationResult
+  commitWorkspaceDocumentRecoveryConflictTransfer: (
+    transfer: WorkspaceDocumentRecoveryLeaseTransfer,
+  ) => readonly string[]
+  commitWorkspaceDocumentProjection: (projection: WorkspaceDocumentProjection) => boolean
+  rollbackWorkspaceDocumentProjection: (projection: WorkspaceDocumentProjection) => boolean
   removeEditorView: (tabId: string) => boolean
   renameLiveEditorDocumentPath: (from: string, to: string) => { wasDirty: boolean }
+  runWorkspaceDocumentBatch: <T>(run: () => T) => T
   /** Replaces the scroll-restore seeds (e.g. after a workspace switch). Not reactive. */
   seedEditorScrollPositions: (byPath: Readonly<Record<string, EditorScrollPosition>>) => void
   /** The single eviction path: everything outside the keep sets is dropped. */
@@ -105,38 +161,14 @@ export function useEditorDocumentState<T>(selector: (state: EditorDocumentStore)
   return useStore(useEditorDocumentStoreApi(), selector)
 }
 
-/**
- * The same read, for a surface that works with or without live documents.
- *
- * A diff renders in the git panel, in a checkpoint, in a test — and only wants to know whether some
- * editor happens to hold a path open. Throwing at it for being mounted outside the editor's
- * provider would turn an optional capability into a hard dependency, so an absent provider reads
- * as "nothing is open" instead.
- */
-export function useOptionalEditorDocumentState<T>(selector: (state: EditorDocumentStore) => T): T {
-  return useStore(use(EditorDocumentStateContext) ?? NO_LIVE_DOCUMENTS, selector)
-}
-
-/** Enough of the store to be read from, and never anything to read. */
-const EMPTY_DOCUMENT_STATE = {
-  documentContentRevisions: {},
-  liveDocumentsById: {},
-} as unknown as EditorDocumentStore
-
-const NO_LIVE_DOCUMENTS = {
-  getInitialState: () => EMPTY_DOCUMENT_STATE,
-  getState: () => EMPTY_DOCUMENT_STATE,
-  setState: () => undefined,
-  subscribe: () => () => undefined,
-} as unknown as EditorDocumentStoreApi
-
 export function createEditorDocumentStore(options: CreateEditorDocumentStoreOptions = {}) {
-  const service = new WorkspaceDocumentService()
-  if (options.scrollPositionSeeds) service.seedScrollPositions(options.scrollPositionSeeds)
-
   return createStore<EditorDocumentStore>()(
     subscribeWithSelector((set) => {
-      const publish = () => set(service.state())
+      let service: WorkspaceDocumentService
+      const publication = new StorePublicationGate(() => set(service.state()))
+      const publish = () => publication.request()
+      service = new WorkspaceDocumentService(publish)
+      if (options.scrollPositionSeeds) service.seedScrollPositions(options.scrollPositionSeeds)
 
       return {
         ...service.state(),
@@ -203,9 +235,52 @@ export function createEditorDocumentStore(options: CreateEditorDocumentStoreOpti
           if (reconciled) publish()
           return reconciled
         },
-        recordLiveEditorDocumentTextChange: (documentId) => {
-          service.recordTextChange(documentId)
+        prepareWorkspaceDocumentTarget: (documentId) => service.prepareTargetStamp(documentId),
+        isWorkspaceDocumentTargetCurrent: (stamp) => service.isTargetStampCurrent(stamp),
+        prepareWorkspaceDocumentDelete: (path, reservation) =>
+          service.prepareDeleteProjection(path, reservation),
+        prepareWorkspaceDocumentRename: (from, to, reservation) =>
+          service.prepareRenameProjection(from, to, reservation),
+        prepareWorkspaceDocumentPathReservation: (path) => service.preparePathReservation(path),
+        reserveWorkspaceDocumentPaths: (requests, ownerId) =>
+          service.reservePaths(requests, ownerId),
+        releaseWorkspaceDocumentPaths: (reservation) => service.releasePaths(reservation),
+        acquireWorkspaceDocumentMutationLeases: (stamps, ownerId) =>
+          service.acquireMutationLeases(stamps, ownerId),
+        releaseWorkspaceDocumentMutationLeases: (leaseSet) =>
+          service.releaseMutationLeases(leaseSet),
+        retainWorkspaceDocumentMutationLeasesForPaths: (leaseSet, affectedPaths) =>
+          service.retainMutationLeasesForPaths(leaseSet, affectedPaths),
+        markWorkspaceDocumentRecoveryConflict: (affectedPaths, operationId) => {
+          const result = service.markRecoveryConflict(affectedPaths, operationId)
+          if (result.status === 'acquired') publish()
+          return result
+        },
+        clearWorkspaceDocumentRecoveryConflict: (operationId) => {
+          const cleared = service.clearRecoveryConflict(operationId)
+          if (cleared.length > 0) publish()
+          return cleared
+        },
+        prepareWorkspaceDocumentRecoveryConflictTransfer: (leaseSet, affectedPaths, operationId) =>
+          service.prepareMutationLeaseRecoveryConflictTransfer(
+            leaseSet,
+            affectedPaths,
+            operationId,
+          ),
+        commitWorkspaceDocumentRecoveryConflictTransfer: (transfer) => {
+          const conflictedPaths = service.commitMutationLeaseRecoveryConflictTransfer(transfer)
           publish()
+          return conflictedPaths
+        },
+        commitWorkspaceDocumentProjection: (projection) => {
+          const committed = service.commitProjection(projection)
+          if (committed) publish()
+          return committed
+        },
+        rollbackWorkspaceDocumentProjection: (projection) => {
+          const rolledBack = service.rollbackProjection(projection)
+          if (rolledBack) publish()
+          return rolledBack
         },
         removeEditorView: (tabId) => {
           const removed = service.removeView(tabId)
@@ -217,6 +292,7 @@ export function createEditorDocumentStore(options: CreateEditorDocumentStoreOpti
           publish()
           return result
         },
+        runWorkspaceDocumentBatch: (run) => publication.run(run),
         retainEditorDocuments: (keep) => {
           const result = service.retain(keep)
           publish()
@@ -237,4 +313,36 @@ export function createEditorDocumentStore(options: CreateEditorDocumentStoreOpti
       }
     }),
   )
+}
+
+class StorePublicationGate {
+  private depth = 0
+  private pending = false
+
+  constructor(private readonly emit: () => void) {}
+
+  request(): void {
+    if (this.depth === 0) {
+      this.emit()
+      return
+    }
+    this.pending = true
+  }
+
+  run<T>(run: () => T): T {
+    this.depth += 1
+    try {
+      return run()
+    } finally {
+      this.finish()
+    }
+  }
+
+  private finish(): void {
+    this.depth -= 1
+    if (this.depth > 0 || !this.pending) return
+
+    this.pending = false
+    this.emit()
+  }
 }

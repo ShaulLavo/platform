@@ -3,6 +3,7 @@ import type { EditorScrollPosition, EditorTextBuffer, EditorViewSession } from '
 export type EditorRenderDocument = {
   readonly buffer: EditorTextBuffer
   readonly contentRevision?: string
+  readonly editability: 'editable' | 'readonly'
   readonly id: string
   readonly path: string
   readonly scrollPosition?: EditorScrollPosition

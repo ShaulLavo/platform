@@ -105,7 +105,22 @@ describe('TypeScriptLspSession', () => {
     expect(JSON.stringify(signature.result)).toContain('input: string')
     expect(JSON.stringify(references.result)).toContain('index.ts')
     expect(JSON.stringify(symbols.result)).toContain('value')
-    expect(JSON.stringify(rename.result)).toContain('nextValue')
+    expect(rename.result).toEqual({
+      documentChanges: [
+        {
+          edits: [
+            {
+              newText: 'nextValue',
+              range: {
+                start: { line: 1, character: 6 },
+                end: { line: 1, character: 11 },
+              },
+            },
+          ],
+          textDocument: { uri: 'file:///src/index.ts', version: 0 },
+        },
+      ],
+    })
     expect(codeActions.result).toEqual([])
   })
 
@@ -243,7 +258,20 @@ function initialize(session: TypeScriptLspSession): void {
     jsonrpc: '2.0',
     id: 1,
     method: 'initialize',
-    params: { initializationOptions: { diagnosticDelayMs: 0 } },
+    params: {
+      capabilities: {
+        workspace: {
+          workspaceEdit: {
+            changeAnnotationSupport: { groupsOnLabel: true },
+            documentChanges: true,
+            failureHandling: 'undo',
+            normalizesLineEndings: true,
+            resourceOperations: ['create', 'rename', 'delete'],
+          },
+        },
+      },
+      initializationOptions: { diagnosticDelayMs: 0 },
+    },
   })
 }
 

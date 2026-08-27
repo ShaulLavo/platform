@@ -1,4 +1,13 @@
-import { workspaceSearchGlobPatterns } from '@workspace/contracts'
+import {
+  workspaceSearchGlobPatterns,
+  type WorkspaceEditPrepareRequest,
+  type WorkspaceEditRecoverRequest,
+  type WorkspaceEditReleaseRequest,
+  type WorkspaceEditResult,
+  type WorkspaceEditTransitionRequest,
+  type WorkspacePersistenceOperation,
+  type WorkspaceResourcePrecondition,
+} from '@workspace/contracts'
 import * as v from 'valibot'
 
 export const pathSchema = v.pipe(v.string(), v.maxLength(4096))
@@ -27,6 +36,7 @@ const globQueryValueSchema = v.pipe(
 )
 
 export const treeEntrySchema = v.object({
+  canonicalPath: v.optional(pathSchema),
   name: v.string(),
   path: pathSchema,
   type: entryTypeQueryValueSchema,
@@ -221,6 +231,199 @@ export const deleteBodySchema = v.object({
   recursive: v.optional(v.boolean()),
 })
 
+const workspaceEditIdSchema = v.pipe(v.string(), v.uuid())
+const workspaceEditDigestSchema = v.pipe(v.string(), v.regex(/^sha256:[a-f0-9]{64}$/u))
+const workspaceEditIndexSchema = v.pipe(v.number(), v.safeInteger(), v.minValue(0))
+const workspaceEditGenerationSchema = v.pipe(v.number(), v.safeInteger(), v.minValue(0))
+const workspaceEditRelativePathSchema = v.pipe(
+  pathSchema,
+  v.nonEmpty(),
+  v.check(isWorkspaceEditRelativePath, 'WorkspaceEdit paths must be normalized relative paths'),
+)
+const workspaceEditWorkspaceSchema = v.pipe(
+  pathSchema,
+  v.check(isWorkspaceEditWorkspace, 'WorkspaceEdit workspace must be a normalized relative path'),
+)
+const workspaceEditSnapshotPreconditionSchema = v.strictObject({
+  kind: v.literal('snapshot'),
+  mtimeMs: v.pipe(v.number(), v.finite(), v.minValue(0)),
+  version: v.pipe(v.string(), v.nonEmpty()),
+})
+const workspaceEditMissingPreconditionSchema = v.strictObject({
+  kind: v.literal('missing'),
+})
+const workspaceEditTransactionPreconditionSchema = v.strictObject({
+  afterOperation: workspaceEditIndexSchema,
+  kind: v.literal('transaction'),
+})
+const workspaceEditExternalPreconditionSchema = v.union([
+  workspaceEditMissingPreconditionSchema,
+  workspaceEditSnapshotPreconditionSchema,
+])
+const workspaceEditExistingPreconditionSchema = v.union([
+  workspaceEditSnapshotPreconditionSchema,
+  workspaceEditTransactionPreconditionSchema,
+])
+const workspaceEditPreconditionSchema = v.union([
+  workspaceEditMissingPreconditionSchema,
+  workspaceEditSnapshotPreconditionSchema,
+  workspaceEditTransactionPreconditionSchema,
+])
+const workspaceEditWriteOperationSchema = v.strictObject({
+  expected: workspaceEditExistingPreconditionSchema,
+  index: workspaceEditIndexSchema,
+  kind: v.literal('write'),
+  path: workspaceEditRelativePathSchema,
+  text: v.string(),
+})
+const workspaceEditCreateOperationSchema = v.strictObject({
+  destination: workspaceEditPreconditionSchema,
+  ignoreIfExists: v.boolean(),
+  index: workspaceEditIndexSchema,
+  kind: v.literal('create'),
+  overwrite: v.boolean(),
+  path: workspaceEditRelativePathSchema,
+})
+const workspaceEditRenameOperationSchema = v.strictObject({
+  destination: workspaceEditPreconditionSchema,
+  ignoreIfExists: v.boolean(),
+  index: workspaceEditIndexSchema,
+  kind: v.literal('rename'),
+  newPath: workspaceEditRelativePathSchema,
+  oldPath: workspaceEditRelativePathSchema,
+  overwrite: v.boolean(),
+  source: workspaceEditExistingPreconditionSchema,
+})
+const workspaceEditDeleteOperationSchema = v.strictObject({
+  expected: workspaceEditPreconditionSchema,
+  ignoreIfNotExists: v.boolean(),
+  index: workspaceEditIndexSchema,
+  kind: v.literal('delete'),
+  path: workspaceEditRelativePathSchema,
+  recursive: v.boolean(),
+})
+
+export const workspacePersistenceOperationSchema = v.variant('kind', [
+  workspaceEditWriteOperationSchema,
+  workspaceEditCreateOperationSchema,
+  workspaceEditRenameOperationSchema,
+  workspaceEditDeleteOperationSchema,
+])
+
+export const workspaceEditPrepareBodySchema = v.strictObject({
+  bodyDigest: workspaceEditDigestSchema,
+  operationId: workspaceEditIdSchema,
+  operations: v.pipe(
+    v.array(workspacePersistenceOperationSchema),
+    v.minLength(1),
+    v.check(
+      (operations) => hasValidWorkspaceEditOperationOrder(operations),
+      'WorkspaceEdit operation order is invalid',
+    ),
+    v.readonly(),
+  ),
+  origin: v.literal('workspace-edit'),
+  workspace: workspaceEditWorkspaceSchema,
+})
+
+export const workspaceEditTransitionBodySchema = v.strictObject({
+  expectedGeneration: workspaceEditGenerationSchema,
+  operationId: workspaceEditIdSchema,
+  transitionId: workspaceEditIdSchema,
+})
+
+const workspaceEditRecoveryTargetSchema = v.union([
+  v.literal('rolled-back'),
+  v.literal('finalized'),
+  v.literal('undone'),
+  v.literal('redone'),
+])
+
+export const workspaceEditRecoverBodySchema = v.strictObject({
+  ...workspaceEditTransitionBodySchema.entries,
+  recoveryTarget: workspaceEditRecoveryTargetSchema,
+})
+
+const workspaceEditUnrecoveredPathsSchema = v.pipe(
+  v.array(workspaceEditRelativePathSchema),
+  v.check(
+    (paths) => isCanonicalPathSet(paths),
+    'WorkspaceEdit recovery paths must be sorted and unique',
+  ),
+  v.readonly(),
+)
+
+export const workspaceEditReleaseBodySchema = v.strictObject({
+  ...workspaceEditTransitionBodySchema.entries,
+  acknowledgePartial: v.optional(
+    v.strictObject({
+      generation: workspaceEditGenerationSchema,
+      unrecoveredPaths: workspaceEditUnrecoveredPathsSchema,
+    }),
+  ),
+})
+
+export const workspaceEditStatusQuerySchema = v.strictObject({
+  operationId: workspaceEditIdSchema,
+})
+
+export const workspaceEditRecoveryQuerySchema = v.strictObject({
+  workspace: workspaceEditWorkspaceSchema,
+})
+
+const workspaceEditResultEntrySchema = v.union([
+  v.strictObject({
+    exists: v.literal(false),
+    path: workspaceEditRelativePathSchema,
+  }),
+  v.strictObject({
+    exists: v.literal(true),
+    mtimeMs: v.pipe(v.number(), v.finite(), v.minValue(0)),
+    path: workspaceEditRelativePathSchema,
+    size: v.pipe(v.number(), v.safeInteger(), v.minValue(0)),
+    type: v.literal('file'),
+    version: v.pipe(v.string(), v.nonEmpty()),
+  }),
+])
+
+const workspaceEditStateSchema = v.union([
+  v.literal('preparing'),
+  v.literal('prepared'),
+  v.literal('committed'),
+  v.literal('finalized'),
+  v.literal('aborted'),
+  v.literal('rolled-back'),
+  v.literal('undo-committed'),
+  v.literal('undone'),
+  v.literal('redo-committed'),
+  v.literal('redone'),
+  v.literal('partial'),
+  v.literal('released'),
+])
+
+export const workspaceEditResultSchema = v.pipe(
+  v.strictObject({
+    affectedPaths: v.pipe(v.array(workspaceEditRelativePathSchema), v.readonly()),
+    entries: v.pipe(v.array(workspaceEditResultEntrySchema), v.readonly()),
+    eventPublication: v.union([
+      v.literal('pending'),
+      v.literal('published'),
+      v.literal('suppressed'),
+    ]),
+    generation: workspaceEditGenerationSchema,
+    operationId: workspaceEditIdSchema,
+    recoveryTarget: v.optional(workspaceEditRecoveryTargetSchema),
+    rolledBackPaths: v.pipe(v.array(workspaceEditRelativePathSchema), v.readonly()),
+    serverEpoch: workspaceEditIdSchema,
+    state: workspaceEditStateSchema,
+    unrecoveredPaths: workspaceEditUnrecoveredPathsSchema,
+  }),
+  v.check(
+    (result) => hasValidWorkspaceEditRecoveryResult(result),
+    'WorkspaceEdit recovery result is invalid',
+  ),
+)
+
 export type WriteBody = v.InferOutput<typeof writeBodySchema>
 export type OpenWorkspaceRootBody = v.InferOutput<typeof openWorkspaceRootBodySchema>
 export type CreateFileBody = v.InferOutput<typeof createFileBodySchema>
@@ -229,6 +432,31 @@ export type RenameBody = v.InferOutput<typeof renameBodySchema>
 export type CopyBody = v.InferOutput<typeof copyBodySchema>
 export type DeleteBody = v.InferOutput<typeof deleteBodySchema>
 export type RecentsQuery = v.InferOutput<typeof recentsQuerySchema>
+export type WorkspaceEditPrepareBody = v.InferOutput<typeof workspaceEditPrepareBodySchema>
+export type WorkspaceEditTransitionBody = v.InferOutput<typeof workspaceEditTransitionBodySchema>
+export type WorkspaceEditRecoverBody = v.InferOutput<typeof workspaceEditRecoverBodySchema>
+export type WorkspaceEditReleaseBody = v.InferOutput<typeof workspaceEditReleaseBodySchema>
+
+export type WorkspaceEditPrepareBodyMatchesContract =
+  WorkspaceEditPrepareBody extends WorkspaceEditPrepareRequest ? true : never
+export type WorkspaceEditTransitionBodyMatchesContract =
+  WorkspaceEditTransitionBody extends WorkspaceEditTransitionRequest ? true : never
+export type WorkspaceEditRecoverBodyMatchesContract =
+  WorkspaceEditRecoverBody extends WorkspaceEditRecoverRequest ? true : never
+export type WorkspaceEditReleaseBodyMatchesContract =
+  WorkspaceEditReleaseBody extends WorkspaceEditReleaseRequest ? true : never
+export type WorkspacePersistenceOperationMatchesContract =
+  v.InferOutput<typeof workspacePersistenceOperationSchema> extends WorkspacePersistenceOperation
+    ? true
+    : never
+export type WorkspaceResourcePreconditionMatchesContract =
+  v.InferOutput<
+    typeof workspaceEditExternalPreconditionSchema
+  > extends WorkspaceResourcePrecondition
+    ? true
+    : never
+export type WorkspaceEditResultMatchesContract =
+  v.InferOutput<typeof workspaceEditResultSchema> extends WorkspaceEditResult ? true : never
 
 export type { EntryTypeFilter, TreeEntry, WatchServerMessage } from '@workspace/contracts'
 
@@ -241,4 +469,131 @@ function integerQueryValueSchema(defaultValue: string, max: number) {
     v.toMaxValue(max),
     v.transform((value) => value || Number(defaultValue)),
   )
+}
+
+function isWorkspaceEditRelativePath(input: string) {
+  if (input.includes('\\')) return false
+  if (input.includes('\0')) return false
+  if (input.startsWith('/')) return false
+  if (/^[a-zA-Z]:/u.test(input)) return false
+  if (input === '.' || input === '..') return false
+  if (input.startsWith('../')) return false
+
+  return input
+    .split('/')
+    .every((segment) => segment.length > 0 && segment !== '.' && segment !== '..')
+}
+
+function isWorkspaceEditWorkspace(input: string) {
+  if (input === '') return true
+
+  return isWorkspaceEditRelativePath(input)
+}
+
+function hasValidWorkspaceEditOperationOrder(
+  operations: readonly v.InferOutput<typeof workspacePersistenceOperationSchema>[],
+) {
+  const currentGeneration = new Map<string, number>()
+  let previousIndex = -1
+
+  for (const operation of operations) {
+    if (operation.index <= previousIndex) return false
+    if (!operationPreconditionsAreValid(operation, currentGeneration)) return false
+
+    previousIndex = operation.index
+    recordOperationGeneration(operation, currentGeneration)
+  }
+
+  return true
+}
+
+function operationPreconditionsAreValid(
+  operation: v.InferOutput<typeof workspacePersistenceOperationSchema>,
+  currentGeneration: ReadonlyMap<string, number>,
+) {
+  if (operation.kind === 'write') {
+    return preconditionIsValid(
+      operation.expected,
+      operation.path,
+      operation.index,
+      currentGeneration,
+    )
+  }
+  if (operation.kind === 'create') {
+    return preconditionIsValid(
+      operation.destination,
+      operation.path,
+      operation.index,
+      currentGeneration,
+    )
+  }
+  if (operation.kind === 'delete') {
+    return preconditionIsValid(
+      operation.expected,
+      operation.path,
+      operation.index,
+      currentGeneration,
+    )
+  }
+
+  if (
+    !preconditionIsValid(operation.source, operation.oldPath, operation.index, currentGeneration)
+  ) {
+    return false
+  }
+
+  return preconditionIsValid(
+    operation.destination,
+    operation.newPath,
+    operation.index,
+    currentGeneration,
+  )
+}
+
+function preconditionIsValid(
+  precondition: WorkspaceResourcePrecondition,
+  path: string,
+  operationIndex: number,
+  currentGeneration: ReadonlyMap<string, number>,
+) {
+  const generation = currentGeneration.get(path)
+  if (precondition.kind !== 'transaction') return generation === undefined
+  if (precondition.afterOperation >= operationIndex) return false
+
+  return generation === precondition.afterOperation
+}
+
+function recordOperationGeneration(
+  operation: v.InferOutput<typeof workspacePersistenceOperationSchema>,
+  currentGeneration: Map<string, number>,
+) {
+  if (operation.kind === 'rename') {
+    currentGeneration.set(operation.oldPath, operation.index)
+    currentGeneration.set(operation.newPath, operation.index)
+    return
+  }
+
+  currentGeneration.set(operation.path, operation.index)
+}
+
+function isCanonicalPathSet(paths: readonly string[]) {
+  for (let index = 1; index < paths.length; index += 1) {
+    if (paths[index - 1]! >= paths[index]!) return false
+  }
+
+  return true
+}
+
+function hasValidWorkspaceEditRecoveryResult(result: {
+  recoveryTarget?: string
+  state: string
+  unrecoveredPaths: readonly string[]
+}) {
+  if (result.state === 'partial') {
+    if (!result.recoveryTarget) return false
+    return result.unrecoveredPaths.length > 0
+  }
+  if (result.recoveryTarget !== undefined) return false
+
+  return result.unrecoveredPaths.length === 0
 }

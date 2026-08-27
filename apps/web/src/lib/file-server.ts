@@ -15,7 +15,16 @@ import { createCoalescedLogQueue } from '@/features/workspace/utils/coalesced-lo
 import { omitNullish } from '@/lib/objects'
 import { createRpcError } from '@/lib/structured-errors'
 import { collectWorkspaceSearch } from '@/lib/workspace-search-client'
-import type { WorkspaceSearchMeasurement } from '@workspace/contracts'
+import type {
+  WorkspaceEditPrepareRequest,
+  WorkspaceEditRecoverRequest,
+  WorkspaceEditRecoveryListResult,
+  WorkspaceEditReleaseRequest,
+  WorkspaceEditResult,
+  WorkspaceEditStatusResult,
+  WorkspaceEditTransitionRequest,
+  WorkspaceSearchMeasurement,
+} from '@workspace/contracts'
 
 const TREE_LOAD_DEPTH = 1
 const TREE_LOG_DELAY_MS = 250
@@ -52,6 +61,90 @@ export type WriteFileContentOptions = {
   expectedMtimeMs?: number | null
   origin?: string | null
   writeId?: string | null
+}
+
+export type WorkspaceEditTransitionRoute =
+  | 'abort'
+  | 'commit'
+  | 'finalize'
+  | 'redo'
+  | 'rollback'
+  | 'undo'
+
+export async function prepareWorkspaceEditMutation(
+  request: WorkspaceEditPrepareRequest,
+  signal: AbortSignal,
+): Promise<WorkspaceEditResult> {
+  const response = await getClient().fs['workspace-edit'].prepare.post(request, {
+    fetch: { signal },
+  })
+  return unwrapWorkspaceEditResponse(response)
+}
+
+export async function transitionWorkspaceEditMutation(
+  transition: WorkspaceEditTransitionRoute,
+  request: WorkspaceEditTransitionRequest,
+  signal: AbortSignal,
+): Promise<WorkspaceEditResult> {
+  const routes = getClient().fs['workspace-edit']
+  if (transition === 'abort') {
+    return unwrapWorkspaceEditResponse(await routes.abort.post(request, { fetch: { signal } }))
+  }
+  if (transition === 'commit') {
+    return unwrapWorkspaceEditResponse(await routes.commit.post(request, { fetch: { signal } }))
+  }
+  if (transition === 'finalize') {
+    return unwrapWorkspaceEditResponse(await routes.finalize.post(request, { fetch: { signal } }))
+  }
+  if (transition === 'redo') {
+    return unwrapWorkspaceEditResponse(await routes.redo.post(request, { fetch: { signal } }))
+  }
+  if (transition === 'rollback') {
+    return unwrapWorkspaceEditResponse(await routes.rollback.post(request, { fetch: { signal } }))
+  }
+  return unwrapWorkspaceEditResponse(await routes.undo.post(request, { fetch: { signal } }))
+}
+
+export async function recoverWorkspaceEditMutation(
+  request: WorkspaceEditRecoverRequest,
+  signal: AbortSignal,
+): Promise<WorkspaceEditResult> {
+  const response = await getClient().fs['workspace-edit'].recover.post(request, {
+    fetch: { signal },
+  })
+  return unwrapWorkspaceEditResponse(response)
+}
+
+export async function releaseWorkspaceEditMutation(
+  request: WorkspaceEditReleaseRequest,
+  signal: AbortSignal,
+): Promise<WorkspaceEditResult> {
+  const response = await getClient().fs['workspace-edit'].release.post(request, {
+    fetch: { signal },
+  })
+  return unwrapWorkspaceEditResponse(response)
+}
+
+export async function fetchWorkspaceEditStatus(
+  operationId: string,
+  signal: AbortSignal,
+): Promise<WorkspaceEditStatusResult> {
+  const response = await getClient().fs['workspace-edit'].status.get({
+    fetch: { signal },
+    query: { operationId },
+  })
+  return unwrapWorkspaceEditResponse(response)
+}
+
+export async function fetchWorkspaceEditRecovery(
+  workspace: string,
+  signal: AbortSignal,
+): Promise<WorkspaceEditRecoveryListResult> {
+  const response = await getClient().fs['workspace-edit'].recovery.get({
+    fetch: { signal },
+    query: { workspace },
+  })
+  return unwrapWorkspaceEditResponse(response)
 }
 
 export async function fetchTree(path: string, signal: AbortSignal) {
@@ -188,6 +281,15 @@ function normalizeWriteFileContentOptions(
   }
 
   return options ?? {}
+}
+
+function unwrapWorkspaceEditResponse<T>(response: {
+  readonly data: T | null
+  readonly error: unknown
+}): T {
+  if (response.error) throw createRpcError(response.error)
+  if (response.data !== null) return response.data
+  throw createRpcError({ message: 'Workspace edit server returned no result' })
 }
 
 function writeFileContentBody(path: string, content: string, options: WriteFileContentOptions) {

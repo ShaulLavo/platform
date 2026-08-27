@@ -4,7 +4,6 @@ import type {
   EditorSplitScope,
 } from '@/features/workspace/utils/tab-model'
 import {
-  EditorDocumentStateContext,
   useEditorDocumentStoreApi,
   type EditorDocumentStoreApi,
 } from '@/features/editor/state/document-state'
@@ -16,17 +15,12 @@ import {
   recentlyClosedEditorPathsForClose,
   recentlyClosedEditorPathsForReopen,
 } from '@/features/editor/state/tab-paths'
-import {
-  EditorUiStateContext,
-  useEditorUiStoreApi,
-  type EditorUiStoreApi,
-} from '@/features/editor/state/ui-state'
+import { useEditorUiStoreApi, type EditorUiStoreApi } from '@/features/editor/state/ui-state'
 import {
   retentionForProjects,
   type RetainedWorkspaceSlice,
 } from '@/features/editor/utils/document-retention'
 import {
-  EditorWorkspaceStateContext,
   editorWorkspaceSelectionForWorkbenchPanels,
   useEditorWorkspaceStoreApi,
   type EditorWorkspaceStore,
@@ -45,14 +39,13 @@ import {
 } from '@/features/workbench/utils/panels'
 import { searchBufferDocumentId } from '@/features/search/utils/buffer-document'
 import {
-  SearchBufferStateContext,
   useSearchBufferStoreApi,
   type SearchBufferStoreApi,
 } from '@/features/search/state/buffer-state'
 import { log } from '@/lib/client-logging'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { LanguageServerDefinitionTarget } from '@singapor/lsp-plugin'
-import { use, useMemo } from 'react'
+import { useMemo } from 'react'
 import { settingsDocumentId } from '@/features/settings/utils/document'
 import { editorTabDocumentIds } from '@/features/workspace/utils/tab-dirty'
 
@@ -81,27 +74,6 @@ export type EditorCommands = {
   splitTab: (tabId: string, direction: EditorSplitDirection) => boolean
   /** Parks the open project and restores the target's tabs, history and search results. */
   switchRootFolder: (rootFolder: PickedFsEntry) => void
-}
-
-/**
- * The editor's commands where they exist, and null where they do not.
- *
- * Same reason `useOptionalEditorDocumentState` exists: a diff renders in the git panel, in a
- * checkpoint and in a test, and it wants `openDefinition` only for the case where following a
- * definition leaves the diff entirely. Throwing at it for being mounted outside the editor's
- * providers would turn an occasional capability into a hard dependency on the whole store stack.
- */
-export function useOptionalEditorCommands(): EditorCommands | null {
-  const documentStore = use(EditorDocumentStateContext)
-  const searchStore = use(SearchBufferStateContext)
-  const uiStore = use(EditorUiStateContext)
-  const workspaceStore = use(EditorWorkspaceStateContext)
-
-  return useMemo(() => {
-    if (!documentStore || !searchStore || !uiStore || !workspaceStore) return null
-
-    return createEditorCommands({ documentStore, searchStore, uiStore, workspaceStore })
-  }, [documentStore, searchStore, uiStore, workspaceStore])
 }
 
 export function useEditorCommands() {

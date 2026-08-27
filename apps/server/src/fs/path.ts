@@ -26,11 +26,22 @@ export type WorkspacePath = {
 
 export type WorkspacePaths = ReturnType<typeof createWorkspacePaths>
 
-export function createWorkspacePaths(workspaceRootInput = process.cwd()) {
+export type WorkspacePathsOptions = {
+  excludedAbsolutePaths?: readonly string[]
+}
+
+export function createWorkspacePaths(
+  workspaceRootInput = process.cwd(),
+  options: WorkspacePathsOptions = {},
+) {
   const workspaceRoot = path.resolve(workspaceRootInput)
   const workspaceRootReal = realpathSync(workspaceRoot)
+  const excludedAbsolutePaths = (options.excludedAbsolutePaths ?? []).map((input) =>
+    path.resolve(input),
+  )
 
   return {
+    internalAbsolutePaths: excludedAbsolutePaths,
     workspaceRoot,
     workspaceRootReal,
     resolve(input = ''): WorkspacePath {
@@ -44,11 +55,20 @@ export function createWorkspacePaths(workspaceRootInput = process.cwd()) {
       assertInside(workspaceRoot, absolutePath)
       return toPosix(path.relative(workspaceRoot, absolutePath))
     },
+    toRealRelative(absolutePath: string) {
+      assertInside(workspaceRootReal, absolutePath)
+      return toPosix(path.relative(workspaceRootReal, absolutePath))
+    },
     assertInside(absolutePath: string) {
       assertInside(workspaceRoot, absolutePath)
     },
     assertRealInside(absolutePath: string) {
       assertInside(workspaceRootReal, absolutePath)
+    },
+    isInternalPath(input: string) {
+      const relativePath = normalizeClientPath(input)
+      const absolutePath = path.resolve(workspaceRoot, relativePath)
+      return excludedAbsolutePaths.some((excluded) => isSameOrDescendant(excluded, absolutePath))
     },
   }
 }
@@ -106,6 +126,14 @@ function assertInside(root: string, candidate: string) {
   const relative = path.relative(root, candidate)
   if (relative === '') return
   if (isOutsideRoot(relative)) throw new FsError('PATH_OUTSIDE_WORKSPACE')
+}
+
+function isSameOrDescendant(root: string, candidate: string) {
+  const relative = path.relative(root, candidate)
+  if (relative === '') return true
+  if (isOutsideRoot(relative)) return false
+
+  return true
 }
 
 function ignoredNameSet(ignoredNames: readonly string[]) {

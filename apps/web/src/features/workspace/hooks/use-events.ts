@@ -28,7 +28,6 @@ import { createWideEventScope, type WideEventScope } from '@/lib/wide-event-scop
 import {
   parentPath,
   planFetchedOpenFileRefresh,
-  planWorkspaceFilesystemEvents,
   planWorkspaceReady,
   type WorkspaceEventPlan,
   type WorkspaceFetchedOpenFileOperation,
@@ -48,6 +47,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useEffectEvent } from 'react'
 import { toast } from 'sonner'
 import type { TreeEntry, WatchServerMessage } from '@workspace/contracts'
+import { useWorkspaceEditEventClassifier } from '@/features/editor/providers/workspace-edit-context'
+import { planWorkspaceEditAwareEventBatch } from '@/features/workspace/utils/workspace-edit-events'
 
 export type { WatchServerMessage }
 
@@ -75,6 +76,7 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
   const documentStore = useEditorDocumentStoreApi()
   const workspaceStore = useEditorWorkspaceStoreApi()
   const { discardLiveEditorDocument, renameLiveEditorDocument, selectFile } = useEditorCommands()
+  const isOwnWorkspaceEditEvent = useWorkspaceEditEventClassifier()
   const rootPath = rootFolder?.path ?? null
   const applyEvents = useEffectEvent(
     (
@@ -95,6 +97,7 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
         events,
         forceReplaceLiveEditorDocument: documentState.forceReplaceLiveEditorDocument,
         getLiveEditorDocument: documentState.getLiveEditorDocument,
+        isOwnWorkspaceEditEvent,
         openFilePaths: workspaceState.openFilePaths,
         queryClient,
         renameLiveEditorDocument,
@@ -231,6 +234,7 @@ async function applyWorkspaceEvents({
   events,
   forceReplaceLiveEditorDocument,
   getLiveEditorDocument,
+  isOwnWorkspaceEditEvent,
   openFilePaths,
   queryClient,
   renameLiveEditorDocument,
@@ -247,6 +251,7 @@ async function applyWorkspaceEvents({
   events: FilesystemEvent[]
   forceReplaceLiveEditorDocument: (file: FileResult) => { wasDirty: boolean }
   getLiveEditorDocument: (path: string) => LiveEditorDocument | null
+  isOwnWorkspaceEditEvent: (writeId: string) => boolean
   openFilePaths: readonly string[]
   queryClient: ReturnType<typeof useQueryClient>
   renameLiveEditorDocument: (from: string, to: string) => { wasDirty: boolean }
@@ -256,11 +261,12 @@ async function applyWorkspaceEvents({
   signal: AbortSignal
   scope: WideEventScope
 }) {
-  const plan = planWorkspaceFilesystemEvents({
+  const plan = planWorkspaceEditAwareEventBatch(
     events,
-    openFiles: openFileSnapshots(openFilePaths, dirtyFilePaths, getLiveEditorDocument),
+    openFileSnapshots(openFilePaths, dirtyFilePaths, getLiveEditorDocument),
     rootPath,
-  })
+    isOwnWorkspaceEditEvent,
+  )
   logWorkspaceEventBatch(scope, events)
   logWorkspaceEventPlan(scope, 'workspace.events.plan', plan)
 

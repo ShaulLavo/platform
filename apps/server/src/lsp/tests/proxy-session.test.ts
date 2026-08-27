@@ -98,6 +98,837 @@ describe('LspSessionPool pooling', () => {
   })
 })
 
+describe('LspSessionPool WorkspaceEdit provenance', () => {
+  const URI = 'file:///repo/a.ts'
+  const OTHER_URI = 'file:///repo/b.ts'
+
+  type InitializedFixture = Awaited<ReturnType<typeof initializedFixture>>
+
+  function lastServerMethod(fixture: InitializedFixture, method: string) {
+    const message = fixture.serverMessages.filter((entry) => entry.method === method).at(-1)
+    if (!message) throw new Error(`expected ${method} request`)
+
+    return message
+  }
+
+  async function sharedDocumentFixture(backendVersion = 40, browserVersion = 7, text = 'abc\n') {
+    const fixture = await initializedFixture()
+    await fixture.first.handleClientMessage(json(didOpen(URI, text, backendVersion)))
+    await fixture.second.handleClientMessage(json(didOpen(URI, text, browserVersion)))
+    return fixture
+  }
+
+  async function requestWorkspaceEdit(
+    fixture: InitializedFixture,
+    connection: InitializedFixture['first'],
+    id: number,
+    method: string,
+  ) {
+    await connection.handleClientMessage(json(workspaceEditRequest(id, method, URI)))
+    return lastServerMethod(fixture, method)
+  }
+
+  it('rewrites a rename WorkspaceEdit backend version to the originating browser version', async () => {
+    const fixture = await sharedDocumentFixture()
+    const request = await requestWorkspaceEdit(fixture, fixture.second, 10, 'textDocument/rename')
+
+    fixture.respond({
+      id: request.id,
+      jsonrpc: '2.0',
+      result: workspaceEdit(textDocumentEdit(URI, 40)),
+    })
+
+    expect(fixture.secondSocket.sent.at(-1)).toEqual({
+      id: 10,
+      jsonrpc: '2.0',
+      result: workspaceEdit(textDocumentEdit(URI, 7)),
+    })
+  })
+
+  it('rewrites code-action edits and preserves unopened null versions', async () => {
+    const fixture = await sharedDocumentFixture()
+    const request = await requestWorkspaceEdit(
+      fixture,
+      fixture.second,
+      11,
+      'textDocument/codeAction',
+    )
+
+    fixture.respond({
+      id: request.id,
+      jsonrpc: '2.0',
+      result: [
+        {
+          edit: workspaceEdit(
+            textDocumentEdit(URI, 40, 'owned'),
+            textDocumentEdit(OTHER_URI, null, 'unopened'),
+          ),
+          title: 'Fix both',
+        },
+      ],
+    })
+
+    expect(fixture.secondSocket.sent.at(-1)).toEqual({
+      id: 11,
+      jsonrpc: '2.0',
+      result: [
+        {
+          edit: workspaceEdit(
+            textDocumentEdit(URI, 7, 'owned'),
+            textDocumentEdit(OTHER_URI, null, 'unopened'),
+          ),
+          title: 'Fix both',
+        },
+      ],
+    })
+  })
+
+  it('rejects a versioned target not owned by the requesting connection', async () => {
+    const fixture = await initializedFixture()
+    await fixture.first.handleClientMessage(json(didOpen(URI, 'abc\n', 40)))
+    const request = await requestWorkspaceEdit(fixture, fixture.second, 12, 'textDocument/rename')
+
+    fixture.respond({
+      id: request.id,
+      jsonrpc: '2.0',
+      result: workspaceEdit(textDocumentEdit(URI, 40)),
+    })
+
+    expect(fixture.secondSocket.sent.at(-1)).toMatchObject({
+      error: { code: -32801, message: 'Content modified' },
+      id: 12,
+    })
+  })
+
+  it('rejects a response after backend or browser document drift', async () => {
+    const backendDrift = await sharedDocumentFixture()
+    const backendRequest = await requestWorkspaceEdit(
+      backendDrift,
+      backendDrift.second,
+      13,
+      'textDocument/rename',
+    )
+    await backendDrift.second.handleClientMessage(json(didChange(URI, 8, [{ text: 'changed\n' }])))
+    backendDrift.respond({
+      id: backendRequest.id,
+      jsonrpc: '2.0',
+      result: workspaceEdit(textDocumentEdit(URI, 41)),
+    })
+
+    expect(backendDrift.secondSocket.sent.at(-1)).toMatchObject({
+      error: { code: -32801 },
+      id: 13,
+    })
+
+    const browserDrift = await sharedDocumentFixture()
+    const browserRequest = await requestWorkspaceEdit(
+      browserDrift,
+      browserDrift.second,
+      14,
+      'textDocument/rename',
+    )
+    await browserDrift.second.handleClientMessage(json(didClose(URI)))
+    await browserDrift.second.handleClientMessage(json(didOpen(URI, 'abc\n', 9)))
+    browserDrift.respond({
+      id: browserRequest.id,
+      jsonrpc: '2.0',
+      result: workspaceEdit(textDocumentEdit(URI, 40)),
+    })
+
+    expect(browserDrift.secondSocket.sent.at(-1)).toMatchObject({
+      error: { code: -32801 },
+      id: 14,
+    })
+  })
+
+  it('rejects two owners with divergent text before the request', async () => {
+    const fixture = await initializedFixture()
+    await fixture.first.handleClientMessage(json(didOpen(URI, 'abc\n', 40)))
+    await fixture.second.handleClientMessage(json(didOpen(URI, 'axbc\n', 7)))
+    const request = await requestWorkspaceEdit(fixture, fixture.first, 15, 'textDocument/rename')
+
+    fixture.respond({
+      id: request.id,
+      jsonrpc: '2.0',
+      result: workspaceEdit(textDocumentEdit(URI, 41)),
+    })
+
+    expect(fixture.firstSocket.sent.at(-1)).toMatchObject({ error: { code: -32801 }, id: 15 })
+  })
+
+  it('rejects other-owner replacement after the request even when requester still owns the URI', async () => {
+    const fixture = await sharedDocumentFixture()
+    const request = await requestWorkspaceEdit(fixture, fixture.first, 16, 'textDocument/rename')
+    await fixture.second.handleClientMessage(json(didChange(URI, 8, [{ text: 'other\n' }])))
+    fixture.respond({
+      id: request.id,
+      jsonrpc: '2.0',
+      result: workspaceEdit(textDocumentEdit(URI, 41)),
+    })
+
+    expect(fixture.firstSocket.sent.at(-1)).toMatchObject({ error: { code: -32801 }, id: 16 })
+  })
+
+  it('applies divergent owner incremental ranges to owner text then forwards one safe full replacement', async () => {
+    const fixture = await initializedFixture()
+    await fixture.first.handleClientMessage(json(didOpen(URI, 'abc\n', 40)))
+    await fixture.second.handleClientMessage(json(didOpen(URI, 'axbc\n', 7)))
+    await fixture.first.handleClientMessage(
+      json(
+        didChange(URI, 43, [
+          {
+            range: {
+              end: { character: 1, line: 0 },
+              start: { character: 1, line: 0 },
+            },
+            text: 'X',
+          },
+        ]),
+      ),
+    )
+
+    const forwarded = lastServerMethod(fixture, 'textDocument/didChange')
+    expect(forwarded.params).toEqual({
+      contentChanges: [{ text: 'aXbc\n' }],
+      textDocument: { uri: URI, version: 44 },
+    })
+
+    const firstRequest = await requestWorkspaceEdit(
+      fixture,
+      fixture.first,
+      17,
+      'textDocument/rename',
+    )
+    fixture.respond({
+      id: firstRequest.id,
+      jsonrpc: '2.0',
+      result: workspaceEdit(textDocumentEdit(URI, 44)),
+    })
+    expect(fixture.firstSocket.sent.at(-1)).toMatchObject({
+      id: 17,
+      result: workspaceEdit(textDocumentEdit(URI, 43)),
+    })
+
+    const staleRequest = await requestWorkspaceEdit(
+      fixture,
+      fixture.second,
+      18,
+      'textDocument/rename',
+    )
+    fixture.respond({
+      id: staleRequest.id,
+      jsonrpc: '2.0',
+      result: workspaceEdit(textDocumentEdit(URI, 44)),
+    })
+    expect(fixture.secondSocket.sent.at(-1)).toMatchObject({ error: { code: -32801 }, id: 18 })
+  })
+
+  it("never applies a stale owner incremental range to another owner's backend text", async () => {
+    const fixture = await initializedFixture()
+    await fixture.first.handleClientMessage(json(didOpen(URI, 'cat\n', 20)))
+    await fixture.second.handleClientMessage(json(didOpen(URI, 'cart\n', 3)))
+    await fixture.first.handleClientMessage(
+      json(
+        didChange(URI, 21, [
+          {
+            range: {
+              end: { character: 2, line: 0 },
+              start: { character: 1, line: 0 },
+            },
+            text: 'O',
+          },
+        ]),
+      ),
+    )
+
+    expect(lastServerMethod(fixture, 'textDocument/didChange').params).toEqual({
+      contentChanges: [{ text: 'cOt\n' }],
+      textDocument: { uri: URI, version: 22 },
+    })
+  })
+
+  it('closes a non-monotonic or invalid-range owner without backend mutation', async () => {
+    const nonMonotonic = await sharedDocumentFixture()
+    const nonMonotonicCount = nonMonotonic.serverMessages.filter(
+      (message) => message.method === 'textDocument/didChange',
+    ).length
+    await nonMonotonic.second.handleClientMessage(json(didChange(URI, 7, [{ text: 'bad\n' }])))
+
+    expect(nonMonotonic.secondSocket.closed).toBe(true)
+    expect(
+      nonMonotonic.serverMessages.filter((message) => message.method === 'textDocument/didChange'),
+    ).toHaveLength(nonMonotonicCount)
+
+    const invalidRange = await sharedDocumentFixture()
+    const invalidRangeCount = invalidRange.serverMessages.filter(
+      (message) => message.method === 'textDocument/didChange',
+    ).length
+    await invalidRange.second.handleClientMessage(
+      json(
+        didChange(URI, 8, [
+          {
+            range: {
+              end: { character: 5, line: 0 },
+              start: { character: 4, line: 0 },
+            },
+            text: 'bad',
+          },
+        ]),
+      ),
+    )
+
+    expect(invalidRange.secondSocket.closed).toBe(true)
+    expect(
+      invalidRange.serverMessages.filter((message) => message.method === 'textDocument/didChange'),
+    ).toHaveLength(invalidRangeCount)
+  })
+
+  it('preserves a positive multi-step client version delta in one collapsed backend didChange', async () => {
+    const fixture = await sharedDocumentFixture()
+    await fixture.second.handleClientMessage(json(didChange(URI, 10, [{ text: 'next\n' }])))
+
+    expect(lastServerMethod(fixture, 'textDocument/didChange').params).toEqual({
+      contentChanges: [{ text: 'next\n' }],
+      textDocument: { uri: URI, version: 43 },
+    })
+  })
+
+  it('maps skipped and nonzero browser versions without equating them to backend counters', async () => {
+    const fixture = await sharedDocumentFixture(100, 7)
+    const request = await requestWorkspaceEdit(fixture, fixture.second, 19, 'textDocument/rename')
+    fixture.respond({
+      id: request.id,
+      jsonrpc: '2.0',
+      result: workspaceEdit(textDocumentEdit(URI, 102)),
+    })
+
+    expect(fixture.secondSocket.sent.at(-1)).toMatchObject({
+      id: 19,
+      result: workspaceEdit(textDocumentEdit(URI, 9)),
+    })
+  })
+
+  it('maps repeated backend B then B-plus-one to browser C then C-plus-one', async () => {
+    const fixture = await sharedDocumentFixture()
+    const request = await requestWorkspaceEdit(fixture, fixture.second, 20, 'textDocument/rename')
+    fixture.respond({
+      id: request.id,
+      jsonrpc: '2.0',
+      result: workspaceEdit(
+        textDocumentEdit(URI, 40, 'first'),
+        textDocumentEdit(URI, 41, 'second'),
+      ),
+    })
+
+    expect(fixture.secondSocket.sent.at(-1)).toMatchObject({
+      id: 20,
+      result: workspaceEdit(textDocumentEdit(URI, 7, 'first'), textDocumentEdit(URI, 8, 'second')),
+    })
+  })
+
+  it('preserves repeated backend B then B for Editor no-op or mismatch validation', async () => {
+    const fixture = await sharedDocumentFixture()
+    const request = await requestWorkspaceEdit(fixture, fixture.second, 21, 'textDocument/rename')
+    fixture.respond({
+      id: request.id,
+      jsonrpc: '2.0',
+      result: workspaceEdit(
+        textDocumentEdit(URI, 40, 'first'),
+        textDocumentEdit(URI, 40, 'second'),
+      ),
+    })
+
+    expect(fixture.secondSocket.sent.at(-1)).toMatchObject({
+      id: 21,
+      result: workspaceEdit(textDocumentEdit(URI, 7, 'first'), textDocumentEdit(URI, 7, 'second')),
+    })
+  })
+
+  it('preserves null and maps the following numeric version by backend delta not array position', async () => {
+    const fixture = await sharedDocumentFixture()
+    const request = await requestWorkspaceEdit(fixture, fixture.second, 22, 'textDocument/rename')
+    fixture.respond({
+      id: request.id,
+      jsonrpc: '2.0',
+      result: workspaceEdit(
+        textDocumentEdit(URI, null, 'unversioned'),
+        textDocumentEdit(URI, 41, 'versioned'),
+      ),
+    })
+
+    expect(fixture.secondSocket.sent.at(-1)).toMatchObject({
+      id: 22,
+      result: workspaceEdit(
+        textDocumentEdit(URI, null, 'unversioned'),
+        textDocumentEdit(URI, 8, 'versioned'),
+      ),
+    })
+  })
+
+  it('rejects affine version underflow and overflow without rewriting the response', async () => {
+    const underflow = await sharedDocumentFixture(40, 100)
+    const underflowRequest = await requestWorkspaceEdit(
+      underflow,
+      underflow.second,
+      23,
+      'textDocument/rename',
+    )
+    const underflowEdit = workspaceEdit(textDocumentEdit(URI, 39))
+    underflow.respond({
+      id: underflowRequest.id,
+      jsonrpc: '2.0',
+      result: underflowEdit,
+    })
+    expect(underflow.secondSocket.sent.at(-1)).toMatchObject({
+      error: { code: -32801 },
+      id: 23,
+    })
+    expect(underflowEdit).toEqual(workspaceEdit(textDocumentEdit(URI, 39)))
+
+    const overflow = await sharedDocumentFixture(0, Number.MAX_SAFE_INTEGER)
+    const overflowRequest = await requestWorkspaceEdit(
+      overflow,
+      overflow.second,
+      24,
+      'textDocument/rename',
+    )
+    const overflowEdit = workspaceEdit(textDocumentEdit(URI, 1))
+    overflow.respond({
+      id: overflowRequest.id,
+      jsonrpc: '2.0',
+      result: overflowEdit,
+    })
+    expect(overflow.secondSocket.sent.at(-1)).toMatchObject({
+      error: { code: -32801 },
+      id: 24,
+    })
+    expect(overflowEdit).toEqual(workspaceEdit(textDocumentEdit(URI, 1)))
+  })
+
+  it('maps codeAction resolve and every WorkspaceEdit in a multi-action response', async () => {
+    const fixture = await sharedDocumentFixture()
+    const listRequest = await requestWorkspaceEdit(
+      fixture,
+      fixture.second,
+      25,
+      'textDocument/codeAction',
+    )
+    fixture.respond({
+      id: listRequest.id,
+      jsonrpc: '2.0',
+      result: [
+        { edit: workspaceEdit(textDocumentEdit(URI, 40, 'one')), title: 'One' },
+        { edit: workspaceEdit(textDocumentEdit(URI, 41, 'two')), title: 'Two' },
+        { command: { command: 'noop', title: 'No edit' }, title: 'Command' },
+      ],
+    })
+
+    expect(fixture.secondSocket.sent.at(-1)).toMatchObject({
+      id: 25,
+      result: [
+        { edit: workspaceEdit(textDocumentEdit(URI, 7, 'one')), title: 'One' },
+        { edit: workspaceEdit(textDocumentEdit(URI, 8, 'two')), title: 'Two' },
+        { command: { command: 'noop', title: 'No edit' }, title: 'Command' },
+      ],
+    })
+
+    const resolveRequest = await requestWorkspaceEdit(
+      fixture,
+      fixture.second,
+      26,
+      'codeAction/resolve',
+    )
+    fixture.respond({
+      id: resolveRequest.id,
+      jsonrpc: '2.0',
+      result: { edit: workspaceEdit(textDocumentEdit(URI, 40, 'resolved')), title: 'Resolve' },
+    })
+
+    expect(fixture.secondSocket.sent.at(-1)).toMatchObject({
+      id: 26,
+      result: { edit: workspaceEdit(textDocumentEdit(URI, 7, 'resolved')), title: 'Resolve' },
+    })
+  })
+
+  it('preserves legacy changes as unversioned', async () => {
+    const fixture = await sharedDocumentFixture()
+    const request = await requestWorkspaceEdit(fixture, fixture.second, 27, 'textDocument/rename')
+    const result = {
+      changeAnnotations: { rename: { label: 'Rename' } },
+      changes: { [URI]: textDocumentEdit(URI, null).edits },
+    }
+    fixture.respond({ id: request.id, jsonrpc: '2.0', result })
+
+    expect(fixture.secondSocket.sent.at(-1)).toEqual({ id: 27, jsonrpc: '2.0', result })
+  })
+
+  it('does not rewrite unrelated numeric fields', async () => {
+    const fixture = await sharedDocumentFixture()
+    const request = await requestWorkspaceEdit(fixture, fixture.second, 28, 'textDocument/rename')
+    fixture.respond({
+      id: request.id,
+      jsonrpc: '2.0',
+      result: {
+        changeAnnotations: { rename: { customVersion: 999, label: 'Rename' } },
+        documentChanges: [
+          {
+            ...textDocumentEdit(URI, 40),
+            customVersion: 123,
+            edits: [
+              {
+                newText: 'next',
+                range: {
+                  end: { character: 11, line: 12 },
+                  start: { character: 9, line: 10 },
+                },
+              },
+            ],
+          },
+        ],
+      },
+    })
+
+    expect(fixture.secondSocket.sent.at(-1)).toMatchObject({
+      id: 28,
+      result: {
+        changeAnnotations: { rename: { customVersion: 999 } },
+        documentChanges: [
+          {
+            customVersion: 123,
+            edits: [
+              {
+                range: {
+                  end: { character: 11, line: 12 },
+                  start: { character: 9, line: 10 },
+                },
+              },
+            ],
+            textDocument: { version: 7 },
+          },
+        ],
+      },
+    })
+  })
+
+  it('normal-first and diff-first owners negotiate the same backend capability fingerprint', async () => {
+    const capabilities = {
+      workspace: {
+        workspaceEdit: {
+          changeAnnotationSupport: { groupsOnLabel: true },
+          documentChanges: true,
+          resourceOperations: ['create', 'rename', 'delete'],
+        },
+      },
+    }
+
+    for (const roots of [
+      ['', 'diff:session-one'],
+      ['diff:session-two', ''],
+    ] as const) {
+      const fixture = await lspFixture()
+      const first = await fixture.pool.acquire(fixture.firstSocket, fixture.match, roots[0])
+      const second = await fixture.pool.acquire(fixture.secondSocket, fixture.match, roots[1])
+      if (!first || !second) throw new Error('expected pooled LSP sessions')
+
+      const firstInitialize = first.handleClientMessage(
+        json(initializeRequest(30, { capabilities })),
+      )
+      await fixture.waitForServerMessageCount(1)
+      const secondInitialize = second.handleClientMessage(
+        json(initializeRequest(31, { capabilities })),
+      )
+      await Bun.sleep(1)
+
+      expect(fixture.initializeMessages()).toHaveLength(1)
+      expect(fixture.initializeMessages()[0]?.params).toMatchObject({ capabilities })
+
+      fixture.respond({
+        id: fixture.initializeMessages()[0]?.id,
+        jsonrpc: '2.0',
+        result: initializeResult(),
+      })
+      await Promise.all([firstInitialize, secondInitialize])
+      expect(fixture.firstSocket.sent.at(-1)).toMatchObject({ id: 30 })
+      expect(fixture.secondSocket.sent.at(-1)).toMatchObject({ id: 31 })
+    }
+  })
+
+  it('replays one initialize for equal normalized params while pending and after settlement', async () => {
+    const fixture = await lspFixture()
+    const thirdSocket = new FakeSocket()
+    const first = await fixture.pool.acquire(fixture.firstSocket, fixture.match, '')
+    const second = await fixture.pool.acquire(fixture.secondSocket, fixture.match, 'diff:one')
+    const third = await fixture.pool.acquire(thirdSocket, fixture.match, 'diff:two')
+    if (!first || !second || !third) throw new Error('expected pooled LSP sessions')
+
+    const firstInitialize = first.handleClientMessage(json(initializeRequest(32)))
+    await fixture.waitForServerMessageCount(1)
+    const secondInitialize = second.handleClientMessage(json(initializeRequest(33)))
+    await Bun.sleep(1)
+    expect(fixture.initializeMessages()).toHaveLength(1)
+
+    fixture.respond({
+      id: fixture.initializeMessages()[0]?.id,
+      jsonrpc: '2.0',
+      result: initializeResult(),
+    })
+    await Promise.all([firstInitialize, secondInitialize])
+    await third.handleClientMessage(json(initializeRequest(34)))
+
+    expect(fixture.initializeMessages()).toHaveLength(1)
+    expect(fixture.firstSocket.sent.at(-1)).toMatchObject({ id: 32 })
+    expect(fixture.secondSocket.sent.at(-1)).toMatchObject({ id: 33 })
+    expect(thirdSocket.sent.at(-1)).toMatchObject({ id: 34 })
+  })
+
+  it('accepts equal initialize params with different object key order', async () => {
+    const fixture = await lspFixture()
+    const first = await fixture.pool.acquire(fixture.firstSocket, fixture.match, '')
+    const second = await fixture.pool.acquire(fixture.secondSocket, fixture.match, '')
+    if (!first || !second) throw new Error('expected pooled LSP sessions')
+
+    const firstInitialize = first.handleClientMessage(
+      json(
+        initializeRequest(35, {
+          capabilities: { textDocument: { rename: { prepareSupport: true } }, workspace: {} },
+          clientInfo: { name: 'Platform', version: '1' },
+        }),
+      ),
+    )
+    await fixture.waitForServerMessageCount(1)
+    const secondInitialize = second.handleClientMessage(
+      json(
+        initializeRequest(36, {
+          clientInfo: { version: '1', name: 'Platform' },
+          capabilities: { workspace: {}, textDocument: { rename: { prepareSupport: true } } },
+        }),
+      ),
+    )
+    await Bun.sleep(1)
+    expect(fixture.initializeMessages()).toHaveLength(1)
+
+    fixture.respond({
+      id: fixture.initializeMessages()[0]?.id,
+      jsonrpc: '2.0',
+      result: initializeResult(),
+    })
+    await Promise.all([firstInitialize, secondInitialize])
+    expect(fixture.secondSocket.closed).toBe(false)
+    expect(fixture.secondSocket.sent.at(-1)).toMatchObject({ id: 36 })
+  })
+
+  it('rejects a capability mismatch while first initialize is pending without forwarding it', async () => {
+    const fixture = await lspFixture()
+    const first = await fixture.pool.acquire(fixture.firstSocket, fixture.match, '')
+    const second = await fixture.pool.acquire(fixture.secondSocket, fixture.match, '')
+    if (!first || !second) throw new Error('expected pooled LSP sessions')
+
+    const firstInitialize = first.handleClientMessage(
+      json(initializeRequest(37, { capabilities: { workspace: { applyEdit: false } } })),
+    )
+    await fixture.waitForServerMessageCount(1)
+    await second.handleClientMessage(
+      json(initializeRequest(38, { capabilities: { workspace: { applyEdit: true } } })),
+    )
+
+    expect(fixture.initializeMessages()).toHaveLength(1)
+    expect(fixture.secondSocket.sent.at(-1)).toEqual({
+      error: {
+        code: -32602,
+        message: 'Initialize params do not match the pooled backend contract',
+      },
+      id: 38,
+      jsonrpc: '2.0',
+    })
+    expect(fixture.secondSocket.closed).toBe(true)
+
+    fixture.respond({
+      id: fixture.initializeMessages()[0]?.id,
+      jsonrpc: '2.0',
+      result: initializeResult(),
+    })
+    await firstInitialize
+    await first.handleClientMessage(json(hoverRequest(39, URI)))
+    const hover = lastServerMethod({ ...fixture, first, second }, 'textDocument/hover')
+    fixture.respond({ id: hover.id, jsonrpc: '2.0', result: hoverResult('still alive') })
+    expect(fixture.firstSocket.sent.at(-1)).toMatchObject({
+      id: 39,
+      result: hoverResult('still alive'),
+    })
+  })
+
+  it('rejects later initializationOptions mismatch with original client ID and closes only that owner', async () => {
+    const fixture = await lspFixture()
+    const first = await fixture.pool.acquire(fixture.firstSocket, fixture.match, '')
+    const second = await fixture.pool.acquire(fixture.secondSocket, fixture.match, '')
+    if (!first || !second) throw new Error('expected pooled LSP sessions')
+
+    const initialized = first.handleClientMessage(
+      json(initializeRequest(40, { initializationOptions: { mode: 'normal' } })),
+    )
+    await fixture.waitForServerMessageCount(1)
+    fixture.respond({
+      id: fixture.initializeMessages()[0]?.id,
+      jsonrpc: '2.0',
+      result: initializeResult(),
+    })
+    await initialized
+
+    await second.handleClientMessage(
+      json(initializeRequest(409, { initializationOptions: { mode: 'diff' } })),
+    )
+    expect(fixture.secondSocket.sent.at(-1)).toMatchObject({
+      error: { code: -32602 },
+      id: 409,
+    })
+    expect(fixture.secondSocket.closed).toBe(true)
+    expect(fixture.firstSocket.closed).toBe(false)
+    expect(fixture.initializeMessages()).toHaveLength(1)
+
+    await first.handleClientMessage(json(hoverRequest(41, URI)))
+    const hover = fixture.serverMessages
+      .filter((message) => message.method === 'textDocument/hover')
+      .at(-1)
+    if (!hover) throw new Error('expected hover request')
+    fixture.respond({ id: hover.id, jsonrpc: '2.0', result: hoverResult('first survives') })
+    expect(fixture.firstSocket.sent.at(-1)).toMatchObject({ id: 41 })
+  })
+
+  it('does not create a pending initialize after the backend exits during normalization', async () => {
+    let optionsStarted = false
+    let releaseOptions = () => {}
+    const optionsGate = new Promise<void>((resolve) => {
+      releaseOptions = resolve
+    })
+    const fixture = await lspFixture({
+      initializationOptions: async () => {
+        optionsStarted = true
+        await optionsGate
+        return { mode: 'normal' }
+      },
+    })
+    const first = await fixture.pool.acquire(fixture.firstSocket, fixture.match, '')
+    if (!first) throw new Error('expected pooled LSP session')
+
+    const initializing = first.handleClientMessage(json(initializeRequest(401)))
+    await waitFor(() => optionsStarted, 'expected initialize normalization to start')
+    fixture.process.process.emit('exit', 3, null)
+    releaseOptions()
+    await initializing
+
+    expect(fixture.initializeMessages()).toEqual([])
+    expect(fixture.pool.size).toBe(0)
+    expect(fixture.firstSocket.closed).toBe(true)
+  })
+
+  it('preserves an existing server error and clears provenance on every terminal path', async () => {
+    const serverError = await sharedDocumentFixture()
+    const request = await requestWorkspaceEdit(
+      serverError,
+      serverError.second,
+      42,
+      'textDocument/rename',
+    )
+    await serverError.first.handleClientMessage(json(didChange(URI, 41, [{ text: 'drift\n' }])))
+    const error = { code: -32001, data: { retry: 2 }, message: 'rename failed' }
+    serverError.respond({ error, id: request.id, jsonrpc: '2.0' })
+    expect(serverError.secondSocket.sent.at(-1)).toEqual({ error, id: 42, jsonrpc: '2.0' })
+
+    const cancelled = await sharedDocumentFixture()
+    const cancelledRequest = await requestWorkspaceEdit(
+      cancelled,
+      cancelled.second,
+      43,
+      'textDocument/rename',
+    )
+    await cancelled.second.handleClientMessage(
+      json({ jsonrpc: '2.0', method: '$/cancelRequest', params: { id: 43 } }),
+    )
+    await cancelled.first.handleClientMessage(json(didChange(URI, 41, [{ text: 'drift\n' }])))
+    cancelled.respond({
+      error: { code: -32800, message: 'request cancelled' },
+      id: cancelledRequest.id,
+      jsonrpc: '2.0',
+    })
+    expect(cancelled.secondSocket.sent.at(-1)).toEqual({
+      error: { code: -32800, message: 'request cancelled' },
+      id: 43,
+      jsonrpc: '2.0',
+    })
+  })
+
+  it('keeps cancellation routed to the original backend request', async () => {
+    const fixture = await sharedDocumentFixture()
+    const request = await requestWorkspaceEdit(fixture, fixture.second, 44, 'textDocument/rename')
+    await fixture.second.handleClientMessage(
+      json({ jsonrpc: '2.0', method: '$/cancelRequest', params: { id: 44 } }),
+    )
+
+    expect(lastServerMethod(fixture, '$/cancelRequest')).toEqual({
+      jsonrpc: '2.0',
+      method: '$/cancelRequest',
+      params: { id: request.id },
+    })
+
+    fixture.respond({
+      id: request.id,
+      jsonrpc: '2.0',
+      result: workspaceEdit(textDocumentEdit(URI, 40)),
+    })
+    expect(fixture.secondSocket.sent.at(-1)).toEqual({
+      error: { code: -32801, message: 'Content modified' },
+      id: 44,
+      jsonrpc: '2.0',
+    })
+  })
+
+  it('after a two-step edit forwards one collapsed didChange at backend B-plus-two and maps the next response to browser C-plus-two', async () => {
+    const fixture = await sharedDocumentFixture()
+    await fixture.second.handleClientMessage(json(didChange(URI, 9, [{ text: 'two steps\n' }])))
+    expect(lastServerMethod(fixture, 'textDocument/didChange').params).toEqual({
+      contentChanges: [{ text: 'two steps\n' }],
+      textDocument: { uri: URI, version: 42 },
+    })
+
+    const request = await requestWorkspaceEdit(fixture, fixture.second, 45, 'textDocument/rename')
+    fixture.respond({
+      id: request.id,
+      jsonrpc: '2.0',
+      result: workspaceEdit(textDocumentEdit(URI, 42)),
+    })
+    expect(fixture.secondSocket.sent.at(-1)).toMatchObject({
+      id: 45,
+      result: workspaceEdit(textDocumentEdit(URI, 9)),
+    })
+  })
+
+  it('rejects backend workspace/applyEdit with -32601 and its backend request ID without forwarding a request ID or invoking a browser host callback', async () => {
+    const fixture = await initializedFixture()
+    const firstBefore = fixture.firstSocket.sent.length
+    const secondBefore = fixture.secondSocket.sent.length
+    const serverBefore = fixture.serverMessages.length
+
+    fixture.respond({
+      id: 'server-apply',
+      jsonrpc: '2.0',
+      method: 'workspace/applyEdit',
+      params: { edit: workspaceEdit(textDocumentEdit(URI, null)) },
+    })
+    await fixture.waitForServerMessageCount(serverBefore + 1)
+
+    expect(fixture.serverMessages.at(-1)).toEqual({
+      error: {
+        code: -32601,
+        message: 'Method not implemented: workspace/applyEdit',
+      },
+      id: 'server-apply',
+      jsonrpc: '2.0',
+    })
+    expect(fixture.firstSocket.sent.slice(firstBefore)).toEqual([])
+    expect(fixture.secondSocket.sent.slice(secondBefore)).toEqual([])
+  })
+})
+
 describe('LspSessionPool ownership', () => {
   it('kills the backend and closes client sockets on disposeAll', async () => {
     const fixture = await lspFixture()
@@ -876,6 +1707,7 @@ function lspTestApp(root: string, pool: LspSessionPool) {
     orchestration: { database: database.db },
     settings: testSettingsOptions(root),
     watch: false,
+    workspaceEditJournalRoot: path.join(root, '.workspace-edit-journals'),
     workspaceRoot: root,
   })
 }
@@ -1007,12 +1839,12 @@ function json(value: unknown): string {
   return JSON.stringify(value)
 }
 
-function initializeRequest(id: number) {
+function initializeRequest(id: number, params: Record<string, unknown> = {}) {
   return {
     id,
     jsonrpc: '2.0',
     method: 'initialize',
-    params: {},
+    params,
   }
 }
 
@@ -1043,7 +1875,7 @@ function hoverResult(value: string) {
   return { contents: { kind: 'plaintext', value } }
 }
 
-function didOpen(uri: string, text: string) {
+function didOpen(uri: string, text: string, version = 0) {
   return {
     jsonrpc: '2.0',
     method: 'textDocument/didOpen',
@@ -1052,10 +1884,76 @@ function didOpen(uri: string, text: string) {
         languageId: 'typescript',
         text,
         uri,
-        version: 0,
+        version,
       },
     },
   }
+}
+
+function didChange(
+  uri: string,
+  version: number,
+  contentChanges: readonly Record<string, unknown>[],
+) {
+  return {
+    jsonrpc: '2.0',
+    method: 'textDocument/didChange',
+    params: {
+      contentChanges,
+      textDocument: { uri, version },
+    },
+  }
+}
+
+function workspaceEditRequest(id: number, method: string, uri = 'file:///repo/a.ts') {
+  if (method === 'codeAction/resolve') {
+    return { id, jsonrpc: '2.0', method, params: { title: 'Resolve fix' } }
+  }
+  if (method === 'textDocument/codeAction') {
+    return {
+      id,
+      jsonrpc: '2.0',
+      method,
+      params: {
+        context: { diagnostics: [] },
+        range: {
+          end: { character: 1, line: 0 },
+          start: { character: 0, line: 0 },
+        },
+        textDocument: { uri },
+      },
+    }
+  }
+
+  return {
+    id,
+    jsonrpc: '2.0',
+    method,
+    params: {
+      newName: 'next',
+      position: { character: 0, line: 0 },
+      textDocument: { uri },
+    },
+  }
+}
+
+function textDocumentEdit(uri: string, version: number | null, newText = 'next') {
+  return {
+    edits: [
+      {
+        newText,
+        range: {
+          end: { character: 1, line: 0 },
+          start: { character: 0, line: 0 },
+        },
+      },
+    ],
+    textDocument: { uri, version },
+  }
+}
+
+function workspaceEdit(...documentChanges: readonly unknown[]) {
+  return { documentChanges }
 }
 
 function didClose(uri: string) {

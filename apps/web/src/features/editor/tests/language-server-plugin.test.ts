@@ -1,4 +1,8 @@
-import { summarizeDiagnostics, type LanguageServerSetPluginOptions } from '@singapor/lsp-plugin'
+import {
+  LanguageServerDocumentSyncController,
+  summarizeDiagnostics,
+  type LanguageServerSetPluginOptions,
+} from '@singapor/lsp-plugin'
 import { beforeEach, describe, vi } from 'vitest'
 
 import { createEditorLanguageServerStatusSource } from '@/features/editor/state/language-server-status-source'
@@ -22,6 +26,9 @@ vi.mock('@/lib/server-sockets', () => ({
 const { createMatchedLanguageServerPlugin, languageServerMatches } =
   await import('@/features/editor/utils/language-server-plugin')
 
+const onApplyWorkspaceEdit = vi.fn(async () => ({ status: 'applied' as const }))
+const documentSyncController = new LanguageServerDocumentSyncController()
+
 beforeEach(() => {
   createdServerSets.length = 0
 })
@@ -30,11 +37,13 @@ describe('createMatchedLanguageServerPlugin', () => {
   test('stays idle without eligible matches', () => {
     const source = createEditorLanguageServerStatusSource()
     const plugin = createMatchedLanguageServerPlugin({
+      documentSyncController,
       enabled: true,
       matches: [],
       rootPath: '/repo',
       statusSource: source,
       target: { matchPath: '/repo/README.md' },
+      onApplyWorkspaceEdit,
     })
 
     plugin.activate({} as never)
@@ -47,11 +56,13 @@ describe('createMatchedLanguageServerPlugin', () => {
   test('builds one composite with one distinct lane per descriptor', () => {
     const source = createEditorLanguageServerStatusSource()
     const plugin = createMatchedLanguageServerPlugin({
+      documentSyncController,
       enabled: true,
       matches: [match('typescript', '/repo/package', 0), match('eslint', '/repo', 5)],
       rootPath: '/repo',
       statusSource: source,
       target: { matchPath: 'src/a.ts' },
+      onApplyWorkspaceEdit,
     })
 
     plugin.activate({} as never)
@@ -60,6 +71,10 @@ describe('createMatchedLanguageServerPlugin', () => {
 
     expect(createdServerSets).toHaveLength(1)
     expect(options?.lanes.map((lane) => lane.id)).toEqual(['typescript', 'eslint'])
+    expect(options?.onApplyWorkspaceEdit).toBe(onApplyWorkspaceEdit)
+    expect(options?.lanes.every((lane) => lane.onApplyWorkspaceEdit === onApplyWorkspaceEdit)).toBe(
+      true,
+    )
     expect(options?.lanes[0]?.connectionProvider).not.toBe(options?.lanes[1]?.connectionProvider)
     expect(options?.lanes.map((lane) => lane.rootUri)).toEqual([
       'file:///repo/package',
@@ -75,6 +90,7 @@ describe('createMatchedLanguageServerPlugin', () => {
 
   test('applies feature exclusions and named ready notifications before lane construction', () => {
     createMatchedLanguageServerPlugin({
+      documentSyncController,
       enabled: true,
       matches: [match('typescript', '/repo', 0), match('eslint', '/repo', 5)],
       rootPath: '/repo',
@@ -86,6 +102,7 @@ describe('createMatchedLanguageServerPlugin', () => {
           typescript: [{ method: 'workspace/state', params: { complete: true } }],
         },
       },
+      onApplyWorkspaceEdit,
     })
 
     const [typescript, eslint] = createdServerSets[0]?.lanes ?? []
@@ -100,11 +117,13 @@ describe('createMatchedLanguageServerPlugin', () => {
   test('keeps a ready primary aggregate ready when a secondary errors', () => {
     const source = createEditorLanguageServerStatusSource()
     const plugin = createMatchedLanguageServerPlugin({
+      documentSyncController,
       enabled: true,
       matches: [match('typescript', '/repo', 0), match('eslint', '/repo', 5)],
       rootPath: '/repo',
       statusSource: source,
       target: { matchPath: 'src/a.ts' },
+      onApplyWorkspaceEdit,
     })
     plugin.activate({} as never)
     const [typescript, eslint] = createdServerSets[0]?.lanes ?? []
@@ -119,11 +138,13 @@ describe('createMatchedLanguageServerPlugin', () => {
   test('keeps a lane ready after a routed request fails', () => {
     const source = createEditorLanguageServerStatusSource()
     const plugin = createMatchedLanguageServerPlugin({
+      documentSyncController,
       enabled: true,
       matches: [match('typescript', '/repo', 0)],
       rootPath: '/repo',
       statusSource: source,
       target: { matchPath: 'src/a.ts' },
+      onApplyWorkspaceEdit,
     })
     plugin.activate({} as never)
     const lane = createdServerSets[0]?.lanes[0]
@@ -142,11 +163,13 @@ describe('createMatchedLanguageServerPlugin', () => {
   test('orders composite diagnostics by diagnostic rank', () => {
     const source = createEditorLanguageServerStatusSource()
     const plugin = createMatchedLanguageServerPlugin({
+      documentSyncController,
       enabled: true,
       matches: [match('typescript', '/repo', 5), match('eslint', '/repo', 0)],
       rootPath: '/repo',
       statusSource: source,
       target: { matchPath: 'src/a.ts' },
+      onApplyWorkspaceEdit,
     })
     plugin.activate({} as never)
     const [typescript, eslint] = createdServerSets[0]?.lanes ?? []
@@ -164,11 +187,13 @@ describe('createMatchedLanguageServerPlugin', () => {
 describe('semantic token ownership', () => {
   test('creates layer options for the runtime-elected semantic owner', () => {
     createMatchedLanguageServerPlugin({
+      documentSyncController,
       enabled: true,
       matches: [match('typescript', '/repo', 5), match('rust', '/repo', 0)],
       rootPath: '/repo',
       statusSource: createEditorLanguageServerStatusSource(),
       target: { matchPath: 'src/a.rs' },
+      onApplyWorkspaceEdit,
     })
 
     const options = createdServerSets[0]
@@ -185,11 +210,13 @@ describe('semantic token ownership', () => {
   test('keeps initialization capabilities stable per server', () => {
     for (const root of ['/repo', '/other']) {
       createMatchedLanguageServerPlugin({
+        documentSyncController,
         enabled: true,
         matches: [match('rust', root, 0)],
         rootPath: root,
         statusSource: createEditorLanguageServerStatusSource(),
         target: { matchPath: 'src/a.rs' },
+        onApplyWorkspaceEdit,
       })
     }
 

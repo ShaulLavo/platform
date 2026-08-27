@@ -43,49 +43,74 @@ export function FileEditorBody({
   // document. Both are parsed before the hook below, which has to run above every early exit.
   const diffDocument = parseDiffDocumentId(path)
   const comparePath = parseCompareSavedDocumentId(path)
-  const editorDocument = useHeldLiveDocument(
+  const displayedDocument = useHeldLiveDocument(
     liveDocument,
     !diffDocument && !comparePath && isSettling(fileState),
   )
+  const editorDocument = displayedDocument.document
+  const ownsCurrentTab = displayedDocument.current && editorDocument?.path === path
+  const currentActions = ownsCurrentTab ? actions : null
+  const currentReferences = currentActions ? languageServerReferences : null
 
   if (diffDocument) {
-    return <DiffView documentInfo={diffDocument} rootPath={rootPath} tabId={tabId} />
+    return (
+      <DiffView
+        documentInfo={diffDocument}
+        languageHost={actions}
+        rootPath={rootPath}
+        tabId={tabId}
+      />
+    )
   }
 
-  if (comparePath) return <CompareSavedView path={comparePath} rootPath={rootPath} tabId={tabId} />
+  if (comparePath) {
+    return (
+      <CompareSavedView
+        languageHost={actions}
+        path={comparePath}
+        rootPath={rootPath}
+        tabId={tabId}
+      />
+    )
+  }
 
   if (editorDocument) {
     return (
       <div
         className={
-          languageServerReferences
+          currentReferences
             ? 'grid h-full min-h-0 min-w-0 grid-cols-[minmax(0,1fr)_minmax(260px,340px)] grid-rows-[minmax(0,1fr)] overflow-hidden'
             : 'grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[minmax(0,1fr)] overflow-hidden'
         }
       >
         <Editor
-          active={active}
-          definitionTarget={definitionTarget}
+          active={active && currentActions !== null}
+          definitionTarget={currentActions ? definitionTarget : null}
           document={editorDocument}
           keymapLayers={editorKeymapLayers}
           rootPath={rootPath}
           tabId={tabId}
-          onDirtyChange={actions.setDirtyState}
-          onScrollPositionChange={(_path, scrollPosition) =>
-            actions.setScrollPosition(scrollPosition)
+          onScrollPositionChange={
+            currentActions
+              ? (changedPath, scrollPosition) => {
+                  if (changedPath !== path) return
+
+                  currentActions.setScrollPosition(scrollPosition)
+                }
+              : undefined
           }
-          onStatusSourceChange={actions.setStatusSource}
-          onTextChange={actions.recordTextChange}
-          onOpenDefinition={actions.openDefinition}
-          onOpenReferences={actions.openReferences}
+          onStatusSourceChange={currentActions?.setStatusSource}
+          onTextChange={currentActions?.handleTextChange}
+          onOpenDefinition={currentActions?.openDefinition}
+          onOpenReferences={currentActions?.openReferences}
         />
-        {languageServerReferences ? (
+        {currentReferences && currentActions ? (
           <LanguageServerReferencesPane
-            references={languageServerReferences}
+            references={currentReferences}
             rootPath={rootPath}
-            onClose={actions.closeReferences}
-            onOpenReference={actions.openDefinition}
-            onPreviewReference={actions.previewReference}
+            onClose={currentActions.closeReferences}
+            onOpenReference={currentActions.openDefinition}
+            onPreviewReference={currentActions.previewReference}
           />
         ) : null}
       </div>

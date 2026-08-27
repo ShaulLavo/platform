@@ -6,11 +6,156 @@ import {
   searchQuerySchema,
   treeEntrySchema,
   treeQuerySchema,
+  workspaceEditPrepareBodySchema,
+  workspaceEditReleaseBodySchema,
+  workspaceEditResultSchema,
   workspaceSearchEventSchema,
   workspaceSearchMatchSchema,
 } from '../contracts'
 
 describe('filesystem contracts', () => {
+  it('accepts every ordered workspace edit operation and preserves option precedence', () => {
+    const body = workspaceEditPrepareBody([
+      {
+        destination: { kind: 'missing' },
+        ignoreIfExists: true,
+        index: 0,
+        kind: 'create',
+        overwrite: true,
+        path: 'src/a.ts',
+      },
+      {
+        expected: { afterOperation: 0, kind: 'transaction' },
+        index: 2,
+        kind: 'write',
+        path: 'src/a.ts',
+        text: 'next',
+      },
+      {
+        destination: { kind: 'missing' },
+        ignoreIfExists: false,
+        index: 3,
+        kind: 'rename',
+        newPath: 'src/b.ts',
+        oldPath: 'src/a.ts',
+        overwrite: true,
+        source: { afterOperation: 2, kind: 'transaction' },
+      },
+      {
+        expected: { afterOperation: 3, kind: 'transaction' },
+        ignoreIfNotExists: true,
+        index: 4,
+        kind: 'delete',
+        path: 'src/b.ts',
+        recursive: true,
+      },
+    ])
+
+    expect(v.parse(workspaceEditPrepareBodySchema, body)).toEqual(body)
+  })
+
+  it('rejects invalid workspace edit paths preconditions order and unknown fields', () => {
+    const validWrite = {
+      expected: { kind: 'snapshot', mtimeMs: 1, version: 'sha256:before' },
+      index: 0,
+      kind: 'write',
+      path: 'src/a.ts',
+      text: 'next',
+    } as const
+
+    expect(
+      v.safeParse(
+        workspaceEditPrepareBodySchema,
+        workspaceEditPrepareBody([validWrite], { extra: true }),
+      ).success,
+    ).toBe(false)
+    expect(
+      v.safeParse(
+        workspaceEditPrepareBodySchema,
+        workspaceEditPrepareBody([{ ...validWrite, path: '../outside.ts' }]),
+      ).success,
+    ).toBe(false)
+    expect(
+      v.safeParse(
+        workspaceEditPrepareBodySchema,
+        workspaceEditPrepareBody([
+          validWrite,
+          { ...validWrite, expected: { kind: 'snapshot', mtimeMs: 1, version: 'stale' }, index: 1 },
+        ]),
+      ).success,
+    ).toBe(false)
+    expect(
+      v.safeParse(
+        workspaceEditPrepareBodySchema,
+        workspaceEditPrepareBody([
+          { ...validWrite, expected: { afterOperation: 1, kind: 'transaction' } },
+        ]),
+      ).success,
+    ).toBe(false)
+  })
+
+  it('requires exact sorted partial acknowledgement paths', () => {
+    const base = {
+      acknowledgePartial: {
+        generation: 2,
+        unrecoveredPaths: ['src/a.ts', 'src/b.ts'],
+      },
+      expectedGeneration: 2,
+      operationId: 'd96f733e-61f8-42c4-b043-f18dc8cce052',
+      transitionId: '070527de-f9d0-40de-94cd-9af95e3a0a3b',
+    }
+
+    expect(v.safeParse(workspaceEditReleaseBodySchema, base).success).toBe(true)
+    expect(
+      v.safeParse(workspaceEditReleaseBodySchema, {
+        ...base,
+        acknowledgePartial: {
+          ...base.acknowledgePartial,
+          unrecoveredPaths: ['src/b.ts', 'src/a.ts'],
+        },
+      }).success,
+    ).toBe(false)
+  })
+
+  it('accepts every result state and keeps response paths relative and content-free', () => {
+    const states = [
+      'preparing',
+      'prepared',
+      'committed',
+      'finalized',
+      'aborted',
+      'rolled-back',
+      'undo-committed',
+      'undone',
+      'redo-committed',
+      'redone',
+      'released',
+    ] as const
+
+    for (const state of states) {
+      expect(v.safeParse(workspaceEditResultSchema, workspaceEditResult(state)).success).toBe(true)
+    }
+    expect(
+      v.safeParse(workspaceEditResultSchema, {
+        ...workspaceEditResult('partial'),
+        recoveryTarget: 'rolled-back',
+        unrecoveredPaths: ['src/a.ts'],
+      }).success,
+    ).toBe(true)
+    expect(
+      v.safeParse(workspaceEditResultSchema, {
+        ...workspaceEditResult('finalized'),
+        entries: [{ content: 'secret', exists: false, path: 'src/a.ts' }],
+      }).success,
+    ).toBe(false)
+    expect(
+      v.safeParse(workspaceEditResultSchema, {
+        ...workspaceEditResult('finalized'),
+        affectedPaths: ['/private/workspace/src/a.ts'],
+      }).success,
+    ).toBe(false)
+  })
+
   it('parses query booleans and clamps bounded integer query values', () => {
     expect(v.parse(booleanQueryValueSchema, 'true')).toBe(true)
     expect(v.parse(booleanQueryValueSchema, '0')).toBe(false)
@@ -156,3 +301,40 @@ describe('filesystem contracts', () => {
     })
   })
 })
+
+function workspaceEditPrepareBody(
+  operations: readonly Record<string, unknown>[],
+  extra: Record<string, unknown> = {},
+) {
+  return {
+    bodyDigest: `sha256:${'a'.repeat(64)}`,
+    operationId: 'd96f733e-61f8-42c4-b043-f18dc8cce052',
+    operations,
+    origin: 'workspace-edit',
+    workspace: 'project',
+    ...extra,
+  }
+}
+
+function workspaceEditResult(state: string) {
+  return {
+    affectedPaths: ['src/a.ts'],
+    entries: [
+      {
+        exists: true,
+        mtimeMs: 2,
+        path: 'src/a.ts',
+        size: 4,
+        type: 'file',
+        version: 'sha256:after',
+      },
+    ],
+    eventPublication: 'pending',
+    generation: 1,
+    operationId: 'd96f733e-61f8-42c4-b043-f18dc8cce052',
+    rolledBackPaths: [],
+    serverEpoch: '070527de-f9d0-40de-94cd-9af95e3a0a3b',
+    state,
+    unrecoveredPaths: [],
+  }
+}

@@ -19,12 +19,14 @@ import { Spinner } from '@workspace/ui/components/spinner'
 export function DeleteEntryDialog({
   deleting,
   error,
+  mutationsEnabled,
   onCancel,
   onConfirm,
   target,
 }: {
   readonly deleting: boolean
   readonly error: string | null
+  readonly mutationsEnabled: boolean
   readonly onCancel: () => void
   readonly onConfirm: () => void
   readonly target: DeleteTarget | null
@@ -57,7 +59,12 @@ export function DeleteEntryDialog({
           <Button disabled={deleting} onClick={onCancel} type='button' variant='outline'>
             Cancel
           </Button>
-          <Button disabled={deleting} onClick={onConfirm} type='button' variant='destructive'>
+          <Button
+            disabled={deleting || !mutationsEnabled}
+            onClick={onConfirm}
+            type='button'
+            variant='destructive'
+          >
             {deleting ? (
               <Spinner aria-hidden='true' data-icon='inline-start' role='presentation' />
             ) : (

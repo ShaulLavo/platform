@@ -2,9 +2,18 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { UnsavedChangesDialog } from '@/features/editor/components/unsaved-changes-dialog'
-import { savableDocumentPath } from '@/features/editor/utils/file-backed-document'
+import { useWorkspaceMutationAllowed } from '@/features/editor/hooks/use-workspace-mutation-allowed'
+import { useOptionalWorkspaceEditService } from '@/features/editor/providers/workspace-edit-context'
+import type {
+  WorkspaceEditService,
+  WorkspaceMutationReporter,
+} from '@/features/editor/state/workspace-edit-service'
 import { editorTabDocumentIds } from '@/features/workspace/utils/tab-dirty'
-import { isDirtyLiveEditorDocument, saveEditorDocumentByPath } from '@/features/editor/utils/save'
+import {
+  isDirtyLiveEditorDocument,
+  isSavableEditorDocument,
+  saveEditorDocumentsByPath,
+} from '@/features/editor/utils/save'
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
@@ -63,6 +72,8 @@ export function useDirtyTabCloseRequest() {
   const focus = useFocusService()
   const documentStore = useEditorDocumentStoreApi()
   const workspaceStore = useEditorWorkspaceStoreApi()
+  const workspaceEdits = useOptionalWorkspaceEditService()
+  const mutationsEnabled = useWorkspaceMutationAllowed()
   const queryClient = useQueryClient()
   const { closeTab, discardAndCloseTab } = useEditorCommands()
   const closeOriginRef = useRef<FocusTargetToken | null>(null)
@@ -75,7 +86,18 @@ export function useDirtyTabCloseRequest() {
   const [saving, setSaving] = useState(false)
   // Savable, not file-backed: closing a dirty settings.json tab has to offer
   // Save, and that save goes to the settings route rather than the fs one.
-  const canSavePendingPath = savableDocumentPath(pendingPath) !== null
+  const pendingDocumentState = documentStore.getState()
+  const pendingDocumentIds = pendingPath ? editorTabDocumentIds(pendingPath) : []
+  const dirtyPendingDocumentIds = pendingDocumentIds.filter((id) =>
+    isDirtyLiveEditorDocument(pendingDocumentState, id),
+  )
+  const canSavePendingPath =
+    mutationsEnabled &&
+    dirtyPendingDocumentIds.length > 0 &&
+    dirtyPendingDocumentIds.every((id) => {
+      const document = pendingDocumentState.getLiveEditorDocument(id)
+      return document ? isSavableEditorDocument(document) : false
+    })
   const publishPendingCloses = useCallback((next: readonly PendingClose[]) => {
     pendingClosesRef.current = next
     setPendingCloses(next)
@@ -227,6 +249,7 @@ export function useDirtyTabCloseRequest() {
   const handleSave = useCallback(() => {
     if (!pendingClose) return
     if (saving) return
+    if (!mutationsEnabled) return
 
     void saveAndClosePendingTab(pendingClose, {
       advancePendingClose,
@@ -235,6 +258,7 @@ export function useDirtyTabCloseRequest() {
       queryClient,
       setSaveError,
       setSaving,
+      workspaceEdits,
       workspaceStore,
     })
   }, [
@@ -244,6 +268,8 @@ export function useDirtyTabCloseRequest() {
     pendingClose,
     queryClient,
     saving,
+    mutationsEnabled,
+    workspaceEdits,
     workspaceStore,
   ])
 
@@ -344,12 +370,18 @@ async function saveAndClosePendingTab(pendingClose: PendingClose, context: SaveA
     // Every document behind the tab, for the same reason the dirty check above
     // covers them: saving `settings:` finds no live document and reports a
     // failure the user cannot act on.
-    const results = await Promise.all(
-      editorTabDocumentIds(pendingClose.path).map((id) =>
-        saveEditorDocumentByPath(context.documentStore, context.queryClient, id),
-      ),
+    const state = context.documentStore.getState()
+    const documentIds = editorTabDocumentIds(pendingClose.path).filter((id) =>
+      isDirtyLiveEditorDocument(state, id),
     )
-    if (!results.some(Boolean)) {
+    const saveDocuments = (reportAffectedPaths?: WorkspaceMutationReporter) =>
+      saveEditorDocumentsByPath(context.documentStore, context.queryClient, documentIds, (path) =>
+        reportAffectedPaths?.([path]),
+      )
+    const results = context.workspaceEdits
+      ? await context.workspaceEdits.runWorkspaceMutation(documentIds, saveDocuments)
+      : await saveDocuments()
+    if (results.some((saved) => !saved)) {
       context.setSaveError('This tab could not be saved.')
       return
     }
@@ -372,6 +404,7 @@ type SaveAndCloseContext = {
   queryClient: ReturnType<typeof useQueryClient>
   setSaveError: (error: string | null) => void
   setSaving: (saving: boolean) => void
+  workspaceEdits: WorkspaceEditService | null
   workspaceStore: ReturnType<typeof useEditorWorkspaceStoreApi>
 }
 

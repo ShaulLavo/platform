@@ -1,5 +1,7 @@
 import { showChatModeToolTab } from '@/features/chat-mode/utils/panels'
 import { parseCompareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'
+import { isSavableEditorDocument } from '@/features/editor/utils/save'
+import { activeSettingsBufferId } from '@/features/settings/state/active-buffer'
 import { parseDiffDocumentId } from '@/features/git/utils/diff-document'
 import {
   activeEditorPathForWorkbenchPanels,
@@ -39,8 +41,15 @@ export type PlatformCommandDefinition = CommandDefinition<
 export function captureCommandSnapshot(runtime: WorkspaceCommandRuntime): WorkspaceCommandSnapshot {
   const state = runtime.workspace.getState()
   const settings = runtime.settings.readSnapshot()
+  const workspaceEdit = runtime.workspaceEdits.getSnapshot()
+  const activeFilePath = activeEditorPathForWorkbenchPanels(state.workbenchPanels)
+  const activeDocumentPath = activeSettingsBufferId(activeFilePath) ?? activeFilePath
+  const activeDocument = activeDocumentPath
+    ? runtime.documents.store.getState().getLiveEditorDocument(activeDocumentPath)
+    : null
   return {
-    activeFilePath: activeEditorPathForWorkbenchPanels(state.workbenchPanels),
+    activeDocumentSavable: activeDocument ? isSavableEditorDocument(activeDocument) : false,
+    activeFilePath,
     activeTabId: activeEditorTabForWorkbenchPanels(state.workbenchPanels)?.id ?? null,
     chatMode: state.uiMode === 'chat',
     chatModePanels: state.chatModePanels,
@@ -50,6 +59,9 @@ export function captureCommandSnapshot(runtime: WorkspaceCommandRuntime): Worksp
     wallpaperEnabled: settings.wallpaperEnabled,
     workbenchPanels: state.workbenchPanels,
     workspaceOpen: state.rootFolder !== null,
+    workspaceEditRedoable: workspaceEdit.canRedo,
+    workspaceEditUndoable: workspaceEdit.canUndo,
+    workspaceMutable: runtime.workspaceEdits.canMutateWorkspace(),
   }
 }
 

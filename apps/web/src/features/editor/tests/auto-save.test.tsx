@@ -1,6 +1,7 @@
 import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement, type ReactNode } from 'react'
+import { vi } from 'vitest'
 
 import { DEFAULT_SETTING_VALUES, type SettingId, type SettingsValues } from '@workspace/contracts'
 
@@ -8,9 +9,15 @@ import { expect, test } from '../../../../test/fixtures'
 import { EditorDocumentStateContext } from '@/features/editor/state/document-state'
 import { createEditorDocumentStore } from '@/features/editor/state/document-state'
 import { useAutoSave } from '@/features/editor/hooks/use-auto-save'
+import { WorkspaceEditServiceContext } from '@/features/editor/providers/workspace-edit-context'
+import type { WorkspaceEditService } from '@/features/editor/state/workspace-edit-service'
 import { settingsKeys } from '@/features/settings/utils/query-keys'
+import type { FileResult } from '@/lib/file-system-types'
 
-function harness(overrides: Partial<SettingsValues>) {
+function harness(
+  overrides: Partial<SettingsValues>,
+  workspaceEdits: WorkspaceEditService | null = null,
+) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   queryClient.setQueryData(settingsKeys.document(), {
     diagnostics: [],
@@ -24,7 +31,11 @@ function harness(overrides: Partial<SettingsValues>) {
     createElement(
       QueryClientProvider,
       { client: queryClient },
-      createElement(EditorDocumentStateContext.Provider, { value: documentStore }, children),
+      createElement(
+        WorkspaceEditServiceContext,
+        { value: workspaceEdits },
+        createElement(EditorDocumentStateContext.Provider, { value: documentStore }, children),
+      ),
     )
 
   return { documentStore, queryClient, wrapper }
@@ -84,9 +95,41 @@ test('listens for blur when saving on focus change', async ({ client }) => {
   expect(added).toContain('blur')
 })
 
+test('skips a focus-change save when the workspace mutation gate is closed', async ({ client }) => {
+  expect(client).toBeDefined()
+  const runWorkspaceMutation = vi.fn(
+    async (_affectedPaths: readonly string[] | 'all', _operation: () => Promise<unknown>) => {
+      throw { code: 'workspace-edit-busy' }
+    },
+  )
+  const workspaceEdits = {
+    runWorkspaceMutation,
+  } as unknown as WorkspaceEditService
+  const { documentStore, wrapper } = harness({ 'files.autoSave': 'onWindowChange' }, workspaceEdits)
+  documentStore.getState().ensureLiveEditorDocument(fileResult('src/dirty.ts'))
+  documentStore.getState().setLiveEditorDocumentDirty('src/dirty.ts', true)
+  renderHook(() => useAutoSave(), { wrapper })
+
+  window.dispatchEvent(new Event('blur'))
+
+  await waitFor(() => expect(runWorkspaceMutation).toHaveBeenCalledOnce())
+  expect(runWorkspaceMutation.mock.calls[0]?.[0]).toEqual(['src/dirty.ts'])
+  expect(documentStore.getState().dirtyFilePaths).toContain('src/dirty.ts')
+})
+
 test('the setting exists with an off default, so nothing changes until asked', ({ client }) => {
   expect(client).toBeDefined()
 
   expect(DEFAULT_SETTING_VALUES['files.autoSave' as SettingId]).toBe('off')
   expect(DEFAULT_SETTING_VALUES['files.autoSaveDelay' as SettingId]).toBe(1_000)
 })
+
+function fileResult(path: string): FileResult {
+  return {
+    content: `contents of ${path}`,
+    mtimeMs: 100,
+    path,
+    size: 20,
+    version: `test:${path}`,
+  }
+}

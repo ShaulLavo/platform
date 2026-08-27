@@ -3,6 +3,7 @@ import { useCallback } from 'react'
 
 import { workspacePathLeaf } from '@/features/workspace/utils/path'
 import { useEditorCommands } from '@/features/editor/state/commands'
+import { useOptionalWorkspaceEditService } from '@/features/editor/providers/workspace-edit-context'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
 import { useResetWorkspaceTreeLoad } from '@/features/workspace/hooks/use-tree'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
@@ -37,9 +38,12 @@ export function useOpenWorkspaceRoot() {
   const queryClient = useQueryClient()
   const resetTreeLoad = useResetWorkspaceTreeLoad()
   const workspaceStore = useEditorWorkspaceStoreApi()
+  const workspaceEdits = useOptionalWorkspaceEditService()
 
   return useCallback(
     async (workspaceRoot: string): Promise<OpenWorkspaceRootResult> => {
+      const reservation = workspaceEdits?.acquireRootSwitchReservation() ?? null
+      if (workspaceEdits && !reservation) return 'failed'
       const generation = claimWorkspaceOpenGeneration()
       activateWorkspaceRoot(workspaceRoot)
 
@@ -68,9 +72,11 @@ export function useOpenWorkspaceRoot() {
         log.warn({ action: 'workspace.root_open_rejected', area: 'workspace', path: workspaceRoot })
         reportError(toClientError(error))
         return 'failed'
+      } finally {
+        if (reservation) workspaceEdits?.releaseRootSwitchReservation(reservation)
       }
     },
-    [queryClient, resetTreeLoad, switchRootFolder, workspaceStore],
+    [queryClient, resetTreeLoad, switchRootFolder, workspaceEdits, workspaceStore],
   )
 }
 

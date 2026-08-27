@@ -1,197 +1,400 @@
-import { createEditorTextBuffer } from '@singapor/core'
-import { describe, expect, it } from 'vitest'
+import { QueryClient } from '@tanstack/react-query'
+import type {
+  WorkspaceEditPrepareRequest,
+  WorkspaceEditRecoverRequest,
+  WorkspaceEditRecoveryListResult,
+  WorkspaceEditReleaseRequest,
+  WorkspaceEditResult,
+  WorkspaceEditStatusResult,
+  WorkspaceEditTransitionRequest,
+} from '@workspace/contracts'
 import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
 
-import type { LiveEditorDocument } from '@/features/editor/state/document-state'
-import type { FileResult, TreeEntry } from '@/lib/file-system-types'
+import { createEditorDocumentStore } from '@/features/editor/state/document-state'
+import {
+  FileSyncService,
+  type WorkspaceMutationTransition,
+  type WorkspaceMutationTransport,
+} from '@/features/editor/state/file-sync-service'
+import {
+  WorkspaceEditService,
+  type WorkspaceEditServicePhase,
+} from '@/features/editor/state/workspace-edit-service'
 import {
   replaceWorkspaceSearchMatches,
   workspaceSearchReplaceSummary,
-  type WorkspaceSearchReplaceContext,
 } from '@/features/search/utils/replace-runner'
+import type { FileResult, TreeEntry } from '@/lib/file-system-types'
+import { expect, test } from '../../../../test/fixtures'
 
+const ROOT = '/repo'
+const OPERATION_ID = '10000000-0000-4000-8000-000000000063'
+const SERVER_EPOCH = '20000000-0000-4000-8000-000000000063'
 const QUERY: WorkspaceSearchQuery = {
   includeContent: true,
   limit: 20,
-  path: 'repo',
+  path: ROOT,
   query: 'needle',
 }
 
-describe('workspace search replacement runner', () => {
-  it('applies replacements to live editor memory and marks it dirty', async () => {
-    const document = liveDocument('repo/src/app.ts', 'needle')
-    const dirtyPaths: string[] = []
-    const result = await replaceWorkspaceSearchMatches({
-      context: testContext({
-        documents: { [document.path]: document },
-        onDirty: (path) => dirtyPaths.push(path),
-      }),
-      matches: [match({ path: document.path })],
-      query: QUERY,
-      replaceText: 'pin',
-    })
+test.describe('workspace search replacement runner', () => {
+  test('applies exact live-buffer and guarded unopened text through one service request', async () => {
+    const harness = createHarness()
+    const live = addLiveFile(harness, '/repo/live.ts', 'needle')
+    addFile(harness, '/repo/unopened.ts', 'const value = "needle"')
 
-    expect(
-      document.buffer.getTextSnapshot().readRange(0, document.buffer.getSnapshot().length),
-    ).toBe('pin')
-    expect(document.buffer.isDirty()).toBe(true)
-    expect(dirtyPaths).toEqual([document.path])
-    expect(result).toEqual({
-      changedFiles: 1,
-      failedFiles: 0,
-      replacedMatches: 1,
-      skippedMatches: 0,
-    })
-  })
-
-  it('writes disk files with an mtime guard and caches the saved snapshot', async () => {
-    const snapshotFiles: FileResult[] = []
-    const writes: Array<{
-      baseVersion?: string | null
-      content: string
-      expectedMtimeMs?: number | null
-    }> = []
-    const result = await replaceWorkspaceSearchMatches({
-      context: testContext({
-        files: {
-          'repo/src/app.ts': fileResult('repo/src/app.ts', 'needle'),
-        },
-        onCacheFile: (file) => snapshotFiles.push(file),
-        onWrite: (_path, content, options) => {
-          writes.push({
-            baseVersion: options?.baseVersion,
-            content,
-            expectedMtimeMs: options?.expectedMtimeMs,
-          })
-          return { mtimeMs: 200, size: content.length, version: 'test:200:3' }
-        },
-      }),
-      matches: [match({ path: 'repo/src/app.ts' })],
-      query: QUERY,
-      replaceText: 'pin',
-    })
-
-    expect(writes).toEqual([{ baseVersion: 'test:100:6', content: 'pin', expectedMtimeMs: 100 }])
-    expect(snapshotFiles).toEqual([
-      expect.objectContaining({
-        content: 'pin',
-        mtimeMs: 200,
-        path: 'repo/src/app.ts',
-        size: 3,
-        version: 'test:200:3',
-      }),
+    const pending = runReplace(harness, [
+      match('/repo/live.ts', 1, 7),
+      match('/repo/unopened.ts', 16, 22),
     ])
-    expect(result.replacedMatches).toBe(1)
+    await waitForPhase(harness.service, 'awaiting-confirmation')
+
+    expect(harness.service.getSnapshot().preview?.rows).toMatchObject([
+      {
+        afterText: 'pin',
+        beforeText: 'needle',
+        path: '/repo/live.ts',
+        targetKind: 'open',
+      },
+      {
+        afterText: 'const value = "pin"',
+        beforeText: 'const value = "needle"',
+        path: '/repo/unopened.ts',
+        targetKind: 'unopened',
+      },
+    ])
+    harness.service.confirmPreview()
+
+    await expect(pending).resolves.toEqual({
+      changedFiles: 2,
+      replacedMatches: 2,
+      skippedMatches: 0,
+      status: 'applied',
+    })
+    expect(live.buffer.materializeFullText()).toBe('pin')
+    expect(live.buffer.isDirty()).toBe(true)
+    expect(requiredFile(harness, '/repo/unopened.ts').content).toBe('const value = "pin"')
+    expect(harness.transport.prepares).toHaveLength(1)
+    expect(harness.transport.prepares[0]?.operations).toMatchObject([
+      {
+        expected: { kind: 'snapshot', version: 'test:10:22' },
+        kind: 'write',
+        path: 'unopened.ts',
+        text: 'const value = "pin"',
+      },
+    ])
   })
 
-  it('reports failed disk writes as skipped file matches', async () => {
-    const result = await replaceWorkspaceSearchMatches({
-      context: testContext({
-        files: {
-          'repo/src/app.ts': fileResult('repo/src/app.ts', 'needle'),
-        },
-        onWrite: () => {
-          throw new Error('changed')
-        },
-      }),
-      matches: [match({ path: 'repo/src/app.ts' })],
-      query: QUERY,
-      replaceText: 'pin',
-    })
+  test('rolls back every file when one target fails', async () => {
+    const harness = createHarness({ failFinalize: true })
+    addFile(harness, '/repo/first.ts', 'needle')
+    addFile(harness, '/repo/second.ts', 'needle')
 
-    expect(result).toEqual({
-      changedFiles: 0,
-      failedFiles: 1,
-      replacedMatches: 0,
-      skippedMatches: 1,
-    })
+    const pending = runReplace(harness, [
+      match('/repo/first.ts', 1, 7),
+      match('/repo/second.ts', 1, 7),
+    ])
+    await waitForPhase(harness.service, 'awaiting-confirmation')
+    harness.service.confirmPreview()
+
+    await expect(pending).resolves.toMatchObject({ status: 'rolled-back' })
+    expect(requiredFile(harness, '/repo/first.ts').content).toBe('needle')
+    expect(requiredFile(harness, '/repo/second.ts').content).toBe('needle')
+    expect(harness.transport.transitions).toContain('commit')
+    expect(harness.transport.transitions).toContain('rollback')
   })
 
-  it('summarizes partial replace results', () => {
+  test('preview cancel changes no open or unopened target', async () => {
+    const harness = createHarness()
+    const live = addLiveFile(harness, '/repo/live.ts', 'needle')
+    addFile(harness, '/repo/unopened.ts', 'needle')
+
+    const pending = runReplace(harness, [
+      match('/repo/live.ts', 1, 7),
+      match('/repo/unopened.ts', 1, 7),
+    ])
+    await waitForPhase(harness.service, 'awaiting-confirmation')
+    harness.service.cancelPreview()
+
+    await expect(pending).resolves.toEqual({ status: 'cancelled' })
+    expect(live.buffer.materializeFullText()).toBe('needle')
+    expect(live.buffer.isDirty()).toBe(false)
+    expect(requiredFile(harness, '/repo/unopened.ts').content).toBe('needle')
+    expect(harness.transport.prepares).toEqual([])
+  })
+
+  test('group undo restores all replaced targets', async () => {
+    const harness = createHarness()
+    const live = addLiveFile(harness, '/repo/live.ts', 'needle')
+    addFile(harness, '/repo/unopened.ts', 'needle')
+
+    const pending = runReplace(harness, [
+      match('/repo/live.ts', 1, 7),
+      match('/repo/unopened.ts', 1, 7),
+    ])
+    await waitForPhase(harness.service, 'awaiting-confirmation')
+    harness.service.confirmPreview()
+    await expect(pending).resolves.toMatchObject({ status: 'applied' })
+
+    await expect(harness.service.undo()).resolves.toBe(true)
+    expect(live.buffer.materializeFullText()).toBe('needle')
+    expect(live.buffer.isDirty()).toBe(false)
+    expect(requiredFile(harness, '/repo/unopened.ts').content).toBe('needle')
+  })
+
+  test('summarizes an all-or-nothing applied result', () => {
     expect(
       workspaceSearchReplaceSummary({
-        changedFiles: 1,
-        failedFiles: 1,
+        changedFiles: 2,
         replacedMatches: 2,
         skippedMatches: 3,
+        status: 'applied',
       }),
-    ).toBe('2 matches replaced, 3 skipped, 1 file failed.')
+    ).toBe('2 matches replaced, 3 skipped.')
   })
 })
 
-function testContext({
-  documents = {},
-  files = {},
-  onCacheFile = () => {},
-  onDirty = () => {},
-  onWrite = (_path, content) => ({
-    mtimeMs: 101,
-    size: content.length,
-    version: `test:101:${content.length}`,
-  }),
-}: {
-  documents?: Record<string, LiveEditorDocument>
-  files?: Record<string, FileResult>
-  onCacheFile?: (file: FileResult) => void
-  onDirty?: (path: string) => void
-  onWrite?: (
-    path: string,
-    content: string,
-    options?: { baseVersion?: string | null; expectedMtimeMs?: number | null },
-  ) => Pick<TreeEntry, 'mtimeMs' | 'size' | 'version'>
-}): WorkspaceSearchReplaceContext {
-  return {
-    cacheFile: onCacheFile,
-    fetchFile: async (path) => files[path] ?? missingFile(path),
-    getLiveEditorDocument: (path) => documents[path] ?? null,
-    recordLiveEditorDocumentTextChange: onDirty,
-    signal: new AbortController().signal,
-    writeFileContent: async (path, content, options) => onWrite(path, content, options),
-  }
-}
+type Harness = ReturnType<typeof createHarness>
 
-function liveDocument(path: string, text: string): LiveEditorDocument {
-  const buffer = createEditorTextBuffer(text)
-  buffer.markClean()
-
-  return {
-    buffer,
-    contentRevision: 'h:test',
-    id: path,
-    localRevision: buffer.getRevision(),
-    path,
-    sync: {
-      fileVersion: 'test:100',
-      kind: 'file',
-      mtimeMs: 100,
-      path,
-      state: 'idle',
+function createHarness(options: { readonly failFinalize?: boolean } = {}) {
+  const files = new Map<string, FileResult>()
+  const store = createEditorDocumentStore()
+  const transport = new SearchWorkspaceMutationTransport(ROOT, files, options)
+  const fileSync = new FileSyncService(store, new QueryClient(), {
+    readFileContent: async (path, signal) => {
+      signal.throwIfAborted()
+      return requiredFile({ files }, path)
     },
-  }
+    workspaceMutations: transport,
+    writeFileContent: async (path, content) => treeEntry(path, content, 1),
+  })
+  const service = new WorkspaceEditService({
+    createOperationId: () => OPERATION_ID,
+    documentStore: store,
+    fileSync,
+    getRoot: () => ({ generation: 1, path: ROOT }),
+    inspectPath: async (path, signal) => {
+      signal.throwIfAborted()
+      const file = files.get(path)
+      if (!file) return { exists: false, path }
+      return {
+        canonicalPath: path,
+        exists: true,
+        mtimeMs: file.mtimeMs,
+        path,
+        type: 'file',
+        version: file.version,
+      }
+    },
+  })
+  return { files, service, store, transport }
 }
 
-function fileResult(path: string, content: string): FileResult {
+function runReplace(harness: Harness, matches: readonly WorkspaceSearchMatch[]) {
+  const signal = new AbortController().signal
+  return replaceWorkspaceSearchMatches({
+    context: {
+      applyWorkspaceChange: harness.service.applyWorkspaceChange,
+      fetchFile: async (path, nextSignal) => {
+        nextSignal.throwIfAborted()
+        return requiredFile(harness, path)
+      },
+      getLiveEditorDocument: harness.store.getState().getLiveEditorDocument,
+      rootPath: ROOT,
+      signal,
+    },
+    matches,
+    query: QUERY,
+    replaceText: 'pin',
+  })
+}
+
+function addLiveFile(harness: Harness, path: string, content: string) {
+  return harness.store.getState().ensureLiveEditorDocument(addFile(harness, path, content))
+}
+
+function addFile(harness: Pick<Harness, 'files'>, path: string, content: string): FileResult {
+  const file = fileResult(path, content, 10)
+  harness.files.set(path, file)
+  return file
+}
+
+function requiredFile(harness: { readonly files: Map<string, FileResult> }, path: string) {
+  const file = harness.files.get(path)
+  if (file) return file
+  throw new RangeError(`Missing test file: ${path}`)
+}
+
+function fileResult(path: string, content: string, mtimeMs: number): FileResult {
   return {
     content,
-    mtimeMs: 100,
+    mtimeMs,
     path,
-    size: content.length,
-    version: `test:100:${content.length}`,
+    size: new TextEncoder().encode(content).byteLength,
+    version: `test:${mtimeMs}:${content.length}`,
   }
 }
 
-function missingFile(path: string): FileResult {
-  throw new Error(`${path} missing`)
+function treeEntry(path: string, content: string, mtimeMs: number): TreeEntry {
+  return {
+    birthtimeMs: mtimeMs,
+    mtimeMs,
+    name: path.split('/').at(-1) ?? path,
+    path,
+    size: new TextEncoder().encode(content).byteLength,
+    type: 'file',
+    version: `test:${mtimeMs}:${content.length}`,
+  }
 }
 
-function match({ path }: { path: string }): WorkspaceSearchMatch {
+function match(path: string, column: number, endColumn: number): WorkspaceSearchMatch {
   return {
-    column: 1,
-    endColumn: 7,
+    column,
+    endColumn,
     kind: 'content',
     line: 1,
     path,
     source: 'disk',
     type: 'file',
   }
+}
+
+class SearchWorkspaceMutationTransport implements WorkspaceMutationTransport {
+  readonly prepares: WorkspaceEditPrepareRequest[] = []
+  readonly transitions: WorkspaceMutationTransition[] = []
+  private current: WorkspaceEditResult | null = null
+  private prepared: WorkspaceEditPrepareRequest | null = null
+  private readonly savedFiles = new Map<string, FileResult>()
+
+  constructor(
+    private readonly root: string,
+    private readonly files: Map<string, FileResult>,
+    private readonly options: { readonly failFinalize?: boolean },
+  ) {}
+
+  async prepare(request: WorkspaceEditPrepareRequest): Promise<WorkspaceEditResult> {
+    this.prepares.push(request)
+    this.prepared = request
+    for (const operation of request.operations) {
+      if (operation.kind !== 'write') continue
+      const path = this.absolutePath(operation.path)
+      this.savedFiles.set(path, requiredFile({ files: this.files }, path))
+    }
+    return this.update('prepared', 1)
+  }
+
+  async transition(
+    transition: WorkspaceMutationTransition,
+    request: WorkspaceEditTransitionRequest,
+  ): Promise<WorkspaceEditResult> {
+    this.transitions.push(transition)
+    if (transition === 'finalize' && this.options.failFinalize) {
+      throw new TypeError('Injected finalization failure')
+    }
+    if (transition === 'commit' || transition === 'redo') this.applyForward()
+    if (transition === 'rollback' || transition === 'undo') this.restoreSavedFiles()
+    return this.update(
+      transitionState(transition, this.requiredCurrent().state),
+      request.expectedGeneration + 1,
+    )
+  }
+
+  async recover(request: WorkspaceEditRecoverRequest): Promise<WorkspaceEditResult> {
+    if (request.recoveryTarget === 'rolled-back' || request.recoveryTarget === 'undone') {
+      this.restoreSavedFiles()
+    } else {
+      this.applyForward()
+    }
+    return this.update(request.recoveryTarget, request.expectedGeneration + 1)
+  }
+
+  async release(request: WorkspaceEditReleaseRequest): Promise<WorkspaceEditResult> {
+    return this.update('released', request.expectedGeneration + 1)
+  }
+
+  async status(operationId: string): Promise<WorkspaceEditStatusResult> {
+    if (this.current?.operationId === operationId) return { found: true, result: this.current }
+    return { found: false, operationId, serverEpoch: SERVER_EPOCH }
+  }
+
+  async recovery(): Promise<WorkspaceEditRecoveryListResult> {
+    return { operations: [], serverEpoch: SERVER_EPOCH }
+  }
+
+  private applyForward(): void {
+    for (const operation of this.requiredPrepared().operations) {
+      if (operation.kind !== 'write') continue
+      const path = this.absolutePath(operation.path)
+      const previous = requiredFile({ files: this.files }, path)
+      this.files.set(path, fileResult(path, operation.text, previous.mtimeMs + 1))
+    }
+  }
+
+  private restoreSavedFiles(): void {
+    for (const [path, file] of this.savedFiles) this.files.set(path, file)
+  }
+
+  private update(state: WorkspaceEditResult['state'], generation: number): WorkspaceEditResult {
+    const request = this.requiredPrepared()
+    const result: WorkspaceEditResult = {
+      affectedPaths: request.operations.flatMap(operationPaths),
+      entries: [],
+      eventPublication: state === 'finalized' ? 'published' : 'pending',
+      generation,
+      operationId: request.operationId,
+      rolledBackPaths: [],
+      serverEpoch: SERVER_EPOCH,
+      state,
+      unrecoveredPaths: [],
+    }
+    this.current = result
+    return result
+  }
+
+  private requiredCurrent(): WorkspaceEditResult {
+    if (this.current) return this.current
+    throw new RangeError('Missing current workspace operation')
+  }
+
+  private requiredPrepared(): WorkspaceEditPrepareRequest {
+    if (this.prepared) return this.prepared
+    throw new RangeError('Missing prepared workspace operation')
+  }
+
+  private absolutePath(relativePath: string): string {
+    return `${this.root}/${relativePath}`
+  }
+}
+
+function transitionState(
+  transition: WorkspaceMutationTransition,
+  current: WorkspaceEditResult['state'],
+): WorkspaceEditResult['state'] {
+  if (transition === 'abort') return 'aborted'
+  if (transition === 'commit') return 'committed'
+  if (transition === 'rollback') return 'rolled-back'
+  if (transition === 'undo') return 'undo-committed'
+  if (transition === 'redo') return 'redo-committed'
+  if (current === 'undo-committed') return 'undone'
+  if (current === 'redo-committed') return 'redone'
+  return 'finalized'
+}
+
+function operationPaths(operation: WorkspaceEditPrepareRequest['operations'][number]): string[] {
+  if (operation.kind === 'rename') return [operation.oldPath, operation.newPath]
+  return [operation.path]
+}
+
+async function waitForPhase(
+  service: WorkspaceEditService,
+  phase: WorkspaceEditServicePhase,
+): Promise<void> {
+  if (service.getSnapshot().phase === phase) return
+  await new Promise<void>((resolve) => {
+    const unsubscribe = service.subscribe(() => {
+      if (service.getSnapshot().phase !== phase) return
+      unsubscribe()
+      resolve()
+    })
+  })
 }

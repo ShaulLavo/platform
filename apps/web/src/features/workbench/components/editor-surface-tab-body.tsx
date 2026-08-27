@@ -9,6 +9,7 @@ import { SearchPane } from '@/features/workspace/components/search-pane'
 import { parseConflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorDocumentState } from '@/features/editor/state/document-state'
+import { useWorkspaceEditHost } from '@/features/editor/providers/workspace-edit-context'
 import { useEditorUiState, useEditorUiStoreApi } from '@/features/editor/state/ui-state'
 import { FileEditorBody } from '@/features/workbench/components/file-editor-body'
 import {
@@ -65,27 +66,33 @@ export function EditorSurfaceTabBody({
   const selectedDocumentPath = useEditorDocumentState((state) =>
     selectedViewDocumentId ? (state.liveDocumentsById[selectedViewDocumentId]?.path ?? null) : null,
   )
+  const selectedDocumentEditability = useEditorDocumentState((state) => {
+    if (!selectedViewDocumentId) return 'editable'
+    const document = state.liveDocumentsById[selectedViewDocumentId]
+    return document?.sync.kind === 'recovery-conflict' ? 'readonly' : 'editable'
+  })
   const selectedLiveDocument = useMemo(
     () =>
       joinedEditorRenderDocument({
         buffer: selectedDocumentBuffer,
         documentId: selectedViewDocumentId,
+        editability: selectedDocumentEditability,
         path: selectedDocumentPath,
         view: selectedViewSession,
       }),
-    [selectedDocumentBuffer, selectedDocumentPath, selectedViewDocumentId, selectedViewSession],
+    [
+      selectedDocumentBuffer,
+      selectedDocumentEditability,
+      selectedDocumentPath,
+      selectedViewDocumentId,
+      selectedViewSession,
+    ],
   )
   const ensureEditorView = useEditorDocumentState((state) => state.ensureEditorView)
   const ensureEditorViewForDocument = useEditorDocumentState(
     (state) => state.ensureEditorViewForDocument,
   )
   const getLiveEditorDocument = useEditorDocumentState((state) => state.getLiveEditorDocument)
-  const setLiveEditorDocumentDirty = useEditorDocumentState(
-    (state) => state.setLiveEditorDocumentDirty,
-  )
-  const recordLiveEditorDocumentTextChange = useEditorDocumentState(
-    (state) => state.recordLiveEditorDocumentTextChange,
-  )
   const forceReplaceLiveEditorDocument = useEditorDocumentState(
     (state) => state.forceReplaceLiveEditorDocument,
   )
@@ -100,6 +107,7 @@ export function EditorSurfaceTabBody({
   const uiStore = useEditorUiStoreApi()
   const { discardLiveEditorDocument, openDefinition, renameLiveEditorDocument } =
     useEditorCommands()
+  const applyWorkspaceEdit = useWorkspaceEditHost()
   const resolveConflictEditorDocument = useConflictEditorResolution({
     discardLiveEditorDocument,
     forceReplaceLiveEditorDocument,
@@ -139,10 +147,9 @@ export function EditorSurfaceTabBody({
 
   const handleEditorTextChange = useCallback(
     (_sourceTabId: string, changedPath: string, change: DocumentSessionChange) => {
-      recordLiveEditorDocumentTextChange(changedPath)
       resolveConflictEditorDocument(changedPath, change.textSnapshot)
     },
-    [recordLiveEditorDocumentTextChange, resolveConflictEditorDocument],
+    [resolveConflictEditorDocument],
   )
   const handleOpenReferences = useCallback(
     (result: LanguageServerReferencesResult) => {
@@ -164,23 +171,23 @@ export function EditorSurfaceTabBody({
   // This is a bound workbench action surface; Editor still receives explicit plugin callbacks.
   const editorSurfaceActions = useMemo<EditorSurfaceActions>(
     () => ({
+      applyWorkspaceEdit,
       closeReferences: handleCloseReferences,
       openDefinition,
       openReferences: handleOpenReferences,
       previewReference: handlePreviewDefinition,
-      recordTextChange: handleEditorTextChange,
-      setDirtyState: setLiveEditorDocumentDirty,
+      handleTextChange: handleEditorTextChange,
       setScrollPosition: (scrollPosition) => setEditorViewScrollPosition(tabId, scrollPosition),
       setStatusSource: setStatusBarSource,
     }),
     [
+      applyWorkspaceEdit,
       handleCloseReferences,
       handleEditorTextChange,
       handleOpenReferences,
       handlePreviewDefinition,
       openDefinition,
       setEditorViewScrollPosition,
-      setLiveEditorDocumentDirty,
       setStatusBarSource,
       tabId,
     ],

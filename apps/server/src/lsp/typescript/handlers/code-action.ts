@@ -2,16 +2,9 @@ import { isRecord } from '@workspace/contracts'
 import ts from 'typescript-language-service'
 import type * as lsp from 'vscode-languageserver-protocol'
 
-import {
-  documentText,
-  documentUriForFileName,
-  fileNameForUri,
-  isInsidePath,
-  lspPositionToOffset,
-  normalizeNativePath,
-  rangeFromTextSpan,
-} from '../shared/boundary'
+import { documentText, fileNameForUri, lspPositionToOffset } from '../shared/boundary'
 import type { SessionContext } from '../shared/context'
+import { workspaceEditFromFileTextChanges } from './workspace-edit'
 
 export function handleCodeAction(
   ctx: SessionContext,
@@ -40,7 +33,7 @@ export function handleCodeAction(
 function codeActionFromFix(
   ctx: SessionContext,
   fix: ts.CodeFixAction,
-  diagnostics: readonly lsp.Diagnostic[],
+  diagnostics: lsp.Diagnostic[],
 ): readonly lsp.CodeAction[] {
   const edit = workspaceEditFromFileTextChanges(ctx, fix.changes)
   if (!edit) return []
@@ -49,57 +42,16 @@ function codeActionFromFix(
     {
       title: fix.description,
       kind: 'quickfix',
-      diagnostics: Array.from(diagnostics),
+      diagnostics,
       edit,
     },
   ]
 }
 
-function workspaceEditFromFileTextChanges(
-  ctx: SessionContext,
-  changes: readonly ts.FileTextChanges[],
-): lsp.WorkspaceEdit | null {
-  const result: Record<lsp.DocumentUri, lsp.TextEdit[]> = {}
-  for (const change of changes) appendFileTextChanges(ctx, result, change)
-  if (Object.keys(result).length === 0) return null
-  return { changes: result }
-}
-
-function appendFileTextChanges(
-  ctx: SessionContext,
-  changes: Record<lsp.DocumentUri, lsp.TextEdit[]>,
-  fileChange: ts.FileTextChanges,
-): void {
-  for (const textChange of fileChange.textChanges) {
-    appendTextChange(ctx, changes, fileChange.fileName, textChange)
-  }
-}
-
-function appendTextChange(
-  ctx: SessionContext,
-  changes: Record<lsp.DocumentUri, lsp.TextEdit[]>,
-  fileName: string,
-  textChange: ts.TextChange,
-): void {
-  const normalized = normalizeNativePath(fileName)
-  if (!isInsidePath(ctx.root, normalized)) return
-
-  const text = documentText(ctx, normalized)
-  if (text === null) return
-
-  const uri = documentUriForFileName(ctx, normalized)
-  const edits = changes[uri] ?? []
-  edits.push({
-    range: rangeFromTextSpan(text, textChange.span),
-    newText: textChange.newText,
-  })
-  changes[uri] = edits
-}
-
 function codeActionParams(params: unknown): {
   uri: lsp.DocumentUri
   range: lsp.Range
-  diagnostics: readonly lsp.Diagnostic[]
+  diagnostics: lsp.Diagnostic[]
 } | null {
   if (!isRecord(params)) return null
   if (!isRecord(params.textDocument)) return null
@@ -107,12 +59,13 @@ function codeActionParams(params: unknown): {
   if (!isRecord(params.context)) return null
   if (typeof params.textDocument.uri !== 'string') return null
   if (!isLspRange(params.range)) return null
-  if (!Array.isArray(params.context.diagnostics)) return null
+  const diagnostics = params.context.diagnostics
+  if (!Array.isArray(diagnostics)) return null
 
   return {
     uri: params.textDocument.uri,
     range: params.range,
-    diagnostics: params.context.diagnostics as lsp.Diagnostic[],
+    diagnostics,
   }
 }
 

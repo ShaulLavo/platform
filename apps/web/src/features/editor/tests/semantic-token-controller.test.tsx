@@ -4,7 +4,8 @@ import type {
   SemanticTokenPushResult,
 } from '@singapor/core/extensions'
 import type { LanguageServerConnectionContext } from '@singapor/lsp-plugin'
-import { LspRequestCancelledError, LspWorkspace } from '@singapor/lsp'
+import { arrayLspLineStarts, LspRequestCancelledError, LspWorkspace } from '@singapor/lsp'
+import { createStringTextSnapshot } from '@singapor/core/document'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { SemanticTokenController } from '@/features/editor/state/semantic-token-controller'
@@ -81,7 +82,14 @@ function fakeConnection(
   respond: () => unknown = () => ({ data: [0, 0, 3, 0, 0] }),
 ): FakeConnection {
   const workspace = new LspWorkspace()
-  workspace.openDocument({ languageId: 'rust', text, uri: URI })
+  workspace.openDocumentSnapshot({
+    languageId: 'rust',
+    lineStarts: arrayLspLineStarts(lineStartOffsets(text)),
+    sourceRevision: 0,
+    sourceSegment: {},
+    textSnapshot: createStringTextSnapshot(text),
+    uri: URI,
+  })
   const requests: RecordedRequest[] = []
   const settlers: (() => void)[] = []
 
@@ -110,6 +118,14 @@ function fakeConnection(
       for (const resolve of settlers.splice(0)) resolve()
     },
   }
+}
+
+function lineStartOffsets(text: string): number[] {
+  const starts = [0]
+  for (let index = text.indexOf('\n'); index !== -1; index = text.indexOf('\n', index + 1)) {
+    starts.push(index + 1)
+  }
+  return starts
 }
 
 const RUST_LIKE = {

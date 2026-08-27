@@ -8,6 +8,8 @@ import {
   useDirtyTabCloseRequest,
 } from '@/features/editor/hooks/use-dirty-tab-close'
 import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { WorkspaceEditServiceContext } from '@/features/editor/providers/workspace-edit-context'
+import type { WorkspaceEditService } from '@/features/editor/state/workspace-edit-service'
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import {
@@ -20,6 +22,8 @@ import {
 } from '@/features/workbench/utils/panels'
 import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 import type { FileResult } from '@/lib/file-system-types'
+import { settingsDocumentId } from '@/features/settings/utils/document'
+import { settingsJsonDocumentId } from '@/features/settings/utils/json-document'
 import { expect, test } from '../../../../../test/fixtures'
 import { AppProviders, createTestQueryClient } from '../../../../../test/render'
 
@@ -70,6 +74,36 @@ test('a dirty close defers with one stable opaque dialog target and rejects anot
   expect(dialogTarget(hook.result.current.dirtyTabCloseDialog)).toBe(target)
 })
 
+test('a dirty close disables Save while the workspace mutation gate is closed', () => {
+  const workspaceEdits = {
+    canMutateWorkspace: () => false,
+    subscribe: () => () => undefined,
+  } as unknown as WorkspaceEditService
+  const hook = renderDirtyTabClose(workspaceEdits)
+  const tabId = openFile(hook.result.current, '/repo/src/dirty.ts', true)
+  expect(tabId).not.toBeNull()
+  if (!tabId) return
+
+  act(() => {
+    hook.result.current.requestCloseTab(tabId)
+  })
+
+  expect(dialogCanSave(hook.result.current.dirtyTabCloseDialog)).toBe(false)
+})
+
+test('a dirty settings tab offers Save for its writable JSON buffer', () => {
+  const hook = renderDirtyTabClose()
+  const tabId = openDirtySettings(hook.result.current)
+  expect(tabId).not.toBeNull()
+  if (!tabId) return
+
+  act(() => {
+    hook.result.current.requestCloseTab(tabId)
+  })
+
+  expect(dialogCanSave(hook.result.current.dirtyTabCloseDialog)).toBe(true)
+})
+
 test('a missing tab is rejected as not found', () => {
   const hook = renderDirtyTabClose()
   let closeResult: CloseRequestResult | undefined
@@ -112,13 +146,17 @@ test('discarding a dirty close focuses the successor editor target', async () =>
   await waitFor(() => expect(document.activeElement).toBe(successor))
 })
 
-function renderDirtyTabClose() {
+function renderDirtyTabClose(workspaceEdits: WorkspaceEditService | null = null) {
   const queryClient = createTestQueryClient()
 
   function Wrapper({ children }: { readonly children: ReactNode }) {
     return (
       <AppProviders queryClient={queryClient}>
-        <EditorStateProvider>{children}</EditorStateProvider>
+        <EditorStateProvider>
+          <WorkspaceEditServiceContext value={workspaceEdits}>
+            {children}
+          </WorkspaceEditServiceContext>
+        </EditorStateProvider>
       </AppProviders>
     )
   }
@@ -221,6 +259,21 @@ function openFile(harness: DirtyTabCloseHarness, path: string, dirty = false) {
   return openTabs(harness).find((tab) => tab.path === path)?.id ?? null
 }
 
+function openDirtySettings(harness: DirtyTabCloseHarness) {
+  const documentId = settingsJsonDocumentId('user')
+  act(() => {
+    harness.commands.openSettingsEditor()
+    harness.documentStore.getState().ensureUnsyncedEditorDocument({
+      content: '{}\n',
+      id: documentId,
+      sync: { kind: 'settings', revision: 'rev-1', state: 'idle', target: 'user' },
+    })
+    harness.documentStore.getState().setLiveEditorDocumentDirty(documentId, true)
+  })
+
+  return openTabs(harness).find((tab) => tab.path === settingsDocumentId())?.id ?? null
+}
+
 function openTabs(harness: DirtyTabCloseHarness) {
   return editorTabRecordsForWorkbenchPanels(harness.workspaceStore.getState().workbenchPanels)
 }
@@ -230,6 +283,13 @@ function dialogTarget(dialog: ReactNode): UnsavedDialogTarget | null {
   if (dialog.type !== UnsavedChangesDialog) return null
 
   return dialog.props.target ?? null
+}
+
+function dialogCanSave(dialog: ReactNode): boolean | null {
+  if (!isValidElement<{ canSave?: boolean }>(dialog)) return null
+  if (dialog.type !== UnsavedChangesDialog) return null
+
+  return dialog.props.canSave ?? null
 }
 
 function fileResult(path: string): FileResult {

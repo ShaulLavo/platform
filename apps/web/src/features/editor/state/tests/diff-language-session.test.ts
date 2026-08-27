@@ -14,14 +14,14 @@ test('awaits the existing lane lease before opening documents or sending request
   const session = createDiffLanguageSession({ documents: documents(), lanes: [harness.options] })
 
   const request = session.request('textDocument/hover', { position: 1 })
-  expect(harness.openDocument).not.toHaveBeenCalled()
+  expect(harness.openDocumentSnapshot).not.toHaveBeenCalled()
   expect(harness.request).not.toHaveBeenCalled()
 
   harness.connect()
   await expect(request).resolves.toMatchObject({
     contents: { kind: 'markdown', value: 'answer' },
   })
-  expect(harness.openDocument).toHaveBeenCalledTimes(2)
+  expect(harness.openDocumentSnapshot).toHaveBeenCalledTimes(2)
   expect(harness.request).toHaveBeenCalledWith(
     'textDocument/hover',
     { position: 1 },
@@ -38,7 +38,7 @@ test('closes only diff-owned documents and releases its dedicated lease', async 
 
   session.dispose()
 
-  expect(harness.closeDocument.mock.calls.map(([uri]) => uri)).toEqual([
+  expect(harness.closeDocument.mock.calls.map(([attachment]) => attachment.uri)).toEqual([
     'file:///repo/file.ts',
     'file:///repo/file.ts.diff-old',
   ])
@@ -109,7 +109,10 @@ function laneHarness(
   } = {},
 ) {
   let callbacks: LspConnectionCallbacks | null = null
-  const openDocument = vi.fn((document: { uri: string }) => ({ ...document, version: 1 }))
+  const openDocumentSnapshot = vi.fn((document: { uri: string }) => ({
+    attachment: { uri: document.uri },
+    document: { ...document, version: 1 },
+  }))
   const closeDocument = vi.fn()
   const request = vi.fn(requestResult)
   const release = vi.fn()
@@ -121,7 +124,7 @@ function laneHarness(
       hoverProvider: true,
     },
   } as unknown as LspClient
-  const workspace = { closeDocument, openDocument } as unknown as LspWorkspace
+  const workspace = { closeDocument, openDocumentSnapshot } as unknown as LspWorkspace
   const connection = { client, workspace }
   const provider: LspConnectionProvider = {
     acquire: (_options, connectionCallbacks) => {
@@ -138,7 +141,7 @@ function laneHarness(
 
   return {
     closeDocument,
-    openDocument,
+    openDocumentSnapshot,
     options,
     release,
     request,

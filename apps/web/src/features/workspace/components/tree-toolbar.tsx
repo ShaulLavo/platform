@@ -6,6 +6,7 @@ import { TreeSearchActions } from '@/features/workspace/components/tree-search-a
 export function TreeToolbar({
   isSearchOpen,
   matchCount,
+  mutationsEnabled = true,
   onClearSearch,
   onCloseSearch,
   onNewFile,
@@ -18,6 +19,7 @@ export function TreeToolbar({
 }: {
   readonly isSearchOpen: boolean
   readonly matchCount: number
+  readonly mutationsEnabled?: boolean
   readonly onClearSearch: () => void
   readonly onCloseSearch: () => void
   readonly onNewFile: () => void
@@ -37,6 +39,7 @@ export function TreeToolbar({
       <div className='flex shrink-0 items-center gap-0.5'>
         <Button
           aria-label='New file at workspace root'
+          disabled={!mutationsEnabled}
           size='icon-xs'
           title='New File'
           type='button'
@@ -47,6 +50,7 @@ export function TreeToolbar({
         </Button>
         <Button
           aria-label='New folder at workspace root'
+          disabled={!mutationsEnabled}
           size='icon-xs'
           title='New Folder'
           type='button'

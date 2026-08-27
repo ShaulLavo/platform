@@ -59,7 +59,6 @@ test('a dirty buffer keeps what was typed rather than being replaced', () => {
   const document = store.getState().getLiveEditorDocument(ID)
   // Through a buffer session, the way a keystroke reaches it.
   createEditorBufferSession(document!.buffer).applyText('!')
-  store.getState().recordLiveEditorDocumentTextChange(ID)
 
   expect(
     store.getState().reconcileSettingsDocument(ID, '{ "editor.fontSize": 21 }\n', 'rev-2'),
@@ -119,7 +118,6 @@ test('a save does not mark clean over text typed while it was in flight', () => 
   const document = store.getState().getLiveEditorDocument(ID)
   const savedContentRevision = document!.contentRevision
   createEditorBufferSession(document!.buffer).applyText('!')
-  store.getState().recordLiveEditorDocumentTextChange(ID)
 
   expect(
     store.getState().markSettingsDocumentSaved({

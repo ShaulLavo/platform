@@ -4,6 +4,8 @@ import {
   type LanguageServerLaneOptions,
 } from '@singapor/lsp-plugin/websocket'
 import { LanguageServerSet } from '@singapor/lsp-plugin'
+import { arrayLspLineStarts, type LspWorkspaceDocumentAttachment } from '@singapor/lsp'
+import { createStringTextSnapshot } from '@singapor/core/document'
 
 import type { DiffFileSide } from '@/features/editor/utils/diff-position-map'
 import { clientErrors } from '@/lib/structured-errors'
@@ -34,7 +36,7 @@ export function createDiffLanguageSession({
   const uris = new Map<DiffFileSide, string>(
     documents.map((document) => [document.side, document.uri]),
   )
-  const openedUris = new Map<AcquiredLanguageServerLane, Set<string>>()
+  const openedAttachments = new Map<AcquiredLanguageServerLane, LspWorkspaceDocumentAttachment[]>()
   const abort = new AbortController()
   let leases: readonly {
     readonly connection: AcquiredLanguageServerLane
@@ -83,15 +85,18 @@ export function createDiffLanguageSession({
   function openDocuments(acquired: AcquiredLanguageServerLane): void {
     if (disposed) return
 
-    const opened = new Set<string>()
-    openedUris.set(acquired, opened)
+    const opened: LspWorkspaceDocumentAttachment[] = []
+    openedAttachments.set(acquired, opened)
     for (const document of documents) {
-      acquired.workspace.openDocument({
+      const result = acquired.workspace.openDocumentSnapshot({
         languageId: document.languageId,
-        text: document.text,
+        lineStarts: arrayLspLineStarts(lineStarts(document.text)),
+        sourceRevision: 0,
+        sourceSegment: {},
+        textSnapshot: createStringTextSnapshot(document.text),
         uri: document.uri,
       })
-      opened.add(document.uri)
+      opened.push(result.attachment)
     }
   }
 
@@ -118,15 +123,25 @@ export function createDiffLanguageSession({
       disposed = true
       abort.abort()
       for (const { connection } of leases) {
-        for (const uri of openedUris.get(connection) ?? []) connection.workspace.closeDocument(uri)
+        for (const attachment of openedAttachments.get(connection) ?? []) {
+          connection.workspace.closeDocument(attachment)
+        }
         connection.release()
       }
-      openedUris.clear()
+      openedAttachments.clear()
       leases = []
       servers = null
       ready = null
     },
   }
+}
+
+function lineStarts(text: string): number[] {
+  const starts = [0]
+  for (let index = text.indexOf('\n'); index !== -1; index = text.indexOf('\n', index + 1)) {
+    starts.push(index + 1)
+  }
+  return starts
 }
 
 function closedSessionError(reason: string) {

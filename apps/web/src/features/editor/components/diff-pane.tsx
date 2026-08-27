@@ -10,11 +10,9 @@ import { EditorHost, useEditor } from '@singapor/react'
 import type { Editor } from '@singapor/core'
 import { useLayoutEffect, useMemo } from 'react'
 
-import {
-  useDiffLanguage,
-  type DiffLanguageServerContext,
-} from '@/features/editor/hooks/use-diff-language'
+import { useDiffLanguage } from '@/features/editor/hooks/use-diff-language'
 import { useDiffRows } from '@/features/editor/hooks/use-diff-rows'
+import type { DiffLanguageServerContext } from '@/features/editor/utils/diff-language-context'
 import {
   DIFF_CURSOR_LINE_HIGHLIGHT,
   DIFF_KEYMAP,

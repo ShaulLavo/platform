@@ -35,7 +35,12 @@ import {
   type InvalidationState,
 } from './shared/invalidation'
 import { createScriptVersionRegistry, type ScriptVersionRegistry } from './shared/script-versions'
-import type { OpenDocument, SessionContext } from './shared/context'
+import type {
+  OpenDocument,
+  SessionContext,
+  SessionInitializationOptions,
+  WorkspaceEditClientCapabilities,
+} from './shared/context'
 
 const JSON_RPC_VERSION = '2.0'
 const METHOD_NOT_FOUND = -32601
@@ -64,6 +69,11 @@ export class TypeScriptLspSession {
   private readonly scriptVersions: ScriptVersionRegistry = createScriptVersionRegistry()
   private readonly invalidationState: InvalidationState
   private compilerOptionsOverride: ts.CompilerOptions = {}
+  private workspaceEditCapabilities: WorkspaceEditClientCapabilities = {
+    changeAnnotationSupport: false,
+    documentChanges: false,
+    resourceOperations: [],
+  }
   private diagnosticDelayMs: number
   private service: ts.LanguageService | null = null
   private serviceFailed = false
@@ -157,6 +167,7 @@ export class TypeScriptLspSession {
       postResponse: (id, result) => this.postResponse(id, result),
       postResponseError: (id, error) => this.postResponseError(id, error),
       compilerOptionsOverride: this.compilerOptionsOverride,
+      workspaceEditCapabilities: this.workspaceEditCapabilities,
       applyInitializationOptions: (options) => this.applyInitializationOptions(options),
     }
   }
@@ -167,12 +178,10 @@ export class TypeScriptLspSession {
     return null
   }
 
-  private applyInitializationOptions(options: {
-    compilerOptions?: ts.CompilerOptions
-    diagnosticDelayMs?: number
-  }): void {
+  private applyInitializationOptions(options: SessionInitializationOptions): void {
     this.compilerOptionsOverride = options.compilerOptions ?? {}
     this.diagnosticDelayMs = options.diagnosticDelayMs ?? DEFAULT_DIAGNOSTIC_DELAY_MS
+    this.workspaceEditCapabilities = options.workspaceEditCapabilities
   }
 
   private ensureService(): ts.LanguageService {

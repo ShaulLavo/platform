@@ -9,6 +9,7 @@ import {
   NerdFontService,
   ProviderAdapterRegistry,
   testSettingsOptions,
+  type AppOptions,
   type MetadataDatabaseHandle,
 } from 'server/testing'
 
@@ -24,22 +25,28 @@ export type TestServer = {
   providerAdapter: MockProviderAdapter
   /** Isolated temp workspace root backing this app's filesystem. */
   root: string
+  workspaceEditJournalRoot: string
   origin: string
   cleanup: () => Promise<void>
 }
 
 // Boots a real server against a throwaway workspace. No network, no mocks: the
 // app routes, valibot contracts, and filesystem are the genuine article.
-export async function makeTestServer({
-  filesystemWatch = false,
-  providerAdapter = new MockProviderAdapter(),
-  settingsWatch = false,
-}: {
+type TestServerOptions = Pick<AppOptions, 'workspaceEditClock' | 'workspaceEditDriver'> & {
   filesystemWatch?: boolean
   providerAdapter?: MockProviderAdapter
   settingsWatch?: boolean
-} = {}): Promise<TestServer> {
+}
+
+export async function makeTestServer({
+  filesystemWatch = true,
+  providerAdapter = new MockProviderAdapter(),
+  settingsWatch = false,
+  workspaceEditClock,
+  workspaceEditDriver,
+}: TestServerOptions = {}): Promise<TestServer> {
   const root = await mkdtemp(path.join(tmpdir(), 'web-itest-'))
+  const workspaceEditJournalRoot = path.join(root, '.platform-test', 'workspace-edit-journals')
   const database = createMetadataDatabase({ databasePath: ':memory:' })
   const app = createApp({
     auth: { allowedOrigins: [TEST_ORIGIN] },
@@ -56,6 +63,9 @@ export async function makeTestServer({
     },
     settings: testSettingsOptions(root, { watch: settingsWatch }),
     watch: filesystemWatch,
+    workspaceEditClock,
+    workspaceEditDriver,
+    workspaceEditJournalRoot,
     workspaceRoot: root,
   })
 
@@ -66,6 +76,7 @@ export async function makeTestServer({
     origin: TEST_ORIGIN,
     providerAdapter,
     root,
+    workspaceEditJournalRoot,
   }
 }
 

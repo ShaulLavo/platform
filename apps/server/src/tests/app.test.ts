@@ -1,9 +1,16 @@
+import { randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, lstat, readFile, rm, symlink, truncate, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { closeTestApps, createTestApp } from '../../test/server'
 import { testSettingsOptions } from '../settings/testing'
+import { textFileVersion } from '../fs/version'
+import { FsError } from '../fs/errors'
+import {
+  nodeWorkspaceEditFileSystemDriver,
+  type WorkspaceEditFileSystemDriver,
+} from '../fs/workspace-edit-journal'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
 const roots: string[] = []
@@ -90,6 +97,75 @@ describe('fs rpc auth', () => {
 })
 
 describe('fs rpc filesystem limits', () => {
+  it('returns byte size mtime decoded content and content version for valid UTF-8', async () => {
+    const root = await fixtureRoot()
+    const content = 'héllo\n'
+    await writeFile(path.join(root, 'utf8.txt'), content)
+    const app = testApp(root)
+    const response = await app.handle(
+      new Request('http://local/fs/read?path=utf8.txt', {
+        headers: trustedOriginHeaders(),
+      }),
+    )
+    const result = (await response.json()) as Record<string, unknown>
+
+    expect(response.status).toBe(200)
+    expect(result).toMatchObject({
+      content,
+      path: 'utf8.txt',
+      size: Buffer.byteLength(content),
+      version: textFileVersion(content),
+    })
+    expect(result.mtimeMs).toEqual(expect.any(Number))
+  })
+
+  it('preserves one leading UTF-8 BOM as U+FEFF in decoded content and content version', async () => {
+    const root = await fixtureRoot()
+    const content = '\uFEFFhello'
+    await writeFile(path.join(root, 'bom.txt'), content)
+    const app = testApp(root)
+    const response = await app.handle(
+      new Request('http://local/fs/read?path=bom.txt', {
+        headers: trustedOriginHeaders(),
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      content,
+      size: Buffer.byteLength(content),
+      version: textFileVersion(content),
+    })
+  })
+
+  it('rejects malformed UTF-8 with INVALID_TEXT_FILE instead of replacement characters', async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, 'malformed.txt'), new Uint8Array([0x66, 0x80, 0x6f]))
+    const app = testApp(root)
+    const response = await app.handle(
+      new Request('http://local/fs/read?path=malformed.txt', {
+        headers: trustedOriginHeaders(),
+      }),
+    )
+
+    expect(response.status).toBe(415)
+    expect(await errorCode(response)).toBe('INVALID_TEXT_FILE')
+  })
+
+  it('rejects a NUL-bearing file with INVALID_TEXT_FILE', async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, 'nul.txt'), 'left\0right')
+    const app = testApp(root)
+    const response = await app.handle(
+      new Request('http://local/fs/read?path=nul.txt', {
+        headers: trustedOriginHeaders(),
+      }),
+    )
+
+    expect(response.status).toBe(415)
+    expect(await errorCode(response)).toBe('INVALID_TEXT_FILE')
+  })
+
   it('reports home as the default browsing path while keeping root selectable', async () => {
     const root = await fixtureRoot()
     const home = path.join(root, 'home')
@@ -166,6 +242,39 @@ describe('fs rpc filesystem limits', () => {
 
     expect(response.status).toBe(413)
     expect(await errorCode(response)).toBe('FILE_TOO_LARGE')
+  })
+
+  it('applies the text size guard before malformed UTF-8 decoding', async () => {
+    const root = await fixtureRoot()
+    await writeFile(path.join(root, 'large-malformed.txt'), new Uint8Array([0x80, 0x80]))
+    const app = testApp(root, { maxTextFileBytes: 1 })
+    const response = await app.handle(
+      new Request('http://local/fs/read?path=large-malformed.txt', {
+        headers: trustedOriginHeaders(),
+      }),
+    )
+
+    expect(response.status).toBe(413)
+    expect(await errorCode(response)).toBe('FILE_TOO_LARGE')
+  })
+
+  it('conflicts when a base-version write target disappeared', async () => {
+    const root = await fixtureRoot()
+    const app = testApp(root)
+    const response = await app.handle(
+      new Request('http://local/fs/write', {
+        body: JSON.stringify({
+          baseVersion: textFileVersion('before'),
+          content: 'after',
+          path: 'missing.txt',
+        }),
+        headers: trustedOriginHeaders({ 'content-type': 'application/json' }),
+        method: 'POST',
+      }),
+    )
+
+    expect(response.status).toBe(409)
+    expect(await errorCode(response)).toBe('FILE_CHANGED')
   })
 
   it('loads symlink directory targets through the tree API', async () => {
@@ -347,6 +456,166 @@ describe('fs rpc filesystem limits', () => {
       }),
       workspaceRoot: root,
     })
+  })
+})
+
+describe('fs workspace edit rpc', () => {
+  it('returns the shared route shape for a successful ordered transaction', async () => {
+    const root = await fixtureRoot()
+    const target = path.join(root, 'route.txt')
+    await writeFile(target, 'before')
+    const stats = await lstat(target)
+    const app = testApp(root)
+    const operationId = randomUUID()
+    const prepared = await postWorkspaceEdit(app, 'prepare', {
+      bodyDigest: `sha256:${'a'.repeat(64)}`,
+      operationId,
+      operations: [
+        {
+          expected: {
+            kind: 'snapshot',
+            mtimeMs: stats.mtimeMs,
+            version: textFileVersion('before'),
+          },
+          index: 0,
+          kind: 'write',
+          path: 'route.txt',
+          text: 'after',
+        },
+      ],
+      origin: 'workspace-edit',
+      workspace: '',
+    })
+    const committed = await postWorkspaceEdit(app, 'commit', {
+      expectedGeneration: 1,
+      operationId,
+      transitionId: randomUUID(),
+    })
+    const finalized = await postWorkspaceEdit(app, 'finalize', {
+      expectedGeneration: 2,
+      operationId,
+      transitionId: randomUUID(),
+    })
+
+    expect(prepared.status).toBe(200)
+    expect(await prepared.json()).toMatchObject({
+      affectedPaths: ['route.txt'],
+      eventPublication: 'pending',
+      generation: 1,
+      operationId,
+      state: 'prepared',
+    })
+    expect(committed.status).toBe(200)
+    expect(await committed.json()).toMatchObject({ generation: 2, state: 'committed' })
+    expect(finalized.status).toBe(200)
+    const result = await finalized.json()
+    expect(result).toMatchObject({
+      entries: [expect.objectContaining({ exists: true, path: 'route.txt' })],
+      eventPublication: 'published',
+      generation: 3,
+      state: 'finalized',
+    })
+    expect(JSON.stringify(result)).not.toMatch(/before|after|stage|\/private\//u)
+  })
+
+  it('returns a structured partial recovery payload instead of an rpc exception', async () => {
+    const root = await fixtureRoot()
+    const firstPath = path.join(root, 'first.txt')
+    const secondPath = path.join(root, 'second.txt')
+    await writeFile(firstPath, 'first-before')
+    await writeFile(secondPath, 'second-before')
+    const [firstStats, secondStats] = await Promise.all([lstat(firstPath), lstat(secondPath)])
+    const driver = partialWriteFailureDriver(firstPath, secondPath)
+    const app = testApp(root, { workspaceEditDriver: driver })
+    const operationId = randomUUID()
+    const prepared = await postWorkspaceEdit(app, 'prepare', {
+      bodyDigest: `sha256:${'b'.repeat(64)}`,
+      operationId,
+      operations: [
+        workspaceWriteOperation(0, 'first.txt', 'first-before', 'first-after', firstStats.mtimeMs),
+        workspaceWriteOperation(
+          1,
+          'second.txt',
+          'second-before',
+          'second-after',
+          secondStats.mtimeMs,
+        ),
+      ],
+      origin: 'workspace-edit',
+      workspace: '',
+    })
+    expect(prepared.status).toBe(200)
+
+    const committed = await postWorkspaceEdit(app, 'commit', {
+      expectedGeneration: 1,
+      operationId,
+      transitionId: randomUUID(),
+    })
+    const result = await committed.json()
+
+    expect(committed.status).toBe(200)
+    expect(result).toMatchObject({
+      generation: 2,
+      operationId,
+      recoveryTarget: 'rolled-back',
+      state: 'partial',
+      unrecoveredPaths: ['first.txt'],
+    })
+    expect(JSON.stringify(result)).not.toMatch(/first-before|first-after|stage|\/private\//u)
+  })
+
+  it('cancels an in-flight prepare through the real route after paused staging resumes', async () => {
+    const root = await fixtureRoot()
+    const journalRoot = await fixtureRoot()
+    const target = path.join(root, 'paused.txt')
+    await writeFile(target, 'before')
+    const stats = await lstat(target)
+    const entered = deferred<void>()
+    const resume = deferred<void>()
+    const app = testApp(root, {
+      workspaceEditDriver: pausingWorkspaceEditPrepareDriver(entered, resume),
+      workspaceEditJournalRoot: journalRoot,
+    })
+    const operationId = randomUUID()
+    const prepare = postWorkspaceEdit(app, 'prepare', {
+      bodyDigest: `sha256:${'c'.repeat(64)}`,
+      operationId,
+      operations: [workspaceWriteOperation(0, 'paused.txt', 'before', 'after', stats.mtimeMs)],
+      origin: 'workspace-edit',
+      workspace: '',
+    })
+    await entered.promise
+
+    const abort = postWorkspaceEdit(app, 'abort', {
+      expectedGeneration: 0,
+      operationId,
+      transitionId: randomUUID(),
+    })
+    resume.resolve()
+    const [prepareResponse, abortResponse] = await Promise.all([prepare, abort])
+    const [prepareResult, abortResult] = await Promise.all([
+      prepareResponse.json(),
+      abortResponse.json(),
+    ])
+
+    expect(prepareResponse.status).toBe(200)
+    expect(abortResponse.status).toBe(200)
+    expect(prepareResult).toMatchObject({ generation: 1, operationId, state: 'aborted' })
+    expect(abortResult).toEqual(prepareResult)
+    expect(await readFile(target, 'utf8')).toBe('before')
+    await expect(lstat(path.join(journalRoot, operationId))).rejects.toMatchObject({
+      code: 'ENOENT',
+    })
+
+    const legacyWrite = await app.handle(
+      new Request('http://local/fs/write', {
+        body: JSON.stringify({ content: 'after abort', path: 'paused.txt' }),
+        headers: trustedOriginHeaders({ 'content-type': 'application/json' }),
+        method: 'POST',
+      }),
+    )
+    expect(legacyWrite.status).toBe(200)
+    expect(await readFile(target, 'utf8')).toBe('after abort')
   })
 })
 
@@ -1072,6 +1341,8 @@ function testApp(
     treeConcurrency?: number
     watch?: boolean
     watchBackend?: 'auto' | 'node'
+    workspaceEditDriver?: WorkspaceEditFileSystemDriver
+    workspaceEditJournalRoot?: string
   } = {},
 ) {
   const app = createTestApp({
@@ -1084,9 +1355,89 @@ function testApp(
     treeConcurrency: options.treeConcurrency,
     watch: options.watch,
     watchBackend: options.watchBackend ?? 'node',
+    workspaceEditDriver: options.workspaceEditDriver,
+    workspaceEditJournalRoot: options.workspaceEditJournalRoot,
     workspaceRoot: root,
   })
   return app
+}
+
+function postWorkspaceEdit(
+  app: ReturnType<typeof createTestApp>,
+  route: 'abort' | 'commit' | 'finalize' | 'prepare',
+  body: object,
+) {
+  return app.handle(
+    new Request(`http://local/fs/workspace-edit/${route}`, {
+      body: JSON.stringify(body),
+      headers: trustedOriginHeaders({ 'content-type': 'application/json' }),
+      method: 'POST',
+    }),
+  )
+}
+
+function pausingWorkspaceEditPrepareDriver(
+  entered: ReturnType<typeof deferred<void>>,
+  resume: ReturnType<typeof deferred<void>>,
+): WorkspaceEditFileSystemDriver {
+  let shouldPause = true
+  return {
+    ...nodeWorkspaceEditFileSystemDriver,
+    async writeFile(target, data, options) {
+      if (!shouldPause || !target.endsWith('write-0-before')) {
+        return nodeWorkspaceEditFileSystemDriver.writeFile(target, data, options)
+      }
+
+      shouldPause = false
+      entered.resolve()
+      await resume.promise
+      return nodeWorkspaceEditFileSystemDriver.writeFile(target, data, options)
+    },
+  }
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  const promise = new Promise<T>((resolver) => {
+    resolve = resolver
+  })
+  return { promise, resolve }
+}
+
+function workspaceWriteOperation(
+  index: number,
+  relativePath: string,
+  before: string,
+  after: string,
+  mtimeMs: number,
+) {
+  return {
+    expected: { kind: 'snapshot', mtimeMs, version: textFileVersion(before) },
+    index,
+    kind: 'write',
+    path: relativePath,
+    text: after,
+  }
+}
+
+function partialWriteFailureDriver(
+  firstPath: string,
+  secondPath: string,
+): WorkspaceEditFileSystemDriver {
+  let firstReplacementCount = 0
+  return {
+    ...nodeWorkspaceEditFileSystemDriver,
+    async rename(from, to) {
+      if (path.basename(to) === path.basename(secondPath)) throw new FsError('OPERATION_FAILED')
+      if (path.basename(to) !== path.basename(firstPath)) {
+        return nodeWorkspaceEditFileSystemDriver.rename(from, to)
+      }
+
+      firstReplacementCount += 1
+      if (firstReplacementCount > 1) throw new FsError('OPERATION_FAILED')
+      return nodeWorkspaceEditFileSystemDriver.rename(from, to)
+    },
+  }
 }
 
 async function fixtureRoot() {

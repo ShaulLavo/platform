@@ -19,6 +19,7 @@ import type {
   SnapshotDiffDocumentInput,
 } from '@/features/git/utils/diff-document'
 import type { FileDiff } from '@/features/git/utils/types'
+import { testDiffLanguageHost } from '../../../../../test/factories/diff-language-host'
 import { expect, test } from '../../../../../test/fixtures'
 import { createTestQueryClient, renderWithProviders } from '../../../../../test/render'
 import { DEFAULT_SETTING_VALUES } from '@workspace/contracts'
@@ -37,7 +38,9 @@ test('a range dragged in the new pane reaches the composer addressed to the new 
 }) => {
   void client
   const { documentInfo } = await twoEditRepo(server.root)
-  renderDiffView(<DiffView documentInfo={documentInfo} rootPath='repo' />)
+  renderDiffView(
+    <DiffView documentInfo={documentInfo} languageHost={testDiffLanguageHost} rootPath='repo' />,
+  )
 
   await dragRows('new', 0, 2)
 
@@ -55,7 +58,9 @@ test('the same rows dragged in the old pane are addressed to the old side', asyn
 }) => {
   void client
   const { documentInfo } = await twoEditRepo(server.root)
-  renderDiffView(<DiffView documentInfo={documentInfo} rootPath='repo' />)
+  renderDiffView(
+    <DiffView documentInfo={documentInfo} languageHost={testDiffLanguageHost} rootPath='repo' />,
+  )
 
   // Row 1 of the old pane is the deletion; the new pane's row 1 is the addition.
   await dragRows('old', 1, 1)
@@ -76,7 +81,9 @@ test('a row still addresses its own line after the skipped range above it is exp
 }) => {
   void client
   const { documentInfo } = await twoEditRepo(server.root, { alsoEditLine35: true })
-  renderDiffView(<DiffView documentInfo={documentInfo} rootPath='repo' />)
+  renderDiffView(
+    <DiffView documentInfo={documentInfo} languageHost={testDiffLanguageHost} rootPath='repo' />,
+  )
   await waitFor(() => expect(paneRows('new').length).toBeGreaterThan(6))
 
   const separator = paneRows('new').findIndex((row) =>
@@ -98,7 +105,9 @@ test('dismissing a selection takes the offer back without attaching anything', a
 }) => {
   void client
   const { documentInfo } = await twoEditRepo(server.root)
-  renderDiffView(<DiffView documentInfo={documentInfo} rootPath='repo' />)
+  renderDiffView(
+    <DiffView documentInfo={documentInfo} languageHost={testDiffLanguageHost} rootPath='repo' />,
+  )
 
   await dragRows('new', 0, 2)
   await userEvent.click(await screen.findByRole('button', { name: 'Dismiss line selection' }))

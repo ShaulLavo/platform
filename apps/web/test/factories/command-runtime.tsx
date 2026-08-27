@@ -8,6 +8,7 @@ import {
   type EditorDocumentStoreApi,
 } from '@/features/editor/state/document-state'
 import { createEditorUiStore } from '@/features/editor/state/ui-state'
+import type { WorkspaceMutationReporter } from '@/features/editor/state/workspace-edit-service'
 import {
   createEditorWorkspaceStore,
   type EditorWorkspaceStoreApi,
@@ -49,6 +50,7 @@ export type TestCommandRuntimeOverrides = {
   readonly shell?: Partial<WorkspaceCommandRuntime['shell']>
   readonly tabs?: Partial<WorkspaceCommandRuntime['tabs']>
   readonly workspace?: EditorWorkspaceStoreApi
+  readonly workspaceEdits?: WorkspaceCommandRuntime['workspaceEdits']
 }
 
 export type TestCommandSnapshotSource =
@@ -218,8 +220,21 @@ function createRuntime(
     requestCloseTab: (tabId) => closeTestTab(tabId, editor, workspace),
     ...overrides?.tabs,
   }
+  const workspaceEdits: WorkspaceCommandRuntime['workspaceEdits'] = overrides?.workspaceEdits ?? {
+    canMutateWorkspace: () => true,
+    getSnapshot: () =>
+      ({ canRedo: false, canUndo: false }) as ReturnType<
+        WorkspaceCommandRuntime['workspaceEdits']['getSnapshot']
+      >,
+    redo: async () => false,
+    runWorkspaceMutation: async <T,>(
+      _affectedPaths: readonly string[] | 'all',
+      operation: (reportAffectedPaths: WorkspaceMutationReporter) => Promise<T>,
+    ) => operation(() => undefined),
+    undo: async () => false,
+  }
 
-  return { documents, editor, files, focus, settings, shell, tabs, workspace }
+  return { documents, editor, files, focus, settings, shell, tabs, workspace, workspaceEdits }
 }
 
 function createTestEditor(

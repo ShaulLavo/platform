@@ -1,4 +1,3 @@
-import { useEditorDocumentState } from '@/features/editor/state/document-state'
 import { Editor } from '@/features/editor/components/editor'
 import type { EditorRenderDocument } from '@/features/editor/utils/render-document'
 import type { EditorKeymapLayer } from '@singapor/core'
@@ -36,13 +35,6 @@ export function SettingsJsonView({
   tabId: string
 }) {
   const diagnosticsPlugins = useSettingsDiagnosticsPlugin({ diagnostics, file, target: scope })
-  const setLiveEditorDocumentDirty = useEditorDocumentState(
-    (state) => state.setLiveEditorDocumentDirty,
-  )
-  const recordLiveEditorDocumentTextChange = useEditorDocumentState(
-    (state) => state.recordLiveEditorDocumentTextChange,
-  )
-
   // The buffer is seeded and bound in effects, so the first render after opening
   // the view — or after a scope switch — still has the previous document or none.
   if (!liveDocument || liveDocument.path !== settingsJsonDocumentId(scope)) {
@@ -61,8 +53,6 @@ export function SettingsJsonView({
           languageServerTarget={SETTINGS_LANGUAGE_SERVER_TARGET}
           rootPath={rootPath}
           tabId={tabId}
-          onDirtyChange={setLiveEditorDocumentDirty}
-          onTextChange={(_tabId, path) => recordLiveEditorDocumentTextChange(path)}
         />
       </div>
     </div>

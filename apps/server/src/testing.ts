@@ -12,6 +12,8 @@ export { createMetadataDatabase } from './db/client'
 export { NerdFontService } from './fonts/service'
 export { MockProviderAdapter } from './provider/adapters/mock'
 export { ProviderAdapterRegistry } from './provider/provider-adapter-registry'
+export { nodeWorkspaceEditFileSystemDriver } from './fs/workspace-edit-journal'
+export type { WorkspaceEditFileSystemDriver } from './fs/workspace-edit-journal'
 export type { MetadataDatabaseHandle, PlatformDatabase } from './db/client'
 
 export { testSettingsOptions, type TestSettingsOverrides } from './settings/testing'

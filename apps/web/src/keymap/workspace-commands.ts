@@ -42,8 +42,13 @@ import {
   savableDocumentPath,
 } from '@/features/editor/utils/file-backed-document'
 import { activeSettingsBufferId } from '@/features/settings/state/active-buffer'
-import { saveAllEditorDocuments, saveSelectedEditorDocument } from '@/features/editor/utils/save'
+import {
+  dirtySavableEditorDocuments,
+  saveAllEditorDocuments,
+  saveSelectedEditorDocument,
+} from '@/features/editor/utils/save'
 import type { EditorDocumentStoreApi } from '@/features/editor/state/document-state'
+import type { WorkspaceMutationReporter } from '@/features/editor/state/workspace-edit-service'
 import { nextEditorDiffViewMode } from '@/features/editor/utils/diff-view-mode'
 import { parseDiffDocumentId } from '@/features/git/utils/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/utils/buffer-document'
@@ -315,6 +320,30 @@ function sessionJumpCommands() {
 export const workspaceCommands = [
   defineCommand({
     category: 'Workspace',
+    description: 'Undo the latest atomic multi-file workspace edit.',
+    icon: ArrowCounterClockwiseIcon,
+    id: 'workspace.undoWorkspaceEdit',
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'workspace-operation',
+    when: ['workspaceOpen', 'workspaceEditUndoable'],
+    run: ({ runtime }) => operationStart(runtime.workspaceEdits.undo()),
+    title: 'Undo workspace edit',
+  }),
+  defineCommand({
+    category: 'Workspace',
+    description: 'Redo the latest atomic multi-file workspace edit.',
+    icon: ArrowClockwiseIcon,
+    id: 'workspace.redoWorkspaceEdit',
+    execution: 'async',
+    target: 'workspace',
+    undoCategory: 'workspace-operation',
+    when: ['workspaceOpen', 'workspaceEditRedoable'],
+    run: ({ runtime }) => operationStart(runtime.workspaceEdits.redo()),
+    title: 'Redo workspace edit',
+  }),
+  defineCommand({
+    category: 'Workspace',
     description: 'Search workspace files and quick actions.',
     icon: FileMagnifyingGlassIcon,
     id: 'workspace.showQuickAccess',
@@ -520,16 +549,21 @@ export const workspaceCommands = [
     execution: 'async',
     target: 'workspace',
     undoCategory: 'file-operation',
-    when: ['saveableTab'],
+    when: ['saveableTab', 'workspaceMutable'],
     run: ({ runtime, snapshot }) => {
       // The settings tab is one document with two views, and only the JSON view
       // has a buffer. Resolving here rather than in `save.ts` keeps the fact
       // that the settings page has modes inside the feature that owns them.
       const path = activeSettingsBufferId(snapshot.activeFilePath) ?? snapshot.activeFilePath
-      if (!savableDocumentPath(path)) return declined
+      if (!path || !savableDocumentPath(path)) return declined
+      const save = () =>
+        saveSelectedEditorDocument(runtime.documents.store, runtime.documents.queryClient, path)
+      const dirty = dirtySavableEditorDocuments(runtime.documents.store.getState()).some(
+        (document) => document.id === path,
+      )
 
       return operationStart(
-        saveSelectedEditorDocument(runtime.documents.store, runtime.documents.queryClient, path),
+        dirty ? runtime.workspaceEdits.runWorkspaceMutation([path], save) : save(),
       )
     },
     title: 'Save',
@@ -543,11 +577,21 @@ export const workspaceCommands = [
     execution: 'async',
     target: 'workspace',
     undoCategory: 'file-operation',
-    when: ['workspaceOpen'],
-    run: ({ runtime }) =>
-      resolvedOperationStart(
-        saveAllEditorDocuments(runtime.documents.store, runtime.documents.queryClient),
-      ),
+    when: ['workspaceOpen', 'workspaceMutable'],
+    run: ({ runtime }) => {
+      const affectedPaths = dirtySavableEditorDocuments(runtime.documents.store.getState()).map(
+        (document) => document.id,
+      )
+      const save = (reportAffectedPaths?: WorkspaceMutationReporter) =>
+        saveAllEditorDocuments(runtime.documents.store, runtime.documents.queryClient, (path) =>
+          reportAffectedPaths?.([path]),
+        )
+      const operation =
+        affectedPaths.length > 0
+          ? runtime.workspaceEdits.runWorkspaceMutation(affectedPaths, save)
+          : save()
+      return resolvedOperationStart(operation)
+    },
     title: 'Save all',
     vscodeCommandIds: ['workbench.action.files.saveAll'],
   }),

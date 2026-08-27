@@ -370,6 +370,7 @@ export async function createFindContext(
       matcher: createWorkspaceSearchMatcher(options),
       measurement,
       options,
+      paths,
       root,
       statCache: new Map(),
       warnings: initialSearchWarnings(options),
@@ -608,6 +609,7 @@ async function* searchNamesWithFd(
 }
 
 function nameCandidateMatchesContext(context: FindContext, relativePath: string) {
+  if (isIgnoredSearchPath(context, relativePath)) return false
   if (!context.matcher.pathMatches(globMatchPath(context, relativePath))) return false
 
   return nameSearchMatches(context, relativePath)
@@ -1080,6 +1082,7 @@ async function contentMatchesFromRgEvent(
 ): Promise<FindMatch[]> {
   const relativePath = safeRgRelativePath(paths, context, event.data.path.text)
   if (!relativePath) return []
+  if (isIgnoredSearchPath(context, relativePath)) return []
   if (!context.matcher.pathMatches(globMatchPath(context, relativePath))) return []
   if (contentIndexFilter && !contentIndexFilter.canSearchContent(relativePath)) return []
 

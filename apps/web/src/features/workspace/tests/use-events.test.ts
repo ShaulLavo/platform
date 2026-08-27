@@ -8,6 +8,7 @@ import {
   planWorkspaceFilesystemEvents,
   planWorkspaceReady,
 } from '@/features/workspace/utils/event-model'
+import { planWorkspaceEditAwareEventBatch } from '@/features/workspace/utils/workspace-edit-events'
 
 describe('shouldRefreshReadyRootTree', () => {
   it('skips ready refresh when the root tree query is fetching', () => {
@@ -165,6 +166,79 @@ describe('planWorkspaceFilesystemEvents', () => {
     })
 
     expect(plan.openFileOperations).toEqual([])
+  })
+})
+
+describe('workspace transaction event reconciliation', () => {
+  const openFiles = [{ hasLiveDocument: true, isDirty: true, path: 'repo/a.ts' }]
+  const isOwnEvent = (writeId: string) => writeId === 'operation-1'
+
+  it('treats matching finalized transaction events as idempotent invalidation hints', () => {
+    const entry = treeEntry('repo/a.ts')
+    const plan = planWorkspaceEditAwareEventBatch(
+      [
+        {
+          entry,
+          origin: 'workspace-edit',
+          path: 'repo/a.ts',
+          type: 'changed',
+          writeId: 'operation-1',
+        },
+      ],
+      openFiles,
+      'repo',
+      isOwnEvent,
+    )
+
+    expect(plan).toEqual({
+      openFileOperations: [],
+      shouldInvalidateGitState: true,
+      treeOperations: [{ entries: [entry], type: 'patch-changed-tree-entries' }],
+    })
+  })
+
+  it('does not conflict or remap a dirty buffer on its own delete and rename replay', () => {
+    const plan = planWorkspaceEditAwareEventBatch(
+      [
+        {
+          oldPath: 'repo/a.ts',
+          origin: 'workspace-edit',
+          path: 'repo/b.ts',
+          type: 'renamed',
+          writeId: 'operation-1',
+        },
+        {
+          origin: 'workspace-edit',
+          path: 'repo/a.ts',
+          type: 'deleted',
+          writeId: 'operation-1',
+        },
+      ],
+      openFiles,
+      'repo',
+      isOwnEvent,
+    )
+
+    expect(plan.openFileOperations).toEqual([])
+    expect(plan.treeOperations).toEqual([{ path: 'repo', type: 'refresh-tree-directory' }])
+  })
+
+  it('reconciles a later genuine external event by identity rather than timing', () => {
+    const plan = planWorkspaceEditAwareEventBatch(
+      [
+        {
+          origin: 'workspace-edit',
+          path: 'repo/a.ts',
+          type: 'changed',
+          writeId: 'other-operation',
+        },
+      ],
+      openFiles,
+      'repo',
+      isOwnEvent,
+    )
+
+    expect(plan.openFileOperations).toEqual([{ path: 'repo/a.ts', type: 'refresh-open-file' }])
   })
 })
 

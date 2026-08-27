@@ -49,6 +49,22 @@ test('disables traversal and clear while the retained query is empty', () => {
   expect(screen.getByRole('button', { name: 'Close file filter' })).toBeEnabled()
 })
 
+test('disables root resource creation while the workspace mutation gate is held', () => {
+  renderWithProviders(
+    <TreeToolbar
+      {...toolbarActions()}
+      isSearchOpen={false}
+      matchCount={0}
+      mutationsEnabled={false}
+      query=''
+    />,
+  )
+
+  expect(screen.getByRole('button', { name: 'New file at workspace root' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'New folder at workspace root' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Filter files' })).toBeEnabled()
+})
+
 test('logs one wide event for a batch and unsubscribes on unmount', () => {
   const tree = new FileTreeModel({ paths: ['a.ts', 'old/'] })
   const info = vi.spyOn(log, 'info').mockImplementation(() => {})

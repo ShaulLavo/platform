@@ -88,6 +88,23 @@ export {
 export type { ErrorCategory } from './error-category'
 export { errorNumberField, errorStringField, type ErrorStringFieldOptions } from './error-fields'
 export { isRecord } from './is-record'
+export type {
+  WorkspaceEditEventPublication,
+  WorkspaceEditPartialAcknowledgement,
+  WorkspaceEditPrepareRequest,
+  WorkspaceEditRecoverRequest,
+  WorkspaceEditRecoveryListResult,
+  WorkspaceEditRecoverySummary,
+  WorkspaceEditRecoveryTarget,
+  WorkspaceEditReleaseRequest,
+  WorkspaceEditResult,
+  WorkspaceEditResultEntry,
+  WorkspaceEditState,
+  WorkspaceEditStatusResult,
+  WorkspaceEditTransitionRequest,
+  WorkspacePersistenceOperation,
+  WorkspaceResourcePrecondition,
+} from './workspace-edit'
 export {
   approvalRequestIdSchema,
   commandIdSchema,

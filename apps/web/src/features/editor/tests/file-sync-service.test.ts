@@ -2,12 +2,19 @@ import { createEditorDocumentStore } from '@/features/editor/state/document-stat
 import {
   FileSyncService,
   type FileSyncWriteFileContent,
+  type WorkspaceMutationTransport,
 } from '@/features/editor/state/file-sync-service'
 import type { FileResult, TreeEntry } from '@/lib/file-system-types'
-import { fileSystemKeys } from '@/lib/query-keys'
+import { fileSystemKeys, gitKeys } from '@/lib/query-keys'
+import { treeModel } from '@/lib/tree-model'
 import { createEditorBufferSession } from '@singapor/core'
 import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, it } from 'vitest'
+import type {
+  WorkspaceEditPrepareRequest,
+  WorkspaceEditResult,
+  WorkspaceEditTransitionRequest,
+} from '@workspace/contracts'
 
 describe('FileSyncService', () => {
   it('saves with a base file version and marks unchanged saved buffers clean', async () => {
@@ -15,12 +22,14 @@ describe('FileSyncService', () => {
     const queryClient = new QueryClient()
     const document = store.getState().ensureLiveEditorDocument(file('src/app.ts', 'old', 100))
     createEditorBufferSession(document.buffer).applyText('!')
-    store.getState().recordLiveEditorDocumentTextChange(document.path)
     const writes: Array<{ content: string; options: Parameters<FileSyncWriteFileContent>[2] }> = []
 
-    await new FileSyncService(store, queryClient, async (path, content, options) => {
-      writes.push({ content, options })
-      return entry(path, content, 200)
+    await new FileSyncService(store, queryClient, {
+      readFileContent: async () => file('unused', '', 0),
+      writeFileContent: async (path, content, options) => {
+        writes.push({ content, options })
+        return entry(path, content, 200)
+      },
     }).save(store.getState().getLiveEditorDocument(document.path)!)
 
     const saved = store.getState().getLiveEditorDocument(document.path)!
@@ -51,14 +60,15 @@ describe('FileSyncService', () => {
     const queryClient = new QueryClient()
     const document = store.getState().ensureLiveEditorDocument(file('src/app.ts', 'old', 100))
     createEditorBufferSession(document.buffer).applyText('!')
-    store.getState().recordLiveEditorDocumentTextChange(document.path)
     const savingDocument = store.getState().getLiveEditorDocument(document.path)!
 
-    await new FileSyncService(store, queryClient, async (path, content) => {
-      const latest = store.getState().getLiveEditorDocument(path)!
-      createEditorBufferSession(latest.buffer).applyText('?')
-      store.getState().recordLiveEditorDocumentTextChange(path)
-      return entry(path, content, 200)
+    await new FileSyncService(store, queryClient, {
+      readFileContent: async () => file('unused', '', 0),
+      writeFileContent: async (path, content) => {
+        const latest = store.getState().getLiveEditorDocument(path)!
+        createEditorBufferSession(latest.buffer).applyText('?')
+        return entry(path, content, 200)
+      },
     }).save(savingDocument)
 
     const afterSave = store.getState().getLiveEditorDocument(document.path)!
@@ -73,7 +83,354 @@ describe('FileSyncService', () => {
       file('src/app.ts', 'old!', 200),
     )
   })
+
+  it('reads an abortable unopened text snapshot without creating a live document', async () => {
+    const store = createEditorDocumentStore()
+    const queryClient = new QueryClient()
+    const controller = new AbortController()
+    const service = new FileSyncService(store, queryClient, {
+      readFileContent: async (path, signal) => {
+        expect(signal).toBe(controller.signal)
+        return file(path, '\uFEFFhello', 123)
+      },
+      writeFileContent: async (path, content) => entry(path, content, 200),
+    })
+
+    await expect(
+      service.readWorkspaceSnapshot('src/unopened.ts', controller.signal),
+    ).resolves.toEqual({
+      byteLength: 6,
+      mtimeMs: 123,
+      path: 'src/unopened.ts',
+      text: '\uFEFFhello',
+      version: 'test:123:6',
+    })
+    expect(store.getState().hasLiveEditorDocument('src/unopened.ts')).toBe(false)
+  })
+
+  it('inspects the injected document path without changing its namespace', async () => {
+    const store = createEditorDocumentStore()
+    const controller = new AbortController()
+    const inspectedPaths: string[] = []
+    const service = new FileSyncService(store, new QueryClient(), {
+      inspectPath: async (path, signal) => {
+        expect(signal).toBe(controller.signal)
+        inspectedPaths.push(path)
+        return entry(path, 'content', 123)
+      },
+      readFileContent: async (path) => file(path, '', 0),
+      writeFileContent: async (path, content) => entry(path, content, 0),
+    })
+
+    await expect(
+      service.inspectWorkspacePath('/injected/root/file.ts', controller.signal),
+    ).resolves.toMatchObject({
+      canonicalPath: '/injected/root/file.ts',
+      exists: true,
+      path: '/injected/root/file.ts',
+      type: 'file',
+      version: 'test:123:7',
+    })
+    expect(inspectedPaths).toEqual(['/injected/root/file.ts'])
+  })
+
+  it('discards an unopened read that settles after cancellation', async () => {
+    const store = createEditorDocumentStore()
+    const queryClient = new QueryClient()
+    const controller = new AbortController()
+    let settle!: (file: FileResult) => void
+    const service = new FileSyncService(store, queryClient, {
+      readFileContent: () =>
+        new Promise((resolve) => {
+          settle = resolve
+        }),
+      writeFileContent: async (path, content) => entry(path, content, 200),
+    })
+    const pending = service.readWorkspaceSnapshot('src/unopened.ts', controller.signal)
+
+    controller.abort()
+    settle(file('src/unopened.ts', 'late', 123))
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    expect(store.getState().hasLiveEditorDocument('src/unopened.ts')).toBe(false)
+  })
+
+  it('prepares an ordered workspace mutation with exact expected versions', async () => {
+    const requests: WorkspaceEditPrepareRequest[] = []
+    const service = workspaceService({
+      prepare: async (request) => {
+        requests.push(request)
+        return workspaceResult(request.operationId, 1, 'prepared')
+      },
+    })
+    const request: WorkspaceEditPrepareRequest = {
+      bodyDigest: `sha256:${'a'.repeat(64)}`,
+      operationId: '10000000-0000-4000-8000-000000000001',
+      operations: [
+        {
+          expected: { kind: 'snapshot', mtimeMs: 10, version: 'v1' },
+          index: 1,
+          kind: 'write',
+          path: 'src/a.ts',
+          text: 'A',
+        },
+        {
+          destination: { kind: 'missing' },
+          ignoreIfExists: false,
+          index: 2,
+          kind: 'create',
+          overwrite: false,
+          path: 'src/b.ts',
+        },
+      ],
+      origin: 'workspace-edit',
+      workspace: '/repo',
+    }
+
+    await expect(
+      service.prepareWorkspaceMutation(request, new AbortController().signal),
+    ).resolves.toMatchObject({ generation: 1, state: 'prepared' })
+    expect(requests).toEqual([request])
+  })
+
+  it('recovers a lost commit response through status without retrying the mutation', async () => {
+    let commits = 0
+    const committed = workspaceResult('10000000-0000-4000-8000-000000000002', 2, 'committed')
+    const service = workspaceService({
+      status: async () => ({ found: true, result: committed }),
+      transition: async () => {
+        commits += 1
+        throw new TypeError('response lost')
+      },
+    })
+
+    await expect(
+      service.commitWorkspaceMutation(
+        workspaceResult('10000000-0000-4000-8000-000000000002', 1, 'prepared'),
+      ),
+    ).resolves.toBe(committed)
+    expect(commits).toBe(1)
+  })
+
+  it('uses one retry id but fresh transition ids and generations for later undo redo', async () => {
+    const requests: WorkspaceEditTransitionRequest[] = []
+    let lost = true
+    let current = workspaceResult('10000000-0000-4000-8000-000000000003', 4, 'finalized')
+    const service = workspaceService({
+      status: async () => ({ found: true, result: current }),
+      transition: async (transition, request) => {
+        requests.push(request)
+        if (lost) {
+          lost = false
+          throw new TypeError('response lost before mutation')
+        }
+        const state = transition === 'undo' ? 'undo-committed' : 'redo-committed'
+        current = workspaceResult(current.operationId, current.generation + 1, state)
+        return current
+      },
+    })
+
+    const undone = await service.undoWorkspaceMutation(current)
+    const redone = await service.redoWorkspaceMutation(undone)
+
+    expect(requests[0]?.transitionId).toBe(requests[1]?.transitionId)
+    expect(requests[2]?.transitionId).not.toBe(requests[1]?.transitionId)
+    expect(requests.map((request) => request.expectedGeneration)).toEqual([4, 4, 5])
+    expect(redone).toMatchObject({ generation: 6, state: 'redo-committed' })
+  })
+
+  it('projects provisional file and tree results before finalize and restores them exactly', () => {
+    const store = createEditorDocumentStore()
+    const queryClient = new QueryClient()
+    const path = '/repo/src/a.ts'
+    const oldFile = file(path, 'old', 10)
+    queryClient.setQueryData(fileSystemKeys.fileSnapshot(path), oldFile)
+    queryClient.setQueryData(gitKeys.status('/repo'), { changed: false })
+    queryClient.setQueryData(
+      fileSystemKeys.tree('/repo'),
+      treeModel({ entries: [entry(path, 'old', 10)], path: '/repo' }, '/repo'),
+    )
+    const service = new FileSyncService(store, queryClient, {
+      readFileContent: async () => oldFile,
+      writeFileContent: async (nextPath, content) => entry(nextPath, content, 20),
+    })
+    const committed = workspaceResultWithEntries('projection', 2, 'committed', [
+      resultEntry(path, 'new', 20),
+    ])
+
+    const receipt = service.projectWorkspaceMutation(committed, {
+      afterContents: new Map([[path, 'new']]),
+      beforeContents: new Map([[path, 'old']]),
+      entries: committed.entries,
+      renames: [],
+      rootPath: '/repo',
+    })
+
+    expect(queryClient.getQueryData(fileSystemKeys.fileSnapshot(path))).toEqual(
+      file(path, 'new', 20),
+    )
+    expect(
+      queryClient
+        .getQueryData<ReturnType<typeof treeModel>>(fileSystemKeys.tree('/repo'))
+        ?.entriesByTreePath.get('src/a.ts')?.version,
+    ).toBe('test:20:3')
+    expect(queryClient.getQueryState(gitKeys.status('/repo'))?.isInvalidated).toBe(false)
+    const projectedFile = queryClient.getQueryData(fileSystemKeys.fileSnapshot(path))
+    expect(
+      service.sealWorkspaceMutationProjection(
+        receipt,
+        workspaceResultWithEntries('projection', 3, 'finalized', committed.entries),
+      ),
+    ).toBe(true)
+    expect(queryClient.getQueryData(fileSystemKeys.fileSnapshot(path))).toBe(projectedFile)
+    expect(queryClient.getQueryState(gitKeys.status('/repo'))?.isInvalidated).toBe(true)
+
+    expect(service.rollbackWorkspaceMutationProjection(receipt)).toBe(true)
+    expect(queryClient.getQueryData(fileSystemKeys.fileSnapshot(path))).toEqual(oldFile)
+    expect(
+      queryClient
+        .getQueryData<ReturnType<typeof treeModel>>(fileSystemKeys.tree('/repo'))
+        ?.entriesByTreePath.get('src/a.ts')?.version,
+    ).toBe('test:10:3')
+  })
+
+  it('projects each provisional undo and redo result once through reciprocal receipts', () => {
+    const queryClient = new QueryClient()
+    const path = '/repo/a.ts'
+    queryClient.setQueryData(fileSystemKeys.fileSnapshot(path), file(path, 'before', 10))
+    const service = new FileSyncService(createEditorDocumentStore(), queryClient, {
+      readFileContent: async () => file(path, 'before', 10),
+      writeFileContent: async (nextPath, content) => entry(nextPath, content, 20),
+    })
+    const forward = workspaceResultWithEntries('history', 2, 'committed', [
+      resultEntry(path, 'after', 20),
+    ])
+    const forwardReceipt = service.projectWorkspaceMutation(forward, {
+      afterContents: new Map([[path, 'after']]),
+      beforeContents: new Map([[path, 'before']]),
+      entries: forward.entries,
+      renames: [],
+      rootPath: '/repo',
+    })
+    expect(
+      service.sealWorkspaceMutationProjection(
+        forwardReceipt,
+        workspaceResultWithEntries('history', 3, 'finalized', forward.entries),
+      ),
+    ).toBe(true)
+
+    const undo = workspaceResultWithEntries('history', 4, 'undo-committed', [
+      resultEntry(path, 'before', 10),
+    ])
+    const undoReceipt = service.reverseWorkspaceMutationProjection(
+      forwardReceipt,
+      undo,
+      undo.entries,
+    )!
+    expect(queryClient.getQueryData(fileSystemKeys.fileSnapshot(path))).toEqual(
+      file(path, 'before', 10),
+    )
+    expect(
+      service.sealWorkspaceMutationProjection(
+        undoReceipt,
+        workspaceResultWithEntries('history', 5, 'undone', undo.entries),
+      ),
+    ).toBe(true)
+
+    const redo = workspaceResultWithEntries('history', 6, 'redo-committed', forward.entries)
+    const redoReceipt = service.reverseWorkspaceMutationProjection(undoReceipt, redo, redo.entries)!
+    expect(queryClient.getQueryData(fileSystemKeys.fileSnapshot(path))).toEqual(
+      file(path, 'after', 20),
+    )
+    expect(service.isWorkspaceMutationProjectionCurrent(redoReceipt)).toBe(true)
+  })
+
+  it('re-reads recovery file snapshots and removes inactive tree and git caches without fetchers', async () => {
+    const queryClient = new QueryClient()
+    const path = '/repo/a.ts'
+    queryClient.setQueryData(fileSystemKeys.fileSnapshot(path), file(path, 'old', 10))
+    queryClient.setQueryData(fileSystemKeys.tree('/repo'), { stale: 'tree' })
+    queryClient.setQueryData(gitKeys.status('/repo'), { stale: 'git' })
+    const reads: string[] = []
+    const service = new FileSyncService(createEditorDocumentStore(), queryClient, {
+      readFileContent: async (nextPath) => {
+        reads.push(nextPath)
+        return file(nextPath, 'recovered', 30)
+      },
+      writeFileContent: async (nextPath, content) => entry(nextPath, content, 30),
+    })
+
+    await service.reconcileWorkspaceMutationProjection('/repo', [path])
+
+    expect(reads).toEqual([path])
+    expect(queryClient.getQueryData(fileSystemKeys.fileSnapshot(path))).toEqual(
+      file(path, 'recovered', 30),
+    )
+    expect(queryClient.getQueryState(fileSystemKeys.tree('/repo'))).toBeUndefined()
+    expect(queryClient.getQueryState(gitKeys.status('/repo'))).toBeUndefined()
+  })
 })
+
+function workspaceService(overrides: Partial<WorkspaceMutationTransport>): FileSyncService {
+  const operationId = '10000000-0000-4000-8000-000000000099'
+  const base: WorkspaceMutationTransport = {
+    prepare: async (request) => workspaceResult(request.operationId, 1, 'prepared'),
+    transition: async (_transition, request) =>
+      workspaceResult(request.operationId, request.expectedGeneration + 1, 'committed'),
+    recover: async (request) =>
+      workspaceResult(request.operationId, request.expectedGeneration + 1, request.recoveryTarget),
+    release: async (request) =>
+      workspaceResult(request.operationId, request.expectedGeneration + 1, 'released'),
+    status: async () => ({ found: false, operationId, serverEpoch: SERVER_EPOCH }),
+    recovery: async () => ({ operations: [], serverEpoch: SERVER_EPOCH }),
+  }
+  const store = createEditorDocumentStore()
+  return new FileSyncService(store, new QueryClient(), {
+    readFileContent: async () => file('unused', '', 0),
+    writeFileContent: async (path, content) => entry(path, content, 0),
+    workspaceMutations: { ...base, ...overrides },
+  })
+}
+
+const SERVER_EPOCH = '20000000-0000-4000-8000-000000000001'
+
+function workspaceResult(
+  operationId: string,
+  generation: number,
+  state: WorkspaceEditResult['state'],
+): WorkspaceEditResult {
+  return {
+    affectedPaths: ['src/a.ts'],
+    entries: [],
+    eventPublication: 'pending',
+    generation,
+    operationId,
+    rolledBackPaths: [],
+    serverEpoch: SERVER_EPOCH,
+    state,
+    unrecoveredPaths: [],
+  }
+}
+
+function workspaceResultWithEntries(
+  operationId: string,
+  generation: number,
+  state: WorkspaceEditResult['state'],
+  entries: WorkspaceEditResult['entries'],
+): WorkspaceEditResult {
+  return { ...workspaceResult(operationId, generation, state), entries }
+}
+
+function resultEntry(path: string, content: string, mtimeMs: number) {
+  return {
+    exists: true as const,
+    mtimeMs,
+    path,
+    size: content.length,
+    type: 'file' as const,
+    version: `test:${mtimeMs}:${content.length}`,
+  }
+}
 
 function file(path: string, content: string, mtimeMs: number): FileResult {
   return {

@@ -8,6 +8,7 @@ import { useEditorTabActions } from '@/features/editor/hooks/use-editor-tab-acti
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
+import { useWorkspaceEditService } from '@/features/editor/providers/workspace-edit-context'
 import { useOpenFileAtRef } from '@/features/git/hooks/use-open-file-at-ref'
 import { SettingsDialog } from '@/features/settings/components/dialog'
 import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
@@ -80,6 +81,7 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
   const focus = useFocusService()
   const documentStore = useEditorDocumentStoreApi()
   const workspace = useEditorWorkspaceStoreApi()
+  const workspaceEdits = useWorkspaceEditService()
   const queryClient = useQueryClient()
   const editor = useEditorCommands()
   const openFileAtRef = useOpenFileAtRef()
@@ -202,6 +204,7 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
       requestCloseTab: (tabId) => adaptersRef.current.requestCloseTab(tabId),
     },
     workspace,
+    workspaceEdits,
   }))
   const [bus] = useState(() =>
     createCommandBus({

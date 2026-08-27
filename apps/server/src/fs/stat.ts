@@ -1,5 +1,5 @@
 import type { Stats } from 'node:fs'
-import { lstat, stat } from 'node:fs/promises'
+import { lstat, realpath, stat } from 'node:fs/promises'
 import type {
   EntryTypeCarrier,
   EntryTypeFilter,
@@ -22,8 +22,10 @@ export async function statPath(
 
   try {
     const entryStats = await readEntryStats(target.absolutePath)
+    const canonicalPath = await canonicalEntryPath(paths, target, entryStats)
 
     return {
+      canonicalPath,
       path: target.relativePath,
       type: entryStats.type,
       targetType: entryStats.targetType,
@@ -36,6 +38,16 @@ export async function statPath(
     if (error instanceof FsError) throw error
     throw mapNodeError(error)
   }
+}
+
+async function canonicalEntryPath(
+  paths: WorkspacePaths,
+  target: ReturnType<WorkspacePaths['resolve']>,
+  stats: FsEntryStats,
+) {
+  if (stats.type === 'symlink') return target.relativePath
+
+  return paths.toRealRelative(await realpath(target.absolutePath))
 }
 
 export async function readEntryStats(absolutePath: string) {

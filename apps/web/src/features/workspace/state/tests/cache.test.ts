@@ -137,7 +137,7 @@ describe('workspace cache', () => {
   })
 
   it('sweeps superseded cache versions, which nothing else can reach', () => {
-    const stale = 'platform.workspace-state.v16.workspace:/repo'
+    const stale = 'platform.workspace-state.v17.workspace:/repo'
     localStorage.setItem(stale, JSON.stringify(emptyWorkspaceSlice()))
     writeRootFolderCache(pickedDirectory('/repo'))
 

@@ -403,6 +403,7 @@ describe('workspace index', () => {
     const root = await fixtureRoot()
     const service = new FileSystemService({
       metadataDatabasePath: ':memory:',
+      workspaceEditJournalRoot: path.join(root, '.workspace-edit-journals'),
       workspaceRoot: root,
       watch: false,
     })
@@ -447,6 +448,7 @@ describe('workspace index', () => {
     await writeFile(path.join(root, 'b', 'only-b.ts'), 'export const b = true\n')
     const service = new FileSystemService({
       metadataDatabasePath: ':memory:',
+      workspaceEditJournalRoot: path.join(root, '.workspace-edit-journals'),
       workspaceRoot: root,
       watch: false,
     })
@@ -482,6 +484,7 @@ describe('workspace index', () => {
     await mkdir(path.join(root, 'b'), { recursive: true })
     const service = new FileSystemService({
       metadataDatabasePath: ':memory:',
+      workspaceEditJournalRoot: path.join(root, '.workspace-edit-journals'),
       workspaceRoot: root,
       watch: false,
     })
@@ -509,6 +512,7 @@ describe('workspace index', () => {
     await writeFile(path.join(root, 'not-a-folder.txt'), 'file\n')
     const service = new FileSystemService({
       metadataDatabasePath: ':memory:',
+      workspaceEditJournalRoot: path.join(root, '.workspace-edit-journals'),
       workspaceRoot: root,
       watch: false,
     })

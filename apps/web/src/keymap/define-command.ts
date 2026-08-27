@@ -11,6 +11,7 @@ import type { ChatModePanels } from '@/features/chat-mode/utils/panels'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import type { EditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import type { EditorDiffViewMode } from '@/features/editor/utils/diff-view-mode'
+import type { WorkspaceEditService } from '@/features/editor/state/workspace-edit-service'
 import type { WorkbenchPanels } from '@/features/workbench/utils/panels'
 import type {
   AsyncCommandStart,
@@ -33,6 +34,9 @@ export type CommandWhen =
   | 'saveableTab'
   | 'tabOpen'
   | 'workspaceOpen'
+  | 'workspaceEditRedoable'
+  | 'workspaceEditUndoable'
+  | 'workspaceMutable'
 
 export type CommandExecution = 'async' | 'sync'
 
@@ -54,6 +58,7 @@ export type CommandKeyDefault = {
 }
 
 export type WorkspaceCommandSnapshot = {
+  readonly activeDocumentSavable: boolean
   readonly activeFilePath: string | null
   readonly activeTabId: string | null
   readonly chatMode: boolean
@@ -64,6 +69,9 @@ export type WorkspaceCommandSnapshot = {
   readonly wallpaperEnabled: boolean
   readonly workbenchPanels: WorkbenchPanels
   readonly workspaceOpen: boolean
+  readonly workspaceEditRedoable: boolean
+  readonly workspaceEditUndoable: boolean
+  readonly workspaceMutable: boolean
 }
 
 export type WorkspaceCommandRuntime = {
@@ -102,6 +110,10 @@ export type WorkspaceCommandRuntime = {
     readonly requestCloseTab: RequestCloseTab
   }
   readonly workspace: EditorWorkspaceStoreApi
+  readonly workspaceEdits: Pick<
+    WorkspaceEditService,
+    'canMutateWorkspace' | 'getSnapshot' | 'redo' | 'runWorkspaceMutation' | 'undo'
+  >
 }
 
 export type PlatformCommandTarget =

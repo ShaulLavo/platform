@@ -25,6 +25,22 @@ type WatcherEntry = {
 type WakeSlot = {
   current: (() => void) | null
 }
+type TransactionBarrier = {
+  readonly internalPaths: Set<string>
+  readonly paths: Set<string>
+  readonly queued: WatchServerMessage[]
+}
+type TransactionResultMarker = {
+  readonly exists: boolean
+  readonly generation: number
+  readonly operationId: string
+  readonly version?: string
+}
+type TransactionResultSignature = {
+  readonly exists: boolean
+  readonly path: string
+  readonly version?: string
+}
 
 const watcherIgnoredChildGlobs = defaultIgnoredNames.flatMap((name) => [
   `${name}/**`,
@@ -54,6 +70,8 @@ export class FileChangeHub {
   private readonly nativeWatchers = new Map<string, WatcherEntry>()
   private readonly paths: WorkspacePaths
   private readonly rawListeners = new Set<Listener>()
+  private readonly transactionBarriers = new Map<string, TransactionBarrier>()
+  private readonly transactionResultMarkers = new Map<string, TransactionResultMarker>()
   private readonly watchEnabled: boolean
   private nextSequence = 1
 
@@ -64,8 +82,16 @@ export class FileChangeHub {
   }
 
   emit(event: WatchServerMessage) {
-    const sequenced = this.withSequence(event)
-    if (!isFilesystemEvent(event)) {
+    if (isInternalFilesystemEvent(this.paths, event)) return
+    const attributedEvent = this.attributeTransactionEvent(event)
+    const barrier = this.transactionBarrierFor(attributedEvent)
+    if (barrier) {
+      barrier.queued.push(attributedEvent)
+      return
+    }
+
+    const sequenced = this.withSequence(attributedEvent)
+    if (!isFilesystemEvent(attributedEvent)) {
       this.broadcast(sequenced)
       return
     }
@@ -75,7 +101,7 @@ export class FileChangeHub {
       return
     }
 
-    if (isIgnoredPath(event.path)) {
+    if (isIgnoredPath(attributedEvent.path)) {
       this.broadcastRaw(sequenced)
       return
     }
@@ -96,12 +122,95 @@ export class FileChangeHub {
     }
   }
 
+  beginTransaction(operationId: string, paths: readonly string[]) {
+    if (this.transactionBarriers.has(operationId)) return
+
+    this.transactionBarriers.set(operationId, {
+      internalPaths: new Set(),
+      paths: new Set(paths.map((input) => this.paths.resolve(input).relativePath)),
+      queued: [],
+    })
+  }
+
+  addTransactionPaths(operationId: string, paths: readonly string[]) {
+    const barrier = this.transactionBarriers.get(operationId)
+    if (!barrier) return
+
+    for (const input of paths) barrier.internalPaths.add(this.paths.resolve(input).relativePath)
+  }
+
+  finishTransaction(
+    operationId: string,
+    outcome: 'drop' | 'publish',
+    events: readonly WatchServerMessage[] = [],
+  ) {
+    const barrier = this.transactionBarriers.get(operationId)
+    if (!barrier) return
+
+    this.transactionBarriers.delete(operationId)
+    if (outcome === 'drop') return
+
+    for (const event of events) this.emit(event)
+  }
+
+  transactionBarrierInfo(operationId: string) {
+    const barrier = this.transactionBarriers.get(operationId)
+    if (!barrier) return null
+
+    return { paths: Array.from(barrier.paths), queuedEventCount: barrier.queued.length }
+  }
+
+  recordTransactionResults(
+    operationId: string,
+    generation: number,
+    results: readonly TransactionResultSignature[],
+  ) {
+    this.forgetTransactionResults(operationId)
+    const barrier = this.transactionBarriers.get(operationId)
+    for (const relativePath of barrier?.internalPaths ?? []) {
+      this.transactionResultMarkers.set(relativePath, {
+        exists: false,
+        generation,
+        operationId,
+      })
+    }
+    for (const result of results) {
+      const relativePath = this.paths.resolve(result.path).relativePath
+      this.transactionResultMarkers.set(relativePath, {
+        exists: result.exists,
+        generation,
+        operationId,
+        version: result.version,
+      })
+    }
+  }
+
+  forgetTransactionResults(operationId: string) {
+    for (const [relativePath, marker] of this.transactionResultMarkers) {
+      if (marker.operationId === operationId) this.transactionResultMarkers.delete(relativePath)
+    }
+  }
+
   async close() {
     const releases = Array.from(this.nativeWatchers.values()).map((entry) => entry.release)
     this.nativeWatchers.clear()
     this.listeners.clear()
     this.rawListeners.clear()
+    this.transactionBarriers.clear()
+    this.transactionResultMarkers.clear()
     await releaseWatchers(releases)
+  }
+
+  private attributeTransactionEvent(event: WatchServerMessage): WatchServerMessage {
+    if (!isFilesystemEvent(event)) return event
+    if (event.origin || event.writeId) return event
+    const marker = this.transactionResultMarkers.get(event.path)
+    if (!marker) return event
+
+    this.transactionResultMarkers.delete(event.path)
+    if (!eventMatchesTransactionResult(event, marker)) return event
+
+    return { ...event, origin: 'workspace-edit', writeId: marker.operationId }
   }
 
   private async retainWatcher(relativeRoot: string): Promise<WatchRelease> {
@@ -302,6 +411,17 @@ export class FileChangeHub {
   private withSequence(event: WatchServerMessage): WatchServerMessage {
     return { ...event, sequence: this.nextSequence++ }
   }
+
+  private transactionBarrierFor(event: WatchServerMessage) {
+    if (!isFilesystemEvent(event)) return undefined
+
+    for (const barrier of this.transactionBarriers.values()) {
+      if (eventTouchesBarrier(event, barrier.paths)) return barrier
+      if (eventTouchesBarrier(event, barrier.internalPaths)) return barrier
+    }
+
+    return undefined
+  }
 }
 
 function subscribedPaths(paths: WorkspacePaths, inputs: string[]) {
@@ -432,6 +552,30 @@ function isSubscribedPath(relativePath: string, subscribed: Set<string>) {
   }
 
   return false
+}
+
+function eventTouchesBarrier(event: WatchServerMessage, paths: ReadonlySet<string>) {
+  if (!isFilesystemEvent(event)) return false
+  if (paths.has(event.path)) return true
+  if (event.type !== 'renamed') return false
+
+  return paths.has(event.oldPath)
+}
+
+function eventMatchesTransactionResult(event: WatchServerMessage, marker: TransactionResultMarker) {
+  if (!marker.exists) return event.type === 'deleted'
+  if (event.type === 'deleted') return false
+  if (event.type !== 'created' && event.type !== 'changed' && event.type !== 'renamed') return false
+
+  return event.version === marker.version
+}
+
+function isInternalFilesystemEvent(paths: WorkspacePaths, event: WatchServerMessage) {
+  if (!isFilesystemEvent(event)) return false
+  if (paths.isInternalPath(event.path)) return true
+  if (event.type !== 'renamed') return false
+
+  return paths.isInternalPath(event.oldPath)
 }
 
 function nativeWatchEvent(

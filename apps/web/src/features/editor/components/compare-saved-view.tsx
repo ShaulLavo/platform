@@ -2,8 +2,9 @@ import { createTextDiff } from '@singapor/diff'
 import { useMemo } from 'react'
 
 import { DiffEditor } from '@/features/editor/components/diff-editor'
-import { useDiffOwnedText } from '@/features/editor/hooks/use-diff-owned-text'
+import { useDiffLanguageContext } from '@/features/editor/hooks/use-diff-language-context'
 import { useEditorDocumentState } from '@/features/editor/state/document-state'
+import type { DiffLanguageHost } from '@/features/editor/utils/diff-language-context'
 import { useSelectedFile } from '@/features/workspace/hooks/use-selected-file'
 import { languageIdForFilePath } from '@/features/editor/utils/file-path'
 import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
@@ -16,10 +17,12 @@ import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
  * I changed" as you keep typing.
  */
 export function CompareSavedView({
+  languageHost,
   path,
   rootPath,
   tabId,
 }: {
+  languageHost: DiffLanguageHost
   path: string
   rootPath: string
   tabId?: string
@@ -32,7 +35,7 @@ export function CompareSavedView({
   const revision = useEditorDocumentState((state) => state.documentContentRevisions[path] ?? '')
   // Its new side IS the live buffer, so it is by construction the text the owning editor sent the
   // server — the file's own uri names exactly this text, and joining it is a no-op on the wire.
-  const languageServer = useDiffOwnedText(path, rootPath, true)
+  const languageServer = useDiffLanguageContext(path, rootPath, true, languageHost)
 
   const savedText = fileState.status === 'ready' ? fileState.data.content : null
   // Keep the text tied to the revision that materialized it. The mutable buffer object does not

@@ -3,6 +3,8 @@ import { ChatProviderSignInProvider } from '@/features/chat/providers/provider-s
 import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import { FocusProvider } from '@/lib/focus/providers/provider'
 import { HotkeysProvider } from '@tanstack/react-hotkeys'
+import { WorkspaceEditPreviewDialog } from '@/features/editor/components/workspace-edit-preview-dialog'
+import { WorkspaceEditRecoveryDialog } from '@/features/editor/components/workspace-edit-recovery-dialog'
 
 /**
  * Never put a route hierarchy above `EditorStateProvider`. That provider creates the
@@ -23,6 +25,8 @@ export function App() {
           <ChatProviderSignInProvider>
             <AppContent />
           </ChatProviderSignInProvider>
+          <WorkspaceEditPreviewDialog />
+          <WorkspaceEditRecoveryDialog />
         </HotkeysProvider>
       </FocusProvider>
     </EditorStateProvider>

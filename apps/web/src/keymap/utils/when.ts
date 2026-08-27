@@ -5,10 +5,14 @@ import {
 import type { CommandTargetKind, CommandWhen } from '@/keymap/define-command'
 
 export type CommandWhenSnapshot = {
+  readonly activeDocumentSavable?: boolean
   readonly activeFilePath: string | null
   readonly activeTabId: string | null
   readonly chatMode: boolean
   readonly workspaceOpen: boolean
+  readonly workspaceEditRedoable?: boolean
+  readonly workspaceEditUndoable?: boolean
+  readonly workspaceMutable?: boolean
 }
 
 export type CommandWhenTarget = {
@@ -24,6 +28,9 @@ export const commandWhenDisabledReasons = {
   saveableTab: 'Nothing here can be saved.',
   tabOpen: 'No editor tab is open.',
   workspaceOpen: 'No workspace open.',
+  workspaceEditRedoable: 'No workspace edit can be redone.',
+  workspaceEditUndoable: 'No workspace edit can be undone.',
+  workspaceMutable: 'Workspace files are locked by a transaction.',
 } as const satisfies Record<CommandWhen, string>
 
 export function commandWhenDisabledReason(
@@ -61,15 +68,24 @@ function conditionDisabledReason(
       : commandWhenDisabledReasons.fileBackedTab
   }
   if (condition === 'saveableTab') {
-    return savableDocumentPath(snapshot.activeFilePath)
-      ? null
-      : commandWhenDisabledReasons.saveableTab
+    const pathIsSavable = savableDocumentPath(snapshot.activeFilePath)
+    const documentIsSavable = snapshot.activeDocumentSavable ?? true
+    return pathIsSavable && documentIsSavable ? null : commandWhenDisabledReasons.saveableTab
   }
   if (condition === 'tabOpen') {
     return snapshot.activeTabId !== null ? null : commandWhenDisabledReasons.tabOpen
   }
   if (condition === 'workspaceOpen') {
     return snapshot.workspaceOpen ? null : commandWhenDisabledReasons.workspaceOpen
+  }
+  if (condition === 'workspaceEditRedoable') {
+    return snapshot.workspaceEditRedoable ? null : commandWhenDisabledReasons.workspaceEditRedoable
+  }
+  if (condition === 'workspaceEditUndoable') {
+    return snapshot.workspaceEditUndoable ? null : commandWhenDisabledReasons.workspaceEditUndoable
+  }
+  if (condition === 'workspaceMutable') {
+    return snapshot.workspaceMutable ? null : commandWhenDisabledReasons.workspaceMutable
   }
 
   return unreachableCondition(condition)

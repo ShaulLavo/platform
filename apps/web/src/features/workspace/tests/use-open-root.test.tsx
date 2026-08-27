@@ -1,9 +1,12 @@
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import path from 'node:path'
+import { vi } from 'vitest'
 
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
 import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { WorkspaceEditServiceContext } from '@/features/editor/providers/workspace-edit-context'
+import type { WorkspaceEditService } from '@/features/editor/state/workspace-edit-service'
 import {
   createEditorWorkspaceStore,
   EditorWorkspaceStateContext,
@@ -88,6 +91,24 @@ test('does not retarget the index when a newer folder open is rejected', async (
   expect(afterRejectedOpen.workspaceIndex?.scanRoot).toBe(path.join(server.root, 'valid'))
 })
 
+test('does not start a root open when the workspace mutation gate refuses it', async ({
+  client,
+}) => {
+  void client
+  await ensureFolderPath('blocked')
+  const store = emptyWorkspaceStore()
+  const acquireRootSwitchReservation = vi.fn(() => null)
+  const workspaceEdits = {
+    acquireRootSwitchReservation,
+  } as unknown as WorkspaceEditService
+  renderOpener('blocked', store, workspaceEdits)
+
+  await userEvent.click(screen.getByRole('button', { name: 'Open root' }))
+
+  expect(acquireRootSwitchReservation).toHaveBeenCalledOnce()
+  expect(store.getState().rootFolder).toBeNull()
+})
+
 /** The hook is the chokepoint for the project menu and the chat rail alike. */
 function OpenRootButton({ rootPath }: { readonly rootPath: string }) {
   const openWorkspaceRoot = useOpenWorkspaceRoot()
@@ -131,12 +152,18 @@ function OpenRootButtons({
   )
 }
 
-function renderOpener(rootPath: string) {
+function renderOpener(
+  rootPath: string,
+  store = emptyWorkspaceStore(),
+  workspaceEdits: WorkspaceEditService | null = null,
+) {
   return renderWithProviders(
     <EditorStateProvider>
-      <EditorWorkspaceStateContext.Provider value={emptyWorkspaceStore()}>
-        <OpenRootButton rootPath={rootPath} />
-      </EditorWorkspaceStateContext.Provider>
+      <WorkspaceEditServiceContext value={workspaceEdits}>
+        <EditorWorkspaceStateContext.Provider value={store}>
+          <OpenRootButton rootPath={rootPath} />
+        </EditorWorkspaceStateContext.Provider>
+      </WorkspaceEditServiceContext>
     </EditorStateProvider>,
   )
 }

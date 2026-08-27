@@ -9,6 +9,18 @@ export type OpenDocument = {
   text: string
 }
 
+export type WorkspaceEditClientCapabilities = {
+  readonly changeAnnotationSupport: boolean
+  readonly documentChanges: boolean
+  readonly resourceOperations: readonly lsp.ResourceOperationKind[]
+}
+
+export type SessionInitializationOptions = {
+  readonly compilerOptions?: ts.CompilerOptions
+  readonly diagnosticDelayMs?: number
+  readonly workspaceEditCapabilities: WorkspaceEditClientCapabilities
+}
+
 export type SessionContext = {
   readonly root: string
   readonly workspaceRoot: string
@@ -29,8 +41,6 @@ export type SessionContext = {
   postResponse(id: lsp.RequestMessage['id'] | null, result: unknown): void
   postResponseError(id: lsp.RequestMessage['id'] | null, error: unknown): void
   readonly compilerOptionsOverride: ts.CompilerOptions
-  applyInitializationOptions(options: {
-    compilerOptions?: ts.CompilerOptions
-    diagnosticDelayMs?: number
-  }): void
+  readonly workspaceEditCapabilities: WorkspaceEditClientCapabilities
+  applyInitializationOptions(options: SessionInitializationOptions): void
 }

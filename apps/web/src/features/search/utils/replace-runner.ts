@@ -1,39 +1,69 @@
-import type { LiveEditorDocument } from '@/features/editor/state/document-state'
-import type { WriteFileContentOptions } from '@/lib/file-server'
-import type { FileResult, TreeEntry } from '@/lib/file-system-types'
-import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
-import { createEditorBufferSession } from '@singapor/core'
-
+import type { WorkspaceEditApplicationRequest } from '@/features/editor/state/workspace-edit-service'
+import { workspaceSearchReplacePlan } from '@/features/search/utils/replace'
+import type { FileResult } from '@/lib/file-system-types'
 import {
-  applyWorkspaceSearchReplaceEdits,
-  workspaceSearchReplacePlan,
-} from '@/features/search/utils/replace'
+  createDocumentLogicalRevisionScope,
+  createEditorTextBuffer,
+  offsetToPoint,
+  type EditorTextBuffer,
+  type PieceTableSnapshot,
+  type TextEdit,
+  type TextSnapshot,
+} from '@singapor/core/document'
+import {
+  fileNameToDocumentUri,
+  type ApplyWorkspaceEditResult,
+  type WorkspaceTextDocumentProvenance,
+} from '@singapor/lsp-plugin'
+import type {
+  ParsedWorkspaceTextEdit,
+  WorkspaceEditOperation,
+} from '@singapor/lsp-plugin/workspace-edit'
+import type { WorkspaceSearchMatch, WorkspaceSearchQuery } from '@workspace/contracts'
 
-export type WorkspaceSearchReplaceResult = {
-  changedFiles: number
-  failedFiles: number
-  replacedMatches: number
-  skippedMatches: number
+const SEARCH_ANNOTATION_ID = 'workspace-search-replace'
+
+export type AppliedWorkspaceSearchReplaceResult = {
+  readonly changedFiles: number
+  readonly replacedMatches: number
+  readonly skippedMatches: number
+  readonly status: 'applied'
 }
+
+export type WorkspaceSearchReplaceResult =
+  | AppliedWorkspaceSearchReplaceResult
+  | Exclude<ApplyWorkspaceEditResult, { readonly status: 'applied' }>
 
 export type WorkspaceSearchReplaceContext = {
-  cacheFile: (file: FileResult) => void
+  applyWorkspaceChange: (
+    request: WorkspaceEditApplicationRequest,
+  ) => Promise<ApplyWorkspaceEditResult>
   fetchFile: (path: string, signal: AbortSignal) => Promise<FileResult>
-  getLiveEditorDocument: (path: string) => LiveEditorDocument | null
-  recordLiveEditorDocumentTextChange: (path: string) => void
+  getLiveEditorDocument: (path: string) => SearchLiveDocument | null
+  rootPath: string
   signal: AbortSignal
-  writeFileContent: (
-    path: string,
-    content: string,
-    options?: WriteFileContentOptions,
-  ) => Promise<Pick<TreeEntry, 'mtimeMs' | 'size' | 'version'>>
 }
 
-type PathReplaceResult = {
-  changed: boolean
-  failed: boolean
-  replacedMatches: number
-  skippedMatches: number
+type SearchLiveDocument = {
+  readonly buffer: EditorTextBuffer
+  readonly path: string
+}
+
+type SearchTargetSource = {
+  readonly buffer: EditorTextBuffer
+  readonly path: string
+  readonly pieceSnapshot: PieceTableSnapshot
+  readonly textSnapshot: TextSnapshot
+  readonly uri: string
+  readonly version: number | null
+}
+
+type PreparedSearchRequest = {
+  readonly changedFiles: number
+  readonly guard: WorkspaceEditApplicationRequest['guard']
+  readonly operations: readonly WorkspaceEditOperation[]
+  readonly replacedMatches: number
+  readonly skippedMatches: number
 }
 
 export async function replaceWorkspaceSearchMatches({
@@ -47,162 +77,195 @@ export async function replaceWorkspaceSearchMatches({
   query: WorkspaceSearchQuery
   replaceText: string
 }): Promise<WorkspaceSearchReplaceResult> {
-  const result = emptyReplaceResult()
-  const matchesByPath = contentMatchesByPath(matches)
+  const prepared = await prepareSearchRequest(context, matches, query, replaceText)
+  if (prepared.operations.length === 0) return emptyAppliedResult(prepared.skippedMatches)
 
-  for (const [path, pathMatches] of matchesByPath) {
-    const pathResult = await replaceWorkspaceSearchPath({
-      context,
-      path,
-      query,
-      replaceText,
-      matches: pathMatches,
-    })
-    appendPathResult(result, pathResult)
+  const result = await context.applyWorkspaceChange({
+    guard: prepared.guard,
+    label: replaceLabel(prepared.replacedMatches),
+    logicalRevisionScope: createDocumentLogicalRevisionScope(),
+    originUri: fileNameToDocumentUri(context.rootPath),
+    originVersion: 0,
+    plan: {
+      annotations: new Map([
+        [
+          SEARCH_ANNOTATION_ID,
+          {
+            label: 'Workspace search replacement',
+            needsConfirmation: true,
+          },
+        ],
+      ]),
+      operations: prepared.operations,
+    },
+    serverId: 'workspace-search',
+    signal: context.signal,
+    source: 'search-replace',
+  })
+  if (result.status !== 'applied') return result
+
+  return {
+    changedFiles: prepared.changedFiles,
+    replacedMatches: prepared.replacedMatches,
+    skippedMatches: prepared.skippedMatches,
+    status: 'applied',
   }
-
-  return result
 }
 
-export function workspaceSearchReplaceSummary(result: WorkspaceSearchReplaceResult) {
+export function workspaceSearchReplaceSummary(result: AppliedWorkspaceSearchReplaceResult) {
   const replaced = `${result.replacedMatches.toLocaleString()} ${matchNoun(
     result.replacedMatches,
   )} replaced`
   const skipped =
     result.skippedMatches > 0 ? `, ${result.skippedMatches.toLocaleString()} skipped` : ''
-  const failed =
-    result.failedFiles > 0
-      ? `, ${result.failedFiles.toLocaleString()} ${fileNoun(result.failedFiles)} failed`
-      : ''
 
-  return `${replaced}${skipped}${failed}.`
+  return `${replaced}${skipped}.`
 }
 
-function emptyReplaceResult(): WorkspaceSearchReplaceResult {
-  return {
-    changedFiles: 0,
-    failedFiles: 0,
-    replacedMatches: 0,
-    skippedMatches: 0,
-  }
-}
-
-async function replaceWorkspaceSearchPath({
-  context,
-  matches,
-  path,
-  query,
-  replaceText,
-}: {
-  context: WorkspaceSearchReplaceContext
-  matches: readonly WorkspaceSearchMatch[]
-  path: string
-  query: WorkspaceSearchQuery
-  replaceText: string
-}): Promise<PathReplaceResult> {
-  const liveDocument = context.getLiveEditorDocument(path)
-  if (liveDocument) {
-    return replaceLiveDocument(liveDocument, matches, query, replaceText, context)
-  }
-
-  return replaceDiskFile(path, matches, query, replaceText, context)
-}
-
-function replaceLiveDocument(
-  document: LiveEditorDocument,
+async function prepareSearchRequest(
+  context: WorkspaceSearchReplaceContext,
   matches: readonly WorkspaceSearchMatch[],
   query: WorkspaceSearchQuery,
   replaceText: string,
-  context: WorkspaceSearchReplaceContext,
-): PathReplaceResult {
-  const plan = workspaceSearchReplacePlan({
-    matches,
-    query,
-    replaceText,
-    text: document.buffer.getTextSnapshot(),
-  })
-  if (plan.edits.length === 0) {
-    return skippedPathResult(plan.skippedCount)
-  }
+): Promise<PreparedSearchRequest> {
+  const liveSources = new Map<string, SearchTargetSource>()
+  const operations: WorkspaceEditOperation[] = []
+  let changedFiles = 0
+  let replacedMatches = 0
+  let skippedMatches = 0
 
-  createEditorBufferSession(document.buffer).applyEdits(plan.edits)
-  context.recordLiveEditorDocumentTextChange(document.path)
+  for (const [path, pathMatches] of contentMatchesByPath(matches)) {
+    context.signal.throwIfAborted()
+    const source = await searchTargetSource(context, path)
+    const plan = workspaceSearchReplacePlan({
+      matches: pathMatches,
+      query,
+      replaceText,
+      text: source.textSnapshot,
+    })
+    skippedMatches += plan.skippedCount
+    if (plan.edits.length === 0) continue
+
+    changedFiles += 1
+    replacedMatches += plan.appliedCount
+    operations.push(textOperation(source, plan.edits))
+    if (source.version !== null) liveSources.set(source.uri, source)
+  }
 
   return {
-    changed: true,
-    failed: false,
-    replacedMatches: plan.appliedCount,
-    skippedMatches: plan.skippedCount,
-  }
-}
-
-async function replaceDiskFile(
-  path: string,
-  matches: readonly WorkspaceSearchMatch[],
-  query: WorkspaceSearchQuery,
-  replaceText: string,
-  context: WorkspaceSearchReplaceContext,
-): Promise<PathReplaceResult> {
-  try {
-    return await replaceDiskFileChecked(path, matches, query, replaceText, context)
-  } catch {
-    return {
-      changed: false,
-      failed: true,
-      replacedMatches: 0,
-      skippedMatches: matches.length,
-    }
-  }
-}
-
-async function replaceDiskFileChecked(
-  path: string,
-  matches: readonly WorkspaceSearchMatch[],
-  query: WorkspaceSearchQuery,
-  replaceText: string,
-  context: WorkspaceSearchReplaceContext,
-): Promise<PathReplaceResult> {
-  const file = await context.fetchFile(path, context.signal)
-  const plan = workspaceSearchReplacePlan({
-    matches,
-    query,
-    replaceText,
-    text: file.content,
-  })
-  if (plan.edits.length === 0) {
-    return skippedPathResult(plan.skippedCount)
-  }
-
-  const content = applyWorkspaceSearchReplaceEdits(file.content, plan.edits)
-  const entry = await context.writeFileContent(path, content, {
-    baseVersion: file.version,
-    expectedMtimeMs: file.mtimeMs,
-    origin: 'search-replace',
-  })
-  context.cacheFile(fileResultForReplacedContent(file, content, entry))
-
-  return {
-    changed: true,
-    failed: false,
-    replacedMatches: plan.appliedCount,
-    skippedMatches: plan.skippedCount,
-  }
-}
-
-function skippedPathResult(skippedMatches: number): PathReplaceResult {
-  return {
-    changed: false,
-    failed: false,
-    replacedMatches: 0,
+    changedFiles,
+    guard: searchOriginGuard(context, liveSources),
+    operations,
+    replacedMatches,
     skippedMatches,
   }
 }
 
-function appendPathResult(result: WorkspaceSearchReplaceResult, pathResult: PathReplaceResult) {
-  if (pathResult.changed) result.changedFiles += 1
-  if (pathResult.failed) result.failedFiles += 1
-  result.replacedMatches += pathResult.replacedMatches
-  result.skippedMatches += pathResult.skippedMatches
+async function searchTargetSource(
+  context: WorkspaceSearchReplaceContext,
+  path: string,
+): Promise<SearchTargetSource> {
+  const live = context.getLiveEditorDocument(path)
+  if (live) return liveTargetSource(live)
+
+  const file = await context.fetchFile(path, context.signal)
+  return transientTargetSource(path, file.content)
+}
+
+function liveTargetSource(document: SearchLiveDocument): SearchTargetSource {
+  return targetSource(document.path, document.buffer, 0)
+}
+
+function transientTargetSource(path: string, text: string): SearchTargetSource {
+  return targetSource(path, createEditorTextBuffer(text), null)
+}
+
+function targetSource(
+  path: string,
+  buffer: EditorTextBuffer,
+  version: number | null,
+): SearchTargetSource {
+  return {
+    buffer,
+    path,
+    pieceSnapshot: buffer.getSnapshot(),
+    textSnapshot: buffer.getTextSnapshot(),
+    uri: fileNameToDocumentUri(path),
+    version,
+  }
+}
+
+function textOperation(
+  source: SearchTargetSource,
+  edits: readonly TextEdit[],
+): WorkspaceEditOperation {
+  return {
+    annotationId: SEARCH_ANNOTATION_ID,
+    edits: edits.map((edit) => workspaceTextEdit(source.pieceSnapshot, edit)),
+    kind: 'text-document',
+    uri: source.uri,
+    version: source.version,
+  }
+}
+
+function workspaceTextEdit(snapshot: PieceTableSnapshot, edit: TextEdit): ParsedWorkspaceTextEdit {
+  return {
+    annotationId: SEARCH_ANNOTATION_ID,
+    newText: edit.text,
+    range: {
+      end: workspacePosition(snapshot, edit.to),
+      start: workspacePosition(snapshot, edit.from),
+    },
+  }
+}
+
+function workspacePosition(snapshot: PieceTableSnapshot, offset: number) {
+  const point = offsetToPoint(snapshot, offset)
+  return { character: point.column, line: point.row }
+}
+
+function searchOriginGuard(
+  context: WorkspaceSearchReplaceContext,
+  liveSources: ReadonlyMap<string, SearchTargetSource>,
+): WorkspaceEditApplicationRequest['guard'] {
+  const documents: WorkspaceTextDocumentProvenance[] = Array.from(
+    liveSources.values(),
+    (source) => ({
+      textSnapshot: source.textSnapshot,
+      uri: source.uri,
+      version: requiredLiveVersion(source),
+    }),
+  )
+
+  return {
+    documents,
+    isCurrent: (uri) => isCurrentLiveSource(context, liveSources.get(uri)),
+  }
+}
+
+function isCurrentLiveSource(
+  context: WorkspaceSearchReplaceContext,
+  source: SearchTargetSource | undefined,
+): boolean {
+  if (!source) return false
+  const current = context.getLiveEditorDocument(source.path)
+  if (!current || current.buffer !== source.buffer) return false
+  if (current.buffer.getSnapshot() !== source.pieceSnapshot) return false
+  return current.buffer.getTextSnapshot() === source.textSnapshot
+}
+
+function requiredLiveVersion(source: SearchTargetSource): number {
+  if (source.version !== null) return source.version
+  return 0
+}
+
+function emptyAppliedResult(skippedMatches: number): AppliedWorkspaceSearchReplaceResult {
+  return {
+    changedFiles: 0,
+    replacedMatches: 0,
+    skippedMatches,
+    status: 'applied',
+  }
 }
 
 function contentMatchesByPath(matches: readonly WorkspaceSearchMatch[]) {
@@ -223,24 +286,10 @@ function contentMatchesByPath(matches: readonly WorkspaceSearchMatch[]) {
   return groups
 }
 
-function fileResultForReplacedContent(
-  file: FileResult,
-  content: string,
-  entry: Pick<TreeEntry, 'mtimeMs' | 'size' | 'version'>,
-): FileResult {
-  return {
-    ...file,
-    content,
-    mtimeMs: entry.mtimeMs,
-    size: entry.size,
-    version: entry.version,
-  }
+function replaceLabel(count: number) {
+  return `Replace ${count.toLocaleString()} ${matchNoun(count)}`
 }
 
 function matchNoun(count: number) {
   return count === 1 ? 'match' : 'matches'
-}
-
-function fileNoun(count: number) {
-  return count === 1 ? 'file' : 'files'
 }

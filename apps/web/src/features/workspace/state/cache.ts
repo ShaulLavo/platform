@@ -40,7 +40,7 @@ import type { EditorScrollPosition } from '@singapor/core'
 
 // Local-only UI state uses an explicit schema version plus a clear mismatch policy:
 // update deliberately or drop intentionally. Server-backed caches may reset/refetch.
-const CACHE_VERSION = 17
+const CACHE_VERSION = 18
 const CACHE_KEY_PREFIX = `platform.workspace-state.v${CACHE_VERSION}`
 const CACHE_KEY_NAMESPACE = 'platform.workspace-state.v'
 const WORKSPACE_SLICE_KEY_PREFIX = `${CACHE_KEY_PREFIX}.workspace:`

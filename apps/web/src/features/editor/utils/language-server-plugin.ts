@@ -1,11 +1,13 @@
 import type {
   LanguageServerDefinitionTarget,
+  LanguageServerDocumentSyncController,
   LanguageServerFeatureRanks,
   LanguageServerLaneOptions,
   LanguageServerPlugin,
   LanguageServerReferencesResult,
   LanguageServerSemanticTokensFactory,
   LspConnectionProvider,
+  OnApplyWorkspaceEdit,
 } from '@singapor/lsp-plugin'
 import { createLanguageServerSetPlugin } from '@singapor/lsp-plugin/websocket'
 import {
@@ -39,21 +41,25 @@ export type LanguageServerDocumentTarget = {
 }
 
 type MatchedLanguageServerPluginOptions = {
+  documentSyncController: LanguageServerDocumentSyncController
   enabled: boolean
   matches: readonly LanguageServerMatch[] | null
   rootPath: string
   statusSource: EditorLanguageServerStatusSource
   target: LanguageServerDocumentTarget
+  onApplyWorkspaceEdit: OnApplyWorkspaceEdit
   onOpenDefinition?: (target: LanguageServerDefinitionTarget) => void | boolean
   onOpenReferences?: (result: LanguageServerReferencesResult) => void | boolean
 }
 
 export function createMatchedLanguageServerPlugin({
+  documentSyncController,
   enabled,
   matches,
   rootPath,
   statusSource,
   target,
+  onApplyWorkspaceEdit,
   onOpenDefinition,
   onOpenReferences,
 }: MatchedLanguageServerPluginOptions): LanguageServerPlugin {
@@ -68,6 +74,7 @@ export function createMatchedLanguageServerPlugin({
   const lanes = descriptors.map((match) =>
     liveLanguageServerLane({
       match,
+      onApplyWorkspaceEdit,
       rootPath,
       semanticControllers,
       statusSource,
@@ -77,11 +84,13 @@ export function createMatchedLanguageServerPlugin({
   const plugin = createLanguageServerSetPlugin({
     lanes,
     documentSync: {
+      controller: documentSyncController,
       languageIdForDocument: (_languageId, uri) => lspLanguageIdForPath(uri),
     },
     semanticTokens: descriptors.some((match) => match.features.semanticTokens !== undefined)
       ? semanticTokenOwnerFactory(semanticControllers)
       : undefined,
+    onApplyWorkspaceEdit,
     onOpenDefinition,
     onOpenReferences,
   })
@@ -91,12 +100,14 @@ export function createMatchedLanguageServerPlugin({
 
 function liveLanguageServerLane({
   match,
+  onApplyWorkspaceEdit,
   rootPath,
   semanticControllers,
   statusSource,
   target,
 }: {
   match: LanguageServerMatch
+  onApplyWorkspaceEdit: OnApplyWorkspaceEdit
   rootPath: string
   semanticControllers: Map<string, SemanticTokenController>
   statusSource: EditorLanguageServerStatusSource
@@ -109,6 +120,7 @@ function liveLanguageServerLane({
         serverId: match.serverId,
       }),
       match,
+      onApplyWorkspaceEdit,
       rootPath,
       target,
     }),
@@ -136,11 +148,13 @@ function liveLanguageServerLane({
 export function languageServerLaneOptions({
   connectionProvider,
   match,
+  onApplyWorkspaceEdit,
   rootPath,
   target,
 }: {
   connectionProvider: LspConnectionProvider
   match: LanguageServerMatch
+  onApplyWorkspaceEdit: OnApplyWorkspaceEdit
   rootPath: string
   target: LanguageServerDocumentTarget
 }): LanguageServerLaneOptions {
@@ -151,6 +165,7 @@ export function languageServerLaneOptions({
     clientInfo: LANGUAGE_SERVER_CLIENT_INFO,
     rootUri: fileUriForPath(match.root),
     connectionProvider,
+    onApplyWorkspaceEdit,
     readyNotifications: target.sharedNotificationsByServer?.[match.serverId],
     webSocketRoute: languageServerRoute(rootPath, target.matchPath, match.serverId),
     webSocketTransportOptions: {

@@ -1,6 +1,7 @@
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { effectiveEntryType } from '@workspace/contracts'
+import { platformHomePath } from '../home'
 import { createWorkspacePaths } from './path'
 import { FileChangeHub, type WatchBackend } from './watch'
 import { entryFromStat } from './entry'
@@ -46,9 +47,14 @@ import type {
   RenameBody,
   TreeEntry,
   WatchServerMessage,
+  WorkspaceEditPrepareBody,
+  WorkspaceEditRecoverBody,
+  WorkspaceEditReleaseBody,
+  WorkspaceEditTransitionBody,
   WriteBody,
 } from './contracts'
 import type { WorkspacePaths } from './path'
+import { WorkspaceEditController, type WorkspaceEditControllerOptions } from './workspace-edit'
 
 export type FileSystemSearchOptions = Omit<FindOptions, 'maxContentBytes'>
 
@@ -65,6 +71,12 @@ export type FileSystemServiceOptions = {
   metadataDatabase?: MetadataDatabaseHandle
   /** Path for the service-owned metadata database when no handle is provided. */
   metadataDatabasePath?: string
+  /** Internal durable transaction root. Tests must always inject an isolated path. */
+  workspaceEditJournalRoot?: string
+  /** Test seam for deterministic transaction timing. */
+  workspaceEditClock?: WorkspaceEditControllerOptions['clock']
+  /** Test seam for deterministic transaction filesystem failures. */
+  workspaceEditDriver?: WorkspaceEditControllerOptions['driver']
 }
 
 const DEFAULT_TREE_CONCURRENCY = 32
@@ -104,6 +116,9 @@ export class FileSystemService {
   readonly metadata
   private readonly maxSearchContentBytes
   private readonly maxTextFileBytes
+  private readonly workspaceEditJournalRoot
+  private readonly workspaceEditReady
+  private readonly workspaceEdits
   private latestWorkspaceOpenGeneration = 0
   private workspaceIndexScope: WorkspaceIndexScope | undefined
   private readonly retiringWorkspaceIndexScopes = new Set<Promise<void>>()
@@ -112,7 +127,13 @@ export class FileSystemService {
   constructor(options: FileSystemServiceOptions = {}) {
     const homeDirectory = options.homeDirectory ?? homedir()
     this.systemRoot = path.resolve(options.systemRoot ?? path.parse(homeDirectory).root)
-    this.paths = createWorkspacePaths(options.workspaceRoot ?? this.systemRoot)
+    const workspaceEditJournalRoot = path.resolve(
+      options.workspaceEditJournalRoot ?? platformHomePath('workspace-edit-journals'),
+    )
+    this.workspaceEditJournalRoot = workspaceEditJournalRoot
+    this.paths = createWorkspacePaths(options.workspaceRoot ?? this.systemRoot, {
+      excludedAbsolutePaths: [this.workspaceEditJournalRoot],
+    })
     this.homePath = resolveHomePath(this.paths, homeDirectory)
     this.defaultPath = this.homePath
     this.metadata = new FsMetadataStore({
@@ -126,6 +147,14 @@ export class FileSystemService {
       backend: options.watchBackend,
       enabled: options.watch ?? true,
     })
+    this.workspaceEdits = new WorkspaceEditController({
+      changes: this.changes,
+      clock: options.workspaceEditClock,
+      driver: options.workspaceEditDriver,
+      journalRoot: this.workspaceEditJournalRoot,
+      paths: this.paths,
+    })
+    this.workspaceEditReady = this.workspaceEdits.ready()
   }
 
   get workspaceIndex() {
@@ -171,6 +200,7 @@ export class FileSystemService {
   }
 
   private async openWorkspaceRootObserved(body: OpenWorkspaceRootBody) {
+    await this.workspaceEditReady
     if (!this.claimWorkspaceOpen(body.generation)) return this.supersededWorkspaceOpen()
 
     const entry = await statPath(this.paths, body.path)
@@ -185,7 +215,8 @@ export class FileSystemService {
     }
   }
 
-  tree(path: string, depth: number, entryType?: EntryTypeFilter) {
+  async tree(path: string, depth: number, entryType?: EntryTypeFilter) {
+    await this.workspaceEditReady
     return observeRequestOperation(
       { area: 'fs', depth, entryType, operation: 'tree', path },
       () =>
@@ -223,7 +254,7 @@ export class FileSystemService {
         path: body.path,
         writeId: body.writeId,
       },
-      () => this.writeObserved(body),
+      () => this.withLegacyMutation([body.path], () => this.writeObserved(body)),
       (result) => ({ entryType: result.type, size: result.size }),
     )
   }
@@ -267,7 +298,7 @@ export class FileSystemService {
         operation: 'create_file',
         path: body.path,
       },
-      () => this.createFileObserved(body),
+      () => this.withLegacyMutation([body.path], () => this.createFileObserved(body)),
       (result) => ({ entryType: result.type, size: result.size }),
     )
   }
@@ -288,7 +319,7 @@ export class FileSystemService {
         path: body.path,
         recursive: body.recursive,
       },
-      () => this.createFolderObserved(body),
+      () => this.withLegacyMutation([body.path], () => this.createFolderObserved(body)),
       (result) => ({ entryType: result.type }),
     )
   }
@@ -309,7 +340,7 @@ export class FileSystemService {
         operation: 'rename',
         path: body.to,
       },
-      () => this.renameObserved(body),
+      () => this.withLegacyMutation([body.from, body.to], () => this.renameObserved(body)),
       (result) => ({ entryType: result.type, size: result.size }),
     )
   }
@@ -335,7 +366,7 @@ export class FileSystemService {
         operation: 'copy',
         path: body.to,
       },
-      () => this.copyObserved(body),
+      () => this.withLegacyMutation([body.from, body.to], () => this.copyObserved(body)),
       (result) => ({ entryType: result.type, size: result.size }),
     )
   }
@@ -351,7 +382,7 @@ export class FileSystemService {
   async delete(body: DeleteBody) {
     return observeRequestOperation(
       { area: 'fs', operation: 'delete', path: body.path },
-      () => this.deleteObserved(body),
+      () => this.withLegacyMutation([body.path], () => this.deleteObserved(body)),
       (result) => ({ deleted: result.deleted }),
     )
   }
@@ -367,6 +398,7 @@ export class FileSystemService {
     options: FileSystemSearchOptions,
     signal?: AbortSignal,
   ): AsyncGenerator<SearchStreamEvent> {
+    await this.workspaceEditReady
     yield* observedSearchEvents(
       findInWorkspaceStream(
         this.paths,
@@ -439,15 +471,67 @@ export class FileSystemService {
   }
 
   async *events(paths: string[], signal?: AbortSignal): AsyncGenerator<WatchServerMessage> {
+    await this.workspaceEditReady
     yield* observedWatchEvents(this.changes.stream(paths, signal), paths)
+  }
+
+  workspaceEditPrepare(body: WorkspaceEditPrepareBody) {
+    return this.workspaceEdits.prepare(body)
+  }
+
+  workspaceEditCommit(body: WorkspaceEditTransitionBody) {
+    return this.workspaceEdits.commit(body)
+  }
+
+  workspaceEditFinalize(body: WorkspaceEditTransitionBody) {
+    return this.workspaceEdits.finalize(body)
+  }
+
+  workspaceEditStatus(operationId: string) {
+    return this.workspaceEdits.status(operationId)
+  }
+
+  workspaceEditAbort(body: WorkspaceEditTransitionBody) {
+    return this.workspaceEdits.abort(body)
+  }
+
+  workspaceEditRollback(body: WorkspaceEditTransitionBody) {
+    return this.workspaceEdits.rollback(body)
+  }
+
+  workspaceEditUndo(body: WorkspaceEditTransitionBody) {
+    return this.workspaceEdits.undo(body)
+  }
+
+  workspaceEditRedo(body: WorkspaceEditTransitionBody) {
+    return this.workspaceEdits.redo(body)
+  }
+
+  workspaceEditRecover(body: WorkspaceEditRecoverBody) {
+    return this.workspaceEdits.recover(body)
+  }
+
+  workspaceEditRelease(body: WorkspaceEditReleaseBody) {
+    return this.workspaceEdits.release(body)
+  }
+
+  workspaceEditRecovery(workspace: string) {
+    return this.workspaceEdits.recovery(workspace)
   }
 
   async close() {
     if (this.workspaceIndexScope) this.retireWorkspaceIndexScope(this.workspaceIndexScope)
     this.workspaceIndexScope = undefined
     await Promise.all(this.retiringWorkspaceIndexScopes)
+    await this.workspaceEditReady
+    await this.workspaceEdits.close()
     await this.changes.close()
     this.metadata.close()
+  }
+
+  private withLegacyMutation<T>(relativePaths: readonly string[], mutation: () => Promise<T>) {
+    const absolutePaths = relativePaths.map((input) => this.paths.resolve(input).absolutePath)
+    return this.workspaceEdits.withLegacyMutation(absolutePaths, mutation)
   }
 
   private claimWorkspaceOpen(generation: number) {
@@ -474,7 +558,9 @@ export class FileSystemService {
     if (this.workspaceIndexScope?.paths.workspaceRoot === absoluteRoot) return
 
     const previous = this.workspaceIndexScope
-    const paths = createWorkspacePaths(absoluteRoot)
+    const paths = createWorkspacePaths(absoluteRoot, {
+      excludedAbsolutePaths: [this.workspaceEditJournalRoot],
+    })
     const index = new WorkspaceIndex(paths)
     const abort = new AbortController()
     const watcher = watchWorkspaceIndex(index, (signal) =>

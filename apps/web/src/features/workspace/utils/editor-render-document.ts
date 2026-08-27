@@ -11,11 +11,13 @@ export function readyFile(fileState: LoadState<FileResult>) {
 export function joinedEditorRenderDocument({
   buffer,
   documentId,
+  editability,
   path,
   view,
 }: {
   buffer: EditorRenderDocument['buffer'] | null
   documentId: string | null
+  editability: EditorRenderDocument['editability']
   path: string | null
   view: EditorRenderDocument['view'] | null
 }): EditorRenderDocument | null {
@@ -26,6 +28,7 @@ export function joinedEditorRenderDocument({
 
   return {
     buffer,
+    editability,
     id: documentId,
     path,
     view,

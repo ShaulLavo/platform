@@ -6,6 +6,8 @@ export type EntryTypeCarrier = {
 }
 
 export interface FileSystemEntryMetadata extends EntryTypeCarrier {
+  /** Canonical root-relative spelling when the server can resolve the entry. */
+  canonicalPath?: string
   path: string
   size: number
   mtimeMs: number
