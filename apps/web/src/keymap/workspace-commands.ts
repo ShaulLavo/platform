@@ -55,8 +55,10 @@ import { parseSearchBufferDocumentId } from '@/features/search/utils/buffer-docu
 import {
   activeEditorTabForWorkbenchPanels,
   openEditorPathInWorkbenchPanels,
-  setWorkbenchBottomTab,
-  setWorkbenchSidebarTab,
+  showWorkbenchBottomTab,
+  showWorkbenchSidebarTab,
+  toggleWorkbenchBottomTab,
+  toggleWorkbenchSidebarTab,
 } from '@/features/workbench/utils/panels'
 import { fetchFile } from '@/lib/file-server'
 import { setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'
@@ -683,7 +685,7 @@ export const workspaceCommands = [
   }),
   defineCommand({
     category: 'Workspace',
-    description: 'Open, collapse, expand, or focus the Files pane.',
+    description: 'Show or hide the Files pane.',
     icon: SidebarSimpleIcon,
     id: 'workspace.toggleSidebarVisibility',
     keys: [
@@ -701,8 +703,17 @@ export const workspaceCommands = [
       if (!snapshot.rootPath) return declined
 
       const workspace = runtime.workspace.getState()
+      // Arriving from chat mode reveals the pane rather than toggling it: the
+      // workbench panels the user is about to see were never on screen, so
+      // hiding one would answer a keystroke they could not have aimed.
+      const revealing = workspace.uiMode !== 'workbench'
+      const panels = revealing
+        ? showWorkbenchSidebarTab(snapshot.workbenchPanels, 'files')
+        : toggleWorkbenchSidebarTab(snapshot.workbenchPanels, 'files')
       workspace.setUiMode('workbench')
-      workspace.setWorkbenchPanels(setWorkbenchSidebarTab(snapshot.workbenchPanels, 'files'))
+      workspace.setWorkbenchPanels(panels)
+      if (!panels.sidebarOpen) return handled
+
       return focusIdInLayoutStart(
         runtime,
         { kind: 'file-tree', rootPath: snapshot.rootPath },
@@ -717,6 +728,13 @@ export const workspaceCommands = [
     description: 'Show or hide the active workspace panel.',
     icon: SquareHalfBottomIcon,
     id: 'workspace.togglePanel',
+    keys: [
+      {
+        hotkey: 'Mod+J',
+        preventDefault: true,
+        vscodeCommandId: 'workbench.action.togglePanel',
+      },
+    ],
     execution: 'async',
     target: 'workspace',
     undoCategory: 'view-only',
@@ -725,8 +743,14 @@ export const workspaceCommands = [
       if (!snapshot.rootPath) return declined
 
       const workspace = runtime.workspace.getState()
+      const revealing = workspace.uiMode !== 'workbench'
+      const panels = revealing
+        ? showWorkbenchBottomTab(snapshot.workbenchPanels, 'terminal')
+        : toggleWorkbenchBottomTab(snapshot.workbenchPanels, 'terminal')
       workspace.setUiMode('workbench')
-      workspace.setWorkbenchPanels(setWorkbenchBottomTab(snapshot.workbenchPanels, 'terminal'))
+      workspace.setWorkbenchPanels(panels)
+      if (!panels.bottomPanelOpen) return handled
+
       return focusStart(runtime, {
         isValid: () => runtime.workspace.getState().uiMode === 'workbench',
         kind: 'match',
@@ -805,7 +829,7 @@ export const workspaceCommands = [
 
       const workspace = runtime.workspace.getState()
       workspace.setUiMode('workbench')
-      workspace.setWorkbenchPanels(setWorkbenchSidebarTab(snapshot.workbenchPanels, 'files'))
+      workspace.setWorkbenchPanels(showWorkbenchSidebarTab(snapshot.workbenchPanels, 'files'))
       return focusIdInLayoutStart(
         runtime,
         { kind: 'file-tree', rootPath: snapshot.rootPath },
@@ -829,7 +853,7 @@ export const workspaceCommands = [
 
       const workspace = runtime.workspace.getState()
       workspace.setUiMode('workbench')
-      workspace.setWorkbenchPanels(setWorkbenchSidebarTab(snapshot.workbenchPanels, 'files'))
+      workspace.setWorkbenchPanels(showWorkbenchSidebarTab(snapshot.workbenchPanels, 'files'))
       return focusIdInLayoutStart(
         runtime,
         { kind: 'file-tree', rootPath: snapshot.rootPath },
@@ -854,7 +878,7 @@ export const workspaceCommands = [
 
       const workspace = runtime.workspace.getState()
       workspace.setUiMode('workbench')
-      workspace.setWorkbenchPanels(setWorkbenchSidebarTab(snapshot.workbenchPanels, 'files'))
+      workspace.setWorkbenchPanels(showWorkbenchSidebarTab(snapshot.workbenchPanels, 'files'))
       return focusIdInLayoutStart(
         runtime,
         { kind: 'file-tree', rootPath: snapshot.rootPath },
@@ -878,7 +902,7 @@ export const workspaceCommands = [
 
       const workspace = runtime.workspace.getState()
       workspace.setUiMode('workbench')
-      workspace.setWorkbenchPanels(setWorkbenchSidebarTab(snapshot.workbenchPanels, 'git'))
+      workspace.setWorkbenchPanels(showWorkbenchSidebarTab(snapshot.workbenchPanels, 'git'))
       return focusIdInLayoutStart(
         runtime,
         { kind: 'git', rootPath: snapshot.rootPath },
@@ -963,7 +987,7 @@ export const workspaceCommands = [
       if (snapshot.uiMode !== 'chat') {
         runtime.workspace
           .getState()
-          .setWorkbenchPanels(setWorkbenchSidebarTab(snapshot.workbenchPanels, 'chat'))
+          .setWorkbenchPanels(showWorkbenchSidebarTab(snapshot.workbenchPanels, 'chat'))
       }
 
       return chatFocusStart(runtime, snapshot.rootPath, snapshot.uiMode)
@@ -986,7 +1010,7 @@ export const workspaceCommands = [
 
       const workspace = runtime.workspace.getState()
       workspace.setUiMode('workbench')
-      workspace.setWorkbenchPanels(setWorkbenchBottomTab(snapshot.workbenchPanels, 'terminal'))
+      workspace.setWorkbenchPanels(showWorkbenchBottomTab(snapshot.workbenchPanels, 'terminal'))
       return focusStart(runtime, {
         isValid: () => runtime.workspace.getState().uiMode === 'workbench',
         kind: 'match',

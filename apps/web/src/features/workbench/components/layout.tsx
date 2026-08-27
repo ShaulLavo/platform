@@ -65,20 +65,24 @@ export function WorkbenchLayout({
         id='workbench-outer'
         onLayoutChanged={handleOuterLayoutChanged}
       >
-        <ResizablePanel
-          className='h-full min-h-0 overflow-hidden'
-          id='sidebar'
-          maxSize={SIDEBAR_MAX_SIZE}
-          minSize={SIDEBAR_MIN_SIZE}
-        >
-          <SidebarPanel
-            editorKeymapLayers={editorKeymapLayers}
-            panels={panels}
-            rootPath={rootPath}
-            onPanelsChange={onPanelsChange}
-          />
-        </ResizablePanel>
-        <ResizableHandle id='sidebar-handle' withHandle />
+        {panels.sidebarOpen ? (
+          <>
+            <ResizablePanel
+              className='h-full min-h-0 overflow-hidden'
+              id='sidebar'
+              maxSize={SIDEBAR_MAX_SIZE}
+              minSize={SIDEBAR_MIN_SIZE}
+            >
+              <SidebarPanel
+                editorKeymapLayers={editorKeymapLayers}
+                panels={panels}
+                rootPath={rootPath}
+                onPanelsChange={onPanelsChange}
+              />
+            </ResizablePanel>
+            <ResizableHandle id='sidebar-handle' withHandle />
+          </>
+        ) : null}
         <ResizablePanel className='min-h-0 min-w-0' id='main' minSize={360}>
           <ResizablePanelGroup
             className='min-h-0 min-w-0'
@@ -96,15 +100,23 @@ export function WorkbenchLayout({
                 rootPath={rootPath}
               />
             </ResizablePanel>
-            <ResizableHandle id='bottom-handle' withHandle />
-            <ResizablePanel
-              className='min-h-0 min-w-0 overflow-hidden'
-              id='bottom'
-              maxSize={BOTTOM_MAX_SIZE}
-              minSize={BOTTOM_MIN_SIZE}
-            >
-              <BottomPanel panels={panels} rootPath={rootPath} onPanelsChange={onPanelsChange} />
-            </ResizablePanel>
+            {panels.bottomPanelOpen ? (
+              <>
+                <ResizableHandle id='bottom-handle' withHandle />
+                <ResizablePanel
+                  className='min-h-0 min-w-0 overflow-hidden'
+                  id='bottom'
+                  maxSize={BOTTOM_MAX_SIZE}
+                  minSize={BOTTOM_MIN_SIZE}
+                >
+                  <BottomPanel
+                    panels={panels}
+                    rootPath={rootPath}
+                    onPanelsChange={onPanelsChange}
+                  />
+                </ResizablePanel>
+              </>
+            ) : null}
           </ResizablePanelGroup>
         </ResizablePanel>
       </ResizablePanelGroup>

@@ -98,7 +98,6 @@ const reservedBrowserChords: readonly ReservedChord[] = [
   { hotkey: 'Control+Q', vscodeCommandId: 'workbench.action.quickOpenView' },
   { hotkey: 'Mod+Alt+Tab', platforms: ['mac'], vscodeCommandId: 'workbench.action.showAllEditors' },
   { hotkey: 'Mod+Shift+T', vscodeCommandId: 'workbench.action.reopenClosedEditor' },
-  { hotkey: 'Mod+J', vscodeCommandId: 'workbench.action.togglePanel' },
   { hotkey: 'Mod+1', vscodeCommandId: 'workbench.action.focusFirstEditorGroup' },
   { hotkey: 'Mod+2', vscodeCommandId: 'workbench.action.focusSecondEditorGroup' },
   { hotkey: 'Mod+3', vscodeCommandId: 'workbench.action.focusThirdEditorGroup' },

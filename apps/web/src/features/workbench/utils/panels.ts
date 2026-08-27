@@ -7,7 +7,9 @@ export type WorkbenchPanels = {
   readonly activeBottomTab: WorkbenchBottomTab
   readonly activeEditorTabId: string | null
   readonly activeSidebarTab: WorkbenchSidebarTab
+  readonly bottomPanelOpen: boolean
   readonly editorTabs: readonly EditorTabRecord[]
+  readonly sidebarOpen: boolean
 }
 
 export const SIDEBAR_MIN_SIZE = 220
@@ -20,7 +22,9 @@ export function createDefaultWorkbenchPanels(): WorkbenchPanels {
     activeBottomTab: 'terminal',
     activeEditorTabId: null,
     activeSidebarTab: 'files',
+    bottomPanelOpen: true,
     editorTabs: [],
+    sidebarOpen: true,
   }
 }
 
@@ -145,12 +149,60 @@ export function setWorkbenchBottomTab(
   return { ...panels, activeBottomTab }
 }
 
+/**
+ * The visibility half of the pane commands: pressing the shortcut for the tab
+ * already showing hides the pane, anything else reveals that tab.
+ */
+export function toggleWorkbenchSidebarTab(
+  panels: WorkbenchPanels,
+  activeSidebarTab: WorkbenchSidebarTab,
+): WorkbenchPanels {
+  if (panels.sidebarOpen && panels.activeSidebarTab === activeSidebarTab) {
+    return { ...panels, sidebarOpen: false }
+  }
+
+  return showWorkbenchSidebarTab(panels, activeSidebarTab)
+}
+
+/** Reveals a tab without the toggle behaviour, for code that opens the pane on the user's behalf. */
+export function showWorkbenchSidebarTab(
+  panels: WorkbenchPanels,
+  activeSidebarTab: WorkbenchSidebarTab,
+): WorkbenchPanels {
+  if (panels.sidebarOpen && panels.activeSidebarTab === activeSidebarTab) return panels
+
+  return { ...panels, activeSidebarTab, sidebarOpen: true }
+}
+
+export function toggleWorkbenchBottomTab(
+  panels: WorkbenchPanels,
+  activeBottomTab: WorkbenchBottomTab,
+): WorkbenchPanels {
+  if (panels.bottomPanelOpen && panels.activeBottomTab === activeBottomTab) {
+    return { ...panels, bottomPanelOpen: false }
+  }
+
+  return showWorkbenchBottomTab(panels, activeBottomTab)
+}
+
+/** Reveals a tab without the toggle behaviour, for code that opens the pane on the user's behalf. */
+export function showWorkbenchBottomTab(
+  panels: WorkbenchPanels,
+  activeBottomTab: WorkbenchBottomTab,
+): WorkbenchPanels {
+  if (panels.bottomPanelOpen && panels.activeBottomTab === activeBottomTab) return panels
+
+  return { ...panels, activeBottomTab, bottomPanelOpen: true }
+}
+
 export function normalizeWorkbenchPanels(value: WorkbenchPanels): WorkbenchPanels {
   return {
     activeBottomTab: value.activeBottomTab,
     activeEditorTabId: normalizedActiveTabId(value),
     activeSidebarTab: value.activeSidebarTab,
+    bottomPanelOpen: value.bottomPanelOpen,
     editorTabs: value.editorTabs,
+    sidebarOpen: value.sidebarOpen,
   }
 }
 

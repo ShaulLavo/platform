@@ -40,7 +40,7 @@ import type { EditorScrollPosition } from '@singapor/core'
 
 // Local-only UI state uses an explicit schema version plus a clear mismatch policy:
 // update deliberately or drop intentionally. Server-backed caches may reset/refetch.
-const CACHE_VERSION = 18
+const CACHE_VERSION = 19
 const CACHE_KEY_PREFIX = `platform.workspace-state.v${CACHE_VERSION}`
 const CACHE_KEY_NAMESPACE = 'platform.workspace-state.v'
 const WORKSPACE_SLICE_KEY_PREFIX = `${CACHE_KEY_PREFIX}.workspace:`
@@ -224,7 +224,9 @@ const workbenchPanelsSchema = v.strictObject({
   activeBottomTab: bottomTabSchema,
   activeEditorTabId: nullableStringSchema,
   activeSidebarTab: sidebarTabSchema,
+  bottomPanelOpen: v.boolean(),
   editorTabs: v.array(editorTabRecordSchema),
+  sidebarOpen: v.boolean(),
 })
 const workbenchLayoutSchema = v.strictObject({
   mainLayout: mainLayoutSchema,
@@ -507,7 +509,9 @@ function sliceForWorkspace(rootPath: string, slice: CachedWorkspaceSlice): Cache
         slice.workbenchPanels.activeEditorTabId,
       ),
       activeSidebarTab: slice.workbenchPanels.activeSidebarTab,
+      bottomPanelOpen: slice.workbenchPanels.bottomPanelOpen,
       editorTabs,
+      sidebarOpen: slice.workbenchPanels.sidebarOpen,
     }),
   }
 }

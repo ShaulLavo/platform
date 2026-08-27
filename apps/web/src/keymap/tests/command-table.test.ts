@@ -21,7 +21,6 @@ const RESERVED_CHORDS = [
   'Control+Q',
   'Mod+Alt+Tab',
   'Mod+Shift+T',
-  'Mod+J',
   'Mod+1',
   'Mod+2',
   'Mod+3',
@@ -258,7 +257,7 @@ describe('command table', () => {
 
   it('keeps the browser-hostile chords reserved', () => {
     const mac = reservedBindings('mac')
-    expect(mac).toHaveLength(10)
+    expect(mac).toHaveLength(9)
     expect(mac.map((binding) => binding.hotkey)).toEqual(RESERVED_CHORDS)
 
     for (const binding of mac) {
