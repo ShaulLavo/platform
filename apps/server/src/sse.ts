@@ -5,9 +5,8 @@ import { createInternalError } from './observability/structured-errors'
 
 export const SSE_HEARTBEAT_EVENT = 'heartbeat'
 
-// Elysia's own set, kept whole. Dropping `transfer-encoding` as "the runtime's job"
-// left the orchestration streams buffering until their 30s test timeout: the reader
-// waits for a complete body, and a live stream never has one.
+// Elysia's own set, kept whole: `transfer-encoding` is what selects its streaming
+// path for a handler-returned Response, and there is no reason to take the other one.
 const SSE_HEADERS = {
   'cache-control': 'no-cache',
   connection: 'keep-alive',
@@ -51,17 +50,20 @@ export function sseResponse(events: AsyncGenerator<unknown>, signal?: AbortSigna
   const encoder = new TextEncoder()
   let ended = false
 
-  const end = async () => {
+  // Never awaited. A generator parked on its next event settles `return()` only once
+  // that event arrives, so awaiting it here would hang the cancel — and a cancel that
+  // never resolves hangs whoever is closing the stream.
+  const end = () => {
     if (ended) return
     ended = true
-    await runWithRequestLogger(logger, () => events.return?.(undefined))
+    void runWithRequestLogger(logger, () => events.return?.(undefined))
   }
 
-  signal?.addEventListener('abort', () => void end(), { once: true })
+  signal?.addEventListener('abort', end, { once: true })
 
   return new Response(
     new ReadableStream<Uint8Array>({
-      cancel: () => end(),
+      cancel: end,
       async pull(controller) {
         const result = await runWithRequestLogger(logger, () => events.next())
         if (result.done) {
