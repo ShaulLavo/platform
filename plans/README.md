@@ -19,6 +19,8 @@ a bare root `bun run verify`.
 | [065 — prove Ghostty config resolver](065-prove-ghostty-config-resolver.md)             | **PROPOSED — ROOT GO/NO-GO SCHEDULING**       |
 | [066 — package Ghostty config resolver](066-package-ghostty-config-resolver.md)         | **BLOCKED ON 065 PASS**                       |
 | [067 — integrate Ghostty config appearance](067-integrate-ghostty-config-appearance.md) | **BLOCKED ON 066 REVIEWED ARTIFACT**          |
+| [068 — app-owned shiki grammars](068-app-owned-shiki-grammars.md)                       | **PROPOSED — ROOT GO/NO-GO SCHEDULING**       |
+| [069 — syntax highlight retry](069-syntax-highlight-retry.md)                           | **PROPOSED — SCHEDULE AFTER 068**             |
 | [064 — anchored diagnostic peek](064-anchored-diagnostic-peek.md)                       | **SCHEDULED AFTER 061 — GO/NO-GO**            |
 | [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                         | **SCHEDULED AFTER 064 — RECONCILE**           |
 | [057 — editor-native VS Code keymap](057-editor-native-vscode-keymap.md)                | **BLOCKED ON 056 — RUNTIME RECONCILED**       |
@@ -33,6 +35,11 @@ a bare root `bun run verify`.
   preview dispatch, duplicate settings error reporting, or a second mutation path.
 - Plan 056 must extend that typed bus and acknowledged focus service instead of introducing another
   active-Editor dispatch owner.
+- Plan 068 spans two repositories and must land as one change: it adds required fields to the
+  shiki worker protocol in Editor `packages/editor`, and the resolver that fills them in
+  Platform `apps/web`. Neither half is shippable alone. It has no dependency on any other plan.
+- Plan 069 is Editor-only and independent of 068, but must not land before it: a retry loop
+  running against a live permanent failure buries the cause it would otherwise surface.
 - Plan 064's interactive React overlay uses the landed deepest-target FocusService and exact origin
   restoration. Its first step may
   reject a managed geometry handle if ordinary React composition passes the
