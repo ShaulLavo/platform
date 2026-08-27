@@ -1,6 +1,31 @@
 import { sse } from 'elysia'
 
+import { captureRequestLogger, runWithRequestLogger } from './observability/logging'
+import { createInternalError } from './observability/structured-errors'
+
 export const SSE_HEARTBEAT_EVENT = 'heartbeat'
+
+// Elysia's own set, kept whole. Dropping `transfer-encoding` as "the runtime's job"
+// left the orchestration streams buffering until their 30s test timeout: the reader
+// waits for a complete body, and a live stream never has one.
+const SSE_HEADERS = {
+  'cache-control': 'no-cache',
+  connection: 'keep-alive',
+  'content-type': 'text/event-stream',
+  'transfer-encoding': 'chunked',
+} as const
+
+// `sse()` attaches the serializer Elysia's own writer calls but does not declare it.
+type SseFrame = { toSSE?: () => string }
+
+function frameText(frame: unknown): string {
+  const serialize = (frame as SseFrame | null)?.toSSE
+  if (typeof serialize !== 'function') {
+    throw createInternalError('SSE stream yielded a value that was not wrapped with sse()')
+  }
+
+  return serialize.call(frame)
+}
 
 export type SseEventOptions<T> = {
   data?: (event: T) => unknown
@@ -10,6 +35,46 @@ export type SseEventOptions<T> = {
 
 export type ErrorSseEventOptions<T> = SseEventOptions<T> & {
   errorData: (error: unknown) => unknown
+}
+
+/**
+ * Builds the response Elysia would have built from the generator, one lifecycle step
+ * earlier. Returning the generator instead means the observability plugin inspects the
+ * response before Elysia has made one, reads a non-stream, and closes the wide event
+ * at the headers — before the stream it is supposed to describe has produced a chunk.
+ *
+ * Each step runs under the logger captured here, because the pulls driving them happen
+ * after the request hooks that bind the ambient one.
+ */
+export function sseResponse(events: AsyncGenerator<unknown>, signal?: AbortSignal): Response {
+  const logger = captureRequestLogger()
+  const encoder = new TextEncoder()
+  let ended = false
+
+  const end = async () => {
+    if (ended) return
+    ended = true
+    await runWithRequestLogger(logger, () => events.return?.(undefined))
+  }
+
+  signal?.addEventListener('abort', () => void end(), { once: true })
+
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      cancel: () => end(),
+      async pull(controller) {
+        const result = await runWithRequestLogger(logger, () => events.next())
+        if (result.done) {
+          ended = true
+          controller.close()
+          return
+        }
+
+        controller.enqueue(encoder.encode(frameText(result.value)))
+      },
+    }),
+    { headers: SSE_HEADERS },
+  )
 }
 
 export async function* toSse<T>(events: AsyncIterable<T>, options: SseEventOptions<T>) {

@@ -3,7 +3,7 @@ import * as v from 'valibot'
 
 import { recordClientLog } from './client-ingest'
 import { LogReaderService } from './log-reader'
-import { toSse } from '../sse'
+import { sseResponse, toSse } from '../sse'
 
 const LOG_LIVE_HEARTBEAT_MS = 15_000
 
@@ -81,10 +81,13 @@ export function observabilityRoutes(options: { logs?: LogReaderService } = {}) {
           .get(
             '/live',
             ({ query, request }) =>
-              toSse(logs.live({ ...query, signal: request.signal }), {
-                event: (item) => item.kind,
-                heartbeatMs: LOG_LIVE_HEARTBEAT_MS,
-              }),
+              sseResponse(
+                toSse(logs.live({ ...query, signal: request.signal }), {
+                  event: (item) => item.kind,
+                  heartbeatMs: LOG_LIVE_HEARTBEAT_MS,
+                }),
+                request.signal,
+              ),
             {
               query: logLiveQuerySchema,
             },

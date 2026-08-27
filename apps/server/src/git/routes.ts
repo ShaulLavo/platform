@@ -17,7 +17,7 @@ import {
   gitWorktreeRemoveBodySchema,
 } from './contracts'
 import type { CommitMessageGenerator } from './commit-message-generator'
-import { toSse } from '../sse'
+import { sseResponse, toSse } from '../sse'
 import type { GitService } from './service'
 import { GitWorktreeService } from './worktrees'
 
@@ -87,10 +87,13 @@ export function gitRoutes(git: GitService, commitMessages: CommitMessageGenerato
       // arrives while it is still running.
       .post(
         '/commit-stream',
-        ({ body }) =>
-          toSse(git.commitProgress(body), {
-            event: (event) => event.kind,
-          }),
+        ({ body, request }) =>
+          sseResponse(
+            toSse(git.commitProgress(body), {
+              event: (event) => event.kind,
+            }),
+            request.signal,
+          ),
         {
           body: gitCommitBodySchema,
         },

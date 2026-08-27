@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
+
 import { errorNumberField, errorStringField, isRecord } from '@workspace/contracts'
 import type { RequestLogger } from 'evlog'
 import { useLogger as getRequestLogger } from 'evlog/elysia'
@@ -16,6 +18,12 @@ type OperationSummary = OperationContext & {
   durationMs: number
   status: 'error' | 'ok'
 }
+
+// A streamed response outlives the hooks that bind evlog's own request storage,
+// so the pulls that drive the stream run with no ambient logger. The route
+// captures it while the request context is still live and re-enters it here for
+// every step; see `sseResponse`.
+const streamRequestLogger = new AsyncLocalStorage<RequestLogger<Record<string, unknown>>>()
 
 const redactedDiagnosticValue = '[redacted]'
 const sensitiveErrorFields = new Set([
@@ -156,9 +164,28 @@ export function limitText(value: string, maxLength: number) {
   return value.slice(Math.max(0, value.length - maxLength))
 }
 
+/** Runs `step` under `logger`, for stream code the request hooks no longer cover. */
+export function runWithRequestLogger<T>(
+  logger: RequestLogger<Record<string, unknown>> | null,
+  step: () => T,
+): T {
+  if (!logger) return step()
+
+  return streamRequestLogger.run(logger, step)
+}
+
+export function captureRequestLogger(): RequestLogger<Record<string, unknown>> | null {
+  return currentRequestLogger()
+}
+
 function currentRequestLogger(): RequestLogger<Record<string, unknown>> | null {
   if (!isObservabilityActive()) return null
 
+  const streamed = streamRequestLogger.getStore()
+  if (streamed) return streamed
+
+  // Throws with no request in scope at all: a background task, or a stream whose
+  // owner never captured one. Callers already treat null as nothing to enrich.
   try {
     return getRequestLogger()
   } catch {

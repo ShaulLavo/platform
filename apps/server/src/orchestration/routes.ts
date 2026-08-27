@@ -12,7 +12,7 @@ import {
 import type { OrchestrationEngine } from './engine'
 import type { OrchestrationCheckpointDiffQuery } from './checkpoint-diff-query'
 import type { OrchestrationThreadSearchQuery } from './thread-search-query'
-import { toSse } from '../sse'
+import { sseResponse, toSse } from '../sse'
 import { observeRequestOperation } from '../observability'
 import { chatOperationContext, orchestrationReplaySummary } from './orchestration-logging'
 
@@ -167,12 +167,15 @@ export function orchestrationRoutes(
       .get(
         '/shell-stream',
         ({ query, request }) =>
-          toSse(
-            engine.shellStream({ afterSequence: query.afterSequence, signal: request.signal }),
-            {
-              event: (event) => event.kind,
-              heartbeatMs: ORCHESTRATION_STREAM_HEARTBEAT_MS,
-            },
+          sseResponse(
+            toSse(
+              engine.shellStream({ afterSequence: query.afterSequence, signal: request.signal }),
+              {
+                event: (event) => event.kind,
+                heartbeatMs: ORCHESTRATION_STREAM_HEARTBEAT_MS,
+              },
+            ),
+            request.signal,
           ),
         {
           query: streamQuerySchema,
@@ -181,15 +184,18 @@ export function orchestrationRoutes(
       .get(
         '/thread-detail-stream',
         ({ query, request }) =>
-          toSse(
-            engine.threadDetailStream(query.threadId, {
-              afterSequence: query.afterSequence,
-              signal: request.signal,
-            }),
-            {
-              event: (event) => event.kind,
-              heartbeatMs: ORCHESTRATION_STREAM_HEARTBEAT_MS,
-            },
+          sseResponse(
+            toSse(
+              engine.threadDetailStream(query.threadId, {
+                afterSequence: query.afterSequence,
+                signal: request.signal,
+              }),
+              {
+                event: (event) => event.kind,
+                heartbeatMs: ORCHESTRATION_STREAM_HEARTBEAT_MS,
+              },
+            ),
+            request.signal,
           ),
         {
           query: threadDetailStreamQuerySchema,

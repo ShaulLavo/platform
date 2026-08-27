@@ -13,7 +13,7 @@ import {
 import { Elysia } from 'elysia'
 import * as v from 'valibot'
 import { recordRequestContext } from '../observability'
-import { toSse } from '../sse'
+import { sseResponse, toSse } from '../sse'
 import type { SettingsStore } from './store'
 import { settingsErrors } from './structured-errors'
 
@@ -46,10 +46,13 @@ export function settingsRoutes(settings: SettingsStore) {
       },
     )
     .get('/settings/events', ({ request }) =>
-      toSse(settings.changes(request.signal), {
-        event: () => 'settings',
-        heartbeatMs: SETTINGS_HEARTBEAT_MS,
-      }),
+      sseResponse(
+        toSse(settings.changes(request.signal), {
+          event: () => 'settings',
+          heartbeatMs: SETTINGS_HEARTBEAT_MS,
+        }),
+        request.signal,
+      ),
     )
     .get('/settings/raw', ({ query }) => settings.rawLayer(parse(rawQuerySchema, query).target))
     .post(

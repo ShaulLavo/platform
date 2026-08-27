@@ -496,7 +496,12 @@ describe('observability runtime', () => {
     const gitEvent = eventForPath(events, '/git/checkout')
     const serialized = JSON.stringify(events)
 
+    // The summary is recorded after the last chunk, so finding it on the same event
+    // is what proves the wide event stayed open for the stream it describes.
     expect(searchEvent).toMatchObject({
+      fs: {
+        operations: [expect.objectContaining({ operation: 'search_events', status: 'ok' })],
+      },
       operation: 'search_events',
       search: {
         includeContent: true,

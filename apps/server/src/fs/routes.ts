@@ -24,7 +24,7 @@ import { errorPayload, FsError, isFsError } from './errors'
 import type { SearchStreamEvent } from './search'
 import type { FileSystemService } from './service'
 import { parseWatchInputs } from './watch'
-import { toErrorYieldingSse, toSse } from '../sse'
+import { sseResponse, toErrorYieldingSse, toSse } from '../sse'
 
 export function fsRoutes(fs: FileSystemService) {
   return new Elysia({ name: 'fs-routes' }).group('/fs', (app) =>
@@ -44,11 +44,14 @@ export function fsRoutes(fs: FileSystemService) {
       .get(
         '/search/events',
         ({ query, request }) =>
-          toErrorYieldingSse(fs.searchEvents(query, request.signal), {
-            data: searchEventData,
-            errorData: searchErrorData,
-            event: (event) => event.type,
-          }),
+          sseResponse(
+            toErrorYieldingSse(fs.searchEvents(query, request.signal), {
+              data: searchEventData,
+              errorData: searchErrorData,
+              event: (event) => event.type,
+            }),
+            request.signal,
+          ),
         {
           query: searchQuerySchema,
         },
@@ -56,9 +59,12 @@ export function fsRoutes(fs: FileSystemService) {
       .get(
         '/events',
         ({ query, request }) =>
-          toSse(fs.events(parseWatchInputs(query.path, query.paths), request.signal), {
-            event: (event) => event.type,
-          }),
+          sseResponse(
+            toSse(fs.events(parseWatchInputs(query.path, query.paths), request.signal), {
+              event: (event) => event.type,
+            }),
+            request.signal,
+          ),
         {
           query: eventsQuerySchema,
         },
