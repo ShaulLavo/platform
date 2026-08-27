@@ -476,13 +476,17 @@ function unknownCommandEventBase<Id extends string, Invocation extends CommandIn
   }
 }
 
+// Not `source`: the client log drain stamps its own `source: 'client'` over the
+// payload, which silently ate the field that tells a keystroke from a click.
 function commandSourceEvent(source: CommandSource): Record<string, unknown> {
-  if (source.kind === 'menu') return { menuSurface: source.surface, source: source.kind }
+  if (source.kind === 'menu') {
+    return { commandSource: source.kind, menuSurface: source.surface }
+  }
   if (source.kind === 'programmatic') {
-    return { source: source.kind, sourceCaller: source.caller }
+    return { commandSource: source.kind, sourceCaller: source.caller }
   }
 
-  return { source: source.kind }
+  return { commandSource: source.kind }
 }
 
 function commandOutcomeEvent(outcome: CommandOutcome, durationMs: number) {
