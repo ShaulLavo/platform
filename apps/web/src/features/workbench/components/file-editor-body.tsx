@@ -3,12 +3,15 @@ import { WarningCircleIcon } from '@phosphor-icons/react'
 import { CompareSavedView } from '@/features/editor/components/compare-saved-view'
 import { parseCompareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'
 import { Editor } from '@/features/editor/components/editor'
+import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import { LanguageServerReferencesPane } from '@/features/editor/components/language-server-references-pane'
 import type { EditorRenderDocument } from '@/features/editor/utils/render-document'
 import { DiffView } from '@/features/git/components/diff-view'
 import { parseDiffDocumentId } from '@/features/git/utils/diff-document'
 import { useEditorSurfaceActions } from '@/features/workbench/hooks/use-editor-surface-actions'
+import { useEditorVisibleSnapshot } from '@/features/workbench/hooks/use-editor-visible-snapshot'
 import { useHeldLiveDocument } from '@/features/workbench/hooks/use-held-live-document'
+import { EditorVisibleSnapshot } from '@/features/workbench/components/editor-visible-snapshot'
 import type { FileResult } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
 import type { EditorKeymapLayer } from '@singapor/core'
@@ -51,6 +54,26 @@ export function FileEditorBody({
   const ownsCurrentTab = displayedDocument.current && editorDocument?.path === path
   const currentActions = ownsCurrentTab ? actions : null
   const currentReferences = currentActions ? languageServerReferences : null
+  const { appliedThemeId, committedThemeId, selectedThemeId } = useEditorColorTheme()
+  const snapshotActive = active && !diffDocument && !comparePath
+  const visibleSnapshot = useEditorVisibleSnapshot({
+    active: snapshotActive,
+    fileReadError: fileState.status === 'error',
+    renderedDocument: editorDocument
+      ? {
+          buffer: editorDocument.buffer,
+          documentId: editorDocument.id,
+          path: editorDocument.path,
+          rootPath,
+        }
+      : null,
+    selectedTarget: { path, rootPath },
+    theme: { appliedThemeId, committedThemeId, selectedThemeId },
+  })
+
+  function dismissVisibleSnapshot() {
+    visibleSnapshot.dismissOverlay()
+  }
 
   if (diffDocument) {
     return (
@@ -83,27 +106,42 @@ export function FileEditorBody({
             : 'grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[minmax(0,1fr)] overflow-hidden'
         }
       >
-        <Editor
-          active={active && currentActions !== null}
-          definitionTarget={currentActions ? definitionTarget : null}
-          document={editorDocument}
-          keymapLayers={editorKeymapLayers}
-          rootPath={rootPath}
-          tabId={tabId}
-          onScrollPositionChange={
-            currentActions
-              ? (changedPath, scrollPosition) => {
-                  if (changedPath !== path) return
+        <div
+          className='relative min-h-0 min-w-0 overflow-hidden'
+          onFocusCapture={dismissVisibleSnapshot}
+          onKeyDownCapture={dismissVisibleSnapshot}
+          onPointerDownCapture={dismissVisibleSnapshot}
+        >
+          <Editor
+            active={active && currentActions !== null}
+            additionalPlugins={visibleSnapshot.additionalPlugins}
+            definitionTarget={currentActions ? definitionTarget : null}
+            document={editorDocument}
+            keymapLayers={editorKeymapLayers}
+            rootPath={rootPath}
+            tabId={tabId}
+            onInitialPaint={visibleSnapshot.onInitialPaint}
+            onScrollPositionChange={
+              currentActions
+                ? (changedPath, scrollPosition) => {
+                    if (changedPath !== path) return
 
-                  currentActions.setScrollPosition(scrollPosition)
-                }
-              : undefined
-          }
-          onStatusSourceChange={currentActions?.setStatusSource}
-          onTextChange={currentActions?.handleTextChange}
-          onOpenDefinition={currentActions?.openDefinition}
-          onOpenReferences={currentActions?.openReferences}
-        />
+                    currentActions.setScrollPosition(scrollPosition)
+                  }
+                : undefined
+            }
+            onStatusSourceChange={currentActions?.setStatusSource}
+            onTextChange={currentActions?.handleTextChange}
+            onOpenDefinition={currentActions?.openDefinition}
+            onOpenReferences={currentActions?.openReferences}
+          />
+          {visibleSnapshot.record ? (
+            <EditorVisibleSnapshot
+              overlayRef={visibleSnapshot.overlayRef}
+              record={visibleSnapshot.record}
+            />
+          ) : null}
+        </div>
         {currentReferences && currentActions ? (
           <LanguageServerReferencesPane
             references={currentReferences}
@@ -122,6 +160,22 @@ export function FileEditorBody({
       <div className='text-muted-foreground flex min-h-0 items-center justify-center p-6 text-xs'>
         <WarningCircleIcon className='mr-2 size-4' />
         {fileState.message}
+      </div>
+    )
+  }
+
+  if (visibleSnapshot.record) {
+    return (
+      <div
+        className='relative h-full min-h-0 w-full min-w-0 overflow-hidden'
+        onFocusCapture={dismissVisibleSnapshot}
+        onKeyDownCapture={dismissVisibleSnapshot}
+        onPointerDownCapture={dismissVisibleSnapshot}
+      >
+        <EditorVisibleSnapshot
+          overlayRef={visibleSnapshot.overlayRef}
+          record={visibleSnapshot.record}
+        />
       </div>
     )
   }

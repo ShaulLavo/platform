@@ -26,6 +26,7 @@ export type LoadedEditorColorTheme = {
   readonly definition: VscodeThemeDefinition | null
   readonly registration: VscodeThemeRegistration | null
   readonly editorTheme: EditorTheme
+  readonly resolvedThemeId: string
 }
 
 const EDITOR_COLOR_THEME_STORAGE_KEY = 'platform.editor-color-theme.v1'
@@ -276,6 +277,7 @@ function loadBuiltinEditorTheme(
     definition: null,
     editorTheme: builtin.editorTheme,
     registration: null,
+    resolvedThemeId: builtin.id,
   } satisfies LoadedEditorColorTheme)
 
   loadedThemeById.set(builtin.id, loaded)
@@ -299,6 +301,7 @@ function loadEditorTheme(
         definition,
         registration,
         editorTheme: editorThemeFromVscodeTheme(registration),
+        resolvedThemeId: definition.id,
       } satisfies LoadedEditorColorTheme
     })
     .catch((error: unknown) => {

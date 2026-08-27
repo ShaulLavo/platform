@@ -1,7 +1,9 @@
 # Cross-Project Execution Roadmap
 
-> **Status:** reconciled against Platform `e1228cff`, Editor `0f4f8f4`, and
-> `ghostty-webgpu` `3c3e07e` on 2026-08-27. Re-run each executable plan's drift check before editing.
+> **Status:** reconciled against Platform base `4b25f1ab`, Editor base `b0919967`, and
+> `ghostty-webgpu` `3c3e07e` on 2026-08-27, including the verified paired working-tree paint
+> contract below. Re-run each executable plan's drift check and capture its current HEAD plus full
+> dirty diff before editing.
 
 This file is the sole source of cross-project execution order. [`plans/README.md`](plans/README.md)
 is the Platform executable-plan inventory. Strategy documents under `docs/` describe product scope
@@ -20,6 +22,12 @@ Git history is the archive.
   consolidated appearance provider owns transient preview plus commit handoff. Completed plan 059
   has been deleted.
 - Editor-parity wave E0 is complete.
+- The bounded last-visible-paint contract is live across Editor and Platform. Editor owns
+  `EditorVisibleSnapshot`, `EditorInitialHighlightStatus`, and the generation-tagged
+  `EditorInitialPaintEvent`; Platform owns the one-record, 256 KiB
+  `editor-visible-snapshot-cache.ts`, inert overlay handoff, exact applied-theme guard, and
+  `editor-open-benchmark.mjs` paint marks. This cache is unvalidated visual paint only: it never
+  supplies text, tokens, revision truth, or a correctness decision to the live editor.
 - The sole typed command/focus runtime is live. `platformCommands` is the command definition table,
   `CommandBus` owns synchronous claims plus non-rejecting async settlement, and `FocusService` owns
   deepest registered targets, actual DOM focus, and explicit origin restoration. The superseded
@@ -74,21 +82,20 @@ browser-visible host paths, or cold-start reads triggered by a disabled workbenc
 For one implementer, use this order. Items marked lockstep must finish and verify in both repositories
 before either half is treated as landed.
 
-1. **Plan 060 — persisted visible editor snapshot (Platform + Editor).** Reconcile both old commit
-   stamps first. It owns only a capped, unvalidated visual first-paint cache.
-2. **Plan 061 — Foresight prepared editor opens (Platform + Editor).** Requires 060 and the landed
-   typed command runtime. Live
-   prepared artifacts use exact revision identity and must not validate or promote 060's visual rows.
-3. **Plan 064 — anchored diagnostic peek.** Uses the landed FocusService. Run its real-browser composition gate
-   first. Use ordinary React composition if it passes; add the one named managed-geometry handle in
-   Editor only if the gate proves it necessary. Never restore generic block surfaces.
-4. **Plan 056 — multi-step chord keymap (Platform).** Extend the landed typed bus and FocusService
+1. **Plan 061 — Foresight prepared editor opens (Platform + Editor).** Reuse the landed paint
+   event/marks/benchmark and the landed typed command runtime. Live prepared artifacts use exact
+   revision identity and must not validate or promote the visual-only cached rows.
+2. **Plan 064 — anchored diagnostic peek.** Uses the landed FocusService. Run its real-browser
+   composition gate first. Use ordinary React composition if it passes; add the one named
+   managed-geometry handle in Editor only if the gate proves it necessary. Never restore generic
+   block surfaces.
+3. **Plan 056 — multi-step chord keymap (Platform).** Extend the landed typed bus and FocusService
    integration with one chord state machine and no additional dispatch owner.
-5. **Plan 057 — editor-native VS Code keymap (Platform + Editor).** Requires 056. Extend the
+4. **Plan 057 — editor-native VS Code keymap (Platform + Editor).** Requires 056. Extend the
    same target/enablement runtime and complete the single-dispatcher takeover in lockstep.
 
 Plans 056 and 064 are logically independent, but they should still be serialized in one
-Platform worktree. Plans 060, 061, 064, and 057 all touch Editor-facing ownership or APIs and
+Platform worktree. Plans 061, 064, and 057 all touch Editor-facing ownership or APIs and
 must not be executed concurrently without a fresh overlap reconciliation.
 
 ## Environments and remote-access lane
@@ -114,17 +121,17 @@ The promotion and implementation order is:
    explicit session-backed opt-in and TLS or a trusted mesh. Plaintext non-loopback access is a hard
    refusal.
 
-Environment M1–M2 overlap the global client, query, and persistence seams used by plans 060–061;
-serialize their implementation with those plans. M4–M5 form one security chain and must not be
-split into independently deployable half-states. Environment M6 cross-environment simultaneous
-reads is deferred until repeated product demand proves it necessary; do not add scoped-ref or
-multi-origin compatibility machinery now.
+Environment M1–M2 overlap the global client, query, and persistence seams used by Plan 061 and the
+landed editor-visible snapshot cache; serialize their implementation with Plan 061. M4–M5 form one
+security chain and must not be split into independently deployable half-states. Environment M6
+cross-environment simultaneous reads is deferred until repeated product demand proves it necessary;
+do not add scoped-ref or multi-origin compatibility machinery now.
 
 ## Verification boundaries
 
 - **Platform-only:** verify the narrow Platform tests/typechecks named by the active plan. Plan 056
   stays inside this boundary.
-- **Platform + Editor lockstep:** plans 060, 061, 057, and any plan-064 path that changes Editor
+- **Platform + Editor lockstep:** plans 061, 057, and any plan-064 path that changes Editor
   require focused checks and diff review in both worktrees. Neither repository's half is complete
   alone.
 - **`ghostty-webgpu`:** run its package gates in that repository. Plan 055 additionally requires the
@@ -140,10 +147,10 @@ multi-origin compatibility machinery now.
 
 - **Deleted:** completed plan 038 and superseded plan 058.
 - **Close and delete after physical evidence:** plan 055.
-- **Rewrite before execution:** plans 060 and 061 need drift reconciliation. Plan 056's
-  command/focus boundary is reconciled to the landed runtime but still requires its normal drift
-  check; plan 064 already encodes its current architectural ownership and also requires a normal
-  drift check.
+- **Rewrite before execution:** plan 061 needs drift reconciliation against the landed paint
+  contract. Plan 056's command/focus boundary is reconciled to the landed runtime but still requires
+  its normal drift check; plan 064 already encodes its current architectural ownership and also
+  requires a normal drift check.
 - **Promote:** environment milestones M1–M5, one executable plan at a time.
 - **Deferred:** environment M6 and all compatibility work for simultaneous origins or obsolete
   per-tab/active-editor/one-server architecture.

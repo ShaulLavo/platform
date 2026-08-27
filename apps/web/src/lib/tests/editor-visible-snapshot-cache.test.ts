@@ -1,0 +1,412 @@
+import { afterEach, beforeEach, vi } from 'vitest'
+import type { EditorVisibleSnapshotJSON } from '@singapor/core'
+
+import { expect, test } from '../../../test/fixtures'
+import {
+  EDITOR_VISIBLE_SNAPSHOT_CACHE_MAX_BYTES,
+  EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY,
+  readEditorVisibleSnapshotCache,
+  removeEditorVisibleSnapshotCacheForPath,
+  removeEditorVisibleSnapshotCacheForRoot,
+  writeEditorVisibleSnapshotCache,
+  type CachedEditorVisibleSnapshot,
+} from '@/lib/editor-visible-snapshot-cache'
+
+const STORE = new Map<string, string>()
+
+beforeEach(() => {
+  STORE.clear()
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: memoryLocalStorage(),
+  })
+})
+
+afterEach(() => {
+  STORE.clear()
+  vi.restoreAllMocks()
+  delete (globalThis as { localStorage?: Storage }).localStorage
+})
+
+test('round-trips one matching record and leaves mismatches untouched', () => {
+  const record = cachedSnapshot('/repo', '/repo/src/app.ts', 'dark-plus')
+
+  expect(writeEditorVisibleSnapshotCache(record).status).toBe('written')
+  expect(
+    readEditorVisibleSnapshotCache({
+      rootPath: '/repo',
+      path: '/repo/src/app.ts',
+      themeId: 'dark-plus',
+    }),
+  ).toEqual(record)
+  expect(
+    readEditorVisibleSnapshotCache({
+      rootPath: '/other',
+      path: '/repo/src/app.ts',
+      themeId: 'dark-plus',
+    }),
+  ).toBeNull()
+  expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(true)
+})
+
+test('a write overwrites the single prior record', () => {
+  writeEditorVisibleSnapshotCache(cachedSnapshot('/first', '/first/a.ts', 'dark-plus'))
+  const latest = cachedSnapshot('/second', '/second/b.ts', 'light-plus')
+
+  writeEditorVisibleSnapshotCache(latest)
+
+  expect(
+    readEditorVisibleSnapshotCache({
+      rootPath: '/first',
+      path: '/first/a.ts',
+      themeId: 'dark-plus',
+    }),
+  ).toBeNull()
+  expect(
+    readEditorVisibleSnapshotCache({
+      rootPath: '/second',
+      path: '/second/b.ts',
+      themeId: 'light-plus',
+    }),
+  ).toEqual(latest)
+})
+
+test('removes malformed, unsupported, and deeply invalid records', () => {
+  STORE.set(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY, '{not json')
+  expect(readMatchingSnapshot()).toBeNull()
+  expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(false)
+
+  const unsupported = { ...cachedSnapshot(), cacheVersion: 2 }
+  STORE.set(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY, JSON.stringify(unsupported))
+  expect(readMatchingSnapshot()).toBeNull()
+
+  const invalid = structuredClone(cachedSnapshot())
+  invalid.snapshot.rows[0]!.chunks[0]!.runs[0]!.end = 99
+  STORE.set(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY, JSON.stringify(invalid))
+  expect(readMatchingSnapshot()).toBeNull()
+  expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(false)
+})
+
+test('rejects invalid geometry, gutter lane ids, and run fidelity', () => {
+  const invalidGeometry = structuredClone(cachedSnapshot())
+  invalidGeometry.snapshot.rows[0]!.chunks[0]!.sourceEndOffset = -1
+  expect(writeUntyped(invalidGeometry).status).toBe('invalid')
+
+  const unknownLane = structuredClone(cachedSnapshot())
+  unknownLane.snapshot.rows[0]!.gutterCursorLineBackgroundLaneIds = ['unknown']
+  expect(writeUntyped(unknownLane).status).toBe('invalid')
+
+  const duplicateLane = structuredClone(cachedSnapshot())
+  duplicateLane.snapshot.rows[0]!.gutterCursorLineBackgroundLaneIds = ['fold-gutter', 'fold-gutter']
+  expect(writeUntyped(duplicateLane).status).toBe('invalid')
+
+  const wrongWidth = structuredClone(cachedSnapshot())
+  wrongWidth.snapshot.gutterWidth += 1
+  expect(writeUntyped(wrongWidth).status).toBe('invalid')
+
+  const transformedRun = structuredClone(cachedSnapshot())
+  transformedRun.snapshot.rows[0]!.chunks[0]!.replayFidelity = 'plain-transformed'
+  expect(writeUntyped(transformedRun).status).toBe('invalid')
+})
+
+test('rejects nonterminal paint and impossible mounted text geometry', () => {
+  const loading = structuredClone(cachedSnapshot())
+  loading.snapshot.initialHighlightStatus = 'loading'
+  expect(writeEditorVisibleSnapshotCache(loading).status).toBe('invalid')
+
+  const zeroRowHeight = structuredClone(cachedSnapshot())
+  zeroRowHeight.snapshot.metrics.rowHeight = 0
+  expect(writeEditorVisibleSnapshotCache(zeroRowHeight).status).toBe('invalid')
+
+  const zeroCharacterWidth = structuredClone(cachedSnapshot())
+  zeroCharacterWidth.snapshot.metrics.characterWidth = 0
+  expect(writeEditorVisibleSnapshotCache(zeroCharacterWidth).status).toBe('invalid')
+
+  const zeroMountedHeight = structuredClone(cachedSnapshot())
+  zeroMountedHeight.snapshot.rows[0]!.height = 0
+  expect(writeEditorVisibleSnapshotCache(zeroMountedHeight).status).toBe('invalid')
+
+  const missingBufferRow = structuredClone(cachedSnapshot())
+  missingBufferRow.snapshot.rows[0]!.bufferRow = missingBufferRow.snapshot.lineCount
+  expect(writeEditorVisibleSnapshotCache(missingBufferRow).status).toBe('invalid')
+
+  const oversizedSpacer = structuredClone(cachedSnapshot())
+  oversizedSpacer.snapshot.rows[0]!.leftSpacerWidth = oversizedSpacer.snapshot.contentWidth + 1
+  expect(writeEditorVisibleSnapshotCache(oversizedSpacer).status).toBe('invalid')
+
+  const overlappingRows = structuredClone(cachedSnapshot())
+  overlappingRows.snapshot.rows.push({ ...paintRow(), index: 1, top: 10 })
+  overlappingRows.snapshot.totalHeight = 30
+  expect(writeEditorVisibleSnapshotCache(overlappingRows).status).toBe('invalid')
+})
+
+test('rejects row, chunk, part, and run count overflows', () => {
+  const rowOverflow = cachedSnapshot()
+  rowOverflow.snapshot.rows = Array.from({ length: 401 }, (_, index) => ({
+    ...paintRow(),
+    index,
+    top: index * 20,
+  }))
+  rowOverflow.snapshot.totalHeight = 8_020
+  expect(writeEditorVisibleSnapshotCache(rowOverflow).status).toBe('invalid')
+
+  const chunkOverflow = cachedSnapshot()
+  chunkOverflow.snapshot.rows[0]!.chunks = Array.from({ length: 4_097 }, emptyPaintChunk)
+  expect(writeEditorVisibleSnapshotCache(chunkOverflow).status).toBe('invalid')
+
+  const partOverflow = cachedSnapshot()
+  partOverflow.snapshot.rows[0]!.chunks = [
+    {
+      ...emptyPaintChunk(),
+      parts: Array.from({ length: 16_385 }, () => ({ kind: 'text' as const, text: '' })),
+    },
+  ]
+  expect(writeEditorVisibleSnapshotCache(partOverflow).status).toBe('invalid')
+
+  const runOverflow = cachedSnapshot()
+  runOverflow.snapshot.rows[0]!.chunks = [paintChunkWithRuns(2_049)]
+  expect(writeEditorVisibleSnapshotCache(runOverflow).status).toBe('invalid')
+})
+
+test('enforces aggregate chunk, part, and run caps across rows', () => {
+  const chunkOverflow = cachedSnapshot()
+  chunkOverflow.snapshot.rows = [
+    { ...paintRow(), chunks: Array.from({ length: 2_049 }, emptyPaintChunk) },
+    {
+      ...paintRow(),
+      index: 1,
+      top: 20,
+      chunks: Array.from({ length: 2_048 }, emptyPaintChunk),
+    },
+  ]
+  chunkOverflow.snapshot.totalHeight = 40
+  expect(writeEditorVisibleSnapshotCache(chunkOverflow).status).toBe('invalid')
+
+  const partOverflow = cachedSnapshot()
+  partOverflow.snapshot.rows[0]!.chunks = [
+    {
+      ...emptyPaintChunk(),
+      parts: Array.from({ length: 8_193 }, () => ({ kind: 'text' as const, text: '' })),
+    },
+    {
+      ...emptyPaintChunk(),
+      parts: Array.from({ length: 8_192 }, () => ({ kind: 'text' as const, text: '' })),
+    },
+  ]
+  expect(writeEditorVisibleSnapshotCache(partOverflow).status).toBe('invalid')
+
+  const runOverflow = cachedSnapshot()
+  runOverflow.snapshot.rows[0]!.chunks = [paintChunkWithRuns(1_025), paintChunkWithRuns(1_024)]
+  expect(writeEditorVisibleSnapshotCache(runOverflow).status).toBe('invalid')
+})
+
+test('rejects an oversized write before storage and an oversized read before parsing', () => {
+  const oversized = cachedSnapshot()
+  const text = 'x'.repeat(EDITOR_VISIBLE_SNAPSHOT_CACHE_MAX_BYTES / 2)
+  oversized.snapshot.rows[0]!.chunks = [exactPaintChunk(text)]
+
+  const writeResult = writeEditorVisibleSnapshotCache(oversized)
+  expect(writeResult.status).toBe('oversized')
+  expect(writeResult.serializedBytes).toBeGreaterThan(EDITOR_VISIBLE_SNAPSHOT_CACHE_MAX_BYTES)
+  expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(false)
+
+  const parse = vi.spyOn(JSON, 'parse')
+  STORE.set(
+    EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY,
+    'x'.repeat(EDITOR_VISIBLE_SNAPSHOT_CACHE_MAX_BYTES / 2 + 1),
+  )
+  expect(readMatchingSnapshot()).toBeNull()
+  expect(parse).not.toHaveBeenCalled()
+  expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(false)
+})
+
+test('a quota failure removes only the visible snapshot key', () => {
+  STORE.set(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY, 'old')
+  STORE.set('unrelated', 'keep')
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: memoryLocalStorage({ failSnapshotWrites: true }),
+  })
+
+  expect(writeEditorVisibleSnapshotCache(cachedSnapshot()).status).toBe('storage-failed')
+  expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(false)
+  expect(STORE.get('unrelated')).toBe('keep')
+})
+
+test('root and path removals affect only a matching record', () => {
+  writeEditorVisibleSnapshotCache(cachedSnapshot('/repo', '/repo/src/app.ts'))
+
+  removeEditorVisibleSnapshotCacheForRoot('/other')
+  removeEditorVisibleSnapshotCacheForPath({ rootPath: '/repo', path: '/repo/src/other.ts' })
+  expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(true)
+
+  removeEditorVisibleSnapshotCacheForPath({ rootPath: '/repo', path: '/repo/src/app.ts' })
+  expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(false)
+
+  writeEditorVisibleSnapshotCache(cachedSnapshot('/repo', '/repo/src/app.ts'))
+  removeEditorVisibleSnapshotCacheForRoot('/repo')
+  expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(false)
+})
+
+test('accepts wrapped and injected display indices beyond document line count', () => {
+  const record = cachedSnapshot()
+  const injected = paintRow()
+  injected.index = 1
+  injected.source = 'injected'
+  injected.injectedTextRowId = 'hint-1'
+  injected.primaryText = false
+  injected.top = 20
+  injected.contentCursorLine = false
+  injected.gutterNumberCursorLine = false
+  injected.gutterCursorLineBackgroundLaneIds = []
+  injected.chunks = [
+    {
+      ...exactPaintChunk('hint'),
+      replayFidelity: 'plain-transformed',
+      runs: [],
+    },
+  ]
+  const wrapped = paintRow()
+  wrapped.index = 2
+  wrapped.primaryText = false
+  wrapped.top = 40
+  record.snapshot.rows.push(injected, wrapped)
+  record.snapshot.totalHeight = 60
+  record.snapshot.viewport.visibleRange = { start: 0, end: 3 }
+
+  expect(writeEditorVisibleSnapshotCache(record).status).toBe('written')
+})
+
+function readMatchingSnapshot() {
+  return readEditorVisibleSnapshotCache({
+    rootPath: '/repo',
+    path: '/repo/src/app.ts',
+    themeId: 'dark-plus',
+  })
+}
+
+function cachedSnapshot(
+  rootPath = '/repo',
+  path = '/repo/src/app.ts',
+  themeId = 'dark-plus',
+): Mutable<CachedEditorVisibleSnapshot> {
+  return {
+    cacheVersion: 1,
+    rootPath,
+    path,
+    themeId,
+    snapshot: visibleSnapshot(),
+  }
+}
+
+function visibleSnapshot(): Mutable<EditorVisibleSnapshotJSON> {
+  return {
+    kind: 'editor-visible',
+    schemaVersion: 1,
+    documentId: 'document-1',
+    languageId: 'typescript',
+    theme: { foregroundColor: '#ffffff', syntax: { keyword: '#ff00ff' } },
+    textVersion: 1,
+    initialHighlightStatus: 'painted',
+    metrics: { rowHeight: 20, characterWidth: 8 },
+    lineCount: 1,
+    contentWidth: 40,
+    totalHeight: 20,
+    gutterWidth: 56,
+    gutterLayout: {
+      fixedWidth: 16,
+      lanes: [
+        { id: 'line-gutter', width: 24 },
+        { id: 'fold-gutter', width: 16 },
+      ],
+    },
+    tabSize: 2,
+    viewport: {
+      scrollTop: 0,
+      scrollLeft: 0,
+      scrollHeight: 20,
+      scrollWidth: 96,
+      clientHeight: 20,
+      clientWidth: 96,
+      borderBoxHeight: 20,
+      borderBoxWidth: 96,
+      visibleRange: { start: 0, end: 1 },
+    },
+    rows: [paintRow()],
+  }
+}
+
+function paintRow(): Mutable<EditorVisibleSnapshotJSON['rows'][number]> {
+  return {
+    index: 0,
+    bufferRow: 0,
+    source: 'document',
+    injectedTextRowId: null,
+    primaryText: true,
+    top: 0,
+    height: 20,
+    leftSpacerWidth: 0,
+    contentCursorLine: true,
+    gutterNumberCursorLine: true,
+    gutterCursorLineBackgroundLaneIds: ['fold-gutter'],
+    foldMarker: null,
+    chunks: [exactPaintChunk('const')],
+  }
+}
+
+function exactPaintChunk(
+  text: string,
+): Mutable<EditorVisibleSnapshotJSON['rows'][number]['chunks'][number]> {
+  return {
+    sourceStartOffset: 0,
+    sourceEndOffset: text.length,
+    rowLocalStart: 0,
+    rowLocalEnd: text.length,
+    parts: [{ kind: 'text', text }],
+    replayFidelity: 'exact',
+    runs: text.length > 0 ? [{ start: 0, end: text.length, style: { color: '#ff00ff' } }] : [],
+  }
+}
+
+function emptyPaintChunk() {
+  return exactPaintChunk('')
+}
+
+function paintChunkWithRuns(count: number) {
+  const text = 'x'.repeat(count)
+  return {
+    ...exactPaintChunk(text),
+    runs: Array.from({ length: count }, (_, index) => ({
+      start: index,
+      end: index + 1,
+      style: { color: index % 2 === 0 ? '#ffffff' : '#000000' },
+    })),
+  }
+}
+
+function writeUntyped(value: unknown) {
+  return writeEditorVisibleSnapshotCache(value as CachedEditorVisibleSnapshot)
+}
+
+type Mutable<T> = {
+  -readonly [Key in keyof T]: Mutable<T[Key]>
+}
+
+function memoryLocalStorage({ failSnapshotWrites = false } = {}): Storage {
+  return {
+    get length() {
+      return STORE.size
+    },
+    clear: () => STORE.clear(),
+    getItem: (key) => STORE.get(key) ?? null,
+    key: (index) => Array.from(STORE.keys())[index] ?? null,
+    removeItem: (key) => void STORE.delete(key),
+    setItem: (key, value) => {
+      if (failSnapshotWrites && key === EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY) {
+        throw new DOMException('localStorage quota exceeded')
+      }
+
+      STORE.set(key, value)
+    },
+  }
+}

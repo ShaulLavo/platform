@@ -24,8 +24,7 @@ a bare root `bun run verify`.
 | [064 — anchored diagnostic peek](064-anchored-diagnostic-peek.md)                       | **SCHEDULED AFTER 061 — GO/NO-GO**            |
 | [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                         | **SCHEDULED AFTER 064 — RECONCILE**           |
 | [057 — editor-native VS Code keymap](057-editor-native-vscode-keymap.md)                | **BLOCKED ON 056 — RUNTIME RECONCILED**       |
-| [060 — persisted visible editor snapshot](060-persist-visible-editor-snapshot.md)       | **NEXT — RECONCILE**                          |
-| [061 — Foresight prepared editor opens](061-promote-foresight-file-open-pipeline.md)    | **SCHEDULED AFTER 060**                       |
+| [061 — Foresight prepared editor opens](061-promote-foresight-file-open-pipeline.md)    | **NEXT — RECONCILE**                          |
 
 ## Dependency notes
 
@@ -44,13 +43,12 @@ a bare root `bun run verify`.
   restoration. Its first step may
   reject a managed geometry handle if ordinary React composition passes the
   real-browser gate; the selected narrow path still lands the named diagnostic
-  peek lockstep. Root `PLAN.md` schedules it after the 060 → 061 sequence.
+  peek lockstep. Root `PLAN.md` schedules it after Plan 061.
 - Plan 056 is reconciled to the landed command/focus runtime. Execute 057 only after 056; it must
   extend the same target registry and enablement evaluator rather than creating parallel ownership.
-- Execute 061 only after 060. Its ready live/clean view must still
-  be claimed and ensured before active selection publication, but that
-  transaction stays in the shared Editor domain action used by local UI and the
-  typed bus; do not add a bus-only activation implementation.
+- Plan 061's ready live/clean view must still be claimed and ensured before active selection
+  publication, but that transaction stays in the shared Editor domain action used by local UI and
+  the typed bus; do not add a bus-only activation implementation.
 - Plan 055's DOM/input implementation has landed. Only its real-hardware keyboard, IME, clipboard,
   and assistive-technology acceptance gate remains; do not reimplement the browser terminal host.
   This gate is independent of the command/focus sequence.
@@ -67,13 +65,16 @@ a bare root `bun run verify`.
   The lane reads only a sanitized visual whitelist through the loopback backend; it
   must not add a TypeScript Ghostty parser, use `ghostty +show-config` as a dark-profile resolver,
   expose host paths to the browser, or let a persisted workbench opt-out trigger a cold-start read.
-- Execute 060 before 061 so they share one authoritative-paint signal, one open benchmark, and one
-  reconciliation pass through overlapping Editor attachment/API files. Plan 061 does not promote or
-  validate Plan 060's persisted rows: that one-record cache is deliberately path/theme-only visual
-  paint, while live prepared artifacts use exact file or document revision identity.
-- Root `PLAN.md` schedules 060 → 061 next and before plan 064.
-- Both 060 and 061 must preserve and reconcile the user-owned uncommitted selection, reveal,
-  cursor-history, geometry, React, and Solid changes in the sibling Editor worktree.
+- The paired paint contract is landed: Editor exposes `EditorVisibleSnapshot`,
+  `EditorInitialHighlightStatus`, and the generation-tagged `EditorInitialPaintEvent`; Platform owns
+  the one-record, 256 KiB `editor-visible-snapshot-cache.ts`, inert overlay handoff,
+  `appliedThemeId`, and `editor-open-benchmark.mjs` marks. Plan 061 must reuse those exact seams and
+  rerun their focused regressions. It must never promote or content-validate the cached rows; live
+  prepared artifacts use exact file or document revision identity.
+- Root `PLAN.md` schedules Plan 061 next and before Plan 064.
+- Plan 061 must capture current Platform and Editor HEADs plus complete dirty diffs before editing,
+  preserve the landed paint contract and every unrelated change, and reconcile overlapping Editor
+  attachment/API files in place.
 
 ## Cleanup policy
 

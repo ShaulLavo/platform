@@ -153,6 +153,7 @@ test('loads the selected theme registration and derived editor theme', async () 
 
   expect(loaded.definition?.id).toBe('monokai')
   expect(loaded.registration?.name).toBe('monokai')
+  expect(loaded.resolvedThemeId).toBe('monokai')
   expect(loaded.editorTheme.backgroundColor).toBeTruthy()
   expect(loaded.editorTheme.foregroundColor).toBeTruthy()
 })
@@ -166,6 +167,7 @@ test('serves the built-in themes from their inline palette, with no shiki backin
   // which is the point — these colors are for tree-sitter's captures.
   expect(loaded.definition).toBeNull()
   expect(loaded.registration).toBeNull()
+  expect(loaded.resolvedThemeId).toBe('tree-sitter-dark')
   expect(loaded.editorTheme.syntax?.keyword).toBe('#6ee7b7')
 })
 
@@ -345,4 +347,40 @@ test('preload warms the sync cache without re-notifying listeners', async () => 
   expect(getLoadedVscodeThemeRegistration('dark-plus')?.name).toBe('dark-plus')
   expect(getLoadedVscodeThemeRegistration('andromeeda')?.name).toBe('andromeeda')
   expect(listener.mock.calls.length).toBe(beforePreload)
+})
+
+test('a failed requested theme reports the actual fallback id', async () => {
+  vi.resetModules()
+  vi.doMock('@singapor/core/shiki', async () => {
+    const actual =
+      await vi.importActual<typeof import('@singapor/core/shiki')>('@singapor/core/shiki')
+
+    return {
+      ...actual,
+      loadVscodeThemeRegistration: (
+        definition: Parameters<typeof actual.loadVscodeThemeRegistration>[0],
+      ) => {
+        if (typeof definition !== 'string' && definition.id === 'monokai') {
+          return Promise.reject(new DOMException('theme load failed'))
+        }
+
+        return actual.loadVscodeThemeRegistration(definition)
+      },
+    }
+  })
+
+  try {
+    const isolatedStore = await import('@/features/editor/state/color-theme-store')
+    isolatedStore.resetEditorColorThemeStore()
+    isolatedStore.setSelectedEditorThemeId('dark', 'monokai')
+
+    const loaded = await isolatedStore.loadEditorThemeForSelection('dark')
+
+    expect(loaded.definition?.id).toBe('dark-plus')
+    expect(loaded.registration?.name).toBe('dark-plus')
+    expect(loaded.resolvedThemeId).toBe('dark-plus')
+  } finally {
+    vi.doUnmock('@singapor/core/shiki')
+    vi.resetModules()
+  }
 })

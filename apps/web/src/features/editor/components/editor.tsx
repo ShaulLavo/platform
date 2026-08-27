@@ -31,6 +31,7 @@ import {
 import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 import type {
   DocumentSessionChange,
+  EditorInitialPaintEvent,
   EditorKeymapLayer,
   EditorKeymapOptions,
   EditorPlugin,
@@ -50,6 +51,7 @@ type EditorProps = {
   definitionTarget?: LanguageServerDefinitionTarget | null
   onOpenDefinition?: (target: LanguageServerDefinitionTarget) => void | boolean
   onOpenReferences?: (result: LanguageServerReferencesResult) => void | boolean
+  onInitialPaint?: (event: EditorInitialPaintEvent) => void
   onScrollPositionChange?: (path: string, scrollPosition: EditorScrollPosition) => void
   onStatusSourceChange?: (source: EditorStatusBarSource) => void
   onTextChange?: (tabId: string, path: string, change: DocumentSessionChange) => void
@@ -66,6 +68,7 @@ export function Editor({
   tabId,
   onOpenDefinition,
   onOpenReferences,
+  onInitialPaint,
   onScrollPositionChange,
   onStatusSourceChange,
   onTextChange,
@@ -141,6 +144,7 @@ export function Editor({
 
       onTextChange?.(tabId, liveDocument.path, change)
     },
+    onInitialPaint,
     plugins,
     rowPositioning,
     theme: editorTheme,

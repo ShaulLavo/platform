@@ -29,6 +29,7 @@ import {
   writeWorkspaceIndexCache,
   writeWorkspaceSliceCache,
 } from '@/features/workspace/state/cache'
+import { addLifecycleFlush } from '@/lib/lifecycle-flush'
 
 const WORKSPACE_CACHE_WRITE_DEBOUNCE_MS = 350
 
@@ -468,23 +469,3 @@ function flushCacheSubscriptions(subscriptions: readonly CacheSubscription[]) {
 function unsubscribeCacheSubscriptions(subscriptions: readonly CacheSubscription[]) {
   for (const subscription of subscriptions) subscription.unsubscribe()
 }
-
-function addLifecycleFlush(flush: () => void) {
-  if (typeof window === 'undefined') return noop
-
-  window.addEventListener('pagehide', flush)
-  document.addEventListener('visibilitychange', flushHiddenDocument)
-
-  function flushHiddenDocument() {
-    if (document.visibilityState !== 'hidden') return
-
-    flush()
-  }
-
-  return () => {
-    window.removeEventListener('pagehide', flush)
-    document.removeEventListener('visibilitychange', flushHiddenDocument)
-  }
-}
-
-function noop() {}

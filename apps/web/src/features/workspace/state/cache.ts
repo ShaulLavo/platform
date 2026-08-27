@@ -20,8 +20,18 @@ import {
   normalizeWorkbenchPanels,
   type WorkbenchPanels,
 } from '@/features/workbench/utils/panels'
-import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
+import { removeEditorVisibleSnapshotCacheForRoot } from '@/lib/editor-visible-snapshot-cache'
+import {
+  WORKSPACE_CACHE_STORAGE_NAMESPACE as CACHE_KEY_NAMESPACE,
+  WORKSPACE_CACHE_STORAGE_PREFIX as CACHE_KEY_PREFIX,
+  WORKSPACE_CACHE_VERSION as CACHE_VERSION,
+  canUseWorkspaceCacheStorage as canUseLocalStorage,
+  readWorkspaceCacheEntry as readCacheEntry,
+  removeWorkspaceCacheEntry as removeCacheEntry,
+  workspaceCacheStorageKey,
+  writeWorkspaceCacheEntry as writeCacheEntry,
+} from '@/lib/workspace-cache-storage'
 import {
   isPathInWorkspace,
   toWorkspaceAbsolute,
@@ -38,13 +48,8 @@ import {
 import * as v from 'valibot'
 import type { EditorScrollPosition } from '@singapor/core'
 
-// Local-only UI state uses an explicit schema version plus a clear mismatch policy:
-// update deliberately or drop intentionally. Server-backed caches may reset/refetch.
-const CACHE_VERSION = 19
-const CACHE_KEY_PREFIX = `platform.workspace-state.v${CACHE_VERSION}`
-const CACHE_KEY_NAMESPACE = 'platform.workspace-state.v'
-const WORKSPACE_SLICE_KEY_PREFIX = `${CACHE_KEY_PREFIX}.workspace:`
-const SEARCH_BUFFER_KEY_PREFIX = `${CACHE_KEY_PREFIX}.search:`
+const WORKSPACE_SLICE_KEY_PREFIX = workspaceCacheStorageKey('workspace:')
+const SEARCH_BUFFER_KEY_PREFIX = workspaceCacheStorageKey('search:')
 
 /**
  * How many projects keep their tabs across restarts. Slices are small (paths and
@@ -54,12 +59,12 @@ const SEARCH_BUFFER_KEY_PREFIX = `${CACHE_KEY_PREFIX}.search:`
 export const WORKSPACE_SLICE_LIMIT = 8
 
 export const WORKSPACE_CACHE_STORAGE_KEYS = {
-  chatModePanels: `${CACHE_KEY_PREFIX}.chatModePanels`,
-  chatModeSelection: `${CACHE_KEY_PREFIX}.chatModeSelection`,
-  rootFolder: `${CACHE_KEY_PREFIX}.rootFolder`,
-  uiMode: `${CACHE_KEY_PREFIX}.uiMode`,
-  workbenchLayout: `${CACHE_KEY_PREFIX}.workbenchLayout`,
-  workspaceIndex: `${CACHE_KEY_PREFIX}.workspaces`,
+  chatModePanels: workspaceCacheStorageKey('chatModePanels'),
+  chatModeSelection: workspaceCacheStorageKey('chatModeSelection'),
+  rootFolder: workspaceCacheStorageKey('rootFolder'),
+  uiMode: workspaceCacheStorageKey('uiMode'),
+  workbenchLayout: workspaceCacheStorageKey('workbenchLayout'),
+  workspaceIndex: workspaceCacheStorageKey('workspaces'),
 } as const
 
 /** Per-project state lives under its own key so switching never rewrites another project's. */
@@ -353,6 +358,7 @@ export function writeWorkspaceIndexCache(rootPaths: readonly string[]) {
 
     removeCacheEntry(workspaceSliceStorageKey(rootPath))
     removeCacheEntry(searchBufferStorageKey(rootPath))
+    removeEditorVisibleSnapshotCacheForRoot(rootPath)
   }
 
   writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.workspaceIndex, kept)
@@ -453,44 +459,6 @@ function readSearchBuffer(rootPath: string) {
   if (searchBuffer.rootPath !== rootPath) return null
 
   return searchBuffer
-}
-
-function readCacheEntry<T>(key: string, schema: v.GenericSchema, fallback: T): T {
-  try {
-    const value = localStorage.getItem(key)
-    if (!value) return fallback
-
-    const result = v.safeParse(schema, JSON.parse(value))
-    if (result.success) return result.output as T
-
-    removeCacheEntry(key)
-    reportError(toClientError({ code: 'INVALID_PATH' }))
-    return fallback
-  } catch (error) {
-    removeCacheEntry(key)
-    reportError(toClientError({ code: 'OPERATION_FAILED', error }))
-    return fallback
-  }
-}
-
-function writeCacheEntry(key: string, value: unknown) {
-  if (!canUseLocalStorage()) return
-
-  try {
-    localStorage.setItem(key, JSON.stringify(value))
-  } catch {
-    removeCacheEntry(key)
-  }
-}
-
-function removeCacheEntry(key: string) {
-  if (!canUseLocalStorage()) return
-
-  try {
-    localStorage.removeItem(key)
-  } catch {
-    // Ignore private-mode failures; the app should still open normally.
-  }
 }
 
 function sliceForWorkspace(rootPath: string, slice: CachedWorkspaceSlice): CachedWorkspaceSlice {
@@ -694,8 +662,4 @@ function activeEditorTabIdForTabs(
   if (editorTabs.some((tab) => tab.id === activeEditorTabId)) return activeEditorTabId
 
   return editorTabs[0]?.id ?? null
-}
-
-function canUseLocalStorage() {
-  return typeof localStorage !== 'undefined'
 }
