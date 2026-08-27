@@ -32,6 +32,11 @@ jobs:
         with:
           editor-ref: ${{ env.EDITOR_REF }}
 
+      - name: Validate dev task graph
+        env:
+          TURBO_TELEMETRY_DISABLED: '1'
+        run: bun run dev:web -- --dry-run=json > /dev/null
+
       # `format:check`, never `format` — a CI job that rewrites files and then
       # passes is a job that reports on a tree nobody reviewed.
       - name: Format

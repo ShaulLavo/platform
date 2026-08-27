@@ -50,6 +50,7 @@
     "oxc-plugin-react-compiler": "^0.2.0",
     "oxfmt": "0.64.0",
     "oxlint": "1.70.0",
+    "turbo": "^2.9.18",
     "typescript": "7.0.2",
     "vitest": "catalog:"
   },
