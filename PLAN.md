@@ -1,7 +1,7 @@
 # Cross-Project Execution Roadmap
 
-> **Status:** reconciled against Platform `1fc53a8c`, Editor `c8c36b9`, and
-> `ghostty-webgpu` `09e4147` on 2026-08-25. Re-run each executable plan's drift check before editing.
+> **Status:** reconciled against Platform `e1228cff`, Editor `0f4f8f4`, and
+> `ghostty-webgpu` `3c3e07e` on 2026-08-27. Re-run each executable plan's drift check before editing.
 
 This file is the sole source of cross-project execution order. [`plans/README.md`](plans/README.md)
 is the Platform executable-plan inventory. Strategy documents under `docs/` describe product scope
@@ -28,6 +28,8 @@ Git history is the archive.
   parsing, planning, inversion, and document application; Platform owns preview, filesystem commit,
   recovery, undo/redo, mutation coordination, and product integrations. Completed plan 063 has been
   deleted.
+- Platform's terminal now uses the native `ghostty-webgpu` integration. This does not close Plan 055:
+  its remaining physical keyboard, IME, clipboard, and VoiceOver acceptance is still an operator gate.
 
 ## Shared runtime boundary
 
@@ -46,12 +48,26 @@ gates have landed; only the physical hardware/operator acceptance in
 `ghostty-webgpu/docs/phase-3-acceptance.md` remains. Do not repeat its implementation milestones.
 When the gate passes, update the stable package evidence and Platform brief, then delete plan 055.
 
-The `ghostty-webgpu` xterm-facade program is a separate package lane. Plan 008 remains blocked: the
-temporary Ghostty fork proves native row-preserving compaction, and an uncommitted follow-up fixes
-in-range selection coordinates, but released xterm also exposes aliased stale backing rows after
-`clear()`. Ghostty's PageList cannot represent that contract without a native row-slot redesign;
-the current official parent has no clear API. Plans 009–015 remain in their package-defined
-dependency order and are not prerequisites for current Platform work.
+The `ghostty-webgpu` xterm-facade program is a separate package lane. Plan 008 is complete with its
+accepted divergences transferred to the later certification gate. Plan 009 is blocked because the
+required parser/Unicode, inactive-buffer, row-marker, and OSC 8 APIs are not public. Plan 010's CPU
+gate has passed, but it remains blocked on Plan 009 and physical operator evidence. Plans 011–015
+remain in package-defined dependency order and are not prerequisites for current Platform work.
+
+## Proposed Ghostty appearance lane
+
+Plans 065–067 are an independent proposed lane and are not authorized until root scheduling is
+explicitly approved:
+
+1. **Plan 065 — prove the pinned Ghostty config resolver.** A bounded four-target feasibility proof;
+   `FAIL` is an acceptable result. It also requires Zig 0.16.0 exactly.
+2. **Plan 066 — package the resolver.** Runs only after a complete Plan 065 `Decision: PASS`; produces
+   one reviewed, unpublished `ghostty-webgpu@0.1.2` release candidate.
+3. **Plan 067 — integrate Ghostty appearance.** Runs only against those exact reviewed bytes, then
+   pauses for explicit publication authority before the final registry pin.
+
+Do not replace this lane with a TypeScript Ghostty parser, `ghostty +show-config`, a maintained fork,
+browser-visible host paths, or cold-start reads triggered by a disabled workbench setting.
 
 ## Ordered Platform editor lane
 
@@ -131,5 +147,7 @@ multi-origin compatibility machinery now.
 - **Promote:** environment milestones M1–M5, one executable plan at a time.
 - **Deferred:** environment M6 and all compatibility work for simultaneous origins or obsolete
   per-tab/active-editor/one-server architecture.
-- **Package-blocked:** `ghostty-webgpu` plan 008 needs native stale-row alias and marker semantics
-  for exact `clear()` compatibility; plans 009–015 remain downstream.
+- **Proposed:** plans 065–067 require an explicit root scheduling decision and then run strictly in
+  order; Plan 065 may close the lane with `FAIL`.
+- **Package-blocked:** `ghostty-webgpu` plan 009 needs public native extension surfaces. Plan 010 is
+  additionally waiting on that dependency and physical operator gates; plans 011–015 remain downstream.

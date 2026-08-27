@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> **STATUS: ⏸️ DEFERRED until further notice (2026-08-27).** Not scheduled, not authorized for implementation. The agent-view/product-vision initiative takes priority. This deferral covers the companion docs ([logseq-parity-gap-matrix.md](logseq-parity-gap-matrix.md), [logseq-port-map.md](logseq-port-map.md)) as well. The content below is preserved as-is for whenever this is revisited.
+
 > [!NOTE]
 > **Generated implementation plan — 2026-08-22.** Companion to [logseq-parity-gap-matrix.md](logseq-parity-gap-matrix.md) (feature-level status of ~600 features across 9 domains) and [logseq-port-map.md](logseq-port-map.md) (per-module port / reimplement / skip verdicts with license exposure). Produced by three independent roadmap agents over the same verified matrix, synthesized and adjudicated; where they disagreed the fork is recorded in [Rejected alternatives](#rejected-alternatives) rather than smoothed over.
 
