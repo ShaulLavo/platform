@@ -12,6 +12,7 @@
       "scripts"
     ],
     "catalog": {
+      "evlog": "2.27.1",
       "vite": "8.0.16",
       "vitest": "4.1.10"
     }
@@ -43,7 +44,7 @@
   },
   "devDependencies": {
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
-    "evlog": "^2.19.1",
+    "evlog": "catalog:",
     "jscpd": "^5.0.9",
     "knip": "^6.16.1",
     "lefthook": "^2.1.9",

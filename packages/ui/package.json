@@ -23,7 +23,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
-    "evlog": "^2.19.1",
+    "evlog": "catalog:",
     "react-resizable-panels": "^4.11.2",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",
