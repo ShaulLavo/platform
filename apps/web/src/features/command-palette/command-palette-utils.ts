@@ -320,10 +320,42 @@ export function quickAccessQuery(search: string) {
 }
 
 export function quickAccessFilter(value: string, search: string, keywords?: readonly string[]) {
-  const query = quickAccessQuery(search)
-  if (!query) return 1
+  return scopedPaletteFilter(value, quickAccessQuery(search), keywords)
+}
 
-  return fuzzyRankScore(quickAccessRankTarget(value, keywords), query)
+/** The same ranking, for a scope whose input holds the bare query and no prefix. */
+export function scopedPaletteFilter(value: string, search: string, keywords?: readonly string[]) {
+  if (!search) return 1
+
+  return fuzzyRankScore(quickAccessRankTarget(value, keywords), search)
+}
+
+/**
+ * The mode a command-opened prefix pushes the palette into, or `null` for the two
+ * root modes, whose prefix belongs in the input because the user types it there.
+ *
+ * A sub-picker holds its mode outside the input instead: leaving `theme ` in the box
+ * meant the first Backspace turned it into `theme`, which is no prefix at all, and the
+ * picker vanished mid-word.
+ */
+export function paletteScopeForPrefix(prefix: string): QuickAccessMode | null {
+  const mode = quickAccessMode(prefix)
+  if (mode === 'commands' || mode === 'files') return null
+
+  return mode
+}
+
+export function scopeLabelForMode(mode: QuickAccessMode) {
+  if (mode === 'views') return 'View'
+  if (mode === 'colorMode') return 'Color Mode'
+  if (mode === 'colorTheme') return 'Color Theme'
+  if (mode === 'editors') return 'Open Editor'
+  if (mode === 'scripts') return 'Script'
+  if (mode === 'sessions') return 'Session'
+  if (mode === 'symbols') return 'Go to Symbol'
+  if (mode === 'gotoLine') return 'Go to Line'
+
+  return 'Commands'
 }
 
 export function emptyLabelForMode(mode: QuickAccessMode) {
@@ -339,15 +371,18 @@ export function emptyLabelForMode(mode: QuickAccessMode) {
 }
 
 export function placeholderForMode(mode: QuickAccessMode) {
-  if (mode === 'commands') return 'Search commands...'
-  if (mode === 'views') return 'Search views...'
-  if (mode === 'colorMode') return 'Choose color mode...'
-  if (mode === 'colorTheme') return 'Choose color theme...'
-  if (mode === 'editors') return 'Search open editors...'
-  if (mode === 'sessions') return 'Search sessions, or start one in a project...'
-  if (mode === 'symbols') return 'Search symbols in the active editor...'
+  if (mode === 'commands') return 'Search commands…'
+  if (mode === 'views') return 'Search views…'
+  // Both preview live on the highlighted row, so say what the arrow keys do.
+  if (mode === 'colorMode') return 'Select a color mode (up/down keys to preview)…'
+  if (mode === 'colorTheme') return 'Select a color theme (up/down keys to preview)…'
+  if (mode === 'editors') return 'Search open editors…'
+  if (mode === 'scripts') return 'Search project scripts…'
+  if (mode === 'sessions') return 'Search sessions, or start one in a project…'
+  if (mode === 'symbols') return 'Search symbols in the active editor…'
+  if (mode === 'gotoLine') return 'Go to line and column…'
 
-  return 'Search files, > for commands, sess for sessions...'
+  return 'Search files, > for commands, sess for sessions…'
 }
 
 /**

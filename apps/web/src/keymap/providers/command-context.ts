@@ -1,5 +1,6 @@
 import { createContext } from 'react'
 
+import type { PaletteScope } from '@/features/command-palette/command-palette-types'
 import type { OpenWorkspaceRootResult } from '@/features/workspace/hooks/use-open-root'
 import type {
   PlatformCommandTarget,
@@ -25,7 +26,9 @@ export type CommandContextValue = {
   readonly openWorkspaceRoot: (rootPath: string) => Promise<OpenWorkspaceRootResult>
   readonly paletteOpen: boolean
   readonly paletteOrigin: FocusTargetToken | null
+  readonly paletteScope: PaletteScope | null
   readonly paletteSearch: string
+  readonly popPaletteScope: () => void
   readonly setPaletteOpen: (open: boolean) => void
   readonly setPaletteSearch: (search: string) => void
 }

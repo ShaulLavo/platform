@@ -4,7 +4,7 @@ import {
   CommandInput,
   CommandList,
 } from '@workspace/ui/components/command'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, type KeyboardEvent } from 'react'
 
 import { CommandPaletteGroupsFactory } from '@/features/command-palette/command-palette-groups-factory'
 import {
@@ -26,8 +26,11 @@ import {
   quickAccessFilter,
   quickAccessMode,
   quickAccessQuery,
+  scopeLabelForMode,
+  scopedPaletteFilter,
   workspaceRootOpened,
 } from '@/features/command-palette/command-palette-utils'
+import { ScopeChip } from '@/features/command-palette/scope-chip'
 import { useHighlightedPaletteValue } from '@/features/command-palette/hooks/use-highlighted-palette-value'
 import { useRecentCommandIds } from '@/features/command-palette/hooks/use-recent-command-ids'
 import {
@@ -68,7 +71,9 @@ export function CommandPaletteContent() {
     openWorkspaceRoot,
     paletteOpen: open,
     paletteOrigin,
+    paletteScope,
     paletteSearch: search,
+    popPaletteScope,
     setPaletteOpen,
     setPaletteSearch,
   } = useCommand()
@@ -80,8 +85,9 @@ export function CommandPaletteContent() {
   const openFilePaths = useEditorWorkspaceState((state) => state.openFilePaths)
   const selectedFilePath = useEditorWorkspaceState((state) => state.selectedFilePath)
   const { openDefinition, selectFile } = useEditorCommands()
-  const mode = quickAccessMode(search)
-  const query = quickAccessQuery(search)
+  // A scope holds the mode outside the input, so the input is the bare query.
+  const mode = paletteScope?.mode ?? quickAccessMode(search)
+  const query = paletteScope ? search : quickAccessQuery(search)
   const treeState = useWorkspaceTreeState(rootFolder)
   const editorItems = editorPaletteItems(openFilePaths, selectedFilePath)
   const {
@@ -170,9 +176,18 @@ export function CommandPaletteContent() {
   }
 
   function handleSearchChange(value: string) {
-    if (quickAccessMode(value) === 'files') setSelectedFileItemValue(null)
+    if (!paletteScope && quickAccessMode(value) === 'files') setSelectedFileItemValue(null)
 
     setPaletteSearch(value)
+  }
+
+  // Backspace on an empty scoped input is the way back out of a sub-picker, which is
+  // why entering one clears the input: there is no prefix left to delete instead.
+  function handleSearchKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (!paletteScope || event.key !== 'Backspace' || search.length > 0) return
+
+    event.preventDefault()
+    popPaletteScope()
   }
 
   // Context identity must stay stable while cmdk updates its controlled input.
@@ -304,7 +319,7 @@ export function CommandPaletteContent() {
   return (
     <CommandDialog
       commandProps={{
-        filter: quickAccessFilter,
+        filter: paletteScope ? scopedPaletteFilter : quickAccessFilter,
         loop: true,
         onValueChange: handleCommandValueChange,
         shouldFilter: !paletteOwnsItemOrder(mode),
@@ -320,7 +335,9 @@ export function CommandPaletteContent() {
     >
       <CommandInput
         placeholder={placeholderForMode(mode)}
+        scope={paletteScope ? <ScopeChip label={scopeLabelForMode(paletteScope.mode)} /> : null}
         value={search}
+        onKeyDown={handleSearchKeyDown}
         onValueChange={handleSearchChange}
       />
       <CommandList className='max-h-[min(440px,calc(100vh-8rem))] py-1' ref={highlightedListRef}>

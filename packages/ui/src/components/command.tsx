@@ -76,8 +76,9 @@ function CommandDialog({
 
 function CommandInput({
   className,
+  scope,
   ...props
-}: React.ComponentProps<typeof CommandPrimitive.Input>) {
+}: React.ComponentProps<typeof CommandPrimitive.Input> & { scope?: React.ReactNode }) {
   return (
     <div data-slot='command-input-wrapper' className='border-b pb-0'>
       <InputGroup className='border-input/30 bg-input/30 h-(--density-command-input-height) border-none shadow-none! *:data-[slot=input-group-addon]:pl-(--density-command-input-padding-x)!'>
@@ -91,6 +92,7 @@ function CommandInput({
         />
         <InputGroupAddon>
           <MagnifyingGlassIcon className='size-4 shrink-0 opacity-50' />
+          {scope}
         </InputGroupAddon>
       </InputGroup>
     </div>

@@ -4,6 +4,8 @@ import { DEFAULT_SETTING_VALUES, type SettingsSnapshot } from '@workspace/contra
 
 import { AppKeymapController } from '@/app-keymap-controller'
 import { CommandPalette } from '@/components/command-palette'
+import type { PaletteScope } from '@/features/command-palette/command-palette-types'
+import { paletteScopeForPrefix } from '@/features/command-palette/command-palette-utils'
 import { useEditorTabActions } from '@/features/editor/hooks/use-editor-tab-actions'
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
@@ -93,7 +95,8 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
   const wallpaperEnabled = useSettingValue('workbench.wallpaper.enabled')
   const overrides = useSettingValue('keybindings.overrides')
   const [paletteOpen, setPaletteOpenState] = useState(false)
-  const [paletteSearch, setPaletteSearch] = useState('')
+  const [paletteSearch, setPaletteSearchState] = useState('')
+  const [paletteScope, setPaletteScopeState] = useState<PaletteScope | null>(null)
   const [paletteOrigin, setPaletteOrigin] = useState<FocusTargetToken | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsOrigin, setSettingsOrigin] = useState<FocusTargetToken | null>(null)
@@ -109,6 +112,10 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
   )
   const snapshotSettingsRef = useRef<SnapshotSettings>({ diffViewMode, wallpaperEnabled })
   const paletteOpenRef = useRef(false)
+  // The command runtime is built once and dispatches long after that render, so the
+  // palette state it reads has to come from refs rather than a stale closure.
+  const paletteSearchRef = useRef('')
+  const paletteScopeRef = useRef<PaletteScope | null>(null)
   const paletteRestoreRef = useRef<FocusTargetToken | null | undefined>(undefined)
   const settingsOpenRef = useRef(false)
   const settingsRestoreRef = useRef<FocusTargetToken | null | undefined>(undefined)
@@ -135,6 +142,42 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
   ])
 
   useSettingsStream()
+
+  const setPaletteSearch = (search: string) => {
+    paletteSearchRef.current = search
+    setPaletteSearchState(search)
+  }
+  const setPaletteScope = (scope: PaletteScope | null) => {
+    paletteScopeRef.current = scope
+    setPaletteScopeState(scope)
+  }
+  /**
+   * Root prefixes go into the input as text, the way the user would have typed them.
+   * A sub-picker prefix becomes a scope instead, opening on an empty query.
+   */
+  const openPaletteAt = (initialSearch: string) => {
+    const mode = paletteScopeForPrefix(initialSearch)
+    if (!mode) {
+      setPaletteScope(null)
+      setPaletteSearch(initialSearch)
+      return
+    }
+
+    setPaletteScope({ mode, returnSearch: paletteScopeReturnSearch() })
+    setPaletteSearch('')
+  }
+  /**
+   * What Backspace on an empty input pops back to. A scope pushed from inside another
+   * keeps the first one's answer — the command list it was opened from, not the picker
+   * in between — and one pushed with the palette shut has nothing to go back to.
+   */
+  const paletteScopeReturnSearch = () => {
+    const current = paletteScopeRef.current
+    if (current) return current.returnSearch
+    if (!paletteOpenRef.current) return null
+
+    return paletteSearchRef.current
+  }
 
   const [runtime] = useState<WorkspaceCommandRuntime>(() => ({
     documents: { queryClient, store: documentStore },
@@ -183,8 +226,8 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
       showCommandPalette: (initialSearch = '', origin) => {
         if (!paletteOpenRef.current) setPaletteOrigin(origin ?? focus.captureOrigin())
 
+        openPaletteAt(initialSearch)
         paletteOpenRef.current = true
-        setPaletteSearch(initialSearch)
         setPaletteOpenState(true)
         return focus.request(focusTargetById({ kind: 'command-palette' }))
       },
@@ -229,8 +272,21 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
   const closePalette = (restoreOrigin: boolean) => {
     paletteRestoreRef.current = restoreOrigin ? paletteOrigin : undefined
     paletteOpenRef.current = false
+    setPaletteScope(null)
     setPaletteOpenState(false)
     setPaletteOrigin(null)
+  }
+  const popPaletteScope = () => {
+    const scope = paletteScopeRef.current
+    if (!scope) return
+
+    setPaletteScope(null)
+    if (scope.returnSearch === null) {
+      closePalette(true)
+      return
+    }
+
+    setPaletteSearch(scope.returnSearch)
   }
   const setPaletteOpen = (open: boolean) => {
     if (open) return
@@ -281,7 +337,9 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
     openWorkspaceRoot,
     paletteOpen,
     paletteOrigin,
+    paletteScope,
     paletteSearch,
+    popPaletteScope,
     setPaletteOpen,
     setPaletteSearch,
   }

@@ -39,12 +39,12 @@ test('waits for async command settlement before closing and restoring its origin
   await user.click(await screen.findByText('Toggle wallpaper'))
 
   await waitFor(() => expect(setWallpaperEnabled).toHaveBeenCalledOnce())
-  expect(screen.getByPlaceholderText('Search commands...')).toBe(input)
+  expect(screen.getByPlaceholderText('Search commands…')).toBe(input)
   expect(document.activeElement).not.toBe(origin)
 
   act(() => submission.settle('acknowledged'))
 
-  await waitFor(() => expect(screen.queryByPlaceholderText('Search commands...')).toBeNull())
+  await waitFor(() => expect(screen.queryByPlaceholderText('Search commands…')).toBeNull())
   await waitFor(() => expect(document.activeElement).toBe(origin))
 })
 
@@ -59,7 +59,7 @@ test('does not overwrite a command destination that acknowledged another overlay
   await user.type(input, 'settings')
   await user.click(await screen.findByText('Settings'))
 
-  await waitFor(() => expect(screen.queryByPlaceholderText('Search commands...')).toBeNull())
+  await waitFor(() => expect(screen.queryByPlaceholderText('Search commands…')).toBeNull())
   expect(document.activeElement).toBe(settings)
 })
 
@@ -72,7 +72,7 @@ test('restores a captured nested overlay after dismissal', async () => {
   await focusedPaletteInput()
   await user.keyboard('{Escape}')
 
-  await waitFor(() => expect(screen.queryByPlaceholderText('Search commands...')).toBeNull())
+  await waitFor(() => expect(screen.queryByPlaceholderText('Search commands…')).toBeNull())
   await waitFor(() => expect(document.activeElement).toBe(settings))
 })
 
@@ -164,7 +164,7 @@ function focusButton(intent: string, element: HTMLElement) {
 }
 
 async function focusedPaletteInput() {
-  const input = await screen.findByPlaceholderText('Search commands...')
+  const input = await screen.findByPlaceholderText('Search commands…')
   await waitFor(() => expect(document.activeElement).toBe(input))
   return input
 }

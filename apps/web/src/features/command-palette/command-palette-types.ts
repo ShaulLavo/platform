@@ -46,6 +46,17 @@ export type EditorPaletteItem = {
   readonly pathLabel: string
 }
 
+/**
+ * A sub-picker the palette was pushed into by a command rather than by typing.
+ * Its mode is held here instead of as prefix text in the input, so the input is
+ * empty and searchable the moment it opens.
+ */
+export type PaletteScope = {
+  readonly mode: QuickAccessMode
+  /** Search text to restore when the scope is popped; `null` closes the palette. */
+  readonly returnSearch: string | null
+}
+
 export type QuickAccessMode =
   | 'colorMode'
   | 'colorTheme'

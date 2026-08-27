@@ -2,6 +2,8 @@ import type { QueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
+import type { PaletteScope } from '@/features/command-palette/command-palette-types'
+import { paletteScopeForPrefix } from '@/features/command-palette/command-palette-utils'
 import { createEditorCommands, type EditorCommands } from '@/features/editor/state/commands'
 import {
   createEditorDocumentStore,
@@ -121,6 +123,11 @@ export function TestCommandProvider({
   const [paletteOpen, setPaletteOpenState] = useState(options.paletteOpen ?? false)
   const [paletteOrigin, setPaletteOrigin] = useState(options.paletteOrigin ?? null)
   const [paletteSearch, setPaletteSearch] = useState(options.paletteSearch ?? '')
+  const [paletteScope, setPaletteScope] = useState<PaletteScope | null>(null)
+  // `showCommandPalette` is built once, so it reads palette state through refs.
+  const paletteOpenRef = useRef(options.paletteOpen ?? false)
+  const paletteSearchRef = useRef(options.paletteSearch ?? '')
+  const paletteScopeRef = useRef<PaletteScope | null>(null)
   const paletteRestoreRef = useRef<FocusTargetToken | null | undefined>(undefined)
   const [commandRuntime] = useState(() => {
     const showCommandPalette = options.runtime?.shell?.showCommandPalette
@@ -129,7 +136,8 @@ export function TestCommandProvider({
     const runtime = withShellOverride(options.runtime, {
       showCommandPalette: (initialSearch = '', origin) => {
         setPaletteOrigin(origin ?? focus.captureOrigin())
-        setPaletteSearch(initialSearch)
+        openPaletteAt(initialSearch)
+        paletteOpenRef.current = true
         setPaletteOpenState(true)
         return focus.request(focusTargetById({ kind: 'command-palette' }))
       },
@@ -141,8 +149,55 @@ export function TestCommandProvider({
     })
   })
 
+  // Mirrors the app provider: a sub-picker prefix becomes a scope with an empty input,
+  // a root prefix stays text.
+  function openPaletteAt(initialSearch: string) {
+    const mode = paletteScopeForPrefix(initialSearch)
+    if (!mode) {
+      applyPaletteScope(null)
+      applyPaletteSearch(initialSearch)
+      return
+    }
+
+    applyPaletteScope({ mode, returnSearch: paletteScopeReturnSearch() })
+    applyPaletteSearch('')
+  }
+
+  function paletteScopeReturnSearch() {
+    const current = paletteScopeRef.current
+    if (current) return current.returnSearch
+    if (!paletteOpenRef.current) return null
+
+    return paletteSearchRef.current
+  }
+
+  function applyPaletteSearch(search: string) {
+    paletteSearchRef.current = search
+    setPaletteSearch(search)
+  }
+
+  function applyPaletteScope(scope: PaletteScope | null) {
+    paletteScopeRef.current = scope
+    setPaletteScope(scope)
+  }
+
+  function popPaletteScope() {
+    const scope = paletteScopeRef.current
+    if (!scope) return
+
+    applyPaletteScope(null)
+    if (scope.returnSearch === null) {
+      closePalette(true)
+      return
+    }
+
+    applyPaletteSearch(scope.returnSearch)
+  }
+
   function closePalette(restoreOrigin: boolean) {
     paletteRestoreRef.current = restoreOrigin ? paletteOrigin : undefined
+    paletteOpenRef.current = false
+    applyPaletteScope(null)
     setPaletteOpenState(false)
     setPaletteOrigin(null)
   }
@@ -150,6 +205,7 @@ export function TestCommandProvider({
   function setPaletteOpen(open: boolean) {
     if (open) {
       paletteRestoreRef.current = undefined
+      paletteOpenRef.current = true
       setPaletteOpenState(true)
       return
     }
@@ -177,7 +233,9 @@ export function TestCommandProvider({
     openWorkspaceRoot: commandRuntime.runtime.shell.openWorkspaceRoot,
     paletteOpen,
     paletteOrigin,
+    paletteScope,
     paletteSearch,
+    popPaletteScope,
     setPaletteOpen,
     setPaletteSearch,
   }
