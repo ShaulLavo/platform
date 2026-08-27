@@ -17,8 +17,8 @@ import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-col
 import { installServerRestartInvalidation } from '@/features/chat/state/server-restart-invalidation.ts'
 import { initializeClientLogging, log } from '@/lib/client-logging.ts'
 import { loadNerdFont } from '@/lib/default-nerd-font.ts'
-import { hasNativeVibrancyShell, isDesktop } from '@/lib/platform/bridge.ts'
-import { applyNativeVibrancy } from '@/lib/platform/native-vibrancy.ts'
+import { isDesktop } from '@/lib/platform/bridge.ts'
+import { applyBackdrop, resolveBackdrop } from '@/lib/platform/backdrop.ts'
 import { installEditorPerformanceTraceFromUrl } from '@/features/editor/state/performance-trace.ts'
 import { queryClient } from '@/lib/query-client.ts'
 import { reportReactError } from '@/lib/react-error-reporting.ts'
@@ -27,7 +27,7 @@ import { TooltipProvider } from '@workspace/ui/components/tooltip'
 installEditorPerformanceTraceFromUrl()
 initializeClientLogging()
 installServerRestartInvalidation(queryClient)
-applyNativeVibrancy(hasNativeVibrancyShell())
+applyBackdrop(resolveBackdrop())
 // Before `createRoot`, deliberately. The mirrored appearance is initial
 // document state: descendants construct geometry and read computed styles on
 // their first render. `AppearanceProvider` corrects it from the server snapshot

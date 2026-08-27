@@ -650,11 +650,15 @@ html[data-palette='sage'] {
    real wallpaper exactly; anchored popups show a center crop at the correct
    scale, indistinguishable under the asset's 48px blur. Self-contained — do
    not add bg-popover on top, it would stack a fourth layer. */
-/* With the wallpaper turned off there is nothing for the vibrancy layer to
+/* With no wallpaper behind the app there is nothing for the vibrancy layer to
    echo, so its baked-in wallpaper copy would tint every menu, dialog, and
-   popover with an image the user has explicitly hidden. Drop that layer and
-   leave the popover tint plus real backdrop ghosting. */
-html[data-wallpaper-hidden] {
+   popover with an image that is not on screen — one the user hid, or one that
+   was never ours to show because the compositor is drawing their real desktop
+   back there. Drop that layer and leave the popover tint plus real backdrop
+   ghosting. */
+html[data-wallpaper-hidden],
+html[data-backdrop='compositor'],
+html[data-backdrop='transparent'] {
   --surface-wallpaper: none;
 }
 
@@ -860,10 +864,13 @@ html[data-wallpaper-hidden] {
        changing --background-solid means changing both. */
     background-color: var(--background-solid);
   }
-  /* Except when the desktop shell runs a transparent window over a real
-     NSVisualEffectView. There the floor is the macOS compositor's blur of the
-     live desktop, and painting over it would hide the thing we want. */
-  html[data-native-vibrancy] {
+  /* Except when the shell window is itself transparent. There the floor is the
+     compositor's own view of the desktop behind the window — the macOS
+     NSVisualEffectView, or whatever the Linux window manager blurs there — and
+     painting over it would hide the thing we want. An opaque window under a
+     compositor that blends it (`data-backdrop='compositor'`) still needs its
+     floor: the browser paints its base color under anything we leave clear. */
+  html[data-backdrop='transparent'] {
     background-color: transparent;
   }
   body {

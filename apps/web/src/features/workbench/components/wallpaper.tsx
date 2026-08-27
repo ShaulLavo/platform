@@ -1,14 +1,14 @@
 import { useSettingsProjection } from '@/features/settings/hooks/use-settings-projection'
 import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
 import { WebWallpaper } from '@/features/workbench/components/web-wallpaper'
-import { hasNativeVibrancy } from '@/lib/platform/native-vibrancy'
+import { documentBackdrop } from '@/lib/platform/backdrop'
 
-// When the desktop shell runs as a transparent window over an NSVisualEffectView,
-// macOS composites the live desktop behind the UI for free, and drawing a
-// wallpaper here would only cover it up — the animated case at the cost of a
-// permanent full-screen video decode. Whether the shell is actually transparent
-// is the shell's to report; in a browser, and in an opaque shell window, nothing
-// is behind the page and the web layer has to draw the wallpaper itself.
+// Only a window with nothing behind it needs a wallpaper of its own. A macOS
+// NSVisualEffectView and a Linux compositor both already put the live desktop
+// back there — drawing over it would cover up the thing we want, at the cost of
+// a permanent full-screen video decode in the animated case. What is behind the
+// window is the shell's to report; in a browser, and in an opaque macOS shell
+// window, nothing is, and the web layer has to draw it.
 export function Wallpaper({ className }: { readonly className?: string }) {
   // The `data-wallpaper-hidden` attribute that switches off the popover vibrancy
   // layer is written by `applyAppearance`, alongside the other appearance
@@ -21,7 +21,7 @@ export function Wallpaper({ className }: { readonly className?: string }) {
 
   // Unmounting is the point: hiding it with CSS would leave the video decoding.
   if (!enabled) return null
-  if (hasNativeVibrancy()) return null
+  if (documentBackdrop() !== 'app') return null
 
   return <WebWallpaper className={className} />
 }

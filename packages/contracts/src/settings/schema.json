@@ -514,10 +514,11 @@
       "minimum": 0,
       "type": "integer"
     },
-    "window.nativeVibrancy": {
-      "default": false,
-      "description": "Composite the live macOS desktop behind the window.",
-      "type": "boolean"
+    "window.transparency": {
+      "default": "compositor",
+      "description": "Where the see-through comes from: the window manager blending an opaque window, or a per-pixel transparent window (which costs a full-surface CPU copy per frame).",
+      "enum": ["compositor", "window"],
+      "type": "string"
     },
     "workbench.colorTheme": {
       "default": "system",

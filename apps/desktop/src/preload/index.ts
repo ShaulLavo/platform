@@ -2,7 +2,7 @@ import { createDesktopError } from './structured-errors'
 
 import { Electroview } from 'electrobun/view'
 import type { DesktopRPC, PlatformBridge } from '../shared/rpc'
-import { WINDOW_TRANSPARENT } from '../shared/window'
+import { readShellHandoff } from '../shared/window'
 
 const rpc = Electroview.defineRPC<DesktopRPC>({
   maxRequestTime: Infinity,
@@ -11,17 +11,23 @@ const rpc = Electroview.defineRPC<DesktopRPC>({
     messages: {},
   },
 })
-const electroview = new Electroview({ rpc })
-const rpcClient = electroview.rpc
-if (!rpcClient) throw createDesktopError('Electrobun RPC is unavailable')
 
+// Installed before the Electroview below, and reading nothing but the handoff
+// the bun process wrote above this script: the web layer decides its floor and
+// its wallpaper from `backdrop` before it paints a single frame, so that answer
+// must not wait on — or be lost to — the RPC transport coming up.
 window.platformBridge = {
-  hasNativeVibrancy: WINDOW_TRANSPARENT,
+  backdrop: readShellHandoff().backdrop,
   pickEntry: async (options) => {
-    const result = await rpcClient.request.pickEntry(options)
+    const client = electroview.rpc
+    if (!client) throw createDesktopError('Electrobun RPC is unavailable')
+
+    const result = await client.request.pickEntry(options)
     return result.paths
   },
 } satisfies PlatformBridge
+
+const electroview = new Electroview({ rpc })
 
 declare global {
   interface Window {

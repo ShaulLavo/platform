@@ -4,6 +4,7 @@ import { existsSync, readdirSync } from 'node:fs'
 import net from 'node:net'
 import path from 'node:path'
 import Electrobun, { BrowserView, BrowserWindow, Utils } from 'electrobun/bun'
+import type { SettingsValues } from '@workspace/contracts'
 import { applyEnvFileOverrides } from '@workspace/observability/env-file'
 import {
   allowedOriginsForWebPort,
@@ -11,7 +12,13 @@ import {
   runtimeUrl,
 } from '../../../../scripts/runtime-network'
 import type { DesktopRPC, PlatformPickOptions } from '../shared/rpc'
-import { WINDOW_TRANSPARENT } from '../shared/window'
+import {
+  handoffPrelude,
+  shellBackdrop,
+  windowTransparent,
+  type ShellBackdrop,
+  type WindowTransparency,
+} from '../shared/window'
 import {
   flushDesktopObservability,
   initializeDesktopObservability,
@@ -28,6 +35,7 @@ applyEnvFileOverrides(path.join(ROOT_DIR, '.env'), Bun.env)
 initializeDesktopObservability()
 const WEB_DIR = path.join(ROOT_DIR, 'apps/web')
 const MAIN_WINDOW_TITLE = 'Platform'
+const TRANSPARENCY_KEY = 'window.transparency' satisfies keyof SettingsValues
 const SHARED_DEV = Bun.env.PLATFORM_DESKTOP_SHARED_DEV === '1'
 const WEB_HOST = Bun.env.WEB_HOST ?? '127.0.0.1'
 const WEB_PORT = portFromEnv(Bun.env, 'WEB_PORT', 5173)
@@ -72,7 +80,7 @@ async function startSharedDesktop() {
   recordDesktopInfo('desktop.shared_dev.wait')
   await waitForHttp(`${SERVER_URL}/health`)
   await waitForHttp(WEB_URL)
-  openMainWindow()
+  await openMainWindow()
 }
 
 async function startStandaloneDesktop() {
@@ -82,7 +90,7 @@ async function startStandaloneDesktop() {
   spawnWeb()
   await waitForHttp(`${SERVER_URL}/health`)
   await waitForHttp(WEB_URL)
-  openMainWindow()
+  await openMainWindow()
 }
 
 function spawnServer() {
@@ -120,7 +128,7 @@ function spawnWeb() {
   )
 }
 
-function openMainWindow() {
+async function openMainWindow() {
   const rpc = BrowserView.defineRPC<DesktopRPC>({
     maxRequestTime: 120_000,
     handlers: {
@@ -129,6 +137,7 @@ function openMainWindow() {
       },
     },
   })
+  const backdrop = await resolveBackdrop()
 
   new BrowserWindow({
     title: MAIN_WINDOW_TITLE,
@@ -138,21 +147,68 @@ function openMainWindow() {
       x: 0,
       y: 0,
     },
-    preload: 'views://preload/index.js',
+    preload: await preloadScript(backdrop),
     rpc,
     // Full-size app content with native macOS controls over our own toolbar.
     trafficLightOffset: { x: 0, y: 9 },
     titleBarStyle: 'hiddenInset',
-    // The NSVisualEffectView attached below only shows through once this is
-    // true; see WINDOW_TRANSPARENT for why it currently is not.
-    transparent: WINDOW_TRANSPARENT,
+    transparent: windowTransparent(backdrop),
     url: WEB_URL,
   })
 
   // Pointless behind an opaque window: the view would be attached, and invisible.
-  if (!WINDOW_TRANSPARENT) return
+  if (!windowTransparent(backdrop)) return
 
   void attachWindowVibrancy(MAIN_WINDOW_TITLE, ROOT_DIR)
+}
+
+/**
+ * `preload` is JavaScript source, not a path — Electrobun hands the string
+ * straight to the webview as its document-start script, so the `views://` URL
+ * this used to pass parsed as a label plus a comment and silently did nothing.
+ * That is why `window.platformBridge` never existed in the shell.
+ */
+async function preloadScript(backdrop: ShellBackdrop) {
+  const bundlePath = path.join(import.meta.dirname, '..', 'views', 'preload', 'index.js')
+  const bundle = Bun.file(bundlePath)
+  if (!(await bundle.exists())) {
+    recordDesktopError('desktop.preload.missing', { bundlePath })
+    return null
+  }
+
+  return handoffPrelude({ backdrop }) + (await bundle.text())
+}
+
+async function resolveBackdrop(): Promise<ShellBackdrop> {
+  const transparency = await readWindowTransparency()
+  const backdrop = shellBackdrop(process.platform, transparency)
+  recordDesktopInfo('desktop.window.backdrop', {
+    backdrop,
+    platform: process.platform,
+    transparency,
+  })
+
+  return backdrop
+}
+
+/**
+ * Read from the running server rather than from the settings file, so the shell
+ * and the page resolve one value through one resolver. An unreachable server
+ * costs the opt-in, never the window.
+ */
+async function readWindowTransparency(): Promise<WindowTransparency> {
+  try {
+    const response = await fetch(`${SERVER_URL}/settings`, {
+      headers: { Origin: SERVER_PROBE_ORIGIN },
+    })
+    if (!response.ok) return 'compositor'
+
+    const snapshot = (await response.json()) as { values?: Partial<SettingsValues> }
+    return snapshot.values?.[TRANSPARENCY_KEY] === 'window' ? 'window' : 'compositor'
+  } catch (error) {
+    recordDesktopError('desktop.settings.unreachable', { error: errorMessage(error) })
+    return 'compositor'
+  }
 }
 
 async function pickEntry(options: PlatformPickOptions) {

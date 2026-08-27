@@ -1,5 +1,7 @@
 import type { RPCSchema } from 'electrobun'
 
+import type { ShellBackdrop } from './window'
+
 export type PlatformPickOptions = {
   mode: 'folder' | 'file'
   accept?: readonly string[]
@@ -8,9 +10,10 @@ export type PlatformPickOptions = {
 }
 
 export type PlatformBridge = {
-  // Whether macOS composites the desktop behind the window, so the web layer
-  // knows to skip drawing a wallpaper of its own.
-  hasNativeVibrancy: boolean
+  // What is behind this window, so the web layer knows whether to draw a
+  // wallpaper and a floor of its own. The shell reports what it actually
+  // created, never what the setting currently says.
+  backdrop: ShellBackdrop
   pickEntry(options: PlatformPickOptions): Promise<string[]>
 }
 

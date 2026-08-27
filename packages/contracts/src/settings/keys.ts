@@ -364,20 +364,27 @@ export const SETTINGS_REGISTRY = {
     visibility: 'advanced',
     keywords: ['logs', 'slow', 'threshold', 'performance'],
   }),
-  'window.nativeVibrancy': defineSetting({
-    schema: v.boolean(),
-    default: false,
+  'window.transparency': defineSetting({
+    // Who supplies the see-through, not how much of it there is.
+    //
+    // `compositor` leaves the shell window opaque and lets the window manager
+    // blend it over the desktop — what Linux compositors already do to every
+    // window, at no cost to us. `window` makes the window itself transparent,
+    // which is what a macOS NSVisualEffectView needs and what puts the desktop
+    // directly behind each translucent pane; it also forces CEF into off-screen
+    // rendering, measured at a 5.5MB CPU copy per paint.
+    schema: v.picklist(['compositor', 'window'] as const),
+    default: 'compositor',
     // Machine scope: window chrome is a property of this machine's desktop shell,
     // and a cloned repository must not be able to re-chrome the window.
     scope: 'machine',
-    widget: 'boolean',
+    widget: 'enum',
     category: 'Window',
-    description: 'Composite the live macOS desktop behind the window.',
-    // Shown rather than hidden, so the answer to "why is this off" is on the page
-    // rather than in a commit message.
-    readOnlyReason:
-      'Deliberately off: transparency forces CEF into off-screen rendering, which measured a 5.5MB CPU copy per paint.',
-    keywords: ['window', 'vibrancy', 'transparency', 'desktop', 'macos'],
+    description:
+      'Where the see-through comes from: the window manager blending an opaque window, or a per-pixel transparent window (which costs a full-surface CPU copy per frame).',
+    // The window is created once, from this value, before the page exists.
+    requiresRestart: true,
+    keywords: ['window', 'transparency', 'vibrancy', 'compositor', 'desktop', 'wallpaper', 'blur'],
   }),
   'files.autoSave': defineSetting({
     schema: v.picklist(['off', 'afterDelay', 'onFocusChange', 'onWindowChange'] as const),

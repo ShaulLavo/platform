@@ -14,15 +14,15 @@
          shows the theme's background instead of UA white. Declared as the
          first (lowest-priority) layer so the token rules in
          packages/ui/src/styles/globals.css win the moment they load —
-         including the desktop shell's html[data-native-vibrancy] transparent
-         floor. The colors mirror --background-solid there; changing them
-         means changing both.
+         including the transparent floor a see-through shell window needs. The
+         colors mirror --background-solid there; changing them means changing
+         both.
 
          The default `graphite` palette is inline and `sage` arrives as
          --boot-floor from the script below, rather than both being attribute
          selectors: a [data-palette] rule would outrank
-         html[data-native-vibrancy] and paint an opaque floor over the desktop
-         shell's real blur. */
+         html[data-backdrop='transparent'] and paint an opaque floor over the
+         compositor's real blur. */
       @layer boot {
         html {
           color-scheme: light;
@@ -32,7 +32,7 @@
           color-scheme: dark;
           background-color: var(--boot-floor, oklch(0.145 0.006 70));
         }
-        html[data-native-vibrancy] {
+        html[data-backdrop='transparent'] {
           background-color: transparent;
         }
       }

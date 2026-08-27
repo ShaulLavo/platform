@@ -14,6 +14,7 @@
     "typecheck": "tsgo --noEmit"
   },
   "dependencies": {
+    "@workspace/contracts": "workspace:*",
     "@workspace/observability": "workspace:*",
     "electrobun": "^1.18.1",
     "evlog": "^2.19.1"

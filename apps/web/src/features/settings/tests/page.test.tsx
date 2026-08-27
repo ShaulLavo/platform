@@ -123,21 +123,6 @@ test('reset all clears every key from the layer in one write', async ({ client }
   })
 })
 
-test('shows a read-only key with its reason and no working control', async ({ client }) => {
-  expect(client).toBeDefined()
-  renderWithProviders(<SettingsPage />)
-
-  await userEvent.type(await screen.findByLabelText('Search settings'), 'vibrancy')
-
-  const control = await screen.findByRole('switch', { name: 'Native vibrancy' })
-  // `aria-disabled`, not the `disabled` attribute: the primitive renders a span
-  // with a switch role, so the accessible state is the only truthful assertion.
-  expect(control.getAttribute('aria-disabled')).toBe('true')
-  // Shown rather than hidden: a knob that silently is not there reads as a bug,
-  // where a knob that says why it is off reads as a decision.
-  expect(await screen.findByText(/off-screen rendering/)).toBeDefined()
-})
-
 test('refuses an application-scoped key from the workspace tab, and says why', async ({
   client,
 }) => {

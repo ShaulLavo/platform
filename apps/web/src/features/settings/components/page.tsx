@@ -20,7 +20,10 @@ import { useSettingsDocument } from '@/features/settings/hooks/use-settings-docu
 import { useSettingsProjection } from '@/features/settings/hooks/use-settings-projection'
 import { useSettingsScope } from '@/features/settings/state/scope-store'
 import { useSettingsView } from '@/features/settings/state/view-store'
+import { isSettingAvailable } from '@/features/settings/utils/availability'
 import { matchingSettingIds } from '@/features/settings/utils/search'
+import { documentBackdrop } from '@/lib/platform/backdrop'
+import { isDesktop } from '@/lib/platform/bridge'
 import type { EditorKeymapLayer } from '@singapor/core'
 import type { EditorRenderDocument } from '@/features/editor/utils/render-document'
 import {
@@ -88,8 +91,11 @@ export function SettingsPage({
 
   // `matchingSettingIds` already searches rows rather than keys, so a key edited
   // from another row is folded into its owner here rather than dropped.
+  const environment = { backdrop: documentBackdrop(), isShell: isDesktop() }
   const visible = matchingSettingIds(query).filter(
-    (id) => (descriptorFor(id).visibility ?? 'user') !== 'internal',
+    (id) =>
+      (descriptorFor(id).visibility ?? 'user') !== 'internal' &&
+      isSettingAvailable(id, environment),
   )
   const categories = groupByCategory(visible)
   const selectedFile = document.data.layers.find((layer) => layer.id === scope)?.file ?? null

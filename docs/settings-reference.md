@@ -122,6 +122,6 @@ stays safe to read, share and export.
 
 ## Window
 
-| Setting                 | Default | Scope   | What it does                                                      |
-| ----------------------- | ------- | ------- | ----------------------------------------------------------------- |
-| `window.nativeVibrancy` | `false` | machine | Composite the live macOS desktop behind the window. _(read-only)_ |
+| Setting               | Default        | Scope   | What it does                                                                                                                                                                   |
+| --------------------- | -------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `window.transparency` | `"compositor"` | machine | Where the see-through comes from: the window manager blending an opaque window, or a per-pixel transparent window (which costs a full-surface CPU copy per frame). _(restart)_ |

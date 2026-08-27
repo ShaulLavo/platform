@@ -1,3 +1,5 @@
+import type { ShellBackdrop } from '@/lib/platform/backdrop'
+
 type PlatformPickOptions = {
   mode: 'folder' | 'file'
   accept?: readonly string[]
@@ -6,7 +8,11 @@ type PlatformPickOptions = {
 }
 
 export type PlatformBridge = {
-  hasNativeVibrancy: boolean
+  // The window the shell actually created, never what the setting currently
+  // says — the two differ between a change and the restart it requires, and a
+  // page that believed the setting would paint a clear floor into an opaque
+  // window.
+  backdrop: ShellBackdrop
   pickEntry(options: PlatformPickOptions): Promise<string[]>
 }
 
@@ -18,12 +24,4 @@ export function getPlatformBridge(): PlatformBridge | null {
 
 export function isDesktop() {
   return getPlatformBridge() !== null
-}
-
-// Being in the desktop shell is not the same as having the compositor draw the
-// backdrop: the shell only gets the NSVisualEffectView once its window is
-// transparent, which costs offscreen rendering and is currently off. The shell
-// reports the truth, so the web layer draws its own wallpaper meanwhile.
-export function hasNativeVibrancyShell() {
-  return getPlatformBridge()?.hasNativeVibrancy === true
 }
