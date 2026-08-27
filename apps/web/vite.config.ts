@@ -11,7 +11,7 @@ const EDITOR_SOURCE_EXTENSIONS = ['.ts', '.tsx', '.js', '/index.ts', '/index.tsx
 type EditorSourceModules = Map<string, Map<string, string>>
 
 const workspaceRoot = path.resolve(__dirname, '../..')
-const editorPackagesRoot = path.resolve(workspaceRoot, 'node_modules/@singapor')
+const editorPackagesRoot = resolveEditorPackagesRoot()
 const editorSourceModules = buildEditorSourceModules(editorPackagesRoot)
 const editorRepoRoots = collectEditorRepoRoots(editorPackagesRoot, editorSourceModules)
 const reactRefreshExclude = buildReactRefreshExclude(editorRepoRoots)
@@ -30,6 +30,7 @@ export default defineConfig({
   },
   plugins: [
     editorSourcePlugin(editorSourceModules),
+    editorSourceReloadPlugin(editorRepoRoots),
     platformSelfSaveHmrPlugin(),
     react({ compiler: true, exclude: reactRefreshExclude }),
     tailwindcss(),
@@ -58,6 +59,30 @@ export default defineConfig({
   },
 })
 
+// An editor package is not a React component. Its modules are evaluated once and their
+// plugins instantiated when an editor mounts, so Fast Refresh accepting the update at the
+// app's own `editor.tsx` keeps the mounted instance and the new code never runs. The edit
+// looks like it did nothing. Reload instead.
+function editorSourceReloadPlugin(roots: readonly string[]): Plugin {
+  return {
+    name: 'platform-editor-source-reload',
+    apply: 'serve',
+    hotUpdate: {
+      order: 'pre',
+      handler({ file }) {
+        if (!isEditorSourceFile(file, roots)) return
+
+        this.environment.hot.send({ type: 'full-reload' })
+        return []
+      },
+    },
+  }
+}
+
+function isEditorSourceFile(file: string, roots: readonly string[]): boolean {
+  return roots.some((root) => file.startsWith(`${root}${path.sep}`))
+}
+
 function platformSelfSaveHmrPlugin(): Plugin {
   return {
     name: 'platform-self-save-hmr',
@@ -81,6 +106,17 @@ function platformSelfSaveHmrPlugin(): Plugin {
 // `completionController.js`), so we derive each source target from the package's own
 // `exports` map. Resolution is all-or-nothing per package to avoid serving one entry
 // from `src` and another from `dist` (which would duplicate stateful packages like core).
+// The installer decides which `node_modules` these land in: only a workspace root that
+// depends on them itself gets a copy, so look in the app's own tree first. Missing this
+// is silent — every `@singapor/*` import falls back to the package's prebuilt `dist/`,
+// where the inlined shiki worker cannot reach its own grammar chunks.
+function resolveEditorPackagesRoot(): string {
+  const candidates = [__dirname, workspaceRoot].map((base) =>
+    path.resolve(base, 'node_modules/@singapor'),
+  )
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[1]!
+}
+
 function editorSourcePlugin(modules: EditorSourceModules): Plugin {
   return {
     name: 'platform-editor-source',
