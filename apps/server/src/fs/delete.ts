@@ -13,7 +13,10 @@ export async function deletePath(paths: WorkspacePaths, body: DeleteBody) {
     if (stats.isDirectory() && !body.recursive)
       throw new FsError('INVALID_PATH', 'directory delete requires recursive: true')
 
-    await rm(target.absolutePath, { recursive: body.recursive, force: false })
+    // Not `body.recursive`: the key is always present in this literal, and `rm`
+    // rejects an explicit undefined as hard as it rejects a string. A file delete
+    // omits the flag, and the directory case is already answered above.
+    await rm(target.absolutePath, { recursive: body.recursive === true, force: false })
     return target.relativePath
   } catch (error) {
     if (error instanceof FsError) throw error
