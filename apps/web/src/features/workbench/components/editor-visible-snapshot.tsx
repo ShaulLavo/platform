@@ -80,7 +80,7 @@ export function EditorVisibleSnapshot({ overlayRef, record }: EditorVisibleSnaps
                     key={lane.id}
                     style={{ width: lane.width }}
                   >
-                    {lane.id === 'line-gutter' && row.primaryText ? (
+                    {lane.id === 'line-gutter' && row.firstWrapSegment ? (
                       <span
                         className={
                           row.gutterNumberCursorLine
@@ -91,7 +91,7 @@ export function EditorVisibleSnapshot({ overlayRef, record }: EditorVisibleSnaps
                         {row.bufferRow + 1}
                       </span>
                     ) : null}
-                    {lane.id === 'fold-gutter' && row.primaryText && row.foldMarker ? (
+                    {lane.id === 'fold-gutter' && row.firstWrapSegment && row.foldMarker ? (
                       <span
                         className='editor-virtualized-fold-toggle app-fold-gutter-icon'
                         data-editor-fold-state={row.foldMarker.collapsed ? 'collapsed' : 'expanded'}
@@ -162,6 +162,9 @@ export function EditorVisibleSnapshot({ overlayRef, record }: EditorVisibleSnaps
                 })}
               </span>
             ))}
+            {row.foldMarker?.collapsed ? (
+              <span className='editor-virtualized-fold-placeholder'>...</span>
+            ) : null}
           </div>
         ))}
       </div>

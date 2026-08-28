@@ -71,18 +71,15 @@ export function writeWorkspaceCacheEntry(
   try {
     serialized = JSON.stringify(value)
   } catch {
-    removeWorkspaceCacheEntry(key)
     return { serializedBytes: null, status: 'serialization-failed' }
   }
 
   if (serialized === undefined) {
-    removeWorkspaceCacheEntry(key)
     return { serializedBytes: null, status: 'serialization-failed' }
   }
 
   const serializedBytes = workspaceCacheSerializedBytes(serialized)
   if (serializedBytes > (options.maxSerializedBytes ?? Number.POSITIVE_INFINITY)) {
-    removeWorkspaceCacheEntry(key)
     return { serializedBytes, status: 'oversized' }
   }
 
@@ -90,7 +87,6 @@ export function writeWorkspaceCacheEntry(
     localStorage.setItem(key, serialized)
     return { serializedBytes, status: 'written' }
   } catch {
-    removeWorkspaceCacheEntry(key)
     return { serializedBytes, status: 'storage-failed' }
   }
 }

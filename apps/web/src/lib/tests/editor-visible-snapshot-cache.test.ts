@@ -2,6 +2,7 @@ import { afterEach, beforeEach, vi } from 'vitest'
 import type { EditorVisibleSnapshotJSON } from '@singapor/core'
 
 import { expect, test } from '../../../test/fixtures'
+import { log } from '@/lib/client-logging'
 import {
   EDITOR_VISIBLE_SNAPSHOT_CACHE_MAX_BYTES,
   EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY,
@@ -13,6 +14,7 @@ import {
 } from '@/lib/editor-visible-snapshot-cache'
 
 const STORE = new Map<string, string>()
+const CONTENT_VERSION = 'stat:1:5'
 
 beforeEach(() => {
   STORE.clear()
@@ -34,6 +36,7 @@ test('round-trips one matching record and leaves mismatches untouched', () => {
   expect(writeEditorVisibleSnapshotCache(record).status).toBe('written')
   expect(
     readEditorVisibleSnapshotCache({
+      contentVersion: CONTENT_VERSION,
       rootPath: '/repo',
       path: '/repo/src/app.ts',
       themeId: 'dark-plus',
@@ -41,7 +44,16 @@ test('round-trips one matching record and leaves mismatches untouched', () => {
   ).toEqual(record)
   expect(
     readEditorVisibleSnapshotCache({
+      contentVersion: CONTENT_VERSION,
       rootPath: '/other',
+      path: '/repo/src/app.ts',
+      themeId: 'dark-plus',
+    }),
+  ).toBeNull()
+  expect(
+    readEditorVisibleSnapshotCache({
+      contentVersion: 'stat:2:5',
+      rootPath: '/repo',
       path: '/repo/src/app.ts',
       themeId: 'dark-plus',
     }),
@@ -57,6 +69,7 @@ test('a write overwrites the single prior record', () => {
 
   expect(
     readEditorVisibleSnapshotCache({
+      contentVersion: CONTENT_VERSION,
       rootPath: '/first',
       path: '/first/a.ts',
       themeId: 'dark-plus',
@@ -64,6 +77,7 @@ test('a write overwrites the single prior record', () => {
   ).toBeNull()
   expect(
     readEditorVisibleSnapshotCache({
+      contentVersion: CONTENT_VERSION,
       rootPath: '/second',
       path: '/second/b.ts',
       themeId: 'light-plus',
@@ -76,7 +90,7 @@ test('removes malformed, unsupported, and deeply invalid records', () => {
   expect(readMatchingSnapshot()).toBeNull()
   expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(false)
 
-  const unsupported = { ...cachedSnapshot(), cacheVersion: 2 }
+  const unsupported = { ...cachedSnapshot(), cacheVersion: 3 }
   STORE.set(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY, JSON.stringify(unsupported))
   expect(readMatchingSnapshot()).toBeNull()
 
@@ -109,6 +123,23 @@ test('rejects invalid geometry, gutter lane ids, and run fidelity', () => {
   expect(writeUntyped(transformedRun).status).toBe('invalid')
 })
 
+test('a rejected write preserves the prior record and emits a structured warning', () => {
+  const prior = cachedSnapshot('/repo', '/repo/src/prior.ts')
+  expect(writeEditorVisibleSnapshotCache(prior).status).toBe('written')
+  const warn = vi.spyOn(log, 'warn')
+  const invalid = structuredClone(cachedSnapshot())
+  invalid.snapshot.gutterWidth += 1
+
+  expect(writeUntyped(invalid).status).toBe('invalid')
+  expect(STORE.get(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(JSON.stringify(prior))
+  expect(warn).toHaveBeenCalledWith(
+    expect.objectContaining({
+      action: 'editor.visible_snapshot.cache_write',
+      outcome: 'invalid',
+    }),
+  )
+})
+
 test('rejects nonterminal paint and impossible mounted text geometry', () => {
   const loading = structuredClone(cachedSnapshot())
   loading.snapshot.initialHighlightStatus = 'loading'
@@ -138,6 +169,18 @@ test('rejects nonterminal paint and impossible mounted text geometry', () => {
   overlappingRows.snapshot.rows.push({ ...paintRow(), index: 1, top: 10 })
   overlappingRows.snapshot.totalHeight = 30
   expect(writeEditorVisibleSnapshotCache(overlappingRows).status).toBe('invalid')
+})
+
+test('accepts a row bottom within the geometry tolerance', () => {
+  const record = cachedSnapshot()
+  record.snapshot.rows[0]!.top = 281.40000000000003
+  record.snapshot.rows[0]!.height = 20.1
+  record.snapshot.totalHeight = 301.5
+
+  expect(record.snapshot.rows[0]!.top + record.snapshot.rows[0]!.height).toBeGreaterThan(
+    record.snapshot.totalHeight,
+  )
+  expect(writeEditorVisibleSnapshotCache(record).status).toBe('written')
 })
 
 test('rejects row, chunk, part, and run count overflows', () => {
@@ -201,6 +244,8 @@ test('enforces aggregate chunk, part, and run caps across rows', () => {
 })
 
 test('rejects an oversized write before storage and an oversized read before parsing', () => {
+  const prior = cachedSnapshot('/repo', '/repo/src/prior.ts')
+  expect(writeEditorVisibleSnapshotCache(prior).status).toBe('written')
   const oversized = cachedSnapshot()
   const text = 'x'.repeat(EDITOR_VISIBLE_SNAPSHOT_CACHE_MAX_BYTES / 2)
   oversized.snapshot.rows[0]!.chunks = [exactPaintChunk(text)]
@@ -208,7 +253,7 @@ test('rejects an oversized write before storage and an oversized read before par
   const writeResult = writeEditorVisibleSnapshotCache(oversized)
   expect(writeResult.status).toBe('oversized')
   expect(writeResult.serializedBytes).toBeGreaterThan(EDITOR_VISIBLE_SNAPSHOT_CACHE_MAX_BYTES)
-  expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(false)
+  expect(STORE.get(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(JSON.stringify(prior))
 
   const parse = vi.spyOn(JSON, 'parse')
   STORE.set(
@@ -220,8 +265,10 @@ test('rejects an oversized write before storage and an oversized read before par
   expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(false)
 })
 
-test('a quota failure removes only the visible snapshot key', () => {
-  STORE.set(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY, 'old')
+test('a quota failure preserves the prior visible snapshot', () => {
+  const prior = cachedSnapshot('/repo', '/repo/src/prior.ts')
+  const serializedPrior = JSON.stringify(prior)
+  STORE.set(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY, serializedPrior)
   STORE.set('unrelated', 'keep')
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
@@ -229,7 +276,7 @@ test('a quota failure removes only the visible snapshot key', () => {
   })
 
   expect(writeEditorVisibleSnapshotCache(cachedSnapshot()).status).toBe('storage-failed')
-  expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(false)
+  expect(STORE.get(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(serializedPrior)
   expect(STORE.get('unrelated')).toBe('keep')
 })
 
@@ -254,7 +301,7 @@ test('accepts wrapped and injected display indices beyond document line count', 
   injected.index = 1
   injected.source = 'injected'
   injected.injectedTextRowId = 'hint-1'
-  injected.primaryText = false
+  injected.firstWrapSegment = false
   injected.top = 20
   injected.contentCursorLine = false
   injected.gutterNumberCursorLine = false
@@ -268,7 +315,7 @@ test('accepts wrapped and injected display indices beyond document line count', 
   ]
   const wrapped = paintRow()
   wrapped.index = 2
-  wrapped.primaryText = false
+  wrapped.firstWrapSegment = false
   wrapped.top = 40
   record.snapshot.rows.push(injected, wrapped)
   record.snapshot.totalHeight = 60
@@ -279,6 +326,7 @@ test('accepts wrapped and injected display indices beyond document line count', 
 
 function readMatchingSnapshot() {
   return readEditorVisibleSnapshotCache({
+    contentVersion: CONTENT_VERSION,
     rootPath: '/repo',
     path: '/repo/src/app.ts',
     themeId: 'dark-plus',
@@ -291,7 +339,8 @@ function cachedSnapshot(
   themeId = 'dark-plus',
 ): Mutable<CachedEditorVisibleSnapshot> {
   return {
-    cacheVersion: 1,
+    cacheVersion: 2,
+    contentVersion: CONTENT_VERSION,
     rootPath,
     path,
     themeId,
@@ -342,7 +391,7 @@ function paintRow(): Mutable<EditorVisibleSnapshotJSON['rows'][number]> {
     bufferRow: 0,
     source: 'document',
     injectedTextRowId: null,
-    primaryText: true,
+    firstWrapSegment: true,
     top: 0,
     height: 20,
     leftSpacerWidth: 0,

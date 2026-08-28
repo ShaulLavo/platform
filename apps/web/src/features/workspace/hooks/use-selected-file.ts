@@ -1,6 +1,7 @@
-import { errorMessage } from '@/lib/file-server'
-import type { FileResult } from '@/lib/file-system-types'
+import { errorMessage, statPath } from '@/lib/file-server'
+import type { FileResult, StatResult } from '@/lib/file-system-types'
 import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
+import { fileStatVersion } from '@/features/workspace/utils/file-version'
 import { fileSnapshotQueryOptions } from '@/lib/file-snapshot-query-cache'
 import { idleState, type LoadState } from '@/lib/load-state'
 import { fileSystemKeys } from '@/lib/query-keys'
@@ -16,10 +17,19 @@ export function useSelectedFile(selectedFilePath: string | null) {
     placeholderData: (previousFile) => previousFile,
   })
   const { data, error, isError, isPending } = query
+  const metadataQuery = useQuery<StatResult>({
+    enabled: Boolean(filePath),
+    gcTime: 0,
+    queryFn: ({ signal }) => statPath(filePath ?? '', signal),
+    queryKey: fileSystemKeys.fileMetadata(filePath ?? ''),
+    refetchOnMount: 'always',
+  })
   const fileState = useMemo(
     () => (filePath ? fileLoadState({ data, error, isError, isPending }, filePath) : idleState),
     [data, error, filePath, isError, isPending],
   )
+  const metadata = metadataQuery.isFetching ? undefined : metadataQuery.data
+  const fileVersion = selectedFileVersion(filePath, fileState, metadata)
 
   function resetFileLoad() {
     if (!filePath) return
@@ -30,7 +40,19 @@ export function useSelectedFile(selectedFilePath: string | null) {
     })
   }
 
-  return { fileState, resetFileLoad }
+  return { fileState, fileVersion, resetFileLoad }
+}
+
+function selectedFileVersion(
+  filePath: string | null,
+  fileState: LoadState<FileResult>,
+  metadata: StatResult | undefined,
+): string | null {
+  if (!filePath) return null
+  if (fileState.status === 'ready') return fileStatVersion(fileState.data)
+  if (metadata?.path === filePath) return metadata.version
+
+  return null
 }
 
 export function fileLoadState(

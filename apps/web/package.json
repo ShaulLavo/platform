@@ -35,7 +35,7 @@
     "@foresightjs/react": "^1.0.0",
     "@lexical/react": "^0.45.0",
     "@phosphor-icons/react": "^2.1.10",
-    "@singapor/core": "0.1.1",
+    "@singapor/core": "0.1.2",
     "@singapor/decode": "0.1.1",
     "@singapor/diff": "0.1.1",
     "@singapor/find": "0.1.1",

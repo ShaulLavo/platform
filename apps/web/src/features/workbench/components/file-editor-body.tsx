@@ -26,6 +26,7 @@ export function FileEditorBody({
   definitionTarget,
   editorKeymapLayers,
   fileState,
+  fileVersion,
   languageServerReferences,
   path,
   rootPath,
@@ -36,6 +37,7 @@ export function FileEditorBody({
   definitionTarget: LanguageServerDefinitionTarget | null
   editorKeymapLayers: readonly EditorKeymapLayer[]
   fileState: LoadState<FileResult>
+  fileVersion: string | null
   languageServerReferences: LanguageServerReferencesResult | null
   path: string
   rootPath: string
@@ -67,7 +69,7 @@ export function FileEditorBody({
           rootPath,
         }
       : null,
-    selectedTarget: { path, rootPath },
+    selectedTarget: { contentVersion: fileVersion, path, rootPath },
     theme: { appliedThemeId, committedThemeId, selectedThemeId },
   })
 
@@ -111,6 +113,8 @@ export function FileEditorBody({
           onFocusCapture={dismissVisibleSnapshot}
           onKeyDownCapture={dismissVisibleSnapshot}
           onPointerDownCapture={dismissVisibleSnapshot}
+          onTouchMoveCapture={dismissVisibleSnapshot}
+          onWheelCapture={dismissVisibleSnapshot}
         >
           <Editor
             active={active && currentActions !== null}
@@ -171,6 +175,8 @@ export function FileEditorBody({
         onFocusCapture={dismissVisibleSnapshot}
         onKeyDownCapture={dismissVisibleSnapshot}
         onPointerDownCapture={dismissVisibleSnapshot}
+        onTouchMoveCapture={dismissVisibleSnapshot}
+        onWheelCapture={dismissVisibleSnapshot}
       >
         <EditorVisibleSnapshot
           overlayRef={visibleSnapshot.overlayRef}

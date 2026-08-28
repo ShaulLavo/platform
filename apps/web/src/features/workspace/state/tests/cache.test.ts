@@ -391,7 +391,8 @@ function emptySearchBuffer(rootPath: string): CachedSearchBufferState {
 
 function cachedEditorVisibleSnapshot(rootPath: string): CachedEditorVisibleSnapshot {
   return {
-    cacheVersion: 1,
+    cacheVersion: 2,
+    contentVersion: 'stat:1:1',
     rootPath,
     path: `${rootPath}/src/app.ts`,
     themeId: 'dark-plus',

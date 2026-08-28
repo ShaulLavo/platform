@@ -269,7 +269,9 @@ function paintDebugSnapshot(page) {
       name: entry.name,
       startTime: entry.startTime,
     })),
-    rows: document.querySelectorAll('.editor-virtualized-row').length,
+    rows: Array.from(document.querySelectorAll('.editor-virtualized-row')).filter(
+      (row) => !row.closest('[data-editor-visible-snapshot]'),
+    ).length,
     storageKeys: Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)),
     traceEvents:
       window.__editorPerfTrace

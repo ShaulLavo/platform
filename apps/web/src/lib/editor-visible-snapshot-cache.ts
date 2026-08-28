@@ -5,6 +5,7 @@ import {
   writeWorkspaceCacheEntry,
   type WorkspaceCacheWriteResult,
 } from '@/lib/workspace-cache-storage'
+import { log } from '@/lib/client-logging'
 import type {
   EditorMountedChunkPaintPartJSON,
   EditorVisiblePaintChunkJSON,
@@ -24,7 +25,8 @@ const MAX_PAINT_PARTS = 16_384
 const MAX_PAINT_RUNS = 2_048
 
 export type CachedEditorVisibleSnapshot = {
-  readonly cacheVersion: 1
+  readonly cacheVersion: 2
+  readonly contentVersion: string
   readonly rootPath: string
   readonly path: string
   readonly themeId: string
@@ -33,7 +35,7 @@ export type CachedEditorVisibleSnapshot = {
 
 export type EditorVisibleSnapshotCacheKey = Pick<
   CachedEditorVisibleSnapshot,
-  'rootPath' | 'path' | 'themeId'
+  'contentVersion' | 'rootPath' | 'path' | 'themeId'
 >
 
 export type EditorVisibleSnapshotCacheWriteResult =
@@ -168,7 +170,7 @@ const paintRowSchema = v.strictObject({
   bufferRow: nonNegativeIntegerSchema,
   source: v.union([v.literal('document'), v.literal('injected')]),
   injectedTextRowId: v.nullable(v.string()),
-  primaryText: v.boolean(),
+  firstWrapSegment: v.boolean(),
   top: nonNegativeNumberSchema,
   height: positiveNumberSchema,
   leftSpacerWidth: nonNegativeNumberSchema,
@@ -205,7 +207,8 @@ const editorVisibleSnapshotSchema = v.pipe(
   v.check((snapshot) => editorVisibleSnapshotIsValid(snapshot)),
 )
 const cachedEditorVisibleSnapshotSchema = v.strictObject({
-  cacheVersion: v.literal(1),
+  cacheVersion: v.literal(2),
+  contentVersion: v.string(),
   rootPath: v.string(),
   path: v.string(),
   themeId: v.string(),
@@ -220,6 +223,7 @@ export function readEditorVisibleSnapshotCache(
   if (cached.rootPath !== key.rootPath) return null
   if (cached.path !== key.path) return null
   if (cached.themeId !== key.themeId) return null
+  if (cached.contentVersion !== key.contentVersion) return null
 
   return cached
 }
@@ -229,13 +233,33 @@ export function writeEditorVisibleSnapshotCache(
 ): EditorVisibleSnapshotCacheWriteResult {
   const parsed = v.safeParse(cachedEditorVisibleSnapshotSchema, record)
   if (!parsed.success) {
-    removeEditorVisibleSnapshotCache()
+    log.warn({
+      action: 'editor.visible_snapshot.cache_write',
+      area: 'editor',
+      outcome: 'invalid',
+      validationIssueCount: parsed.issues.length,
+    })
     return { serializedBytes: null, status: 'invalid' }
   }
 
-  return writeWorkspaceCacheEntry(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY, parsed.output, {
-    maxSerializedBytes: EDITOR_VISIBLE_SNAPSHOT_CACHE_MAX_BYTES,
+  const result = writeWorkspaceCacheEntry(
+    EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY,
+    parsed.output,
+    {
+      maxSerializedBytes: EDITOR_VISIBLE_SNAPSHOT_CACHE_MAX_BYTES,
+    },
+  )
+  if (result.status === 'written' || result.status === 'unavailable') return result
+
+  log.warn({
+    action: 'editor.visible_snapshot.cache_write',
+    area: 'editor',
+    outcome: result.status,
+    path: parsed.output.path,
+    rootPath: parsed.output.rootPath,
+    serializedBytes: result.serializedBytes,
   })
+  return result
 }
 
 export function removeEditorVisibleSnapshotCacheForPath({
@@ -274,7 +298,7 @@ function paintChunkIsValid(chunk: EditorVisiblePaintChunkJSON) {
   if (chunk.rowLocalStart > chunk.rowLocalEnd) return false
   if (chunk.replayFidelity !== 'exact' && chunk.runs.length > 0) return false
 
-  const paintLength = paintPartsLength(chunk.parts)
+  const paintLength = paintTextPartsLength(chunk.parts)
   if (!paintRunsAreValid(chunk.runs, paintLength)) return false
   if (chunk.replayFidelity !== 'exact') return true
   if (chunk.parts.some((part) => part.kind !== 'text')) return false
@@ -283,9 +307,13 @@ function paintChunkIsValid(chunk: EditorVisiblePaintChunkJSON) {
   return paintLength === chunk.rowLocalEnd - chunk.rowLocalStart
 }
 
-function paintPartsLength(parts: readonly EditorMountedChunkPaintPartJSON[]) {
+function paintTextPartsLength(parts: readonly EditorMountedChunkPaintPartJSON[]) {
   let length = 0
-  for (const part of parts) length += part.text.length
+  for (const part of parts) {
+    if (part.kind !== 'text') continue
+
+    length += part.text.length
+  }
 
   return length
 }
@@ -322,13 +350,16 @@ function editorVisibleSnapshotIsValid(snapshot: EditorVisibleSnapshotJSON) {
     if (row.index <= previousRowIndex) return false
     if (row.bufferRow >= snapshot.lineCount) return false
     if (row.top < previousRowBottom) return false
-    if (row.top + row.height > snapshot.totalHeight) return false
+    const rowBottom = row.top + row.height
+    if (rowBottom > snapshot.totalHeight && !numbersEqual(rowBottom, snapshot.totalHeight)) {
+      return false
+    }
     if (row.leftSpacerWidth > snapshot.contentWidth) return false
     if (!rowGutterLaneIdsAreValid(row, laneIds)) return false
     if (!rowChunksAreValid(row)) return false
 
     previousRowIndex = row.index
-    previousRowBottom = row.top + row.height
+    previousRowBottom = rowBottom
     chunks += row.chunks.length
     for (const chunk of row.chunks) {
       parts += chunk.parts.length
@@ -357,8 +388,8 @@ function rowGutterLaneIdsAreValid(
 function rowChunksAreValid(row: EditorVisiblePaintRowJSON) {
   if (row.source === 'document' && row.injectedTextRowId !== null) return false
   if (row.source === 'injected' && row.injectedTextRowId === null) return false
-  if (row.source === 'injected' && row.primaryText) return false
-  if (row.foldMarker && !row.primaryText) return false
+  if (row.source === 'injected' && row.firstWrapSegment) return false
+  if (row.foldMarker && !row.firstWrapSegment) return false
 
   const firstChunk = row.chunks[0]
   if (!firstChunk) return row.leftSpacerWidth === 0

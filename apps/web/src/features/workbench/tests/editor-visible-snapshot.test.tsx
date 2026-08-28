@@ -27,6 +27,7 @@ import { expect, test } from '../../../../test/fixtures'
 const ROOT_PATH = '/repo'
 const PATH = '/repo/src/app.ts'
 const THEME_ID = 'dark-plus'
+const CONTENT_VERSION = 'stat:1:15'
 
 beforeEach(() => {
   localStorage.clear()
@@ -121,6 +122,7 @@ test('a held document flushes under its own path before a newly selected path ta
     active: true,
     appliedThemeId: THEME_ID,
     committedThemeId: THEME_ID,
+    contentVersion: CONTENT_VERSION,
     documentId: 'document-1',
     fileReadError: false,
     path: '/repo/src/next.ts',
@@ -132,6 +134,7 @@ test('a held document flushes under its own path before a newly selected path ta
   expect(readMatching()).not.toBeNull()
   expect(
     readEditorVisibleSnapshotCache({
+      contentVersion: CONTENT_VERSION,
       path: '/repo/src/next.ts',
       rootPath: ROOT_PATH,
       themeId: THEME_ID,
@@ -178,6 +181,19 @@ test('a cached selected file never paints above a different held document', () =
 
   rerender({ ...options, documentId: 'document-1' })
   expect(result.current.record).not.toBeNull()
+})
+
+test('a cached frame with a different content version is never presented', () => {
+  writeEditorVisibleSnapshotCache(cachedSnapshot())
+  const buffer = controlledBuffer()
+  const options = hookOptions({ buffer, documentId: null })
+  const { result } = renderHook(
+    (props: HookProps) => useEditorVisibleSnapshot(toHookOptions(props, buffer)),
+    { initialProps: { ...options, contentVersion: 'stat:2:15' } },
+  )
+
+  expect(result.current.record).toBeNull()
+  expect(readMatching()).not.toBeNull()
 })
 
 test('theme previews and committed themes that are not yet applied never persist', () => {
@@ -289,7 +305,7 @@ test('terminal paint dismisses only on the matching next frame', () => {
   expect(highlight?.[1]).toMatchObject({ detail: { status: 'painted' } })
 })
 
-test('plain terminal paint dismisses without a successful highlight mark', () => {
+test('interaction dismissal preserves the authoritative paint pipeline', () => {
   const mark = vi.spyOn(performance, 'mark')
   writeEditorVisibleSnapshotCache(cachedSnapshot())
   const buffer = controlledBuffer()
@@ -299,6 +315,43 @@ test('plain terminal paint dismisses without a successful highlight mark', () =>
     { initialProps: options },
   )
   rerender({ ...options, documentId: 'document-1' })
+
+  act(() => {
+    result.current.onInitialPaint({
+      documentGeneration: 12,
+      documentId: 'document-1',
+      phase: 'text',
+      textVersion: 1,
+    })
+    result.current.dismissOverlay()
+    result.current.onInitialPaint({
+      documentGeneration: 12,
+      documentId: 'document-1',
+      phase: 'highlight-settled',
+      status: 'painted',
+      textVersion: 1,
+    })
+    vi.advanceTimersByTime(16)
+  })
+
+  expect(result.current.record).toBeNull()
+  expect(
+    mark.mock.calls.filter(([name]) => name === 'editor.authoritative_highlight_paint'),
+  ).toHaveLength(1)
+})
+
+test('plain paint survives provider loading and a later painted event remains authoritative', () => {
+  const mark = vi.spyOn(performance, 'mark')
+  writeEditorVisibleSnapshotCache(cachedSnapshot())
+  const buffer = controlledBuffer()
+  const options = hookOptions({ buffer, documentId: null })
+  const { result, rerender } = renderHook(
+    (props: HookProps) => useEditorVisibleSnapshot(toHookOptions(props, buffer)),
+    { initialProps: options },
+  )
+  rerender({ ...options, documentId: 'document-1' })
+  const contribution = activateCaptureContribution(result.current.additionalPlugins[0]!)
+  const replacement = runtimeSnapshot('document-1', 2)
 
   act(() => {
     result.current.onInitialPaint({
@@ -317,13 +370,33 @@ test('plain terminal paint dismisses without a successful highlight mark', () =>
     vi.advanceTimersByTime(16)
   })
 
-  expect(result.current.record).toBeNull()
+  expect(result.current.record).not.toBeNull()
   expect(
     mark.mock.calls.filter(([name]) => name === 'editor.authoritative_text_paint'),
   ).toHaveLength(1)
   expect(
     mark.mock.calls.filter(([name]) => name === 'editor.authoritative_highlight_paint'),
   ).toHaveLength(0)
+
+  act(() => {
+    contribution.update(replacement.snapshot, 'tokens')
+    result.current.dismissOverlay()
+    result.current.onInitialPaint({
+      documentGeneration: 8,
+      documentId: 'document-1',
+      phase: 'highlight-settled',
+      status: 'painted',
+      textVersion: 1,
+    })
+    vi.advanceTimersByTime(350)
+  })
+
+  expect(result.current.record).toBeNull()
+  expect(
+    mark.mock.calls.filter(([name]) => name === 'editor.authoritative_highlight_paint'),
+  ).toHaveLength(1)
+  expect(replacement.materialize).toHaveBeenCalledTimes(1)
+  expect(readMatching()?.snapshot.textVersion).toBe(2)
 })
 
 test('pending-theme paint survives an interrupted handoff and marks once', () => {
@@ -487,13 +560,30 @@ test('the inert renderer preserves bounded parts, syntax runs, and captured geom
     width: '24px',
   })
   expect(view.container.querySelector('[data-editor-fold-state="collapsed"]')).not.toBeNull()
-  expect(view.container.textContent).toContain('abcdNULBidirectional text omitted')
+  expect(view.container.querySelector('.editor-virtualized-fold-placeholder')).toHaveTextContent(
+    '...',
+  )
+  expect(view.container.textContent).toContain('abcdNULBidirectional text omitted...')
 
   const segments = editorVisibleSnapshotSegments(row.chunks[0]!)
   expect(segments.slice(0, 3)).toEqual([
     { kind: 'text', style: null, text: 'a' },
     { kind: 'text', style: { color: 'var(--editor-syntax-keyword)' }, text: 'b' },
     { kind: 'text', style: { color: 'var(--editor-syntax-keyword)' }, text: 'c' },
+  ])
+  expect(
+    editorVisibleSnapshotSegments({
+      ...row.chunks[0]!,
+      parts: [
+        { kind: 'control', text: 'NUL', widthCells: 3 },
+        { kind: 'text', text: 'ab' },
+      ],
+      runs: [{ end: 2, start: 1, style: { color: 'highlighted' } }],
+    }),
+  ).toEqual([
+    { kind: 'control', text: 'NUL', widthCells: 3 },
+    { kind: 'text', style: null, text: 'a' },
+    { kind: 'text', style: { color: 'highlighted' }, text: 'b' },
   ])
   expect(editorVisibleSnapshotCounts(record.snapshot)).toEqual({
     chunks: 2,
@@ -507,6 +597,7 @@ type HookProps = {
   readonly active: boolean
   readonly appliedThemeId: string | null
   readonly committedThemeId: string
+  readonly contentVersion: string | null
   readonly documentId: string | null
   readonly fileReadError: boolean
   readonly path: string
@@ -577,6 +668,19 @@ function mountedCapture(
   return { ...hook, binding, contribution }
 }
 
+function activateCaptureContribution(plugin: EditorPlugin): EditorViewContribution {
+  let provider: EditorViewContributionProvider | null = null
+  plugin.activate({
+    registerViewContribution: (next: EditorViewContributionProvider) => {
+      provider = next
+      return { dispose: vi.fn() }
+    },
+  } as unknown as EditorPluginContext)
+  expect(provider).not.toBeNull()
+
+  return provider!.createContribution({} as never) as EditorViewContribution
+}
+
 function hookOptions({
   buffer: _buffer,
   documentId,
@@ -588,6 +692,7 @@ function hookOptions({
     active: true,
     appliedThemeId: THEME_ID,
     committedThemeId: THEME_ID,
+    contentVersion: CONTENT_VERSION,
     documentId,
     fileReadError: false,
     path: PATH,
@@ -608,7 +713,11 @@ function toHookOptions(props: HookProps, buffer: ControlledBuffer) {
           rootPath: ROOT_PATH,
         }
       : null,
-    selectedTarget: { path: props.path, rootPath: ROOT_PATH },
+    selectedTarget: {
+      contentVersion: props.contentVersion,
+      path: props.path,
+      rootPath: ROOT_PATH,
+    },
     theme: {
       appliedThemeId: props.appliedThemeId,
       committedThemeId: props.committedThemeId,
@@ -617,8 +726,9 @@ function toHookOptions(props: HookProps, buffer: ControlledBuffer) {
   }
 }
 
-function runtimeSnapshot(documentId: string) {
+function runtimeSnapshot(documentId: string, textVersion = 1) {
   const visible = cachedSnapshot().snapshot
+  visible.textVersion = textVersion
   const materialize = vi.fn(() => ({
     ...visible,
     toJSON: () => visible,
@@ -692,12 +802,18 @@ function controlledBuffer(): ControlledBuffer {
 }
 
 function readMatching() {
-  return readEditorVisibleSnapshotCache({ path: PATH, rootPath: ROOT_PATH, themeId: THEME_ID })
+  return readEditorVisibleSnapshotCache({
+    contentVersion: CONTENT_VERSION,
+    path: PATH,
+    rootPath: ROOT_PATH,
+    themeId: THEME_ID,
+  })
 }
 
 function cachedSnapshot(): Mutable<CachedEditorVisibleSnapshot> {
   return {
-    cacheVersion: 1,
+    cacheVersion: 2,
+    contentVersion: CONTENT_VERSION,
     path: PATH,
     rootPath: ROOT_PATH,
     snapshot: visibleSnapshot(),
@@ -744,7 +860,7 @@ function visibleSnapshot(): Mutable<EditorVisibleSnapshotJSON> {
         index: 0,
         injectedTextRowId: null,
         leftSpacerWidth: 0,
-        primaryText: true,
+        firstWrapSegment: true,
         source: 'document',
         top: 0,
       },

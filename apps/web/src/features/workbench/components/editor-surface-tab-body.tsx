@@ -49,7 +49,7 @@ export function EditorSurfaceTabBody({
   const selectedConflictDiff = useMemo(() => parseConflictDiffDocumentId(path), [path])
   const selectedSearchBuffer = useMemo(() => parseSearchBufferDocumentId(path), [path])
   const selectedRefDocument = useMemo(() => parseRefDocumentId(path), [path])
-  const { fileState } = useSelectedFile(
+  const { fileState, fileVersion } = useSelectedFile(
     selectedConflictDiff || selectedSearchBuffer || selectedRefDocument ? null : path,
   )
   const selectedViewDocumentId = useEditorDocumentState(
@@ -225,6 +225,7 @@ export function EditorSurfaceTabBody({
         definitionTarget={definitionTarget ?? (active ? uiDefinitionTarget : null)}
         editorKeymapLayers={editorKeymapLayers}
         fileState={fileState}
+        fileVersion={fileVersion}
         languageServerReferences={active ? languageServerReferences : null}
         path={path}
         rootPath={rootPath}

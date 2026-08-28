@@ -19,12 +19,16 @@ import { addLifecycleFlush } from '@/lib/lifecycle-flush'
 const CAPTURE_DEBOUNCE_MS = 350
 const PRESENTATION_FAIL_SAFE_MS = 1_500
 
-type SnapshotTarget = {
+type SnapshotPath = {
   readonly path: string
   readonly rootPath: string
 }
 
-type RenderedSnapshotDocument = SnapshotTarget & {
+type SnapshotTarget = SnapshotPath & {
+  readonly contentVersion: string | null
+}
+
+type RenderedSnapshotDocument = SnapshotPath & {
   readonly buffer: EditorTextBuffer
   readonly documentId: string
 }
@@ -148,14 +152,14 @@ export function useEditorVisibleSnapshot({
   }
 
   const overlayRef = useRef<HTMLDivElement>(null)
-  const runtimeRef = useRef<CaptureRuntime>(
+  const runtimeRef = useRef<CaptureRuntime | (() => CaptureRuntime)>(() =>
     createCaptureRuntime(active, renderedDocument, selectedTarget, theme),
   )
   const dismissOverlay = useMemo(
-    () => (removeTarget?: SnapshotTarget) => {
+    () => (removeTarget?: SnapshotPath) => {
       const overlay = overlayRef.current
       if (overlay) overlay.hidden = true
-      cancelPresentationWork(runtimeRef.current)
+      cancelOverlayPresentation(currentCaptureRuntime(runtimeRef))
       if (removeTarget) removeEditorVisibleSnapshotCacheForPath(removeTarget)
       setPresented((current) => {
         if (current.record === null) return current
@@ -175,8 +179,9 @@ export function useEditorVisibleSnapshot({
       activate: (context) =>
         context.registerViewContribution({
           createContribution: () => ({
-            dispose: () => flushCapture(runtimeRef.current),
-            update: (snapshot, kind) => acceptSnapshot(runtimeRef.current, snapshot, kind),
+            dispose: () => flushCapture(currentCaptureRuntime(runtimeRef)),
+            update: (snapshot, kind) =>
+              acceptSnapshot(currentCaptureRuntime(runtimeRef), snapshot, kind),
           }),
         }),
     }),
@@ -194,7 +199,7 @@ export function useEditorVisibleSnapshot({
     if (event.documentId !== onInitialPaintDocumentId) return
 
     acceptInitialPaint(
-      runtimeRef.current,
+      currentCaptureRuntime(runtimeRef),
       event,
       onInitialPaintCandidateIdentity,
       dismissOverlayForInteraction,
@@ -206,12 +211,13 @@ export function useEditorVisibleSnapshot({
   const renderedRootPath = renderedDocument?.rootPath ?? null
   const selectedPath = selectedTarget.path
   const selectedRootPath = selectedTarget.rootPath
+  const selectedContentVersion = selectedTarget.contentVersion
   const appliedThemeId = theme.appliedThemeId
   const committedThemeId = theme.committedThemeId
   const selectedThemeId = theme.selectedThemeId
 
   useLayoutEffect(() => {
-    const runtime = runtimeRef.current
+    const runtime = currentCaptureRuntime(runtimeRef)
     const nextRenderedDocument = renderedSnapshotDocument(
       renderedBuffer,
       renderedDocumentId,
@@ -221,10 +227,14 @@ export function useEditorVisibleSnapshot({
     const nextPaintCandidateIdentity = initialPaintCandidateIdentity(
       active,
       nextRenderedDocument,
-      { path: selectedPath, rootPath: selectedRootPath },
+      { contentVersion: selectedContentVersion, path: selectedPath, rootPath: selectedRootPath },
       { appliedThemeId, committedThemeId, selectedThemeId },
     )
-    const nextTarget = { path: selectedPath, rootPath: selectedRootPath }
+    const nextTarget = {
+      contentVersion: selectedContentVersion,
+      path: selectedPath,
+      rootPath: selectedRootPath,
+    }
     const nextTheme = { appliedThemeId, committedThemeId, selectedThemeId }
     if (!captureRuntimeMatches(runtime, active, nextRenderedDocument, nextTarget, nextTheme)) {
       flushCapture(runtime)
@@ -246,10 +256,12 @@ export function useEditorVisibleSnapshot({
     renderedRootPath,
     selectedPath,
     selectedRootPath,
+    selectedContentVersion,
     selectedThemeId,
   ])
 
   useLayoutEffect(() => {
+    const runtime = currentCaptureRuntime(runtimeRef)
     const document = renderedSnapshotDocument(
       renderedBuffer,
       renderedDocumentId,
@@ -261,9 +273,9 @@ export function useEditorVisibleSnapshot({
     const { buffer } = document
     const removeDirtySnapshot = () => {
       if (!buffer.isDirty()) return
-      if (!renderedDocumentMatches(runtimeRef.current.renderedDocument, document)) return
+      if (!renderedDocumentMatches(runtime.renderedDocument, document)) return
 
-      cancelPendingCapture(runtimeRef.current)
+      cancelPendingCapture(runtime)
       dismissOverlay(document)
     }
     removeDirtySnapshot()
@@ -273,7 +285,8 @@ export function useEditorVisibleSnapshot({
   useLayoutEffect(() => {
     if (!fileReadError) return
 
-    cancelPendingCapture(runtimeRef.current)
+    const runtime = currentCaptureRuntime(runtimeRef)
+    cancelPendingCapture(runtime)
     // oxlint-disable-next-line oxc-react-compiler/set-state-in-effect -- read errors synchronously invalidate an external cached visual.
     dismissOverlay({ path: selectedPath, rootPath: selectedRootPath })
   }, [dismissOverlay, fileReadError, selectedPath, selectedRootPath])
@@ -289,7 +302,7 @@ export function useEditorVisibleSnapshot({
   useLayoutEffect(() => {
     if (!record) return
 
-    const runtime = runtimeRef.current
+    const runtime = currentCaptureRuntime(runtimeRef)
     const startedAt = now()
     const detail = {
       ...editorVisibleSnapshotCounts(record.snapshot),
@@ -313,10 +326,10 @@ export function useEditorVisibleSnapshot({
     }
   }, [dismissOverlay, record])
 
-  useEffect(() => addLifecycleFlush(() => flushCapture(runtimeRef.current)), [])
+  useEffect(() => addLifecycleFlush(() => flushCapture(currentCaptureRuntime(runtimeRef))), [])
 
   useLayoutEffect(() => {
-    const runtime = runtimeRef.current
+    const runtime = currentCaptureRuntime(runtimeRef)
     runtime.disposed = false
 
     return () => {
@@ -334,6 +347,17 @@ export function useEditorVisibleSnapshot({
     overlayRef,
     record,
   }
+}
+
+function currentCaptureRuntime(runtimeRef: {
+  current: CaptureRuntime | (() => CaptureRuntime)
+}): CaptureRuntime {
+  const current = runtimeRef.current
+  if (typeof current !== 'function') return current
+
+  const runtime = current()
+  runtimeRef.current = runtime
+  return runtime
 }
 
 function createCaptureRuntime(
@@ -404,6 +428,7 @@ function captureRuntimeMatches(
   if (runtime.selectedThemeId !== theme.selectedThemeId) return false
   if (runtime.selectedTarget.path !== selectedTarget.path) return false
   if (runtime.selectedTarget.rootPath !== selectedTarget.rootPath) return false
+  if (runtime.selectedTarget.contentVersion !== selectedTarget.contentVersion) return false
 
   return renderedDocumentMatches(runtime.renderedDocument, renderedDocument)
 }
@@ -466,7 +491,8 @@ function flushCapture(runtime: CaptureRuntime, expectedGeneration = runtime.gene
 
   const rendered = runtime.renderedDocument
   const themeId = runtime.appliedThemeId
-  if (!rendered || !themeId) return
+  const contentVersion = runtime.selectedTarget.contentVersion
+  if (!rendered || !themeId || contentVersion === null) return
 
   const snapshot = visible.toJSON()
   recordEditorVisibleSnapshotPerformance(
@@ -479,7 +505,8 @@ function flushCapture(runtime: CaptureRuntime, expectedGeneration = runtime.gene
     },
   )
   const result = writeEditorVisibleSnapshotCache({
-    cacheVersion: 1,
+    cacheVersion: 2,
+    contentVersion,
     path: rendered.path,
     rootPath: rendered.rootPath,
     snapshot,
@@ -592,7 +619,7 @@ function flushInitialPaint(runtime: CaptureRuntime, dismiss: () => void): void {
       continue
     }
 
-    terminal = true
+    if (item.event.status !== 'plain') terminal = true
     if (item.event.status === 'painted' || item.event.status === 'degraded') {
       markEditorVisibleSnapshotPerformance(
         'editor.authoritative_highlight_paint',
@@ -635,9 +662,13 @@ function cancelCaptureTimer(runtime: CaptureRuntime): void {
 }
 
 function cancelPresentationWork(runtime: CaptureRuntime): void {
+  cancelOverlayPresentation(runtime)
+  cancelAuthoritativePaint(runtime)
+}
+
+function cancelOverlayPresentation(runtime: CaptureRuntime): void {
   cancelPresentationTimer(runtime)
   cancelCachedPaint(runtime)
-  cancelAuthoritativePaint(runtime)
 }
 
 function cancelCachedPaint(runtime: CaptureRuntime): void {
@@ -685,16 +716,21 @@ function initialPresentedSnapshot(
     active &&
     !fileReadError &&
     renderedDocument === null &&
+    selectedTarget.contentVersion !== null &&
     theme.selectedThemeId === theme.committedThemeId
   const attempted = renderedDocument === null
   const attemptedIdentities = attempted ? new Set([...priorAttempts, identity]) : priorAttempts
-  if (!eligible) return { attempted, attemptedIdentities, identity, record: null }
+  const contentVersion = selectedTarget.contentVersion
+  if (!eligible || contentVersion === null) {
+    return { attempted, attemptedIdentities, identity, record: null }
+  }
 
   return {
     attempted: true,
     attemptedIdentities,
     identity,
     record: readEditorVisibleSnapshotCache({
+      contentVersion,
       path: selectedTarget.path,
       rootPath: selectedTarget.rootPath,
       themeId: theme.committedThemeId,
@@ -711,6 +747,7 @@ function presentableRecord(
   theme: EditorSnapshotThemeIdentity,
 ): CachedEditorVisibleSnapshot | null {
   if (!record || !active || fileReadError) return null
+  if (record.contentVersion !== selectedTarget.contentVersion) return null
   if (record.rootPath !== selectedTarget.rootPath) return null
   if (record.path !== selectedTarget.path) return null
   if (theme.selectedThemeId !== theme.committedThemeId) return null
@@ -728,6 +765,7 @@ function cachePresentationIdentity(
 ): string {
   return [
     active ? 'active' : 'inactive',
+    target.contentVersion ?? 'unknown-content',
     target.rootPath,
     target.path,
     theme.committedThemeId,

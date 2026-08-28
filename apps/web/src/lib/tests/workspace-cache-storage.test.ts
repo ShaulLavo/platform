@@ -61,7 +61,7 @@ test('rejects an oversized entry before parsing it', () => {
   expect(STORE.has(TEST_KEY)).toBe(false)
 })
 
-test('rejects an oversized write before localStorage and clears only its key', () => {
+test('rejects an oversized write before localStorage and preserves its prior entry', () => {
   STORE.set(TEST_KEY, 'old')
   STORE.set('unrelated', 'keep')
 
@@ -74,11 +74,20 @@ test('rejects an oversized write before localStorage and clears only its key', (
   )
 
   expect(result.status).toBe('oversized')
-  expect(STORE.has(TEST_KEY)).toBe(false)
+  expect(STORE.get(TEST_KEY)).toBe('old')
   expect(STORE.get('unrelated')).toBe('keep')
 })
 
-test('a quota failure clears only the failed key', () => {
+test('serialization failure preserves the prior entry', () => {
+  STORE.set(TEST_KEY, 'old')
+  const circular: { self?: unknown } = {}
+  circular.self = circular
+
+  expect(writeWorkspaceCacheEntry(TEST_KEY, circular).status).toBe('serialization-failed')
+  expect(STORE.get(TEST_KEY)).toBe('old')
+})
+
+test('a quota failure preserves the failed key', () => {
   STORE.set(TEST_KEY, 'old')
   STORE.set('unrelated', 'keep')
   Object.defineProperty(globalThis, 'localStorage', {
@@ -87,7 +96,7 @@ test('a quota failure clears only the failed key', () => {
   })
 
   expect(writeWorkspaceCacheEntry(TEST_KEY, { value: 'next' }).status).toBe('storage-failed')
-  expect(STORE.has(TEST_KEY)).toBe(false)
+  expect(STORE.get(TEST_KEY)).toBe('old')
   expect(STORE.get('unrelated')).toBe('keep')
 
   removeWorkspaceCacheEntry('unrelated')

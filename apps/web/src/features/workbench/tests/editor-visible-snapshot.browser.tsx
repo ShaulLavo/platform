@@ -35,6 +35,7 @@ import {
 } from '@/features/workbench/providers/editor-surface-actions-context'
 import { useSelectedFile } from '@/features/workspace/hooks/use-selected-file'
 import { getClient, serverUrl, setClient, type Client } from '@/lib/client'
+import { statPath } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
 import { clientInstanceId, instanceHeaderName } from '@/lib/instance-id'
 import {
@@ -48,6 +49,7 @@ let root: Root | null = null
 let liveEditor: CoreEditor | null = null
 let pendingReadGate: DelayedReadGate | null = null
 let restoreClient: Client | null = null
+const CONTENT_VERSION = 'stat:1:1'
 
 afterEach(async () => {
   pendingReadGate?.release()
@@ -136,6 +138,10 @@ test('cached paint matches live editor geometry, glass, active gutter, and synta
     '[data-editor-visible-gutter-lane="fold-gutter"].editor-virtualized-cursor-line-gutter',
   )
   const replayControl = await elementWithin(replayHost, '.editor-virtualized-control-character')
+  const replayFoldPlaceholder = await elementWithin(
+    replayHost,
+    '.editor-virtualized-fold-placeholder',
+  )
   const syntaxProbe = document.createElement('span')
   syntaxProbe.style.color = 'var(--editor-syntax-keyword)'
   liveSurface.append(syntaxProbe)
@@ -173,8 +179,9 @@ test('cached paint matches live editor geometry, glass, active gutter, and synta
     1,
   )
   expect(replayControl.getBoundingClientRect().width).toBe(24)
+  expect(replayFoldPlaceholder.textContent).toBe('...')
   expect(replayContentRow.textContent).toBe(
-    'const\tvalueNULBidirectional text omitted from this bounded paint',
+    'const\tvalueNULBidirectional text omitted from this bounded paint...',
   )
   expect(replayHost.querySelector('textarea')).toBeNull()
   expect(replayHost.querySelector('[contenteditable]')).toBeNull()
@@ -188,7 +195,7 @@ test(
     const rootPath = 'repo'
     const themeId = prepareRealFileTest()
     const gate = installDelayedReadClient()
-    const record = cachedSnapshotForTarget(path, rootPath, themeId)
+    const record = await cachedSnapshotForExistingTarget(path, rootPath, themeId)
     expect(writeEditorVisibleSnapshotCache(record).status).toBe('written')
 
     const host = mountRealFileEditor(path, rootPath)
@@ -253,52 +260,69 @@ test('a real file-read error removes both the cold paint and its matching record
   const rootPath = 'repo'
   const themeId = prepareRealFileTest()
   const gate = installDelayedReadClient()
-  expect(
-    writeEditorVisibleSnapshotCache(cachedSnapshotForTarget(path, rootPath, themeId)).status,
-  ).toBe('written')
+  const record = cachedSnapshotForTarget(path, rootPath, themeId, 'stat:missing')
+  expect(writeEditorVisibleSnapshotCache(record).status).toBe('written')
 
   const host = mountRealFileEditor(path, rootPath)
   await expect.poll(gate.observedStatus).toBe(404)
-  expect(await element('[data-editor-visible-snapshot]')).not.toBeNull()
+  expect(host.querySelector('[data-editor-visible-snapshot]')).toBeNull()
 
   gate.release()
 
   await expect.poll(() => host.querySelector('[data-editor-visible-snapshot]')).toBeNull()
-  await expect.poll(() => readEditorVisibleSnapshotCache({ path, rootPath, themeId })).toBeNull()
+  await expect
+    .poll(() =>
+      readEditorVisibleSnapshotCache({
+        contentVersion: record.contentVersion,
+        path,
+        rootPath,
+        themeId,
+      }),
+    )
+    .toBeNull()
   await expect.poll(() => host.textContent?.toLowerCase()).toContain('found')
 })
 
-test('FileEditorBody capture hides cold paint before a real pointer event bubbles', async () => {
-  const path = 'repo/src/editor-tab-b.ts'
-  const rootPath = 'repo'
-  const themeId = prepareRealFileTest()
-  const gate = installDelayedReadClient()
-  expect(
-    writeEditorVisibleSnapshotCache(cachedSnapshotForTarget(path, rootPath, themeId)).status,
-  ).toBe('written')
+test.each(['pointerdown', 'touchmove', 'wheel'] as const)(
+  'FileEditorBody capture hides cold paint before a real %s event bubbles',
+  async (eventType) => {
+    const path = 'repo/src/editor-tab-b.ts'
+    const rootPath = 'repo'
+    const themeId = prepareRealFileTest()
+    const gate = installDelayedReadClient()
+    const record = await cachedSnapshotForExistingTarget(path, rootPath, themeId)
+    expect(writeEditorVisibleSnapshotCache(record).status).toBe('written')
 
-  const host = mountRealFileEditor(path, rootPath)
-  await expect.poll(gate.observedStatus).toBe(200)
-  const overlay = await element('[data-editor-visible-snapshot]')
-  const pane = overlay.parentElement
-  expect(pane).not.toBeNull()
-  if (!pane) return
+    const host = mountRealFileEditor(path, rootPath)
+    await expect.poll(gate.observedStatus).toBe(200)
+    const overlay = await element('[data-editor-visible-snapshot]')
+    const pane = overlay.parentElement
+    expect(pane).not.toBeNull()
+    if (!pane) return
 
-  let hiddenAtBubble = false
-  pane.addEventListener(
-    'pointerdown',
-    () => {
-      hiddenAtBubble = overlay.hidden === true
-    },
-    { once: true },
-  )
-  pane.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))
+    let hiddenAtBubble = false
+    pane.addEventListener(
+      eventType,
+      () => {
+        hiddenAtBubble = overlay.hidden === true
+      },
+      { once: true },
+    )
+    pane.dispatchEvent(editorInteractionEvent(eventType))
 
-  expect(hiddenAtBubble).toBe(true)
-  expect(overlay.hidden).toBe(true)
-  expect(readEditorVisibleSnapshotCache({ path, rootPath, themeId })).not.toBeNull()
-  expect(host.querySelector('.app-editor-host:not([data-editor-visible-snapshot])')).toBeNull()
-})
+    expect(hiddenAtBubble).toBe(true)
+    expect(overlay.hidden).toBe(true)
+    expect(
+      readEditorVisibleSnapshotCache({
+        contentVersion: record.contentVersion,
+        path,
+        rootPath,
+        themeId,
+      }),
+    ).not.toBeNull()
+    expect(host.querySelector('.app-editor-host:not([data-editor-visible-snapshot])')).toBeNull()
+  },
+)
 
 test('the cached mark stays distinct from matching next-frame authoritative paint', async () => {
   expect(writeEditorVisibleSnapshotCache(cachedSnapshot()).status).toBe('written')
@@ -387,7 +411,11 @@ function PaintHarness({ live }: { live: boolean }) {
           rootPath: '/repo',
         }
       : null,
-    selectedTarget: { path: '/repo/src/app.ts', rootPath: '/repo' },
+    selectedTarget: {
+      contentVersion: CONTENT_VERSION,
+      path: '/repo/src/app.ts',
+      rootPath: '/repo',
+    },
     theme: {
       appliedThemeId: 'dark-plus',
       committedThemeId: 'dark-plus',
@@ -445,7 +473,11 @@ function InteractionHarness({
     active: true,
     fileReadError: false,
     renderedDocument: null,
-    selectedTarget: { path: '/repo/src/app.ts', rootPath: '/repo' },
+    selectedTarget: {
+      contentVersion: CONTENT_VERSION,
+      path: '/repo/src/app.ts',
+      rootPath: '/repo',
+    },
     theme: {
       appliedThemeId: 'dark-plus',
       committedThemeId: 'dark-plus',
@@ -534,7 +566,7 @@ function mountRealFileEditor(path: string, rootPath: string): HTMLElement {
 }
 
 function RealFileEditorBody({ path, rootPath }: { path: string; rootPath: string }) {
-  const { fileState } = useSelectedFile(path)
+  const { fileState, fileVersion } = useSelectedFile(path)
   const liveDocument = useMemo(
     () => (fileState.status === 'ready' ? renderDocumentForFile(fileState.data) : null),
     [fileState],
@@ -547,6 +579,7 @@ function RealFileEditorBody({ path, rootPath }: { path: string; rootPath: string
         definitionTarget={null}
         editorKeymapLayers={[]}
         fileState={fileState}
+        fileVersion={fileVersion}
         languageServerReferences={null}
         liveDocument={liveDocument}
         path={path}
@@ -584,14 +617,26 @@ function cachedSnapshotForTarget(
   path: string,
   rootPath: string,
   themeId: string,
+  contentVersion: string,
 ): CachedEditorVisibleSnapshot {
   const record = structuredClone(cachedSnapshot()) as Mutable<CachedEditorVisibleSnapshot>
+  record.contentVersion = contentVersion
   record.path = path
   record.rootPath = rootPath
   record.snapshot.documentId = path
   record.snapshot.theme = structuredClone(TREE_SITTER_DARK_THEME.editorTheme)
   record.themeId = themeId
   return record
+}
+
+async function cachedSnapshotForExistingTarget(
+  path: string,
+  rootPath: string,
+  themeId: string,
+): Promise<CachedEditorVisibleSnapshot> {
+  const metadata = await statPath(path, new AbortController().signal)
+
+  return cachedSnapshotForTarget(path, rootPath, themeId, metadata.version)
 }
 
 function appliedThemeIdentity(): string | null {
@@ -687,7 +732,8 @@ function hasVisibleSnapshot(host: HTMLElement): boolean {
 
 function cachedSnapshot(): CachedEditorVisibleSnapshot {
   return {
-    cacheVersion: 1,
+    cacheVersion: 2,
+    contentVersion: CONTENT_VERSION,
     path: '/repo/src/app.ts',
     rootPath: '/repo',
     snapshot: {
@@ -756,7 +802,7 @@ function cachedSnapshot(): CachedEditorVisibleSnapshot {
           index: 0,
           injectedTextRowId: null,
           leftSpacerWidth: 0,
-          primaryText: true,
+          firstWrapSegment: true,
           source: 'document',
           top: 0,
         },
@@ -781,7 +827,7 @@ function cachedSnapshot(): CachedEditorVisibleSnapshot {
           index: 1,
           injectedTextRowId: null,
           leftSpacerWidth: 0,
-          primaryText: true,
+          firstWrapSegment: true,
           source: 'document',
           top: 20,
         },
@@ -809,6 +855,13 @@ function cachedSnapshot(): CachedEditorVisibleSnapshot {
     },
     themeId: 'dark-plus',
   }
+}
+
+function editorInteractionEvent(type: 'pointerdown' | 'touchmove' | 'wheel'): Event {
+  if (type === 'pointerdown') return new PointerEvent(type, { bubbles: true })
+  if (type === 'wheel') return new WheelEvent(type, { bubbles: true })
+
+  return new Event(type, { bubbles: true })
 }
 
 async function element(selector: string): Promise<HTMLElement> {

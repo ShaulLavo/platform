@@ -56,6 +56,7 @@ function body({
           definitionTarget={null}
           editorKeymapLayers={[]}
           fileState={{ status: 'loading' }}
+          fileVersion={null}
           languageServerReferences={null}
           liveDocument={document}
           path={path}
