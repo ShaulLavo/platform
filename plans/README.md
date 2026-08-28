@@ -19,8 +19,10 @@ a bare root `bun run verify`.
 | [065 — prove Ghostty config resolver](065-prove-ghostty-config-resolver.md)             | **PROPOSED — ROOT GO/NO-GO SCHEDULING**       |
 | [066 — package Ghostty config resolver](066-package-ghostty-config-resolver.md)         | **BLOCKED ON 065 PASS**                       |
 | [067 — integrate Ghostty config appearance](067-integrate-ghostty-config-appearance.md) | **BLOCKED ON 066 REVIEWED ARTIFACT**          |
-| [068 — app-owned shiki grammars](068-app-owned-shiki-grammars.md)                       | **PROPOSED — ROOT GO/NO-GO SCHEDULING**       |
-| [069 — syntax highlight retry](069-syntax-highlight-retry.md)                           | **PROPOSED — SCHEDULE AFTER 068**             |
+| [068 — session domain model](068-session-domain-model.md)                               | **PROPOSED — ROOT GO/NO-GO SCHEDULING**       |
+| [069 — worktree lifecycle](069-worktree-lifecycle.md)                                   | **BLOCKED ON 068 AND ROOT SCHEDULING**        |
+| [070 — app-owned shiki grammars](070-app-owned-shiki-grammars.md)                       | **PROPOSED — ROOT GO/NO-GO SCHEDULING**       |
+| [071 — syntax highlight retry](071-syntax-highlight-retry.md)                           | **PROPOSED — SCHEDULE AFTER 070**             |
 | [064 — anchored diagnostic peek](064-anchored-diagnostic-peek.md)                       | **SCHEDULED AFTER 061 — GO/NO-GO**            |
 | [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                         | **SCHEDULED AFTER 064 — RECONCILE**           |
 | [057 — editor-native VS Code keymap](057-editor-native-vscode-keymap.md)                | **BLOCKED ON 056 — RUNTIME RECONCILED**       |
@@ -34,10 +36,20 @@ a bare root `bun run verify`.
   preview dispatch, duplicate settings error reporting, or a second mutation path.
 - Plan 056 must extend that typed bus and acknowledged focus service instead of introducing another
   active-Editor dispatch owner.
-- Plan 068 spans two repositories and must land as one change: it adds required fields to the
+- Plan 068 is the session-domain foundation: it replaces the current thread-shaped aggregate with
+  explicit Project → Worktree → Session ownership, makes Claude's raw UUID the portable session
+  identity, imports terminal-born Claude sessions through commands/events/receipts, and projects
+  `needs-input` / `working` / `settled` for the sidebar. It deliberately resets obsolete greenfield
+  orchestration state rather than maintaining compatibility aliases. Root `PLAN.md` has not
+  scheduled it yet.
+- Plan 069 executes strictly after Plan 068. It adds explicit current-branch versus new-worktree
+  creation, durable provisioning and cleanup recovery, and shared worktree chips on the same event
+  spine. It must not restore the checkout reactor's project-root fallback or implement the reserved
+  Orca compare view. Root `PLAN.md` has not scheduled it yet.
+- Plan 070 spans two repositories and must land as one change: it adds required fields to the
   shiki worker protocol in Editor `packages/editor`, and the resolver that fills them in
   Platform `apps/web`. Neither half is shippable alone. It has no dependency on any other plan.
-- Plan 069 is Editor-only and independent of 068, but must not land before it: a retry loop
+- Plan 071 is Editor-only and independent of 070, but must not land before it: a retry loop
   running against a live permanent failure buries the cause it would otherwise surface.
 - Plan 064's interactive React overlay uses the landed deepest-target FocusService and exact origin
   restoration. Its first step may
