@@ -9,7 +9,7 @@
 
 ## Status
 
-- **State**: Proposed — needs root scheduling
+- **State**: In progress — scheduled as an independent Platform + Editor lockstep syntax lane
 - **Priority**: P1 — shiki highlighting is entirely non-functional in any build that consumes
   `@singapor/core` from `dist/`
 - **Effort**: M
@@ -19,8 +19,7 @@
 - **Editor baseline**: `0f4f8f498954a701cbf8041a13586f227bd5d3ce`
 - **Package pin**: `shiki@3.23.0`, `@shikijs/langs@3.23.0`, `@shikijs/engine-oniguruma@3.23.0`
 
-Root `PLAN.md` is authoritative for ordering. This is an independent editor-syntax lane; stop and
-ask the operator where to schedule it if it has not been added there when execution is requested.
+Root `PLAN.md` is authoritative for ordering and now schedules this independent editor-syntax lane.
 
 ## Why
 

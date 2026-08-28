@@ -60,13 +60,28 @@ required parser/Unicode, inactive-buffer, row-marker, and OSC 8 APIs are not pub
 gate has passed, but it remains blocked on Plan 009 and physical operator evidence. Plans 011–015
 remain in package-defined dependency order and are not prerequisites for current Platform work.
 
-## Deferred Ghostty appearance lane
+## Independent lockstep syntax lane
+
+Plan 070 is **SCHEDULED NOW** as an independent Platform + Editor lockstep lane. Platform owns
+Shiki grammar and theme resolution; Editor receives resolved registrations through required
+protocol fields and keeps its inline worker self-contained. Keep the existing Oniguruma engine
+unless a current behavior measurement proves that the JavaScript engine preserves the exact
+grammar behavior used by Platform. The Editor package build must reject any inline worker that
+emits sibling chunks, and the same pass must delete every obsolete name-resolution path.
+
+Neither repository half is complete alone. Verify Editor's focused package gates, the built `dist`
+consumer in Platform, the inline worker's zero-sibling-chunk invariant, bounded grammar loading,
+and live `editor.syntax` success/failure logs before deleting the executable plan. Plan 071 remains
+ordered after this lane.
+
+## Reopened Ghostty appearance lane
 
 Plan 065's first proof found that the pinned normal loader can create a template when no config
-exists. The operator accepted one narrow divergence on 2026-08-28: the resolver may enumerate the
-fixed default candidates itself, using upstream path builders and frozen precedence tests, then
-open and parse them read-only through Ghostty. It must never call the template-writing loader or
-duplicate any parser, include, theme, conditional, diagnostic, color, or palette semantics.
+exists. The operator accepted one narrow divergence on 2026-08-28: the resolver may derive the fixed
+default candidates from explicit roots and pinned suffixes, freeze their paths and precedence in
+tests, then open and parse them read-only through Ghostty. It must never call the template-writing
+loader, a create-capable candidate builder, or duplicate any parser, include, theme, conditional,
+diagnostic, color, or palette semantics.
 
 The revised exact-Zig proof confirmed that divergence works, then found that Ghostty's only
 official Config initializer and shared executable graph retain and initialize GUI-only
@@ -75,15 +90,20 @@ divergence: the heavy helper may be a stripped, platform-specific optional host 
 and spawned only when the registered appearance feature is enabled. Its absence must degrade to
 the existing Platform appearance without a config read, subprocess, download, or startup failure.
 
-The reopened proof is now **COMPLETE — Decision: FAIL**, and the appearance feature is **DEFERRED**.
-On macOS, both official Application Support candidate builders reach Foundation's directory lookup
-with `create: true`, so discovery itself can
-write beneath an empty isolated home before any config read. Pre-creating that directory would hide
-the failed no-write gate, while deriving the path outside Ghostty would be an unauthorized third
-divergence. Plans 066–067 remain **NOT AUTHORIZED**. If Platform ever considers a Ghostty fork,
-prefer contributing a read-only Config path API and Config-only initializer/build target upstream
-first; the optional-heavy allowance does not make the current graph the preferred long-term
-boundary.
+The reopened proof then found that Ghostty's macOS Application Support candidate builders reach
+Foundation directory lookup with `create: true`. This is not a terminal proof failure. It refines
+the accepted fixed-candidate divergence: neither the writing loader nor a create-capable path
+builder may run during discovery. Derive the fixed legacy/current candidates read-only from the
+explicit isolated home/config roots and the pinned constant suffixes, freeze their exact paths,
+load order, and duplicate behavior in tests, and pass only existing files to Ghostty's read-only
+loader.
+
+Plan 065 remains **IN PROGRESS AND SCHEDULED** through every remaining semantic, no-write,
+four-native-target, compatibility, relocation, size, privacy, and strict-evidence gate. Plans
+066–067 remain **NOT AUTHORIZED** until a complete `Decision: PASS` and separate root scheduling.
+If Platform ever considers a Ghostty fork, prefer contributing a read-only Config path API and
+Config-only initializer/build target upstream first; the optional-heavy allowance does not make the
+current graph the preferred long-term boundary.
 
 Do not replace this lane with a TypeScript Ghostty parser, `ghostty +show-config`, a maintained fork,
 browser-visible host paths, or cold-start reads triggered by a disabled workbench setting.
@@ -163,10 +183,14 @@ do not add scoped-ref or multi-origin compatibility machinery now.
 - **Promote:** environment milestones M1–M5, one executable plan at a time.
 - **Deferred:** environment M6 and all compatibility work for simultaneous origins or obsolete
   per-tab/active-editor/one-server architecture.
-- **Deferred after independent FAIL:** Plan 065 proved the optional heavy helper on Linux but found
-  that Ghostty's macOS Application Support path builder passes `create: true`, violating the
-  structural no-write gate during discovery. The nice-to-have appearance lane, including Plans
-  066–067, is deferred and unauthorized; a future fork proposal must prefer upstreaming read-only
-  Config path and Config-only build boundaries first.
+- **Scheduled independently:** Plan 065 must skip Ghostty's writing loader and create-capable
+  macOS path builders, derive the fixed candidates read-only, and continue every remaining proof
+  gate. Plans 066–067 remain blocked and unauthorized until a complete four-target `PASS`; a future
+  fork proposal must prefer upstreaming read-only Config path and Config-only build boundaries
+  first.
+- **Scheduled independently in lockstep:** Plan 070 moves grammar/theme resolution into Platform,
+  keeps Editor's Oniguruma worker self-contained, rejects inline-worker sibling chunks at build
+  time, and deletes obsolete name-resolution paths. Both repository gates and the built-dist live
+  log check must pass before its plan is deleted; Plan 071 remains ordered after it.
 - **Package-blocked:** `ghostty-webgpu` plan 009 needs public native extension surfaces. Plan 010 is
   additionally waiting on that dependency and physical operator gates; plans 011–015 remain downstream.

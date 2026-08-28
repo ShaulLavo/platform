@@ -11,7 +11,7 @@
 
 ## Status
 
-- **State**: Complete — `Decision: FAIL`; appearance lane deferred
+- **State**: In progress — create-capable macOS discovery skipped; remaining proof gates continue
 - **Priority**: P1
 - **Effort**: S–M
 - **Risk**: HIGH — upstream `Config` is not part of Ghostty's downstream `vt` library boundary
@@ -25,10 +25,12 @@ The first revised execution ended in `Decision: FAIL` because the pinned officia
 `global.init(.tool)` and `SharedDeps` graph necessarily retain and initialize GUI-only shader and
 renderer dependencies. On 2026-08-28 the operator accepted that graph only for a stripped,
 platform-specific optional host helper, so that decision is superseded and this proof is reopened.
-The replacement execution is complete with a narrower `Decision: FAIL`: on macOS, Ghostty's
-Application Support candidate builders call Foundation's directory lookup with `create: true`, so
-discovery itself can write beneath an empty isolated home. Plans 066–067 are deferred and
-unauthorized.
+The replacement execution next found that Ghostty's macOS Application Support candidate builders
+call Foundation directory lookup with `create: true`. The operator explicitly directed that this
+must not close the proof as `FAIL`. Under the accepted fixed-candidate divergence, the proof must
+skip the writing loader and both create-capable Application Support builders, derive those fixed
+candidates read-only, and continue all remaining gates. Plans 066–067 remain blocked and
+unauthorized until the replacement report is a complete `PASS`.
 
 At planning time this lane was not yet scheduled by root `PLAN.md`, and the active local compiler
 was Zig `0.15.2`. Root has now scheduled the reopened proof. Every replacement run must still use
@@ -36,10 +38,16 @@ Zig `0.16.0` exactly; scheduling is not permission to weaken either gate.
 
 The first execution found that `Config.loadDefaultFiles` can create a template when every normal
 candidate is absent. On 2026-08-28 the operator accepted one narrow divergence: proof and production
-code may enumerate the fixed default candidates using Ghostty's upstream path builders, preserve
-the pinned load order in explicit tests, and pass each opened file to Ghostty's read-only loading
-APIs. This acceptance does not permit copied parsing, include, theme, conditional, diagnostic,
-color, or palette logic.
+code may derive the fixed default candidates from explicit isolated roots and the pinned constant
+path suffixes, preserve the pinned paths, load order, and duplicate behavior in explicit tests, and
+pass each existing file to Ghostty's read-only loading APIs. They must never call the normal writing
+loader or any candidate builder capable of creating a directory. This acceptance does not permit
+copied parsing, include, theme, conditional, diagnostic, color, or palette logic.
+
+The macOS discovery finding clarifies this same divergence rather than adding a terminal condition:
+the legacy/current Application Support candidates must be derived without invoking Foundation's
+create-capable directory lookup. Candidate derivation performs no filesystem mutation; the first
+filesystem operation is a read-only open of the already-derived path.
 
 The next execution proved that the only official Config-capable initializer and executable build
 graph retain GUI-only shader/renderer dependencies. The operator accepted a second narrow
@@ -359,13 +367,14 @@ Exercise all of these cases through Ghostty's official implementation:
     and macOS glass/display-P3 variants as typed values or explicit unsupported/degraded enums.
 
 The no-write property must be structural, not a check-then-load convention. Never call
-`loadDefaultFiles` or another entry point with a create-template branch. Enumerate the fixed
+`loadDefaultFiles` or another entry point with a create-template branch. Derive the fixed
 legacy/current XDG candidates and, on macOS, the fixed legacy/current Application Support
-candidates using upstream path builders; freeze their exact pinned load order and duplicate-load
-behavior in tests. Open each candidate only through a read-only upstream file loader, then use
-Ghostty's recursive load and finalization APIs. Deletion or rename between enumeration and open
-must return the fixed unavailable result without falling back to a writing entry point. This fixed
-candidate enumeration is the only accepted policy duplication.
+candidates from explicit isolated roots and pinned constant suffixes. Do not call an API or path
+builder capable of directory creation. Freeze the exact candidate paths, pinned load order, and
+duplicate-load behavior in tests. Open each candidate only through a read-only upstream file
+loader, then use Ghostty's recursive load and finalization APIs. Deletion or rename between
+derivation and open must return the fixed unavailable result without falling back to a writing
+entry point. This fixed-candidate derivation is the only accepted policy duplication.
 
 Add adversarial fixtures that pause after candidate discovery, then delete the candidate or rename
 it out of the tree before the read begins. Both races must return the fixed unavailable result,
@@ -575,8 +584,8 @@ Stop and record `FAIL` or an explicit environment blocker when:
 
 - the pinned Config graph requires modifying/copying upstream source or a maintained fork;
 - correctness requires the installed Ghostty executable, a TypeScript parser, or OS-theme guessing;
-- fixed-candidate enumeration cannot preserve the pinned normal load order without reaching a
-  writing entry point;
+- fixed-candidate derivation cannot preserve the pinned paths and normal load order without calling
+  a create-capable API;
 - an existence/deletion/rename race can reach a template-creation branch;
 - light and dark cannot be resolved independently, or a `null` conditional transition cannot be
   copied/deinitialized safely;
@@ -602,5 +611,5 @@ Stop and record `FAIL` or an explicit environment blocker when:
 - [ ] Minimum OS/libc probes and deterministic Display-P3 vectors are proven.
 - [x] Privacy/leakage assertions pass.
 - [x] Existing package, source, build-wasm script, and WASM assets are unchanged.
-- [x] Strict JSON summary and non-writing evidence verifier agree with the Markdown report.
-- [x] Evidence report ends in exactly `Decision: PASS` or `Decision: FAIL`.
+- [ ] Replacement strict JSON summary and non-writing evidence verifier agree.
+- [ ] Replacement evidence report ends in exactly `Decision: PASS` or `Decision: FAIL`.

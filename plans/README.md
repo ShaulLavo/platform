@@ -15,12 +15,12 @@ a bare root `bun run verify`.
 
 | Plan                                                                                    | State                                   |
 | --------------------------------------------------------------------------------------- | --------------------------------------- |
-| [065 — prove Ghostty config resolver](065-prove-ghostty-config-resolver.md)             | **COMPLETE — FAIL; LANE DEFERRED**      |
-| [066 — package Ghostty config resolver](066-package-ghostty-config-resolver.md)         | **DEFERRED — 065 FAILED**               |
-| [067 — integrate Ghostty config appearance](067-integrate-ghostty-config-appearance.md) | **DEFERRED WITH 066**                   |
+| [065 — prove Ghostty config resolver](065-prove-ghostty-config-resolver.md)             | **IN PROGRESS — READ-ONLY CANDIDATES**  |
+| [066 — package Ghostty config resolver](066-package-ghostty-config-resolver.md)         | **BLOCKED ON REVISED 065 PASS**         |
+| [067 — integrate Ghostty config appearance](067-integrate-ghostty-config-appearance.md) | **BLOCKED ON 066 REVIEWED ARTIFACT**    |
 | [068 — session domain model](068-session-domain-model.md)                               | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
 | [069 — worktree lifecycle](069-worktree-lifecycle.md)                                   | **BLOCKED ON 068 AND ROOT SCHEDULING**  |
-| [070 — app-owned shiki grammars](070-app-owned-shiki-grammars.md)                       | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
+| [070 — app-owned shiki grammars](070-app-owned-shiki-grammars.md)                       | **IN PROGRESS — LOCKSTEP SYNTAX LANE**  |
 | [071 — syntax highlight retry](071-syntax-highlight-retry.md)                           | **PROPOSED — SCHEDULE AFTER 070**       |
 | [064 — anchored diagnostic peek](064-anchored-diagnostic-peek.md)                       | **SCHEDULED AFTER 061 — GO/NO-GO**      |
 | [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                         | **SCHEDULED AFTER 064 — RECONCILE**     |
@@ -51,7 +51,9 @@ a bare root `bun run verify`.
   Orca compare view. Root `PLAN.md` has not scheduled it yet.
 - Plan 070 spans two repositories and must land as one change: it adds required fields to the
   shiki worker protocol in Editor `packages/editor`, and the resolver that fills them in
-  Platform `apps/web`. Neither half is shippable alone. It has no dependency on any other plan.
+  Platform `apps/web`. Neither half is shippable alone. Root `PLAN.md` schedules it now as an
+  independent lockstep syntax lane with the existing Oniguruma engine and no dependency on any
+  other plan.
 - Plan 071 is Editor-only and independent of 070, but must not land before it: a retry loop
   running against a live permanent failure buries the cause it would otherwise surface.
 - Plan 064's interactive React overlay uses the landed deepest-target FocusService and exact origin
@@ -64,11 +66,14 @@ a bare root `bun run verify`.
 - Plan 061's ready live/clean view must still be claimed and ensured before active selection
   publication, but that transaction stays in the shared Editor domain action used by local UI and
   the typed bus; do not add a bus-only activation implementation.
-- Plan 065 completed with `Decision: FAIL`. The fixed-candidate and optional-heavy-helper
-  divergences work on Linux, but Ghostty's macOS Application Support path builder asks Foundation
-  to create the directory during discovery, violating the structural no-write gate. Plans 066–067
-  are deferred and unauthorized. If a future Ghostty fork is considered, first prefer upstreaming
-  a read-only Config path API and Config-only initializer/build target.
+- Plan 065 remains active with two accepted divergences: derive Ghostty's fixed default candidates
+  read-only, and permit the pinned GUI/shader graph only in a stripped platform-specific optional
+  host helper. On macOS, skip the writing loader and create-capable Application Support builders;
+  derive the fixed candidates from explicit isolated roots and pinned suffixes, then continue every
+  remaining proof gate. Disabled or absent means no spawn, config read, download, or startup
+  failure. Plans 066–067 remain blocked and unauthorized until a complete revised four-target
+  `PASS`. If a future Ghostty fork is considered, prefer upstreaming read-only Config path and
+  Config-only initializer/build boundaries first.
 - Plan 067 must wait for the user-owned edits originating from Plan 063 in
   `packages/contracts/src/index.ts`, `apps/server/src/tests/app.test.ts`, and
   `apps/web/test/server.ts` to land or be explicitly reconciled. The terminal-theme fixture must
