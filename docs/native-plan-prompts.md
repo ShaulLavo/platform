@@ -2,7 +2,7 @@
 
 One prompt per plan doc from `native-plan-of-plans.md`. Each is self-contained — run in a fresh session. Order matters loosely: 1 → 2 → 4 build on each other; 3 is independent; 5 is a gated skeleton; 6 is cleanup. Fold in any newer recon before firing.
 
-## Plan 1 — bench harness
+## Plan 1 — bench harness (DONE — kept for reference; see Bench debt B1–B4 in native-plan-of-plans.md before touching bench numbers)
 
 ```text
 Load the mac-app skill. Read docs/native-plan-of-plans.md and docs/native-editor-internals-research.md, then write docs/native-bench-harness.md and implement it in apps/mac/Sources/EditorBench.
