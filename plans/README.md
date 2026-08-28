@@ -27,7 +27,7 @@ a bare root `bun run verify`.
 | [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                         | **SCHEDULED AFTER 064 — RECONCILE**           |
 | [057 — editor-native VS Code keymap](057-editor-native-vscode-keymap.md)                | **BLOCKED ON 056 — RUNTIME RECONCILED**       |
 | [061 — Foresight prepared editor opens](061-promote-foresight-file-open-pipeline.md)    | **NEXT — RECONCILE**                          |
-| [072 — Electron desktop shell](072-electron-desktop-shell.md)                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING**       |
+| [073 — Electrobun 2.x migration](073-electrobun-v2-migration.md)                        | **PROPOSED — ROOT GO/NO-GO SCHEDULING**       |
 
 ## Dependency notes
 
