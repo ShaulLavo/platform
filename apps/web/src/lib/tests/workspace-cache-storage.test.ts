@@ -6,6 +6,7 @@ import {
   readWorkspaceCacheEntry,
   removeWorkspaceCacheEntry,
   workspaceCacheSerializedBytes,
+  WORKSPACE_CACHE_STORAGE_PREFIX,
   workspaceCacheStorageKey,
   writeWorkspaceCacheEntry,
 } from '@/lib/workspace-cache-storage'
@@ -34,7 +35,7 @@ test('round-trips a schema-validated entry under the current namespace', () => {
     status: 'written',
   })
   expect(readWorkspaceCacheEntry(TEST_KEY, schema, null)).toEqual({ value: 'kept' })
-  expect(TEST_KEY).toBe('platform.workspace-state.v19.test')
+  expect(TEST_KEY).toBe(`${WORKSPACE_CACHE_STORAGE_PREFIX}.test`)
 })
 
 test('removes an invalid entry without touching another key', () => {

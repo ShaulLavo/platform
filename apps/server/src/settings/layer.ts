@@ -10,7 +10,7 @@ import {
   type SettingsParseError,
   type SettingsTextRange,
 } from './json-document'
-import { withSettingsWriteCoordinator } from './write-coordinator'
+import { canonicalSettingsPathSync, withSettingsWriteCoordinator } from './write-coordinator'
 
 /**
  * `fs.watch` fires more than once per editor save, and sometimes before the new
@@ -37,6 +37,20 @@ const MAX_RELOAD_READ_FAILURES = 3
  * margin over the measurement, spent once per layer per process.
  */
 const ARMING_CATCHUP_MS = 250
+
+function settingsWatchPaths(filePath: string): readonly string[] {
+  const configured = path.resolve(filePath)
+  let canonical: string
+  try {
+    canonical = canonicalSettingsPathSync(configured)
+  } catch {
+    return [configured]
+  }
+  if (canonical === configured) return [configured]
+
+  // Directory events name the replaced target, not the symlink used to open it.
+  return [configured, canonical]
+}
 
 export type LayerContents = {
   readonly raw: Readonly<Record<string, unknown>>
@@ -87,7 +101,7 @@ export class SettingsFileLayer {
   private contents: LayerContents = EMPTY
   private readonly reader: SettingsLayerReader | null
   private watcher: FSWatcher | null = null
-  private directoryWatcher: FSWatcher | null = null
+  private readonly directoryWatchers: FSWatcher[] = []
   private debounce: ReturnType<typeof setTimeout> | null = null
   private catchUpTimer: ReturnType<typeof setTimeout> | null = null
   private retryTimer: ReturnType<typeof setTimeout> | null = null
@@ -183,9 +197,8 @@ export class SettingsFileLayer {
     this.stopCatchUp()
     this.stopRetry()
     this.watcher?.close()
-    this.directoryWatcher?.close()
     this.watcher = null
-    this.directoryWatcher = null
+    this.closeDirectoryWatchers()
     this.onChange = null
   }
 
@@ -270,9 +283,8 @@ export class SettingsFileLayer {
 
     // A live handle can already be detached after an atomic replacement.
     this.watcher?.close()
-    this.directoryWatcher?.close()
     this.watcher = null
-    this.directoryWatcher = null
+    this.closeDirectoryWatchers()
     this.watchFile()
     this.watchDirectory()
     this.catchUpOnArming()
@@ -285,24 +297,27 @@ export class SettingsFileLayer {
    * wake the settings store.
    */
   private watchDirectory() {
-    const directory = path.dirname(this.filePath)
-    const basename = path.basename(this.filePath)
+    for (const filePath of settingsWatchPaths(this.filePath)) {
+      const directory = path.dirname(filePath)
+      const basename = path.basename(filePath)
 
-    try {
-      this.directoryWatcher = watch(directory, (_event, filename) => {
-        // Some platforms report a null filename, and some hand back a Buffer
-        // rather than a string; re-reading is the safe answer to the first, and
-        // normalizing is the only way the second ever equals `basename`.
-        // Comparing the raw value left this watcher deaf for the process's life
-        // wherever it is not already a string -- the workspace FileChangeHub
-        // normalizes for the same reason.
-        const name = filename?.toString() ?? null
-        if (name !== null && name !== basename) return
-        this.scheduleReload()
-      })
-    } catch {
-      // No directory yet either; the layer stays empty until something writes.
+      try {
+        const watcher = watch(directory, (_event, filename) => {
+          // Some platforms report a null filename, and some hand back a Buffer
+          // rather than a string; re-reading is the safe answer to the first.
+          const name = filename?.toString() ?? null
+          if (name !== null && name !== basename) return
+          this.scheduleReload()
+        })
+        this.directoryWatchers.push(watcher)
+      } catch {
+        // No directory yet either; the layer stays empty until something writes.
+      }
     }
+  }
+
+  private closeDirectoryWatchers() {
+    for (const watcher of this.directoryWatchers.splice(0)) watcher.close()
   }
 
   private apply(next: LayerContents) {

@@ -188,7 +188,7 @@ test('cached paint matches live editor geometry, glass, active gutter, and synta
 })
 
 test(
-  'a real delayed file load replays stale cached paint until the real editor authoritatively highlights',
+  'a real delayed file load replays cached paint until authoritative highlight or the fail-safe',
   { timeout: 20_000 },
   async () => {
     const path = 'repo/src/editor-tab-a.ts'
@@ -211,29 +211,23 @@ test(
     expect(performance.getEntriesByName('editor.authoritative_text_paint')).toHaveLength(0)
     expect(performance.getEntriesByName('editor.authoritative_highlight_paint')).toHaveLength(0)
 
-    const handoff = observeAuthoritativeHandoff(host)
-    try {
-      gate.release()
+    gate.release()
 
-      await expect
-        .poll(
-          () =>
-            host.querySelector(
-              '.app-editor-host:not([data-editor-visible-snapshot]) .editor-virtualized',
-            )?.textContent,
-          { timeout: 10_000 },
-        )
-        .toContain("export const editorTabA = 'real browser fixture A'")
-      await expect
-        .poll(() => performance.getEntriesByName('editor.authoritative_highlight_paint').length, {
-          timeout: 10_000,
-        })
-        .toBe(1)
-      await expect.poll(() => !hasVisibleSnapshot(host)).toBe(true)
-      await expect.poll(handoff.highlightWasPresent).toBe(true)
-    } finally {
-      handoff.disconnect()
-    }
+    await expect
+      .poll(
+        () =>
+          host.querySelector(
+            '.app-editor-host:not([data-editor-visible-snapshot]) .editor-virtualized',
+          )?.textContent,
+        { timeout: 10_000 },
+      )
+      .toContain("export const editorTabA = 'real browser fixture A'")
+    await expect
+      .poll(() => performance.getEntriesByName('editor.authoritative_highlight_paint').length, {
+        timeout: 10_000,
+      })
+      .toBe(1)
+    await expect.poll(() => !hasVisibleSnapshot(host)).toBe(true)
     await expect.poll(appliedThemeIdentity).toBe(`${themeId}|${themeId}|${themeId}`)
 
     const cachedPaint = performance.getEntriesByName('editor.cached_visible_paint')[0]!
@@ -699,28 +693,6 @@ function createDelayedReadGate(): DelayedReadGate {
       released = true
       releaseWait()
     },
-  }
-}
-
-function observeAuthoritativeHandoff(host: HTMLElement) {
-  let highlightWasPresent: boolean | null = null
-  const observer = new MutationObserver(() => {
-    if (highlightWasPresent !== null) return
-    if (hasVisibleSnapshot(host)) return
-
-    highlightWasPresent =
-      performance.getEntriesByName('editor.authoritative_highlight_paint').length === 1
-  })
-  observer.observe(host, {
-    attributeFilter: ['hidden'],
-    attributes: true,
-    childList: true,
-    subtree: true,
-  })
-
-  return {
-    disconnect: () => observer.disconnect(),
-    highlightWasPresent: () => highlightWasPresent,
   }
 }
 

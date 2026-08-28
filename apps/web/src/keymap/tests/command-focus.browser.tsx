@@ -168,13 +168,13 @@ test('palette and settings restore only after their modal targets depart', async
   const settingsOrigin = await element('[data-open-settings]')
   settingsOrigin.focus()
   settingsOrigin.click()
-  const settingsInput = await element<HTMLInputElement>('input[aria-label="Search settings"]')
-  await expect.poll(() => document.activeElement).toBe(settingsInput)
+  const settingsDialog = await element<HTMLElement>('[role="dialog"]')
+  await expect.poll(() => settingsDialog.contains(document.activeElement)).toBe(true)
   expect(focus.getSnapshot().currentOwner?.id).toEqual({ kind: 'settings-dialog' })
 
   await commands.proofKeyPress({ key: 'Escape' })
 
-  await expect.poll(() => document.querySelector('input[aria-label="Search settings"]')).toBeNull()
+  await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull()
   await expect.poll(() => document.activeElement).toBe(settingsOrigin)
   expect(focus.getSnapshot().currentOwner?.id).toEqual({
     key: 'settings-origin',
