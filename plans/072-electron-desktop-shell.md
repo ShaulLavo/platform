@@ -3,9 +3,10 @@
 > **Executor instructions**: Read this plan completely, then read Platform `AGENTS.md` and root
 > `PLAN.md`. Execute every gate in order.
 >
-> This plan replaces the cross-platform desktop shell. macOS is being built natively in a separate
-> lane and is **not** a target here — see Gate 0. Do not commit, push, create a branch, publish, or
-> open a PR without explicit operator approval.
+> This plan replaces the cross-platform desktop shell on **all three platforms** — macOS, Linux, and
+> Windows (Gate 0, resolved). A native macOS app is being built in a separate lane; the two coexist
+> and neither blocks the other. Do not commit, push, create a branch, publish, or open a PR without
+> explicit operator approval.
 
 ## Status
 
@@ -18,6 +19,10 @@
 - **Platform baseline**: `4b25f1ab28eab2da499ac0cf0fcc633af1ea6640`
 - **Package pin**: `electron@43.x` (measured against `43.4.1`)
 - **Spike branch**: `spike/electron-shell` — a working shared-dev shell, 78 lines
+- **Reference implementation**: `references/t3code` (gitignored clone of `pingdotgg/t3code`) — an
+  Electron app shipping today with the same `apps/{desktop,server,web}` shape; installed layout
+  readable at `/usr/lib/t3code`
+- **Targets**: macOS, Linux, Windows (Gate 0 resolved)
 
 Root `PLAN.md` is authoritative for ordering. This is an independent desktop-shell lane; stop and
 ask the operator where to schedule it if it has not been added there when execution is requested.
@@ -155,21 +160,25 @@ The main process moves from Bun to Node. `apps/desktop/src/bun/` uses `Bun.env` 
 (3), `Bun.sleep` (3), `Bun.file` (1) and `bun:ffi` (1); all but the FFI binding map directly onto
 `process.env`, `child_process.spawn`, `timers/promises`, and `fs`. The server keeps running on Bun.
 
-## Gate 0 — Confirm the target matrix
+## Gate 0 — Target matrix — RESOLVED
 
-macOS is being built natively in a separate lane. Before any code moves, the operator confirms
-whether Electron targets:
+**All three platforms.** Electron targets macOS, Linux, and Windows. The native macOS app is a
+separate lane and does not remove macOS from this one.
 
-1. Linux + Windows only, with the native app owning macOS; or
-2. Linux + Windows + macOS, with the native app as a macOS-only alternative.
+Consequences, binding on later gates:
 
-This decides whether `titleBarStyle: 'hiddenInset'`, `trafficLightOffset`, and the `vibrancy.m` FFI
-binding are ported at all, or deleted. **Do not begin Gate 1 without this answer** — it changes the
-size of Gate 3 and determines whether `apps/desktop/native/` and `scripts/build-native.ts` survive.
+- `titleBarStyle: 'hiddenInset'` and `trafficLightOffset` are ported, not deleted (Gate 3).
+- `apps/desktop/native/vibrancy.m` and `scripts/build-native.ts` survive. The binding moves from
+  `bun:ffi` to a Node-side FFI path — evaluate `koffi` or a small N-API addon; do not assume
+  `bun:ffi` has a drop-in equivalent.
+- Gate 4 covers signing and notarization for macOS as well as Windows.
 
 ## Gate 1 — Shell parity in shared dev
 
-`apps/desktop-electron/` (new workspace; `apps/desktop/` stays until Gate 5).
+**Rewrite `apps/desktop/` in place** on a branch. The workspace keeps its name and its position in
+`package.json` workspaces; the Electrobun entrypoints are replaced, not parallelised. There is no
+`apps/desktop-electron/` in the final tree — the working spike lives on `spike/electron-shell` and
+is reference material only.
 
 1. `main.ts` — `BrowserWindow` at 1440x960, `waitForHttp` against `SERVER_URL/health` and `WEB_URL`
    with the existing 30 s deadline, `app.on('before-quit')` running the same teardown.
@@ -205,24 +214,50 @@ Port the half of `bun/index.ts` the spike does not cover:
 
 ## Gate 3 — Window chrome and backdrop
 
-Scope set by Gate 0.
+All three platforms, per Gate 0.
 
 1. `shellBackdrop()` keeps deciding. `compositor` on Linux stays the default and stays opaque.
 2. `window.transparency: 'window'` maps to Electron's `transparent: true`. Re-measure the cost —
    the 5.5 MB-per-paint figure in `shared/window.ts` describes CEF's offscreen path and does not
    transfer. Update that comment with a measured Electron number or mark it CEF-historical.
-3. macOS chrome only if Gate 0 says macOS is a target.
+3. macOS chrome: `titleBarStyle: 'hiddenInset'` plus `trafficLightPosition` (Electron's name for
+   `trafficLightOffset`). Re-point the vibrancy binding per Gate 0 — note that Electron has a
+   first-class `vibrancy` / `backgroundMaterial` window option, so `vibrancy.m` may be deletable
+   rather than re-bound. Establish that before porting the FFI.
 
 ## Gate 4 — Packaging and distribution
 
 Net-new; nothing exists today (`electrobun.config.ts` configures no updater, and CI has no desktop
 job).
 
-1. Choose electron-builder or Electron Forge. Targets per Gate 0.
-2. Decide how the Bun server ships in a packaged build — bundled Bun binary, or compiled to a
-   single executable. This is the largest open design question in the plan and does not exist in
-   the current Electrobun setup either.
-3. Code signing and notarization only for platforms Gate 0 keeps.
+`references/t3code` (gitignored clone of `pingdotgg/t3code`) is a working reference for this gate:
+same `apps/{desktop,server,web}` shape, Electron, electron-builder, shipping today. Its installed
+layout is readable at `/usr/lib/t3code`.
+
+1. Choose electron-builder or Electron Forge. t3code uses electron-builder with
+   `app-update.yml` → `provider: github`; that is the shortest path to a working updater.
+2. **How the server ships.** t3code's answer is the important finding: it bundles the server with
+   vite into a self-contained JS bundle, keeps native addons external and staged beside it, ships it
+   as a sidecar (`resources/server.asar` on Windows), and runs it **via `ELECTRON_RUN_AS_NODE` —
+   reusing Electron's own binary as the Node runtime, so no second runtime is shipped at all.**
+
+   Platform cannot copy that directly: `apps/server` is Bun, not Node — `bun:sqlite` (19 call
+   sites), `Bun.spawn` (22), `Bun.env` (17), `Bun.write` (12), `Bun.file` (11), plus
+   `Bun.FileSink`, `Bun.Subprocess` and `Bun.resolveSync`. Three options, to be decided before
+   this gate starts:
+
+   | Option                                      | Extra artifact | Cost                                                    |
+   | ------------------------------------------- | -------------- | ------------------------------------------------------- |
+   | Port server to Node, `ELECTRON_RUN_AS_NODE` | none           | port off `bun:sqlite` (`node:sqlite`) and ~70 Bun calls |
+   | Ship the Bun binary as a sidecar            | ~78 MB         | server code unchanged                                   |
+   | `bun build --compile` to one executable     | ~80 MB         | server code unchanged, single file                      |
+
+   Note the second-order effect: `terminal/service.ts` spawns a real Node today solely because
+   node-pty's native addon does not work under Bun. Under Electron the main process already is
+   Node, and t3code ships `node-pty` in `app.asar.unpacked`. Porting the server to Node deletes
+   that bridge; the sidecar options keep it.
+
+3. Code signing and notarization for macOS and Windows.
 4. Auto-update is explicitly deferred; record it as follow-up, do not scope-creep it here.
 
 ## Gate 5 — Verification and removal
@@ -238,9 +273,11 @@ job).
    an absolute test count.
 4. Exercise the bridge end to end: open a folder through `pickEntry`, confirm the backdrop handoff
    reaches the page before first paint, confirm the terminal and editor work.
-5. Delete `apps/desktop/`, drop `electrobun` from the workspace, and remove it from `bun.lock`.
-   No compatibility shim, per the greenfield rule. Rename `apps/desktop-electron/` to
-   `apps/desktop/` in the same commit.
+5. Delete the Electrobun remnants: `electrobun.config.ts`, the `electrobun` dependency, its
+   `bun.lock` entry, and `apps/desktop/build/` (plus its `.gitignore` line). No compatibility shim,
+   per the greenfield rule. `apps/desktop/` keeps its name throughout — there is no rename step.
+6. Verify on all three platforms per Gate 0, not only Linux. The spin was Linux-specific; the
+   packaging and chrome work is not.
 
 ## Risks and rejected alternatives
 
@@ -262,8 +299,9 @@ job).
 
 ## Out of scope
 
-- **The native macOS app.** Separate lane. This plan only decides whether Electron also targets
-  macOS (Gate 0).
+- **The native macOS app.** Separate lane. Per Gate 0 the two coexist: Electron ships macOS as well,
+  and the native app is an alternative rather than a replacement. Nothing here blocks or depends on
+  it.
 - **The `bun --watch` zombie leak.** `apps/server` accumulates defunct children in dev: `bun --watch`
   reloads the module in-process — same PID, fresh JS context — so children spawned by the previous
   instance survive with their `once('exit')` handler discarded, and nothing reaps them. Confirmed by
@@ -277,8 +315,10 @@ job).
 
 ## Open questions for the operator
 
-1. **Gate 0**: does Electron target macOS, or is macOS exclusively the native app?
-2. How does the Bun server ship inside a packaged build — bundled binary, or `bun build --compile`?
-3. Should `apps/desktop-electron/` be a new workspace that replaces `apps/desktop/` at Gate 5, or
-   should `apps/desktop/` be rewritten in place on a branch? The plan assumes the former so both
-   shells can run side by side while parity is established.
+Gate 0 (target matrix) and the workspace layout are both resolved above; only one remains.
+
+1. **Which of Gate 4's three server-shipping options?** Porting `apps/server` to Node buys the
+   cleanest artifact — no second runtime, and it deletes the node-pty bridge — at the cost of
+   moving off `bun:sqlite` and ~70 other Bun calls. The two sidecar options keep the server
+   untouched for ~78–80 MB. This does not block Gates 1–3, so it can be decided while the shell
+   lands; it must be decided before Gate 4 starts.
