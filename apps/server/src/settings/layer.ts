@@ -1,4 +1,4 @@
-import { watch, type FSWatcher } from 'node:fs'
+import { unwatchFile, watch, watchFile, type FSWatcher } from 'node:fs'
 import path from 'node:path'
 import { errorStringField, type SettingsLayerId } from '@workspace/contracts'
 import { recordRequestWarning, runDetached } from '../observability'
@@ -10,7 +10,7 @@ import {
   type SettingsParseError,
   type SettingsTextRange,
 } from './json-document'
-import { withSettingsWriteCoordinator } from './write-coordinator'
+import { canonicalSettingsPathSync, withSettingsWriteCoordinator } from './write-coordinator'
 
 /**
  * `fs.watch` fires more than once per editor save, and sometimes before the new
@@ -37,6 +37,34 @@ const MAX_RELOAD_READ_FAILURES = 3
  * margin over the measurement, spent once per layer per process.
  */
 const ARMING_CATCHUP_MS = 250
+const WATCH_POLL_INTERVAL_MS = 500
+
+function settingsWatchPaths(filePath: string): readonly string[] {
+  const configured = path.resolve(filePath)
+  let canonical: string
+  try {
+    canonical = canonicalSettingsPathSync(configured)
+  } catch {
+    return [configured]
+  }
+  if (canonical === configured) return [configured]
+
+  // Directory events name the replaced target, not the symlink used to open it.
+  return [configured, canonical]
+}
+
+function settingsWatchDirectories(filePath: string): ReadonlyMap<string, ReadonlySet<string>> {
+  const targets = new Map<string, Set<string>>()
+
+  for (const watchPath of settingsWatchPaths(filePath)) {
+    const directory = path.dirname(watchPath)
+    const basenames = targets.get(directory) ?? new Set<string>()
+    basenames.add(path.basename(watchPath))
+    targets.set(directory, basenames)
+  }
+
+  return targets
+}
 
 export type LayerContents = {
   readonly raw: Readonly<Record<string, unknown>>
@@ -87,7 +115,7 @@ export class SettingsFileLayer {
   private contents: LayerContents = EMPTY
   private readonly reader: SettingsLayerReader | null
   private watcher: FSWatcher | null = null
-  private directoryWatcher: FSWatcher | null = null
+  private readonly directoryWatchers: FSWatcher[] = []
   private debounce: ReturnType<typeof setTimeout> | null = null
   private catchUpTimer: ReturnType<typeof setTimeout> | null = null
   private retryTimer: ReturnType<typeof setTimeout> | null = null
@@ -103,6 +131,9 @@ export class SettingsFileLayer {
   private generation = 0
   /** Held for the duration of a write, so a reload does not read across it. */
   private writing: Promise<void> | null = null
+
+  /** `fs.watch` is the fast path; polling covers a watcher that goes silent. */
+  private readonly pollForChange = () => this.scheduleReload()
 
   /**
    * The hash of the last text we wrote, so the watch event our own rename
@@ -174,6 +205,7 @@ export class SettingsFileLayer {
     this.onChange = onChange
     this.watchFile()
     this.watchDirectory()
+    this.watchPollFallback()
     this.catchUpOnArming()
   }
 
@@ -183,9 +215,9 @@ export class SettingsFileLayer {
     this.stopCatchUp()
     this.stopRetry()
     this.watcher?.close()
-    this.directoryWatcher?.close()
     this.watcher = null
-    this.directoryWatcher = null
+    this.closeDirectoryWatchers()
+    unwatchFile(this.filePath, this.pollForChange)
     this.onChange = null
   }
 
@@ -250,9 +282,22 @@ export class SettingsFileLayer {
   private watchFile() {
     try {
       this.watcher = watch(this.filePath, () => this.scheduleReload())
-    } catch {
+    } catch (error) {
       // No file yet. The directory watcher picks up its creation.
+      this.reportWatchFailure(error, 'file')
     }
+  }
+
+  /**
+   * `fs.watch` can stop delivering after an atomic replacement, especially
+   * through a symlink. Polling stats, not contents, keeps that loss recoverable.
+   */
+  private watchPollFallback() {
+    watchFile(
+      this.filePath,
+      { interval: WATCH_POLL_INTERVAL_MS, persistent: false },
+      this.pollForChange,
+    )
   }
 
   /**
@@ -270,9 +315,8 @@ export class SettingsFileLayer {
 
     // A live handle can already be detached after an atomic replacement.
     this.watcher?.close()
-    this.directoryWatcher?.close()
     this.watcher = null
-    this.directoryWatcher = null
+    this.closeDirectoryWatchers()
     this.watchFile()
     this.watchDirectory()
     this.catchUpOnArming()
@@ -285,24 +329,40 @@ export class SettingsFileLayer {
    * wake the settings store.
    */
   private watchDirectory() {
-    const directory = path.dirname(this.filePath)
-    const basename = path.basename(this.filePath)
-
-    try {
-      this.directoryWatcher = watch(directory, (_event, filename) => {
-        // Some platforms report a null filename, and some hand back a Buffer
-        // rather than a string; re-reading is the safe answer to the first, and
-        // normalizing is the only way the second ever equals `basename`.
-        // Comparing the raw value left this watcher deaf for the process's life
-        // wherever it is not already a string -- the workspace FileChangeHub
-        // normalizes for the same reason.
-        const name = filename?.toString() ?? null
-        if (name !== null && name !== basename) return
-        this.scheduleReload()
-      })
-    } catch {
-      // No directory yet either; the layer stays empty until something writes.
+    for (const [directory, basenames] of settingsWatchDirectories(this.filePath)) {
+      try {
+        const watcher = watch(directory, (_event, filename) => {
+          // Some platforms report a null filename, and some hand back a Buffer
+          // rather than a string; re-reading is the safe answer to the first.
+          const name = filename?.toString() ?? null
+          if (name !== null && !basenames.has(name)) return
+          this.scheduleReload()
+        })
+        this.directoryWatchers.push(watcher)
+      } catch (error) {
+        // No directory yet either; the layer stays empty until something writes.
+        this.reportWatchFailure(error, 'directory')
+      }
     }
+  }
+
+  private reportWatchFailure(error: unknown, source: 'directory' | 'file') {
+    const code = errorStringField(error, 'code')
+    if (code === 'ENOENT' || code === 'ENOTDIR') return
+
+    recordRequestWarning('settings.layer.watch_failed', {
+      area: 'settings',
+      operation: 'watcher-arm',
+      settings: { layer: this.id, source },
+      error: {
+        code,
+        name: error instanceof Error ? error.name : typeof error,
+      },
+    })
+  }
+
+  private closeDirectoryWatchers() {
+    for (const watcher of this.directoryWatchers.splice(0)) watcher.close()
   }
 
   private apply(next: LayerContents) {

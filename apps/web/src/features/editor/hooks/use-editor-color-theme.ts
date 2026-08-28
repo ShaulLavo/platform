@@ -25,6 +25,7 @@ import {
 import { clientErrors } from '@/lib/structured-errors'
 
 type EditorColorThemeState = {
+  readonly appliedThemeId: string | null
   readonly colorMode: EditorColorMode
   readonly committedThemeId: string
   readonly definition: VscodeThemeDefinition | null
@@ -32,6 +33,7 @@ type EditorColorThemeState = {
   readonly registration: VscodeThemeRegistration | null
   readonly shikiTheme: string
   readonly shikiThemeResolver: () => string
+  readonly selectedThemeId: string
 }
 
 const EditorColorThemeContext = createContext<EditorColorThemeState | undefined>(undefined)
@@ -76,6 +78,7 @@ export function EditorColorThemeProvider({ children }: { readonly children: Reac
 
   const value = useMemo<EditorColorThemeState>(
     () => ({
+      appliedThemeId: loadedTheme?.resolvedThemeId ?? null,
       colorMode: resolvedTheme,
       committedThemeId,
       definition: loadedTheme?.definition ?? null,
@@ -83,6 +86,7 @@ export function EditorColorThemeProvider({ children }: { readonly children: Reac
       registration: loadedTheme?.registration ?? null,
       shikiTheme,
       shikiThemeResolver,
+      selectedThemeId: shikiTheme,
     }),
     [committedThemeId, loadedTheme, resolvedTheme, shikiTheme, shikiThemeResolver],
   )

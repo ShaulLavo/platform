@@ -1,4 +1,4 @@
-# Plan 068: Move shiki grammar and theme resolution out of the worker
+# Plan 070: Move shiki grammar and theme resolution out of the worker
 
 > **Executor instructions**: Read this plan completely, then read Platform `AGENTS.md`, root
 > `PLAN.md`, and `/Users/shaul/.agents/skills/never-nester/SKILL.md`. Execute every gate in order.

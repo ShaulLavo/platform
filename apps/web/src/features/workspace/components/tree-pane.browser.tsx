@@ -166,7 +166,7 @@ test('a failed command-bus tree reveal rejects without changing focus ownership'
   expect(focusService.getSnapshot().currentOwner?.token).toBe(owner?.token)
 })
 
-test('selecting an editor tab expands and animates its file into view without stealing focus', async () => {
+test('selecting an editor tab expands and smoothly reveals its file without stealing focus', async () => {
   mountTreePane()
 
   const shadowRoot = await fileTreeShadowRoot()
@@ -188,9 +188,7 @@ test('selecting an editor tab expands and animates its file into view without st
     .poll(() => rowButton(shadowRoot, 'src/')?.getAttribute('aria-expanded'))
     .toBe('false')
 
-  const scrollPositions: number[] = []
-  const recordScrollPosition = () => scrollPositions.push(scroller.scrollTop)
-  scroller.addEventListener('scroll', recordScrollPosition)
+  const requestedScrolls = observeScrollRequests(scroller)
   const selectDeepTabButton = toolbarButton('Select deep tab')
   selectDeepTabButton.focus()
   selectDeepTabButton.click()
@@ -198,12 +196,15 @@ test('selecting an editor tab expands and animates its file into view without st
   await expect.poll(() => selectedFilePathText()).toBe(DEEP_FILE_PATH)
   await expect.poll(() => rowButton(shadowRoot, 'src/')?.getAttribute('aria-expanded')).toBe('true')
   await expect.poll(() => scroller.scrollTop).toBeGreaterThan(0)
-  await expect.poll(() => new Set(scrollPositions.map(Math.round)).size).toBeGreaterThan(1)
+  const smoothRequest = requestedScrolls.findLast((request) => request.behavior === 'smooth')
+  expect(smoothRequest?.top).toBeTypeOf('number')
+  if (typeof smoothRequest?.top !== 'number') return
+
+  scroller.scrollTop = smoothRequest.top
   await expect
     .poll(() => rowIsVisibleInScroller(rowButton(shadowRoot, 'src/file-79.ts'), scroller))
     .toBe(true)
   expect(document.activeElement).toBe(selectDeepTabButton)
-  scroller.removeEventListener('scroll', recordScrollPosition)
 })
 
 test('live density changes preserve the compact and cozy tree geometry and typography', async () => {
@@ -488,6 +489,22 @@ function settingsSnapshot(density: SettingsValues['workbench.density']): Setting
     serverVersion: { epoch: 'tree-pane-test', sequence: density === 'cozy' ? 1 : 2 },
     values: { ...DEFAULT_SETTING_VALUES, 'workbench.density': density },
   }
+}
+
+function observeScrollRequests(scroller: HTMLElement) {
+  const requests: ScrollToOptions[] = []
+  const scrollTo = scroller.scrollTo.bind(scroller)
+  scroller.scrollTo = ((optionsOrX?: ScrollToOptions | number, y?: number) => {
+    if (typeof optionsOrX === 'number') {
+      scrollTo(optionsOrX, y ?? 0)
+      return
+    }
+
+    requests.push(optionsOrX ?? {})
+    scrollTo(optionsOrX)
+  }) as typeof scroller.scrollTo
+
+  return requests
 }
 
 function rowIsVisibleInScroller(row: HTMLElement | null, scroller: HTMLElement) {

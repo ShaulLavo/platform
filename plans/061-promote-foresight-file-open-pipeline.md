@@ -3,38 +3,46 @@
 > **Executor instructions**: Follow this plan step by step. Run every verification command and
 > confirm the expected result before moving to the next step. If anything in the "STOP conditions"
 > section occurs, stop and report; do not improvise. When done, delete this completed plan, remove
-> its row from `plans/README.md`, and remove the now-finished 060/061 dependency note, following the
-> repository's cleanup policy. Keep the activation transaction in the landed typed file-tab
-> handler/context and do not recreate the deleted command-factory path. Also
-> close/remove the finished 061 item from authoritative root `PLAN.md` if the approved 060 -> 061
-> sequence was scheduled there.
+> its row from `plans/README.md`, and remove its now-finished paint-contract prerequisite note,
+> following the repository's cleanup policy. Keep the activation transaction in the landed typed
+> file-tab handler/context and do not recreate the deleted command-factory path. Also close/remove
+> the finished 061 item from authoritative root `PLAN.md`.
 >
-> Execute Plan 060 first so both changes share one authoritative-paint signal, one open benchmark,
-> and one reconciliation pass through the dirty Editor worktree. The preparation architecture does
-> not depend on persisted snapshot contents: Plan 060's frame is unvalidated visual paint, while
-> every artifact promoted here must match exact live or server identity.
+> The paired last-visible-paint contract is already landed. Reuse its generation-tagged paint event,
+> React forwarding, Platform marks, one-record cache, inert overlay, and open benchmark. The
+> preparation architecture does not depend on persisted snapshot contents: the cached frame is
+> unvalidated visual paint, while every artifact promoted here must match exact live or server
+> identity.
 >
-> **Post-060 prerequisite check (run before this plan's drift checks)**:
+> **Landed paint-contract prerequisite check (run before this plan's drift checks)**:
 >
 > ```bash
-> rg -n "EditorInitialHighlightStatus|EditorInitialPaintEvent|onInitialPaint" \
+> rg -n "EditorVisibleSnapshot|EditorInitialHighlightStatus|EditorInitialPaintEvent|onInitialPaint" \
 >   ../Editor/packages/editor/src \
 >   ../Editor/packages/react/src \
 >   apps/web/src/features/editor/components/editor.tsx
 > rg -n "appliedThemeId" apps/web/src/features/editor/hooks/use-editor-color-theme.ts
+> test -f apps/web/src/lib/editor-visible-snapshot-cache.ts
+> test -f apps/web/src/features/workbench/hooks/use-editor-visible-snapshot.ts
 > test -f apps/web/scripts/editor-open-benchmark.mjs
-> rg -n "editor.authoritative_text_paint|editor.authoritative_highlight_paint" \
+> rg -n \
+>   "EDITOR_VISIBLE_SNAPSHOT_CACHE_MAX_BYTES|editor.cached_visible_paint|editor.authoritative_text_paint|editor.authoritative_highlight_paint" \
+>   apps/web/src/lib/editor-visible-snapshot-cache.ts \
 >   apps/web/scripts/editor-open-benchmark.mjs apps/web/src
 > ```
 >
-> Expected: the landed generation-tagged `text`/`highlight-settled` event and both machine-readable
-> benchmark marks exist. Reconcile renamed but equivalent symbols once; do not add a parallel paint
-> callback, status, or benchmark script.
+> Expected: the mounted-only visible DTO, 256 KiB one-record cache, generation-tagged
+> `text`/`highlight-settled` event, cached-frame mark, and both authoritative marks exist. Reconcile
+> renamed but equivalent symbols once; do not add a parallel snapshot cache, paint callback, status,
+> overlay owner, or benchmark script.
 >
 > **Platform drift check (run first)**:
 >
 > ```bash
-> git diff --stat 36bf483c..HEAD -- \
+> git rev-parse HEAD
+> git status --short
+> git diff --binary > /tmp/plan-061-platform-before.diff
+> git diff --stat -- \
 >   apps/web/src/features/editor/components/editor.tsx \
 >   apps/web/src/features/editor/state/commands.ts \
 >   apps/web/src/features/editor/state/workspace-state.tsx \
@@ -68,34 +76,9 @@
 > **Editor drift check (run first)**:
 >
 > ```bash
-> git -C ../Editor diff --stat d68ac6e..HEAD -- \
->   packages/editor/src/editor.ts \
->   packages/editor/src/editor/Editor.ts \
->   packages/editor/src/editor/syntaxController.ts \
->   packages/editor/src/editor/types.ts \
->   packages/editor/src/index.ts \
->   packages/editor/src/plugins.ts \
->   packages/editor/src/shiki/plugin.ts \
->   packages/editor/src/shiki/workerClient.ts \
->   packages/editor/src/shiki/workerTypes.ts \
->   packages/editor/src/shiki/shiki.worker.ts \
->   packages/editor/src/syntax/session.ts \
->   packages/editor/src/virtualization/virtualizedTextView.ts \
->   packages/editor/src/virtualization/virtualizedTextViewLayout.ts \
->   packages/editor/src/virtualization/virtualizedTextViewInternals.ts \
->   packages/editor/test/public-api.test.ts \
->   packages/editor/test/shiki/workerClient.test.ts \
->   packages/editor/test/shiki/shiki-worker.test.ts \
->   packages/editor/test/shiki/workerTypes.test.ts \
->   packages/react/src/index.ts \
->   packages/react/test/useEditor.test.ts \
->   packages/tree-sitter/src/session.ts \
->   packages/tree-sitter/src/treeSitter/types.ts \
->   packages/tree-sitter/src/treeSitter/workerClient.ts \
->   packages/tree-sitter/src/treeSitter/treeSitter.worker.ts \
->   packages/tree-sitter/test/treeSitter-workerClient.test.ts \
->   packages/tree-sitter/test/treeSitter-worker.test.ts \
->   docs/architecture/phase-0/core-public-api.json
+> git -C ../Editor rev-parse HEAD
+> git -C ../Editor status --short
+> git -C ../Editor diff --binary > /tmp/plan-061-editor-before.diff
 > git -C ../Editor diff --stat -- \
 >   packages/editor/src/editor.ts \
 >   packages/editor/src/editor/Editor.ts \
@@ -126,15 +109,16 @@
 >   docs/architecture/phase-0/core-public-api.json
 > ```
 >
-> At planning time the Platform source tree is clean. The Editor tree has user-owned, uncommitted
-> selection/reveal and cursor-history work in several of the drift-check files, including
-> `Editor.ts`, `editor.ts`, `index.ts`, `public-api.test.ts`, the React binding, and the public API
-> fixture. Preserve it. Capture `git -C ../Editor diff` before starting and review the combined diff;
-> do not replace whole files or restore the planning-time versions.
+> At paint-contract reconciliation, the clean bases were Platform `4b25f1ab` and Editor `b0919967`;
+> the paired contract may still appear as a complete dirty diff until its operator lands it. These are
+> evidence stamps, not reset targets. Capture both current HEADs, `git status --short`, full binary
+> diffs, and focused preservation tests before starting. Preserve every existing change and review
+> the combined diff; do not replace whole files or restore a planning-time version.
 >
-> The stamped commits predate Plan 060 by design. After its prerequisite check passes, record the
-> post-060 Platform and Editor HEADs/diffs as this plan's execution baseline. Treat the landed paint
-> API, React forwarding, overlay, and benchmark changes as required inputs—not drift to remove.
+> After the prerequisite check passes, record the current Platform and Editor HEADs/diffs as this
+> plan's execution baseline. Treat `EditorVisibleSnapshot`, `EditorInitialPaintEvent`, React
+> forwarding, `appliedThemeId`, the one-record Platform cache/overlay, and the benchmark as required
+> inputs—not drift to remove. No fixed post-contract commit is invented here.
 
 > **Command-boundary handoff**: the typed CommandBus/file-tab boundary is landed. Implement Step 4
 > in that handler/context and do not recreate a command factory path. Preserve
@@ -143,17 +127,17 @@
 
 ## Status
 
-| Field                   | Value                                                                         |
-| ----------------------- | ----------------------------------------------------------------------------- |
-| Priority                | P1                                                                            |
-| Effort                  | L                                                                             |
-| Risk                    | High                                                                          |
-| Execution order         | After Plan 060 (shared paint signal/benchmark and overlapping Editor changes) |
-| Command-boundary order  | Extend the landed typed activation handler/context                            |
-| Functional dependency   | None on Plan 060's persisted snapshot data                                    |
-| Roadmap status          | Executable plan written; not yet scheduled in root `PLAN.md`                  |
-| Planned Platform commit | `36bf483c`                                                                    |
-| Planned Editor commit   | `d68ac6e`                                                                     |
+| Field                    | Value                                                                         |
+| ------------------------ | ----------------------------------------------------------------------------- |
+| Priority                 | P1                                                                            |
+| Effort                   | L                                                                             |
+| Risk                     | High                                                                          |
+| Execution order          | Next; reuse the landed paint signal/benchmark and reconcile overlapping files |
+| Command-boundary order   | Extend the landed typed activation handler/context                            |
+| Functional dependency    | None on the persisted visual snapshot data                                    |
+| Roadmap status           | Next in authoritative root `PLAN.md`; reconcile before execution              |
+| Reconciled Platform base | `4b25f1ab`; capture execution-time HEAD and complete dirty diff               |
+| Reconciled Editor base   | `b0919967`; capture execution-time HEAD and complete dirty diff               |
 
 ## Outcome
 
@@ -183,7 +167,7 @@ file query supplies the exact `FileResult.version`.
    `js.foresight@4.2.1` and `@foresightjs/react@1.0.0`, which are also the current package versions.
    Do not touch `bun.lock` or dependency ranges unless the drift check proves that fact changed and
    the new API is required.
-3. **No new hash and no `ohash`.** The visual snapshot from Plan 060 remains keyed only by
+3. **No new hash and no `ohash`.** The landed `editorVisibleSnapshot` record remains keyed only by
    root/path/schema/theme because a wrong frame is disposable. Promotable artifacts need exact
    identity, but they already have it:
    - a clean disk candidate uses canonical server-relative `{ path, fileVersion }`, where
@@ -258,16 +242,16 @@ file query supplies the exact `FileResult.version`.
 
 ## Ownership and lifecycle
 
-| Artifact                            | Speculative owner             | Owner after activation      | Validation                                                                    | Disposal                            |
-| ----------------------------------- | ----------------------------- | --------------------------- | ----------------------------------------------------------------------------- | ----------------------------------- |
-| `FileResult`                        | TanStack Query                | TanStack Query              | root-generation guard + canonical path + opaque `file.version`                | Existing query GC/pruning           |
-| New clean `EditorTextBuffer`        | `FileOpenIntentService` entry | `WorkspaceDocumentService`  | root-generation guard + canonical path/version, then exact snapshot reference | Entry eviction unless claimed       |
-| Existing live buffer                | `WorkspaceDocumentService`    | unchanged                   | document id + local revision + exact snapshot reference                       | Existing retention policy           |
-| Line starts/tab size/fallback folds | Prepared-open lease           | mounted Editor              | exact snapshot + language/config tags                                         | Lease eviction or Editor dispose    |
-| Structural session/result/promise   | Prepared structural transfer  | Editor syntax controller    | exact snapshot + language + structural provider/config/coverage               | Exactly one owner calls `dispose()` |
-| Highlighter session/result/promise  | Prepared highlighter transfer | Editor syntax controller    | exact snapshot + language + highlighter provider/theme/config/coverage        | Exactly one owner calls `dispose()` |
-| LSP match response                  | TanStack Query                | TanStack Query              | root + match path                                                             | Query GC                            |
-| Persisted visible frame             | Plan 060 local-storage cache  | nobody; visual overlay only | root/path/schema/theme only                                                   | Replaced/removed by Plan 060        |
+| Artifact                            | Speculative owner                  | Owner after activation      | Validation                                                                    | Disposal                            |
+| ----------------------------------- | ---------------------------------- | --------------------------- | ----------------------------------------------------------------------------- | ----------------------------------- |
+| `FileResult`                        | TanStack Query                     | TanStack Query              | root-generation guard + canonical path + opaque `file.version`                | Existing query GC/pruning           |
+| New clean `EditorTextBuffer`        | `FileOpenIntentService` entry      | `WorkspaceDocumentService`  | root-generation guard + canonical path/version, then exact snapshot reference | Entry eviction unless claimed       |
+| Existing live buffer                | `WorkspaceDocumentService`         | unchanged                   | document id + local revision + exact snapshot reference                       | Existing retention policy           |
+| Line starts/tab size/fallback folds | Prepared-open lease                | mounted Editor              | exact snapshot + language/config tags                                         | Lease eviction or Editor dispose    |
+| Structural session/result/promise   | Prepared structural transfer       | Editor syntax controller    | exact snapshot + language + structural provider/config/coverage               | Exactly one owner calls `dispose()` |
+| Highlighter session/result/promise  | Prepared highlighter transfer      | Editor syntax controller    | exact snapshot + language + highlighter provider/theme/config/coverage        | Exactly one owner calls `dispose()` |
+| LSP match response                  | TanStack Query                     | TanStack Query              | root + match path                                                             | Query GC                            |
+| Persisted visible frame             | `editor-visible-snapshot-cache.ts` | nobody; visual overlay only | root/path/schema/theme only                                                   | Replaced/removed by its cache owner |
 
 The prepared service must not mirror a second authoritative document map. Its entries are
 disposable leases. Promotion deletes the entry before handing the payload to the consumer, so a
@@ -376,8 +360,8 @@ startup in the existing mounted-editor plugin lifecycle.
 
 ## Commands you will need
 
-Run commands from `/Users/shaul/Desktop/D/platform` unless a command changes directory explicitly.
-Do not start another dev server; the repository guarantees one is already running.
+Run commands from the Platform repository root unless a command changes directory explicitly. Do not
+start another dev server; the repository guarantees one is already running.
 
 ```bash
 # Confirm dependency state only; do not update by default.
@@ -519,7 +503,7 @@ apps/web/src/features/workspace/utils/tab-prefetch.ts
 apps/web/src/features/workspace/utils/file-tree-prefetch.ts
 apps/web/src/lib/file-snapshot-query-cache.ts
 apps/web/src/lib/tests/file-snapshot-query-cache.test.ts
-apps/web/scripts/editor-open-benchmark.mjs                            # extend Plan 060 script
+apps/web/scripts/editor-open-benchmark.mjs                            # extend landed paint benchmark
 apps/web/package.json                                                 # scripts only
 ```
 
@@ -530,8 +514,8 @@ consume it. Do not add barrel files.
 ### Explicitly out of scope
 
 - A hidden or pooled Editor instance, hidden DOM, premeasured font/BiDi/wrap geometry, or a minimap.
-- Persisting buffers, tokens, syntax trees, worker sessions, or more than Plan 060's single visible
-  snapshot across reload.
+- Persisting buffers, tokens, syntax trees, worker sessions, or more than the landed cache's single
+  visible snapshot across reload.
 - Starting an LSP server or prefetching semantic tokens, diagnostics, definitions, or references.
 - Preparing diffs, compare views, search buffers, settings JSON, git-ref documents, or directories.
 - Prepared adoption for text-only owned-document inputs; without the exact external buffer/snapshot
@@ -548,7 +532,7 @@ consume it. Do not add barrel files.
 - Record both starting diffs. Preserve unrelated and user-owned changes.
 - Complete Editor's prepared-open contract before wiring Platform against it.
 - Keep intermediate changes buildable at each step. Do not temporarily route authoritative text
-  through TanStack Query or the Plan 060 visual cache.
+  through TanStack Query or `editor-visible-snapshot-cache.ts`.
 
 ## Steps
 
@@ -557,21 +541,21 @@ consume it. Do not add barrel files.
 **Goal:** Freeze an observable pre-change baseline. Do not require prepared-service or worker-reset
 APIs that this plan has not built yet; the isolated three-mode gate is added in Step 7.
 
-1. Extend the `apps/web/scripts/editor-open-benchmark.mjs` baseline created by Plan 060, preserving
+1. Extend the landed `apps/web/scripts/editor-open-benchmark.mjs` baseline, preserving
    its process-launch, browser-selection, fixture, randomized-order, and output conventions.
 2. Add only the durable marks available on the current path: intent detected, file bytes ready,
    activation/click, live buffer/view ready, first authoritative text paint, and first authoritative
    highlighted paint. Consume the landed `EditorInitialPaintEvent`: `text` drives
    `editor.authoritative_text_paint` on the matching next frame, while only `highlight-settled` with
    `painted` or `degraded` may drive `editor.authoritative_highlight_paint`. `plain`/`error` remain
-   terminal outcomes, not successful highlight samples. A Plan 060 overlay never satisfies either
-   authoritative mark.
+   terminal outcomes, not successful highlight samples. The inert cached overlay never satisfies
+   either authoritative mark.
 3. Calibrate highlighted paint against a known TypeScript fixture whose token foreground visibly
    differs from its background. Record current post-click file reads, buffer constructions,
    full-line-index scans, and syntax/highlighter session creations where observable; do not invent
    prepared-stage/request counters before Steps 1–2 add them.
 4. Run diagnostic **miss/control** and current **query-only** samples against fresh unique fixture
-   paths after balanced warmups. Remove Plan 060's visual record before authoritative-pipeline
+   paths after balanced warmups. Remove the one-record visual cache before authoritative-pipeline
    samples. This pre-change run is not the final isolation/timing gate: without the later service and
    worker barriers it may not claim per-runtime quiescence. Save the command, fixture, mode ordering,
    p50/p95 output, and structural counters in the execution notes.
@@ -584,7 +568,7 @@ APIs that this plan has not built yet; the isolated three-mode gate is added in 
 - The known-good highlighted fixture emits the authoritative highlighted-paint mark.
 - A query-only hit performs no post-click file read while still showing the current post-click
   buffer/line-index/syntax work.
-- The benchmark distinguishes Plan 060's visual frame from authoritative editor paint.
+- The benchmark distinguishes `editor.cached_visible_paint` from authoritative editor paint.
 
 ### Step 1: Add a one-shot prepared-document contract to editor core
 
@@ -1055,9 +1039,9 @@ consumer can still use them. Abort/dispose only service-owned heavy work.
 Derive the expected **structural** syntax range from the tab's saved scroll position and a
 conservative configured/default viewport-height estimate. Shiki's current contract tokenizes the
 full document, so its transfer declares full coverage; do not pretend it is viewport-bounded or add
-a partial-Shiki API in this plan. The shared `lib/` service must not read Plan 060's workbench visual
-cache or accept its text/tokens. Record the chosen structural range so the benchmark can distinguish
-useful and wasted work.
+a partial-Shiki API in this plan. The shared `lib/` service must not read
+`editor-visible-snapshot-cache.ts` or accept its text/tokens. Record the chosen structural range so
+the benchmark can distinguish useful and wasted work.
 
 Apply the initial bounds in one eviction policy:
 
@@ -1194,7 +1178,7 @@ document/start providers first. Instead, inject a narrow activation collaborator
    consume a prepared file entry.
 3. The selected-file query may continue for reconciliation, but it does not gate a retained clean or
    dirty live buffer. Keep the authoritative ready-`FileResult` reconciliation in its current owner,
-   `EditorSurfaceTabBody`; Plan 060 already gives `FileEditorBody` visual-cache ownership, not
+   `EditorSurfaceTabBody`; the landed hook already gives `FileEditorBody` visual-cache ownership, not
    document actions. Change that ready-file path to a layout effect so a newly resolved result
    synchronously calls `claimClean({ rootPath, tabId, file })` immediately before
    `ensureEditorView` and commits the view before browser paint. If the command transaction already
@@ -1282,10 +1266,10 @@ file/content hash, or `ohash`. Tree-sitter remains present for structure when Sh
 matching `createEditorSyntaxHighlightingPlugins`; do not model the source as a single mutually
 exclusive provider. The preparer and mounted factory must resolve identical structural options:
 capture-requiring Markdown prepares captures, ordinary languages do not, and Tree-sitter highlights
-are disabled only when the separate highlighter actually paints them. If selected, committed, and
-Plan 060's actual `appliedThemeId` are not all equal while a preview/load/fallback is active, prepare
-buffer/structure but skip speculative Shiki work; the mounted fallback or a later intent may create
-it after the exact theme lands.
+are disabled only when the separate highlighter actually paints them. If the selected and committed
+theme ids do not both equal the landed `appliedThemeId` while a preview/load/fallback is active,
+prepare buffer/structure but skip speculative Shiki work; the mounted fallback or a later intent may
+create it after the exact theme lands.
 
 Capture the environment generation before resolving each candidate and store both it and the
 resolved result on the entry. `setEnvironment(next)` compares the explicit primitive fields and
@@ -1333,7 +1317,7 @@ latest-request, snapshot, provider, coverage, and stale-result guards. Install t
 as the active request; do not call `refresh`, `open`, `parse`, or `query` again for the same pending
 coverage. After success, request only uncovered structural coverage; Shiki's full transfer needs no
 second request. Do not create a second session or duplicate the first worker request for either
-successful transfer. Preserve Plan 060's generation-tagged `EditorInitialPaintEvent`:
+successful transfer. Preserve the landed generation-tagged `EditorInitialPaintEvent`:
 prepared ready and pending paths each emit one `text` phase and one `highlight-settled` phase only
 after the applicable visual result reaches the mounted view. Structural readiness must not emit the
 terminal phase or dismiss the overlay while Shiki remains pending. Plain/error may settle and
@@ -1484,7 +1468,7 @@ Add DOM tests proving:
 Add a real-browser workbench test with a known highlighted file. Run a prediction, activate the
 target, and assert:
 
-- Plan 060's cached frame, when present, is inert and not counted authoritative;
+- the cached `EditorVisibleSnapshot` frame, when present, is inert and not counted authoritative;
 - both query-only-ready (layout reconciliation) and full-prepared (command transaction) activations
   have an authoritative view in the first browser-painted frame—no intermediate blank frame or
   passive-effect-only install—while a miss never waits;
@@ -1511,7 +1495,7 @@ run the final paired gate:
    `primeEditorOpenQuery({ rootPath, path }): Promise<{ readonly ready: true }>`. Add one benchmark-
    control registration; `EditorStateProvider` supplies composed handlers with exact access to
    QueryClient, workspace selection/tab commands and state, document/view state, the intent owner,
-   the shared file/LSP query-key helpers, Plan 060's cache removal, and both workers' per-runtime/
+   the shared file/LSP query-key helpers, `removeEditorVisibleSnapshotCache`, and both workers' per-runtime/
    provider-wide barrier controls. The
    query-only handler calls
    `ensureFileSnapshotQuery` directly and returns no file
@@ -1551,7 +1535,7 @@ run the final paired gate:
      Use keyboard or dispatched activation without pointer travel for miss/query-only and assert their
      completed sample scopes contain zero intents; use the real Foresight adapter/trajectory for
      prepared samples and report every target/non-target/wasted intent it generated. Before every
-     authoritative sample, await the scoped reset bridge for the prior sample and remove Plan 060's
+     authoritative sample, await the scoped reset bridge for the prior sample and remove the landed
      one-record visual frame. Keep a separate compatibility group where every mode receives an
      identically seeded frame; do not mix it into the pipeline gate. State the warm-cache model in the
      output—unique paths alone are not proof of isolation.
@@ -1609,7 +1593,7 @@ run the final paired gate:
 - Run Platform app tests under `bun --bun`; run browser orchestration with the separate browser
   config under plain Node as required by the repository.
 - Run Editor runtime-neutral tests with its local Vitest setup.
-- Rerun Plan 060's landed snapshot/syntax/theme/cache/overlay handoff tests because this plan edits the
+- Rerun the landed snapshot/syntax/theme/cache/overlay handoff tests because this plan edits the
   same adoption and React boundaries; do not treat the prerequisite grep as regression coverage.
 - Review both worktree diffs and `git diff --check`. Do not use an absolute test count.
 
@@ -1623,7 +1607,7 @@ run the final paired gate:
       and match canonical document/local revision plus exact snapshot identity. Existing tabs may
       supply scroll state but are not claim authority. Query/live authorities remain canonical-path
       shared, not duplicated per selected root.
-- [ ] Plan 060's persisted viewport remains path/theme-only visual paint; no one attempts to promote
+- [ ] The persisted `EditorVisibleSnapshot` viewport remains path/theme-only visual paint; no one attempts to promote
       or content-validate it.
 - [ ] TanStack Query owns only server data; WorkspaceDocumentService remains the only live-buffer
       authority.
@@ -1660,7 +1644,7 @@ run the final paired gate:
       and real teardown disposes each owner exactly once.
 - [ ] Prepared ready/pending paths preserve the landed generation-tagged text/highlight event and
       machine-readable marks; plain/error never count as highlighted paint.
-- [ ] Plan 060's landed core snapshot/syntax and Platform cache/theme/DOM/browser handoff regressions
+- [ ] The landed core snapshot/syntax and Platform cache/theme/DOM/browser handoff regressions
       still pass after prepared-open adoption changes.
 - [ ] A fully prepared browser hit starts zero file reads, buffer builds, full line-index scans, and
       syntax/highlighter session creations after activation.
@@ -1696,7 +1680,7 @@ run the final paired gate:
       document-data, syntax, highlighting, or LSP preparation.
 - [ ] Editor and Platform focused tests, typecheck, lint, format, API health, and build all exit 0.
 - [ ] No user-owned Editor selection/reveal/cursor-history change was reverted or rewritten.
-- [ ] This plan is deleted, its `plans/README.md` row is removed, and the completed 060/061 dependency
+- [ ] This plan is deleted, its `plans/README.md` row is removed, and its paint-contract prerequisite
       note is removed after verified completion.
 - [ ] The landed typed activation boundary remains the sole command path and has a focused
       claim/ensure-before-publication regression test.
@@ -1718,7 +1702,7 @@ Stop and report instead of improvising if:
 - A hidden Editor/DOM host is required to prepare the proposed artifact.
 - Dirty text would need to enter query storage or persistent storage.
 - The service cannot observe a root/file/config invalidation before a stale payload could paint.
-- Instrumentation cannot distinguish Plan 060's visual frame from authoritative editor paint.
+- Instrumentation cannot distinguish `editor.cached_visible_paint` from authoritative editor paint.
 - Existing uncommitted Editor edits overlap semantically rather than merely sharing files.
 - A focused verification fails twice after a reasonable correction.
 
@@ -1728,7 +1712,7 @@ Stop and report instead of improvising if:
   or Editor migration.
 - The `f:` prefix namespaces an already-provided identity; it is not an interpreted version format or
   a browser checksum. Never branch on the opaque suffix.
-- The Plan 060 frame is intentionally allowed to be stale because it is never promoted. Any future
+- The persisted visible frame is intentionally allowed to be stale because it is never promoted. Any future
   attempt to reuse its tokens in Editor state must cross this plan's exact validation boundary.
 - The 8-entry/32-MiB/30-second limits and 1-MiB preparation ceiling are initial measured-policy
   values, not user settings. Change them only with benchmark and retained-memory evidence.

@@ -32,6 +32,11 @@ import {
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
 import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/layout'
 import { DEFAULT_WORKSPACE_UI_MODE } from '@/lib/ui-mode'
+import {
+  EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY,
+  writeEditorVisibleSnapshotCache,
+  type CachedEditorVisibleSnapshot,
+} from '@/lib/editor-visible-snapshot-cache'
 
 const STORE = new Map<string, string>()
 
@@ -193,12 +198,23 @@ describe('workspace cache', () => {
       editorHistory: ['/other/src/b.ts'],
     })
     writeSearchBufferCache('/other', emptySearchBuffer('/other'))
+    writeEditorVisibleSnapshotCache(cachedEditorVisibleSnapshot('/other'))
     writeWorkspaceIndexCache(['/repo', '/other'])
 
     writeWorkspaceIndexCache(['/repo'])
 
     expect(STORE.has(workspaceSliceStorageKey('/other'))).toBe(false)
     expect(STORE.has(searchBufferStorageKey('/other'))).toBe(false)
+    expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(false)
+  })
+
+  it('leaves a visible snapshot for another root when evicting a workspace', () => {
+    writeEditorVisibleSnapshotCache(cachedEditorVisibleSnapshot('/kept'))
+    writeWorkspaceIndexCache(['/repo', '/other'])
+
+    writeWorkspaceIndexCache(['/repo'])
+
+    expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(true)
   })
 
   it('remembers at most the slice limit', () => {
@@ -370,6 +386,44 @@ function emptySearchBuffer(rootPath: string): CachedSearchBufferState {
     truncated: false,
     warnings: [],
     wholeWord: false,
+  }
+}
+
+function cachedEditorVisibleSnapshot(rootPath: string): CachedEditorVisibleSnapshot {
+  return {
+    cacheVersion: 2,
+    contentVersion: 'stat:1:1',
+    rootPath,
+    path: `${rootPath}/src/app.ts`,
+    themeId: 'dark-plus',
+    snapshot: {
+      kind: 'editor-visible',
+      schemaVersion: 1,
+      documentId: 'document-1',
+      languageId: 'typescript',
+      theme: null,
+      textVersion: 1,
+      initialHighlightStatus: 'plain',
+      metrics: { rowHeight: 20, characterWidth: 8 },
+      lineCount: 1,
+      contentWidth: 0,
+      totalHeight: 20,
+      gutterWidth: 0,
+      gutterLayout: { fixedWidth: 0, lanes: [] },
+      tabSize: 2,
+      viewport: {
+        scrollTop: 0,
+        scrollLeft: 0,
+        scrollHeight: 0,
+        scrollWidth: 0,
+        clientHeight: 0,
+        clientWidth: 0,
+        borderBoxHeight: null,
+        borderBoxWidth: null,
+        visibleRange: { start: 0, end: 0 },
+      },
+      rows: [],
+    },
   }
 }
 

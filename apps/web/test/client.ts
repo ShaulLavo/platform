@@ -290,8 +290,19 @@ function settingsErrorResponse({ code, message, status }: InjectedSettingsError)
 }
 
 function directInProcessFetcher(server: TestServer): typeof fetch {
-  return ((input, init) =>
-    server.app.handle(withOrigin(new Request(input, init), server.origin))) as typeof fetch
+  return (async (input, init) => {
+    const response = await server.app.handle(withOrigin(new Request(input, init), server.origin))
+    normalizeInProcessSseHeaders(response)
+    return response
+  }) as typeof fetch
+}
+
+function normalizeInProcessSseHeaders(response: Response) {
+  if (response.headers.get('transfer-encoding') !== 'chunked') return
+  if (response.headers.get('cache-control') !== 'no-cache') return
+
+  // Happy DOM rewrites app.handle() SSE responses to text/plain.
+  response.headers.set('content-type', 'text/event-stream')
 }
 
 function createClient(server: TestServer, fetcher: typeof fetch) {

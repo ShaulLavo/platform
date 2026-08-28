@@ -1,4 +1,4 @@
-# Plan 069: Retry a failed highlight instead of clearing it forever
+# Plan 071: Retry a failed highlight instead of clearing it forever
 
 > **Executor instructions**: Read this plan completely, then read Platform `AGENTS.md`, root
 > `PLAN.md`, and `/Users/shaul/.agents/skills/never-nester/SKILL.md`. This is an Editor-only change
@@ -14,7 +14,7 @@
 - **Risk**: LOW, with one sharp edge: a retry that hides a permanent failure is worse than no retry.
   See "The thing to get right".
 - **Editor baseline**: `0f4f8f498954a701cbf8041a13586f227bd5d3ce`
-- **Relationship to Plan 068**: independent. 068 fixes a real cause; this makes the _next_ cause
+- **Relationship to Plan 070**: independent. 070 fixes a real cause; this makes the _next_ cause
   survivable. Neither blocks the other. Do not land this first — see below.
 
 ## Why
@@ -47,7 +47,7 @@ finished. There is no state to observe, and therefore nothing a retry could be d
 
 This plan is one careless step away from making the codebase worse.
 
-The blob-worker bug in Plan 068 was found _because_ the failure was loud, permanent, and logged with
+The blob-worker bug in Plan 070 was found _because_ the failure was loud, permanent, and logged with
 a specific error string. A retry loop that quietly re-attempted a permanently-broken module import
 would have produced the same visible outcome — no highlighting — with the cause buried under N
 identical warnings, or worse, spun a dead worker in a loop.
@@ -118,9 +118,9 @@ Per-workspace baseline deltas only; never gate on an absolute test count or a ba
 
 ## Sequencing note
 
-Land this **after** Plan 068, or at least after 068's root cause is understood and fixed. Landing a
+Land this **after** Plan 070, or at least after 070's root cause is understood and fixed. Landing a
 retry while a permanent failure is live would convert a diagnosable error into a retry storm and
-make 068 harder to find, not easier.
+make 070 harder to find, not easier.
 
 ## Out of scope
 

@@ -149,14 +149,14 @@ test('palette and settings restore only after their modal targets depart', async
   const paletteOrigin = await element('[data-open-palette]')
   paletteOrigin.focus()
   paletteOrigin.click()
-  const paletteInput = await element<HTMLInputElement>('input[placeholder="Search commands..."]')
+  const paletteInput = await element<HTMLInputElement>('input[placeholder="Search commands…"]')
   await expect.poll(() => document.activeElement).toBe(paletteInput)
   expect(focus.getSnapshot().currentOwner?.area).toBe('command-palette')
 
   await commands.proofKeyPress({ key: 'Escape' })
 
   await expect
-    .poll(() => document.querySelector('input[placeholder="Search commands..."]'))
+    .poll(() => document.querySelector('input[placeholder="Search commands…"]'))
     .toBeNull()
   await expect.poll(() => document.activeElement).toBe(paletteOrigin)
   expect(focus.getSnapshot().currentOwner?.id).toEqual({
@@ -168,13 +168,13 @@ test('palette and settings restore only after their modal targets depart', async
   const settingsOrigin = await element('[data-open-settings]')
   settingsOrigin.focus()
   settingsOrigin.click()
-  const settingsInput = await element<HTMLInputElement>('input[aria-label="Search settings"]')
-  await expect.poll(() => document.activeElement).toBe(settingsInput)
+  const settingsDialog = await element<HTMLElement>('[role="dialog"]')
+  await expect.poll(() => settingsDialog.contains(document.activeElement)).toBe(true)
   expect(focus.getSnapshot().currentOwner?.id).toEqual({ kind: 'settings-dialog' })
 
   await commands.proofKeyPress({ key: 'Escape' })
 
-  await expect.poll(() => document.querySelector('input[aria-label="Search settings"]')).toBeNull()
+  await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull()
   await expect.poll(() => document.activeElement).toBe(settingsOrigin)
   expect(focus.getSnapshot().currentOwner?.id).toEqual({
     key: 'settings-origin',

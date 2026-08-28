@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "bun ../../scripts/run-with-env.ts vite",
     "build": "tsgo --build && bun --env-file=../../.env vite build",
+    "bench:editor-open": "node scripts/editor-open-benchmark.mjs",
     "bench:editor-scroll": "node scripts/editor-scroll-benchmark.mjs",
     "bench:editor-scroll:gate": "node scripts/editor-scroll-benchmark.mjs --gate --browsers=chromium",
     "bench:editor-scroll:gate:all": "node scripts/editor-scroll-benchmark.mjs --gate --browsers=chromium,webkit,firefox",
@@ -34,7 +35,7 @@
     "@foresightjs/react": "^1.0.0",
     "@lexical/react": "^0.45.0",
     "@phosphor-icons/react": "^2.1.10",
-    "@singapor/core": "0.1.1",
+    "@singapor/core": "0.1.2",
     "@singapor/decode": "0.1.1",
     "@singapor/diff": "0.1.1",
     "@singapor/find": "0.1.1",

@@ -70,6 +70,7 @@ const LAYOUT_PARAM = 'editorPerfLayout'
 const SLOW_FRAME_MS = 16.7
 const LONG_FRAME_MS = 50
 const MAX_TRACE_EVENTS = 5000
+const EDITOR_VISIBLE_SNAPSHOT_SELECTOR = '[data-editor-visible-snapshot]'
 
 export type EditorPerformanceLayoutVariant = 'absolute-rows' | 'default'
 
@@ -190,7 +191,7 @@ function createEditorPerformanceTrace(): {
   function createReport(): EditorPerformanceTraceReport {
     return {
       disabledFeatures: Array.from(editorPerformanceDisabledFeatures()),
-      dom: domSnapshot(document),
+      dom: editorPerformanceDomSnapshot(document),
       durationMs: performance.now() - startedAt,
       events: Object.fromEntries(eventCounts),
       frameStats: frameStats(frameDurations),
@@ -293,16 +294,17 @@ function frameStats(durations: readonly number[]): Readonly<Record<string, numbe
   }
 }
 
-function domSnapshot(document: Document): Readonly<Record<string, number>> {
+export function editorPerformanceDomSnapshot(document: Document): Readonly<Record<string, number>> {
   const highlights = cssHighlightSnapshot(document)
+  const editorRows = liveEditorElements(document, '.editor-virtualized-row')
 
   return {
     cssHighlightGroups: highlights.groups,
     cssHighlightRanges: highlights.ranges,
     cssHighlightRules: cssHighlightRuleCount(document),
-    editorRowTextCharacters: editorRowTextCharacters(document),
-    editorRows: document.querySelectorAll('.editor-virtualized-row').length,
-    editorScrollers: document.querySelectorAll('.editor-virtualized').length,
+    editorRowTextCharacters: editorRowTextCharacters(editorRows),
+    editorRows: editorRows.length,
+    editorScrollers: liveEditorElements(document, '.editor-virtualized').length,
     minimapCanvases: document.querySelectorAll('.editor-minimap-canvas').length,
     minimaps: document.querySelectorAll('.editor-minimap').length,
     scopeLines: document.querySelectorAll('.editor-scope-line').length,
@@ -333,10 +335,13 @@ function cssHighlightRuleCount(document: Document): number {
   )
 }
 
-function editorRowTextCharacters(document: Document): number {
-  return Array.from(document.querySelectorAll('.editor-virtualized-row')).reduce(
-    (count, row) => count + (row.textContent?.length ?? 0),
-    0,
+function editorRowTextCharacters(rows: readonly Element[]): number {
+  return rows.reduce((count, row) => count + (row.textContent?.length ?? 0), 0)
+}
+
+function liveEditorElements(document: Document, selector: string): Element[] {
+  return Array.from(document.querySelectorAll(selector)).filter(
+    (element) => !element.closest(EDITOR_VISIBLE_SNAPSHOT_SELECTOR),
   )
 }
 
