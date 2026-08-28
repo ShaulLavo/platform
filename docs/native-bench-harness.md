@@ -149,19 +149,19 @@ The checked-in gate corpus is the 232-line TSX file named in §2.2. The historic
 
 ## 6. Native methodology
 
-### 6.1 Keystroke-to-photon, defined
+### 6.1 Keystroke work and presentation
 
 Nothing in-process can see a photon. So the measurement is split, and both halves are named:
 
 ```
-key event  →  ApplyEdit  →  Layout  →  Draw  →  Commit  ‖  compositor  →  scanout
-└────────────── in-process, os_signpost ──────────────┘  └── Instruments only ──┘
+key event → ApplyEdit → Layout → Draw → transaction completion ‖ compositor → scanout
+└──────────────── in-process, os_signpost ────────────────────┘ └ Instruments only ┘
 ```
 
-- **Keystroke-to-commit** is the `Keystroke` signpost interval: opened in `NSTextInputClient.insertText` / `keyDown`, closed in the `CATransaction` completion handler that runs when the frame is handed to the compositor. This is what `EditorBench` and the editor surface report, and it is the number plan 2's sub-2 ms spike target refers to.
-- **Commit-to-photon** is the display pipeline. It comes from the Animation Hitches lane of an Instruments trace, or from the `targetTimestamp` of `NSView.displayLink(target:selector:)` for the frame the commit landed in. Add it only when quoting an end-to-end figure.
+- **Keystroke-to-transaction-completion** is the `Keystroke` signpost interval. It opens in `NSTextInputClient.insertText` or `keyDown` and closes in the `CATransaction` completion handler. The editor draws synchronously before that handler. With actions disabled, the handler does not prove that the compositor accepted or presented the frame. This CPU work interval is the number plan 2's sub-2 ms spike target refers to.
+- **Transaction-completion-to-photon** is the remaining display pipeline. It comes from a correlated Animation Hitches trace or the `targetTimestamp` of `NSView.displayLink(target:selector:)` for the submitted frame. Add it only when quoting an end-to-end figure.
 
-Against the web's keydown → next-rAF (§2.2), keystroke-to-commit is the **stricter** measurement: it includes typesetting and drawing, which the rAF callback precedes. A native number that beats the web number is therefore beating it with a handicap. Never quote it the other way round.
+The native interval includes typesetting and synchronous layer drawing, which the web's keydown-to-rAF interval precedes. The endpoints still differ, and neither measurement reaches a photon. Compare them as CPU work gates, not identical presentation latencies.
 
 ### 6.2 The signpost contract
 
@@ -173,7 +173,7 @@ Against the web's keydown → next-rAF (§2.2), keystroke-to-commit is the **str
 | `ApplyEdit` | event    | buffer mutation complete, before any layout |
 | `Layout`    | event    | invalidated fragments typeset               |
 | `Draw`      | event    | glyphs drawn for those fragments            |
-| `Commit`    | event    | frame handed to the compositor              |
+| `Commit`    | event    | `CATransaction` completion observed         |
 
 `KeystrokeTrace` is `~Copyable` so the interval cannot be accidentally duplicated or leaked past its `end()`. Disabled signposts cost an atomic load and a branch, which is cheap enough to leave in the hot path permanently — the alternative is an instrument that only exists in builds where the bug does not reproduce.
 
@@ -194,7 +194,7 @@ Result: 60 `Keystroke` intervals, 240 stage events (60 each of ApplyEdit/Layout/
 Two traps, both hit while verifying this:
 
 - **`--output` must precede `--launch`.** Anything after `--launch --` goes to the target process; `--output` placed last is passed to your binary, which rejects it, and the trace records a 0.8 s run of nothing.
-- **Template choice decides whether signposts exist at all.** `Time Profiler` produces an empty signpost table. Use `Logging` (its `os_signpost` instrument with dynamic subsystems) for latency work, or `Animation Hitches` when the commit-to-photon tail is the question. `--list-devices` first: real devices and the host Mac take `SwiftUI`; the iOS Simulator's SwiftUI lane comes back empty.
+- **Template choice decides whether signposts exist at all.** `Time Profiler` produces an empty signpost table. Use `Logging` for the in-process work interval, or `Animation Hitches` when presentation is the question. `--list-devices` first: real devices and the host Mac take `SwiftUI`; the iOS Simulator's SwiftUI lane comes back empty.
 
 For a long interactive session, `record_trace.py --stop-file /tmp/stop-trace` runs in the background and stops on `touch`.
 
@@ -209,7 +209,7 @@ For a long interactive session, `record_trace.py --stop-file /tmp/stop-trace` ru
 
 **Correcting the plan-of-plans premise: this machine is not ProMotion.** Built-in display, 2880×1800, 60 Hz, confirmed by both `CGDisplayMode.refreshRate` and `NSScreen.maximumFramesPerSecond`. Gate on the 8.33 ms target anyway — designing to the dev machine's 60 Hz bakes in a budget ProMotion halves — but never _claim_ 120 Hz until it is measured on a 120 Hz display. The harness prints that caveat itself so a pasted result carries it.
 
-Budget arithmetic for plan 2: a 8.33 ms frame that must also absorb a keystroke leaves the sub-2 ms keystroke-to-commit target roughly a quarter of the frame, with the rest for everything that is not the edit.
+Budget arithmetic for plan 2: an 8.33 ms frame that must also absorb a keystroke leaves the sub-2 ms input-to-transaction target roughly a quarter of the frame, with the rest for everything that is not the edit.
 
 ### 6.5 Microbench rules
 
@@ -259,10 +259,11 @@ cd apps/mac && swift run -c release EditorBench
 --scan-iterations=N                string-scan iterations (default 7)
 --no-calibration                   skip the CPU calibration loop (~1s)
 --signpost-demo[=N]                emit N synthetic keystroke signposts and exit
---coretext-spike[=N]               run N painted line edits with a retained 10 MiB source
+--coretext-spike[=N]               run N source-backed painted edits in a 10 MiB document
+--coretext-snapshot=PATH           export one inserted CoreText frame as a PNG
 ```
 
-Output sections: **Machine** (profile, both frame budgets, calibration), **Baselines** (the two tables above with an empty native column and the provenance legend), **String views** (§6.6). `--coretext-spike` runs the plan-2 spike and exits.
+Output sections: **Machine** (profile, both frame budgets, calibration), **Baselines** (the two tables above with an empty native column and the provenance legend), **String views** (§6.6). `--coretext-spike` runs the plan-2 timing spike and exits. `--coretext-snapshot` exports the exact hosted-layer contents for separate visual QA; it is not a timing result.
 
 ---
 

@@ -17,6 +17,7 @@ struct Options {
   var scanIterations = 7
   var signpostKeystrokes: Int?
   var coreTextSpikeKeystrokes: Int?
+  var coreTextSnapshotPath: String?
   var skipCalibration = false
 
   static func parse(_ arguments: [String]) -> Parsed {
@@ -48,6 +49,11 @@ struct Options {
           return .message("--coretext-spike needs a positive integer", exitCode: 2)
         }
         options.coreTextSpikeKeystrokes = parsed
+      case "--coretext-snapshot":
+        guard let value, !value.isEmpty else {
+          return .message("--coretext-snapshot needs an output path", exitCode: 2)
+        }
+        options.coreTextSnapshotPath = value
       case "--no-calibration":
         options.skipCalibration = true
       case "--help", "-h":
@@ -85,7 +91,8 @@ struct Options {
       --scan-iterations=N                string-scan iterations (default 7)
       --no-calibration                   skip the CPU calibration loop (~1s)
       --signpost-demo[=N]                emit N synthetic keystroke signposts and exit
-      --coretext-spike[=N]               run N painted line edits with a retained 10 MiB source
+      --coretext-spike[=N]               run N source-backed painted edits in a 10 MiB document
+      --coretext-snapshot=PATH           export one inserted CoreText frame as a PNG
 
     Methodology, provenance and the xctrace recipe: docs/native-bench-harness.md
     """

@@ -23,6 +23,18 @@ if let keystrokes = options.signpostKeystrokes {
   exit(0)
 }
 
+if let path = options.coreTextSnapshotPath {
+  guard machine.buildIsRelease else {
+    printBanner(machine)
+    exit(2)
+  }
+
+  MainActor.assumeIsolated {
+    CoreTextSpike.writeSnapshot(path: path)
+  }
+  exit(0)
+}
+
 if let keystrokes = options.coreTextSpikeKeystrokes {
   guard machine.buildIsRelease else {
     printBanner(machine)

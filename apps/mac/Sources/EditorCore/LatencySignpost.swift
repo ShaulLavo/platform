@@ -11,8 +11,8 @@ public enum EditorSignpost {
 
   public static let signposter = OSSignposter(subsystem: subsystem, category: category)
 
-  /// Input receipt to the frame that carries the edit. The interval every
-  /// other stage nests inside.
+  /// Input receipt through synchronous drawing and transaction completion.
+  /// The interval every other stage nests inside.
   public static let keystroke: StaticString = "Keystroke"
   /// Buffer mutation only — no layout, no paint.
   public static let applyEdit: StaticString = "ApplyEdit"
@@ -20,8 +20,8 @@ public enum EditorSignpost {
   public static let layout: StaticString = "Layout"
   /// Glyph drawing for the invalidated fragments.
   public static let draw: StaticString = "Draw"
-  /// Frame handed to the compositor. Photon time is this plus the display
-  /// pipeline, which only the trace's Animation Hitches lane can see.
+  /// `CATransaction` completion observed. Compositor submission and photon
+  /// time require correlated display evidence.
   public static let commit: StaticString = "Commit"
 }
 

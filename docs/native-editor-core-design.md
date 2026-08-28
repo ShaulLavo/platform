@@ -1,6 +1,6 @@
 # Native editor core design
 
-**Status:** design complete. On 2026-08-28, the retained-source CoreText microspike measured 1.639 ms p95 across 200 calibrated clock samples and 1.825 ms p95 across 276 complete `Keystroke` intervals in an attached Logging trace. Both span synthetic key input through `CATransaction` completion and pass the binding sub-2 ms gate. The result selects CoreText, one owner-drawn `NSView`, and app-owned synchronous layers. TextKit 2 and Metal are out of the first implementation.
+**Status:** design complete. On 2026-08-28, the visually corrected 10 MiB source-backed CoreText microspike measured 1.298 ms p95 across 200 calibrated clock samples and 1.369 ms p95 across 282 complete `Keystroke` intervals in an attached Logging trace. Both span synthetic key input through `CATransaction` completion and pass the binding sub-2 ms work gate. An exported inserted frame also passed visual QA for orientation, text order, insertion position, style, and selection. The result selects CoreText, one owner-drawn `NSView`, and app-owned synchronous layers. TextKit 2 and Metal are out of the first implementation.
 
 This document turns the binding directives in `native-plan-of-plans.md` and `native-editor-internals-research.md` into an implementation order. The web buffer source was read at `../Editor` commit `b09199679c680255aa07c0c2c70ae77895023ad5`. The CodeEditTextView and Runestone references were read from `~/Desktop/D/references/` on 2026-08-28.
 
@@ -32,17 +32,28 @@ The primary implementation references are:
 | macOS text input                | `CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+NSTextInput.swift` and `MarkedTextManager/MarkedTextManager.swift`                                                      |
 | macOS accessibility             | `CodeEditTextView/Sources/CodeEditTextView/TextView/TextView+Accessibility.swift` and `Tests/CodeEditTextViewTests/AccessibilityTests.swift`                                         |
 
-## The CoreText microspike passes the full gate
+## The CoreText microspike passes the source-backed planning gate
 
-The planning spike is implemented in `EditorBench` as `--coretext-spike`. It keeps a 10 MiB immutable original buffer retained, copies one line near the document midpoint into the measured edit path, applies style runs while typesetting, builds `CTLine` fragments, paints a selection separately, and draws synchronously through an app-owned hosted `CALayer`. It sends a synthetic AppKit `NSEvent` through `keyDown(with:)` and `interpretKeyEvents(_:)`. Each measured insertion is reverted and repainted outside the interval so every sample starts from the same state.
+The planning spike is implemented in `EditorBench` as `--coretext-spike`. It owns one immutable 10,485,771-byte source and a spike-only one-insertion overlay at global UTF-16 offset 5,242,885. No copied hot line survives setup. During every timed edit, layout resolves the source line at that global offset, copies its two source slices around the insertion, applies style runs, builds `CTLine` fragments, paints a selection separately, and draws synchronously through an app-owned hosted `CALayer`. It sends a synthetic AppKit `NSEvent` through `keyDown(with:)` and `interpretKeyEvents(_:)`. Each insertion is reverted and repainted outside the interval so every sample starts from the same state.
 
-This is a retained-source CoreText microspike, not a 10 MiB editor-path result. The measured edit does not yet traverse the piece table or line tree, and the 10 MiB source does not participate in the hot operation after the 99-unit midpoint line is copied before warmup. Retention is optimizer-proof, but page residency is not measured.
+The executable proves source participation on every sample. It pins the corpus byte count, UTF-16 length, digest, global edit offset, and affected source range. It also checks the edited revision and length, local insertion mapping, and inserted glyph run. It records one source-backed line read for each measured edit, observes a largest affected-line string of 99 UTF-16 units, restores the baseline length after cleanup, and verifies the full source digest after the run.
+
+This is still a planning spike, not the native editor. Its overlay edit is O(1), and Foundation resolves one warm source line. It does not measure the future piece-table treap, augmented line tree, snapshots, anchors, scrolling, IME, or accessibility. The gate answers whether the chosen input, CoreText, paint, and layer path fits the budget when its text comes from a real global coordinate in a 10 MiB document. Later implementation phases replace each stand-in and rerun the same work gate.
 
 Run it from `apps/mac`:
 
 ```bash
 swift run -c release EditorBench --coretext-spike=200
 ```
+
+Timing is not visual QA. Export the exact hosted-layer contents for an inserted frame and inspect the PNG before accepting a renderer result:
+
+```bash
+swift run -c release EditorBench \
+	--coretext-snapshot=/tmp/platform-coretext-spike.png
+```
+
+The first inspection exposed vertically flipped glyphs even though the glyph-run and dirty-rect assertions passed. The corrected frame shows upright left-to-right text, the inserted `x` after the line's five-unit prefix, a purple `const` run supplied by the style store, and a separately painted selection over `value61672`. The draw path now rejects a vertically flipped effective glyph transform.
 
 To validate the signposts, run a longer spike in one terminal and attach Logging from another. On this machine, AppKit drawing stalled when `xctrace` launched the command-line executable. Attaching preserves the normal application launch.
 
@@ -70,35 +81,39 @@ python3 .agents/skills/swiftui-expert-skill/scripts/analyze_trace.py \
 
 The calibrated release run on the plan-1 machine produced this result:
 
-| metric                  |                      result |
-| ----------------------- | --------------------------: |
-| corpus                  |            10,485,771 bytes |
-| warmup                  |                    10 edits |
-| measured edits          |                         200 |
-| post-cleanup delay      |                       40 ms |
-| CPU calibration         |                    68.84 ms |
-| keystroke-to-commit p50 |                    1.428 ms |
-| keystroke-to-commit p95 |         **1.639 ms — pass** |
-| keystroke-to-commit max |                    1.969 ms |
-| apply-edit p95          |                    0.104 ms |
-| typeset and layout p95  |                    0.578 ms |
-| draw p95                |                    0.667 ms |
-| commit-wait p95         |                    0.295 ms |
-| input through draw p95  | 1.330 ms — attribution only |
+| metric                   |                      result |
+| ------------------------ | --------------------------: |
+| corpus                   |            10,485,771 bytes |
+| warmup                   |                    10 edits |
+| measured edits           |                         200 |
+| post-cleanup delay       |                       40 ms |
+| source UTF-16 length     |                  10,485,771 |
+| global insertion         |                   5,242,885 |
+| source line range        |             `{5242880, 98}` |
+| largest affected line    |             99 UTF-16 units |
+| CPU calibration          |                    70.25 ms |
+| input-to-transaction p50 |                    1.074 ms |
+| input-to-transaction p95 |         **1.298 ms — pass** |
+| input-to-transaction max |                    1.873 ms |
+| apply-edit p95           |                    0.096 ms |
+| typeset and layout p95   |                    0.556 ms |
+| draw p95                 |                    0.422 ms |
+| commit-wait p95          |                    0.256 ms |
+| input through draw p95   | 1.057 ms — attribution only |
 
-The calibrated table uses `ContinuousClock` across the same endpoints as plan 1's `Keystroke` interval. Only the analyzed Logging trace is the signpost result. The paired trace run reported 68.91 ms CPU calibration; its 276 complete intervals measured 1.410 ms p50, **1.825 ms p95**, and 2.077 ms max. Each complete interval contained one `ApplyEdit`, `Layout`, `Draw`, and `Commit` event.
+The calibrated table uses `ContinuousClock` across the same endpoints as plan 1's `Keystroke` interval. Only the analyzed Logging trace is the signpost result. The attached 600-sample run reported 69.09 ms CPU calibration; the 282 complete intervals captured during the 12-second trace measured 0.870 ms p50, **1.369 ms p95**, and 2.051 ms max. All 282 contained exactly one ordered `ApplyEdit`, `Layout`, `Draw`, and `Commit` event.
 
 The first honest run used AppKit's managed backing layer and failed at 3.720 ms p95, with 2.932 ms in commit wait. Moving transaction boundaries, changing the display entry point, and adding or removing `CATransaction.flush()` did not fix it. An empty transaction and a visible property change on an app-owned layer both completed below 0.25 ms p95, localizing the cost to managed backing-store paint.
 
-The passing design makes the view layer-hosting: it assigns an app-owned `CALayer`, invalidates that layer, draws CoreText synchronously in `CALayer.draw(in:)`, and commits one explicit transaction without calling `flush()`. `drawsAsynchronously` stays false. The completion endpoint did not move. The spike rejects missing stages, requires the inserted `x` to reach a real glyph run inside the dirty region, and requires nonnil layer contents before accepting a sample.
+The passing design makes the view layer-hosting: it assigns an app-owned `CALayer`, invalidates that layer, draws CoreText synchronously in `CALayer.draw(in:)`, and commits one explicit transaction without calling `flush()`. `drawsAsynchronously` stays false. The completion endpoint did not move. The spike rejects missing stages, requires the inserted `x` to reach a real glyph run inside the dirty region, and requires nonnil layer contents before accepting a sample. A disabled-action `CATransaction` completion does not prove compositor submission or photon time. This number is the CPU work gate through transaction completion; Animation Hitches supplies presentation evidence later.
 
 Swift imports `CALayer.draw(in:)` as nonisolated even though this layer is main-thread-only. The spike bridges that SDK seam with a private `MainThreadOnly<CGContext>: @unchecked Sendable` carrier, a main-queue precondition, and `MainActor.assumeIsolated`. This is not permission to pass CoreText or AppKit objects between actors: production keeps the bridge local to the synchronous hosted layer and preserves `drawsAsynchronously == false`.
 
 ### What the spike proves
 
-The result proves that per-line CoreText construction, owner-drawn paint, and the hosted-layer commit fit inside 2 ms p95 while a 10 MiB source allocation is retained. It also exercises style outside the buffer and a separate selection-paint pass.
+The result proves that a global edit overlay, source-backed affected-line read, per-line CoreText construction, owner-drawn paint, and transaction completion fit inside 2 ms p95 on the 10 MiB source. It also exercises style outside the buffer and a separate selection-paint pass.
 
-The spike does not claim that the Swift piece table, the augmented line tree, IME, accessibility, scrolling, or tree-sitter already passes. Its local edit overlay stands in for an O(log n) piece-table edit. Each implementation phase below replaces one stand-in and fills its own `EditorBench` row.
+The spike does not claim that the Swift piece table, augmented line tree, IME, accessibility, scrolling, or tree-sitter already passes. Its one-insertion overlay stands in for the future O(log n) piece-table edit. Each implementation phase below replaces one stand-in and fills its own `EditorBench` row.
 
 The first implementation uses this stack:
 
@@ -571,12 +586,12 @@ Each phase ends in a state that can be measured and reviewed.
 2. Port the buffer in the import-derived waves. Run the smallest newly runnable slices after each wave; run the central suite only after wave 9 completes its API.
 3. Add `EditorBench` rows for insert, walk, seek, snapshot, and anchor resolution. Profile ARC before considering an arena.
 4. Build the augmented line tree with structural property tests, O(n) bulk build, estimate correction, and scroll-anchor compensation.
-5. Replace the spike overlay with the real piece table and line tree. Keep the existing CoreText spike as the same-corpus control.
+5. Replace the spike overlay with the real piece table and line tree. Keep the existing CoreText spike as the same-corpus control. Rerun both the timing trace and inserted-frame visual QA.
 6. Add semantic undo groups and prove that every inverse restores text and selections across shared snapshots.
 7. Add resumable megaline preparation and fragment layout. Gate input work, background preparation, direct scroll jumps, and estimate correction separately.
 8. Add the style run store, provider seam, byte-derived `InputEdit`, and invalidation algebra. Confirm that selection movement emits no typesetting work or glyph drawing.
 9. Add `NSTextInputClient` and the composition-session tests. Run Korean composition before adding more editor commands.
 10. Add the single-element accessibility adapter and real-window tests.
-11. Fill the plan-2 native benchmark rows for piece-table operations, large mount, long line, typing, and scrolling. Capture Animation Hitches separately from the keystroke-to-commit work gate.
+11. Fill the plan-2 native benchmark rows for piece-table operations, large mount, long line, typing, and scrolling. Capture Animation Hitches separately from the input-to-transaction work gate.
 
-The design plan's exit criterion is complete: the calibrated 200-sample clock run passed at 1.639 ms p95, and the paired Logging trace passed at 1.825 ms p95 across 276 complete intervals. The editor implementation is not complete. Phase 5 replaces the copied-line overlay with the real 10 MiB piece-table and line-tree path, and every later phase keeps the same gate rather than inheriting the spike's result.
+The design plan's exit criterion is complete: the corrected inserted frame passed visual QA, the calibrated 200-sample clock run passed at 1.298 ms p95, and the attached Logging trace passed at 1.369 ms p95 across 282 complete intervals. The editor implementation is not complete. Phase 5 replaces the spike-only global overlay and Foundation line lookup with the real piece-table and line-tree path. Every later phase reruns the timing and visual gates rather than inheriting the spike's result.

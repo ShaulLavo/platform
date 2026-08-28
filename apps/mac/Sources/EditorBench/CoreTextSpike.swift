@@ -3,7 +3,9 @@ import CoreText
 import Dispatch
 import EditorCore
 import Foundation
+import ImageIO
 import QuartzCore
+import UniformTypeIdentifiers
 import os
 
 @MainActor
@@ -12,10 +14,27 @@ enum CoreTextSpike {
   private static let warmupKeystrokes = 10
   private static let gateMs = 2.0
 
+  static func writeSnapshot(path: String) {
+    let document = CoreTextSpikeDocument(corpus: Corpus.source(bytes: corpusBytes))
+    let view = SpikeEditorView(document: document)
+    let window = makeWindow(view: view)
+
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    let pending = view.sendKeystroke(in: window, recordSignpost: false)
+    view.invalidateEditedLine()
+    view.displayHostedLayerIfNeeded()
+    CATransaction.commit()
+    pending.finish()
+    view.writeHostedLayerPNG(to: URL(fileURLWithPath: path))
+    view.revertEdit("x")
+    window.orderOut(nil)
+    print("CoreText spike snapshot: \(path)")
+  }
+
   static func run(keystrokes: Int, skipCalibration: Bool) -> Bool {
-    let corpus = Corpus.source(bytes: corpusBytes)
-    let buffer = SpikeBuffer(corpus: corpus)
-    let view = SpikeEditorView(buffer: buffer)
+    let document = CoreTextSpikeDocument(corpus: Corpus.source(bytes: corpusBytes))
+    let view = SpikeEditorView(document: document)
     let window = makeWindow(view: view)
     let session = CoreTextSpikeSession(
       view: view,
@@ -25,17 +44,31 @@ enum CoreTextSpike {
     )
 
     print("EditorBench — CoreText owner-drawn spike")
-    print("corpus: \(formatCount(corpus.utf8.count)) bytes retained; measured line: \(buffer.measuredLineUTF16Length) UTF-16 units")
-    print("path: input → local line edit → CTTypesetter → CTLine → hosted CALayer draw → CATransaction commit")
+    print(
+      "corpus: \(formatCount(document.originalByteCount)) bytes / "
+        + "\(formatCount(document.originalUTF16Length)) UTF-16 units; "
+        + "global insertion: \(formatCount(document.insertionOffset))"
+    )
+    print(
+      "path: input → global edit overlay → source-backed line lookup and read → "
+        + "CTTypesetter → CTLine → hosted CALayer draw → CATransaction completion"
+    )
     if !skipCalibration {
       print("cpu calibration: \(formatMs(MachineProfile.cpuCalibration(), decimals: 2))")
     }
 
     DispatchQueue.main.async { session.start() }
     NSApplication.shared.run()
-    withExtendedLifetime(buffer.original) {}
+    withExtendedLifetime(document) {}
     window.orderOut(nil)
     precondition(session.timings.count == keystrokes, "spike did not record every requested sample")
+    document.verifyCompletedRun(measuredKeystrokes: keystrokes)
+    print(
+      "proof: \(document.measuredSourceBackedReads) measured source reads; "
+        + "source line \(NSStringFromRange(document.lastSourceLineRange)); "
+        + "largest affected line \(document.maximumAffectedLineUTF16Length) UTF-16 units; "
+        + "total source line units read \(formatCount(document.totalOriginalLineUnitsRead))"
+    )
     let samples = Samples(session.timings.map(\.total))
     let calibrated = !skipCalibration
     let clockPassed = calibrated && samples.p95Ms < gateMs
@@ -45,7 +78,7 @@ enum CoreTextSpike {
 
   private static func makeWindow(view: SpikeEditorView) -> NSWindow {
     let application = NSApplication.shared
-    application.setActivationPolicy(.accessory)
+    application.setActivationPolicy(.regular)
     application.finishLaunching()
 
     let window = NSWindow(
@@ -59,6 +92,7 @@ enum CoreTextSpike {
     window.isReleasedWhenClosed = false
     window.makeKeyAndOrderFront(nil)
     window.makeFirstResponder(view)
+    application.activate(ignoringOtherApps: true)
     window.displayIfNeeded()
     return window
   }
@@ -71,7 +105,7 @@ enum CoreTextSpike {
   ) {
     var table = BenchTable(columns: [
       .init("stat"),
-      .init("keystroke-to-commit", alignRight: true),
+      .init("input-to-transaction", alignRight: true),
     ])
     table.append(["p50", formatMs(samples.p50Ms, decimals: 3)])
     table.append(["p95", formatMs(samples.p95Ms, decimals: 3)])
@@ -268,66 +302,44 @@ private struct SpikeTiming {
   }
 }
 
-@MainActor
-private final class SpikeBuffer {
-  let original: NSString
-  private(set) var lastInsertedRange: NSRange?
-  private let editedLine: NSMutableString
-  private var insertionOffset: Int
-
-  var measuredLineUTF16Length: Int { editedLine.length }
-
-  init(corpus: String) {
-    original = corpus as NSString
-    let midpoint = original.length / 2
-    let lineRange = original.lineRange(for: NSRange(location: midpoint, length: 0))
-    editedLine = NSMutableString(string: original.substring(with: lineRange))
-    insertionOffset = max(0, editedLine.length - 1)
-  }
-
-  func insert(_ text: String) {
-    let length = (text as NSString).length
-    lastInsertedRange = NSRange(location: insertionOffset, length: length)
-    editedLine.insert(text, at: insertionOffset)
-    insertionOffset += length
-  }
-
-  func remove(_ text: String) {
-    let length = (text as NSString).length
-    insertionOffset -= length
-    editedLine.deleteCharacters(in: NSRange(location: insertionOffset, length: length))
-    lastInsertedRange = nil
-  }
-
-  func visibleLine() -> String {
-    editedLine as String
-  }
-
-  func insertedTextMatches(_ expected: String) -> Bool {
-    guard let lastInsertedRange else { return false }
-
-    return editedLine.substring(with: lastInsertedRange) == expected
-  }
-}
-
 private struct SpikeStyleRun {
   let range: NSRange
   let color: CGColor
 }
 
+private struct SpikeStyleRunStore {
+  let baseRange: NSRange
+  let color: CGColor
+
+  func runs(lineLength: Int, insertion: NSRange?) -> [SpikeStyleRun] {
+    var range = baseRange
+    if let insertion, insertion.location <= range.location {
+      range.location += insertion.length
+    }
+    guard range.location < lineLength else { return [] }
+
+    range.length = min(range.length, lineLength - range.location)
+    return [SpikeStyleRun(range: range, color: color)]
+  }
+}
+
 @MainActor
 private final class SpikeEditorView: NSView {
-  private let buffer: SpikeBuffer
+  private let document: CoreTextSpikeDocument
   private let font = CTFontCreateWithName("SFMono-Regular" as CFString, 13, nil)
   private let foreground = NSColor.textColor.cgColor
   private let hostedLayer = SpikeEditorLayer()
-  private let selection = NSRange(location: 6, length: 14)
+  private let selection = NSRange(location: 13, length: 10)
+  private let styleRunStore = SpikeStyleRunStore(
+    baseRange: NSRange(location: 6, length: 5),
+    color: NSColor.systemPurple.cgColor
+  )
   private var activePaint: PendingPaint?
   private var recordNextInput = false
   private var startedPaint: PendingPaint?
 
-  init(buffer: SpikeBuffer) {
-    self.buffer = buffer
+  init(document: CoreTextSpikeDocument) {
+    self.document = document
     super.init(frame: NSRect(x: 0, y: 0, width: 1200, height: 800))
 
     hostedLayer.editor = self
@@ -377,7 +389,7 @@ private final class SpikeEditorView: NSView {
 
   override func insertText(_ insertString: Any) {
     let text = text(from: insertString)
-    buffer.insert(text)
+    document.insert(text, measured: recordNextInput)
     activePaint?.markApplyEdit()
   }
 
@@ -391,7 +403,7 @@ private final class SpikeEditorView: NSView {
 
   func revertEdit(_ text: String) {
     activePaint = nil
-    buffer.remove(text)
+    document.restoreBaseline(text)
   }
 
   func invalidateEditedLine() {
@@ -404,6 +416,38 @@ private final class SpikeEditorView: NSView {
   func displayHostedLayerIfNeeded() {
     hostedLayer.displayIfNeeded()
     precondition(hostedLayer.contents != nil, "hosted editor layer did not produce drawable contents")
+  }
+
+  func writeHostedLayerPNG(to url: URL) {
+    let scale = hostedLayer.contentsScale
+    let width = Int(hostedLayer.bounds.width * scale)
+    let height = Int(hostedLayer.bounds.height * scale)
+    guard let context = CGContext(
+      data: nil,
+      width: width,
+      height: height,
+      bitsPerComponent: 8,
+      bytesPerRow: width * 4,
+      space: CGColorSpaceCreateDeviceRGB(),
+      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else {
+      preconditionFailure("failed to create the visual snapshot context")
+    }
+
+    context.scaleBy(x: scale, y: scale)
+    hostedLayer.render(in: context)
+    guard let image = context.makeImage() else { preconditionFailure("failed to render the visual snapshot") }
+    guard let destination = CGImageDestinationCreateWithURL(
+      url as CFURL,
+      UTType.png.identifier as CFString,
+      1,
+      nil
+    ) else {
+      preconditionFailure("failed to create the visual snapshot destination")
+    }
+
+    CGImageDestinationAddImage(destination, image, nil)
+    precondition(CGImageDestinationFinalize(destination), "failed to write the visual snapshot")
   }
 
   fileprivate func drawHostedLayer(in context: CGContext) {
@@ -420,9 +464,10 @@ private final class SpikeEditorView: NSView {
     activePaint?.markLayout()
 
     context.saveGState()
-    context.textMatrix = .identity
+    context.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
     context.translateBy(x: 0, y: bounds.height)
     context.scaleBy(x: 1, y: -1)
+    verifyUprightGlyphTransform(in: context)
     drawSelection(fragments: fragments, in: context)
     let insertedGlyphDrawn = drawGlyphs(fragments: fragments, dirtyRect: dirtyRect, in: context)
     context.restoreGState()
@@ -430,8 +475,16 @@ private final class SpikeEditorView: NSView {
     activePaint = nil
   }
 
+  private func verifyUprightGlyphTransform(in context: CGContext) {
+    let textMatrix = context.textMatrix
+    let ctm = context.ctm
+    let origin = CGPoint.zero.applying(textMatrix).applying(ctm)
+    let glyphUp = CGPoint(x: 0, y: 1).applying(textMatrix).applying(ctm)
+    precondition(glyphUp.y > origin.y, "CoreText glyph transform is vertically flipped")
+  }
+
   private func makeAttributedLine() -> NSAttributedString {
-    let text = buffer.visibleLine()
+    let text = document.visibleLine()
     let attributed = NSMutableAttributedString(string: text)
     let fullRange = NSRange(location: 0, length: attributed.length)
     attributed.addAttribute(
@@ -445,7 +498,10 @@ private final class SpikeEditorView: NSView {
       range: fullRange
     )
 
-    for run in styleRuns(length: attributed.length) {
+    for run in styleRunStore.runs(
+      lineLength: attributed.length,
+      insertion: document.lastInsertedLineRange
+    ) {
       attributed.addAttribute(
         NSAttributedString.Key(kCTForegroundColorAttributeName as String),
         value: run.color,
@@ -453,17 +509,6 @@ private final class SpikeEditorView: NSView {
       )
     }
     return attributed
-  }
-
-  private func styleRuns(length: Int) -> [SpikeStyleRun] {
-    guard length > 5 else { return [] }
-
-    return [
-      SpikeStyleRun(
-        range: NSRange(location: 0, length: min(5, length)),
-        color: NSColor.systemPurple.cgColor
-      )
-    ]
   }
 
   private func makeFragments(typesetter: CTTypesetter, length: Int) -> [SpikeFragment] {
@@ -512,9 +557,9 @@ private final class SpikeEditorView: NSView {
 
   private func fragmentDrawsInsertedGlyph(_ fragment: SpikeFragment, dirtyRect: NSRect) -> Bool {
     guard activePaint != nil else { return false }
-    guard let insertedRange = buffer.lastInsertedRange else { return false }
-    guard buffer.insertedTextMatches("x") else { return false }
-    guard fragment.viewGlyphBounds(in: bounds).intersects(dirtyRect) else { return false }
+    guard let insertedRange = document.lastInsertedLineRange else { return false }
+    guard document.insertedTextMatches("x") else { return false }
+    guard fragment.viewBounds(for: insertedRange, in: bounds).intersects(dirtyRect) else { return false }
 
     let runs = CTLineGetGlyphRuns(fragment.line) as NSArray
     for case let run as CTRun in runs {
@@ -567,13 +612,15 @@ private struct SpikeFragment {
     NSRange(location: range.location, length: range.length)
   }
 
-  func viewGlyphBounds(in viewBounds: NSRect) -> NSRect {
-    let glyphBounds = CTLineGetBoundsWithOptions(line, [.useGlyphPathBounds])
+  func viewBounds(for range: NSRange, in viewBounds: NSRect) -> NSRect {
+    let start = CTLineGetOffsetForStringIndex(line, range.location, nil)
+    let end = CTLineGetOffsetForStringIndex(line, NSMaxRange(range), nil)
+    let lineBounds = CTLineGetBoundsWithOptions(line, [.useGlyphPathBounds])
     return NSRect(
-      x: 12 + glyphBounds.minX,
-      y: viewBounds.height - baseline - glyphBounds.maxY,
-      width: glyphBounds.width,
-      height: glyphBounds.height
+      x: 12 + min(start, end),
+      y: viewBounds.height - baseline - lineBounds.maxY,
+      width: max(1, abs(end - start)),
+      height: lineBounds.height
     )
   }
 }
