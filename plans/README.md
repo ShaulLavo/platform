@@ -13,24 +13,22 @@ a bare root `bun run verify`.
 
 ## Executable plan inventory
 
-| Plan                                                                                    | State                                         |
-| --------------------------------------------------------------------------------------- | --------------------------------------------- |
-| [055 — ghostty-webgpu DOM/input](055-ghostty-webgpu-dom-input.md)                       | **IMPLEMENTED — PHYSICAL OPERATOR GATE OPEN** |
-| [065 — prove Ghostty config resolver](065-prove-ghostty-config-resolver.md)             | **PROPOSED — ROOT GO/NO-GO SCHEDULING**       |
-| [066 — package Ghostty config resolver](066-package-ghostty-config-resolver.md)         | **BLOCKED ON 065 PASS**                       |
-| [067 — integrate Ghostty config appearance](067-integrate-ghostty-config-appearance.md) | **BLOCKED ON 066 REVIEWED ARTIFACT**          |
-| [068 — session domain model](068-session-domain-model.md)                               | **PROPOSED — ROOT GO/NO-GO SCHEDULING**       |
-| [069 — worktree lifecycle](069-worktree-lifecycle.md)                                   | **BLOCKED ON 068 AND ROOT SCHEDULING**        |
-| [070 — app-owned shiki grammars](070-app-owned-shiki-grammars.md)                       | **PROPOSED — ROOT GO/NO-GO SCHEDULING**       |
-| [071 — syntax highlight retry](071-syntax-highlight-retry.md)                           | **PROPOSED — SCHEDULE AFTER 070**             |
-| [064 — anchored diagnostic peek](064-anchored-diagnostic-peek.md)                       | **SCHEDULED AFTER 061 — GO/NO-GO**            |
-| [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                         | **SCHEDULED AFTER 064 — RECONCILE**           |
-| [057 — editor-native VS Code keymap](057-editor-native-vscode-keymap.md)                | **BLOCKED ON 056 — RUNTIME RECONCILED**       |
-| [061 — Foresight prepared editor opens](061-promote-foresight-file-open-pipeline.md)    | **NEXT — RECONCILE**                          |
-| [073 — Electrobun 2.x migration](073-electrobun-v2-migration.md)                        | **PROPOSED — ROOT GO/NO-GO SCHEDULING**       |
-| [074 — Bun-native PTY](074-bun-native-pty.md)                                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING**       |
-| [075 — terminal renderer fallbacks](075-terminal-renderer-fallbacks.md)                 | **PROPOSED — BLOCKED ON TIER DECISION**       |
-| [076 — watch-reload child reaping](076-watch-reload-child-reaping.md)                   | **PROPOSED — ROOT GO/NO-GO SCHEDULING**       |
+| Plan                                                                                    | State                                   |
+| --------------------------------------------------------------------------------------- | --------------------------------------- |
+| [065 — prove Ghostty config resolver](065-prove-ghostty-config-resolver.md)             | **IN PROGRESS — READ-ONLY CANDIDATES**  |
+| [066 — package Ghostty config resolver](066-package-ghostty-config-resolver.md)         | **BLOCKED ON REVISED 065 PASS**         |
+| [067 — integrate Ghostty config appearance](067-integrate-ghostty-config-appearance.md) | **BLOCKED ON 066 REVIEWED ARTIFACT**    |
+| [068 — session domain model](068-session-domain-model.md)                               | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
+| [069 — worktree lifecycle](069-worktree-lifecycle.md)                                   | **BLOCKED ON 068 AND ROOT SCHEDULING**  |
+| [071 — syntax highlight retry](071-syntax-highlight-retry.md)                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
+| [064 — anchored diagnostic peek](064-anchored-diagnostic-peek.md)                       | **SCHEDULED AFTER 061 — GO/NO-GO**      |
+| [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                         | **SCHEDULED AFTER 064 — RECONCILE**     |
+| [057 — editor-native VS Code keymap](057-editor-native-vscode-keymap.md)                | **BLOCKED ON 056 — RUNTIME RECONCILED** |
+| [061 — Foresight prepared editor opens](061-promote-foresight-file-open-pipeline.md)    | **NEXT — RECONCILE**                    |
+| [073 — Electrobun 2.x migration](073-electrobun-v2-migration.md)                        | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
+| [074 — Bun-native PTY](074-bun-native-pty.md)                                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
+| [075 — terminal renderer fallbacks](075-terminal-renderer-fallbacks.md)                 | **PROPOSED — BLOCKED ON TIER DECISION** |
+| [076 — watch-reload child reaping](076-watch-reload-child-reaping.md)                   | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
 
 ## Dependency notes
 
@@ -50,11 +48,10 @@ a bare root `bun run verify`.
   creation, durable provisioning and cleanup recovery, and shared worktree chips on the same event
   spine. It must not restore the checkout reactor's project-root fallback or implement the reserved
   Orca compare view. Root `PLAN.md` has not scheduled it yet.
-- Plan 070 spans two repositories and must land as one change: it adds required fields to the
-  shiki worker protocol in Editor `packages/editor`, and the resolver that fills them in
-  Platform `apps/web`. Neither half is shippable alone. It has no dependency on any other plan.
-- Plan 071 is Editor-only and independent of 070, but must not land before it: a retry loop
-  running against a live permanent failure buries the cause it would otherwise surface.
+- Plan 071 is an independent Editor-only resilience proposal. Its prerequisite is now stable:
+  Platform owns Shiki registration resolution, Editor's Oniguruma worker is self-contained, and
+  built-dist highlighting is covered by a real-browser and shared-log proof. Root `PLAN.md` has not
+  scheduled the retry work yet.
 - Plan 064's interactive React overlay uses the landed deepest-target FocusService and exact origin
   restoration. Its first step may
   reject a managed geometry handle if ordinary React composition passes the
@@ -65,15 +62,14 @@ a bare root `bun run verify`.
 - Plan 061's ready live/clean view must still be claimed and ensured before active selection
   publication, but that transaction stays in the shared Editor domain action used by local UI and
   the typed bus; do not add a bus-only activation implementation.
-- Plan 055's DOM/input implementation has landed. Only its real-hardware keyboard, IME, clipboard,
-  and assistive-technology acceptance gate remains; do not reimplement the browser terminal host.
-  This gate is independent of the command/focus sequence.
-- Plans 065–067 are one independent terminal lane and are not scheduled by root `PLAN.md` yet.
-  Execute them strictly in order. Plan 065 is a bounded native feasibility proof and may end in
-  `FAIL`; only a complete four-target `PASS` unlocks Plan 066. Plan 066 owns the host-only package
-  resolver, renderer cursor-text parity, and one exact unpublished release tarball. Plan 067 first
-  integrates Platform against those reviewed bytes, then pauses for an operator to publish that
-  same tarball before the final registry pin and rerun.
+- Plan 065 remains active with two accepted divergences: derive Ghostty's fixed default candidates
+  read-only, and permit the pinned GUI/shader graph only in a stripped platform-specific optional
+  host helper. On macOS, skip the writing loader and create-capable Application Support builders;
+  derive the fixed candidates from explicit isolated roots and pinned suffixes, then continue every
+  remaining proof gate. Disabled or absent means no spawn, config read, download, or startup
+  failure. Plans 066–067 remain blocked and unauthorized until a complete revised four-target
+  `PASS`. If a future Ghostty fork is considered, prefer upstreaming read-only Config path and
+  Config-only initializer/build boundaries first.
 - Plan 067 must wait for the user-owned edits originating from Plan 063 in
   `packages/contracts/src/index.ts`, `apps/server/src/tests/app.test.ts`, and
   `apps/web/test/server.ts` to land or be explicitly reconciled. The terminal-theme fixture must

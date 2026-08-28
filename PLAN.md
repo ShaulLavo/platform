@@ -36,8 +36,16 @@ Git history is the archive.
   parsing, planning, inversion, and document application; Platform owns preview, filesystem commit,
   recovery, undo/redo, mutation coordination, and product integrations. Completed plan 063 has been
   deleted.
-- Platform's terminal now uses the native `ghostty-webgpu` integration. This does not close Plan 055:
-  its remaining physical keyboard, IME, clipboard, and VoiceOver acceptance is still an operator gate.
+- Platform's terminal now uses the native `ghostty-webgpu` integration. Phase 3 DOM/input is
+  complete in `ghostty-webgpu@0.1.1` commit `50788b2`; its headed macOS
+  keyboard, IME, clipboard, idle-rendering, and VoiceOver gate is PASS in
+  `ghostty-webgpu/docs/phase-3-acceptance.md`. Platform remains on registry `0.1.0` because both
+  installed wasm artifacts are byte-identical to the verified package.
+- App-owned Shiki resolution is live across Platform and Editor. Platform resolves every supported
+  grammar and theme to registration data; Editor's inline worker uses the static Oniguruma engine,
+  accepts only resolved registrations, and has a package-build assertion that rejects sibling JS
+  chunks. The real-browser built-dist proof resolves the bounded 53-language preload set and emits
+  `editor.syntax.highlight_applied` to the shared JSONL log.
 
 ## Shared runtime boundary
 
@@ -49,12 +57,7 @@ The typed command/focus foundation is landed in `apps/web/src/keymap/table.ts`,
 No later Platform editor milestone may create an active-Editor pointer, a second settings mutation
 path, a React-effect transaction coordinator, or a compatibility shim for the deleted architecture.
 
-## Independent package closeout
-
-**Plan 055 — `ghostty-webgpu` DOM/input** may finish at any time. Its implementation and automated
-gates have landed; only the physical hardware/operator acceptance in
-`ghostty-webgpu/docs/phase-3-acceptance.md` remains. Do not repeat its implementation milestones.
-When the gate passes, update the stable package evidence and Platform brief, then delete plan 055.
+## Independent package lane
 
 The `ghostty-webgpu` xterm-facade program is a separate package lane. Plan 008 is complete with its
 accepted divergences transferred to the later certification gate. Plan 009 is blocked because the
@@ -62,17 +65,36 @@ required parser/Unicode, inactive-buffer, row-marker, and OSC 8 APIs are not pub
 gate has passed, but it remains blocked on Plan 009 and physical operator evidence. Plans 011–015
 remain in package-defined dependency order and are not prerequisites for current Platform work.
 
-## Proposed Ghostty appearance lane
+## Reopened Ghostty appearance lane
 
-Plans 065–067 are an independent proposed lane and are not authorized until root scheduling is
-explicitly approved:
+Plan 065's first proof found that the pinned normal loader can create a template when no config
+exists. The operator accepted one narrow divergence on 2026-08-28: the resolver may derive the fixed
+default candidates from explicit roots and pinned suffixes, freeze their paths and precedence in
+tests, then open and parse them read-only through Ghostty. It must never call the template-writing
+loader, a create-capable candidate builder, or duplicate any parser, include, theme, conditional,
+diagnostic, color, or palette semantics.
 
-1. **Plan 065 — prove the pinned Ghostty config resolver.** A bounded four-target feasibility proof;
-   `FAIL` is an acceptable result. It also requires Zig 0.16.0 exactly.
-2. **Plan 066 — package the resolver.** Runs only after a complete Plan 065 `Decision: PASS`; produces
-   one reviewed, unpublished `ghostty-webgpu@0.1.2` release candidate.
-3. **Plan 067 — integrate Ghostty appearance.** Runs only against those exact reviewed bytes, then
-   pauses for explicit publication authority before the final registry pin.
+The revised exact-Zig proof confirmed that divergence works, then found that Ghostty's only
+official Config initializer and shared executable graph retain and initialize GUI-only
+shader/renderer dependencies. On 2026-08-28 the operator accepted that as a second narrow
+divergence: the heavy helper may be a stripped, platform-specific optional host dependency, loaded
+and spawned only when the registered appearance feature is enabled. Its absence must degrade to
+the existing Platform appearance without a config read, subprocess, download, or startup failure.
+
+The reopened proof then found that Ghostty's macOS Application Support candidate builders reach
+Foundation directory lookup with `create: true`. This is not a terminal proof failure. It refines
+the accepted fixed-candidate divergence: neither the writing loader nor a create-capable path
+builder may run during discovery. Derive the fixed legacy/current candidates read-only from the
+explicit isolated home/config roots and the pinned constant suffixes, freeze their exact paths,
+load order, and duplicate behavior in tests, and pass only existing files to Ghostty's read-only
+loader.
+
+Plan 065 remains **IN PROGRESS AND SCHEDULED** through every remaining semantic, no-write,
+four-native-target, compatibility, relocation, size, privacy, and strict-evidence gate. Plans
+066–067 remain **NOT AUTHORIZED** until a complete `Decision: PASS` and separate root scheduling.
+If Platform ever considers a Ghostty fork, prefer contributing a read-only Config path API and
+Config-only initializer/build target upstream first; the optional-heavy allowance does not make the
+current graph the preferred long-term boundary.
 
 Do not replace this lane with a TypeScript Ghostty parser, `ghostty +show-config`, a maintained fork,
 browser-visible host paths, or cold-start reads triggered by a disabled workbench setting.
@@ -134,8 +156,7 @@ do not add scoped-ref or multi-origin compatibility machinery now.
 - **Platform + Editor lockstep:** plans 061, 057, and any plan-064 path that changes Editor
   require focused checks and diff review in both worktrees. Neither repository's half is complete
   alone.
-- **`ghostty-webgpu`:** run its package gates in that repository. Plan 055 additionally requires the
-  physical acceptance record and a Platform documentation/index closeout.
+- **`ghostty-webgpu`:** run its package gates in that repository.
 - **Environment M1–M3:** verify with two isolated loopback servers and distinct databases. No test
   or demo may bind non-loopback before M5.
 - **Environment M4–M5:** treat auth, pairing, revocation, Origin enforcement, TLS/mesh refusal,
@@ -146,7 +167,6 @@ do not add scoped-ref or multi-origin compatibility machinery now.
 ## Promotion, rewrite, defer, and deletion decisions
 
 - **Deleted:** completed plan 038 and superseded plan 058.
-- **Close and delete after physical evidence:** plan 055.
 - **Rewrite before execution:** plan 061 needs drift reconciliation against the landed paint
   contract. Plan 056's command/focus boundary is reconciled to the landed runtime but still requires
   its normal drift check; plan 064 already encodes its current architectural ownership and also
@@ -154,7 +174,10 @@ do not add scoped-ref or multi-origin compatibility machinery now.
 - **Promote:** environment milestones M1–M5, one executable plan at a time.
 - **Deferred:** environment M6 and all compatibility work for simultaneous origins or obsolete
   per-tab/active-editor/one-server architecture.
-- **Proposed:** plans 065–067 require an explicit root scheduling decision and then run strictly in
-  order; Plan 065 may close the lane with `FAIL`.
+- **Scheduled independently:** Plan 065 must skip Ghostty's writing loader and create-capable
+  macOS path builders, derive the fixed candidates read-only, and continue every remaining proof
+  gate. Plans 066–067 remain blocked and unauthorized until a complete four-target `PASS`; a future
+  fork proposal must prefer upstreaming read-only Config path and Config-only build boundaries
+  first.
 - **Package-blocked:** `ghostty-webgpu` plan 009 needs public native extension surfaces. Plan 010 is
   additionally waiting on that dependency and physical operator gates; plans 011–015 remain downstream.

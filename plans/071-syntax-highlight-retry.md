@@ -14,8 +14,9 @@
 - **Risk**: LOW, with one sharp edge: a retry that hides a permanent failure is worse than no retry.
   See "The thing to get right".
 - **Editor baseline**: `0f4f8f498954a701cbf8041a13586f227bd5d3ce`
-- **Relationship to Plan 070**: independent. 070 fixes a real cause; this makes the _next_ cause
-  survivable. Neither blocks the other. Do not land this first — see below.
+- **Prerequisite**: the app-owned registration boundary is live. Platform resolves Shiki grammars
+  and themes, while Editor's self-contained Oniguruma worker accepts only registration data. This
+  plan addresses the next transient failure rather than that resolved packaging bug.
 
 ## Why
 
@@ -47,8 +48,8 @@ finished. There is no state to observe, and therefore nothing a retry could be d
 
 This plan is one careless step away from making the codebase worse.
 
-The blob-worker bug in Plan 070 was found _because_ the failure was loud, permanent, and logged with
-a specific error string. A retry loop that quietly re-attempted a permanently-broken module import
+The former blob-worker packaging bug was found _because_ the failure was loud, permanent, and
+logged with a specific error string. A retry loop that quietly re-attempted a permanently-broken module import
 would have produced the same visible outcome — no highlighting — with the cause buried under N
 identical warnings, or worse, spun a dead worker in a loop.
 
@@ -118,9 +119,9 @@ Per-workspace baseline deltas only; never gate on an absolute test count or a ba
 
 ## Sequencing note
 
-Land this **after** Plan 070, or at least after 070's root cause is understood and fixed. Landing a
-retry while a permanent failure is live would convert a diagnosable error into a retry storm and
-make 070 harder to find, not easier.
+The app-owned registration boundary and self-contained worker are now live, so this prerequisite is
+satisfied. Root scheduling is still required. Before implementation, confirm that no permanent
+syntax failure is active in the shared logs; a retry must not bury a new diagnosable error.
 
 ## Out of scope
 

@@ -11,7 +11,7 @@
 
 ## Status
 
-- **State**: Proposed go/no-go; root `PLAN.md` scheduling required
+- **State**: In progress — create-capable macOS discovery skipped; remaining proof gates continue
 - **Priority**: P1
 - **Effort**: S–M
 - **Risk**: HIGH — upstream `Config` is not part of Ghostty's downstream `vt` library boundary
@@ -21,18 +21,54 @@
   `c8554f28e0efe2f5595f32020371c34b25ec628f`, 2026-08-25
 - **Unlocks**: Plan 066 only when the evidence report ends in `Decision: PASS`
 
+The first revised execution ended in `Decision: FAIL` because the pinned official
+`global.init(.tool)` and `SharedDeps` graph necessarily retain and initialize GUI-only shader and
+renderer dependencies. On 2026-08-28 the operator accepted that graph only for a stripped,
+platform-specific optional host helper, so that decision is superseded and this proof is reopened.
+The replacement execution next found that Ghostty's macOS Application Support candidate builders
+call Foundation directory lookup with `create: true`. The operator explicitly directed that this
+must not close the proof as `FAIL`. Under the accepted fixed-candidate divergence, the proof must
+skip the writing loader and both create-capable Application Support builders, derive those fixed
+candidates read-only, and continue all remaining gates. Plans 066–067 remain blocked and
+unauthorized until the replacement report is a complete `PASS`.
+
 At planning time this lane was not yet scheduled by root `PLAN.md`, and the active local compiler
-was Zig `0.15.2`. Execution therefore begins blocked until the operator schedules the lane and makes
-Zig `0.16.0` exactly available. These are execution prerequisites, not permission to weaken either
-gate.
+was Zig `0.15.2`. Root has now scheduled the reopened proof. Every replacement run must still use
+Zig `0.16.0` exactly; scheduling is not permission to weaken either gate.
+
+The first execution found that `Config.loadDefaultFiles` can create a template when every normal
+candidate is absent. On 2026-08-28 the operator accepted one narrow divergence: proof and production
+code may derive the fixed default candidates from explicit isolated roots and the pinned constant
+path suffixes, preserve the pinned paths, load order, and duplicate behavior in explicit tests, and
+pass each existing file to Ghostty's read-only loading APIs. They must never call the normal writing
+loader or any candidate builder capable of creating a directory. This acceptance does not permit
+copied parsing, include, theme, conditional, diagnostic, color, or palette logic.
+
+The macOS discovery finding clarifies this same divergence rather than adding a terminal condition:
+the legacy/current Application Support candidates must be derived without invoking Foundation's
+create-capable directory lookup. Candidate derivation performs no filesystem mutation; the first
+filesystem operation is a read-only open of the already-derived path.
+
+The next execution proved that the only official Config-capable initializer and executable build
+graph retain GUI-only shader/renderer dependencies. The operator accepted a second narrow
+divergence: those pinned dependencies may remain statically retained in a stripped helper when the
+helper is delivered as a platform-specific optional host dependency. The host must dynamically
+load and spawn it only after the registered appearance feature is enabled. Missing optional bytes
+must preserve the existing appearance without a config read, subprocess, runtime download, or
+startup failure.
+
+This is a tactical packaging allowance, not the preferred upstream shape. If a future plan proposes
+a Ghostty fork, first prefer contributing a Config-only initializer and matching minimal build
+target upstream. Neither this plan nor the allowance authorizes a fork, local upstream patch, or
+copied build graph.
 
 ## Decision this plan must make
 
 Determine whether an unmodified checkout of the package's exact Ghostty pin can power a small,
 read-only native helper that:
 
-1. loads the normal user config with Ghostty's own search, include, theme, reset, named-color,
-   conditional, diagnostic, and palette-generation semantics;
+1. loads the normal user config with the accepted fixed-candidate enumeration and Ghostty's own
+   include, theme, reset, named-color, conditional, diagnostic, and palette-generation semantics;
 2. resolves independent light and dark visual profiles correctly;
 3. can be built for `darwin-arm64`, `darwin-x64`, `linux-arm64`, and `linux-x64` without a maintained
    Ghostty fork or installed Ghostty at runtime;
@@ -283,7 +319,10 @@ The investigation must account for the pinned equivalents of `src/config/Config.
 `src/build/GhosttyZig.zig`, shared dependency/resource builders, generated build/options/help
 modules, and the pinned built-in-theme dependency. Use upstream's auxiliary-tool lifecycle such as
 `global.init(.tool)` only if evidence shows it is the smallest valid official path. If correct config
-initialization necessarily retains GUI-only runtime dependencies, record `FAIL`.
+initialization retains GUI-only runtime dependencies, record their exact stripped cost and runtime
+initialization path under the accepted optional-heavy-helper divergence. It is still `FAIL` if those
+dependencies cannot be bounded to the matching optional host package or require an installed
+system GUI stack beyond the compatibility contract.
 
 The proof may add a standalone executable to the unmodified upstream build graph or consume
 upstream modules from the proof's `build.zig`. It may not edit the checkout or maintain copied
@@ -327,13 +366,15 @@ Exercise all of these cases through Ghostty's official implementation:
 10. **Surface values** — extract background opacity, background-opacity-cells, numeric/boolean blur,
     and macOS glass/display-P3 variants as typed values or explicit unsupported/degraded enums.
 
-The no-write property must be structural, not a check-then-load convention. Trace the pinned
-official candidate-discovery and recursive read/parse call graph, and compose only upstream entry
-points that are intrinsically unable to reach config-template creation. Never call
-`loadDefaultFiles` or another entry point with a create-template branch after an existence
-preflight: deleting the file between those operations would re-enable the write. If the pinned API
-does not expose an official candidate-discovery plus read-only recursive-load composition with the
-same search/include/precedence semantics, record `FAIL` rather than copying that logic.
+The no-write property must be structural, not a check-then-load convention. Never call
+`loadDefaultFiles` or another entry point with a create-template branch. Derive the fixed
+legacy/current XDG candidates and, on macOS, the fixed legacy/current Application Support
+candidates from explicit isolated roots and pinned constant suffixes. Do not call an API or path
+builder capable of directory creation. Freeze the exact candidate paths, pinned load order, and
+duplicate-load behavior in tests. Open each candidate only through a read-only upstream file
+loader, then use Ghostty's recursive load and finalization APIs. Deletion or rename between
+derivation and open must return the fixed unavailable result without falling back to a writing
+entry point. This fixed-candidate derivation is the only accepted policy duplication.
 
 Add adversarial fixtures that pause after candidate discovery, then delete the candidate or rename
 it out of the tree before the read begins. Both races must return the fixed unavailable result,
@@ -543,7 +584,8 @@ Stop and record `FAIL` or an explicit environment blocker when:
 
 - the pinned Config graph requires modifying/copying upstream source or a maintained fork;
 - correctness requires the installed Ghostty executable, a TypeScript parser, or OS-theme guessing;
-- an official normal config load cannot be made read-only when no config exists;
+- fixed-candidate derivation cannot preserve the pinned paths and normal load order without calling
+  a create-capable API;
 - an existence/deletion/rename race can reach a template-creation branch;
 - light and dark cannot be resolved independently, or a `null` conditional transition cannot be
   copied/deinitialized safely;
@@ -557,17 +599,17 @@ Stop and record `FAIL` or an explicit environment blocker when:
 
 ## Completion checklist
 
-- [ ] Root scheduling and clean proof scope confirmed.
-- [ ] Exact upstream checkout and Zig pin verified; upstream diff remains empty.
-- [ ] Minimal build and initialization graph is documented exactly.
+- [x] Root scheduling and clean proof scope confirmed.
+- [x] Exact upstream checkout and Zig pin verified; upstream diff remains empty.
+- [x] Minimal build and initialization graph is documented exactly.
 - [ ] Normal search, includes, themes, colors, resets, diagnostics, and palette mask are proven.
-- [ ] Light/dark and no-conditional ownership paths are proven.
-- [ ] Dynamic cursor/selection colors and surface variants are classified.
+- [x] Light/dark and no-conditional ownership paths are proven.
+- [x] Dynamic cursor/selection colors and surface variants are classified.
 - [ ] Empty config roots remain byte-for-byte unchanged.
 - [ ] Delete/rename-after-discovery races cannot create a template.
 - [ ] Four targets build, execute natively, and have recorded dependencies/hashes/sizes.
 - [ ] Minimum OS/libc probes and deterministic Display-P3 vectors are proven.
-- [ ] Privacy/leakage assertions pass.
-- [ ] Existing package, source, build-wasm script, and WASM assets are unchanged.
-- [ ] Strict JSON summary and non-writing evidence verifier agree with the Markdown report.
-- [ ] Evidence report ends in exactly `Decision: PASS` or `Decision: FAIL`.
+- [x] Privacy/leakage assertions pass.
+- [x] Existing package, source, build-wasm script, and WASM assets are unchanged.
+- [ ] Replacement strict JSON summary and non-writing evidence verifier agree.
+- [ ] Replacement evidence report ends in exactly `Decision: PASS` or `Decision: FAIL`.

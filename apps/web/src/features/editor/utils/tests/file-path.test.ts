@@ -3,6 +3,7 @@ import { languageIdForFilePath } from '@/features/editor/utils/file-path'
 import {
   EDITOR_SHIKI_LANGUAGE_MAP,
   EDITOR_SHIKI_PRELOAD_LANGUAGES,
+  resolveShikiLanguageRegistrations,
 } from '@/features/editor/utils/shiki-languages'
 
 test('keeps the tree-sitter-backed language ids stable', () => {
@@ -135,15 +136,29 @@ test('resolves every language id to a registered shiki grammar', () => {
   }
 })
 
-/**
- * A language in the map but not in the preload list gets its own highlighter:
- * the worker keys one on its language set, and the set is `[lang, ...preload]`
- * deduplicated. Fifteen new languages outside the preload list would be fifteen
- * more highlighters, each carrying every other grammar too.
- */
-test('preloads every language it can produce, so one highlighter serves them all', () => {
+test('preloads every language it can produce', () => {
   for (const languageId of Object.keys(EDITOR_SHIKI_LANGUAGE_MAP)) {
     expect(EDITOR_SHIKI_PRELOAD_LANGUAGES).toContain(languageId)
+  }
+})
+
+test('resolves every preload id to a concrete grammar registration', async () => {
+  const resolved = await Promise.all(
+    EDITOR_SHIKI_PRELOAD_LANGUAGES.map(async (languageId) => ({
+      languageId,
+      registrations: await resolveShikiLanguageRegistrations(languageId),
+    })),
+  )
+
+  for (const { languageId, registrations } of resolved) {
+    expect(registrations.length, languageId).toBeGreaterThan(0)
+    expect(
+      registrations.some(
+        (registration) =>
+          registration.name === languageId || registration.aliases?.includes(languageId),
+      ),
+      languageId,
+    ).toBe(true)
   }
 })
 

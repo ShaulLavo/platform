@@ -1,10 +1,10 @@
 # ghostty-webgpu — project brief (Phases 1–6)
 
 Strategy document per `plans/README.md`: this is the architecture and phase brief for the
-`ghostty-webgpu` project. It is **not executable**. Phase 0's completed Plan 054 is archived in Git,
-and Phase 2's completed results are recorded below. Phase 3 needs a new numbered plan (with drift
-check, commands, and step gates) before execution. Facts here were verified at the pins recorded
-in Plan 054's Status block.
+`ghostty-webgpu` project. It is **not executable**. Phases 0–3 are complete and their results are
+recorded below; completed executable plans are archived in Git history. Phase 4 needs a new numbered
+plan, with current drift checks, commands, and step gates, before execution. Evidence below retains
+the phase-local package and upstream identities against which it was verified.
 
 ## Goal and non-goals
 
@@ -196,9 +196,11 @@ Registered and wired in the same pass.
    focused blinking idle → exactly one frame per blink transition, no standing rAF; damage
    coalescing → at most one pending frame under write storms; empty-cell alpha readback = 0;
    scroll throughput ≥ the Plan 054 S4 damage-scheduled-canvas baseline.
-3. **DOM/input.** Key/mouse encoders (Kitty keyboard protocol), IME composition, clipboard,
-   bracketed paste, focus reporting, fit/resize, selection UX, OSC 8 + regex links,
-   accessibility mirror. Gate: vim/htop/lazygit + kitty-keyboard test script behave.
+3. **DOM/input — COMPLETE (2026-08-28).** Native keyboard and mouse encoding, IME composition,
+   clipboard and bracketed paste, focus reporting, fit/resize, selection, links, scrollbar, and the
+   accessibility mirror are complete. The headed macOS hardware/operator gate passed for held-key
+   lifecycle, modifiers, OS-owned shortcuts, CJK/emoji/dead-key input, exact clipboard insertion,
+   idle rendering, and VoiceOver.
 4. **Platform adapter + dual-renderer rollout.** Grep-generated structural contract + two
    adapters + `terminal.integrated.renderer` + recreate-and-reconnect switching + Vite
    `optimizeDeps` exclusion. Gate: daily-drivable; before/after GPU numbers recorded against
@@ -351,5 +353,22 @@ no-standing-work, throughput, and ≤40% CPU gates.
 
 The closing `bun run verify` passes typecheck, lint, formatting, 22 Node tests, 10 real-Chromium
 tests, and the dist build. `npm pack --dry-run --json` also passes and includes compiled JS/types,
-`ghostty-vt.wasm`, `bridge.wasm`, README, and LICENSE. Phase 3 (DOM/input) needs its own executable
-plan; do not begin it from this strategy brief.
+`ghostty-vt.wasm`, `bridge.wasm`, README, and LICENSE. These results form the renderer baseline for
+the completed Phase 3 evidence below.
+
+## Phase 3 results (2026-08-28) — complete
+
+The DOM/input host closeout is recorded in `ghostty-webgpu@0.1.1` commit
+`50788b2c6ed4bac7dcf1578bd529f74ebc98f36b`, using Ghostty source
+`c8554f28e0efe2f5595f32020371c34b25ec628f` and ABI-manifest schema `1`.
+`ghostty-vt.wasm` retained SHA-256
+`dfb171587bc11b6610fb95d3b583926d51287f5d6e528c45ff2aa05218608a97`; `bridge.wasm` retained
+`47fae389c94f2545b2026d756256272b65f978d97feabae21b9171ad4b54b63f`.
+
+Platform remains on registry `ghostty-webgpu@0.1.0`: its installed terminal and bridge wasm files
+are byte-identical to the verified package, so Phase 3 closeout does not change Platform's
+dependency pin.
+
+The complete automated and headed-hardware operator evidence, including exact input bytes,
+clipboard packet, idle counters, and VoiceOver result, is recorded in
+`ghostty-webgpu/docs/phase-3-acceptance.md`. Phase 4 remains a separate planning boundary.
