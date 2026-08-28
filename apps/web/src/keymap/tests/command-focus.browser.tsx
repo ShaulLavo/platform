@@ -127,65 +127,61 @@ test('deepest event target wins and read-only focus cannot fall through', async 
   await expect(lastEditorTicket?.completion).resolves.toMatchObject({ status: 'disabled' })
 })
 
-test(
-  'palette and settings restore only after their modal targets depart',
-  { timeout: 15_000 },
-  async () => {
-    const focus = new FocusService()
-    const queryClient = createTestQueryClient()
-    seedBootMirrorTheme('dark')
-    mount(
-      <AppProviders command={false} focusService={focus} queryClient={queryClient}>
-        <EditorStateProvider>
-          <EditorTabActionsProvider
-            requestCloseTab={rejectCloseTab}
-            requestCloseTabs={rejectCloseTabs}
-          >
-            <CommandProvider>
-              <OverlayOrigins />
-            </CommandProvider>
-          </EditorTabActionsProvider>
-        </EditorStateProvider>
-      </AppProviders>,
-    )
+test('palette and settings restore only after their modal targets depart', async () => {
+  const focus = new FocusService()
+  const queryClient = createTestQueryClient()
+  seedBootMirrorTheme('dark')
+  mount(
+    <AppProviders command={false} focusService={focus} queryClient={queryClient}>
+      <EditorStateProvider>
+        <EditorTabActionsProvider
+          requestCloseTab={rejectCloseTab}
+          requestCloseTabs={rejectCloseTabs}
+        >
+          <CommandProvider>
+            <OverlayOrigins />
+          </CommandProvider>
+        </EditorTabActionsProvider>
+      </EditorStateProvider>
+    </AppProviders>,
+  )
 
-    const paletteOrigin = await element('[data-open-palette]')
-    paletteOrigin.focus()
-    paletteOrigin.click()
-    const paletteInput = await element<HTMLInputElement>('input[placeholder="Search commands..."]')
-    await expect.poll(() => document.activeElement).toBe(paletteInput)
-    expect(focus.getSnapshot().currentOwner?.area).toBe('command-palette')
+  const paletteOrigin = await element('[data-open-palette]')
+  paletteOrigin.focus()
+  paletteOrigin.click()
+  const paletteInput = await element<HTMLInputElement>('input[placeholder="Search commands…"]')
+  await expect.poll(() => document.activeElement).toBe(paletteInput)
+  expect(focus.getSnapshot().currentOwner?.area).toBe('command-palette')
 
-    await commands.proofKeyPress({ key: 'Escape' })
+  await commands.proofKeyPress({ key: 'Escape' })
 
-    await expect
-      .poll(() => document.querySelector('input[placeholder="Search commands..."]'))
-      .toBeNull()
-    await expect.poll(() => document.activeElement).toBe(paletteOrigin)
-    expect(focus.getSnapshot().currentOwner?.id).toEqual({
-      key: 'palette-origin',
-      kind: 'editor',
-      surface: 'document',
-    })
+  await expect
+    .poll(() => document.querySelector('input[placeholder="Search commands…"]'))
+    .toBeNull()
+  await expect.poll(() => document.activeElement).toBe(paletteOrigin)
+  expect(focus.getSnapshot().currentOwner?.id).toEqual({
+    key: 'palette-origin',
+    kind: 'editor',
+    surface: 'document',
+  })
 
-    const settingsOrigin = await element('[data-open-settings]')
-    settingsOrigin.focus()
-    settingsOrigin.click()
-    const settingsDialog = await element<HTMLElement>('[role="dialog"]')
-    await expect.poll(() => settingsDialog.contains(document.activeElement)).toBe(true)
-    expect(focus.getSnapshot().currentOwner?.id).toEqual({ kind: 'settings-dialog' })
+  const settingsOrigin = await element('[data-open-settings]')
+  settingsOrigin.focus()
+  settingsOrigin.click()
+  const settingsDialog = await element<HTMLElement>('[role="dialog"]')
+  await expect.poll(() => settingsDialog.contains(document.activeElement)).toBe(true)
+  expect(focus.getSnapshot().currentOwner?.id).toEqual({ kind: 'settings-dialog' })
 
-    await commands.proofKeyPress({ key: 'Escape' })
+  await commands.proofKeyPress({ key: 'Escape' })
 
-    await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull()
-    await expect.poll(() => document.activeElement).toBe(settingsOrigin)
-    expect(focus.getSnapshot().currentOwner?.id).toEqual({
-      key: 'settings-origin',
-      kind: 'editor',
-      surface: 'document',
-    })
-  },
-)
+  await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull()
+  await expect.poll(() => document.activeElement).toBe(settingsOrigin)
+  expect(focus.getSnapshot().currentOwner?.id).toEqual({
+    key: 'settings-origin',
+    kind: 'editor',
+    surface: 'document',
+  })
+})
 
 test('a virtual menu restores the context target rather than prior DOM focus', async () => {
   const focus = new FocusService()
@@ -419,7 +415,7 @@ function mount(children: ReactNode) {
 }
 
 async function element<E extends HTMLElement = HTMLElement>(selector: string) {
-  await expect.poll(() => document.querySelector(selector), { timeout: 5_000 }).toBeTruthy()
+  await expect.poll(() => document.querySelector(selector)).toBeTruthy()
   return document.querySelector<E>(selector)!
 }
 
