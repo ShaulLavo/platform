@@ -500,7 +500,7 @@ Two facts that change specific rows: `references/logseq/src/main/frontend/extens
 
 **Transliteration.** `d/entity` plus the `:block/_parent` reverse lookup sorted by `:block/order` on every call becomes a `ChildrenIndex = Map<BlockId, BlockId[]>` in order-key order, so left/right sibling is an array index ±1 — this single change removes most of the module's cost. The Clojure re-reads after each sub-move because the conn mutates mid-loop; in TS compute every destination order key up front from one immutable snapshot and emit a single `OutlinerOp[]` (but see risks). `:pre` assertions become `createStructuredError` catalog entries, never `new Error`. `parent-original` becomes an explicit optional parameter.
 
-**Risks.** The descendant check is the only thing preventing a cycle and must be fuzzed, not exampled — we have precedent in the 15k-op tiling node fuzz. Computing all order keys from one snapshot diverges from the reference when two moved blocks target the same gap; the reference cannot hit this because it re-reads, so either allocate the run with a single n-keys-between call or keep the re-read loop. The reference's outdent branch is five levels deep — extract named helpers to stay inside the house limit.
+**Risks.** The descendant check is the only thing preventing a cycle and must be fuzzed, not exampled — we have precedent in the 15k-op tiling node fuzz (removed with tiling in `21d30b57`; recover from git history). Computing all order keys from one snapshot diverges from the reference when two moved blocks target the same gap; the reference cannot hit this because it re-reads, so either allocate the run with a single n-keys-between call or keep the re-read loop. The reference's outdent branch is five levels deep — extract named helpers to stay inside the house limit.
 
 ### Backspace-at-0 merge and forward Delete
 
@@ -572,7 +572,7 @@ Two facts that change specific rows: `references/logseq/src/main/frontend/extens
 
 **Transliteration.** Global atoms read by every block row via `use-atom` become **one** store selector subscribed only by the hovered row and the separator — otherwise the separator re-renders every row on every pointermove, which we would feel immediately at outline scale. The external DataTransfer path (files → assets, text/plain → new block) reuses our existing attachment route.
 
-**Risks.** The 50 px threshold is unitless upstream and was tuned against Logseq's row indent; verify it against our density (we recently made the file tree denser) or nesting triggers in the wrong place. Keep this drag state completely separate from the workbench tiling drag, which has a documented duplicate-React-key bug during drag. Journals are not drop targets at all upstream — decide whether we have an equivalent exclusion.
+**Risks.** The 50 px threshold is unitless upstream and was tuned against Logseq's row indent; verify it against our density (we recently made the file tree denser) or nesting triggers in the wrong place. Keep this drag state self-contained (the workbench tiling drag this originally had to avoid was removed in `21d30b57`). Journals are not drop targets at all upstream — decide whether we have an equivalent exclusion.
 
 ### Click-to-edit caret mapping
 
@@ -612,7 +612,7 @@ Two facts that change specific rows: `references/logseq/src/main/frontend/extens
 
 **Transliteration.** The storage is the problem and is most of the code: `:selection/blocks` is a vector of live `HTMLElement`s mutated with imperative `.selected` class add/remove, and it synthesizes detached `<div blockid=…>` nodes for blocks virtualization has unmounted. Selection becomes `BlockId[]` in a zustand store with `selected` derived per row, and `getNodesBetweenTwoNodes` becomes an index range in the flattened visible-rows array — which deletes the synthesized-placeholder path entirely.
 
-**Risks.** Drag-select and React fight if the row component does not own its own highlight — no direct DOM class mutation as a shortcut. The floating action bar is a floating surface and must use `surface-vibrancy`, not hand-rolled opacity. Keep this drag state in a different store from the workbench tiling drag.
+**Risks.** Drag-select and React fight if the row component does not own its own highlight — no direct DOM class mutation as a shortcut. The floating action bar is a floating surface and must use `surface-vibrancy`, not hand-rolled opacity. Keep this drag state in its own store.
 
 ### Collapse / expand (reimplement)
 

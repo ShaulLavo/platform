@@ -13,7 +13,7 @@ import { CommandMenuLoading } from '@/features/chat/components/command-menu-load
 
 /**
  * Matches the composer's width through the positioner's anchor variables and
- * takes whatever height is left above it. The composer lives in tiling panes
+ * takes whatever height is left above it. The composer lives in resizable panes
  * that resize constantly, so a fixed cap would either clip the list or float it
  * over the messages.
  */
