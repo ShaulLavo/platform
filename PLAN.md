@@ -60,7 +60,7 @@ required parser/Unicode, inactive-buffer, row-marker, and OSC 8 APIs are not pub
 gate has passed, but it remains blocked on Plan 009 and physical operator evidence. Plans 011–015
 remain in package-defined dependency order and are not prerequisites for current Platform work.
 
-## Reopened Ghostty appearance lane
+## Deferred Ghostty appearance lane
 
 Plan 065's first proof found that the pinned normal loader can create a template when no config
 exists. The operator accepted one narrow divergence on 2026-08-28: the resolver may enumerate the
@@ -75,11 +75,15 @@ divergence: the heavy helper may be a stripped, platform-specific optional host 
 and spawned only when the registered appearance feature is enabled. Its absence must degrade to
 the existing Platform appearance without a config read, subprocess, download, or startup failure.
 
-Plan 065 is therefore **REOPENED AND SCHEDULED** for its unchanged four-native-target and evidence
-gates. Plans 066–067 remain **NOT AUTHORIZED** until a complete `Decision: PASS` and separate root
-scheduling. If Platform ever considers a Ghostty fork, prefer contributing a Config-only
-initializer/build target upstream first; this acceptance does not authorize a fork or make the
-heavy graph the preferred long-term boundary.
+The reopened proof is now **COMPLETE — Decision: FAIL**, and the appearance feature is **DEFERRED**.
+On macOS, both official Application Support candidate builders reach Foundation's directory lookup
+with `create: true`, so discovery itself can
+write beneath an empty isolated home before any config read. Pre-creating that directory would hide
+the failed no-write gate, while deriving the path outside Ghostty would be an unauthorized third
+divergence. Plans 066–067 remain **NOT AUTHORIZED**. If Platform ever considers a Ghostty fork,
+prefer contributing a read-only Config path API and Config-only initializer/build target upstream
+first; the optional-heavy allowance does not make the current graph the preferred long-term
+boundary.
 
 Do not replace this lane with a TypeScript Ghostty parser, `ghostty +show-config`, a maintained fork,
 browser-visible host paths, or cold-start reads triggered by a disabled workbench setting.
@@ -159,9 +163,10 @@ do not add scoped-ref or multi-origin compatibility machinery now.
 - **Promote:** environment milestones M1–M5, one executable plan at a time.
 - **Deferred:** environment M6 and all compatibility work for simultaneous origins or obsolete
   per-tab/active-editor/one-server architecture.
-- **Scheduled independently:** Plan 065 may retain the pinned GUI/shader graph only inside a
-  stripped platform-specific optional host helper. Plans 066–067 remain blocked and unauthorized
-  until a complete four-target `PASS`; a future fork proposal must prefer upstreaming a Config-only
-  boundary first.
+- **Deferred after independent FAIL:** Plan 065 proved the optional heavy helper on Linux but found
+  that Ghostty's macOS Application Support path builder passes `create: true`, violating the
+  structural no-write gate during discovery. The nice-to-have appearance lane, including Plans
+  066–067, is deferred and unauthorized; a future fork proposal must prefer upstreaming read-only
+  Config path and Config-only build boundaries first.
 - **Package-blocked:** `ghostty-webgpu` plan 009 needs public native extension surfaces. Plan 010 is
   additionally waiting on that dependency and physical operator gates; plans 011–015 remain downstream.

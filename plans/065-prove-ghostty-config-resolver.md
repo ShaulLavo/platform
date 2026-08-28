@@ -11,7 +11,7 @@
 
 ## Status
 
-- **State**: Reopened and scheduled; fixed-candidate and optional-heavy-helper divergences accepted
+- **State**: Complete — `Decision: FAIL`; appearance lane deferred
 - **Priority**: P1
 - **Effort**: S–M
 - **Risk**: HIGH — upstream `Config` is not part of Ghostty's downstream `vt` library boundary
@@ -25,7 +25,10 @@ The first revised execution ended in `Decision: FAIL` because the pinned officia
 `global.init(.tool)` and `SharedDeps` graph necessarily retain and initialize GUI-only shader and
 renderer dependencies. On 2026-08-28 the operator accepted that graph only for a stripped,
 platform-specific optional host helper, so that decision is superseded and this proof is reopened.
-Plans 066–067 remain blocked and unauthorized until the replacement report is a complete `PASS`.
+The replacement execution is complete with a narrower `Decision: FAIL`: on macOS, Ghostty's
+Application Support candidate builders call Foundation's directory lookup with `create: true`, so
+discovery itself can write beneath an empty isolated home. Plans 066–067 are deferred and
+unauthorized.
 
 At planning time this lane was not yet scheduled by root `PLAN.md`, and the active local compiler
 was Zig `0.15.2`. Root has now scheduled the reopened proof. Every replacement run must still use
@@ -587,17 +590,17 @@ Stop and record `FAIL` or an explicit environment blocker when:
 
 ## Completion checklist
 
-- [ ] Root scheduling and clean proof scope confirmed.
-- [ ] Exact upstream checkout and Zig pin verified; upstream diff remains empty.
-- [ ] Minimal build and initialization graph is documented exactly.
+- [x] Root scheduling and clean proof scope confirmed.
+- [x] Exact upstream checkout and Zig pin verified; upstream diff remains empty.
+- [x] Minimal build and initialization graph is documented exactly.
 - [ ] Normal search, includes, themes, colors, resets, diagnostics, and palette mask are proven.
-- [ ] Light/dark and no-conditional ownership paths are proven.
-- [ ] Dynamic cursor/selection colors and surface variants are classified.
+- [x] Light/dark and no-conditional ownership paths are proven.
+- [x] Dynamic cursor/selection colors and surface variants are classified.
 - [ ] Empty config roots remain byte-for-byte unchanged.
 - [ ] Delete/rename-after-discovery races cannot create a template.
 - [ ] Four targets build, execute natively, and have recorded dependencies/hashes/sizes.
 - [ ] Minimum OS/libc probes and deterministic Display-P3 vectors are proven.
-- [ ] Privacy/leakage assertions pass.
-- [ ] Existing package, source, build-wasm script, and WASM assets are unchanged.
-- [ ] Strict JSON summary and non-writing evidence verifier agree with the Markdown report.
-- [ ] Evidence report ends in exactly `Decision: PASS` or `Decision: FAIL`.
+- [x] Privacy/leakage assertions pass.
+- [x] Existing package, source, build-wasm script, and WASM assets are unchanged.
+- [x] Strict JSON summary and non-writing evidence verifier agree with the Markdown report.
+- [x] Evidence report ends in exactly `Decision: PASS` or `Decision: FAIL`.
