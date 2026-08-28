@@ -181,11 +181,12 @@ Add strict `scripts/config-resolver-proof/proof-recipe.schema.json` and canonica
 8785 JSON Canonicalization Scheme UTF-8 bytes and exactly one LF. The checked recipe file must equal
 those bytes; `proofRecipeSha256` is SHA-256 of the complete raw file. It never contains its own hash.
 
-The recursively strict recipe contains schema version `1`, exact upstream repository/revision/tree
+The recursively strict recipe contains schema version `2`, exact upstream repository/revision/tree
 digest, Zig version `0.16.0`, one shared `SOURCE_DATE_EPOCH`, and exactly four target-keyed records.
 Each target record contains its asserted runner image/version and architecture, target triple,
-optimization mode, complete ordered build/link/strip argv, a sorted array of explicit build
-environment name/value pairs, and sorted tool/input arrays. Tool records have a fixed role
+optimization mode, complete ordered build/strip argv, the strict ordered `linkPlan` defined below, a
+sorted array of explicit build environment name/value pairs, and sorted tool/input arrays. Tool
+records have a fixed role
 `zig|linker|strip|sdk-or-sysroot`, name, version, byte length, SHA-256, and exactly one acquisition
 variant:
 
@@ -222,7 +223,8 @@ argv. The fixed themes-archive extraction is orchestration outside those native 
 archive identity is checked immediately before extraction, and the resulting tree identity is
 observed by both build and relocated native verification. Do not describe `/usr/bin/tar` or its argv
 as recipe-bound. `linkArgv` is the exact observed IPC child described below and is not invoked
-separately.
+separately; it remains literal in runner inventory and native evidence. The recipe stores its strict
+`linkPlan` projection rather than pretending Zig's internal cache locators are stable inputs.
 `verify-evidence.ts` revalidates canonical recipe bytes, recomputes `proofRecipeSha256`, requires that
 digest in every matrix row, and compares every recorded runner/tool hash with the target recipe.
 Golden tests mutate every recipe field/order/acquisition variant and prove Bun and Node compute the
@@ -230,12 +232,24 @@ same digest. If a platform SDK cannot be fully downloaded, its immutable runner-
 the explicitly hashed SDK settings, linker, and every inspected build component is the accepted
 identity boundary; an unversioned ambient SDK is `FAIL`.
 
-For recipe schema version `1`, `linkArgv` means the exact final spawned Zig `build-exe` link-driver
-argv observed from the recorded outer `zig build --verbose` process. Darwin performs Mach-O linking
-inside that child, so a deeper standalone linker process does not exist there. The recorded child
-uses build-runner IPC through final argument `--listen=-`; it is an exact process observation under
-the outer build, not a separately replayable command. A `--verbose-link` diagnostic, reconstructed
-or normalized argv, or unbound `@response-file` is invalid evidence.
+For recipe schema version `2`, raw `linkArgv` means the exact final spawned Zig `build-exe`
+link-driver argv observed from the recorded outer `zig build --verbose` process. Darwin performs
+Mach-O linking inside that child, so a deeper standalone linker process does not exist there. The
+recorded child uses build-runner IPC through final argument `--listen=-`; it is an exact process
+observation under the outer build, not a separately replayable command. A `--verbose-link`
+diagnostic, reconstructed raw argv, or unbound `@response-file` is invalid evidence.
+
+`linkPlan` preserves every raw argument byte, position, count, option adjacency, module name, path
+suffix, cache-key reuse relationship, and final `--listen=-`, with one narrow projection. In a path
+under that target's exact physical root, a complete lowercase 32-hex component immediately following
+`/final-cache/o/` is replaced by `{{zig-cache-key-NNNN}}`, numbered contiguously by first occurrence
+from `0000`; repeated raw keys reuse their first token and distinct raw keys remain distinct. Permit
+at most one such component per argument. Reject a raw cache key in the recipe, a placeholder in raw
+evidence, a gap or reorder in first-use numbering, a malformed or uppercase key, or a placeholder at
+any other root/component. No other path or byte is projected, including Darwin's `/private/tmp`.
+The final cache must still be absent before the outer build and populated only by the pinned Zig
+process from verified inputs, so these aliases identify internal transitive outputs rather than an
+unbound external input.
 
 Every `zig build` phase — dependency discovery, dependency materialization,
 target-generated-module materialization, and the final build — uses
@@ -243,28 +257,38 @@ target-generated-module materialization, and the final build — uses
 canonical physical proof root — `/tmp/ghostty-config-resolver-proof-build-v1` on Linux and
 `/private/tmp/ghostty-config-resolver-proof-build-v1` on Darwin — exposes its separately verified
 bundled `lib` tree at the adjacent fixed path, and records that executable as `ZIG_EXE`. The recipe
-binds the integrated linker to the same Zig binary and acquisition. Observed argv remains literal;
-the proof must not normalize Darwin's `/private/tmp` paths to `/tmp`. On Darwin it also records the
-bundled `lib` tree as a separate input because the `sdk-or-sysroot` tool slot remains the native
-macOS SDK.
+binds the integrated linker to the same Zig binary and acquisition. Observed argv remains literal in
+evidence; the proof must not normalize Darwin's `/private/tmp` paths to `/tmp`. On Darwin it also
+records the bundled `lib` tree as a separate input because the `sdk-or-sysroot` tool slot remains the
+native macOS SDK.
 
-Zig 0.16 gives target-reachable generated modules unstable run-cache directory names even when their
-exact bytes match across cold builds. The reachable set is `help_strings`, HarfBuzz `hb_c`, and Wuffs
-`wuffs_c` on Linux, but only `help_strings` and `wuffs_c` on Darwin because the pinned Ghostty graph
-uses CoreText there. The proof-owned sibling build graph must expose a generation-only step that
-preserves the original generator edges and copies exactly that target's reachable byte streams with
-Zig's `InstallFile` step into fixed paths below the proof prefix. The runner records their byte
-identities, complete source references, and the exact generation-only argv with
+Zig 0.16 gives some target-reachable generated modules unstable run-cache directory names even when
+their exact bytes match across cold builds. The proof externalizes `help_strings`, HarfBuzz `hb_c`,
+and Wuffs `wuffs_c` on Linux, but only `help_strings` and `wuffs_c` on Darwin because the pinned
+Ghostty graph uses CoreText there. The proof-owned sibling build graph must expose a generation-only
+step that preserves the original generator edges and copies exactly that target's reachable byte
+streams with Zig's `InstallFile` step into fixed paths below the proof prefix. The runner records
+their byte identities, complete source references, and the exact generation-only argv with
 `-Dproof-preverified-generated=false`, then verifies them before a separate final build with
 `-Dproof-preverified-generated=true` consumes the fixed files from a fresh fixed `final-cache`. That
-final build must not retain a generator edge for any recorded module, and a producer command
-observed in its cold verbose output is `FAIL`. Each target's records name the same generation argv
-because one invocation co-generates its reachable set, and the runner invokes that distinct argv
-once. Neither phase may rewrite the observed driver argv or relocate generated modules such as
-`framedata` that depend on generated siblings. Before native inventory is accepted, two cold Linux
-x64 builds from different source and Zig extraction roots must match in the complete literal
-generation and driver argv, generated-input identities, target recipe fields, stripped artifact
-identity, and resource identity.
+final build must not retain a generator edge for any externally recorded module, and its producer
+command observed in its cold verbose output is `FAIL`. Each target's records name the same
+generation argv because one invocation co-generates its reachable set, and the runner invokes that
+distinct argv once. Other generated siblings such as Unicode/symbol tables, `framedata`, uucode
+tables, and `macos_c` remain transitive outputs of the recorded outer build; they are not external
+recipe inputs.
+Neither phase may rewrite the observed driver argv or relocate those generated siblings. Before
+native inventory is accepted, two cold Linux x64 builds from different source and Zig extraction
+roots must match in the complete literal generation argv, strict `linkPlan`, generated-input
+identities, target recipe fields, stripped artifact identity, and resource identity. Raw cache keys
+may differ only where the `linkPlan` rule permits.
+
+Schema version `1` is retired rather than reinterpreted. Evidence run `33205609614` at
+`7d0643a148bf2cfe5606ebcb66dfe1d8c7243e91` correctly failed its literal-link gate on three targets
+and is not PASS evidence. Diagnostic inventory runs `33202221281` and `33206854009`, plus two cold
+local Linux x64 runs, kept the exact pins, inputs, commands, and link topology while changing only
+the permitted opaque cache components; Linux x64 still produced the identical stripped artifact.
+Fresh native evidence must use one schema-v2 recipe digest and one exact proof-source HEAD.
 
 ## Proof invariants
 
