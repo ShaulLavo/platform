@@ -1,21 +1,19 @@
 import { chromium, firefox, webkit } from 'playwright'
 import { statSync } from 'node:fs'
 import { basename, relative, resolve, sep } from 'node:path'
+import {
+  WORKSPACE_CACHE_STORAGE_KEYS,
+  workspaceSliceStorageKey,
+} from '../src/features/workspace/state/cache.ts'
+import { createDefaultWorkbenchLayout } from '../src/features/workbench/utils/layout.ts'
+import { createDefaultWorkbenchPanels } from '../src/features/workbench/utils/panels.ts'
 import { createBenchmarkError } from './structured-errors.mjs'
 
 export const browserTypes = { chromium, firefox, webkit }
 
-const cachePrefix = 'platform.workspace-state.v14'
-
 export function launchOptions(browserName) {
   if (browserName !== 'chromium') return { headless: true }
 
-  // The default chromium headless shell stalls its frame pipeline ~2x vsync
-  // under sustained editor repaint, inflating frame means to ~27ms. The
-  // 'chromium' channel runs new headless on the real browser instead.
-  // Frames run uncapped so benchmarks measure real frame throughput
-  // (~5ms/frame) rather than vsync cadence; regressions surface directly
-  // instead of hiding inside the 16.7ms vsync budget.
   return {
     args: ['--disable-frame-rate-limit', '--disable-gpu-vsync'],
     channel: 'chromium',
@@ -139,25 +137,26 @@ export async function seedWorkspaceCache(context, workspace) {
   }, workspaceCacheEntries(workspace))
 }
 
-function workspaceCacheEntries(workspace) {
+export function workspaceCacheEntries(workspace) {
+  const rootPath = workspace.rootFolder.path
   return {
-    [`${cachePrefix}.diffViewMode`]: 'split',
-    [`${cachePrefix}.editorHistory`]: [workspace.filePath],
-    [`${cachePrefix}.recentlyClosedEditorPaths`]: [],
-    [`${cachePrefix}.rootFolder`]: workspace.rootFolder,
-    [`${cachePrefix}.searchBuffer`]: null,
-    [`${cachePrefix}.workbenchPanels`]: workbenchPanelsEntry(workspace),
+    [WORKSPACE_CACHE_STORAGE_KEYS.rootFolder]: workspace.rootFolder,
+    [WORKSPACE_CACHE_STORAGE_KEYS.workbenchLayout]: createDefaultWorkbenchLayout(),
+    [WORKSPACE_CACHE_STORAGE_KEYS.workspaceIndex]: [rootPath],
+    [workspaceSliceStorageKey(rootPath)]: {
+      editorHistory: [workspace.filePath],
+      recentlyClosedEditorPaths: [],
+      scrollPositionByPath: {},
+      workbenchPanels: workbenchPanelsEntry(workspace),
+    },
   }
 }
 
 function workbenchPanelsEntry(workspace) {
   return {
-    activeBottomTab: 'terminal',
+    ...createDefaultWorkbenchPanels(),
     activeEditorTabId: 'tab-bench',
-    activeSidebarTab: 'files',
-    bottomHeight: 240,
     editorTabs: [{ id: 'tab-bench', path: workspace.filePath }],
-    sidebarWidth: 300,
   }
 }
 
@@ -168,7 +167,7 @@ export function traceUrl(appUrl) {
 }
 
 export async function waitForHighlightedEditor(page, expectHighlights = true) {
-  await page.waitForSelector('.editor-virtualized-row')
+  await assertMountedEditor(page)
   await page.waitForFunction(() => Boolean(window.__editorPerfTrace))
   if (expectHighlights) await waitForHighlightRanges(page)
   await page.evaluate(() => document.fonts?.ready ?? Promise.resolve())
@@ -182,15 +181,29 @@ export async function waitForHighlightedEditor(page, expectHighlights = true) {
   )
 }
 
-function waitForHighlightRanges(page) {
-  return page.waitForFunction(() => {
-    const registry = window.CSS?.highlights
-    if (!registry) return false
+async function assertMountedEditor(page) {
+  const mountedRow = await page.waitForSelector('.editor-virtualized-row').catch(() => null)
+  if (mountedRow) return
 
-    let ranges = 0
-    for (const [, highlight] of registry) ranges += highlight.size
-    return ranges >= 200
-  })
+  throw createBenchmarkError(
+    `Workspace cache seed produced no mounted editor at ${page.url()}; check the cache schema and seeded workspace slice.`,
+  )
+}
+
+function waitForHighlightRanges(page) {
+  return page.waitForFunction(
+    () => {
+      const registry = window.CSS?.highlights
+      if (!registry) return false
+
+      for (const [, highlight] of registry) {
+        if (highlight.size > 0) return true
+      }
+      return false
+    },
+    undefined,
+    { polling: 100 },
+  )
 }
 
 export function average(values) {

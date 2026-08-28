@@ -39,28 +39,28 @@ These measure what a user feels, in a real browser, against the real app.
 
 **A "typing iteration" is defined exactly as:**
 
-- Setup: seed `localStorage` with a workspace + one open editor tab, load the app at `?editorPerfTrace=1`, wait for `.editor-virtualized-row` **and** ≥ 200 registered CSS highlight ranges **and** `document.fonts.ready` **and** two rAFs. Click row 20 at x=40, press `End`.
+- Setup: seed the v19 workspace cache with one open editor tab, load the app at `?editorPerfTrace=1`, wait for `.editor-virtualized-row`, a non-empty CSS highlight, `document.fonts.ready`, and two rAFs. The gate corpus is the default `apps/web/src/features/editor/components/editor.tsx` (232 lines, 7,289 bytes). Click row 20 at x=40, then press `End`.
 - Input: `page.keyboard.type('abcdefghijklmnopqrstuvwxyz0123456789abcd')` — 40 keys. `steady` uses `delay: 40` ms; `burst` uses `delay: 0`.
 - **Clock start:** the `keydown` event's `event.timeStamp`, captured in a capture-phase listener on `window`.
 - **Clock stop:** the timestamp of the **first `requestAnimationFrame` callback that runs after that keydown**.
 - Latency = stop − start, per key. Reported as p50 / p95 / max over 40 keys, averaged across 3 trials.
 - A second, independent number comes from the in-page diagnostics sink: `editor.view.applyEdit` mean/max, from `window.__editorPerfTrace.report().topDiagnostics`.
-- Guard: if the editor applied fewer than 40 edits, the trial throws (focus was lost) rather than reporting a fast, meaningless number.
+- Guards: a missing mounted row throws a cache-schema error, and fewer than 40 applied edits throws a focus error. Neither failure can become a fast, meaningless number.
 
 **This is not keystroke-to-photon.** It ends at the rAF callback — before style, layout, paint, composite, and scanout. It is the cheapest honest proxy the web platform offers, and it systematically _under_-reports by roughly one frame of pipeline. §6.1 says what the native equivalent measures instead, and why the two are still comparable.
 
 **A "scroll iteration"** is: `scroller.scrollTop += 36`, dispatch a synthetic `scroll` event, await one rAF — 80 times. Frame durations come from a free-running rAF loop inside `performance-trace.ts` (`frameStats.meanMs/maxMs`, `slowFrames` ≥ 16.7 ms, `longFrames` ≥ 50 ms). Note this drives the _scroll handler and render path_, not the compositor — a real wheel gesture behaves differently, which is why the 7 fps wheel trace of 2026-08-15 found problems this bench did not.
 
-### 2.3 Why chromium runs uncapped
+### 2.3 Chromium launch contract
 
-`launchOptions()` uses `channel: 'chromium'` with `--disable-frame-rate-limit --disable-gpu-vsync`. Both halves matter:
+`launchOptions()` uses `channel: 'chromium'` with `--disable-frame-rate-limit --disable-gpu-vsync`. Both flags are part of the checked-in command:
 
-- The default Playwright **headless shell** stalls its frame pipeline at ~2x vsync under sustained editor repaint, inflating frame means to ~27 ms. The `chromium` channel runs new headless on the real browser.
-- Uncapped frames make the bench measure **throughput**, not vsync cadence. At 60 Hz a regression from 5 ms to 15 ms per frame hides entirely inside the 16.7 ms budget; uncapped, it shows up as a tripling. The native harness inherits this idea in §6.4: measure the work, then check it against the budget separately.
+- The default Playwright **headless shell** stalls its frame pipeline under sustained editor repaint. That historical comparison had no CPU calibration; the `chromium` channel remains the reproducible launch target.
+- The free-running scroll loop is uncapped: the repaired gate measured a 4.05 ms median on this 60 Hz machine at 81.33 ms CPU calibration. Typing still measures the first callback after each keydown, so browser scheduling remains part of that user-facing number. The independent `editor.view.applyEdit` guard keeps slow editor work visible.
 
 ### 2.4 Calibration and drift
 
-Every trial reports `meanCpuCalibrationMs` — a fixed 20M-iteration integer loop timed in-page immediately before sampling (~97 ms on this machine when mildly loaded). It exists because **this machine's tail latencies inflate roughly 2x after an hour of heavy benching**. The rules that follow from that are in §8, and they are not optional.
+Every trial reports `meanCpuCalibrationMs` — a fixed 20M-iteration integer loop timed in-page immediately before sampling (81–83 ms in the final repaired interaction pair). It exists because **this machine's tail latencies inflate roughly 2x after an hour of heavy benching**. The rules that follow from that are in §8, and they are not optional.
 
 `--cpu-throttle=N` applies CDP `Emulation.setCPUThrottlingRate` _after_ the editor is ready, so only the measured interaction runs degraded. Measured June 2026: degradation is uniform scaling, no queueing or GC pathology.
 
@@ -70,13 +70,13 @@ Every trial reports `meanCpuCalibrationMs` — a fixed 20M-iteration integer loo
 
 `EditorBench` tags every row. The tier is the honest part of the table.
 
-| Tier                   | Means                                                                                                                 | Worth                                                                                                                     |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| **[1] checked in**     | `../Editor/docs/architecture/phase-0/performance-baseline.md` (2026-05-24, Bun 1.3.10) and the `bench/*.ts` it names. | Re-runnable by command. Strongest evidence, weakest relevance — storage-path proxies, not felt latency.                   |
-| **[2] live gate**      | Threshold constants in `apps/web/scripts/editor-{typing,scroll}-benchmark.mjs`.                                       | The bar the web editor is _currently held to_, with a fully specified harness. But see §5 — the harness cannot run today. |
-| **[3] session record** | Measured and dated in a working session; methodology known; no checked-in command reproduces it.                      | Real, provisional. Never quote one as settled without saying which session it came from.                                  |
+| Tier                   | Means                                                                                                   | Worth                                                                                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| **[1] re-runnable**    | Checked-in command, corpus, statistic, and a dated result with CPU calibration.                         | Strongest evidence. A later run can reproduce the work and explain a changed result.    |
+| **[2] live gate only** | A checked-in threshold and command without a current calibrated result.                                 | Enforces a ceiling, but does not establish what the current implementation costs.       |
+| **[3] session record** | Measured and dated in a working session; methodology known; no checked-in command reproduces the value. | Real, provisional. Never quote one as settled without saying which session produced it. |
 
-**The 5.8 ms figure is tier 3.** It comes from the June 12 2026 typing-latency work: typing on a 1M-line file in Chromium went from ~90 ms to **4.4–5.7 ms p50, 6–9 ms p95** after three fixes (a `LineStartsView` on snapshots, packed SoA token transport across the tree-sitter worker boundary, and a minimap structural-scan skip). It is recorded nowhere in `../Editor`. The related **p95 6 ms viewport highlight** is also tier 3, from the 2026-08-22 tree-sitter transport benchmark: a viewport query (~960 tokens) costs 0.2 ms p50 across the worker boundary, 6 ms p95 on a 50K-line doc — versus 164 ms p95 over a WebSocket, which is why tree-sitter is client-side. The **scroll frame traces** are tier 3 too: 42.7 → 18.8 ms frame max on a PNG-as-text and 24.3 → 17.9 ms on a TSX after deleting the scroll-persistence plugin's listener (June 13 2026), and a 110–156 ms/frame wheel trace on 2026-08-15 whose fixes landed the same day.
+**The 5.8 ms figure remains tier 3.** It comes from the June 12 2026 typing-latency work: typing on a 1M-line file in Chromium went from ~90 ms to **4.4–5.7 ms p50, 6–9 ms p95** after three fixes. Its CPU calibration was not recorded. The related viewport-highlight and wheel-scroll figures also lack calibration and remain historical context, not §8 results.
 
 Tier 3 numbers are in the table because they are the real bar. They are marked tier 3 so nobody mistakes them for something they can re-run.
 
@@ -84,59 +84,66 @@ Tier 3 numbers are in the table because they are the real bar. They are marked t
 
 ## 4. The baseline table
 
-`EditorBench` is the authority; this is the same data with the methodology attached. Everything in the "web (here)" column of the document table was re-measured on **2026-08-28, Apple M1 (4P+4E), 16 GiB, macOS 26.4, Bun 1.4.0** — the same machine and day this harness was written.
+`EditorBench` is the authority; this is the same data with the methodology attached. The repaired interaction rows were measured on **2026-08-28, Apple M1 (4P+4E), 16 GiB, macOS 26.4, Bun 1.4.0, Playwright 1.60.0 / Chromium 148.0.7778.96**, against the current linked `../Editor` working tree (base `b091996`). The B2/B3 rows use a clean `b091996` checkout. Values that satisfy §8 carry their CPU calibration in the table; inherited values without one are labelled historical.
 
 ### 4.1 Interaction — what the user feels
 
-| metric                   | corpus                                   | stat             | web            | tier | how                                             |
-| ------------------------ | ---------------------------------------- | ---------------- | -------------- | ---- | ----------------------------------------------- |
-| `typing.steady.p50`      | 1M-line TS, chromium, 40 ms key delay    | p50              | 4.4–5.7 ms     | 3    | keydown → next rAF (§2.2)                       |
-| `typing.steady.p95`      | same                                     | p95              | 6–9 ms         | 3    | same                                            |
-| `typing.burst.p95`       | 40 keys, no inter-key delay              | p95              | ≤ 12 ms        | 2    | `gateThresholds.chromium.maxBurstP95Ms`         |
-| `typing.applyEdit.mean`  | `editor.view.applyEdit` diagnostic       | mean             | ≤ 3 ms         | 2    | `maxApplyEditMeanMs`; buffer mutation only      |
-| `scroll.frame.mean`      | 80 steps × 36 px, uncapped frames        | median of trials | ≤ 10 ms        | 2    | `maxMedianFrameMeanMs`; uncapped baseline ~5 ms |
-| `scroll.frame.max`       | wheel scroll, TSX / PNG-as-text          | max              | 17.9 / 18.8 ms | 3    | June 13 2026 A/B, plugin disabled control       |
-| `highlight.viewport.p50` | tree-sitter viewport query, ~960 tokens  | p50              | 0.2 ms         | 3    | Aug 22 2026 worker-boundary bench               |
-| `highlight.viewport.p95` | tree-sitter viewport query, 50K-line doc | p95              | 6 ms           | 3    | same                                            |
+| metric                   | corpus                                          | stat                    | web                 | CPU calibration | tier | how                                 |
+| ------------------------ | ----------------------------------------------- | ----------------------- | ------------------- | --------------- | ---- | ----------------------------------- |
+| `typing.steady.p50`      | default 232-line TSX, Chromium, 40 ms key delay | mean of 3 trial p50s    | **20.47 ms**        | 82.73 ms        | 1    | keydown → next rAF (§2.2)           |
+| `typing.steady.p95`      | same                                            | mean of 3 trial p95s    | **23.90 ms**        | 82.73 ms        | 1    | max trial p95 25.50 ms; gate 30 ms  |
+| `typing.burst.p95`       | same, no inter-key delay                        | mean of 3 trial p95s    | **21.90 ms**        | 82.73 ms        | 1    | max trial p95 27.80 ms; gate 30 ms  |
+| `typing.applyEdit.mean`  | `editor.view.applyEdit` diagnostic              | mean, steady / burst    | **0.51 / 0.42 ms**  | 82.73 ms        | 1    | independent edit-work gate ≤ 3 ms   |
+| `scroll.frame.mean`      | default 232-line TSX, 80 steps × 36 px          | median of 3 trial means | **4.05 ms**         | 81.33 ms        | 1    | gate ≤ 10 ms                        |
+| `scroll.frame.max`       | same                                            | mean of 3 trial maxima  | **17.90 ms**        | 81.33 ms        | 1    | no long frames                      |
+| `highlight.viewport.p50` | tree-sitter viewport query, ~960 tokens         | p50                     | 0.2 ms (historical) | not recorded    | 3    | Aug 22 2026 worker-boundary session |
+| `highlight.viewport.p95` | tree-sitter viewport query, 50K-line doc        | p95                     | 6 ms (historical)   | not recorded    | 3    | same                                |
 
 ### 4.2 Document — the paths the port reimplements
 
-| metric                          | corpus                                   | web (2026-05-24) | web (this machine) | reproduce                                                   |
-| ------------------------------- | ---------------------------------------- | ---------------- | ------------------ | ----------------------------------------------------------- |
-| `piecetable.insert.append`      | 2,000 × 1 KiB appends                    | 0.0048 ms/ins    | **0.0098 ms/ins**  | `cd ../Editor/packages/editor && bun run bench:piece-table` |
-| `piecetable.insert.growth`      | last 3 / first 3 batches                 | 0.64x            | 0.42x              | same                                                        |
-| `piecetable.walk.sequential`    | 30.7K chars, 3,856 pieces                | —                | 0.2587 ms          | `bun run bench:walker`                                      |
-| `piecetable.seek.random`        | 5,000 seeks + 64-char reads              | —                | 3.2545 ms          | same                                                        |
-| `piecetable.snapshot.build`     | 100K lines, incremental index            | —                | 72.0484 ms         | `bun run bench:anchors`                                     |
-| `piecetable.anchor.resolve`     | 100K lines, 1,089 anchors                | —                | 0.0003 ms          | same                                                        |
-| `foldmap.create`                | 100K lines, 100 folds                    | 6.8320 ms        | 6.6460 ms          | `bun run bench:fold-map`                                    |
-| `foldmap.roundtrip.p95`         | 100 points, 1,000 iterations             | 0.1229 ms        | 0.0556 ms          | same                                                        |
-| `virtualization.mount.large`    | 100K lines, 44 mounted rows              | 45.2990 ms       | **57.1580 ms**     | `bun run bench:virtualization`                              |
-| `virtualization.mount.longline` | 50K-char line                            | 2.9140 ms        | 2.6820 ms          | same                                                        |
-| `syntax.edit.total.10k`         | TypeScript 10K lines, parse + query      | 145.3300 ms      | 115.6800 ms        | `cd ../Editor/packages/tree-sitter && bun run bench:syntax` |
-| `syntax.edit.parse.100k`        | TypeScript 100K lines, incremental parse | —                | 8.7200 ms          | same                                                        |
-| `syntax.edit.total.100k`        | TypeScript 100K lines, parse + query     | 1732.8900 ms     | 1183.6000 ms       | same                                                        |
-| `minimap.update.mean`           | 100K lines, 50 edits                     | 0.7487 ms        | **bench broken**   | `cd ../Editor/packages/minimap && bun run bench:update`     |
+| metric                          | corpus                                   | web (2026-05-24; no calibration) | web (paired repair run)   | CPU calibration | reproduce                                                   |
+| ------------------------------- | ---------------------------------------- | -------------------------------- | ------------------------- | --------------- | ----------------------------------------------------------- |
+| `piecetable.insert.append`      | 2,000 × 1 KiB appends                    | 0.0048 ms/ins                    | **0.0038 ms/ins**         | 85.99 ms        | `cd ../Editor/packages/editor && bun run bench:piece-table` |
+| `piecetable.insert.growth`      | last 3 / first 3 batches                 | 0.64x                            | 0.55x                     | 85.99 ms        | same                                                        |
+| `piecetable.walk.sequential`    | 30.7K chars, 3,856 pieces                | —                                | 0.2587 ms (historical)    | not recorded    | `bun run bench:walker`                                      |
+| `piecetable.seek.random`        | 5,000 seeks + 64-char reads              | —                                | 3.2545 ms (historical)    | not recorded    | same                                                        |
+| `piecetable.snapshot.build`     | 100K lines, incremental index            | —                                | 72.0484 ms (historical)   | not recorded    | `bun run bench:anchors`                                     |
+| `piecetable.anchor.resolve`     | 100K lines, 1,089 anchors                | —                                | 0.0003 ms (historical)    | not recorded    | same                                                        |
+| `foldmap.create`                | 100K lines, 100 folds                    | 6.8320 ms                        | 6.6460 ms (historical)    | not recorded    | `bun run bench:fold-map`                                    |
+| `foldmap.roundtrip.p95`         | 100 points, 1,000 iterations             | 0.1229 ms                        | 0.0556 ms (historical)    | not recorded    | same                                                        |
+| `virtualization.mount.large`    | 100K lines, 44 mounted rows              | 45.2990 ms                       | **53.476 ms**             | 85.99 ms        | `bun run bench:virtualization`                              |
+| `virtualization.mount.longline` | 50K-char line                            | 2.9140 ms                        | **2.016 ms**              | 85.99 ms        | same                                                        |
+| `syntax.edit.total.10k`         | TypeScript 10K lines, parse + query      | 145.3300 ms                      | 115.6800 ms (historical)  | not recorded    | `cd ../Editor/packages/tree-sitter && bun run bench:syntax` |
+| `syntax.edit.parse.100k`        | TypeScript 100K lines, incremental parse | —                                | 8.7200 ms (historical)    | not recorded    | same                                                        |
+| `syntax.edit.total.100k`        | TypeScript 100K lines, parse + query     | 1732.8900 ms                     | 1183.6000 ms (historical) | not recorded    | same                                                        |
+| `minimap.update.mean`           | 100K lines, 50 renderer patches          | 0.7487 ms                        | **0.6178 ms**             | 85.71 ms        | `cd ../Editor/packages/minimap && bun run bench:update`     |
+| `minimap.update.p95`            | same                                     | —                                | **1.1431 ms**             | 85.71 ms        | same                                                        |
 
-Three findings from re-running the checked-in table, and they are the argument for having a same-machine column at all:
+The repaired rows establish three different causes:
 
-- **Piece-table insertion is 2x slower than the checked-in number** (0.0098 vs 0.0048 ms). Different machine, different Bun (1.4.0 vs 1.3.10), three months apart — the direction is unexplained and nobody noticed, because nothing re-runs it. The native port is gated against **0.0098 ms**, the number this machine actually produces.
-- **`virtualization.mount.large` also regressed** (45.3 → 57.2 ms), same caveat.
-- **The minimap bench no longer runs at all** — `renderer.setDocument` throws `TypeError: undefined is not an object (evaluating 'document.lines.map')`. A row of the checked-in baseline table has been dead for some unknown period. Its gate is inherited as-written and flagged.
+- **B2 was a machine-session outlier, not a Bun or code regression.** On the same clean checkout, interleaved Bun 1.3.10 and 1.4.0 runs both had a 0.0038 ms/insertion median, at mean CPU calibrations 84.18 and 85.99 ms. At Bun 1.3.10, the baseline and current commits measured 0.0041 ms/insertion at 84.26 ms calibration and 0.0042 ms/insertion at 83.99 ms calibration. The earlier uncalibrated 0.0098 ms sample is discarded.
+- **B3 is a code regression.** Bun 1.3.10 and 1.4.0 produced 53.707 and 53.476 ms medians on the same checkout, at 84.18 and 85.99 ms calibration. The recorded bisect range was good `dc564ab463629e8e0326157613afb13941f74d51` and bad `b09199679c680255aa07c0c2c70ae77895023ad5`. It names `cca9a0b3da3a70162edf62ddd9e606cb2afd7aa3` (`feat(editor): anchor-backed inline replacements, markdown and decode packages`) as first bad: its parent measured 33.525 ms against a 30.890 ms control at 83.695/83.745 ms calibration; the commit measured 56.195 ms against a 33.118 ms control at 83.555/83.900 ms calibration. Long-line mount improved across the same boundary, from 2.120 ms at 83.695 ms calibration to 1.529 ms at 83.555 ms calibration, confirming a path-specific regression rather than uniform slowdown. This session does not fix it; the plan-of-plans carries a separate repair entry.
+- **B4 was fixture drift after a renderer-contract change.** The direct parent `597a86fedd48469d8bb8e4cc089e7835b015a05b` passes; `470bf3c7b37989b02c83f9c42cc9e9f127aa0cdd` is first bad. That commit stopped sending full document text and moved summary construction outside the renderer. The repaired bench supplies current line summaries and incremental patches, and its directory is now type-checked. Its 0.6178 ms mean and 1.1431 ms p95 at 85.71 ms calibration start a new series; they are not comparable to the old 0.7487 ms full-text mutation result.
 
-`syntax.edit.parse.100k` (8.72 ms) is the row that matters for plan 4: incremental **parse** is cheap and stable, and essentially all of the 1,183 ms edit total is **query** work. Port the scheduling, not the query volume.
+The syntax rows remain useful historical clues, but their calibration was not recorded. Re-run them with calibration before using them as a gate.
 
 ---
 
-## 5. Blocker — the web interaction harness cannot run today
+## 5. Interaction harness status — repaired
 
-Every tier-2 and most tier-3 numbers are unverifiable on this machine right now, and pretending otherwise would poison the whole table. The cause is specific:
+`bench-workspace.mjs` now imports `WORKSPACE_CACHE_STORAGE_KEYS` and `workspaceSliceStorageKey` from the v19 cache module. It seeds the root folder, workspace index, workbench layout, and per-project slice in their owned locations. A missing mounted editor throws an explicit schema-drift error before any measurement.
 
-`apps/web/scripts/bench-workspace.mjs` seeds flat `localStorage` keys under `platform.workspace-state.v14` (`.rootFolder`, `.workbenchPanels`, `.editorHistory`, …). The app is on **v19** and moved to **per-project slices**: `platform.workspace-state.v19.workspace:<rootPath>` holding `{ editorHistory, recentlyClosedEditorPaths, scrollPositionByPath, workbenchPanels }`, with `rootFolder` / `workspaces` / `workbenchLayout` as separate top-level keys (`apps/web/src/features/workspace/state/cache.ts`). A v14 seed writes keys nothing reads, no editor mounts, and the readiness wait times out. There was also no dev server running when this was written.
+Both Chromium gates pass with the required `--disable-frame-rate-limit --disable-gpu-vsync` launch contract. The old 12 ms typing ceiling had never run against a mounted editor; the real gate produced a 27.80 ms maximum trial p95 with a 0.51 ms steady edit mean at 82.73 ms calibration. Its frame-completion ceiling is now 30 ms, while the independent edit-work ceiling remains 3 ms. Scroll remains below its existing 10 ms ceiling at a 4.05 ms median with 81.33 ms calibration.
 
-**The repair** (one focused change, not part of plan 1): teach `bench-workspace.mjs` to import `WORKSPACE_CACHE_STORAGE_KEYS` / `workspaceSliceStorageKey` from `cache.ts` instead of hardcoding a prefix, so the seeder cannot silently drift from the schema again. Then re-run both gates and promote the typing/scroll rows from tier 2/3 to tier 1.
+```bash
+cd apps/web
+bun scripts/editor-typing-benchmark.mjs --gate --browsers=chromium \
+  --app-url=http://127.0.0.1:3000/ --server-url=http://127.0.0.1:3001
+bun scripts/editor-scroll-benchmark.mjs --gate --browsers=chromium \
+  --app-url=http://127.0.0.1:3000/ --server-url=http://127.0.0.1:3001
+```
 
-Until that lands, `typing.*` and `scroll.*` read `not run` in the "web (here)" column. That is deliberate: an empty cell is information, a stale number is not.
+The checked-in gate corpus is the 232-line TSX file named in §2.2. The historical 1M-line typing session remains tier 3 and is not relabelled as the gate corpus. With that distinction explicit, the B1 blocker is gone and plan 2 can start.
 
 ---
 
@@ -178,7 +185,7 @@ The instrument was calibrated before any editor exists, per the repo's debugging
 cd apps/mac && swift build -c release
 xcrun xctrace record --template "Logging" --output /tmp/sig.trace \
   --launch -- "$(swift build -c release --show-bin-path)/EditorBench" --signpost-demo=60
-python3 .claude/skills/swiftui-expert-skill/scripts/analyze_trace.py \
+python3 .agents/skills/swiftui-expert-skill/scripts/analyze_trace.py \
   --trace /tmp/sig.trace --list-signposts --signpost-subsystem dev.platform.editor
 ```
 
@@ -252,9 +259,10 @@ cd apps/mac && swift run -c release EditorBench
 --scan-iterations=N                string-scan iterations (default 7)
 --no-calibration                   skip the CPU calibration loop (~1s)
 --signpost-demo[=N]                emit N synthetic keystroke signposts and exit
+--coretext-spike[=N]               run N painted line edits with a retained 10 MiB source
 ```
 
-Output sections: **Machine** (profile, both frame budgets, calibration), **Baselines** (the two tables above with an empty native column and the provenance legend), **String views** (§6.6).
+Output sections: **Machine** (profile, both frame budgets, calibration), **Baselines** (the two tables above with an empty native column and the provenance legend), **String views** (§6.6). `--coretext-spike` runs the plan-2 spike and exits.
 
 ---
 
@@ -277,8 +285,55 @@ Each row's `nativeMs` is registered by the plan that owns the path. The verdict 
 | --------------------- | ------------------------------------------------------------------------------------------------------ |
 | 2 — editor core       | `piecetable.*`, `virtualization.mount.*`, `typing.applyEdit.mean`, `typing.steady.*`, `scroll.frame.*` |
 | 4 — tree-sitter + LSP | `syntax.edit.*`, `highlight.viewport.*`                                                                |
-| after the gate        | `foldmap.*`, `minimap.update.mean` (parity features, not gate features)                                |
+| after the gate        | `foldmap.*`, `minimap.update.*` (parity features, not gate features)                                   |
 
 Plan 2's own exit criterion — sub-2 ms keystroke-to-paint on a 10 MiB file — is measured by §6.1's `Keystroke` interval via §6.3's recipe, not by a stopwatch.
 
-**Before plan 2 starts:** repair `bench-workspace.mjs` (§5) so `typing.*` and `scroll.*` have a real same-machine web column to be scored against. Comparing a native number to a tier-3 memory is exactly the thing this harness exists to prevent.
+**Plan 2 is unblocked.** The interaction rows now have a re-runnable command, an exact corpus, same-machine results, and calibration. B3 remains a known web optimization task, not a measurement ambiguity.
+
+---
+
+## 10. Dated result records
+
+B2, B3, and B4 settle plan 6's open question: check in dated JSON for the web benches and `EditorBench`. One record per harness under `bench-results/YYYY-MM-DD/` is enough. The smallest useful schema is:
+
+```json
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-28T16:00:00+03:00",
+  "repository": {
+    "name": "Editor",
+    "commit": "b09199679c680255aa07c0c2c70ae77895023ad5",
+    "dirty": false
+  },
+  "runtime": {
+    "bun": "1.4.0",
+    "browser": null,
+    "flags": []
+  },
+  "machine": "apple-m1-16gb-macos-26.4",
+  "harness": {
+    "name": "piece-table",
+    "command": "bun bench/pieceTable-insertions.ts",
+    "corpus": "2000x1024-byte-appends"
+  },
+  "calibration": {
+    "name": "integer-loop-20m",
+    "ms": 85.99
+  },
+  "status": "passed",
+  "metrics": [
+    {
+      "name": "piecetable.insert.append",
+      "stat": "median",
+      "unit": "ms/ins",
+      "value": 0.0038,
+      "samples": 4
+    }
+  ]
+}
+```
+
+Browser records fill `browser` and `flags`; native records replace the runtime fields with the Swift/Xcode versions. A failed harness writes `"status": "error"` plus `"error": { "phase": "run", "message": "…" }` and omits `metrics`.
+
+This would have exposed all three failures immediately: B2 would have lacked a matching calibration or repeated sample, B3 would have changed in the first record after `cca9a0b3`, and B4 would have produced an error record the week its payload contract changed.

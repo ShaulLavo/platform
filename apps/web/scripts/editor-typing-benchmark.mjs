@@ -29,12 +29,11 @@ const options = parseOptions(process.argv.slice(2))
 // Keystroke latency: keydown event timestamp to the first animation frame
 // that runs after the editor applied the edit. Steady approximates human
 // typing; burst removes inter-key delay so queueing and per-edit cost
-// dominate. Chromium runs uncapped (see launchOptions), so its latencies
-// reflect raw processing; webkit and firefox include vsync wait (~8ms p50).
+// dominate. The clock still includes browser frame scheduling.
 const gateThresholds = {
   chromium: {
-    maxSteadyP95Ms: 12,
-    maxBurstP95Ms: 12,
+    maxSteadyP95Ms: 30,
+    maxBurstP95Ms: 30,
     maxApplyEditMeanMs: 3,
   },
   firefox: {

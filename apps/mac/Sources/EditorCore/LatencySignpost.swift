@@ -1,8 +1,8 @@
 import os
 
-/// Keystroke-to-photon instrument. The editor surface emits these intervals;
+/// Editor-latency instrument. The editor surface emits these intervals;
 /// the numbers come back out of an Instruments trace via
-/// `.claude/skills/swiftui-expert-skill/scripts/analyze_trace.py --list-signposts`.
+/// `.agents/skills/swiftui-expert-skill/scripts/analyze_trace.py --list-signposts`.
 /// Stage names and the subsystem/category are a contract with that script's
 /// filters — see docs/native-bench-harness.md before renaming any of them.
 public enum EditorSignpost {

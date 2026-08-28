@@ -23,6 +23,18 @@ if let keystrokes = options.signpostKeystrokes {
   exit(0)
 }
 
+if let keystrokes = options.coreTextSpikeKeystrokes {
+  guard machine.buildIsRelease else {
+    printBanner(machine)
+    exit(2)
+  }
+
+  let traceCandidate = MainActor.assumeIsolated {
+    CoreTextSpike.run(keystrokes: keystrokes, skipCalibration: options.skipCalibration)
+  }
+  exit(traceCandidate ? 0 : 1)
+}
+
 printBanner(machine)
 if options.sections.contains(.machine) { printMachine(machine, skipCalibration: options.skipCalibration) }
 if options.sections.contains(.baselines) { printBaselines() }
