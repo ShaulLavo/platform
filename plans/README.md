@@ -26,6 +26,7 @@ a bare root `bun run verify`.
 | [057 — editor-native VS Code keymap](057-editor-native-vscode-keymap.md)                | **BLOCKED ON 056 — RUNTIME RECONCILED**       |
 | [060 — persisted visible editor snapshot](060-persist-visible-editor-snapshot.md)       | **NEXT — RECONCILE**                          |
 | [061 — Foresight prepared editor opens](061-promote-foresight-file-open-pipeline.md)    | **SCHEDULED AFTER 060**                       |
+| [072 — Electron desktop shell](072-electron-desktop-shell.md)                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING**       |
 
 ## Dependency notes
 
