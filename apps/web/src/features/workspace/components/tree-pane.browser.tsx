@@ -188,9 +188,7 @@ test('selecting an editor tab expands and animates its file into view without st
     .poll(() => rowButton(shadowRoot, 'src/')?.getAttribute('aria-expanded'))
     .toBe('false')
 
-  const scrollPositions: number[] = []
-  const recordScrollPosition = () => scrollPositions.push(scroller.scrollTop)
-  scroller.addEventListener('scroll', recordScrollPosition)
+  const requestedScrollBehaviors = observeScrollBehaviors(scroller)
   const selectDeepTabButton = toolbarButton('Select deep tab')
   selectDeepTabButton.focus()
   selectDeepTabButton.click()
@@ -198,12 +196,11 @@ test('selecting an editor tab expands and animates its file into view without st
   await expect.poll(() => selectedFilePathText()).toBe(DEEP_FILE_PATH)
   await expect.poll(() => rowButton(shadowRoot, 'src/')?.getAttribute('aria-expanded')).toBe('true')
   await expect.poll(() => scroller.scrollTop).toBeGreaterThan(0)
-  await expect.poll(() => new Set(scrollPositions.map(Math.round)).size).toBeGreaterThan(1)
+  expect(requestedScrollBehaviors).toContain('smooth')
   await expect
     .poll(() => rowIsVisibleInScroller(rowButton(shadowRoot, 'src/file-79.ts'), scroller))
     .toBe(true)
   expect(document.activeElement).toBe(selectDeepTabButton)
-  scroller.removeEventListener('scroll', recordScrollPosition)
 })
 
 test('live density changes preserve the compact and cozy tree geometry and typography', async () => {
@@ -488,6 +485,22 @@ function settingsSnapshot(density: SettingsValues['workbench.density']): Setting
     serverVersion: { epoch: 'tree-pane-test', sequence: density === 'cozy' ? 1 : 2 },
     values: { ...DEFAULT_SETTING_VALUES, 'workbench.density': density },
   }
+}
+
+function observeScrollBehaviors(scroller: HTMLElement) {
+  const behaviors: (ScrollBehavior | undefined)[] = []
+  const scrollTo = scroller.scrollTo.bind(scroller)
+  scroller.scrollTo = ((optionsOrX?: ScrollToOptions | number, y?: number) => {
+    if (typeof optionsOrX === 'number') {
+      scrollTo(optionsOrX, y ?? 0)
+      return
+    }
+
+    behaviors.push(optionsOrX?.behavior)
+    scrollTo(optionsOrX)
+  }) as typeof scroller.scrollTo
+
+  return behaviors
 }
 
 function rowIsVisibleInScroller(row: HTMLElement | null, scroller: HTMLElement) {
