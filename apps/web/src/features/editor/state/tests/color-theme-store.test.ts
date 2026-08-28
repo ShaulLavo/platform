@@ -13,6 +13,7 @@ import {
   loadEditorThemeForSelection,
   preloadVscodeThemeRegistrations,
   previewEditorTheme,
+  resolveEditorShikiThemeRegistration,
   resetEditorColorThemeStore,
   setActiveEditorColorMode,
   setSelectedEditorThemeId,
@@ -349,11 +350,19 @@ test('preload warms the sync cache without re-notifying listeners', async () => 
   expect(listener.mock.calls.length).toBe(beforePreload)
 })
 
+test('resolves the worker theme to the app-owned registration', async () => {
+  const registration = await resolveEditorShikiThemeRegistration('github-dark')
+
+  expect(registration.name).toBe('github-dark')
+  expect(getLoadedVscodeThemeRegistration('github-dark')).toBe(registration)
+})
+
 test('a failed requested theme reports the actual fallback id', async () => {
   vi.resetModules()
-  vi.doMock('@singapor/core/shiki', async () => {
-    const actual =
-      await vi.importActual<typeof import('@singapor/core/shiki')>('@singapor/core/shiki')
+  vi.doMock('@/features/editor/utils/shiki-themes', async () => {
+    const actual = await vi.importActual<typeof import('@/features/editor/utils/shiki-themes')>(
+      '@/features/editor/utils/shiki-themes',
+    )
 
     return {
       ...actual,
@@ -380,7 +389,7 @@ test('a failed requested theme reports the actual fallback id', async () => {
     expect(loaded.registration?.name).toBe('dark-plus')
     expect(loaded.resolvedThemeId).toBe('dark-plus')
   } finally {
-    vi.doUnmock('@singapor/core/shiki')
+    vi.doUnmock('@/features/editor/utils/shiki-themes')
     vi.resetModules()
   }
 })

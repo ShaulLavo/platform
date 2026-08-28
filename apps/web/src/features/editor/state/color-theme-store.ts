@@ -1,7 +1,6 @@
 import type { EditorTheme } from '@singapor/core'
 import {
   editorThemeFromVscodeTheme,
-  loadVscodeThemeRegistration,
   VSCODE_THEMES,
   type VscodeThemeDefinition,
   type VscodeThemeRegistration,
@@ -16,8 +15,9 @@ import {
   type BuiltinEditorThemeDefinition,
 } from '@/features/editor/utils/theme-catalog'
 import { shikiThemeContentHash } from '@/features/editor/utils/theme-content-hash'
+import { loadVscodeThemeRegistration } from '@/features/editor/utils/shiki-themes'
 import { log } from '@/lib/client-logging'
-import { clientErrors } from '@/lib/structured-errors'
+import { clientErrors, createClientInvariantError } from '@/lib/structured-errors'
 
 export type EditorColorMode = 'dark' | 'light'
 
@@ -116,9 +116,8 @@ export function previewEditorTheme(colorMode: EditorColorMode, themeId: string) 
   // over never reach the highlighter.
   previewSettle.maybeExecute()
   // The registration load is not paced: it is a cached dynamic import with no
-  // per-document cost, and having it in flight during the settle window is what
-  // lets the preview that does land hand the worker a real registration instead
-  // of a bare name it can only resolve for ~20 of the bundled themes.
+  // per-document cost, and having it in flight during the settle window keeps
+  // the preview's worker request off the import path.
   void ensureRegistrationLoaded(themeId)
 }
 
@@ -177,9 +176,7 @@ export function activeShikiThemeId(): string {
 }
 
 /**
- * The registration the shiki worker should use for `themeId`, if it has finished
- * loading. Returns `undefined` for not-yet-loaded themes; callers must fall
- * back to the theme name string and accept the worker may fail to resolve it.
+ * The registration the Shiki worker should use for `themeId`, if it has finished loading.
  */
 export function getLoadedVscodeThemeRegistration(
   themeId: string,
@@ -188,6 +185,16 @@ export function getLoadedVscodeThemeRegistration(
   if (!registration?.name) return undefined
 
   return registration as ShikiWorkerThemeRegistration
+}
+
+export async function resolveEditorShikiThemeRegistration(
+  themeId: string,
+): Promise<ShikiWorkerThemeRegistration> {
+  await ensureRegistrationLoaded(themeId)
+  const registration = getLoadedVscodeThemeRegistration(themeId)
+  if (registration) return registration
+
+  throw createClientInvariantError(`Shiki theme registration did not load: ${themeId}`)
 }
 
 export function getResolvedShikiThemeContentHash(themeId: string): string {
@@ -239,15 +246,7 @@ export function loadEditorThemeForSelection(
   return loadEditorTheme(definition, colorMode)
 }
 
-/**
- * Fire-and-forget load of every bundled theme's registration so hover-preview
- * can switch instantly without waiting on the dynamic import for an unloaded
- * id. Cheap once warm: each `@shikijs/themes/<id>` module is module-cached after
- * its first import, and the registrations land in the sync cache as they come.
- * Silent: it never notifies listeners — reloads are driven by preview/commit
- * notifications, not by warming the cache. Returns a promise so callers can
- * await warmup if needed, but the typical UI caller lets it run in the back.
- */
+/** Warms bundled theme registrations so hover preview never waits on a first import. */
 export function preloadVscodeThemeRegistrations(): Promise<void> {
   return Promise.all(
     VSCODE_THEMES.map((theme) => ensureRegistrationLoaded(theme.id, { silent: true })),
@@ -344,14 +343,10 @@ function ensureRegistrationLoaded(
   return loadVscodeThemeRegistration(definition)
     .then((registration) => {
       cacheRegistration(themeId, registration)
-      // The shiki plugin reloaded synchronously off the preview/commit notify,
-      // when no registration was sync-available yet. Re-notify now so it
-      // reloads with a real registration instead of going through name lookup.
+      // Preview notification can race this import; notify again once its registration exists.
       // Silent mode (preload) just warms the cache without churning the plugin.
       if (silent) return
-      // The selection may have moved on (or the store was reset) while the
-      // import was in flight; a stale re-notify would reload editors for a
-      // theme nobody is looking at anymore.
+      // Do not reload editors for a selection that moved on while the import was pending.
       if (!themeIdIsCurrentlySelected(themeId)) return
       notifyEditorColorThemeListeners()
     })

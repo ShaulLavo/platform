@@ -20,8 +20,7 @@ a bare root `bun run verify`.
 | [067 — integrate Ghostty config appearance](067-integrate-ghostty-config-appearance.md) | **BLOCKED ON 066 REVIEWED ARTIFACT**    |
 | [068 — session domain model](068-session-domain-model.md)                               | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
 | [069 — worktree lifecycle](069-worktree-lifecycle.md)                                   | **BLOCKED ON 068 AND ROOT SCHEDULING**  |
-| [070 — app-owned shiki grammars](070-app-owned-shiki-grammars.md)                       | **IN PROGRESS — LOCKSTEP SYNTAX LANE**  |
-| [071 — syntax highlight retry](071-syntax-highlight-retry.md)                           | **PROPOSED — SCHEDULE AFTER 070**       |
+| [071 — syntax highlight retry](071-syntax-highlight-retry.md)                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
 | [064 — anchored diagnostic peek](064-anchored-diagnostic-peek.md)                       | **SCHEDULED AFTER 061 — GO/NO-GO**      |
 | [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                         | **SCHEDULED AFTER 064 — RECONCILE**     |
 | [057 — editor-native VS Code keymap](057-editor-native-vscode-keymap.md)                | **BLOCKED ON 056 — RUNTIME RECONCILED** |
@@ -49,13 +48,10 @@ a bare root `bun run verify`.
   creation, durable provisioning and cleanup recovery, and shared worktree chips on the same event
   spine. It must not restore the checkout reactor's project-root fallback or implement the reserved
   Orca compare view. Root `PLAN.md` has not scheduled it yet.
-- Plan 070 spans two repositories and must land as one change: it adds required fields to the
-  shiki worker protocol in Editor `packages/editor`, and the resolver that fills them in
-  Platform `apps/web`. Neither half is shippable alone. Root `PLAN.md` schedules it now as an
-  independent lockstep syntax lane with the existing Oniguruma engine and no dependency on any
-  other plan.
-- Plan 071 is Editor-only and independent of 070, but must not land before it: a retry loop
-  running against a live permanent failure buries the cause it would otherwise surface.
+- Plan 071 is an independent Editor-only resilience proposal. Its prerequisite is now stable:
+  Platform owns Shiki registration resolution, Editor's Oniguruma worker is self-contained, and
+  built-dist highlighting is covered by a real-browser and shared-log proof. Root `PLAN.md` has not
+  scheduled the retry work yet.
 - Plan 064's interactive React overlay uses the landed deepest-target FocusService and exact origin
   restoration. Its first step may
   reject a managed geometry handle if ordinary React composition passes the

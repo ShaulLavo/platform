@@ -41,6 +41,11 @@ Git history is the archive.
   keyboard, IME, clipboard, idle-rendering, and VoiceOver gate is PASS in
   `ghostty-webgpu/docs/phase-3-acceptance.md`. Platform remains on registry `0.1.0` because both
   installed wasm artifacts are byte-identical to the verified package.
+- App-owned Shiki resolution is live across Platform and Editor. Platform resolves every supported
+  grammar and theme to registration data; Editor's inline worker uses the static Oniguruma engine,
+  accepts only resolved registrations, and has a package-build assertion that rejects sibling JS
+  chunks. The real-browser built-dist proof resolves the bounded 53-language preload set and emits
+  `editor.syntax.highlight_applied` to the shared JSONL log.
 
 ## Shared runtime boundary
 
@@ -59,20 +64,6 @@ accepted divergences transferred to the later certification gate. Plan 009 is bl
 required parser/Unicode, inactive-buffer, row-marker, and OSC 8 APIs are not public. Plan 010's CPU
 gate has passed, but it remains blocked on Plan 009 and physical operator evidence. Plans 011–015
 remain in package-defined dependency order and are not prerequisites for current Platform work.
-
-## Independent lockstep syntax lane
-
-Plan 070 is **SCHEDULED NOW** as an independent Platform + Editor lockstep lane. Platform owns
-Shiki grammar and theme resolution; Editor receives resolved registrations through required
-protocol fields and keeps its inline worker self-contained. Keep the existing Oniguruma engine
-unless a current behavior measurement proves that the JavaScript engine preserves the exact
-grammar behavior used by Platform. The Editor package build must reject any inline worker that
-emits sibling chunks, and the same pass must delete every obsolete name-resolution path.
-
-Neither repository half is complete alone. Verify Editor's focused package gates, the built `dist`
-consumer in Platform, the inline worker's zero-sibling-chunk invariant, bounded grammar loading,
-and live `editor.syntax` success/failure logs before deleting the executable plan. Plan 071 remains
-ordered after this lane.
 
 ## Reopened Ghostty appearance lane
 
@@ -188,9 +179,5 @@ do not add scoped-ref or multi-origin compatibility machinery now.
   gate. Plans 066–067 remain blocked and unauthorized until a complete four-target `PASS`; a future
   fork proposal must prefer upstreaming read-only Config path and Config-only build boundaries
   first.
-- **Scheduled independently in lockstep:** Plan 070 moves grammar/theme resolution into Platform,
-  keeps Editor's Oniguruma worker self-contained, rejects inline-worker sibling chunks at build
-  time, and deletes obsolete name-resolution paths. Both repository gates and the built-dist live
-  log check must pass before its plan is deleted; Plan 071 remains ordered after it.
 - **Package-blocked:** `ghostty-webgpu` plan 009 needs public native extension surfaces. Plan 010 is
   additionally waiting on that dependency and physical operator gates; plans 011–015 remain downstream.

@@ -78,7 +78,7 @@ export function createCriticalEditorCorePlugins(
     // derives its replacements from tree-sitter's markdown captures, so a file renders as source
     // while syntax highlighting is off.
     ...(languageId === 'markdown' ? [createMarkdownPreviewPlugin()] : []),
-    createPlatformEditorConsoleLoggingPlugin(),
+    createPlatformEditorLoggingPlugin(),
   ]
 }
 
@@ -311,7 +311,7 @@ function createFoldChevronIcon({ document }: FoldGutterIconContext): SVGSVGEleme
   return foldChevronPrototype(document).cloneNode(true) as SVGSVGElement
 }
 
-function createPlatformEditorConsoleLoggingPlugin(): EditorPlugin {
+export function createPlatformEditorLoggingPlugin(): EditorPlugin {
   return PLATFORM_EDITOR_CONSOLE_LOGGING_PLUGIN
 }
 

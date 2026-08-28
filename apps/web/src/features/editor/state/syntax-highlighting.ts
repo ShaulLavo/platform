@@ -17,14 +17,15 @@ import {
   activeEditorThemeUsesShiki,
   activeShikiThemeId,
   editorThemeSwitchingPrepared,
-  getLoadedVscodeThemeRegistration,
   getResolvedShikiThemeContentHash,
+  resolveEditorShikiThemeRegistration,
 } from '@/features/editor/state/color-theme-store'
 import { editorPerformanceFeatureDisabled } from '@/features/editor/state/performance-trace'
 import {
   EDITOR_SHIKI_LANGUAGE_MAP,
   EDITOR_SHIKI_PRELOAD_LANGUAGES,
   EDITOR_SHIKI_PRELOAD_THEMES,
+  resolveShikiLanguageRegistrations,
 } from '@/features/editor/utils/shiki-languages'
 import { isBuiltinEditorThemeId } from '@/features/editor/utils/theme-catalog'
 import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
@@ -97,8 +98,9 @@ export function editorShikiHighlighterProvider(): EditorHighlighterProvider {
     preloadLanguages: EDITOR_SHIKI_PRELOAD_LANGUAGES,
     preloadThemes: () =>
       editorThemeSwitchingPrepared() ? EDITOR_SHIKI_PRELOAD_THEMES : NO_PRELOADED_THEMES,
+    resolveLanguage: resolveShikiLanguageRegistrations,
+    resolveTheme: resolveEditorShikiThemeRegistration,
     theme: resolveShikiThemeForSession,
-    themeRegistration: () => getLoadedVscodeThemeRegistration(activeShikiThemeId()),
     workerOwner: editorShikiWorkerOwner(),
   })
   return shikiHighlighterProvider
@@ -142,12 +144,11 @@ export async function disposeEditorTreeSitterSyntaxProvider() {
 /** Logs the exact theme handed to every shared Shiki session. */
 function resolveShikiThemeForSession(): string {
   const themeId = activeShikiThemeId()
-  const registration = getLoadedVscodeThemeRegistration(themeId)
   log.debug({
     action: 'editor.color-theme.shiki_resolved',
     area: 'editor',
     contentHash: getResolvedShikiThemeContentHash(themeId),
-    hasRegistration: Boolean(registration),
+    registrationOwner: 'app',
     themeId,
   })
 
