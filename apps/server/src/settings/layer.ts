@@ -1,4 +1,4 @@
-import { watch, type FSWatcher } from 'node:fs'
+import { unwatchFile, watch, watchFile, type FSWatcher } from 'node:fs'
 import path from 'node:path'
 import { errorStringField, type SettingsLayerId } from '@workspace/contracts'
 import { recordRequestWarning, runDetached } from '../observability'
@@ -37,6 +37,7 @@ const MAX_RELOAD_READ_FAILURES = 3
  * margin over the measurement, spent once per layer per process.
  */
 const ARMING_CATCHUP_MS = 250
+const WATCH_POLL_INTERVAL_MS = 500
 
 function settingsWatchPaths(filePath: string): readonly string[] {
   const configured = path.resolve(filePath)
@@ -131,6 +132,9 @@ export class SettingsFileLayer {
   /** Held for the duration of a write, so a reload does not read across it. */
   private writing: Promise<void> | null = null
 
+  /** `fs.watch` is the fast path; polling covers a watcher that goes silent. */
+  private readonly pollForChange = () => this.scheduleReload()
+
   /**
    * The hash of the last text we wrote, so the watch event our own rename
    * produces does not look like an external edit.
@@ -201,6 +205,7 @@ export class SettingsFileLayer {
     this.onChange = onChange
     this.watchFile()
     this.watchDirectory()
+    this.watchPollFallback()
     this.catchUpOnArming()
   }
 
@@ -212,6 +217,7 @@ export class SettingsFileLayer {
     this.watcher?.close()
     this.watcher = null
     this.closeDirectoryWatchers()
+    unwatchFile(this.filePath, this.pollForChange)
     this.onChange = null
   }
 
@@ -276,9 +282,22 @@ export class SettingsFileLayer {
   private watchFile() {
     try {
       this.watcher = watch(this.filePath, () => this.scheduleReload())
-    } catch {
+    } catch (error) {
       // No file yet. The directory watcher picks up its creation.
+      this.reportWatchFailure(error, 'file')
     }
+  }
+
+  /**
+   * `fs.watch` can stop delivering after an atomic replacement, especially
+   * through a symlink. Polling stats, not contents, keeps that loss recoverable.
+   */
+  private watchPollFallback() {
+    watchFile(
+      this.filePath,
+      { interval: WATCH_POLL_INTERVAL_MS, persistent: false },
+      this.pollForChange,
+    )
   }
 
   /**
@@ -320,10 +339,26 @@ export class SettingsFileLayer {
           this.scheduleReload()
         })
         this.directoryWatchers.push(watcher)
-      } catch {
+      } catch (error) {
         // No directory yet either; the layer stays empty until something writes.
+        this.reportWatchFailure(error, 'directory')
       }
     }
+  }
+
+  private reportWatchFailure(error: unknown, source: 'directory' | 'file') {
+    const code = errorStringField(error, 'code')
+    if (code === 'ENOENT' || code === 'ENOTDIR') return
+
+    recordRequestWarning('settings.layer.watch_failed', {
+      area: 'settings',
+      operation: 'watcher-arm',
+      settings: { layer: this.id, source },
+      error: {
+        code,
+        name: error instanceof Error ? error.name : typeof error,
+      },
+    })
   }
 
   private closeDirectoryWatchers() {
