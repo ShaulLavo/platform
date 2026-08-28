@@ -52,6 +52,19 @@ function settingsWatchPaths(filePath: string): readonly string[] {
   return [configured, canonical]
 }
 
+function settingsWatchDirectories(filePath: string): ReadonlyMap<string, ReadonlySet<string>> {
+  const targets = new Map<string, Set<string>>()
+
+  for (const watchPath of settingsWatchPaths(filePath)) {
+    const directory = path.dirname(watchPath)
+    const basenames = targets.get(directory) ?? new Set<string>()
+    basenames.add(path.basename(watchPath))
+    targets.set(directory, basenames)
+  }
+
+  return targets
+}
+
 export type LayerContents = {
   readonly raw: Readonly<Record<string, unknown>>
   readonly parseErrors: readonly SettingsParseError[]
@@ -297,16 +310,13 @@ export class SettingsFileLayer {
    * wake the settings store.
    */
   private watchDirectory() {
-    for (const filePath of settingsWatchPaths(this.filePath)) {
-      const directory = path.dirname(filePath)
-      const basename = path.basename(filePath)
-
+    for (const [directory, basenames] of settingsWatchDirectories(this.filePath)) {
       try {
         const watcher = watch(directory, (_event, filename) => {
           // Some platforms report a null filename, and some hand back a Buffer
           // rather than a string; re-reading is the safe answer to the first.
           const name = filename?.toString() ?? null
-          if (name !== null && name !== basename) return
+          if (name !== null && !basenames.has(name)) return
           this.scheduleReload()
         })
         this.directoryWatchers.push(watcher)
