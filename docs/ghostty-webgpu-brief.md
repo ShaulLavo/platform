@@ -372,3 +372,28 @@ dependency pin.
 The complete automated and headed-hardware operator evidence, including exact input bytes,
 clipboard packet, idle counters, and VoiceOver result, is recorded in
 `ghostty-webgpu/docs/phase-3-acceptance.md`. Phase 4 remains a separate planning boundary.
+
+## Config resolver feasibility results (2026-08-29) — complete
+
+The separate host-only config-resolver feasibility proof is complete at `ghostty-webgpu` evidence
+HEAD `e9c198e073067d5415ac4224176db1eb076f5dbf`. Workflow run `33212162580`, attempt `1`, used
+proof-recipe SHA-256 `40083f27ad5f925808cc48e0fdd428b4ab0515eb38dedb42b0ca2065a16e44f0`
+and recorded native `PASS` rows for `darwin-arm64`, `darwin-x64`, `linux-arm64`, and `linux-x64`.
+The operator accepted exact per-target package ceilings of `2097152`, `2097152`, `8388608`, and
+`9437184` bytes, with total ceiling `22020096` bytes.
+
+The stable human-readable and strict machine-readable records are
+`ghostty-webgpu/docs/config-resolver-feasibility.md` and
+`ghostty-webgpu/docs/config-resolver-feasibility.json`; the maintained verifier is
+`ghostty-webgpu/scripts/config-resolver-proof/verify-evidence.ts`. The proof preserves
+`ghostty-webgpu@0.1.1`, upstream Ghostty
+`c8554f28e0efe2f5595f32020371c34b25ec628f`, ABI-manifest schema `1`, `ghostty-vt.wasm` SHA-256
+`dfb171587bc11b6610fb95d3b583926d51287f5d6e528c45ff2aa05218608a97`, `bridge.wasm` SHA-256
+`47fae389c94f2545b2026d756256272b65f978d97feabae21b9171ad4b54b63f`, and
+`scripts/build-wasm.ts` SHA-256
+`c3132eb6cf210aa841713972225a39e45658154199572df6a237d65206c85d99`. Platform therefore remains
+on registry `ghostty-webgpu@0.1.0`.
+
+This result makes Plan 066 eligible only for a separate root go/no-go scheduling decision; it does
+not authorize packaging or publication. Plan 067 remains blocked on Plan 066's reviewed artifact,
+root scheduling, and dirty-file reconciliation.

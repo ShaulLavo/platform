@@ -1,7 +1,7 @@
 # Cross-Project Execution Roadmap
 
-> **Status:** reconciled against Platform base `4b25f1ab`, Editor base `b0919967`, and
-> `ghostty-webgpu` `3c3e07e` on 2026-08-27, including the verified paired working-tree paint
+> **Status:** reconciled against Platform base `704d6ab6`, Editor base `b0919967`, and
+> `ghostty-webgpu` closeout `06b070b` on 2026-08-29, including the verified paired working-tree paint
 > contract below. Re-run each executable plan's drift check and capture its current HEAD plus full
 > dirty diff before editing.
 
@@ -65,14 +65,14 @@ required parser/Unicode, inactive-buffer, row-marker, and OSC 8 APIs are not pub
 gate has passed, but it remains blocked on Plan 009 and physical operator evidence. Plans 011–015
 remain in package-defined dependency order and are not prerequisites for current Platform work.
 
-## Reopened Ghostty appearance lane
+## Ghostty appearance lane
 
-Plan 065's first proof found that the pinned normal loader can create a template when no config
-exists. The operator accepted one narrow divergence on 2026-08-28: the resolver may derive the fixed
-default candidates from explicit roots and pinned suffixes, freeze their paths and precedence in
-tests, then open and parse them read-only through Ghostty. It must never call the template-writing
-loader, a create-capable candidate builder, or duplicate any parser, include, theme, conditional,
-diagnostic, color, or palette semantics.
+The completed config-resolver feasibility proof found that the pinned normal loader can create a
+template when no config exists. The operator accepted one narrow divergence on 2026-08-28: the
+resolver may derive the fixed default candidates from explicit roots and pinned suffixes, freeze
+their paths and precedence in tests, then open and parse them read-only through Ghostty. It must
+never call the template-writing loader, a create-capable candidate builder, or duplicate any
+parser, include, theme, conditional, diagnostic, color, or palette semantics.
 
 The revised exact-Zig proof confirmed that divergence works, then found that Ghostty's only
 official Config initializer and shared executable graph retain and initialize GUI-only
@@ -81,7 +81,7 @@ divergence: the heavy helper may be a stripped, platform-specific optional host 
 and spawned only when the registered appearance feature is enabled. Its absence must degrade to
 the existing Platform appearance without a config read, subprocess, download, or startup failure.
 
-The reopened proof then found that Ghostty's macOS Application Support candidate builders reach
+The proof also found that Ghostty's macOS Application Support candidate builders reach
 Foundation directory lookup with `create: true`. This is not a terminal proof failure. It refines
 the accepted fixed-candidate divergence: neither the writing loader nor a create-capable path
 builder may run during discovery. Derive the fixed legacy/current candidates read-only from the
@@ -89,12 +89,22 @@ explicit isolated home/config roots and the pinned constant suffixes, freeze the
 load order, and duplicate behavior in tests, and pass only existing files to Ghostty's read-only
 loader.
 
-Plan 065 remains **IN PROGRESS AND SCHEDULED** through every remaining semantic, no-write,
-four-native-target, compatibility, relocation, size, privacy, and strict-evidence gate. Plans
-066–067 remain **NOT AUTHORIZED** until a complete `Decision: PASS` and separate root scheduling.
-If Platform ever considers a Ghostty fork, prefer contributing a read-only Config path API and
-Config-only initializer/build target upstream first; the optional-heavy allowance does not make the
-current graph the preferred long-term boundary.
+The proof is complete at `ghostty-webgpu` evidence HEAD
+`e9c198e073067d5415ac4224176db1eb076f5dbf`. Workflow run `33212162580`, attempt `1`, used proof
+recipe SHA-256 `40083f27ad5f925808cc48e0fdd428b4ab0515eb38dedb42b0ca2065a16e44f0` and recorded native
+`PASS` rows for `darwin-arm64`, `darwin-x64`, `linux-arm64`, and `linux-x64`. On 2026-08-29 the
+operator accepted exact package ceilings of `2097152`, `2097152`, `8388608`, and `9437184` bytes
+respectively, with total ceiling `22020096` bytes. Stable evidence lives at
+`ghostty-webgpu/docs/config-resolver-feasibility.md` and
+`ghostty-webgpu/docs/config-resolver-feasibility.json`; the maintained strict verifier is
+`ghostty-webgpu/scripts/config-resolver-proof/verify-evidence.ts`.
+
+Plan 066 is **PROPOSED — ROOT GO/NO-GO SCHEDULING**. The accepted proof makes that packaging plan
+eligible for a separate root scheduling decision; it does not authorize implementation, artifact
+creation, publication, or Plan 067. Plan 067 remains **BLOCKED ON 066 REVIEWED ARTIFACT**, separate
+root scheduling, and dirty-file reconciliation. If Platform ever considers a Ghostty fork, prefer
+contributing a read-only Config path API and Config-only initializer/build target upstream first;
+the optional-heavy allowance does not make the current graph the preferred long-term boundary.
 
 Do not replace this lane with a TypeScript Ghostty parser, `ghostty +show-config`, a maintained fork,
 browser-visible host paths, or cold-start reads triggered by a disabled workbench setting.
@@ -174,10 +184,10 @@ do not add scoped-ref or multi-origin compatibility machinery now.
 - **Promote:** environment milestones M1–M5, one executable plan at a time.
 - **Deferred:** environment M6 and all compatibility work for simultaneous origins or obsolete
   per-tab/active-editor/one-server architecture.
-- **Scheduled independently:** Plan 065 must skip Ghostty's writing loader and create-capable
-  macOS path builders, derive the fixed candidates read-only, and continue every remaining proof
-  gate. Plans 066–067 remain blocked and unauthorized until a complete four-target `PASS`; a future
-  fork proposal must prefer upstreaming read-only Config path and Config-only build boundaries
-  first.
+- **Proposed independently:** accepted four-target config-resolver feasibility evidence makes Plan
+  066 eligible only for a separate root go/no-go scheduling decision. It does not authorize
+  packaging or publication. Plan 067 remains blocked on Plan 066's reviewed artifact, separate root
+  scheduling, and dirty-file reconciliation; a future fork proposal must prefer upstreaming
+  read-only Config path and Config-only build boundaries first.
 - **Package-blocked:** `ghostty-webgpu` plan 009 needs public native extension surfaces. Plan 010 is
   additionally waiting on that dependency and physical operator gates; plans 011–015 remain downstream.

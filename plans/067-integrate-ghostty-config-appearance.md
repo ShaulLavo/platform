@@ -1,7 +1,8 @@
 # Plan 067: Integrate the reviewed Ghostty appearance artifact into Platform
 
 > **Executor instructions**: Read this plan completely, then read Platform `AGENTS.md`, root
-> `PLAN.md`, Plans 065–066 and their evidence, and
+> `PLAN.md`, Plan 066, the stable `ghostty-webgpu/docs/config-resolver-feasibility.md` and
+> `ghostty-webgpu/docs/config-resolver-feasibility.json` evidence, and
 > `/Users/shaul/.agents/skills/never-nester/SKILL.md`. Execute every gate in order.
 >
 > This plan consumes the exact reviewed, unpublished `ghostty-webgpu@0.1.2` tarball from Plan 066.

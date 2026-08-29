@@ -1,7 +1,8 @@
 # Plan 066: Package the pinned Ghostty config resolver
 
 > **Executor instructions**: Read this plan completely, then read both repositories' `AGENTS.md`,
-> root `PLAN.md`, Plan 065's feasibility report, and
+> root `PLAN.md`, the accepted `ghostty-webgpu/docs/config-resolver-feasibility.md` and
+> `ghostty-webgpu/docs/config-resolver-feasibility.json` records, and
 > `/Users/shaul/.agents/skills/never-nester/SKILL.md`. Execute milestones in order.
 >
 > This plan modifies only `/Users/shaul/Desktop/D/ghostty-webgpu`. Do not modify Platform. Do not
@@ -10,15 +11,22 @@
 
 ## Status
 
-- **State**: Blocked on Plan 065 `Decision: PASS` and root scheduling
+- **State**: Proposed — feasibility evidence accepted; root go/no-go scheduling required
 - **Priority**: P1
 - **Effort**: M
 - **Risk**: HIGH — native packaging, local-file privacy, subprocess cleanup, and public API
   compatibility
-- **Depends on**: `ghostty-webgpu/docs/config-resolver-feasibility.md` from Plan 065
-- **Planned against**: `ghostty-webgpu`
-  `3c3e07edef23cdbbe141410432e89276cb6504b2`, package `0.1.1`, upstream Ghostty
+- **Depends on**: accepted `ghostty-webgpu/docs/config-resolver-feasibility.md` and
+  `ghostty-webgpu/docs/config-resolver-feasibility.json`, verified by
+  `ghostty-webgpu/scripts/config-resolver-proof/verify-evidence.ts`
+- **Planned against**: `ghostty-webgpu` closeout
+  `06b070b01e63d04ff0de0998276768d403bc738d`, native evidence HEAD
+  `e9c198e073067d5415ac4224176db1eb076f5dbf`, package `0.1.1`, upstream Ghostty
   `c8554f28e0efe2f5595f32020371c34b25ec628f`
+- **Evidence identity**: workflow `33212162580`, attempt `1`, proof-recipe SHA-256
+  `40083f27ad5f925808cc48e0fdd428b4ab0515eb38dedb42b0ca2065a16e44f0`
+- **Accepted package ceilings**: `darwin-arm64=2097152`, `darwin-x64=2097152`,
+  `linux-arm64=8388608`, `linux-x64=9437184`, total `22020096` bytes
 - **Target version**: `0.1.2`; patch only
 - **Unlocks**: Plan 067 only after the exact tarball, identity, and evidence pass every gate below
 
@@ -83,10 +91,10 @@ Continue only when the report:
   proposed size ceiling; and
 - needs neither installed Ghostty nor Zig at runtime.
 
-Before implementation, present the measured artifact/package sizes and proposed ceiling to the
-operator. Record acceptance in Plan 065's Markdown and strict JSON or stop for a packaging decision. Preserve
-user-owned changes. Reconcile ownership before editing a dirty in-scope file. Record focused
-baselines:
+Before implementation, verify that the stable Markdown and strict JSON still record acceptance of
+the exact ceilings in this plan. Stop for a new packaging decision if any size or ceiling changes.
+Preserve user-owned changes. Reconcile ownership before editing a dirty in-scope file. Record
+focused baselines:
 
 ```bash
 bun scripts/config-resolver-proof/verify-evidence.ts \
@@ -250,8 +258,8 @@ ordinary CSS blur. `background-opacity-cells` is added exactly when that option 
 Dynamic cell-relative colors cannot be represented by a global terminal theme. For cursor color,
 cursor text, and both selection colors, map `cell-foreground` to the profile foreground and
 `cell-background` to the profile background, and add that field's exact degradation flag. Never
-label that approximation `exact`. Apply the display-P3 conversion and degradation rule proven by
-Plan 065; do not silently truncate or reinterpret its color space.
+label that approximation `exact`. Apply the display-P3 conversion and degradation rule frozen in
+the accepted feasibility records; do not silently truncate or reinterpret its color space.
 
 Implement the report's frozen binary64 Display-P3 transfer functions, matrices, clamp point,
 operation order, and half-up 8-bit rounding literally in the wrapper. Reuse its golden vectors in
@@ -267,8 +275,8 @@ unset, static RGB, and both dynamic tags for every field.
 
 ## Milestone 1 — maintained native artifacts and manifest
 
-Use the exact graph and resources proven by Plan 065. Replace proof-only orchestration with
-maintained package-owned paths without modifying upstream Ghostty:
+Use the exact graph and resources proven by the accepted feasibility records. Replace proof-only
+orchestration with maintained package-owned paths without modifying upstream Ghostty:
 
 - `scripts/config-resolver-native/**` for maintained Zig source, build recipe, and fixtures;
 - `scripts/config-resolver-native/build-recipe.json`, `native-inputs.json`, and their strict schemas;
@@ -298,25 +306,27 @@ The later package commit may only remove the bootstrap marker and add verified g
 bundles plus their manifest; any change to a hashed native input requires a new native build run.
 
 Reject absolute paths, `..`, duplicate targets/files, symlinks, hash/size/mode mismatches,
-unexpected files, unsupported schema versions, missing/extra targets, and totals above Plan 065's
-approved ceiling. Resolve assets from the installed package URL, never cwd. Native executables use
-mode `0755`; data resources are non-executable. Build macOS binaries with the accepted explicit
+unexpected files, unsupported schema versions, missing/extra targets, and totals above the accepted
+feasibility ceilings. Resolve assets from the installed package URL, never cwd. Native executables
+use mode `0755`; data resources are non-executable. Build macOS binaries with the accepted explicit
 deployment target and verify it from Mach-O load commands. Prefer a fully static Linux artifact; if
-Plan 065 proved a dynamic libc dependency, add a Bun/Node-compatible runtime version check and
-native tests on the minimum, newer, wrong-family, and too-old cases. An incompatible or
-undetectable ABI returns `unsupported-platform` without spawning.
+the accepted feasibility evidence proved a dynamic libc dependency, add a Bun/Node-compatible
+runtime version check and native tests on the minimum, newer, wrong-family, and too-old cases. An
+incompatible or undetectable ABI returns `unsupported-platform` without spawning.
 
 Dependency inspection is an allowlist, not a log blob. Darwin provenance records the complete
 sorted `LC_LOAD_DYLIB`/weak-dylib/framework set plus the deployment load command and rejects any
 undeclared entry. A static Linux record requires no `PT_INTERP` and no `DT_NEEDED`. A dynamic Linux
 record contains the exact interpreter and complete sorted `DT_NEEDED` set; allow only the accepted
-libc/runtime dependencies proven by Plan 065 and reject anything else. Manifest verification repeats
-the inspection on packaged bytes, while pre-spawn checks enforce the recorded OS/libc version.
+libc/runtime dependencies proven by the feasibility evidence and reject anything else. Manifest
+verification repeats the inspection on packaged bytes, while pre-spawn checks enforce the recorded
+OS/libc version.
 
 The helper must:
 
-- reuse exactly Plan 065's official candidate-discovery plus intrinsically read-only recursive-load
-  call graph; never call a template-capable loader after a filesystem preflight;
+- reuse exactly the accepted feasibility proof's official candidate-discovery plus intrinsically
+  read-only recursive-load call graph; never call a template-capable loader after a filesystem
+  preflight;
 - use the pinned official Config implementation and resources;
 - resolve light first, then apply the official dark conditional state;
 - make an owned light-to-dark copy when `changeConditionalState` returns `null`;
@@ -326,10 +336,10 @@ The helper must:
 - use bounded exit codes without embedding paths/messages; and
 - preserve official search, include, theme, reset, named-color, diagnostic, and palette semantics.
 
-Repeat Plan 065's deletion/rename-after-discovery race suite in the maintained helper. A candidate
-that disappears before open returns exit `20`, cannot fall through to template creation, and leaves
-the isolated roots unchanged. If productionizing the proof would require a create-capable API,
-stop: the Plan 065 `PASS` no longer applies.
+Repeat the maintained proof scripts' deletion/rename-after-discovery race suite in the helper. A
+candidate that disappears before open returns exit `20`, cannot fall through to template creation,
+and leaves the isolated roots unchanged. If productionizing the proof would require a
+create-capable API, stop: the accepted feasibility `PASS` no longer applies.
 
 Add explicit `build:config-resolver`, `verify:config-resolver-state`,
 `verify:config-resolver-artifacts`, `build:source-only`, and `verify:source-only` scripts. The native
@@ -502,7 +512,7 @@ with RFC 8785 JSON Canonicalization Scheme UTF-8 bytes, and append exactly one L
 vectors. Both `scripts/config-resolver-native/build-recipe.json` and `native-inputs.json` must equal
 their canonical bytes and must not contain their own digest.
 
-The strict build recipe has schema version `1`, the accepted Plan 065 proof-recipe SHA-256, exact
+The strict build recipe has schema version `1`, the accepted feasibility proof-recipe SHA-256, exact
 upstream repository/revision/tree digest, shared `SOURCE_DATE_EPOCH`, and exactly four target-keyed
 records. Each target contains the asserted runner image/version/architecture, target triple,
 optimization, complete ordered build/link/strip argv, sorted unique environment name/value pairs,
@@ -526,10 +536,11 @@ role then ID using unsigned UTF-8 bytes; environment names are unique and byte-s
 fixed string/path/count/version/byte/hash bounds above. Copy the measured values from the accepted
 proof; a missing, mutable, floating, or free-form acquisition makes packaging stop.
 
-Reuse Plan 065's exact `ghostty-external-tree-v1` directory digest for runner SDK/sysroot components:
-sorted normalized UTF-8 `lstat` records bind relative path, directory/regular/symlink type, permission
-bits, content length, and regular-content or stored-symlink-target SHA-256; reject special files and
-escaping links and ignore mtimes/uid/gid/xattrs/inodes. Reuse its frozen vectors. A runner image label
+Reuse the maintained proof scripts' exact `ghostty-external-tree-v1` directory digest for runner
+SDK/sysroot components: sorted normalized UTF-8 `lstat` records bind relative path,
+directory/regular/symlink type, permission bits, content length, and regular-content or
+stored-symlink-target SHA-256; reject special files and escaping links and ignore
+mtimes/uid/gid/xattrs/inodes. Reuse its frozen vectors. A runner image label
 without its immutable image version and verified component digest is not an acquisition identity.
 
 `buildRecipeSha256` is SHA-256 of the complete raw canonical `build-recipe.json`. The strict
@@ -551,11 +562,12 @@ recomputes owned-file rows from the named clean Git object and compares the exte
 byte-for-byte with the canonical recipe. Mutating a path, Git mode, byte, recipe field, acquisition,
 ordering rule, or excluded-file set changes the digest or fails validation.
 
-Compute `upstreamTreeSha256` with Plan 065's exact `ghostty-upstream-tree-v1` algorithm: parse the
-NUL-delimited raw records from `git ls-tree -r -z --full-tree <pin>`, accept only blob modes
-`100644|100755|120000` and gitlink mode `160000`, sort by unsigned raw pathname bytes, and hash the
-version header plus length-prefixed path, mode, type, original blob length, and raw SHA-256 of exact
-`git cat-file blob` bytes. Hash symlinks as their stored target blob without dereferencing; hash a
+Compute `upstreamTreeSha256` with the maintained proof scripts' exact `ghostty-upstream-tree-v1`
+algorithm: parse the NUL-delimited raw records from `git ls-tree -r -z --full-tree <pin>`, accept
+only blob modes `100644|100755|120000` and gitlink mode `160000`, sort by unsigned raw pathname
+bytes, and hash the version header plus length-prefixed path, mode, type, original blob length, and
+raw SHA-256 of exact `git cat-file blob` bytes. Hash symlinks as their stored target blob without
+dereferencing; hash a
 gitlink as the decoded 20-byte pinned commit ID without traversing ambient checkout state. Require
 the official checkout's `sha1` object format and reject other records. The shared frozen vectors
 must prove `.git`, mtimes, ownership, and untracked/ignored caches cannot affect the digest, while a
@@ -665,7 +677,7 @@ Isolated child-process fixtures must also prove:
 - deleting or renaming a discovered default candidate before open still returns `config-not-found`
   and cannot enter a template-creation path;
 - includes, themes, named colors, reset/precedence, conditionals, and generated palette entries
-  match Plan 065;
+  match the accepted feasibility records;
 - `dark:Afterglow,light:3024 Day` produces distinct correct profiles;
 - a config without relevant conditionals copies light safely to dark;
 - the installed helper works with Ghostty and Zig absent from `PATH`; and
@@ -1055,7 +1067,7 @@ Do not run `npm publish`.
 
 Stop instead of substituting when:
 
-- Plan 065 is absent, not `PASS`, or names a different pin/toolchain;
+- the stable feasibility Markdown/JSON is absent, not `PASS`, or names a different pin/toolchain;
 - any target cannot be built, dependency-inspected, or executed as proven;
 - the implementation needs an upstream patch/fork, handwritten parser, installed Ghostty, or
   installed Zig at runtime;
@@ -1067,7 +1079,7 @@ Stop instead of substituting when:
 - the helper becomes reachable through the root/browser graph;
 - compatibility requires `cursorText` in any publicly constructible shape;
 - `scripts/build-wasm.ts` or either checked-in WASM hash changes;
-- an artifact differs from its manifest or exceeds Plan 065's approved ceiling;
+- an artifact differs from its manifest or exceeds the accepted feasibility ceiling;
 - host compatibility or packaged resources cannot be verified before spawn;
 - native/release provenance mixes runs, source identities, toolchains, targets, or archive hashes;
 - release packing starts from a dirty/uncommitted tree or would overwrite/repack a candidate;
@@ -1077,7 +1089,7 @@ Stop instead of substituting when:
 
 ## Completion checklist
 
-- [ ] Plan 065 PASS evidence and exact pin verified.
+- [ ] Stable feasibility `PASS` evidence, maintained verifier, and exact pin verified.
 - [ ] Four native targets/resources are manifest-bound and natively smoke-tested.
 - [ ] Four deterministic native archives share one strict clean-source provenance set.
 - [ ] Resolver output is recursively strict, bounded, sanitized, and revision-verified.

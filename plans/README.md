@@ -15,8 +15,7 @@ a bare root `bun run verify`.
 
 | Plan                                                                                    | State                                   |
 | --------------------------------------------------------------------------------------- | --------------------------------------- |
-| [065 — prove Ghostty config resolver](065-prove-ghostty-config-resolver.md)             | **IN PROGRESS — READ-ONLY CANDIDATES**  |
-| [066 — package Ghostty config resolver](066-package-ghostty-config-resolver.md)         | **BLOCKED ON REVISED 065 PASS**         |
+| [066 — package Ghostty config resolver](066-package-ghostty-config-resolver.md)         | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
 | [067 — integrate Ghostty config appearance](067-integrate-ghostty-config-appearance.md) | **BLOCKED ON 066 REVIEWED ARTIFACT**    |
 | [068 — session domain model](068-session-domain-model.md)                               | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
 | [069 — worktree lifecycle](069-worktree-lifecycle.md)                                   | **BLOCKED ON 068 AND ROOT SCHEDULING**  |
@@ -62,14 +61,13 @@ a bare root `bun run verify`.
 - Plan 061's ready live/clean view must still be claimed and ensured before active selection
   publication, but that transaction stays in the shared Editor domain action used by local UI and
   the typed bus; do not add a bus-only activation implementation.
-- Plan 065 remains active with two accepted divergences: derive Ghostty's fixed default candidates
-  read-only, and permit the pinned GUI/shader graph only in a stripped platform-specific optional
-  host helper. On macOS, skip the writing loader and create-capable Application Support builders;
-  derive the fixed candidates from explicit isolated roots and pinned suffixes, then continue every
-  remaining proof gate. Disabled or absent means no spawn, config read, download, or startup
-  failure. Plans 066–067 remain blocked and unauthorized until a complete revised four-target
-  `PASS`. If a future Ghostty fork is considered, prefer upstreaming read-only Config path and
-  Config-only initializer/build boundaries first.
+- The config-resolver feasibility proof is complete with four native `PASS` rows and accepted
+  package ceilings. Its stable records are
+  `ghostty-webgpu/docs/config-resolver-feasibility.md` and
+  `ghostty-webgpu/docs/config-resolver-feasibility.json`. Plan 066 is eligible only for a separate
+  root go/no-go scheduling decision; the proof does not authorize packaging or publication. Plan
+  067 remains blocked on Plan 066's reviewed artifact. If a future Ghostty fork is considered,
+  prefer upstreaming read-only Config path and Config-only initializer/build boundaries first.
 - Plan 067 must wait for the user-owned edits originating from Plan 063 in
   `packages/contracts/src/index.ts`, `apps/server/src/tests/app.test.ts`, and
   `apps/web/test/server.ts` to land or be explicitly reconciled. The terminal-theme fixture must
