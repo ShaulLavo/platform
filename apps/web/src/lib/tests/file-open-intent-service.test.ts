@@ -205,6 +205,42 @@ describe('file open intent service', () => {
     expect(startStructural).not.toHaveBeenCalled()
   })
 
+  it('relinquishes service cancellation after a prepared claim', async () => {
+    const queryClient = new QueryClient()
+    const file = fileResult('/repo/a.ts')
+    const stage = deferred<string>()
+    let preparationSignal: AbortSignal | null = null
+    queryClient.setQueryData(fileSnapshotQueryOptions(file.path).queryKey, file)
+    const service = new FileOpenIntentService(
+      queryClient,
+      {
+        prepare: (buffer, _documentId, _path, abortSignal) => {
+          preparationSignal = abortSignal
+          return {
+            buffer,
+            preparedDocument: preparedDocumentLease(),
+            startStages: [() => stage.promise],
+          }
+        },
+      },
+      () => null,
+      () => false,
+      () => false,
+      () => undefined,
+    )
+    service.setRoot('/repo')
+
+    service.prepare(file.path)
+    await vi.waitFor(() => expect(preparationSignal).not.toBeNull())
+    expect(service.claimReadyClean(file.path)).not.toBeNull()
+
+    service.clear()
+    const claimedSignal = preparationSignal as AbortSignal | null
+    if (!claimedSignal) throw new RangeError('missing preparation signal')
+    expect(claimedSignal.aborted).toBe(false)
+    stage.resolve('ready')
+  })
+
   it('does not admit an old completion after root to null to root', async () => {
     const queryClient = new QueryClient()
     const file = fileResult('/repo/a.ts')

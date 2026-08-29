@@ -100,7 +100,7 @@ export class FileOpenIntentService {
     private readonly getLiveDocument: (path: string) => FileOpenIntentLiveDocument | null,
     private readonly isActive: (path: string) => boolean,
     private readonly isMounted: (path: string) => boolean,
-    private readonly prefetchRelated: (rootPath: string, path: string) => Promise<unknown> | void,
+    private prefetchRelated: (rootPath: string, path: string) => Promise<unknown> | void,
     private readonly runtime: FileOpenIntentRuntime = defaultFileOpenIntentRuntime,
   ) {}
 
@@ -140,6 +140,12 @@ export class FileOpenIntentService {
     this.preparer = preparer
     this.environmentTag = tag
     this.clear()
+  }
+
+  setRelatedPrefetch(
+    prefetchRelated: (rootPath: string, path: string) => Promise<unknown> | void,
+  ): void {
+    this.prefetchRelated = prefetchRelated
   }
 
   beginBenchmarkSample(sampleId: string, path: string): void {
@@ -291,6 +297,7 @@ export class FileOpenIntentService {
 
     this.records.delete(canonical)
     if (this.claimIsCurrent(record.claim)) {
+      if (this.activePath === canonical) this.activeAbortController = null
       this.noteBenchmarkClaim(canonical, record.estimatedBytes)
       return record.claim
     }

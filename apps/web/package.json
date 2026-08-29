@@ -7,6 +7,8 @@
     "dev": "bun ../../scripts/run-with-env.ts vite",
     "build": "tsgo --build && bun --env-file=../../.env vite build",
     "bench:editor-open": "bun scripts/editor-open-benchmark.mjs",
+    "bench:editor-open:gate": "bun scripts/editor-open-benchmark.mjs --gate --browsers=chromium",
+    "bench:editor-open:gate:all": "bun scripts/editor-open-benchmark.mjs --gate --browsers=chromium,webkit,firefox",
     "bench:editor-scroll": "bun scripts/editor-scroll-benchmark.mjs",
     "bench:editor-scroll:gate": "bun scripts/editor-scroll-benchmark.mjs --gate --browsers=chromium",
     "bench:editor-scroll:gate:all": "bun scripts/editor-scroll-benchmark.mjs --gate --browsers=chromium,webkit,firefox",

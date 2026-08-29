@@ -36,6 +36,9 @@ export function EditorStateProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
   const { appliedThemeId, selectedThemeId } = useEditorColorTheme()
   const syntaxHighlightingEnabled = useSettingValue('editor.syntaxHighlighting.enabled')
+  const tyForPython = useSettingValue('lsp.experimental.tyForPython')
+  const languageServers = useSettingValue('lsp.languageServers')
+  const servers = useSettingValue('lsp.servers')
   // The address is folded in HERE, not applied later in an effect. Every store below
   // is seeded from this one value, so an address that arrived after them would have to
   // overwrite state the cache had already restored — which is how a shared link came to
@@ -71,7 +74,13 @@ export function EditorStateProvider({ children }: { children: ReactNode }) {
         (path) => workspaceStore.getState().selectedFilePath === path,
         (path) => mountedEditors.has(path),
         (rootPath, path) =>
-          queryClient.prefetchQuery(languageServerMatchQueryOptions(rootPath, path)),
+          queryClient.prefetchQuery(
+            languageServerMatchQueryOptions(rootPath, path, {
+              'lsp.experimental.tyForPython': tyForPython,
+              'lsp.languageServers': languageServers,
+              'lsp.servers': servers,
+            }),
+          ),
       ),
   )
   const [fileOpenIntent] = useState(() => ({
@@ -113,6 +122,18 @@ export function EditorStateProvider({ children }: { children: ReactNode }) {
       `${appliedThemeId ?? ''}\u0000${selectedThemeId}\u0000${String(syntaxHighlightingEnabled)}`,
     )
   }, [appliedThemeId, fileOpenIntentService, selectedThemeId, syntaxHighlightingEnabled])
+
+  useLayoutEffect(() => {
+    fileOpenIntentService.setRelatedPrefetch((rootPath, path) =>
+      queryClient.prefetchQuery(
+        languageServerMatchQueryOptions(rootPath, path, {
+          'lsp.experimental.tyForPython': tyForPython,
+          'lsp.languageServers': languageServers,
+          'lsp.servers': servers,
+        }),
+      ),
+    )
+  }, [fileOpenIntentService, languageServers, queryClient, servers, tyForPython])
 
   useEffect(
     () =>

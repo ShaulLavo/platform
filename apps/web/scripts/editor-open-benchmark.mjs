@@ -19,14 +19,38 @@ const defaultServerUrl = process.env.VITE_SERVER_URL ?? 'http://localhost:3001'
 const defaultFilePath = 'apps/web/src/features/editor/components/editor.tsx'
 const defaultRootPath = resolve(process.cwd(), '../..')
 const modes = ['miss', 'query-only', 'prepared-50', 'prepared-150', 'prepared-300']
-const gateCalibration = {
-  minimumPrepared300HighlightImprovementRatio: 0.25,
-  runs: [
-    { samplesPerMode: 10, seed: 60061 },
-    { samplesPerMode: 10, seed: 60062 },
-    { samplesPerMode: 10, seed: 60063 },
-  ],
-}
+const gateCalibrationEvidence = [
+  {
+    baselineQueryOnlyHighlightP50Ms: 69.3,
+    browser: 'chromium',
+    finalPrepared300HighlightP50Ms: 39.7,
+    missHighlightP50Ms: 96.3,
+    missNoiseMs: 3.26,
+    samplesPerMode: 30,
+    seed: 60061,
+    warmupsPerMode: 5,
+  },
+  {
+    baselineQueryOnlyHighlightP50Ms: 68,
+    browser: 'chromium',
+    finalPrepared300HighlightP50Ms: 53.9,
+    missHighlightP50Ms: 96,
+    missNoiseMs: 2.79,
+    samplesPerMode: 30,
+    seed: 60062,
+    warmupsPerMode: 5,
+  },
+  {
+    baselineQueryOnlyHighlightP50Ms: 68.1,
+    browser: 'chromium',
+    finalPrepared300HighlightP50Ms: 40.1,
+    missHighlightP50Ms: 90.9,
+    missNoiseMs: 4.65,
+    samplesPerMode: 30,
+    seed: 60063,
+    warmupsPerMode: 5,
+  },
+]
 const pipelineMarkNames = [
   'editor.authoritative_highlight_paint',
   'editor.authoritative_text_paint',
@@ -55,6 +79,7 @@ function parseOptions(args) {
   const parsed = {
     appUrl: process.env.EDITOR_OPEN_BENCH_APP_URL ?? defaultAppUrl,
     browsers: browserList(process.env.EDITOR_OPEN_BENCH_BROWSERS ?? 'chromium'),
+    calibrate: false,
     filePath: process.env.EDITOR_OPEN_BENCH_FILE ?? defaultFilePath,
     gate: false,
     pageTimeoutMs: numberOption(process.env.EDITOR_OPEN_BENCH_PAGE_TIMEOUT_MS, 30_000),
@@ -82,6 +107,11 @@ function applyOption(parsed, arg) {
     parsed.gate = true
     return
   }
+  if (arg === '--calibrate') {
+    parsed.calibrate = true
+    parsed.gate = true
+    return
+  }
   if (arg === '--summary-only') {
     parsed.summaryOnly = true
     return
@@ -101,7 +131,7 @@ function applyOption(parsed, arg) {
 
 function createFixtureSet(config) {
   const directory = mkdtempSync(resolve(config.workspaceRoot, '.editor-open-benchmark-'))
-  const count = modes.length * (config.warmupsPerMode + config.samplesPerMode)
+  const count = modes.length * (config.warmupsPerMode + config.samplesPerMode + 1)
   const source = resolve(config.workspaceRoot, config.filePath)
   const relativePaths = []
   for (let index = 0; index < count; index += 1) {
@@ -159,9 +189,40 @@ async function runBrowser(browserName, workspace, fixturePaths) {
       }
     }
 
-    const summary = summarize(browserName, samples)
+    const compatibilitySamples = []
+    let sharedVisibleSnapshot = null
+    for (const mode of modes) {
+      const path = fixturePaths[fixtureIndex]
+      fixtureIndex += 1
+      const record = await captureCompatibilityRecord(page, workspace, path)
+      sharedVisibleSnapshot ??= record.value.snapshot
+      const sample = await runSample(
+        page,
+        workspace,
+        path,
+        mode,
+        compatibilitySamples.length,
+        false,
+        {
+          key: record.key,
+          value: {
+            ...record.value,
+            snapshot: {
+              ...sharedVisibleSnapshot,
+              documentId: record.value.snapshot.documentId,
+            },
+          },
+        },
+      )
+      compatibilitySamples.push(sample)
+    }
+
+    const summary = summarize(browserName, samples, compatibilitySamples)
     if (options.gate) validateGate(summary, samples)
     console.log(`EDITOR_OPEN_BENCHMARK_SUMMARY ${JSON.stringify(summary, null, 2)}`)
+    if (options.calibrate) {
+      console.log(`EDITOR_OPEN_BENCHMARK_EVIDENCE ${JSON.stringify(calibrationEvidence(summary))}`)
+    }
   } finally {
     await context.close().catch(() => {})
     await browser.close().catch(() => {})
@@ -197,7 +258,7 @@ async function waitForBenchmarkBridge(page, inertPath) {
   await nextFrames(page)
 }
 
-async function runSample(page, workspace, path, mode, order, warmup) {
+async function runSample(page, workspace, path, mode, order, warmup, visibleSnapshotRecord = null) {
   await parkPointer(page)
   const target = { path, rootPath: workspace.rootFolder.path }
   const { sampleId } = await page.evaluate(
@@ -207,6 +268,12 @@ async function runSample(page, workspace, path, mode, order, warmup) {
   const targetButton = page.locator(attributeSelector(path))
   await targetButton.waitFor({ state: 'visible' })
   await nextFrames(page)
+  if (visibleSnapshotRecord) {
+    await page.evaluate(
+      ({ key, value }) => localStorage.setItem(key, JSON.stringify(value)),
+      visibleSnapshotRecord,
+    )
+  }
 
   if (mode === 'query-only') {
     await page.evaluate((request) => window.__editorPerfTrace.primeEditorOpenQuery(request), target)
@@ -233,10 +300,55 @@ async function runSample(page, workspace, path, mode, order, warmup) {
     ...reset,
     mode,
     order,
+    visibleSnapshotSeeded: visibleSnapshotRecord !== null,
     warmup,
   })
-  validateSample(sample)
+  validateSample(sample, visibleSnapshotRecord ? 'visible-snapshot-compatibility' : 'pipeline')
   return sample
+}
+
+async function captureCompatibilityRecord(page, workspace, path) {
+  const target = { path, rootPath: workspace.rootFolder.path }
+  const { sampleId } = await page.evaluate(
+    (request) => window.__editorPerfTrace.beginEditorOpenSample(request),
+    target,
+  )
+  const targetButton = page.locator(attributeSelector(path))
+  await targetButton.waitFor({ state: 'visible' })
+  await nextFrames(page)
+  await activateTarget(page, path)
+  await waitForAuthoritativePaint(page)
+  await page.waitForFunction((targetPath) => {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index)
+      if (!key?.endsWith('.editorVisibleSnapshot')) continue
+
+      const serialized = localStorage.getItem(key)
+      if (!serialized) continue
+      const value = JSON.parse(serialized)
+      if (value?.path === targetPath) return true
+    }
+    return false
+  }, path)
+  const record = await page.evaluate((targetPath) => {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index)
+      if (!key?.endsWith('.editorVisibleSnapshot')) continue
+
+      const serialized = localStorage.getItem(key)
+      if (!serialized) continue
+      const value = JSON.parse(serialized)
+      if (value?.path === targetPath) return { key, value }
+    }
+    return null
+  }, path)
+  await page.evaluate((request) => window.__editorPerfTrace.resetEditorOpenSample(request), {
+    ...target,
+    sampleId,
+  })
+  await assertResetState(page, path)
+  if (!record) throw createBenchmarkError(`visible snapshot capture missing for ${path}`)
+  return record
 }
 
 async function triggerPreparedIntent(page, targetButton, path) {
@@ -405,9 +517,28 @@ async function assertResetState(page, path) {
   }
 }
 
-function validateSample(sample) {
+function validateSample(sample, group) {
   if (sample.authoritativeTextCount !== 1 || sample.authoritativeHighlightCount !== 1) {
     throw createBenchmarkError(`${sample.mode} did not emit one authoritative paint per phase`)
+  }
+  if (group === 'visible-snapshot-compatibility') {
+    if (!sample.visibleSnapshotSeeded) {
+      throw createBenchmarkError(`${sample.mode} compatibility sample was not seeded`)
+    }
+    if ((sample.mode === 'miss' || sample.mode === 'query-only') && sample.cachedFrameCount !== 1) {
+      throw createBenchmarkError(
+        `${sample.mode} visible-snapshot compatibility sample did not paint one cached frame`,
+      )
+    }
+    if (sample.cachedFrameCount > 1) {
+      throw createBenchmarkError(
+        `${sample.mode} visible-snapshot compatibility sample painted ${sample.cachedFrameCount} cached frames`,
+      )
+    }
+    if (!sample.quiescent) {
+      throw createBenchmarkError(`${sample.mode} compatibility reset did not prove quiescence`)
+    }
+    return
   }
   if (sample.cachedFrameCount !== 0) {
     throw createBenchmarkError(
@@ -450,7 +581,7 @@ function seededRandom(seed) {
   }
 }
 
-function summarize(browserName, samples) {
+function summarize(browserName, samples, compatibilitySamples) {
   const byMode = Object.fromEntries(
     modes.map((mode) => [mode, summarizeMode(samples.filter((sample) => sample.mode === mode))]),
   )
@@ -459,8 +590,9 @@ function summarize(browserName, samples) {
     browser: browserName,
     config: {
       filePath: options.filePath,
+      calibrate: options.calibrate,
       gate: options.gate,
-      gateCalibration,
+      gateCalibration: calibrationContract(),
       samplesPerMode: options.samplesPerMode,
       seed: options.seed,
       warmCacheModel:
@@ -468,6 +600,19 @@ function summarize(browserName, samples) {
       warmupsPerMode: options.warmupsPerMode,
     },
     modes: byMode,
+    visibleSnapshotCompatibility: Object.fromEntries(
+      compatibilitySamples.map((sample) => [
+        sample.mode,
+        {
+          authoritativeHighlightCount: sample.authoritativeHighlightCount,
+          authoritativeTextCount: sample.authoritativeTextCount,
+          cachedFrameCount: sample.cachedFrameCount,
+          promotionStage: sample.promotionStage,
+          quiescent: sample.quiescent,
+          visibleSnapshotSeeded: sample.visibleSnapshotSeeded,
+        },
+      ]),
+    ),
     paired: {
       missNoiseMs,
       prepared300HighlightImprovementMs: difference(
@@ -542,13 +687,52 @@ function validateGate(summary, samples) {
       `prepared-300 highlight improvement ${summary.paired.prepared300HighlightImprovementMs}ms did not exceed ${summary.paired.missNoiseMs}ms noise`,
     )
   }
-  if (
-    summary.paired.prepared300HighlightImprovementRatio <
-    gateCalibration.minimumPrepared300HighlightImprovementRatio
-  ) {
+  if (options.calibrate) return
+
+  const calibration = calibrationContract()
+  if (!calibration) {
+    throw createBenchmarkError('editor-open gate requires three recorded paired calibration runs')
+  }
+  if (summary.paired.prepared300HighlightImprovementRatio < calibration.minimumImprovementRatio) {
     throw createBenchmarkError(
-      `prepared-300 relative highlight improvement ${summary.paired.prepared300HighlightImprovementRatio} did not reach calibrated ${gateCalibration.minimumPrepared300HighlightImprovementRatio}`,
+      `prepared-300 relative highlight improvement ${summary.paired.prepared300HighlightImprovementRatio} did not reach calibrated ${calibration.minimumImprovementRatio}`,
     )
+  }
+  if (summary.modes.miss.authoritativeHighlightMs.p50 > calibration.missUpperBoundMs) {
+    throw createBenchmarkError(
+      `miss highlight p50 ${summary.modes.miss.authoritativeHighlightMs.p50}ms regressed past calibrated ${calibration.missUpperBoundMs}ms`,
+    )
+  }
+}
+
+function calibrationContract() {
+  if (gateCalibrationEvidence.length < 3) return null
+
+  const noiseAdjustedRatios = gateCalibrationEvidence.map((run) =>
+    ratioImprovement(
+      run.baselineQueryOnlyHighlightP50Ms,
+      run.finalPrepared300HighlightP50Ms + run.missNoiseMs,
+    ),
+  )
+  return {
+    evidence: gateCalibrationEvidence,
+    minimumImprovementRatio: percentile(noiseAdjustedRatios, 0.25),
+    missUpperBoundMs: Math.max(
+      ...gateCalibrationEvidence.map((run) => run.missHighlightP50Ms + run.missNoiseMs),
+    ),
+  }
+}
+
+function calibrationEvidence(summary) {
+  return {
+    baselineQueryOnlyHighlightP50Ms: summary.modes['query-only'].authoritativeHighlightMs.p50,
+    browser: summary.browser,
+    finalPrepared300HighlightP50Ms: summary.modes['prepared-300'].authoritativeHighlightMs.p50,
+    missHighlightP50Ms: summary.modes.miss.authoritativeHighlightMs.p50,
+    missNoiseMs: summary.paired.missNoiseMs,
+    samplesPerMode: options.samplesPerMode,
+    seed: options.seed,
+    warmupsPerMode: options.warmupsPerMode,
   }
 }
 
@@ -563,7 +747,9 @@ function pairedNoiseFloor(samples) {
     .toSorted((left, right) => left - right)
   const median = percentile(values, 0.5)
   const deviations = values.map((value) => Math.abs(value - median))
-  return round(Math.max(1, percentile(deviations, 0.5) * 1.4826 * 2))
+  const robustStandardDeviation = percentile(deviations, 0.5) * 1.4826
+  const medianStandardError = (robustStandardDeviation * 1.2533) / Math.sqrt(values.length)
+  return round(Math.max(1, medianStandardError * 1.96))
 }
 
 function ratioImprovement(baseline, candidate) {

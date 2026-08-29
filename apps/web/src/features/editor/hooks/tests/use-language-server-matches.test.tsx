@@ -1,8 +1,10 @@
 import { waitFor } from '@testing-library/react'
+import { DEFAULT_SETTING_VALUES } from '@workspace/contracts'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { useLanguageServerMatches } from '@/features/editor/hooks/use-language-server-matches'
+import { languageServerMatchQueryOptions } from '@/features/editor/utils/language-server-match-query'
 import { expect, test } from '../../../../../test/fixtures'
 import { renderHookWithProviders } from '../../../../../test/render'
 
@@ -55,6 +57,21 @@ test('keeps the disabled result referentially stable', () => {
   rerender()
 
   expect(result.current).toBe(first)
+})
+
+test('invalidates cached matches when matching configuration changes', () => {
+  const initialConfiguration = {
+    'lsp.experimental.tyForPython': DEFAULT_SETTING_VALUES['lsp.experimental.tyForPython'],
+    'lsp.languageServers': DEFAULT_SETTING_VALUES['lsp.languageServers'],
+    'lsp.servers': DEFAULT_SETTING_VALUES['lsp.servers'],
+  }
+  const initial = languageServerMatchQueryOptions('', 'src/file.py', initialConfiguration)
+  const changed = languageServerMatchQueryOptions('', 'src/file.py', {
+    ...initialConfiguration,
+    'lsp.experimental.tyForPython': true,
+  })
+
+  expect(initial.queryKey).not.toEqual(changed.queryKey)
 })
 
 async function writeWorkspace(root: string, files: Readonly<Record<string, string>>) {
