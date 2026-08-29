@@ -1,8 +1,14 @@
 import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/layout'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
-import { describe, expect, it } from 'vitest'
+import { QueryClient } from '@tanstack/react-query'
+import {
+  createEditorBufferSession,
+  type EditorPreparedDocument,
+  type EditorTextBuffer,
+} from '@singapor/core'
+import { describe, expect, it, vi } from 'vitest'
 
-import { createEditorCommands } from '@/features/editor/state/commands'
+import { createEditorActivation, createEditorCommands } from '@/features/editor/state/commands'
 import { createEditorDocumentStore } from '@/features/editor/state/document-state'
 import { createEditorUiStore } from '@/features/editor/state/ui-state'
 import { createEditorWorkspaceStore } from '@/features/editor/state/workspace-state'
@@ -14,6 +20,8 @@ import {
 } from '@/features/workbench/utils/panels'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { CachedWorkspaceSlice, CachedWorkspaceState } from '@/features/workspace/state/cache'
+import { FileOpenIntentService } from '@/lib/file-open-intent/state/service'
+import { fileSnapshotQueryOptions } from '@/lib/file-snapshot-query-cache'
 
 describe('editor workspace state', () => {
   it('opens files as flat editor tabs and records history', () => {
@@ -29,6 +37,99 @@ describe('editor workspace state', () => {
     expect(workspaceStore.getState().workbenchPanels.editorTabs).toEqual([
       expect.objectContaining({ path: '/repo/src/app.ts' }),
     ])
+  })
+
+  it('activates the target before publishing the selected tab', () => {
+    const documentStore = createEditorDocumentStore()
+    const searchStore = createSearchBufferStore()
+    const uiStore = createEditorUiStore()
+    const workspaceStore = createEditorWorkspaceStore(cachedWorkspace({}))
+    const events: string[] = []
+    workspaceStore.subscribe(() => events.push('published'))
+    const commands = createEditorCommands({
+      activation: {
+        activate: (path) => events.push(`activated:${path}`),
+        setRoot: () => undefined,
+      },
+      documentStore,
+      searchStore,
+      uiStore,
+      workspaceStore,
+    })
+
+    commands.openFileSurface('/repo/src/app.ts')
+
+    expect(events).toEqual(['activated:/repo/src/app.ts', 'published'])
+  })
+
+  it('reopens a tabless dirty buffer before publishing its new selection', () => {
+    const path = '/repo/src/app.ts'
+    const panels = workbenchPanelsForPaths([path], path)
+    const documentStore = createEditorDocumentStore()
+    const searchStore = createSearchBufferStore()
+    const uiStore = createEditorUiStore()
+    const workspaceStore = createEditorWorkspaceStore(cachedWorkspace({ workbenchPanels: panels }))
+    const tabId = workspaceStore.getState().workbenchPanels.activeEditorTabId!
+    const document = documentStore.getState().ensureEditorView(tabId, fileResult(path))
+    createEditorBufferSession(document.buffer).applyText('dirty')
+    const { service } = fileOpenIntentService(documentStore)
+    const commands = createEditorCommands({
+      activation: createEditorActivation(service, documentStore),
+      documentStore,
+      searchStore,
+      uiStore,
+      workspaceStore,
+    })
+
+    commands.closeTab(tabId)
+    expect(documentStore.getState().getLiveEditorDocument(path)?.buffer).toBe(document.buffer)
+    let viewAtPublication = null
+    const unsubscribe = workspaceStore.subscribe((state) => {
+      if (state.selectedFilePath !== path) return
+      const activeTabId = state.workbenchPanels.activeEditorTabId
+      viewAtPublication = activeTabId ? documentStore.getState().getEditorView(activeTabId) : null
+    })
+
+    commands.reopenClosedEditor()
+    unsubscribe()
+
+    expect(viewAtPublication).not.toBeNull()
+    expect(documentStore.getState().getLiveEditorDocument(path)?.buffer).toBe(document.buffer)
+  })
+
+  it('installs a ready clean preparation before publishing a new tab', async () => {
+    const path = '/repo/src/prepared.ts'
+    const file = fileResult(path)
+    const documentStore = createEditorDocumentStore()
+    const searchStore = createSearchBufferStore()
+    const uiStore = createEditorUiStore()
+    const workspaceStore = createEditorWorkspaceStore(cachedWorkspace({}))
+    const queryClient = new QueryClient()
+    queryClient.setQueryData(fileSnapshotQueryOptions(path).queryKey, file)
+    const preparedDocument = preparedDocumentLease()
+    const { prepare, service } = fileOpenIntentService(documentStore, queryClient, preparedDocument)
+    const commands = createEditorCommands({
+      activation: createEditorActivation(service, documentStore),
+      documentStore,
+      searchStore,
+      uiStore,
+      workspaceStore,
+    })
+    service.prepare(path)
+    await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce())
+    let preparedAtPublication: EditorPreparedDocument | null = null
+    const unsubscribe = workspaceStore.subscribe((state) => {
+      if (state.selectedFilePath !== path) return
+      const activeTabId = state.workbenchPanels.activeEditorTabId
+      preparedAtPublication = activeTabId
+        ? (documentStore.getState().getEditorView(activeTabId)?.preparedDocument ?? null)
+        : null
+    })
+
+    commands.openFileSurface(path)
+    unsubscribe()
+
+    expect(preparedAtPublication).toBe(preparedDocument)
   })
 
   it('opens search as an editor tab for the workspace root', () => {
@@ -211,7 +312,13 @@ function editorHarness(slice: Partial<CachedWorkspaceSlice> = {}) {
   const searchStore = createSearchBufferStore()
   const uiStore = createEditorUiStore()
   const workspaceStore = createEditorWorkspaceStore(cachedWorkspace(slice))
-  const commands = createEditorCommands({ documentStore, searchStore, uiStore, workspaceStore })
+  const commands = createEditorCommands({
+    activation: { activate: () => undefined, setRoot: () => undefined },
+    documentStore,
+    searchStore,
+    uiStore,
+    workspaceStore,
+  })
 
   return { commands, documentStore, searchStore, uiStore, workspaceStore }
 }
@@ -255,6 +362,33 @@ function fileResult(path: string, content = 'const a = 1') {
     size: content.length,
     type: 'file' as const,
     version: 'v1',
+  }
+}
+
+function fileOpenIntentService(
+  documentStore: ReturnType<typeof createEditorDocumentStore>,
+  queryClient = new QueryClient(),
+  preparedDocument = preparedDocumentLease(),
+) {
+  const prepare = vi.fn((buffer: EditorTextBuffer) => ({ buffer, preparedDocument }))
+  const service = new FileOpenIntentService(
+    queryClient,
+    { prepare },
+    (path) => documentStore.getState().getLiveEditorDocument(path),
+    () => false,
+    () => false,
+    () => undefined,
+  )
+  service.setRoot('/repo')
+  return { prepare, service }
+}
+
+function preparedDocumentLease(): EditorPreparedDocument {
+  return {
+    dispose: vi.fn(),
+    estimatedBytes: 1,
+    startStage: vi.fn(() => null),
+    take: vi.fn(() => null),
   }
 }
 

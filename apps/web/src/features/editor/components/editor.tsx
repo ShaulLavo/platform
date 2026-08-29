@@ -16,6 +16,7 @@ import type { EditorStatusBarSource } from '@/features/editor/state/status-bar-s
 import type { EditorRenderDocument } from '@/features/editor/utils/render-document'
 import { useCommitMessageEditorFocus } from '@/features/editor/hooks/use-commit-message-editor-focus'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
+import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 import { useScrollPersistencePlugin } from '@/features/editor/hooks/use-scroll-persistence-plugin'
 import {
   capOverscrollTop,
@@ -37,6 +38,8 @@ import type {
   EditorPlugin,
   EditorScrollPosition,
 } from '@singapor/core'
+import { editorPreparedDocumentTags } from '@/features/editor/utils/prepared-document'
+import { useFileOpenIntent } from '@/lib/file-open-intent/providers/context'
 
 const NO_ADDITIONAL_PLUGINS: readonly EditorPlugin[] = []
 
@@ -73,7 +76,9 @@ export function Editor({
   onStatusSourceChange,
   onTextChange,
 }: EditorProps) {
-  const { editorTheme } = useEditorColorTheme()
+  const { appliedThemeId, editorTheme, selectedThemeId } = useEditorColorTheme()
+  const syntaxHighlightingEnabled = useSettingValue('editor.syntaxHighlighting.enabled')
+  const { mountedEditors } = useFileOpenIntent()
   const { languageServer, languageServerStatusSource } = useLanguageServerPlugin({
     enabled: active,
     filePath: liveDocument.path,
@@ -87,6 +92,16 @@ export function Editor({
     onScrollPositionChange,
   })
   const documentLanguageId = languageIdForFilePath(liveDocument.path)
+  // Stable tags keep an unrelated render from looking like a document reattachment.
+  const preparedTags = useMemo(
+    () =>
+      editorPreparedDocumentTags(liveDocument.path, {
+        appliedThemeId,
+        selectedThemeId,
+        syntaxHighlightingEnabled,
+      }),
+    [appliedThemeId, liveDocument.path, selectedThemeId, syntaxHighlightingEnabled],
+  )
   const criticalEditorCorePlugins = useMemo(
     () => createCriticalEditorCorePlugins(documentLanguageId),
     [documentLanguageId],
@@ -115,11 +130,20 @@ export function Editor({
     () => ({
       documentId: liveDocument.id,
       buffer: liveDocument.buffer,
+      ...preparedTags,
       languageId: documentLanguageId,
+      preparedDocument: liveDocument.preparedDocument,
       text: '',
       view: liveDocument.view,
     }),
-    [documentLanguageId, liveDocument.buffer, liveDocument.id, liveDocument.view],
+    [
+      documentLanguageId,
+      liveDocument.buffer,
+      liveDocument.id,
+      liveDocument.preparedDocument,
+      liveDocument.view,
+      preparedTags,
+    ],
   )
   const editorKeymap = useMemo(
     () =>
@@ -149,6 +173,10 @@ export function Editor({
     rowPositioning,
     theme: editorTheme,
   })
+  useLayoutEffect(
+    () => mountedEditors.register(liveDocument.path),
+    [liveDocument.path, mountedEditors],
+  )
   const settingsSurface =
     savableDocumentPath(liveDocument.path) !== null &&
     fileBackedDocumentPath(liveDocument.path) === null

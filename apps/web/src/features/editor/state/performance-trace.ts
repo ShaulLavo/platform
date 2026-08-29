@@ -1,3 +1,5 @@
+import { createClientInvariantError } from '@/lib/structured-errors'
+
 type EditorPerformanceDiagnostic = {
   readonly name: string
   readonly durationMs?: number
@@ -51,12 +53,40 @@ type EditorPerformanceTraceTargetSummary = {
 }
 
 type EditorPerformanceTraceHandle = {
+  beginEditorOpenSample(request: EditorOpenSampleTarget): { readonly sampleId: string }
   download(): EditorPerformanceTraceReport
   mark(name: string, detail?: Readonly<Record<string, unknown>>): void
   print(): EditorPerformanceTraceReport
+  primeEditorOpenQuery(request: EditorOpenSampleTarget): Promise<{ readonly ready: true }>
   report(): EditorPerformanceTraceReport
   reset(): void
+  resetEditorOpenSample(request: EditorOpenSampleResetRequest): Promise<EditorOpenSampleResetResult>
   stop(): void
+}
+
+export type EditorOpenSampleTarget = {
+  readonly path: string
+  readonly rootPath: string
+}
+
+export type EditorOpenSampleResetRequest = EditorOpenSampleTarget & {
+  readonly sampleId: string
+}
+
+export type EditorOpenSampleResetResult = {
+  readonly evictions: number
+  readonly nonTargetIntents: number
+  readonly preparedClaims: number
+  readonly promotedBytes: number
+  readonly quiescent: true
+  readonly targetIntents: number
+  readonly wastedIntents: number
+}
+
+export type EditorOpenBenchmarkControl = {
+  begin(request: EditorOpenSampleResetRequest): void
+  prime(request: EditorOpenSampleTarget): Promise<{ readonly ready: true }>
+  reset(request: EditorOpenSampleResetRequest): Promise<EditorOpenSampleResetResult>
 }
 
 type EditorPerformanceTraceGlobal = typeof globalThis & {
@@ -75,6 +105,20 @@ const EDITOR_VISIBLE_SNAPSHOT_SELECTOR = '[data-editor-visible-snapshot]'
 export type EditorPerformanceLayoutVariant = 'absolute-rows' | 'default'
 
 let disabledFeatureSet: ReadonlySet<string> | null = null
+let editorOpenBenchmarkControl: EditorOpenBenchmarkControl | null = null
+
+export function registerEditorOpenBenchmarkControl(
+  control: EditorOpenBenchmarkControl,
+): () => void {
+  if (editorOpenBenchmarkControl && editorOpenBenchmarkControl !== control) {
+    throw createClientInvariantError('Editor-open benchmark control is already registered')
+  }
+
+  editorOpenBenchmarkControl = control
+  return () => {
+    if (editorOpenBenchmarkControl === control) editorOpenBenchmarkControl = null
+  }
+}
 
 export function installEditorPerformanceTraceFromUrl(): void {
   if (typeof window === 'undefined') return
@@ -152,6 +196,12 @@ function createEditorPerformanceTrace(): {
   frame = requestAnimationFrame(tick)
 
   const handle: EditorPerformanceTraceHandle = {
+    beginEditorOpenSample: (request) => {
+      performance.clearMarks('editor.file_open_intent.detected')
+      const sampleId = crypto.randomUUID()
+      requireEditorOpenBenchmarkControl().begin({ ...request, sampleId })
+      return { sampleId }
+    },
     download: () => {
       const report = createReport()
       downloadJson(report)
@@ -167,6 +217,7 @@ function createEditorPerformanceTrace(): {
       console.info('[editor-perf] report', report)
       return report
     },
+    primeEditorOpenQuery: (request) => requireEditorOpenBenchmarkControl().prime(request),
     report: () => createReport(),
     reset: () => {
       traceEvents = []
@@ -176,6 +227,7 @@ function createEditorPerformanceTrace(): {
       startedAt = performance.now()
       lastFrameTime = startedAt
     },
+    resetEditorOpenSample: (request) => requireEditorOpenBenchmarkControl().reset(request),
     stop: () => {
       if (stopped) return
 
@@ -205,6 +257,12 @@ function createEditorPerformanceTrace(): {
   }
 
   return { handle, sink }
+}
+
+function requireEditorOpenBenchmarkControl(): EditorOpenBenchmarkControl {
+  if (editorOpenBenchmarkControl) return editorOpenBenchmarkControl
+
+  throw createClientInvariantError('Editor-open benchmark control is unavailable')
 }
 
 function createLongTaskObserver(

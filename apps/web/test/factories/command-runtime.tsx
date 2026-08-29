@@ -301,6 +301,7 @@ function createTestEditor(
   overrides?: Partial<EditorCommands>,
 ): EditorCommands {
   const editor = createEditorCommands({
+    activation: { activate: () => undefined, setRoot: () => undefined },
     documentStore,
     searchStore: createSearchBufferStore({ rootPath: workspaceStore.getState().rootFolder?.path }),
     uiStore: createEditorUiStore(),

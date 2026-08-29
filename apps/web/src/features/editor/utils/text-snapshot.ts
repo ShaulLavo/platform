@@ -24,6 +24,10 @@ export function contentRevisionForText(text: string) {
   return contentRevision(text.length, textHash(0x811c9dc5, text))
 }
 
+export function fileContentRevision(fileVersion: string) {
+  return `f:${fileVersion}`
+}
+
 export function textSnapshotLineRange(
   textSnapshot: TextSnapshot,
   row: number,

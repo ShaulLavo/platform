@@ -2,6 +2,7 @@ import { createEditorTextBuffer, createEditorViewSession } from '@singapor/core'
 import { vi } from 'vitest'
 
 import type { EditorRenderDocument } from '@/features/editor/utils/render-document'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import { FileEditorBody } from '@/features/workbench/components/file-editor-body'
 import {
   EditorSurfaceActionsContext,
@@ -20,17 +21,23 @@ test('a held document cannot publish its scroll position into the incoming tab',
   const incomingScroll = vi.fn((position) => incoming.view.setScrollPosition(position))
   const incomingActions = editorActions(incomingScroll)
   const rendered = renderWithProviders(
-    body({ actions: outgoingActions, document: outgoing, path: outgoing.path, tabId: 'tab-a' }),
+    <EditorStateProvider>
+      {body({ actions: outgoingActions, document: outgoing, path: outgoing.path, tabId: 'tab-a' })}
+    </EditorStateProvider>,
   )
 
   rendered.rerender(
-    body({ actions: incomingActions, document: null, path: incoming.path, tabId: 'tab-b' }),
+    <EditorStateProvider>
+      {body({ actions: incomingActions, document: null, path: incoming.path, tabId: 'tab-b' })}
+    </EditorStateProvider>,
   )
   const outgoingPosition = outgoingScroll.mock.calls.at(-1)?.[0]
   expect(outgoingPosition).toBeDefined()
 
   rendered.rerender(
-    body({ actions: incomingActions, document: incoming, path: incoming.path, tabId: 'tab-b' }),
+    <EditorStateProvider>
+      {body({ actions: incomingActions, document: incoming, path: incoming.path, tabId: 'tab-b' })}
+    </EditorStateProvider>,
   )
 
   expect(incomingScroll).not.toHaveBeenCalledWith(outgoingPosition)

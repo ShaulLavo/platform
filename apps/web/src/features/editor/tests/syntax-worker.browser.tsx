@@ -1,6 +1,11 @@
 import chatModelSource from '../../../../../../packages/contracts/src/chat-model.ts?raw'
 import { expect, test } from 'vitest'
-import { createEditorLoggingPlugin, Editor, type EditorLogEvent } from '@singapor/core'
+import {
+  createEditorLoggingPlugin,
+  createEditorRuntimeSessionId,
+  Editor,
+  type EditorLogEvent,
+} from '@singapor/core'
 import { createPieceTableSnapshot } from '@singapor/core/document'
 import { createShikiHighlighterPlugin, createShikiWorkerOwner } from '@singapor/core/shiki'
 import {
@@ -22,8 +27,10 @@ test('parses chat-model.ts through the editor Tree-sitter worker', async () => {
   try {
     await registerDefaultLanguages(workerClient)
     const snapshot = createPieceTableSnapshot(chatModelSource)
+    const runtimeSessionId = createEditorRuntimeSessionId()
     const parsed = await workerClient.parse({
       documentId: 'packages/contracts/src/chat-model.ts',
+      runtimeSessionId,
       snapshotVersion: 1,
       languageId: 'typescript',
       resultMode: 'parseOnly',
@@ -31,6 +38,7 @@ test('parses chat-model.ts through the editor Tree-sitter worker', async () => {
     })
     const queried = await workerClient.queryRange({
       documentId: 'packages/contracts/src/chat-model.ts',
+      runtimeSessionId,
       snapshotVersion: 1,
       languageId: 'typescript',
       includeCaptures: false,

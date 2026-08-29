@@ -1,5 +1,4 @@
 import { useEffect, useEffectEvent, useLayoutEffect, useRef } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
 
 import {
   canPrefetchFileEntry,
@@ -13,7 +12,8 @@ import {
   type IntentPrefetchRow,
 } from '@/features/workspace/utils/intent-prefetch-registry'
 import { createIdleScheduler } from '@/features/workspace/utils/intent-prefetch-scheduler'
-import { FILE_SNAPSHOT_STALE_MS, prefetchFileSnapshotQuery } from '@/lib/file-snapshot-query-cache'
+import { FILE_SNAPSHOT_STALE_MS } from '@/lib/file-snapshot-query-cache'
+import { useFileOpenIntent } from '@/lib/file-open-intent/providers/context'
 import { isDirectoryEntry } from '@/lib/file-system-types'
 import { INTENT_PREFETCH_HIT_SLOP_PX } from '@/lib/intent-prefetch-options'
 import { entryForTreePath, type TreeModel } from '@/lib/tree-model'
@@ -25,7 +25,7 @@ type FileTreeIntentPrefetchOptions = {
 }
 
 export function useFileTreeIntentPrefetch({ model, tree }: FileTreeIntentPrefetchOptions) {
-  const queryClient = useQueryClient()
+  const { service: fileOpenIntent } = useFileOpenIntent()
   const { prefetchDirectory } = useFileTreeActions()
   const modelRef = useRef(model)
 
@@ -42,7 +42,7 @@ export function useFileTreeIntentPrefetch({ model, tree }: FileTreeIntentPrefetc
     }
     if (!canPrefetchFileEntry(entry)) return
 
-    void prefetchFileSnapshotQuery(queryClient, entry.path)
+    fileOpenIntent.prepare(entry.path)
   })
 
   const syncRegistrations = useEffectEvent((registry: IntentPrefetchRegistry<string>) => {

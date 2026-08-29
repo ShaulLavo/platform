@@ -13,12 +13,14 @@ export function joinedEditorRenderDocument({
   documentId,
   editability,
   path,
+  preparedDocument,
   view,
 }: {
   buffer: EditorRenderDocument['buffer'] | null
   documentId: string | null
   editability: EditorRenderDocument['editability']
   path: string | null
+  preparedDocument?: EditorRenderDocument['preparedDocument']
   view: EditorRenderDocument['view'] | null
 }): EditorRenderDocument | null {
   if (!buffer) return null
@@ -31,6 +33,7 @@ export function joinedEditorRenderDocument({
     editability,
     id: documentId,
     path,
+    preparedDocument,
     view,
   }
 }

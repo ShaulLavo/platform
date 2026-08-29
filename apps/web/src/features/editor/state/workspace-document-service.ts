@@ -2,8 +2,10 @@ import { createClientInvariantError } from '@/lib/structured-errors'
 
 import {
   contentRevisionForText,
+  fileContentRevision,
   textSnapshotEqualsText,
 } from '@/features/editor/utils/text-snapshot'
+import type { PreparedFileOpenClaim } from '@/lib/file-open-intent/types'
 import type { SettingsWriteTarget } from '@workspace/contracts'
 
 import type { FileResult } from '@/lib/file-system-types'
@@ -18,6 +20,7 @@ import {
   type EditorTextBufferChange,
   type EditorViewSession,
   type PieceTableSnapshot,
+  type EditorPreparedDocument,
 } from '@singapor/core'
 
 type LiveDocumentSyncState = 'idle' | 'saving' | 'conflict'
@@ -78,12 +81,14 @@ export type LiveEditorDocument = {
 
 export type EditorDocumentView = {
   readonly documentId: string
+  readonly preparedDocument: EditorPreparedDocument | null
   readonly scrollPosition?: EditorScrollPosition
   readonly tabId: string
   readonly view: EditorViewSession
 }
 
 export type LiveEditorViewDocument = LiveEditorDocument & {
+  readonly preparedDocument: EditorPreparedDocument | null
   readonly scrollPosition?: EditorScrollPosition
   readonly tabId: string
   readonly view: EditorViewSession
@@ -275,6 +280,7 @@ export class WorkspaceDocumentService {
     for (const tabId of this.viewsByTabId.keys()) {
       if (tabIds.has(tabId)) continue
 
+      this.viewsByTabId.get(tabId)?.preparedDocument?.dispose()
       this.viewsByTabId.delete(tabId)
       evictedTabIds.push(tabId)
     }
@@ -307,22 +313,27 @@ export class WorkspaceDocumentService {
     for (const [tabId, view] of this.viewsByTabId) {
       if (view.documentId !== documentId) continue
 
+      view.preparedDocument?.dispose()
       this.viewsByTabId.delete(tabId)
     }
 
     return { hadLiveDocument, wasDirty }
   }
 
-  ensureLiveDocument(file: FileResult): LiveEditorDocument {
+  ensureLiveDocument(
+    file: FileResult,
+    claim: PreparedFileOpenClaim | null = null,
+  ): LiveEditorDocument {
     this.assertPathsAvailable([file.path])
     const existing = this.liveDocumentsById.get(file.path)
+    const cleanClaim = cleanClaimForFile(claim, file)
     if (existing?.sync.kind === 'recovery-conflict') return existing
     if (existing?.buffer.isDirty()) return existing
     if (existing && fileSyncVersion(existing) === file.version) {
       return existing
     }
 
-    const record = this.createFileDocument(file)
+    const record = this.createFileDocument(file, cleanClaim)
     this.setLiveDocument(record)
     this.setContentRevision(file.path, record.contentRevision)
     this.deleteDirtyPath(file.path)
@@ -330,9 +341,13 @@ export class WorkspaceDocumentService {
     return record
   }
 
-  ensureView(tabId: string, file: FileResult): LiveEditorViewDocument {
-    const document = this.ensureLiveDocument(file)
-    return this.ensureViewForDocument(tabId, document.id)
+  ensureView(
+    tabId: string,
+    file: FileResult,
+    claim: PreparedFileOpenClaim | null = null,
+  ): LiveEditorViewDocument {
+    const document = this.ensureLiveDocument(file, claim)
+    return this.ensureViewForDocument(tabId, document.id, claim)
   }
 
   ensureUnsyncedDocument(input: UnsyncedLiveEditorDocumentInput): LiveEditorDocument {
@@ -349,11 +364,21 @@ export class WorkspaceDocumentService {
     return record
   }
 
-  ensureViewForDocument(tabId: string, documentId: string): LiveEditorViewDocument {
+  ensureViewForDocument(
+    tabId: string,
+    documentId: string,
+    claim: PreparedFileOpenClaim | null = null,
+  ): LiveEditorViewDocument {
     this.assertPathsAvailable([documentId])
     const document = this.getRequiredLiveDocument(documentId)
     const existing = this.viewsByTabId.get(tabId)
     if (existing?.documentId === document.id) {
+      const preparedDocument = preparedDocumentForClaim(document, claim)
+      if (preparedDocument) {
+        existing.preparedDocument?.dispose()
+        this.viewsByTabId.set(tabId, { ...existing, preparedDocument })
+        return this.viewDocumentProjection(this.viewsByTabId.get(tabId)!)
+      }
       return this.viewDocumentProjection(existing)
     }
 
@@ -362,6 +387,7 @@ export class WorkspaceDocumentService {
     view.setScrollPosition(scrollPosition)
     const nextView: EditorDocumentView = {
       documentId: document.id,
+      preparedDocument: preparedDocumentForClaim(document, claim),
       scrollPosition,
       tabId,
       view,
@@ -375,6 +401,7 @@ export class WorkspaceDocumentService {
     const view = this.viewsByTabId.get(tabId)
     if (!view) return false
 
+    view.preparedDocument?.dispose()
     this.viewsByTabId.delete(tabId)
     return true
   }
@@ -916,10 +943,14 @@ export class WorkspaceDocumentService {
     if (!textSnapshotEqualsText(document.buffer.getTextSnapshot(), savedText)) return false
 
     document.buffer.markClean()
+    const cleanContentRevision =
+      sync.kind === 'file' ? fileContentRevision(sync.fileVersion) : synced.contentRevision
     this.setLiveDocument({
       ...synced,
+      contentRevision: cleanContentRevision,
       localRevision: document.buffer.getRevision(),
     })
+    this.setContentRevision(document.id, cleanContentRevision)
     this.deleteDirtyPath(document.path)
     return true
   }
@@ -960,7 +991,8 @@ export class WorkspaceDocumentService {
     for (const [tabId, view] of this.viewsByTabId) {
       if (view.documentId !== from) continue
 
-      this.viewsByTabId.set(tabId, { ...view, documentId: to })
+      view.preparedDocument?.dispose()
+      this.viewsByTabId.set(tabId, { ...view, documentId: to, preparedDocument: null })
     }
 
     return { wasDirty }
@@ -1037,13 +1069,17 @@ export class WorkspaceDocumentService {
     return next
   }
 
-  private createFileDocument(file: FileResult): LiveEditorDocument {
-    const buffer = createEditorTextBuffer(file.content)
+  private createFileDocument(
+    file: FileResult,
+    claim: Extract<PreparedFileOpenClaim, { readonly kind: 'clean' }> | null = null,
+  ): LiveEditorDocument {
+    if (!claim) markEditorOpenBenchmark('editor.file_open.buffer_built', file.path)
+    const buffer = claim?.buffer ?? createEditorTextBuffer(file.content)
     buffer.markClean()
 
     return {
       buffer,
-      contentRevision: contentRevisionForText(file.content),
+      contentRevision: fileContentRevision(file.version),
       id: file.path,
       localRevision: buffer.getRevision(),
       path: file.path,
@@ -1083,7 +1119,7 @@ export class WorkspaceDocumentService {
     existing.buffer.markClean()
     return {
       ...existing,
-      contentRevision: contentRevisionForText(file.content),
+      contentRevision: fileContentRevision(file.version),
       localRevision: existing.buffer.getRevision(),
       sync: {
         fileVersion: file.version,
@@ -1106,8 +1142,10 @@ export class WorkspaceDocumentService {
       nextView.setScrollPosition(view.scrollPosition)
       this.viewsByTabId.set(tabId, {
         ...view,
+        preparedDocument: null,
         view: nextView,
       })
+      view.preparedDocument?.dispose()
     }
   }
 
@@ -1116,6 +1154,7 @@ export class WorkspaceDocumentService {
 
     return {
       ...document,
+      preparedDocument: view.preparedDocument,
       scrollPosition: view.scrollPosition,
       tabId: view.tabId,
       view: view.view,
@@ -1230,7 +1269,9 @@ export class WorkspaceDocumentService {
       this.setContentRevision(projection.document.id, projection.contentRevision)
     }
     if (projection.dirty) this.addDirtyPath(projection.document.path)
-    for (const view of projection.views) this.viewsByTabId.set(view.tabId, view)
+    for (const view of projection.views) {
+      this.viewsByTabId.set(view.tabId, { ...view, preparedDocument: null })
+    }
     return true
   }
 
@@ -1302,6 +1343,13 @@ export class WorkspaceDocumentService {
     }
     this.deleteDirtyPath(document.path)
   }
+}
+
+function markEditorOpenBenchmark(name: string, path: string): void {
+  const traceGlobal = globalThis as typeof globalThis & { readonly __editorPerfTrace?: unknown }
+  if (!traceGlobal.__editorPerfTrace) return
+
+  globalThis.performance?.mark(name, { detail: { path } })
 }
 
 function editedContentRevision(revision: number) {
@@ -1386,6 +1434,48 @@ function fileSyncVersion(document: LiveEditorDocument | undefined) {
   if (document.sync.kind !== 'file') return null
 
   return document.sync.fileVersion
+}
+
+function cleanClaimForFile(
+  claim: PreparedFileOpenClaim | null,
+  file: FileResult,
+): Extract<PreparedFileOpenClaim, { readonly kind: 'clean' }> | null {
+  if (claim?.kind !== 'clean') return null
+  if (claim.path !== file.path) return null
+  if (claim.fileVersion !== file.version) return null
+  if (claim.buffer.isDirty()) return null
+  if (claim.buffer.getSnapshot() !== claim.snapshot) return null
+
+  return claim
+}
+
+function preparedDocumentForClaim(
+  document: LiveEditorDocument,
+  claim: PreparedFileOpenClaim | null,
+): EditorPreparedDocument | null {
+  if (!claim?.preparedDocument) return null
+  if (!preparedClaimMatchesDocument(document, claim)) {
+    claim.preparedDocument.dispose()
+    return null
+  }
+
+  return claim.preparedDocument
+}
+
+function preparedClaimMatchesDocument(
+  document: LiveEditorDocument,
+  claim: PreparedFileOpenClaim,
+): boolean {
+  if (document.path !== claim.path) return false
+  if (document.buffer !== claim.buffer) return false
+  if (document.buffer.getSnapshot() !== claim.snapshot) return false
+  if (claim.kind === 'live') {
+    if (document.id !== claim.documentId) return false
+    return document.localRevision === claim.localRevision
+  }
+  if (document.sync.kind !== 'file') return false
+
+  return document.sync.fileVersion === claim.fileVersion
 }
 
 function omitKey(

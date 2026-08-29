@@ -1,4 +1,9 @@
-import type { EditorScrollPosition, EditorTextBuffer, EditorViewSession } from '@singapor/core'
+import type {
+  EditorPreparedDocument,
+  EditorScrollPosition,
+  EditorTextBuffer,
+  EditorViewSession,
+} from '@singapor/core'
 
 export type EditorRenderDocument = {
   readonly buffer: EditorTextBuffer
@@ -6,6 +11,7 @@ export type EditorRenderDocument = {
   readonly editability: 'editable' | 'readonly'
   readonly id: string
   readonly path: string
+  readonly preparedDocument?: EditorPreparedDocument | null
   readonly scrollPosition?: EditorScrollPosition
   readonly view: EditorViewSession
 }

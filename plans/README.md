@@ -20,10 +20,9 @@ a bare root `bun run verify`.
 | [068 — session domain model](068-session-domain-model.md)                               | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
 | [069 — worktree lifecycle](069-worktree-lifecycle.md)                                   | **BLOCKED ON 068 AND ROOT SCHEDULING**  |
 | [071 — syntax highlight retry](071-syntax-highlight-retry.md)                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
-| [064 — anchored diagnostic peek](064-anchored-diagnostic-peek.md)                       | **SCHEDULED AFTER 061 — GO/NO-GO**      |
+| [064 — anchored diagnostic peek](064-anchored-diagnostic-peek.md)                       | **NEXT — GO/NO-GO**                     |
 | [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                         | **SCHEDULED AFTER 064 — RECONCILE**     |
 | [057 — editor-native VS Code keymap](057-editor-native-vscode-keymap.md)                | **BLOCKED ON 056 — RUNTIME RECONCILED** |
-| [061 — Foresight prepared editor opens](061-promote-foresight-file-open-pipeline.md)    | **NEXT — RECONCILE**                    |
 | [073 — Electrobun 2.x migration](073-electrobun-v2-migration.md)                        | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
 | [074 — Bun-native PTY](074-bun-native-pty.md)                                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
 | [075 — terminal renderer fallbacks](075-terminal-renderer-fallbacks.md)                 | **PROPOSED — BLOCKED ON TIER DECISION** |
@@ -55,12 +54,9 @@ a bare root `bun run verify`.
   restoration. Its first step may
   reject a managed geometry handle if ordinary React composition passes the
   real-browser gate; the selected narrow path still lands the named diagnostic
-  peek lockstep. Root `PLAN.md` schedules it after Plan 061.
+  peek lockstep. Root `PLAN.md` schedules it next.
 - Plan 056 is reconciled to the landed command/focus runtime. Execute 057 only after 056; it must
   extend the same target registry and enablement evaluator rather than creating parallel ownership.
-- Plan 061's ready live/clean view must still be claimed and ensured before active selection
-  publication, but that transaction stays in the shared Editor domain action used by local UI and
-  the typed bus; do not add a bus-only activation implementation.
 - The config-resolver feasibility proof is complete with four native `PASS` rows and accepted
   package ceilings. Its stable records are
   `ghostty-webgpu/docs/config-resolver-feasibility.md` and
@@ -75,16 +71,11 @@ a bare root `bun run verify`.
   The lane reads only a sanitized visual whitelist through the loopback backend; it
   must not add a TypeScript Ghostty parser, use `ghostty +show-config` as a dark-profile resolver,
   expose host paths to the browser, or let a persisted workbench opt-out trigger a cold-start read.
-- The paired paint contract is landed: Editor exposes `EditorVisibleSnapshot`,
-  `EditorInitialHighlightStatus`, and the generation-tagged `EditorInitialPaintEvent`; Platform owns
-  the one-record, 256 KiB `editor-visible-snapshot-cache.ts`, inert overlay handoff,
-  `appliedThemeId`, and `editor-open-benchmark.mjs` marks. Plan 061 must reuse those exact seams and
-  rerun their focused regressions. It must never promote or content-validate the cached rows; live
-  prepared artifacts use exact file or document revision identity.
-- Root `PLAN.md` schedules Plan 061 next and before Plan 064.
-- Plan 061 must capture current Platform and Editor HEADs plus complete dirty diffs before editing,
-  preserve the landed paint contract and every unrelated change, and reconcile overlapping Editor
-  attachment/API files in place.
+- The paired paint and prepared-open contracts are landed. Editor owns `EditorVisibleSnapshot`,
+  `EditorPreparedDocument`, one-shot exact-revision transfer, and unique worker runtime sessions.
+  Platform owns `FileOpenIntentService`, claim-or-ensure activation before selection publication,
+  the one-record visual-only snapshot cache, and the exact `editor-open-benchmark.mjs` gate. Cached
+  rows are never document truth, and the typed bus and local UI share one activation transaction.
 
 ## Cleanup policy
 

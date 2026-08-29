@@ -6,6 +6,7 @@ import { useStore } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { createStore, type Mutate, type StoreApi } from 'zustand/vanilla'
 import type { DocumentRetention } from '@/features/editor/utils/document-retention'
+import type { PreparedFileOpenClaim } from '@/lib/file-open-intent/types'
 import {
   WorkspaceDocumentService,
   type EditorDocumentView,
@@ -42,9 +43,20 @@ type CreateEditorDocumentStoreOptions = {
 
 type EditorDocumentStoreActions = {
   deleteLiveEditorDocument: (documentId: string) => DeleteLiveEditorDocumentResult
-  ensureEditorView: (tabId: string, file: FileResult) => LiveEditorViewDocument
-  ensureEditorViewForDocument: (tabId: string, documentId: string) => LiveEditorViewDocument
-  ensureLiveEditorDocument: (file: FileResult) => LiveEditorDocument
+  ensureEditorView: (
+    tabId: string,
+    file: FileResult,
+    claim?: PreparedFileOpenClaim | null,
+  ) => LiveEditorViewDocument
+  ensureEditorViewForDocument: (
+    tabId: string,
+    documentId: string,
+    claim?: PreparedFileOpenClaim | null,
+  ) => LiveEditorViewDocument
+  ensureLiveEditorDocument: (
+    file: FileResult,
+    claim?: PreparedFileOpenClaim | null,
+  ) => LiveEditorDocument
   ensureUnsyncedEditorDocument: (input: UnsyncedLiveEditorDocumentInput) => LiveEditorDocument
   forceReplaceLiveEditorDocument: (file: FileResult) => { wasDirty: boolean }
   getEditorView: (tabId: string) => EditorDocumentView | null
@@ -177,18 +189,18 @@ export function createEditorDocumentStore(options: CreateEditorDocumentStoreOpti
           publish()
           return result
         },
-        ensureEditorView: (tabId, file) => {
-          const viewDocument = service.ensureView(tabId, file)
+        ensureEditorView: (tabId, file, claim) => {
+          const viewDocument = service.ensureView(tabId, file, claim)
           publish()
           return viewDocument
         },
-        ensureEditorViewForDocument: (tabId, documentId) => {
-          const viewDocument = service.ensureViewForDocument(tabId, documentId)
+        ensureEditorViewForDocument: (tabId, documentId, claim) => {
+          const viewDocument = service.ensureViewForDocument(tabId, documentId, claim)
           publish()
           return viewDocument
         },
-        ensureLiveEditorDocument: (file) => {
-          const document = service.ensureLiveDocument(file)
+        ensureLiveEditorDocument: (file, claim) => {
+          const document = service.ensureLiveDocument(file, claim)
           publish()
           return document
         },

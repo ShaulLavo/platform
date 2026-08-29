@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, type RenderOptions, type RenderResult } from '@testing-library/react'
+import {
+  render,
+  renderHook,
+  type RenderHookOptions,
+  type RenderOptions,
+  type RenderResult,
+} from '@testing-library/react'
 import { TooltipProvider } from '@workspace/ui/components/tooltip'
 import type { ReactElement, ReactNode } from 'react'
 
@@ -109,4 +115,27 @@ export function renderWithProviders(
   }
 
   return { queryClient, ...render(ui, { wrapper: Wrapper, ...options }) }
+}
+
+export function renderHookWithProviders<Result, Props>(
+  callback: (props: Props) => Result,
+  {
+    command,
+    focusService,
+    queryClient = createTestQueryClient(),
+    theme = 'dark',
+    ...options
+  }: Omit<RenderHookOptions<Props>, 'wrapper'> & RenderWithProvidersOptions = {},
+) {
+  seedBootMirrorTheme(theme)
+
+  function Wrapper({ children }: { children: ReactNode }) {
+    return (
+      <AppProviders command={command} focusService={focusService} queryClient={queryClient}>
+        {children}
+      </AppProviders>
+    )
+  }
+
+  return { queryClient, ...renderHook(callback, { wrapper: Wrapper, ...options }) }
 }

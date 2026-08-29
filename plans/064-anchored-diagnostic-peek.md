@@ -78,7 +78,7 @@
 
 ## Status
 
-- **State**: Scheduled after plan 061; mandatory managed-geometry go/no-go
+- **State**: Next; mandatory managed-geometry go/no-go
 - **Priority**: P2
 - **Effort**: M after a GO decision; S if the gate returns NO-GO
 - **Risk**: HIGH — edit-stable anchors, virtualized/BiDi geometry, cross-package

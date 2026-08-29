@@ -16,6 +16,7 @@ import type { App } from 'server/client-contract'
 import { afterEach, expect, test } from 'vitest'
 
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
+import { EditorStateProvider } from '@/features/editor/providers/state-provider'
 import {
   resetEditorColorThemeStore,
   setSelectedEditorThemeId,
@@ -551,8 +552,10 @@ function mountRealFileEditor(path: string, rootPath: string): HTMLElement {
   flushSync(() => {
     root?.render(
       <AppProviders command={false} queryClient={createTestQueryClient()}>
-        <ThemeIdentityProbe />
-        <RealFileEditorBody path={path} rootPath={rootPath} />
+        <EditorStateProvider>
+          <ThemeIdentityProbe />
+          <RealFileEditorBody path={path} rootPath={rootPath} />
+        </EditorStateProvider>
       </AppProviders>,
     )
   })

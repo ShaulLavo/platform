@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo } from 'react'
 
 import {
   joinedEditorRenderDocument,
@@ -27,6 +27,7 @@ import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
 } from '@singapor/lsp-plugin'
+import { useFileOpenIntent } from '@/lib/file-open-intent/providers/context'
 
 export function EditorSurfaceTabBody({
   active,
@@ -52,11 +53,15 @@ export function EditorSurfaceTabBody({
   const { fileState, fileVersion } = useSelectedFile(
     selectedConflictDiff || selectedSearchBuffer || selectedRefDocument ? null : path,
   )
+  const { service: fileOpenIntent } = useFileOpenIntent()
   const selectedViewDocumentId = useEditorDocumentState(
     (state) => state.viewsByTabId[tabId]?.documentId ?? null,
   )
   const selectedViewSession = useEditorDocumentState(
     (state) => state.viewsByTabId[tabId]?.view ?? null,
+  )
+  const selectedPreparedDocument = useEditorDocumentState(
+    (state) => state.viewsByTabId[tabId]?.preparedDocument ?? null,
   )
   const selectedDocumentBuffer = useEditorDocumentState((state) =>
     selectedViewDocumentId
@@ -78,12 +83,14 @@ export function EditorSurfaceTabBody({
         documentId: selectedViewDocumentId,
         editability: selectedDocumentEditability,
         path: selectedDocumentPath,
+        preparedDocument: selectedPreparedDocument,
         view: selectedViewSession,
       }),
     [
       selectedDocumentBuffer,
       selectedDocumentEditability,
       selectedDocumentPath,
+      selectedPreparedDocument,
       selectedViewDocumentId,
       selectedViewSession,
     ],
@@ -115,11 +122,14 @@ export function EditorSurfaceTabBody({
   })
   const selectedFile = selectedConflictDiff ? null : readyFile(fileState)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!selectedFile) return
 
-    ensureEditorView(tabId, selectedFile)
-  }, [ensureEditorView, selectedFile, tabId])
+    const claim =
+      fileOpenIntent.claimLive(selectedFile.path) ??
+      fileOpenIntent.claimReadyClean(selectedFile.path)
+    ensureEditorView(tabId, selectedFile, claim)
+  }, [ensureEditorView, fileOpenIntent, selectedFile, tabId])
 
   // Conflict and git-ref tabs both own an unsynced document rather than a file, so they attach a
   // view by document id instead of going through the file path.

@@ -23,6 +23,12 @@ describe('editor tab prefetch helpers', () => {
     })
   })
 
+  it('ignores the active file tab', () => {
+    expect(
+      editorTabPrefetchTarget({ active: true, id: 'tab-a', path: '/repo/src/app.ts' }),
+    ).toBeNull()
+  })
+
   it('ignores virtual document tabs for intent prefetching', () => {
     expect(
       editorTabPrefetchTarget({

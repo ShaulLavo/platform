@@ -141,6 +141,13 @@ export async function disposeEditorTreeSitterSyntaxProvider() {
   await backend?.dispose?.()
 }
 
+export async function awaitEditorSyntaxWorkerIdleFences(): Promise<void> {
+  await Promise.all([
+    treeSitterSyntaxBackend?.awaitIdleFence?.() ?? Promise.resolve(),
+    shikiWorkerOwner?.awaitIdleFence() ?? Promise.resolve(),
+  ])
+}
+
 /** Logs the exact theme handed to every shared Shiki session. */
 function resolveShikiThemeForSession(): string {
   const themeId = activeShikiThemeId()

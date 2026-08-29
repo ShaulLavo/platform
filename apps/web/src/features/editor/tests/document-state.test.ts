@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { createEditorDocumentStore } from '@/features/editor/state/document-state'
 import type { FileResult } from '@/lib/file-system-types'
@@ -6,8 +6,10 @@ import {
   acquireDocumentMutationLease,
   commitPreparedDocumentTransaction,
   createEditorBufferSession,
+  createEditorTextBuffer,
   getDocumentMutationLeaseState,
   type EditorTextBuffer,
+  type EditorPreparedDocument,
   prepareDocumentTransaction,
   releaseDocumentMutationLease,
   reverseDocumentTransaction,
@@ -272,6 +274,98 @@ describe('editor document store state identity', () => {
 
     expect(view).not.toBeNull()
     expect(store.getState().viewsByTabId['tab-1']).toBe(view)
+  })
+
+  it('promotes an exact clean prepared buffer into the view', () => {
+    const store = createEditorDocumentStore()
+    const file = fileResult('/repo/a.ts')
+    const buffer = createEditorTextBuffer(file.content)
+    buffer.markClean()
+    const preparedDocument = preparedDocumentLease()
+
+    const view = store.getState().ensureEditorView('tab-1', file, {
+      buffer,
+      file,
+      fileVersion: file.version,
+      kind: 'clean',
+      path: file.path,
+      preparedDocument,
+      snapshot: buffer.getSnapshot(),
+    })
+
+    expect(view.buffer).toBe(buffer)
+    expect(view.preparedDocument).toBe(preparedDocument)
+    expect(view.contentRevision).toBe(`f:${file.version}`)
+  })
+
+  it('keeps dirty live content ahead of a stale clean prepared claim', () => {
+    const store = createEditorDocumentStore()
+    const file = fileResult('/repo/a.ts')
+    const live = store.getState().ensureLiveEditorDocument(file)
+    createEditorBufferSession(live.buffer).applyText('!')
+    const preparedBuffer = createEditorTextBuffer(file.content)
+    const preparedDocument = preparedDocumentLease()
+
+    const view = store.getState().ensureEditorView('tab-1', file, {
+      buffer: preparedBuffer,
+      file,
+      fileVersion: file.version,
+      kind: 'clean',
+      path: file.path,
+      preparedDocument,
+      snapshot: preparedBuffer.getSnapshot(),
+    })
+
+    expect(view.buffer).toBe(live.buffer)
+    expect(view.preparedDocument).toBeNull()
+    expect(preparedDocument.dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('names clean file revisions from the opaque server version after an unraced save', () => {
+    const store = createEditorDocumentStore()
+    const document = store.getState().ensureLiveEditorDocument(fileResult('/repo/a.ts'))
+    const session = createEditorBufferSession(document.buffer)
+    session.applyText('!')
+    const saving = store.getState().getLiveEditorDocument(document.id)!
+    const savedText = saving.buffer.materializeFullText()
+
+    expect(
+      store.getState().markLiveEditorDocumentSaved({
+        documentId: document.id,
+        fileVersion: 'opaque-next',
+        mtimeMs: 200,
+        savedContentRevision: saving.contentRevision,
+        savedText,
+      }),
+    ).toBe(true)
+
+    expect(store.getState().getLiveEditorDocument(document.id)?.contentRevision).toBe(
+      'f:opaque-next',
+    )
+  })
+
+  it('keeps an edited revision when another edit races a completed save', () => {
+    const store = createEditorDocumentStore()
+    const document = store.getState().ensureLiveEditorDocument(fileResult('/repo/a.ts'))
+    const session = createEditorBufferSession(document.buffer)
+    session.applyText('first')
+    const saving = store.getState().getLiveEditorDocument(document.id)!
+    const savedText = saving.buffer.materializeFullText()
+    session.applyText('second')
+
+    expect(
+      store.getState().markLiveEditorDocumentSaved({
+        documentId: document.id,
+        fileVersion: 'opaque-next',
+        mtimeMs: 200,
+        savedContentRevision: saving.contentRevision,
+        savedText,
+      }),
+    ).toBe(false)
+
+    const raced = store.getState().getLiveEditorDocument(document.id)!
+    expect(raced.contentRevision).toMatch(/^e:/)
+    expect(raced.sync).toMatchObject({ fileVersion: 'opaque-next' })
   })
 
   it('exposes one document object at the new path after a rename', () => {
@@ -560,6 +654,15 @@ function fileResult(path: string): FileResult {
     path,
     size: 20,
     version: `test:${path}`,
+  }
+}
+
+function preparedDocumentLease(): EditorPreparedDocument {
+  return {
+    dispose: vi.fn(),
+    estimatedBytes: 1,
+    startStage: vi.fn(() => null),
+    take: vi.fn(() => null),
   }
 }
 

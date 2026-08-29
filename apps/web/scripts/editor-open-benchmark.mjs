@@ -1,7 +1,8 @@
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { copyFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { relative, resolve, sep } from 'node:path'
 
 import {
+  browserList,
   browserTypes,
   createWorkspaceContext,
   launchOptions,
@@ -9,6 +10,7 @@ import {
   percentile,
   round,
   traceUrl,
+  workspaceCacheEntries,
 } from './bench-workspace.mjs'
 import { createBenchmarkError } from './structured-errors.mjs'
 
@@ -16,62 +18,78 @@ const defaultAppUrl = 'http://localhost:5173/'
 const defaultServerUrl = process.env.VITE_SERVER_URL ?? 'http://localhost:3001'
 const defaultFilePath = 'apps/web/src/features/editor/components/editor.tsx'
 const defaultRootPath = resolve(process.cwd(), '../..')
+const modes = ['miss', 'query-only', 'prepared-50', 'prepared-150', 'prepared-300']
+const gateCalibration = {
+  minimumPrepared300HighlightImprovementRatio: 0.25,
+  runs: [
+    { samplesPerMode: 10, seed: 60061 },
+    { samplesPerMode: 10, seed: 60062 },
+    { samplesPerMode: 10, seed: 60063 },
+  ],
+}
+const pipelineMarkNames = [
+  'editor.authoritative_highlight_paint',
+  'editor.authoritative_text_paint',
+  'editor.cached_visible_paint',
+  'editor.file_open.activation',
+  'editor.file_open.buffer_built',
+  'editor.file_open.file_read',
+  'editor.worker.request',
+]
 const options = parseOptions(process.argv.slice(2))
-const workspace = await createWorkspaceContext(options)
-const cachePrefix = currentWorkspaceCachePrefix()
-const snapshotKey = `${cachePrefix}.editorVisibleSnapshot`
-const browser = await browserTypes.chromium.launch(launchOptions('chromium'))
+const fixtures = createFixtureSet(options)
 
 try {
-  const calibration = await captureCalibrationSnapshot(browser, workspace)
-  const warmupModes = randomizedModes(options.warmupsPerMode, options.seed ^ 0x0600)
-  for (let index = 0; index < warmupModes.length; index += 1) {
-    await runSample(browser, workspace, calibration.serialized, warmupModes[index], index, true)
+  const workspace = await createWorkspaceContext({
+    ...options,
+    filePath: fixtures.relativePaths[0],
+  })
+  for (const browserName of options.browsers) {
+    await runBrowser(browserName, workspace, fixtures.clientPaths(workspace.rootFolder.path))
   }
-
-  const modes = randomizedModes(options.samplesPerMode, options.seed)
-  const samples = []
-  for (let index = 0; index < modes.length; index += 1) {
-    const sample = await runSample(
-      browser,
-      workspace,
-      calibration.serialized,
-      modes[index],
-      index,
-      false,
-    )
-    samples.push(sample)
-    console.log(JSON.stringify({ type: 'editor-open-benchmark-sample', ...sample }))
-  }
-
-  const summary = summarize(samples, calibration)
-  console.log(`EDITOR_OPEN_BENCHMARK_SUMMARY ${JSON.stringify(summary, null, 2)}`)
 } finally {
-  await browser.close().catch(() => {})
+  rmSync(fixtures.directory, { force: true, recursive: true })
 }
 
 function parseOptions(args) {
   const parsed = {
     appUrl: process.env.EDITOR_OPEN_BENCH_APP_URL ?? defaultAppUrl,
+    browsers: browserList(process.env.EDITOR_OPEN_BENCH_BROWSERS ?? 'chromium'),
     filePath: process.env.EDITOR_OPEN_BENCH_FILE ?? defaultFilePath,
+    gate: false,
     pageTimeoutMs: numberOption(process.env.EDITOR_OPEN_BENCH_PAGE_TIMEOUT_MS, 30_000),
     samplesPerMode: numberOption(process.env.EDITOR_OPEN_BENCH_SAMPLES, 30),
     seed: numberOption(process.env.EDITOR_OPEN_BENCH_SEED, 60_061),
     serverUrl: process.env.EDITOR_OPEN_BENCH_SERVER_URL ?? defaultServerUrl,
+    summaryOnly: false,
     warmupsPerMode: numberOption(process.env.EDITOR_OPEN_BENCH_WARMUPS, 5),
     workspaceRoot: process.env.EDITOR_OPEN_BENCH_ROOT ?? defaultRootPath,
   }
 
   for (const arg of args) applyOption(parsed, arg)
-  if (parsed.warmupsPerMode < 5) {
-    throw createBenchmarkError('editor-open benchmark requires at least five warmups per mode')
+  if (parsed.browsers.length === 0) parsed.browsers = ['chromium']
+  if (parsed.gate && parsed.warmupsPerMode < 5) {
+    throw createBenchmarkError('editor-open gate requires at least five warmups per mode')
+  }
+  if (parsed.gate && parsed.samplesPerMode < 30) {
+    throw createBenchmarkError('editor-open gate requires at least 30 samples per mode')
   }
   return parsed
 }
 
 function applyOption(parsed, arg) {
+  if (arg === '--gate') {
+    parsed.gate = true
+    return
+  }
+  if (arg === '--summary-only') {
+    parsed.summaryOnly = true
+    return
+  }
+
   const [name, value] = arg.split('=')
   if (name === '--app-url') parsed.appUrl = value ?? parsed.appUrl
+  if (name === '--browsers') parsed.browsers = browserList(value)
   if (name === '--file') parsed.filePath = value ?? parsed.filePath
   if (name === '--page-timeout-ms') parsed.pageTimeoutMs = numberOption(value, parsed.pageTimeoutMs)
   if (name === '--samples') parsed.samplesPerMode = numberOption(value, parsed.samplesPerMode)
@@ -81,236 +99,345 @@ function applyOption(parsed, arg) {
   if (name === '--workspace-root') parsed.workspaceRoot = value ?? parsed.workspaceRoot
 }
 
-async function captureCalibrationSnapshot(browser, workspace) {
-  const context = await isolatedContext(browser, workspace, null)
-  try {
-    const page = await context.newPage()
-    page.setDefaultTimeout(options.pageTimeoutMs)
-    await page.goto(traceUrl(options.appUrl), { waitUntil: 'domcontentloaded' })
-    try {
-      await waitForAuthoritativePaint(page)
-    } catch (error) {
-      const debug = await paintDebugSnapshot(page)
-      throw createBenchmarkError(
-        `calibration paint timeout: ${JSON.stringify(debug)}; ${String(error)}`,
-      )
-    }
-    await page.waitForFunction((key) => typeof localStorage.getItem(key) === 'string', snapshotKey)
-    const calibration = await page.evaluate((key) => {
-      const serialized = localStorage.getItem(key)
-      if (!serialized) return null
+function createFixtureSet(config) {
+  const directory = mkdtempSync(resolve(config.workspaceRoot, '.editor-open-benchmark-'))
+  const count = modes.length * (config.warmupsPerMode + config.samplesPerMode)
+  const source = resolve(config.workspaceRoot, config.filePath)
+  const relativePaths = []
+  for (let index = 0; index < count; index += 1) {
+    const fixture = resolve(directory, `sample-${String(index).padStart(4, '0')}.tsx`)
+    copyFileSync(source, fixture)
+    relativePaths.push(relative(config.workspaceRoot, fixture).split(sep).join('/'))
+  }
 
-      const record = JSON.parse(serialized)
-      const report = window.__editorPerfTrace?.report()
-      return {
-        capture: diagnosticEvent(report, 'editor.visible_snapshot.capture'),
-        materialize: diagnosticEvent(report, 'editor.visible_snapshot.materialize'),
-        record,
-        serialized,
-      }
-
-      function diagnosticEvent(report, name) {
-        return [...(report?.traceEvents ?? [])]
-          .reverse()
-          .find((event) => event.kind === 'diagnostic' && event.diagnostic.name === name)
-          ?.diagnostic
-      }
-    }, snapshotKey)
-    if (!calibration) throw createBenchmarkError('calibration did not persist a visible snapshot')
-    return calibration
-  } finally {
-    await context.close().catch(() => {})
+  return {
+    clientPaths: (rootPath) => relativePaths.map((path) => joinClientPath(rootPath, path)),
+    directory,
+    relativePaths,
   }
 }
 
-async function runSample(browser, workspace, serializedSnapshot, mode, order, warmup) {
-  const context = await isolatedContext(
-    browser,
-    workspace,
-    mode === 'seeded' ? serializedSnapshot : null,
-  )
-  try {
-    const page = await context.newPage()
-    page.setDefaultTimeout(options.pageTimeoutMs)
-    await page.goto(traceUrl(options.appUrl), { waitUntil: 'domcontentloaded' })
-    await waitForAuthoritativePaint(page)
-    if (mode === 'seeded') {
-      await page.waitForFunction(
-        () => performance.getEntriesByName('editor.cached_visible_paint').length === 1,
-      )
-    }
-    await page.waitForTimeout(425)
-    const measured = await page.evaluate((referenceSnapshot) => {
-      const report = window.__editorPerfTrace?.report()
-      const cached = mark('editor.cached_visible_paint')
-      const text = mark('editor.authoritative_text_paint')
-      const highlight = mark('editor.authoritative_highlight_paint')
-      const capture = diagnostic('editor.visible_snapshot.capture')
-      const materialize = diagnostic('editor.visible_snapshot.materialize')
-      const render = diagnostic('editor.visible_snapshot.render')
-      const json = jsonCosts(referenceSnapshot, 25)
-      const longTasks = (report?.traceEvents ?? []).filter((event) => event.kind === 'long-task')
-
-      return {
-        authoritativeHighlightCount: performance.getEntriesByName(
-          'editor.authoritative_highlight_paint',
-        ).length,
-        authoritativeHighlightMs: highlight?.startTime ?? null,
-        authoritativeTextCount: performance.getEntriesByName('editor.authoritative_text_paint')
-          .length,
-        authoritativeTextMs: text?.startTime ?? null,
-        cachedFrameCount: performance.getEntriesByName('editor.cached_visible_paint').length,
-        cachedFrameMs: cached?.startTime ?? null,
-        captureDurationMs: capture?.durationMs ?? null,
-        chunks: capture?.detail?.chunks ?? null,
-        encodeMs: json.encodeMs,
-        longTaskCount: longTasks.length,
-        longTaskMaxMs: Math.max(0, ...longTasks.map((event) => event.durationMs)),
-        longTaskTotalMs: longTasks.reduce((sum, event) => sum + event.durationMs, 0),
-        materializeMs: materialize?.durationMs ?? null,
-        parseMs: json.parseMs,
-        parts: capture?.detail?.parts ?? null,
-        renderMs: render?.durationMs ?? null,
-        rows: capture?.detail?.rows ?? null,
-        runs: capture?.detail?.runs ?? null,
-        serializedBytes: capture?.detail?.serializedBytes ?? referenceSnapshot.length * 2,
-      }
-
-      function mark(name) {
-        return performance.getEntriesByName(name, 'mark')[0] ?? null
-      }
-
-      function diagnostic(name) {
-        return [...(report?.traceEvents ?? [])]
-          .reverse()
-          .find((event) => event.kind === 'diagnostic' && event.diagnostic.name === name)
-          ?.diagnostic
-      }
-
-      function jsonCosts(serialized, iterations) {
-        let parsed
-        const parseStartedAt = performance.now()
-        for (let index = 0; index < iterations; index += 1) parsed = JSON.parse(serialized)
-        const parseMs = (performance.now() - parseStartedAt) / iterations
-        const encodeStartedAt = performance.now()
-        for (let index = 0; index < iterations; index += 1) JSON.stringify(parsed)
-        const encodeMs = (performance.now() - encodeStartedAt) / iterations
-        return { encodeMs, parseMs }
-      }
-    }, serializedSnapshot)
-    validateSample(mode, measured)
-    return { mode, order, warmup, ...roundSample(measured) }
-  } finally {
-    await context.close().catch(() => {})
-  }
-}
-
-async function isolatedContext(browser, workspace, serializedSnapshot) {
+async function runBrowser(browserName, workspace, fixturePaths) {
+  const browser = await browserTypes[browserName].launch(launchOptions(browserName))
   const context = await browser.newContext({
     colorScheme: 'dark',
     viewport: { height: 900, width: 1440 },
   })
-  await context.addInitScript(
-    ({ entries, snapshotKey: key, snapshot }) => {
-      localStorage.clear()
-      for (const [entryKey, value] of Object.entries(entries)) {
-        localStorage.setItem(entryKey, JSON.stringify(value))
+  const inertPath = `search-buffer:${encodeURIComponent(workspace.rootFolder.path)}`
+  await seedInertWorkspace(context, workspace, inertPath)
+
+  try {
+    const page = await context.newPage()
+    page.setDefaultTimeout(options.pageTimeoutMs)
+    await page.goto(traceUrl(options.appUrl), { waitUntil: 'domcontentloaded' })
+    await waitForBenchmarkBridge(page, inertPath)
+
+    let fixtureIndex = 0
+    const warmupOrder = randomizedModes(options.warmupsPerMode, options.seed ^ 0x0610)
+    for (const mode of warmupOrder) {
+      await runSample(page, workspace, fixturePaths[fixtureIndex], mode, fixtureIndex, true)
+      fixtureIndex += 1
+    }
+
+    const measuredOrder = randomizedModes(options.samplesPerMode, options.seed)
+    const samples = []
+    for (let order = 0; order < measuredOrder.length; order += 1) {
+      const sample = await runSample(
+        page,
+        workspace,
+        fixturePaths[fixtureIndex],
+        measuredOrder[order],
+        order,
+        false,
+      )
+      fixtureIndex += 1
+      samples.push(sample)
+      if (!options.summaryOnly) {
+        console.log(
+          JSON.stringify({ browser: browserName, type: 'editor-open-benchmark-sample', ...sample }),
+        )
       }
-      if (snapshot) localStorage.setItem(key, snapshot)
-    },
-    {
-      entries: workspaceCacheEntries(workspace),
-      snapshot: serializedSnapshot,
-      snapshotKey,
-    },
-  )
-  return context
+    }
+
+    const summary = summarize(browserName, samples)
+    if (options.gate) validateGate(summary, samples)
+    console.log(`EDITOR_OPEN_BENCHMARK_SUMMARY ${JSON.stringify(summary, null, 2)}`)
+  } finally {
+    await context.close().catch(() => {})
+    await browser.close().catch(() => {})
+  }
 }
 
-function workspaceCacheEntries(workspace) {
-  const rootPath = workspace.rootFolder.path
-  return {
-    [`${cachePrefix}.rootFolder`]: workspace.rootFolder,
-    [`${cachePrefix}.uiMode`]: 'workbench',
-    [`${cachePrefix}.workbenchLayout`]: {
-      mainLayout: { bottom: 30, editor: 70 },
-      outerLayout: { main: 76, sidebar: 24 },
-    },
-    [`${cachePrefix}.workspaces`]: [rootPath],
-    [`${cachePrefix}.workspace:${rootPath}`]: {
-      editorHistory: [workspace.filePath],
-      recentlyClosedEditorPaths: [],
-      scrollPositionByPath: {},
-      workbenchPanels: {
-        activeBottomTab: 'terminal',
-        activeEditorTabId: 'editor-open-benchmark-tab',
-        activeSidebarTab: 'files',
-        bottomPanelOpen: false,
-        editorTabs: [{ id: 'editor-open-benchmark-tab', path: workspace.filePath }],
-        sidebarOpen: true,
-      },
-    },
+async function seedInertWorkspace(context, workspace, inertPath) {
+  const entries = workspaceCacheEntries({ ...workspace, filePath: inertPath })
+  await context.addInitScript((cacheEntries) => {
+    localStorage.clear()
+    for (const [key, value] of Object.entries(cacheEntries)) {
+      localStorage.setItem(key, JSON.stringify(value))
+    }
+  }, entries)
+}
+
+async function waitForBenchmarkBridge(page, inertPath) {
+  await page.waitForFunction(
+    () =>
+      typeof window.__editorPerfTrace?.beginEditorOpenSample === 'function' &&
+      typeof window.__editorPerfTrace?.primeEditorOpenQuery === 'function' &&
+      typeof window.__editorPerfTrace?.resetEditorOpenSample === 'function',
+  )
+  await page.locator(attributeSelector(inertPath)).waitFor({ state: 'visible' })
+  await page.waitForFunction(
+    (path) =>
+      Array.from(document.querySelectorAll('[data-editor-tab-path]'))
+        .find((tab) => tab.getAttribute('data-editor-tab-path') === path)
+        ?.getAttribute('aria-selected') === 'true',
+    inertPath,
+  )
+  await page.evaluate(() => document.fonts?.ready ?? Promise.resolve())
+  await nextFrames(page)
+}
+
+async function runSample(page, workspace, path, mode, order, warmup) {
+  await parkPointer(page)
+  const target = { path, rootPath: workspace.rootFolder.path }
+  const { sampleId } = await page.evaluate(
+    (request) => window.__editorPerfTrace.beginEditorOpenSample(request),
+    target,
+  )
+  const targetButton = page.locator(attributeSelector(path))
+  await targetButton.waitFor({ state: 'visible' })
+  await nextFrames(page)
+
+  if (mode === 'query-only') {
+    await page.evaluate((request) => window.__editorPerfTrace.primeEditorOpenQuery(request), target)
   }
+
+  let detectedAt = null
+  if (mode.startsWith('prepared-')) {
+    await targetButton.scrollIntoViewIfNeeded()
+    detectedAt = await triggerPreparedIntent(page, targetButton, path)
+    await waitForLeadWindow(page, detectedAt, leadForMode(mode))
+  }
+
+  const activationAt = await activateTarget(page, path)
+  await waitForAuthoritativePaint(page)
+  const measured = await readMeasuredPipeline(page, path, activationAt, detectedAt)
+  const reset = await page.evaluate(
+    (request) => window.__editorPerfTrace.resetEditorOpenSample(request),
+    { ...target, sampleId },
+  )
+  await assertResetState(page, path)
+
+  const sample = roundSample({
+    ...measured,
+    ...reset,
+    mode,
+    order,
+    warmup,
+  })
+  validateSample(sample)
+  return sample
+}
+
+async function triggerPreparedIntent(page, targetButton, path) {
+  const box = await targetButton.boundingBox()
+  if (!box) throw createBenchmarkError(`prepared target has no layout box: ${path}`)
+
+  const centerX = box.x + box.width / 2
+  const centerY = box.y + box.height / 2
+  await page.mouse.move(centerX, Math.min(880, box.y + box.height + 160))
+  await page.mouse.move(centerX, box.y + box.height + 70, { steps: 4 })
+  await page.mouse.move(centerX, box.y + box.height + 18, { steps: 4 })
+  const detected = await waitForIntentMark(page, path, 1_000).catch(() => null)
+  if (detected !== null) return detected
+
+  await page.mouse.move(centerX, centerY, { steps: 2 })
+  return waitForIntentMark(page, path, 2_000)
+}
+
+async function waitForIntentMark(page, path, timeout) {
+  await page.waitForFunction(
+    (targetPath) =>
+      performance
+        .getEntriesByName('editor.file_open_intent.detected', 'mark')
+        .some((entry) => entry.detail?.path === targetPath),
+    path,
+    { timeout },
+  )
+  return page.evaluate(
+    (targetPath) =>
+      performance
+        .getEntriesByName('editor.file_open_intent.detected', 'mark')
+        .find((entry) => entry.detail?.path === targetPath)?.startTime ?? null,
+    path,
+  )
+}
+
+async function waitForLeadWindow(page, detectedAt, leadMs) {
+  const elapsed = await page.evaluate((startedAt) => performance.now() - startedAt, detectedAt)
+  const remaining = Math.max(0, leadMs - elapsed)
+  if (remaining > 0) await page.waitForTimeout(remaining)
+}
+
+async function activateTarget(page, path) {
+  return page.evaluate(
+    ({ markNames, targetPath }) => {
+      for (const name of markNames) performance.clearMarks(name)
+      window.__editorPerfTrace.reset()
+      const button = Array.from(document.querySelectorAll('[data-editor-tab-path]')).find(
+        (candidate) => candidate.getAttribute('data-editor-tab-path') === targetPath,
+      )
+      if (!(button instanceof HTMLButtonElement)) {
+        throw new DOMException('Benchmark target tab disappeared', 'InvalidStateError')
+      }
+
+      const activationAt = performance.now()
+      performance.mark('editor.file_open.activation', { detail: { path: targetPath } })
+      button.click()
+      return activationAt
+    },
+    { markNames: pipelineMarkNames, targetPath: path },
+  )
 }
 
 async function waitForAuthoritativePaint(page) {
   await page.waitForFunction(
     () =>
-      performance.getEntriesByName('editor.authoritative_text_paint').length === 1 &&
-      performance.getEntriesByName('editor.authoritative_highlight_paint').length === 1,
+      performance.getEntriesByName('editor.authoritative_text_paint', 'mark').length === 1 &&
+      performance.getEntriesByName('editor.authoritative_highlight_paint', 'mark').length === 1,
   )
 }
 
-function paintDebugSnapshot(page) {
-  return page.evaluate(() => ({
-    bodyText: document.body.innerText.slice(0, 1_000),
-    marks: performance.getEntriesByType('mark').map((entry) => ({
-      detail: entry.detail,
-      name: entry.name,
-      startTime: entry.startTime,
-    })),
-    rows: Array.from(document.querySelectorAll('.editor-virtualized-row')).filter(
-      (row) => !row.closest('[data-editor-visible-snapshot]'),
-    ).length,
-    storageKeys: Array.from({ length: localStorage.length }, (_, index) => localStorage.key(index)),
-    traceEvents:
-      window.__editorPerfTrace
-        ?.report()
-        .traceEvents.filter((event) => event.kind === 'diagnostic')
-        .map((event) => event.diagnostic.name) ?? [],
-  }))
+function readMeasuredPipeline(page, path, activationAt, detectedAt) {
+  return page.evaluate(
+    ({ activatedAt, intentAt, targetPath }) => {
+      const report = window.__editorPerfTrace.report()
+      const diagnostics = report.traceEvents
+        .filter((event) => event.kind === 'diagnostic')
+        .map((event) => event.diagnostic)
+      const attachment = diagnostics.findLast((entry) => entry.name === 'editor.document.attach')
+      const workers = performance
+        .getEntriesByName('editor.worker.request', 'mark')
+        .filter(
+          (entry) => entry.detail?.type !== 'idleFence' && entry.detail?.type !== 'runtimeBarrier',
+        )
+      const longTasks = report.traceEvents.filter((event) => event.kind === 'long-task')
+
+      return {
+        authoritativeHighlightCount: performance.getEntriesByName(
+          'editor.authoritative_highlight_paint',
+          'mark',
+        ).length,
+        authoritativeHighlightMs: relativeMark('editor.authoritative_highlight_paint'),
+        authoritativeTextCount: performance.getEntriesByName(
+          'editor.authoritative_text_paint',
+          'mark',
+        ).length,
+        authoritativeTextMs: relativeMark('editor.authoritative_text_paint'),
+        bufferBuilds: pathMarkCount('editor.file_open.buffer_built'),
+        cachedFrameCount: performance.getEntriesByName('editor.cached_visible_paint', 'mark')
+          .length,
+        fileReads: pathMarkCount('editor.file_open.file_read'),
+        highlighterSessionCreations: diagnosticCount(
+          'editor.syntax.session_created',
+          'highlighter',
+        ),
+        intentMarkMs:
+          performance
+            .getEntriesByName('editor.file_open_intent.detected', 'mark')
+            .find((entry) => entry.detail?.path === targetPath)?.startTime - activatedAt || null,
+        leadMs: intentAt === null ? 0 : Math.max(0, activatedAt - intentAt),
+        lineIndexScans: diagnosticCount('editor.line_starts.scan'),
+        longTaskCount: longTasks.length,
+        longTaskMaxMs: Math.max(0, ...longTasks.map((event) => event.durationMs)),
+        longTaskTotalMs: longTasks.reduce((sum, event) => sum + event.durationMs, 0),
+        promotionStage: attachment?.detail?.prepared
+          ? `data:${attachment.detail.structural}:${attachment.detail.highlighter}`
+          : 'miss',
+        structuralSessionCreations: diagnosticCount('editor.syntax.session_created', 'structural'),
+        workerOpenRequests: workerCount('open'),
+        workerParseRequests: workerCount('parse'),
+        workerQueryRequests: workerCount('queryRange'),
+        workerRefreshRequests: workerCount('edit'),
+        workerRequests: workers.length,
+      }
+
+      function relativeMark(name) {
+        const entry = performance.getEntriesByName(name, 'mark')[0]
+        return entry ? entry.startTime - activatedAt : null
+      }
+
+      function pathMarkCount(name) {
+        return performance
+          .getEntriesByName(name, 'mark')
+          .filter((entry) => entry.detail?.path === targetPath).length
+      }
+
+      function diagnosticCount(name, family) {
+        return diagnostics.filter(
+          (entry) => entry.name === name && (!family || entry.detail?.family === family),
+        ).length
+      }
+
+      function workerCount(type) {
+        return workers.filter((entry) => entry.detail?.type === type).length
+      }
+    },
+    { activatedAt: activationAt, intentAt: detectedAt, targetPath: path },
+  )
 }
 
-function validateSample(mode, sample) {
+async function assertResetState(page, path) {
+  const state = await page.evaluate(
+    (targetPath) => ({
+      activePath: document
+        .querySelector('[data-editor-tab-path][aria-selected="true"]')
+        ?.getAttribute('data-editor-tab-path'),
+      targetTabs: Array.from(document.querySelectorAll('[data-editor-tab-path]')).filter(
+        (tab) => tab.getAttribute('data-editor-tab-path') === targetPath,
+      ).length,
+    }),
+    path,
+  )
+  if (state.targetTabs !== 0) throw createBenchmarkError('reset left the target tab mounted')
+  if (!state.activePath?.startsWith('search-buffer:')) {
+    throw createBenchmarkError(`reset did not restore the inert surface: ${state.activePath}`)
+  }
+}
+
+function validateSample(sample) {
   if (sample.authoritativeTextCount !== 1 || sample.authoritativeHighlightCount !== 1) {
-    throw createBenchmarkError(`${mode} sample did not emit one authoritative paint per phase`)
+    throw createBenchmarkError(`${sample.mode} did not emit one authoritative paint per phase`)
   }
-  if (mode === 'seeded' && sample.cachedFrameCount !== 1) {
-    throw createBenchmarkError('seeded sample did not paint exactly one cached frame')
+  if (sample.cachedFrameCount !== 0) {
+    throw createBenchmarkError(
+      `${sample.mode} mixed a visible-snapshot frame into the pipeline group`,
+    )
   }
-  if (mode === 'unseeded' && sample.cachedFrameCount !== 0) {
-    throw createBenchmarkError('unseeded sample painted a cached frame')
+  if (!sample.quiescent) throw createBenchmarkError(`${sample.mode} reset did not prove quiescence`)
+  if (sample.mode === 'miss' || sample.mode === 'query-only') {
+    if (sample.targetIntents !== 0 || sample.nonTargetIntents !== 0) {
+      throw createBenchmarkError(
+        `${sample.mode} fired Foresight intents: target=${sample.targetIntents}, nonTarget=${sample.nonTargetIntents}, relativeMarkMs=${sample.intentMarkMs}`,
+      )
+    }
+    return
   }
-  if (
-    mode === 'seeded' &&
-    sample.cachedFrameMs !== null &&
-    sample.authoritativeHighlightMs !== null &&
-    sample.cachedFrameMs > sample.authoritativeHighlightMs
-  ) {
-    throw createBenchmarkError('cached frame landed after authoritative highlight paint')
+  if (sample.targetIntents < 1) {
+    throw createBenchmarkError(`${sample.mode} did not fire the real Foresight adapter`)
   }
 }
 
 function randomizedModes(samplesPerMode, seed) {
-  const modes = Array.from({ length: samplesPerMode }, () => ['seeded', 'unseeded']).flat()
+  const ordered = Array.from({ length: samplesPerMode }, () => modes).flat()
   const random = seededRandom(seed)
-  for (let index = modes.length - 1; index > 0; index -= 1) {
+  for (let index = ordered.length - 1; index > 0; index -= 1) {
     const target = Math.floor(random() * (index + 1))
-    const value = modes[index]
-    modes[index] = modes[target]
-    modes[target] = value
+    const value = ordered[index]
+    ordered[index] = ordered[target]
+    ordered[target] = value
   }
-  return modes
+  return ordered
 }
 
 function seededRandom(seed) {
@@ -323,43 +450,39 @@ function seededRandom(seed) {
   }
 }
 
-function summarize(samples, calibration) {
-  const seeded = samples.filter((sample) => sample.mode === 'seeded')
-  const unseeded = samples.filter((sample) => sample.mode === 'unseeded')
-  const seededSummary = summarizeMode(seeded)
-  const unseededSummary = summarizeMode(unseeded)
+function summarize(browserName, samples) {
+  const byMode = Object.fromEntries(
+    modes.map((mode) => [mode, summarizeMode(samples.filter((sample) => sample.mode === mode))]),
+  )
+  const missNoiseMs = pairedNoiseFloor(samples.filter((sample) => sample.mode === 'miss'))
   return {
-    calibration: {
-      captureDurationMs: calibration.capture?.durationMs ?? null,
-      chunks: calibration.capture?.detail?.chunks ?? null,
-      materializeMs: calibration.materialize?.durationMs ?? null,
-      parts: calibration.capture?.detail?.parts ?? null,
-      rows: calibration.capture?.detail?.rows ?? null,
-      runs: calibration.capture?.detail?.runs ?? null,
-      serializedBytes: calibration.serialized.length * 2,
-    },
+    browser: browserName,
     config: {
       filePath: options.filePath,
+      gate: options.gate,
+      gateCalibration,
       samplesPerMode: options.samplesPerMode,
       seed: options.seed,
+      warmCacheModel:
+        'one browser/page; unique identical-byte TSX paths; balanced warmups; provider/grammar/theme/module/font caches retained; exact file/LSP/document/view/worker-runtime state reset per sample',
       warmupsPerMode: options.warmupsPerMode,
     },
+    modes: byMode,
     paired: {
-      cachedVisualBeforeAuthoritativeHighlightP50Ms: difference(
-        seededSummary.authoritativeHighlightMs.p50,
-        seededSummary.cachedFrameMs.p50,
+      missNoiseMs,
+      prepared300HighlightImprovementMs: difference(
+        byMode['query-only'].authoritativeHighlightMs.p50,
+        byMode['prepared-300'].authoritativeHighlightMs.p50,
       ),
-      seededMinusUnseededAuthoritativeHighlightP50Ms: difference(
-        seededSummary.authoritativeHighlightMs.p50,
-        unseededSummary.authoritativeHighlightMs.p50,
+      prepared300HighlightImprovementRatio: ratioImprovement(
+        byMode['query-only'].authoritativeHighlightMs.p50,
+        byMode['prepared-300'].authoritativeHighlightMs.p50,
       ),
-      seededMinusUnseededAuthoritativeTextP50Ms: difference(
-        seededSummary.authoritativeTextMs.p50,
-        unseededSummary.authoritativeTextMs.p50,
+      prepared300TextImprovementMs: difference(
+        byMode['query-only'].authoritativeTextMs.p50,
+        byMode['prepared-300'].authoritativeTextMs.p50,
       ),
     },
-    seeded: seededSummary,
-    unseeded: unseededSummary,
   }
 }
 
@@ -368,35 +491,90 @@ function summarizeMode(samples) {
     samples: samples.length,
     authoritativeHighlightMs: distribution(samples, 'authoritativeHighlightMs'),
     authoritativeTextMs: distribution(samples, 'authoritativeTextMs'),
-    cachedFrameMs: distribution(samples, 'cachedFrameMs'),
-    captureDurationMs: distribution(samples, 'captureDurationMs'),
-    encodeMs: distribution(samples, 'encodeMs'),
-    longTaskCount: distribution(samples, 'longTaskCount'),
-    longTaskMaxMs: distribution(samples, 'longTaskMaxMs'),
-    longTaskTotalMs: distribution(samples, 'longTaskTotalMs'),
-    materializeMs: distribution(samples, 'materializeMs'),
-    parseMs: distribution(samples, 'parseMs'),
-    renderMs: distribution(samples, 'renderMs'),
-    serializedBytes: distribution(samples, 'serializedBytes'),
-    counts: {
-      chunks: lastPresent(samples, 'chunks'),
-      parts: lastPresent(samples, 'parts'),
-      rows: lastPresent(samples, 'rows'),
-      runs: lastPresent(samples, 'runs'),
-    },
+    leadMs: distribution(samples, 'leadMs'),
+    structural: Object.fromEntries(
+      [
+        'bufferBuilds',
+        'evictions',
+        'fileReads',
+        'highlighterSessionCreations',
+        'lineIndexScans',
+        'nonTargetIntents',
+        'preparedClaims',
+        'promotedBytes',
+        'structuralSessionCreations',
+        'targetIntents',
+        'wastedIntents',
+        'workerOpenRequests',
+        'workerParseRequests',
+        'workerQueryRequests',
+        'workerRefreshRequests',
+        'workerRequests',
+      ].map((key) => [key, distribution(samples, key)]),
+    ),
+    promotionStages: tally(samples.map((sample) => sample.promotionStage)),
+  }
+}
+
+function validateGate(summary, samples) {
+  const prepared300 = samples.filter((sample) => sample.mode === 'prepared-300')
+  const structuralFailures = prepared300.filter(
+    (sample) =>
+      sample.fileReads !== 0 ||
+      sample.bufferBuilds !== 0 ||
+      sample.lineIndexScans !== 0 ||
+      sample.structuralSessionCreations !== 0 ||
+      sample.highlighterSessionCreations !== 0 ||
+      sample.workerOpenRequests !== 0 ||
+      sample.workerParseRequests !== 0 ||
+      sample.workerQueryRequests !== 0,
+  )
+  if (structuralFailures.length > 0) {
+    throw createBenchmarkError(
+      `prepared-300 started transferable work after activation in ${structuralFailures.length} samples`,
+    )
+  }
+  if (prepared300.some((sample) => sample.preparedClaims !== 1)) {
+    throw createBenchmarkError('prepared-300 did not promote exactly one prepared claim per sample')
+  }
+  if (summary.paired.prepared300HighlightImprovementMs <= summary.paired.missNoiseMs) {
+    throw createBenchmarkError(
+      `prepared-300 highlight improvement ${summary.paired.prepared300HighlightImprovementMs}ms did not exceed ${summary.paired.missNoiseMs}ms noise`,
+    )
+  }
+  if (
+    summary.paired.prepared300HighlightImprovementRatio <
+    gateCalibration.minimumPrepared300HighlightImprovementRatio
+  ) {
+    throw createBenchmarkError(
+      `prepared-300 relative highlight improvement ${summary.paired.prepared300HighlightImprovementRatio} did not reach calibrated ${gateCalibration.minimumPrepared300HighlightImprovementRatio}`,
+    )
   }
 }
 
 function distribution(samples, key) {
-  const values = samples.map((sample) => sample[key]).filter((value) => value !== null)
-  return {
-    p50: percentile(values, 0.5),
-    p95: percentile(values, 0.95),
-  }
+  const values = samples.map((sample) => sample[key]).filter((value) => Number.isFinite(value))
+  return { p50: percentile(values, 0.5), p95: percentile(values, 0.95) }
 }
 
-function lastPresent(samples, key) {
-  return samples.findLast((sample) => sample[key] !== null)?.[key] ?? null
+function pairedNoiseFloor(samples) {
+  const values = samples
+    .map((sample) => sample.authoritativeHighlightMs)
+    .toSorted((left, right) => left - right)
+  const median = percentile(values, 0.5)
+  const deviations = values.map((value) => Math.abs(value - median))
+  return round(Math.max(1, percentile(deviations, 0.5) * 1.4826 * 2))
+}
+
+function ratioImprovement(baseline, candidate) {
+  if (baseline <= 0) return 0
+  return round((baseline - candidate) / baseline)
+}
+
+function tally(values) {
+  const counts = {}
+  for (const value of values) counts[value] = (counts[value] ?? 0) + 1
+  return counts
 }
 
 function difference(left, right) {
@@ -412,12 +590,26 @@ function roundSample(sample) {
   )
 }
 
-function currentWorkspaceCachePrefix() {
-  const source = readFileSync(
-    new URL('../src/lib/workspace-cache-storage.ts', import.meta.url),
-    'utf8',
+function leadForMode(mode) {
+  return Number(mode.slice('prepared-'.length))
+}
+
+function joinClientPath(rootPath, path) {
+  if (!rootPath || rootPath === '.') return path
+  return `${rootPath.replace(/\/$/, '')}/${path.replace(/^\//, '')}`
+}
+
+function attributeSelector(value) {
+  return `[data-editor-tab-path=${JSON.stringify(value)}]`
+}
+
+async function parkPointer(page) {
+  await page.mouse.move(8, 890)
+  await nextFrames(page)
+}
+
+function nextFrames(page) {
+  return page.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
   )
-  const match = source.match(/WORKSPACE_CACHE_VERSION\s*=\s*(\d+)/)
-  if (!match) throw createBenchmarkError('could not read workspace cache version')
-  return `platform.workspace-state.v${match[1]}`
 }

@@ -1,9 +1,10 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { waitFor } from '@testing-library/react'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { useLanguageServerMatches } from '@/features/editor/hooks/use-language-server-matches'
 import { expect, test } from '../../../../../test/fixtures'
+import { renderHookWithProviders } from '../../../../../test/render'
 
 test('returns every match for a path through the real match route', async ({ client, server }) => {
   void client
@@ -14,7 +15,7 @@ test('returns every match for a path through the real match route', async ({ cli
     'package.json': '{}',
     'src/file.ts': 'export const value = 1\n',
   })
-  const { result } = renderHook(() => useLanguageServerMatches('', 'src/file.ts'))
+  const { result } = renderHookWithProviders(() => useLanguageServerMatches('', 'src/file.ts'))
 
   await waitFor(() => expect(result.current).not.toBeNull())
   expect(result.current?.map((match) => match.serverId)).toEqual([
@@ -35,7 +36,7 @@ test('does not expose a previous path result after the target changes', async ({
     'src/file.ts': 'export const value = 1\n',
     'src/readme.md': '# Notes\n',
   })
-  const { result, rerender } = renderHook(
+  const { result, rerender } = renderHookWithProviders(
     ({ matchPath }) => useLanguageServerMatches('', matchPath),
     { initialProps: { matchPath: 'src/file.ts' } },
   )
@@ -46,7 +47,9 @@ test('does not expose a previous path result after the target changes', async ({
 })
 
 test('keeps the disabled result referentially stable', () => {
-  const { result, rerender } = renderHook(() => useLanguageServerMatches('', 'src/file.ts', false))
+  const { result, rerender } = renderHookWithProviders(() =>
+    useLanguageServerMatches('', 'src/file.ts', false),
+  )
   const first = result.current
 
   rerender()

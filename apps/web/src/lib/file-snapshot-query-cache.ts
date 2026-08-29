@@ -22,10 +22,20 @@ export function fileSnapshotQueryOptions(path: string, config: FileSnapshotQuery
   const fetcher = config.fetcher ?? fetchFile
   return {
     gcTime: FILE_SNAPSHOT_QUERY_GC_TIME_MS,
-    queryFn: ({ signal }: { signal: AbortSignal }) => fetcher(path, signal),
+    queryFn: ({ signal }: { signal: AbortSignal }) => {
+      markEditorOpenBenchmark('editor.file_open.file_read', path)
+      return fetcher(path, signal)
+    },
     queryKey: fileSystemKeys.fileSnapshot(path),
     staleTime: FILE_SNAPSHOT_STALE_MS,
   }
+}
+
+function markEditorOpenBenchmark(name: string, path: string): void {
+  const traceGlobal = globalThis as typeof globalThis & { readonly __editorPerfTrace?: unknown }
+  if (!traceGlobal.__editorPerfTrace) return
+
+  globalThis.performance?.mark(name, { detail: { path } })
 }
 
 export function setFileSnapshotQueryData(
@@ -54,6 +64,14 @@ export function prefetchFileSnapshotQuery(
   }
 
   return queryClient.prefetchQuery(fileSnapshotQueryOptions(path, config))
+}
+
+export function ensureFileSnapshotQuery(
+  queryClient: QueryClient,
+  path: string,
+  config: FileSnapshotQueryConfig = {},
+) {
+  return queryClient.fetchQuery(fileSnapshotQueryOptions(path, config))
 }
 
 export function installFileSnapshotQueryCachePolicy(queryClient: QueryClient) {
@@ -128,4 +146,10 @@ function isFileSnapshotQueryKey(
     queryKey[1] === fileSystemKeys.fileSnapshots()[1] &&
     typeof queryKey[2] === 'string'
   )
+}
+
+export function fileSnapshotPathFromQueryKey(queryKey: QueryKey): string | null {
+  if (!isFileSnapshotQueryKey(queryKey)) return null
+
+  return queryKey[2]
 }

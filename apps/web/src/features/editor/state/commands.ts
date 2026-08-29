@@ -35,6 +35,7 @@ import {
   renameEditorPathInWorkbenchPanels,
   reorderEditorTabInWorkbenchPanels,
   selectEditorTabInWorkbenchPanels,
+  activeEditorTabForWorkbenchPanels,
   type WorkbenchPanels,
 } from '@/features/workbench/utils/panels'
 import { searchBufferDocumentId } from '@/features/search/utils/buffer-document'
@@ -48,6 +49,9 @@ import type { LanguageServerDefinitionTarget } from '@singapor/lsp-plugin'
 import { useMemo } from 'react'
 import { settingsDocumentId } from '@/features/settings/utils/document'
 import { editorTabDocumentIds } from '@/features/workspace/utils/tab-dirty'
+import { useFileOpenIntent } from '@/lib/file-open-intent/providers/context'
+import type { FileOpenIntentService } from '@/lib/file-open-intent/state/service'
+import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
 
 export type EditorCommands = {
   closeTab: (tabId: string) => void
@@ -76,64 +80,87 @@ export type EditorCommands = {
   switchRootFolder: (rootFolder: PickedFsEntry) => void
 }
 
+export type EditorActivation = {
+  activate(path: string, tabId: string): void
+  setRoot(rootPath: string | null): void
+}
+
 export function useEditorCommands() {
   const documentStore = useEditorDocumentStoreApi()
   const searchStore = useSearchBufferStoreApi()
   const uiStore = useEditorUiStoreApi()
   const workspaceStore = useEditorWorkspaceStoreApi()
+  const { service: fileOpenIntent } = useFileOpenIntent()
+  const activation = useMemo(
+    () => createEditorActivation(fileOpenIntent, documentStore),
+    [documentStore, fileOpenIntent],
+  )
 
   return useMemo(
-    () => createEditorCommands({ documentStore, searchStore, uiStore, workspaceStore }),
-    [documentStore, searchStore, uiStore, workspaceStore],
+    () => createEditorCommands({ activation, documentStore, searchStore, uiStore, workspaceStore }),
+    [activation, documentStore, searchStore, uiStore, workspaceStore],
   )
 }
 
 export function createEditorCommands({
+  activation,
   documentStore,
   searchStore,
   uiStore,
   workspaceStore,
 }: {
+  activation: EditorActivation
   documentStore: EditorDocumentStoreApi
   searchStore: SearchBufferStoreApi
   uiStore: EditorUiStoreApi
   workspaceStore: EditorWorkspaceStoreApi
 }): EditorCommands {
   return {
-    closeTab: (tabId) => closeTab(tabId, workspaceStore, documentStore, uiStore),
+    closeTab: (tabId) => closeTab(tabId, workspaceStore, documentStore, uiStore, activation),
     discardAndCloseTab: (tabId) =>
-      closeTab(tabId, workspaceStore, documentStore, uiStore, {
+      closeTab(tabId, workspaceStore, documentStore, uiStore, activation, {
         discard: true,
       }),
     discardLiveEditorDocument: (path) =>
-      discardLiveEditorDocument(path, workspaceStore, documentStore, uiStore),
+      discardLiveEditorDocument(path, workspaceStore, documentStore, uiStore, activation),
     moveTabToPane: () => false,
     moveTabToSplit: () => false,
-    openDefinition: (target) => openDefinition(target, workspaceStore, uiStore),
-    openFileSurface: (path) => openEditorPathSurface(path, workspaceStore),
+    openDefinition: (target) => openDefinition(target, workspaceStore, uiStore, activation),
+    openFileSurface: (path) => openEditorPathSurface(path, workspaceStore, activation),
     openSearchEditor: (rootPath) =>
-      openEditorPathSurface(searchBufferDocumentId(rootPath), workspaceStore),
+      openEditorPathSurface(searchBufferDocumentId(rootPath), workspaceStore, activation),
     // Dedupes by path like every other editor surface, so the settings tab is a
     // singleton without any bookkeeping of its own.
-    openSettingsEditor: () => openEditorPathSurface(settingsDocumentId(), workspaceStore),
-    reopenClosedEditor: () => reopenClosedEditor(workspaceStore),
+    openSettingsEditor: () =>
+      openEditorPathSurface(settingsDocumentId(), workspaceStore, activation),
+    reopenClosedEditor: () => reopenClosedEditor(workspaceStore, activation),
     renameLiveEditorDocument: (from, to) =>
-      renameLiveEditorDocument(from, to, workspaceStore, documentStore, uiStore),
+      renameLiveEditorDocument(from, to, workspaceStore, documentStore, uiStore, activation),
     reorderTab: (_paneId, tabId, targetIndex) => reorderTab(tabId, targetIndex, workspaceStore),
-    selectFile: (path) => selectFile(path, workspaceStore),
-    selectPreviousEditor: () => selectPreviousEditor(workspaceStore),
-    selectTab: (_paneId, tabId) => selectTab(tabId, workspaceStore),
+    selectFile: (path) => selectFile(path, workspaceStore, activation),
+    selectPreviousEditor: () => selectPreviousEditor(workspaceStore, activation),
+    selectTab: (_paneId, tabId) => selectTab(tabId, workspaceStore, activation),
     setActivePane: () => undefined,
     splitTab: () => false,
     switchRootFolder: (rootFolder) =>
-      switchRootFolder(rootFolder, { documentStore, searchStore, uiStore, workspaceStore }),
+      switchRootFolder(rootFolder, {
+        activation,
+        documentStore,
+        searchStore,
+        uiStore,
+        workspaceStore,
+      }),
   }
 }
 
-function selectFile(selectedFilePath: string | null, workspaceStore: EditorWorkspaceStoreApi) {
+function selectFile(
+  selectedFilePath: string | null,
+  workspaceStore: EditorWorkspaceStoreApi,
+  activation: EditorActivation,
+) {
   if (!selectedFilePath) return
 
-  openEditorPathSurface(selectedFilePath, workspaceStore)
+  openEditorPathSurface(selectedFilePath, workspaceStore, activation)
 }
 
 /**
@@ -147,6 +174,7 @@ function selectFile(selectedFilePath: string | null, workspaceStore: EditorWorks
 export function openEditorPathSurface(
   selectedFilePath: string,
   workspaceStore: EditorWorkspaceStoreApi,
+  activation: EditorActivation,
 ) {
   const workspace = workspaceStore.getState()
   const workbenchPanels = openEditorPathInWorkbenchPanels(
@@ -165,6 +193,7 @@ export function openEditorPathSurface(
     workspace,
   })
 
+  activateWorkbenchSelection(workbenchPanels, activation)
   workspaceStore.setState({
     ...nextSelection,
     editorHistory: editorHistoryForSelection(workspace.editorHistory, selectedFilePath),
@@ -205,8 +234,9 @@ function openDefinition(
   definitionTarget: LanguageServerDefinitionTarget,
   workspaceStore: EditorWorkspaceStoreApi,
   uiStore: EditorUiStoreApi,
+  activation: EditorActivation,
 ) {
-  openEditorPathSurface(definitionTarget.path, workspaceStore)
+  openEditorPathSurface(definitionTarget.path, workspaceStore, activation)
   uiStore.setState({
     definitionTarget,
     statusBarSource: null,
@@ -224,11 +254,13 @@ function openDefinition(
 function switchRootFolder(
   rootFolder: PickedFsEntry,
   {
+    activation,
     documentStore,
     searchStore,
     uiStore,
     workspaceStore,
   }: {
+    activation: EditorActivation
     documentStore: EditorDocumentStoreApi
     searchStore: SearchBufferStoreApi
     uiStore: EditorUiStoreApi
@@ -239,6 +271,8 @@ function switchRootFolder(
   if (previousRootPath === rootFolder.path) return
 
   uiStore.getState().resetEditorUiState()
+  activation.setRoot(rootFolder.path)
+  activateRestoredWorkspace(rootFolder.path, workspaceStore.getState(), activation)
   workspaceStore.getState().switchWorkspace(rootFolder)
   searchStore.getState().switchWorkspace(rootFolder.path)
   documentStore.getState().retainEditorDocuments(retentionForWorkspaces(workspaceStore.getState()))
@@ -292,6 +326,7 @@ function closeTab(
   workspaceStore: EditorWorkspaceStoreApi,
   documentStore: EditorDocumentStoreApi,
   uiStore: EditorUiStoreApi,
+  activation: EditorActivation,
   options: { discard?: boolean } = {},
 ) {
   const workspace = workspaceStore.getState()
@@ -323,6 +358,7 @@ function closeTab(
 
   const selectedFilePath = nextSelection.selectedFilePath
   updateUiForClosedPath(path, selectedFilePath, remainingCount, uiStore)
+  activateWorkbenchSelection(nextPanels, activation)
   workspaceStore.setState({
     ...nextSelection,
     editorHistory:
@@ -343,6 +379,7 @@ function discardLiveEditorDocument(
   workspaceStore: EditorWorkspaceStoreApi,
   documentStore: EditorDocumentStoreApi,
   uiStore: EditorUiStoreApi,
+  activation: EditorActivation,
 ) {
   const workspace = workspaceStore.getState()
   const result = documentStore.getState().deleteLiveEditorDocument(path)
@@ -351,6 +388,7 @@ function discardLiveEditorDocument(
   const selectedFilePath = nextSelection.selectedFilePath
 
   updateUiForClosedPath(path, selectedFilePath, 0, uiStore)
+  activateWorkbenchSelection(nextPanels, activation)
   workspaceStore.setState({
     ...nextSelection,
     editorHistory: editorHistoryForClosedPath(workspace.editorHistory, path),
@@ -359,12 +397,12 @@ function discardLiveEditorDocument(
   return { wasDirty: result.wasDirty }
 }
 
-function reopenClosedEditor(workspaceStore: EditorWorkspaceStoreApi) {
+function reopenClosedEditor(workspaceStore: EditorWorkspaceStoreApi, activation: EditorActivation) {
   const workspace = workspaceStore.getState()
   const path = workspace.recentlyClosedEditorPaths[0]
   if (!path) return false
 
-  selectFile(path, workspaceStore)
+  selectFile(path, workspaceStore, activation)
   workspaceStore.setState((state) => ({
     recentlyClosedEditorPaths: recentlyClosedEditorPathsForReopen(
       state.recentlyClosedEditorPaths,
@@ -374,7 +412,10 @@ function reopenClosedEditor(workspaceStore: EditorWorkspaceStoreApi) {
   return true
 }
 
-function selectPreviousEditor(workspaceStore: EditorWorkspaceStoreApi) {
+function selectPreviousEditor(
+  workspaceStore: EditorWorkspaceStoreApi,
+  activation: EditorActivation,
+) {
   const workspace = workspaceStore.getState()
   const path = previousOpenEditorPath(
     workspace.editorHistory,
@@ -383,7 +424,7 @@ function selectPreviousEditor(workspaceStore: EditorWorkspaceStoreApi) {
   )
   if (!path) return false
 
-  selectFile(path, workspaceStore)
+  selectFile(path, workspaceStore, activation)
   return true
 }
 
@@ -393,10 +434,12 @@ function renameLiveEditorDocument(
   workspaceStore: EditorWorkspaceStoreApi,
   documentStore: EditorDocumentStoreApi,
   uiStore: EditorUiStoreApi,
+  activation: EditorActivation,
 ) {
   const workspace = workspaceStore.getState()
   const result = documentStore.getState().renameLiveEditorDocumentPath(from, to)
   const workbenchPanels = renameEditorPathInWorkbenchPanels(workspace.workbenchPanels, from, to)
+  activateWorkbenchSelection(workbenchPanels, activation)
   workspaceStore.setState({
     ...editorWorkspaceSelectionForWorkbenchPanelsForState(workspace, workbenchPanels),
     editorHistory: editorHistoryForRenamedPath(workspace.editorHistory, from, to),
@@ -427,7 +470,11 @@ function reorderTab(tabId: string, targetIndex: number, workspaceStore: EditorWo
   return true
 }
 
-function selectTab(tabId: string, workspaceStore: EditorWorkspaceStoreApi) {
+function selectTab(
+  tabId: string,
+  workspaceStore: EditorWorkspaceStoreApi,
+  activation: EditorActivation,
+) {
   const workspace = workspaceStore.getState()
   const workbenchPanels = selectEditorTabInWorkbenchPanels(workspace.workbenchPanels, tabId)
   if (workbenchPanels === workspace.workbenchPanels) return
@@ -438,6 +485,7 @@ function selectTab(tabId: string, workspaceStore: EditorWorkspaceStoreApi) {
   )
   const selectedFilePath = nextSelection.selectedFilePath
 
+  activateWorkbenchSelection(workbenchPanels, activation)
   workspaceStore.setState({
     ...nextSelection,
     editorHistory: editorHistoryForSelection(workspace.editorHistory, selectedFilePath),
@@ -459,6 +507,53 @@ function editorTabForId(panels: WorkbenchPanels, tabId: string) {
 
 function editorTabForPath(panels: WorkbenchPanels, path: string) {
   return panels.editorTabs.find((tab) => tab.path === path) ?? null
+}
+
+export function createEditorActivation(
+  fileOpenIntent: FileOpenIntentService,
+  documentStore: EditorDocumentStoreApi,
+): EditorActivation {
+  return {
+    activate: (path, tabId) => {
+      const filePath = fileBackedDocumentPath(path)
+      if (!filePath) return
+
+      const liveClaim = fileOpenIntent.claimLive(filePath)
+      if (liveClaim) {
+        documentStore.getState().ensureEditorViewForDocument(tabId, liveClaim.documentId, liveClaim)
+        return
+      }
+      const cleanClaim = fileOpenIntent.claimReadyClean(filePath)
+      if (cleanClaim) {
+        documentStore.getState().ensureEditorView(tabId, cleanClaim.file, cleanClaim)
+        return
+      }
+
+      const liveDocument = documentStore.getState().getLiveEditorDocument(filePath)
+      if (liveDocument) {
+        documentStore.getState().ensureEditorViewForDocument(tabId, liveDocument.id)
+      }
+    },
+    setRoot: (rootPath) => fileOpenIntent.setRoot(rootPath),
+  }
+}
+
+function activateWorkbenchSelection(panels: WorkbenchPanels, activation: EditorActivation): void {
+  const tab = activeEditorTabForWorkbenchPanels(panels)
+  if (!tab) return
+
+  activation.activate(tab.path, tab.id)
+}
+
+function activateRestoredWorkspace(
+  rootPath: string,
+  workspace: EditorWorkspaceStore,
+  activation: EditorActivation,
+): void {
+  const restored = workspace.parkedWorkspaces.get(rootPath)
+  if (!restored) return
+
+  activateWorkbenchSelection(restored.workbenchPanels, activation)
 }
 
 function updateUiForClosedPath(
