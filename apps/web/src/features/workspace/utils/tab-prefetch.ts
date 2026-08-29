@@ -1,4 +1,5 @@
 import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
+import type { FileOpenIntent } from '@/lib/file-open-intent/state/service'
 
 export type EditorTabPrefetchCandidate = {
   active?: boolean
@@ -24,4 +25,16 @@ export function editorTabPrefetchTarget(
 
 export function editorTabPrefetchRegistrationKey(target: EditorTabPrefetchTarget) {
   return `${target.id}:${target.path}`
+}
+
+export function editorTabFileOpenIntent(
+  rootPath: string,
+  target: EditorTabPrefetchTarget,
+): FileOpenIntent {
+  return {
+    path: target.path,
+    rootPath,
+    source: 'tab',
+    tabId: target.id,
+  }
 }

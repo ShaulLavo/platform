@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   canPrefetchFileEntry,
   FILE_TREE_PREFETCH_MAX_BYTES,
+  fileTreeFileOpenIntent,
   treeDirectoryPrefetchKey,
 } from '@/features/workspace/utils/file-tree-prefetch'
 import type { TreeEntry } from '@/lib/file-system-types'
@@ -24,6 +25,15 @@ describe('file tree prefetch helpers', () => {
       false,
     )
     expect(canPrefetchFileEntry(directory('repo/src'))).toBe(false)
+  })
+
+  it('creates the structured file-tree intent passed to the shared service', () => {
+    expect(fileTreeFileOpenIntent('/repo', file('/repo/src/app.ts', 128))).toEqual({
+      knownSize: 128,
+      path: '/repo/src/app.ts',
+      rootPath: '/repo',
+      source: 'file-tree',
+    })
   })
 })
 

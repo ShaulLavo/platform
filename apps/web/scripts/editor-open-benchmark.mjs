@@ -643,6 +643,7 @@ function summarize(browserName, samples, compatibilitySamples) {
       calibrate: options.calibrate,
       gate: options.gate,
       gateCalibration: calibrationContract(browserName),
+      primaryComparison: 'query-only vs prepared-300',
       samplesPerMode: options.samplesPerMode,
       seed: options.seed,
       warmCacheModel:
@@ -759,9 +760,9 @@ function validateGate(summary, samples) {
   assertTransferredRuntimeIdsAreScoped(prepared300, 'structural')
   assertUniqueRuntimeSessionIds(samples, 'highlighterRuntimeSessionIds')
   assertUniqueRuntimeSessionIds(samples, 'structuralRuntimeSessionIds')
-  if (summary.paired.missPrepared300HighlightImprovementMs <= summary.paired.missNoiseMs) {
+  if (summary.paired.queryOnlyPrepared300HighlightImprovementMs <= summary.paired.missNoiseMs) {
     throw createBenchmarkError(
-      `prepared-300 highlight improvement ${summary.paired.missPrepared300HighlightImprovementMs}ms did not exceed ${summary.paired.missNoiseMs}ms noise`,
+      `prepared-300 improvement over query-only ${summary.paired.queryOnlyPrepared300HighlightImprovementMs}ms did not exceed ${summary.paired.missNoiseMs}ms noise`,
     )
   }
   if (options.calibrate) return
@@ -769,13 +770,6 @@ function validateGate(summary, samples) {
   const calibration = calibrationContract(summary.browser)
   if (!calibration) {
     throw createBenchmarkError('editor-open gate requires three recorded paired calibration runs')
-  }
-  if (
-    summary.paired.missPrepared300HighlightImprovementRatio < calibration.minimumImprovementRatio
-  ) {
-    throw createBenchmarkError(
-      `prepared-300 relative highlight improvement ${summary.paired.missPrepared300HighlightImprovementRatio} did not reach calibrated ${calibration.minimumImprovementRatio}`,
-    )
   }
   if (summary.modes.miss.authoritativeHighlightMs.p50 > calibration.missUpperBoundMs) {
     throw createBenchmarkError(
@@ -787,6 +781,14 @@ function validateGate(summary, samples) {
   ) {
     throw createBenchmarkError(
       `query-only highlight p50 ${summary.modes['query-only'].authoritativeHighlightMs.p50}ms regressed past calibrated ${calibration.queryOnlyUpperBoundMs}ms`,
+    )
+  }
+  if (
+    summary.paired.queryOnlyPrepared300HighlightImprovementRatio <
+    calibration.minimumImprovementRatio
+  ) {
+    throw createBenchmarkError(
+      `prepared-300 relative improvement over query-only ${summary.paired.queryOnlyPrepared300HighlightImprovementRatio} did not reach calibrated ${calibration.minimumImprovementRatio}`,
     )
   }
 }
@@ -814,7 +816,10 @@ function calibrationContract(browserName) {
   if (evidence.length < 3) return null
 
   const noiseAdjustedRatios = evidence.map((run) =>
-    ratioImprovement(run.missHighlightP50Ms, run.finalPrepared300HighlightP50Ms + run.missNoiseMs),
+    ratioImprovement(
+      run.baselineQueryOnlyHighlightP50Ms,
+      run.finalPrepared300HighlightP50Ms + run.missNoiseMs,
+    ),
   )
   return {
     evidence,

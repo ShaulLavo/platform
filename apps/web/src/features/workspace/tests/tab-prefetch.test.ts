@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   editorTabPrefetchRegistrationKey,
+  editorTabFileOpenIntent,
   editorTabPrefetchTarget,
 } from '@/features/workspace/utils/tab-prefetch'
 import { conflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
@@ -20,6 +21,15 @@ describe('editor tab prefetch helpers', () => {
     expect(editorTabPrefetchTarget({ id: 'tab-a', path: '/repo/src/app.ts' })).toEqual({
       id: 'tab-a',
       path: '/repo/src/app.ts',
+    })
+  })
+
+  it('creates the structured tab intent passed to the shared service', () => {
+    expect(editorTabFileOpenIntent('/repo', { id: 'tab-a', path: '/repo/src/app.ts' })).toEqual({
+      path: '/repo/src/app.ts',
+      rootPath: '/repo',
+      source: 'tab',
+      tabId: 'tab-a',
     })
   })
 

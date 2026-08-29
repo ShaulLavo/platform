@@ -12,9 +12,10 @@ import { useEditorSurfaceActions } from '@/features/workbench/hooks/use-editor-s
 import { useEditorVisibleSnapshot } from '@/features/workbench/hooks/use-editor-visible-snapshot'
 import { useHeldLiveDocument } from '@/features/workbench/hooks/use-held-live-document'
 import { EditorVisibleSnapshot } from '@/features/workbench/components/editor-visible-snapshot'
+import { useFileOpenIntent } from '@/lib/file-open-intent/providers/context'
 import type { FileResult } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
-import type { EditorKeymapLayer } from '@singapor/core'
+import type { EditorInitialPaintEvent, EditorKeymapLayer } from '@singapor/core'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
@@ -44,6 +45,7 @@ export function FileEditorBody({
   tabId: string
 }) {
   const actions = useEditorSurfaceActions()
+  const { service: fileOpenIntent } = useFileOpenIntent()
   // Neither a diff nor a compare document is file-backed, so neither can own a live editor
   // document. Both are parsed before the hook below, which has to run above every early exit.
   const diffDocument = parseDiffDocumentId(path)
@@ -75,6 +77,11 @@ export function FileEditorBody({
 
   function dismissVisibleSnapshot() {
     visibleSnapshot.dismissOverlay()
+  }
+
+  function recordInitialPaint(event: EditorInitialPaintEvent) {
+    visibleSnapshot.onInitialPaint(event)
+    fileOpenIntent.recordInitialPaint(path, event)
   }
 
   if (diffDocument) {
@@ -124,7 +131,7 @@ export function FileEditorBody({
             keymapLayers={editorKeymapLayers}
             rootPath={rootPath}
             tabId={tabId}
-            onInitialPaint={visibleSnapshot.onInitialPaint}
+            onInitialPaint={recordInitialPaint}
             onScrollPositionChange={
               currentActions
                 ? (changedPath, scrollPosition) => {

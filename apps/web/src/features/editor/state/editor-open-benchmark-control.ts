@@ -158,7 +158,15 @@ function closeTargetTabs(
   const targetTabs = workspaceStore
     .getState()
     .workbenchPanels.editorTabs.filter((tab) => tab.path === path)
-  for (const tab of targetTabs) commands.closeTab(tab.id)
+  if (targetTabs.length > 1) {
+    throw createClientInvariantError('Editor-open benchmark target is shared by multiple tabs')
+  }
+  const targetTab = targetTabs[0]
+  if (!targetTab) {
+    throw createClientInvariantError('Editor-open benchmark target tab is missing')
+  }
+
+  commands.closeTab(targetTab.id)
 
   const activeTabId = workspaceStore.getState().workbenchPanels.activeEditorTabId
   if (activeTabId) return

@@ -115,7 +115,7 @@ describe('editor workspace state', () => {
       uiStore,
       workspaceStore,
     })
-    service.prepare(path)
+    service.prepare({ path, rootPath: '/repo', source: 'tab', tabId: 'test-tab' })
     await vi.waitFor(() => expect(prepare).toHaveBeenCalledOnce())
     let preparedAtPublication: EditorPreparedDocument | null = null
     const unsubscribe = workspaceStore.subscribe((state) => {
@@ -374,7 +374,11 @@ function fileOpenIntentService(
   const service = new FileOpenIntentService(
     queryClient,
     {
-      environmentTag: 'test',
+      environment: {
+        configurationTag: ['test'],
+        highlighterProvider: null,
+        structuralProvider: null,
+      },
       prepare: (buffer) => ({
         ...prepare(buffer),
         documentConfigurationTag: [],

@@ -248,6 +248,7 @@ function ReadyTreePane({
 
   useFileTreeIntentPrefetch({
     model,
+    rootPath,
     tree,
   })
 

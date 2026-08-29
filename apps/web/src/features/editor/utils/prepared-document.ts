@@ -1,7 +1,9 @@
 import {
   createEditorPreparedDocument,
+  type EditorHighlighterProvider,
   type EditorPreparedDocument,
   type EditorPreparedTagValue,
+  type EditorSyntaxProvider,
   type EditorSyntaxLanguageId,
   type EditorTextBuffer,
 } from '@singapor/core'
@@ -38,18 +40,43 @@ export type EditorPreparedDocumentTags = {
 export function createPlatformFileOpenPreparer(
   environment: EditorPreparedEnvironment,
 ): FileOpenIntentPreparer {
+  const source = environment.syntaxHighlightingEnabled
+    ? editorSyntaxHighlightingSource(environment.selectedThemeId)
+    : 'disabled'
+  const highlighterProvider = source === 'shiki' ? editorShikiHighlighterProvider() : null
+  const structuralProvider = source === 'disabled' ? null : editorTreeSitterSyntaxProvider()
   return {
-    environmentTag: preparedEnvironmentTag(environment),
+    environment: {
+      configurationTag: preparedEnvironmentConfigurationTag(environment),
+      highlighterProvider,
+      structuralProvider,
+    },
     prepare: (buffer, documentId, path, abortSignal) => {
       const preparedDocument = prepareEditorDocument(buffer, documentId, path, environment)
       return {
         buffer,
         preparedDocument,
-        ...preparedDocumentConfiguration(preparedDocument, buffer, path, environment, abortSignal),
+        ...preparedDocumentConfiguration(
+          preparedDocument,
+          buffer,
+          path,
+          environment,
+          abortSignal,
+          highlighterProvider,
+          structuralProvider,
+        ),
       }
     },
     reconfigure: (preparedDocument, buffer, _documentId, path, abortSignal) =>
-      preparedDocumentConfiguration(preparedDocument, buffer, path, environment, abortSignal),
+      preparedDocumentConfiguration(
+        preparedDocument,
+        buffer,
+        path,
+        environment,
+        abortSignal,
+        highlighterProvider,
+        structuralProvider,
+      ),
   }
 }
 
@@ -99,13 +126,22 @@ function preparedDocumentConfiguration(
   path: string,
   environment: EditorPreparedEnvironment,
   abortSignal: AbortSignal,
+  highlighterProvider: EditorHighlighterProvider | null,
+  structuralProvider: EditorSyntaxProvider | null,
 ): FileOpenIntentPreparationConfiguration {
   const languageId = languageIdForFilePath(path)
   const source = environment.syntaxHighlightingEnabled
     ? editorSyntaxHighlightingSource(environment.selectedThemeId)
     : 'disabled'
   const tags = editorPreparedDocumentTags(path, environment)
-  const highlighter = highlighterPreparationStage(prepared, source, environment, tags, abortSignal)
+  const highlighter = highlighterPreparationStage(
+    prepared,
+    source,
+    environment,
+    tags,
+    abortSignal,
+    highlighterProvider,
+  )
   const structural = structuralPreparationStage(
     prepared,
     buffer,
@@ -113,6 +149,7 @@ function preparedDocumentConfiguration(
     source,
     tags,
     abortSignal,
+    structuralProvider,
   )
   return {
     documentConfigurationTag: tags.documentConfigurationTag,
@@ -129,15 +166,20 @@ function structuralPreparationStage(
   source: EditorSyntaxHighlightingSource,
   tags: EditorPreparedDocumentTags,
   abortSignal: AbortSignal,
+  provider: EditorSyntaxProvider | null,
 ): FileOpenIntentPreparationStage | null {
-  if (!languageId || source === 'disabled') return null
+  if (!languageId || source === 'disabled' || !provider) return null
 
   const snapshot = buffer.getSnapshot()
-  const provider = editorTreeSitterSyntaxProvider()
+  const range = {
+    startIndex: 0,
+    endIndex: Math.min(snapshot.length, PREPARED_VISIBLE_RANGE_CHARS),
+  }
   return {
     configurationTag: tags.structuralConfigurationTag,
     family: 'structural',
     provider,
+    range,
     start: () =>
       prepared.startStage({
         abortSignal,
@@ -149,10 +191,7 @@ function structuralPreparationStage(
         configurationTag: tags.structuralConfigurationTag,
         family: 'structural',
         provider,
-        range: {
-          startIndex: 0,
-          endIndex: Math.min(snapshot.length, PREPARED_VISIBLE_RANGE_CHARS),
-        },
+        range,
       }),
   }
 }
@@ -163,16 +202,18 @@ function highlighterPreparationStage(
   environment: EditorPreparedEnvironment,
   tags: EditorPreparedDocumentTags,
   abortSignal: AbortSignal,
+  provider: EditorHighlighterProvider | null,
 ): FileOpenIntentPreparationStage | null {
   if (source !== 'shiki') return null
   if (!environment.appliedThemeId) return null
   if (environment.appliedThemeId !== environment.selectedThemeId) return null
+  if (!provider) return null
 
-  const provider = editorShikiHighlighterProvider()
   return {
     configurationTag: tags.highlighterConfigurationTag,
     family: 'highlighter',
     provider,
+    range: 'full',
     start: () =>
       prepared.startStage({
         abortSignal,
@@ -184,11 +225,13 @@ function highlighterPreparationStage(
   }
 }
 
-function preparedEnvironmentTag(environment: EditorPreparedEnvironment): string {
+function preparedEnvironmentConfigurationTag(
+  environment: EditorPreparedEnvironment,
+): readonly EditorPreparedTagValue[] {
   return [
-    environment.appliedThemeId ?? '',
-    environment.appliedThemeContentHash ?? '',
+    environment.appliedThemeId,
+    environment.appliedThemeContentHash,
     environment.selectedThemeId,
-    String(environment.syntaxHighlightingEnabled),
-  ].join('\u0000')
+    environment.syntaxHighlightingEnabled,
+  ]
 }

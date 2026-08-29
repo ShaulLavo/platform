@@ -1,5 +1,6 @@
 import type { TreeEntry } from '@/lib/file-system-types'
 import { isFileEntry } from '@/lib/file-system-types'
+import type { FileOpenIntent } from '@/lib/file-open-intent/state/service'
 import { canonicalTreePath } from '@/lib/path-formatters'
 import { fileSystemKeys } from '@/lib/query-keys'
 
@@ -27,4 +28,15 @@ export function fileTreeRowPath(element: Element) {
   if (!path) return null
 
   return canonicalTreePath(path)
+}
+
+export function fileTreeFileOpenIntent(rootPath: string, entry: TreeEntry): FileOpenIntent | null {
+  if (!canPrefetchFileEntry(entry)) return null
+
+  return {
+    knownSize: entry.size,
+    path: entry.path,
+    rootPath,
+    source: 'file-tree',
+  }
 }

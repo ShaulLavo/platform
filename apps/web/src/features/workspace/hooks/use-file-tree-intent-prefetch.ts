@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useLayoutEffect, useRef } from 'react'
 
 import {
-  canPrefetchFileEntry,
+  fileTreeFileOpenIntent,
   fileTreeRowElements,
   fileTreeRowPath,
 } from '@/features/workspace/utils/file-tree-prefetch'
@@ -21,10 +21,15 @@ import type { FileTreeModel } from '@workspace/tree'
 
 type FileTreeIntentPrefetchOptions = {
   model: TreeModel
+  rootPath: string
   tree: FileTreeModel
 }
 
-export function useFileTreeIntentPrefetch({ model, tree }: FileTreeIntentPrefetchOptions) {
+export function useFileTreeIntentPrefetch({
+  model,
+  rootPath,
+  tree,
+}: FileTreeIntentPrefetchOptions) {
   const { service: fileOpenIntent } = useFileOpenIntent()
   const { prefetchDirectory } = useFileTreeActions()
   const modelRef = useRef(model)
@@ -40,9 +45,10 @@ export function useFileTreeIntentPrefetch({ model, tree }: FileTreeIntentPrefetc
       prefetchDirectory(entry, `${treePath}/`)
       return
     }
-    if (!canPrefetchFileEntry(entry)) return
+    const intent = fileTreeFileOpenIntent(rootPath, entry)
+    if (!intent) return
 
-    fileOpenIntent.prepare(entry.path)
+    fileOpenIntent.prepare(intent)
   })
 
   const syncRegistrations = useEffectEvent((registry: IntentPrefetchRegistry<string>) => {
@@ -78,7 +84,7 @@ export function useFileTreeIntentPrefetch({ model, tree }: FileTreeIntentPrefetc
       schedule.cancel()
       registry.clear()
     }
-  }, [tree])
+  }, [rootPath, tree])
 }
 
 function resolveFileTreeRow(element: HTMLElement): IntentPrefetchRow<string> | null {
