@@ -13,7 +13,11 @@ import {
   editorTreeSitterSyntaxProvider,
   type EditorSyntaxHighlightingSource,
 } from '@/features/editor/state/syntax-highlighting'
-import type { FileOpenIntentPreparer } from '@/lib/file-open-intent/state/service'
+import type {
+  FileOpenIntentPreparationConfiguration,
+  FileOpenIntentPreparationStage,
+  FileOpenIntentPreparer,
+} from '@/lib/file-open-intent/state/service'
 
 const PREPARED_VISIBLE_RANGE_CHARS = 300_000
 const DEFAULT_EDITOR_TAB_SIZE = 4
@@ -35,10 +39,17 @@ export function createPlatformFileOpenPreparer(
   environment: EditorPreparedEnvironment,
 ): FileOpenIntentPreparer {
   return {
+    environmentTag: preparedEnvironmentTag(environment),
     prepare: (buffer, documentId, path, abortSignal) => {
-      const preparation = prepareEditorDocument(buffer, documentId, path, environment, abortSignal)
-      return { buffer, ...preparation }
+      const preparedDocument = prepareEditorDocument(buffer, documentId, path, environment)
+      return {
+        buffer,
+        preparedDocument,
+        ...preparedDocumentConfiguration(preparedDocument, buffer, path, environment, abortSignal),
+      }
     },
+    reconfigure: (preparedDocument, buffer, _documentId, path, abortSignal) =>
+      preparedDocumentConfiguration(preparedDocument, buffer, path, environment, abortSignal),
   }
 }
 
@@ -69,112 +80,115 @@ function prepareEditorDocument(
   documentId: string,
   path: string,
   environment: EditorPreparedEnvironment,
+): EditorPreparedDocument {
+  const languageId = languageIdForFilePath(path)
+  const tags = editorPreparedDocumentTags(path, environment)
+  return createEditorPreparedDocument({
+    buffer,
+    configuredTabSize: DEFAULT_EDITOR_TAB_SIZE,
+    tabSizePolicy: 'detect-indentation',
+    documentConfigurationTag: tags.documentConfigurationTag,
+    documentId,
+    languageId,
+  })
+}
+
+function preparedDocumentConfiguration(
+  prepared: EditorPreparedDocument,
+  buffer: EditorTextBuffer,
+  path: string,
+  environment: EditorPreparedEnvironment,
   abortSignal: AbortSignal,
-): {
-  readonly preparedDocument: EditorPreparedDocument
-  readonly startStages: readonly (() => Promise<unknown> | null)[]
-} {
+): FileOpenIntentPreparationConfiguration {
   const languageId = languageIdForFilePath(path)
   const source = environment.syntaxHighlightingEnabled
     ? editorSyntaxHighlightingSource(environment.selectedThemeId)
     : 'disabled'
   const tags = editorPreparedDocumentTags(path, environment)
-  const prepared = createEditorPreparedDocument({
+  const highlighter = highlighterPreparationStage(prepared, source, environment, tags, abortSignal)
+  const structural = structuralPreparationStage(
+    prepared,
     buffer,
-    configuredTabSize: DEFAULT_EDITOR_TAB_SIZE,
-    documentConfigurationTag: tags.documentConfigurationTag,
-    documentId,
     languageId,
-  })
+    source,
+    tags,
+    abortSignal,
+  )
   return {
-    preparedDocument: prepared,
-    startStages: preparedStageStarters(
-      prepared,
-      buffer,
-      languageId,
-      source,
-      environment,
-      tags,
-      abortSignal,
+    documentConfigurationTag: tags.documentConfigurationTag,
+    stages: [highlighter, structural].filter(
+      (stage): stage is FileOpenIntentPreparationStage => stage !== null,
     ),
   }
 }
 
-function preparedStageStarters(
-  prepared: EditorPreparedDocument,
-  buffer: EditorTextBuffer,
-  languageId: EditorSyntaxLanguageId | null,
-  source: EditorSyntaxHighlightingSource,
-  environment: EditorPreparedEnvironment,
-  tags: EditorPreparedDocumentTags,
-  abortSignal: AbortSignal,
-): readonly (() => Promise<unknown> | null)[] {
-  const startHighlighter = highlighterPreparationStarter(
-    prepared,
-    source,
-    environment,
-    tags,
-    abortSignal,
-  )
-  const startStructural = structuralPreparationStarter(
-    prepared,
-    buffer,
-    languageId,
-    source,
-    tags,
-    abortSignal,
-  )
-  return [startHighlighter, startStructural].filter(
-    (start): start is () => Promise<unknown> | null => start !== null,
-  )
-}
-
-function structuralPreparationStarter(
+function structuralPreparationStage(
   prepared: EditorPreparedDocument,
   buffer: EditorTextBuffer,
   languageId: EditorSyntaxLanguageId | null,
   source: EditorSyntaxHighlightingSource,
   tags: EditorPreparedDocumentTags,
   abortSignal: AbortSignal,
-): (() => Promise<unknown> | null) | null {
+): FileOpenIntentPreparationStage | null {
   if (!languageId || source === 'disabled') return null
 
   const snapshot = buffer.getSnapshot()
-  return () =>
-    prepared.startStage({
-      abortSignal,
-      configuration: {
-        includeCaptures: languageId === 'markdown',
-        includeHighlights: source === 'tree-sitter',
-        syntaxMode: 'range',
-      },
-      configurationTag: tags.structuralConfigurationTag,
-      family: 'structural',
-      provider: editorTreeSitterSyntaxProvider(),
-      range: {
-        startIndex: 0,
-        endIndex: Math.min(snapshot.length, PREPARED_VISIBLE_RANGE_CHARS),
-      },
-    })
+  const provider = editorTreeSitterSyntaxProvider()
+  return {
+    configurationTag: tags.structuralConfigurationTag,
+    family: 'structural',
+    provider,
+    start: () =>
+      prepared.startStage({
+        abortSignal,
+        configuration: {
+          includeCaptures: languageId === 'markdown',
+          includeHighlights: source === 'tree-sitter',
+          syntaxMode: 'range',
+        },
+        configurationTag: tags.structuralConfigurationTag,
+        family: 'structural',
+        provider,
+        range: {
+          startIndex: 0,
+          endIndex: Math.min(snapshot.length, PREPARED_VISIBLE_RANGE_CHARS),
+        },
+      }),
+  }
 }
 
-function highlighterPreparationStarter(
+function highlighterPreparationStage(
   prepared: EditorPreparedDocument,
   source: EditorSyntaxHighlightingSource,
   environment: EditorPreparedEnvironment,
   tags: EditorPreparedDocumentTags,
   abortSignal: AbortSignal,
-): (() => Promise<unknown> | null) | null {
+): FileOpenIntentPreparationStage | null {
   if (source !== 'shiki') return null
   if (!environment.appliedThemeId) return null
   if (environment.appliedThemeId !== environment.selectedThemeId) return null
 
-  return () =>
-    prepared.startStage({
-      abortSignal,
-      configurationTag: tags.highlighterConfigurationTag,
-      family: 'highlighter',
-      provider: editorShikiHighlighterProvider(),
-      range: 'full',
-    })
+  const provider = editorShikiHighlighterProvider()
+  return {
+    configurationTag: tags.highlighterConfigurationTag,
+    family: 'highlighter',
+    provider,
+    start: () =>
+      prepared.startStage({
+        abortSignal,
+        configurationTag: tags.highlighterConfigurationTag,
+        family: 'highlighter',
+        provider,
+        range: 'full',
+      }),
+  }
+}
+
+function preparedEnvironmentTag(environment: EditorPreparedEnvironment): string {
+  return [
+    environment.appliedThemeId ?? '',
+    environment.appliedThemeContentHash ?? '',
+    environment.selectedThemeId,
+    String(environment.syntaxHighlightingEnabled),
+  ].join('\u0000')
 }

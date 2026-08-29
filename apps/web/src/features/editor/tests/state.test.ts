@@ -373,7 +373,15 @@ function fileOpenIntentService(
   const prepare = vi.fn((buffer: EditorTextBuffer) => ({ buffer, preparedDocument }))
   const service = new FileOpenIntentService(
     queryClient,
-    { prepare },
+    {
+      environmentTag: 'test',
+      prepare: (buffer) => ({
+        ...prepare(buffer),
+        documentConfigurationTag: [],
+        stages: [],
+      }),
+      reconfigure: () => ({ documentConfigurationTag: [], stages: [] }),
+    },
     (path) => documentStore.getState().getLiveEditorDocument(path),
     () => false,
     () => false,

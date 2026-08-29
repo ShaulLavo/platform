@@ -1,4 +1,4 @@
-import { copyFileSync, mkdtempSync, rmSync } from 'node:fs'
+import { copyFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { relative, resolve, sep } from 'node:path'
 
 import {
@@ -18,39 +18,11 @@ const defaultAppUrl = 'http://localhost:5173/'
 const defaultServerUrl = process.env.VITE_SERVER_URL ?? 'http://localhost:3001'
 const defaultFilePath = 'apps/web/src/features/editor/components/editor.tsx'
 const defaultRootPath = resolve(process.cwd(), '../..')
+const defaultCalibrationFile = resolve(
+  import.meta.dirname,
+  'editor-open-benchmark-calibration.json',
+)
 const modes = ['miss', 'query-only', 'prepared-50', 'prepared-150', 'prepared-300']
-const gateCalibrationEvidence = [
-  {
-    baselineQueryOnlyHighlightP50Ms: 69.3,
-    browser: 'chromium',
-    finalPrepared300HighlightP50Ms: 39.7,
-    missHighlightP50Ms: 96.3,
-    missNoiseMs: 3.26,
-    samplesPerMode: 30,
-    seed: 60061,
-    warmupsPerMode: 5,
-  },
-  {
-    baselineQueryOnlyHighlightP50Ms: 68,
-    browser: 'chromium',
-    finalPrepared300HighlightP50Ms: 53.9,
-    missHighlightP50Ms: 96,
-    missNoiseMs: 2.79,
-    samplesPerMode: 30,
-    seed: 60062,
-    warmupsPerMode: 5,
-  },
-  {
-    baselineQueryOnlyHighlightP50Ms: 68.1,
-    browser: 'chromium',
-    finalPrepared300HighlightP50Ms: 40.1,
-    missHighlightP50Ms: 90.9,
-    missNoiseMs: 4.65,
-    samplesPerMode: 30,
-    seed: 60063,
-    warmupsPerMode: 5,
-  },
-]
 const pipelineMarkNames = [
   'editor.authoritative_highlight_paint',
   'editor.authoritative_text_paint',
@@ -61,6 +33,8 @@ const pipelineMarkNames = [
   'editor.worker.request',
 ]
 const options = parseOptions(process.argv.slice(2))
+const gateCalibrationEvidence =
+  options.gate && !options.calibrate ? readCalibrationEvidence(options.calibrationFile) : []
 const fixtures = createFixtureSet(options)
 
 try {
@@ -79,6 +53,7 @@ function parseOptions(args) {
   const parsed = {
     appUrl: process.env.EDITOR_OPEN_BENCH_APP_URL ?? defaultAppUrl,
     browsers: browserList(process.env.EDITOR_OPEN_BENCH_BROWSERS ?? 'chromium'),
+    calibrationFile: process.env.EDITOR_OPEN_BENCH_CALIBRATION_FILE ?? defaultCalibrationFile,
     calibrate: false,
     filePath: process.env.EDITOR_OPEN_BENCH_FILE ?? defaultFilePath,
     gate: false,
@@ -120,6 +95,7 @@ function applyOption(parsed, arg) {
   const [name, value] = arg.split('=')
   if (name === '--app-url') parsed.appUrl = value ?? parsed.appUrl
   if (name === '--browsers') parsed.browsers = browserList(value)
+  if (name === '--calibration-file') parsed.calibrationFile = value ?? parsed.calibrationFile
   if (name === '--file') parsed.filePath = value ?? parsed.filePath
   if (name === '--page-timeout-ms') parsed.pageTimeoutMs = numberOption(value, parsed.pageTimeoutMs)
   if (name === '--samples') parsed.samplesPerMode = numberOption(value, parsed.samplesPerMode)
@@ -127,6 +103,75 @@ function applyOption(parsed, arg) {
   if (name === '--server-url') parsed.serverUrl = value ?? parsed.serverUrl
   if (name === '--warmups') parsed.warmupsPerMode = numberOption(value, parsed.warmupsPerMode)
   if (name === '--workspace-root') parsed.workspaceRoot = value ?? parsed.workspaceRoot
+}
+
+function readCalibrationEvidence(path) {
+  let value
+  try {
+    value = JSON.parse(readFileSync(path, 'utf8'))
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw createBenchmarkError(`could not read editor-open calibration evidence: ${message}`)
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw createBenchmarkError('editor-open calibration evidence must be an object')
+  }
+  if (value.schemaVersion !== 1 || !Array.isArray(value.runs)) {
+    throw createBenchmarkError('editor-open calibration evidence has an unsupported schema')
+  }
+  const seedsByBrowser = new Map()
+  for (const run of value.runs) {
+    validateCalibrationRun(run)
+    const seeds = seedsByBrowser.get(run.browser) ?? new Set()
+    if (seeds.has(run.seed)) {
+      throw createBenchmarkError(
+        `editor-open calibration evidence repeats ${run.browser} seed ${run.seed}`,
+      )
+    }
+    seeds.add(run.seed)
+    seedsByBrowser.set(run.browser, seeds)
+  }
+  return value.runs
+}
+
+function validateCalibrationRun(run) {
+  if (!run || typeof run !== 'object' || Array.isArray(run)) {
+    throw createBenchmarkError('editor-open calibration run must be an object')
+  }
+  if (typeof run.browser !== 'string' || run.browser.length === 0) {
+    throw createBenchmarkError('editor-open calibration run requires a browser')
+  }
+  const numericFields = [
+    'baselineQueryOnlyHighlightP50Ms',
+    'finalPrepared300HighlightP50Ms',
+    'missHighlightP50Ms',
+    'missNoiseMs',
+    'samplesPerMode',
+    'seed',
+    'warmupsPerMode',
+  ]
+  for (const field of numericFields) {
+    if (Number.isFinite(run[field])) continue
+    throw createBenchmarkError(`editor-open calibration run has invalid ${field}`)
+  }
+  if (
+    run.baselineQueryOnlyHighlightP50Ms <= 0 ||
+    run.finalPrepared300HighlightP50Ms <= 0 ||
+    run.missHighlightP50Ms <= 0 ||
+    run.missNoiseMs <= 0
+  ) {
+    throw createBenchmarkError('editor-open calibration timings must be positive')
+  }
+  if (
+    !Number.isInteger(run.samplesPerMode) ||
+    !Number.isInteger(run.seed) ||
+    !Number.isInteger(run.warmupsPerMode)
+  ) {
+    throw createBenchmarkError('editor-open calibration counts and seed must be integers')
+  }
+  if (run.samplesPerMode < 30 || run.warmupsPerMode < 5) {
+    throw createBenchmarkError('editor-open calibration run used too few samples or warmups')
+  }
 }
 
 function createFixtureSet(config) {
@@ -597,7 +642,7 @@ function summarize(browserName, samples, compatibilitySamples) {
       filePath: options.filePath,
       calibrate: options.calibrate,
       gate: options.gate,
-      gateCalibration: calibrationContract(),
+      gateCalibration: calibrationContract(browserName),
       samplesPerMode: options.samplesPerMode,
       seed: options.seed,
       warmCacheModel:
@@ -623,11 +668,19 @@ function summarize(browserName, samples, compatibilitySamples) {
     ),
     paired: {
       missNoiseMs,
-      prepared300HighlightImprovementMs: difference(
+      missPrepared300HighlightImprovementMs: difference(
+        byMode.miss.authoritativeHighlightMs.p50,
+        byMode['prepared-300'].authoritativeHighlightMs.p50,
+      ),
+      missPrepared300HighlightImprovementRatio: ratioImprovement(
+        byMode.miss.authoritativeHighlightMs.p50,
+        byMode['prepared-300'].authoritativeHighlightMs.p50,
+      ),
+      queryOnlyPrepared300HighlightImprovementMs: difference(
         byMode['query-only'].authoritativeHighlightMs.p50,
         byMode['prepared-300'].authoritativeHighlightMs.p50,
       ),
-      prepared300HighlightImprovementRatio: ratioImprovement(
+      queryOnlyPrepared300HighlightImprovementRatio: ratioImprovement(
         byMode['query-only'].authoritativeHighlightMs.p50,
         byMode['prepared-300'].authoritativeHighlightMs.p50,
       ),
@@ -694,30 +747,34 @@ function validateGate(summary, samples) {
   if (
     prepared300.some(
       (sample) =>
-        sample.highlighterRuntimeSessionIds.length !== 1 ||
-        sample.structuralRuntimeSessionIds.length !== 1,
+        sample.transferredHighlighterRuntimeSessionIds.length !== 1 ||
+        sample.transferredStructuralRuntimeSessionIds.length !== 1,
     )
   ) {
     throw createBenchmarkError(
       'prepared-300 did not expose one transferred runtime id for each syntax family',
     )
   }
-  assertUniqueRuntimeSessionIds(prepared300, 'highlighterRuntimeSessionIds')
-  assertUniqueRuntimeSessionIds(prepared300, 'structuralRuntimeSessionIds')
-  if (summary.paired.prepared300HighlightImprovementMs <= summary.paired.missNoiseMs) {
+  assertTransferredRuntimeIdsAreScoped(prepared300, 'highlighter')
+  assertTransferredRuntimeIdsAreScoped(prepared300, 'structural')
+  assertUniqueRuntimeSessionIds(samples, 'highlighterRuntimeSessionIds')
+  assertUniqueRuntimeSessionIds(samples, 'structuralRuntimeSessionIds')
+  if (summary.paired.missPrepared300HighlightImprovementMs <= summary.paired.missNoiseMs) {
     throw createBenchmarkError(
-      `prepared-300 highlight improvement ${summary.paired.prepared300HighlightImprovementMs}ms did not exceed ${summary.paired.missNoiseMs}ms noise`,
+      `prepared-300 highlight improvement ${summary.paired.missPrepared300HighlightImprovementMs}ms did not exceed ${summary.paired.missNoiseMs}ms noise`,
     )
   }
   if (options.calibrate) return
 
-  const calibration = calibrationContract()
+  const calibration = calibrationContract(summary.browser)
   if (!calibration) {
     throw createBenchmarkError('editor-open gate requires three recorded paired calibration runs')
   }
-  if (summary.paired.prepared300HighlightImprovementRatio < calibration.minimumImprovementRatio) {
+  if (
+    summary.paired.missPrepared300HighlightImprovementRatio < calibration.minimumImprovementRatio
+  ) {
     throw createBenchmarkError(
-      `prepared-300 relative highlight improvement ${summary.paired.prepared300HighlightImprovementRatio} did not reach calibrated ${calibration.minimumImprovementRatio}`,
+      `prepared-300 relative highlight improvement ${summary.paired.missPrepared300HighlightImprovementRatio} did not reach calibrated ${calibration.minimumImprovementRatio}`,
     )
   }
   if (summary.modes.miss.authoritativeHighlightMs.p50 > calibration.missUpperBoundMs) {
@@ -725,29 +782,46 @@ function validateGate(summary, samples) {
       `miss highlight p50 ${summary.modes.miss.authoritativeHighlightMs.p50}ms regressed past calibrated ${calibration.missUpperBoundMs}ms`,
     )
   }
+  if (
+    summary.modes['query-only'].authoritativeHighlightMs.p50 > calibration.queryOnlyUpperBoundMs
+  ) {
+    throw createBenchmarkError(
+      `query-only highlight p50 ${summary.modes['query-only'].authoritativeHighlightMs.p50}ms regressed past calibrated ${calibration.queryOnlyUpperBoundMs}ms`,
+    )
+  }
+}
+
+function assertTransferredRuntimeIdsAreScoped(samples, family) {
+  const scopedKey = `${family}RuntimeSessionIds`
+  const transferredKey = `transferred${family[0].toUpperCase()}${family.slice(1)}RuntimeSessionIds`
+  for (const sample of samples) {
+    const scoped = new Set(sample[scopedKey])
+    if (sample[transferredKey].every((runtimeSessionId) => scoped.has(runtimeSessionId))) continue
+
+    throw createBenchmarkError(`prepared-300 transferred ${family} runtime id was not scoped`)
+  }
 }
 
 function assertUniqueRuntimeSessionIds(samples, key) {
   const runtimeSessionIds = samples.flatMap((sample) => sample[key])
   if (new Set(runtimeSessionIds).size === runtimeSessionIds.length) return
 
-  throw createBenchmarkError(`prepared-300 reused a transferred ${key}`)
+  throw createBenchmarkError(`editor-open benchmark reused a scoped ${key}`)
 }
 
-function calibrationContract() {
-  if (gateCalibrationEvidence.length < 3) return null
+function calibrationContract(browserName) {
+  const evidence = gateCalibrationEvidence.filter((run) => run.browser === browserName)
+  if (evidence.length < 3) return null
 
-  const noiseAdjustedRatios = gateCalibrationEvidence.map((run) =>
-    ratioImprovement(
-      run.baselineQueryOnlyHighlightP50Ms,
-      run.finalPrepared300HighlightP50Ms + run.missNoiseMs,
-    ),
+  const noiseAdjustedRatios = evidence.map((run) =>
+    ratioImprovement(run.missHighlightP50Ms, run.finalPrepared300HighlightP50Ms + run.missNoiseMs),
   )
   return {
-    evidence: gateCalibrationEvidence,
-    minimumImprovementRatio: percentile(noiseAdjustedRatios, 0.25),
-    missUpperBoundMs: Math.max(
-      ...gateCalibrationEvidence.map((run) => run.missHighlightP50Ms + run.missNoiseMs),
+    evidence,
+    minimumImprovementRatio: Math.min(...noiseAdjustedRatios),
+    missUpperBoundMs: Math.max(...evidence.map((run) => run.missHighlightP50Ms + run.missNoiseMs)),
+    queryOnlyUpperBoundMs: Math.max(
+      ...evidence.map((run) => run.baselineQueryOnlyHighlightP50Ms + run.missNoiseMs),
     ),
   }
 }

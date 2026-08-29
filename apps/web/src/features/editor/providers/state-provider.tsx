@@ -116,7 +116,6 @@ export function EditorStateProvider({ children }: { children: ReactNode }) {
         selectedThemeId,
         syntaxHighlightingEnabled,
       }),
-      `${appliedThemeId ?? ''}\u0000${appliedThemeContentHash ?? ''}\u0000${selectedThemeId}\u0000${String(syntaxHighlightingEnabled)}`,
     )
   }, [
     appliedThemeContentHash,

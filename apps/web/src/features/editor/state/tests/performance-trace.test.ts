@@ -45,6 +45,8 @@ test('trace-only bridge forwards opaque sample controls and unregisters ownershi
     quiescent: true,
     structuralRuntimeSessionIds: ['tree:1'],
     targetIntents: 1,
+    transferredHighlighterRuntimeSessionIds: ['shiki:1'],
+    transferredStructuralRuntimeSessionIds: ['tree:1'],
     wastedIntents: 0,
   }
   const reset = vi.fn(async () => resetResult)
@@ -81,6 +83,8 @@ test('benchmark control registration rejects concurrent owners', () => {
       quiescent: true as const,
       structuralRuntimeSessionIds: [],
       targetIntents: 0,
+      transferredHighlighterRuntimeSessionIds: [],
+      transferredStructuralRuntimeSessionIds: [],
       wastedIntents: 0,
     })),
   }

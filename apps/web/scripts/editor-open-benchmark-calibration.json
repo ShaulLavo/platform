@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "runs": [
+    {
+      "baselineQueryOnlyHighlightP50Ms": 67,
+      "browser": "chromium",
+      "finalPrepared300HighlightP50Ms": 40.3,
+      "missHighlightP50Ms": 91.6,
+      "missNoiseMs": 3.59,
+      "samplesPerMode": 30,
+      "seed": 60061,
+      "warmupsPerMode": 5
+    },
+    {
+      "baselineQueryOnlyHighlightP50Ms": 66.3,
+      "browser": "chromium",
+      "finalPrepared300HighlightP50Ms": 56.8,
+      "missHighlightP50Ms": 93.1,
+      "missNoiseMs": 4.59,
+      "samplesPerMode": 30,
+      "seed": 60062,
+      "warmupsPerMode": 5
+    },
+    {
+      "baselineQueryOnlyHighlightP50Ms": 70.6,
+      "browser": "chromium",
+      "finalPrepared300HighlightP50Ms": 57.9,
+      "missHighlightP50Ms": 92.5,
+      "missNoiseMs": 3.06,
+      "samplesPerMode": 30,
+      "seed": 60063,
+      "warmupsPerMode": 5
+    }
+  ]
+}

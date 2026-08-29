@@ -82,6 +82,8 @@ export type EditorOpenSampleResetResult = {
   readonly quiescent: true
   readonly targetIntents: number
   readonly structuralRuntimeSessionIds: readonly string[]
+  readonly transferredHighlighterRuntimeSessionIds: readonly string[]
+  readonly transferredStructuralRuntimeSessionIds: readonly string[]
   readonly wastedIntents: number
 }
 

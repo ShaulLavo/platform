@@ -291,10 +291,14 @@ test('terminal paint dismisses only on the matching next frame', () => {
   })
   expect(result.current.record).not.toBeNull()
 
-  act(() => vi.advanceTimersByTime(15))
+  act(() => vi.advanceTimersByTime(16))
   expect(result.current.record).not.toBeNull()
+  expect(mark.mock.calls.filter(([name]) => name === 'editor.cached_visible_paint')).toHaveLength(1)
+  expect(
+    mark.mock.calls.filter(([name]) => name === 'editor.authoritative_text_paint'),
+  ).toHaveLength(0)
 
-  act(() => vi.advanceTimersByTime(1))
+  act(() => vi.advanceTimersByTime(16))
   expect(result.current.record).toBeNull()
   expect(
     mark.mock.calls.filter(([name]) => name === 'editor.authoritative_text_paint'),
@@ -371,6 +375,13 @@ test('plain paint survives provider loading and a later painted event remains au
   })
 
   expect(result.current.record).not.toBeNull()
+  expect(mark.mock.calls.filter(([name]) => name === 'editor.cached_visible_paint')).toHaveLength(1)
+  expect(
+    mark.mock.calls.filter(([name]) => name === 'editor.authoritative_text_paint'),
+  ).toHaveLength(0)
+
+  act(() => vi.advanceTimersByTime(16))
+
   expect(
     mark.mock.calls.filter(([name]) => name === 'editor.authoritative_text_paint'),
   ).toHaveLength(1)

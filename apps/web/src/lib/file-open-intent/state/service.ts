@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import {
   createEditorTextBuffer,
   type EditorPreparedDocument,
+  type EditorPreparedTagValue,
   type EditorTextBuffer,
 } from '@singapor/core'
 
@@ -31,19 +32,40 @@ export type FileOpenIntentLiveDocument = {
   readonly path: string
 }
 
-export type FileOpenIntentPreparation = {
+export type FileOpenIntentPreparationFamily = 'highlighter' | 'structural'
+
+export type FileOpenIntentPreparationStage = {
+  readonly configurationTag: readonly EditorPreparedTagValue[]
+  readonly family: FileOpenIntentPreparationFamily
+  readonly provider: object
+  start(): Promise<unknown> | null
+}
+
+export type FileOpenIntentPreparationConfiguration = {
+  readonly documentConfigurationTag: readonly EditorPreparedTagValue[]
+  readonly stages: readonly FileOpenIntentPreparationStage[]
+}
+
+export type FileOpenIntentPreparation = FileOpenIntentPreparationConfiguration & {
   readonly buffer: EditorTextBuffer
   readonly preparedDocument: EditorPreparedDocument
-  readonly startStages?: readonly (() => Promise<unknown> | null)[]
 }
 
 export type FileOpenIntentPreparer = {
+  readonly environmentTag: string
   prepare(
     buffer: EditorTextBuffer,
     documentId: string,
     path: string,
     abortSignal: AbortSignal,
   ): FileOpenIntentPreparation
+  reconfigure(
+    preparedDocument: EditorPreparedDocument,
+    buffer: EditorTextBuffer,
+    documentId: string,
+    path: string,
+    abortSignal: AbortSignal,
+  ): FileOpenIntentPreparationConfiguration
 }
 
 export type FileOpenIntentRuntime = {
@@ -59,6 +81,8 @@ export type FileOpenIntentBenchmarkResult = {
   readonly promotedBytes: number
   readonly highlighterRuntimeSessionIds: readonly string[]
   readonly structuralRuntimeSessionIds: readonly string[]
+  readonly transferredHighlighterRuntimeSessionIds: readonly string[]
+  readonly transferredStructuralRuntimeSessionIds: readonly string[]
   readonly targetIntents: number
   readonly wastedIntents: number
 }
@@ -73,14 +97,26 @@ type FileOpenIntentBenchmarkScope = {
   readonly sampleId: string
   targetIntents: number
   readonly structuralRuntimeSessionIds: Set<string>
+  readonly transferredHighlighterRuntimeSessionIds: Set<string>
+  readonly transferredStructuralRuntimeSessionIds: Set<string>
   wastedIntents: number
   quarantined: boolean
 }
 
+type PreparedStageRecord = {
+  readonly stage: FileOpenIntentPreparationStage
+  progress: 'queued' | 'started' | 'settled'
+}
+
 type PreparedOpenRecord = {
+  readonly abortController: AbortController
   readonly claim: PreparedFileOpenClaim
-  readonly createdAt: number
+  readonly documentId: string
+  documentConfigurationTag: readonly EditorPreparedTagValue[]
   readonly estimatedBytes: number
+  lastActivityAt: number
+  readonly preparedDocument: EditorPreparedDocument
+  stages: Map<FileOpenIntentPreparationFamily, PreparedStageRecord>
 }
 
 export class FileOpenIntentService {
@@ -92,7 +128,7 @@ export class FileOpenIntentService {
   private activePath: string | null = null
   private running = false
   private rootPath: string | null = null
-  private environmentTag = ''
+  private environmentTag: string
   private lifecycleGeneration = 0
   private connectionGeneration = 0
   private connected = false
@@ -108,7 +144,9 @@ export class FileOpenIntentService {
     private readonly isMounted: (path: string) => boolean,
     private prefetchRelated: (rootPath: string, path: string) => Promise<unknown> | void,
     private readonly runtime: FileOpenIntentRuntime = defaultFileOpenIntentRuntime,
-  ) {}
+  ) {
+    this.environmentTag = preparer.environmentTag
+  }
 
   setRoot(rootPath: string | null): void {
     const canonicalRoot = rootPath ? canonicalPath(rootPath) : null
@@ -140,12 +178,16 @@ export class FileOpenIntentService {
     this.clear()
   }
 
-  setPreparationEnvironment(preparer: FileOpenIntentPreparer, tag: string): void {
-    if (tag === this.environmentTag) return
+  setPreparationEnvironment(preparer: FileOpenIntentPreparer): void {
+    if (preparer.environmentTag === this.environmentTag) return
 
     this.preparer = preparer
-    this.environmentTag = tag
-    this.clear()
+    this.environmentTag = preparer.environmentTag
+    for (const [path, record] of this.records) {
+      if (this.records.get(path) !== record) continue
+      this.reconcileRecord(path, record, preparer)
+    }
+    this.runNext()
   }
 
   setRelatedPrefetch(
@@ -184,6 +226,8 @@ export class FileOpenIntentService {
       sampleId,
       targetIntents: 0,
       structuralRuntimeSessionIds: new Set(),
+      transferredHighlighterRuntimeSessionIds: new Set(),
+      transferredStructuralRuntimeSessionIds: new Set(),
       wastedIntents: 0,
     }
   }
@@ -221,6 +265,8 @@ export class FileOpenIntentService {
       promotedBytes: scope.promotedBytes,
       highlighterRuntimeSessionIds: [...scope.highlighterRuntimeSessionIds],
       structuralRuntimeSessionIds: [...scope.structuralRuntimeSessionIds],
+      transferredHighlighterRuntimeSessionIds: [...scope.transferredHighlighterRuntimeSessionIds],
+      transferredStructuralRuntimeSessionIds: [...scope.transferredStructuralRuntimeSessionIds],
       targetIntents: scope.targetIntents,
       wastedIntents: scope.wastedIntents,
     }
@@ -309,11 +355,11 @@ export class FileOpenIntentService {
     this.scheduleExpiry()
     if (this.claimIsCurrent(record.claim)) {
       if (this.activePath === canonical) this.activeAbortController = null
-      this.noteBenchmarkClaim(canonical, record.estimatedBytes, record.claim.preparedDocument)
+      this.noteBenchmarkClaim(canonical, record.estimatedBytes, record.preparedDocument)
       return record.claim
     }
 
-    record.claim.preparedDocument?.dispose()
+    this.disposeRecord(canonical, record)
     this.scheduleExpiry()
     return null
   }
@@ -325,8 +371,7 @@ export class FileOpenIntentService {
     const record = this.records.get(canonical)
     if (!record) return
 
-    record.claim.preparedDocument?.dispose()
-    this.records.delete(canonical)
+    this.disposeRecord(canonical, record)
     this.scheduleExpiry()
   }
 
@@ -342,8 +387,7 @@ export class FileOpenIntentService {
     this.queuedPathSet.clear()
     this.cancelExpiryTimer?.()
     this.cancelExpiryTimer = null
-    for (const record of this.records.values()) record.claim.preparedDocument?.dispose()
-    this.records.clear()
+    for (const [path, record] of this.records) this.disposeRecord(path, record)
   }
 
   private runNext(): void {
@@ -356,10 +400,15 @@ export class FileOpenIntentService {
     this.running = true
     this.activePath = path
     const lifecycleGeneration = this.lifecycleGeneration
-    const abortController = new AbortController()
+    const existingRecord = this.records.get(path)
+    const abortController = existingRecord?.abortController ?? new AbortController()
     this.activeAbortController = abortController
     const operation = this.runtime
-      .schedule(() => this.preparePath(path, lifecycleGeneration, abortController.signal))
+      .schedule(() =>
+        existingRecord
+          ? this.runPreparationStages(path, existingRecord, lifecycleGeneration)
+          : this.preparePath(path, lifecycleGeneration, abortController),
+      )
       .finally(() => {
         if (this.activeAbortController === abortController) this.activeAbortController = null
         if (this.activePath === path) this.activePath = null
@@ -373,8 +422,9 @@ export class FileOpenIntentService {
   private async preparePath(
     path: string,
     lifecycleGeneration: number,
-    abortSignal: AbortSignal,
+    abortController: AbortController,
   ): Promise<void> {
+    const abortSignal = abortController.signal
     const event = createWideEventScope({ action: 'editor.file_open_intent', area: 'editor' })
     try {
       if (abortSignal.aborted || !this.generationIsCurrent(lifecycleGeneration)) {
@@ -389,19 +439,8 @@ export class FileOpenIntentService {
       this.startRelatedPrefetch(path)
       const liveDocument = this.getLiveDocument(path)
       if (liveDocument) {
-        const preparation = this.storeLivePreparation(
-          liveDocument,
-          lifecycleGeneration,
-          abortSignal,
-        )
-        if (preparation) {
-          await this.runPreparationStages(
-            liveDocument.path,
-            preparation,
-            lifecycleGeneration,
-            abortSignal,
-          )
-        }
+        const record = this.storeLivePreparation(liveDocument, lifecycleGeneration, abortController)
+        if (record) await this.runPreparationStages(liveDocument.path, record, lifecycleGeneration)
         event.end({ outcome: abortSignal.aborted ? 'aborted' : 'ready-live' })
         return
       }
@@ -414,20 +453,15 @@ export class FileOpenIntentService {
       }
       const supersedingLiveDocument = this.getLiveDocument(path)
       if (supersedingLiveDocument) {
-        const preparation = this.storeLivePreparation(
+        const record = this.storeLivePreparation(
           supersedingLiveDocument,
           lifecycleGeneration,
-          abortSignal,
+          abortController,
         )
-        if (preparation) {
-          await this.runPreparationStages(
-            supersedingLiveDocument.path,
-            preparation,
-            lifecycleGeneration,
-            abortSignal,
-          )
+        if (record) {
+          await this.runPreparationStages(supersedingLiveDocument.path, record, lifecycleGeneration)
         }
-        event.end({ outcome: preparation ? 'ready-live' : 'superseded-by-live' })
+        event.end({ outcome: record ? 'ready-live' : 'superseded-by-live' })
         return
       }
 
@@ -437,6 +471,7 @@ export class FileOpenIntentService {
         file.path,
         abortSignal,
       )
+      this.noteBenchmarkRuntimeSessionIds(preparation.preparedDocument)
       if (!this.generationIsCurrent(lifecycleGeneration) || abortSignal.aborted) {
         preparation.preparedDocument.dispose()
         event.end({ outcome: 'aborted' })
@@ -451,8 +486,8 @@ export class FileOpenIntentService {
         preparedDocument: preparation.preparedDocument,
         snapshot: preparation.buffer.getSnapshot(),
       }
-      this.store(path, claim)
-      await this.runPreparationStages(path, preparation, lifecycleGeneration, abortSignal)
+      const record = this.store(path, file.path, claim, preparation, abortController)
+      await this.runPreparationStages(path, record, lifecycleGeneration)
       event.end({ outcome: 'ready-clean' })
     } catch (error) {
       event.error(error)
@@ -463,13 +498,15 @@ export class FileOpenIntentService {
   private storeLivePreparation(
     document: FileOpenIntentLiveDocument,
     lifecycleGeneration: number,
-    abortSignal: AbortSignal,
-  ): FileOpenIntentPreparation | null {
+    abortController: AbortController,
+  ): PreparedOpenRecord | null {
+    const abortSignal = abortController.signal
     if (abortSignal.aborted || !this.generationIsCurrent(lifecycleGeneration)) return null
     if (this.isActive(document.path) || this.isMounted(document.path)) return null
     if (document.buffer.getSnapshot().length * 2 > MAX_PREPARED_FILE_BYTES) return null
     const snapshot = document.buffer.getSnapshot()
     const prepared = this.preparer.prepare(document.buffer, document.id, document.path, abortSignal)
+    this.noteBenchmarkRuntimeSessionIds(prepared.preparedDocument)
     if (
       abortSignal.aborted ||
       !this.generationIsCurrent(lifecycleGeneration) ||
@@ -487,64 +524,159 @@ export class FileOpenIntentService {
       preparedDocument: prepared.preparedDocument,
       snapshot,
     }
-    this.store(document.path, claim)
-    return prepared
+    return this.store(document.path, document.id, claim, prepared, abortController)
   }
 
   private async runPreparationStages(
     path: string,
-    preparation: FileOpenIntentPreparation,
+    record: PreparedOpenRecord,
     lifecycleGeneration: number,
-    abortSignal: AbortSignal,
   ): Promise<void> {
-    for (const start of preparation.startStages ?? []) {
-      if (abortSignal.aborted || !this.generationIsCurrent(lifecycleGeneration)) return
-      if (!this.recordOwnsPreparedDocument(path, preparation.preparedDocument)) return
+    while (this.recordCanRun(path, record, lifecycleGeneration)) {
+      const stageRecord = nextQueuedStage(record)
+      if (!stageRecord) return
 
+      stageRecord.progress = 'started'
+      this.touchRecord(path, record)
       await this.runtime.schedule(async () => {
-        if (abortSignal.aborted || !this.generationIsCurrent(lifecycleGeneration)) return
-        if (!this.recordOwnsPreparedDocument(path, preparation.preparedDocument)) return
+        if (!this.recordCanRun(path, record, lifecycleGeneration)) return
 
-        await start()
+        const outcome = stageRecord.stage.start()
+        this.noteBenchmarkRuntimeSessionIds(record.preparedDocument)
+        await outcome
       })
+      if (!this.recordCanRun(path, record, lifecycleGeneration)) return
+      if (record.stages.get(stageRecord.stage.family) !== stageRecord) continue
+
+      stageRecord.progress = 'settled'
+      this.touchRecord(path, record)
     }
   }
 
-  private recordOwnsPreparedDocument(
+  private recordCanRun(
     path: string,
-    preparedDocument: EditorPreparedDocument,
+    record: PreparedOpenRecord,
+    lifecycleGeneration: number,
   ): boolean {
-    return this.records.get(path)?.claim.preparedDocument === preparedDocument
+    if (record.abortController.signal.aborted) return false
+    if (!this.generationIsCurrent(lifecycleGeneration)) return false
+    return this.records.get(path) === record
   }
 
-  private store(path: string, claim: PreparedFileOpenClaim): void {
-    const preparedDocument = claim.preparedDocument
-    if (!preparedDocument) return
-
+  private store(
+    path: string,
+    documentId: string,
+    claim: PreparedFileOpenClaim,
+    preparation: FileOpenIntentPreparation,
+    abortController: AbortController,
+  ): PreparedOpenRecord {
     const previous = this.records.get(path)
-    previous?.claim.preparedDocument?.dispose()
-    this.records.set(path, {
+    if (previous) this.disposeRecord(path, previous)
+    const record: PreparedOpenRecord = {
+      abortController,
       claim,
-      createdAt: this.runtime.now(),
-      estimatedBytes: preparedDocument.estimatedBytes,
-    })
+      documentConfigurationTag: preparation.documentConfigurationTag,
+      documentId,
+      estimatedBytes: preparation.preparedDocument.estimatedBytes,
+      lastActivityAt: this.runtime.now(),
+      preparedDocument: preparation.preparedDocument,
+      stages: stageRecords(preparation.stages),
+    }
+    this.records.set(path, record)
+    this.noteBenchmarkRuntimeSessionIds(record.preparedDocument)
     this.pruneBounds()
     this.scheduleExpiry()
+    return record
   }
 
   private recordIsCurrent(path: string): boolean {
     const record = this.records.get(path)
     if (!record) return false
     if (this.claimIsCurrent(record.claim)) {
-      this.records.delete(path)
-      this.records.set(path, record)
+      this.touchRecord(path, record)
       return true
     }
 
-    record.claim.preparedDocument?.dispose()
-    this.records.delete(path)
+    this.disposeRecord(path, record)
     this.scheduleExpiry()
     return false
+  }
+
+  private reconcileRecord(
+    path: string,
+    record: PreparedOpenRecord,
+    preparer: FileOpenIntentPreparer,
+  ): void {
+    const configuration = preparer.reconfigure(
+      record.preparedDocument,
+      record.claim.buffer,
+      record.documentId,
+      path,
+      record.abortController.signal,
+    )
+    if (!sameTag(record.documentConfigurationTag, configuration.documentConfigurationTag)) {
+      this.rebuildRecord(path, record)
+      return
+    }
+
+    const nextStages = stageRecords(configuration.stages)
+    for (const family of preparationFamilies) {
+      const current = record.stages.get(family)
+      const next = nextStages.get(family)
+      if (sameStage(current?.stage, next?.stage)) continue
+      if (!current || current.progress === 'queued') continue
+
+      this.rebuildRecord(path, record)
+      return
+    }
+
+    for (const family of preparationFamilies) {
+      const current = record.stages.get(family)
+      const next = nextStages.get(family)
+      if (sameStage(current?.stage, next?.stage) && current) {
+        nextStages.set(family, current)
+      }
+    }
+    record.documentConfigurationTag = configuration.documentConfigurationTag
+    record.stages = nextStages
+    if (!nextQueuedStage(record)) return
+    if (this.activePath === path) return
+
+    this.enqueuePath(path)
+  }
+
+  private rebuildRecord(path: string, record: PreparedOpenRecord): void {
+    this.disposeRecord(path, record)
+    if (!this.pathBelongsToRoot(path)) return
+    if (this.isActive(path) || this.isMounted(path)) return
+
+    this.enqueuePath(path)
+  }
+
+  private enqueuePath(path: string): void {
+    if (this.queuedPathSet.has(path)) {
+      this.raiseQueuedPriority(path)
+      return
+    }
+
+    this.queuedPathSet.add(path)
+    this.queuedPaths.push(path)
+  }
+
+  private touchRecord(path: string, record: PreparedOpenRecord): void {
+    if (this.records.get(path) !== record) return
+
+    record.lastActivityAt = this.runtime.now()
+    this.records.delete(path)
+    this.records.set(path, record)
+    this.scheduleExpiry()
+  }
+
+  private disposeRecord(path: string, record: PreparedOpenRecord): void {
+    this.noteBenchmarkRuntimeSessionIds(record.preparedDocument)
+    record.abortController.abort()
+    record.preparedDocument.dispose()
+    if (this.records.get(path) === record) this.records.delete(path)
   }
 
   private claimIsCurrent(claim: PreparedFileOpenClaim): boolean {
@@ -572,10 +704,9 @@ export class FileOpenIntentService {
   private pruneExpired(): void {
     const oldestAllowed = this.runtime.now() - PREPARED_OPEN_TTL_MS
     for (const [path, record] of this.records) {
-      if (record.createdAt > oldestAllowed) continue
+      if (record.lastActivityAt > oldestAllowed) continue
 
-      record.claim.preparedDocument?.dispose()
-      this.records.delete(path)
+      this.disposeRecord(path, record)
       this.noteBenchmarkEviction()
     }
     this.scheduleExpiry()
@@ -586,7 +717,7 @@ export class FileOpenIntentService {
     this.cancelExpiryTimer = null
     let expiresAt: number | null = null
     for (const record of this.records.values()) {
-      const candidate = record.createdAt + PREPARED_OPEN_TTL_MS
+      const candidate = record.lastActivityAt + PREPARED_OPEN_TTL_MS
       if (expiresAt === null || candidate < expiresAt) expiresAt = candidate
     }
     if (expiresAt === null) return
@@ -605,8 +736,7 @@ export class FileOpenIntentService {
       const oldest = this.records.entries().next().value as [string, PreparedOpenRecord] | undefined
       if (!oldest) return
 
-      oldest[1].claim.preparedDocument?.dispose()
-      this.records.delete(oldest[0])
+      this.disposeRecord(oldest[0], oldest[1])
       this.noteBenchmarkEviction()
       totalBytes -= oldest[1].estimatedBytes
     }
@@ -656,8 +786,7 @@ export class FileOpenIntentService {
     const record = this.records.get(path)
     if (!record) return
 
-    record.claim.preparedDocument?.dispose()
-    this.records.delete(path)
+    this.disposeRecord(path, record)
     this.scheduleExpiry()
   }
 
@@ -721,17 +850,29 @@ export class FileOpenIntentService {
     preparedDocument: EditorPreparedDocument | null,
   ): void {
     const scope = this.benchmarkScope
-    if (!scope || path !== scope.path) return
+    if (!scope) return
+
+    this.noteBenchmarkRuntimeSessionIds(preparedDocument)
+    if (path !== scope.path) return
 
     scope.preparedClaims += 1
     scope.promotedBytes += estimatedBytes
     const runtimeSessionIds = preparedDocument?.runtimeSessionIds()
     for (const id of runtimeSessionIds?.highlighter ?? []) {
-      scope.highlighterRuntimeSessionIds.add(id)
+      scope.transferredHighlighterRuntimeSessionIds.add(id)
     }
     for (const id of runtimeSessionIds?.structural ?? []) {
-      scope.structuralRuntimeSessionIds.add(id)
+      scope.transferredStructuralRuntimeSessionIds.add(id)
     }
+  }
+
+  private noteBenchmarkRuntimeSessionIds(preparedDocument: EditorPreparedDocument | null): void {
+    const scope = this.benchmarkScope
+    if (!scope || !preparedDocument) return
+
+    const runtimeSessionIds = preparedDocument.runtimeSessionIds()
+    for (const id of runtimeSessionIds.highlighter) scope.highlighterRuntimeSessionIds.add(id)
+    for (const id of runtimeSessionIds.structural) scope.structuralRuntimeSessionIds.add(id)
   }
 
   private noteBenchmarkEviction(): void {
@@ -745,6 +886,50 @@ export class FileOpenIntentService {
     }
     return scope
   }
+}
+
+const preparationFamilies: readonly FileOpenIntentPreparationFamily[] = [
+  'highlighter',
+  'structural',
+]
+
+function stageRecords(
+  stages: readonly FileOpenIntentPreparationStage[],
+): Map<FileOpenIntentPreparationFamily, PreparedStageRecord> {
+  const records = new Map<FileOpenIntentPreparationFamily, PreparedStageRecord>()
+  for (const stage of stages) {
+    if (records.has(stage.family)) {
+      throw createClientInvariantError(`Duplicate prepared ${stage.family} stage`)
+    }
+    records.set(stage.family, { progress: 'queued', stage })
+  }
+  return records
+}
+
+function nextQueuedStage(record: PreparedOpenRecord): PreparedStageRecord | null {
+  for (const family of preparationFamilies) {
+    const stage = record.stages.get(family)
+    if (stage?.progress === 'queued') return stage
+  }
+  return null
+}
+
+function sameStage(
+  left: FileOpenIntentPreparationStage | undefined,
+  right: FileOpenIntentPreparationStage | undefined,
+): boolean {
+  if (!left || !right) return left === right
+  if (left.family !== right.family) return false
+  if (left.provider !== right.provider) return false
+  return sameTag(left.configurationTag, right.configurationTag)
+}
+
+function sameTag(
+  left: readonly EditorPreparedTagValue[],
+  right: readonly EditorPreparedTagValue[],
+): boolean {
+  if (left.length !== right.length) return false
+  return left.every((value, index) => Object.is(value, right[index]))
 }
 
 function createCleanBuffer(file: FileResult): EditorTextBuffer {

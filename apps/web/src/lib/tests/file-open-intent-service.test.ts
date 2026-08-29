@@ -10,6 +10,7 @@ import type { FileResult } from '@/lib/file-system-types'
 import { fileSnapshotQueryOptions } from '@/lib/file-snapshot-query-cache'
 import {
   FileOpenIntentService,
+  type FileOpenIntentPreparer,
   type FileOpenIntentLiveDocument,
   type FileOpenIntentRuntime,
 } from '@/lib/file-open-intent/state/service'
@@ -23,7 +24,7 @@ describe('file open intent service', () => {
     const prepare = vi.fn((buffer) => ({ buffer, preparedDocument }))
     const service = new FileOpenIntentService(
       queryClient,
-      { prepare },
+      testPreparer(prepare),
       () => null,
       () => false,
       () => false,
@@ -52,7 +53,7 @@ describe('file open intent service', () => {
     const prepare = vi.fn()
     const service = new FileOpenIntentService(
       queryClient,
-      { prepare },
+      testPreparer(prepare),
       () => null,
       () => false,
       () => false,
@@ -82,7 +83,7 @@ describe('file open intent service', () => {
     }))
     const service = new FileOpenIntentService(
       queryClient,
-      { prepare },
+      testPreparer(prepare),
       () => liveDocument,
       () => false,
       () => false,
@@ -113,7 +114,7 @@ describe('file open intent service', () => {
     const prepare = vi.fn((buffer) => ({ buffer, preparedDocument }))
     const service = new FileOpenIntentService(
       queryClient,
-      { prepare },
+      testPreparer(prepare),
       () => null,
       () => false,
       () => false,
@@ -146,12 +147,10 @@ describe('file open intent service', () => {
     const order: string[] = []
     const service = new FileOpenIntentService(
       queryClient,
-      {
-        prepare: (buffer, _documentId, path) => {
-          order.push(path)
-          return { buffer, preparedDocument: preparedDocumentLease() }
-        },
-      },
+      testPreparer((buffer, _documentId, path) => {
+        order.push(path)
+        return { buffer, preparedDocument: preparedDocumentLease() }
+      }),
       () => null,
       () => false,
       () => false,
@@ -177,13 +176,11 @@ describe('file open intent service', () => {
     const startStructural = vi.fn(async () => 'ready')
     const service = new FileOpenIntentService(
       queryClient,
-      {
-        prepare: (buffer) => ({
-          buffer,
-          preparedDocument: preparedDocumentLease(),
-          startStages: [startHighlighter, startStructural],
-        }),
-      },
+      testPreparer((buffer) => ({
+        buffer,
+        preparedDocument: preparedDocumentLease(),
+        startStages: [startHighlighter, startStructural],
+      })),
       () => null,
       () => false,
       () => false,
@@ -213,16 +210,14 @@ describe('file open intent service', () => {
     queryClient.setQueryData(fileSnapshotQueryOptions(file.path).queryKey, file)
     const service = new FileOpenIntentService(
       queryClient,
-      {
-        prepare: (buffer, _documentId, _path, abortSignal) => {
-          preparationSignal = abortSignal
-          return {
-            buffer,
-            preparedDocument: preparedDocumentLease(),
-            startStages: [() => stage.promise],
-          }
-        },
-      },
+      testPreparer((buffer, _documentId, _path, abortSignal) => {
+        preparationSignal = abortSignal
+        return {
+          buffer,
+          preparedDocument: preparedDocumentLease(),
+          startStages: [() => stage.promise],
+        }
+      }),
       () => null,
       () => false,
       () => false,
@@ -249,7 +244,7 @@ describe('file open intent service', () => {
     queryClient.setQueryData(fileSnapshotQueryOptions(file.path).queryKey, file)
     const service = new FileOpenIntentService(
       queryClient,
-      { prepare: (buffer) => ({ buffer, preparedDocument }) },
+      testPreparer((buffer) => ({ buffer, preparedDocument })),
       () => null,
       () => false,
       () => false,
@@ -267,6 +262,220 @@ describe('file open intent service', () => {
     expect(service.claimReadyClean(file.path)).toBeNull()
   })
 
+  it('expires a prepared session after thirty seconds without intent or stage activity', async () => {
+    const queryClient = new QueryClient()
+    const file = fileResult('/repo/a.ts')
+    const preparedDocument = preparedDocumentLease()
+    const runtime = manualRuntime()
+    queryClient.setQueryData(fileSnapshotQueryOptions(file.path).queryKey, file)
+    const service = new FileOpenIntentService(
+      queryClient,
+      testPreparer((buffer) => ({ buffer, preparedDocument })),
+      () => null,
+      () => false,
+      () => false,
+      () => undefined,
+      runtime,
+    )
+    service.setRoot('/repo')
+
+    service.prepare(file.path)
+    runtime.startNext()
+    await runtime.settled()
+    runtime.advanceBy(2_000)
+    service.prepare(file.path)
+    runtime.advanceBy(28_000)
+
+    expect(preparedDocument.dispose).not.toHaveBeenCalled()
+    runtime.advanceBy(2_000)
+    expect(preparedDocument.dispose).toHaveBeenCalledOnce()
+  })
+
+  it('preserves unaffected prepared leases when the environment changes', async () => {
+    const queryClient = new QueryClient()
+    const typescript = fileResult('/repo/a.ts')
+    const markdown = fileResult('/repo/b.md')
+    queryClient.setQueryData(fileSnapshotQueryOptions(typescript.path).queryKey, typescript)
+    queryClient.setQueryData(fileSnapshotQueryOptions(markdown.path).queryKey, markdown)
+    const typescriptDocument = preparedDocumentLease()
+    const oldMarkdownDocument = preparedDocumentLease()
+    const newMarkdownDocument = preparedDocumentLease()
+    const oldStage = vi.fn(async () => 'ready')
+    const newStage = vi.fn(async () => 'ready')
+    const prepareInitial = vi.fn((buffer, _documentId, path) => ({
+      buffer,
+      documentConfigurationTag: ['document', path],
+      preparedDocument: path === typescript.path ? typescriptDocument : oldMarkdownDocument,
+      stages:
+        path === markdown.path
+          ? [
+              {
+                configurationTag: ['markdown', 'old'],
+                family: 'structural' as const,
+                provider: oldStage,
+                start: oldStage,
+              },
+            ]
+          : [],
+    }))
+    const service = new FileOpenIntentService(
+      queryClient,
+      {
+        environmentTag: 'old',
+        prepare: prepareInitial,
+        reconfigure: (_preparedDocument, _buffer, _documentId, path) => ({
+          documentConfigurationTag: ['document', path],
+          stages:
+            path === markdown.path
+              ? [
+                  {
+                    configurationTag: ['markdown', 'old'],
+                    family: 'structural' as const,
+                    provider: oldStage,
+                    start: oldStage,
+                  },
+                ]
+              : [],
+        }),
+      },
+      () => null,
+      () => false,
+      () => false,
+      () => undefined,
+    )
+    service.setRoot('/repo')
+    service.prepare(typescript.path)
+    service.prepare(markdown.path)
+    await vi.waitFor(() => expect(prepareInitial).toHaveBeenCalledTimes(2))
+    await vi.waitFor(() => expect(oldStage).toHaveBeenCalledOnce())
+
+    const prepareNext = vi.fn((buffer, _documentId, path) => ({
+      buffer,
+      documentConfigurationTag: ['document', path],
+      preparedDocument: path === markdown.path ? newMarkdownDocument : typescriptDocument,
+      stages:
+        path === markdown.path
+          ? [
+              {
+                configurationTag: ['markdown', 'new'],
+                family: 'structural' as const,
+                provider: newStage,
+                start: newStage,
+              },
+            ]
+          : [],
+    }))
+    service.setPreparationEnvironment({
+      environmentTag: 'new',
+      prepare: prepareNext,
+      reconfigure: (_preparedDocument, _buffer, _documentId, path) => ({
+        documentConfigurationTag: ['document', path],
+        stages:
+          path === markdown.path
+            ? [
+                {
+                  configurationTag: ['markdown', 'new'],
+                  family: 'structural' as const,
+                  provider: newStage,
+                  start: newStage,
+                },
+              ]
+            : [],
+      }),
+    })
+    await vi.waitFor(() => expect(prepareNext).toHaveBeenCalledOnce())
+
+    expect(service.claimReadyClean(typescript.path)?.preparedDocument).toBe(typescriptDocument)
+    expect(typescriptDocument.dispose).not.toHaveBeenCalled()
+    expect(oldMarkdownDocument.dispose).toHaveBeenCalledOnce()
+    expect(service.claimReadyClean(markdown.path)?.preparedDocument).toBe(newMarkdownDocument)
+  })
+
+  it('replaces only an unstarted family when the environment changes', async () => {
+    const queryClient = new QueryClient()
+    const file = fileResult('/repo/a.ts')
+    const runtime = manualRuntime()
+    const preparedDocument = preparedDocumentLease()
+    const replacementDocument = preparedDocumentLease()
+    const highlighterCompletion = deferred<string>()
+    const startHighlighter = vi.fn(() => highlighterCompletion.promise)
+    const startOldStructural = vi.fn(async () => 'old')
+    const startNewStructural = vi.fn(async () => 'new')
+    const highlighterStage = {
+      configurationTag: ['shiki', 'same'] as const,
+      family: 'highlighter' as const,
+      provider: startHighlighter,
+      start: startHighlighter,
+    }
+    const oldStructuralStage = {
+      configurationTag: ['tree-sitter', 'old'] as const,
+      family: 'structural' as const,
+      provider: startOldStructural,
+      start: startOldStructural,
+    }
+    const newStructuralStage = {
+      configurationTag: ['tree-sitter', 'new'] as const,
+      family: 'structural' as const,
+      provider: startNewStructural,
+      start: startNewStructural,
+    }
+    queryClient.setQueryData(fileSnapshotQueryOptions(file.path).queryKey, file)
+    const initialPrepare = vi.fn((buffer) => ({
+      buffer,
+      documentConfigurationTag: ['document', 'same'] as const,
+      preparedDocument,
+      stages: [highlighterStage, oldStructuralStage],
+    }))
+    const service = new FileOpenIntentService(
+      queryClient,
+      {
+        environmentTag: 'old',
+        prepare: initialPrepare,
+        reconfigure: () => ({
+          documentConfigurationTag: ['document', 'same'],
+          stages: [highlighterStage, oldStructuralStage],
+        }),
+      },
+      () => null,
+      () => false,
+      () => false,
+      () => undefined,
+      runtime,
+    )
+    service.setRoot('/repo')
+
+    service.prepare(file.path)
+    runtime.startNext()
+    await vi.waitFor(() => expect(runtime.queued()).toBe(1))
+    runtime.startNext()
+    await vi.waitFor(() => expect(startHighlighter).toHaveBeenCalledOnce())
+
+    const replacementPrepare = vi.fn((buffer) => ({
+      buffer,
+      documentConfigurationTag: ['document', 'same'] as const,
+      preparedDocument: replacementDocument,
+      stages: [highlighterStage, newStructuralStage],
+    }))
+    service.setPreparationEnvironment({
+      environmentTag: 'new',
+      prepare: replacementPrepare,
+      reconfigure: () => ({
+        documentConfigurationTag: ['document', 'same'],
+        stages: [highlighterStage, newStructuralStage],
+      }),
+    })
+    highlighterCompletion.resolve('ready')
+    await vi.waitFor(() => expect(runtime.queued()).toBe(1))
+    runtime.startNext()
+    await runtime.settled()
+
+    expect(replacementPrepare).not.toHaveBeenCalled()
+    expect(preparedDocument.dispose).not.toHaveBeenCalled()
+    expect(startOldStructural).not.toHaveBeenCalled()
+    expect(startNewStructural).toHaveBeenCalledOnce()
+    expect(service.claimReadyClean(file.path)?.preparedDocument).toBe(preparedDocument)
+  })
+
   it('does not admit an old completion after root to null to root', async () => {
     const queryClient = new QueryClient()
     const file = fileResult('/repo/a.ts')
@@ -281,7 +490,7 @@ describe('file open intent service', () => {
     }))
     const service = new FileOpenIntentService(
       queryClient,
-      { prepare },
+      testPreparer(prepare),
       () => null,
       () => false,
       () => false,
@@ -309,7 +518,7 @@ describe('file open intent service', () => {
     const prepare = vi.fn((buffer) => ({ buffer, preparedDocument }))
     const service = new FileOpenIntentService(
       queryClient,
-      { prepare },
+      testPreparer(prepare),
       () => null,
       () => false,
       () => false,
@@ -331,7 +540,7 @@ describe('file open intent service', () => {
     const prefetchRelated = vi.fn()
     const service = new FileOpenIntentService(
       queryClient,
-      { prepare },
+      testPreparer(prepare),
       () => null,
       () => false,
       () => true,
@@ -352,7 +561,7 @@ describe('file open intent service', () => {
     const prepare = vi.fn()
     const service = new FileOpenIntentService(
       queryClient,
-      { prepare },
+      testPreparer(prepare),
       () => null,
       (path) => path === '/repo/a.ts',
       () => false,
@@ -373,9 +582,7 @@ describe('file open intent service', () => {
     queryClient.setQueryData(fileSnapshotQueryOptions(file.path).queryKey, file)
     const service = new FileOpenIntentService(
       queryClient,
-      {
-        prepare: (buffer) => ({ buffer, preparedDocument: preparedDocumentLease() }),
-      },
+      testPreparer((buffer) => ({ buffer, preparedDocument: preparedDocumentLease() })),
       () => null,
       () => false,
       () => false,
@@ -396,6 +603,8 @@ describe('file open intent service', () => {
       promotedBytes: 1,
       highlighterRuntimeSessionIds: [],
       structuralRuntimeSessionIds: [],
+      transferredHighlighterRuntimeSessionIds: [],
+      transferredStructuralRuntimeSessionIds: [],
       targetIntents: 1,
       wastedIntents: 0,
     })
@@ -403,6 +612,46 @@ describe('file open intent service', () => {
     expect(() => service.quarantineBenchmarkSample('sample-1')).toThrow(
       'Unknown editor-open benchmark sample',
     )
+  })
+
+  it('reports every runtime session created inside a benchmark scope', async () => {
+    const queryClient = new QueryClient()
+    const target = fileResult('/repo/a.ts')
+    const nonTarget = fileResult('/repo/b.ts')
+    queryClient.setQueryData(fileSnapshotQueryOptions(target.path).queryKey, target)
+    queryClient.setQueryData(fileSnapshotQueryOptions(nonTarget.path).queryKey, nonTarget)
+    const documents = new Map([
+      [target.path, preparedDocumentLease({ highlighter: ['target-h'], structural: ['target-s'] })],
+      [
+        nonTarget.path,
+        preparedDocumentLease({ highlighter: ['other-h'], structural: ['other-s'] }),
+      ],
+    ])
+    const service = new FileOpenIntentService(
+      queryClient,
+      testPreparer((buffer, _documentId, path) => ({
+        buffer,
+        preparedDocument: documents.get(path)!,
+      })),
+      () => null,
+      () => false,
+      () => false,
+      () => undefined,
+    )
+    service.setRoot('/repo')
+    service.connect()
+    service.beginBenchmarkSample('sample-runtime-ids', target.path)
+
+    service.prepare(target.path)
+    service.prepare(nonTarget.path)
+    await vi.waitFor(() => expect(service.claimReadyClean(target.path)).not.toBeNull())
+    await vi.waitFor(() => expect(service.claimReadyClean(nonTarget.path)).not.toBeNull())
+    service.quarantineBenchmarkSample('sample-runtime-ids')
+
+    await expect(service.finishBenchmarkSample('sample-runtime-ids')).resolves.toMatchObject({
+      highlighterRuntimeSessionIds: ['target-h', 'other-h'],
+      structuralRuntimeSessionIds: ['target-s', 'other-s'],
+    })
   })
 })
 
@@ -416,11 +665,50 @@ function fileResult(path: string): FileResult {
   }
 }
 
-function preparedDocumentLease(): EditorPreparedDocument {
+function testPreparer(
+  prepare: (
+    buffer: ReturnType<typeof createEditorTextBuffer>,
+    documentId: string,
+    path: string,
+    abortSignal: AbortSignal,
+  ) => {
+    readonly buffer: ReturnType<typeof createEditorTextBuffer>
+    readonly preparedDocument: EditorPreparedDocument
+    readonly startStages?: readonly (() => Promise<unknown> | null)[]
+  },
+): FileOpenIntentPreparer {
+  const configurations = new WeakMap<
+    EditorPreparedDocument,
+    ReturnType<FileOpenIntentPreparer['reconfigure']>
+  >()
+  return {
+    environmentTag: 'test',
+    prepare: (...args) => {
+      const preparation = prepare(...args)
+      const configuration = {
+        documentConfigurationTag: [] as const,
+        stages: (preparation.startStages ?? []).map((start, index) => ({
+          configurationTag: ['test-stage', index] as const,
+          family: index === 0 ? ('highlighter' as const) : ('structural' as const),
+          provider: start,
+          start,
+        })),
+      }
+      configurations.set(preparation.preparedDocument, configuration)
+      return { ...preparation, ...configuration }
+    },
+    reconfigure: (preparedDocument) =>
+      configurations.get(preparedDocument) ?? { documentConfigurationTag: [], stages: [] },
+  }
+}
+
+function preparedDocumentLease(
+  runtimeSessionIds = { highlighter: [] as string[], structural: [] as string[] },
+): EditorPreparedDocument {
   return {
     dispose: vi.fn(),
     estimatedBytes: 1,
-    runtimeSessionIds: () => ({ highlighter: [], structural: [] }),
+    runtimeSessionIds: () => runtimeSessionIds,
     startStage: vi.fn(() => null),
     take: vi.fn(() => null),
   }
