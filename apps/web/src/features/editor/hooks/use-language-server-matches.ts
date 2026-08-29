@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 
 import type { LanguageServerMatch } from '@/features/editor/utils/language-server-plugin'
 import { languageServerMatchQueryOptions } from '@/features/editor/utils/language-server-match-query'
-import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
+import { useLanguageServerMatchConfiguration } from '@/features/editor/providers/language-server-match-context'
 
 const NO_LANGUAGE_SERVER_MATCHES: readonly LanguageServerMatch[] = []
 
@@ -11,15 +11,9 @@ export function useLanguageServerMatches(
   matchPath: string,
   enabled = true,
 ): readonly LanguageServerMatch[] | null {
-  const tyForPython = useSettingValue('lsp.experimental.tyForPython')
-  const languageServers = useSettingValue('lsp.languageServers')
-  const servers = useSettingValue('lsp.servers')
+  const configuration = useLanguageServerMatchConfiguration()
   const query = useQuery({
-    ...languageServerMatchQueryOptions(rootPath, matchPath, {
-      'lsp.experimental.tyForPython': tyForPython,
-      'lsp.languageServers': languageServers,
-      'lsp.servers': servers,
-    }),
+    ...languageServerMatchQueryOptions(rootPath, matchPath, configuration),
     enabled,
   })
 

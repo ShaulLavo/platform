@@ -449,6 +449,7 @@ function readMeasuredPipeline(page, path, activationAt, detectedAt) {
         bufferBuilds: pathMarkCount('editor.file_open.buffer_built'),
         cachedFrameCount: performance.getEntriesByName('editor.cached_visible_paint', 'mark')
           .length,
+        cachedFrameMs: relativeMark('editor.cached_visible_paint'),
         fileReads: pathMarkCount('editor.file_open.file_read'),
         highlighterSessionCreations: diagnosticCount(
           'editor.syntax.session_created',
@@ -525,14 +526,18 @@ function validateSample(sample, group) {
     if (!sample.visibleSnapshotSeeded) {
       throw createBenchmarkError(`${sample.mode} compatibility sample was not seeded`)
     }
-    if ((sample.mode === 'miss' || sample.mode === 'query-only') && sample.cachedFrameCount !== 1) {
+    if (sample.cachedFrameCount !== 1) {
       throw createBenchmarkError(
         `${sample.mode} visible-snapshot compatibility sample did not paint one cached frame`,
       )
     }
-    if (sample.cachedFrameCount > 1) {
+    if (
+      !Number.isFinite(sample.cachedFrameMs) ||
+      sample.cachedFrameMs >= sample.authoritativeTextMs ||
+      sample.cachedFrameMs >= sample.authoritativeHighlightMs
+    ) {
       throw createBenchmarkError(
-        `${sample.mode} visible-snapshot compatibility sample painted ${sample.cachedFrameCount} cached frames`,
+        `${sample.mode} did not paint its cached frame before authoritative text and highlight`,
       )
     }
     if (!sample.quiescent) {
@@ -605,8 +610,11 @@ function summarize(browserName, samples, compatibilitySamples) {
         sample.mode,
         {
           authoritativeHighlightCount: sample.authoritativeHighlightCount,
+          authoritativeHighlightMs: sample.authoritativeHighlightMs,
           authoritativeTextCount: sample.authoritativeTextCount,
+          authoritativeTextMs: sample.authoritativeTextMs,
           cachedFrameCount: sample.cachedFrameCount,
+          cachedFrameMs: sample.cachedFrameMs,
           promotionStage: sample.promotionStage,
           quiescent: sample.quiescent,
           visibleSnapshotSeeded: sample.visibleSnapshotSeeded,
@@ -672,7 +680,8 @@ function validateGate(summary, samples) {
       sample.highlighterSessionCreations !== 0 ||
       sample.workerOpenRequests !== 0 ||
       sample.workerParseRequests !== 0 ||
-      sample.workerQueryRequests !== 0,
+      sample.workerQueryRequests !== 0 ||
+      sample.workerRefreshRequests !== 0,
   )
   if (structuralFailures.length > 0) {
     throw createBenchmarkError(
@@ -682,6 +691,19 @@ function validateGate(summary, samples) {
   if (prepared300.some((sample) => sample.preparedClaims !== 1)) {
     throw createBenchmarkError('prepared-300 did not promote exactly one prepared claim per sample')
   }
+  if (
+    prepared300.some(
+      (sample) =>
+        sample.highlighterRuntimeSessionIds.length !== 1 ||
+        sample.structuralRuntimeSessionIds.length !== 1,
+    )
+  ) {
+    throw createBenchmarkError(
+      'prepared-300 did not expose one transferred runtime id for each syntax family',
+    )
+  }
+  assertUniqueRuntimeSessionIds(prepared300, 'highlighterRuntimeSessionIds')
+  assertUniqueRuntimeSessionIds(prepared300, 'structuralRuntimeSessionIds')
   if (summary.paired.prepared300HighlightImprovementMs <= summary.paired.missNoiseMs) {
     throw createBenchmarkError(
       `prepared-300 highlight improvement ${summary.paired.prepared300HighlightImprovementMs}ms did not exceed ${summary.paired.missNoiseMs}ms noise`,
@@ -703,6 +725,13 @@ function validateGate(summary, samples) {
       `miss highlight p50 ${summary.modes.miss.authoritativeHighlightMs.p50}ms regressed past calibrated ${calibration.missUpperBoundMs}ms`,
     )
   }
+}
+
+function assertUniqueRuntimeSessionIds(samples, key) {
+  const runtimeSessionIds = samples.flatMap((sample) => sample[key])
+  if (new Set(runtimeSessionIds).size === runtimeSessionIds.length) return
+
+  throw createBenchmarkError(`prepared-300 reused a transferred ${key}`)
 }
 
 function calibrationContract() {

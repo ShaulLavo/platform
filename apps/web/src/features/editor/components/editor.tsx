@@ -76,7 +76,8 @@ export function Editor({
   onStatusSourceChange,
   onTextChange,
 }: EditorProps) {
-  const { appliedThemeId, editorTheme, selectedThemeId } = useEditorColorTheme()
+  const { appliedThemeContentHash, appliedThemeId, editorTheme, selectedThemeId } =
+    useEditorColorTheme()
   const syntaxHighlightingEnabled = useSettingValue('editor.syntaxHighlighting.enabled')
   const { mountedEditors } = useFileOpenIntent()
   const { languageServer, languageServerStatusSource } = useLanguageServerPlugin({
@@ -96,11 +97,18 @@ export function Editor({
   const preparedTags = useMemo(
     () =>
       editorPreparedDocumentTags(liveDocument.path, {
+        appliedThemeContentHash,
         appliedThemeId,
         selectedThemeId,
         syntaxHighlightingEnabled,
       }),
-    [appliedThemeId, liveDocument.path, selectedThemeId, syntaxHighlightingEnabled],
+    [
+      appliedThemeContentHash,
+      appliedThemeId,
+      liveDocument.path,
+      selectedThemeId,
+      syntaxHighlightingEnabled,
+    ],
   )
   const criticalEditorCorePlugins = useMemo(
     () => createCriticalEditorCorePlugins(documentLanguageId),

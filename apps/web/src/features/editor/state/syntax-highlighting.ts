@@ -148,6 +148,16 @@ export async function awaitEditorSyntaxWorkerIdleFences(): Promise<void> {
   ])
 }
 
+export async function awaitEditorTreeSitterRuntimeSessionIdle(
+  runtimeSessionId: string,
+): Promise<void> {
+  await treeSitterSyntaxBackend?.awaitRuntimeSessionIdle?.(runtimeSessionId)
+}
+
+export async function awaitEditorShikiRuntimeSessionIdle(runtimeSessionId: string): Promise<void> {
+  await shikiWorkerOwner?.awaitRuntimeSessionIdle(runtimeSessionId)
+}
+
 /** Logs the exact theme handed to every shared Shiki session. */
 function resolveShikiThemeForSession(): string {
   const themeId = activeShikiThemeId()

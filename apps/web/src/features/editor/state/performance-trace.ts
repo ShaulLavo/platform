@@ -78,8 +78,10 @@ export type EditorOpenSampleResetResult = {
   readonly nonTargetIntents: number
   readonly preparedClaims: number
   readonly promotedBytes: number
+  readonly highlighterRuntimeSessionIds: readonly string[]
   readonly quiescent: true
   readonly targetIntents: number
+  readonly structuralRuntimeSessionIds: readonly string[]
   readonly wastedIntents: number
 }
 

@@ -79,6 +79,7 @@ type CaptureRuntime = {
   active: boolean
   appliedThemeId: string | null
   cachedPaintFrame: number | null
+  cachedPaintFrameTime: number | null
   captureTimer: ReturnType<typeof setTimeout> | null
   committedThemeId: string
   coreDocumentGeneration: number | null
@@ -310,8 +311,9 @@ export function useEditorVisibleSnapshot({
       rootPath: record.rootPath,
       themeId: record.themeId,
     }
-    runtime.cachedPaintFrame = requestAnimationFrame(() => {
+    runtime.cachedPaintFrame = requestAnimationFrame((frameTime) => {
       runtime.cachedPaintFrame = null
+      runtime.cachedPaintFrameTime = frameTime
       markEditorVisibleSnapshotPerformance('editor.cached_visible_paint', detail)
       recordEditorVisibleSnapshotPerformance(
         'editor.visible_snapshot.render',
@@ -370,6 +372,7 @@ function createCaptureRuntime(
     active,
     appliedThemeId: theme.appliedThemeId,
     cachedPaintFrame: null,
+    cachedPaintFrameTime: null,
     captureTimer: null,
     committedThemeId: theme.committedThemeId,
     coreDocumentGeneration: null,
@@ -409,6 +412,7 @@ function installCaptureIdentity(
   runtime.active = active
   runtime.appliedThemeId = theme.appliedThemeId
   runtime.committedThemeId = theme.committedThemeId
+  runtime.cachedPaintFrameTime = null
   runtime.latestSnapshot = null
   runtime.renderedDocument = renderedDocument
   runtime.selectedTarget = selectedTarget
@@ -587,11 +591,20 @@ function scheduleAuthoritativePaint(runtime: CaptureRuntime, dismiss: () => void
   }
   if (runtime.paintFrame !== null) return
 
-  runtime.paintFrame = requestAnimationFrame(() => flushInitialPaint(runtime, dismiss))
+  runtime.paintFrame = requestAnimationFrame((frameTime) =>
+    flushInitialPaint(runtime, dismiss, frameTime),
+  )
 }
 
-function flushInitialPaint(runtime: CaptureRuntime, dismiss: () => void): void {
+function flushInitialPaint(runtime: CaptureRuntime, dismiss: () => void, frameTime: number): void {
   runtime.paintFrame = null
+  if (runtime.cachedPaintFrame !== null || runtime.cachedPaintFrameTime === frameTime) {
+    runtime.paintFrame = requestAnimationFrame((nextFrameTime) =>
+      flushInitialPaint(runtime, dismiss, nextFrameTime),
+    )
+    return
+  }
+
   const pending = runtime.pendingPaintEvents
   runtime.pendingPaintEvents = []
   const currentPaintIdentity = authoritativePaintIdentity(
@@ -715,10 +728,12 @@ function initialPresentedSnapshot(
   const eligible =
     active &&
     !fileReadError &&
-    renderedDocument === null &&
+    cachePresentationMatchesRenderedDocument(renderedDocument, selectedTarget) &&
     selectedTarget.contentVersion !== null &&
     theme.selectedThemeId === theme.committedThemeId
-  const attempted = renderedDocument === null
+  const attempted =
+    renderedDocument === null ||
+    cachePresentationMatchesRenderedDocument(renderedDocument, selectedTarget)
   const attemptedIdentities = attempted ? new Set([...priorAttempts, identity]) : priorAttempts
   const contentVersion = selectedTarget.contentVersion
   if (!eligible || contentVersion === null) {
@@ -736,6 +751,16 @@ function initialPresentedSnapshot(
       themeId: theme.committedThemeId,
     }),
   }
+}
+
+function cachePresentationMatchesRenderedDocument(
+  renderedDocument: RenderedSnapshotDocument | null,
+  selectedTarget: SnapshotTarget,
+): boolean {
+  if (!renderedDocument) return true
+  if (renderedDocument.buffer.isDirty()) return false
+  if (renderedDocument.rootPath !== selectedTarget.rootPath) return false
+  return renderedDocument.path === selectedTarget.path
 }
 
 function presentableRecord(

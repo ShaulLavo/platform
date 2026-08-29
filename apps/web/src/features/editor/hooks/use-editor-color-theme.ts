@@ -15,6 +15,7 @@ import type { VscodeThemeDefinition, VscodeThemeRegistration } from '@singapor/c
 import { useTheme } from '@/features/settings/hooks/use-theme'
 import {
   getCommittedEditorThemeId,
+  getResolvedShikiThemeContentHash,
   getSelectedEditorThemeId,
   loadEditorThemeForSelection,
   setActiveEditorColorMode,
@@ -25,6 +26,7 @@ import {
 import { clientErrors } from '@/lib/structured-errors'
 
 type EditorColorThemeState = {
+  readonly appliedThemeContentHash: string | null
   readonly appliedThemeId: string | null
   readonly colorMode: EditorColorMode
   readonly committedThemeId: string
@@ -49,6 +51,10 @@ export function EditorColorThemeProvider({ children }: { readonly children: Reac
     getCommittedEditorThemeId(resolvedTheme),
   )
   const [loadedTheme, setLoadedTheme] = useState<LoadedEditorColorTheme | null>(null)
+  const appliedThemeContentHash = useSyncExternalStore(subscribeEditorColorTheme, () => {
+    const themeId = loadedTheme?.resolvedThemeId
+    return themeId ? getResolvedShikiThemeContentHash(themeId) : null
+  })
   const shikiThemeResolver = useCallback(() => shikiTheme, [shikiTheme])
 
   // The shiki plugin's non-React theme resolver reads the active mode from the
@@ -78,6 +84,7 @@ export function EditorColorThemeProvider({ children }: { readonly children: Reac
 
   const value = useMemo<EditorColorThemeState>(
     () => ({
+      appliedThemeContentHash,
       appliedThemeId: loadedTheme?.resolvedThemeId ?? null,
       colorMode: resolvedTheme,
       committedThemeId,
@@ -88,7 +95,14 @@ export function EditorColorThemeProvider({ children }: { readonly children: Reac
       shikiThemeResolver,
       selectedThemeId: shikiTheme,
     }),
-    [committedThemeId, loadedTheme, resolvedTheme, shikiTheme, shikiThemeResolver],
+    [
+      appliedThemeContentHash,
+      committedThemeId,
+      loadedTheme,
+      resolvedTheme,
+      shikiTheme,
+      shikiThemeResolver,
+    ],
   )
 
   return createElement(EditorColorThemeContext, { value }, children)

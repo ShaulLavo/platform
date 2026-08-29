@@ -49,6 +49,7 @@ export type FileOpenIntentPreparer = {
 export type FileOpenIntentRuntime = {
   now(): number
   schedule<T>(task: () => T | Promise<T>): Promise<T>
+  scheduleTimer(task: () => void, delayMs: number): () => void
 }
 
 export type FileOpenIntentBenchmarkResult = {
@@ -56,6 +57,8 @@ export type FileOpenIntentBenchmarkResult = {
   readonly nonTargetIntents: number
   readonly preparedClaims: number
   readonly promotedBytes: number
+  readonly highlighterRuntimeSessionIds: readonly string[]
+  readonly structuralRuntimeSessionIds: readonly string[]
   readonly targetIntents: number
   readonly wastedIntents: number
 }
@@ -66,8 +69,10 @@ type FileOpenIntentBenchmarkScope = {
   readonly path: string
   preparedClaims: number
   promotedBytes: number
+  readonly highlighterRuntimeSessionIds: Set<string>
   readonly sampleId: string
   targetIntents: number
+  readonly structuralRuntimeSessionIds: Set<string>
   wastedIntents: number
   quarantined: boolean
 }
@@ -91,6 +96,7 @@ export class FileOpenIntentService {
   private lifecycleGeneration = 0
   private connectionGeneration = 0
   private connected = false
+  private cancelExpiryTimer: (() => void) | null = null
   private benchmarkScope: FileOpenIntentBenchmarkScope | null = null
   private readonly relatedOperations = new Set<Promise<void>>()
 
@@ -173,9 +179,11 @@ export class FileOpenIntentService {
       path: canonicalPath(path),
       preparedClaims: 0,
       promotedBytes: 0,
+      highlighterRuntimeSessionIds: new Set(),
       quarantined: false,
       sampleId,
       targetIntents: 0,
+      structuralRuntimeSessionIds: new Set(),
       wastedIntents: 0,
     }
   }
@@ -211,6 +219,8 @@ export class FileOpenIntentService {
       nonTargetIntents: scope.nonTargetIntents,
       preparedClaims: scope.preparedClaims,
       promotedBytes: scope.promotedBytes,
+      highlighterRuntimeSessionIds: [...scope.highlighterRuntimeSessionIds],
+      structuralRuntimeSessionIds: [...scope.structuralRuntimeSessionIds],
       targetIntents: scope.targetIntents,
       wastedIntents: scope.wastedIntents,
     }
@@ -296,13 +306,15 @@ export class FileOpenIntentService {
     if (record.claim.kind !== kind) return null
 
     this.records.delete(canonical)
+    this.scheduleExpiry()
     if (this.claimIsCurrent(record.claim)) {
       if (this.activePath === canonical) this.activeAbortController = null
-      this.noteBenchmarkClaim(canonical, record.estimatedBytes)
+      this.noteBenchmarkClaim(canonical, record.estimatedBytes, record.claim.preparedDocument)
       return record.claim
     }
 
     record.claim.preparedDocument?.dispose()
+    this.scheduleExpiry()
     return null
   }
 
@@ -315,6 +327,7 @@ export class FileOpenIntentService {
 
     record.claim.preparedDocument?.dispose()
     this.records.delete(canonical)
+    this.scheduleExpiry()
   }
 
   invalidatePreparedPath(path: string): void {
@@ -327,6 +340,8 @@ export class FileOpenIntentService {
     this.activeAbortController = null
     this.queuedPaths.length = 0
     this.queuedPathSet.clear()
+    this.cancelExpiryTimer?.()
+    this.cancelExpiryTimer = null
     for (const record of this.records.values()) record.claim.preparedDocument?.dispose()
     this.records.clear()
   }
@@ -514,6 +529,7 @@ export class FileOpenIntentService {
       estimatedBytes: preparedDocument.estimatedBytes,
     })
     this.pruneBounds()
+    this.scheduleExpiry()
   }
 
   private recordIsCurrent(path: string): boolean {
@@ -527,6 +543,7 @@ export class FileOpenIntentService {
 
     record.claim.preparedDocument?.dispose()
     this.records.delete(path)
+    this.scheduleExpiry()
     return false
   }
 
@@ -555,12 +572,30 @@ export class FileOpenIntentService {
   private pruneExpired(): void {
     const oldestAllowed = this.runtime.now() - PREPARED_OPEN_TTL_MS
     for (const [path, record] of this.records) {
-      if (record.createdAt >= oldestAllowed) continue
+      if (record.createdAt > oldestAllowed) continue
 
       record.claim.preparedDocument?.dispose()
       this.records.delete(path)
       this.noteBenchmarkEviction()
     }
+    this.scheduleExpiry()
+  }
+
+  private scheduleExpiry(): void {
+    this.cancelExpiryTimer?.()
+    this.cancelExpiryTimer = null
+    let expiresAt: number | null = null
+    for (const record of this.records.values()) {
+      const candidate = record.createdAt + PREPARED_OPEN_TTL_MS
+      if (expiresAt === null || candidate < expiresAt) expiresAt = candidate
+    }
+    if (expiresAt === null) return
+
+    const delayMs = Math.max(0, expiresAt - this.runtime.now())
+    this.cancelExpiryTimer = this.runtime.scheduleTimer(() => {
+      this.cancelExpiryTimer = null
+      this.pruneExpired()
+    }, delayMs)
   }
 
   private pruneBounds(): void {
@@ -623,6 +658,7 @@ export class FileOpenIntentService {
 
     record.claim.preparedDocument?.dispose()
     this.records.delete(path)
+    this.scheduleExpiry()
   }
 
   private async awaitIdle(): Promise<void> {
@@ -679,12 +715,23 @@ export class FileOpenIntentService {
     scope.nonTargetIntents += 1
   }
 
-  private noteBenchmarkClaim(path: string, estimatedBytes: number): void {
+  private noteBenchmarkClaim(
+    path: string,
+    estimatedBytes: number,
+    preparedDocument: EditorPreparedDocument | null,
+  ): void {
     const scope = this.benchmarkScope
     if (!scope || path !== scope.path) return
 
     scope.preparedClaims += 1
     scope.promotedBytes += estimatedBytes
+    const runtimeSessionIds = preparedDocument?.runtimeSessionIds()
+    for (const id of runtimeSessionIds?.highlighter ?? []) {
+      scope.highlighterRuntimeSessionIds.add(id)
+    }
+    for (const id of runtimeSessionIds?.structural ?? []) {
+      scope.structuralRuntimeSessionIds.add(id)
+    }
   }
 
   private noteBenchmarkEviction(): void {
@@ -748,5 +795,9 @@ const defaultFileOpenIntentRuntime: FileOpenIntentRuntime = {
         Promise.resolve().then(task).then(resolve, reject)
       }, 0)
     })
+  },
+  scheduleTimer: (task, delayMs) => {
+    const timer = setTimeout(task, delayMs)
+    return () => clearTimeout(timer)
   },
 }

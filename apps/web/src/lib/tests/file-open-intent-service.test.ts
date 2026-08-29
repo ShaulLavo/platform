@@ -241,6 +241,32 @@ describe('file open intent service', () => {
     stage.resolve('ready')
   })
 
+  it('expires an abandoned prepared session without later service activity', async () => {
+    const queryClient = new QueryClient()
+    const file = fileResult('/repo/a.ts')
+    const preparedDocument = preparedDocumentLease()
+    const runtime = manualRuntime()
+    queryClient.setQueryData(fileSnapshotQueryOptions(file.path).queryKey, file)
+    const service = new FileOpenIntentService(
+      queryClient,
+      { prepare: (buffer) => ({ buffer, preparedDocument }) },
+      () => null,
+      () => false,
+      () => false,
+      () => undefined,
+      runtime,
+    )
+    service.setRoot('/repo')
+
+    service.prepare(file.path)
+    runtime.startNext()
+    await runtime.settled()
+    runtime.advanceBy(30_000)
+
+    expect(preparedDocument.dispose).toHaveBeenCalledOnce()
+    expect(service.claimReadyClean(file.path)).toBeNull()
+  })
+
   it('does not admit an old completion after root to null to root', async () => {
     const queryClient = new QueryClient()
     const file = fileResult('/repo/a.ts')
@@ -368,6 +394,8 @@ describe('file open intent service', () => {
       nonTargetIntents: 0,
       preparedClaims: 1,
       promotedBytes: 1,
+      highlighterRuntimeSessionIds: [],
+      structuralRuntimeSessionIds: [],
       targetIntents: 1,
       wastedIntents: 0,
     })
@@ -392,6 +420,7 @@ function preparedDocumentLease(): EditorPreparedDocument {
   return {
     dispose: vi.fn(),
     estimatedBytes: 1,
+    runtimeSessionIds: () => ({ highlighter: [], structural: [] }),
     startStage: vi.fn(() => null),
     take: vi.fn(() => null),
   }
@@ -406,14 +435,27 @@ function deferred<T>() {
 }
 
 function manualRuntime(): FileOpenIntentRuntime & {
+  advanceBy(durationMs: number): void
   queued(): number
   startNext(): void
   settled(): Promise<void>
 } {
+  let now = Date.now()
   const tasks: Array<() => void> = []
+  const timers = new Map<number, { readonly at: number; readonly task: () => void }>()
+  let nextTimerId = 1
   const operations = new Set<Promise<unknown>>()
   return {
-    now: () => Date.now(),
+    advanceBy: (durationMs) => {
+      now += durationMs
+      for (const [id, timer] of timers) {
+        if (timer.at > now) continue
+
+        timers.delete(id)
+        timer.task()
+      }
+    },
+    now: () => now,
     queued: () => tasks.length,
     schedule: <T>(task: () => T | Promise<T>) =>
       new Promise<T>((resolve, reject) => {
@@ -426,6 +468,12 @@ function manualRuntime(): FileOpenIntentRuntime & {
       }),
     settled: async () => {
       while (operations.size > 0) await Promise.allSettled(operations)
+    },
+    scheduleTimer: (task, delayMs) => {
+      const id = nextTimerId
+      nextTimerId += 1
+      timers.set(id, { at: now + delayMs, task })
+      return () => timers.delete(id)
     },
     startNext: () => tasks.shift()?.(),
   }

@@ -15,6 +15,7 @@ import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
 import { FocusProvider } from '@/lib/focus/providers/provider'
 import type { FocusService } from '@/lib/focus/state/service'
 import { TestCommandProvider, type TestCommandRuntimeOptions } from './factories/command-runtime'
+import { LanguageServerMatchProvider } from '@/features/editor/providers/language-server-match-provider'
 
 // Retry/gc off so failing queries surface immediately and no timers outlive a test.
 export function createTestQueryClient() {
@@ -51,19 +52,21 @@ export function AppProviders({
 
   return (
     <QueryClientProvider client={queryClient}>
-      <FocusProvider service={focusService}>
-        <AppearanceProvider bootDensity={readSettingsMirror()['workbench.density']}>
-          <EditorColorThemeProvider>
-            {command === false ? (
-              content
-            ) : (
-              <TestCommandProvider options={command} queryClient={queryClient}>
-                {content}
-              </TestCommandProvider>
-            )}
-          </EditorColorThemeProvider>
-        </AppearanceProvider>
-      </FocusProvider>
+      <LanguageServerMatchProvider>
+        <FocusProvider service={focusService}>
+          <AppearanceProvider bootDensity={readSettingsMirror()['workbench.density']}>
+            <EditorColorThemeProvider>
+              {command === false ? (
+                content
+              ) : (
+                <TestCommandProvider options={command} queryClient={queryClient}>
+                  {content}
+                </TestCommandProvider>
+              )}
+            </EditorColorThemeProvider>
+          </AppearanceProvider>
+        </FocusProvider>
+      </LanguageServerMatchProvider>
     </QueryClientProvider>
   )
 }

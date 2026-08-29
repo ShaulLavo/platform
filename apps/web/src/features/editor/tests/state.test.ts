@@ -387,6 +387,7 @@ function preparedDocumentLease(): EditorPreparedDocument {
   return {
     dispose: vi.fn(),
     estimatedBytes: 1,
+    runtimeSessionIds: () => ({ highlighter: [], structural: [] }),
     startStage: vi.fn(() => null),
     take: vi.fn(() => null),
   }

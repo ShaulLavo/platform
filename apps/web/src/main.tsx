@@ -23,6 +23,7 @@ import { installEditorPerformanceTraceFromUrl } from '@/features/editor/state/pe
 import { queryClient } from '@/lib/query-client.ts'
 import { reportReactError } from '@/lib/react-error-reporting.ts'
 import { TooltipProvider } from '@workspace/ui/components/tooltip'
+import { LanguageServerMatchProvider } from '@/features/editor/providers/language-server-match-provider.tsx'
 
 installEditorPerformanceTraceFromUrl()
 initializeClientLogging()
@@ -76,16 +77,18 @@ createRoot(document.getElementById('root')!, {
   <StrictMode>
     <LoggingErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <AppearanceProvider bootDensity={boot['workbench.density']}>
-          <EditorColorThemeProvider>
-            <TooltipProvider delay={600}>
-              {/* `ThemeAwareToaster` stays a sibling of the app so an in-flight toast
-                  keeps its identity across an address change. */}
-              <App />
-              <ThemeAwareToaster />
-            </TooltipProvider>
-          </EditorColorThemeProvider>
-        </AppearanceProvider>
+        <LanguageServerMatchProvider>
+          <AppearanceProvider bootDensity={boot['workbench.density']}>
+            <EditorColorThemeProvider>
+              <TooltipProvider delay={600}>
+                {/* `ThemeAwareToaster` stays a sibling of the app so an in-flight toast
+                    keeps its identity across an address change. */}
+                <App />
+                <ThemeAwareToaster />
+              </TooltipProvider>
+            </EditorColorThemeProvider>
+          </AppearanceProvider>
+        </LanguageServerMatchProvider>
       </QueryClientProvider>
     </LoggingErrorBoundary>
   </StrictMode>,

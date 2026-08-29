@@ -349,6 +349,31 @@ test('the cached mark stays distinct from matching next-frame authoritative pain
   expect(text.startTime).toBeGreaterThan(cached.startTime)
 })
 
+test('a ready exact document still paints its cached frame before authoritative paint', async () => {
+  expect(writeEditorVisibleSnapshotCache(cachedSnapshot()).status).toBe('written')
+  const host = document.createElement('div')
+  host.dataset.workbench = ''
+  host.style.height = '120px'
+  host.style.position = 'relative'
+  host.style.width = '320px'
+  document.body.append(host)
+  root = createRoot(host)
+
+  flushSync(() => root?.render(<PaintHarness live />))
+  expect(document.querySelector('[data-editor-visible-snapshot]')).not.toBeNull()
+  await nextFrame()
+  await nextFrame()
+
+  const cached = performance.getEntriesByName('editor.cached_visible_paint')[0]
+  const text = performance.getEntriesByName('editor.authoritative_text_paint')[0]
+  const highlight = performance.getEntriesByName('editor.authoritative_highlight_paint')[0]
+  expect(cached).toBeDefined()
+  expect(text).toBeDefined()
+  expect(highlight).toBeDefined()
+  expect(text?.startTime).toBeGreaterThan(cached?.startTime ?? Number.POSITIVE_INFINITY)
+  expect(highlight?.startTime).toBeGreaterThan(cached?.startTime ?? Number.POSITIVE_INFINITY)
+})
+
 test('capture-phase interaction hides the visual before the event reaches the live target', async () => {
   const { observations, overlay, target } = await mountInteractionHarness('pointer')
 

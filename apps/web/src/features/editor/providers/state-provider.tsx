@@ -31,14 +31,13 @@ import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 import { fileSnapshotPathFromQueryKey } from '@/lib/file-snapshot-query-cache'
 import { createEditorOpenBenchmarkControl } from '@/features/editor/state/editor-open-benchmark-control'
 import { registerEditorOpenBenchmarkControl } from '@/features/editor/state/performance-trace'
+import { useLanguageServerMatchConfiguration } from '@/features/editor/providers/language-server-match-context'
 
 export function EditorStateProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient()
-  const { appliedThemeId, selectedThemeId } = useEditorColorTheme()
+  const { appliedThemeContentHash, appliedThemeId, selectedThemeId } = useEditorColorTheme()
   const syntaxHighlightingEnabled = useSettingValue('editor.syntaxHighlighting.enabled')
-  const tyForPython = useSettingValue('lsp.experimental.tyForPython')
-  const languageServers = useSettingValue('lsp.languageServers')
-  const servers = useSettingValue('lsp.servers')
+  const languageServerMatchConfiguration = useLanguageServerMatchConfiguration()
   // The address is folded in HERE, not applied later in an effect. Every store below
   // is seeded from this one value, so an address that arrived after them would have to
   // overwrite state the cache had already restored — which is how a shared link came to
@@ -66,6 +65,7 @@ export function EditorStateProvider({ children }: { children: ReactNode }) {
       new FileOpenIntentService(
         queryClient,
         createPlatformFileOpenPreparer({
+          appliedThemeContentHash,
           appliedThemeId,
           selectedThemeId,
           syntaxHighlightingEnabled,
@@ -75,11 +75,7 @@ export function EditorStateProvider({ children }: { children: ReactNode }) {
         (path) => mountedEditors.has(path),
         (rootPath, path) =>
           queryClient.prefetchQuery(
-            languageServerMatchQueryOptions(rootPath, path, {
-              'lsp.experimental.tyForPython': tyForPython,
-              'lsp.languageServers': languageServers,
-              'lsp.servers': servers,
-            }),
+            languageServerMatchQueryOptions(rootPath, path, languageServerMatchConfiguration),
           ),
       ),
   )
@@ -115,25 +111,28 @@ export function EditorStateProvider({ children }: { children: ReactNode }) {
   useLayoutEffect(() => {
     fileOpenIntentService.setPreparationEnvironment(
       createPlatformFileOpenPreparer({
+        appliedThemeContentHash,
         appliedThemeId,
         selectedThemeId,
         syntaxHighlightingEnabled,
       }),
-      `${appliedThemeId ?? ''}\u0000${selectedThemeId}\u0000${String(syntaxHighlightingEnabled)}`,
+      `${appliedThemeId ?? ''}\u0000${appliedThemeContentHash ?? ''}\u0000${selectedThemeId}\u0000${String(syntaxHighlightingEnabled)}`,
     )
-  }, [appliedThemeId, fileOpenIntentService, selectedThemeId, syntaxHighlightingEnabled])
+  }, [
+    appliedThemeContentHash,
+    appliedThemeId,
+    fileOpenIntentService,
+    selectedThemeId,
+    syntaxHighlightingEnabled,
+  ])
 
   useLayoutEffect(() => {
     fileOpenIntentService.setRelatedPrefetch((rootPath, path) =>
       queryClient.prefetchQuery(
-        languageServerMatchQueryOptions(rootPath, path, {
-          'lsp.experimental.tyForPython': tyForPython,
-          'lsp.languageServers': languageServers,
-          'lsp.servers': servers,
-        }),
+        languageServerMatchQueryOptions(rootPath, path, languageServerMatchConfiguration),
       ),
     )
-  }, [fileOpenIntentService, languageServers, queryClient, servers, tyForPython])
+  }, [fileOpenIntentService, languageServerMatchConfiguration, queryClient])
 
   useEffect(
     () =>

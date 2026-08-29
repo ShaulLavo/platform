@@ -19,6 +19,7 @@ const PREPARED_VISIBLE_RANGE_CHARS = 300_000
 const DEFAULT_EDITOR_TAB_SIZE = 4
 
 export type EditorPreparedEnvironment = {
+  readonly appliedThemeContentHash: string | null
   readonly appliedThemeId: string | null
   readonly selectedThemeId: string
   readonly syntaxHighlightingEnabled: boolean
@@ -56,6 +57,7 @@ export function editorPreparedDocumentTags(
       'platform-shiki',
       source,
       environment.appliedThemeId,
+      environment.appliedThemeContentHash,
       environment.selectedThemeId,
     ],
     structuralConfigurationTag: ['platform-tree-sitter', source, captures],
