@@ -6,7 +6,7 @@ import type {
 } from '@workspace/contracts'
 import { useMemo, useState, type ReactNode } from 'react'
 
-import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
+import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import {
   createDraftThreadSubmission,
   createTurnSubmission,
@@ -41,7 +41,7 @@ const NO_PLANS: ChatThread['proposedPlans'] = []
 
 type PlanDispatchContext = {
   draftTarget: ChatInputDraftTarget
-  environment: ChatEnvironment
+  transport: ChatTransport
   onThreadCreated: (threadId: ThreadId) => void
   plan: OrchestrationProposedPlan
   thread: ChatThread
@@ -57,20 +57,20 @@ type PlanDispatchContext = {
  * has to see the text as it stands at click time, and the banner must not become
  * a second owner of the composer's state.
  *
- * The environment arrives as a prop rather than being reached for, which keeps
- * the banner renderable against any `ChatEnvironment`, including the real
+ * The transport arrives as a prop rather than being reached for, which keeps
+ * the banner renderable against any `ChatTransport`, including the real
  * in-process one under test.
  */
 export function ChatPlanFollowUpProvider({
   children,
   draftTarget,
-  environment,
+  transport,
   onThreadCreated,
   threadId,
 }: {
   readonly children: ReactNode
   readonly draftTarget: ChatInputDraftTarget
-  readonly environment: ChatEnvironment
+  readonly transport: ChatTransport
   /**
    * Puts a newly split-off implementation thread on screen. A callback rather
    * than a reach into the session store: the two chat surfaces keep their
@@ -96,7 +96,7 @@ export function ChatPlanFollowUpProvider({
 
       setSubmitting(true)
       try {
-        return await dispatch({ draftTarget, environment, onThreadCreated, plan, thread })
+        return await dispatch({ draftTarget, transport, onThreadCreated, plan, thread })
       } finally {
         setSubmitting(false)
       }
@@ -108,14 +108,14 @@ export function ChatPlanFollowUpProvider({
       submitFollowUp: once(dispatchPlanFollowUpTurn),
       submitting,
     }
-  }, [draftTarget, environment, onThreadCreated, plan, submitting, thread])
+  }, [draftTarget, transport, onThreadCreated, plan, submitting, thread])
 
   return <ChatPlanFollowUpContext value={value}>{children}</ChatPlanFollowUpContext>
 }
 
 async function dispatchPlanFollowUpTurn({
   draftTarget,
-  environment,
+  transport,
   plan,
   thread,
 }: PlanDispatchContext): Promise<boolean> {
@@ -152,7 +152,7 @@ async function dispatchPlanFollowUpTurn({
       sourcePlanId: sourceProposedPlan?.planId ?? null,
       terminalContextCount: draft.terminalContexts.length,
     },
-    environment,
+    transport,
     onAccepted: () => drafts.clearDraft(draftTarget),
     optimisticMessage: submission.optimisticMessage,
     planThreadId: plan.threadId,
@@ -167,7 +167,7 @@ async function dispatchPlanFollowUpTurn({
  */
 async function dispatchPlanImplementationThread({
   draftTarget,
-  environment,
+  transport,
   onThreadCreated,
   plan,
   thread,
@@ -201,7 +201,7 @@ async function dispatchPlanImplementationThread({
       planThreadId: plan.threadId,
       sourceThreadId: thread.id,
     },
-    environment,
+    transport,
     // Only once the command is accepted: a rejected dispatch created no thread,
     // and the stage would sit on one that never arrives.
     onAccepted: () => onThreadCreated(command.threadId),
@@ -214,7 +214,7 @@ async function dispatchPlanTurn({
   action,
   command,
   context,
-  environment,
+  transport,
   onAccepted,
   optimisticMessage,
   planThreadId,
@@ -222,7 +222,7 @@ async function dispatchPlanTurn({
   action: string
   command: ThreadTurnStartCommand
   context: Record<string, unknown>
-  environment: ChatEnvironment
+  transport: ChatTransport
   onAccepted: () => void
   optimisticMessage: OrchestrationMessage
   /** The thread the plan lives on, which is not always the one running the turn. */
@@ -234,10 +234,10 @@ async function dispatchPlanTurn({
       useChatOptimisticStore.getState().addOptimisticMessage(command.commandId, optimisticMessage),
     command,
     context: { ...context, planThreadResynced: planThreadId !== command.threadId },
-    dispatchCommand: environment.dispatchCommand,
+    dispatchCommand: transport.dispatchCommand,
     onAccepted: (result) => {
       syncThreadsAfterPlanTurn({
-        environment,
+        transport,
         planThreadId,
         replayAfterSequence: replayAfterDispatch(command, result),
         turnThreadId: command.threadId,
@@ -264,18 +264,18 @@ async function dispatchPlanTurn({
  * here the source thread keeps offering to implement a plan that is already building.
  */
 function syncThreadsAfterPlanTurn({
-  environment,
+  transport,
   planThreadId,
   replayAfterSequence,
   turnThreadId,
 }: {
-  environment: ChatEnvironment
+  transport: ChatTransport
   planThreadId: ThreadId
   replayAfterSequence: number
   turnThreadId: ThreadId
 }) {
   scheduleThreadProjectionSyncAfterDispatch({
-    environment,
+    transport,
     replayAfterSequence,
     threadId: turnThreadId,
   })
@@ -287,7 +287,7 @@ function syncThreadsAfterPlanTurn({
     useChatProjectionStore.getState().threadDetailSequenceById[planThreadId] ?? 0
 
   scheduleThreadProjectionSyncAfterDispatch({
-    environment,
+    transport,
     replayAfterSequence: planThreadSequence,
     threadId: planThreadId,
   })

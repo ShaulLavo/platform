@@ -1,7 +1,7 @@
 import { HourglassMediumIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 
-import { useServerConnectionStore } from '../state/server-connection-store'
+import { selectServerConnection, useEnvironmentsStore } from '@/lib/environments/state/store'
 
 export function ChatPanelStatus({
   createError,
@@ -12,7 +12,9 @@ export function ChatPanelStatus({
   projectError: string | null
   shellError: string | null
 }) {
-  const slowRequestCount = useServerConnectionStore((state) => state.slowRequestCount)
+  const slowRequestCount = useEnvironmentsStore(
+    (state) => selectServerConnection(state, state.activeOrigin).slowRequestCount,
+  )
   const message = createError ?? projectError ?? shellError
   // Errors win: a request being slow while something is already broken is not
   // the thing the user needs told.

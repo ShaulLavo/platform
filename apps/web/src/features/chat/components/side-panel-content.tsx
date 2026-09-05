@@ -1,0 +1,69 @@
+import { memo, useCallback, useMemo } from 'react'
+
+import { useActiveChatThreadId } from '../hooks/use-active-chat-thread-id'
+import { useChatShellSubscription } from '../hooks/use-chat-shell-subscription'
+import { useWorkspaceChatProject } from '../hooks/use-workspace-chat-project'
+import { compareChatSidebarThreads } from '@/features/chat/utils/formatters'
+import { useChatTransport } from '@/features/chat/hooks/use-chat-transport'
+import { selectChatSidebarThreadsForProject } from '../state/chat-projection-selectors'
+import { useChatProjectionStore } from '../state/chat-projection-store'
+import { ChatPanelHeader } from './chat-panel-header'
+import { ChatPanelStatus } from './chat-panel-status'
+import { ChatDraftView } from './chat-draft-view'
+import { ChatView } from './chat-view'
+
+export const ChatSidePanelContent = memo(({ rootPath }: { rootPath: string }) => {
+  const transport = useChatTransport()
+  const shell = useChatShellSubscription(transport)
+  const projectState = useWorkspaceChatProject({ transport, rootPath })
+  const projectId = projectState.project?.id
+  const sidebarThreads = useChatProjectionStore((state) =>
+    selectChatSidebarThreadsForProject(state, projectId),
+  )
+  const threads = useMemo(
+    () => sidebarThreads.toSorted(compareChatSidebarThreads),
+    [sidebarThreads],
+  )
+  const threadIds = useMemo(() => threads.map((thread) => thread.id), [threads])
+  const { activeThreadId, selectDraftThread, setActiveThreadId } = useActiveChatThreadId(threadIds)
+  const disabled = !projectState.project || projectState.status !== 'ready'
+
+  const handleNewChat = useCallback(() => {
+    selectDraftThread()
+  }, [selectDraftThread])
+
+  return (
+    <div className='flex h-full min-h-0 flex-col'>
+      <ChatPanelHeader
+        activeThreadId={activeThreadId}
+        creating={false}
+        disabled={disabled}
+        threads={threads}
+        onNewChat={handleNewChat}
+        onSelectThread={setActiveThreadId}
+      />
+      {activeThreadId ? (
+        <ChatView
+          key={activeThreadId}
+          activeThreadId={activeThreadId}
+          transport={transport}
+          rootPath={rootPath}
+          onThreadCreated={setActiveThreadId}
+        />
+      ) : (
+        <ChatDraftView
+          disabled={disabled}
+          transport={transport}
+          project={projectState.project}
+          rootPath={rootPath}
+          onThreadCreated={setActiveThreadId}
+        />
+      )}
+      <ChatPanelStatus
+        createError={null}
+        projectError={projectState.error}
+        shellError={shell.error}
+      />
+    </div>
+  )
+})

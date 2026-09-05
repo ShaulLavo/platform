@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
 
 import { CommandPalette } from '@/components/command-palette'
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../test/factories/editor-state-provider'
 import { writeRootFolderCache } from '@/features/workspace/state/cache'
 import { useCommand } from '@/keymap/hooks/use-command'
 import { TestCommandProvider } from '../../../../test/factories/command-runtime'

@@ -4,7 +4,7 @@ import type {
   ThreadId,
 } from '@workspace/contracts'
 
-import { getClient } from '@/lib/client'
+import type { Client } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
 import { unwrapEdenResponse } from '@/lib/eden-events'
 
@@ -24,14 +24,14 @@ const ORCHESTRATION_SNAPSHOT_TIMEOUT_MS = 60_000
  * frames they deliver — stay on the socket, where ordering against the event
  * stream is the whole point.
  */
-export function fetchOrchestrationShellSnapshotHttp() {
+export function fetchOrchestrationShellSnapshotHttp(client: Client) {
   return observeClientOperation(
     {
       action: 'chat.shell_snapshot.http',
       area: 'chat',
     },
     async () => {
-      const response = await getClient().orchestration['shell-snapshot'].get({
+      const response = await client.orchestration['shell-snapshot'].get({
         fetch: { signal: snapshotTimeoutSignal() },
       })
 
@@ -51,7 +51,11 @@ export function fetchOrchestrationShellSnapshotHttp() {
   )
 }
 
-export function fetchOrchestrationThreadDetailSnapshotHttp(threadId: ThreadId) {
+export function fetchOrchestrationThreadDetailSnapshotHttp(
+  threadId: ThreadId,
+  client: Client,
+  signal?: AbortSignal,
+) {
   return observeClientOperation(
     {
       action: 'chat.thread_detail_snapshot.http',
@@ -59,11 +63,16 @@ export function fetchOrchestrationThreadDetailSnapshotHttp(threadId: ThreadId) {
       threadId,
     },
     async () => {
-      const response = await getClient().orchestration['thread-detail'].get({
-        fetch: { signal: snapshotTimeoutSignal() },
+      const response = await client.orchestration['thread-detail'].get({
+        fetch: {
+          signal: signal
+            ? AbortSignal.any([signal, snapshotTimeoutSignal()])
+            : snapshotTimeoutSignal(),
+        },
         query: { threadId },
       })
 
+      signal?.throwIfAborted()
       return unwrapEdenResponse<OrchestrationThreadDetailSnapshot>(response, {
         emptyMessage: 'the thread detail snapshot response carried no data',
         normalizeDates: true,

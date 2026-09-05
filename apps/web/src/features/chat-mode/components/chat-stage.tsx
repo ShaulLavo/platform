@@ -22,7 +22,7 @@ import { sessionCompletedAt } from '@/features/chat-mode/utils/session-unread'
 const EMPTY_ACTIVITIES: readonly [] = []
 
 export function ChatStage() {
-  const { activeSession, environment, error, project, ready, rootPath, selectSession } =
+  const { activeSession, transport, error, project, ready, rootPath, selectSession } =
     useChatModeSession()
   // Read by id rather than from the provider's list: the archive browser can put a
   // filed-away session on the stage, and that list deliberately excludes them.
@@ -60,7 +60,7 @@ export function ChatStage() {
       <div className='mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col overflow-hidden'>
         {stageBody({
           activeSession,
-          environment,
+          transport,
           project,
           ready,
           rootPath,
@@ -78,12 +78,12 @@ export function ChatStage() {
 
 function stageBody({
   activeSession,
-  environment,
+  transport,
   project,
   ready,
   rootPath,
   onThreadCreated,
-}: Pick<ChatModeSession, 'activeSession' | 'environment' | 'project' | 'ready'> & {
+}: Pick<ChatModeSession, 'activeSession' | 'transport' | 'project' | 'ready'> & {
   readonly rootPath: string
   readonly onThreadCreated: (threadId: ThreadId) => void
 }) {
@@ -104,7 +104,7 @@ function stageBody({
         // Never disabled here: reaching this line means the project is ready, and the
         // states that are not get their own screen above.
         disabled={false}
-        environment={environment}
+        transport={transport}
         project={project}
         rootPath={rootPath}
         onThreadCreated={onThreadCreated}
@@ -115,7 +115,7 @@ function stageBody({
   return (
     <ChatView
       activeThreadId={activeSession.threadId}
-      environment={environment}
+      transport={transport}
       key={activeSession.threadId}
       rootPath={rootPath}
       onThreadCreated={onThreadCreated}

@@ -5,8 +5,8 @@ import type {
 } from '@workspace/contracts'
 
 import { errorMessage } from '@/lib/error-message'
-import type { ChatEnvironment } from '../environment/chat-environment'
-import { createLocalChatEnvironment } from '../environment/local-chat-environment'
+import type { ChatTransport } from '@/features/chat/transport/chat-transport'
+import { createOrchestrationRpcClosedError } from '@/features/chat/transport/structured-errors'
 import {
   chatStreamItemSummary,
   createChatPipelineScope,
@@ -46,7 +46,7 @@ export type ThreadDetailSubscriptionSnapshot = {
 
 export type ThreadDetailSubscriptionCacheOptions = {
   clearScheduledTimeout?: (handle: TimeoutHandle) => void
-  environment: ChatEnvironment
+  transport: Pick<ChatTransport, 'threadDetailStream'>
   idleEvictionMs?: number
   maxCachedSubscriptions?: number
   now?: () => number
@@ -85,9 +85,12 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
   const now = options.now ?? Date.now
   const scheduleTimeout = options.scheduleTimeout ?? setTimeout
   const clearScheduledTimeout = options.clearScheduledTimeout ?? clearTimeout
-  const unsubscribeProjection = store.subscribe?.(handleProjectionChange) ?? null
+  let disposed = false
+  let unsubscribeProjection: (() => void) | null = null
 
   function retain(threadId: ThreadId) {
+    if (disposed) throw createOrchestrationRpcClosedError()
+    unsubscribeProjection ??= store.subscribe?.(handleProjectionChange) ?? null
     const entry = getOrCreateEntry(threadId)
     entry.scope.increment('subscription.retainCount')
     entry.scope.set({
@@ -102,7 +105,7 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
     let released = false
 
     return () => {
-      if (released) return
+      if (released || disposed) return
 
       released = true
       entry.refCount = Math.max(0, entry.refCount - 1)
@@ -125,6 +128,8 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
   }
 
   function disposeAll() {
+    if (disposed) return
+    disposed = true
     const threadIds = Array.from(entries.keys())
 
     for (const threadId of threadIds) {
@@ -258,10 +263,11 @@ export function createThreadDetailSubscriptionCache(options: ThreadDetailSubscri
     })
 
     try {
-      for await (const item of options.environment.threadDetailStream(entry.threadId, {
+      for await (const item of options.transport.threadDetailStream(entry.threadId, {
         afterSequence,
         signal,
       })) {
+        if (signal.aborted) return { blocked: false, error: null }
         markThreadDetailStreamLive(entry)
         applyThreadStreamItem(entry, item)
       }
@@ -438,13 +444,4 @@ function isBusySession(session: OrchestrationSession | null) {
   if (!session) return false
 
   return session.status !== 'idle' && session.status !== 'stopped'
-}
-
-const localThreadDetailSubscriptionCache = createThreadDetailSubscriptionCache({
-  environment: createLocalChatEnvironment(),
-  store: useChatProjectionStore,
-})
-
-export function retainThreadDetailSubscription(threadId: ThreadId) {
-  return localThreadDetailSubscriptionCache.retain(threadId)
 }

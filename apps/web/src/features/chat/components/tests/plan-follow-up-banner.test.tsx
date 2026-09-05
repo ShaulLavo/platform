@@ -19,7 +19,7 @@ import {
 } from '@/features/chat/state/chat-input-draft-store'
 import { useChatOptimisticStore } from '@/features/chat/state/chat-optimistic-store'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
-import { unsupportedChatEnvironment } from '../../../../../test/factories/chat-environment'
+import { unsupportedChatTransport } from '../../../../../test/factories/chat-transport'
 import { expect, test } from '../../../../../test/fixtures'
 import { thread as threadFactory } from '../../../../../test/factories/chat'
 import { renderWithProviders } from '../../../../../test/render'
@@ -238,7 +238,7 @@ function renderBanner({
   const created: ThreadId[] = []
   const dispatched: ClientOrchestrationCommand[] = []
   const snapshotRequests: ThreadId[] = []
-  const environment = unsupportedChatEnvironment({
+  const transport = unsupportedChatTransport({
     dispatchCommand: async (command) => {
       dispatched.push(command)
       if (dispatch) return dispatch()
@@ -265,7 +265,7 @@ function renderBanner({
   renderWithProviders(
     <ChatPlanFollowUpProvider
       draftTarget={draftTarget}
-      environment={environment}
+      transport={transport}
       threadId={seeded.id}
       onThreadCreated={(threadId) => {
         created.push(threadId)

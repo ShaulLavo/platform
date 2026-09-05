@@ -11,6 +11,7 @@ import { unstable_batchedUpdates } from 'react-dom'
 
 import { providerQueryKeys } from '@/features/chat/utils/provider-query'
 import { createClientInvariantError } from '@/lib/structured-errors'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import {
   acknowledgeSettingsIntent,
   settingsIntentStatus,
@@ -153,7 +154,7 @@ async function refreshConfirmedSettingsWithEvidence(
   signal?: AbortSignal,
 ): Promise<ConfirmedSettingsRefresh> {
   const token = beginSettingsSnapshotRead(queryClient)
-  const snapshot = await fetchSettings(signal)
+  const snapshot = await fetchSettings(signal, clientForQueryClient(queryClient))
   const state = admissionState(queryClient)
   const previous = confirmedSnapshot(queryClient) ?? state.lastConfirmed
   const accepted = observeInitialSettingsSnapshot(queryClient, snapshot, token)
@@ -233,7 +234,7 @@ async function admitSettingsUpdate(
       queryClient.setQueryData(settingsKeys.document(), update.snapshot)
     }
     if (update.originMutationId) {
-      const acknowledgement = acknowledgeIntent(update.originMutationId)
+      const acknowledgement = acknowledgeIntent(queryClient, update.originMutationId)
       acknowledgedIntent = acknowledgement.intent
       newlyAcknowledgedIntent = acknowledgement.newlyAcknowledged
     }
@@ -285,8 +286,8 @@ function confirmedEvidenceAdmission(
   update: SettingsUpdate,
   recoveredProviderChange: boolean,
 ): AdmissionResult {
-  const intent = intentSatisfiedBySnapshot(update.originMutationId, confirmed)
-  const acknowledgement = acknowledgeIntent(intent?.request.mutationId)
+  const intent = intentSatisfiedBySnapshot(queryClient, update.originMutationId, confirmed)
+  const acknowledgement = acknowledgeIntent(queryClient, intent?.request.mutationId)
   invalidateProviderQueries(
     queryClient,
     recoveredProviderChange ||
@@ -302,6 +303,7 @@ function confirmedEvidenceAdmission(
 }
 
 function intentSatisfiedBySnapshot(
+  queryClient: QueryClient,
   mutationId: string | undefined,
   snapshot: SettingsSnapshot,
 ): ActiveSettingsIntent | null {
@@ -309,7 +311,7 @@ function intentSatisfiedBySnapshot(
 
   const intent = useSettingsIntentStore
     .getState()
-    .active.find((entry) => entry.request.mutationId === mutationId)
+    .active.find((entry) => entry.owner === queryClient && entry.request.mutationId === mutationId)
   if (!intent) return null
 
   const layer = snapshot.layers.find((candidate) => candidate.id === intent.request.target)
@@ -319,8 +321,12 @@ function intentSatisfiedBySnapshot(
   return reduction.raw === layer.raw ? intent : null
 }
 
-function acknowledgeIntent(mutationId: string | undefined) {
+function acknowledgeIntent(queryClient: QueryClient, mutationId: string | undefined) {
   if (!mutationId) return { intent: null, newlyAcknowledged: null }
+  const owned = useSettingsIntentStore
+    .getState()
+    .active.some((entry) => entry.owner === queryClient && entry.request.mutationId === mutationId)
+  if (!owned) return { intent: null, newlyAcknowledged: null }
 
   const wasPending = settingsIntentStatus(mutationId) === 'pending'
   const intent = acknowledgeSettingsIntent(mutationId)

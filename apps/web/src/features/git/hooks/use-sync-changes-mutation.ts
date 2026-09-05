@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { useMutation } from '@tanstack/react-query'
 
 import { syncRemote } from '@/features/git/utils/api'
@@ -9,7 +10,7 @@ export function useSyncChangesMutation(rootPath: string) {
   const invalidate = useWorkspaceInvalidation()
 
   return useMutation({
-    mutationFn: () => syncRemote(rootPath),
+    mutationFn: (_variables, { client }) => syncRemote(rootPath, clientForQueryClient(client)),
     mutationKey: mutationKeys.sync(rootPath),
     onError: notifyMutationError,
     onSuccess: invalidate,

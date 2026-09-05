@@ -21,7 +21,7 @@ import type { SessionRailProject } from '@/features/chat-mode/utils/session-rail
  * what lets a running session refuse on its own terms.
  */
 export function useProjectActions() {
-  const { environment } = useChatModeSession()
+  const { transport } = useChatModeSession()
   const sessionActions = useSessionActions()
   const releaseSession = useSessionSelectionStore((state) => state.releaseSession)
   const requestDelete = useProjectDeleteRequestStore((state) => state.requestDelete)
@@ -51,7 +51,7 @@ export function useProjectActions() {
       void dispatchChatCommand({
         action: 'chat.project.delete',
         command: createProjectDeleteCommand({ projectId: request.projectId }),
-        dispatchCommand: environment.dispatchCommand,
+        dispatchCommand: transport.dispatchCommand,
       })
     },
     /** Deleting cascades onto every session in the project, so it always asks first. */

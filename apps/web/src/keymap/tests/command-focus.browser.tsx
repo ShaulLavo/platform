@@ -14,7 +14,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, expect, test } from 'vitest'
 
 import { EditorTabActionsProvider } from '@/features/editor/providers/tab-actions-provider'
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../test/factories/editor-state-provider'
 import { MenuSurface } from '@/features/menus/components/surface'
 import { useContextMenu } from '@/features/menus/hooks/use-context-menu'
 import { actionItem, section } from '@/features/menus/utils/model'

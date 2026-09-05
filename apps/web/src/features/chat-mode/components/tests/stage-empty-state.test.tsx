@@ -2,7 +2,7 @@ import type { ClientOrchestrationCommand } from '@workspace/contracts'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
+import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import { StageEmptyState } from '@/features/chat-mode/components/stage-empty-state'
 import {
   ChatModeSessionContext,
@@ -61,12 +61,12 @@ function renderEmptyState({
     addProject: () => {
       calls.addProjectCount += 1
     },
-    environment: {
+    transport: {
       dispatchCommand: async (_command: ClientOrchestrationCommand) => ({
         deduped: false,
         sequence: 1,
       }),
-    } as ChatEnvironment,
+    } as ChatTransport,
     error,
     openProject: () => {},
     project: null,

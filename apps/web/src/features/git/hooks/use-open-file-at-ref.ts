@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { fetchGitFile } from '@/features/git/utils/api'
@@ -22,7 +23,8 @@ export function useOpenFileAtRef() {
     const documentId = refDocumentId({ path, ref })
     // Content-addressed by (path, ref), so reopening the tab reuses the cache instead of refetching.
     const file = await queryClient.fetchQuery({
-      queryFn: ({ signal }) => fetchGitFile(path, ref, signal),
+      queryFn: ({ signal, client }) =>
+        fetchGitFile(path, ref, signal, clientForQueryClient(client)),
       queryKey: gitKeys.file(path, ref),
       staleTime: Infinity,
     })

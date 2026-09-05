@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { errorMessage } from '@/lib/error-message'
-import type { ChatEnvironment } from '../environment/chat-environment'
+import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import { useChatProjectionStore } from '../state/chat-projection-store'
 import { isBlockedStreamError, streamReconnectDelayMs } from '../utils/stream-reconnect'
 
@@ -41,7 +41,7 @@ type WakeSource = {
 }
 
 type ShellSupervisor = {
-  environment: ChatEnvironment
+  transport: ChatTransport
   setState: (state: ChatShellSubscriptionState) => void
   signal: AbortSignal
   wake: WakeSource
@@ -54,7 +54,7 @@ const CONNECTING_STATE: ChatShellSubscriptionState = {
   phase: 'connecting',
 }
 
-export function useChatShellSubscription(environment: ChatEnvironment): ChatShellSubscriptionState {
+export function useChatShellSubscription(transport: ChatTransport): ChatShellSubscriptionState {
   const [state, setState] = useState<ChatShellSubscriptionState>(CONNECTING_STATE)
 
   useEffect(() => {
@@ -62,7 +62,7 @@ export function useChatShellSubscription(environment: ChatEnvironment): ChatShel
     const wake = createWakeSource()
 
     void superviseShellSubscription({
-      environment,
+      transport,
       setState,
       signal: abortController.signal,
       wake,
@@ -72,7 +72,7 @@ export function useChatShellSubscription(environment: ChatEnvironment): ChatShel
       abortController.abort()
       wake.stop()
     }
-  }, [environment])
+  }, [transport])
 
   return state
 }
@@ -129,10 +129,12 @@ async function runShellStream(supervisor: ShellSupervisor): Promise<ShellStreamO
   try {
     const afterSequence = useChatProjectionStore.getState().lastAppliedShellSequence
 
-    for await (const item of supervisor.environment.shellStream({
+    for await (const item of supervisor.transport.shellStream({
       afterSequence,
       signal: supervisor.signal,
     })) {
+      if (supervisor.signal.aborted || supervisor.transport.closed)
+        return { blocked: false, error: null, established: live }
       useChatProjectionStore.getState().applyShellStreamItem(item)
       if (live) continue
 

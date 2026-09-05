@@ -1,6 +1,8 @@
 import { homedir } from 'node:os'
 import path from 'node:path'
 import { createApp } from './app'
+import { getDefaultPlatformDatabase } from './db/client'
+import { readEnvironmentIdentity } from './db/environment-identity'
 import {
   errorSummary,
   flushObservability,
@@ -45,6 +47,7 @@ export const app = createApp({
   workspaceRoot: configuredWorkspaceRoot,
 }).listen({ hostname, port }, (server) => {
   recordProcessInfo('server.start', {
+    environmentId: readEnvironmentIdentity(getDefaultPlatformDatabase()).id,
     homeDirectory,
     hostname: server.hostname,
     port: server.port,

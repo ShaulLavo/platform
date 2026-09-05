@@ -6,7 +6,8 @@ import type {
   ProviderSlashCommand,
 } from '@workspace/contracts'
 
-import { getClient } from '@/lib/client'
+import { getClient, type Client } from '@/lib/client'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { createRpcError } from '@/lib/structured-errors'
 
 /**
@@ -38,8 +39,9 @@ export const providerCommandCatalogKeys = {
 export async function fetchProviderCommandCatalog(
   providerInstanceId: ProviderInstanceId,
   cwd: string | null,
+  client: Client = getClient(),
 ): Promise<ProviderCommandCatalog> {
-  const response = await getClient()
+  const response = await client
     .providers({ providerInstanceId })
     .commands.get({ query: cwd ? { cwd } : {} })
   if (response.error) throw createRpcError(response.error)
@@ -62,7 +64,8 @@ export function providerCommandCatalogQueryOptions({
   return queryOptions({
     enabled: enabled && providerInstanceId !== null,
     gcTime: COMMAND_CATALOG_GC_TIME_MS,
-    queryFn: () => fetchProviderCommandCatalog(instance, cwd),
+    queryFn: ({ client }) =>
+      fetchProviderCommandCatalog(instance, cwd, clientForQueryClient(client)),
     queryKey: providerCommandCatalogKeys.catalog(instance, cwd),
     refetchOnWindowFocus: false,
     staleTime: COMMAND_CATALOG_STALE_TIME_MS,

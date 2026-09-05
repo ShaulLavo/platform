@@ -8,17 +8,20 @@ import {
   type SettingsSnapshot,
 } from '@workspace/contracts'
 
-import { getClient } from '@/lib/client'
+import { getClient, type Client } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
 import { toClientError } from '@/lib/client-error-taxonomy'
 import { unwrapEdenResponse } from '@/lib/eden-events'
 import { createClientInvariantError } from '@/lib/structured-errors'
 
-export async function fetchSettings(signal?: AbortSignal): Promise<SettingsSnapshot> {
+export async function fetchSettings(
+  signal?: AbortSignal,
+  client: Client = getClient(),
+): Promise<SettingsSnapshot> {
   return observeClientOperation(
     { action: 'settings.read', area: 'settings', signal },
     async () => {
-      const response = await getClient().settings.get({ fetch: { signal } })
+      const response = await client.settings.get({ fetch: { signal } })
 
       return unwrapEdenResponse(response, {
         requireData: true,
@@ -31,8 +34,9 @@ export async function fetchSettings(signal?: AbortSignal): Promise<SettingsSnaps
 
 export async function saveSettings(
   request: SettingsMutationRequest,
+  client: Client = getClient(),
 ): Promise<SettingsMutationResult> {
-  const response = await getClient().settings.write.post(request)
+  const response = await client.settings.write.post(request)
 
   return unwrapEdenResponse(response, {
     requireData: true,
@@ -43,6 +47,7 @@ export async function saveSettings(
 /** Whole-document compare-and-swap for the raw JSON editor. */
 export async function saveSettingsText(
   request: SettingsRawWriteRequest,
+  client: Client = getClient(),
 ): Promise<SettingsRawWriteResult> {
   return observeClientOperation(
     {
@@ -51,16 +56,16 @@ export async function saveSettingsText(
       target: request.target,
       writeId: request.writeId,
     },
-    () => postRawWithRetry(request),
+    () => postRawWithRetry(request, client),
     summarizeRawWriteResult,
     rawWriteFailureOutcome,
   )
 }
 
-async function postRawWithRetry(request: SettingsRawWriteRequest) {
+async function postRawWithRetry(request: SettingsRawWriteRequest, client: Client) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      const response = await getClient().settings.raw.post(request)
+      const response = await client.settings.raw.post(request)
       return unwrapEdenResponse(response, {
         requireData: true,
         emptyMessage: 'settings server returned an empty response',

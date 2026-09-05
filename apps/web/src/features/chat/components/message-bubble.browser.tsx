@@ -6,7 +6,7 @@ import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../test/factories/editor-state-provider'
 import { AppProviders, createTestQueryClient, seedBootMirrorTheme } from '../../../../test/render'
 import {
   ChatTimelineActionsContext,

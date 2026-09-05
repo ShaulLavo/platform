@@ -7,7 +7,8 @@ import {
 import { queryOptions } from '@tanstack/react-query'
 import * as v from 'valibot'
 
-import { getClient } from '@/lib/client'
+import type { Client } from '@/lib/client'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { observeClientOperation } from '@/lib/client-logging'
 import { unwrapEdenResponse } from '@/lib/eden-events'
 
@@ -48,7 +49,8 @@ export function sessionSearchQueryOptions(input: { limit?: number; query: string
     // Keep the last answer on screen while the next one is in flight: the rail
     // is a list the user is reading, and blanking it mid-word reads as "gone".
     placeholderData: (previous) => previous ?? EMPTY_SESSION_SEARCH,
-    queryFn: ({ signal }) => searchSessions({ limit, query, signal }),
+    queryFn: ({ signal, client }) =>
+      searchSessions({ limit, query, signal, client: clientForQueryClient(client) }),
     queryKey: sessionSearchQueryKeys.search(query, limit),
     // A failed scan is not worth a second scan: the user is still typing, and
     // the next keystroke supersedes this query anyway.
@@ -58,10 +60,12 @@ export function sessionSearchQueryOptions(input: { limit?: number; query: string
 }
 
 async function searchSessions({
+  client,
   limit,
   query,
   signal,
 }: {
+  client: Client
   limit: number
   query: string
   signal: AbortSignal
@@ -77,7 +81,7 @@ async function searchSessions({
       signal,
     },
     async () => {
-      const response = await getClient().orchestration['thread-search'].post(
+      const response = await client.orchestration['thread-search'].post(
         { limit, query },
         { fetch: { signal } },
       )

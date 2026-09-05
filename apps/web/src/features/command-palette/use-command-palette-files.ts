@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import type { LoadState } from '@/lib/load-state'
 import { fetchQuickOpenFiles } from '@/lib/file-server'
 import { fileSystemKeys } from '@/lib/query-keys'
@@ -33,12 +34,15 @@ export function useCommandPaletteFiles({
   const fileSearchEnabled = open && mode === 'files' && Boolean(rootPath && fileQuery)
   const fileSearchQuery = useQuery({
     enabled: fileSearchEnabled,
-    queryFn: ({ signal }) =>
-      fetchQuickOpenFiles({
-        path: rootPath ?? '',
-        query: fileQuery,
-        signal,
-      }),
+    queryFn: ({ signal, client }) =>
+      fetchQuickOpenFiles(
+        {
+          path: rootPath ?? '',
+          query: fileQuery,
+          signal,
+        },
+        clientForQueryClient(client),
+      ),
     queryKey: fileSystemKeys.quickOpenFiles(rootPath ?? '', fileQuery),
     staleTime: 5_000,
   })

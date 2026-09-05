@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { useQuery, type UseQueryOptions } from '@tanstack/react-query'
 
 import {
@@ -36,7 +37,8 @@ function diffDocumentQueryOptions(info: DiffDocumentInfo): DiffQueryOptions {
     const input = info.query
 
     return {
-      queryFn: ({ signal }) => fetchCheckpointDiff(input, signal),
+      queryFn: ({ signal, client }) =>
+        fetchCheckpointDiff(input, signal, clientForQueryClient(client)),
       queryKey: diffDocumentQueryKey(info),
       retry: checkpointDiffRetry,
       retryDelay: checkpointDiffRetryDelay,
@@ -47,7 +49,7 @@ function diffDocumentQueryOptions(info: DiffDocumentInfo): DiffQueryOptions {
   const input = info.query
 
   return {
-    queryFn: ({ signal }) => fetchBlobDiff(input, signal),
+    queryFn: ({ signal, client }) => fetchBlobDiff(input, signal, clientForQueryClient(client)),
     queryKey: diffDocumentQueryKey(info),
     retry: false,
     staleTime: Infinity,

@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { useQuery } from '@tanstack/react-query'
 import type { LogDashboardFilters } from '@workspace/contracts'
 
@@ -11,7 +12,7 @@ export function useLogEvents(filters: LogDashboardFilters, enabled = true) {
   return useQuery({
     enabled,
     notifyOnChangeProps: ['data', 'isError'],
-    queryFn: ({ signal }) => fetchLogEvents(filters, signal),
+    queryFn: ({ signal, client }) => fetchLogEvents(filters, signal, clientForQueryClient(client)),
     queryKey: logsKeys.events(queryFilters),
     staleTime: 1_000,
   })

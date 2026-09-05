@@ -1,3 +1,4 @@
+import { createTestQueryClient } from '../../../test/render'
 import { DEFAULT_PROVIDER_DRIVER_KIND, providerInstanceIdSchema } from '@workspace/contracts'
 import * as v from 'valibot'
 import { afterEach, beforeEach, vi } from 'vitest'
@@ -110,6 +111,7 @@ test('emits mutation metadata without values and redacts raw or path diagnostics
         mutationId: 'mutation-private',
         operationKinds: ['set', 'provider.setEnabled'],
         runtime: 'browser',
+        environmentId: null,
         secret: '[redacted]',
         settingIds: ['workbench.colorTheme', 'providers.instances'],
         target: 'user',
@@ -133,6 +135,7 @@ function emit(level: string, event: Record<string, unknown>) {
 
 function settingsIntentWithPrivateValues(): ActiveSettingsIntent {
   return {
+    owner: createTestQueryClient(),
     clientSequence: 7,
     enqueuedAt: 1,
     initiator: 'settings.ui',

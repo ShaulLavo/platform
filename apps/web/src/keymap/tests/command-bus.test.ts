@@ -346,7 +346,34 @@ test('dirty-close deferred is claimed and remains distinct from handled', async 
   })
 })
 
+test('one bus keeps an in-flight command on its captured environment', async () => {
+  const gate = Promise.withResolvers<void>()
+  let selected: TestRuntime | null = { label: 'A' }
+  const visited: string[] = []
+  const definition = asyncWorkspaceDefinition(({ runtime: captured }) => ({
+    status: 'started',
+    completion: (async () => {
+      visited.push(captured.label)
+      await gate.promise
+      visited.push(captured.label)
+      return { status: 'handled' as const }
+    })(),
+  }))
+  const harness = commandBusHarness(definition, { captureRuntime: () => selected })
+  const first = harness.bus.dispatch('test.command', invocation)
+  selected = { label: 'B' }
+  gate.resolve()
+  await first.completion
+  await harness.bus.dispatch('test.command', invocation).completion
+  expect(visited).toEqual(['A', 'A', 'B', 'B'])
+  selected = null
+  const switching = harness.bus.dispatch('test.command', invocation)
+  expect(switching.claimed).toBe(false)
+  await expect(switching.completion).resolves.toMatchObject({ status: 'disabled' })
+})
+
 type HarnessOverrides = {
+  readonly captureRuntime?: () => TestRuntime | null
   readonly dispatchEditor?: CommandBusOptions<
     TestCommandId,
     TestRuntime,
@@ -422,7 +449,7 @@ function commandBusHarness(definition: TestDefinition, overrides: HarnessOverrid
       }),
     reportError,
     resolveTarget: overrides.resolveTarget ?? (() => defaultTarget),
-    runtime,
+    captureRuntime: overrides.captureRuntime ?? (() => runtime),
     targetIsAvailable: overrides.targetIsAvailable ?? (() => true),
     toClientError,
   }

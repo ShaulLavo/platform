@@ -318,6 +318,11 @@ not for its rail summary (`plan-implemented-rail-badge`).
 
 ## 5. Deliberate non-parity
 
+> **Environment decision superseded 2026-09-05.** The rows below record the earlier audit.
+> [The environment strategy](environments-and-remote-plan.md) now selects connected machines
+> with separate checkouts. Plan 077 supplies the runtime foundation; Plans 068 and 078 add
+> scoped domain references and federation. Pairing remains deferred.
+
 ### Reaffirmed — settled previously, nothing in this sweep changes the reason
 
 | Cluster                                                     | Findings dropped                                                                                                                                                                                    | Why still no                                                                                                                                                                                                                                                                                                                                                           |

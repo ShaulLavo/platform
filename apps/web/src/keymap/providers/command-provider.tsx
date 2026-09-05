@@ -1,3 +1,5 @@
+import { useEditorRuntime } from '@/features/editor/hooks/use-runtime'
+import { DevOriginDialog } from '@/features/environments/components/dev-origin-dialog'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { DEFAULT_SETTING_VALUES, type SettingsSnapshot } from '@workspace/contracts'
@@ -24,14 +26,8 @@ import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
 import { useAppKeymap } from '@/keymap/use-app-keymap'
 import type { WorkspaceCommandRuntime, WorkspaceCommandSnapshot } from '@/keymap/define-command'
 import { CommandContext, type CommandContextValue } from '@/keymap/providers/command-context'
-import { createCommandBus } from '@/keymap/state/command-bus'
-import {
-  captureCommandSnapshot,
-  dispatchEditor,
-  lookupPlatformCommand,
-  openWorkspaceSettings,
-  resolveCommandTarget,
-} from '@/keymap/state/runtime'
+import { useBusBinding } from '@/keymap/hooks/use-bus-binding'
+import { openWorkspaceSettings } from '@/keymap/state/runtime'
 import { useFocusService } from '@/lib/focus/hooks/use-service'
 import { useFocusSnapshot } from '@/lib/focus/hooks/use-snapshot'
 import {
@@ -84,6 +80,7 @@ function runtimeAdapters({
 export function CommandProvider({ children }: { readonly children: ReactNode }) {
   const focus = useFocusService()
   const focusSnapshot = useFocusSnapshot()
+  const editorRuntime = useEditorRuntime()
   const documentStore = useEditorDocumentStoreApi()
   const workspace = useEditorWorkspaceStoreApi()
   const workspaceEdits = useWorkspaceEditService()
@@ -101,6 +98,7 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
   const [paletteSearch, setPaletteSearchState] = useState('')
   const [paletteScope, setPaletteScopeState] = useState<PaletteScope | null>(null)
   const [paletteOrigin, setPaletteOrigin] = useState<FocusTargetToken | null>(null)
+  const [environmentDialogOpen, setEnvironmentDialogOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsOrigin, setSettingsOrigin] = useState<FocusTargetToken | null>(null)
   const adaptersRef = useRef(
@@ -183,7 +181,7 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
   }
 
   const [runtime] = useState<WorkspaceCommandRuntime>(() => ({
-    documents: { queryClient, store: documentStore },
+    documents: { queryClient, store: documentStore, save: editorRuntime.saveService },
     editor: {
       closeTab: (...args) => adaptersRef.current.editor.closeTab(...args),
       discardAndCloseTab: (...args) => adaptersRef.current.editor.discardAndCloseTab(...args),
@@ -224,6 +222,7 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
         ),
     },
     shell: {
+      showEnvironmentDialog: () => setEnvironmentDialogOpen(true),
       openPicker: () => workspace.getState().openPicker(),
       openWorkspaceRoot: (rootPath) => adaptersRef.current.openWorkspaceRoot(rootPath),
       showCommandPalette: (initialSearch = '', origin) => {
@@ -252,19 +251,8 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
     workspace,
     workspaceEdits,
   }))
-  const [bus] = useState(() =>
-    createCommandBus({
-      captureSnapshot: captureCommandSnapshot,
-      dispatchEditor,
-      lookup: lookupPlatformCommand,
-      now: () => performance.now(),
-      resolveTarget: ({ entry, invocation, snapshot }) =>
-        resolveCommandTarget(runtime, entry.target, invocation, snapshot),
-      runtime,
-      targetIsAvailable: (target) =>
-        target.kind === 'workspace' || runtime.focus.isRegistered(target.token),
-    }),
-  )
+  const { binding, bus } = useBusBinding()
+  useLayoutEffect(() => binding.bind(runtime), [binding, runtime])
   const defaults = useMemo(() => defaultPlatformKeyBindings(), [])
   // Stable identity is required by the document listener and every shortcut-hint consumer.
   const bindings = useMemo(
@@ -359,6 +347,9 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
   return (
     <CommandContext value={value}>
       {children}
+      {import.meta.env.DEV && environmentDialogOpen ? (
+        <DevOriginDialog open onOpenChange={setEnvironmentDialogOpen} />
+      ) : null}
       <AppKeymapController />
       <CommandPalette />
       <SettingsDialog open={settingsOpen} onOpenChange={handleSettingsOpenChange} />

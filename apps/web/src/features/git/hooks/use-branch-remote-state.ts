@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { useQuery } from '@tanstack/react-query'
 
 import { gitKeys } from '@/lib/query-keys'
@@ -11,7 +12,8 @@ import { fetchBranchRemoteState } from '@/features/git/utils/api'
 export function useBranchRemoteState(rootPath: string | null) {
   return useQuery({
     enabled: Boolean(rootPath),
-    queryFn: ({ signal }) => fetchBranchRemoteState(rootPath ?? '', signal),
+    queryFn: ({ signal, client }) =>
+      fetchBranchRemoteState(rootPath ?? '', signal, clientForQueryClient(client)),
     queryKey: gitKeys.branchRemoteState(rootPath ?? ''),
     staleTime: 2_000,
   })

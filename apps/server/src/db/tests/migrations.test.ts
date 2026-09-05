@@ -4,6 +4,8 @@ import path from 'node:path'
 import { sql } from 'drizzle-orm'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createMetadataDatabase, type MetadataDatabaseHandle } from '../client'
+import { readEnvironmentIdentity } from '../environment-identity'
+import { environmentIdentity } from '../schema'
 import {
   migrateOrchestrationDatabase,
   migratePlatformDatabase,
@@ -13,6 +15,7 @@ import {
 
 const expectedTables = [
   'schema_migrations',
+  'environment_identity',
   'fs_metadata',
   'orchestration_events',
   'orchestration_command_receipts',
@@ -60,6 +63,61 @@ describe('platform migration ledger', () => {
 
     expect(second).toEqual([])
     expect(ledgerVersions(handle)).toEqual(ledgerVersionNumbers)
+  })
+
+  it('creates one durable identity on fresh databases and preserves it across connections', () => {
+    const first = openTempDatabase()
+    migratePlatformDatabase(first.db)
+    const identity = readEnvironmentIdentity(first.db)
+
+    const second = openTempDatabase(first.databasePath)
+    migratePlatformDatabase(second.db)
+
+    expect(identity.id).toMatch(/^[0-9a-f-]{36}$/)
+    expect(identity.createdAt).toEqual(expect.any(String))
+    expect(second.db.select().from(environmentIdentity).all()).toEqual([identity])
+  })
+
+  it('adds exactly one identity to a version 9 database and never remints it', () => {
+    const handle = openTempDatabase()
+    migratePlatformDatabase(
+      handle.db,
+      platformMigrations.filter(({ version }) => version <= 9),
+    )
+
+    const applied = migratePlatformDatabase(handle.db)
+    const identity = readEnvironmentIdentity(handle.db)
+    expect(applied.map(({ version }) => version)).toEqual([10])
+    expect(migratePlatformDatabase(handle.db)).toEqual([])
+    expect(handle.db.select().from(environmentIdentity).all()).toEqual([identity])
+  })
+
+  it('refuses a missing identity instead of recreating it', () => {
+    const handle = openTempDatabase()
+    migratePlatformDatabase(handle.db)
+    handle.db.delete(environmentIdentity).run()
+
+    expect(captureError(() => readEnvironmentIdentity(handle.db))).toMatchObject({
+      code: 'db.ENVIRONMENT_IDENTITY_INVALID',
+    })
+    expect(handle.db.select().from(environmentIdentity).all()).toEqual([])
+  })
+
+  it('refuses an ambiguous database identity', () => {
+    const handle = openTempDatabase()
+    migratePlatformDatabase(handle.db)
+    handle.db
+      .insert(environmentIdentity)
+      .values({
+        id: 'unexpected-second-identity',
+        createdAt: '2026-09-05T00:00:00.000Z',
+      })
+      .run()
+
+    expect(captureError(() => readEnvironmentIdentity(handle.db))).toMatchObject({
+      code: 'db.ENVIRONMENT_IDENTITY_INVALID',
+    })
+    expect(handle.db.select().from(environmentIdentity).all()).toHaveLength(2)
   })
 
   it('applies nothing from a second connection to the same file', () => {

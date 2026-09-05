@@ -7,7 +7,8 @@ import { DEFAULT_SETTING_VALUES, type SettingId, type SettingsValues } from '@wo
 
 import { expect, test } from '../../../../test/fixtures'
 import { EditorDocumentStateContext } from '@/features/editor/state/document-state'
-import { createEditorDocumentStore } from '@/features/editor/state/document-state'
+import { EditorRuntimeContext } from '@/features/editor/providers/runtime-context'
+import { createTestEditorRuntime } from '../../../../test/factories/editor-runtime'
 import { useAutoSave } from '@/features/editor/hooks/use-auto-save'
 import { WorkspaceEditServiceContext } from '@/features/editor/providers/workspace-edit-context'
 import type { WorkspaceEditService } from '@/features/editor/state/workspace-edit-service'
@@ -25,7 +26,8 @@ function harness(
     revision: '',
     values: { ...DEFAULT_SETTING_VALUES, ...overrides },
   })
-  const documentStore = createEditorDocumentStore()
+  const runtime = createTestEditorRuntime(queryClient)
+  const { documentStore } = runtime
 
   const wrapper = ({ children }: { children: ReactNode }) =>
     createElement(
@@ -34,7 +36,11 @@ function harness(
       createElement(
         WorkspaceEditServiceContext,
         { value: workspaceEdits },
-        createElement(EditorDocumentStateContext.Provider, { value: documentStore }, children),
+        createElement(
+          EditorRuntimeContext,
+          { value: runtime },
+          createElement(EditorDocumentStateContext, { value: documentStore }, children),
+        ),
       ),
     )
 

@@ -1,10 +1,11 @@
+import { useEnvironmentsStore } from '@/lib/environments/state/store'
 import { initLogger, log as evlog, type LogLevel } from 'evlog'
 import { createHttpLogDrain } from 'evlog/http'
 import { errorNumberField, errorStringField } from '@workspace/contracts'
 import { observabilityEnabledFromEnv } from '@workspace/observability/env'
 
 import { annotateClientError } from '@/lib/client-error-context'
-import { serverUrl } from '@/lib/client'
+import { activeServerOrigin } from '@/lib/client'
 import { clientInstanceId, instanceQueryParam } from '@/lib/instance-id'
 
 export type ClientLogLevel = LogLevel
@@ -161,7 +162,7 @@ function withClientEventId(event: ClientLogInput) {
 // drain falls back to sendBeacon on page hide, and sendBeacon cannot send
 // custom headers.
 function logIngestEndpoint() {
-  const endpoint = `${serverUrl.replace(/\/$/u, '')}${ingestPath}`
+  const endpoint = `${activeServerOrigin().replace(/\/$/u, '')}${ingestPath}`
 
   return `${endpoint}?${instanceQueryParam}=${encodeURIComponent(clientInstanceId())}`
 }
@@ -184,6 +185,10 @@ function safeClientEvent(event: Record<string, unknown>) {
   return {
     ...sanitizeRecord(event),
     runtime: 'browser',
+    environmentId:
+      typeof event.environmentId === 'string' || event.environmentId === null
+        ? event.environmentId
+        : (useEnvironmentsStore.getState().entries[activeServerOrigin()]?.environmentId ?? null),
   }
 }
 

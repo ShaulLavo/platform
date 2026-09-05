@@ -1,4 +1,4 @@
-import { serverUrl } from '@/lib/client'
+import { activeServerOrigin } from '@/lib/client'
 
 const DEFAULT_NERD_FONT_ID = 'JetBrainsMono'
 
@@ -117,13 +117,17 @@ function monoFontStackStillCurrent(root: CssVariableTarget | null, stack: string
 }
 
 function fontUrl(fontId: string) {
-  const baseUrl = serverUrl.endsWith('/') ? serverUrl : `${serverUrl}/`
+  const baseUrl = activeServerOrigin().endsWith('/')
+    ? activeServerOrigin()
+    : `${activeServerOrigin()}/`
 
   return new URL(`fonts/${encodeURIComponent(fontId)}`, baseUrl).href
 }
 
 export function fontPreviewUrl(fontId: string, text: string) {
-  const baseUrl = serverUrl.endsWith('/') ? serverUrl : `${serverUrl}/`
+  const baseUrl = activeServerOrigin().endsWith('/')
+    ? activeServerOrigin()
+    : `${activeServerOrigin()}/`
   const url = new URL(`fonts/${encodeURIComponent(fontId)}/preview`, baseUrl)
   url.searchParams.set('text', text)
 

@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { useMutation } from '@tanstack/react-query'
 import {
   useEffect,
@@ -39,8 +40,12 @@ export function useGenerateCommitMessage(rootPath: string) {
   const [failure, setFailure] = useState<GenerationFailure | null>(null)
   const [visibleGeneration, setVisibleGeneration] = useState<VisibleGeneration | null>(null)
   const mutation = useMutation({
-    mutationFn: (request: GenerationRequest) =>
-      generateCommitMessage(request.rootPath, request.controller.signal),
+    mutationFn: (request: GenerationRequest, { client }) =>
+      generateCommitMessage(
+        request.rootPath,
+        request.controller.signal,
+        clientForQueryClient(client),
+      ),
   })
 
   useEffect(() => {

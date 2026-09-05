@@ -2,7 +2,7 @@ import { createEditorTextBuffer, createEditorViewSession } from '@singapor/core'
 import { vi } from 'vitest'
 
 import type { EditorRenderDocument } from '@/features/editor/utils/render-document'
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../../test/factories/editor-state-provider'
 import { FileEditorBody } from '@/features/workbench/components/file-editor-body'
 import {
   EditorSurfaceActionsContext,

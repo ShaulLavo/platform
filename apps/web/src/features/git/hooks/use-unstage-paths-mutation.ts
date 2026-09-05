@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { useMutation } from '@tanstack/react-query'
 
 import { unstagePaths } from '@/features/git/utils/api'
@@ -9,7 +10,7 @@ export function useUnstagePathsMutation(paths: readonly string[]) {
   const invalidate = useWorkspaceInvalidation()
 
   return useMutation({
-    mutationFn: () => unstagePaths(paths),
+    mutationFn: (_variables, { client }) => unstagePaths(paths, clientForQueryClient(client)),
     mutationKey: mutationKeys.unstageMany(paths),
     onError: notifyMutationError,
     onSuccess: invalidate,

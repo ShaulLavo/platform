@@ -5,7 +5,7 @@ import path from 'node:path'
 import { useEffect, useEffectEvent, type ReactNode } from 'react'
 
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../../test/factories/editor-state-provider'
 import { useEditorUiState } from '@/features/editor/state/ui-state'
 import {
   createEditorWorkspaceStore,

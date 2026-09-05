@@ -1,4 +1,4 @@
-import { getClient } from '@/lib/client'
+import { getClient, type Client } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
 import { unwrapEdenResponse } from '@/lib/eden-events'
 import { gitKeys } from '@/lib/query-keys'
@@ -21,6 +21,7 @@ export function blobDiffQueryKey(query: BlobDiffRequest) {
 export async function fetchBlobDiff(
   query: BlobDiffRequest,
   signal?: AbortSignal,
+  client: Client = getClient(),
 ): Promise<FileDiff[]> {
   return observeClientOperation(
     {
@@ -32,7 +33,7 @@ export async function fetchBlobDiff(
       signal,
     },
     async () => {
-      const response = await getClient().git.diff.blob.get({
+      const response = await client.git.diff.blob.get({
         fetch: { signal },
         query: {
           newObjectId: query.newObjectId,

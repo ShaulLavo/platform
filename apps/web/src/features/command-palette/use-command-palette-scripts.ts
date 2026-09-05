@@ -1,3 +1,5 @@
+import type { Client } from '@/lib/client'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { useQuery } from '@tanstack/react-query'
 
 import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
@@ -35,7 +37,8 @@ export function useCommandPaletteScripts({
     projects.find((project) => project.workspaceRoot === rootPath)?.scripts ?? NO_SCRIPTS
   const { data: discovered } = useQuery({
     enabled: enabled && Boolean(rootPath),
-    queryFn: ({ signal }) => discoverPackageScripts(rootPath ?? '', signal),
+    queryFn: ({ signal, client }) =>
+      discoverPackageScripts(rootPath ?? '', signal, clientForQueryClient(client)),
     queryKey: ['command-palette', 'scripts', rootPath ?? ''],
     // A project without a manifest answers the same way every time; retrying is
     // two more failed reads for the same empty list.
@@ -46,14 +49,14 @@ export function useCommandPaletteScripts({
   return projectScriptSuggestions({ discovered: discovered ?? NO_SCRIPTS, saved })
 }
 
-async function discoverPackageScripts(rootPath: string, signal: AbortSignal) {
-  const tree = await fetchTree(rootPath, signal).catch(() => null)
+async function discoverPackageScripts(rootPath: string, signal: AbortSignal, client: Client) {
+  const tree = await fetchTree(rootPath, signal, client).catch(() => null)
   if (!tree) return NO_SCRIPTS
 
   const names = tree.entries.map((entry) => entry.name)
   if (!names.includes('package.json')) return NO_SCRIPTS
 
-  const manifest = await fetchFile(`${rootPath}/package.json`, signal).catch(() => null)
+  const manifest = await fetchFile(`${rootPath}/package.json`, signal, client).catch(() => null)
   if (!manifest) return NO_SCRIPTS
 
   return packageJsonScripts(manifest.content, packageScriptRunner(names))

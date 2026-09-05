@@ -1,360 +1,468 @@
-# Plan 057: Editor-Native VS Code Keymap and Single-Dispatcher Takeover
+# Plan 057: Standalone Editor chords and shared Platform keymap
 
-> **Executor:** Read this plan in full before editing. Then read `/Users/shaul/Desktop/D/platform/AGENTS.md`, `/Users/shaul/Desktop/D/platform/CLAUDE.md`, `/Users/shaul/Desktop/D/Editor/AGENTS.md`, and `/Users/shaul/.agents/skills/never-nester/SKILL.md`. This plan edits **two repositories**. Read §3 before touching either — CI clones the Editor at an unpinned `main`, so the merge order is not optional. Do not create a branch, commit, push, or PR unless the user explicitly asks.
+> **Executor:** Read this plan and both repositories' `AGENTS.md` and `CLAUDE.md` before editing.
+> Resolve the Editor checkout through the installed `@singapor/core` link. Read the installed
+> `never-nester` skill. Reconcile current source before applying the file map below.
+> This implementation spans Platform and Editor. Follow the cross-repository delivery section.
+> Do not create a branch, commit, push, or PR without authorization in the session.
 
 ## Status
 
-- **State:** Blocked on 056
+- **State:** Ready after Plan 056. Revised 2026-09-05 to require standalone Editor chord execution first.
 - **Priority:** P2
 - **Effort:** XL
-- **Risk:** HIGH — two of the failure modes (§6 H1, H2) are invisible to `dom` tests and read to a user as "the editor is broken"
-- **Category:** Direction
-- **Depends on:** `plans/056-multi-step-chord-keymap.md` complete and the landed typed
-  `CommandBus`/`FocusService` runtime. VS Code's chorded families cannot be expressed before the
-  chord machine exists, and the fold family (§5) is the reason the takeover is survivable.
-- **Planned against:** platform `546a4c84`, Editor `899b3f3`, 2026-08-22; command/focus boundary reconciled 2026-08-25
+- **Risk:** High. Shortcut ownership changes can break navigation, text editing, or focus without a type error.
+- **Category:** Implementation plan
+- **Depends on:** [Plan 056](056-multi-step-chord-keymap.md), implemented at Platform `0f5b0618`,
+  and the existing `CommandBus` and `FocusService`.
+- **Source reconciliation:** Platform `0f5b0618`, Editor `d31e730`, and installed
+  `@singapor/core` 0.1.2. Concurrent environment work can move Platform providers and command wiring.
 
-## Decision record
+## Required outcome
 
-Two directions were live. The measured evidence favoured keeping the keymap pack in platform; **the operator chose the editor-native pack and the full takeover, and that is what this plan implements.** The dissenting evidence is recorded in §2 rather than discarded, because it names real costs this plan has to pay rather than avoid.
+A standalone Editor consumer declares a chord through the normal keybinding API. The Editor
+handles matching, prefix consumption, timeout, cancellation, and command execution automatically.
+The consumer does not install Platform, register a document listener, create a command bus, or
+disable the Editor keymap to use chords.
 
-## Problem statement
+Platform uses the same reusable runtime with its combined app and editor binding table. Embedded
+editors disable their separate shortcut runtime with the existing `keymap.enabled: false` option.
+Platform selects the focused target and dispatches the command through its existing bus.
 
-Three defects, one root cause: the Editor and platform each hold a keymap, and neither is authoritative.
+Deliver both modes. Chord-shaped types, preset data, or Platform-only browser tests do not prove
+that the Editor package supports chords. The standalone execution gate must pass before the
+Platform takeover begins.
 
-**1. The app ships folding with no keys.** `grep -c fold apps/web/src/keymap/editor-commands.ts` returns **0**. Platform binds none of the Editor's folding pack and simultaneously disables the Editor's defaults with `defaultBindings: false` (`editor.tsx:123`). Fifteen fold commands are unreachable: no key, no palette row (the palette enumerates `platformCommands`, `table.ts:11`), no menu item.
+## Current behavior and the gap
 
-**2. Thirty-five editor commands are unreachable the same way.** Measured by executing `defaultEditorKeyBindings(platform)` against the `keys` of `editorCommands`, both normalised:
+- Platform supplies single-stroke editor bindings through `keymap/editor-keymap.ts`.
+  Editor mounts use `defaultBindings: false` plus the supplied layers.
+- `defaultBindings: false` removes built-in bindings. It does not disable supplied layers.
+  Editor's `enabled: false` option unregisters its shortcut bindings.
+- Editor's `EditorKeyBinding.hotkey` accepts one `RegisterableHotkey`. Its controller registers
+  those bindings individually with TanStack's `getHotkeyManager()`.
+- Plan 056 introduced Platform's `chord: KeyChord`, canonical space-separated `keys`, trie,
+  sequence machine, and DOM session. Editor chords bypass the single-stroke bridge and dispatch
+  through `CommandBus`. Single-stroke editor bindings still run inside Editor.
+- Platform's terminal host forwards keydown and keyup to the shared Platform session before
+  Ghostty encodes input. This is implemented and browser tested.
+- The earlier version of this plan changed Editor binding types and folding presets without
+  specifying standalone sequence execution. This revision closes that gap.
 
-|                                   | mac      | windows | linux    |
-| --------------------------------- | -------- | ------- | -------- |
-| Editor default hotkeys / commands | 102 / 98 | 98 / 97 | 100 / 97 |
-| Platform hotkeys / bound commands | 88 / 70  | 70 / 67 | 72 / 67  |
-| Identical key → identical command | 61       | 62      | 64       |
-| **Same key → different command**  | **0**    | **0**   | **0**    |
-| Commands only the Editor binds    | **35**   | 36      | 36       |
-| Commands only platform binds      | 7        | 6       | 6        |
+The remaining split can hide an app chord prefix behind an editor single shortcut. Both integrations
+using TanStack does not give them one pending sequence or a combined binding table.
 
-Folding ×15, column-select ×6, `smartSelect.expand`/`shrink`, `cursorWordPart*Select`, `deleteWordPart*`, `reindentlines`/`reindentselectedlines`, `cursorUndo`/`cursorRedo`, **`editor.action.toggleTabFocusMode`**, `editor.action.autoFix`, `inlineSuggest.acceptNextWord` (mac), and **`goToDefinition` F12**. The last two are not optional: `toggleTabFocusMode` is the keyboard-trap escape hatch (§6 H2) and F12 is currently a reserved no-op (`default-bindings.ts:106`).
+## Package boundary
 
-Nothing failed while platform's table sat 35 commands behind, because the only mechanical link between the tables is `defineEditorCommand<const Id extends EditorCommandId>` (`define-command.ts:117`), which proves the _command_ exists and says nothing about the _key_.
+### Put the reusable runtime in the Editor package
 
-**3. The Editor's standalone keymap is VS Code-wrong, and chordless.** Six genuine contradictions, all of which platform gets right and the Editor gets wrong:
+Export `@singapor/core/keymap` through a new package entry point,
+`packages/editor/src/public/keymap.ts`. Put the reusable implementation under
+`packages/editor/src/keymap/`. Keep `EditorKeymapController` as the Editor-specific adapter.
 
-| command                   | Editor                    | Platform    | why the Editor is wrong           |
-| ------------------------- | ------------------------- | ----------- | --------------------------------- |
-| `findReplace`             | `Mod+H` (`keymap.ts:519`) | `Mod+Alt+F` | `Mod+H` is macOS Hide Application |
-| `toggleFindCaseSensitive` | `Alt+C` (`:550`)          | `Mod+Alt+C` | bare `Alt+C` types `ç`            |
-| `toggleFindWholeWord`     | `Alt+W` (`:551`)          | `Mod+Alt+W` | types `∑`                         |
-| `toggleFindRegex`         | `Alt+R` (`:552`)          | `Mod+Alt+R` | types `®`                         |
-| `toggleFindInSelection`   | `Alt+L` (`:553`)          | `Mod+Alt+L` | types `¬`                         |
-| `togglePreserveCase`      | `Alt+P` (`:554`)          | `Mod+Alt+P` | types `π`                         |
+The public entry point exposes chord types, static editor packs, and the runtime factory. The
+generic runtime must not import `Editor.ts`, React, Platform commands, settings, `FocusService`,
+or Platform logging. Type-only references in editor pack definitions may name `EditorCommandId`.
+Importing the built entry point must work without a DOM. Runtime creation requires a supplied DOM root.
 
-And `foldingBindings` (`keymap.ts:663-685`) transliterates VS Code's entire `Ctrl+K` fold family into single strokes via an invented modifier-depth scheme — its own comment says the third modifier "asks for the variant of the chord it extends". That scheme collides head-on with `workspace.jumpToSession${position}` (`workspace-commands.ts:127`, `Mod+Alt+1..9`) and `previousSession`/`nextSession` (`:838`, `:828`, `Mod+Alt+[` / `Mod+Alt+]`) — **9 contested keys on mac, 7 on windows/linux**.
+Move reusable behavior from Plan 056 into this implementation. After Platform adopts it, delete
+Platform's duplicate matcher, sequence machine, and DOM lifecycle implementation. Keep Platform's
+settings resolution, command metadata, focus policy, and logging adapter in Platform.
 
-## Why the editor-native pack, and what it costs
+Use TanStack for stroke grammar and normalization. Preserve Plan 056's tested keyboard-layout
+matching behavior. Its `SequenceManager` was rejected because prefixes were not consumed and
+timeouts depended on another key event. Moving the code must preserve real timers, Hebrew and
+Cyrillic physical-key fallback, and the AZERTY printed-letter guard.
 
-**The operator's rationale:** the Editor is a library. Its default keymap is its public face for anyone embedding it, and that keymap is currently both wrong on macOS and distorted by a missing primitive. Fixing the primitive where it is missing beats maintaining the workaround plus a translation layer above it.
+### Make ordinary Editor use automatic
 
-**The costs this plan therefore pays, stated up front:**
-
-1. **A new package export subpath.** `@singapor/core` has no `./keymap` and `files: ["README.md","dist"]`. Adding it is a real cross-repo change with a dev-resolution implication (§3).
-2. **A permanent two-repo round trip on keymap edits.** Every future binding tweak is an Editor commit, a build, and a platform commit.
-3. **Product copy in a general-purpose library.** The pack carries VS Code command identities; the Editor now ships opinions about a specific editor's keymap.
-4. **The shared-prefix split.** `Ctrl+K Ctrl+C` is an editor command and `Ctrl+K Ctrl+S` is a workbench one. `EditorCommandId` cannot name `PlatformCommandId`, so **the pack is split by command space and merged in platform** (§4). The prefix is shared; no individual row spans both, so the split is clean — but platform, not the Editor, remains the only place that sees the whole trie.
-
-**What was rejected and why it matters anyway:** keeping the pack in platform would have avoided all four. It was rejected in favour of a correct standalone Editor. §4's split and §3's sequencing exist specifically to keep that choice from leaking a second source of truth back in.
-
-## Cross-repo mechanics — read before editing
-
-### Verified facts about the boundary
-
-- `platform/packages/editor-*` are **symlinks** into `/Users/shaul/Desktop/D/Editor/packages/*`, so Editor source is edited in place from inside the platform tree.
-- Root `overrides` pins every `@singapor/*` to `link:`, so the `"@singapor/core": "0.1.1"` in `apps/web/package.json` is decorative. **There is no version negotiation and no way to stage a breaking change behind a version.**
-- **Dev needs no rebuild.** `editorSourcePlugin` (`apps/web/vite.config.ts:79-99`, `apply: 'serve'`) rewrites `@singapor/*` specifiers to the sibling repo's `src/`, deriving each target from the package's own `exports` map — **all-or-nothing per package** (comment at `:74-82`). A new subpath needs its `exports` entry before dev resolution works.
-- **Typecheck and prod build do need a rebuild.** Both resolve `exports.types` / `exports.import` → `dist/`.
-- Platform's `typecheck` runs over `workspaces.packages`, which **excludes the symlinked `packages/editor-*`**. Platform never typechecks Editor source; type breakage there is invisible until the dist is rebuilt.
-- **CI clones the Editor at an unpinned `main`**: `EDITOR_REF: main` (`.github/workflows/ci.yml:19`), `git clone --depth 1 --branch '${{ inputs.editor-ref }}'` (`.github/actions/setup/action.yml:65`).
-
-### The consequence: no atomic breaking change is possible
-
-Because CI resolves the Editor at `main` for **every open platform PR simultaneously**, an Editor commit that removes `EditorKeyBinding.hotkey` breaks every in-flight platform PR the moment it merges. The change must therefore be **additive, then migrated, then narrowed**, in three merges:
-
-| Step  | Repo     | Change                                                                                                                                                                                                        | Gate before proceeding                                                                               |
-| ----- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| **A** | Editor   | Add `./keymap` to `exports`. Add `key?: KeySpec` to `EditorKeyBinding` **alongside** the existing `hotkey?: RegisterableHotkey`; make exactly one required via a union. Add the static pack. `bun run build`. | Editor `typecheck` + `test` green; `dist/` rebuilt; platform CI still green with no platform change. |
-| **B** | platform | Consume `@singapor/core/keymap`; migrate every producer and consumer to `key`.                                                                                                                                | Platform `verify` green; §8 browser checks pass.                                                     |
-| **C** | Editor   | Delete `hotkey` from `EditorKeyBinding`; the union collapses to `key`. `bun run build`.                                                                                                                       | Both repos green.                                                                                    |
-
-**This is not a back-compat shim.** CLAUDE.md's greenfield rule forbids permanent aliases and deprecation windows; it does not require a physically impossible atomic cross-repo merge. Step C is mandatory and lands in the same working session as B. If C is not done, the plan is not done.
-
-**Local loop:** Editor edit → `bun run build` in `Editor/packages/editor` → platform typecheck. The dev server never needs the build, so the inner loop is unaffected.
-
-## The pack model
-
-### Split by command space
-
-```
-Editor  packages/editor/src/editor/keymap/pack.ts     — editor.* rows, EditorCommandId
-        packages/editor/src/editor/keymap/vscode.ts   — the VS Code pack, generated + reviewed
-        exported via @singapor/core/keymap
-
-platform apps/web/src/keymap/packs/workspace-vscode.ts — workspace.* rows, PlatformCommandId
-         apps/web/src/keymap/packs/resolve.ts          — merges both, resolves overrides, one table
-```
-
-Platform merges. The Editor never sees a `workspace.*` id, and platform never re-authors an `editor.*` binding.
-
-### Editor-side types
+The following is the proposed binding shape, not an API already shipped:
 
 ```ts
-// Editor/packages/editor/src/editor/keymap/pack.ts
-
-/** One stroke. Object form (`RawHotkey`) whenever Shift meets punctuation: the `Hotkey`
- *  STRING union spells `Shift+${NonPunctuationKey}` on purpose to dodge layout dependence,
- *  so VS Code's `Ctrl+Shift+\` is unspellable as a string. `RawHotkey` can spell it, and
- *  `foldingBindings` already relies on that (keymap.ts:677). */
-export type KeyStep = RegisterableHotkey
-
-/** Exactly one or two. VS Code ships no three-step default; the tuple says so, so the pack
- *  cannot express what a resolver capped at two could not run. */
-export type KeySpec = readonly [KeyStep] | readonly [KeyStep, KeyStep]
-
-export type EditorPlatformName = 'linux' | 'mac' | 'windows'
-
-export type EditorPackBinding = {
-  readonly key: KeySpec
-  readonly command: EditorCommandId
-  /** Platform variance as DATA. Today ten producer functions branch on `platform`
-   *  (keymap.ts:301-317), which a static pack cannot do. */
-  readonly platforms?: readonly EditorPlatformName[]
-  readonly preventDefault?: boolean
-  readonly stopPropagation?: boolean
-}
-
-export type EditorKeymapPack = {
-  readonly id: 'vscode' | 'default'
-  readonly bindings: readonly EditorPackBinding[]
+const keymap: EditorKeymapOptions = {
+  layers: [
+    {
+      id: 'custom',
+      bindings: [{ chord: ['Mod+K', 'Mod+C'], command: 'editor.action.commentLine' }],
+    },
+  ],
 }
 ```
 
-`EditorKeyBinding` gains `key: KeySpec` and loses `hotkey` at step C. `defaultEditorKeymapLayers()` becomes a filter over the static pack rather than ten platform-branching producers.
+Single strokes use the same field, such as `chord: ['Mod+/']`. Editor construction creates and
+owns its runtime automatically. `setKeymap()` updates that runtime. Disposing the Editor disposes
+the runtime. Two standalone editors have independent pending state and cannot complete each
+other's chords.
 
-### What the Editor gains
+`keymap.enabled: false` disables shortcut matching only. Native typing, composition, clipboard,
+selection, and widget input handling remain active. Do not remove the Editor's input controller.
+Disabling cancels pending state and stops matching new shortcuts. If a consumed key is still held,
+retain only the ownership handlers needed to swallow its repeats and release. Re-enabling resumes
+exactly one matcher with the current bindings. Final Editor disposal removes all handlers.
 
-- The six mac bugs are fixed **in the pack**, since the Editor's data is now authoritative.
-- The fold family moves to `Ctrl+K Ctrl+0`, `Ctrl+K Ctrl+1..9`, `Ctrl+K Ctrl+[`, `Ctrl+K Ctrl+]`, `Ctrl+K Ctrl+,`, `Ctrl+K Ctrl+.` — which **dissolves the 9-key session-jump contest by construction**, because the fold family stops wanting `Mod+Alt+<digit>` at all.
-- `Ctrl+K Ctrl+C` / `Ctrl+K Ctrl+U` (comment toggling), `Ctrl+K Ctrl+F` (format selection), `Ctrl+K Ctrl+X` (trim trailing whitespace), `Ctrl+K Ctrl+I` (show hover) become expressible for the first time.
+### Let Platform own its combined table
 
-### Silent-drop traps to fix in the same pass
+Platform creates one runtime for its existing command provider lifetime. It merges editor presets,
+workspace bindings, and user overrides before matching. For example, an editor comment chord and
+the Settings chord can share `Mod+K` and resolve from the same pending sequence.
 
-- `editorCommandPackForCommand` (`keymap.ts:286-299`) has **no `clipboard` branch**, and neither does `editorKeyBindingsForCommandPack` (`:301-317`), yet `'clipboard'` is a live member of the union (`:21`), of `defaultEditorCommandPacks` (`:205`) and of `readonlySafeEditorCommandPacks` (`:219`) — a permanently empty layer. `EditorCommandId` has no copy/cut/paste; clipboard is browser-native. **Delete the member.**
-- `editor.action.showHover` (`commands.ts:26`) is in **no pack**, so `editorKeymapLayersForBindings` would silently discard any binding for it. Latent today (platform declares it keyless) and live the moment `Ctrl+K Ctrl+I` ships. **Give it a pack.**
-- `EditorKeymapLayerSource`'s `'plugin'` and `'user'` (`keymap.ts:31`) have zero producers in either repo. **Narrow to `'core' | 'app'`.**
-- **Consumer outside `packages/editor`:** `packages/lsp-plugin/test/codeActions.test.ts:5,233` imports and asserts on `readonlySafeEditorCommandPacks`. Update it in the same commit.
+Platform passes command availability and dispatch callbacks to the runtime. Those callbacks use
+`CommandBus` and the exact `FocusService` target. Embedded editors use `enabled: false`; their
+public command capability remains callable. The existing terminal hook forwards to this same
+runtime's `claimKeybinding()` method.
 
-## When-clauses
+The existing off switch is sufficient for this integration. Do not require every Editor consumer
+to inject a runtime or introduce another mandatory provider. Runtime instances are caller-owned;
+neither integration depends on a TanStack singleton coordinating another package instance.
 
-**Decision: a closed string union of predicate keys, ANDed, with `!` negation via a template-literal member.** No parser, no user-authored `when`, no `or` — two rows express `or`, which is what VS Code's backwards candidate scan amounts to.
+## Binding and runtime contract
 
-```ts
-// apps/web/src/keymap/define-command.ts + utils/when.ts   (pure evaluation)
-export type CommandWhenKey =
-  // landed workspace and target facts
-  | 'workspaceOpen'
-  | 'tabOpen'
-  | 'editorTarget'
-  | 'saveableTab'
-  | 'fileBackedTab'
-  | 'editorWritable'
-  | 'chatMode'
-  // editor-surface facts — from the resolved FocusService target and Editor.ts:691
-  | 'editorHasSelection'
-  | 'editorHasMultipleSelections'
-  | 'editorTabMovesFocus'
-  // editor-internal facts — need the Editor read side (Phase 7); NOT in the first cut
-  | 'findWidgetVisible'
-  | 'inlineSuggestionVisible'
+### Use one chord representation
 
-export type CommandWhen = CommandWhenKey | `!${CommandWhenKey}`
-```
+Export `KeyChord` from the shared keymap entry point. Reuse Plan 056's non-empty readonly tuple
+of `RegisterableHotkey` strokes. Migrate Editor's `hotkey` field to `chord` and update every
+producer and consumer. Do not introduce the old proposal's competing `key: KeySpec` spelling.
 
-`when` is evaluated **at both steps of a chord**, freshly, through the sole CommandBus snapshot and
-resolved FocusService target — no store or subscription. This is what VS Code does. **A candidate
-whose `when` fails does not consume the chord**: the resolver skips it and, if no candidate survives,
-the prefix falls through untouched.
+Keep canonical `keys` strings where Platform settings and display require them. Normalize each
+stroke separately. Preserve object-form `RawHotkey` values for modified punctuation.
+Platform's settings contract retains its two-stroke cap and existing string representation.
+The generic trie remains capable of deeper sequences; importing it does not import Platform's
+settings limit or require expanding Platform's recorder.
 
-The landed `CommandBus.inspect()` already applies `CommandWhen` to keybindings, palette, and menus,
-and `useAppKeymap` suppresses only a synchronously claimed ticket. Extend that evaluator; do not add
-a parallel availability helper or reinterpret conditions in the chord machine.
+Editor preset rows contain editor command IDs, chords, platform restrictions, and any explicit
+editor conditions needed by the preset. Platform owns `workspace.*` rows and maps editor rows into
+its command table. The shared engine treats the binding payload as generic data.
 
-## Settings surface
+### Keep host policy outside the engine
 
-```ts
-'keybindings.preset': defineSetting({
-  schema: v.picklist(['default', 'vscode']),
-  default: 'vscode',
-  scope: 'application',
-  widget: 'select',
-  category: 'Keyboard',
-  description: 'Which built-in keymap the default bindings come from. User overrides always win.',
-  keywords: ['keymap', 'keybindings', 'preset', 'vscode', 'chord'],
-})
-```
+Implement a factory with these responsibilities. Final symbol names may follow existing Editor
+conventions, but the ownership and behavior are required:
 
-**Scope is `application`, not `window`** — the value selects which keys bind to which commands, which reaches execution. CLAUDE.md's rule is explicit and a workspace file ships inside a cloned repository.
+| Input or operation       | Contract                                                                                                                              |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| DOM root                 | A supplied `HTMLElement` for a standalone editor or `Document` for Platform. Resolve listeners against its owner document.            |
+| Bindings                 | Readonly, ordered binding candidates. A binding carries a `chord` and a generic payload.                                              |
+| Capture context          | Capture the adapter's current context once per stroke. Every candidate for that stroke sees that snapshot.                            |
+| Check availability       | A synchronous adapter callback evaluates a candidate against that context. The engine has no command-policy union of its own.         |
+| Dispatch                 | A synchronous callback returns whether the command claimed the event. Async work may continue after that claim.                       |
+| Pending notification     | Report the matched prefix and candidate count for optional UI. Ordinary Editor consumers do not need to subscribe.                    |
+| Lifecycle notification   | Report one completed or cancelled sequence to an optional host callback. Platform adapts this to its wide event logging.              |
+| `claimKeybinding(event)` | Process a keydown or keyup once by event identity, including events forwarded by a terminal host. Return whether the runtime owns it. |
+| Binding update           | Replace the table and cancel pending state. Retain ownership of consumed keys until release where the current lifecycle permits it.   |
+| Context cancellation     | Let the adapter cancel on target or context replacement without recreating the runtime.                                               |
+| Enable or disable        | Stop matching new shortcuts when disabled. Retain consumed-key ownership through release; re-enable without duplicate matching.       |
+| Disposal                 | Remove all listeners, timers, subscriptions, and pending state when the owning Editor or Platform provider is disposed.               |
 
-**Only two members, and the description says why.** A vim keymap is a _modal input mode_ — operator-pending state, counts, registers, a mode indicator — not a key table. It is not a third picklist entry and must not be presented as one.
+The Editor adapter supplies editor context and calls the editor command dispatcher. Platform's
+adapter supplies its bus snapshot and focus target. Framework wrappers forward Editor options;
+React must not become a prerequisite for the core package.
 
-The preset resolves **below** user overrides: preset → `resolvedPlatformKeyBindings` → overrides. A row dropped by preset switching is reported through the existing `shadowedBy` channel (`active-bindings.ts:33-43`), rendered by `keybinding-row.tsx` with no UI change. `keybinding-section.tsx` gains a preset selector and an `unmapped` ledger listing VS Code bindings with no platform command — visible, not silent.
+### Preserve event ownership
 
-**Collision detection must move first.** `keyBindingResolution` early-returns when there are no overrides (`active-bindings.ts:168`), so `collidesWith` never runs on the shipped defaults, and default-table ties fall to `selectActiveBinding:257`'s strictly-greater comparison — silent last-wins, array order. A preset adding a second `pane:'any'` binding on an existing key would be silently swallowed. **Move collision detection onto the default/preset merge path in `default-bindings.ts:25-32` before any preset ships.**
+Carry Plan 056's regression coverage into the shared implementation:
 
-## Takeover hazards
+- A prefix arms only when at least one continuation is available in the current context.
+  An unavailable prefix passes through untouched.
+- A single shortcut consumes its event only when dispatch claims it, subject to the binding's
+  explicit event-handling options. A declined Tab command must leave browser focus traversal intact.
+- Once a prefix is consumed, the runtime owns its continuation. Consume an unmatched continuation
+  and a completion whose command has become unavailable. Cancel without replaying text or shell input.
+- Install continuation capture synchronously. Rendering a pending indicator must not control
+  whether the next key reaches the sequence.
+- Use a real five-second timer. Repeats do not re-arm a prefix or extend its timeout.
+- A chord-owned held key cannot trigger a standalone shortcut or leak text after completion,
+  mismatch, or timeout. Consume the corresponding keyup. Preserve ordinary single-key repeat behavior.
+- Ignore IME composition and the `keyCode === 229` pre-composition signal.
+- Cancel on blur, hidden document, pointer interaction, binding replacement, and target changes.
+  A standalone editor also cancels when focus leaves its root. Platform subscribes to its exact
+  focus owner so a move within one pane cancels synchronously.
+- Scope idle matching to the supplied root. Independent standalone editors must not steal each
+  other's events. Preserve local widget handling before idle shortcuts.
 
-| #       | Hazard                               | Why it bites                                                                                                                                                                                                                                                                                                                                                                                                          | Mitigation                                                                                                                                                                                                                    |
-| ------- | ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **H1**  | **Bare keys go dead**                | `eventTargetsTextEntry` (`use-app-keymap.ts:79,96-109`) returns true for any `<textarea>`, and the editor's focus target is one (`virtualizedTextViewHelpers.ts:162-163`). **Measured 39/88 mac, 38/70 win, 37/72 linux**: every arrow and Shift+arrow, Home/End, PageUp/PageDown, Backspace, Delete, Tab, F2, F3, Alt+Enter, Alt+Z… Silent; reads as "the editor is broken".                                         | `inEditorSurface(event)` exemption keyed on `[data-editor-surface]`, **in the same commit as the filter removal**. Verified by a **real-browser** test — happy-dom will not catch it.                                         |
-| **H2**  | **Keyboard trap on Tab**             | `applyIndentCommand` returns `false` when `tabMovesFocus`, and `inputSelectionController.ts:1004-1010` states the mechanism verbatim: _"Refusing the command rather than consuming it is the whole mechanism: an unhandled key is not default-prevented."_ Platform prevents unconditionally (`use-app-keymap.ts:82`). Compounding: `toggleTabFocusMode` is one of the 35 orphans, so the exit does not exist either. | Prevent-if-handled **plus** binding `editor.action.toggleTabFocusMode`. **Both or neither.**                                                                                                                                  |
-| **H3**  | Escape stops closing dialogs         | **REFUTED.** base-ui's `closeOnEscapeKeyDown` is a plain bubble-phase `document` listener (`useDismiss.js:416`, no capture flag) and never reads `defaultPrevented`. `stopPropagation()` from another listener on the same node does not suppress it. **Do not carry this claim into the work.** Keep prevent-if-handled anyway — its justification is H2 and `closeFind` returning false when the widget is shut.    |
-| **H4**  | Wrong-editor routing                 | **Closed foundation.** FocusService resolves the event origin, current owner, exact destination, and deepest registered target; editor capabilities live on that target.                                                                                                                                                                                                                                              | Preserve the sole service and route every takeover command through CommandBus. Do not infer a target from mount order or keep another last-focused pointer.                                                                   |
-| **H5**  | Stale-unmount race                   | **Closed foundation.** Focus targets use identity-safe registration tokens, so an older cleanup cannot remove a newer target.                                                                                                                                                                                                                                                                                         | Extend target capabilities in place if needed; do not add a second registry.                                                                                                                                                  |
-| **H6**  | Diff panes leak commands             | **Closed foundation.** Diff sides register exact read-only targets, including tab and side identity, and writable conditions are evaluated by CommandBus.                                                                                                                                                                                                                                                             | Preserve exact destination identity and verify `Mod+Z` remains unclaimed on a read-only diff.                                                                                                                                 |
-| **H7**  | Splits                               | FocusService is already target-per-DOM-owner and therefore split-ready.                                                                                                                                                                                                                                                                                                                                               | The takeover may add target facts, never singleton active-surface state.                                                                                                                                                      |
-| **H8**  | Terminal                             | ghostty's `handleKeyDown` reaches the encoder branch for every ctrl/alt/meta chord and ends `preventDefault(), stopPropagation()` on its container, below `document`. **Ctrl/meta chords in the terminal never reach platform's bubble listener today.** Platform never sets `attachCustomKeyEventHandler` (grep: zero hits).                                                                                         | Unchanged by this plan. Chord arming in the terminal is 056's D2 and is gated on the ghostty-webgpu host swap (`plans/055`), not on this plan.                                                                                |
-| **H11** | Loss of the stop-on-handled shield   | `keymap.ts:104-105` + `shouldStopPropagation` (`:126-130`) is undocumented and is the only thing keeping the two dispatchers from double-firing today. After the flip every editor key runs the full document path.                                                                                                                                                                                                   | Intended, but any future `document` listener registered after the keymap now sees keys it never used to. Note it in the keymap module header.                                                                                 |
-| **H12** | Hotkey manager is a global singleton | `getHotkeyManager()` is process-wide with exactly one call site in either repo (`keymap.ts:99`). Two `@tanstack/hotkeys@0.8.0` module instances exist; `vite.config.ts:39` dedupes only react/react-dom.                                                                                                                                                                                                              | Platform never imports `getHotkeyManager` (grep: zero). Keep that an explicit invariant: **only data and types cross the repo boundary, never state.** After the takeover the manager has zero live registrations in the app. |
-| **H13** | Find widget is a dead zone           | `EditorFindWidget.handleKeyDown` calls `stopPropagation()` as its **first statement on every keydown** (`find/src/findWidget.ts:208-209`; root hangs off `context.container`, a sibling of `scrollElement`). While find has focus **no platform binding fires** — not `Mod+P`, not `Mod+S`. True today; the takeover does not change it.                                                                              | Out of scope. Narrowing it wrongly means typing `d` in the find box deletes a line. Document it.                                                                                                                              |
-| **H16** | Overrides degrade silently           | `appliedOverrides` (`active-bindings.ts:275-289`) skips any value failing `isBindableHotkey` **with no error**.                                                                                                                                                                                                                                                                                                       | 056 already widens the schema so bad values fail _parse_ (surfaced by `malformed-banner.tsx`) rather than validation. Greenfield: tell the user to delete the key.                                                            |
+Keep the timer internal for this plan. No new application timeout setting is required.
 
-## Phases
+### Preserve conditional alternatives until matching
 
-Every phase leaves both repos green. Phases 1–2 are the cross-repo dance from §3.
+Plan 056's trie keeps one terminal binding, and its active-binding selection deduplicates exact keys.
+That representation cannot support ordered alternatives with different conditions.
 
-### Phase 0 — Drift oracle _(platform only, no behaviour change)_
+Store ordered terminal candidates and retain the prefix branches needed by conditional alternatives.
+Evaluate availability before choosing the first stroke and again on continuation. An eligible
+single-stroke candidate wins over a longer sequence on the same prefix. An ineligible candidate
+must not erase an otherwise available alternative during table construction.
 
-New `apps/web/src/keymap/tests/coverage-oracle.test.ts`: assert every command in `defaultEditorKeyBindings(platform)` — imported from the Editor **source**, not dist — is bound in `defaultPlatformKeyBindings(platform)`, modulo a written exception list of **35 entries on mac, 36 on win/linux**. Add a `dist`-vs-`src` guard so a stale `../Editor/dist` fails loudly rather than silently narrowing the comparison.
+Keep explicit user-override shadowing as configuration policy before runtime matching. Preserve the
+reviewed behavior where a discarded override cannot shadow another surviving binding. Built-in
+conditional alternatives must survive the merge, pane ordering, and trie construction until their
+conditions can be evaluated. Do not pass them through an unconditional `Map<keys, binding>`.
 
-**Exit:** green with the exception list. The list shrinks to zero at Phase 6.
+Define and test stable precedence for preset, pane, and candidate order. If a candidate dispatches
+but declines, follow the documented ordered fallback policy without executing a command twice.
+After a claimed prefix, fallback failure still consumes the continuation.
 
-### Phase 1 — Editor: pack, subpath, additive `key` _(Editor only — §3 step A)_
+## Editor presets and command context
 
-Add `./keymap` to `exports`. Add `KeySpec`/`EditorPackBinding`/`EditorKeymapPack`. Add `key?: KeySpec` beside `hotkey?`, exactly one required via a union. Convert the ten platform-branching producers into one static pack with `platforms` as data. Fix the six mac bugs. Move the fold family onto `Ctrl+K` chords. Delete the `'clipboard'` pack member, give `showHover` a pack, narrow `EditorKeymapLayerSource`. Update `packages/lsp-plugin/test/codeActions.test.ts` and the nine `packages/editor/test/*` files asserting on `defaultEditorKeyBindings`. `bun run build`.
+Keep the editor-native default pack and VS Code parity work. Move folding onto its chord family,
+correct the macOS find and replace bindings, and account for every editor command previously
+missing from Platform. Generate the current difference instead of assuming the old count of 35.
 
-**Exit:** Editor `typecheck` + `test` green; `dist/` rebuilt; **platform CI green with no platform change** — this is the proof the step is additive.
+Resolve the existing silent-drop cases while migrating the pack: verify the empty `clipboard`
+command-pack member, `showHover` pack membership, and unused layer-source variants. Delete a
+variant only after checking all Editor packages and Platform consumers.
 
-### Phase 2 — Platform: consume the pack _(platform only — §3 step B)_
+The Editor package must execute its own pack conditions. Expose only the public editor context
+needed by those conditions, such as writable state, selection, Tab focus mode, and visible widgets.
+Keep editor condition names independent of Platform's `CommandWhen` type.
 
-Import `@singapor/core/keymap`. `editor-commands.ts` stops declaring keys and keeps only titles, categories, icons and palette policy; the keys come from the pack. Add `packs/workspace-vscode.ts` and `packs/resolve.ts`. Move collision detection onto the merge path (§5). Migrate every producer and consumer to `key`.
+Platform maps those conditions into its existing evaluator. Preserve existing members such as
+`workspaceEditUndoable`, `workspaceEditRedoable`, and `workspaceMutable`. Add facts to the resolved
+editor capability or bus snapshot only when a concrete preset row needs them. Capture those facts
+fresh for both strokes. Do not introduce another last-focused pointer, target registry, or
+availability store.
 
-**Exit:** the resolved table is a superset of today's plus the fold family; the Phase 0 oracle's exception list shrinks to the 7 platform-only commands; `bun run verify` green.
+Complete the required read-side API and condition mapping before disabling the embedded editor
+matcher. Apply `editorWritable` to mutating commands. Navigation, selection, and other safe commands
+must continue to work in read-only editors.
 
-### Phase 3 — Editor: narrow _(Editor only — §3 step C)_
+## Settings and diagnostics
 
-Delete `hotkey` from `EditorKeyBinding`; the union collapses to `key`. `bun run build`. **Mandatory. If this is not done, the plan is not done.**
+Preserve application-scoped `keybindings.overrides`, its canonical strings, and the two-stroke
+recorder. The shared runtime does not own settings persistence.
 
-### Phase 4 — Reconcile landed editor targets _(platform only; keymap untouched, `EditorKeymapController` still on)_
+Keep the proposed `keybindings.preset` selector scoped to `application`. Register and wire it in
+the same pass as its consumer. Offer `default` and `vscode` only when they select distinct,
+implemented packs. Resolve the preset before user overrides. Regenerate the settings reference
+and JSON Schema after registry changes. Vim remains outside this static-preset work.
 
-Audit every Editor mount against `apps/web/src/lib/focus/state/service.ts` and its existing
-`useFocusTarget` registration: document editors, read-only search results, settings JSON, and every
-diff side must retain exact IDs plus `{ dispatch, writable }`. Add `data-editor-surface` to the
-owned frame only for DOM containment in the takeover listener; it is not a second registry.
-Eventless palette/menu commands continue through `CommandBus`, whose resolver uses FocusService's
-captured origin/current owner. Extend `FocusEditorCapability` or the command snapshot only for a
-new fact proven necessary by the native pack.
+Resolve preset collisions before matching, including configurations without user overrides.
+Distinguish intentional conditional alternatives from accidental duplicates and unreachable prefixes.
+Record binding identity and a reason for a discarded row.
 
-**Exit:** no key behaviour changes; keyboard, palette, and menu dispatch all resolve the same exact
-editor target. FocusService identity-safety and deepest-target tests remain green.
+The current `shadowedBy` field reports a command losing all its bindings to another command.
+It does not describe partial alias loss, reservations, preset omissions, or every cross-pane drop.
+Use `effectiveKeys` for surviving aliases and add an explicit resolution report for the remaining
+cases. Show unsupported VS Code rows in an `unmapped` list. Do not label every omission as shadowing.
 
-### Phase 5 — Preset setting and the unmapped ledger
+The existing contract checks string length and one- or two-stroke whitespace shape. Stroke grammar
+is checked separately by `isBindableChord`. Preserve that distinction in diagnostics and tests;
+do not claim that every invalid hotkey spelling is rejected by the JSON Schema.
 
-`keybindings.preset` registered and wired in the same pass (§5 — never an inert key). Preset selector and `unmapped` ledger in `keybinding-section.tsx`. Regenerate `docs/settings-reference.md`.
+## Cross-repository delivery
 
-**Exit:** toggling the preset changes real bindings; every dropped binding is reported through `shadowedBy`; the ledger is non-empty and visible.
+Recheck these facts before implementation:
 
-### Phase 6 — The takeover _(one commit; half of it is a broken editor until the last line)_
+- Platform uses linked `@singapor/*` packages from the sibling Editor checkout.
+- Platform development can resolve Editor source, while typechecking and production consume its
+  exported build artifacts. Rebuild Editor and compare source and built behavior explicitly.
+- `@singapor/core` currently has no `./keymap` export. Its build derives entry points from package
+  exports, so add `dist/public/keymap.js` and `dist/public/keymap.d.ts` through that mechanism.
+- Platform CI currently sets `EDITOR_REF: main`. Its setup uses `git clone --branch`, which accepts
+  branch or tag names and is not sufficient for checking out an arbitrary commit SHA.
 
-Delete `isAppKeyBinding` from `use-app-keymap.ts`. Add the `[data-editor-surface]` exemption to
-`eventTargetsTextEntry` (H1). Preserve the landed prevent-if-claimed contract: CommandBus calls the
-resolved Editor capability synchronously, `ticket.claimed` reflects its boolean result, and the app
-listener suppresses only a claimed command (H2). Collapse all three `useEditor` sites onto one
-`DISABLED_EDITOR_KEYMAP`; delete `diff-options.ts` if it remains byte-equivalent. Absorb the 35
-orphans. Bind `goToDefinition` to F12 and delete its reservation. Bind `toggleTabFocusMode`. Replace
-`readonlyEditorKeymapLayers` with `when: ['editorWritable']`; delete only the now-unused bridge code
-in `editor-keymap.ts`. Delete the duplicate `editorKeymapLayers` prop chain wherever the drift check
-finds it; do not delete `CommandProvider`'s one resolved binding table.
+Before publishing the incompatible Editor binding change, make Platform's Editor dependency
+reproducible. Add commit-ref checkout support to the existing setup action and pin the current
+known-good Editor commit. Verify that baseline pairing first. Then deliver the complete Editor
+runtime and API change, and update Platform's pinned ref with its consumer migration.
 
-`components/app-runtime-content.tsx` · `components/app-workspace.tsx` · `features/chat-mode/components/{layout,surface-view,tool-pane}.tsx` · `features/editor/components/editor.tsx` · `features/search/components/{result-editor-surface,result-editor-virtual-window,result-file-editor-pool-slot,result-file-editor}.tsx` · `features/settings/components/{json-view,page}.tsx` · `features/workbench/components/{code-panel,editor-surface-layout-view,editor-surface-tab-body,file-editor-body,layout,sidebar-panel}.tsx` · `features/workspace/components/{search-pane,search-results,view}.tsx`
+Migrate Editor's own wrappers, plugins, tests, and examples with its binding API. Migrate every
+Platform caller with the shared-runtime adoption. Do not add a permanent `hotkey` alias or an
+optional `hotkey`/`chord` union. Local intermediate revisions may require the paired consumer
+changes before Platform typechecks; the standalone Editor gate must already pass.
 
-**Exit — verified in a real browser at the running dev server, not by `dom` tests:** ArrowDown / Backspace / Home / PageUp / Tab all still work inside the editor; Tab escapes the editor with tab-focus mode on and `Control+Shift+M` toggles it back; Escape closes a dialog opened over a focused editor; `Mod+[` outdents in the editor and navigates back outside it; `Mod+Z` in a diff pane does nothing rather than undoing in the file editor behind it; F12 opens Go to Definition; `Ctrl+K Ctrl+0` folds all. Phase 0's exception list is empty.
+Keep the immutable dependency ref after delivery. A built package test must exercise the public
+subpath, and the final Platform checks must use the exact Editor artifact named by that ref.
+Do not merge only tuple-shaped folding data while the standalone controller still registers
+single hotkeys. Do not disable embedded Editor shortcuts before Platform's replacement path works.
 
-### Phase 7 — `when` predicate union
+## Implementation phases
 
-Extend `CommandWhen` and `utils/when.ts` with `editorTabMovesFocus` and any other proven Editor read
-facts. `editorWritable` and the shared evaluator already exist. Keep evaluation in
-`CommandBus.inspect()`; the chord trie may filter candidates by bus inspection but may not own a
-second context model.
+Each phase ends with a concrete proof. Required dependency checks are separate from feature tests;
+avoid repository-wide test runs when a focused test proves the behavior.
 
-**Exit:** each key lands with the binding that needs it; `readonlySafeEditorCommandPacks` has no platform consumer left; 056's D16 is closed.
+### Phase 0: Reconcile the source and record the baseline
 
-### Phase 8 — Editor read side _(the second cross-repo phase)_
+Resolve both checkouts and read their local instructions. Inspect all Editor mounts, command-pack
+consumers, framework wrappers, and package exports. Prepare the reproducible CI pairing described above.
 
-`findWidgetVisible` and `inlineSuggestionVisible` via an optional `onKeymapContextChange?: (snapshot) => void` on **`EditorOptions`**, not a `packages/react` addition — `packages/solid/src/index.ts:55,70,227,248` forwards `keymap` as a first-class binding layer with its own test, and an option-callback survives both wrappers because Solid spreads `...constructorOptions`.
+Create a repeatable comparison of Editor source, built exports, and Platform's resolved bindings
+on macOS, Windows, and Linux. Compare normalized row contents, platform restrictions, command IDs,
+and conditions, not just counts. Record missing editor commands separately from Platform-only
+commands and intentional reservations. The comparison must detect a stale build with the same row count.
 
-**Exit:** Escape becomes two `when`-gated candidates and `commandRouter.ts:45-49`'s fall-through becomes deletable.
+Reuse Plan 056's regression and browser fixtures as the Platform baseline. Record the current
+matcher benchmark so extracting the engine cannot quietly restore a linear scan per key event.
 
-## Test plan
+**Exit:** a reproducible binding report, exact source revisions, and a working baseline dependency
+pairing. No shortcut behavior changes yet.
 
-```bash
-cd /Users/shaul/Desktop/D/platform/apps/web && bun --bun vitest run --project node --project dom src/keymap
-```
+### Phase 1: Ship working standalone Editor chords
 
-```bash
-cd /Users/shaul/Desktop/D/Editor/packages/editor && bun run build && bun run test
-```
+Implement the generic runtime and public `./keymap` entry point. Migrate `EditorKeyBinding` to
+`chord` across Editor packages. Replace the controller's single-hotkey registrations with an
+automatically owned runtime. Wire binding updates, disable, re-enable, focus cancellation, and disposal.
 
-**The three checks that actually matter are browser-project, because H1, H2 and H6 are all invisible in happy-dom:**
+Move the reusable Plan 056 behavior and its focused tests into the shared module. Adapt command
+and focus callbacks without importing Platform. Add standalone trusted-input tests against real
+Editor construction and the built package entry point.
 
-- ArrowDown, Backspace, Home, PageUp and Tab inside a mounted, focused editor after the filter removal.
-- Tab escaping the editor with `tabMovesFocus` on, and `Control+Shift+M` restoring it.
-- `Mod+Z` in a diff pane not undoing in the file editor behind it.
+**Exit:** a standalone editor executes a supplied chord through its ordinary options. Prefixes,
+timeout, held keys, cancellation, and multiple editor instances pass the standalone checks below.
+No Platform provider or manually installed keyboard listener is used by that consumer.
 
-There is no trusted keyboard input in this repo today: `vitest.browser.config.ts:46-53` registers exactly four `browser.commands`, all mouse. **This plan must add a `proofKeyPress` command wired to `context.page.keyboard`** — deferred as follow-up in 056, but a hard prerequisite here, because Phase 6's exit criteria cannot otherwise be verified.
+### Phase 2: Complete the Editor presets and conditions
 
-Editor-side: the nine `packages/editor/test/*` files asserting on `defaultEditorKeyBindings` become pack assertions; add one asserting the fold family is chorded and no pack row uses a bare `Alt+<letter>` on mac.
+Convert built-in bindings into exported static packs. Correct the macOS bindings and add the
+folding and remaining VS Code chord families. Supply the editor context and conditional candidate
+behavior needed to execute those presets. Update affected wrappers and examples.
 
-## Out of scope
+**Exit:** a standalone editor executes an actual default folding chord and a custom chord.
+Pack-content assertions and trusted execution tests both pass. The Editor package passes its
+required build and typecheck, and the built public subpath exposes the same rows and runtime.
 
-| Deferred                                                 | Why                                                                                                                           |
-| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| vim / sublime / IntelliJ presets                         | A vim keymap is a modal input mode, not a key table. The picklist stays two members and the description says why.             |
-| VS Code's `ContextKeyExpr` grammar, user-authored `when` | §6's closed union covers every default. Revisit when user-authored `when` is a real requirement.                              |
-| `or` in `when`                                           | Two rows express it.                                                                                                          |
-| Command arguments in the pack                            | `editor.foldLevel${n}`'s enumeration is the precedent. `cursorMove` / `editorScroll` / `insertSnippet` go to `unmapped`.      |
-| Three-step chords                                        | VS Code ships no three-step default; `KeySpec` is a 1-or-2 tuple so the pack cannot express what the resolver will not run.   |
-| Terminal key parity (`workbench.action.terminal.*`)      | ghostty owns raw input (H8). Fixing `Mod+P`-in-terminal needs `attachCustomKeyEventHandler`; that is `plans/055`'s territory. |
-| Narrowing `findWidget.handleKeyDown`'s `stopPropagation` | Real (H13) and cross-repo. Getting it wrong means typing `d` in the find box deletes a line.                                  |
-| Migrating existing `keybindings.overrides` documents     | Greenfield: delete the key, write no healing code.                                                                            |
-| Distinguishing `editorTextFocus` from `editorFocus`      | Nothing distinguishes them today. One more boolean on the Phase 8 read side when needed.                                      |
+### Phase 3: Integrate Platform in one change
 
-## Drift check
+Prepare target policy before disabling Editor matching, but deliver the following steps together.
+Update the pinned Editor ref and remove the old bridge in this same Platform change. There is no
+intermediate release where the old `hotkey` bridge consumes Editor's new `chord` API, and no
+temporary bridge migration to maintain between phases.
 
-| Location                                                        | Must still say                                                                 | Why it matters                                                                                                                      |
-| --------------------------------------------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `.github/workflows/ci.yml:19`                                   | `EDITOR_REF: main`                                                             | If it becomes pinned, §3's three-step dance collapses to one atomic change. **Check this first — it changes the whole plan shape.** |
-| `apps/web/vite.config.ts:74-99`                                 | `editorSourcePlugin`, `apply: 'serve'`, all-or-nothing per package             | The `./keymap` subpath needs its `exports` entry before dev resolution works.                                                       |
-| `Editor/packages/editor/package.json`                           | `exports` has no `./keymap`; `files: ["README.md","dist"]`                     | Phase 1's first edit.                                                                                                               |
-| platform `package.json` `workspaces.packages`                   | excludes `packages/editor-*`                                                   | Platform never typechecks Editor source; breakage is invisible until a rebuild.                                                     |
-| `Editor/packages/editor/src/editor/keymap.ts:663-685`           | `foldingBindings` uses `Mod+Alt+<digit>`                                       | The collision this plan dissolves.                                                                                                  |
-| `apps/web/src/keymap/workspace-commands.ts:127`, `:828`, `:838` | `Mod+Alt+${position}`, `Mod+Alt+]`, `Mod+Alt+[`                                | The other half of the collision.                                                                                                    |
-| `apps/web/src/keymap/editor-commands.ts`                        | `grep -c fold` returns **0**                                                   | The folding-has-no-keys premise.                                                                                                    |
-| `apps/web/src/keymap/active-bindings.ts:168`, `:257`            | the empty-override early return; strictly-greater tie-break                    | Why collision detection must move onto the merge path before a preset ships.                                                        |
-| `apps/web/src/keymap/use-app-keymap.ts`                         | `isAppKeyBinding`; the text-entry gate; suppression only when `ticket.claimed` | Phase 6 removes the bridge while preserving the landed H1/H2 claim contract.                                                        |
-| `Editor/.../virtualizedTextViewHelpers.ts:162-163`              | the focus target is a `<textarea>`                                             | H1's mechanism. Re-measure the 39/88 figure if the element changes.                                                                 |
-| `Editor/.../inputSelectionController.ts:1004-1010`              | "Refusing the command rather than consuming it is the whole mechanism"         | H2's mechanism, stated by the Editor itself.                                                                                        |
-| `Editor/packages/find/src/findWidget.ts:208-209`                | `stopPropagation()` as the first statement                                     | H13.                                                                                                                                |
-| `apps/web/src/lib/focus/state/service.ts`                       | identity-safe tokens, exact editor target IDs, `{ dispatch, writable }`        | H4-H7 are landed prerequisites, not work to recreate.                                                                               |
-| `packages/lsp-plugin/test/codeActions.test.ts:5`, `:233`        | imports `readonlySafeEditorCommandPacks`                                       | The consumer outside `packages/editor` that must move with it.                                                                      |
-| `packages/solid/src/index.ts:55,70,227,248`                     | forwards `keymap` as a first-class layer                                       | Why Phase 8 is an `EditorOptions` field, not a React-package addition.                                                              |
-| `apps/web/vitest.browser.config.ts`                             | `proofKeyPress` and the command/focus browser acceptance file                  | Extend the existing trusted-input infrastructure for Phase 6.                                                                       |
-| `Editor/packages/editor/dist` freshness                         | `defaultEditorKeyBindings('mac')` from `dist` returns the same count as `src`  | A stale dist silently narrows the Phase 0 oracle.                                                                                   |
+#### Complete resolution and target policy first
+
+Consume editor pack definitions instead of re-authoring their keys. Keep Platform titles,
+categories, icons, aliases, and palette policy in its command registry. Merge workspace rows,
+presets, and user overrides with explicit collision reporting and ordered conditional alternatives.
+
+Map Editor conditions into the existing bus evaluator. Audit document editors, settings JSON,
+search results, and each diff side for exact focus identity and capabilities. Complete all required
+read-side and Tab-mode facts now. Wire the preset selector and resolution report to real consumers.
+Register the supported imported commands, including folding, Go to Definition, and Tab focus mode.
+Remove F12's reservation with its executable replacement. The Tab-focus-mode binding must exist
+before switching off the embedded matcher.
+
+Verify the combined table, conditions, and target routing through focused policy tests before the
+following replacement. This is preparation within one change, not a separately runnable app checkpoint.
+
+#### Replace Platform's engine and disable the embedded matcher
+
+Use `@singapor/core/keymap` for Platform's existing provider-owned session. Keep the hook as React
+wiring and the bus, focus, and logging callbacks as Platform adapters. Point the terminal's existing
+capture hook at that same runtime.
+
+Remove the editor-single filter in `keymap/utils/app-bindings.ts`. Switch all embedded Editor
+mounts to the shared `enabled: false` configuration. Remove the unused binding-layer prop chains
+and bridge functions from `keymap/editor-keymap.ts`. Preserve any command-ID conversion still used
+by dispatch. Keep the provider's one resolved binding table.
+
+Update `keymap/utils/keyboard-event.ts` so bare editing keys work on the actual registered editor
+text-input target. A blanket exemption for every descendant of `[data-editor-surface]` is unsafe:
+find, rename, and other nested inputs must keep their own text-entry behavior. Use existing target
+capabilities and precise containment, then verify it in a browser.
+
+Delete Platform's superseded trie, machine, and session implementations. Move generic tests with
+their implementation and retain Platform integration tests. Preserve `claimKeybinding`, pending UI,
+and the one lifecycle log event through the host adapter.
+
+**Exit:** Platform has one matching runtime for app and editor bindings. Shared-prefix commands
+dispatch exactly once to the correct target, and terminal input retains Plan 056 behavior. The
+complete trusted-input matrix below passes against the pinned Editor build.
+
+### Phase 4: Close parity and document both consumers
+
+Close the binding report against the delivered presets and command registrations. Account for every
+remaining unsupported row in the resolution report. Required folding, Go to Definition, and Tab
+focus mode bindings already exist before the takeover; do not defer them to this phase.
+
+Document ordinary standalone binding configuration first in the Editor package. Then document
+optional host ownership with `enabled: false`, the public runtime, and editor command dispatch.
+Update Platform's keymap status, plan index, and generated settings artifacts where applicable.
+
+**Exit:** the final report has no unexplained omissions, both usage modes have examples, and no
+duplicate runtime, old binding field, or obsolete bridge remains.
+
+## Verification
+
+### Shared runtime
+
+Use focused tests for ordered candidates, exact and prefix conflicts, and context changes between
+strokes. Preserve the layout, IME, timer, repeated-key, event-identity, and release-ownership tests
+from Plan 056. Include the discarded-override sibling case in Platform's policy tests.
+
+Prove that the engine import needs neither React nor an import-time DOM. Exercise the built
+`@singapor/core/keymap` export through package resolution. Compare source and built binding contents.
+Run the before-and-after matcher benchmark on the same workload and verify equal match results.
+
+### Standalone Editor, required before Platform takeover
+
+Use trusted browser keyboard input and the real public Editor API:
+
+| Scenario                                                      | Required observable                                                                                          |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Custom two-stroke binding in ordinary options                 | The editor command executes once without external keyboard wiring.                                           |
+| Default folding chord                                         | A real fold changes the visible document through the shipped preset.                                         |
+| Prefix and continuation                                       | The command runs only after completion, and neither stroke inserts text.                                     |
+| Timeout, mismatch, blur, or pointer cancellation              | No stale command runs and no consumed input is replayed.                                                     |
+| Held prefix, held completer, and held unmatched key           | No duplicate execution, standalone-shortcut collision, leaked text, or orphan release.                       |
+| Two editor instances and a focus move                         | Pending state stays instance-local and is cancelled when leaving its owner.                                  |
+| Binding replacement, disable, re-enable, and disposal         | Old bindings stop, pending state clears, and no duplicate listeners remain.                                  |
+| Disable while a consumed key is held, release, then re-enable | Held repeats and release stay consumed; new shortcuts remain disabled until re-enable and then execute once. |
+| `enabled: false`                                              | Shortcut matching stops while typing, IME, clipboard, and native selection handling still work.              |
+| Read-only editing and Tab focus mode                          | Navigation survives, mutation is refused, and an unclaimed Tab moves focus.                                  |
+| Local find or completion input                                | Local widget behavior survives idle shortcut matching.                                                       |
+
+### Platform with the shared runtime
+
+Extend the existing `keymap/tests/command-focus.browser.tsx` and
+`features/terminal/tests/keybindings.browser.tsx`. Reuse `proofKeyPress`, `proofKeyDown`, and
+`proofKeyUp` from `vitest.browser.config.ts`.
+
+- Complete an editor chord and an app chord sharing a prefix. Verify exactly one dispatch,
+  correct editor destination, and no duplicate match from an embedded Editor controller.
+- Exercise ArrowDown, Backspace, Home, PageUp, selection, and Tab inside the real editor input.
+  Verify that Tab can escape and the Tab-focus-mode command can restore editing behavior.
+- Verify that a nested text input retains local editing and does not receive editor deletion commands.
+- Exercise read-only diff sides and search-result editors. Undo and other mutations must not reach
+  a writable editor behind them. Read-only navigation must still work.
+- Exercise pane changes, same-pane editor changes, and unmount while a chord is pending.
+- Verify conditional fallback on both strokes and consumption after an already claimed prefix.
+- Exercise the Settings chord in the terminal, ordinary shell input, declined single commands,
+  timeout, and Kitty key releases through the real Ghostty engine.
+- Verify Settings recording, surviving-alias search, preset changes, and explicit conflict reporting.
+- Recheck dialog Escape and editor-local widgets after the ownership change. Do not infer safety
+  solely from `defaultPrevented` or synthetic DOM events.
+
+Run app node and DOM tests with `bun --bun vitest`; run browser tests through the separate browser
+config without `--bun`. Follow Editor's own test scripts for package tests. Reuse a running dev
+server for manual smoke checks. Existing browser-test server fixtures are the automated path.
+Complete required typechecks, package builds, scoped lint, and generated settings freshness checks.
+
+## Remaining boundaries
+
+- Full Vim or other modal keymaps, user-authored condition expressions, and Platform recording of
+  more than two strokes are outside this plan.
+- Do not replace the existing `CommandBus`, focus registry, terminal input engine, or native Editor
+  input controller as part of moving shortcut ownership.
+- The current find widget can stop bubbling keys before Platform sees them. Preserve local behavior,
+  test the boundary, and document any remaining app-shortcut restriction. A broad capture listener
+  or blanket editor-container exemption is not an acceptable shortcut around that restriction.
+- Do not introduce a terminal-specific chord runtime or a setting to choose between two matchers.
+- The previous audit's command counts and absolute macOS paths are historical. Use Phase 0's report
+  and resolved checkout paths for implementation decisions.
+
+## File map to reconcile before implementation
+
+| Area                                   | Current or proposed location                                                                                          |
+| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Shared public API, proposed            | `Editor/packages/editor/src/public/keymap.ts` and the package `./keymap` export                                       |
+| Shared runtime and types, proposed     | `Editor/packages/editor/src/keymap/`                                                                                  |
+| Automatic Editor adapter               | `Editor/packages/editor/src/editor/keymap.ts`, `EditorKeymapController`                                               |
+| Editor input and read-side facts       | `Editor/packages/editor/src/editor/Editor.ts`, input controller, and the relevant widget packages                     |
+| Editor framework consumers             | `Editor/packages/react/` and `Editor/packages/solid/`                                                                 |
+| Platform engine being extracted        | `apps/web/src/keymap/utils/{chord,keymap-trie,chord-machine}.ts`, `state/chord-session.ts`                            |
+| Platform React and command integration | `apps/web/src/keymap/use-app-keymap.ts`, `providers/command-provider.tsx`, existing bus and runtime modules           |
+| Platform filtering and input policy    | `apps/web/src/keymap/utils/app-bindings.ts`, `utils/keyboard-event.ts`, `editor-keymap.ts`                            |
+| Preset and override policy             | `apps/web/src/keymap/{default-bindings,active-bindings,editor-commands,workspace-commands}.ts`                        |
+| Target and condition evaluation        | `apps/web/src/lib/focus/state/service.ts`, `keymap/define-command.ts`, `keymap/utils/when.ts`                         |
+| Terminal handoff                       | `apps/web/src/features/terminal/hooks/use-keybindings.ts`                                                             |
+| Settings                               | `apps/web/src/features/settings/`, `packages/contracts/src/settings/keys.ts`                                          |
+| CI dependency pairing                  | `.github/workflows/ci.yml`, `.github/actions/setup/action.yml`                                                        |
+| Existing browser proof                 | `apps/web/src/keymap/tests/command-focus.browser.tsx`, `apps/web/src/features/terminal/tests/keybindings.browser.tsx` |

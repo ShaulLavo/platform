@@ -1,6 +1,6 @@
 import type { ThreadId } from '@workspace/contracts'
 
-import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
+import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { elapsedMs } from '@/features/chat/utils/elapsed-ms'
 import {
@@ -11,11 +11,11 @@ import {
 } from '@/features/chat/utils/pipeline-logging'
 
 export async function syncThreadProjectionAfterDispatch({
-  environment,
+  transport,
   replayAfterSequence,
   threadId,
 }: {
-  environment: ChatEnvironment
+  transport: ChatTransport
   replayAfterSequence: number
   threadId: ThreadId
 }) {
@@ -27,12 +27,13 @@ export async function syncThreadProjectionAfterDispatch({
   scope.increment('sync.startCount')
 
   try {
-    const replayEvents = environment.replayEvents({
+    const replayEvents = transport.replayEvents({
       afterSequence: Math.max(0, replayAfterSequence),
       threadId,
     })
-    const threadDetailSnapshot = environment.threadDetailSnapshot(threadId)
+    const threadDetailSnapshot = transport.threadDetailSnapshot(threadId)
     const [replay, snapshot] = await Promise.allSettled([replayEvents, threadDetailSnapshot])
+    if (transport.closed) return
     const store = useChatProjectionStore.getState()
 
     applyReplaySyncResult(scope, store, replay, replayAfterSequence)
@@ -43,11 +44,11 @@ export async function syncThreadProjectionAfterDispatch({
 }
 
 export function scheduleThreadProjectionSyncAfterDispatch({
-  environment,
+  transport,
   replayAfterSequence,
   threadId,
 }: {
-  environment: ChatEnvironment
+  transport: ChatTransport
   replayAfterSequence: number
   threadId: ThreadId
 }) {
@@ -56,7 +57,7 @@ export function scheduleThreadProjectionSyncAfterDispatch({
     threadId,
   })
 
-  void syncThreadProjectionAfterDispatch({ environment, replayAfterSequence, threadId }).catch(
+  void syncThreadProjectionAfterDispatch({ transport, replayAfterSequence, threadId }).catch(
     (error: unknown) => {
       logChatPipelineWarn('chat.dispatch.sync.unhandled_failure', {
         error,
@@ -69,7 +70,7 @@ export function scheduleThreadProjectionSyncAfterDispatch({
 function applyReplaySyncResult(
   scope: ReturnType<typeof createChatPipelineScope>,
   store: ReturnType<typeof useChatProjectionStore.getState>,
-  replay: PromiseSettledResult<Awaited<ReturnType<ChatEnvironment['replayEvents']>>>,
+  replay: PromiseSettledResult<Awaited<ReturnType<ChatTransport['replayEvents']>>>,
   replayAfterSequence: number,
 ) {
   if (replay.status !== 'fulfilled') {
@@ -94,7 +95,7 @@ function applyReplaySyncResult(
 function applySnapshotSyncResult(
   scope: ReturnType<typeof createChatPipelineScope>,
   store: ReturnType<typeof useChatProjectionStore.getState>,
-  snapshot: PromiseSettledResult<Awaited<ReturnType<ChatEnvironment['threadDetailSnapshot']>>>,
+  snapshot: PromiseSettledResult<Awaited<ReturnType<ChatTransport['threadDetailSnapshot']>>>,
 ) {
   if (snapshot.status !== 'fulfilled') {
     scope.increment('sync.snapshotFailedCount')

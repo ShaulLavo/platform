@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import { mkdir, mkdtemp, lstat, readFile, rm, symlink, truncate, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { hostname, tmpdir } from 'node:os'
+import { healthDescriptorSchema, ORCHESTRATION_WS_PROTOCOL_VERSION } from '@workspace/contracts'
+import * as v from 'valibot'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { closeTestApps, createTestApp } from '../../test/server'
@@ -21,6 +23,37 @@ afterEach(async () => {
 })
 
 describe('fs rpc auth', () => {
+  it('returns a stable authenticated descriptor for each independent database', async () => {
+    const first = testApp(await fixtureRoot())
+    const second = testApp(await fixtureRoot())
+    const healthRequest = () =>
+      new Request('http://local/health', {
+        headers: trustedOriginHeaders(),
+      })
+    const firstDescriptor = v.parse(
+      healthDescriptorSchema,
+      await (await first.handle(healthRequest())).json(),
+    )
+    const repeated = v.parse(
+      healthDescriptorSchema,
+      await (await first.handle(healthRequest())).json(),
+    )
+    const secondDescriptor = v.parse(
+      healthDescriptorSchema,
+      await (await second.handle(healthRequest())).json(),
+    )
+
+    expect(firstDescriptor).toMatchObject({
+      ok: true,
+      label: hostname(),
+      protocolVersion: ORCHESTRATION_WS_PROTOCOL_VERSION,
+      serverVersion: '0.0.1',
+      platform: { os: process.platform, arch: process.arch },
+    })
+    expect(repeated.environmentId).toBe(firstDescriptor.environmentId)
+    expect(secondDescriptor.environmentId).not.toBe(firstDescriptor.environmentId)
+  })
+
   it('accepts trusted local app origins', async () => {
     const app = testApp(await fixtureRoot())
     const response = await app.handle(

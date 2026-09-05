@@ -1,6 +1,9 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 
+import { environmentActivitySignal } from '@/lib/environments/state/activity'
+import { clientForQueryClient, originForQueryClient } from '@/lib/environments/state/query-clients'
+
 import { workspacePathLeaf } from '@/features/workspace/utils/path'
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { useOptionalWorkspaceEditService } from '@/features/editor/providers/workspace-edit-context'
@@ -42,16 +45,22 @@ export function useOpenWorkspaceRoot() {
 
   return useCallback(
     async (workspaceRoot: string): Promise<OpenWorkspaceRootResult> => {
+      const activity = environmentActivitySignal(originForQueryClient(queryClient))
+      if (activity.aborted) return 'superseded'
+      const client = clientForQueryClient(queryClient)
       const reservation = workspaceEdits?.acquireRootSwitchReservation() ?? null
       if (workspaceEdits && !reservation) return 'failed'
       const generation = claimWorkspaceOpenGeneration()
       activateWorkspaceRoot(workspaceRoot)
 
-      const controller = new AbortController()
       try {
-        const result = await openWorkspaceRootPath(workspaceRoot, generation, controller.signal)
+        const result = await openWorkspaceRootPath(workspaceRoot, generation, activity, client)
         // A later request already claimed the app; landing now would drag it back.
-        if (result.status === 'superseded' || !isActiveWorkspaceRoot(workspaceRoot)) {
+        if (
+          activity.aborted ||
+          result.status === 'superseded' ||
+          !isActiveWorkspaceRoot(workspaceRoot)
+        ) {
           log.info({
             action: 'workspace.root_open_superseded',
             area: 'workspace',
@@ -69,6 +78,7 @@ export function useOpenWorkspaceRoot() {
         void recordRootAsRecent(queryClient, workspaceRoot)
         return 'opened'
       } catch (error) {
+        if (activity.aborted) return 'superseded'
         log.warn({ action: 'workspace.root_open_rejected', area: 'workspace', path: workspaceRoot })
         reportError(toClientError(error))
         return 'failed'
@@ -83,7 +93,7 @@ export function useOpenWorkspaceRoot() {
 /** Trails the open: a lost recency stamp is a worse menu, never a failed switch. */
 async function recordRootAsRecent(queryClient: QueryClient, workspaceRoot: string) {
   try {
-    await recordRecentEntry(workspaceRoot)
+    await recordRecentEntry(workspaceRoot, clientForQueryClient(queryClient))
   } catch {
     // Swallowed, not silent: the fs.record_recent wide event carries the failure.
     return

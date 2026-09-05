@@ -1,3 +1,7 @@
+import { useQueryClient } from '@tanstack/react-query'
+import type { Client } from '@/lib/client'
+import { clientForQueryClient, originForQueryClient } from '@/lib/environments/state/query-clients'
+import { environmentActivitySignal } from '@/lib/environments/state/activity'
 import { parseTerminalServerMessage, type TerminalServerMessage } from '@workspace/contracts'
 import { cn } from '@workspace/ui/lib/utils'
 import {
@@ -81,6 +85,8 @@ export function TerminalPanel({
   sessionId,
   ...sectionProps
 }: TerminalPanelProps) {
+  const queryClient = useQueryClient()
+  const origin = originForQueryClient(queryClient)
   const focus = useFocusService()
   const hostRef = useRef<HTMLDivElement | null>(null)
   const restoreFocusAfterRemountRef = useRef<string | null>(null)
@@ -98,7 +104,7 @@ export function TerminalPanel({
   const [menuTarget, setMenuTarget] = useState<TerminalMenuTarget | null>(null)
   const [socketConnected, setSocketConnected] = useState(false)
   const focusIdentity = terminalFocusIdentity(rootPath, sessionId)
-  const terminalMountIdentity = `${focusIdentity}\u0000${scrollback}`
+  const terminalMountIdentity = `${origin}\u0000${focusIdentity}\u0000${scrollback}`
   const [readyTerminalIdentity, setReadyTerminalIdentity] = useState<string | null>(null)
   const registerTerminalLinks = useTerminalLinks(rootPath)
   useTerminalKeybindings(hostRef)
@@ -193,6 +199,8 @@ export function TerminalPanel({
     if (!host) return
 
     const unmountTerminal = mountTerminal({
+      client: clientForQueryClient(queryClient),
+      signal: environmentActivitySignal(origin),
       host,
       rootPath,
       scrollback,
@@ -212,7 +220,7 @@ export function TerminalPanel({
       setMenuTarget(null)
       unmountTerminal()
     }
-  }, [rootPath, scrollback, sessionId, terminalMountIdentity])
+  }, [origin, queryClient, rootPath, scrollback, sessionId, terminalMountIdentity])
 
   useEffect(() => {
     if (!terminalFocusTargetToken) return
@@ -266,6 +274,8 @@ type TerminalPanelProps = ComponentPropsWithoutRef<'section'> & {
 }
 
 function mountTerminal({
+  client,
+  signal,
   host,
   rootPath,
   scrollback,
@@ -274,6 +284,8 @@ function mountTerminal({
   onReady,
   onScrollbackLengthChange,
 }: {
+  client: Client
+  signal: AbortSignal
   host: HTMLDivElement
   rootPath: string
   scrollback: number
@@ -293,10 +305,10 @@ function mountTerminal({
 
   const open = async () => {
     const runtime = await initializeGhostty()
-    if (cancelled) return
+    if (cancelled || signal.aborted) return
 
     const nextTerminal = await createTerminal(runtime, scrollback)
-    if (cancelled) {
+    if (cancelled || signal.aborted) {
       nextTerminal.dispose()
       return
     }
@@ -315,7 +327,7 @@ function mountTerminal({
       onScrollbackLengthChange(scrollbackLength)
     })
     await terminal.open(host)
-    if (cancelled) return
+    if (cancelled || signal.aborted) return
 
     applyTerminalTheme(terminal, host)
     terminalDimensions = currentTerminalDimensions(terminal)
@@ -324,6 +336,8 @@ function mountTerminal({
     // null socket and silently dropped.
     onReady(terminal, (data) => sendTerminalClientMessage(socket, { data, type: 'input' }))
     socket = openTerminalSocket({
+      client,
+      signal,
       getTerminalDimensions: () => terminalDimensions,
       isCancelled: () => cancelled,
       onConnectedChange,
@@ -334,7 +348,7 @@ function mountTerminal({
   }
 
   void open().catch((error: unknown) => {
-    if (cancelled) return
+    if (cancelled || signal.aborted) return
 
     reportError(toClientError(error))
   })
@@ -351,6 +365,8 @@ function mountTerminal({
 }
 
 function openTerminalSocket({
+  client,
+  signal,
   getTerminalDimensions,
   isCancelled,
   onConnectedChange,
@@ -358,6 +374,8 @@ function openTerminalSocket({
   sessionId,
   terminal,
 }: {
+  client: Client
+  signal: AbortSignal
   getTerminalDimensions: () => TerminalDimensions | null
   isCancelled: () => boolean
   onConnectedChange: (connected: boolean) => void
@@ -365,21 +383,21 @@ function openTerminalSocket({
   sessionId: string
   terminal: GhosttyWebGpuTerminal
 }) {
-  const socket = connectTerminalSocket(rootPath, sessionId)
+  const socket = connectTerminalSocket(rootPath, sessionId, client, signal)
 
   socket.addEventListener('open', () => {
-    if (isCancelled()) return
+    if (isCancelled() || signal.aborted) return
 
     sendTerminalResize(socket, getTerminalDimensions())
     onConnectedChange(true)
   })
   socket.addEventListener('close', () => {
-    if (isCancelled()) return
+    if (isCancelled() || signal.aborted) return
 
     onConnectedChange(false)
   })
   socket.addEventListener('message', (event) => {
-    if (isCancelled()) return
+    if (isCancelled() || signal.aborted) return
 
     const message = parseTerminalServerMessage((event as MessageEvent).data)
     if (!message) return

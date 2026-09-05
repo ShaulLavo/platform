@@ -1,4 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useEffect } from 'react'
+
+import { useEditorRuntime } from '@/features/editor/hooks/use-runtime'
+import type { Client } from '@/lib/client'
+import { environmentActivitySignal } from '@/lib/environments/state/activity'
+import { clientForQueryClient, originForQueryClient } from '@/lib/environments/state/query-clients'
 
 import { applicableTabs, parseAddress } from '@/features/address/utils/grammar'
 import { pathForDocumentToken } from '@/features/address/utils/document-token'
@@ -101,12 +106,21 @@ export function useAddressRestore() {
   const storeApi = useEditorWorkspaceStoreApi()
   const documentStoreApi = useEditorDocumentStoreApi()
   const searchStoreApi = useSearchBufferStoreApi()
-  const applied = useRef(false)
+  const runtime = useEditorRuntime()
 
   useEffect(() => {
-    const deps = { commands, documentStoreApi, openWorkspaceRoot, searchStoreApi, storeApi }
-    if (!applied.current) {
-      applied.current = true
+    const activity = environmentActivitySignal(originForQueryClient(runtime.queryClient))
+    const client = clientForQueryClient(runtime.queryClient)
+    const deps = {
+      activity,
+      client,
+      commands,
+      documentStoreApi,
+      openWorkspaceRoot,
+      searchStoreApi,
+      storeApi,
+    }
+    if (runtime.claimAddressRestore()) {
       // Claimed synchronously, BEFORE the first await, and released however the apply
       // ends. `useRestoreRecentWorkspaceRoot` fills the same empty root slot, and this
       // path has to resolve a slug — sometimes over the network — before it can name
@@ -125,7 +139,7 @@ export function useAddressRestore() {
 
     window.addEventListener('popstate', applyOnPopState)
     return () => window.removeEventListener('popstate', applyOnPopState)
-  }, [commands, documentStoreApi, openWorkspaceRoot, searchStoreApi, storeApi])
+  }, [commands, documentStoreApi, openWorkspaceRoot, runtime, searchStoreApi, storeApi])
 }
 
 /**
@@ -152,12 +166,16 @@ function addressNamesWorkspace() {
 
 async function applyAddress(
   {
+    activity,
+    client,
     commands,
     documentStoreApi,
     openWorkspaceRoot,
     searchStoreApi,
     storeApi,
   }: {
+    activity: AbortSignal
+    client: Client
     commands: ReturnType<typeof useEditorCommands>
     documentStoreApi: ReturnType<typeof useEditorDocumentStoreApi>
     openWorkspaceRoot: ReturnType<typeof useOpenWorkspaceRoot>
@@ -167,8 +185,9 @@ async function applyAddress(
   reason: ApplyReason,
 ): Promise<AddressRestoreResult> {
   const trace = emptyApplyTrace()
+  if (activity.aborted) return report({ status: 'pending', reason: 'superseded' }, trace)
   const generation = ++restoreGeneration
-  const superseded = () => generation !== restoreGeneration
+  const superseded = () => activity.aborted || generation !== restoreGeneration
   const address = parseAddress(window.location.href)
   if (!address.workspace) {
     return report({ status: 'pending', reason: 'no address to apply' }, trace)
@@ -181,7 +200,7 @@ async function applyAddress(
     return report({ status: 'applied', reason }, trace)
   }
 
-  const rootPath = await resolveRoot(address.workspace, storeApi, trace)
+  const rootPath = await resolveRoot(address.workspace, storeApi, trace, client, activity)
   // A newer press started while this one was resolving. Everything below writes store
   // state, so continuing would drag the older address over the newer one.
   if (superseded()) return report({ status: 'pending', reason: 'superseded' }, trace)
@@ -245,12 +264,14 @@ async function resolveRoot(
   slug: string,
   storeApi: ReturnType<typeof useEditorWorkspaceStoreApi>,
   trace: ApplyTrace,
+  client: Client,
+  activity: AbortSignal,
 ) {
   // The index only, never `readWorkspaceCache()`: that parses every slice and every
   // search buffer — and a search buffer holds a materialized match list — and sweeps
   // the whole localStorage keyspace, all to read one array, on every back press.
   const indexed = readWorkspaceOrder(storeApi.getState().rootFolder?.path ?? null)
-  const resolution = await resolvedSlug(slug, indexed)
+  const resolution = await resolvedSlug(slug, indexed, client, activity)
 
   if (resolution.kind === 'resolved') return resolution.rootPath
   // Ambiguity is not a guess to make: two checkouts named the same thing are two
@@ -270,24 +291,36 @@ async function resolveRoot(
  * dead end. Wiring the step at all is what lets a link reach a project this machine has
  * on disk but has not opened recently enough to still be in the eight-slot index.
  */
-async function resolvedSlug(slug: string, indexed: readonly string[]) {
+async function resolvedSlug(
+  slug: string,
+  indexed: readonly string[],
+  client: Client,
+  activity: AbortSignal,
+) {
   const local = resolveWorkspaceSlug(slug, { indexed })
   if (local.kind !== 'unknown') return local
 
-  return resolveWorkspaceSlug(slug, { indexed: [], recent: await recentRootPaths() })
+  return resolveWorkspaceSlug(slug, {
+    indexed: [],
+    recent: await recentRootPaths(client, activity),
+  })
 }
 
 /**
  * A failure here is not a failed restore — it just means the resolver falls back to
  * what it already had.
  */
-async function recentRootPaths() {
+async function recentRootPaths(client: Client, activity: AbortSignal) {
   try {
-    const entries = await fetchRecentEntries({
-      limit: RECENT_DIRECTORY_LIMIT,
-      mode: 'folder',
-      showHidden: true,
-    })
+    const entries = await fetchRecentEntries(
+      {
+        limit: RECENT_DIRECTORY_LIMIT,
+        mode: 'folder',
+        showHidden: true,
+      },
+      activity,
+      client,
+    )
 
     return entries.map((entry) => entry.path)
   } catch {

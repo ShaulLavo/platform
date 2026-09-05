@@ -1,3 +1,4 @@
+import type { environmentCommands } from '@/keymap/environment-commands'
 import type { FocusArea } from '@/lib/focus/state/service'
 import type { HotkeyMeta, ParsedHotkey, RegisterableHotkey } from '@tanstack/hotkeys'
 
@@ -28,7 +29,10 @@ export type { WorkspaceCommandId }
 
 export type EditorPlatformCommandId = (typeof editorCommands)[number]['id']
 
-export type PlatformCommandId = WorkspaceCommandId | EditorPlatformCommandId
+export type PlatformCommandId =
+  | WorkspaceCommandId
+  | EditorPlatformCommandId
+  | (typeof environmentCommands)[number]['id']
 
 /** Every menu surface recorded as the source of a Platform command. */
 export type MenuSurfaceId =

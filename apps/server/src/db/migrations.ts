@@ -3,7 +3,7 @@ import { elapsedMs } from '../observability/logging'
 import { recordProcessInfo } from '../observability/runtime'
 import { createStructuredError } from '../observability/structured-errors'
 import { getDefaultPlatformDatabase, type PlatformDatabase } from './client'
-import { schemaMigrations } from './schema'
+import { environmentIdentity, schemaMigrations } from './schema'
 
 export type Migration = {
   readonly version: number
@@ -36,6 +36,7 @@ export const platformMigrations: readonly Migration[] = [
   { version: 7, name: 'project_scripts', up: applyProjectScripts },
   { version: 8, name: 'drop_app_settings', up: applyDropAppSettings },
   { version: 9, name: 'thread_activity_kind_index', up: applyThreadActivityKindIndex },
+  { version: 10, name: 'environment_identity', up: applyEnvironmentIdentity },
 ]
 
 /**
@@ -513,6 +514,19 @@ function applyThreadActivityKindIndex(database: PlatformDatabase) {
 		CREATE INDEX IF NOT EXISTS projection_thread_activities_thread_kind_idx
 		ON projection_thread_activities (thread_id, kind)
 	`)
+}
+
+function applyEnvironmentIdentity(database: PlatformDatabase) {
+  database.run(sql`
+    CREATE TABLE environment_identity (
+      id TEXT PRIMARY KEY NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `)
+  database
+    .insert(environmentIdentity)
+    .values({ id: crypto.randomUUID(), createdAt: new Date().toISOString() })
+    .run()
 }
 
 function createProviderRuntimeTables(database: PlatformDatabase) {

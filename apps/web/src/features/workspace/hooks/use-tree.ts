@@ -1,3 +1,5 @@
+import type { Client } from '@/lib/client'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import { errorMessage, fetchTree } from '@/lib/file-server'
 import type { TreeEntry, TreeResult } from '@/lib/file-system-types'
@@ -76,7 +78,8 @@ export function useWorkspaceTreeForRootPath(rootPath: string | null) {
 
       void queryClient
         .fetchQuery({
-          queryFn: ({ signal }) => fetchTree(entry.path, signal),
+          queryFn: ({ signal, client }) =>
+            fetchTree(entry.path, signal, clientForQueryClient(client)),
           queryKey: directoryKey,
           staleTime: FILE_TREE_PREFETCH_STALE_MS,
         })
@@ -123,7 +126,8 @@ export function useWorkspaceTreeForRootPath(rootPath: string | null) {
       if (!shouldLoadDirectory(treeState.data, treePath)) return
 
       void queryClient.prefetchQuery({
-        queryFn: ({ signal }) => fetchTree(entry.path, signal),
+        queryFn: ({ signal, client }) =>
+          fetchTree(entry.path, signal, clientForQueryClient(client)),
         queryKey: treeDirectoryPrefetchKey(rootPath, treePath, entry),
         staleTime: FILE_TREE_PREFETCH_STALE_MS,
       })
@@ -157,9 +161,14 @@ function useWorkspaceTreeQuery(rootPath: string | null) {
   const rootTreeKey = useMemo(() => fileSystemKeys.tree(resolvedRootPath), [resolvedRootPath])
   const query = useQuery({
     enabled: Boolean(rootPath),
-    queryFn: async ({ signal }) => {
+    queryFn: async ({ signal, client }) => {
       const selectedFilePath = workspaceStore.getState().selectedFilePath
-      const result = await fetchInitialTree(resolvedRootPath, selectedFilePath, signal)
+      const result = await fetchInitialTree(
+        resolvedRootPath,
+        selectedFilePath,
+        signal,
+        clientForQueryClient(client),
+      )
       return treeModelWithDirectoryLoads(result.root, resolvedRootPath, result.directories)
     },
     queryKey: rootTreeKey,
@@ -210,10 +219,13 @@ async function fetchInitialTree(
   rootPath: string,
   selectedFilePath: string | null,
   signal: AbortSignal,
+  client: Client,
 ) {
   const directoryPaths = selectedFileAncestorDirectoryPaths(rootPath, selectedFilePath)
-  const root = fetchTree(rootPath, signal)
-  const directories = Promise.all(directoryPaths.map((path) => fetchOptionalTree(path, signal)))
+  const root = fetchTree(rootPath, signal, client)
+  const directories = Promise.all(
+    directoryPaths.map((path) => fetchOptionalTree(path, signal, client)),
+  )
   const [rootResult, directoryResults] = await Promise.all([root, directories])
 
   return {
@@ -222,9 +234,9 @@ async function fetchInitialTree(
   }
 }
 
-async function fetchOptionalTree(path: string, signal: AbortSignal) {
+async function fetchOptionalTree(path: string, signal: AbortSignal, client: Client) {
   try {
-    return await fetchTree(path, signal)
+    return await fetchTree(path, signal, client)
   } catch (error) {
     if (signal.aborted) throw error
 

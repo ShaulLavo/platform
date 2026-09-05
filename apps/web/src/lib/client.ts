@@ -2,27 +2,47 @@ import { treaty } from '@elysia/eden'
 
 import type { App } from 'server/client-contract'
 
-import { clientInstanceId, instanceHeaderName } from './instance-id'
+import { clientInstanceId, instanceHeaderName } from '@/lib/instance-id'
 
 const defaultServerUrl = 'http://localhost:3001'
 
-export const serverUrl = import.meta.env.VITE_SERVER_URL ?? defaultServerUrl
-
 export type Client = ReturnType<typeof treaty<App>>
 
-const productionClient: Client = treaty<App>(serverUrl, {
-  headers: () => ({ [instanceHeaderName]: clientInstanceId() }),
-})
+let selectedOrigin = canonicalServerOrigin(import.meta.env.VITE_SERVER_URL ?? defaultServerUrl)
+const clients = new Map<string, Client>()
 
-// The app talks to the server through this single holder. Tests point it at a
-// real in-process server via `setClient`, so production code stays untouched
-// and nothing mocks the RPC surface.
-let activeClient: Client = productionClient
+export function createEnvironmentClient(origin: string): Client {
+  return treaty<App>(canonicalServerOrigin(origin), {
+    headers: () => ({ [instanceHeaderName]: clientInstanceId() }),
+  })
+}
+
+export function activeServerOrigin(): string {
+  return selectedOrigin
+}
+
+export function setActiveServerOrigin(origin: string): void {
+  selectedOrigin = canonicalServerOrigin(origin)
+}
+
+export function environmentClientFor(origin: string): Client {
+  origin = canonicalServerOrigin(origin)
+  const existing = clients.get(origin)
+  if (existing) return existing
+
+  const client = createEnvironmentClient(origin)
+  clients.set(origin, client)
+  return client
+}
 
 export function getClient(): Client {
-  return activeClient
+  return environmentClientFor(selectedOrigin)
 }
 
 export function setClient(client: Client) {
-  activeClient = client
+  clients.set(selectedOrigin, client)
+}
+
+export function canonicalServerOrigin(origin: string): string {
+  return new URL(origin).origin
 }

@@ -5,7 +5,7 @@ import { errorMessage } from '@/lib/error-message'
 /**
  * The rejection boundary for a chat command the UI does not await.
  *
- * `void environment.dispatchCommand(...)` attaches no rejection handler, so a
+ * `void transport.dispatchCommand(...)` attaches no rejection handler, so a
  * refused or timed-out command produced an unhandled rejection and nothing the
  * user could see — while the UI had already committed to the optimistic
  * outcome. Deliberately no log call: the RPC client already wraps every

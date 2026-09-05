@@ -4,7 +4,7 @@ import path from 'node:path'
 
 import { screen, waitFor } from '@testing-library/react'
 
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../test/factories/editor-state-provider'
 import { Panel } from '@/features/git/components/panel'
 import { GitStoreProvider } from '@/features/git/providers/store-provider'
 import { expect, test } from '../../../../test/fixtures'

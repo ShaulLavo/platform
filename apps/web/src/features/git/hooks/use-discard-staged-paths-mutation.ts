@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { useMutation } from '@tanstack/react-query'
 
 import { discardPaths, unstagePaths } from '@/features/git/utils/api'
@@ -9,9 +10,10 @@ export function useDiscardStagedPathsMutation(paths: readonly string[]) {
   const invalidate = useWorkspaceInvalidation()
 
   return useMutation({
-    mutationFn: async () => {
-      await unstagePaths(paths)
-      return discardPaths(paths)
+    mutationFn: async (_variables, { client }) => {
+      const owner = clientForQueryClient(client)
+      await unstagePaths(paths, owner)
+      return discardPaths(paths, owner)
     },
     mutationKey: mutationKeys.discardStagedMany(paths),
     onError: notifyMutationError,

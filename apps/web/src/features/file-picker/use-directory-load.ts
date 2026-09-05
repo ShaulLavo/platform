@@ -28,7 +28,6 @@ export function useDirectoryLoad({
       mode,
       path: currentPath,
       query: effectiveQuery,
-      queryClient,
       showHidden,
     }),
     enabled,

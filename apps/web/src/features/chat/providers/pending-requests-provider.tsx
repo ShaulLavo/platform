@@ -7,7 +7,7 @@ import type {
 } from '@workspace/contracts'
 import { useMemo, useState, type ReactNode } from 'react'
 
-import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
+import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import {
   createApprovalRespondCommand,
   createUserInputRespondCommand,
@@ -22,7 +22,7 @@ import { useChatProjectionStore } from '@/features/chat/state/chat-projection-st
 import { derivePendingApprovals } from '@/features/chat/utils/pending-approvals'
 import { derivePendingUserInputs } from '@/features/chat/utils/pending-user-input'
 
-type DispatchCommand = ChatEnvironment['dispatchCommand']
+type DispatchCommand = ChatTransport['dispatchCommand']
 type RespondingRequestIds = ReadonlySet<ApprovalRequestId>
 type SetResponding = (update: (current: RespondingRequestIds) => RespondingRequestIds) => void
 
@@ -36,7 +36,7 @@ const NONE_RESPONDING: RespondingRequestIds = new Set()
  * dispatched commands.
  *
  * The dispatch seam arrives as a prop rather than being reached for, which
- * keeps the panels renderable against any `ChatEnvironment` — including the
+ * keeps the panels renderable against any `ChatTransport` — including the
  * real in-process one under test.
  */
 export function ChatPendingRequestsProvider({

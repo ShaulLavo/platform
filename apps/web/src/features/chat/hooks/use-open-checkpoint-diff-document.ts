@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { useEditorCommands } from '@/features/editor/state/commands'
@@ -27,7 +28,8 @@ export function useOpenCheckpointDiffDocument() {
 
     const rangeInput = checkpointDiffInputForSummary(summary)
     const diffs = await queryClient.fetchQuery({
-      queryFn: ({ signal }) => fetchCheckpointDiff(rangeInput, signal),
+      queryFn: ({ signal, client }) =>
+        fetchCheckpointDiff(rangeInput, signal, clientForQueryClient(client)),
       queryKey: checkpointDiffQueryKey(rangeInput),
       retry: checkpointDiffRetry,
       retryDelay: checkpointDiffRetryDelay,
@@ -62,7 +64,8 @@ export function useOpenCheckpointDiffDocument() {
 
     const input = checkpointFullThreadDiffInputForSummary(summary)
     const diffs = await queryClient.fetchQuery({
-      queryFn: ({ signal }) => fetchCheckpointDiff(input, signal),
+      queryFn: ({ signal, client }) =>
+        fetchCheckpointDiff(input, signal, clientForQueryClient(client)),
       queryKey: checkpointDiffQueryKey(input),
       retry: checkpointDiffRetry,
       retryDelay: checkpointDiffRetryDelay,

@@ -1,3 +1,4 @@
+import type { EditorSaveService } from '@/features/editor/state/save-service'
 import type { EditorCommandId } from '@singapor/core'
 import type { Icon } from '@phosphor-icons/react'
 import type { KeyChord } from '@/keymap/types'
@@ -76,6 +77,7 @@ export type WorkspaceCommandSnapshot = {
 
 export type WorkspaceCommandRuntime = {
   readonly documents: {
+    readonly save: EditorSaveService
     readonly queryClient: QueryClient
     readonly store: EditorDocumentStoreApi
   }
@@ -98,6 +100,7 @@ export type WorkspaceCommandRuntime = {
     readonly openWorkspaceRoot: (
       rootPath: string,
     ) => Promise<'already-open' | 'failed' | 'opened' | 'superseded'>
+    readonly showEnvironmentDialog: () => void
     readonly showCommandPalette: (
       initialSearch?: string,
       origin?: FocusTargetToken | null,
@@ -174,7 +177,7 @@ export type EditorCommand<Id extends string = string> = CommandBase<Id> & {
 export type PlatformCommand = EditorCommand | WorkspaceCommand
 
 export function defineCommand<
-  const Id extends `workspace.${string}`,
+  const Id extends `workspace.${string}` | `environment.${string}`,
   const Execution extends CommandExecution,
 >(command: WorkspaceCommand<Id, Execution>): WorkspaceCommand<Id, Execution> {
   return command

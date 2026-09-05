@@ -15,6 +15,19 @@ export function createInProcessClient(server: TestServer): ReturnType<typeof tre
   return createClient(server, directInProcessFetcher(server))
 }
 
+export function createObservedInProcessClient(
+  server: TestServer,
+  beforeRequest: (request: Request) => void | Promise<void>,
+) {
+  const directFetch = directInProcessFetcher(server)
+  const fetcher = (async (input, init) => {
+    const request = new Request(input, init)
+    await beforeRequest(request)
+    return directFetch(request)
+  }) as typeof fetch
+  return createClient(server, fetcher)
+}
+
 export function createControlledInProcessClient(server: TestServer) {
   const controller = new SettingsStreamFetchController()
   const directFetch = directInProcessFetcher(server)

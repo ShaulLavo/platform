@@ -398,6 +398,11 @@ session reaper. Context stripping ships **with** whichever capture surface lands
 
 ## Deliberate non-parity
 
+> **Environment decision superseded 2026-09-05.** The rows below record the earlier audit.
+> [The environment strategy](environments-and-remote-plan.md) now selects connected machines
+> with separate checkouts. Plan 077 supplies the runtime foundation; Plans 068 and 078 add
+> scoped domain references and federation. Pairing remains deferred.
+
 Twenty-three verified gaps we should **not** copy. Nothing new joined the list; one row left it
 (`projection-cache-no-persisted-project-expansion-order`, reclassified below), and two had their _reasoning_ change
 without changing the verdict (`provider-missing-drivers`, `contracts-archived-shell-snapshot`).

@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 
 import { WorkspaceProjectMenu } from '@/components/workspace-project-menu'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../test/factories/editor-state-provider'
 import {
   createEditorWorkspaceStore,
   EditorWorkspaceStateContext,

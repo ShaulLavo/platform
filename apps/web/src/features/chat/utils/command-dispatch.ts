@@ -1,7 +1,7 @@
 import type { ClientOrchestrationCommand, OrchestrationDispatchResult } from '@workspace/contracts'
 
 import { errorMessage } from '@/lib/error-message'
-import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
+import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import { elapsedMs } from '@/features/chat/utils/elapsed-ms'
 import {
   chatCommandSummary,
@@ -9,7 +9,7 @@ import {
   type ChatPipelineScope,
 } from '@/features/chat/utils/pipeline-logging'
 
-export type DispatchCommand = ChatEnvironment['dispatchCommand']
+export type DispatchCommand = ChatTransport['dispatchCommand']
 
 export type ChatCommandDispatchOutcome =
   | { readonly ok: true; readonly result: OrchestrationDispatchResult }
@@ -27,7 +27,7 @@ export type ChatCommandDispatchOutcome =
  * boundary free.
  *
  * Never rejects. Every hook it calls is guarded, so `void dispatchChatCommand({…})`
- * is a real rejection boundary — which `void environment.dispatchCommand(…)` was not.
+ * is a real rejection boundary — which `void transport.dispatchCommand(…)` was not.
  */
 export async function dispatchChatCommand({
   action,

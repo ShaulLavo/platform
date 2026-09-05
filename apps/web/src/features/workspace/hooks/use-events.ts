@@ -14,7 +14,8 @@ import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { fileSnapshotQueryOptions, setFileSnapshotQueryData } from '@/lib/file-snapshot-query-cache'
 import { fetchFile, fetchTree } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
-import { getClient } from '@/lib/client'
+import type { Client } from '@/lib/client'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import {
   createDirectoryChurn,
   type DirectoryChurn,
@@ -167,30 +168,35 @@ export function useWorkspaceEvents(rootFolder: PickedFsEntry | null) {
     })
     eventsScope.increment('subscription.subscribeCount')
 
-    void streamWorkspaceEvents(rootPath, controller.signal, (message) => {
-      if (message.type === 'ready') {
-        eventsScope.increment('subscription.readyCount')
-        applyReady(controller.signal, rootPath, eventsScope, gitInvalidation.maybeExecute)
-        return
-      }
-      if (message.type === 'error') {
-        eventsScope.increment('subscription.errorCount')
-        eventsScope.warn(message.message, {
-          code: message.code,
-        })
-        reportError(toClientError(message))
-        return
-      }
-      if (
-        message.type === 'subscribed' ||
-        message.type === 'unsubscribed' ||
-        message.type === 'pong'
-      ) {
-        return
-      }
+    void streamWorkspaceEvents(
+      clientForQueryClient(queryClient),
+      rootPath,
+      controller.signal,
+      (message) => {
+        if (message.type === 'ready') {
+          eventsScope.increment('subscription.readyCount')
+          applyReady(controller.signal, rootPath, eventsScope, gitInvalidation.maybeExecute)
+          return
+        }
+        if (message.type === 'error') {
+          eventsScope.increment('subscription.errorCount')
+          eventsScope.warn(message.message, {
+            code: message.code,
+          })
+          reportError(toClientError(message))
+          return
+        }
+        if (
+          message.type === 'subscribed' ||
+          message.type === 'unsubscribed' ||
+          message.type === 'pong'
+        ) {
+          return
+        }
 
-      queue.push(message)
-    }).catch((error: unknown) => {
+        queue.push(message)
+      },
+    ).catch((error: unknown) => {
       if (controller.signal.aborted) return
 
       eventsScope.warn('Workspace event stream failed.', { error })
@@ -442,7 +448,8 @@ async function applyWorkspaceEventPlan({
     conflictStore,
     discardLiveEditorDocument,
     ensureUnsyncedEditorDocument,
-    fetchFile: fetchFileWithRetry,
+    fetchFile: (path, signal) =>
+      fetchFileWithRetry(path, signal, clientForQueryClient(queryClient)),
     forceReplaceLiveEditorDocument,
     getLiveEditorDocument,
     queryClient,
@@ -548,7 +555,7 @@ async function refreshTreeDirectory(
   if (!model) return
   if (!shouldRefreshDirectory(model, rootPath, path)) return
 
-  const result = await fetchTree(path, signal)
+  const result = await fetchTree(path, signal, clientForQueryClient(queryClient))
   queryClient.setQueryData(rootTreeKey, (current: TreeModel | undefined) => {
     if (!current) return current
 
@@ -694,7 +701,10 @@ async function applyRefreshOpenFileOperation({
   if (signal.aborted) return
 
   const file = await queryClient.fetchQuery({
-    ...fileSnapshotQueryOptions(path, { fetcher: fetchFileWithRetry }),
+    ...fileSnapshotQueryOptions(path, {
+      fetcher: (path, signal) =>
+        fetchFileWithRetry(path, signal, clientForQueryClient(queryClient)),
+    }),
     // fetchFileWithRetry retries internally; query-level retry would stack.
     retry: false,
   })
@@ -757,12 +767,12 @@ function liveDocumentText(path: string, context: WorkspaceConflictContext) {
   return context.getLiveEditorDocument(path)?.buffer.materializeFullText() ?? null
 }
 
-async function fetchFileWithRetry(path: string, signal: AbortSignal) {
+async function fetchFileWithRetry(path: string, signal: AbortSignal, client: Client) {
   let lastError: unknown = null
 
   for (let attempt = 0; attempt < FILE_REFRESH_RETRY_ATTEMPTS; attempt += 1) {
     try {
-      return await fetchFile(path, signal)
+      return await fetchFile(path, signal, client)
     } catch (error) {
       lastError = error
       if (signal.aborted) throw error
@@ -804,11 +814,12 @@ function shouldRefreshDirectory(model: TreeModel, rootPath: string, path: string
 }
 
 async function streamWorkspaceEvents(
+  client: Client,
   rootPath: string,
   signal: AbortSignal,
   onMessage: (message: WatchServerMessage) => void,
 ) {
-  const response = await getClient().fs.events.get({
+  const response = await client.fs.events.get({
     query: { path: rootPath },
     fetch: { signal },
   })

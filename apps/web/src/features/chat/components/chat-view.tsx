@@ -2,7 +2,7 @@ import type { ModelSelection, ThreadId } from '@workspace/contracts'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { notifyChatCommandError } from '@/features/chat/notify-command-error'
-import type { ChatEnvironment } from '../environment/chat-environment'
+import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import {
   createCheckpointRevertCommand,
   createProjectDefaultModelCommand,
@@ -19,7 +19,7 @@ import {
   useChatOptimisticStore,
 } from '../state/chat-optimistic-store'
 import { type ChatThread, useChatProjectionStore } from '../state/chat-projection-store'
-import { retainThreadDetailSubscription } from '../state/thread-detail-subscriptions'
+import { ChatTransportContext } from '@/features/chat/providers/transport-context'
 import { ChatInput, type ChatInputSubmitPayload } from './chat-input'
 import { ChatRuntimeStatus } from './chat-runtime-status'
 import { MessagesTimeline } from './messages-timeline'
@@ -34,12 +34,12 @@ import type { ChatInputDraftTarget } from '../state/chat-input-draft-store'
 
 export function ChatView({
   activeThreadId,
-  environment,
+  transport,
   onThreadCreated,
   rootPath,
 }: {
   activeThreadId: ThreadId | null
-  environment: ChatEnvironment
+  transport: ChatTransport
   /**
    * Puts a thread this view created — splitting a plan off to build it — on
    * screen. Each host keeps its own selection, so only it can honour this.
@@ -77,14 +77,14 @@ export function ChatView({
       if (!confirmCheckpointRevert(turnCount)) return
 
       await revertThreadToCheckpoint({
-        environment,
+        transport,
         setRevertingCheckpoint,
         setSendError,
         thread,
         turnCount,
       })
     },
-    [busy, environment, thread],
+    [busy, transport, thread],
   )
 
   const projectId = thread?.projectId
@@ -99,18 +99,18 @@ export function ChatView({
           defaultModelSelection: next,
           projectId,
         }),
-        dispatchCommand: environment.dispatchCommand,
+        dispatchCommand: transport.dispatchCommand,
         onFailed: (error) => notifyChatCommandError(error, 'Could not save the default model'),
       })
     },
-    [environment, projectId],
+    [transport, projectId],
   )
 
   useEffect(() => {
     if (!activeThreadId) return
 
-    return retainThreadDetailSubscription(activeThreadId)
-  }, [activeThreadId])
+    return transport.retainThreadDetail(activeThreadId)
+  }, [activeThreadId, transport])
 
   useEffect(() => {
     if (!thread) return
@@ -136,13 +136,13 @@ export function ChatView({
   async function handleSend(payload: ChatInputSubmitPayload) {
     if (!thread) return false
 
-    return submitChatTurn({ environment, payload, setSendError, setSending, thread })
+    return submitChatTurn({ transport, payload, setSendError, setSending, thread })
   }
 
   async function handleStop() {
     if (!thread) return
 
-    await dispatchThreadStop({ environment, setInterrupting, setSendError, thread })
+    await dispatchThreadStop({ transport, setInterrupting, setSendError, thread })
   }
 
   return (
@@ -154,30 +154,32 @@ export function ChatView({
         stopPending={false}
         thread={thread}
       />
-      <ChatTimelineActionsProvider revertToCheckpoint={handleRevertToCheckpoint}>
-        <MessagesTimeline
-          checkpointRevertPending={revertingCheckpoint}
-          optimisticMessages={optimisticMessages}
-          thread={thread}
-        />
-      </ChatTimelineActionsProvider>
+      <ChatTransportContext value={transport}>
+        <ChatTimelineActionsProvider revertToCheckpoint={handleRevertToCheckpoint}>
+          <MessagesTimeline
+            checkpointRevertPending={revertingCheckpoint}
+            optimisticMessages={optimisticMessages}
+            thread={thread}
+          />
+        </ChatTimelineActionsProvider>
+      </ChatTransportContext>
       {/* The panels sit above the composer rather than inside it: each one is a
           request holding the turn open, so it stays visible while the user
           types their answer. */}
       <ChatComposerModesProvider
-        dispatchCommand={environment.dispatchCommand}
+        dispatchCommand={transport.dispatchCommand}
         draftTarget={draftTarget}
         threadId={thread.id}
       >
         <ChatPendingRequestsProvider
-          dispatchCommand={environment.dispatchCommand}
+          dispatchCommand={transport.dispatchCommand}
           threadId={thread.id}
         >
           <PendingApprovalPanel />
           <PendingUserInputPanel />
           <ChatPlanFollowUpProvider
             draftTarget={draftTarget}
-            environment={environment}
+            transport={transport}
             onThreadCreated={onThreadCreated}
             threadId={thread.id}
           >
@@ -205,13 +207,13 @@ export function ChatView({
 }
 
 async function submitChatTurn({
-  environment,
+  transport,
   payload,
   setSendError,
   setSending,
   thread,
 }: {
-  environment: ChatEnvironment
+  transport: ChatTransport
   payload: ChatInputSubmitPayload
   setSendError: (value: string | null) => void
   setSending: (value: boolean) => void
@@ -259,10 +261,10 @@ async function submitChatTurn({
         terminalContextCount: terminalContexts.length,
         textLength: text.length,
       },
-      dispatchCommand: environment.dispatchCommand,
+      dispatchCommand: transport.dispatchCommand,
       onAccepted: (result) =>
         scheduleThreadProjectionSyncAfterDispatch({
-          environment,
+          transport,
           replayAfterSequence: replayAfterDispatch(submission.command, result),
           threadId: thread.id,
         }),
@@ -281,12 +283,12 @@ async function submitChatTurn({
 }
 
 async function dispatchThreadStop({
-  environment,
+  transport,
   setInterrupting,
   setSendError,
   thread,
 }: {
-  environment: ChatEnvironment
+  transport: ChatTransport
   setInterrupting: (value: boolean) => void
   setSendError: (value: string | null) => void
   thread: ChatThread
@@ -299,7 +301,7 @@ async function dispatchThreadStop({
         threadId: thread.id,
         turnId: thread.latestTurn?.turnId,
       }),
-      dispatchCommand: environment.dispatchCommand,
+      dispatchCommand: transport.dispatchCommand,
     })
     if (!outcome.ok) setSendError(outcome.message)
   } finally {
@@ -308,13 +310,13 @@ async function dispatchThreadStop({
 }
 
 async function revertThreadToCheckpoint({
-  environment,
+  transport,
   setRevertingCheckpoint,
   setSendError,
   thread,
   turnCount,
 }: {
-  environment: ChatEnvironment
+  transport: ChatTransport
   setRevertingCheckpoint: (value: boolean) => void
   setSendError: (value: string | null) => void
   thread: ChatThread
@@ -327,10 +329,10 @@ async function revertThreadToCheckpoint({
     const outcome = await dispatchChatCommand({
       action: 'chat.checkpoint_revert.dispatch.summary',
       command,
-      dispatchCommand: environment.dispatchCommand,
+      dispatchCommand: transport.dispatchCommand,
       onAccepted: (result) =>
         scheduleThreadProjectionSyncAfterDispatch({
-          environment,
+          transport,
           replayAfterSequence: replayAfterDispatch(command, result),
           threadId: thread.id,
         }),

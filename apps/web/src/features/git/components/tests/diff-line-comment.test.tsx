@@ -10,7 +10,7 @@ import {
   resetComposerInboxStore,
   useComposerInboxStore,
 } from '@/features/chat/state/composer-inbox-store'
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../../test/factories/editor-state-provider'
 import { fetchDiff } from '@/features/git/utils/api'
 import { DiffView } from '@/features/git/components/diff-view'
 import { parseDiffDocumentId, snapshotDiffDocumentId } from '@/features/git/utils/diff-document'

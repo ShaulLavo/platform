@@ -1,4 +1,5 @@
-import { getClient } from '@/lib/client'
+import type { QueryClient } from '@tanstack/react-query'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import type { SettingsValues } from '@workspace/contracts'
 import { languageServerMatches } from '@/features/editor/utils/language-server-plugin'
 import { createRpcError } from '@/lib/structured-errors'
@@ -21,8 +22,14 @@ export function languageServerMatchQueryOptions(
   snapshot: LanguageServerMatchConfigurationSnapshot,
 ) {
   return {
-    queryFn: async ({ signal }: { readonly signal: AbortSignal }) => {
-      const response = await getClient().lsp.match.get({
+    queryFn: async ({
+      signal,
+      client,
+    }: {
+      readonly signal: AbortSignal
+      readonly client: QueryClient
+    }) => {
+      const response = await clientForQueryClient(client).lsp.match.get({
         query: { path: matchPath, root: rootPath },
         fetch: { signal },
       })

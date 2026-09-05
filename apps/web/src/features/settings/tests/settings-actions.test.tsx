@@ -157,7 +157,7 @@ test('exhausted retries remove only their intent and Retry reuses its mutation i
 
   act(() => {
     captured.current = actions.result.current.setSetting('workbench.colorTheme', 'dark')
-    unrelatedMutationId = submitSettingsIntent('user', [
+    unrelatedMutationId = submitSettingsIntent(queryClient, 'user', [
       { key: 'editor.fontSize', kind: 'set', value: 18 },
     ]).entry.request.mutationId
   })
@@ -223,7 +223,7 @@ test('WRITE_CONTENDED does not retry and leaves unrelated projection active', as
 
   act(() => {
     captured.current = actions.result.current.setSetting('workbench.colorTheme', 'dark')
-    unrelatedMutationId = submitSettingsIntent('user', [
+    unrelatedMutationId = submitSettingsIntent(queryClient, 'user', [
       { key: 'editor.fontSize', kind: 'set', value: 18 },
     ]).entry.request.mutationId
   })

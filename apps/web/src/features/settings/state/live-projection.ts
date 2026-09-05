@@ -2,7 +2,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import type { SettingsOperation, SettingsSnapshot, SettingsValues } from '@workspace/contracts'
 
 import {
-  useSettingsIntentStore,
+  activeSettingsIntentsFor,
   type ActiveSettingsIntent,
 } from '@/features/settings/state/intent-store'
 import { projectSettings } from '@/features/settings/utils/projection'
@@ -14,14 +14,14 @@ export function readLiveSettingsProjection(queryClient: QueryClient, fallback?: 
   const confirmed = queryClient.getQueryData<SettingsSnapshot>(settingsKeys.document()) ?? fallback
   if (!confirmed) return undefined
 
-  return projectSettings(confirmed, useSettingsIntentStore.getState().active)
+  return projectSettings(confirmed, activeSettingsIntentsFor(queryClient))
 }
 
 export function readLiveColorTheme(queryClient: QueryClient, fallback?: ColorTheme) {
   const projection = readLiveSettingsProjection(queryClient)
   if (projection) return projection.values['workbench.colorTheme']
 
-  return replayActiveColorTheme(useSettingsIntentStore.getState().active, fallback)
+  return replayActiveColorTheme(activeSettingsIntentsFor(queryClient), fallback)
 }
 
 function replayActiveColorTheme(

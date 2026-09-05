@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { errorMessage, statPath } from '@/lib/file-server'
 import type { FileResult, StatResult } from '@/lib/file-system-types'
 import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
@@ -20,7 +21,7 @@ export function useSelectedFile(selectedFilePath: string | null) {
   const metadataQuery = useQuery<StatResult>({
     enabled: Boolean(filePath),
     gcTime: 0,
-    queryFn: ({ signal }) => statPath(filePath ?? '', signal),
+    queryFn: ({ signal, client }) => statPath(filePath ?? '', signal, clientForQueryClient(client)),
     queryKey: fileSystemKeys.fileMetadata(filePath ?? ''),
     refetchOnMount: 'always',
   })

@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import type { ServerInfo } from '@/lib/file-system-types'
 import { filePickerKeys } from '@/lib/query-keys'
 import { useQuery } from '@tanstack/react-query'
@@ -14,7 +15,7 @@ export function useServerInfoForOpen(
   const applyServerInfo = useEffectEvent(onReady)
   const query = useQuery<ServerInfo>({
     enabled: open,
-    queryFn: ({ signal }) => fetchServerInfo(signal),
+    queryFn: ({ signal, client }) => fetchServerInfo(signal, clientForQueryClient(client)),
     queryKey: filePickerKeys.serverInfo(),
   })
 

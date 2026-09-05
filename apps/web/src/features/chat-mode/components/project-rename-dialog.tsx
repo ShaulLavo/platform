@@ -23,7 +23,7 @@ import { useProjectRenameRequestStore } from '@/features/chat-mode/state/project
 export function ProjectRenameDialog() {
   const request = useProjectRenameRequestStore((state) => state.request)
   const dismissRename = useProjectRenameRequestStore((state) => state.dismissRename)
-  const { environment } = useChatModeSession()
+  const { transport } = useChatModeSession()
   // Keyed on the request so opening the dialog for a second project starts from
   // that project's name rather than the previous one's edited text.
   const [title, setTitle] = useState('')
@@ -45,7 +45,7 @@ export function ProjectRenameDialog() {
       const outcome = await dispatchChatCommand({
         action: 'chat.project.rename',
         command: createProjectMetaCommand({ projectId: request.projectId, title: trimmed }),
-        dispatchCommand: environment.dispatchCommand,
+        dispatchCommand: transport.dispatchCommand,
       })
       if (!outcome.ok) {
         // Closing on dispatch rather than on the result told the user the rename

@@ -7,17 +7,19 @@ import type {
 } from '@workspace/contracts'
 import { act, renderHook, waitFor } from '@testing-library/react'
 
+import { OrchestrationRpcClient } from '@/features/chat/transport/orchestration-rpc-client'
+import { FakeOrchestrationSocket } from '../../../../../test/factories/orchestration-socket'
 import { useChatShellSubscription } from '@/features/chat/hooks/use-chat-shell-subscription'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { createClientError } from '@/lib/structured-errors'
-import { unsupportedChatEnvironment } from '../../../../../test/factories/chat-environment'
+import { unsupportedChatTransport } from '../../../../../test/factories/chat-transport'
 import { expect, test } from '../../../../../test/fixtures'
 
 test('a dropped shell stream reconnects instead of dying', async () => {
   useChatProjectionStore.getState().resetChatProjection()
-  const environment = createShellEnvironment([{ fail: dropped() }])
+  const transport = createShellTransport([{ fail: dropped() }])
 
-  const { result } = renderHook(() => useChatShellSubscription(environment))
+  const { result } = renderHook(() => useChatShellSubscription(transport))
 
   await waitFor(() => expect(result.current.phase).toBe('reconnecting'))
   expect(result.current.attempt).toBe(1)
@@ -27,47 +29,47 @@ test('a dropped shell stream reconnects instead of dying', async () => {
   // rung: the deadline here is below the 250ms first rung on purpose.
   act(() => window.dispatchEvent(new Event('focus')))
 
-  await waitFor(() => expect(environment.attempts()).toBe(2), { interval: 5, timeout: 120 })
+  await waitFor(() => expect(transport.attempts()).toBe(2), { interval: 5, timeout: 120 })
 })
 
 test('a rejected shell socket parks instead of retrying forever', async () => {
   useChatProjectionStore.getState().resetChatProjection()
-  const environment = createShellEnvironment([{ fail: rejected() }])
+  const transport = createShellTransport([{ fail: rejected() }])
 
-  const { result } = renderHook(() => useChatShellSubscription(environment))
+  const { result } = renderHook(() => useChatShellSubscription(transport))
 
   await waitFor(() => expect(result.current.phase).toBe('blocked'))
   await new Promise((resolve) => setTimeout(resolve, 400))
 
-  expect(environment.attempts()).toBe(1)
+  expect(transport.attempts()).toBe(1)
   expect(result.current.error).toBe('Shell socket rejected.')
 })
 
 test('an offline browser parks until the network comes back', async () => {
   useChatProjectionStore.getState().resetChatProjection()
-  const environment = createShellEnvironment()
+  const transport = createShellTransport()
   setOnline(false)
 
-  const { result } = renderHook(() => useChatShellSubscription(environment))
+  const { result } = renderHook(() => useChatShellSubscription(transport))
 
   await waitFor(() => expect(result.current.phase).toBe('offline'))
-  expect(environment.attempts()).toBe(0)
+  expect(transport.attempts()).toBe(0)
 
   setOnline(true)
   act(() => window.dispatchEvent(new Event('online')))
 
-  await waitFor(() => expect(environment.attempts()).toBe(1))
+  await waitFor(() => expect(transport.attempts()).toBe(1))
 })
 
 type ScriptedAttempt = {
   fail?: unknown
 }
 
-function createShellEnvironment(script: ScriptedAttempt[] = []) {
+function createShellTransport(script: ScriptedAttempt[] = []) {
   let attempts = 0
 
-  const environment = {
-    ...unsupportedChatEnvironment({
+  const transport = {
+    ...unsupportedChatTransport({
       dispatchCommand: async (_command: ClientOrchestrationCommand) => ({
         deduped: false,
         sequence: 0,
@@ -89,7 +91,7 @@ function createShellEnvironment(script: ScriptedAttempt[] = []) {
     attempts: () => attempts,
   }
 
-  return environment
+  return transport
 }
 
 function setOnline(online: boolean) {
@@ -118,3 +120,23 @@ function rejected() {
     fix: 'Sign in again.',
   })
 }
+
+test.each([
+  { code: 1000, phase: 'reconnecting' },
+  { code: 1008, phase: 'blocked' },
+])('a silent socket close $code enters $phase', async ({ code, phase }) => {
+  const socket = new FakeOrchestrationSocket()
+  const rpc = new OrchestrationRpcClient({
+    origin: 'http://shell-close.test',
+    createSocket: () => socket as unknown as WebSocket,
+  })
+  const transport = unsupportedChatTransport({ shellStream: rpc.shellStream.bind(rpc) })
+  const view = renderHook(() => useChatShellSubscription(transport))
+  act(() => {
+    socket.open(false)
+    socket.serverClose({ code, wasClean: true })
+  })
+  await waitFor(() => expect(view.result.current.phase).toBe(phase))
+  view.unmount()
+  rpc.close()
+})

@@ -5,7 +5,6 @@ import { AppWorkspace } from '@/components/app-workspace'
 import { useDirtyTabCloseRequest } from '@/features/editor/hooks/use-dirty-tab-close'
 import { EditorTabActionsProvider } from '@/features/editor/providers/tab-actions-provider'
 import { useRestoreRecentWorkspaceRoot } from '@/features/workspace/hooks/use-restore-recent-root'
-import { useUnsavedWorkGuard } from '@/features/workspace/hooks/use-unsaved-work-guard'
 import { useAddressProjection } from '@/features/address/hooks/use-projection'
 import { useAddressRestore } from '@/features/address/hooks/use-restore'
 import { useWorkspaceCachePersistence } from '@/features/workspace/hooks/use-cache-persistence'
@@ -26,7 +25,6 @@ export function AppRuntimeContent() {
   // are app-lifetime concerns rather than anything a pane owns.
   useAutoSave()
   useRestoreRecentWorkspaceRoot()
-  useUnsavedWorkGuard()
 
   return (
     <EditorTabActionsProvider requestCloseTab={requestCloseTab} requestCloseTabs={requestCloseTabs}>

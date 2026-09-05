@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event'
 import * as v from 'valibot'
 import { vi } from 'vitest'
 
-import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
+import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import { ProjectRenameDialog } from '@/features/chat-mode/components/project-rename-dialog'
 import {
   ChatModeSessionContext,
@@ -24,16 +24,16 @@ vi.mock('sonner', () => ({ toast: { error: toastError } }))
 const projectId = v.parse(projectIdSchema, 'project-platform')
 const threadId = v.parse(threadIdSchema, 'thread-platform')
 
-function renderDialog(dispatchCommand: ChatEnvironment['dispatchCommand']) {
+function renderDialog(dispatchCommand: ChatTransport['dispatchCommand']) {
   toastError.mockReset()
   useProjectRenameRequestStore.setState({ request: { projectId, title: 'platform' } })
 
-  // Copied from `project-menu.test.tsx`, with `environment` swapped for the
+  // Copied from `project-menu.test.tsx`, with `transport` swapped for the
   // injected dispatch.
   const session: ChatModeSession = {
     activeSession: { status: 'ready', threadId },
     addProject: () => {},
-    environment: { dispatchCommand } as ChatEnvironment,
+    transport: { dispatchCommand } as ChatTransport,
     error: null,
     openProject: () => {},
     project: chatProject({ id: projectId, title: 'platform', workspaceRoot: '/repo/platform' }),
@@ -62,7 +62,7 @@ async function rename(next: string) {
 test('a refused rename keeps the dialog open and says why', async () => {
   renderDialog((async () => {
     throw new Error('socket closed')
-  }) as ChatEnvironment['dispatchCommand'])
+  }) as ChatTransport['dispatchCommand'])
 
   await rename('platform-two')
 
@@ -81,7 +81,7 @@ test('an accepted rename closes the dialog', async () => {
   renderDialog((async (_command: ClientOrchestrationCommand) => ({
     deduped: false,
     sequence: 1,
-  })) as ChatEnvironment['dispatchCommand'])
+  })) as ChatTransport['dispatchCommand'])
 
   await rename('platform-two')
 

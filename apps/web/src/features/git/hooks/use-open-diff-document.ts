@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { gitKeys } from '@/lib/query-keys'
 import { useQueryClient } from '@tanstack/react-query'
@@ -16,7 +17,8 @@ export function useOpenDiffDocument() {
     try {
       const staged = row.section === 'staged'
       const diffs = await queryClient.fetchQuery({
-        queryFn: ({ signal }) => fetchDiff(row.file.path, staged, signal),
+        queryFn: ({ signal, client }) =>
+          fetchDiff(row.file.path, staged, signal, clientForQueryClient(client)),
         queryKey: gitKeys.diff(row.file.path, staged),
         staleTime: 1000,
       })

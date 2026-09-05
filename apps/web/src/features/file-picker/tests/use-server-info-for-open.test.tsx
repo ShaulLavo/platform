@@ -1,4 +1,5 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { createTestQueryClient } from '../../../../test/render'
+import { type QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 
@@ -7,9 +8,7 @@ import { useServerInfoForOpen } from '@/features/file-picker/use-server-info-for
 import { filePickerKeys } from '@/lib/query-keys'
 
 test('refreshes the existing server-info query', async ({ client: _client }) => {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
+  const queryClient = createTestQueryClient()
   const { result } = renderHook(
     () =>
       useServerInfoForOpen(

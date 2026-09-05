@@ -12,7 +12,7 @@ import type {
   WorkspaceSearchWarningEvent,
 } from '@workspace/contracts'
 
-import { getClient } from '@/lib/client'
+import { getClient, type Client } from '@/lib/client'
 import { parseEdenSseStream, type EdenSseEvent } from '@/lib/eden-events'
 import { clientErrors } from '@/lib/structured-errors'
 
@@ -30,12 +30,13 @@ export type WorkspaceSearchResult = {
 export async function collectWorkspaceSearch(
   query: WorkspaceSearchQuery,
   signal?: AbortSignal,
+  client: Client = getClient(),
 ): Promise<WorkspaceSearchResult> {
   const matches: WorkspaceSearchMatch[] = []
   const warnings: WorkspaceSearchWarningEvent[] = []
   let done: WorkspaceSearchDoneEvent | null = null
 
-  for await (const event of streamWorkspaceSearch(query, signal)) {
+  for await (const event of streamWorkspaceSearch(query, signal, client)) {
     if (event.type === 'match') {
       matches.push(event.match)
       continue
@@ -64,8 +65,9 @@ export async function collectWorkspaceSearch(
 export async function* streamWorkspaceSearch(
   query: WorkspaceSearchQuery,
   signal?: AbortSignal,
+  client: Client = getClient(),
 ): AsyncGenerator<WorkspaceSearchEvent> {
-  const response = await getClient().fs.search.events.get({
+  const response = await client.fs.search.events.get({
     query: workspaceSearchRequestQuery(query),
     fetch: { signal },
   })

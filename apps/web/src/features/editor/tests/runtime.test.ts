@@ -1,0 +1,151 @@
+import { createEditorBufferSession } from '@singapor/core'
+import { QueryClient } from '@tanstack/react-query'
+import { readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+
+import { createEditorRuntime } from '@/features/editor/state/runtime'
+import { readWorkspaceCache } from '@/features/workspace/state/cache'
+import { getClient, setClient } from '@/lib/client'
+import { registerEnvironmentQueryClient } from '@/lib/environments/state/query-clients'
+import { fetchFile } from '@/lib/file-server'
+import { fileSystemKeys } from '@/lib/query-keys'
+import { createInProcessClient } from '../../../../test/client'
+import { createDeferredFileWriteClient } from '../../../../test/factories/deferred-file-write-client'
+import { expect, test } from '../../../../test/fixtures'
+import { makeTestServer } from '../../../../test/server'
+
+const preparation = {
+  appliedThemeContentHash: null,
+  appliedThemeId: null,
+  selectedThemeId: 'dark',
+  syntaxHighlightingEnabled: false,
+}
+
+test('retains dirty buffers, editor views, and undo history through A/B/A at the same path', async ({
+  server,
+  client,
+}) => {
+  const path = 'same.ts'
+  await writeFile(join(server.root, path), 'saved')
+  const file = await fetchFile(path, new AbortController().signal, client)
+  const queriesA = new QueryClient()
+  const queriesB = new QueryClient()
+  registerEnvironmentQueryClient(queriesA, 'http://localhost:7077', client)
+  registerEnvironmentQueryClient(queriesB, 'http://localhost:7078', client)
+  const workspaceCache = readWorkspaceCache()
+  const a = createEditorRuntime({ preparation, queryClient: queriesA, workspaceCache })
+  const b = createEditorRuntime({ preparation, queryClient: queriesB, workspaceCache })
+
+  try {
+    a.resume()
+    const viewA = a.documentStore.getState().ensureEditorView('tab-a', file)
+    const sessionA = createEditorBufferSession(viewA.buffer, viewA.view)
+    sessionA.applyText('A ')
+    const textA = viewA.buffer.materializeFullText()
+    a.documentStore.getState().setEditorViewScrollPosition('tab-a', { left: 2, top: 91 })
+    a.suspend()
+    b.resume()
+    const viewB = b.documentStore.getState().ensureEditorView('tab-b', file)
+    createEditorBufferSession(viewB.buffer, viewB.view).applyText('B ')
+    const textB = viewB.buffer.materializeFullText()
+
+    expect(viewB.buffer).not.toBe(viewA.buffer)
+    expect(a.hasUnsavedDocuments()).toBe(true)
+    expect(b.hasUnsavedDocuments()).toBe(true)
+    b.suspend()
+    a.resume()
+    const restored = a.documentStore.getState().ensureEditorView('tab-a', file)
+    expect(restored.buffer).toBe(viewA.buffer)
+    expect(restored.view).toBe(viewA.view)
+    expect(restored.buffer.materializeFullText()).toBe(textA)
+    expect(a.documentStore.getState().scrollPositionByTabId['tab-a']).toEqual({ left: 2, top: 91 })
+    restored.buffer.undo()
+    expect(restored.buffer.materializeFullText()).toBe('saved')
+    expect(a.hasUnsavedDocuments()).toBe(false)
+    restored.buffer.redo()
+    expect(restored.buffer.materializeFullText()).toBe(textA)
+    expect(a.hasUnsavedDocuments()).toBe(true)
+    expect(viewB.buffer.materializeFullText()).toBe(textB)
+  } finally {
+    a.dispose()
+    b.dispose()
+    queriesA.clear()
+    queriesB.clear()
+  }
+})
+
+test('finishes every A save and cache update on A after its first write is delayed across a switch to B', async ({
+  server,
+}) => {
+  const serverB = await makeTestServer({ filesystemWatch: false })
+  const previousClient = getClient()
+  const deferredA = createDeferredFileWriteClient(server)
+  const deferredB = createDeferredFileWriteClient(serverB)
+  deferredB.release()
+  const queriesA = new QueryClient()
+  const queriesB = new QueryClient()
+  registerEnvironmentQueryClient(queriesA, 'http://localhost:7077', deferredA.client)
+  registerEnvironmentQueryClient(queriesB, 'http://localhost:7078', deferredB.client)
+  const workspaceCache = readWorkspaceCache()
+  const a = createEditorRuntime({ preparation, queryClient: queriesA, workspaceCache })
+  const b = createEditorRuntime({ preparation, queryClient: queriesB, workspaceCache })
+  const pathsA = ['first.ts', 'second.ts']
+  const pathB = 'first.ts'
+
+  try {
+    await Promise.all([
+      ...pathsA.map((path) => writeFile(join(server.root, path), 'A saved')),
+      writeFile(join(serverB.root, pathB), 'B saved'),
+    ])
+    for (const path of pathsA) {
+      const file = await fetchFile(path, new AbortController().signal, deferredA.client)
+      const document = a.documentStore.getState().ensureLiveEditorDocument(file)
+      createEditorBufferSession(document.buffer).applyText('edited ')
+    }
+    const fileB = await fetchFile(
+      pathB,
+      new AbortController().signal,
+      createInProcessClient(serverB),
+    )
+    const documentB = b.documentStore.getState().ensureLiveEditorDocument(fileB)
+    createEditorBufferSession(documentB.buffer).applyText('unsaved ')
+    const unsavedB = documentB.buffer.materializeFullText()
+    a.resume()
+    setClient(deferredA.client)
+    const saving = a.saveService.saveMany(pathsA)
+    await deferredA.firstWrite
+    a.suspend()
+    setClient(deferredB.client)
+    b.resume()
+    expect(a.hasUnsavedDocuments()).toBe(true)
+    deferredA.release()
+    await expect(saving).resolves.toEqual([true, true])
+
+    expect(deferredA.writePaths).toEqual(pathsA)
+    expect(deferredB.writePaths).toEqual([])
+    for (const path of pathsA) {
+      expect(await readFile(join(server.root, path), 'utf8')).toBe('A savededited ')
+      expect(queriesA.getQueryData(fileSystemKeys.fileSnapshot(path))).toMatchObject({
+        content: 'A savededited ',
+      })
+      expect(queriesB.getQueryData(fileSystemKeys.fileSnapshot(path))).toBeUndefined()
+    }
+    expect(await readFile(join(serverB.root, pathB), 'utf8')).toBe('B saved')
+    expect(documentB.buffer.materializeFullText()).toBe(unsavedB)
+    expect(b.hasUnsavedDocuments()).toBe(true)
+    expect(a.hasUnsavedDocuments()).toBe(false)
+    b.suspend()
+    a.resume()
+    expect(a.documentStore.getState().getLiveEditorDocument(pathsA[0]!)?.buffer.canUndo()).toBe(
+      true,
+    )
+  } finally {
+    deferredA.release()
+    setClient(previousClient)
+    a.dispose()
+    b.dispose()
+    queriesA.clear()
+    queriesB.clear()
+    await serverB.cleanup()
+  }
+})

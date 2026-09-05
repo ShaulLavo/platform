@@ -32,7 +32,7 @@ export function useSaveProjectScript() {
   return (script: OrchestrationProjectScript) => {
     if (!session) return
 
-    const { environment, rootPath } = session
+    const { transport, rootPath } = session
     const project = projects.find((candidate) => candidate.workspaceRoot === rootPath)
     if (!project) return
 
@@ -49,7 +49,7 @@ export function useSaveProjectScript() {
         projectId: project.id,
         scripts: [script, ...remaining],
       }),
-      dispatchCommand: environment.dispatchCommand,
+      dispatchCommand: transport.dispatchCommand,
       onFailed: (error) => notifyChatCommandError(error, 'Could not save the project script'),
     })
   }

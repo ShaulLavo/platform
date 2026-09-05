@@ -33,7 +33,7 @@ import {
 } from '@/features/chat/state/chat-input-draft-store'
 import { chatInputMentionCommandItems } from '@/features/chat/utils/input-logic'
 import { LanguageServerReferencesPane } from '@/features/editor/components/language-server-references-pane'
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../test/factories/editor-state-provider'
 import { Breadcrumbs } from '@/features/file-picker/navigation/breadcrumbs'
 import { LocationBar } from '@/features/file-picker/navigation/location-bar'
 import { FilePickerSessionActionsContext } from '@/features/file-picker/providers/session-actions-context'

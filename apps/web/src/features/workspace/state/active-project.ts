@@ -13,7 +13,7 @@ import { create } from 'zustand'
  */
 type ActiveProjectStore = {
   readonly workspaceRoot: string | null
-  readonly activate: (workspaceRoot: string) => void
+  readonly activate: (workspaceRoot: string | null) => void
 }
 
 export const useActiveProjectStore = create<ActiveProjectStore>()((set) => ({
@@ -21,7 +21,7 @@ export const useActiveProjectStore = create<ActiveProjectStore>()((set) => ({
   activate: (workspaceRoot) => set({ workspaceRoot }),
 }))
 
-export function activateWorkspaceRoot(workspaceRoot: string) {
+export function activateWorkspaceRoot(workspaceRoot: string | null) {
   useActiveProjectStore.getState().activate(workspaceRoot)
 }
 

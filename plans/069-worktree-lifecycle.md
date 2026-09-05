@@ -55,6 +55,12 @@ an owner moved.
   permit it later without adding compare behavior now (`docs/product-vision.md:65-68`,
   `docs/product-vision.md:119-124`).
 - Sessions must point to worktrees which point to projects (`docs/product-vision.md:83-93`).
+- A machine hosts checkouts; it is not itself a worktree. Keep this lifecycle on one server.
+  Browser actions retain Plan 068's `ScopedWorktreeRef` with `(environmentId, worktreeId)` and send
+  the local `worktreeId` to that server. Never resolve a target from the logical project group alone.
+- Treat the main checkout uniformly for Git status, file ownership, and session selection while
+  preserving its protection from removal. Each checkout owns its working changes, index, commit
+  draft, and unsaved buffers. Creating or selecting a sibling must not move these to the sibling.
 - Command/event/projection/receipt/recovery is the required spine, not optional plumbing
   (`docs/product-vision.md:109-114`,
   `docs/t3code-parity-implementation-plan.md:472-530`,
@@ -478,6 +484,9 @@ termination-requested → ended`, with `ownership-unknown` for ambiguous recover
 
 - Orca compare/race UI, result comparison, evaluation, or winner promotion.
 - Automatic N-agent fan-out.
+- Cross-machine provisioning or cleanup. This plan remains a single-machine lifecycle.
+- A Git overview of the main checkout and other local or remote worktrees. It remains unscheduled;
+  collapsible sections, tabs, and optional machine grouping are later layout decisions.
 - Branch deletion, remote branch deletion, worktree pruning, merge/rebase, or PR automation.
 - A worktree default/cleanup policy setting. If later requested, add it to
   `packages/contracts/src/settings/keys.ts`, wire its consumer in the same phase, and regenerate

@@ -16,7 +16,7 @@ import type { App } from 'server/client-contract'
 import { afterEach, expect, test } from 'vitest'
 
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../test/factories/editor-state-provider'
 import {
   resetEditorColorThemeStore,
   setSelectedEditorThemeId,
@@ -35,7 +35,7 @@ import {
   type EditorSurfaceActions,
 } from '@/features/workbench/providers/editor-surface-actions-context'
 import { useSelectedFile } from '@/features/workspace/hooks/use-selected-file'
-import { getClient, serverUrl, setClient, type Client } from '@/lib/client'
+import { getClient, activeServerOrigin, setClient, type Client } from '@/lib/client'
 import { statPath } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
 import { clientInstanceId, instanceHeaderName } from '@/lib/instance-id'
@@ -681,7 +681,7 @@ function installDelayedReadClient(): DelayedReadGate {
   restoreClient = getClient()
   pendingReadGate = gate
   setClient(
-    treaty<App>(serverUrl, {
+    treaty<App>(activeServerOrigin(), {
       fetcher,
       headers: () => ({ [instanceHeaderName]: clientInstanceId() }),
     }),

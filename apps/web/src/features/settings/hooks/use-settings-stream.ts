@@ -3,7 +3,8 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import * as v from 'valibot'
 
-import { getClient } from '@/lib/client'
+import type { Client } from '@/lib/client'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { log } from '@/lib/client-logging'
 import { parseEdenSseStream, unwrapEdenResponse } from '@/lib/eden-events'
 
@@ -15,11 +16,6 @@ import {
 type SettingsStreamDependencies = {
   readonly connect: (signal: AbortSignal) => Promise<unknown>
   readonly wait: (delayMs: number, signal: AbortSignal) => Promise<boolean>
-}
-
-const defaultDependencies: SettingsStreamDependencies = {
-  connect: connectSettingsStream,
-  wait: waitForReconnect,
 }
 
 /** Keeps the infinite-stale confirmed document live across disconnects. */
@@ -39,7 +35,12 @@ export async function superviseSettingsStream(
   signal: AbortSignal,
   overrides: Partial<SettingsStreamDependencies> = {},
 ) {
-  const dependencies = { ...defaultDependencies, ...overrides }
+  const client = clientForQueryClient(queryClient)
+  const dependencies: SettingsStreamDependencies = {
+    connect: (signal) => connectSettingsStream(signal, client),
+    wait: waitForReconnect,
+    ...overrides,
+  }
   let attempt = 0
   let consecutiveFailures = 0
   while (!signal.aborted) {
@@ -190,8 +191,8 @@ async function recoverConfirmedDocument(queryClient: QueryClient, signal: AbortS
   }
 }
 
-async function connectSettingsStream(signal: AbortSignal) {
-  const response = await getClient().settings.events.get({ fetch: { signal } })
+async function connectSettingsStream(signal: AbortSignal, client: Client) {
+  const response = await client.settings.events.get({ fetch: { signal } })
   return unwrapEdenResponse(response, {
     emptyMessage: 'settings event stream returned an empty response',
     requireData: true,

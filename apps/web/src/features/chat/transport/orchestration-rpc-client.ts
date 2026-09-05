@@ -18,11 +18,12 @@ import {
 import * as v from 'valibot'
 
 import { observeClientOperation } from '@/lib/client-logging'
-import { serverUrl } from '@/lib/client'
+import { canonicalServerOrigin } from '@/lib/client'
 import { clientErrors, createClientError } from '@/lib/structured-errors'
 import { createWideEventScope, type WideEventScope } from '@/lib/wide-event-scope'
 import { chatCommandSummary, chatReplaySummary } from '@/features/chat/utils/pipeline-logging'
-import { useServerConnectionStore } from '../state/server-connection-store'
+import { useEnvironmentsStore } from '@/lib/environments/state/store'
+import { createOrchestrationRpcClosedError } from '@/features/chat/transport/structured-errors'
 import { guardOrchestrationStreamSequence } from './orchestration-sequence'
 import type { OrchestrationStreamInput } from './orchestration-streams'
 
@@ -32,8 +33,6 @@ const ORCHESTRATION_RPC_HEARTBEAT_MS = 30_000
 const ORCHESTRATION_RPC_HEARTBEAT_TIMEOUT_MS = 10_000
 /** Past this, an answer is late enough that the UI should stop pretending it is instant. */
 const ORCHESTRATION_RPC_SLOW_REQUEST_MS = 4_000
-/** Codes a server uses to say "you may not connect"; retrying them never helps. */
-const ORCHESTRATION_RPC_UNAUTHORIZED_CLOSE_CODES = new Set([1008, 4401, 4403])
 
 type PendingRequest = {
   method: OrchestrationWsRequest['method']
@@ -56,24 +55,52 @@ export type OrchestrationRpcClientOptions = {
   heartbeatIntervalMs?: number
   heartbeatTimeoutMs?: number
   slowRequestMs?: number
-  url?: () => string
+  readonly origin: string
 }
 
 export class OrchestrationRpcClient {
+  private closedError: ReturnType<typeof createOrchestrationRpcClosedError> | null = null
+  private handshakeReceived = false
+  private rejectOpening: ((error: unknown) => void) | null = null
+  private resolveOpening: (() => void) | null = null
   private heartbeatId: ReturnType<typeof setInterval> | null = null
   private opening: Promise<WebSocket> | null = null
   private pendingPingRequestId: string | null = null
   private pendingRequests = new Map<string, PendingRequest>()
   private pongTimeoutId: ReturnType<typeof setTimeout> | null = null
   private requestCounter = 0
+  private readonly requestPrefix = crypto.randomUUID()
   private socket: WebSocket | null = null
-  /** A socket that never delivered a frame was refused, not dropped. */
-  private socketDeliveredMessage = false
+  private socketError: unknown = null
   private socketScope: WideEventScope | null = null
   private subscriptionCounter = 0
   private subscriptions = new Map<OrchestrationWsSubscriptionId, RpcSubscription<unknown>>()
 
-  constructor(private readonly options: OrchestrationRpcClientOptions = {}) {}
+  private readonly options: OrchestrationRpcClientOptions
+
+  constructor(options: OrchestrationRpcClientOptions) {
+    this.options = { ...options, origin: canonicalServerOrigin(options.origin) }
+  }
+
+  get closed() {
+    return this.closedError !== null
+  }
+
+  close() {
+    if (this.closedError) return
+
+    const error = createOrchestrationRpcClosedError()
+    this.closedError = error
+    this.rejectOpening?.(error)
+    const socket = this.socket
+    if (socket) {
+      this.teardownSocket(socket, error, { explicitlyClosed: true })
+      socket.close()
+    }
+    this.stopHeartbeat()
+    this.rejectPendingRequests(error)
+    this.failSubscriptions(error)
+  }
 
   dispatchCommand(command: ClientOrchestrationCommand) {
     return observeClientOperation(
@@ -202,7 +229,7 @@ export class OrchestrationRpcClient {
       // One flat timeout cannot tell a slow answer from a stuck one, so a
       // request that overruns says so long before it is allowed to fail.
       const slowTimeoutId = setTimeout(() => {
-        useServerConnectionStore.getState().markSlowRequest(message.requestId)
+        useEnvironmentsStore.getState().markSlowRequest(this.options.origin, message.requestId)
         this.socketScope?.increment('request.slowCount')
       }, this.options.slowRequestMs ?? ORCHESTRATION_RPC_SLOW_REQUEST_MS)
 
@@ -231,7 +258,7 @@ export class OrchestrationRpcClient {
       clearTimeout(pending.timeoutId)
       clearTimeout(pending.slowTimeoutId)
     }
-    useServerConnectionStore.getState().clearSlowRequest(requestId)
+    useEnvironmentsStore.getState().clearSlowRequest(this.options.origin, requestId)
 
     return pending
   }
@@ -264,7 +291,7 @@ export class OrchestrationRpcClient {
       scope.increment('subscription.openCount')
       yield* drainSubscriptionQueue(queue)
     } catch (error) {
-      scope.error(error)
+      if (error !== this.closedError) scope.error(error)
       if (!signal?.aborted) throw error
     } finally {
       signal?.removeEventListener('abort', abort)
@@ -276,19 +303,23 @@ export class OrchestrationRpcClient {
       scope.increment('subscription.closeCount')
       scope.end({
         aborted: signal?.aborted ?? false,
+        explicitlyClosed: this.closed,
       })
     }
   }
 
   private async connect(): Promise<WebSocket> {
+    if (this.closedError) throw this.closedError
+
     const open = this.openSocket()
     if (open) return open
     if (this.opening) return this.opening
 
-    const url = (this.options.url ?? orchestrationRpcUrl)()
+    const url = orchestrationRpcUrl(this.options.origin)
     const socket = (this.options.createSocket ?? createOrchestrationRpcSocket)(url)
     this.socket = socket
-    this.socketDeliveredMessage = false
+    this.socketError = null
+    this.handshakeReceived = false
     this.socketScope = createWideEventScope({
       action: 'orchestration.ws.connection.summary',
       area: 'orchestration',
@@ -301,47 +332,52 @@ export class OrchestrationRpcClient {
 
   private openSocketConnection(socket: WebSocket) {
     return new Promise<WebSocket>((resolve, reject) => {
-      let settled = false
       const timeoutId = setTimeout(() => {
-        rejectOpening(createOrchestrationRpcConnectTimeoutError())
+        this.teardownSocket(socket, createOrchestrationRpcConnectTimeoutError(), {
+          connectTimedOut: true,
+        })
         socket.close()
       }, ORCHESTRATION_RPC_CONNECT_TIMEOUT_MS)
-      const rejectOpening = (error: unknown) => {
-        if (settled) return
-
-        settled = true
+      this.rejectOpening = (error) => {
         clearTimeout(timeoutId)
         this.opening = null
+        this.rejectOpening = null
+        this.resolveOpening = null
         reject(error)
       }
-
-      socket.addEventListener('open', () => {
-        if (settled) return
-
-        settled = true
+      this.resolveOpening = () => {
         clearTimeout(timeoutId)
         this.opening = null
+        this.rejectOpening = null
+        this.resolveOpening = null
         this.startHeartbeat(socket)
-        this.socketScope?.increment('socket.openCount')
         resolve(socket)
+      }
+      socket.addEventListener('open', () => {
+        if (this.socket !== socket) return
+        this.socketScope?.increment('socket.openCount')
       })
-      socket.addEventListener('message', (event) => this.handleSocketMessage(event))
+      socket.addEventListener('message', (event) => {
+        if (this.socket !== socket) return
+        this.handleSocketMessage(socket, event)
+      })
       socket.addEventListener('error', (event) => {
-        this.socketScope?.increment('socket.errorCount')
+        if (this.socket !== socket) return
         this.socketScope?.warn('Orchestration WebSocket transport error.', {
           eventType: event.type,
         })
-        rejectOpening(createOrchestrationRpcSocketError())
+        this.teardownSocket(socket, createOrchestrationRpcSocketError(), { transportError: true })
+        socket.close()
       })
       socket.addEventListener('close', (event) => {
-        const error = this.closeError(event)
-        rejectOpening(error)
-        this.handleSocketClose(socket, event, error)
+        this.handleSocketClose(socket, event, createOrchestrationRpcCloseError(event))
       })
     })
   }
 
   private openSocket() {
+    if (this.closed || !this.handshakeReceived) return null
+
     if (this.socket?.readyState === WebSocket.OPEN) return this.socket
 
     return null
@@ -361,6 +397,9 @@ export class OrchestrationRpcClient {
   }
 
   private sendSocketMessage(socket: WebSocket, message: OrchestrationWsClientMessage) {
+    if (this.closedError) throw this.closedError
+    if (this.socket !== socket) throw this.socketError ?? createOrchestrationRpcSocketError()
+
     try {
       socket.send(JSON.stringify(message))
     } catch (error) {
@@ -369,20 +408,29 @@ export class OrchestrationRpcClient {
     }
   }
 
-  private handleSocketMessage(event: MessageEvent) {
-    this.socketDeliveredMessage = true
+  private handleSocketMessage(socket: WebSocket, event: MessageEvent) {
     const message = this.parseSocketMessage(event.data)
     if (!message) return
     if (message.kind === 'connected') {
       // The first frame on an authenticated connection, and the only place the
       // client learns which server process it is talking to.
-      useServerConnectionStore.getState().reportConnected(message.config)
+      try {
+        useEnvironmentsStore.getState().recordHandshake(this.options.origin, message.config)
+      } catch (error) {
+        this.teardownSocket(socket, error, { identityRefused: true })
+        socket.close()
+        return
+      }
+      this.handshakeReceived = true
+      this.resolveOpening?.()
       this.socketScope?.set({
+        environmentId: message.config.environmentId,
         protocolVersion: message.config.protocolVersion,
         serverInstanceId: message.config.serverInstanceId,
       })
       return
     }
+    if (!this.handshakeReceived) return
     if (message.kind === 'response') {
       this.handleResponseMessage(message)
       return
@@ -470,7 +518,10 @@ export class OrchestrationRpcClient {
   private teardownSocket(socket: WebSocket, error: unknown, summary: Record<string, unknown>) {
     if (this.socket !== socket) return
 
+    this.socketError = error
+    this.rejectOpening?.(error)
     this.socket = null
+    this.handshakeReceived = false
     this.opening = null
     this.stopHeartbeat()
     const scope = this.socketScope
@@ -479,10 +530,6 @@ export class OrchestrationRpcClient {
     this.failSubscriptions(error)
     scope?.increment('socket.closeCount')
     scope?.end(summary)
-  }
-
-  private closeError(event: CloseEvent) {
-    return createOrchestrationRpcCloseError(event, this.socketDeliveredMessage)
   }
 
   private rejectPendingRequests(error: unknown) {
@@ -585,7 +632,7 @@ export class OrchestrationRpcClient {
   private nextRequestId(method: string) {
     this.requestCounter += 1
 
-    return `orpc-${method}-${this.requestCounter}`
+    return `orpc-${method}-${this.requestPrefix}-${this.requestCounter}`
   }
 
   private nextSubscriptionId(kind: string) {
@@ -659,22 +706,6 @@ class AsyncSubscriptionQueue<T> {
   }
 }
 
-const localOrchestrationRpcClient = new OrchestrationRpcClient()
-
-export const dispatchOrchestrationCommandRpc = localOrchestrationRpcClient.dispatchCommand.bind(
-  localOrchestrationRpcClient,
-)
-export const fetchOrchestrationThreadDetailPageRpc =
-  localOrchestrationRpcClient.threadDetailPage.bind(localOrchestrationRpcClient)
-export const replayOrchestrationEventsRpc = localOrchestrationRpcClient.replayEvents.bind(
-  localOrchestrationRpcClient,
-)
-export const subscribeOrchestrationShellRpc = localOrchestrationRpcClient.shellStream.bind(
-  localOrchestrationRpcClient,
-)
-export const subscribeOrchestrationThreadDetailRpc =
-  localOrchestrationRpcClient.threadDetailStream.bind(localOrchestrationRpcClient)
-
 async function* drainSubscriptionQueue<T>(queue: AsyncSubscriptionQueue<T>) {
   while (true) {
     const result = await queue.next()
@@ -684,8 +715,8 @@ async function* drainSubscriptionQueue<T>(queue: AsyncSubscriptionQueue<T>) {
   }
 }
 
-function orchestrationRpcUrl() {
-  const url = new URL('/orchestration/rpc', serverUrl)
+function orchestrationRpcUrl(origin: string) {
+  const url = new URL('/orchestration/rpc', origin)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
 
   return url.toString()
@@ -736,13 +767,13 @@ function createOrchestrationRpcSocketError() {
   })
 }
 
-function createOrchestrationRpcCloseError(event: CloseEvent, deliveredMessage: boolean) {
-  if (isUnauthorizedClose(event, deliveredMessage)) {
+function createOrchestrationRpcCloseError(event: CloseEvent) {
+  if (event.code === 1008) {
     return createClientError({
       code: 'ORCHESTRATION_WS_UNAUTHORIZED',
-      message: 'The orchestration WebSocket was rejected before any data arrived.',
+      message: 'The orchestration WebSocket was rejected by the server.',
       status: 401,
-      why: 'The server refused the WebSocket upgrade, so no orchestration data can flow.',
+      why: 'The server closed the WebSocket because the connection is unauthorized.',
       fix: 'Sign in again or fix the server auth configuration; retrying the socket will not help.',
     })
   }
@@ -764,16 +795,6 @@ function createOrchestrationRpcHeartbeatTimeoutError() {
     why: 'The socket stayed open but the server never answered a ping, so it is half-open.',
     fix: 'Let the chat supervisors reconnect; inspect the server if heartbeats keep timing out.',
   })
-}
-
-/**
- * The server closes a rejected upgrade cleanly and immediately, before sending
- * anything, so a silent clean close is an auth refusal rather than a drop.
- */
-function isUnauthorizedClose(event: CloseEvent, deliveredMessage: boolean) {
-  if (ORCHESTRATION_RPC_UNAUTHORIZED_CLOSE_CODES.has(event.code)) return true
-
-  return event.wasClean && !deliveredMessage
 }
 
 function createOrchestrationRpcSocket(url: string) {

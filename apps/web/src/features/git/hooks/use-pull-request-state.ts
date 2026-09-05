@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { useQuery } from '@tanstack/react-query'
 
 import { gitKeys } from '@/lib/query-keys'
@@ -14,7 +15,8 @@ const PULL_REQUEST_POLL_MS = 60_000
 export function usePullRequestState(rootPath: string | null) {
   return useQuery({
     enabled: Boolean(rootPath),
-    queryFn: ({ signal }) => fetchPullRequestState(rootPath ?? '', signal),
+    queryFn: ({ signal, client }) =>
+      fetchPullRequestState(rootPath ?? '', signal, clientForQueryClient(client)),
     queryKey: gitKeys.pullRequestState(rootPath ?? ''),
     refetchInterval: PULL_REQUEST_POLL_MS,
     // A repository with no GitHub remote, or a machine with no `gh`, answers

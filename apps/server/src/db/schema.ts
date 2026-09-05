@@ -12,6 +12,13 @@ export const schemaMigrations = sqliteTable('schema_migrations', {
   appliedAt: text('applied_at').notNull(),
 })
 
+export const environmentIdentity = sqliteTable('environment_identity', {
+  id: text('id').primaryKey(),
+  createdAt: text('created_at').notNull(),
+})
+
+export type EnvironmentIdentity = typeof environmentIdentity.$inferSelect
+
 export const fsMetadata = sqliteTable('fs_metadata', {
   path: text('path').primaryKey(),
   name: text('name').notNull(),

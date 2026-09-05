@@ -9,6 +9,7 @@ import {
 } from '@workspace/contracts'
 import { OrchestrationStreamHub, OrchestrationStreams } from '../streams'
 import { orchestrationWsServerConfig } from '../ws-rpc'
+import { readEnvironmentIdentity } from '../../db/environment-identity'
 import {
   assistantDeltaEvent,
   createShellWorkspace,
@@ -216,13 +217,17 @@ describe('event replay bounds', () => {
 
 describe('connection handshake', () => {
   it('reports the server version and the limits a client resumes against', () => {
-    const config = v.parse(orchestrationWsServerConfigSchema, orchestrationWsServerConfig())
+    const workspace = createShellWorkspace(0)
+    const identity = readEnvironmentIdentity(workspace.database)
+    const config = v.parse(orchestrationWsServerConfigSchema, orchestrationWsServerConfig(identity))
 
     expect(config.serverVersion).toBe('0.0.1')
     expect(config.protocolVersion).toBe(ORCHESTRATION_WS_PROTOCOL_VERSION)
     expect(config.capabilities).toEqual({ resume: true, synchronizedMarker: true })
     expect(config.limits.resumeMaxGap).toBe(ORCHESTRATION_RESUME_MAX_GAP)
-    expect(orchestrationWsServerConfig().serverInstanceId).toBe(config.serverInstanceId)
+    expect(config.environmentId).toBe(identity.id)
+    expect(orchestrationWsServerConfig(identity).serverInstanceId).toBe(config.serverInstanceId)
+    workspace.close()
   })
 })
 

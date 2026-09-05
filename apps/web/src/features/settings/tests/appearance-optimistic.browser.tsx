@@ -7,7 +7,7 @@ import { afterEach, expect, test } from 'vitest'
 import { settingsSnapshot } from '../../../../test/factories/settings'
 import { AppProviders, createTestQueryClient, seedBootMirrorTheme } from '../../../../test/render'
 import { useTheme } from '@/features/settings/hooks/use-theme'
-import { getClient, serverUrl, setClient, type Client } from '@/lib/client'
+import { getClient, activeServerOrigin, setClient, type Client } from '@/lib/client'
 import { clientInstanceId, instanceHeaderName } from '@/lib/instance-id'
 import {
   resetSettingsIntentStore,
@@ -103,7 +103,7 @@ function controlledFailureClient(response: Promise<Response>): Client {
     return fetch(request)
   }) as typeof fetch
 
-  return treaty<App>(serverUrl, {
+  return treaty<App>(activeServerOrigin(), {
     fetcher,
     headers: () => ({ [instanceHeaderName]: clientInstanceId() }),
   })

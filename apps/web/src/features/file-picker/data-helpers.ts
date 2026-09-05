@@ -9,6 +9,8 @@ import {
   statPath,
 } from '@/lib/file-server'
 import { clientErrors, createClientError } from '@/lib/structured-errors'
+import { getClient, type Client } from '@/lib/client'
+import { streamWorkspaceSearch } from '@/lib/workspace-search-client'
 
 import {
   basename,
@@ -43,31 +45,40 @@ export async function loadDirectoryData(
   signal: AbortSignal,
   onEntries: (entries: FsEntry[]) => void,
   options: DirectoryLoadOptions = {},
+  client: Client = getClient(),
 ): Promise<DirectoryLoadData> {
   const showHidden = options.showHidden ?? false
   const [currentEntry, entries] = await Promise.all([
-    fetchCurrentEntry(path, signal),
-    loadEntries(path, query, mode, showHidden, signal, onEntries),
+    fetchCurrentEntry(path, signal, client),
+    loadEntries(path, query, mode, showHidden, signal, onEntries, client),
   ])
 
   return { currentEntry, entries }
 }
 
-export function fetchServerInfo(signal: AbortSignal) {
-  return fetchSharedServerInfo(signal)
+export function fetchServerInfo(signal: AbortSignal, client: Client = getClient()) {
+  return fetchSharedServerInfo(signal, client)
 }
 
-export function fetchRecentEntries(mode: FilePickerMode, showHidden: boolean, signal: AbortSignal) {
-  return fetchSharedRecentEntries({ limit: RECENT_LIMIT, mode, showHidden }, signal)
+export function fetchRecentEntries(
+  mode: FilePickerMode,
+  showHidden: boolean,
+  signal: AbortSignal,
+  client: Client = getClient(),
+) {
+  return fetchSharedRecentEntries({ limit: RECENT_LIMIT, mode, showHidden }, signal, client)
 }
 
-export async function recordRecent(entry: PickedFsEntry) {
-  await recordRecentEntry(entry.path)
+export async function recordRecent(entry: PickedFsEntry, client: Client = getClient()) {
+  await recordRecentEntry(entry.path, client)
 }
 
-export async function createPickerFolder(request: CreatePickerFolderRequest) {
+export async function createPickerFolder(
+  request: CreatePickerFolderRequest,
+  client: Client = getClient(),
+) {
   const path = pickerFolderPath(request.parentPath, request.name)
-  return createFolderPath(path)
+  return createFolderPath(path, client)
 }
 
 export function pickerFolderPath(parentPath: string, inputName: string) {
@@ -114,9 +125,10 @@ async function loadEntries(
   showHidden: boolean,
   signal: AbortSignal,
   onEntries: (entries: FsEntry[]) => void,
+  client: Client,
 ) {
   const trimmedQuery = query.trim()
-  if (!trimmedQuery) return fetchTreeEntries(path, showHidden, signal)
+  if (!trimmedQuery) return fetchTreeEntries(path, showHidden, signal, client)
 
   const entries = await streamPickerSearchEntries(
     path,
@@ -126,14 +138,14 @@ async function loadEntries(
     (next) => {
       onEntries(visiblePickerEntries(next, path, showHidden))
     },
-    { showHidden },
+    { showHidden, search: (query, signal) => streamWorkspaceSearch(query, signal, client) },
   )
 
   return visiblePickerEntries(entries, path, showHidden)
 }
 
-async function fetchCurrentEntry(path: string, signal: AbortSignal) {
-  const entry = await statPath(path, signal)
+async function fetchCurrentEntry(path: string, signal: AbortSignal, client: Client) {
+  const entry = await statPath(path, signal, client)
   if (!isDirectoryEntry(entry)) {
     throw clientErrors.CURRENT_PATH_NOT_FOLDER()
   }
@@ -145,8 +157,13 @@ async function fetchCurrentEntry(path: string, signal: AbortSignal) {
   } as DirectoryFsEntry
 }
 
-async function fetchTreeEntries(path: string, showHidden: boolean, signal: AbortSignal) {
-  const result = await fetchTree(path, signal)
+async function fetchTreeEntries(
+  path: string,
+  showHidden: boolean,
+  signal: AbortSignal,
+  client: Client,
+) {
+  const result = await fetchTree(path, signal, client)
   return visiblePickerEntries(result.entries, path, showHidden)
 }
 

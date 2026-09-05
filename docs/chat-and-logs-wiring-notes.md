@@ -18,16 +18,16 @@ Alternative placements considered:
 
 Chat:
 
-- React providers already present in `apps/web/src/main.tsx` and `apps/web/src/App.tsx`: `QueryClientProvider`, `EditorStateProvider`, `FocusProvider`, `HotkeysProvider`, and `TooltipProvider`.
+- `main.tsx` owns the application runtime, focus, hotkeys, and command bus. `components/active-environment-application.tsx` mounts the selected QueryClient, verifies server identity, and supplies the retained editor runtime and tooltip provider.
 - Module state: `useChatProjectionStore` and related chat projection/detail subscription stores under `apps/web/src/features/chat/state/`.
-- Local environment: `createLocalChatEnvironment()` from `apps/web/src/features/chat/environment/local-chat-environment.ts`.
-- Transport: orchestration WebSocket/RPC client in `apps/web/src/features/chat/transport/orchestration-rpc-client.ts`, using the configured app server URL from `apps/web/src/lib/client.ts`.
+- `ChatTransportProvider` owns a closable transport from `features/chat/transport/create-chat-transport.ts`; `useChatTransport` reads it. Each effect setup owns a fresh connection, including StrictMode replay.
+- The transport captures its QueryClient owner's origin. Switching closes the outgoing connection and resets its chat projection; simultaneous connections are deferred to Plan 078.
 - Backend routes: `orchestrationWsRoutes` and `orchestrationRoutes` registered in `apps/server/src/app.ts`.
 
 Logs:
 
-- React providers already present in `apps/web/src/main.tsx` and `apps/web/src/App.tsx`: `QueryClientProvider` and `FocusProvider`.
-- App client: `getClient()` from `apps/web/src/lib/client.ts`.
+- The active environment's QueryClient and the outer `FocusProvider` are supplied by the application.
+- Queries and live subscriptions retain the HTTP client associated with that QueryClient through `lib/environments/state/query-clients.ts`. An environment switch cannot redirect an in-flight request.
 - Query keys and cache invalidation: `logsKeys` from `apps/web/src/lib/query-keys.ts`.
 - Backend routes: `_log/dashboard/{summary,events,event,live}` from `apps/server/src/observability/routes.ts`, registered via `observabilityRoutes()` in `apps/server/src/app.ts`.
 - Log source: structured JSONL files under `logs/`, configured by the observability variables in `.env.example`.

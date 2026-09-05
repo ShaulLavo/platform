@@ -14,7 +14,7 @@ import {
   EditorWorkspaceStateContext,
 } from '@/features/editor/state/workspace-state'
 import { readWorkspaceCache } from '@/features/workspace/state/cache'
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../test/factories/editor-state-provider'
 import { selectSettingsScope } from '@/features/settings/state/scope-store'
 import { selectSettingsView } from '@/features/settings/state/view-store'
 import { settingsJsonDocumentId } from '@/features/settings/utils/json-document'

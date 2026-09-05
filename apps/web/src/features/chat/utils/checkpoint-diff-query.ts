@@ -1,6 +1,6 @@
 import type { ThreadId } from '@workspace/contracts'
 
-import { getClient } from '@/lib/client'
+import { getClient, type Client } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
 import { unwrapEdenResponse } from '@/lib/eden-events'
 import { gitKeys } from '@/lib/query-keys'
@@ -125,9 +125,13 @@ export function matchingCheckpointDiff(diffs: readonly FileDiff[], path: string 
   return diffs.find((diff) => checkpointDiffMatchesPath(diff, path)) ?? null
 }
 
-export async function fetchCheckpointDiff(input: CheckpointDiffQueryInput, signal?: AbortSignal) {
+export async function fetchCheckpointDiff(
+  input: CheckpointDiffQueryInput,
+  signal?: AbortSignal,
+  client: Client = getClient(),
+) {
   if (input.scope === 'thread') {
-    return fetchFullThreadCheckpointDiff(input, signal)
+    return fetchFullThreadCheckpointDiff(input, signal, client)
   }
 
   return observeClientOperation(
@@ -141,7 +145,7 @@ export async function fetchCheckpointDiff(input: CheckpointDiffQueryInput, signa
       toTurnCount: input.toTurnCount,
     },
     async () => {
-      const response = await getClient().orchestration['turn-diff'].get({
+      const response = await client.orchestration['turn-diff'].get({
         fetch: { signal },
         query: {
           fromTurnCount: input.fromTurnCount,
@@ -160,7 +164,8 @@ export async function fetchCheckpointDiff(input: CheckpointDiffQueryInput, signa
 
 async function fetchFullThreadCheckpointDiff(
   input: Pick<CheckpointDiffQueryInput, 'ignoreWhitespace' | 'threadId' | 'toTurnCount'>,
-  signal?: AbortSignal,
+  signal: AbortSignal | undefined,
+  client: Client,
 ) {
   return observeClientOperation(
     {
@@ -170,7 +175,7 @@ async function fetchFullThreadCheckpointDiff(
       toTurnCount: input.toTurnCount,
     },
     async () => {
-      const response = await getClient().orchestration['full-thread-diff'].get({
+      const response = await client.orchestration['full-thread-diff'].get({
         fetch: { signal },
         query: {
           ignoreWhitespace: input.ignoreWhitespace ?? true,

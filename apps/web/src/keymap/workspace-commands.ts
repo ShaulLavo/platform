@@ -42,11 +42,7 @@ import {
   savableDocumentPath,
 } from '@/features/editor/utils/file-backed-document'
 import { activeSettingsBufferId } from '@/features/settings/state/active-buffer'
-import {
-  dirtySavableEditorDocuments,
-  saveAllEditorDocuments,
-  saveSelectedEditorDocument,
-} from '@/features/editor/utils/save'
+import { dirtySavableEditorDocuments } from '@/features/editor/utils/save'
 import type { EditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import type { WorkspaceMutationReporter } from '@/features/editor/state/workspace-edit-service'
 import { nextEditorDiffViewMode } from '@/features/editor/utils/diff-view-mode'
@@ -559,8 +555,7 @@ export const workspaceCommands = [
       // that the settings page has modes inside the feature that owns them.
       const path = activeSettingsBufferId(snapshot.activeFilePath) ?? snapshot.activeFilePath
       if (!path || !savableDocumentPath(path)) return declined
-      const save = () =>
-        saveSelectedEditorDocument(runtime.documents.store, runtime.documents.queryClient, path)
+      const save = () => runtime.documents.save.save(path)
       const dirty = dirtySavableEditorDocuments(runtime.documents.store.getState()).some(
         (document) => document.id === path,
       )
@@ -586,9 +581,7 @@ export const workspaceCommands = [
         (document) => document.id,
       )
       const save = (reportAffectedPaths?: WorkspaceMutationReporter) =>
-        saveAllEditorDocuments(runtime.documents.store, runtime.documents.queryClient, (path) =>
-          reportAffectedPaths?.([path]),
-        )
+        runtime.documents.save.saveAll((path) => reportAffectedPaths?.([path]))
       const operation =
         affectedPaths.length > 0
           ? runtime.workspaceEdits.runWorkspaceMutation(affectedPaths, save)

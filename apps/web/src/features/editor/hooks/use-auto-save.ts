@@ -1,9 +1,9 @@
 import { Debouncer } from '@tanstack/react-pacer/debouncer'
-import { useQueryClient } from '@tanstack/react-query'
+import { useEditorRuntime } from '@/features/editor/hooks/use-runtime'
 import { useEffect } from 'react'
 
 import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
-import { isDirtyLiveEditorDocument, saveEditorDocumentsByPath } from '@/features/editor/utils/save'
+import { isDirtyLiveEditorDocument } from '@/features/editor/utils/save'
 import { useOptionalWorkspaceEditService } from '@/features/editor/providers/workspace-edit-context'
 import type { WorkspaceMutationReporter } from '@/features/editor/state/workspace-edit-service'
 import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
@@ -12,7 +12,7 @@ import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 /**
  * Saves edited files without being asked.
  *
- * Reuses the same `saveEditorDocumentByPath` the explicit command calls, so an
+ * Uses the same retained save service as the explicit command, so an
  * automatic save and a `Mod+S` are the same operation — a second write path
  * would be a second set of conflict and dirty-tracking bugs.
  *
@@ -25,7 +25,7 @@ export function useAutoSave() {
   const mode = useSettingValue('files.autoSave')
   const delay = useSettingValue('files.autoSaveDelay')
   const documentStore = useEditorDocumentStoreApi()
-  const queryClient = useQueryClient()
+  const { saveService } = useEditorRuntime()
   const workspaceEdits = useOptionalWorkspaceEditService()
 
   useEffect(() => {
@@ -44,9 +44,7 @@ export function useAutoSave() {
 
       if (paths.length === 0) return
       const save = (reportAffectedPaths?: WorkspaceMutationReporter) =>
-        saveEditorDocumentsByPath(documentStore, queryClient, paths, (path) =>
-          reportAffectedPaths?.([path]),
-        )
+        saveService.saveMany(paths, (path) => reportAffectedPaths?.([path]))
       if (!workspaceEdits) {
         void save().catch(() => undefined)
         return
@@ -77,5 +75,5 @@ export function useAutoSave() {
       // user already made.
       pending.flush()
     }
-  }, [delay, documentStore, mode, queryClient, workspaceEdits])
+  }, [delay, documentStore, mode, saveService, workspaceEdits])
 }

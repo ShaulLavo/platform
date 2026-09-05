@@ -8,7 +8,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { afterEach, expect, test } from 'vitest'
 import { ForesightManager } from 'js.foresight'
 
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../test/factories/editor-state-provider'
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
 import { useEditorCommands, type EditorCommands } from '@/features/editor/state/commands'
 import {

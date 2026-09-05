@@ -7,6 +7,7 @@ import {
   type SettingsWriteTarget,
 } from '@workspace/contracts'
 import { create } from 'zustand'
+import type { QueryClient } from '@tanstack/react-query'
 
 import { clientInstanceId } from '@/lib/instance-id'
 
@@ -24,6 +25,7 @@ export type SettingsNoop = { readonly kind: 'noop' }
 export type SettingsSubmission = SettingsIntentHandle | SettingsNoop
 
 export type ActiveSettingsIntent = {
+  readonly owner: QueryClient
   readonly clientSequence: number
   readonly enqueuedAt: number
   readonly initiator?: string
@@ -35,6 +37,7 @@ export type ActiveSettingsIntent = {
 }
 
 export type FailedSettingsIntent = {
+  readonly owner: QueryClient
   readonly clientSequence: number
   readonly error: unknown
   readonly initiator?: string
@@ -65,6 +68,7 @@ type SettingsIntentState = {
   retry: (mutationId: string) => ActiveSettingsIntent | null
   settleTransport: (mutationId: string) => void
   submit: (
+    owner: QueryClient,
     target: SettingsWriteTarget,
     operations: readonly SettingsOperation[],
     initiator?: string,
@@ -113,6 +117,7 @@ export const useSettingsIntentStore = create<SettingsIntentState>()((set, get) =
     if (entry.status === 'acknowledged') return null
 
     const failed: FailedSettingsIntent = {
+      owner: entry.owner,
       clientSequence: entry.clientSequence,
       error,
       initiator: entry.initiator,
@@ -120,6 +125,7 @@ export const useSettingsIntentStore = create<SettingsIntentState>()((set, get) =
       resources: entry.resources,
       superseded: active.some(
         (candidate) =>
+          candidate.owner === entry.owner &&
           candidate.clientSequence > entry.clientSequence &&
           targetedResourcesIntersect(candidate.resources, entry.resources),
       ),
@@ -137,7 +143,7 @@ export const useSettingsIntentStore = create<SettingsIntentState>()((set, get) =
     if (!failed || failed.superseded) return null
 
     const nextSequence = get().nextClientSequence + 1
-    const entry = activeEntry(failed.request, nextSequence, failed.initiator)
+    const entry = activeEntry(failed.owner, failed.request, nextSequence, failed.initiator)
     set((state) => ({
       active: [...state.active, entry],
       failed: state.failed.filter((candidate) => candidate.request.mutationId !== mutationId),
@@ -157,7 +163,7 @@ export const useSettingsIntentStore = create<SettingsIntentState>()((set, get) =
     }))
     transportStartedAtByMutationId.delete(mutationId)
   },
-  submit: (target, operations, initiator, beforePublish) => {
+  submit: (owner, target, operations, initiator, beforePublish) => {
     const state = get()
     const nextSequence = state.nextClientSequence + 1
     const request: SettingsMutationRequest = {
@@ -165,8 +171,8 @@ export const useSettingsIntentStore = create<SettingsIntentState>()((set, get) =
       operations,
       target,
     }
-    const entry = activeEntry(request, nextSequence, initiator)
-    const supersededMutationIds = supersededFailures(entry.resources, state.failed)
+    const entry = activeEntry(owner, request, nextSequence, initiator)
+    const supersededMutationIds = supersededFailures(owner, entry.resources, state.failed)
     beforePublish?.(entry)
 
     set({
@@ -184,12 +190,19 @@ export const useSettingsIntentStore = create<SettingsIntentState>()((set, get) =
 }))
 
 export function submitSettingsIntent(
+  owner: QueryClient,
   target: SettingsWriteTarget,
   operations: readonly SettingsOperation[],
   initiator?: string,
   beforePublish?: (entry: ActiveSettingsIntent) => void,
 ): SubmitSettingsIntentResult {
-  return useSettingsIntentStore.getState().submit(target, operations, initiator, beforePublish)
+  return useSettingsIntentStore
+    .getState()
+    .submit(owner, target, operations, initiator, beforePublish)
+}
+
+export function activeSettingsIntentsFor(owner: QueryClient): readonly ActiveSettingsIntent[] {
+  return useSettingsIntentStore.getState().active.filter((entry) => entry.owner === owner)
 }
 
 export function acknowledgeSettingsIntent(mutationId: string): ActiveSettingsIntent | null {
@@ -262,6 +275,7 @@ function acknowledgeActiveIntent(
 }
 
 function activeEntry(
+  owner: QueryClient,
   request: SettingsMutationRequest,
   clientSequence: number,
   initiator?: string,
@@ -272,6 +286,7 @@ function activeEntry(
   })
 
   return {
+    owner,
     clientSequence,
     enqueuedAt: now(),
     initiator,
@@ -294,11 +309,13 @@ function targetedResources(
 }
 
 function supersededFailures(
+  owner: QueryClient,
   resources: readonly TargetedResourceKey[],
   failed: readonly FailedSettingsIntent[],
 ): string[] {
   const superseded: string[] = []
   for (const entry of failed) {
+    if (entry.owner !== owner) continue
     if (entry.superseded) continue
     if (!targetedResourcesIntersect(resources, entry.resources)) continue
     superseded.push(entry.request.mutationId)

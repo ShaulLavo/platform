@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { useMutation } from '@tanstack/react-query'
 
 import { pullRemote } from '@/features/git/utils/api'
@@ -9,7 +10,7 @@ export function usePullRemoteMutation(rootPath: string) {
   const invalidate = useWorkspaceInvalidation()
 
   return useMutation({
-    mutationFn: () => pullRemote(rootPath),
+    mutationFn: (_variables, { client }) => pullRemote(rootPath, clientForQueryClient(client)),
     mutationKey: mutationKeys.pull(rootPath),
     onError: notifyMutationError,
     onSuccess: invalidate,

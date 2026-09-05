@@ -6,7 +6,7 @@ import { useAddressProjection } from '@/features/address/hooks/use-projection'
 import { PROJECTION_DEBOUNCE_MS } from '@/features/address/state/projection'
 import { useAddressRestore } from '@/features/address/hooks/use-restore'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from './factories/editor-state-provider'
 import {
   useEditorWorkspaceStoreApi,
   type EditorWorkspaceStoreApi,

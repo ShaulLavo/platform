@@ -1,10 +1,12 @@
 import { queryOptions } from '@tanstack/react-query'
 
 import { wallpaperMediaKind, type WallpaperMediaKind } from '@/features/workbench/utils/wallpaper'
-import { serverUrl } from '@/lib/client'
+import { originForQueryClient } from '@/lib/environments/state/query-clients'
 import { clientInstanceId, instanceHeaderName } from '@/lib/instance-id'
 
-const DESKTOP_WALLPAPER_URL = `${serverUrl}/wallpaper`
+function desktopWallpaperUrl(origin: string) {
+  return `${origin.replace(/\/+$/u, '')}/wallpaper`
+}
 const WALLPAPER_QUERY_GC_TIME_MS = 5 * 60_000
 const WALLPAPER_QUERY_STALE_TIME_MS = 60 * 60_000
 
@@ -26,7 +28,7 @@ export function wallpaperInfoQueryOptions({ enabled }: { enabled: boolean }) {
   return queryOptions({
     ...wallpaperQueryDefaults,
     enabled,
-    queryFn: fetchWallpaperKind,
+    queryFn: ({ client }) => fetchWallpaperKind(originForQueryClient(client)),
     queryKey: wallpaperQueryKeys.info(),
   })
 }
@@ -35,7 +37,7 @@ export function wallpaperMediaQueryOptions({ enabled }: { enabled: boolean }) {
   return queryOptions({
     ...wallpaperQueryDefaults,
     enabled,
-    queryFn: () => fetchWallpaperBlob(DESKTOP_WALLPAPER_URL),
+    queryFn: ({ client }) => fetchWallpaperBlob(desktopWallpaperUrl(originForQueryClient(client))),
     queryKey: wallpaperQueryKeys.media(),
   })
 }
@@ -43,13 +45,14 @@ export function wallpaperMediaQueryOptions({ enabled }: { enabled: boolean }) {
 export function wallpaperStillQueryOptions() {
   return queryOptions({
     ...wallpaperQueryDefaults,
-    queryFn: () => fetchWallpaperBlob(`${DESKTOP_WALLPAPER_URL}/still`),
+    queryFn: ({ client }) =>
+      fetchWallpaperBlob(`${desktopWallpaperUrl(originForQueryClient(client))}/still`),
     queryKey: wallpaperQueryKeys.still(),
   })
 }
 
-async function fetchWallpaperKind(): Promise<WallpaperMediaKind> {
-  const response = await fetchWallpaper(`${DESKTOP_WALLPAPER_URL}/info`)
+async function fetchWallpaperKind(origin: string): Promise<WallpaperMediaKind> {
+  const response = await fetchWallpaper(`${desktopWallpaperUrl(origin)}/info`)
   if (!response.ok) return 'image'
 
   const info = (await response.json()) as { contentType?: string }

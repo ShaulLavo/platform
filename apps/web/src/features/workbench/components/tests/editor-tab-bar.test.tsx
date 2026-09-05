@@ -2,7 +2,7 @@ import { fireEvent, screen } from '@testing-library/react'
 import { vi } from 'vitest'
 
 import type { EditorTabModel } from '@/features/workspace/utils/tab-types'
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../../test/factories/editor-state-provider'
 import { EditorTabActionsContext } from '@/features/editor/providers/tab-actions-context'
 import type { RequestCloseTab, RequestCloseTabs } from '@/features/editor/hooks/use-dirty-tab-close'
 import { EditorTabBar } from '@/features/workbench/components/editor-tab-bar'

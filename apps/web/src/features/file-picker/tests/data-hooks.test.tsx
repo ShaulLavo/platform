@@ -1,4 +1,5 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { createTestQueryClient } from '../../../../test/render'
+import { type QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 
@@ -24,7 +25,7 @@ test('keeps placeholders within one directory and never carries them across navi
   await client.fs['create-folder'].post({ path: 'second', recursive: true })
   await client.fs['create-file'].post({ path: 'second/second.ts' })
 
-  const queryClient = testQueryClient()
+  const queryClient = createTestQueryClient()
   const { result, rerender } = renderHook(
     ({ currentPath, effectiveQuery }: { currentPath: string; effectiveQuery: string }) =>
       useDirectoryLoad({
@@ -65,7 +66,7 @@ test('refreshes the current directory without growing the query cache', async ({
   await client.fs['create-folder'].post({ path: 'project', recursive: true })
   await client.fs['create-file'].post({ path: 'project/one.ts' })
 
-  const queryClient = testQueryClient()
+  const queryClient = createTestQueryClient()
   const { result } = renderHook(
     () =>
       useDirectoryLoad({
@@ -98,7 +99,7 @@ test('refreshes the current directory without growing the query cache', async ({
 test('refreshes recents without growing the query cache', async ({ client }) => {
   await client.fs['create-folder'].post({ path: 'recent-folder', recursive: true })
 
-  const queryClient = testQueryClient()
+  const queryClient = createTestQueryClient()
   const { result } = renderHook(
     () =>
       useRecentEntries({
@@ -132,7 +133,7 @@ test('keys and filters recents by picker mode and hidden visibility', async ({ c
     await client.fs.recents.post({ path })
   }
 
-  const queryClient = testQueryClient()
+  const queryClient = createTestQueryClient()
   const { result, rerender } = renderHook(
     ({ mode, showHidden }: { mode: 'file' | 'folder'; showHidden: boolean }) =>
       useRecentEntries({ mode, open: true, serverInfo: SERVER_INFO, showHidden }),
@@ -162,12 +163,6 @@ test('keys and filters recents by picker mode and hidden visibility', async ({ c
   )
   queryClient.clear()
 })
-
-function testQueryClient() {
-  return new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
-}
 
 function queryClientWrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: { children: ReactNode }) {

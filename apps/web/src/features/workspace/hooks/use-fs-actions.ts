@@ -1,3 +1,5 @@
+import type { Client } from '@/lib/client'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import type { FileTreeRenameEvent } from '@workspace/tree'
 import type { FileTreeModel } from '@workspace/tree'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -73,9 +75,11 @@ export function useFsActions({
   const deferredCreateRef = useRef<DeferredCreate | null>(null)
 
   const createMutation = useMutation({
-    mutationFn: (request: CreateRequest) => {
+    mutationFn: (request: CreateRequest, { client }) => {
       const path = workspacePathForTreePath(rootPath, request.treePath)
-      return runWorkspaceMutation([path], () => createEntryOnDisk(path, request.isFolder))
+      return runWorkspaceMutation([path], () =>
+        createEntryOnDisk(path, request.isFolder, clientForQueryClient(client)),
+      )
     },
     onError: (error, request) => {
       // The tree already renamed the placeholder row optimistically; nothing on
@@ -89,11 +93,13 @@ export function useFsActions({
   })
 
   const renameMutation = useMutation({
-    mutationFn: (request: MoveRequest) => {
+    mutationFn: (request: MoveRequest, { client }) => {
       const from = workspacePathForTreePath(rootPath, request.from)
       const to = workspacePathForTreePath(rootPath, request.to)
       const affectedPaths = request.isFolder ? 'all' : [from, to]
-      return runWorkspaceMutation(affectedPaths, () => renamePath(from, to))
+      return runWorkspaceMutation(affectedPaths, () =>
+        renamePath(from, to, clientForQueryClient(client)),
+      )
     },
     onError: (error, request) => {
       // The refetched tree is identical to the one we already hold, so the path
@@ -108,20 +114,24 @@ export function useFsActions({
   })
 
   const duplicateMutation = useMutation({
-    mutationFn: (request: MoveRequest) => {
+    mutationFn: (request: MoveRequest, { client }) => {
       const from = workspacePathForTreePath(rootPath, request.from)
       const to = workspacePathForTreePath(rootPath, request.to)
       const affectedPaths = request.isFolder ? 'all' : [to]
-      return runWorkspaceMutation(affectedPaths, () => copyPath(from, to))
+      return runWorkspaceMutation(affectedPaths, () =>
+        copyPath(from, to, clientForQueryClient(client)),
+      )
     },
     onError: (error) => reportError(toClientError(error)),
     onSettled: () => invalidateTreeQueries(queryClient),
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (target: DeleteTarget) => {
+    mutationFn: (target: DeleteTarget, { client }) => {
       const affectedPaths = target.isDirectory ? 'all' : [target.path]
-      return runWorkspaceMutation(affectedPaths, () => deletePath(target.path, target.isDirectory))
+      return runWorkspaceMutation(affectedPaths, () =>
+        deletePath(target.path, target.isDirectory, clientForQueryClient(client)),
+      )
     },
     onSettled: () => invalidateTreeQueries(queryClient),
     onSuccess: () => setDeleteTarget(null),
@@ -239,10 +249,10 @@ export function useFsActions({
   }
 }
 
-function createEntryOnDisk(path: string, isFolder: boolean) {
-  if (isFolder) return ensureFolderPath(path)
+function createEntryOnDisk(path: string, isFolder: boolean, client: Client) {
+  if (isFolder) return ensureFolderPath(path, client)
 
-  return createFileContent(path, '')
+  return createFileContent(path, '', client)
 }
 
 /** The tree keeps directory rows keyed with a trailing slash; files without. */

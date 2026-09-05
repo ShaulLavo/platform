@@ -1,10 +1,11 @@
+import { environmentCommands } from '@/keymap/environment-commands'
 import type { Icon } from '@phosphor-icons/react'
 
 import { editorCommands } from './editor-commands'
 import type { PlatformCommandId } from './types'
 import { workspaceCommands } from './workspace-commands'
 
-export const platformCommands = [...workspaceCommands, ...editorCommands]
+export const platformCommands = [...workspaceCommands, ...editorCommands, ...environmentCommands]
 
 /** One row from the sole live command table. */
 export type CommandEntry = (typeof platformCommands)[number]

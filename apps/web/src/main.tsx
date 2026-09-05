@@ -1,33 +1,35 @@
+import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { QueryClientProvider } from '@tanstack/react-query'
 
 import '@workspace/ui/globals.css'
+import { HotkeysProvider } from '@tanstack/react-hotkeys'
+import { ActiveEnvironmentApplication } from '@/components/active-environment-application'
 import { App } from '@/App'
+import { addressedWorkspaceCache } from '@/features/address/utils/cache'
+import { parseAddress } from '@/features/address/utils/grammar'
+import { readWorkspaceCache } from '@/features/workspace/state/cache'
+import { getSelectedEditorThemeId } from '@/features/editor/state/color-theme-store'
+import { FocusProvider } from '@/lib/focus/providers/provider'
+import { CommandBusProvider } from '@/keymap/providers/bus-provider'
+import { ApplicationRuntimeProvider } from '@/providers/application-runtime-provider'
+import { createApplicationRuntime } from '@/state/application-runtime'
 import { restoreAddressFromStorage } from '@/features/address/state/storage.ts'
 import { LoggingErrorBoundary } from '@/components/logging-error-boundary.tsx'
-import { ThemeAwareToaster } from '@/components/theme-aware-toaster.tsx'
 import {
-  AppearanceProvider,
   bootAppearance,
   systemPrefersDark,
 } from '@/features/settings/providers/appearance-provider.tsx'
 import { applyAppearance } from '@/features/settings/utils/apply-appearance.ts'
-import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-color-theme.ts'
-import { installServerRestartInvalidation } from '@/features/chat/state/server-restart-invalidation.ts'
 import { initializeClientLogging, log } from '@/lib/client-logging.ts'
 import { loadNerdFont } from '@/lib/default-nerd-font.ts'
 import { isDesktop } from '@/lib/platform/bridge.ts'
 import { applyBackdrop, resolveBackdrop } from '@/lib/platform/backdrop.ts'
 import { installEditorPerformanceTraceFromUrl } from '@/features/editor/state/performance-trace.ts'
-import { queryClient } from '@/lib/query-client.ts'
 import { reportReactError } from '@/lib/react-error-reporting.ts'
-import { TooltipProvider } from '@workspace/ui/components/tooltip'
-import { LanguageServerMatchProvider } from '@/features/editor/providers/language-server-match-provider.tsx'
 
 installEditorPerformanceTraceFromUrl()
 initializeClientLogging()
-installServerRestartInvalidation(queryClient)
 applyBackdrop(resolveBackdrop())
 // Before `createRoot`, deliberately. The mirrored appearance is initial
 // document state: descendants construct geometry and read computed styles on
@@ -62,6 +64,15 @@ void loadNerdFont(boot['editor.fontFamily'])
 // address during its first render, so the stored address has to be in the URL by then.
 // A desktop launch always arrives at `/`, which is exactly the case this covers.
 restoreAddressFromStorage()
+const application = createApplicationRuntime({
+  workspaceCache: addressedWorkspaceCache(readWorkspaceCache(), parseAddress(window.location.href)),
+  preparation: {
+    appliedThemeContentHash: null,
+    appliedThemeId: null,
+    selectedThemeId: getSelectedEditorThemeId(systemPrefersDark() ? 'dark' : 'light'),
+    syntaxHighlightingEnabled: readSettingsMirror()['editor.syntaxHighlighting.enabled'],
+  },
+})
 
 createRoot(document.getElementById('root')!, {
   onCaughtError: (error, errorInfo) => {
@@ -76,20 +87,17 @@ createRoot(document.getElementById('root')!, {
 }).render(
   <StrictMode>
     <LoggingErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <LanguageServerMatchProvider>
-          <AppearanceProvider bootDensity={boot['workbench.density']}>
-            <EditorColorThemeProvider>
-              <TooltipProvider delay={600}>
-                {/* `ThemeAwareToaster` stays a sibling of the app so an in-flight toast
-                    keeps its identity across an address change. */}
+      <ApplicationRuntimeProvider application={application}>
+        <FocusProvider>
+          <HotkeysProvider>
+            <CommandBusProvider binding={application.commandBinding}>
+              <ActiveEnvironmentApplication bootDensity={boot['workbench.density']}>
                 <App />
-                <ThemeAwareToaster />
-              </TooltipProvider>
-            </EditorColorThemeProvider>
-          </AppearanceProvider>
-        </LanguageServerMatchProvider>
-      </QueryClientProvider>
+              </ActiveEnvironmentApplication>
+            </CommandBusProvider>
+          </HotkeysProvider>
+        </FocusProvider>
+      </ApplicationRuntimeProvider>
     </LoggingErrorBoundary>
   </StrictMode>,
 )

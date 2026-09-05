@@ -6,7 +6,7 @@ import type {
   GitPullRequestState,
 } from '@workspace/contracts'
 
-import { getClient } from '@/lib/client'
+import { getClient, type Client } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
 import { parseEdenSseStream, unwrapEdenResponse } from '@/lib/eden-events'
 import { createClientError } from '@/lib/structured-errors'
@@ -30,11 +30,16 @@ function createGitCommitFailure(message: string) {
  * Reads a file as of a git ref. Unlike the diff endpoints this returns plain content with no
  * version or mtime, so the result can only back a read-only buffer, never a saveable document.
  */
-export async function fetchGitFile(path: string, ref: string, signal?: AbortSignal) {
+export async function fetchGitFile(
+  path: string,
+  ref: string,
+  signal?: AbortSignal,
+  client: Client = getClient(),
+) {
   return observeGitOperation(
     { action: 'git.file', path, signal },
     async () => {
-      const response = await getClient().git.file.get({
+      const response = await client.git.file.get({
         fetch: { signal },
         query: { path, ref },
       })
@@ -48,11 +53,15 @@ export async function fetchGitFile(path: string, ref: string, signal?: AbortSign
   )
 }
 
-export async function fetchStatus(path: string, signal?: AbortSignal) {
+export async function fetchStatus(
+  path: string,
+  signal?: AbortSignal,
+  client: Client = getClient(),
+) {
   return observeGitOperation(
     { action: 'git.status', path, signal },
     async () => {
-      const response = await getClient().git.status.get({
+      const response = await client.git.status.get({
         query: { path },
         fetch: { signal },
       })
@@ -66,11 +75,16 @@ export async function fetchStatus(path: string, signal?: AbortSignal) {
   )
 }
 
-export async function fetchDiff(path: string, staged: boolean, signal?: AbortSignal) {
+export async function fetchDiff(
+  path: string,
+  staged: boolean,
+  signal?: AbortSignal,
+  client: Client = getClient(),
+) {
   return observeGitOperation(
     { action: 'git.diff', path, signal, staged },
     async () => {
-      const response = await getClient().git.diff.get({
+      const response = await client.git.diff.get({
         query: { path, staged },
         fetch: { signal },
       })
@@ -84,11 +98,15 @@ export async function fetchDiff(path: string, staged: boolean, signal?: AbortSig
   )
 }
 
-export async function generateCommitMessage(path: string, signal: AbortSignal) {
+export async function generateCommitMessage(
+  path: string,
+  signal: AbortSignal,
+  client: Client = getClient(),
+) {
   return observeGitOperation(
     { action: 'git.generate_commit_message', path, signal },
     async () => {
-      const response = await getClient().git['commit-message'].post({ path }, { fetch: { signal } })
+      const response = await client.git['commit-message'].post({ path }, { fetch: { signal } })
 
       return unwrapEdenResponse(response, {
         requireData: true,
@@ -103,11 +121,15 @@ export async function generateCommitMessage(path: string, signal: AbortSignal) {
   )
 }
 
-export async function fetchBranches(path: string, signal?: AbortSignal) {
+export async function fetchBranches(
+  path: string,
+  signal?: AbortSignal,
+  client: Client = getClient(),
+) {
   return observeGitOperation(
     { action: 'git.branches', path, signal },
     async () => {
-      const response = await getClient().git.branches.get({
+      const response = await client.git.branches.get({
         query: { path },
         fetch: { signal },
       })
@@ -124,13 +146,13 @@ export async function fetchBranches(path: string, signal?: AbortSignal) {
   )
 }
 
-export async function stagePath(path: string) {
-  return stagePaths([path])
+export async function stagePath(path: string, client: Client = getClient()) {
+  return stagePaths([path], client)
 }
 
-export async function stagePaths(paths: readonly string[]) {
+export async function stagePaths(paths: readonly string[], client: Client = getClient()) {
   return observeGitPathsOperation('git.stage', paths, async () => {
-    const response = await getClient().git.stage.post({ paths: Array.from(paths) })
+    const response = await client.git.stage.post({ paths: Array.from(paths) })
 
     return unwrapEdenResponse(response, {
       requireData: true,
@@ -139,13 +161,13 @@ export async function stagePaths(paths: readonly string[]) {
   })
 }
 
-export async function unstagePath(path: string) {
-  return unstagePaths([path])
+export async function unstagePath(path: string, client: Client = getClient()) {
+  return unstagePaths([path], client)
 }
 
-export async function unstagePaths(paths: readonly string[]) {
+export async function unstagePaths(paths: readonly string[], client: Client = getClient()) {
   return observeGitPathsOperation('git.unstage', paths, async () => {
-    const response = await getClient().git.unstage.post({ paths: Array.from(paths) })
+    const response = await client.git.unstage.post({ paths: Array.from(paths) })
 
     return unwrapEdenResponse(response, {
       requireData: true,
@@ -154,13 +176,13 @@ export async function unstagePaths(paths: readonly string[]) {
   })
 }
 
-export async function discardPath(path: string) {
-  return discardPaths([path])
+export async function discardPath(path: string, client: Client = getClient()) {
+  return discardPaths([path], client)
 }
 
-export async function discardPaths(paths: readonly string[]) {
+export async function discardPaths(paths: readonly string[], client: Client = getClient()) {
   return observeGitPathsOperation('git.discard', paths, async () => {
-    const response = await getClient().git.discard.post({ paths: Array.from(paths) })
+    const response = await client.git.discard.post({ paths: Array.from(paths) })
 
     return unwrapEdenResponse(response, {
       requireData: true,
@@ -182,6 +204,7 @@ export async function commitChangesStreaming(
   path: string,
   message: string,
   onProgress: (line: { stream: 'stderr' | 'stdout'; text: string }) => void,
+  client: Client = getClient(),
 ): Promise<GitCommitResult> {
   return observeGitOperation(
     {
@@ -190,7 +213,7 @@ export async function commitChangesStreaming(
       path,
     },
     async () => {
-      const response = await getClient().git['commit-stream'].post({ message, path })
+      const response = await client.git['commit-stream'].post({ message, path })
       const stream = unwrapEdenResponse(response, {
         requireData: true,
         emptyMessage: 'git server returned an empty response',
@@ -228,11 +251,11 @@ async function readCommitProgress(
   return result
 }
 
-export async function fetchRemote(path: string) {
+export async function fetchRemote(path: string, client: Client = getClient()) {
   return observeGitOperation(
     { action: 'git.fetch_remote', path },
     async () => {
-      const response = await getClient().git.fetch.post({ path })
+      const response = await client.git.fetch.post({ path })
 
       return unwrapEdenResponse(response, {
         requireData: true,
@@ -243,11 +266,11 @@ export async function fetchRemote(path: string) {
   )
 }
 
-export async function pullRemote(path: string) {
+export async function pullRemote(path: string, client: Client = getClient()) {
   return observeGitOperation(
     { action: 'git.pull_remote', path },
     async () => {
-      const response = await getClient().git.pull.post({ path })
+      const response = await client.git.pull.post({ path })
 
       return unwrapEdenResponse(response, {
         requireData: true,
@@ -258,11 +281,11 @@ export async function pullRemote(path: string) {
   )
 }
 
-export async function pushRemote(path: string) {
+export async function pushRemote(path: string, client: Client = getClient()) {
   return observeGitOperation(
     { action: 'git.push_remote', path },
     async () => {
-      const response = await getClient().git.push.post({ path })
+      const response = await client.git.push.post({ path })
 
       return unwrapEdenResponse(response, {
         requireData: true,
@@ -273,11 +296,15 @@ export async function pushRemote(path: string) {
   )
 }
 
-export async function fetchBranchRemoteState(path: string, signal?: AbortSignal) {
+export async function fetchBranchRemoteState(
+  path: string,
+  signal?: AbortSignal,
+  client: Client = getClient(),
+) {
   return observeGitOperation(
     { action: 'git.branch_remote_state', path, signal },
     async () => {
-      const response = await getClient().git['branch-remote-state'].get({
+      const response = await client.git['branch-remote-state'].get({
         fetch: { signal },
         query: { path },
       })
@@ -291,11 +318,15 @@ export async function fetchBranchRemoteState(path: string, signal?: AbortSignal)
   )
 }
 
-export async function fetchPullRequestState(path: string, signal?: AbortSignal) {
+export async function fetchPullRequestState(
+  path: string,
+  signal?: AbortSignal,
+  client: Client = getClient(),
+) {
   return observeGitOperation(
     { action: 'git.pull_request_state', path, signal },
     async () => {
-      const response = await getClient().git['pull-request'].get({
+      const response = await client.git['pull-request'].get({
         fetch: { signal },
         query: { path },
       })
@@ -309,17 +340,20 @@ export async function fetchPullRequestState(path: string, signal?: AbortSignal) 
   )
 }
 
-export async function createPullRequest(input: {
-  base?: string
-  body?: string
-  draft?: boolean
-  path: string
-  title: string
-}) {
+export async function createPullRequest(
+  input: {
+    base?: string
+    body?: string
+    draft?: boolean
+    path: string
+    title: string
+  },
+  client: Client = getClient(),
+) {
   return observeGitOperation(
     { action: 'git.create_pull_request', path: input.path },
     async () => {
-      const response = await getClient().git['pull-request'].post({
+      const response = await client.git['pull-request'].post({
         ...input,
         body: input.body ?? '',
         draft: input.draft ?? false,
@@ -334,10 +368,10 @@ export async function createPullRequest(input: {
   )
 }
 
-export async function syncRemote(path: string) {
+export async function syncRemote(path: string, client: Client = getClient()) {
   return observeGitOperation({ action: 'git.sync_remote', path }, async () => {
-    const pull = await pullRemote(path)
-    const push = await pushRemote(path)
+    const pull = await pullRemote(path, client)
+    const push = await pushRemote(path, client)
 
     return { pull, push }
   })

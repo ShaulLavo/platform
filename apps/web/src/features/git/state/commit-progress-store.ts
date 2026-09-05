@@ -1,4 +1,5 @@
-import { create } from 'zustand'
+import type { QueryClient } from '@tanstack/react-query'
+import { createStore, type StoreApi } from 'zustand/vanilla'
 
 /**
  * What a commit's hooks have said so far, per repository.
@@ -31,24 +32,37 @@ export type CommitProgressStore = CommitProgressState & CommitProgressActions
 
 const NO_LINES: readonly CommitProgressLine[] = []
 
-export const useCommitProgressStore = create<CommitProgressStore>((set) => ({
-  linesByRootPath: {},
-  appendCommitProgress: (rootPath, line) =>
-    set((state) => ({
-      linesByRootPath: {
-        ...state.linesByRootPath,
-        [rootPath]: boundedLines(state.linesByRootPath[rootPath] ?? NO_LINES, line),
-      },
-    })),
-  clearCommitProgress: (rootPath) =>
-    set((state) => {
-      if (!state.linesByRootPath[rootPath]) return state
+const storesByClient = new WeakMap<QueryClient, StoreApi<CommitProgressStore>>()
 
-      const { [rootPath]: _cleared, ...linesByRootPath } = state.linesByRootPath
+export function commitProgressStoreFor(queryClient: QueryClient) {
+  const existing = storesByClient.get(queryClient)
+  if (existing) return existing
 
-      return { linesByRootPath }
-    }),
-}))
+  const store = createCommitProgressStore()
+  storesByClient.set(queryClient, store)
+  return store
+}
+
+function createCommitProgressStore() {
+  return createStore<CommitProgressStore>((set) => ({
+    linesByRootPath: {},
+    appendCommitProgress: (rootPath, line) =>
+      set((state) => ({
+        linesByRootPath: {
+          ...state.linesByRootPath,
+          [rootPath]: boundedLines(state.linesByRootPath[rootPath] ?? NO_LINES, line),
+        },
+      })),
+    clearCommitProgress: (rootPath) => set((state) => withoutRootProgress(state, rootPath)),
+  }))
+}
+
+function withoutRootProgress(state: CommitProgressStore, rootPath: string) {
+  if (!state.linesByRootPath[rootPath]) return state
+
+  const { [rootPath]: _cleared, ...linesByRootPath } = state.linesByRootPath
+  return { linesByRootPath }
+}
 
 export function selectCommitProgress(
   state: Pick<CommitProgressStore, 'linesByRootPath'>,
@@ -62,8 +76,4 @@ function boundedLines(lines: readonly CommitProgressLine[], line: CommitProgress
   if (next.length <= MAX_COMMIT_PROGRESS_LINES) return next
 
   return next.slice(next.length - MAX_COMMIT_PROGRESS_LINES)
-}
-
-export function resetCommitProgressStore() {
-  useCommitProgressStore.setState({ linesByRootPath: {} })
 }

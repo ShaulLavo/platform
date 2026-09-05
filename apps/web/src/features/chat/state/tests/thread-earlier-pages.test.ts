@@ -16,7 +16,7 @@ import {
   selectThreadEarlierPage,
   useThreadEarlierPageStore,
 } from '@/features/chat/state/thread-earlier-page-store'
-import { unsupportedChatEnvironment } from '../../../../../test/factories/chat-environment'
+import { unsupportedChatTransport } from '../../../../../test/factories/chat-transport'
 import { chatMessage, thread as threadFactory } from '../../../../../test/factories/chat'
 import { expect, test } from '../../../../../test/fixtures'
 
@@ -81,10 +81,32 @@ test('a page that turns out to be empty ends the walk instead of looping', async
   expect(requests).toHaveLength(1)
 })
 
+test('disposing clears pending state and discards a late page', async () => {
+  seedFullWindow()
+  const response = Promise.withResolvers<OrchestrationThreadDetailPage>()
+  const loader = createThreadEarlierPageLoader({
+    transport: unsupportedChatTransport({ threadDetailPage: () => response.promise }),
+  })
+  const request = loader.load(THREAD_ID)
+  expect(selectThreadEarlierPage(useThreadEarlierPageStore.getState(), THREAD_ID).pending).toBe(
+    true,
+  )
+
+  loader.dispose()
+  expect(selectThreadEarlierPage(useThreadEarlierPageStore.getState(), THREAD_ID).pending).toBe(
+    false,
+  )
+  response.resolve(page([message(0)], true))
+
+  expect(await request).toBe(false)
+  expect(useChatProjectionStore.getState().messageIdsByThreadId[THREAD_ID]?.[0]).toBe('message-2')
+  expect(await loader.load(THREAD_ID)).toBe(false)
+})
+
 function createLoader(script: Array<OrchestrationThreadDetailPage | Error>) {
   const requests: OrchestrationWsThreadDetailPageInput[] = []
   const loader = createThreadEarlierPageLoader({
-    environment: unsupportedChatEnvironment({
+    transport: unsupportedChatTransport({
       threadDetailPage: async (input) => {
         const next = script[requests.length]
         requests.push(input)

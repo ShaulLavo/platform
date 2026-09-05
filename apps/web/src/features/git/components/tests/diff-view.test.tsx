@@ -5,7 +5,7 @@ import path from 'node:path'
 import { screen, waitFor } from '@testing-library/react'
 import type { ReactElement } from 'react'
 
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../../test/factories/editor-state-provider'
 import { fetchDiff } from '@/features/git/utils/api'
 import { fetchBlobDiff } from '@/features/git/utils/blob-diff-query'
 import { DiffView } from '@/features/git/components/diff-view'

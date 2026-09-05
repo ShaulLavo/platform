@@ -1,7 +1,8 @@
 import { queryOptions } from '@tanstack/react-query'
 import type { ProviderInstanceId, ProviderSignInMethod } from '@workspace/contracts'
 
-import { getClient } from '@/lib/client'
+import { getClient, type Client } from '@/lib/client'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { createRpcError } from '@/lib/structured-errors'
 
 const AUTH_STATUS_STALE_TIME_MS = 15_000
@@ -21,27 +22,32 @@ function unwrap<Data>(response: { data: Data | null; error: unknown }): Data {
   return response.data as Data
 }
 
-function authRoutes(providerInstanceId: ProviderInstanceId) {
-  return getClient().providers({ providerInstanceId }).auth
+function authRoutes(providerInstanceId: ProviderInstanceId, client: Client) {
+  return client.providers({ providerInstanceId }).auth
 }
 
 /** Answers for every provider: the ones with no in-app flow report `supportsSignIn: false`. */
-export async function fetchProviderAuth(providerInstanceId: ProviderInstanceId) {
-  return unwrap(await authRoutes(providerInstanceId).get())
+export async function fetchProviderAuth(
+  providerInstanceId: ProviderInstanceId,
+  client: Client = getClient(),
+) {
+  return unwrap(await authRoutes(providerInstanceId, client).get())
 }
 
 export async function startProviderLogin(
   providerInstanceId: ProviderInstanceId,
   method: ProviderSignInMethod,
+  client: Client = getClient(),
 ) {
-  return unwrap(await authRoutes(providerInstanceId).login.post({ method }))
+  return unwrap(await authRoutes(providerInstanceId, client).login.post({ method }))
 }
 
 export async function fetchProviderLoginAttempt(
   providerInstanceId: ProviderInstanceId,
   attemptId: string,
+  client: Client = getClient(),
 ) {
-  return unwrap(await authRoutes(providerInstanceId).login({ attemptId }).get())
+  return unwrap(await authRoutes(providerInstanceId, client).login({ attemptId }).get())
 }
 
 // Cancel is a POST, not a DELETE: the server allows GET/POST/OPTIONS only, so a
@@ -49,18 +55,22 @@ export async function fetchProviderLoginAttempt(
 export async function cancelProviderLoginAttempt(
   providerInstanceId: ProviderInstanceId,
   attemptId: string,
+  client: Client = getClient(),
 ) {
-  return unwrap(await authRoutes(providerInstanceId).login({ attemptId }).cancel.post())
+  return unwrap(await authRoutes(providerInstanceId, client).login({ attemptId }).cancel.post())
 }
 
-export async function signOutProvider(providerInstanceId: ProviderInstanceId) {
-  return unwrap(await authRoutes(providerInstanceId).logout.post())
+export async function signOutProvider(
+  providerInstanceId: ProviderInstanceId,
+  client: Client = getClient(),
+) {
+  return unwrap(await authRoutes(providerInstanceId, client).logout.post())
 }
 
 export function providerAuthQueryOptions(providerInstanceId: ProviderInstanceId, enabled: boolean) {
   return queryOptions({
     enabled,
-    queryFn: () => fetchProviderAuth(providerInstanceId),
+    queryFn: ({ client }) => fetchProviderAuth(providerInstanceId, clientForQueryClient(client)),
     queryKey: providerAuthKeys.status(providerInstanceId),
     refetchOnWindowFocus: false,
     staleTime: AUTH_STATUS_STALE_TIME_MS,
@@ -75,7 +85,8 @@ export function providerLoginAttemptQueryOptions(
 ) {
   return queryOptions({
     enabled: attemptId !== null,
-    queryFn: () => fetchProviderLoginAttempt(providerInstanceId, attemptId ?? ''),
+    queryFn: ({ client }) =>
+      fetchProviderLoginAttempt(providerInstanceId, attemptId ?? '', clientForQueryClient(client)),
     queryKey: providerAuthKeys.attempt(providerInstanceId, attemptId ?? 'none'),
     refetchInterval: (query) =>
       query.state.data?.state === 'pending' ? LOGIN_POLL_INTERVAL_MS : false,

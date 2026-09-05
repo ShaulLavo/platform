@@ -31,13 +31,13 @@ import { log } from '@/lib/client-logging'
  * rail, so nothing here waits on the response to update the UI.
  */
 export function useSessionActions() {
-  const { environment } = useChatModeSession()
+  const { transport } = useChatModeSession()
   const releaseSession = useSessionSelectionStore((state) => state.releaseSession)
   const requestDelete = useSessionDeleteRequestStore((state) => state.requestDelete)
   const dismissDelete = useSessionDeleteRequestStore((state) => state.dismissDelete)
 
   function dispatch(action: string, command: ClientOrchestrationCommand) {
-    void dispatchChatCommand({ action, command, dispatchCommand: environment.dispatchCommand })
+    void dispatchChatCommand({ action, command, dispatchCommand: transport.dispatchCommand })
   }
 
   function archive(threadId: ThreadId) {

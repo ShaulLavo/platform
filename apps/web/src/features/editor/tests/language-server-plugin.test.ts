@@ -19,10 +19,6 @@ vi.mock('@singapor/lsp-plugin/websocket', () => ({
   },
 }))
 
-vi.mock('@/lib/server-sockets', () => ({
-  EdenLanguageServerWebSocket: class EdenLanguageServerWebSocket {},
-}))
-
 const { createMatchedLanguageServerPlugin, languageServerMatches } =
   await import('@/features/editor/utils/language-server-plugin')
 

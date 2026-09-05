@@ -1,12 +1,11 @@
 # Environments — Strategy
 
-> **STATUS: REVIEWED STRATEGY, REWRITTEN 2026-09-05 TO THE FEDERATED MODEL.** Supersedes the
+> **STATUS: REVIEWED STRATEGY, PLAN 077 IMPLEMENTED 2026-09-05.** Supersedes the
 > 2026-08-24 one-active-environment design. Root [`PLAN.md`](../PLAN.md) owns cross-project order.
-> Executable slices: [`plans/077-environment-runtime-origin.md`](../plans/077-environment-runtime-origin.md)
-> (transport and identity), the environment-aware rewrite of
-> [`plans/068-session-domain-model.md`](../plans/068-session-domain-model.md) (domain), and
-> [`plans/078-federated-environments.md`](../plans/078-federated-environments.md) (connections,
-> rail, SSH launcher, UI). This document authorizes nothing by itself.
+> Remaining executable slices: [`plans/068-session-domain-model.md`](../plans/068-session-domain-model.md)
+> for the environment-aware domain, then
+> [`plans/078-federated-environments.md`](../plans/078-federated-environments.md) for connections,
+> the rail, the SSH launcher, and UI. This document authorizes nothing by itself.
 
 ## 0. What changed since the first design, and why
 
@@ -31,39 +30,45 @@ Two things flip:
 
 ## 1. What an environment is
 
-**An environment is one running backend server process, reachable at one origin, owning one SQLite
-database and one filesystem view of one machine.** `SERVER_INSTANCE_ID` is minted once per process
-(`apps/server/src/orchestration/ws-rpc.ts:40`) and `getDefaultPlatformDatabase()` is a process-wide
-handle (`apps/server/src/db/client.ts:50-57`); one process is one environment. User-facing copy says
-**machine**; code says `environmentId`.
+An environment is a backend's persisted database identity and filesystem view of one machine.
+A running process serves that environment at an origin. Restarting the process preserves
+`environmentId` in the same database and creates a new `serverInstanceId`. A fresh database has a
+new environment identity. User-facing copy says **machine**; code says `environmentId`.
 
-| Our noun                   | Relationship to an environment                                                                                                                                                                                                                         |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Server origin              | 1:1. Today a build-time constant (`apps/web/src/lib/client.ts:9`). Plan 077 makes it a runtime value.                                                                                                                                                  |
-| Workspace root             | Many per environment; a selection within it, not part of its identity.                                                                                                                                                                                 |
-| Project, worktree, session | Per environment by ownership. After Plan 068 a project id is derived from **repository identity**, so the same repository registered on two machines yields the same `ProjectId` on both servers. The browser therefore keys by `(environmentId, id)`. |
-| Provider instance          | Per environment. A devbox may have no Claude login; the descriptor reports what it can run.                                                                                                                                                            |
-| Terminal session, LSP      | Per environment; child processes on that machine. Dead when unreachable, not stale.                                                                                                                                                                    |
-| Editor tab, diff document  | Client records keyed by absolute path. `/work/projects/platform` exists on two machines and means different bytes. Scoped by the storage namespace (§2.4), never by a path rewrite.                                                                    |
-| Settings document          | **Read and written on the primary (local) environment by the client.** A remote server consumes its own settings file for server-side keys (LSP, terminal, fonts). See §3.4.                                                                           |
-| `ChatEnvironment`          | A transport seam, not a machine. Renamed `ChatTransport` in Plan 077 to free the word.                                                                                                                                                                 |
+Plan 077 provides runtime registries for clients, query caches, and connection state. Registry keys
+use `canonicalServerOrigin`, so URL spellings that normalize to the same origin share an entry.
+The client learns the environment identity from the authenticated descriptor and WS handshake.
+
+| Our noun                   | Relationship to an environment                                                                                                                                                                       |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Server origin              | Runtime connection address. Plan 077 keys each client, QueryClient, and retained workbench runtime by its canonical origin.                                                                          |
+| Workspace root             | Many per environment; selecting a root does not change environment identity.                                                                                                                         |
+| Project, worktree, session | Owned by an environment. Plan 068 derives project ids from repository identity, so the same repository can have the same `ProjectId` on two servers. Browser records then use `(environmentId, id)`. |
+| Provider instance          | Per environment. Each machine uses its own provider credentials and available binaries.                                                                                                              |
+| Terminal session, LSP      | Child processes on the owning machine. Client connections close when the dev workbench switches away.                                                                                                |
+| Editor tab, diff document  | Paths and buffers belong to the retained editor runtime for an origin. The same path on two machines can contain different bytes. Persisted namespaces remain Plan 078 work (§2.4).                  |
+| Settings document          | The Plan 077 dev switch reads and writes the selected server's settings. Reading client settings from the primary environment is the Plan 078 target (§3.4).                                         |
+| `ChatTransport`            | The implemented chat connection interface. `createChatTransport(origin)` owns its RPC client, detail subscriptions, and earlier-page loader, with an explicit `close()`.                             |
 
 ## 2. Data model
 
 ### 2.1 Server identity
 
-A singleton `environment_identity(id TEXT PRIMARY KEY, created_at TEXT NOT NULL)` row in the platform
-SQLite, minted on first boot. It lives _inside_ the database it identifies, so a wiped database is
-honestly a new environment. It joins the WS handshake (`orchestrationWsServerConfig`) next to
-`serverInstanceId`, and the client refuses a handshake whose `environmentId` differs from the one it
-recorded for that origin (identity drift). `/health` becomes the authenticated descriptor:
+Plan 077 creates a singleton `environment_identity(id TEXT PRIMARY KEY, created_at TEXT NOT NULL)`
+row when initializing the platform SQLite database. The row survives server restarts. The WS
+handshake carries its `environmentId` beside the per-process `serverInstanceId`, and the client
+refuses an identity change at a recorded origin. A new `serverInstanceId` for the same environment
+advances connection generation and invalidates that environment's server caches.
+
+`/health` is the authenticated descriptor:
 
 ```ts
 { ok, environmentId, label, protocolVersion, serverVersion, platform: { os, arch }, ...fs.info() }
 ```
 
-No unauthenticated descriptor exists. The SSH model does not need one and the old design's reason
-for it (idempotent pairing) is deferred with pairing.
+The initial workbench waits for this descriptor. Both the descriptor and WS handshake check
+identity and protocol compatibility before accepting the server. No unauthenticated descriptor
+exists. Pairing remains deferred with the clients that need it.
 
 ### 2.2 Repository identity and the same repo on two machines
 
@@ -82,10 +87,26 @@ path for non-Git directories. `ProjectId` is UUIDv5 of that key. Consequences, a
   and globally unique, but they are still stored under their environment so the transport that
   owns them is never guessed.
 
+A machine is where the backend and files run. A checkout is one working directory of a repository
+on that machine. One machine can hold the main checkout and several linked Git worktrees, and
+another machine can hold its own checkouts of the same project.
+
+The browser identifies each checkout by `(environmentId, worktreeId)`, represented by
+`ScopedWorktreeRef`. The main checkout uses the same Worktree record and Git operations as every
+other checkout. Its protection from removal remains a separate lifecycle rule. Plan 068's
+`kind: 'current'` names the checkout used for registration, which need not be Git's main checkout.
+
+The logical project groups these checkouts without combining their working files, staged changes,
+commit drafts, or unsaved editor buffers. Git history may be shared between linked worktrees on one
+machine. Each checkout still has its own working directory and index. A Git query or mutation names
+the owning checkout, resolves its path on that environment, and keeps that owner if the active
+workbench changes while the operation runs.
+Git status and diff caches, mutation state, and invalidation targets retain this checkout owner.
+
 ### 2.3 Client registry
 
-Machines are user configuration that reaches execution (an SSH target is executed by the launcher),
-so they are a **settings registry entry**, not a localStorage key:
+Plan 078 adds configured machines. An SSH target reaches execution through the launcher, so
+machines belong in the settings registry:
 
 ```ts
 'environments.machines': record<name, { kind: 'ssh', target, repoPath, port? } | { kind: 'origin', url }>
@@ -97,33 +118,57 @@ error, environmentId once learned, forwarded local port) lives in a Zustand stor
 
 ### 2.4 Scoping persisted state — the namespace, not the key
 
-Per-environment localStorage keys (`workspace-cache-storage.ts:6`, `chat-projection-cache.ts:25`,
+Plan 078 moves per-environment localStorage keys (`workspace-cache-storage.ts`, `chat-projection-cache.ts`,
 chat drafts, session reads, changed-files expansion, thread diff scope, prompt stash, rail
-collapse) move behind one `environmentScopedStorage(environmentId)` adapter that prefixes
+collapse) behind one `environmentScopedStorage(environmentId)` adapter that prefixes
 `env:${environmentId}|`. Global chrome (theme, palette, ui mode, workbench layout, address cache)
 stays unscoped. No migration: the developer clears site data once.
+
+The environment namespace separates machines. Within it, checkout state remains keyed by
+`worktreeId`, and files opened for that checkout retain their file identity beneath that owner.
+Unsaved buffers, tabs, commit drafts, and pending Git mutations must not be keyed by the logical
+project alone. Switching checkouts preserves unsaved buffers and their save destination, including
+when two machines expose the same absolute path. This does not require persisting unsaved text.
 
 ## 3. Transport and connection model
 
 ### 3.1 The hard constraint
 
-`treaty<App>(origin)` captures the origin in a closure; the Eden client cannot be re-pointed, only
-replaced. `import.meta.env.VITE_SERVER_URL` is inlined by Vite. Plan 077 replaces the constant with
-`createEnvironmentClient(origin)` plus a registry, and `getClient()` returns the **active workbench
-environment's** client. The 64 `getClient()` call sites do not change.
+`treaty<App>(origin)` captures its origin. Plan 077 creates one client per canonical origin through
+`createEnvironmentClient` and `environmentClientFor`. `VITE_SERVER_URL` supplies the initial origin;
+`getClient()` resolves the selected origin at invocation time.
+
+Queries use their owning QueryClient to select the client. Services and mutations capture that
+owner before starting work and keep it across awaits. Changing the active origin cannot redirect
+a delayed save, a queued mutation, or its cache invalidation to another machine.
 
 ### 3.2 Several connections, one workbench
 
-- **Chat is federated.** One `ChatTransport` per connected environment, each with its own
-  `OrchestrationRpcClient`, detail-subscription cache, earlier-page loader, shell supervisor and
-  reconnect ladder. The projection store holds one slice per environment. The rail reads all slices.
-- **The workbench is single-homed.** File tree, terminal, LSP, git, search and editor tabs are one
-  machine at a time: whichever environment owns the active workspace root. Opening a project or
-  selecting a session on another machine switches the workbench: swap the QueryClient (one per
-  environment, so nothing from machine A can answer a query about machine B), swap the storage
-  namespace, restore that environment's root, tabs and selection. A full repaint, not a fade.
-- **A running turn never migrates.** Switching the workbench away from a machine does not touch its
-  chat connection; the turn keeps streaming into its slice.
+Plan 077 implements the workbench lifetimes that federation needs. Each origin retains an
+imperative editor runtime with its document buffers, dirty text, views, undo history, workspace
+state, and save service. The QueryClient remains mounted for the application lifetime, so queued
+mutations can resume while that origin's React consumers are absent.
+
+Switching keys the active query-consumer subtree by origin. Changing only the QueryClientProvider
+value does not move existing React Query observers to a different client. The keyed subtree
+recreates those consumers while retaining the editor and saver objects above it. Browser storage
+seeds a runtime only when that origin is first opened; returning to an existing runtime preserves
+its in-memory state. One outer command bus captures the active runtime for each dispatch.
+
+The Plan 078 federation target adds:
+
+- One `ChatTransport` per connected environment, with its own RPC client, subscriptions, shell
+  supervisor, and reconnect state. The projection store holds one slice per environment, and the
+  rail reads all slices.
+- A workbench that follows the environment owning the selected checkout. It selects that
+  environment's retained runtime and persisted namespace. Files, terminal, LSP, Git, search, and
+  visible editor tabs follow the selection.
+- Chat connections that remain open when the workbench moves elsewhere. A running turn keeps
+  streaming into its owning environment's projection.
+
+The current dev switch closes outgoing chat transports and clears their projection before opening
+the selected server. Concurrent chat connections and persisted environment namespaces remain
+Plan 078 work.
 
 ### 3.3 How a client reaches a machine
 
@@ -148,11 +193,14 @@ starts or reuses the server. A version skew surfaces as the existing WS protocol
 
 ### 3.4 Settings across machines
 
-The client's `useSettingValue`/`readSettingsMirror` always read the primary environment's settings
-document. Server-consumed keys (`lsp.*`, `terminal.*`, fonts) are read by each server from its own
-file, which is already how they work. `window`/`resource` scoped values inside a remote workspace
-folder are read by the remote server for its own consumption only. A Settings page therefore always
-edits the local document; a remote server's own file is edited on that machine.
+Plan 077's dev switch reads and writes the selected server's settings. Query hooks and retained
+settings save services use their owning client, so a pending A write stays on A after selecting B.
+
+Plan 078 changes client settings ownership to the primary environment. Under that target,
+`useSettingValue` and `readSettingsMirror` read the primary settings document, and the Settings
+page edits it. Each server continues reading its own server-consumed keys, including LSP,
+terminal, and fonts. Workspace-scoped values on a remote machine stay with that server's
+consumers. Editing the remote server's settings file remains an operation on that machine.
 
 ## 4. Auth and trust model
 
@@ -215,21 +263,43 @@ local server does.
 List, add (SSH target plus repo path, or origin URL), connect, disconnect, remove, relabel, status,
 last error, and the root-shell statement.
 
+### 5.6 Git overview across checkouts, unscheduled
+
+The intended Git view shows the main checkout and the project's other checkouts, including remote
+machine worktrees, with separate changes and actions for each. Collapsible sections and tabs are
+candidate layouts. Grouping by machine is also open. The rail's flat-list decision does not choose
+the Git layout.
+
+The current Git panel accepts one `rootPath` in
+`apps/web/src/features/git/components/panel.tsx`. Its status query and Git UI state follow that
+root through `hooks/use-status.ts` and `providers/store-provider.tsx`. It does not enumerate a
+project's checkouts.
+
+Plan 068 supplies checkout identity and project grouping. Plan 069 supplies worktree selection,
+creation, and cleanup on one machine. Plan 078 supplies machine connections and routing to the
+selected checkout. None of those plans delivers this Git overview. A separate, unscheduled design
+must choose its layout and bind every section's queries, mutations, and file links to its
+`ScopedWorktreeRef`. Showing several checkouts does not merge their changes or synchronize files.
+
 ## 6. Execution order
 
-1. **Plan 077 — runtime origin and identity.** Server identity row, `environmentId` in handshake
-   and `/health`, identity-drift refusal, `createEnvironmentClient`, one QueryClient per
-   environment, per-environment `ChatTransport` factory with a real `close()`, deletion of the
-   bound module singletons, `ChatEnvironment` → `ChatTransport`, `1008` close on auth refusal and
-   deletion of the silent-clean-close heuristic, a dev-only origin switch. Loopback only.
-2. **Plan 068 — session domain, environment-aware.** Repository identity from remote/root commit,
-   deterministic ids that repeat across machines, projection store and rail model shaped for N
-   environments and populated with one, environment segment in the address grammar.
-3. **Plan 078 — federated environments.** Machines setting and page, SSH launcher in the desktop
-   shell, N chat connections, scoped persistence, flat cross-machine rail with chips and filter,
-   add-project-on-machine, workbench switch, honest offline surfaces, titlebar and palette.
-4. **Later, only on demand:** the direct-origin spike through mesh, then pairing and sessions for a
-   client that cannot SSH.
+Plan 077 is implemented. It supplies persistent environment identity, authenticated descriptors,
+identity and protocol checks, canonical origin registries, retained editor and QueryClient
+lifetimes, owner-bound operations, closeable chat transports, explicit `1008` auth refusal, and a
+dev-only loopback origin switch.
+
+The remaining sequence is:
+
+1. **Plan 068, session domain with environment ownership.** Repository identity from remote URL
+   or root commit, deterministic project ids across machines, checkout ownership, projection and
+   rail models shaped for several environments, and an environment segment in the address.
+2. **Plan 078, federated environments.** Machines setting and page, SSH launcher, concurrent chat
+   connections, scoped persistence, a flat rail with machine chips and filtering, project creation
+   on a selected machine, and the workbench and settings behavior described above.
+
+Plan 069 depends on Plan 068 and remains unscheduled. It adds worktree selection, creation, and
+cleanup on one machine. The Git overview in §5.6 also remains unscheduled and needs its own design.
+The direct-origin spike through mesh and pairing for clients that cannot SSH follow only on demand.
 
 ## 7. What we deliberately will not copy from the reference
 
@@ -246,17 +316,31 @@ last error, and the root-shell statement.
 11. Silently upgrading a bare typed host to `https://`; we error with the real reason.
 12. A client-side logical-project layer for grouping; our server-derived project id already groups.
 
-## Appendix — independently true today, fixed by Plan 077
+## Appendix: implemented owners after Plan 077
 
-- `serverUrl` is inlined at build time and captured by nine modules
-  (`client.ts`, `client-logging.ts:164`, `wallpaper-query.ts:7`, `default-nerd-font.ts:120-126`,
-  `attachment-image.ts:30`, `language-server-plugin.ts:296`, `orchestration-rpc-client.ts:688`,
-  two browser tests).
-- `OrchestrationRpcClient` has no public disconnect (`orchestration-rpc-client.ts:470`).
-- Five bound module exports and two singletons pin the transport at import time
-  (`orchestration-rpc-client.ts:662-676`, `thread-detail-subscriptions.ts:443-448`,
-  `thread-earlier-pages.ts:88-92`), defeating the `ChatEnvironment` seam.
-- `isUnauthorizedClose` (`orchestration-rpc-client.ts:773-776`) treats any clean close with no
-  frame as an auth refusal and parks chat forever; the server closes with no code (`ws-rpc.ts:94`).
-- `generation` counts server processes and cannot tell a restart from a different backend
-  (`server-connection-store.ts:52-63`).
+- `apps/server/src/db/environment-identity.ts` reads the persisted identity row. The authenticated
+  `/health` route in `apps/server/src/app.ts` and WS handshake in `orchestration/ws-rpc.ts` report
+  that identity. A process restart changes `serverInstanceId` while retaining `environmentId`.
+- `apps/web/src/lib/client.ts` owns runtime clients and canonical origin handling.
+  `lib/environments/state/query-clients.ts` gives each QueryClient a fixed origin and client.
+  Equivalent canonical origin spellings share both registries.
+- `apps/web/src/components/environment-connection-gate.tsx` waits for the initial authenticated
+  descriptor and blocks identity drift or protocol mismatch. Connection state and restart
+  invalidation belong to `lib/environments/state/`, keyed by canonical origin.
+- `apps/web/src/state/application-runtime.ts` retains editor runtimes and mounted QueryClients
+  across switches. The keyed consumers live in `components/active-environment-application.tsx`.
+  Queued mutations remain able to resume on their owning client after those consumers unmount.
+- `apps/web/src/features/editor/state/runtime.ts` owns buffers, views, history, workspace edits,
+  and save services. `state/save-service.ts` keeps every save in a batch on that runtime's client.
+  The application guard checks dirty documents across all retained runtimes. The active editor
+  root also updates the shared project pointer, including when cached-root validation clears it.
+- `apps/web/src/keymap/providers/bus-provider.tsx` mounts one command bus above the keyed consumers.
+  `keymap/state/command-bus.ts` captures the bound runtime once per dispatch. Pending commands keep
+  that runtime when the visible environment changes.
+- `apps/web/src/features/chat/transport/create-chat-transport.ts` owns a closeable RPC client,
+  detail-subscription cache, earlier-page loader, and abortable HTTP snapshots. Closing a transport
+  releases those resources and rejects pending work. The dev switch closes outgoing transports
+  and resets projections through `features/chat/state/active-transports.ts`.
+- `apps/server/src/orchestration/ws-rpc.ts` sends code `1008` for authentication refusal.
+  `apps/web/src/features/chat/transport/orchestration-rpc-client.ts` treats that code as blocked;
+  an ordinary clean close remains reconnectable.

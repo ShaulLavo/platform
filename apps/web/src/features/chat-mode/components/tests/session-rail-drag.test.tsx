@@ -10,10 +10,10 @@ import userEvent from '@testing-library/user-event'
 import { afterEach } from 'vitest'
 import * as v from 'valibot'
 
-import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
+import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { SessionRail } from '@/features/chat-mode/components/session-rail'
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../../test/factories/editor-state-provider'
 import { ChatRailOrderProvider } from '@/features/chat-mode/providers/rail-order-provider'
 import {
   ChatModeSessionContext,
@@ -302,14 +302,14 @@ function renderRail({ reject = false }: { reject?: boolean } = {}) {
   const session: ChatModeSession = {
     activeSession: { status: 'ready', threadId: firstThreadId },
     addProject: () => {},
-    environment: {
+    transport: {
       dispatchCommand: async (command: ClientOrchestrationCommand) => {
         calls.dispatched.push(command)
         if (reject) throw new Error('refused')
 
         return { deduped: false, sequence: calls.dispatched.length }
       },
-    } as ChatEnvironment,
+    } as ChatTransport,
     error: null,
     openProject: (workspaceRoot) => calls.openedProjects.push(workspaceRoot),
     project: seededProjects()[0] ?? null,

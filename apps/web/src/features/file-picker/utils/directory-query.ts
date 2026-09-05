@@ -3,6 +3,7 @@ import type { FilePickerMode } from '@/features/file-picker/model'
 import type { FsEntry } from '@/lib/file-system-types'
 import { filePickerKeys } from '@/lib/query-keys'
 import { queryOptions, type QueryClient, type QueryKey } from '@tanstack/react-query'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 
 export const DIRECTORY_QUERY_STALE_MS = 10_000
 
@@ -10,20 +11,18 @@ export function directoryQueryOptions({
   mode,
   path,
   query,
-  queryClient,
   showHidden,
 }: {
   mode: FilePickerMode
   path: string
   query: string
-  queryClient: QueryClient
   showHidden: boolean
 }) {
   const queryKey = filePickerKeys.directory(path, query, mode, showHidden)
   const baseQueryKey = filePickerKeys.directory(path, '', mode, showHidden)
 
   return queryOptions<DirectoryLoadData>({
-    queryFn: ({ signal }) =>
+    queryFn: ({ signal, client }) =>
       loadDirectoryData(
         path,
         query,
@@ -32,9 +31,10 @@ export function directoryQueryOptions({
         (entries) => {
           if (signal.aborted) return
 
-          writeStreamedDirectoryEntries({ baseQueryKey, entries, queryClient, queryKey })
+          writeStreamedDirectoryEntries({ baseQueryKey, entries, queryClient: client, queryKey })
         },
         { showHidden },
+        clientForQueryClient(client),
       ),
     queryKey,
     staleTime: DIRECTORY_QUERY_STALE_MS,

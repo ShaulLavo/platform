@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import {
   useEditorDocumentState,
   useEditorDocumentStoreApi,
@@ -30,19 +31,22 @@ export function useCommandPaletteSymbols({
   )
   const symbolQuery = useQuery({
     enabled: symbolsEnabled,
-    queryFn: ({ signal }) => {
+    queryFn: ({ signal, client }) => {
       const selectedDocument = selectedFileBackedPath
         ? documentStore.getState().liveDocumentsById[selectedFileBackedPath]
         : null
 
-      return fetchDocumentSymbols({
-        path: selectedFileBackedPath ?? '',
-        rootPath: rootPath ?? '',
-        signal,
-        text: selectedDocument?.buffer.isDirty()
-          ? selectedDocument.buffer.materializeFullText()
-          : null,
-      })
+      return fetchDocumentSymbols(
+        {
+          path: selectedFileBackedPath ?? '',
+          rootPath: rootPath ?? '',
+          signal,
+          text: selectedDocument?.buffer.isDirty()
+            ? selectedDocument.buffer.materializeFullText()
+            : null,
+        },
+        clientForQueryClient(client),
+      )
     },
     queryKey: documentSymbolKeys.document(
       rootPath ?? '',

@@ -1,6 +1,8 @@
 import type { EntryTypeFilter, WorkspaceSearchMatch } from '@workspace/contracts'
 import { queryOptions } from '@tanstack/react-query'
 
+import type { Client } from '@/lib/client'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { collectWorkspaceSearch } from '@/lib/workspace-search-client'
 
 const PROJECT_ENTRY_QUERY_LIMIT = 40
@@ -52,18 +54,21 @@ export function projectEntrySearchQueryOptions(input: {
   >({
     enabled: (input.enabled ?? true) && input.query.trim().length > 0,
     placeholderData: (previous) => previous ?? EMPTY_PROJECT_ENTRIES,
-    queryFn: ({ signal }) => searchProjectEntries({ ...input, limit, signal }),
+    queryFn: ({ signal, client }) =>
+      searchProjectEntries({ ...input, limit, signal, client: clientForQueryClient(client) }),
     queryKey: projectEntryQueryKeys.search(input.rootPath, input.query, limit),
     staleTime: PROJECT_ENTRY_QUERY_STALE_TIME_MS,
   })
 }
 
 async function searchProjectEntries({
+  client,
   limit,
   query,
   rootPath,
   signal,
 }: {
+  client: Client
   limit: number
   query: string
   rootPath: string
@@ -81,6 +86,7 @@ async function searchProjectEntries({
       wholeWord: false,
     },
     signal,
+    client,
   )
 
   return {

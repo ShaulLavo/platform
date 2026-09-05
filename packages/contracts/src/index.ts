@@ -310,6 +310,7 @@ export {
   type OrchestrationWsSubscriptionId,
   type OrchestrationWsThreadDetailPageInput,
 } from './orchestration-ws'
+export { healthDescriptorSchema, type HealthDescriptor } from './health'
 export {
   logDashboardLevelSchema,
   logDashboardSummarySchema,

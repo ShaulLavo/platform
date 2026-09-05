@@ -21,6 +21,7 @@ import {
   startProviderLogin,
 } from '@/features/chat/utils/provider-auth-query'
 import { providerListQueryOptions } from '@/features/chat/utils/provider-query'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { errorMessage } from '@/lib/error-message'
 
 export type ProviderSignIn = {
@@ -77,6 +78,7 @@ export function useProviderSignIn({
   providerInstanceId: ProviderInstanceId
 }): ProviderSignIn {
   const queryClient = useQueryClient()
+  const client = clientForQueryClient(queryClient)
   const [method, setMethod] = useState<ProviderSignInMethod>(DEFAULT_PROVIDER_AUTH_METHOD)
   const [attemptId, setAttemptId] = useState<string | null>(null)
 
@@ -84,14 +86,15 @@ export function useProviderSignIn({
   const attemptQuery = useQuery(providerLoginAttemptQueryOptions(providerInstanceId, attemptId))
 
   const startMutation = useMutation({
-    mutationFn: (next: ProviderSignInMethod) => startProviderLogin(providerInstanceId, next),
+    mutationFn: (next: ProviderSignInMethod) =>
+      startProviderLogin(providerInstanceId, next, client),
     onSuccess: (attempt) => setAttemptId(attempt.attemptId),
   })
   const cancelMutation = useMutation({
-    mutationFn: (id: string) => cancelProviderLoginAttempt(providerInstanceId, id),
+    mutationFn: (id: string) => cancelProviderLoginAttempt(providerInstanceId, id, client),
   })
   const signOutMutation = useMutation({
-    mutationFn: () => signOutProvider(providerInstanceId),
+    mutationFn: () => signOutProvider(providerInstanceId, client),
     onSuccess: () => invalidateProviderAuth(queryClient, providerInstanceId),
   })
 

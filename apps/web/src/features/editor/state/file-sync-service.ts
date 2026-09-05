@@ -9,18 +9,9 @@ import {
   projectWorkspaceEditTree,
   type WorkspaceEditTreeRename,
 } from '@/features/editor/utils/workspace-edit-tree-projection'
-import {
-  fetchWorkspaceEditRecovery,
-  fetchWorkspaceEditStatus,
-  fetchFile,
-  prepareWorkspaceEditMutation,
-  recoverWorkspaceEditMutation,
-  releaseWorkspaceEditMutation,
-  statPath,
-  transitionWorkspaceEditMutation,
-  writeFileContent,
-  type WriteFileContentOptions,
-} from '@/lib/file-server'
+import type { WriteFileContentOptions } from '@/lib/file-server'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
+import { createFileSyncPorts } from '@/features/editor/utils/file-sync-ports'
 import type { FileResult, StatResult, TreeEntry } from '@/lib/file-system-types'
 import { fileSystemKeys, gitKeys } from '@/lib/query-keys'
 import type { TreeModel } from '@/lib/tree-model'
@@ -135,20 +126,6 @@ export type WorkspaceMutationProjectionReceipt = {
   readonly tree: QueryProjection<TreeModel> | null
 }
 
-const DEFAULT_FILE_SYNC_PORTS: FileSyncPorts = {
-  inspectPath: statPath,
-  readFileContent: fetchFile,
-  writeFileContent,
-  workspaceMutations: {
-    prepare: prepareWorkspaceEditMutation,
-    transition: transitionWorkspaceEditMutation,
-    recover: recoverWorkspaceEditMutation,
-    release: releaseWorkspaceEditMutation,
-    status: fetchWorkspaceEditStatus,
-    recovery: fetchWorkspaceEditRecovery,
-  },
-}
-
 export class FileSyncService {
   private readonly epochListeners = new Set<(serverEpoch: string) => void>()
   private serverEpoch: string | null = null
@@ -156,7 +133,7 @@ export class FileSyncService {
   constructor(
     private readonly documentStore: EditorDocumentStoreApi,
     private readonly queryClient: QueryClient,
-    private readonly ports: FileSyncPorts = DEFAULT_FILE_SYNC_PORTS,
+    private readonly ports: FileSyncPorts = createFileSyncPorts(clientForQueryClient(queryClient)),
   ) {}
 
   readonly inspectWorkspacePath = async (

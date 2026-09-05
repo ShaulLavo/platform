@@ -3,8 +3,9 @@
 Last reviewed: 2026-09-05. Plan 056 is implemented and verified through focused tests and trusted browser input.
 
 Platform supports a subset of VS Code defaults. The command table defines the available commands,
-bindings, VS Code aliases, and enablement conditions. Plan 056 adds the chord runtime; the remaining
-Editor defaults belong to [Plan 057](../plans/057-editor-native-vscode-keymap.md).
+bindings, VS Code aliases, and enablement conditions. Plan 056 adds Platform's chord runtime.
+[Plan 057](../plans/057-editor-native-vscode-keymap.md) first adds standalone Editor chord execution,
+then moves Platform onto the same reusable runtime and completes the remaining Editor defaults.
 
 ## Implemented runtime
 
@@ -80,9 +81,13 @@ where Platform cannot perform the desktop action.
 
 ## Remaining parity work
 
+- Implement standalone Editor chord execution through its ordinary binding options in Plan 057.
+  Export the reusable runtime through `@singapor/core/keymap`; standalone consumers must not need
+  Platform or external keyboard wiring. Prove default and custom chords with real browser input.
+- Adopt that shared runtime in Platform and remove its duplicate engine. Disable embedded Editor
+  matching with the existing `enabled: false` option while preserving native input handling.
 - Add the `editor.action.moveSelectionToNextFindMatch` chord default and the Editor folding pack
-  through Plan 057. The chord runtime is implemented; these command defaults are still separate
-  work.
+  through Plan 057. Both standalone Editor and Platform must execute the shipped defaults.
 - Review save-all, show-all-editors, and other VS Code `Mod+K` defaults against the shared command
   table. They no longer need a new runtime mechanism.
 - Remove the remaining single-stroke Editor layer bridge only through the companion plan's

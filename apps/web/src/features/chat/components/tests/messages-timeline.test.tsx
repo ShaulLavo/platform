@@ -7,13 +7,15 @@ import {
 import * as v from 'valibot'
 import { afterEach, beforeEach } from 'vitest'
 
+import { ChatTransportContext } from '@/features/chat/providers/transport-context'
+import { unsupportedChatTransport } from '../../../../../test/factories/chat-transport'
 import { MessagesTimeline } from '@/features/chat/components/messages-timeline'
 import { ChatTimelineActionsProvider } from '@/features/chat/providers/timeline-actions-provider'
 import {
   useChatProjectionStore,
   type ChatThread,
 } from '@/features/chat/state/chat-projection-store'
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../../test/factories/editor-state-provider'
 import { TIMELINE_ANCHOR_OFFSET_PX } from '@/features/chat/utils/timeline-scroll-anchoring'
 import { expect, test } from '../../../../../test/fixtures'
 import { chatMessage, thread as threadFactory } from '../../../../../test/factories/chat'
@@ -320,9 +322,11 @@ function timelineOf(messages: readonly OrchestrationMessage[]) {
   // the timeline is mounted under the same ones the app gives it.
   return (
     <EditorStateProvider>
-      <ChatTimelineActionsProvider revertToCheckpoint={() => {}}>
-        <MessagesTimeline optimisticMessages={[]} thread={thread} />
-      </ChatTimelineActionsProvider>
+      <ChatTransportContext value={unsupportedChatTransport()}>
+        <ChatTimelineActionsProvider revertToCheckpoint={() => {}}>
+          <MessagesTimeline optimisticMessages={[]} thread={thread} />
+        </ChatTimelineActionsProvider>
+      </ChatTransportContext>
     </EditorStateProvider>
   )
 }

@@ -3,7 +3,7 @@ import { useCallback } from 'react'
 
 import { selectChatThreadHasEarlier } from '../state/chat-projection-selectors'
 import { useChatProjectionStore } from '../state/chat-projection-store'
-import { loadEarlierChatThreadPage } from '../state/thread-earlier-pages'
+import { useChatTransport } from '@/features/chat/hooks/use-chat-transport'
 import {
   selectThreadEarlierPage,
   useThreadEarlierPageStore,
@@ -11,6 +11,7 @@ import {
 
 /** Everything the timeline needs to offer, run and report one backwards page. */
 export function useThreadEarlierPage(threadId: ThreadId | null | undefined) {
+  const transport = useChatTransport()
   const hasEarlier = useChatProjectionStore((state) => selectChatThreadHasEarlier(state, threadId))
   const { error, pending } = useThreadEarlierPageStore((state) =>
     selectThreadEarlierPage(state, threadId),
@@ -18,8 +19,8 @@ export function useThreadEarlierPage(threadId: ThreadId | null | undefined) {
   const loadEarlier = useCallback(() => {
     if (!threadId) return
 
-    void loadEarlierChatThreadPage(threadId)
-  }, [threadId])
+    void transport.loadEarlierPage(threadId)
+  }, [threadId, transport])
 
   return { error, hasEarlier, loadEarlier, pending }
 }

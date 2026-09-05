@@ -2,7 +2,7 @@ import type { OrchestrationProjectShell } from '@workspace/contracts'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { errorMessage } from '@/lib/error-message'
-import type { ChatEnvironment } from '../environment/chat-environment'
+import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import {
   createWorkspaceProjectCommand,
   workspaceProjectId,
@@ -16,53 +16,60 @@ export type WorkspaceChatProjectState = {
   status: 'ready' | 'waiting'
 }
 
-type ProjectFailure = { message: string; projectId: string }
+type ProjectFailure = { message: string; projectId: string; transport: ChatTransport }
 
 export function useWorkspaceChatProject({
-  environment,
+  transport,
   rootPath,
 }: {
-  environment: ChatEnvironment
+  transport: ChatTransport
   rootPath: string
 }): WorkspaceChatProjectState {
   const projects = useChatProjectionStore(selectChatProjects)
   const bootstrapComplete = useChatProjectionStore((state) => state.bootstrapComplete)
   const [failure, setFailure] = useState<ProjectFailure | null>(null)
-  const dispatchedProjectId = useRef<string | null>(null)
+  const dispatchedProject = useRef<{ projectId: string; transport: ChatTransport } | null>(null)
   const projectId = useMemo(() => workspaceProjectId(rootPath), [rootPath])
   const project = projects.find((candidate) => candidate.id === projectId) ?? null
 
   useEffect(() => {
     if (!bootstrapComplete) return
     if (project) return
-    if (dispatchedProjectId.current === projectId) return
+    if (
+      dispatchedProject.current?.projectId === projectId &&
+      dispatchedProject.current.transport === transport
+    )
+      return
 
-    dispatchedProjectId.current = projectId
-    void createWorkspaceProject({ environment, projectId, rootPath, setFailure })
-  }, [bootstrapComplete, environment, project, projectId, rootPath])
+    dispatchedProject.current = { projectId, transport }
+    void createWorkspaceProject({ transport, projectId, rootPath, setFailure })
+  }, [bootstrapComplete, transport, project, projectId, rootPath])
 
   return {
-    error: failure?.projectId === projectId ? failure.message : null,
+    error:
+      failure?.projectId === projectId && failure.transport === transport ? failure.message : null,
     project,
     status: project ? 'ready' : 'waiting',
   }
 }
 
 async function createWorkspaceProject({
-  environment,
+  transport,
   projectId,
   rootPath,
   setFailure,
 }: {
-  environment: ChatEnvironment
+  transport: ChatTransport
   projectId: string
   rootPath: string
   setFailure: (failure: ProjectFailure) => void
 }) {
   try {
-    await environment.dispatchCommand(createWorkspaceProjectCommand({ rootPath }))
+    await transport.dispatchCommand(createWorkspaceProjectCommand({ rootPath }))
   } catch (error) {
+    if (transport.closed) return
     setFailure({
+      transport,
       message: errorMessage(error, 'Could not prepare chat for this workspace.'),
       projectId,
     })

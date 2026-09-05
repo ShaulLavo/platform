@@ -2,7 +2,7 @@ import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/layout'
 import { screen } from '@testing-library/react'
 
 import { AppTitlebar } from '@/components/app-titlebar'
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../test/factories/editor-state-provider'
 import {
   createEditorWorkspaceStore,
   EditorWorkspaceStateContext,

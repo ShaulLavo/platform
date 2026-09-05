@@ -1,5 +1,6 @@
 import { LspConnectionPool, type LspConnectionPoolEvent } from '@singapor/lsp-plugin'
 
+import { activeServerOrigin } from '@/lib/client'
 import { log } from '@/lib/client-logging'
 
 /** Separates the two halves of a pool key without colliding with either. */
@@ -9,6 +10,7 @@ const KEY_SEPARATOR = '\u0000'
 const pool = new LspConnectionPool({ onEvent: report })
 
 export type LanguageServerConnectionKey = {
+  readonly origin?: string
   readonly rootPath: string
   readonly serverId: string
 }
@@ -19,18 +21,22 @@ export type DiffLanguageServerConnectionKey = LanguageServerConnectionKey & {
 
 /** The same pair the server's own session pool keys its child processes on. */
 export function languageServerConnectionProvider({
+  origin = activeServerOrigin(),
   rootPath,
   serverId,
 }: LanguageServerConnectionKey) {
-  return pool.provider(`${rootPath}${KEY_SEPARATOR}${serverId}`)
+  return pool.provider(`${origin}${KEY_SEPARATOR}${rootPath}${KEY_SEPARATOR}${serverId}`)
 }
 
 export function diffLanguageServerConnectionProvider({
+  origin = activeServerOrigin(),
   rootPath,
   serverId,
   sessionId,
 }: DiffLanguageServerConnectionKey) {
-  return pool.provider(`${rootPath}${KEY_SEPARATOR}${serverId}${KEY_SEPARATOR}diff:${sessionId}`)
+  return pool.provider(
+    `${origin}${KEY_SEPARATOR}${rootPath}${KEY_SEPARATOR}${serverId}${KEY_SEPARATOR}diff:${sessionId}`,
+  )
 }
 
 /** Closes every pooled connection. For teardown and for tests. */
@@ -39,10 +45,12 @@ export function resetLanguageServerConnectionPool(): void {
 }
 
 function report(event: LspConnectionPoolEvent): void {
-  const [rootPath = '', serverId = '', owner = 'editor'] = event.key.split(KEY_SEPARATOR)
+  const [origin = '', rootPath = '', serverId = '', owner = 'editor'] =
+    event.key.split(KEY_SEPARATOR)
   const fields = {
     action: `lsp.connection.${actionSuffix(event.kind)}`,
     area: 'lsp',
+    origin,
     leaseCount: event.leaseCount,
     outcome: event.kind,
     rootPath,

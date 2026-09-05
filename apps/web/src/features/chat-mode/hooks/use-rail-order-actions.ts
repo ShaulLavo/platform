@@ -6,16 +6,16 @@ import {
 } from '@/features/chat-mode/state/rail-order-commands'
 
 /**
- * The rail's two drop handlers, bound to the chat environment that dispatches
+ * The rail's two drop handlers, bound to the chat transport that dispatches
  * for them. Everything else about a reorder — the order key, the optimistic
  * write, the fallback when the server refuses — lives in the commands module,
  * which reads the same stores the rail renders from.
  */
 export function useRailOrderActions(): ChatRailOrder {
-  const { environment } = useChatModeSession()
+  const { transport } = useChatModeSession()
 
   return {
-    reorderProject: (activeId, overId) => reorderRailProject({ activeId, environment, overId }),
-    reorderSession: (activeId, overId) => reorderRailSession({ activeId, environment, overId }),
+    reorderProject: (activeId, overId) => reorderRailProject({ activeId, transport, overId }),
+    reorderSession: (activeId, overId) => reorderRailSession({ activeId, transport, overId }),
   }
 }

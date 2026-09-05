@@ -17,13 +17,12 @@ a bare root `bun run verify`.
 | --------------------------------------------------------------------------------------- | --------------------------------------- |
 | [066 — package Ghostty config resolver](066-package-ghostty-config-resolver.md)         | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
 | [067 — integrate Ghostty config appearance](067-integrate-ghostty-config-appearance.md) | **BLOCKED ON 066 REVIEWED ARTIFACT**    |
-| [077 — environment runtime origin](077-environment-runtime-origin.md)                   | **READY — ENVIRONMENTS LANE STEP 1**    |
-| [068 — session domain model](068-session-domain-model.md)                               | **BLOCKED ON 077 — ENVIRONMENT-AWARE**  |
-| [078 — federated environments](078-federated-environments.md)                           | **BLOCKED ON 077 AND 068**              |
+| [068 — session domain model](068-session-domain-model.md)                               | **READY — NEXT ENVIRONMENTS SLICE**     |
+| [078 — federated environments](078-federated-environments.md)                           | **BLOCKED ON 068**                      |
 | [069 — worktree lifecycle](069-worktree-lifecycle.md)                                   | **BLOCKED ON 068 AND ROOT SCHEDULING**  |
 | [071 — syntax highlight retry](071-syntax-highlight-retry.md)                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
 | [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                         | **IMPLEMENTED — BROWSER VERIFIED**      |
-| [057 — editor-native VS Code keymap](057-editor-native-vscode-keymap.md)                | **NEXT — RUNTIME RECONCILED**           |
+| [057 — standalone Editor chords and shared keymap](057-editor-native-vscode-keymap.md)  | **NEXT — STANDALONE EXECUTION FIRST**   |
 | [073 — Electrobun 2.x migration](073-electrobun-v2-migration.md)                        | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
 | [074 — Bun-native PTY](074-bun-native-pty.md)                                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
 | [075 — terminal renderer fallbacks](075-terminal-renderer-fallbacks.md)                 | **PROPOSED — BLOCKED ON TIER DECISION** |
@@ -39,11 +38,13 @@ a bare root `bun run verify`.
   owns one keymap session; the terminal forwards keys to that session before Ghostty encodes them.
   Review fixes, focused tests, trusted browser integration, and the full repository typecheck
   pass in an isolated checkout that excludes concurrent environment work.
-- Plan 077 is the first environments slice: runtime server origin, a durable `environmentId` per
-  server carried in the handshake and `/health`, identity-drift refusal, one `QueryClient` and one
-  closable `ChatTransport` per origin, deletion of the import-time transport singletons, and the
-  `ChatEnvironment` → `ChatTransport` rename. Loopback only; no persistence scoping; a dev-only
-  origin switch that Plan 078 deletes.
+- Plan 077 is complete and its executable plan is deleted. Canonical runtime origins own HTTP
+  clients, QueryClients, and retained editor runtimes; the identity/protocol gate checks the server
+  before editor consumers mount. Switching preserves unsaved buffers and routes pending work to
+  its original owner. Query consumers remount under one outer command bus that captures the active
+  runtime. Chat transports close explicitly and WebSocket auth refusal uses `1008`. Focused tests
+  and the two-server A → B → A browser workflow pass. The dev-only loopback switch and shared
+  browser persistence remain until Plan 078.
 - Plan 068 is the session-domain foundation: it replaces the current thread-shaped aggregate with
   explicit Project → Worktree → Session ownership, makes Claude's raw UUID the portable session
   identity, imports terminal-born Claude sessions through commands/events/receipts, and projects
@@ -52,7 +53,7 @@ a bare root `bun run verify`.
   environment-aware: repository identity is machine-independent (origin remote, else root commit),
   so the same repository on two machines shares a `ProjectId`; the web projection store is one slice
   per environment keyed by scoped refs; the rail model and address grammar carry the environment.
-  It requires Plan 077 and populates exactly one environment.
+  It builds on the completed Plan 077 foundation and populates exactly one environment.
 - Plan 078 federates environments after 068: the `environments.machines` setting and page, the
   desktop SSH launcher (probe, reuse-or-launch, loopback forward, no install, no pairing), one chat
   connection per machine, scoped persistence, the flat cross-machine rail with repository grouping,
@@ -66,9 +67,11 @@ a bare root `bun run verify`.
   Platform owns Shiki registration resolution, Editor's Oniguruma worker is self-contained, and
   built-dist highlighting is covered by a real-browser and shared-log proof. Root `PLAN.md` has not
   scheduled the retry work yet.
-- Plan 056 is implemented and browser verified. Plan 057 must extend the same
-  target registry and enablement evaluator. Folding and the remaining VS Code chord defaults stay
-  in Plan 057.
+- Plan 056 is implemented and browser verified. Plan 057 first gives standalone Editor consumers
+  automatic chord execution through the normal binding API. Platform then adopts the same public
+  runtime with its combined app and editor table and disables embedded Editor matching. Preserve
+  the existing target registry, enablement evaluator, and terminal handoff. Standalone browser
+  execution must pass before the takeover; folding and the remaining VS Code defaults stay in 057.
 - The config-resolver feasibility proof is complete with four native `PASS` rows and accepted
   package ceilings. Its stable records are
   `ghostty-webgpu/docs/config-resolver-feasibility.md` and

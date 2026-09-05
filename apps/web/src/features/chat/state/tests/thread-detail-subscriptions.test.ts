@@ -13,7 +13,7 @@ import * as v from 'valibot'
 
 import { createClientError } from '@/lib/structured-errors'
 import { expect, test } from '../../../../../test/fixtures'
-import { unsupportedChatEnvironment } from '../../../../../test/factories/chat-environment'
+import { unsupportedChatTransport } from '../../../../../test/factories/chat-transport'
 import { shellSnapshot, threadShell } from '../../../../../test/factories/chat'
 import { useChatProjectionStore } from '../chat-projection-store'
 import { selectThreadDetailSync, useThreadDetailSyncStore } from '../thread-detail-sync-store'
@@ -35,7 +35,7 @@ describe('thread detail subscription cache', () => {
     const fake = createFakeEnvironment()
     const timers = createManualTimers()
     const cache = createThreadDetailSubscriptionCache({
-      environment: fake.environment,
+      transport: fake.transport,
       scheduleTimeout: timers.schedule,
       clearScheduledTimeout: timers.clear,
     })
@@ -70,7 +70,7 @@ describe('thread detail subscription cache', () => {
     const fake = createFakeEnvironment()
     const timers = createManualTimers()
     const cache = createThreadDetailSubscriptionCache({
-      environment: fake.environment,
+      transport: fake.transport,
       scheduleTimeout: timers.schedule,
       clearScheduledTimeout: timers.clear,
     })
@@ -94,7 +94,7 @@ describe('thread detail subscription cache', () => {
   test('evicts the oldest idle entries when the cache exceeds capacity', async () => {
     const fake = createFakeEnvironment()
     const cache = createThreadDetailSubscriptionCache({
-      environment: fake.environment,
+      transport: fake.transport,
       maxCachedSubscriptions: 2,
       now: incrementingClock(),
     })
@@ -125,7 +125,7 @@ describe('thread detail subscription cache', () => {
     ])
     const timers = createManualTimers()
     const cache = createThreadDetailSubscriptionCache({
-      environment: fake.environment,
+      transport: fake.transport,
       scheduleTimeout: timers.schedule,
       clearScheduledTimeout: timers.clear,
     })
@@ -154,7 +154,7 @@ describe('thread detail subscription cache', () => {
     ])
     const timers = createManualTimers()
     const cache = createThreadDetailSubscriptionCache({
-      environment: fake.environment,
+      transport: fake.transport,
       scheduleTimeout: timers.schedule,
       clearScheduledTimeout: timers.clear,
     })
@@ -178,7 +178,7 @@ describe('thread detail subscription cache', () => {
     const fake = createFakeEnvironment([{ fail: unauthorizedFailure() }])
     const timers = createManualTimers()
     const cache = createThreadDetailSubscriptionCache({
-      environment: fake.environment,
+      transport: fake.transport,
       scheduleTimeout: timers.schedule,
       clearScheduledTimeout: timers.clear,
     })
@@ -202,7 +202,7 @@ describe('thread detail subscription cache', () => {
   test('disposes a thread that leaves the projection', async () => {
     const threadId = parseThreadId('thread-1')
     const fake = createFakeEnvironment()
-    const cache = createThreadDetailSubscriptionCache({ environment: fake.environment })
+    const cache = createThreadDetailSubscriptionCache({ transport: fake.transport })
 
     useChatProjectionStore
       .getState()
@@ -227,7 +227,7 @@ describe('thread detail subscription cache', () => {
 
   test('opens no stream for sidebar threads it was never asked to retain', async () => {
     const fake = createFakeEnvironment()
-    const cache = createThreadDetailSubscriptionCache({ environment: fake.environment })
+    const cache = createThreadDetailSubscriptionCache({ transport: fake.transport })
     const threads = Array.from({ length: 12 }, (_, index) =>
       threadShell({ id: parseThreadId(`thread-${index}`) }),
     )
@@ -249,7 +249,7 @@ describe('thread detail subscription cache', () => {
     ])
     const timers = createManualTimers()
     const cache = createThreadDetailSubscriptionCache({
-      environment: fake.environment,
+      transport: fake.transport,
       scheduleTimeout: timers.schedule,
       clearScheduledTimeout: timers.clear,
     })
@@ -287,7 +287,7 @@ describe('thread detail subscription cache', () => {
       { items: [{ kind: 'snapshot', snapshot: detailSnapshot(threadId, 3) }] },
     ])
     const cache = createThreadDetailSubscriptionCache({
-      environment: fake.environment,
+      transport: fake.transport,
       now: clock,
     })
 
@@ -305,7 +305,7 @@ function createFakeEnvironment(script: ScriptedAttempt[] = []) {
   const attempts: Array<{ afterSequence: number | undefined; threadId: ThreadId }> = []
   const aborts: ThreadId[] = []
 
-  const environment = unsupportedChatEnvironment({
+  const transport = unsupportedChatTransport({
     dispatchCommand: async (_command: ClientOrchestrationCommand) => ({
       deduped: false,
       sequence: 0,
@@ -332,7 +332,7 @@ function createFakeEnvironment(script: ScriptedAttempt[] = []) {
     },
   })
 
-  return { aborts, attempts, environment }
+  return { aborts, attempts, transport }
 }
 
 function waitForAbort(signal: AbortSignal | undefined) {

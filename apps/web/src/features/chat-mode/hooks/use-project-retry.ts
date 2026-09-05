@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
+import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import { createWorkspaceProjectCommand } from '@/features/chat/utils/command-builders'
 import { log } from '@/lib/client-logging'
 import { errorMessage } from '@/lib/error-message'
@@ -19,10 +19,10 @@ const IDLE: ProjectRetryAttempt = { error: null, retrying: false }
  * ever fixes a first run is asking again.
  */
 export function useProjectRetry({
-  environment,
+  transport,
   rootPath,
 }: {
-  readonly environment: ChatEnvironment
+  readonly transport: ChatTransport
   readonly rootPath: string
 }) {
   const [attempt, setAttempt] = useState<ProjectRetryAttempt>(IDLE)
@@ -31,23 +31,23 @@ export function useProjectRetry({
     if (attempt.retrying) return
 
     setAttempt({ error: null, retrying: true })
-    void requestWorkspaceProject({ environment, rootPath, setAttempt })
+    void requestWorkspaceProject({ transport, rootPath, setAttempt })
   }
 
   return { error: attempt.error, retrying: attempt.retrying, retryProject }
 }
 
 async function requestWorkspaceProject({
-  environment,
+  transport,
   rootPath,
   setAttempt,
 }: {
-  environment: ChatEnvironment
+  transport: ChatTransport
   rootPath: string
   setAttempt: (attempt: ProjectRetryAttempt) => void
 }) {
   try {
-    const result = await environment.dispatchCommand(createWorkspaceProjectCommand({ rootPath }))
+    const result = await transport.dispatchCommand(createWorkspaceProjectCommand({ rootPath }))
     setAttempt(IDLE)
     log.info({
       action: 'chat.project.retry',

@@ -28,8 +28,9 @@ import {
   LANGUAGE_SERVER_CLIENT_INFO,
   semanticTokensCapabilityForServer,
 } from '@/features/editor/utils/semantic-token-capability'
-import { serverUrl } from '@/lib/client'
-import { EdenLanguageServerWebSocket } from '@/lib/server-sockets'
+import { languageServerWebSocketConstructor } from '@/lib/server-sockets'
+import { activeServerOrigin, environmentClientFor } from '@/lib/client'
+import { environmentActivitySignal } from '@/lib/environments/state/activity'
 import { log } from '@/lib/client-logging'
 
 export type LanguageServerMatch = LspMatch
@@ -43,6 +44,7 @@ export type LanguageServerDocumentTarget = {
 }
 
 type MatchedLanguageServerPluginOptions = {
+  origin?: string
   documentSyncController: LanguageServerDocumentSyncController
   enabled: boolean
   matches: readonly LanguageServerMatch[] | null
@@ -58,6 +60,7 @@ type MatchedLanguageServerPluginOptions = {
 }
 
 export function createMatchedLanguageServerPlugin({
+  origin = activeServerOrigin(),
   documentSyncController,
   enabled,
   matches,
@@ -79,6 +82,7 @@ export function createMatchedLanguageServerPlugin({
   const semanticControllers = new Map<string, SemanticTokenController>()
   const lanes = descriptors.map((match) =>
     liveLanguageServerLane({
+      origin,
       match,
       onApplyWorkspaceEdit,
       rootPath,
@@ -106,6 +110,7 @@ export function createMatchedLanguageServerPlugin({
 }
 
 function liveLanguageServerLane({
+  origin,
   match,
   onApplyWorkspaceEdit,
   rootPath,
@@ -116,13 +121,16 @@ function liveLanguageServerLane({
   match: LanguageServerMatch
   onApplyWorkspaceEdit: OnApplyWorkspaceEdit
   rootPath: string
+  origin: string
   semanticControllers: Map<string, SemanticTokenController>
   statusSource: EditorLanguageServerStatusSource
   target: LanguageServerDocumentTarget
 }): LanguageServerLaneOptions {
   return {
     ...languageServerLaneOptions({
+      origin,
       connectionProvider: languageServerConnectionProvider({
+        origin,
         rootPath: match.root,
         serverId: match.serverId,
       }),
@@ -153,12 +161,14 @@ function liveLanguageServerLane({
 }
 
 export function languageServerLaneOptions({
+  origin = activeServerOrigin(),
   connectionProvider,
   match,
   onApplyWorkspaceEdit,
   rootPath,
   target,
 }: {
+  origin?: string
   connectionProvider: LspConnectionProvider
   match: LanguageServerMatch
   onApplyWorkspaceEdit: OnApplyWorkspaceEdit
@@ -176,7 +186,10 @@ export function languageServerLaneOptions({
     readyNotifications: target.sharedNotificationsByServer?.[match.serverId],
     webSocketRoute: languageServerRoute(rootPath, target.matchPath, match.serverId),
     webSocketTransportOptions: {
-      WebSocketCtor: EdenLanguageServerWebSocket,
+      WebSocketCtor: languageServerWebSocketConstructor(
+        environmentClientFor(origin),
+        environmentActivitySignal(origin),
+      ),
     },
   }
 }
@@ -293,9 +306,8 @@ function withoutDisabledFeatures(
 }
 
 function languageServerRoute(rootPath: string, matchPath: string, serverId: string) {
-  const url = new URL('/lsp', serverUrl)
-  if (url.protocol === 'http:') url.protocol = 'ws:'
-  if (url.protocol === 'https:') url.protocol = 'wss:'
+  // EdenLanguageServerWebSocket uses only the route parameters and dials through its client.
+  const url = new URL('/lsp', 'ws://localhost')
   url.searchParams.set('root', rootPath)
   url.searchParams.set('path', matchPath)
   url.searchParams.set('server', serverId)

@@ -7,7 +7,7 @@ import { expect, test } from '../../../../test/fixtures'
 import { createTestQueryClient, renderWithProviders } from '../../../../test/render'
 import { TestCommandProvider } from '../../../../test/factories/command-runtime'
 import { CommandPalette } from '@/components/command-palette'
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../test/factories/editor-state-provider'
 import {
   resetSettingsIntentStore,
   useSettingsIntentStore,

@@ -27,8 +27,9 @@ import {
  *     read over HTTP now: they are large one-shot bodies, and writing one into
  *     the socket head-of-line-blocked every other frame for its duration. The
  *     subscriptions still push snapshot *frames*; only the requests are gone.
+ * 4 — added the durable environment identity to the handshake.
  */
-export const ORCHESTRATION_WS_PROTOCOL_VERSION = 3
+export const ORCHESTRATION_WS_PROTOCOL_VERSION = 4
 
 /**
  * Hard ceiling on one `replayEvents` page. `replayEvents` is client-reachable,
@@ -220,6 +221,7 @@ export const orchestrationWsErrorSchema = v.object({
 })
 
 export const orchestrationWsServerConfigSchema = v.object({
+  environmentId: trimmedNonEmptyStringSchema,
   protocolVersion: nonNegativeIntegerSchema,
   serverVersion: trimmedNonEmptyStringSchema,
   /** New per process: a change means the server restarted and cursors are stale. */

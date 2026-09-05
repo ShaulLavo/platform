@@ -49,6 +49,8 @@ import { annotateClientError, clientErrorMetadata } from '@/lib/client-error-con
 import { log } from '@/lib/client-logging'
 import { clientInstanceId } from '@/lib/instance-id'
 import { createClientInvariantError } from '@/lib/structured-errors'
+import type { Client } from '@/lib/client'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 
 import { useSettingsProjection } from '@/features/settings/hooks/use-settings-projection'
 import { withMovedModel } from '@/features/settings/utils/patch'
@@ -59,9 +61,10 @@ export const SETTINGS_MUTATION_SCOPE = 'settings-document'
 /** Semantic settings actions shared by commands and settings controls. */
 export function useSettingsActions() {
   const queryClient = useQueryClient()
+  const client = clientForQueryClient(queryClient)
   const projection = useSettingsProjection()
   const transport = useMutation({
-    mutationFn: (entry: ActiveSettingsIntent) => transportSettingsIntent(entry),
+    mutationFn: (entry: ActiveSettingsIntent) => transportSettingsIntent(entry, client),
     mutationKey: SETTINGS_MUTATION_KEY,
     onError: (error, entry) => {
       logSettingsMutationFailure(entry, error)
@@ -132,6 +135,7 @@ export function useSettingsActions() {
     beforePublish?: (entry: ActiveSettingsIntent) => void,
   ): SettingsSubmission => {
     const { entry, supersededMutationIds } = submitSettingsIntent(
+      queryClient,
       target,
       operations,
       initiator,
@@ -213,10 +217,10 @@ function discardFailedMutation(mutationId: string) {
   dismissSaveError(mutationId)
 }
 
-async function transportSettingsIntent(entry: ActiveSettingsIntent) {
+async function transportSettingsIntent(entry: ActiveSettingsIntent, client: Client) {
   const startedAt = markSettingsIntentTransportStarted(entry.request.mutationId, settingsNow())
   try {
-    const result = await saveSettings(entry.request)
+    const result = await saveSettings(entry.request, client)
     return { result, startedAt }
   } catch (error) {
     annotateSettingsTransportError(entry, startedAt, error)
@@ -234,16 +238,16 @@ async function admitSuccessfulMutation(
     const admission = await awaitSettingsAdmission(queryClient, result)
     if (!settingsResultRequiresActiveEpochRetry(result, admission)) return { admission, result }
 
-    result = await retrySettingsTransport(entry)
+    result = await retrySettingsTransport(entry, clientForQueryClient(queryClient))
   }
 
   throw createClientInvariantError('Settings mutation could not establish an active epoch')
 }
 
-async function retrySettingsTransport(entry: ActiveSettingsIntent) {
+async function retrySettingsTransport(entry: ActiveSettingsIntent, client: Client) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      return await saveSettings(entry.request)
+      return await saveSettings(entry.request, client)
     } catch (error) {
       if (!shouldRetrySettingsTransport(attempt, error) || attempt === 2) throw error
 

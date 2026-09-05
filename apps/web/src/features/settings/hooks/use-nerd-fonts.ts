@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 
-import { getClient } from '@/lib/client'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 
 /**
  * Every Nerd Font the server can fetch, subset and cache on demand.
@@ -11,8 +11,8 @@ import { getClient } from '@/lib/client'
  */
 export function useNerdFonts() {
   return useQuery({
-    queryFn: async () => {
-      const response = await getClient().fonts.get()
+    queryFn: async ({ client }) => {
+      const response = await clientForQueryClient(client).fonts.get()
 
       return Object.keys(response.data ?? {}).sort((a, b) => a.localeCompare(b))
     },

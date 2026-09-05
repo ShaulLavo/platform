@@ -1,4 +1,5 @@
-import { QueryClient } from '@tanstack/react-query'
+import type { QueryClient } from '@tanstack/react-query'
+import { createTestQueryClient } from '../../../../test/render'
 import { renderHook, waitFor } from '@testing-library/react'
 import { providerDriverKindSchema, providerInstanceIdSchema } from '@workspace/contracts'
 import { createElement, type ReactNode } from 'react'
@@ -30,7 +31,7 @@ function wrapper(queryClient: QueryClient) {
 
 test('lands a change made by another writer in this tab’s cache', async ({ client }) => {
   expect(client).toBeDefined()
-  const queryClient = new QueryClient()
+  const queryClient = createTestQueryClient()
   const stream = renderHook(() => useSettingsStream(), { wrapper: wrapper(queryClient) })
 
   // Stands in for the other writer: a second window, or a hand-edit to the file.
@@ -55,7 +56,7 @@ test('first connection refetch closes the gap after the initial document GET', a
   controlledClient,
 }) => {
   const { controller } = controlledClient
-  const queryClient = new QueryClient()
+  const queryClient = createTestQueryClient()
   queryClient.setQueryData(settingsKeys.document(), await fetchSettings())
   await saveSettings({
     mutationId: 'controlled-stream-before-first-connect',
@@ -83,7 +84,7 @@ test('a failed confirming refetch aborts the attempt and retries recovery', asyn
   controlledClient,
 }) => {
   const { controller } = controlledClient
-  const queryClient = new QueryClient()
+  const queryClient = createTestQueryClient()
   queryClient.setQueryData(settingsKeys.document(), await fetchSettings())
   await saveSettings({
     mutationId: 'controlled-stream-before-failed-refetch',
@@ -123,11 +124,11 @@ test('refetches and reconnects a real SSE response without dropping projection',
   controlledClient,
 }) => {
   const { controller } = controlledClient
-  const queryClient = new QueryClient()
+  const queryClient = createTestQueryClient()
   const confirmed = await fetchSettings()
   queryClient.setQueryData(settingsKeys.document(), confirmed)
   resetSettingsIntentStore()
-  const pending = submitSettingsIntent('user', [
+  const pending = submitSettingsIntent(queryClient, 'user', [
     { key: 'workbench.colorTheme', kind: 'set', value: 'dark' },
   ]).entry
   const stream = renderHook(
@@ -173,7 +174,7 @@ test('recovers a write made during reconnect backoff after opening the replaceme
   controlledClient,
 }) => {
   const { controller } = controlledClient
-  const queryClient = new QueryClient()
+  const queryClient = createTestQueryClient()
   queryClient.setQueryData(settingsKeys.document(), await fetchSettings())
   const abort = new AbortController()
   const backoffStarted = deferred<void>()
@@ -218,7 +219,7 @@ test('aborting reconnect backoff prevents another real SSE attempt', async ({
   controlledClient,
 }) => {
   const { controller } = controlledClient
-  const queryClient = new QueryClient()
+  const queryClient = createTestQueryClient()
   const abort = new AbortController()
   const backoffStarted = deferred<void>()
   const supervisor = superviseSettingsStream(queryClient, abort.signal, {
@@ -253,7 +254,7 @@ test('same-epoch recovery invalidates providers only when provider settings chan
   client,
 }) => {
   expect(client).toBeDefined()
-  const queryClient = new QueryClient()
+  const queryClient = createTestQueryClient()
   const initial = await fetchSettings()
   queryClient.setQueryData(settingsKeys.document(), initial)
   queryClient.setQueryData(providerQueryKeys.list(), { providers: [] })

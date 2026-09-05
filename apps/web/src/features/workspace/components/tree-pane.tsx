@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import type {
   FileTreeDropContext,
   FileTreeDropResult,
@@ -144,7 +145,7 @@ function ReadyTreePane({
   const [initialPreparedInput] = useState(() => preparedTreeInputForPaths(model.paths))
   const icons = useMemo(() => fileTreeIconsForPaths(model.paths), [model.paths])
   const moveMutation = useMutation({
-    mutationFn: (request: TreeDropMoveRequest) =>
+    mutationFn: (request: TreeDropMoveRequest, { client }) =>
       runTreeDropMoveMutation(request, {
         model: modelRef.current,
         project: () => {
@@ -152,7 +153,7 @@ function ReadyTreePane({
           moveProjectionReceiptsRef.current.set(request, receipt)
           pathsRef.current = receipt.nextModel.paths
         },
-        rename: renamePath,
+        rename: (from, to) => renamePath(from, to, clientForQueryClient(client)),
         runWorkspaceMutation: workspaceEdits
           ? (affectedPaths, operation) =>
               workspaceEdits.runWorkspaceMutation(affectedPaths, operation)

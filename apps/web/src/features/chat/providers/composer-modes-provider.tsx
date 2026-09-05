@@ -5,7 +5,7 @@ import type {
 } from '@workspace/contracts'
 import { useMemo, type ReactNode } from 'react'
 
-import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
+import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import {
   createInteractionModeSetCommand,
   createRuntimeModeSetCommand,
@@ -20,7 +20,7 @@ import {
   type ChatInputDraftTarget,
 } from '@/features/chat/state/chat-input-draft-store'
 
-type DispatchCommand = ChatEnvironment['dispatchCommand']
+type DispatchCommand = ChatTransport['dispatchCommand']
 type ModeSetCommand = ThreadInteractionModeSetCommand | ThreadRuntimeModeSetCommand
 
 /**
@@ -30,7 +30,7 @@ type ModeSetCommand = ThreadInteractionModeSetCommand | ThreadRuntimeModeSetComm
  * it was created with, so the sidebar and any other client read the wrong mode.
  *
  * The dispatch seam arrives as a prop rather than being reached for, which keeps
- * the menu renderable against any `ChatEnvironment`, including the real
+ * the menu renderable against any `ChatTransport`, including the real
  * in-process one under test.
  *
  * `threadId` is null on the draft composer, where there is no thread to set a

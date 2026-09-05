@@ -1,3 +1,5 @@
+import { useQueryClient } from '@tanstack/react-query'
+import { originForQueryClient } from '@/lib/environments/state/query-clients'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerDiagnosticMarkerClaim,
@@ -38,6 +40,7 @@ export function useLanguageServerPlugin({
   onOpenReferences,
   onDidNavigateDiagnostic,
 }: UseLanguageServerPluginOptions) {
+  const origin = originForQueryClient(useQueryClient())
   const languageServerStatusSource = useMemo(() => createEditorLanguageServerStatusSource(), [])
   const onApplyWorkspaceEdit = useWorkspaceEditHost()
   const documentSyncController = useWorkspaceDocumentSyncController()
@@ -49,6 +52,7 @@ export function useLanguageServerPlugin({
 
   const languageServer = useMemo(() => {
     return createMatchedLanguageServerPlugin({
+      origin,
       enabled,
       documentSyncController,
       matches,
@@ -61,6 +65,7 @@ export function useLanguageServerPlugin({
       onDidNavigateDiagnostic,
     })
   }, [
+    origin,
     enabled,
     documentSyncController,
     languageServerStatusSource,

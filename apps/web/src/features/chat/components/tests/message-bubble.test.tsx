@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import type { ChatAttachment } from '@workspace/contracts'
 import type { ReactNode } from 'react'
 
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../../test/factories/editor-state-provider'
 import { MessageBubble } from '@/features/chat/components/message-bubble'
 import {
   ChatTimelineActionsContext,

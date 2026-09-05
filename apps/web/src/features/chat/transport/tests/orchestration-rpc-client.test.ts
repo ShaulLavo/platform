@@ -1,18 +1,20 @@
-import {
-  ORCHESTRATION_WS_PROTOCOL_VERSION,
-  threadIdSchema,
-  type OrchestrationWsClientMessage,
-} from '@workspace/contracts'
+import { threadIdSchema, type OrchestrationWsClientMessage } from '@workspace/contracts'
 import { describe } from 'vitest'
 import * as v from 'valibot'
 
+import { isBlockedStreamError } from '@/features/chat/utils/stream-reconnect'
 import { OrchestrationRpcClient } from '@/features/chat/transport/orchestration-rpc-client'
 import {
   resetServerConnectionStore,
-  useServerConnectionStore,
-} from '@/features/chat/state/server-connection-store'
+  selectServerConnection,
+  useEnvironmentsStore,
+} from '@/lib/environments/state/store'
+import { FakeOrchestrationSocket } from '../../../../../test/factories/orchestration-socket'
 import { expect, test } from '../../../../../test/fixtures'
+import { orchestrationServerConfig } from '../../../../../test/factories/orchestration-server-config'
+import { createWorkspaceProjectCommand } from '@/features/chat/utils/command-builders'
 
+const ORIGIN = 'http://orchestration.test'
 const HEARTBEAT_MS = 10
 const HEARTBEAT_TIMEOUT_MS = 20
 const SLOW_REQUEST_MS = 15
@@ -20,7 +22,7 @@ const THREAD_ID = v.parse(threadIdSchema, 'thread-1')
 
 describe('orchestration rpc client liveness', () => {
   test('an unanswered heartbeat tears the socket down so subscriptions can reconnect', async () => {
-    const socket = new FakeSocket()
+    const socket = new FakeOrchestrationSocket()
     const client = createClient(socket)
     const failure = captureOutcome(client.shellStream()[Symbol.asyncIterator]().next())
 
@@ -40,7 +42,7 @@ describe('orchestration rpc client liveness', () => {
   })
 
   test('answered heartbeats keep the socket alive', async () => {
-    const socket = new FakeSocket()
+    const socket = new FakeOrchestrationSocket()
     socket.autoPong = true
     const client = createClient(socket)
     const outcome = captureOutcome(client.shellStream()[Symbol.asyncIterator]().next())
@@ -56,19 +58,20 @@ describe('orchestration rpc client liveness', () => {
     expect(sentKinds(socket).filter((kind) => kind === 'ping').length).toBeGreaterThan(1)
     expect(settled).toBe(false)
     expect(socket.closed).toBe(false)
+    client.close()
   })
 
-  test('a silent clean close reads as an auth rejection, not a transient drop', async () => {
-    const socket = new FakeSocket()
+  test('a silent clean close stays retryable', async () => {
+    const socket = new FakeOrchestrationSocket()
     const client = createClient(socket)
     const failure = captureOutcome(client.shellStream()[Symbol.asyncIterator]().next())
 
     await tick()
-    socket.open()
+    socket.open(false)
     await tick()
     socket.serverClose({ code: 1000, wasClean: true })
 
-    expect(await failure).toMatchObject({ status: 401 })
+    expect(await failure).toMatchObject({ status: 499 })
   })
 })
 
@@ -89,27 +92,33 @@ describe('orchestration rpc client transport boundary', () => {
 describe('orchestration rpc client connection identity', () => {
   test('the handshake tells the client which server process it reached', async () => {
     resetServerConnectionStore()
-    const socket = new FakeSocket()
+    const socket = new FakeOrchestrationSocket()
     const client = createClient(socket)
     void captureOutcome(client.shellStream()[Symbol.asyncIterator]().next())
 
     await tick()
     socket.open()
-    socket.deliver({ config: serverConfig('server-1'), kind: 'connected' })
+    socket.deliver({ config: orchestrationServerConfig(), kind: 'connected' })
 
-    expect(useServerConnectionStore.getState().serverInstanceId).toBe('server-1')
-    expect(useServerConnectionStore.getState().generation).toBe(1)
+    expect(selectServerConnection(useEnvironmentsStore.getState(), ORIGIN).serverInstanceId).toBe(
+      'server-1',
+    )
+    expect(selectServerConnection(useEnvironmentsStore.getState(), ORIGIN).generation).toBe(1)
 
     // A restart under the same client is the case every server-derived cache
     // has to be told about; nothing else in the client can see it happen.
-    socket.deliver({ config: serverConfig('server-2'), kind: 'connected' })
+    socket.deliver({
+      config: orchestrationServerConfig({ serverInstanceId: 'server-2' }),
+      kind: 'connected',
+    })
 
-    expect(useServerConnectionStore.getState().generation).toBe(2)
+    expect(selectServerConnection(useEnvironmentsStore.getState(), ORIGIN).generation).toBe(2)
+    client.close()
   })
 
   test('a request that overruns says so, and stops saying so when it answers', async () => {
     resetServerConnectionStore()
-    const socket = new FakeSocket()
+    const socket = new FakeOrchestrationSocket()
     const client = createClient(socket, latencyOnly())
     const page = captureOutcome(client.threadDetailPage({ threadId: THREAD_ID }))
 
@@ -118,21 +127,44 @@ describe('orchestration rpc client connection identity', () => {
     // The slow timer is armed as the request is written, so waiting on the
     // frame is what makes the timing assertion below deterministic under load.
     await waitForRequest(socket)
-    expect(useServerConnectionStore.getState().slowRequestCount).toBe(0)
+    expect(selectServerConnection(useEnvironmentsStore.getState(), ORIGIN).slowRequestCount).toBe(0)
 
     await sleep(SLOW_REQUEST_MS * 2)
-    expect(useServerConnectionStore.getState().slowRequestCount).toBe(1)
+    expect(selectServerConnection(useEnvironmentsStore.getState(), ORIGIN).slowRequestCount).toBe(1)
 
     const requestId = sentMessages(socket).find((message) => message.kind === 'request')?.requestId
     socket.deliver({ data: {}, kind: 'response', ok: true, requestId })
     await page
 
-    expect(useServerConnectionStore.getState().slowRequestCount).toBe(0)
+    expect(selectServerConnection(useEnvironmentsStore.getState(), ORIGIN).slowRequestCount).toBe(0)
+    client.close()
+  })
+
+  test('overdue requests from concurrent owners are counted and cleared independently', async () => {
+    resetServerConnectionStore()
+    const socketA = new FakeOrchestrationSocket()
+    const socketB = new FakeOrchestrationSocket()
+    const clientA = createClient(socketA, latencyOnly())
+    const clientB = createClient(socketB, latencyOnly())
+    const first = captureOutcome(clientA.threadDetailPage({ threadId: THREAD_ID }))
+    const second = captureOutcome(clientB.threadDetailPage({ threadId: THREAD_ID }))
+    await tick()
+    socketA.open()
+    socketB.open()
+    await Promise.all([waitForRequest(socketA), waitForRequest(socketB)])
+    await sleep(SLOW_REQUEST_MS * 2)
+    expect(selectServerConnection(useEnvironmentsStore.getState(), ORIGIN).slowRequestCount).toBe(2)
+
+    clientA.close()
+    expect(selectServerConnection(useEnvironmentsStore.getState(), ORIGIN).slowRequestCount).toBe(1)
+    clientB.close()
+    expect(selectServerConnection(useEnvironmentsStore.getState(), ORIGIN).slowRequestCount).toBe(0)
+    await Promise.all([first, second])
   })
 
   test('a dropped socket clears the overdue requests it stranded', async () => {
     resetServerConnectionStore()
-    const socket = new FakeSocket()
+    const socket = new FakeOrchestrationSocket()
     const client = createClient(socket, latencyOnly())
     const failure = captureOutcome(client.threadDetailPage({ threadId: THREAD_ID }))
 
@@ -140,26 +172,15 @@ describe('orchestration rpc client connection identity', () => {
     socket.open()
     await waitForRequest(socket)
     await sleep(SLOW_REQUEST_MS * 2)
-    expect(useServerConnectionStore.getState().slowRequestCount).toBe(1)
+    expect(selectServerConnection(useEnvironmentsStore.getState(), ORIGIN).slowRequestCount).toBe(1)
 
     socket.serverClose({ code: 1006, wasClean: false })
     await failure
 
     // Otherwise the panel keeps counting a request that can never answer.
-    expect(useServerConnectionStore.getState().slowRequestCount).toBe(0)
+    expect(selectServerConnection(useEnvironmentsStore.getState(), ORIGIN).slowRequestCount).toBe(0)
   })
 })
-
-function serverConfig(serverInstanceId: string) {
-  return {
-    capabilities: { resume: true, synchronizedMarker: true },
-    limits: { replayMaxEvents: 1_000, resumeMaxGap: 1_000 },
-    protocolVersion: ORCHESTRATION_WS_PROTOCOL_VERSION,
-    serverInstanceId,
-    serverVersion: '0.0.1',
-    startedAt: '2026-08-10T00:00:00.000Z',
-  }
-}
 
 /**
  * Liveness pushed out of the way so a latency test measures only latency. With
@@ -176,7 +197,7 @@ function latencyOnly() {
 }
 
 function createClient(
-  socket: FakeSocket,
+  socket: FakeOrchestrationSocket,
   overrides: {
     heartbeatIntervalMs?: number
     heartbeatTimeoutMs?: number
@@ -187,64 +208,13 @@ function createClient(
     createSocket: () => socket as unknown as WebSocket,
     heartbeatIntervalMs: HEARTBEAT_MS,
     heartbeatTimeoutMs: HEARTBEAT_TIMEOUT_MS,
-    url: () => 'ws://orchestration.test/orchestration/rpc',
+    origin: ORIGIN,
     ...overrides,
   })
 }
 
-/**
- * Stands in for the browser socket so the test can hold a connection half-open:
- * a real WebSocket cannot be made to stay `OPEN` while ignoring pings.
- */
-class FakeSocket {
-  autoPong = false
-  closed = false
-  readyState = 0
-  sent: string[] = []
-  private listeners = new Map<string, Array<(event: unknown) => void>>()
-
-  addEventListener(type: string, listener: (event: never) => void) {
-    const existing = this.listeners.get(type) ?? []
-    existing.push(listener as (event: unknown) => void)
-    this.listeners.set(type, existing)
-  }
-
-  close() {
-    this.closed = true
-    this.readyState = 3
-  }
-
-  send(data: string) {
-    this.sent.push(data)
-    const message = JSON.parse(data) as OrchestrationWsClientMessage
-    if (!this.autoPong || message.kind !== 'ping') return
-
-    setTimeout(() => this.deliver({ kind: 'pong', requestId: message.requestId }), 0)
-  }
-
-  open() {
-    this.readyState = 1
-    this.emit('open', { type: 'open' })
-  }
-
-  deliver(message: unknown) {
-    this.emit('message', { data: JSON.stringify(message) })
-  }
-
-  serverClose({ code, wasClean }: { code: number; wasClean: boolean }) {
-    this.readyState = 3
-    this.emit('close', { code, reason: '', type: 'close', wasClean })
-  }
-
-  private emit(type: string, event: unknown) {
-    for (const listener of this.listeners.get(type) ?? []) {
-      listener(event)
-    }
-  }
-}
-
 /** Sending goes through `await connect()`, so it lands some microtasks after `open()`. */
-async function waitForRequest(socket: FakeSocket) {
+async function waitForRequest(socket: FakeOrchestrationSocket) {
   for (let attempt = 0; attempt < 50; attempt += 1) {
     if (sentKinds(socket).includes('request')) return
 
@@ -254,11 +224,11 @@ async function waitForRequest(socket: FakeSocket) {
   expect.unreachable('the client never sent the request')
 }
 
-function sentMessages(socket: FakeSocket) {
+function sentMessages(socket: FakeOrchestrationSocket) {
   return socket.sent.map((raw) => JSON.parse(raw) as OrchestrationWsClientMessage)
 }
 
-function sentKinds(socket: FakeSocket) {
+function sentKinds(socket: FakeOrchestrationSocket) {
   return sentMessages(socket).map((message) => message.kind)
 }
 
@@ -277,3 +247,117 @@ function sleep(ms: number) {
 function tick() {
   return sleep(0)
 }
+
+describe('orchestration rpc permanent close', () => {
+  test('protocol 999 blocks subscriptions and commands before sending any frames', async () => {
+    const origin = 'http://LOCALHOST:37779/'
+    const socket = new FakeOrchestrationSocket()
+    const urls: string[] = []
+    const client = new OrchestrationRpcClient({
+      origin,
+      createSocket: (url) => {
+        urls.push(url)
+        return socket as unknown as WebSocket
+      },
+    })
+    const stream = captureOutcome(client.shellStream()[Symbol.asyncIterator]().next())
+    const command = captureOutcome(
+      client.dispatchCommand(createWorkspaceProjectCommand({ rootPath: 'project' })),
+    )
+    await tick()
+    socket.open(false)
+    socket.deliver({
+      kind: 'connected',
+      config: orchestrationServerConfig({ protocolVersion: 999 }),
+    })
+
+    const commandFailure = await command
+    expect(commandFailure).toMatchObject({ code: 'ENVIRONMENT_PROTOCOL_MISMATCH', status: 403 })
+    expect(await stream).toMatchObject({ code: 'ENVIRONMENT_PROTOCOL_MISMATCH', status: 403 })
+    expect(isBlockedStreamError(commandFailure)).toBe(true)
+    expect(socket.sent).toEqual([])
+    expect(socket.closed).toBe(true)
+    expect(urls).toEqual(['ws://localhost:37779/orchestration/rpc'])
+    expect(selectServerConnection(useEnvironmentsStore.getState(), origin)).toMatchObject({
+      phase: 'protocol-mismatch',
+      generation: 0,
+      serverInstanceId: null,
+    })
+    expect(
+      useEnvironmentsStore.getState().entries['http://localhost:37779']?.environmentId,
+    ).toBeUndefined()
+    client.close()
+  })
+
+  test.each([false, true])(
+    'close settles streams and requests with socket open=%s',
+    async (open) => {
+      const socket = new FakeOrchestrationSocket()
+      let socketCount = 0
+      const client = new OrchestrationRpcClient({
+        origin: ORIGIN,
+        createSocket: () => {
+          socketCount += 1
+          return socket as unknown as WebSocket
+        },
+        heartbeatIntervalMs: 10_000,
+      })
+      const stream = captureOutcome(client.shellStream()[Symbol.asyncIterator]().next())
+      const request = captureOutcome(client.threadDetailPage({ threadId: THREAD_ID }))
+      await tick()
+      if (open) socket.open()
+      await tick()
+      client.close()
+      client.close()
+      expect(await stream).toMatchObject({ code: 'ORCHESTRATION_RPC_CLOSED' })
+      expect(await request).toMatchObject({ code: 'ORCHESTRATION_RPC_CLOSED' })
+      const frameCount = socket.sent.length
+      socket.open()
+      await tick()
+      expect(socket.sent).toHaveLength(frameCount)
+      expect(client.closed).toBe(true)
+      expect(await captureOutcome(client.threadDetailPage({ threadId: THREAD_ID }))).toMatchObject({
+        code: 'ORCHESTRATION_RPC_CLOSED',
+      })
+      expect(socketCount).toBe(1)
+    },
+  )
+
+  test('1008 blocks retry even when the socket sent no frames', async () => {
+    const socket = new FakeOrchestrationSocket()
+    const client = createClient(socket)
+    const result = captureOutcome(client.shellStream()[Symbol.asyncIterator]().next())
+    await tick()
+    socket.open(false)
+    socket.serverClose({ code: 1008, wasClean: true })
+    const failure = await result
+    expect(failure).toMatchObject({ status: 401 })
+    expect(isBlockedStreamError(failure)).toBe(true)
+    client.close()
+  })
+
+  test('identity drift rejects before sending a command or accepting projection data', async () => {
+    const origin = 'http://identity-drift.test'
+    useEnvironmentsStore.getState().recordHandshake(origin, orchestrationServerConfig())
+    const socket = new FakeOrchestrationSocket()
+    const client = new OrchestrationRpcClient({
+      origin,
+      createSocket: () => socket as unknown as WebSocket,
+    })
+    const result = captureOutcome(client.threadDetailPage({ threadId: THREAD_ID }))
+    await tick()
+    socket.open(false)
+    expect(socket.sent).toEqual([])
+    socket.deliver({
+      kind: 'connected',
+      config: orchestrationServerConfig({ environmentId: 'other-environment' }),
+    })
+    expect(await result).toMatchObject({ code: 'ENVIRONMENT_IDENTITY_DRIFT', status: 403 })
+    expect(selectServerConnection(useEnvironmentsStore.getState(), origin).phase).toBe(
+      'identity-drift',
+    )
+    expect(socket.sent).toEqual([])
+    expect(socket.closed).toBe(true)
+    client.close()
+  })
+})

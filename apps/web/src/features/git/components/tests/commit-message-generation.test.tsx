@@ -6,7 +6,7 @@ import { cleanup, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MockProviderAdapter } from 'server/testing'
 
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../../test/factories/editor-state-provider'
 import { CommitControls } from '@/features/git/components/commit-controls'
 import { GitStoreProvider } from '@/features/git/providers/store-provider'
 import { getClient, setClient, type Client } from '@/lib/client'

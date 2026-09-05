@@ -1,4 +1,5 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 
 import { fetchSettings } from '@/features/settings/utils/api'
 import {
@@ -9,12 +10,10 @@ import { settingsKeys } from '@/features/settings/utils/query-keys'
 
 /** The confirmed document exactly as the server last acknowledged it. */
 export function useSettingsDocument() {
-  const queryClient = useQueryClient()
-
   return useQuery({
-    queryFn: async ({ signal }) => {
+    queryFn: async ({ signal, client: queryClient }) => {
       const token = beginSettingsSnapshotRead(queryClient)
-      const snapshot = await fetchSettings(signal)
+      const snapshot = await fetchSettings(signal, clientForQueryClient(queryClient))
       return observeInitialSettingsSnapshot(queryClient, snapshot, token)
     },
     queryKey: settingsKeys.document(),

@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { useMutation } from '@tanstack/react-query'
 
 import { discardPaths } from '@/features/git/utils/api'
@@ -9,7 +10,7 @@ export function useDiscardPathsMutation(paths: readonly string[]) {
   const invalidate = useWorkspaceInvalidation()
 
   return useMutation({
-    mutationFn: () => discardPaths(paths),
+    mutationFn: (_variables, { client }) => discardPaths(paths, clientForQueryClient(client)),
     mutationKey: mutationKeys.discardMany(paths),
     onError: notifyMutationError,
     onSuccess: invalidate,

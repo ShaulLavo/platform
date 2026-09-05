@@ -1,4 +1,5 @@
-import { QueryClient, QueryClientProvider, type QueryKey } from '@tanstack/react-query'
+import { createTestQueryClient } from '../../../../test/render'
+import { type QueryClient, QueryClientProvider, type QueryKey } from '@tanstack/react-query'
 import { act, renderHook } from '@testing-library/react'
 import { useState, type ReactNode } from 'react'
 
@@ -11,7 +12,7 @@ test('prefetch and load reuse the exact base-directory cache entry', async ({ cl
   await client.fs['create-folder'].post({ path: 'target', recursive: true })
   await client.fs['create-file'].post({ path: 'target/readme.md' })
 
-  const queryClient = testQueryClient()
+  const queryClient = createTestQueryClient()
   const { result } = renderHook(
     () =>
       useDirectoryTransition({
@@ -53,7 +54,7 @@ test('changes the path only after the destination has loaded successfully', asyn
   await client.fs['create-folder'].post({ path: 'current', recursive: true })
   await client.fs['create-folder'].post({ path: 'target', recursive: true })
 
-  const queryClient = testQueryClient()
+  const queryClient = createTestQueryClient()
   const { result } = renderHook(() => useGatedDirectoryPath('current'), {
     wrapper: queryClientWrapper(queryClient),
   })
@@ -74,7 +75,7 @@ test('changes the path only after the destination has loaded successfully', asyn
 test('leaves the path unchanged when the destination cannot load', async ({ client }) => {
   await client.fs['create-folder'].post({ path: 'current', recursive: true })
 
-  const queryClient = testQueryClient()
+  const queryClient = createTestQueryClient()
   const { result } = renderHook(() => useGatedDirectoryPath('current'), {
     wrapper: queryClientWrapper(queryClient),
   })
@@ -96,7 +97,7 @@ test('allows only the latest overlapping load to succeed', async ({ client }) =>
   await client.fs['create-folder'].post({ path: 'first', recursive: true })
   await client.fs['create-folder'].post({ path: 'second', recursive: true })
 
-  const queryClient = testQueryClient()
+  const queryClient = createTestQueryClient()
   const { result } = renderHook(
     () =>
       useDirectoryTransition({
@@ -125,7 +126,7 @@ test('rejects an older intent that reaches loading after a newer navigation', as
   await client.fs['create-folder'].post({ path: 'older', recursive: true })
   await client.fs['create-folder'].post({ path: 'newer', recursive: true })
 
-  const queryClient = testQueryClient()
+  const queryClient = createTestQueryClient()
   const { result } = renderHook(
     () =>
       useDirectoryTransition({
@@ -170,12 +171,6 @@ function useGatedDirectoryPath(initialPath: string) {
   }
 
   return { currentPath, navigate }
-}
-
-function testQueryClient() {
-  return new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
 }
 
 function queryClientWrapper(queryClient: QueryClient) {

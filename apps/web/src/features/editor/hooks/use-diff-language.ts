@@ -1,3 +1,5 @@
+import { useQueryClient } from '@tanstack/react-query'
+import { originForQueryClient } from '@/lib/environments/state/query-clients'
 import type { EditorPlugin, EditorTheme } from '@singapor/core'
 import type { DiffFile, DiffRenderRow } from '@singapor/diff'
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
@@ -58,6 +60,7 @@ export function useDiffLanguage(
   theme: EditorTheme,
   languageServer: DiffLanguageServerContext | null,
 ): EditorPlugin | null {
+  const origin = originForQueryClient(useQueryClient())
   const newLines = file?.newLines ?? EMPTY_DIFF_LINES
   const oldLines = file?.oldLines ?? EMPTY_DIFF_LINES
   const map = useMemo(
@@ -126,7 +129,9 @@ export function useDiffLanguage(
       documents,
       lanes: routedMatches.map((match) =>
         languageServerLaneOptions({
+          origin,
           connectionProvider: diffLanguageServerConnectionProvider({
+            origin,
             rootPath: match.root,
             serverId: match.serverId,
             sessionId: crypto.randomUUID(),
@@ -147,7 +152,7 @@ export function useDiffLanguage(
       Object.assign(latest, { documents: [], drifted: new Set<DiffFileSide>(), session: null })
       session.dispose()
     }
-  }, [documentPath, file, latest, onApplyWorkspaceEdit, rootPath, routedMatches])
+  }, [documentPath, file, latest, onApplyWorkspaceEdit, origin, rootPath, routedMatches])
 
   // Only whether a file could be asked about at all rebuilds the plugin; everything else is read
   // live from the holder.

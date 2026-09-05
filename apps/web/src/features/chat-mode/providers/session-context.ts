@@ -1,13 +1,13 @@
 import type { OrchestrationProjectShell, ProjectId, ThreadId } from '@workspace/contracts'
 import { createContext, use } from 'react'
 
-import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
+import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import type { ActiveSession } from '@/features/chat-mode/utils/active-session'
 import { clientErrors } from '@/lib/structured-errors'
 
 export type ChatModeSession = {
   readonly activeSession: ActiveSession
-  readonly environment: ChatEnvironment
+  readonly transport: ChatTransport
   readonly error: string | null
   /** Opens the folder picker so a directory can join the rail as a project. */
   readonly addProject: () => void

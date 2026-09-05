@@ -2,6 +2,7 @@ import type { Query, QueryClient, QueryKey } from '@tanstack/react-query'
 
 import type { FileResult } from '@/lib/file-system-types'
 import { fetchFile } from '@/lib/file-server'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { fileSystemKeys } from '@/lib/query-keys'
 
 export const FILE_SNAPSHOT_QUERY_GC_TIME_MS = 2 * 60 * 1000
@@ -19,12 +20,12 @@ type FileSnapshotQueryConfig = {
 // they share one query key, one freshness window, and one in-flight fetch
 // instead of racing duplicate reads of the same file.
 export function fileSnapshotQueryOptions(path: string, config: FileSnapshotQueryConfig = {}) {
-  const fetcher = config.fetcher ?? fetchFile
   return {
     gcTime: FILE_SNAPSHOT_QUERY_GC_TIME_MS,
-    queryFn: ({ signal }: { signal: AbortSignal }) => {
+    queryFn: ({ client, signal }: { client: QueryClient; signal: AbortSignal }) => {
       markEditorOpenBenchmark('editor.file_open.file_read', path)
-      return fetcher(path, signal)
+      if (config.fetcher) return config.fetcher(path, signal)
+      return fetchFile(path, signal, clientForQueryClient(client))
     },
     queryKey: fileSystemKeys.fileSnapshot(path),
     staleTime: FILE_SNAPSHOT_STALE_MS,

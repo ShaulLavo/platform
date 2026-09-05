@@ -20,7 +20,9 @@ import type {
 } from '@workspace/contracts'
 
 import { createEditorDocumentStore } from '@/features/editor/state/document-state'
-import { saveEditorDocumentByPath } from '@/features/editor/utils/save'
+import { EditorSaveService } from '@/features/editor/state/save-service'
+import { SettingsSyncService } from '@/features/settings/state/sync-service'
+import { createTestQueryClient } from '../../../../test/render'
 import {
   FileSyncService,
   type WorkspaceMutationTransition,
@@ -583,7 +585,11 @@ test.describe('WorkspaceEditService', () => {
     createEditorBufferSession(conflicted.buffer).applyText(' blocked')
     expect(conflicted.buffer.materializeFullText()).toBe(beforeText)
     await expect(
-      saveEditorDocumentByPath(harness.store, new QueryClient(), '/repo/before.ts'),
+      new EditorSaveService(
+        harness.store,
+        harness.fileSync,
+        new SettingsSyncService(harness.store, createTestQueryClient()),
+      ).save('/repo/before.ts'),
     ).resolves.toBe(false)
     expect(harness.service.canSwitchRoot()).toBe(false)
     const pathRequest = harness.store

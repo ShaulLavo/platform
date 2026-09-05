@@ -16,7 +16,7 @@ import {
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
-import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
+import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { syncThreadProjectionAfterDispatch } from '@/features/chat/utils/command-sync'
 
@@ -25,7 +25,7 @@ describe('chat command sync', () => {
     const threadId = v.parse(threadIdSchema, 'thread-1')
     const messageId = v.parse(messageIdSchema, 'message-1')
     const event = messageSentEvent({ messageId, sequence: 10, threadId })
-    const environment = {
+    const transport = {
       replayEvents: async () => ({ events: [event] }),
       threadDetailSnapshot: async () =>
         threadDetailSnapshot({
@@ -33,11 +33,11 @@ describe('chat command sync', () => {
           sequence: 9,
           threadId,
         }),
-    } as unknown as ChatEnvironment
+    } as unknown as ChatTransport
 
     useChatProjectionStore.getState().resetChatProjection()
     await syncThreadProjectionAfterDispatch({
-      environment,
+      transport,
       replayAfterSequence: 8,
       threadId,
     })
@@ -53,7 +53,7 @@ describe('chat command sync', () => {
   it('syncs the authoritative thread detail snapshot when replay is unavailable', async () => {
     const threadId = v.parse(threadIdSchema, 'thread-1')
     const messageId = v.parse(messageIdSchema, 'message-1')
-    const environment = {
+    const transport = {
       replayEvents: async () => {
         throw new Error('replay unavailable')
       },
@@ -63,11 +63,11 @@ describe('chat command sync', () => {
           sequence: 10,
           threadId,
         }),
-    } as unknown as ChatEnvironment
+    } as unknown as ChatTransport
 
     useChatProjectionStore.getState().resetChatProjection()
     await syncThreadProjectionAfterDispatch({
-      environment,
+      transport,
       replayAfterSequence: 8,
       threadId,
     })

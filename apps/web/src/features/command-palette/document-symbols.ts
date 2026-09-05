@@ -1,5 +1,6 @@
 import { connectLanguageServerSocket, type EdenServerSocket } from '@/lib/server-sockets'
 import { clientErrors } from '@/lib/structured-errors'
+import { getClient, type Client } from '@/lib/client'
 
 type DocumentSymbolRange = {
   start: { line: number; character: number }
@@ -28,47 +29,56 @@ type JsonRpcResponse = {
   result?: unknown
 }
 
-export async function fetchDocumentSymbols({
-  path,
-  rootPath,
-  signal,
-  text,
-}: {
-  path: string
-  rootPath: string
-  signal?: AbortSignal
-  text?: string | null
-}): Promise<readonly FlatDocumentSymbol[]> {
-  const symbols = await requestDocumentSymbols({
+export async function fetchDocumentSymbols(
+  {
     path,
     rootPath,
     signal,
     text,
-  }).catch((error: unknown) => {
+  }: {
+    path: string
+    rootPath: string
+    signal?: AbortSignal
+    text?: string | null
+  },
+  client: Client = getClient(),
+): Promise<readonly FlatDocumentSymbol[]> {
+  const symbols = await requestDocumentSymbols(
+    {
+      path,
+      rootPath,
+      signal,
+      text,
+    },
+    client,
+  ).catch((error: unknown) => {
     if (signal?.aborted) throw error
     return []
   })
   return flattenDocumentSymbols(symbols)
 }
 
-function requestDocumentSymbols({
-  path,
-  rootPath,
-  signal,
-  text,
-}: {
-  path: string
-  rootPath: string
-  signal?: AbortSignal
-  text?: string | null
-}) {
+function requestDocumentSymbols(
+  {
+    path,
+    rootPath,
+    signal,
+    text,
+  }: {
+    path: string
+    rootPath: string
+    signal?: AbortSignal
+    text?: string | null
+  },
+  client: Client,
+) {
   return new Promise<readonly DocumentSymbol[]>((resolve, reject) => {
     if (signal?.aborted) {
       reject(clientErrors.DOCUMENT_SYMBOL_ABORTED())
       return
     }
 
-    const socket = connectLanguageServerSocket({ path, rootPath })
+    const socket = connectLanguageServerSocket({ path, rootPath }, client, signal)
     const requestId = 1
     let settled = false
 

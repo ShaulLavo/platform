@@ -9,7 +9,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
 
 import { notifyChatCommandError } from '@/features/chat/notify-command-error'
-import type { ChatEnvironment } from '../environment/chat-environment'
+import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import { useSessionIsolationStore } from '@/features/chat-mode/state/session-isolation-store'
 import {
   createDraftThreadSubmission,
@@ -31,13 +31,13 @@ const DRAFT_CHAT_KEY = 'draft'
 
 export function ChatDraftView({
   disabled,
-  environment,
+  transport,
   onThreadCreated,
   project,
   rootPath,
 }: {
   disabled: boolean
-  environment: ChatEnvironment
+  transport: ChatTransport
   onThreadCreated: (threadId: ThreadId) => void
   project: OrchestrationProjectShell | null
   rootPath: string
@@ -71,11 +71,11 @@ export function ChatDraftView({
           defaultModelSelection: next,
           projectId: project.id,
         }),
-        dispatchCommand: environment.dispatchCommand,
+        dispatchCommand: transport.dispatchCommand,
         onFailed: (error) => notifyChatCommandError(error, 'Could not save the default model'),
       })
     },
-    [environment, project],
+    [transport, project],
   )
   const handleSend = useCallback(
     async ({
@@ -133,10 +133,10 @@ export function ChatDraftView({
           terminalContextCount: terminalContexts.length,
           textLength: text.length,
         },
-        dispatchCommand: environment.dispatchCommand,
+        dispatchCommand: transport.dispatchCommand,
         onAccepted: (result) =>
           scheduleThreadProjectionSyncAfterDispatch({
-            environment,
+            transport,
             replayAfterSequence: replayAfterDispatch(submission.command, result),
             threadId: submission.command.threadId,
           }),
@@ -152,7 +152,7 @@ export function ChatDraftView({
 
       return true
     },
-    [consumeIsolation, environment, onThreadCreated, project, rootPath],
+    [consumeIsolation, transport, onThreadCreated, project, rootPath],
   )
 
   return (
@@ -161,7 +161,7 @@ export function ChatDraftView({
       {/* No thread exists yet, so a mode pick only lands in the draft — the turn
           that creates the thread carries it through `bootstrap.createThread`. */}
       <ChatComposerModesProvider
-        dispatchCommand={environment.dispatchCommand}
+        dispatchCommand={transport.dispatchCommand}
         draftTarget={draftTarget}
         threadId={null}
       >

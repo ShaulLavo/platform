@@ -35,13 +35,14 @@ import { settingsKeys } from '@/features/settings/utils/query-keys'
 
 test('replays pending intents in one strict process-wide order', () => {
   resetSettingsIntentStore()
-  const first = submitSettingsIntent('user', [
+  const queryClient = createTestQueryClient()
+  const first = submitSettingsIntent(queryClient, 'user', [
     { key: 'workbench.colorTheme', kind: 'set', value: 'dark' },
   ]).entry
-  const second = submitSettingsIntent('user', [
+  const second = submitSettingsIntent(queryClient, 'user', [
     { key: 'workbench.colorTheme', kind: 'set', value: 'light' },
   ]).entry
-  const third = submitSettingsIntent('user', [
+  const third = submitSettingsIntent(queryClient, 'user', [
     { key: 'workbench.colorTheme', kind: 'set', value: 'system' },
   ]).entry
 
@@ -67,7 +68,8 @@ test('never exposes confirmed file text or revisions through projected layers', 
 
 test('rebases pending semantic intent over a newer confirmed snapshot', () => {
   resetSettingsIntentStore()
-  const pending = submitSettingsIntent('user', [
+  const queryClient = createTestQueryClient()
+  const pending = submitSettingsIntent(queryClient, 'user', [
     { key: 'workbench.colorTheme', kind: 'set', value: 'light' },
   ]).entry
   const confirmed = settingsSnapshot({
@@ -86,10 +88,11 @@ test('rebases pending semantic intent over a newer confirmed snapshot', () => {
 
 test('acknowledgement removes only its matching optimistic projection', () => {
   resetSettingsIntentStore()
-  const first = submitSettingsIntent('user', [
+  const queryClient = createTestQueryClient()
+  const first = submitSettingsIntent(queryClient, 'user', [
     { key: 'workbench.colorTheme', kind: 'set', value: 'dark' },
   ]).entry
-  const second = submitSettingsIntent('user', [
+  const second = submitSettingsIntent(queryClient, 'user', [
     { key: 'editor.fontSize', kind: 'set', value: 18 },
   ]).entry
 
@@ -105,6 +108,7 @@ test('acknowledgement removes only its matching optimistic projection', () => {
 
 test('provider projection preserves confirmed masks without writing them into raw config', () => {
   resetSettingsIntentStore()
+  const queryClient = createTestQueryClient()
   const providerInstanceId = v.parse(providerInstanceIdSchema, 'codex-work')
   const driverKind = v.parse(providerDriverKindSchema, 'codex')
   const rawProvider = {
@@ -122,7 +126,7 @@ test('provider projection preserves confirmed masks without writing them into ra
     environment: [{ name: 'CODEX_TOKEN', value: REDACTED_SETTINGS_VALUE }],
     providerInstanceId,
   }
-  submitSettingsIntent('user', [
+  submitSettingsIntent(queryClient, 'user', [
     {
       enabled: false,
       kind: 'provider.setEnabled',
@@ -150,16 +154,17 @@ test('provider projection preserves confirmed masks without writing them into ra
 
 test('failure removes only its intent and later same-resource intent supersedes stale Retry', () => {
   resetSettingsIntentStore()
-  const failedTheme = submitSettingsIntent('user', [
+  const queryClient = createTestQueryClient()
+  const failedTheme = submitSettingsIntent(queryClient, 'user', [
     { key: 'workbench.colorTheme', kind: 'set', value: 'dark' },
   ]).entry
-  const failedFont = submitSettingsIntent('user', [
+  const failedFont = submitSettingsIntent(queryClient, 'user', [
     { key: 'editor.fontSize', kind: 'set', value: 18 },
   ]).entry
 
   failSettingsIntent(failedTheme.request.mutationId, { code: 'settings.WRITE_CONTENDED' })
   failSettingsIntent(failedFont.request.mutationId, { code: 'transport.closed' })
-  const winner = submitSettingsIntent('user', [
+  const winner = submitSettingsIntent(queryClient, 'user', [
     { key: 'workbench.colorTheme', kind: 'set', value: 'light' },
   ]).entry
 
@@ -199,12 +204,15 @@ test('failure removes only its intent and later same-resource intent supersedes 
 
 test('replays each intent only into its target layer across confirmed roots', () => {
   resetSettingsIntentStore()
+  const queryClient = createTestQueryClient()
   const confirmed = settingsSnapshot({
     userRaw: { 'workbench.colorTheme': 'dark' },
     values: { 'workbench.colorTheme': 'light' },
     workspaceRaw: { 'workbench.colorTheme': 'light' },
   })
-  submitSettingsIntent('user', [{ key: 'workbench.colorTheme', kind: 'set', value: 'system' }])
+  submitSettingsIntent(queryClient, 'user', [
+    { key: 'workbench.colorTheme', kind: 'set', value: 'system' },
+  ])
 
   const userOnly = projectSettings(confirmed, useSettingsIntentStore.getState().active)
   expect(userOnly.values['workbench.colorTheme']).toBe('light')
@@ -215,7 +223,9 @@ test('replays each intent only into its target layer across confirmed roots', ()
     'workbench.colorTheme': 'light',
   })
 
-  submitSettingsIntent('workspace', [{ key: 'workbench.colorTheme', kind: 'set', value: 'dark' }])
+  submitSettingsIntent(queryClient, 'workspace', [
+    { key: 'workbench.colorTheme', kind: 'set', value: 'dark' },
+  ])
   const both = projectSettings(confirmed, useSettingsIntentStore.getState().active)
   expect(both.values['workbench.colorTheme']).toBe('dark')
   expect(confirmed.layers[0]?.raw).toEqual({ 'workbench.colorTheme': 'dark' })
@@ -228,7 +238,7 @@ test('SSE acknowledgement filters its intent before newer SSE and late HTTP deli
   const queryClient = createTestQueryClient()
   const initial = settingsSnapshot({ epoch: 'ordered-epoch', sequence: 0 })
   queryClient.setQueryData(settingsKeys.document(), initial)
-  const intent = submitSettingsIntent('user', [
+  const intent = submitSettingsIntent(queryClient, 'user', [
     { key: 'workbench.colorTheme', kind: 'set', value: 'dark' },
   ]).entry
   const acknowledged = settingsSnapshot({
@@ -343,7 +353,7 @@ test('provider invalidation waits for relevant acknowledgement and is not repeat
   queryClient.setQueryData(settingsKeys.document(), initial)
   resetProviderQuery(queryClient)
   const providerInstanceId = v.parse(providerInstanceIdSchema, 'codex-work')
-  const intent = submitSettingsIntent('user', [
+  const intent = submitSettingsIntent(queryClient, 'user', [
     {
       enabled: false,
       kind: 'provider.setEnabled',
@@ -413,7 +423,7 @@ test('unexpected-epoch provider recovery invalidates once after intent acknowled
   resetProviderQuery(queryClient)
   const providerInstanceId = v.parse(providerInstanceIdSchema, 'recovered-provider')
   const driverKind = v.parse(providerDriverKindSchema, 'codex')
-  const intent = submitSettingsIntent('user', [
+  const intent = submitSettingsIntent(queryClient, 'user', [
     {
       createIfMissing: { driverKind },
       enabled: true,
@@ -509,7 +519,7 @@ test('unexpected epoch refetches confirmed state and keeps pending intent projec
     values: { 'editor.fontSize': 15 },
   })
   queryClient.setQueryData(settingsKeys.document(), retired)
-  const pending = submitSettingsIntent('user', [
+  const pending = submitSettingsIntent(queryClient, 'user', [
     { key: 'editor.fontSize', kind: 'set', value: 18 },
   ]).entry
   const surprising = settingsSnapshot({
@@ -563,7 +573,7 @@ test('failed epoch recovery keeps intent pending until active confirmed evidence
     settingsKeys.document(),
     settingsSnapshot({ epoch: 'superseded-client-epoch', sequence: 4 }),
   )
-  const intent = submitSettingsIntent('user', [
+  const intent = submitSettingsIntent(queryClient, 'user', [
     { key: 'workbench.colorTheme', kind: 'set', value: 'dark' },
   ]).entry
   const result = await saveSettings(intent.request)

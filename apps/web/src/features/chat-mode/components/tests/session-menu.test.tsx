@@ -4,7 +4,7 @@ import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import * as v from 'valibot'
 
-import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
+import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { SessionDeleteDialog } from '@/features/chat-mode/components/session-delete-dialog'
 import { SessionRail } from '@/features/chat-mode/components/session-rail'
@@ -17,7 +17,7 @@ import { useSessionDeleteRequestStore } from '@/features/chat-mode/state/session
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
 import { resetSessionReadStore } from '@/features/chat-mode/state/session-read-store'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../../test/factories/editor-state-provider'
 import { chatProject, shellSnapshot, threadShell } from '../../../../../test/factories/chat'
 import { expect, test } from '../../../../../test/fixtures'
 import { renderWithProviders } from '../../../../../test/render'
@@ -188,13 +188,13 @@ function renderRail({
   const session: ChatModeSession = {
     activeSession: { status: 'ready', threadId },
     addProject: () => {},
-    environment: {
+    transport: {
       dispatchCommand: async (command: ClientOrchestrationCommand) => {
         dispatched.push(command)
 
         return { deduped: false, sequence: dispatched.length }
       },
-    } as ChatEnvironment,
+    } as ChatTransport,
     error: null,
     openProject: () => {},
     project: chatProject({ id: projectId, title: 'platform', workspaceRoot: '/repo/platform' }),

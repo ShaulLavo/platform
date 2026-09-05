@@ -7,7 +7,7 @@ import {
   type RenderResult,
 } from '@testing-library/react'
 import { TooltipProvider } from '@workspace/ui/components/tooltip'
-import type { ReactElement, ReactNode } from 'react'
+import { StrictMode, useState, type ReactElement, type ReactNode } from 'react'
 
 import { EditorColorThemeProvider } from '@/features/editor/hooks/use-editor-color-theme'
 import { AppearanceProvider } from '@/features/settings/providers/appearance-provider'
@@ -16,12 +16,22 @@ import { FocusProvider } from '@/lib/focus/providers/provider'
 import type { FocusService } from '@/lib/focus/state/service'
 import { TestCommandProvider, type TestCommandRuntimeOptions } from './factories/command-runtime'
 import { LanguageServerMatchProvider } from '@/features/editor/providers/language-server-match-provider'
+import { activeServerOrigin, getClient } from '@/lib/client'
+import { registerEnvironmentQueryClient } from '@/lib/environments/state/query-clients'
+import { CommandBusProvider } from '@/keymap/providers/bus-provider'
+import { createCommandRuntimeBinding } from '@/keymap/state/runtime-binding'
+import { HotkeysProvider } from '@tanstack/react-hotkeys'
+import { ActiveEnvironmentApplication } from '@/components/active-environment-application'
+import { ApplicationRuntimeProvider } from '@/providers/application-runtime-provider'
+import type { ApplicationRuntime } from '@/state/application-runtime'
 
 // Retry/gc off so failing queries surface immediately and no timers outlive a test.
 export function createTestQueryClient() {
-  return new QueryClient({
+  const queryClient = new QueryClient({
     defaultOptions: { queries: { gcTime: Number.POSITIVE_INFINITY, retry: false } },
   })
+  registerEnvironmentQueryClient(queryClient, activeServerOrigin(), getClient())
+  return queryClient
 }
 
 export type RenderWithProvidersOptions = Omit<RenderOptions, 'wrapper'> & {
@@ -48,6 +58,7 @@ export function AppProviders({
   readonly focusService?: FocusService
   readonly queryClient: QueryClient
 }) {
+  const [binding] = useState(createCommandRuntimeBinding)
   const content = <TooltipProvider delay={0}>{children}</TooltipProvider>
 
   return (
@@ -57,7 +68,7 @@ export function AppProviders({
           <AppearanceProvider bootDensity={readSettingsMirror()['workbench.density']}>
             <EditorColorThemeProvider>
               {command === false ? (
-                content
+                <CommandBusProvider binding={binding}>{content}</CommandBusProvider>
               ) : (
                 <TestCommandProvider options={command} queryClient={queryClient}>
                   {content}
@@ -141,4 +152,21 @@ export function renderHookWithProviders<Result, Props>(
   }
 
   return { queryClient, ...renderHook(callback, { wrapper: Wrapper, ...options }) }
+}
+
+export function renderApplication(ui: ReactNode, application: ApplicationRuntime) {
+  seedBootMirrorTheme('dark')
+  return render(
+    <StrictMode>
+      <ApplicationRuntimeProvider application={application}>
+        <FocusProvider>
+          <HotkeysProvider>
+            <CommandBusProvider binding={application.commandBinding}>
+              <ActiveEnvironmentApplication bootDensity='cozy'>{ui}</ActiveEnvironmentApplication>
+            </CommandBusProvider>
+          </HotkeysProvider>
+        </FocusProvider>
+      </ApplicationRuntimeProvider>
+    </StrictMode>,
+  )
 }

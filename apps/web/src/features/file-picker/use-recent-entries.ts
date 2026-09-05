@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import type { FsEntry, ServerInfo } from '@/lib/file-system-types'
 import { filePickerKeys } from '@/lib/query-keys'
 import { useQuery } from '@tanstack/react-query'
@@ -20,7 +21,8 @@ export function useRecentEntries({
   const enabled = open && Boolean(serverInfo)
   const query = useQuery<FsEntry[]>({
     enabled,
-    queryFn: ({ signal }) => fetchRecentEntries(mode, showHidden, signal),
+    queryFn: ({ signal, client }) =>
+      fetchRecentEntries(mode, showHidden, signal, clientForQueryClient(client)),
     queryKey: filePickerKeys.recentList(mode, showHidden),
   })
 

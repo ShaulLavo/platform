@@ -1,6 +1,6 @@
 import { chatAttachmentUrlPath, type ChatAttachment } from '@workspace/contracts'
 
-import { serverUrl } from '@/lib/client'
+import { activeServerOrigin } from '@/lib/client'
 
 /** What both the composer and the transcript hand the lightbox to paint. */
 export type ChatAttachmentImage = {
@@ -27,7 +27,8 @@ export function chatAttachmentImageSrc(attachment: ChatAttachment): string | nul
   const urlPath = chatAttachmentUrlPath(attachment)
   if (!urlPath) return null
 
-  return `${serverUrl.replace(/\/+$/u, '')}${urlPath}`
+  // Plan 078 passes the owning environment's origin when transcripts from several machines coexist.
+  return `${activeServerOrigin().replace(/\/+$/u, '')}${urlPath}`
 }
 
 export function chatAttachmentImages(

@@ -1,0 +1,69 @@
+import { QueryClient } from '@tanstack/react-query'
+
+import { canonicalServerOrigin, environmentClientFor, type Client } from '@/lib/client'
+import { installServerRestartInvalidation } from '@/lib/environments/state/server-restart-invalidation'
+import {
+  createQueryClientOwnerConflictError,
+  createQueryClientOwnerMissingError,
+} from '@/lib/environments/utils/structured-errors'
+import { installFileSnapshotQueryCachePolicy } from '@/lib/file-snapshot-query-cache'
+
+type QueryClientOwner = {
+  readonly client: Client
+  readonly origin: string
+}
+
+const queryClients = new Map<string, QueryClient>()
+const owners = new WeakMap<QueryClient, QueryClientOwner>()
+
+export function queryClientFor(origin: string): QueryClient {
+  origin = canonicalServerOrigin(origin)
+  const existing = queryClients.get(origin)
+  if (existing) return existing
+
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        gcTime: 5 * 60 * 1000,
+        retry: 1,
+        staleTime: 10 * 1000,
+      },
+    },
+  })
+  registerEnvironmentQueryClient(queryClient, origin)
+  installFileSnapshotQueryCachePolicy(queryClient)
+  installServerRestartInvalidation(queryClient, origin)
+  queryClients.set(origin, queryClient)
+  return queryClient
+}
+
+export function registerEnvironmentQueryClient(
+  queryClient: QueryClient,
+  origin: string,
+  client: Client = environmentClientFor(origin),
+): void {
+  origin = canonicalServerOrigin(origin)
+  const owner = owners.get(queryClient)
+  if (!owner) {
+    owners.set(queryClient, { client, origin })
+    return
+  }
+  if (owner.origin === origin && owner.client === client) return
+
+  throw createQueryClientOwnerConflictError(owner.origin, origin)
+}
+
+export function clientForQueryClient(queryClient: QueryClient): Client {
+  return ownerForQueryClient(queryClient).client
+}
+
+export function originForQueryClient(queryClient: QueryClient): string {
+  return ownerForQueryClient(queryClient).origin
+}
+
+function ownerForQueryClient(queryClient: QueryClient): QueryClientOwner {
+  const owner = owners.get(queryClient)
+  if (owner) return owner
+
+  throw createQueryClientOwnerMissingError()
+}

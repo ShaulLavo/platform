@@ -1,9 +1,11 @@
+import { useQueryClient } from '@tanstack/react-query'
+import { useStore } from 'zustand'
 import { cn } from '@workspace/ui/lib/utils'
 import { useLayoutEffect, useRef } from 'react'
 
 import {
   selectCommitProgress,
-  useCommitProgressStore,
+  commitProgressStoreFor,
 } from '@/features/git/state/commit-progress-store'
 
 /**
@@ -14,7 +16,10 @@ import {
  * has not arrived yet.
  */
 export function CommitProgress({ rootPath }: { readonly rootPath: string }) {
-  const lines = useCommitProgressStore((state) => selectCommitProgress(state, rootPath))
+  const queryClient = useQueryClient()
+  const lines = useStore(commitProgressStoreFor(queryClient), (state) =>
+    selectCommitProgress(state, rootPath),
+  )
   const endRef = useRef<HTMLDivElement>(null)
 
   // Pinned to the newest line: this is a log of something in flight, and the

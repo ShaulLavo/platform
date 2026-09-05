@@ -13,7 +13,11 @@ import type {
 
 import type { OrchestrationStreamInput } from '../transport/orchestration-streams'
 
-export type ChatEnvironment = {
+export type ChatTransport = {
+  readonly closed: boolean
+  close(): void
+  retainThreadDetail(threadId: ThreadId): () => void
+  loadEarlierPage(threadId: ThreadId): Promise<boolean>
   dispatchCommand: (command: ClientOrchestrationCommand) => Promise<OrchestrationDispatchResult>
   replayEvents: (input: OrchestrationReplayEventsInput) => Promise<OrchestrationReplayEventsResult>
   shellStream: (input?: OrchestrationStreamInput) => AsyncIterable<OrchestrationShellStreamItem>

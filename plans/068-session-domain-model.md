@@ -8,15 +8,16 @@
 
 ## Status
 
-- **State:** Scheduled by root `PLAN.md` as environments lane step 2 — blocked on Plan 077
+- **State:** Ready — next environments slice in root `PLAN.md`; Plan 077 complete
 - **Priority:** P0 for the agent-view initiative
 - **Effort:** XL
 - **Risk:** HIGH — deliberate greenfield identity, wire, and projection cutover
 - **Platform baseline:** `4b25f1ab28eab2da499ac0cf0fcc633af1ea6640`
 - **Prepared:** 2026-08-27
-- **Dependency:** Plan 077 (environment identity, runtime origin, per-environment `ChatTransport`
-  and `QueryClient`) complete and deleted from `plans/`. Plan 069 starts only after this plan is
-  complete; Plan 078 (federated environments) requires this plan's environment-shaped web store.
+- **Dependency:** Plan 077 is complete. Its foundation includes stable environment identity,
+  owned transports and query clients, retained editor runtimes, and one command bus. Re-verify the
+  source owners below before editing. Plan 069 starts after this plan. Plan 078 requires this
+  plan's environment-shaped web store.
 - **Environment-aware since:** 2026-09-05. Repository identity is machine-independent, project and
   worktree ids repeat across machines by design, and the web projection store, rail model, and
   address grammar are shaped for many environments while this plan populates exactly one. See
@@ -46,12 +47,17 @@ rg -n "listSessions|SDKSessionInfo|resume\?: string|sessionId\?: string" \
 claude --version
 claude --help | rg -- '--resume|--session-id'
 if rg -n "serverUrl|createLocalChatEnvironment|ChatEnvironment" apps/web/src; then exit 1; fi
-rg -n "environmentId" packages/contracts/src/orchestration-ws.ts apps/web/src/features/environments/state/environments-store.ts
+rg -n "environmentId|recordHandshake" packages/contracts/src/orchestration-ws.ts apps/web/src/lib/environments/state/store.ts
+rg -n "queryClientFor|clientForQueryClient|originForQueryClient" apps/web/src/lib/environments/state/query-clients.ts
+rg -n "activateEnvironment|commandBinding|hasUnsavedDocuments" apps/web/src/state/application-runtime.ts
+rg -n "key=|runtime=" apps/web/src/components/active-environment-application.tsx
+rg -n "captureRuntime|binding.capture" apps/web/src/keymap/state/command-bus.ts apps/web/src/keymap/providers/bus-provider.tsx
 rg -n "remote get-url|rev-list --max-parents=0" apps/server/src/git
 ```
 
-The `serverUrl` line and the `environmentId` line prove Plan 077 landed; stop if either disagrees.
-The last line must return nothing before Phase 3 and exactly one owner in `git/service.ts` after.
+The legacy-symbol check must be empty. The environment, runtime, and command checks must find the
+completed 077 owners listed below. The final Git search must return nothing before Phase 3 and
+exactly one owner in `git/service.ts` after.
 
 Reconcile every path and line below against current source. Update this plan first if an owner moved;
 do not implement from stale anchors.
@@ -154,9 +160,23 @@ do not implement from stale anchors.
 - The Git service never reads remotes or the root commit; it only shells `fetch` and `push`
   (`apps/server/src/git/service.ts:174-176`) and infers GitHub support from a branch
   (`apps/server/src/git/service.ts:597`). Repository identity has no owner yet.
-- After Plan 077 the web app has an environments store keyed by origin with a learned
-  `environmentId` per entry, one `ChatTransport` and one `QueryClient` per origin, and an active
-  origin that `getClient()` follows. This plan populates one environment and shapes for many.
+- `apps/web/src/lib/environments/state/store.ts` owns `useEnvironmentsStore`, with `activeOrigin`,
+  origin-keyed entries, learned `environmentId`, and handshake identity checks. Resolve the active
+  identity from `entries[activeOrigin].environmentId`; an unverified endpoint has no domain identity.
+- `apps/web/src/lib/environments/state/query-clients.ts` owns `queryClientFor(origin)` and immutable
+  HTTP ownership through `clientForQueryClient` and `originForQueryClient`. Query execution uses its
+  context's client. Queues and save services retain that owner across awaits.
+- `apps/web/src/state/application-runtime.ts` retains one editor runtime and query client per origin.
+  `activateEnvironment(origin)` suspends the previous runtime and activates the retained target.
+  `apps/web/src/components/active-environment-application.tsx` keys query consumers by origin and
+  supplies `EditorStateProvider` with the retained runtime. A switch preserves unsaved documents.
+- `apps/web/src/features/chat/providers/transport-provider.tsx` creates the active origin's
+  `ChatTransport` through `transport/create-chat-transport.ts`. Plan 077 closes that connection on
+  switch; Plan 078 extends its lifetime for simultaneous chat connections.
+- `apps/web/src/keymap/providers/bus-provider.tsx` owns one outer command bus. It receives
+  `application.commandBinding`; `keymap/state/runtime-binding.ts` exposes `capture`, `bind`, and
+  `clear`. The bus captures the runtime once per invocation. This plan preserves those lifetimes
+  while populating one environment's domain slice.
 
 If these claims no longer hold, revise the phases and verification paths before implementation. Do
 not trust the implementation-status prose in either strategy document.
@@ -282,6 +302,10 @@ type Session = {
 - `external` is a Git worktree discovered outside Platform ownership, or an independent clone of
   the same repository registered as an additional checkout. It may host sessions but is never
   automatically removed. `platform` is reserved for Plan 069 creation/cleanup.
+- Git's main checkout is a Worktree record with the same query, file, and session ownership as
+  other checkouts. Keep main-checkout removal protection separate from that uniform representation.
+  A logical project groups checkouts without sharing their index, working changes, commit drafts,
+  or unsaved buffers.
 - `Project.repositoryKey` is an opaque SHA-256 digest of **machine-independent repository
   identity**, resolved in this order at the trusted boundary: the `origin` remote URL normalized to
   `host/path` (trimmed, trailing slashes and `.git` stripped, lowercased; `ssh://`, `https?://`,
@@ -362,23 +386,37 @@ competing reducer and test the complete overlay/attention precedence table.
 - The browser keys everything by environment. Add to `packages/contracts/src/chat-ids.ts`:
   `ScopedProjectRef { environmentId, projectId }`, `ScopedWorktreeRef { environmentId, worktreeId }`,
   `ScopedSessionRef { environmentId, sessionId }`, with `scopedProjectKey(ref)` and friends returning
-  `${environmentId}:${id}`. These are browser routing keys, not identities; a session's
-  `SessionId` stays the raw UUID everywhere the server or a provider sees it.
+  `${environmentId}:${id}`. A session's `SessionId` stays the raw UUID everywhere the server or a
+  provider sees it. The reference uses the confirmed descriptor or handshake identity, never the
+  HTTP origin. Two servers with the same checkout path can have different environment identities;
+  two endpoints backed by the same identity database represent the same environment.
+- Checkout identity in the browser is `(environmentId, worktreeId)`, including the main checkout.
+  Git queries and mutations resolve that checkout's path on its owning server. Preserve this owner
+  across async work. Checkout files and unsaved buffers also retain this reference, so a project
+  group or a matching path on another machine cannot redirect a save. Keep the scoping of persisted
+  data in Plan 078 as specified below.
 - `ChatProjectionState` becomes `{ slices: Record<EnvironmentId, ChatProjectionSlice> }` where a
   slice is today's normalized state (projects, worktrees, sessions, sequence guards, bootstrap flag)
   for one server. Writers take the `environmentId` of the transport that produced the item; a slice
   is created on first snapshot and removed by an explicit `dropEnvironment(environmentId)` action.
-  Selectors that answer for "the active environment" read the environments store's active id;
-  selectors that answer for the rail fold every slice.
+  Selectors for the active environment resolve `entries[activeOrigin].environmentId` from
+  `lib/environments/state/store.ts`. Rail selectors fold every slice. Reject an unresolved identity
+  before domain selection or command dispatch.
 - The rail model takes `environments: readonly { id, label, isPrimary }[]` plus per-environment
   inputs and emits rows carrying `environmentId`, a `machineLabel` that is non-null only when more
   than one environment is present or the row's environment is not primary, and a `projectGroupKey`
   equal to the bare `ProjectId` so the same repository on two machines lands in one group with its
   worktrees labelled by machine. Plan 078 adds the machine filter and connection chrome; this plan
   ships the model with one environment and a unit test with two.
-- Selecting a session resolves its worktree's environment; when that differs from the active
-  workbench environment the selection goes through `useOpenWorkspaceRoot` with the environment so
-  the workbench switches first. This plan wires the parameter; with one environment it is a no-op.
+- Selecting a session resolves `ScopedWorktreeRef` to a confirmed environment and checkout path.
+  Route environment activation through `ApplicationRuntime.activateEnvironment(origin)`, then open
+  the root through the target runtime's `useOpenWorkspaceRoot` owner before publishing selection.
+  A hook captured before activation still belongs to its original runtime. This plan wires the
+  scoped selection parameter; with one populated environment no machine switch is needed.
+- Preserve the retained editor runtime and its file/settings save owners during the domain rename.
+  Remount active query consumers under `ActiveEnvironmentApplication`; do not replace live document
+  stores with persisted snapshots. Keep the single outer command bus and its per-invocation runtime
+  capture. Session commands use the captured scoped reference through completion.
 - The address grammar (`apps/web/src/features/address/utils/grammar.ts:86-129`) gains an optional
   leading `@<environmentId>` segment before the `~workspace` segment, omitted for the primary
   environment. `parseAddress` rejects an unknown environment as a rejected token, never a fallback
@@ -505,6 +543,8 @@ hanging the first shell forever.
 
 - Worktree creation choice, chips, or cleanup; Plan 069 owns them.
 - Orca/race/compare projections, result scoring, sibling-agent UI, or compare routes.
+- A Git overview showing the main and other checkouts together, including remote worktrees. This
+  is unscheduled; section or tab layout and optional machine grouping remain undecided.
 - Live JSONL transcript mirroring.
 - Automatic handoff or simultaneous GUI/PTY driving. A later terminal-surface plan must stop one
   driver before starting the other; this plan only makes the shared raw identity available.
@@ -751,7 +791,7 @@ aggregate, projection, and restart. A prefixed `claude:<uuid>` never reaches any
 
 1. Normalize projects, worktrees, and sessions in the Zustand projection store as one slice per
    `environmentId` (Locked design → Environments). Writers take the producing transport's
-   `environmentId`; the active environment's id comes from Plan 077's environments store. Join
+   `environmentId`; resolve the active identity through `lib/environments/state/store.ts`. Join
    ownership in selectors; never copy worktree path/branch into session state. Project registration
    consumes its accepted receipt result before selecting the canonical project/current worktree; it
    does not mint or infer those IDs in the browser. Add `ScopedProjectRef`/`ScopedWorktreeRef`/
@@ -760,7 +800,9 @@ aggregate, projection, and restart. A prefixed `claude:<uuid>` never reaches any
 2. Bump the cache schema and discard the old browser cache. Do not migrate `thread-*` keys.
 3. Rename transport, synchronization, optimistic, detail-subscription, search, selection, unread,
    diff, and command state to session vocabulary. Preserve bounded caches and independent shell/detail
-   sequence guards.
+   sequence guards. Keep `state/application-runtime.ts` as the retained editor owner and preserve
+   `clientForQueryClient` ownership in every renamed query and save path. Keep one outer command
+   bus with `commandBinding.capture`, including commands awaiting a target environment.
 4. Replace URL `thread-` parsing with the raw UUID `SessionId`. Resolve project/worktree from the
    session projection, so cross-project agent-root links do not depend on a global current project.
    Add the optional leading `@<environmentId>` address segment: absent means primary, unknown is a
@@ -773,8 +815,8 @@ aggregate, projection, and restart. A prefixed `claude:<uuid>` never reaches any
    environment slice: rows carry `environmentId`, `machineLabel` (null with one primary environment),
    and `projectGroupKey` equal to the bare `ProjectId`; a unit test with two fixture environments
    holding the same `ProjectId` proves one project group with two machine-labelled worktrees and no
-   duplicated rows. Selecting a row whose environment is not the active workbench environment passes
-   that environment to `useOpenWorkspaceRoot` before selection publication.
+   duplicated rows. Selecting another environment resolves its scoped checkout, activates its
+   application runtime, and invokes the target root-open owner before selection publication.
 6. Render discovered sessions in the list with the same selection identity as Platform-created
    sessions and a truthful external/terminal-resumable affordance, not an invented birth claim. The
    row may expose the verified terminal-resume capability, but this plan must not auto-start a second
@@ -930,7 +972,8 @@ Stop and ask the operator if any of these occurs:
   reachable root commit), or the normalizer cannot make the listed remote spellings collapse.
 - Any proposed web store, rail model, selector, or address token assumes a single implicit
   environment, or keys a cross-environment map by a bare `ProjectId`/`WorktreeId`.
-- Plan 077 has not landed (the drift preamble's `serverUrl` or `environmentId` line disagrees).
+- The completed Plan 077 owners fail the drift preamble: legacy transport symbols return, or
+  identity, query ownership, retained runtimes, or captured command dispatch no longer match.
 - Any proposed design keeps nullable `worktreeId`, keeps branch/path on session, aliases ThreadId,
   writes projections directly, or adds a parallel session database.
 - Startup recovery still processes only one replay page, exposes ingress/shell state before the

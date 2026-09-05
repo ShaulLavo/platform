@@ -1,4 +1,5 @@
-import { getClient } from '@/lib/client'
+import { activeServerOrigin, getClient, type Client } from '@/lib/client'
+import { environmentActivitySignal } from '@/lib/environments/state/activity'
 
 export type EdenServerSocket = {
   readonly readyState?: number
@@ -27,30 +28,44 @@ type LanguageServerSocketOptions = {
   serverId?: string | null
 }
 
-export function connectTerminalSocket(rootPath: string, sessionId: string): EdenServerSocket {
+export function connectTerminalSocket(
+  rootPath: string,
+  sessionId: string,
+  client: Client = getClient(),
+  signal: AbortSignal = environmentActivitySignal(activeServerOrigin()),
+): EdenServerSocket {
+  signal.throwIfAborted()
   return adaptEdenSocket(
-    getClient().terminal.subscribe({ query: { root: rootPath, session: sessionId } }),
+    client.terminal.subscribe({ query: { root: rootPath, session: sessionId } }),
+    signal,
   )
 }
 
-export function connectLanguageServerSocket({
-  path,
-  rootPath,
-  serverId,
-}: LanguageServerSocketOptions): EdenServerSocket {
+export function connectLanguageServerSocket(
+  { path, rootPath, serverId }: LanguageServerSocketOptions,
+  client: Client = getClient(),
+  signal: AbortSignal = environmentActivitySignal(activeServerOrigin()),
+): EdenServerSocket {
+  signal.throwIfAborted()
   return adaptEdenSocket(
-    getClient().lsp.subscribe({
+    client.lsp.subscribe({
       query: { path, root: rootPath, server: serverId ?? undefined },
     }),
+    signal,
   )
 }
 
 export class EdenLanguageServerWebSocket implements EdenServerSocket {
   readonly #socket: EdenServerSocket
 
-  constructor(url: string | URL, _protocols?: string | readonly string[]) {
+  constructor(
+    url: string | URL,
+    _protocols?: string | readonly string[],
+    client: Client = getClient(),
+    signal?: AbortSignal,
+  ) {
     void _protocols
-    this.#socket = connectLanguageServerSocket(languageServerSocketOptions(url))
+    this.#socket = connectLanguageServerSocket(languageServerSocketOptions(url), client, signal)
   }
 
   get readyState() {
@@ -82,7 +97,20 @@ export class EdenLanguageServerWebSocket implements EdenServerSocket {
   }
 }
 
-function adaptEdenSocket(socket: EdenSocket): EdenServerSocket {
+export function languageServerWebSocketConstructor(client: Client, signal: AbortSignal) {
+  return class extends EdenLanguageServerWebSocket {
+    constructor(url: string | URL, protocols?: string | readonly string[]) {
+      super(url, protocols, client, signal)
+    }
+  }
+}
+
+function adaptEdenSocket(socket: EdenSocket, signal: AbortSignal): EdenServerSocket {
+  const close = () => socket.ws.close(1000, 'environment switched')
+  signal.addEventListener('abort', close, { once: true })
+  socket.ws.addEventListener('close', () => signal.removeEventListener('abort', close), {
+    once: true,
+  })
   return {
     get readyState() {
       return socket.ws.readyState

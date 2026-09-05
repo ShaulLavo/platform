@@ -3,7 +3,7 @@ import { act, waitFor } from '@testing-library/react'
 import type { SettingsMutationRequest, SettingsValues } from '@workspace/contracts'
 
 import { EditorTabActionsProvider } from '@/features/editor/providers/tab-actions-provider'
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../test/factories/editor-state-provider'
 import {
   resetSettingsIntentStore,
   useSettingsIntentStore,

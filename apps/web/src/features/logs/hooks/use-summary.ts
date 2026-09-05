@@ -1,3 +1,4 @@
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { useQuery } from '@tanstack/react-query'
 import type { LogDashboardFilters } from '@workspace/contracts'
 
@@ -11,7 +12,7 @@ export function useLogSummary(filters: LogDashboardFilters, enabled = true) {
   return useQuery({
     enabled,
     notifyOnChangeProps: ['data', 'isError', 'isFetching'],
-    queryFn: ({ signal }) => fetchLogSummary(filters, signal),
+    queryFn: ({ signal, client }) => fetchLogSummary(filters, signal, clientForQueryClient(client)),
     queryKey: logsKeys.summary(queryFilters),
     staleTime: 1_000,
   })

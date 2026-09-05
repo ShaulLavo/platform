@@ -4,7 +4,7 @@ import path from 'node:path'
 import { vi } from 'vitest'
 
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../test/factories/editor-state-provider'
 import { WorkspaceEditServiceContext } from '@/features/editor/providers/workspace-edit-context'
 import type { WorkspaceEditService } from '@/features/editor/state/workspace-edit-service'
 import {

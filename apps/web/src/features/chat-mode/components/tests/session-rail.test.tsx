@@ -9,10 +9,10 @@ import { act, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import * as v from 'valibot'
 
-import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
+import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { SessionRail } from '@/features/chat-mode/components/session-rail'
-import { EditorStateProvider } from '@/features/editor/providers/state-provider'
+import { TestEditorStateProvider as EditorStateProvider } from '../../../../../test/factories/editor-state-provider'
 import { ChatRailOrderProvider } from '@/features/chat-mode/providers/rail-order-provider'
 import {
   ChatModeSessionContext,
@@ -448,13 +448,13 @@ function renderSessionRail() {
     addProject: () => {
       calls.addProjectCount += 1
     },
-    environment: {
+    transport: {
       dispatchCommand: async (command: ClientOrchestrationCommand) => {
         calls.dispatched.push(command)
 
         return { deduped: false, sequence: calls.dispatched.length }
       },
-    } as ChatEnvironment,
+    } as ChatTransport,
     error: null,
     openProject: (workspaceRoot) => calls.openedProjects.push(workspaceRoot),
     project: chatProject({ id: platformId, title: 'platform', workspaceRoot: '/repo/platform' }),

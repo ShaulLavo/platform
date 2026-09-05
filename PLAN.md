@@ -32,6 +32,10 @@ Git history is the archive.
   `CommandBus` owns synchronous claims plus non-rejecting async settlement, and `FocusService` owns
   deepest registered targets, actual DOM focus, and explicit origin restoration. The superseded
   draft and completed implementation plan have been deleted.
+- Platform's two-stroke keymap is implemented at `0f5b0618`. One provider-owned chord session
+  serves app commands and terminal input through the existing bus and focus targets. Focused tests
+  and trusted browser input pass. Current behavior is recorded in
+  [`docs/vscode-keymap-development.md`](docs/vscode-keymap-development.md).
 - Lockstep WorkspaceEdit transactions are live in Editor and Platform. Editor owns typed LSP edit
   parsing, planning, inversion, and document application; Platform owns preview, filesystem commit,
   recovery, undo/redo, mutation coordination, and product integrations. Completed plan 063 has been
@@ -111,57 +115,65 @@ browser-visible host paths, or cold-start reads triggered by a disabled workbenc
 
 ## Ordered Platform editor lane
 
-For one implementer, use this order. Items marked lockstep must finish and verify in both repositories
-before either half is treated as landed.
+Plan 056 is complete at Platform `0f5b0618`. The remaining editor work is
+**Plan 057, standalone Editor chords and the shared Platform keymap**, delivered in lockstep with
+Editor.
 
-1. **Plan 056 — multi-step chord keymap (Platform).** Extend the landed typed bus and FocusService
-   integration with one chord state machine and no additional dispatch owner.
-2. **Plan 057 — editor-native VS Code keymap (Platform + Editor).** Requires 056. Extend the
-   same target/enablement runtime and complete the single-dispatcher takeover in lockstep.
+First, prove automatic chord execution through standalone Editor's ordinary binding options and
+its built public keymap entry point. Standalone default and custom chords must work before
+Platform adopts that runtime. Then migrate Platform's combined app and editor table, disable the
+embedded Editor matcher, and remove Platform's duplicate engine. Preserve the existing command
+bus, target and enablement policy, and terminal handoff.
 
-Plans 056 and 057 touch the same target and enablement runtime. Finish 056 before beginning the
-lockstep Editor-facing work in 057.
+Follow [`plans/057-editor-native-vscode-keymap.md`](plans/057-editor-native-vscode-keymap.md).
+Both repositories must pass their paired verification before this lane is complete.
 
-## Environments lane (rewritten 2026-09-05)
+## Environments lane (foundation completed 2026-09-05)
 
 [`docs/environments-and-remote-plan.md`](docs/environments-and-remote-plan.md) is the reviewed
-strategy for the **federated** model: several machines connected at once, chat federating all of
-them, the workbench following one, the same repository on two machines grouped as one project. The
-2026-08-24 one-active-environment design and its M1–M6 ladder are superseded; the old M6 "gated"
-simultaneity is now the product. The executable plans are:
+strategy: several machines connected at once, chat across all of them, and the workbench following
+one. The same repository on two machines groups as one project; each checkout keeps independent
+files, Git changes, and unsaved buffers.
 
-1. **Plan 077 — runtime origin and environment identity.** No network exposure. Runtime server
-   origin, durable `environmentId` per server in the handshake and `/health`, identity-drift
-   refusal, one `QueryClient` and one closable `ChatTransport` per origin, deletion of import-time
-   transport singletons, `1008` on WS auth refusal, `ChatEnvironment` → `ChatTransport`.
-2. **Plan 068 — session domain, environment-aware.** Requires 077. Machine-independent repository
-   identity (origin remote, else root commit) so ids repeat across machines by design; the web
-   projection store is one slice per environment keyed by scoped refs; the rail model and address
-   grammar carry the environment. Populates one environment; shapes for many.
-3. **Plan 078 — federated environments.** Requires 077 and 068. Machines setting and page, desktop
-   SSH launcher over a loopback-to-loopback forward with no install and no pairing, one chat
-   connection per machine, scoped persistence, flat cross-machine rail with repository grouping,
-   chips and a machine filter, add-project-on-machine, workbench switch, honest per-machine failure.
-4. **Later, on demand only:** the direct `https://` origin check through the mesh proxy (WebSocket
+**Plan 077 is complete.** Runtime origins are canonicalized, server identity survives restarts,
+and authenticated health and WebSocket handshakes refuse identity or protocol mismatches. Each
+origin owns its HTTP client, QueryClient, and retained editor runtime. Switching remounts query
+consumers while preserving documents and save destinations; queued mutations keep their original
+owner. One command bus captures the selected runtime before execution. Chat transports close
+explicitly, and WebSocket auth refusal uses `1008`. The development-only loopback switch is
+verified with two real in-process servers and an A → B → A browser workflow. Its executable plan
+has been deleted.
+
+The remaining order is:
+
+1. **Plan 068 — session domain, environment-aware.** Next. Machine-independent repository identity
+   (origin remote, else root commit) makes ids repeat across machines by design. The web projection
+   store uses environment-scoped refs; the rail model and address grammar carry the environment.
+   Populates one environment; shapes for many.
+2. **Plan 078 — federated environments.** Requires 068. Machines setting and page, desktop SSH
+   launcher over a loopback-to-loopback forward with no install and no pairing, one chat connection
+   per machine, scoped persistence, cross-machine rail with repository grouping, chips and a machine
+   filter, add-project-on-machine, workbench switch, and per-machine failure states.
+3. **Later, on demand only:** the direct `https://` origin check through the mesh proxy (WebSocket
    upgrade and path prefix), then pairing, issued sessions and revocation for a client that cannot
    SSH. The old design's auth analysis in git history (`docs/environments-and-remote-plan.md@1325b003`)
    is the reference for that plan.
 
-Plan 077 overlaps the global client, query, and chat transport seams; serialize it with any other
-work on `apps/web/src/lib/client.ts` or the chat transport. Plan 068 must not be executed from its
-pre-2026-09-05 shape: the single-environment web store it described is obsolete. Plan 069 follows 068
-and stays single-machine. Nothing in this lane binds a server off loopback; the SSH forward keeps
-both ends on loopback and the existing origin allowlist is the whole guard.
+Plan 068 must not be executed from its pre-2026-09-05 shape: the single-environment web store it
+described is obsolete. Plan 069 follows 068, stays single-machine, and remains unscheduled. The
+combined Git overview across checkouts and machines is also unscheduled; its scope is recorded in
+strategy §5.6. Nothing in this lane binds a server off loopback; the SSH forward keeps both ends on
+loopback and the existing origin allowlist is the whole guard.
 
 ## Verification boundaries
 
-- **Platform-only:** verify the narrow Platform tests/typechecks named by the active plan. Plan 056
-  stays inside this boundary.
+- **Platform-only:** verify the narrow Platform tests/typechecks named by the active plan.
+  Completed Plan 056 was verified within this boundary.
 - **Platform + Editor lockstep:** plan 057 requires focused checks and diff review in both
   worktrees. Neither repository's half is complete alone.
 - **`ghostty-webgpu`:** run its package gates in that repository.
-- **Environments (077, 068, 078):** verify with two isolated in-process or loopback servers and
-  distinct databases; the SSH gate uses the `localhost` target only. No test or demo binds
+- **Environments (068, 078, extending completed 077):** verify with two isolated in-process or
+  loopback servers and distinct databases; the SSH gate uses the `localhost` target only. No test or demo binds
   non-loopback. Pairing, sessions, and TLS refusal are one later security boundary, not part of
   these three plans.
 - Preserve pre-existing dirty work in every linked worktree. Use baseline deltas and the narrowest
@@ -169,10 +181,10 @@ both ends on loopback and the existing origin allowlist is the whole guard.
 
 ## Promotion, rewrite, defer, and deletion decisions
 
-- **Deleted:** completed plan 038 and superseded plan 058.
-- **Rewrite before execution:** Plan 056's command/focus boundary is reconciled to the landed runtime
-  but still requires its normal drift check.
-- **Promoted:** environments as Plans 077 → 068 (rewritten environment-aware) → 078.
+- **Deleted:** completed plans 038 and 077, and superseded plan 058.
+- **Editor lane:** Plan 056 is complete. Revised Plan 057 is next, with standalone Editor chord
+  execution verified before Platform adopts the shared runtime.
+- **Promoted:** environments foundation 077 is complete; remaining order is 068 → 078.
 - **Deferred:** the mesh https proxy check and pairing/sessions, until a client that cannot SSH
   exists; all compatibility work for the obsolete per-tab/active-editor/one-server architecture.
 - **Proposed independently:** accepted four-target config-resolver feasibility evidence makes Plan

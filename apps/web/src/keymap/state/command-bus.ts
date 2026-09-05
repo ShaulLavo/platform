@@ -137,6 +137,7 @@ export type ReadyCommandInspection<
   Invocation extends CommandInvocation,
 > = {
   readonly entry: CommandDefinition<Id, Runtime, Snapshot, Target, Invocation>
+  readonly runtime: Runtime
   readonly snapshot: Snapshot
   readonly status: 'ready'
   readonly target: Target
@@ -197,6 +198,7 @@ export type CommandBusOptions<
   Target extends ResolvedCommandTarget,
   Invocation extends CommandInvocation,
 > = {
+  readonly captureRuntime: () => Runtime | null
   readonly captureSnapshot: (runtime: Runtime, invocation: Invocation) => Snapshot
   readonly createEvent?: CommandEventFactory
   readonly dispatchEditor: (
@@ -211,12 +213,12 @@ export type CommandBusOptions<
   readonly resolveTarget: (
     input: ResolveCommandTargetInput<Id, Runtime, Snapshot, Target, Invocation>,
   ) => Target | null
-  readonly runtime: Runtime
-  readonly targetIsAvailable: (target: Target) => boolean
+  readonly targetIsAvailable: (target: Target, runtime: Runtime) => boolean
   readonly toClientError?: (error: unknown) => ClientError
 }
 
 export const commandInspectionDisabledReasons = {
+  runtimeUnavailable: 'The environment is switching.',
   targetUnavailable: 'No compatible command target is available.',
   unknownCommand: 'Command is not registered.',
 } as const
@@ -241,11 +243,14 @@ export class CommandBus<
     const entry = this.#options.lookup(id)
     if (!entry) return disabledInspection(commandInspectionDisabledReasons.unknownCommand)
 
-    const snapshot = this.#options.captureSnapshot(this.#options.runtime, invocation)
+    const runtime = this.#options.captureRuntime()
+    if (!runtime) return disabledInspection(commandInspectionDisabledReasons.runtimeUnavailable)
+
+    const snapshot = this.#options.captureSnapshot(runtime, invocation)
     const target = this.#options.resolveTarget({
       entry,
       invocation,
-      runtime: this.#options.runtime,
+      runtime,
       snapshot,
     })
     if (!target || target.kind !== entry.target) {
@@ -259,7 +264,7 @@ export class CommandBus<
     const reason = commandWhenDisabledReason(entry.when, snapshot, target)
     if (reason) return disabledInspection(reason, { entry, snapshot, target })
 
-    return { entry, snapshot, status: 'ready', target }
+    return { entry, runtime, snapshot, status: 'ready', target }
   }
 
   dispatch(id: Id, invocation: Invocation): CommandDispatchTicket {
@@ -278,7 +283,7 @@ export class CommandBus<
     }
     let targetIsAvailable: boolean
     try {
-      targetIsAvailable = this.#options.targetIsAvailable(inspection.target)
+      targetIsAvailable = this.#options.targetIsAvailable(inspection.target, inspection.runtime)
     } catch (error) {
       return this.#immediateTicket(false, scope, startedAt, this.#busFailure(error))
     }
@@ -311,7 +316,7 @@ export class CommandBus<
   ): AsyncCommandStart {
     const context = {
       invocation,
-      runtime: this.#options.runtime,
+      runtime: inspection.runtime,
       snapshot: inspection.snapshot,
       target: inspection.target,
     }

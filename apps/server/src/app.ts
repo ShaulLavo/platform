@@ -1,8 +1,11 @@
 import { cors } from '@elysiajs/cors'
+import type { HealthDescriptor } from '@workspace/contracts'
+import { hostname } from 'node:os'
 import { Elysia } from 'elysia'
 import { attachmentRoutes } from './attachments/routes'
 import { authGuard, createAuthConfig, isCorsOriginAllowed, type AuthOptions } from './auth'
 import { getDefaultPlatformDatabase } from './db/client'
+import { readEnvironmentIdentity } from './db/environment-identity'
 import { fontRoutes } from './fonts/routes'
 import { NerdFontService, type FontService } from './fonts/service'
 import { errorPayload, FsError, isFsError } from './fs/errors'
@@ -29,7 +32,7 @@ import { OrchestrationCheckpointDiffQuery } from './orchestration/checkpoint-dif
 import type { OrchestrationDatabase } from './orchestration/event-store'
 import { orchestrationRoutes } from './orchestration/routes'
 import { OrchestrationThreadSearchQuery } from './orchestration/thread-search-query'
-import { orchestrationWsRoutes } from './orchestration/ws-rpc'
+import { orchestrationWsRoutes, orchestrationWsServerConfig } from './orchestration/ws-rpc'
 import {
   createDefaultProviderAdapterRegistry,
   type ProviderAdapterRegistry,
@@ -135,6 +138,8 @@ export function createApp(options: AppOptions) {
       ? { checkpointGit: git, providerService }
       : false,
   })
+  const identity = readEnvironmentIdentity(database)
+  const serverConfig = orchestrationWsServerConfig(identity)
   const commitMessages = new CommitMessageGenerator(git, providerAdapterRegistry, providerService)
   const checkpointDiff = new OrchestrationCheckpointDiffQuery(database, git)
   const threadSearch = new OrchestrationThreadSearchQuery(database)
@@ -187,12 +192,23 @@ export function createApp(options: AppOptions) {
     .onBeforeHandle(({ request }) => {
       recordClientInstance(request)
     })
+    // Auth runs after the WS upgrade so the browser receives the explicit 1008 refusal.
+    .use(orchestrationWsRoutes(orchestration, auth, identity))
     .onBeforeHandle(authGuard(auth))
     .use(observabilityRoutes())
-    .get('/health', () => ({
-      ok: true,
-      ...fs.info(),
-    }))
+    .get(
+      '/health',
+      () =>
+        ({
+          ok: true,
+          environmentId: identity.id,
+          label: hostname(),
+          protocolVersion: serverConfig.protocolVersion,
+          serverVersion: serverConfig.serverVersion,
+          platform: { os: process.platform, arch: process.arch },
+          ...fs.info(),
+        }) satisfies HealthDescriptor,
+    )
     .get('/lsp/match', ({ query }) => lspRouteMatch(fs.paths, query, lspSettings()), {
       query: lspMatchQuerySchema,
     })
@@ -204,7 +220,6 @@ export function createApp(options: AppOptions) {
     .ws('/lsp', lspRoutes(fs, auth, { pool: lspPool, settings: lspSettings }))
     .ws('/terminal', terminal.routes(auth))
     .use(providerRoutes(providerAdapterRegistry))
-    .use(orchestrationWsRoutes(orchestration, auth))
     .use(orchestrationRoutes(orchestration, checkpointDiff, threadSearch))
     .use(attachmentRoutes())
     .use(fontRoutes(fonts))

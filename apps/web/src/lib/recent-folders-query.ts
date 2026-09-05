@@ -1,3 +1,5 @@
+import type { Client } from '@/lib/client'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { queryOptions } from '@tanstack/react-query'
 
 import { fetchRecentEntries } from '@/lib/file-server'
@@ -13,15 +15,16 @@ export const recentFolderKeys = {
 export function recentFoldersQueryOptions({ enabled }: { enabled: boolean }) {
   return queryOptions({
     enabled,
-    queryFn: ({ signal }) => fetchRecentFolders(signal),
+    queryFn: ({ signal, client }) => fetchRecentFolders(signal, clientForQueryClient(client)),
     queryKey: recentFolderKeys.list(RECENT_FOLDER_LIMIT),
     staleTime: RECENT_FOLDERS_STALE_TIME_MS,
   })
 }
 
-function fetchRecentFolders(signal: AbortSignal) {
+function fetchRecentFolders(signal: AbortSignal, client: Client) {
   return fetchRecentEntries(
     { limit: RECENT_FOLDER_LIMIT, mode: 'folder', showHidden: true },
     signal,
+    client,
   )
 }

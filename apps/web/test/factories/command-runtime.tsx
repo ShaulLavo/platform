@@ -1,3 +1,6 @@
+import { FileSyncService } from '@/features/editor/state/file-sync-service'
+import { EditorSaveService } from '@/features/editor/state/save-service'
+import { SettingsSyncService } from '@/features/settings/state/sync-service'
 import type { QueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 
@@ -99,7 +102,7 @@ export function createTestCommandRuntime({
     now: Date.now,
     resolveTarget: ({ entry, invocation, snapshot }) =>
       resolveCommandTarget(runtime, entry.target, invocation, snapshot),
-    runtime,
+    captureRuntime: () => runtime,
     targetIsAvailable: (target) =>
       target.kind === 'workspace' || runtime.focus.isRegistered(target.token),
   })
@@ -262,9 +265,15 @@ function createRuntime(
 ): WorkspaceCommandRuntime {
   const overrides = options.runtime
   const workspace = overrides?.workspace ?? createTestWorkspaceStore(options.rootPath ?? null)
+  const store = overrides?.documents?.store ?? createEditorDocumentStore()
   const documents: WorkspaceCommandRuntime['documents'] = {
     queryClient,
-    store: createEditorDocumentStore(),
+    store,
+    save: new EditorSaveService(
+      store,
+      new FileSyncService(store, queryClient),
+      new SettingsSyncService(store, queryClient),
+    ),
     ...overrides?.documents,
   }
   const editor = createTestEditor(documents.store, workspace, overrides?.editor)
@@ -280,6 +289,7 @@ function createRuntime(
     readSnapshot: overrides?.settings?.readSnapshot ?? defaultSettingsSnapshot,
   }
   const shell: WorkspaceCommandRuntime['shell'] = {
+    showEnvironmentDialog: () => {},
     openPicker: () => workspace.getState().openPicker(),
     openWorkspaceRoot: (rootPath) => openTestWorkspaceRoot(rootPath, editor, workspace),
     showCommandPalette: () => focus.request(focusTargetById({ kind: 'command-palette' })),

@@ -40,9 +40,7 @@ export function useDirectoryTransition({
     (path: string) => {
       if (!enabled || path === currentPath) return
 
-      return queryClient.prefetchQuery(
-        directoryQueryOptions({ mode, path, query: '', queryClient, showHidden }),
-      )
+      return queryClient.prefetchQuery(directoryQueryOptions({ mode, path, query: '', showHidden }))
     },
     [currentPath, enabled, mode, queryClient, showHidden],
   )
@@ -58,9 +56,7 @@ export function useDirectoryTransition({
       }
 
       try {
-        await queryClient.fetchQuery(
-          directoryQueryOptions({ mode, path, query: '', queryClient, showHidden }),
-        )
+        await queryClient.fetchQuery(directoryQueryOptions({ mode, path, query: '', showHidden }))
       } catch (cause) {
         if (requestId !== requestIdRef.current) return false
 

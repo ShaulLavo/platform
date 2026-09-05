@@ -1,6 +1,6 @@
 import type { ClientOrchestrationCommand, ProjectId, ThreadId } from '@workspace/contracts'
 
-import type { ChatEnvironment } from '@/features/chat/environment/chat-environment'
+import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import {
   createProjectReorderCommand,
   createSessionPlaceCommand,
@@ -27,11 +27,11 @@ import { log } from '@/lib/client-logging'
  */
 export function reorderRailProject({
   activeId,
-  environment,
+  transport,
   overId,
 }: {
   readonly activeId: string
-  readonly environment: ChatEnvironment
+  readonly transport: ChatTransport
   readonly overId: string | null
 }) {
   const intent = railReorderIntent({ activeId, overId, rows: railProjectRows() })
@@ -45,7 +45,7 @@ export function reorderRailProject({
   useRailOrderStore.getState().placeProject(projectId, intent.orderKey)
   void dispatchRailOrder({
     command: createProjectReorderCommand({ orderKey: intent.orderKey, projectId }),
-    environment,
+    transport,
     id: projectId,
     kind: 'project',
     release: () => useRailOrderStore.getState().releaseProject(projectId),
@@ -60,11 +60,11 @@ export function reorderRailProject({
  */
 export function reorderRailSession({
   activeId,
-  environment,
+  transport,
   overId,
 }: {
   readonly activeId: string
-  readonly environment: ChatEnvironment
+  readonly transport: ChatTransport
   readonly overId: string | null
 }) {
   const sessions = railOrderModel().sessions
@@ -91,7 +91,7 @@ export function reorderRailSession({
   useRailOrderStore.getState().placeSession(threadId, intent.orderKey)
   void dispatchRailOrder({
     command: sessionOrderCommand(threadId, intent.orderKey, active?.pinOrderKey ?? null),
-    environment,
+    transport,
     id: threadId,
     kind: 'session',
     release: () => useRailOrderStore.getState().releaseSession(threadId),
@@ -113,14 +113,14 @@ function sessionOrderCommand(threadId: ThreadId, orderKey: string, currentOrderK
 
 async function dispatchRailOrder({
   command,
-  environment,
+  transport,
   id,
   kind,
   release,
   settle,
 }: {
   readonly command: ClientOrchestrationCommand
-  readonly environment: ChatEnvironment
+  readonly transport: ChatTransport
   readonly id: string
   readonly kind: 'project' | 'session'
   readonly release: () => void
@@ -130,7 +130,7 @@ async function dispatchRailOrder({
     action: 'chat.rail.reorder',
     command,
     context: { kind, orderKey: 'orderKey' in command ? command.orderKey : null, rowId: id },
-    dispatchCommand: environment.dispatchCommand,
+    dispatchCommand: transport.dispatchCommand,
     onAccepted: settle,
     // The optimistic key was the only thing holding the row in its new slot, so
     // dropping it is what puts the list back on the server's order.

@@ -12,6 +12,8 @@ import type {
 } from '@/features/editor/state/document-state'
 import { clientInstanceId } from '@/lib/instance-id'
 import { createClientInvariantError } from '@/lib/structured-errors'
+import type { Client } from '@/lib/client'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 
 import { saveSettingsText } from '@/features/settings/utils/api'
 import { settingsKeys } from '@/features/settings/utils/query-keys'
@@ -24,10 +26,14 @@ let fallbackRawWriteSequence = 0
 
 /** Saves raw JSON with compare-and-swap; semantic controls never use this path. */
 export class SettingsSyncService {
+  private readonly client: Client
+
   constructor(
     private readonly documentStore: EditorDocumentStoreApi,
     private readonly queryClient: QueryClient,
-  ) {}
+  ) {
+    this.client = clientForQueryClient(queryClient)
+  }
 
   async save(document: LiveEditorDocument): Promise<void> {
     if (document.sync.kind !== 'settings') {
@@ -68,7 +74,7 @@ export class SettingsSyncService {
       writeId: rawWriteId(),
     }
     try {
-      result = await saveSettingsText(request)
+      result = await saveSettingsText(request, this.client)
     } catch (error) {
       if (errorStringField(error, 'code') !== 'settings.RAW_REVISION_STALE') throw error
 

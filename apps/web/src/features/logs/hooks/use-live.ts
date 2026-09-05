@@ -7,6 +7,8 @@ import { subscribeLogEvents } from '@/features/logs/utils/api'
 import { createLiveEventBatcher } from '@/features/logs/state/live-batcher'
 import { logFilterQuery } from '@/features/logs/utils/filter-params'
 import { mergeLiveLogItems } from '@/features/logs/state/live-cache'
+import type { Client } from '@/lib/client'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 
 export function useLogLive(filters: LogDashboardFilters, enabled: boolean) {
   const queryClient = useQueryClient()
@@ -24,11 +26,16 @@ export function useLogLive(filters: LogDashboardFilters, enabled: boolean) {
       },
     )
 
-    void runLogLiveStream(filters, controller.signal, (item) => {
-      if (item.kind !== 'event') return
+    void runLogLiveStream(
+      filters,
+      controller.signal,
+      (item) => {
+        if (item.kind !== 'event') return
 
-      batcher.push(item)
-    })
+        batcher.push(item)
+      },
+      clientForQueryClient(queryClient),
+    )
 
     return () => {
       controller.abort()
@@ -41,9 +48,10 @@ async function runLogLiveStream(
   filters: LogDashboardFilters,
   signal: AbortSignal,
   onItem: (item: LogLiveStreamItem) => void,
+  client: Client,
 ) {
   try {
-    for await (const item of subscribeLogEvents(filters, signal)) {
+    for await (const item of subscribeLogEvents(filters, signal, client)) {
       if (signal.aborted) return
 
       onItem(item)

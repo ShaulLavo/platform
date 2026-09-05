@@ -13,6 +13,7 @@ import { Elysia } from 'elysia'
 
 import serverPackage from '../../package.json' with { type: 'json' }
 import { authenticateWebSocketData, type AuthConfig } from '../auth'
+import type { EnvironmentIdentity } from '../db/schema'
 import {
   orchestrationCommandSummary,
   orchestrationReplaySummary,
@@ -40,8 +41,11 @@ import {
 const SERVER_INSTANCE_ID = crypto.randomUUID()
 const SERVER_STARTED_AT = new Date().toISOString()
 
-export function orchestrationWsServerConfig(): OrchestrationWsServerConfig {
+export function orchestrationWsServerConfig(
+  identity: EnvironmentIdentity,
+): OrchestrationWsServerConfig {
   return {
+    environmentId: identity.id,
     capabilities: {
       resume: true,
       synchronizedMarker: true,
@@ -58,7 +62,7 @@ export function orchestrationWsServerConfig(): OrchestrationWsServerConfig {
 }
 
 type OrchestrationRpcWebSocket = {
-  close(): unknown
+  close(code?: number, reason?: string): unknown
   data: unknown
   key: object
   send(message: string): unknown
@@ -76,8 +80,13 @@ type OrchestrationRpcSubscription = {
 
 type OrchestrationStreamItem = OrchestrationShellStreamFrame | OrchestrationThreadStreamFrame
 
-export function orchestrationWsRoutes(engine: OrchestrationEngine, auth: AuthConfig) {
+export function orchestrationWsRoutes(
+  engine: OrchestrationEngine,
+  auth: AuthConfig,
+  identity: EnvironmentIdentity,
+) {
   const states = new WeakMap<object, OrchestrationRpcConnectionState>()
+  const config = orchestrationWsServerConfig(identity)
 
   return new Elysia({ name: 'orchestration-ws-rpc' }).ws('/orchestration/rpc', {
     body: orchestrationWsClientMessageSchema,
@@ -91,7 +100,7 @@ export function orchestrationWsRoutes(engine: OrchestrationEngine, auth: AuthCon
           errorCode: authError.code,
           status: authError.statusCode,
         })
-        socket.close()
+        socket.close(1008, 'unauthorized')
         return
       }
 
@@ -99,9 +108,9 @@ export function orchestrationWsRoutes(engine: OrchestrationEngine, auth: AuthCon
       // The handshake is pushed rather than requested so the client reaches an
       // honest `connected` phase — and can compare protocol versions — without
       // paying a round trip before it may subscribe.
-      const config = orchestrationWsServerConfig()
       sendOrchestrationRpcMessage(socket, { config, kind: 'connected' })
       recordChatPipelineInfo('chat.pipeline.ws.open', {
+        environmentId: config.environmentId,
         protocolVersion: config.protocolVersion,
         serverInstanceId: config.serverInstanceId,
         serverVersion: config.serverVersion,
@@ -114,7 +123,7 @@ export function orchestrationWsRoutes(engine: OrchestrationEngine, auth: AuthCon
       const state = states.get(socket.key)
       if (!state) return
 
-      handleOrchestrationRpcMessage(engine, socket, state, message)
+      handleOrchestrationRpcMessage(engine, socket, state, message, config)
     },
     close(ws) {
       const socket = orchestrationRpcWebSocket(ws)
@@ -137,9 +146,10 @@ function handleOrchestrationRpcMessage(
   socket: OrchestrationRpcWebSocket,
   state: OrchestrationRpcConnectionState,
   message: OrchestrationWsClientMessage,
+  config: OrchestrationWsServerConfig,
 ) {
   if (message.kind === 'request') {
-    void handleOrchestrationRpcRequest(engine, socket, message)
+    void handleOrchestrationRpcRequest(engine, socket, message, config)
     return
   }
 
@@ -163,13 +173,14 @@ async function handleOrchestrationRpcRequest(
   engine: OrchestrationEngine,
   socket: OrchestrationRpcWebSocket,
   message: OrchestrationWsRequest,
+  config: OrchestrationWsServerConfig,
 ) {
   const startedAt = performance.now()
   const context = orchestrationRpcRequestSummary(message)
   recordChatPipelineInfo('chat.pipeline.ws.request.received', context)
 
   try {
-    const data = await resolveOrchestrationRpcRequest(engine, message)
+    const data = await resolveOrchestrationRpcRequest(engine, message, config)
     sendOrchestrationRpcMessage(socket, {
       data,
       kind: 'response',
@@ -203,7 +214,7 @@ async function handleOrchestrationRpcRequest(
  * happens to return, and nothing compares it to the wire contract.
  */
 type OrchestrationRpcHandlers = {
-  [M in OrchestrationWsRequest['method']]: (
+  [M in Exclude<OrchestrationWsRequest['method'], 'serverConfig'>]: (
     engine: OrchestrationEngine,
     message: OrchestrationWsRequestOf<M>,
   ) => OrchestrationWsResult<M> | Promise<OrchestrationWsResult<M>>
@@ -212,19 +223,19 @@ type OrchestrationRpcHandlers = {
 const orchestrationRpcHandlers: OrchestrationRpcHandlers = {
   dispatchCommand: (engine, message) => engine.dispatchClientCommand(message.command),
   replayEvents: (engine, message) => engine.replay(message.input),
-  serverConfig: () => orchestrationWsServerConfig(),
   threadDetailPage: (engine, message) => engine.threadDetailPage(message.input),
 }
 
 function resolveOrchestrationRpcRequest(
   engine: OrchestrationEngine,
   message: OrchestrationWsRequest,
+  config: OrchestrationWsServerConfig,
 ) {
   if (message.method === 'dispatchCommand') {
     return orchestrationRpcHandlers.dispatchCommand(engine, message)
   }
   if (message.method === 'serverConfig') {
-    return orchestrationRpcHandlers.serverConfig(engine, message)
+    return config
   }
   if (message.method === 'threadDetailPage') {
     return orchestrationRpcHandlers.threadDetailPage(engine, message)
@@ -460,7 +471,8 @@ function orchestrationRpcWebSocket(value: unknown): OrchestrationRpcWebSocket | 
   const close = value.close
   const send = value.send
   return {
-    close: () => (typeof close === 'function' ? close.call(value) : undefined),
+    close: (code, reason) =>
+      typeof close === 'function' ? close.call(value, code, reason) : undefined,
     data: value.data,
     key: websocketKey(value),
     send: (message) => send.call(value, message),
