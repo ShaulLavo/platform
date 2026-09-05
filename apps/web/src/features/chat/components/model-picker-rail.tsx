@@ -20,7 +20,7 @@ export function ModelPickerRail({
 }) {
   return (
     <div className='bg-muted compact:w-10 w-11 shrink-0 overflow-hidden'>
-      <div className='h-full [scrollbar-width:none] overflow-y-auto overscroll-contain [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden'>
+      <div className='h-full overflow-y-auto overscroll-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden'>
         <div className='relative flex min-h-full flex-col gap-1 p-1'>
           {groups.map((group) => (
             <ModelPickerRailItem
