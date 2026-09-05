@@ -17,11 +17,12 @@ a bare root `bun run verify`.
 | --------------------------------------------------------------------------------------- | --------------------------------------- |
 | [066 — package Ghostty config resolver](066-package-ghostty-config-resolver.md)         | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
 | [067 — integrate Ghostty config appearance](067-integrate-ghostty-config-appearance.md) | **BLOCKED ON 066 REVIEWED ARTIFACT**    |
-| [068 — session domain model](068-session-domain-model.md)                               | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
+| [077 — environment runtime origin](077-environment-runtime-origin.md)                   | **READY — ENVIRONMENTS LANE STEP 1**    |
+| [068 — session domain model](068-session-domain-model.md)                               | **BLOCKED ON 077 — ENVIRONMENT-AWARE**  |
+| [078 — federated environments](078-federated-environments.md)                           | **BLOCKED ON 077 AND 068**              |
 | [069 — worktree lifecycle](069-worktree-lifecycle.md)                                   | **BLOCKED ON 068 AND ROOT SCHEDULING**  |
 | [071 — syntax highlight retry](071-syntax-highlight-retry.md)                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
-| [064 — anchored diagnostic peek](064-anchored-diagnostic-peek.md)                       | **NEXT — GO/NO-GO**                     |
-| [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                         | **SCHEDULED AFTER 064 — RECONCILE**     |
+| [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                         | **NEXT — RECONCILE**                    |
 | [057 — editor-native VS Code keymap](057-editor-native-vscode-keymap.md)                | **BLOCKED ON 056 — RUNTIME RECONCILED** |
 | [073 — Electrobun 2.x migration](073-electrobun-v2-migration.md)                        | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
 | [074 — Bun-native PTY](074-bun-native-pty.md)                                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
@@ -36,12 +37,25 @@ a bare root `bun run verify`.
   preview dispatch, duplicate settings error reporting, or a second mutation path.
 - Plan 056 must extend that typed bus and acknowledged focus service instead of introducing another
   active-Editor dispatch owner.
+- Plan 077 is the first environments slice: runtime server origin, a durable `environmentId` per
+  server carried in the handshake and `/health`, identity-drift refusal, one `QueryClient` and one
+  closable `ChatTransport` per origin, deletion of the import-time transport singletons, and the
+  `ChatEnvironment` → `ChatTransport` rename. Loopback only; no persistence scoping; a dev-only
+  origin switch that Plan 078 deletes.
 - Plan 068 is the session-domain foundation: it replaces the current thread-shaped aggregate with
   explicit Project → Worktree → Session ownership, makes Claude's raw UUID the portable session
   identity, imports terminal-born Claude sessions through commands/events/receipts, and projects
   `needs-input` / `working` / `settled` for the sidebar. It deliberately resets obsolete greenfield
-  orchestration state rather than maintaining compatibility aliases. Root `PLAN.md` has not
-  scheduled it yet.
+  orchestration state rather than maintaining compatibility aliases. Since 2026-09-05 it is
+  environment-aware: repository identity is machine-independent (origin remote, else root commit),
+  so the same repository on two machines shares a `ProjectId`; the web projection store is one slice
+  per environment keyed by scoped refs; the rail model and address grammar carry the environment.
+  It requires Plan 077 and populates exactly one environment.
+- Plan 078 federates environments after 068: the `environments.machines` setting and page, the
+  desktop SSH launcher (probe, reuse-or-launch, loopback forward, no install, no pairing), one chat
+  connection per machine, scoped persistence, the flat cross-machine rail with repository grouping,
+  chips and a machine filter, add-project-on-machine, and the workbench switch. Direct `https://`
+  origins are accepted but the mesh proxy check and pairing are scheduled separately, on demand.
 - Plan 069 executes strictly after Plan 068. It adds explicit current-branch versus new-worktree
   creation, durable provisioning and cleanup recovery, and shared worktree chips on the same event
   spine. It must not restore the checkout reactor's project-root fallback or implement the reserved
@@ -50,11 +64,6 @@ a bare root `bun run verify`.
   Platform owns Shiki registration resolution, Editor's Oniguruma worker is self-contained, and
   built-dist highlighting is covered by a real-browser and shared-log proof. Root `PLAN.md` has not
   scheduled the retry work yet.
-- Plan 064's interactive React overlay uses the landed deepest-target FocusService and exact origin
-  restoration. Its first step may
-  reject a managed geometry handle if ordinary React composition passes the
-  real-browser gate; the selected narrow path still lands the named diagnostic
-  peek lockstep. Root `PLAN.md` schedules it next.
 - Plan 056 is reconciled to the landed command/focus runtime. Execute 057 only after 056; it must
   extend the same target registry and enablement evaluator rather than creating parallel ownership.
 - The config-resolver feasibility proof is complete with four native `PASS` rows and accepted

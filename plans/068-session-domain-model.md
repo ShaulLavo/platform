@@ -1,20 +1,26 @@
 # Plan 068: Make session the durable cross-frontend domain
 
 > **Executor instructions:** Read this plan completely, then read `AGENTS.md`, root `PLAN.md`,
-> `docs/product-vision.md`, `docs/t3code-parity-implementation-plan.md`, and
-> `/Users/shaul/.agents/skills/never-nester/SKILL.md`. Execute the phases in order. Keep the current
+> `docs/product-vision.md`, `docs/t3code-parity-implementation-plan.md`,
+> `docs/environments-and-remote-plan.md`, and the never-nester skill. Execute the phases in order. Keep the current
 > worktree; do not create a branch, worktree, commit, push, or PR unless the operator asks. Preserve
 > all user-owned dirty files. Do not start another dev server.
 
 ## Status
 
-- **State:** Proposed — requires root `PLAN.md` scheduling
+- **State:** Scheduled by root `PLAN.md` as environments lane step 2 — blocked on Plan 077
 - **Priority:** P0 for the agent-view initiative
 - **Effort:** XL
 - **Risk:** HIGH — deliberate greenfield identity, wire, and projection cutover
 - **Platform baseline:** `4b25f1ab28eab2da499ac0cf0fcc633af1ea6640`
 - **Prepared:** 2026-08-27
-- **Dependency:** none; Plan 069 starts only after this plan is complete
+- **Dependency:** Plan 077 (environment identity, runtime origin, per-environment `ChatTransport`
+  and `QueryClient`) complete and deleted from `plans/`. Plan 069 starts only after this plan is
+  complete; Plan 078 (federated environments) requires this plan's environment-shaped web store.
+- **Environment-aware since:** 2026-09-05. Repository identity is machine-independent, project and
+  worktree ids repeat across machines by design, and the web projection store, rail model, and
+  address grammar are shaped for many environments while this plan populates exactly one. See
+  `docs/environments-and-remote-plan.md` §2.2 and §3.2.
 - **Known dirty baseline:** `docs/product-vision.md` plus concurrent operator-owned work under
   `apps/web/package.json`, `apps/web/scripts/`, `apps/web/src/features/editor/`,
   `apps/web/src/features/workbench/`, `apps/web/src/features/workspace/`, `apps/web/src/lib/`, and
@@ -39,7 +45,13 @@ rg -n "listSessions|SDKSessionInfo|resume\?: string|sessionId\?: string" \
   node_modules/.bun/@anthropic-ai+claude-agent-sdk@*/node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts
 claude --version
 claude --help | rg -- '--resume|--session-id'
+if rg -n "serverUrl|createLocalChatEnvironment|ChatEnvironment" apps/web/src; then exit 1; fi
+rg -n "environmentId" packages/contracts/src/orchestration-ws.ts apps/web/src/features/environments/state/environments-store.ts
+rg -n "remote get-url|rev-list --max-parents=0" apps/server/src/git
 ```
+
+The `serverUrl` line and the `environmentId` line prove Plan 077 landed; stop if either disagrees.
+The last line must return nothing before Phase 3 and exactly one owner in `git/service.ts` after.
 
 Reconcile every path and line below against current source. Update this plan first if an owner moved;
 do not implement from stale anchors.
@@ -60,6 +72,10 @@ do not implement from stale anchors.
   `docs/t3code-parity-implementation-plan.md:613-704`).
 - Command/event names, projection tables, snapshot shapes, and provider runtime shape must not be
   parallelized before the contract settles (`docs/t3code-parity-implementation-plan.md:1955-1973`).
+- Environments: several machines are connected at once and chat federates them, while the
+  workbench follows one machine; the same repository on two machines is one project group; every
+  browser map is keyed by `(environmentId, id)` because server-derived ids repeat across machines
+  (`docs/environments-and-remote-plan.md` §2.2, §3.2, §5.1).
 
 ### Verified current source
 
@@ -135,6 +151,13 @@ do not implement from stale anchors.
   `apps/web/src/features/address/utils/session-token.ts:35-69`,
   `apps/web/src/features/address/hooks/use-restore.ts:357-383`).
 
+- The Git service never reads remotes or the root commit; it only shells `fetch` and `push`
+  (`apps/server/src/git/service.ts:174-176`) and infers GitHub support from a branch
+  (`apps/server/src/git/service.ts:597`). Repository identity has no owner yet.
+- After Plan 077 the web app has an environments store keyed by origin with a learned
+  `environmentId` per entry, one `ChatTransport` and one `QueryClient` per origin, and an active
+  origin that `getClient()` follows. This plan populates one environment and shapes for many.
+
 If these claims no longer hold, revise the phases and verification paths before implementation. Do
 not trust the implementation-status prose in either strategy document.
 
@@ -162,6 +185,12 @@ After this plan:
    runtimes/deletion work, and reconciles durable provider-start claims before command ingress or a
    shell snapshot can claim work is still running. Discovery starts after readiness and arrives as
    ordinary deltas rather than blocking first paint.
+8. Repository identity is machine-independent. The same repository registered on two servers yields
+   the same `ProjectId` on both, so the federated rail groups them without a client-side logical
+   project layer. A second independent clone on one machine is another worktree of that project.
+9. The web projection store holds one slice per environment keyed by `environmentId`, the rail model
+   reads every slice and keys rows by scoped refs, and the address grammar carries an optional
+   environment segment. All three are exercised with one environment here and with many in Plan 078.
 
 ## Locked design
 
@@ -205,10 +234,16 @@ Never pass a binding handle or conversation marker to Claude resume.
 Define one canonical contract for each record:
 
 ```ts
+type RepositoryIdentity =
+  | { source: 'git-remote'; remoteName: 'origin'; canonical: string; host: string; path: string }
+  | { source: 'root-commit'; canonical: string }
+  | { source: 'path'; canonical: string }
+
 type Project = {
   id: ProjectId
   repositoryKey: string
   repositoryKind: 'git' | 'directory'
+  repositoryIdentity: RepositoryIdentity
   // title/order/model/scripts/lifecycle fields; no workspace path
 }
 
@@ -244,12 +279,24 @@ type Session = {
   worktree. It is protected from Platform cleanup. Enforce exactly one live `current` worktree per
   project and derive it through a shared selector; do not add a circular `Project.defaultWorktreeId`
   foreign key.
-- `external` is a Git worktree discovered outside Platform ownership. It may host sessions but is
-  never automatically removed. `platform` is reserved for Plan 069 creation/cleanup.
-- `Project.repositoryKey` is an opaque SHA-256 digest of canonical Git common-directory identity
-  (canonical workspace root for an explicitly supported non-Git project), not the raw host path. It
-  is globally unique among live projects. Registering another checkout with the same Git common
-  directory adds a worktree to that project instead of a second project.
+- `external` is a Git worktree discovered outside Platform ownership, or an independent clone of
+  the same repository registered as an additional checkout. It may host sessions but is never
+  automatically removed. `platform` is reserved for Plan 069 creation/cleanup.
+- `Project.repositoryKey` is an opaque SHA-256 digest of **machine-independent repository
+  identity**, resolved in this order at the trusted boundary: the `origin` remote URL normalized to
+  `host/path` (trimmed, trailing slashes and `.git` stripped, lowercased; `ssh://`, `https?://`,
+  `git://`, and scp-style `user@host:path` all collapse to the same key, as
+  `references/t3code/packages/shared/src/git.ts:114-147`); else the root commit hash
+  (`git rev-list --max-parents=0 HEAD`, first line); else the canonical path for an explicitly
+  supported non-Git directory. The raw host path never enters a Git project's key. The key is unique
+  among live projects **on one server** and deliberately identical across servers for the same
+  repository; the browser never treats a bare `ProjectId` as unique (see Environments below).
+- Identity is captured at registration and stored as `repositoryIdentity`. A later remote rename or
+  a remote added to a root-commit project does not re-key a live project; re-registration after
+  deletion resolves identity afresh and may therefore revive a different deterministic id.
+- Registering another checkout whose identity resolves to the same key adds a worktree to that
+  project instead of a second project, including an independent clone with its own common
+  directory. Two projects with different remotes are different projects even when one is a fork.
 - `Project.repositoryKind` is the projected capability discriminator. The browser never guesses Git
   support from a null branch or reverses the opaque repository key.
 - Resolve `repositoryKey` and `canonicalPath` at the trusted server filesystem/Git boundary before
@@ -307,6 +354,39 @@ New actionable activity clears those overlays in the same event batch. Pinning n
 attention. Derive state/reason in the server projection, publish both in shell state, and make the
 rail surface `needs-input` even if stale cached overlay fields disagree. Delete the browser-only
 competing reducer and test the complete overlay/attention precedence table.
+
+### Environments
+
+- The server knows nothing about other machines. Every table, command, event, and receipt here is
+  per server exactly as written; `environmentId` never enters a domain record or a command.
+- The browser keys everything by environment. Add to `packages/contracts/src/chat-ids.ts`:
+  `ScopedProjectRef { environmentId, projectId }`, `ScopedWorktreeRef { environmentId, worktreeId }`,
+  `ScopedSessionRef { environmentId, sessionId }`, with `scopedProjectKey(ref)` and friends returning
+  `${environmentId}:${id}`. These are browser routing keys, not identities; a session's
+  `SessionId` stays the raw UUID everywhere the server or a provider sees it.
+- `ChatProjectionState` becomes `{ slices: Record<EnvironmentId, ChatProjectionSlice> }` where a
+  slice is today's normalized state (projects, worktrees, sessions, sequence guards, bootstrap flag)
+  for one server. Writers take the `environmentId` of the transport that produced the item; a slice
+  is created on first snapshot and removed by an explicit `dropEnvironment(environmentId)` action.
+  Selectors that answer for "the active environment" read the environments store's active id;
+  selectors that answer for the rail fold every slice.
+- The rail model takes `environments: readonly { id, label, isPrimary }[]` plus per-environment
+  inputs and emits rows carrying `environmentId`, a `machineLabel` that is non-null only when more
+  than one environment is present or the row's environment is not primary, and a `projectGroupKey`
+  equal to the bare `ProjectId` so the same repository on two machines lands in one group with its
+  worktrees labelled by machine. Plan 078 adds the machine filter and connection chrome; this plan
+  ships the model with one environment and a unit test with two.
+- Selecting a session resolves its worktree's environment; when that differs from the active
+  workbench environment the selection goes through `useOpenWorkspaceRoot` with the environment so
+  the workbench switches first. This plan wires the parameter; with one environment it is a no-op.
+- The address grammar (`apps/web/src/features/address/utils/grammar.ts:86-129`) gains an optional
+  leading `@<environmentId>` segment before the `~workspace` segment, omitted for the primary
+  environment. `parseAddress` rejects an unknown environment as a rejected token, never a fallback
+  to primary; `formatAddress` emits it only for a non-primary environment.
+- Persistence stays unscoped in this plan (one environment is populated). Plan 078 wraps the chat
+  projection cache and the other per-environment keys in `environmentScopedStorage`; do not add a
+  partial scheme here, and keep the cache schema bump in Phase 5 so the later scoping needs no
+  second bump.
 
 ### Discovery and recovery
 
@@ -417,6 +497,9 @@ hanging the first shell forever.
 - Terminal-born rows in the cross-project sidebar.
 - Three sidebar state sections and error decoration.
 - Session/worktree-aware address and effective-cwd resolution.
+- Machine-independent repository identity with fixed normalization vectors.
+- Environment-shaped web projection store, scoped refs, rail rows with `environmentId`, and the
+  optional address environment segment, populated with one environment.
 
 ### Out of scope
 
@@ -427,6 +510,8 @@ hanging the first shell forever.
   driver before starting the other; this plan only makes the shared raw identity available.
 - Cross-harness unified history.
 - Remote session sync.
+- Connecting more than one environment at once, the Machines setting and page, the SSH launcher,
+  scoped persistence, machine filter and chips chrome, and offline surfaces (Plan 078).
 - A user setting for discovery cadence, preferred face, or default worktree. If product scope later
   requires one, it must be registered and consumed in the same change through
   `packages/contracts/src/settings/keys.ts`; do not add localStorage or an env knob.
@@ -437,7 +522,8 @@ hanging the first shell forever.
 - Before the destructive schema phase, surface the exact local orchestration database path to the
   operator. This plan intentionally discards greenfield chat/event state once; settings and secrets
   are not part of that reset.
-- Append one migration; never edit or renumber migrations 1–9.
+- Append one migration; never edit or renumber migrations 1–10 (10 is Plan 077's
+  `environment_identity`, which this reset must not drop).
 - Do not migrate old thread rows/events into session rows. Do not leave compatibility views or
   aliases. Fresh and upgraded developer databases must converge on the same final schema.
 - Production errors use `defineErrorCatalog`/`createStructuredError` and evlog wide events. Do not
@@ -460,7 +546,9 @@ hanging the first shell forever.
 3. Add canonical repository/worktree, discovered-origin, attention reason/error, provider-start,
    deletion-side-effect, readiness, and typed project-registration receipt-result contracts. Make
    `worktreeId` and `modelSelection` required; do not duplicate
-   `modelSelection.providerInstanceId`.
+   `modelSelection.providerInstanceId`. Add `RepositoryIdentity` and the browser-only
+   `ScopedProjectRef`/`ScopedWorktreeRef`/`ScopedSessionRef` types with their key helpers to
+   `chat-ids.ts`; no server command or event schema references a scoped ref.
 4. Replace every `thread.*` command/event with `session.*`; add the minimal server-only
    `project.revive`, `worktree.register`, `worktree.revive`, `session.discover`, discovery metadata
    update, and runtime-recovery commands. Extend the aggregate kind to
@@ -505,10 +593,12 @@ broken application consumers.
 
 ### Work
 
-1. Append migration 10, named for the session-domain reset. In one migration transaction, drop the
-   obsolete orchestration event/receipt/projection/provider-runtime tables and recreate the final
-   schema. Do not copy developer thread data.
-2. Replace project `workspace_root` with `repository_key`; add `projection_worktrees`; replace every
+1. Append migration 11 (Plan 077 owns 10), named for the session-domain reset. In one migration
+   transaction, drop the obsolete orchestration event/receipt/projection/provider-runtime tables and
+   recreate the final schema. Do not copy developer thread data. Leave `environment_identity`,
+   `fs_metadata`, and every non-orchestration table untouched.
+2. Replace project `workspace_root` with `repository_key` and `repository_identity_json`; add
+   `projection_worktrees`; replace every
    `projection_thread_*` table with its `projection_session_*` counterpart; key sessions by
    non-null `worktree_id`; store `registration_generation` and the logical `retired_at` tombstone;
    store `repository_kind`, and key provider binding/runtime metadata by `session_id`.
@@ -555,7 +645,12 @@ in Phase 3; do not commit or deploy this intermediate schema subphase.
    provider interface cutover from product `threadId` to already-required `sessionId` so server
    typecheck is green; Claude-specific use of that ID remains Phase 4.
    Add fixed UUIDv5 vectors plus symlink/case canonicalization, duplicate-registration receipt, and
-   hash-collision refusal tests at this trusted boundary.
+   hash-collision refusal tests at this trusted boundary. Repository identity is resolved here too:
+   add two read-only Git service methods beside `runFetch` (`apps/server/src/git/service.ts:174`),
+   `remoteUrl(root, 'origin')` and `rootCommit(root)`, and a pure `normalizeGitRemoteUrl` in
+   `apps/server/src/git/utils/remote-url.ts` with fixed vectors for `ssh://`, `https://`, `git://`,
+   scp-style, trailing `.git`, trailing slash, and mixed case all collapsing to one key, plus a
+   no-remote repository resolving to its root commit and a plain directory to its canonical path.
 2. Replace the receipt prefix fallback with the locked exhaustive aggregate table. Preserve
    accepted/rejected receipt semantics, typed result JSON, and the atomic command transaction; test
    compound batches, accepted no-event head sequence, pre-preparation duplicate lookup after the
@@ -595,6 +690,7 @@ bun --bun vitest run \
   src/orchestration/tests/projection-cache-coherence.test.ts \
   src/orchestration/tests/streams.test.ts \
   src/orchestration/tests/session-domain.test.ts \
+  src/orchestration/tests/repository-identity.test.ts \
   src/orchestration/tests/session-attention-state.test.ts \
   src/orchestration/tests/provider-start-recovery.test.ts \
   src/orchestration/tests/session-deletion-recovery.test.ts \
@@ -653,20 +749,32 @@ aggregate, projection, and restart. A prefixed `claude:<uuid>` never reaches any
 
 ### Work
 
-1. Normalize projects, worktrees, and sessions in the Zustand projection store. Join ownership in
-   selectors; never copy worktree path/branch into session state. Project registration consumes its
-   accepted receipt result before selecting the canonical project/current worktree; it does not mint
-   or infer those IDs in the browser.
+1. Normalize projects, worktrees, and sessions in the Zustand projection store as one slice per
+   `environmentId` (Locked design → Environments). Writers take the producing transport's
+   `environmentId`; the active environment's id comes from Plan 077's environments store. Join
+   ownership in selectors; never copy worktree path/branch into session state. Project registration
+   consumes its accepted receipt result before selecting the canonical project/current worktree; it
+   does not mint or infer those IDs in the browser. Add `ScopedProjectRef`/`ScopedWorktreeRef`/
+   `ScopedSessionRef` and their key helpers to the contracts package; every browser map that spans
+   environments uses them, and a test proves two slices holding the same `ProjectId` do not collide.
 2. Bump the cache schema and discard the old browser cache. Do not migrate `thread-*` keys.
 3. Rename transport, synchronization, optimistic, detail-subscription, search, selection, unread,
    diff, and command state to session vocabulary. Preserve bounded caches and independent shell/detail
    sequence guards.
 4. Replace URL `thread-` parsing with the raw UUID `SessionId`. Resolve project/worktree from the
    session projection, so cross-project agent-root links do not depend on a global current project.
+   Add the optional leading `@<environmentId>` address segment: absent means primary, unknown is a
+   rejected token, and `formatAddress` emits it only for a non-primary environment. The restore path
+   resolves the session inside that environment's slice, never by scanning every slice for a UUID.
 5. Replace browser-derived status with projected `attentionState`/`attentionReason`/`hasError`.
    Build three minimal rail sections in order: Needs input, Working, Settled. Retain project
    labels/qualifiers inside sections without restoring dashboard-style per-row statistics. Test that
-   settle/archive/snooze cannot hide open or newly raised attention.
+   settle/archive/snooze cannot hide open or newly raised attention. The rail model folds every
+   environment slice: rows carry `environmentId`, `machineLabel` (null with one primary environment),
+   and `projectGroupKey` equal to the bare `ProjectId`; a unit test with two fixture environments
+   holding the same `ProjectId` proves one project group with two machine-labelled worktrees and no
+   duplicated rows. Selecting a row whose environment is not the active workbench environment passes
+   that environment to `useOpenWorkspaceRoot` before selection publication.
 6. Render discovered sessions in the list with the same selection identity as Platform-created
    sessions and a truthful external/terminal-resumable affordance, not an invented birth claim. The
    row may expose the verified terminal-resume capability, but this plan must not auto-start a second
@@ -728,6 +836,10 @@ with a deterministic mock provider plus injected Claude discovery metadata:
 8. Delete the project after session side effects settle, prove its physical current checkout remains,
    then re-register it and receive the same canonical IDs. A variant with a live adapter must refuse
    revival.
+   8a. Boot a second `makeTestServer()`, clone the same fixture repository (same `origin` remote) into
+   its root, register it there, and assert the two servers return the same `ProjectId`, different
+   `WorktreeId`s only when the canonical paths differ, different `environmentId`s, and that the web
+   store holds both under scoped keys with one rail project group and two machine labels.
 9. Inspect the diff for old vocabulary, copied paths, direct projection writes, unsafe resume string
    construction, raw palette colors, manual loaders, new settings, and `new Error` in production.
 
@@ -794,6 +906,9 @@ root-wide suite and no second dev server are part of this gate.
   than being swallowed by the first registration receipt.
 - No JSONL parsing, compare view, new setting, second state store, or direct projection mutation was
   introduced.
+- The same repository on two in-process servers yields one `ProjectId`, two `environmentId`s, one
+  rail project group, and no cross-slice collision; an address with `@<environmentId>` restores
+  inside that slice and an unknown environment is a rejected token.
 - All phase verification commands pass and baseline-delta review shows only intended changes.
 
 ## STOP conditions
@@ -811,6 +926,11 @@ Stop and ask the operator if any of these occurs:
   boundary.
 - Canonical repository identity or global active-worktree path uniqueness cannot be enforced without
   merging two distinct operator projects.
+- Repository identity cannot be derived machine-independently for a Git project (no `origin` and no
+  reachable root commit), or the normalizer cannot make the listed remote spellings collapse.
+- Any proposed web store, rail model, selector, or address token assumes a single implicit
+  environment, or keys a cross-environment map by a bare `ProjectId`/`WorktreeId`.
+- Plan 077 has not landed (the drift preamble's `serverUrl` or `environmentId` line disagrees).
 - Any proposed design keeps nullable `worktreeId`, keeps branch/path on session, aliases ThreadId,
   writes projections directly, or adds a parallel session database.
 - Startup recovery still processes only one replay page, exposes ingress/shell state before the

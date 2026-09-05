@@ -114,60 +114,56 @@ browser-visible host paths, or cold-start reads triggered by a disabled workbenc
 For one implementer, use this order. Items marked lockstep must finish and verify in both repositories
 before either half is treated as landed.
 
-1. **Plan 064 — anchored diagnostic peek.** Uses the landed FocusService. Run its real-browser
-   composition gate first. Use ordinary React composition if it passes; add the one named
-   managed-geometry handle in Editor only if the gate proves it necessary. Never restore generic
-   block surfaces.
-2. **Plan 056 — multi-step chord keymap (Platform).** Extend the landed typed bus and FocusService
+1. **Plan 056 — multi-step chord keymap (Platform).** Extend the landed typed bus and FocusService
    integration with one chord state machine and no additional dispatch owner.
-3. **Plan 057 — editor-native VS Code keymap (Platform + Editor).** Requires 056. Extend the
+2. **Plan 057 — editor-native VS Code keymap (Platform + Editor).** Requires 056. Extend the
    same target/enablement runtime and complete the single-dispatcher takeover in lockstep.
 
-Plans 056 and 064 are logically independent, but they should still be serialized in one
-Platform worktree. Plans 064 and 057 both touch Editor-facing ownership or APIs and must not be
-executed concurrently without a fresh overlap reconciliation.
+Plans 056 and 057 touch the same target and enablement runtime. Finish 056 before beginning the
+lockstep Editor-facing work in 057.
 
-## Environments and remote-access lane
+## Environments lane (rewritten 2026-09-05)
 
-[`docs/environments-and-remote-plan.md`](docs/environments-and-remote-plan.md) remains a reviewed
-design, not an executable plan. Promote one milestone at a time into `plans/` with current file
-paths, invariants, focused verification, cleanup instructions, and STOP conditions. Do not implement
-directly from the strategy document.
+[`docs/environments-and-remote-plan.md`](docs/environments-and-remote-plan.md) is the reviewed
+strategy for the **federated** model: several machines connected at once, chat federating all of
+them, the workbench following one, the same repository on two machines grouped as one project. The
+2026-08-24 one-active-environment design and its M1–M6 ladder are superseded; the old M6 "gated"
+simultaneity is now the product. The executable plans are:
 
-The promotion and implementation order is:
+1. **Plan 077 — runtime origin and environment identity.** No network exposure. Runtime server
+   origin, durable `environmentId` per server in the handshake and `/health`, identity-drift
+   refusal, one `QueryClient` and one closable `ChatTransport` per origin, deletion of import-time
+   transport singletons, `1008` on WS auth refusal, `ChatEnvironment` → `ChatTransport`.
+2. **Plan 068 — session domain, environment-aware.** Requires 077. Machine-independent repository
+   identity (origin remote, else root commit) so ids repeat across machines by design; the web
+   projection store is one slice per environment keyed by scoped refs; the rail model and address
+   grammar carry the environment. Populates one environment; shapes for many.
+3. **Plan 078 — federated environments.** Requires 077 and 068. Machines setting and page, desktop
+   SSH launcher over a loopback-to-loopback forward with no install and no pairing, one chat
+   connection per machine, scoped persistence, flat cross-machine rail with repository grouping,
+   chips and a machine filter, add-project-on-machine, workbench switch, honest per-machine failure.
+4. **Later, on demand only:** the direct `https://` origin check through the mesh proxy (WebSocket
+   upgrade and path prefix), then pairing, issued sessions and revocation for a client that cannot
+   SSH. The old design's auth analysis in git history (`docs/environments-and-remote-plan.md@1325b003`)
+   is the reference for that plan.
 
-1. **Environment M1 — runtime origin and one active environment.** No network exposure. Replace
-   import-time client/transport ownership and add deterministic teardown.
-2. **Environment M2 — identity and per-environment state.** Requires M1. Add server identity,
-   identity-drift refusal, scoped persistence, and one QueryClient per environment. No migration
-   layer; clear obsolete developer state.
-3. **Environment M3 — selection UI and honest local failure.** Requires M2; titlebar
-   and palette actions use the typed command runtime. Still loopback-only.
-4. **Environment M4 — real sessions on loopback.** Requires M3. Pairing, revocation, short-lived WS
-   credentials, rate limiting, fd-3 desktop bootstrap, and credential-log hygiene move together as
-   one security boundary.
-5. **Environment M5 — trusted-network remote access.** Requires M4. Relax loopback only behind
-   explicit session-backed opt-in and TLS or a trusted mesh. Plaintext non-loopback access is a hard
-   refusal.
-
-Environment M1–M2 overlap the global client, query, and persistence seams used by the landed
-prepared-open and editor-visible snapshot pipelines; serialize their implementation with any
-follow-on work on those seams. M4–M5 form one security chain and must not be split into independently
-deployable half-states. Environment M6 cross-environment simultaneous reads is deferred until
-repeated product demand proves it necessary; do not add scoped-ref or multi-origin compatibility
-machinery now.
+Plan 077 overlaps the global client, query, and chat transport seams; serialize it with any other
+work on `apps/web/src/lib/client.ts` or the chat transport. Plan 068 must not be executed from its
+pre-2026-09-05 shape: the single-environment web store it described is obsolete. Plan 069 follows 068
+and stays single-machine. Nothing in this lane binds a server off loopback; the SSH forward keeps
+both ends on loopback and the existing origin allowlist is the whole guard.
 
 ## Verification boundaries
 
 - **Platform-only:** verify the narrow Platform tests/typechecks named by the active plan. Plan 056
   stays inside this boundary.
-- **Platform + Editor lockstep:** plan 057 and any plan-064 path that changes Editor require focused
-  checks and diff review in both worktrees. Neither repository's half is complete alone.
+- **Platform + Editor lockstep:** plan 057 requires focused checks and diff review in both
+  worktrees. Neither repository's half is complete alone.
 - **`ghostty-webgpu`:** run its package gates in that repository.
-- **Environment M1–M3:** verify with two isolated loopback servers and distinct databases. No test
-  or demo may bind non-loopback before M5.
-- **Environment M4–M5:** treat auth, pairing, revocation, Origin enforcement, TLS/mesh refusal,
-  secret storage, and log redaction as one end-to-end security boundary.
+- **Environments (077, 068, 078):** verify with two isolated in-process or loopback servers and
+  distinct databases; the SSH gate uses the `localhost` target only. No test or demo binds
+  non-loopback. Pairing, sessions, and TLS refusal are one later security boundary, not part of
+  these three plans.
 - Preserve pre-existing dirty work in every linked worktree. Use baseline deltas and the narrowest
   checks that can catch a plausible regression; never use a bare root test count as completion proof.
 
@@ -175,11 +171,10 @@ machinery now.
 
 - **Deleted:** completed plan 038 and superseded plan 058.
 - **Rewrite before execution:** Plan 056's command/focus boundary is reconciled to the landed runtime
-  but still requires its normal drift check; plan 064 already encodes its current architectural
-  ownership and also requires a normal drift check.
-- **Promote:** environment milestones M1–M5, one executable plan at a time.
-- **Deferred:** environment M6 and all compatibility work for simultaneous origins or obsolete
-  per-tab/active-editor/one-server architecture.
+  but still requires its normal drift check.
+- **Promoted:** environments as Plans 077 → 068 (rewritten environment-aware) → 078.
+- **Deferred:** the mesh https proxy check and pairing/sessions, until a client that cannot SSH
+  exists; all compatibility work for the obsolete per-tab/active-editor/one-server architecture.
 - **Proposed independently:** accepted four-target config-resolver feasibility evidence makes Plan
   066 eligible only for a separate root go/no-go scheduling decision. It does not authorize
   packaging or publication. Plan 067 remains blocked on Plan 066's reviewed artifact, separate root
