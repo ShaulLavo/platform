@@ -600,11 +600,11 @@ export const SETTINGS_REGISTRY = {
     widget: 'keybindings',
     category: 'Keyboard shortcuts',
     description:
-      'Command id to hotkey. A missing key keeps the default; an explicit null unbinds the command.',
+      'Command id to shortcut: one hotkey or two separated by a single space. A missing key keeps the default; an explicit null unbinds the command.',
     // The one key that merges rather than replaces: a later layer should be able
     // to bind a command without dropping every other binding the user set.
     merge: 'record',
-    keywords: ['keybinding', 'shortcut', 'hotkey', 'keymap'],
+    keywords: ['keybinding', 'shortcut', 'hotkey', 'chord', 'keymap'],
   }),
 } satisfies Readonly<Record<string, SettingDescriptor>>
 

@@ -29,6 +29,7 @@ import {
 } from '@/keymap/providers/command-context'
 import { createCommandBus } from '@/keymap/state/command-bus'
 import type { PlatformKeyBinding } from '@/keymap/types'
+import { useAppKeymap } from '@/keymap/use-app-keymap'
 import {
   captureCommandSnapshot,
   dispatchEditor,
@@ -37,6 +38,7 @@ import {
   resolveCommandTarget,
 } from '@/keymap/state/runtime'
 import { useFocusService } from '@/lib/focus/hooks/use-service'
+import { useFocusSnapshot } from '@/lib/focus/hooks/use-snapshot'
 import {
   focusTargetById,
   registeredFocusTarget,
@@ -120,6 +122,7 @@ export function TestCommandProvider({
   readonly queryClient: QueryClient
 }) {
   const focus = useFocusService()
+  const focusSnapshot = useFocusSnapshot()
   const [paletteOpen, setPaletteOpenState] = useState(options.paletteOpen ?? false)
   const [paletteOrigin, setPaletteOrigin] = useState(options.paletteOrigin ?? null)
   const [paletteSearch, setPaletteSearch] = useState(options.paletteSearch ?? '')
@@ -226,15 +229,24 @@ export function TestCommandProvider({
     restoreOriginTarget(focus, origin)
   }, [focus, paletteOpen])
 
+  const keymap = useAppKeymap({
+    bindings: commandRuntime.bindings,
+    bus: commandRuntime.bus,
+    focus,
+    focusedPane: focusSnapshot.currentOwner?.area ?? 'global',
+    focusedTarget: focusSnapshot.currentOwner?.token ?? null,
+  })
   const value: CommandContextValue = {
     bindings: commandRuntime.bindings,
     bus: commandRuntime.bus,
+    claimKeybinding: keymap.claimKeybinding,
     closePalette,
     openWorkspaceRoot: commandRuntime.runtime.shell.openWorkspaceRoot,
     paletteOpen,
     paletteOrigin,
     paletteScope,
     paletteSearch,
+    pendingChord: keymap.pendingChord,
     popPaletteScope,
     setPaletteOpen,
     setPaletteSearch,

@@ -53,6 +53,37 @@ test('rejects a retained mutation id reused for another intent', async ({ client
   expect((await fetchSettings()).values['workbench.colorTheme']).toBe('dark')
 })
 
+test('round-trips a two-stroke shortcut through the real server', async ({ client }) => {
+  expect(client).toBeDefined()
+  const result = await saveSettings({
+    mutationId: 'api-chord-round-trip',
+    operations: [
+      { command: 'workspace.showSettings', keys: 'Mod+K Mod+S', kind: 'keybinding.set' },
+    ],
+    target: 'user',
+  })
+
+  expect(result.snapshot.values['keybindings.overrides']['workspace.showSettings']).toBe(
+    'Mod+K Mod+S',
+  )
+  expect((await fetchSettings()).values).toEqual(result.snapshot.values)
+})
+
+test('rejects a third stroke before changing the settings document', async ({ client }) => {
+  expect(client).toBeDefined()
+  await expect(
+    saveSettings({
+      mutationId: 'api-chord-too-long',
+      operations: [
+        { command: 'workspace.showSettings', keys: 'Mod+K Mod+S Mod+X', kind: 'keybinding.set' },
+      ],
+      target: 'user',
+    }),
+  ).rejects.toMatchObject({ code: 'settings.WRITE_INVALID' })
+
+  expect((await fetchSettings()).values['keybindings.overrides']).toEqual({})
+})
+
 test('refuses an application-scoped key written to workspace settings', async ({ client }) => {
   expect(client).toBeDefined()
 

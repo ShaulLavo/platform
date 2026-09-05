@@ -64,9 +64,9 @@ stays safe to read, share and export.
 
 ## Keyboard shortcuts
 
-| Setting                 | Default | Scope       | What it does                                                                                 |
-| ----------------------- | ------- | ----------- | -------------------------------------------------------------------------------------------- |
-| `keybindings.overrides` | `{}`    | application | Command id to hotkey. A missing key keeps the default; an explicit null unbinds the command. |
+| Setting                 | Default | Scope       | What it does                                                                                                                                  |
+| ----------------------- | ------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `keybindings.overrides` | `{}`    | application | Command id to shortcut: one hotkey or two separated by a single space. A missing key keeps the default; an explicit null unbinds the command. |
 
 ## Language servers
 

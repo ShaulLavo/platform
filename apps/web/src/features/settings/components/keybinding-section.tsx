@@ -25,7 +25,7 @@ export function KeybindingSection() {
   const visible = matchingKeybindingRows(rows, query)
 
   return (
-    <div className='flex w-96 flex-col gap-1'>
+    <div className='flex w-[28rem] max-w-full flex-col gap-1'>
       <Input
         aria-label='Search keyboard shortcuts'
         onChange={(event) => setQuery(event.currentTarget.value)}

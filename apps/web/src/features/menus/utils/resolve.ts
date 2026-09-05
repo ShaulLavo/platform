@@ -6,7 +6,7 @@ import type { PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
 
 import type { Menu, MenuItem, MenuRadioItem, MenuSection } from './model'
 import { menuItemKey } from './model'
-import { commandShortcut } from './shortcut'
+import { commandShortcut } from '@/keymap/utils/format-keys'
 
 export type MenuResolveContext = {
   readonly bindings: readonly PlatformKeyBinding[]

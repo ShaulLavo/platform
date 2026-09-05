@@ -1,6 +1,6 @@
 import type { EditorCommandId } from '@singapor/core'
 import type { Icon } from '@phosphor-icons/react'
-import type { RegisterableHotkey } from '@tanstack/react-hotkeys'
+import type { KeyChord } from '@/keymap/types'
 import type { QueryClient } from '@tanstack/react-query'
 
 import type { EditorCommands } from '@/features/editor/state/commands'
@@ -48,7 +48,7 @@ export type CommandUndoCategory =
 
 /** One default key for a command. */
 export type CommandKeyDefault = {
-  readonly hotkey: RegisterableHotkey
+  readonly chord: KeyChord
   readonly pane?: import('@/lib/focus/state/service').FocusArea | 'any'
   readonly platforms?: readonly CommandPlatformName[]
   readonly preventDefault?: boolean

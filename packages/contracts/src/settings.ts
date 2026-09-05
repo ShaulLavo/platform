@@ -105,14 +105,21 @@ export const keybindingCommandIdSchema = v.pipe(
   v.regex(KEYBINDING_COMMAND_ID_PATTERN),
 )
 
-/**
- * Command id → hotkey that replaces the built-in binding. `null` is an explicit
- * unbind, which is why the value is nullable instead of the key being deleted:
- * a missing key means "keep the default", a null one means "there is none".
- */
+export const MAX_KEYBINDING_CHORD_STROKES = 2
+
+// Shape only; the keymap validates each stroke's grammar.
+const KEYBINDING_CHORD_PATTERN = /^\S+(?: \S+)?$/
+
+export const keybindingChordSchema = v.pipe(
+  trimmedNonEmptyStringSchema,
+  v.maxLength(64),
+  v.regex(KEYBINDING_CHORD_PATTERN, 'a binding is one hotkey, or two separated by a single space'),
+)
+
+// A missing command keeps its default; null explicitly unbinds it.
 export const keybindingOverridesSchema = v.record(
   keybindingCommandIdSchema,
-  v.nullable(trimmedNonEmptyStringSchema),
+  v.nullable(keybindingChordSchema),
 )
 
 /**

@@ -1,23 +1,26 @@
-import type { PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
+import { detectPlatform } from '@tanstack/hotkeys'
 
-/**
- * Renders a binding as the glyph string shown in menus and the command
- * palette. Both surfaces read the same key table, so a shortcut hint cannot
- * drift from the key that actually runs the command.
- */
+import type { PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
+import { CHORD_DISPLAY_SEPARATOR, chordStrokes, type PlatformName } from '@/keymap/utils/chord'
+
 export function commandShortcut(
   command: PlatformCommandId,
   bindings: readonly PlatformKeyBinding[],
 ) {
   const binding = bindings.find((candidate) => candidate.command === command)
   if (!binding) return null
-  if (typeof binding.hotkey === 'string') return formatHotkey(binding.hotkey)
 
-  return formatHotkey(binding.keys)
+  return formatChord(binding.keys)
 }
 
-export function formatHotkey(hotkey: string) {
-  const isMac = isMacPlatform()
+export function formatChord(keys: string, platform: PlatformName = detectPlatform()): string {
+  return chordStrokes(keys)
+    .map((stroke) => formatHotkey(stroke, platform))
+    .join(CHORD_DISPLAY_SEPARATOR)
+}
+
+function formatHotkey(hotkey: string, platform: PlatformName) {
+  const isMac = platform === 'mac'
   const separator = isMac ? '' : '+'
 
   return hotkey
@@ -31,7 +34,7 @@ export function hotkeyTokenLabel(token: string, isMac: boolean) {
   if (normalized === 'mod') return isMac ? '⌘' : 'Ctrl'
   if (normalized === 'meta') return isMac ? '⌘' : 'Meta'
   if (normalized === 'cmd') return isMac ? '⌘' : 'Cmd'
-  if (normalized === 'ctrl') return isMac ? '⌃' : 'Ctrl'
+  if (normalized === 'ctrl' || normalized === 'control') return isMac ? '⌃' : 'Ctrl'
   if (normalized === 'shift') return isMac ? '⇧' : 'Shift'
   if (normalized === 'alt') return isMac ? '⌥' : 'Alt'
   if (normalized === 'enter') return '↵'
@@ -39,10 +42,4 @@ export function hotkeyTokenLabel(token: string, isMac: boolean) {
   if (normalized.length === 1) return normalized.toUpperCase()
 
   return token
-}
-
-function isMacPlatform() {
-  if (typeof navigator === 'undefined') return false
-
-  return /Mac|iPhone|iPad|iPod/.test(navigator.platform)
 }

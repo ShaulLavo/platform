@@ -9,6 +9,7 @@ import type {
 } from '@/keymap/define-command'
 import type { CommandBus, CommandInvocation } from '@/keymap/state/command-bus'
 import type { PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
+import type { PendingChordLabel } from '@/keymap/utils/chord-machine'
 import type { FocusTargetToken } from '@/lib/focus/state/service'
 
 export type PlatformCommandBus = CommandBus<
@@ -22,12 +23,14 @@ export type PlatformCommandBus = CommandBus<
 export type CommandContextValue = {
   readonly bindings: readonly PlatformKeyBinding[]
   readonly bus: PlatformCommandBus
+  readonly claimKeybinding: (event: KeyboardEvent) => boolean
   readonly closePalette: (restoreOrigin: boolean) => void
   readonly openWorkspaceRoot: (rootPath: string) => Promise<OpenWorkspaceRootResult>
   readonly paletteOpen: boolean
   readonly paletteOrigin: FocusTargetToken | null
   readonly paletteScope: PaletteScope | null
   readonly paletteSearch: string
+  readonly pendingChord: PendingChordLabel | null
   readonly popPaletteScope: () => void
   readonly setPaletteOpen: (open: boolean) => void
   readonly setPaletteSearch: (search: string) => void

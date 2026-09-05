@@ -1,6 +1,7 @@
+import { binding } from '../../../../../test/factories/key-binding'
 import { actionItem, commandItem, section } from '@/features/menus/utils/model'
 import { resolveMenu, type MenuResolveContext } from '@/features/menus/utils/resolve'
-import type { PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
+import type { PlatformCommandId } from '@/keymap/types'
 import { expect, test } from '../../../../../test/fixtures'
 
 test('fills label and shortcut for a command item from the registry', () => {
@@ -146,7 +147,7 @@ function context(
   } = {},
 ): MenuResolveContext {
   return {
-    bindings: [binding('Mod+S', 'workspace.saveFile')],
+    bindings: [binding('Mod+S', { command: 'workspace.saveFile' })],
     dispatch: (command) => {
       overrides.dispatch?.(command)
       return handledTicket()
@@ -163,8 +164,4 @@ function handledTicket() {
     claimed: true,
     completion: Promise.resolve({ status: 'handled' as const }),
   }
-}
-
-function binding(hotkey: 'Mod+S' | 'Mod+W', command: PlatformCommandId): PlatformKeyBinding {
-  return { command, hotkey, keys: hotkey, source: 'default' }
 }

@@ -21,6 +21,7 @@ import { readLiveSettingsProjection } from '@/features/settings/state/live-proje
 import { useOpenWorkspaceRoot } from '@/features/workspace/hooks/use-open-root'
 import { resolvedPlatformKeyBindings } from '@/keymap/active-bindings'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
+import { useAppKeymap } from '@/keymap/use-app-keymap'
 import type { WorkspaceCommandRuntime, WorkspaceCommandSnapshot } from '@/keymap/define-command'
 import { CommandContext, type CommandContextValue } from '@/keymap/providers/command-context'
 import { createCommandBus } from '@/keymap/state/command-bus'
@@ -32,6 +33,7 @@ import {
   resolveCommandTarget,
 } from '@/keymap/state/runtime'
 import { useFocusService } from '@/lib/focus/hooks/use-service'
+import { useFocusSnapshot } from '@/lib/focus/hooks/use-snapshot'
 import {
   focusTargetById,
   registeredFocusTarget,
@@ -81,6 +83,7 @@ function runtimeAdapters({
 
 export function CommandProvider({ children }: { readonly children: ReactNode }) {
   const focus = useFocusService()
+  const focusSnapshot = useFocusSnapshot()
   const documentStore = useEditorDocumentStoreApi()
   const workspace = useEditorWorkspaceStoreApi()
   const workspaceEdits = useWorkspaceEditService()
@@ -268,6 +271,13 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
     () => resolvedPlatformKeyBindings(defaults, overrides),
     [defaults, overrides],
   )
+  const { claimKeybinding, pendingChord } = useAppKeymap({
+    bindings,
+    bus,
+    focus,
+    focusedPane: focusSnapshot.currentOwner?.area ?? 'global',
+    focusedTarget: focusSnapshot.currentOwner?.token ?? null,
+  })
 
   const closePalette = (restoreOrigin: boolean) => {
     paletteRestoreRef.current = restoreOrigin ? paletteOrigin : undefined
@@ -333,12 +343,14 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
   const value: CommandContextValue = {
     bindings,
     bus,
+    claimKeybinding,
     closePalette,
     openWorkspaceRoot,
     paletteOpen,
     paletteOrigin,
     paletteScope,
     paletteSearch,
+    pendingChord,
     popPaletteScope,
     setPaletteOpen,
     setPaletteSearch,

@@ -308,7 +308,7 @@ function sessionJumpCommands() {
       description: `Put session ${position} in the rail on the stage.`,
       hiddenInPalette: true,
       id: sessionJumpCommandId(position),
-      keys: [{ hotkey: `Mod+Alt+${position}`, preventDefault: true }],
+      keys: [{ chord: [`Mod+Alt+${position}`], preventDefault: true }],
       execution: 'sync',
       target: 'workspace',
       undoCategory: 'view-only',
@@ -352,7 +352,7 @@ export const workspaceCommands = [
     keepsPaletteOpen: true,
     keys: [
       {
-        hotkey: 'Mod+P',
+        chord: ['Mod+P'],
         preventDefault: true,
         stopPropagation: true,
         vscodeCommandId: 'workbench.action.quickOpen',
@@ -378,13 +378,13 @@ export const workspaceCommands = [
     keepsPaletteOpen: true,
     keys: [
       {
-        hotkey: 'Mod+Shift+P',
+        chord: ['Mod+Shift+P'],
         preventDefault: true,
         stopPropagation: true,
         vscodeCommandId: 'workbench.action.showCommands',
       },
       {
-        hotkey: 'F1',
+        chord: ['F1'],
         preventDefault: true,
         stopPropagation: true,
         vscodeCommandId: 'workbench.action.showCommands',
@@ -411,11 +411,12 @@ export const workspaceCommands = [
     id: 'workspace.showSettings',
     keys: [
       {
-        hotkey: 'Mod+,',
+        chord: ['Mod+,'],
         preventDefault: true,
         stopPropagation: true,
         vscodeCommandId: 'workbench.action.openSettings',
       },
+      { chord: ['Mod+K', 'Mod+S'], vscodeCommandId: 'workbench.action.openGlobalKeybindings' },
     ],
     execution: 'async',
     target: 'workspace',
@@ -502,7 +503,7 @@ export const workspaceCommands = [
     keepsPaletteOpen: true,
     keys: [
       {
-        hotkey: 'Mod+Shift+O',
+        chord: ['Mod+Shift+O'],
         preventDefault: true,
         vscodeCommandId: 'workbench.action.gotoSymbol',
       },
@@ -544,7 +545,7 @@ export const workspaceCommands = [
     icon: FloppyDiskIcon,
     id: 'workspace.saveFile',
     keys: [
-      { hotkey: 'Mod+S', preventDefault: true, vscodeCommandId: 'workbench.action.files.save' },
+      { chord: ['Mod+S'], preventDefault: true, vscodeCommandId: 'workbench.action.files.save' },
     ],
     // Not `file`: the raw settings.json buffer has no path on disk and is saved
     // through the settings route, which is a save the user expects Mod+S to do.
@@ -690,7 +691,7 @@ export const workspaceCommands = [
     id: 'workspace.toggleSidebarVisibility',
     keys: [
       {
-        hotkey: 'Mod+B',
+        chord: ['Mod+B'],
         preventDefault: true,
         vscodeCommandId: 'workbench.action.toggleSidebarVisibility',
       },
@@ -730,7 +731,7 @@ export const workspaceCommands = [
     id: 'workspace.togglePanel',
     keys: [
       {
-        hotkey: 'Mod+J',
+        chord: ['Mod+J'],
         preventDefault: true,
         vscodeCommandId: 'workbench.action.togglePanel',
       },
@@ -819,7 +820,7 @@ export const workspaceCommands = [
     description: 'Move keyboard focus to the file tree.',
     icon: CrosshairIcon,
     id: 'workspace.focusFileTree',
-    keys: [{ hotkey: 'Mod+Shift+E', preventDefault: true }],
+    keys: [{ chord: ['Mod+Shift+E'], preventDefault: true }],
     execution: 'async',
     target: 'workspace',
     undoCategory: 'view-only',
@@ -843,7 +844,7 @@ export const workspaceCommands = [
     description: 'Filter the loaded files in the file tree.',
     icon: FileMagnifyingGlassIcon,
     id: 'workspace.findInFileTree',
-    keys: [{ hotkey: 'Mod+F', pane: 'file-tree', preventDefault: true }],
+    keys: [{ chord: ['Mod+F'], pane: 'file-tree', preventDefault: true }],
     execution: 'async',
     target: 'workspace',
     undoCategory: 'view-only',
@@ -946,7 +947,7 @@ export const workspaceCommands = [
     category: 'Workspace',
     description: 'Go back to the previous document.',
     id: 'workspace.navigateBack',
-    keys: [{ hotkey: 'Mod+[' }],
+    keys: [{ chord: ['Mod+['] }],
     execution: 'sync',
     target: 'workspace',
     undoCategory: 'view-only',
@@ -961,7 +962,7 @@ export const workspaceCommands = [
     category: 'Workspace',
     description: 'Go forward again.',
     id: 'workspace.navigateForward',
-    keys: [{ hotkey: 'Mod+]' }],
+    keys: [{ chord: ['Mod+]'] }],
     execution: 'sync',
     target: 'workspace',
     undoCategory: 'view-only',
@@ -1076,7 +1077,7 @@ export const workspaceCommands = [
     description: 'Switch the active diff viewer between split and unified modes.',
     icon: GitDiffIcon,
     id: 'workspace.toggleDiffViewMode',
-    keys: [{ hotkey: 'Mod+Shift+D' }],
+    keys: [{ chord: ['Mod+Shift+D'] }],
     execution: 'async',
     target: 'workspace',
     undoCategory: 'workspace-operation',
@@ -1097,7 +1098,7 @@ export const workspaceCommands = [
     category: 'Workspace',
     description: 'Switch between the Workbench and Chat layouts.',
     id: 'workspace.toggleUiMode',
-    keys: [{ hotkey: 'Mod+Shift+M', preventDefault: true }],
+    keys: [{ chord: ['Mod+Shift+M'], preventDefault: true }],
     execution: 'async',
     target: 'workspace',
     undoCategory: 'view-only',
@@ -1241,7 +1242,7 @@ export const workspaceCommands = [
     description: 'Start a new chat session in the active project.',
     hiddenInPalette: true,
     id: 'workspace.newSession',
-    keys: [{ hotkey: 'Mod+Alt+N', preventDefault: true }],
+    keys: [{ chord: ['Mod+Alt+N'], preventDefault: true }],
     execution: 'sync',
     target: 'workspace',
     undoCategory: 'workspace-operation',
@@ -1254,7 +1255,7 @@ export const workspaceCommands = [
     description: 'Move to the next session in the rail.',
     hiddenInPalette: true,
     id: 'workspace.nextSession',
-    keys: [{ hotkey: 'Mod+Alt+]', preventDefault: true }],
+    keys: [{ chord: ['Mod+Alt+]'], preventDefault: true }],
     execution: 'sync',
     target: 'workspace',
     undoCategory: 'view-only',
@@ -1267,7 +1268,7 @@ export const workspaceCommands = [
     description: 'Move to the previous session in the rail.',
     hiddenInPalette: true,
     id: 'workspace.previousSession',
-    keys: [{ hotkey: 'Mod+Alt+[', preventDefault: true }],
+    keys: [{ chord: ['Mod+Alt+['], preventDefault: true }],
     execution: 'sync',
     target: 'workspace',
     undoCategory: 'view-only',
@@ -1280,7 +1281,7 @@ export const workspaceCommands = [
     description: 'Show or hide the list of sessions.',
     hiddenInPalette: true,
     id: 'workspace.toggleSessionRail',
-    keys: [{ hotkey: 'Mod+Alt+B', preventDefault: true }],
+    keys: [{ chord: ['Mod+Alt+B'], preventDefault: true }],
     execution: 'sync',
     target: 'workspace',
     undoCategory: 'view-only',

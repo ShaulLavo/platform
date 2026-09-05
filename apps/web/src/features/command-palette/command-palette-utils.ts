@@ -3,7 +3,7 @@ import {
   searchBufferDocumentLabel,
   searchBufferDocumentTitle,
 } from '@/features/search/utils/buffer-document'
-import { commandShortcut } from '@/features/menus/utils/shortcut'
+import { commandShortcut } from '@/keymap/utils/format-keys'
 import type { EditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
 import { activeEditorTabForWorkbenchPanels } from '@/features/workbench/utils/panels'
 import { parseCompareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'

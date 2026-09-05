@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { fetchSettings } from '@/features/settings/utils/api'
+import { formatChord } from '@/keymap/utils/format-keys'
 
 import { KeybindingSection } from '../components/keybinding-section'
 import { expect, test } from '../../../../test/fixtures'
@@ -87,4 +88,25 @@ test('Unbind writes null rather than removing the key', async ({ client }) => {
     const snapshot = await fetchSettings()
     expect(snapshot.values['keybindings.overrides']['workspace.saveFile']).toBeNull()
   })
+})
+
+test('records two strokes through the server and renders the saved shortcut as glyphs', async ({
+  client,
+}) => {
+  expect(client).toBeDefined()
+  renderWithProviders(<KeybindingSection />)
+  const recorder = await screen.findByRole('button', { name: SAVE_RECORDER })
+  await userEvent.click(recorder)
+  fireEvent.keyDown(recorder, { ctrlKey: true, key: 'k' })
+
+  expect((await fetchSettings()).values['keybindings.overrides']).not.toHaveProperty(
+    'workspace.saveFile',
+  )
+  fireEvent.keyDown(recorder, { ctrlKey: true, key: 's' })
+
+  await waitFor(async () => {
+    const snapshot = await fetchSettings()
+    expect(snapshot.values['keybindings.overrides']['workspace.saveFile']).toBe('Mod+K Mod+S')
+  })
+  await waitFor(() => expect(recorder.textContent).toBe(formatChord('Mod+K Mod+S')))
 })

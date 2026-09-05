@@ -1,27 +1,17 @@
-import {
-  detectPlatform,
-  normalizeKeyName,
-  normalizeRegisterableHotkey,
-  parseHotkey,
-  PUNCTUATION_CODE_MAP,
-  validateHotkey,
-  type ParsedHotkey,
-  type RawHotkey,
-} from '@tanstack/react-hotkeys'
+import { detectPlatform, PUNCTUATION_CODE_MAP } from '@tanstack/hotkeys'
 import type { KeybindingOverrides } from '@workspace/contracts'
 
 import type { FocusArea } from '@/lib/focus/state/service'
+import { chordKeys, isBindableChord, keysConflict, parsedChord } from '@/keymap/utils/chord'
 
-import { commandHotkeyMeta } from './command-registry'
-import { platformCommand, platformCommands } from './table'
+import { commandHotkeyMeta } from '@/keymap/command-registry'
+import { platformCommand, platformCommands } from '@/keymap/table'
 import type {
   CommandKeyBinding,
-  KeyBindingKeyboardEvent,
   KeyBindingSource,
-  ParsedPlatformKeyBinding,
   PlatformCommandId,
   PlatformKeyBinding,
-} from './types'
+} from '@/keymap/types'
 
 type PlatformName = ReturnType<typeof detectPlatform>
 
@@ -38,13 +28,14 @@ type KeyBindingResolution = {
 
 /** A settings row: the effective binding plus the command that took its key. */
 export type CommandKeyBindingRow = CommandKeyBinding & {
+  readonly effectiveKeys: readonly string[]
   /** Set only when the command has no binding left because another one won the key. */
   readonly shadowedBy: PlatformCommandId | null
 }
 
 const LETTER_CODE_PATTERN = /^Key([A-Z])$/
 const DIGIT_CODE_PATTERN = /^Digit([0-9])$/
-const LATIN_LETTER_PATTERN = /^[A-Z]$/
+export const LATIN_LETTER_PATTERN = /^[A-Z]$/
 const NO_SHADOWED_COMMANDS: ReadonlyMap<PlatformCommandId, PlatformCommandId> = new Map()
 
 /**
@@ -76,37 +67,6 @@ export function activePlatformKeyBindings(
   return Array.from(selected.values(), ({ binding }) => binding)
 }
 
-export function parsedPlatformKeyBindings(
-  bindings: readonly PlatformKeyBinding[],
-  platform: PlatformName = detectPlatform(),
-): readonly ParsedPlatformKeyBinding[] {
-  return bindings.map((binding) => {
-    const hotkey = parseHotkey(binding.keys, platform)
-
-    return { binding, firesWhileTyping: hotkeyFiresWhileTyping(hotkey), hotkey }
-  })
-}
-
-export function platformKeyBindingForKeyboardEvent(
-  bindings: readonly ParsedPlatformKeyBinding[],
-  event: KeyBindingKeyboardEvent,
-): ParsedPlatformKeyBinding | null {
-  const printed = normalizeKeyName(event.key)
-  const printedMatch = keyBindingForKey(bindings, event, printed)
-  if (printedMatch) return printedMatch
-  // A layout that prints a Latin letter already speaks the language the
-  // bindings are written in, so its letters are final: falling through to
-  // `event.code` there would let the Mod+W binding answer for AZERTY's Mod+Z.
-  // Digits are not guarded, matching the library: a key that prints '1' can
-  // only reach the fallback when no binding wanted '1' anyway.
-  if (LATIN_LETTER_PATTERN.test(printed)) return null
-
-  const physical = physicalKeyName(event.code)
-  if (!physical) return null
-
-  return keyBindingForKey(bindings, event, physical)
-}
-
 /**
  * One row per command the key table can reach, read back out of the resolved
  * table rather than off the override document, so the settings editor lists
@@ -134,29 +94,10 @@ export function commandKeyBindings(
       applied,
       command,
       defaultKeys: keys,
-      live: live.get(command) ?? null,
+      live: live.get(command) ?? [],
       shadowedBy: shadowedBy.get(command) ?? null,
     }),
   )
-}
-
-/**
- * `validateHotkey` only warns about a key it does not recognise, but a binding
- * whose key no keyboard produces can never fire, so a warning is as fatal as an
- * error here.
- */
-export function isBindableHotkey(keys: string): boolean {
-  const result = validateHotkey(keys)
-
-  return result.valid && result.warnings.length === 0
-}
-
-/**
- * Canonical spelling for a hotkey the user typed, so the settings document
- * never holds 'mod+s' and 'Mod+S' as two different overrides.
- */
-export function normalizedHotkey(keys: string, platform: PlatformName = detectPlatform()): string {
-  return normalizeRegisterableHotkey(rawHotkey(keys, platform), platform)
 }
 
 function keyBindingResolution(
@@ -193,28 +134,31 @@ function liveKeyBindings(
   bound: readonly PlatformKeyBinding[],
 ): KeyBindingResolution {
   const shadowedBy = new Map<PlatformCommandId, PlatformCommandId>()
+  const liveOverrides: PlatformKeyBinding[] = []
   const bindings: PlatformKeyBinding[] = []
 
+  // A discarded prefix must not suppress otherwise compatible sibling chords.
+  for (const binding of bound.toReversed()) {
+    const winner = bindingClaimingKey(liveOverrides, binding)
+    if (winner) {
+      recordShadowedCommand(shadowedBy, binding, winner)
+      continue
+    }
+
+    liveOverrides.push(binding)
+  }
+
   for (const binding of kept) {
-    const winner = bindingClaimingKey(bound, binding)
-    if (!winner) {
-      bindings.push(binding)
+    const winner = bindingClaimingKey(liveOverrides, binding)
+    if (winner) {
+      recordShadowedCommand(shadowedBy, binding, winner)
       continue
     }
 
-    recordShadowedCommand(shadowedBy, binding, winner)
+    bindings.push(binding)
   }
 
-  for (const [index, binding] of bound.entries()) {
-    const winner = bindingClaimingKey(bound.slice(index + 1), binding)
-    if (!winner) {
-      bindings.push(binding)
-      continue
-    }
-
-    recordShadowedCommand(shadowedBy, binding, winner)
-  }
-
+  bindings.push(...liveOverrides.reverse())
   return { bindings, shadowedBy }
 }
 
@@ -226,7 +170,7 @@ function bindingClaimingKey(
 }
 
 function collidesWith(candidate: PlatformKeyBinding, binding: PlatformKeyBinding) {
-  if (candidate.keys !== binding.keys) return false
+  if (!keysConflict(candidate.keys, binding.keys)) return false
 
   return (candidate.pane ?? 'any') === (binding.pane ?? 'any')
 }
@@ -280,7 +224,7 @@ function appliedOverrides(
 
   for (const [command, keys] of Object.entries(overrides)) {
     if (!isPlatformCommandId(command, known)) continue
-    if (keys !== null && !isBindableHotkey(keys)) continue
+    if (keys !== null && !isBindableChord(keys)) continue
 
     entries.push([command, keys])
   }
@@ -308,7 +252,7 @@ function userKeyBinding(
 ): readonly PlatformKeyBinding[] {
   if (keys === null) return []
 
-  const hotkey = rawHotkey(keys, platform)
+  const chord = parsedChord(keys, platform)
   // The default carries the pane and event handling the command was designed
   // for; only the keys are the user's to change.
   const template = defaults.find((binding) => binding.command === command)
@@ -316,8 +260,8 @@ function userKeyBinding(
   return [
     {
       command,
-      hotkey,
-      keys: normalizeRegisterableHotkey(hotkey, platform),
+      chord,
+      keys: chordKeys(chord, platform),
       meta: commandHotkeyMeta(command),
       pane: template?.pane ?? commandDefaultPane(command),
       preventDefault: template?.preventDefault,
@@ -332,18 +276,6 @@ function commandDefaultPane(command: PlatformCommandId): PlatformKeyBinding['pan
   return platformCommand(command)?.target === 'editor' ? 'editor' : 'any'
 }
 
-function rawHotkey(keys: string, platform: PlatformName): RawHotkey {
-  const parsed = parseHotkey(keys, platform)
-
-  return {
-    alt: parsed.alt,
-    ctrl: parsed.ctrl,
-    key: parsed.key,
-    meta: parsed.meta,
-    shift: parsed.shift,
-  }
-}
-
 function commandKeyBindingRow({
   applied,
   command,
@@ -354,11 +286,20 @@ function commandKeyBindingRow({
   readonly applied: ReadonlyMap<PlatformCommandId, string | null>
   readonly command: PlatformCommandId
   readonly defaultKeys: readonly string[]
-  readonly live: PlatformKeyBinding | null
+  readonly live: readonly PlatformKeyBinding[]
   readonly shadowedBy: PlatformCommandId | null
 }): CommandKeyBindingRow {
-  if (live) {
-    return { command, defaultKeys, keys: live.keys, shadowedBy: null, source: live.source }
+  const primary = live[0]
+  const effectiveKeys = live.map((binding) => binding.keys)
+  if (primary) {
+    return {
+      command,
+      defaultKeys,
+      effectiveKeys,
+      keys: primary.keys,
+      shadowedBy: null,
+      source: primary.source,
+    }
   }
 
   const source: KeyBindingSource = applied.has(command) ? 'user' : 'default'
@@ -368,23 +309,25 @@ function commandKeyBindingRow({
     return {
       command,
       defaultKeys,
+      effectiveKeys,
       keys: applied.get(command) ?? firstKeys(defaultKeys),
       shadowedBy,
       source,
     }
   }
 
-  return { command, defaultKeys, keys: null, shadowedBy: null, source }
+  return { command, defaultKeys, effectiveKeys, keys: null, shadowedBy: null, source }
 }
 
 function liveBindingsByCommand(bindings: readonly PlatformKeyBinding[]) {
-  const byCommand = new Map<PlatformCommandId, PlatformKeyBinding>()
+  const byCommand = new Map<PlatformCommandId, PlatformKeyBinding[]>()
 
   for (const binding of bindings) {
     if (!binding.command) continue
-    if (byCommand.has(binding.command)) continue
 
-    byCommand.set(binding.command, binding)
+    const commandBindings = byCommand.get(binding.command) ?? []
+    commandBindings.push(binding)
+    byCommand.set(binding.command, commandBindings)
   }
 
   return byCommand
@@ -410,39 +353,12 @@ function defaultKeysByCommand(bindings: readonly PlatformKeyBinding[]) {
   return byCommand
 }
 
-function hotkeyFiresWhileTyping(hotkey: ParsedHotkey) {
-  return hotkey.ctrl || hotkey.meta || hotkey.key === 'Escape'
-}
-
-function keyBindingForKey(
-  bindings: readonly ParsedPlatformKeyBinding[],
-  event: KeyBindingKeyboardEvent,
-  key: string,
-): ParsedPlatformKeyBinding | null {
-  for (const candidate of bindings) {
-    if (candidate.hotkey.key !== key) continue
-    if (!modifiersMatch(candidate.hotkey, event)) continue
-
-    return candidate
-  }
-
-  return null
-}
-
-function modifiersMatch(hotkey: ParsedHotkey, event: KeyBindingKeyboardEvent) {
-  if (hotkey.alt !== event.altKey) return false
-  if (hotkey.ctrl !== event.ctrlKey) return false
-  if (hotkey.meta !== event.metaKey) return false
-
-  return hotkey.shift === event.shiftKey
-}
-
 /**
  * `event.code` names the physical key whatever the layout prints on it. Without
  * this a Cyrillic or Hebrew layout reports 'я' or 'ז' for the key labelled Z,
  * and every Mod+Z-shaped binding silently stops working.
  */
-function physicalKeyName(code: string | undefined): string | null {
+export function physicalKeyName(code: string | undefined): string | null {
   if (!code) return null
 
   const letter = LETTER_CODE_PATTERN.exec(code)?.[1]

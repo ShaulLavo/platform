@@ -14,9 +14,9 @@ import { useSessionSelectionStore } from '@/features/chat-mode/state/session-sel
 import { useActiveProjectStore } from '@/features/workspace/state/active-project'
 import { chatProject, shellSnapshot, threadShell } from '../../../test/factories/chat'
 import { expect, test } from '../../../test/fixtures'
-import { defaultPlatformKeyBindings } from '../default-bindings'
-import { SESSION_JUMP_POSITIONS, sessionJumpCommandId } from '../types'
-import type { PlatformCommandId, PlatformKeyBinding } from '../types'
+import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
+import { SESSION_JUMP_POSITIONS, sessionJumpCommandId } from '@/keymap/types'
+import type { PlatformCommandId } from '@/keymap/types'
 
 const platformId = v.parse(projectIdSchema, 'project-platform')
 const siteId = v.parse(projectIdSchema, 'project-site')
@@ -27,22 +27,22 @@ const third = v.parse(threadIdSchema, 'thread-third')
 test('every session command is reachable from the keyboard', () => {
   const bound = boundCommands()
 
-  expect(bound.get('workspace.newSession')).toBe('Mod+Alt+N')
-  expect(bound.get('workspace.toggleSessionRail')).toBe('Mod+Alt+B')
-  expect(bound.get('workspace.previousSession')).toBe('Mod+Alt+[')
-  expect(bound.get('workspace.nextSession')).toBe('Mod+Alt+]')
+  expect(bound.get('workspace.newSession')).toEqual(['Mod+Alt+N'])
+  expect(bound.get('workspace.toggleSessionRail')).toEqual(['Mod+Alt+B'])
+  expect(bound.get('workspace.previousSession')).toEqual(['Mod+Alt+['])
+  expect(bound.get('workspace.nextSession')).toEqual(['Mod+Alt+]'])
   expect(
     SESSION_JUMP_POSITIONS.map((position) => bound.get(sessionJumpCommandId(position))),
   ).toEqual([
-    'Mod+Alt+1',
-    'Mod+Alt+2',
-    'Mod+Alt+3',
-    'Mod+Alt+4',
-    'Mod+Alt+5',
-    'Mod+Alt+6',
-    'Mod+Alt+7',
-    'Mod+Alt+8',
-    'Mod+Alt+9',
+    ['Mod+Alt+1'],
+    ['Mod+Alt+2'],
+    ['Mod+Alt+3'],
+    ['Mod+Alt+4'],
+    ['Mod+Alt+5'],
+    ['Mod+Alt+6'],
+    ['Mod+Alt+7'],
+    ['Mod+Alt+8'],
+    ['Mod+Alt+9'],
   ])
 })
 
@@ -127,11 +127,14 @@ function selectedThreadId() {
 }
 
 function boundCommands() {
-  return new Map(
-    defaultPlatformKeyBindings('mac').flatMap((binding: PlatformKeyBinding) =>
-      binding.command ? [[binding.command as PlatformCommandId, binding.keys]] : [],
-    ),
-  )
+  const commands = new Map<PlatformCommandId, string[]>()
+  for (const binding of defaultPlatformKeyBindings('mac')) {
+    if (!binding.command) continue
+    const keys = commands.get(binding.command) ?? []
+    keys.push(binding.keys)
+    commands.set(binding.command, keys)
+  }
+  return commands
 }
 
 function seedSessions() {

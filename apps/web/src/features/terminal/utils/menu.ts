@@ -10,7 +10,7 @@ import {
 } from '@phosphor-icons/react'
 
 import { actionItem, section, type Menu } from '@/features/menus/utils/model'
-import { formatHotkey } from '@/features/menus/utils/shortcut'
+import { formatChord } from '@/keymap/utils/format-keys'
 
 /**
  * Everything the menu needs to know about the terminal, read once when the
@@ -38,7 +38,7 @@ export type TerminalMenuContext = {
 }
 
 export function terminalMenu(context: TerminalMenuContext): Menu {
-  const pasteHotkey = formatHotkey('mod+v')
+  const pasteHotkey = formatChord('mod+v')
 
   return [
     // Above Copy: a failing command is the reason most people open this menu on
@@ -85,7 +85,7 @@ export function terminalMenu(context: TerminalMenuContext): Menu {
         label: 'Clear',
         run: context.clear,
         // Clear is Ctrl+L sent to the shell, so the hint names the real key.
-        shortcut: formatHotkey('ctrl+l'),
+        shortcut: formatChord('ctrl+l'),
       }),
       actionItem({
         // Reset rebuilds the emulator and drops the scrollback for good.

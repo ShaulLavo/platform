@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe } from 'vitest'
+import { expect, test as it } from '../../../test/fixtures'
 
 import { platformCommandSpecs } from '@/keymap/command-registry'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
@@ -15,8 +16,8 @@ import {
   type PlatformCommandId,
 } from '@/keymap/types'
 
-/** Every chord the app claims from the browser without dispatching anything. */
-const RESERVED_CHORDS = [
+/** Every hotkey the app claims from the browser without dispatching anything. */
+const RESERVED_HOTKEYS = [
   'Control+Tab',
   'Control+Q',
   'Mod+Alt+Tab',
@@ -27,7 +28,7 @@ const RESERVED_CHORDS = [
   'Mod+W',
   'F12',
 ]
-const MAC_ONLY_RESERVED_CHORD = 'Mod+Alt+Tab'
+const MAC_ONLY_RESERVED_HOTKEY = 'Mod+Alt+Tab'
 
 const SESSION_COMMAND_PATTERN =
   /^workspace\.(new|next|previous)Session$|^workspace\.toggleSessionRail$|^workspace\.jumpToSession\d$/
@@ -258,16 +259,16 @@ describe('command table', () => {
   it('keeps the browser-hostile chords reserved', () => {
     const mac = reservedBindings('mac')
     expect(mac).toHaveLength(9)
-    expect(mac.map((binding) => binding.hotkey)).toEqual(RESERVED_CHORDS)
+    expect(mac.map((binding) => binding.chord[0])).toEqual(RESERVED_HOTKEYS)
 
     for (const binding of mac) {
       expect(binding.preventDefault).toBe(true)
       expect(binding.stopPropagation).toBe(true)
     }
 
-    const withoutMacOnly = RESERVED_CHORDS.filter((chord) => chord !== MAC_ONLY_RESERVED_CHORD)
-    expect(reservedBindings('linux').map((binding) => binding.hotkey)).toEqual(withoutMacOnly)
-    expect(reservedBindings('windows').map((binding) => binding.hotkey)).toEqual(withoutMacOnly)
+    const withoutMacOnly = RESERVED_HOTKEYS.filter((chord) => chord !== MAC_ONLY_RESERVED_HOTKEY)
+    expect(reservedBindings('linux').map((binding) => binding.chord[0])).toEqual(withoutMacOnly)
+    expect(reservedBindings('windows').map((binding) => binding.chord[0])).toEqual(withoutMacOnly)
   })
 
   it('gives the session commands specs without giving them palette rows', () => {

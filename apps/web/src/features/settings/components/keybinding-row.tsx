@@ -4,6 +4,7 @@ import { Button } from '@workspace/ui/components/button'
 
 import type { CommandKeyBindingRow } from '@/keymap/active-bindings'
 import { platformCommandSpec } from '@/keymap/command-registry'
+import { useCommand } from '@/keymap/hooks/use-command'
 
 import { ChordRecorder } from '@/features/settings/components/widgets/chord-recorder'
 import { useSettingsActions } from '@/features/settings/hooks/use-settings-actions'
@@ -16,6 +17,7 @@ export function KeybindingRow({
   /** How many other commands lost this chord to this one. */
   claimedFrom: number
 }) {
+  const { bindings } = useCommand()
   const { resetKeybinding, setKeybinding } = useSettingsActions()
   // A command the registry carries no spec for falls back to its id, and
   // repeating the id underneath would print the same string twice.
@@ -41,6 +43,7 @@ export function KeybindingRow({
       {binding.source === 'user' ? <Badge variant='secondary'>Custom</Badge> : null}
 
       <ChordRecorder
+        bindings={bindings}
         conflictCount={claimedFrom}
         id={binding.command}
         onChange={(next) => setKeybinding(binding.command, next)}

@@ -1,95 +1,92 @@
 import { Button } from '@workspace/ui/components/button'
-import { useState } from 'react'
+import { useState, type KeyboardEvent } from 'react'
 
-import { isBindableHotkey, normalizedHotkey } from '@/keymap/active-bindings'
+import {
+  recordedStroke,
+  recorderLabel,
+  recordingControl,
+} from '@/features/settings/utils/recording'
+import type { PlatformKeyBinding } from '@/keymap/types'
+import {
+  isBindableChord,
+  isChordPrefix,
+  MAX_CHORD_STROKES,
+  normalizedChord,
+} from '@/keymap/utils/chord'
 
-/**
- * Captures a chord by listening to the keys, rather than asking the user to
- * spell one.
- *
- * A text field makes the user know the notation — `Mod+Alt+S`, and that `Mod` is
- * Command on macOS and Control elsewhere — and typing it wrong produces a
- * binding that silently never fires. Recording the actual keystroke removes the
- * notation from the user's problem entirely.
- */
 export function ChordRecorder({
+  bindings = [],
   conflictCount,
   disabled,
   id,
   onChange,
   value,
 }: {
+  bindings?: readonly PlatformKeyBinding[]
   conflictCount: number
   disabled?: boolean
   id: string
   onChange: (next: string) => void
   value: string
 }) {
-  const [recording, setRecording] = useState(false)
+  const [strokes, setStrokes] = useState<readonly string[] | null>(null)
+  const recording = strokes !== null
+  const label = recorderLabel(strokes, value)
+
+  function commit(keys: string) {
+    onChange(keys)
+    setStrokes(null)
+  }
+
+  function record(event: KeyboardEvent<HTMLButtonElement>) {
+    if (strokes === null || event.nativeEvent.isComposing || event.keyCode === 229) return
+
+    // Recording owns the keyboard before the app's bubble listener sees it.
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.repeat) return
+    const control = recordingControl(event)
+    if (control === 'cancel') return setStrokes(null)
+    if (control === 'remove' && strokes.length > 0) return setStrokes(strokes.slice(0, -1))
+    if (control === 'commit' && strokes.length > 0) return commit(strokes.join(' '))
+
+    const stroke = recordedStroke(event)
+    if (!stroke) return
+    const next = [...strokes, stroke]
+    const keys = next.join(' ')
+    if (!isBindableChord(keys)) return
+
+    const normalized = normalizedChord(keys)
+    if (next.length < MAX_CHORD_STROKES && isChordPrefix(normalized, bindings)) {
+      setStrokes([normalized])
+      return
+    }
+
+    commit(normalized)
+  }
 
   return (
     <div className='flex flex-col items-end gap-1'>
       <div className='flex items-center gap-1'>
         <Button
           aria-label={recording ? `Recording a shortcut for ${id}` : `Record a shortcut for ${id}`}
-          className='w-40 justify-center font-mono text-xs'
+          className='w-52 justify-center font-mono text-xs whitespace-nowrap'
           disabled={disabled}
           id={id}
-          onBlur={() => setRecording(false)}
-          onClick={() => setRecording(true)}
-          onKeyDown={(event) => {
-            if (!recording) return
-
-            // Every key, including Escape and Tab: while recording, the whole
-            // keyboard belongs to the recorder, or the chords a user most wants
-            // to rebind are the ones they cannot capture.
-            event.preventDefault()
-            event.stopPropagation()
-            if (event.key === 'Escape') {
-              setRecording(false)
-
-              return
-            }
-
-            const chord = chordFromEvent(event)
-            if (!chord || !isBindableHotkey(chord)) return
-
-            onChange(normalizedHotkey(chord))
-            setRecording(false)
-          }}
+          onBlur={() => setStrokes(null)}
+          onClick={() => setStrokes([])}
+          onKeyDown={record}
+          title={label}
           variant={recording ? 'secondary' : 'outline'}
         >
-          {recording ? 'Press a shortcut…' : value || 'Unassigned'}
+          <span className='truncate'>{label}</span>
         </Button>
       </div>
       {conflictCount > 0 ? (
-        // Shown before the save, not discovered afterwards by a shortcut that
-        // stopped working.
-        <span className='text-warning text-xs'>
+        <span className='text-warning text-xs tabular-nums'>
           {conflictCount} other {conflictCount === 1 ? 'command uses' : 'commands use'} this
         </span>
       ) : null}
     </div>
   )
-}
-
-function chordFromEvent(event: {
-  altKey: boolean
-  ctrlKey: boolean
-  key: string
-  metaKey: boolean
-  shiftKey: boolean
-}): string | null {
-  // A modifier on its own is a chord in progress, not a chord.
-  if (['Alt', 'Control', 'Meta', 'Shift'].includes(event.key)) return null
-
-  const parts: string[] = []
-  // `Mod` rather than the platform's own name: it is what the settings document
-  // stores, so the same override works on a machine with a different keyboard.
-  if (event.metaKey || event.ctrlKey) parts.push('Mod')
-  if (event.altKey) parts.push('Alt')
-  if (event.shiftKey) parts.push('Shift')
-  parts.push(event.key.length === 1 ? event.key.toUpperCase() : event.key)
-
-  return parts.join('+')
 }

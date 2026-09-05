@@ -1,22 +1,20 @@
-import {
-  detectPlatform,
-  normalizeRegisterableHotkey,
-  type RegisterableHotkey,
-} from '@tanstack/react-hotkeys'
+import { detectPlatform } from '@tanstack/hotkeys'
 
-import { commandHotkeyMeta } from './command-registry'
-import type { CommandKeyDefault } from './define-command'
-import { platformCommands, type CommandEntry } from './table'
-import type { PlatformCommandId, PlatformKeyBinding } from './types'
+import { chordKeys } from '@/keymap/utils/chord'
+
+import { commandHotkeyMeta } from '@/keymap/command-registry'
+import type { CommandKeyDefault } from '@/keymap/define-command'
+import { platformCommands, type CommandEntry } from '@/keymap/table'
+import type { KeyChord, PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
 
 type PlatformName = ReturnType<typeof detectPlatform>
 
 /**
- * A chord the app claims from the browser without dispatching anything. It has
+ * A hotkey the app claims from the browser without dispatching anything. It has
  * no command, so it cannot live in the command table.
  */
-type ReservedChord = {
-  readonly hotkey: RegisterableHotkey
+type ReservedHotkey = {
+  readonly chord: KeyChord
   readonly pane?: PlatformKeyBinding['pane']
   readonly platforms?: readonly PlatformName[]
   readonly vscodeCommandId?: string
@@ -27,7 +25,7 @@ export function defaultPlatformKeyBindings(
 ): readonly PlatformKeyBinding[] {
   return [
     ...platformCommands.flatMap((command) => commandBindings(command, platform)),
-    ...reservedBrowserChords.flatMap((chord) => reservedBinding(chord, platform)),
+    ...reservedBrowserHotkeys.flatMap((chord) => reservedBinding(chord, platform)),
   ]
 }
 
@@ -50,8 +48,8 @@ function keyBinding(
   return [
     {
       command,
-      hotkey: key.hotkey,
-      keys: normalizeRegisterableHotkey(key.hotkey, platform),
+      chord: key.chord,
+      keys: chordKeys(key.chord, platform),
       meta: commandHotkeyMeta(command),
       pane: key.pane ?? 'any',
       preventDefault: key.preventDefault,
@@ -63,7 +61,7 @@ function keyBinding(
 }
 
 function reservedBinding(
-  chord: ReservedChord,
+  chord: ReservedHotkey,
   platform: PlatformName,
 ): readonly PlatformKeyBinding[] {
   if (!matchesPlatform(chord.platforms, platform)) return []
@@ -71,8 +69,8 @@ function reservedBinding(
   return [
     {
       command: null,
-      hotkey: chord.hotkey,
-      keys: normalizeRegisterableHotkey(chord.hotkey, platform),
+      chord: chord.chord,
+      keys: chordKeys(chord.chord, platform),
       meta: undefined,
       pane: chord.pane ?? 'any',
       preventDefault: true,
@@ -92,15 +90,19 @@ function matchesPlatform(platforms: readonly string[] | undefined, platform: Pla
 // TODO(electron): Bind these desktop/window-level VS Code defaults once
 // Platform can own shortcuts outside the browser sandbox. Until then each one is
 // swallowed and dispatches nothing, which is the whole point: binding one to a
-// command would hand the chord back to the browser it was reserved from.
-const reservedBrowserChords: readonly ReservedChord[] = [
-  { hotkey: 'Control+Tab', vscodeCommandId: 'workbench.action.quickOpenPreviousEditor' },
-  { hotkey: 'Control+Q', vscodeCommandId: 'workbench.action.quickOpenView' },
-  { hotkey: 'Mod+Alt+Tab', platforms: ['mac'], vscodeCommandId: 'workbench.action.showAllEditors' },
-  { hotkey: 'Mod+Shift+T', vscodeCommandId: 'workbench.action.reopenClosedEditor' },
-  { hotkey: 'Mod+1', vscodeCommandId: 'workbench.action.focusFirstEditorGroup' },
-  { hotkey: 'Mod+2', vscodeCommandId: 'workbench.action.focusSecondEditorGroup' },
-  { hotkey: 'Mod+3', vscodeCommandId: 'workbench.action.focusThirdEditorGroup' },
-  { hotkey: 'Mod+W', vscodeCommandId: 'workbench.action.closeActiveEditor' },
-  { hotkey: 'F12', pane: 'editor', vscodeCommandId: 'editor.action.revealDefinition' },
+// command would hand the hotkey back to the browser it was reserved from.
+const reservedBrowserHotkeys: readonly ReservedHotkey[] = [
+  { chord: ['Control+Tab'], vscodeCommandId: 'workbench.action.quickOpenPreviousEditor' },
+  { chord: ['Control+Q'], vscodeCommandId: 'workbench.action.quickOpenView' },
+  {
+    chord: ['Mod+Alt+Tab'],
+    platforms: ['mac'],
+    vscodeCommandId: 'workbench.action.showAllEditors',
+  },
+  { chord: ['Mod+Shift+T'], vscodeCommandId: 'workbench.action.reopenClosedEditor' },
+  { chord: ['Mod+1'], vscodeCommandId: 'workbench.action.focusFirstEditorGroup' },
+  { chord: ['Mod+2'], vscodeCommandId: 'workbench.action.focusSecondEditorGroup' },
+  { chord: ['Mod+3'], vscodeCommandId: 'workbench.action.focusThirdEditorGroup' },
+  { chord: ['Mod+W'], vscodeCommandId: 'workbench.action.closeActiveEditor' },
+  { chord: ['F12'], pane: 'editor', vscodeCommandId: 'editor.action.revealDefinition' },
 ]

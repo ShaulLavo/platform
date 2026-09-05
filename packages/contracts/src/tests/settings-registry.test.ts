@@ -11,10 +11,38 @@ import {
 } from '../settings/keys'
 import { defineSetting, registryProblems } from '../settings/registry'
 import {
+  keybindingChordSchema,
+  keybindingOverridesSchema,
   lspServerOverridesSchema,
+  MAX_KEYBINDING_CHORD_STROKES,
   modelRefListSchema,
   providerInstanceConfigsSchema,
 } from '../settings'
+
+describe('keybinding chord shape', () => {
+  it.each(['Mod+S', 'Mod+K Mod+S', null])('accepts %s', (keys) => {
+    expect(v.safeParse(keybindingOverridesSchema, { 'workspace.saveFile': keys }).success).toBe(
+      true,
+    )
+  })
+
+  it.each(['Mod+K Mod+S Mod+X', '', '  ', 'Mod+K  Mod+S', 'Mod+K\tMod+S'])('rejects %s', (keys) => {
+    expect(v.safeParse(keybindingOverridesSchema, { 'workspace.saveFile': keys }).success).toBe(
+      false,
+    )
+  })
+
+  it('keeps the schema stroke cap equal to the recorder cap', () => {
+    const accepted = Array.from({ length: MAX_KEYBINDING_CHORD_STROKES }, () => 'Mod+K').join(' ')
+    expect(v.safeParse(keybindingChordSchema, accepted).success).toBe(true)
+    expect(v.safeParse(keybindingChordSchema, `${accepted} Mod+S`).success).toBe(false)
+  })
+
+  it('limits the stored shortcut length', () => {
+    expect(v.safeParse(keybindingChordSchema, 'K'.repeat(64)).success).toBe(true)
+    expect(v.safeParse(keybindingChordSchema, 'K'.repeat(65)).success).toBe(false)
+  })
+})
 
 /**
  * Type-derivation gate.

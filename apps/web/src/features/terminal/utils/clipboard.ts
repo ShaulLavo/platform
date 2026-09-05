@@ -1,6 +1,6 @@
 import { toast } from 'sonner'
 
-import { formatHotkey } from '@/features/menus/utils/shortcut'
+import { formatChord } from '@/keymap/utils/format-keys'
 import { log } from '@/lib/client-logging'
 
 // Not in lib.dom's PermissionName union, but every Chromium engine answers it.
@@ -39,7 +39,7 @@ export async function readClipboardText() {
       error,
     })
     toast.error('Clipboard read was blocked', {
-      description: `Press ${formatHotkey('mod+v')} to paste instead.`,
+      description: `Press ${formatChord('mod+v')} to paste instead.`,
     })
     return null
   }

@@ -9,7 +9,7 @@ import {
   type EditorKeymapLayer,
 } from '@singapor/core'
 
-import type { PlatformCommandId, PlatformKeyBinding } from './types'
+import type { PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
 
 const EDITOR_COMMAND_PREFIX = 'editor.'
 type EditorAdapterPlatformCommandId = `editor.${EditorCommandId}`
@@ -26,10 +26,12 @@ function editorKeyBindingsFromPlatform(
 export function editorKeyBindingFromPlatform(binding: PlatformKeyBinding): EditorKeyBinding | null {
   const command = editorCommandIdFromPlatform(binding.command)
   if (!command) return null
+  // Editor layers accept one stroke; passing a chord would steal its final key.
+  if (binding.chord.length !== 1) return null
 
   return {
     command,
-    hotkey: binding.hotkey,
+    hotkey: binding.chord[0],
     preventDefault: binding.preventDefault,
     stopPropagation: binding.stopPropagation,
   }

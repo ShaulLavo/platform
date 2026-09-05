@@ -12,6 +12,8 @@ import {
 import { searchBufferDocumentId } from '@/features/search/utils/buffer-document'
 import { platformCommandSpecs } from '@/keymap/command-registry'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
+import { resolvedPlatformKeyBindings } from '@/keymap/active-bindings'
+import { formatChord } from '@/keymap/utils/format-keys'
 
 test('command palette items expose platform command metadata and shortcuts', () => {
   const items = commandPaletteItems(platformCommandSpecs, defaultPlatformKeyBindings('linux'))
@@ -36,6 +38,21 @@ test('command groups rank strong command matches above earlier weak fuzzy groups
   ])
   expect(groups.flatMap(([, groupItems]) => groupItems.map((item) => item.id))).not.toContain(
     'workspace.toggleSidebarVisibility',
+  )
+})
+
+test('includes both strokes in a chord shortcut hint', () => {
+  const bindings = resolvedPlatformKeyBindings(
+    defaultPlatformKeyBindings('linux'),
+    {
+      'workspace.showSettings': 'Mod+K Mod+S',
+    },
+    'linux',
+  )
+  const items = commandPaletteItems(platformCommandSpecs, bindings)
+
+  expect(items.find((item) => item.id === 'workspace.showSettings')?.shortcut).toBe(
+    formatChord('Mod+K Mod+S'),
   )
 })
 

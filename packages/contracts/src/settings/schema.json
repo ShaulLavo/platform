@@ -91,7 +91,9 @@
       "additionalProperties": {
         "anyOf": [
           {
+            "maxLength": 64,
             "minLength": 1,
+            "pattern": "^\\S+(?: \\S+)?$",
             "type": "string"
           },
           {
@@ -100,7 +102,7 @@
         ]
       },
       "default": {},
-      "description": "Command id to hotkey. A missing key keeps the default; an explicit null unbinds the command.",
+      "description": "Command id to shortcut: one hotkey or two separated by a single space. A missing key keeps the default; an explicit null unbinds the command.",
       "propertyNames": {
         "maxLength": 120,
         "minLength": 1,

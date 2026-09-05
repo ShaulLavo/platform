@@ -1,6 +1,7 @@
 import type { CommandKeyBindingRow } from '@/keymap/active-bindings'
 import { platformCommandSpec } from '@/keymap/command-registry'
 import type { PlatformCommandId } from '@/keymap/types'
+import { formatChord } from '@/keymap/utils/format-keys'
 
 /**
  * Rows whose command id, title or chord contains the query.
@@ -35,6 +36,14 @@ export function commandsShadowedBy(
 
 function rowHaystack(row: CommandKeyBindingRow): string {
   const title = platformCommandSpec(row.command)?.title ?? ''
+  const keys = searchableKeys(row)
+  const labels = keys.map((shortcut) => `${shortcut} ${formatChord(shortcut)}`).join(' ')
 
-  return `${row.command} ${title} ${row.keys ?? ''}`.toLowerCase()
+  return `${row.command} ${title} ${labels}`.toLowerCase()
+}
+
+function searchableKeys(row: CommandKeyBindingRow): readonly string[] {
+  if (row.effectiveKeys.length > 0) return row.effectiveKeys
+
+  return row.keys ? [row.keys] : []
 }

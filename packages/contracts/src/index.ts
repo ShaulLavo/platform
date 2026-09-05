@@ -338,10 +338,12 @@ export {
   type LspServerExitedParams,
 } from './lsp-protocol'
 export {
+  keybindingChordSchema,
   lspFeatureRanksOverrideSchema,
   lspLanguageServerListsSchema,
   lspServerOverrideSchema,
   lspServerOverridesSchema,
+  MAX_KEYBINDING_CHORD_STROKES,
   modelRefKey,
   providerInstanceConfigSchema,
   providerInstanceConfigsSchema,

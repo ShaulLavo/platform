@@ -27,6 +27,7 @@ import { connectTerminalSocket, type EdenServerSocket } from '@/lib/server-socke
 
 import { TerminalMenu } from '@/features/terminal/components/menu'
 import { useTerminalCommandInbox } from '@/features/terminal/hooks/use-command-inbox'
+import { useTerminalKeybindings } from '@/features/terminal/hooks/use-keybindings'
 import { useTerminalLinks } from '@/features/terminal/hooks/use-links'
 import { sendTerminalClientMessage } from '@/features/terminal/utils/socket'
 import { readTerminalMenuTarget, type TerminalMenuTarget } from '@/features/terminal/utils/commands'
@@ -100,6 +101,7 @@ export function TerminalPanel({
   const terminalMountIdentity = `${focusIdentity}\u0000${scrollback}`
   const [readyTerminalIdentity, setReadyTerminalIdentity] = useState<string | null>(null)
   const registerTerminalLinks = useTerminalLinks(rootPath)
+  useTerminalKeybindings(hostRef)
   useTerminalCommandInbox({ active: active && socketConnected, sendInputRef })
   const {
     focused: terminalFocused,

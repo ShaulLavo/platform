@@ -1,5 +1,7 @@
 import '@workspace/ui/globals.css'
 import { commands } from 'vitest/browser'
+import { binding } from '../../../test/factories/key-binding'
+import { detectPlatform } from '@tanstack/react-hotkeys'
 import {
   useEffect,
   useRef,
@@ -26,12 +28,19 @@ import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 import { FocusProvider } from '@/lib/focus/providers/provider'
 import { FocusService } from '@/lib/focus/state/service'
 import { TestCommandProvider } from '../../../test/factories/command-runtime'
-import { AppProviders, createTestQueryClient, seedBootMirrorTheme } from '../../../test/render'
+import {
+  AppProviders,
+  createTestQueryClient,
+  seedBootMirrorTheme,
+  renderHookWithProviders,
+} from '../../../test/render'
 
 declare module 'vitest/browser' {
   interface BrowserCommands {
     proofContextClick: (input: { readonly selector: string }) => Promise<void>
+    proofKeyDown: (input: { readonly key: string }) => Promise<void>
     proofKeyPress: (input: { readonly key: string }) => Promise<void>
+    proofKeyUp: (input: { readonly key: string }) => Promise<void>
   }
 }
 
@@ -42,9 +51,9 @@ type TrustedKeyRecord = {
 }
 
 const trustedKeyBindings: readonly PlatformKeyBinding[] = [
-  binding('F2', 'workspace.focusEditor'),
-  binding('F3', 'workspace.toggleWallpaper'),
-  binding('F4', null),
+  binding('F2', { command: 'workspace.focusEditor' }),
+  binding('F3', { command: 'workspace.toggleWallpaper' }),
+  binding('F4', { command: null }),
 ]
 
 let root: Root | null = null
@@ -85,12 +94,93 @@ test('trusted keys suppress only synchronous claims and reserved chords', async 
   expect(dispatchedKeys).toEqual(['workspace.focusEditor', 'workspace.toggleWallpaper'])
 })
 
+test('trusted chord completion, unmatched text and expiry preserve the focused input', async () => {
+  const calls: boolean[] = []
+  const bindings = [
+    binding('Mod+K Mod+S', { command: 'workspace.toggleWallpaper', platform: detectPlatform() }),
+    binding('Mod+S', { command: 'workspace.toggleWallpaper', platform: detectPlatform() }),
+  ]
+  const view = renderHookWithProviders(() => useCommand(), {
+    command: {
+      bindings,
+      runtime: {
+        settings: {
+          setWallpaperEnabled: (enabled) => {
+            calls.push(enabled)
+            return { kind: 'noop' }
+          },
+        },
+      },
+    },
+  })
+  const input = document.createElement('input')
+  input.value = 'keep'
+  document.body.append(input)
+  input.focus()
+  input.setSelectionRange(4, 4)
+  const modifier = detectPlatform() === 'mac' ? 'Meta' : 'Control'
+  const reachedInput: string[] = []
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'x') reachedInput.push(event.key)
+  })
+
+  try {
+    await commands.proofKeyPress({ key: 'ControlOrMeta+k' })
+    await expect.poll(() => view.result.current.pendingChord?.keys).toBe('Mod+K')
+    await commands.proofKeyDown({ key: 'x' })
+    await commands.proofKeyDown({ key: 'x' })
+    await commands.proofKeyUp({ key: 'x' })
+    expect(input.value).toBe('keep')
+    expect(reachedInput).toEqual([])
+    expect(view.result.current.pendingChord).toBeNull()
+    expect(calls).toEqual([])
+
+    await commands.proofKeyPress({ key: 'ControlOrMeta+k' })
+    await commands.proofKeyDown({ key: modifier })
+    await commands.proofKeyDown({ key: 's' })
+    await commands.proofKeyDown({ key: 's' })
+    await commands.proofKeyUp({ key: 's' })
+    await commands.proofKeyUp({ key: modifier })
+    expect(input.value).toBe('keep')
+    expect(calls).toEqual([false])
+
+    await commands.proofKeyPress({ key: 'ControlOrMeta+k' })
+    await expect.poll(() => view.result.current.pendingChord, { timeout: 6_000 }).toBeNull()
+    await commands.proofKeyPress({ key: 'x' })
+    expect(input.value).toBe('keepx')
+    expect(reachedInput).toEqual(['x'])
+    expect(calls).toEqual([false])
+  } finally {
+    await commands.proofKeyUp({ key: 'x' })
+    await commands.proofKeyUp({ key: 's' })
+    await commands.proofKeyUp({ key: modifier })
+    view.unmount()
+    input.remove()
+  }
+})
+
 test('deepest event target wins and read-only focus cannot fall through', async () => {
   const focus = new FocusService()
   const queryClient = createTestQueryClient()
   mount(
     <FocusProvider service={focus}>
-      <TestCommandProvider queryClient={queryClient}>
+      <TestCommandProvider
+        queryClient={queryClient}
+        options={{
+          bindings: [
+            binding('Mod+K Mod+A', {
+              command: 'editor.selectAll',
+              pane: 'editor',
+              platform: detectPlatform(),
+            }),
+            binding('Mod+K Mod+Z', {
+              command: 'editor.undo',
+              pane: 'editor',
+              platform: detectPlatform(),
+            }),
+          ],
+        }}
+      >
         <EditorRoutingHarness />
       </TestCommandProvider>
     </FocusProvider>,
@@ -125,6 +215,14 @@ test('deepest event target wins and read-only focus cannot fall through', async 
   await expect.poll(() => lastEditorTicket?.claimed).toBe(false)
   expect(editorDispatches).toEqual(['child:selectAll'])
   await expect(lastEditorTicket?.completion).resolves.toMatchObject({ status: 'disabled' })
+
+  await commands.proofKeyPress({ key: 'ControlOrMeta+k' })
+  await commands.proofKeyPress({ key: 'ControlOrMeta+z' })
+  expect(editorDispatches).toEqual(['child:selectAll'])
+  child.focus()
+  await commands.proofKeyPress({ key: 'ControlOrMeta+k' })
+  await commands.proofKeyPress({ key: 'ControlOrMeta+a' })
+  expect(editorDispatches).toEqual(['child:selectAll', 'child:selectAll'])
 })
 
 test('palette and settings restore only after their modal targets depart', async () => {
@@ -181,6 +279,15 @@ test('palette and settings restore only after their modal targets depart', async
     kind: 'editor',
     surface: 'document',
   })
+
+  await commands.proofKeyPress({ key: 'ControlOrMeta+k' })
+  await expect
+    .poll(() => document.querySelector('output')?.textContent)
+    .toContain('Waiting for the next key')
+  expect(document.querySelector('[role="dialog"]')).toBeNull()
+  await commands.proofKeyPress({ key: 'ControlOrMeta+s' })
+  await expect.poll(() => document.querySelectorAll('[role="dialog"]').length).toBe(1)
+  await expect.poll(() => document.querySelector('output')?.textContent).toBe('')
 })
 
 test('a virtual menu restores the context target rather than prior DOM focus', async () => {
@@ -270,6 +377,8 @@ function EditorRoutingHarness() {
   }, [])
 
   function dispatchFromEvent(event: ReactKeyboardEvent<HTMLButtonElement>) {
+    if (event.key !== 'F6' && event.key !== 'F7') return
+
     const command = event.key === 'F7' ? 'editor.undo' : 'editor.selectAll'
     lastEditorTicket = bus.dispatch(command, {
       event: event.nativeEvent,
@@ -395,16 +504,6 @@ function useOriginTarget(key: string) {
 
 function invocation() {
   return { source: { caller: 'command-focus-browser', kind: 'programmatic' } } as const
-}
-
-function binding(keys: string, command: PlatformCommandId | null): PlatformKeyBinding {
-  return {
-    command,
-    hotkey: keys as PlatformKeyBinding['hotkey'],
-    keys,
-    pane: 'any',
-    source: 'default',
-  }
 }
 
 function mount(children: ReactNode) {

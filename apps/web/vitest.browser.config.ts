@@ -58,7 +58,9 @@ export default defineConfig({
       commands: {
         diffMouseWheel,
         proofContextClick,
+        proofKeyDown,
         proofKeyPress,
+        proofKeyUp,
         proofMouseDrag,
         proofMouseHover,
         proofMouseUp,
@@ -96,7 +98,9 @@ type ProofMouseCommandContext = {
 type ProofKeyCommandContext = {
   readonly page: {
     readonly keyboard: {
+      readonly down: (key: string) => Promise<void>
       readonly press: (key: string) => Promise<void>
+      readonly up: (key: string) => Promise<void>
     }
   }
 }
@@ -180,6 +184,14 @@ type ProofMouseDragStep =
 
 async function proofKeyPress(context: ProofKeyCommandContext, input: ProofKeyPressInput) {
   await context.page.keyboard.press(input.key)
+}
+
+async function proofKeyDown(context: ProofKeyCommandContext, input: ProofKeyPressInput) {
+  await context.page.keyboard.down(input.key)
+}
+
+async function proofKeyUp(context: ProofKeyCommandContext, input: ProofKeyPressInput) {
+  await context.page.keyboard.up(input.key)
 }
 
 async function proofContextClick(context: ProofMouseCommandContext, input: ProofContextClickInput) {

@@ -1,10 +1,10 @@
 import type { FocusArea } from '@/lib/focus/state/service'
-import type { HotkeyMeta, ParsedHotkey, RegisterableHotkey } from '@tanstack/react-hotkeys'
+import type { HotkeyMeta, ParsedHotkey, RegisterableHotkey } from '@tanstack/hotkeys'
 
 // `import type` on purpose: it is erased, so the command table can keep reading
 // `SESSION_JUMP_POSITIONS` from here without a runtime cycle.
-import type { WorkspaceCommandId } from './workspace-commands'
-import type { editorCommands } from './editor-commands'
+import type { WorkspaceCommandId } from '@/keymap/workspace-commands'
+import type { editorCommands } from '@/keymap/editor-commands'
 
 /** `user` bindings come from the settings document and stand in for a default. */
 export type KeyBindingSource = 'default' | 'user'
@@ -48,9 +48,11 @@ export type MenuSurfaceId =
   | 'terminal'
   | 'titlebar'
 
+export type KeyChord = readonly [RegisterableHotkey, ...RegisterableHotkey[]]
+
 export type PlatformKeyBinding = {
   readonly keys: string
-  readonly hotkey: RegisterableHotkey
+  readonly chord: KeyChord
   readonly command: PlatformCommandId | null
   readonly pane?: FocusArea | 'any'
   readonly source: KeyBindingSource
@@ -69,16 +71,19 @@ export type KeyBindingKeyboardEvent = {
   readonly code?: string
   readonly ctrlKey: boolean
   readonly key: string
+  readonly isComposing?: boolean
+  readonly keyCode?: number
+  readonly repeat?: boolean
   readonly metaKey: boolean
   readonly shiftKey: boolean
 }
 
-/** A binding with its hotkey parsed once, so matching never re-parses. */
+/** A binding with each stroke parsed once, so matching never re-parses. */
 export type ParsedPlatformKeyBinding = {
   readonly binding: PlatformKeyBinding
-  /** Mod chords and Escape stay live in a text field; a bare key is a character. */
+  /** Only the first stroke decides whether a binding fires in a text field. */
   readonly firesWhileTyping: boolean
-  readonly hotkey: ParsedHotkey
+  readonly steps: readonly [ParsedHotkey, ...ParsedHotkey[]]
 }
 
 /** One command's effective binding, as the settings editor lists it. */

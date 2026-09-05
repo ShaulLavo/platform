@@ -22,8 +22,8 @@ a bare root `bun run verify`.
 | [078 — federated environments](078-federated-environments.md)                           | **BLOCKED ON 077 AND 068**              |
 | [069 — worktree lifecycle](069-worktree-lifecycle.md)                                   | **BLOCKED ON 068 AND ROOT SCHEDULING**  |
 | [071 — syntax highlight retry](071-syntax-highlight-retry.md)                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
-| [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                         | **NEXT — RECONCILE**                    |
-| [057 — editor-native VS Code keymap](057-editor-native-vscode-keymap.md)                | **BLOCKED ON 056 — RUNTIME RECONCILED** |
+| [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                         | **IMPLEMENTED — BROWSER VERIFIED**      |
+| [057 — editor-native VS Code keymap](057-editor-native-vscode-keymap.md)                | **NEXT — RUNTIME RECONCILED**           |
 | [073 — Electrobun 2.x migration](073-electrobun-v2-migration.md)                        | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
 | [074 — Bun-native PTY](074-bun-native-pty.md)                                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
 | [075 — terminal renderer fallbacks](075-terminal-renderer-fallbacks.md)                 | **PROPOSED — BLOCKED ON TIER DECISION** |
@@ -35,8 +35,10 @@ a bare root `bun run verify`.
   `keymap/providers/command-provider.tsx`, and `lib/focus/`. Settings commands use the semantic
   submission returned by `use-settings-actions.ts` and await `settled`; do not restore persistent
   preview dispatch, duplicate settings error reporting, or a second mutation path.
-- Plan 056 must extend that typed bus and acknowledged focus service instead of introducing another
-  active-Editor dispatch owner.
+- Plan 056 extends the typed bus and focus service with two-stroke shortcuts. `CommandProvider`
+  owns one keymap session; the terminal forwards keys to that session before Ghostty encodes them.
+  Review fixes, focused tests, trusted browser integration, and the full repository typecheck
+  pass in an isolated checkout that excludes concurrent environment work.
 - Plan 077 is the first environments slice: runtime server origin, a durable `environmentId` per
   server carried in the handshake and `/health`, identity-drift refusal, one `QueryClient` and one
   closable `ChatTransport` per origin, deletion of the import-time transport singletons, and the
@@ -64,8 +66,9 @@ a bare root `bun run verify`.
   Platform owns Shiki registration resolution, Editor's Oniguruma worker is self-contained, and
   built-dist highlighting is covered by a real-browser and shared-log proof. Root `PLAN.md` has not
   scheduled the retry work yet.
-- Plan 056 is reconciled to the landed command/focus runtime. Execute 057 only after 056; it must
-  extend the same target registry and enablement evaluator rather than creating parallel ownership.
+- Plan 056 is implemented and browser verified. Plan 057 must extend the same
+  target registry and enablement evaluator. Folding and the remaining VS Code chord defaults stay
+  in Plan 057.
 - The config-resolver feasibility proof is complete with four native `PASS` rows and accepted
   package ceilings. Its stable records are
   `ghostty-webgpu/docs/config-resolver-feasibility.md` and

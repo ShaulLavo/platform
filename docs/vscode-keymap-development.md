@@ -1,174 +1,102 @@
-> [!IMPORTANT]
-> **STATUS: 🟡 NEEDS UPDATE (reviewed 2026-06-06).** Status doc stamped 2026-05-11; keymap code in `apps/web/src/keymap/` advanced since. Refresh.
+# VS Code keymap development status
 
-# VS Code Keymap Development Status
+Last reviewed: 2026-09-05. Plan 056 is implemented and verified through focused tests and trusted browser input.
 
-Last updated: 2026-05-11.
+Platform supports a subset of VS Code defaults. The command table defines the available commands,
+bindings, VS Code aliases, and enablement conditions. Plan 056 adds the chord runtime; the remaining
+Editor defaults belong to [Plan 057](../plans/057-editor-native-vscode-keymap.md).
 
-This file tracks VS Code default keymap parity. Platform intentionally supports
-a subset of VS Code defaults today; a shortcut remains here when the app does
-not yet have the handler, binding metadata, context model, or runtime behavior
-needed to enable it safely.
+## Implemented runtime
 
-## Current Implementation
+- `PlatformKeyBinding` stores a non-empty `chord` tuple and canonical space-separated `keys`.
+  Defaults and user overrides share this representation.
+- `CommandProvider` resolves the binding table and owns one `useAppKeymap()` instance. Menus,
+  the command palette, settings, and the terminal use that provider.
+- `activePlatformKeyBindings()` applies pane priority before app filtering. A per-pane trie
+  represents complete shortcuts and prefixes. A complete shortcut wins over a longer sequence
+  with the same prefix.
+- `utils/chord-machine.ts` makes pure arm, complete, and cancel decisions. `state/chord-session.ts`
+  owns listeners, pending state, the five-second timer, and one wide log event per chord lifecycle.
+- Unarmed app shortcuts run in document bubble. A prefix installs document capture synchronously
+  for the continuation, so React rendering cannot leave a gap between strokes.
+- Consumed prefixes and continuations never replay into text inputs or a shell.
+  Blur, hidden documents, pointer interaction, binding changes, and focus-owner changes cancel
+  pending chords. IME events do not advance the sequence, and held keys do not reset the timer.
+- Commands dispatch through the existing `CommandBus`. A single shortcut suppresses its event
+  only after a synchronous claim. A chord's continuation is consumed even if its command declines.
+- Single-stroke Editor bindings still use the Editor layer bridge with Editor defaults disabled.
+  Multi-stroke `editor.*` bindings bypass that bridge and dispatch through the same bus and deepest
+  registered focus target. The target's capability and writable state govern execution.
+- Trusted browser tests cover keyboard claims and terminal input through the real Ghostty engine.
+  The shared provider, editor targets, settings shortcut, and terminal encoder pass these checks.
 
-- The app owns the Platform keymap in `apps/web/src/keymap`.
-- `PlatformKeyBinding` records the command, normalized key string, TanStack
-  hotkey, pane scope, source, optional VS Code command ID, and event options.
-- `defaultPlatformKeyBindings()` builds the bundled default keymap in code and
-  applies platform-specific bindings through TanStack's platform detection.
-- `useAppKeymap()` registers app/workspace bindings with
-  `@tanstack/react-hotkeys`.
-- `editorKeyBindingsFromPlatform()` maps `editor.*` Platform commands into the
-  editor-core `EditorKeyBinding` shape. The editor now receives its keymap slice
-  from the app with editor-core defaults disabled.
-- The active binding model is still pane-scoped. `activePlatformKeyBindings()`
-  filters by the current workspace focus area and lets focused-pane bindings
-  override global bindings with the same key.
-- `workspace-commands.ts` and `editor-commands.ts` are the one command table.
-  `command-registry.ts`, `default-bindings.ts`, the palette gating sets and the
-  icon map are all projections of it.
-- Only the built-in default source exists. Built-in no-op reservations can block
-  browser-hostile desktop shortcuts, but there is no user keymap file, keymap
-  editor, targeted unbind, or user disabled/no-op binding support yet.
+TanStack supplies hotkey grammar and normalization helpers. Platform owns dispatch, prefix
+resolution, and timers. Its `SequenceManager` does not consume prefixes or expire pending state
+without another key event. The proposed `matchesKeyboardEvent` adoption was also rejected during
+implementation because it regressed Hebrew and Cyrillic physical-key fallback. The trie preserves
+that fallback and the existing guard against treating an AZERTY Latin letter as another key.
 
-## Done
+## Terminal ownership
 
-### Runtime And Wiring
+The terminal host forwards keydown and keyup from capture to the provider's `claimKeybinding()`
+before Ghostty can encode them. A claimed event reaches Platform once; ordinary terminal input and
+unavailable single-key commands pass through. Claimed keyups are tracked so Kitty keyboard mode
+cannot send a release event for a key whose press Platform consumed.
 
-- Added the shared Platform binding shape and command ID types.
-- Added app-level shortcut registration through TanStack hotkeys.
-- Added editor/app binding separation so editor commands are not also registered
-  as app handlers.
-- Added pane filtering for `global`, `editor`, `file-tree`, and `git` focus
-  areas.
-- Added tests for focused-pane filtering, focused-pane priority, editor/app
-  separation, command metadata, VS Code aliases, and platform-specific defaults.
+There is no separate terminal chord setting. The same resolved binding table decides ownership.
+On Linux and Windows, the default `Mod+K Mod+S` sequence uses Ctrl+K, which readline normally uses
+for kill-line. A user can override `workspace.showSettings` with another shortcut, such as `Mod+,`,
+or unbind it to return Ctrl+K to the shell. On macOS, `Mod` is Command.
 
-### Enabled VS Code-Style Defaults
+## Settings and display
 
-- Command palette and quick access:
-  - `workbench.action.showCommands` through `Mod+Shift+P` and `F1`.
-  - `workbench.action.quickOpen` through `Mod+P`.
-  - `workbench.action.gotoSymbol` through `Mod+Shift+O`.
-- File and tab lifecycle:
-  - `workbench.action.files.save` through `Mod+S`.
-- Layout and focus:
-  - `workbench.action.toggleSidebarVisibility` through `Mod+B`.
-- Editor basics:
-  - Undo, redo, select all, find, find/replace, find next/previous, find-widget
-    toggles, replace one/all, select all matches, and add next occurrence.
-  - Backspace/delete, tab/shift-tab indentation, arrow navigation, word
-    navigation, line/document boundary navigation, and page navigation.
-  - Word delete, line delete/copy/move/insert, line/block comments,
-    line indentation/outdentation, insert cursor above/below, select all
-    occurrences, and change all occurrences.
+`keybindings.overrides` is an application-scoped record from command ID to a shortcut string or
+`null`. A string contains one hotkey or two separated by a single space. A missing command keeps
+its defaults; `null` removes all shortcuts for that command. The contract rejects malformed shape
+before a keyed write reaches disk, and the keymap validates each stroke's grammar.
 
-### Command Palette And Quick Access
+The recorder saves ordinary single shortcuts immediately. An existing chord prefix waits for a
+second stroke. Enter saves that prefix alone, Backspace removes it, and Escape cancels. Settings
+search matches command IDs, titles, canonical notation, and displayed shortcut labels, including
+secondary defaults. Menus keep the first shortcut as the primary hint.
 
-- Command palette items are generated from command metadata.
-- Command rows show the active shortcut when one exists.
-- Command search includes Platform command IDs and VS Code command aliases.
-- Quick access now supports files, `>` commands, `view ` view search, `edt `
-  open editor search, and `@` document symbol search.
-- Basic command disabled state exists, but it is still hard-coded in the palette.
+A hand-edited override with malformed shape invalidates the whole `keybindings.overrides` value
+and produces an `invalid-value` diagnostic. The generated JSON Schema includes the shape pattern for editor
+validation. The record does not support per-pane user overrides or several user shortcuts for one
+command.
 
-### Implemented But Not Fully Exposed
+## Enabled defaults
 
-- Workspace handlers and aliases exist for `workbench.action.files.saveAll`,
-  `workbench.action.files.revert`, `workbench.action.showAllEditors`,
-  `workbench.action.quickOpenPreviousEditor`,
-  `workbench.action.quickOpenView`, `workbench.action.reopenClosedEditor`,
-  `workbench.action.closeActiveEditor`, `workbench.action.togglePanel`,
-  editor group focus commands, and `workbench.action.splitEditor`, but these
-  still need final default binding decisions and broader behavior coverage.
-  `splitEditor` is still effectively a single-editor-group focus operation.
-- Browser-hostile desktop/window shortcuts are kept as built-in no-op
-  reservations with TODOs for the future Electron shell. These include
-  `cmd+option+tab`, `ctrl+tab`, `ctrl+q`, `cmd/ctrl+shift+t`, `cmd/ctrl+j`,
-  `cmd/ctrl+1` through `cmd/ctrl+3`, `cmd/ctrl+w`, and `F12`.
-- Editor-core handlers and Platform command metadata exist for
-  `editor.action.moveSelectionToNextFindMatch`, but its VS Code default is the
-  chord `cmd/ctrl+k cmd/ctrl+d`, so the default binding should wait for
-  multi-chord runtime support.
+- Command palette and quick access: `Mod+Shift+P`, `F1`, `Mod+P`, and `Mod+Shift+O`.
+- Save and sidebar visibility: `Mod+S` and `Mod+B`.
+- Settings: `Mod+,` followed by the new secondary `Mod+K Mod+S` default. The primary menu hint
+  remains `Mod+,`.
+- Editor navigation, selection, deletion, indentation, undo, redo, find, replace, comments, and
+  multiple-cursor commands are represented in `keymap/editor-commands.ts`.
 
-## Remaining Work
+The authoritative defaults and their platform restrictions are in `keymap/workspace-commands.ts`
+and `keymap/editor-commands.ts`. Browser-hostile desktop shortcuts remain explicit reservations
+where Platform cannot perform the desktop action.
 
-### Import Pipeline
+## Remaining parity work
 
-- Add a repeatable export command that runs VS Code's built-in exporter from
-  `references/vscode`:
+- Add the `editor.action.moveSelectionToNextFindMatch` chord default and the Editor folding pack
+  through Plan 057. The chord runtime is implemented; these command defaults are still separate
+  work.
+- Review save-all, show-all-editors, and other VS Code `Mod+K` defaults against the shared command
+  table. They no longer need a new runtime mechanism.
+- Remove the remaining single-stroke Editor layer bridge only through the companion plan's
+  target and enablement contract.
+- Expand the closed command context model when a concrete command needs find-widget, replace-input,
+  or other local focus facts.
+- Report cross-pane prefix conflicts in the settings UI. The app trie resolves and logs conflicts
+  that survive app filtering. An Editor single-stroke binding can intercept a global override prefix
+  first, such as `Mod+F` in `Mod+F Mod+B`, without a warning. Same-pane override conflicts already
+  populate `shadowedBy`. The remaining Editor layer bridge limits this case.
+- Add a repeatable VS Code default export, a normalized manifest, and a parity report covering
+  supported commands, missing commands, aliases, and conflicts.
+- Add an inspector for VS Code aliases, platform restrictions, focus conditions, and unsupported
+  commands beyond the existing searchable settings table.
 
-  ```sh
-  ./scripts/code.sh --export-default-keybindings /tmp/platform-vscode-keybindings
-  ```
-
-- Normalize the generated `doc.keybindings.osx.json`,
-  `doc.keybindings.win.json`, and `doc.keybindings.linux.json` into a checked-in
-  manifest.
-- Generate a report with total VS Code defaults, mapped bindings, unsupported
-  commands, unmapped commands, and conflicts.
-- Add an integrity test that fails when an enabled binding points to a command
-  without a real handler. This should catch cases like a default binding whose
-  command ID is registered but whose behavior still returns `false`.
-
-### Runtime Parity
-
-- Add first-class multi-chord support for app and editor bindings, including
-  VS Code-style chords such as `cmd+k cmd+s`.
-- Add context-aware binding conditions instead of the current pane-only scope.
-  Initial contexts should cover editor text focus, find widget focus, replace
-  input focus, file tree focus, git panel focus, dialogs, and command palette.
-- Add explicit conflict reporting that shows active binding, shadowed binding,
-  source, platform, and context.
-- Add user keymap loading, targeted unbinds, disabled/no-op bindings, and source
-  precedence.
-- Decide whether TanStack remains only the DOM registration layer or whether a
-  shared resolver should own more of dispatch once chords and contexts exist.
-
-### Editor Keymap Parity
-
-- Add the default binding for `editor.action.moveSelectionToNextFindMatch` after
-  multi-chord support lands.
-- Wire LSP/navigation commands before enabling their VS Code defaults:
-  - `editor.action.goToDefinition`
-  - `editor.action.goToReferences`
-  - `editor.action.peekDefinition`
-  - `editor.action.revealDefinitionAside`
-  - `editor.action.goToImplementation`
-  - `editor.action.goToTypeDefinition`
-  - `editor.action.marker.next`
-  - `editor.action.marker.prev`
-- Revisit the current `F12`/`goToDefinition` binding. It is present in the
-  default binding list as a no-op reservation, but the LSP-backed handler still
-  needs to be connected to the active editor command dispatch path and the
-  browser-hostile shortcut should only dispatch in a desktop shell.
-- Add folding commands and behavior:
-  - `editor.toggleFold`
-  - `editor.fold`
-  - `editor.unfold`
-  - `editor.foldAll`
-  - `editor.unfoldAll`
-
-### Workspace Keymap Parity
-
-- Add explicit VS Code aliases and default-binding decisions for view commands:
-  - `workbench.view.explorer`
-  - `workbench.view.scm`
-- Add workspace features and handlers before binding:
-  - `workbench.action.findInFiles`
-  - `workbench.action.terminal.toggleTerminal`
-- Revisit commands whose VS Code defaults are chords after multi-chord support
-  lands, especially save-all, show-all-editors, and other `cmd+k ...` defaults.
-  Also avoid browser-hostile desktop defaults such as macOS `cmd+option+tab`
-  unless a browser-safe alternative is chosen.
-
-### UI And Debugging
-
-- Add a keybindings inspector with command ID, VS Code alias, active key,
-  platform, scope/context, source, and conflict status.
-- Add a searchable keybindings table backed by command metadata.
-- Extend command palette availability so disabled state is derived from command
-  context metadata instead of hard-coded command checks.
-- Add visible unsupported-command reporting so imported VS Code defaults do not
-  silently disappear.
+The chat prompt stash still listens at window capture and can act on `Mod+S` before document
+capture. Converting it to a pane-scoped command is separate work.

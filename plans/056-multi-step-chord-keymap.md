@@ -1,10 +1,14 @@
 # Plan 056: Multi-Step Chord Support in the Platform Keymap
 
-> **Executor:** Read this plan in full before editing. Then read `/Users/shaul/Desktop/D/platform/AGENTS.md`, `/Users/shaul/Desktop/D/platform/CLAUDE.md`, and `/Users/shaul/.agents/skills/never-nester/SKILL.md`. Keep nesting at three levels or less. Work only in the files listed under **File-by-file scope**. Run the drift check in §11 before writing code — uncommitted LSP work is shifting line numbers in `packages/contracts`, so locate contracts symbols by name, not by number. Do not create a branch, worktree, commit, push, or PR unless the user explicitly asks.
+> **Executor:** Read this plan, the repository `AGENTS.md` and `CLAUDE.md`, and the installed
+> `/home/shaul/.agents/skills/never-nester/SKILL.md`. Keep nesting at three levels or less.
+> Reconcile symbols against current source; other work is changing `packages/contracts`.
+> Do not create a branch, worktree, commit, push, or PR unless the user explicitly asks.
 
 ## Status
 
-- **State:** Ready
+- **State:** Implemented and reviewed. Focused tests, trusted browser integration, and the full
+  repository typecheck pass against the isolated delivery commit.
 - **Priority:** P2
 - **Effort:** L
 - **Risk:** Medium
@@ -14,7 +18,53 @@
 - **Blocks:** the editor-native VS Code keymap (§6, "Companion plan"), and three `cmd+k` defaults already listed as blocked in `docs/vscode-keymap-development.md`
 - **Planned against:** platform `546a4c84`, Editor `899b3f3`, `@tanstack/react-hotkeys@0.10.0`, `@tanstack/hotkeys@0.8.0`, 2026-08-22; command/focus boundary reconciled 2026-08-25
 
-## Problem statement
+## Implementation reconciliation, 2026-09-05
+
+This section records the implementation's decisions where the original design below differed.
+The baseline measurements and drift table describe the pre-change code.
+
+- `CommandProvider` owns one `useAppKeymap()` instance and exposes `pendingChord` and
+  `claimKeybinding`. `AppKeymapController` renders the indicator from that context.
+- `utils/chord-machine.ts` remains pure. `state/chord-session.ts` owns pending state, the real
+  timeout, listener lifetimes, keyup tracking, and lifecycle logging. It installs continuation
+  capture synchronously, before React renders the pending label.
+- The session persists for the provider lifetime so consumed key releases survive table and focus
+  changes. A synchronous FocusService subscription cancels pending chords when the owner changes,
+  including moves within one pane. Event identity prevents duplicate claims.
+- The terminal's host capture listener calls the same `claimKeybinding` before Ghostty encodes
+  input. Claimed keyups are swallowed too. Ordinary input and unavailable single-key commands
+  pass through to Ghostty. No terminal repository change or second keymap owner is required.
+- No terminal chord setting is added. Replacing or unbinding `workspace.showSettings` through
+  `keybindings.overrides` removes its default chord and restores shell Ctrl+K on Linux and Windows.
+- TanStack's matcher was not adopted: the installed implementation regresses Hebrew and Cyrillic
+  physical-key fallback. The trie preserves the existing fallback and AZERTY Latin-letter guard.
+  The `SequenceManager` prefix and timeout objections remain valid.
+- `Ctrl+W V` is valid as two strokes. The old test bullet rejected it based on whole-string parsing,
+  which is precisely the parsing path this plan removes.
+- The schema and recorder share the two-stroke cap through `MAX_KEYBINDING_CHORD_STROKES`.
+  `settings:reference` and `settings:schema` regenerate the published description and JSON pattern.
+- The settings table searches every surviving shortcut, including secondary defaults, while menus
+  retain the first shortcut hint. The sole new default is `Mod+K Mod+S` for settings.
+- Trusted browser coverage uses `proofKeyPress`, `proofKeyDown`, and `proofKeyUp`. Ten browser
+  cases pass, including the default Settings chord, read-only editor routing, timeout, input
+  preservation, and real Ghostty encoding and releases.
+- Review fixed four cases: discarded overrides shadowing surviving siblings, held chord keys
+  triggering standalone shortcuts or leaking text, modified recorder controls being mistaken for
+  editing gestures, and search returning a default shortcut that another binding had displaced.
+  Regression tests reproduced the failures before the fixes.
+- Final verification in an isolated checkout passes 258 focused app tests, 19 contract tests,
+  all ten browser cases, the full repository typecheck, scoped lint, and schema freshness.
+  The checkout excludes concurrent environment changes from the shared working tree.
+  Existing single-stroke tables are unchanged on all three platforms; each gains only the new
+  Settings chord. The matcher benchmark meets the no-slowdown target.
+- A smoke check against a separately running Platform dev server could not run: the local web
+  listeners belong to another project. No dev server was started. The real provider and Settings
+  dialog were exercised through the browser test environment instead.
+- A user global prefix intercepted by an Editor single-stroke binding remains unreachable in that
+  editor without a warning. For example, `Mod+F Mod+B` conflicts with Editor find before app filtering.
+  This is a remaining Editor layer bridge limitation, separate from default-prefix hygiene.
+
+## Original problem and measured baseline
 
 `PlatformKeyBinding` holds exactly one keystroke, and the type is a hard wall. `keys: string` plus `hotkey: RegisterableHotkey` (`apps/web/src/keymap/types.ts:33-43`), where `RegisterableHotkey = Hotkey | RawHotkey` and `Hotkey` is a closed template-literal union. `const k: Hotkey = 'Mod+K Mod+S'` is `TS2322`.
 
@@ -56,16 +106,14 @@ Probed over `defaultPlatformKeyBindings(platform)` for mac/linux/windows:
 
 Both installed packages ship multi-step sequence support that neither repo uses: `@tanstack/hotkeys@0.8.0` exports `SequenceManager`, `HotkeySequence = Array<Hotkey>`, `createSequenceMatcher`, `formatHotkeySequence`, `HotkeySequenceRecorder`; `@tanstack/react-hotkeys@0.10.0` exports `useHotkeySequence`, `useHotkeySequences`, `useHotkeySequenceRecorder`.
 
-**We adopt two pieces of it and reject the dispatcher.** Two disqualifiers, read in the source:
+**Platform uses its grammar helpers and rejects the dispatcher.** Two disqualifiers, read in the source:
 
 1. **The arming stroke is not swallowed.** `preventDefault`/`stopPropagation` are guarded behind `currentIndex >= parsedSequence.length` (`sequence-manager.ts:505-512`), so they fire only on the final step. A `Mod+K` prefix would reach the browser and every downstream handler.
 2. **The timeout is a lazy comparison, not a timer.** `now - lastKeyTime > timeout` is evaluated only on the _next_ keystroke (`sequence-manager.ts:481-487`). Nothing fires when the window elapses, so a pending indicator driven off `matchedStepCount` stays lit indefinitely after the user walks away.
 
-**Adopted:**
-
-- `matchesKeyboardEvent` as the per-stroke primitive. It is a strict superset of our hand-rolled matcher: same Latin-letter guard against the AZERTY failure (`match.js:43` — `isSingleLetterKey(eventKey) && (/^[A-Za-z]$/.test(eventKey) || !event.altKey)` returns `false` rather than falling through to `event.code`), plus dead-key and macOS Option+letter handling ours lacks.
-- `formatHotkeySequence(['Mod+K','Mod+S']) === 'Mod+K Mod+S'` — verified. The library's own canonical sequence display _is_ the space-joined string, which is why §5 keeps the stored value a string.
-- `isModifierKey` for the modifier-only guard (probe-confirmed: `isModifierKey(normalizeKeyName('Meta')) === true`).
+**Retained helpers:** per-stroke parsing and normalization, `formatHotkeySequence`'s canonical
+space separator, and `isModifierKey` for modifier-only events. `matchesKeyboardEvent` was proposed
+here but rejected after the Hebrew and Cyrillic fallback regression was reproduced.
 
 ## Prior art, and where it disagrees
 
@@ -88,9 +136,9 @@ Where they disagree, this plan's choice and reason are in the semantics table (r
 | Stroke grammar, prefix predicate, chord normalization | `apps/web/src/keymap/utils/chord.ts` (NEW)                                         |
 | Prefix structure and per-keystroke matching           | `apps/web/src/keymap/utils/keymap-trie.ts` (NEW)                                   |
 | Arm / complete / cancel decisions                     | `apps/web/src/keymap/utils/chord-machine.ts` (NEW), a pure transition function     |
-| Listener phases, timers, DOM cancellations            | `apps/web/src/keymap/use-app-keymap.ts`                                            |
+| Listener phases, timers, DOM cancellations            | `apps/web/src/keymap/state/chord-session.ts`                                       |
 | Collision and shadowing policy                        | `active-bindings.ts` `liveKeyBindings`, unchanged except for one widened predicate |
-| Per-stroke keyboard-event matching                    | `@tanstack/react-hotkeys` `matchesKeyboardEvent`                                   |
+| Per-stroke keyboard-event matching                    | `apps/web/src/keymap/utils/keymap-trie.ts`                                         |
 | Stored value shape and validation                     | `packages/contracts/src/settings.ts`                                               |
 | Glyph rendering of one or many strokes                | `apps/web/src/keymap/utils/format-keys.ts` (NEW, moved)                            |
 | Editor command dispatch from a chord                  | landed `CommandBus`, resolving one registered FocusService target                  |
@@ -99,7 +147,7 @@ This plan must not add a second keymap owner, keybinding store, command registry
 or context-expression evaluator. Extend the current closed `CommandWhen` union only when a chord
 needs a new fact. Do not change the listener phase for the unarmed path.
 
-## Current architecture
+## Baseline architecture
 
 ### Table construction
 
@@ -392,63 +440,27 @@ The real `setTimeout` is the primary expiry; the `now - armedAt` check makes the
 
 ### Listener adapter
 
-```ts
-const trie = useMemo(
-  () => buildKeymapTrie(appKeyBindingsForPane(bindings, focusedPane), platform),
-  [bindings, focusedPane, platform],
-)
-const pendingRef = useRef<PendingChord | null>(null)
-const [pendingLabel, setPendingLabel] = useState<PendingChordLabel | null>(null) // render only
-```
+`useAppKeymap` builds the trie after `appKeyBindingsForPane` and creates one `createChordSession`
+for the binding table, focused pane, and exact focus target. `CommandProvider` owns this hook.
+Its context exposes the session's `claimKeybinding` and the rendered `pendingChord` label.
 
-**Listener A — `document`, BUBBLE, always mounted. Deps `[trie, dispatch]`.** Today's listener with one branch added; the phase does not change, so no precedence anywhere in the app moves.
+`state/chord-session.ts` mounts document bubble for unarmed keydowns. Arming immediately installs
+document capture for the continuation and starts the five-second timer. The handler consumes a
+continuation before dispatch, removes capture when the chord ends, and deduplicates the same
+KeyboardEvent across the terminal and document entry points. Keyup tracking consumes releases
+whose keydowns belonged to Platform.
 
-```
-onKeyDown(event):
-  if pendingRef.current: return                       # listener B already took it
-  action = chordTransition(trie, null, event, eventTargetsTextEntry(event), Date.now())
-  if action.kind === 'ignore': return
-  if action.kind === 'run':  return runBinding(action.binding, event, false)
-  event.preventDefault(); event.stopPropagation()     # unconditional: the prefix ran nothing
-  pendingRef.current = action.pending
-  setPendingLabel(labelFor(action.pending, trie))
-```
+Single-stroke commands retain synchronous `CommandBus` claim gating. Reserved bindings claim
+without dispatch. Chord completion always consumes the event, including when a target declines.
+No separate editor dispatcher or active-surface pointer is introduced.
 
-**Listener B — `document`, CAPTURE, installed only while armed. Deps `[pendingLabel, trie, dispatch]`.**
+Blur, hidden documents, pointerdown, session replacement, and unmount remove pending state and
+its timer. A same-pane owner change also replaces the session. The terminal's host capture hook
+uses this same session before Ghostty's textarea handler, which otherwise encodes before document
+bubble can see the key.
 
-```
-onArmedCapture(event):
-  p = pendingRef.current;  if !p: return
-  action = chordTransition(trie, p, event, false, Date.now())
-  if action.kind === 'ignore': return                 # IME only
-  event.preventDefault()
-  event.stopImmediatePropagation()                    # nothing below sees the completer
-  if action.kind === 'swallow': return
-  if action.kind === 'arm':  { pendingRef.current = action.pending; setPendingLabel(...); return }
-  if action.kind === 'cancel': return disarm(action.outcome, null)
-  disarm('completed', action.binding.binding.command)
-  runBinding(action.binding, event, true)
-```
-
-Capture is required and confined to the armed window: four handlers sit between `document` and the key (the editor's own keymap on `scrollElement`, the IME hold at `inputSelectionController.ts:261`, `completionController.ts:182-184`'s `stopImmediatePropagation`, and the printable-fallback insertion at `inputSelectionController.ts:262`). Bubble cannot beat any of them. **Rule: widgets own capture, the keymap owns bubble — except for one keystroke while a chord is armed.**
-
-The same effect registers and tears down: `window` `blur` → `disarm('blur')`; `document` `visibilitychange` to hidden → `disarm('hidden')`; `document` `pointerdown` capture → `disarm('pointer')`; `setTimeout(CHORD_TIMEOUT_MS)` → `disarm('timeout')`. Cleanup of listener A's effect calls `disarm('superseded')`, covering both a table change and a pane change in one line — `trie` is memoised on `focusedPane`, so a focus move between strokes re-runs the effect and cancels.
-
-```ts
-function runBinding(parsed, event, fromChord) {
-  const b = parsed.binding
-  // A completing stroke ALWAYS swallows: `preventDefault: false` means "let the browser have
-  // this key", which cannot be true of a key the user committed to by arming.
-  if (fromChord || b.preventDefault !== false) event.preventDefault()
-  if (fromChord || b.stopPropagation !== false) event.stopPropagation()
-  if (!b.command) return // reserved no-op, unchanged
-  if (isEditorPlatformCommandId(b.command) && !editorCommandAllowedForActiveSurface(b.command))
-    return
-  dispatch(b.command, event)
-}
-```
-
-**Cost.** Today's matcher is two linear scans over 32–35 entries. `trieStep` is one `Map.get` on a ~15-entry map plus a ≤4-element integer scan, zero allocations, and the only per-keystroke string work is `normalizeKeyName`, which the current code already calls. Benchmark before/after with the same harness; the target is "not slower". The trie is adopted for the invariant it makes unforgettable, not for nanoseconds — the flat scan was never a bottleneck.
+The trie makes prefix conflicts explicit. The flat matcher was not a demonstrated bottleneck;
+compare both with the same focused benchmark before claiming a performance improvement.
 
 ### Logging
 
@@ -484,21 +496,21 @@ Nothing is logged on arm — one enriched event per operation, per the evlog con
 | 5   | Two chords sharing a prefix                      | Not a conflict. Both live under one trie node; `continuations` counts them.                                                                                                                                                                          | Neither string is a space-prefix of the other.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | 6   | Build order                                      | `appKeyBindingsForPane` keeps arbitrate-then-filter. The trie is built from its output, never from a pre-filtered list.                                                                                                                              | **Measured.** Reversing resurrects `Mod+[`/`Mod+]` in the editor pane and breaks indent/outdent.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | 7   | Arming stroke                                    | Unconditional `preventDefault()` + `stopPropagation()`, regardless of `binding.preventDefault`.                                                                                                                                                      | Those flags describe the completing action; the prefix has run nothing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| 8   | Completing stroke                                | `preventDefault()` + `stopImmediatePropagation()` in capture, before the lookup.                                                                                                                                                                     | The completing character must never land in the focused text field.                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| 8   | Completing stroke                                | Capture consumes the event before command dispatch.                                                                                                                                                                                                  | The completing character must never reach the focused input.                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | 9   | Unmatched stroke while armed                     | Swallowed, chord cancelled, **never replayed**. No toast.                                                                                                                                                                                            | Zed replays here; we do not. Replaying after a delay reorders input into a live shell, which is worse than dropping it. VS Code swallows and pins it with a test. No toast because the indicator disappearing is the feedback and a toast would double-announce against its live region.                                                                                                                                                                                                                                                 |
 | 10  | Escape while armed                               | No special case. It matches no edge → rule 9 → cancel.                                                                                                                                                                                               | Falls out for free and keeps `<prefix> Escape` bindable. Zero code. VS Code's Escape carve-out is terminal-specific and is handled by D2 instead.                                                                                                                                                                                                                                                                                                                                                                                        |
 | 11  | Modifier-only keydown while armed                | Neither advances nor cancels; swallowed. Gated by `isModifierKey`.                                                                                                                                                                                   | Without it, releasing and re-pressing Cmd between strokes kills the chord. Universal across VS Code, CodeMirror and the TanStack engine.                                                                                                                                                                                                                                                                                                                                                                                                 |
-| 12  | `event.repeat`                                   | Unarmed: ignored. Armed: swallowed, chord stays armed, timer **not** reset.                                                                                                                                                                          | Nothing in `apps/web/src` reads `event.repeat` today. Without this, holding a prefix a fraction too long cancels the chord.                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 12  | `event.repeat`                                   | A repeated prefix is ignored while unarmed and swallowed while armed without resetting the timer. Single-stroke repeat behavior is preserved.                                                                                                        | Holding a prefix must not complete or cancel a chord.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | 13  | IME composition                                  | Both listeners return immediately on `event.isComposing \|\| event.keyCode === 229`.                                                                                                                                                                 | An IME owns the keystroke. **`keyCode === 229` is not optional:** the editor's own guard (`inputSelectionController.ts:2661-2665`) gates on `isComposing \|\| compositionActive` and _not_ on 229, so the first keydown of a composition escapes it — and this repo's own chat composer already documents the fix at `chat-input-submit-plugin.tsx:98-103` ("the pre-`isComposing` signal every IME still sends"). VS Code checks both. A deliberate change for single hotkeys too, and a bug fix: the keymap has zero IME guards today. |
 | 14  | Typing gate                                      | First stroke only, unchanged from `hotkeyFiresWhileTyping`. Once armed, every subsequent stroke fires regardless of caret position.                                                                                                                  | Rule 3(a) makes stroke 1 always Ctrl/Meta, so `firesWhileTyping` is always true for a prefix — no editor bypass needed.                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| 15  | Pane pinning                                     | The trie is memoised on `[bindings, focusedPane, platform]`; listener A's cleanup calls `disarm('superseded')`.                                                                                                                                      | `focusedPane` comes from `FocusService.currentOwner.area`. Completing against a different registered owner would run a command the user could not have predicted.                                                                                                                                                                                                                                                                                                                                                                        |
+| 15  | Focus pinning                                    | Session identity includes the focused pane and exact focus target; replacement calls `disarm('superseded')`.                                                                                                                                         | A different owner must not receive a command armed against the previous one.                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | 16  | Timeout                                          | 5000 ms, real `setTimeout`, restarted at every stroke. Armed only when the pending node has at least one reachable binding. Not a settings key.                                                                                                      | VS Code's value (`abstractKeybindingService.ts:185`), reached there by a 500 ms poll; a single timer is strictly better. The conditional arming is Zed's idea (`window.rs:5336-5338`) and is worth taking. Not a key because CLAUDE.md forbids inert knobs.                                                                                                                                                                                                                                                                              |
 | 17  | Other cancellations                              | `window` blur, `document` `visibilitychange` to hidden, `document` `pointerdown` capture.                                                                                                                                                            | VS Code checks document focus on every poll; an explicit blur listener is the same guarantee without polling. Pointerdown keeps an armed chord from stealing a key after the user clicks into a dialog or the recorder.                                                                                                                                                                                                                                                                                                                  |
-| 18  | Chords in the terminal                           | **Intended: yes.** Not reachable until the ghostty host is replaced. See D2 — this plan states the seam; the knob ships with the host swap.                                                                                                          | The old `ghostty-web` swallows every Ctrl/Meta key before document bubble, so the app keymap is already dead there today. Not a regression, and not a designed limitation either.                                                                                                                                                                                                                                                                                                                                                        |
+| 18  | Chords in the terminal                           | The host calls the shared `claimKeybinding` from capture before Ghostty encodes input. No terminal chord setting is added.                                                                                                                           | One event reaches either Platform or the terminal. See D2 for Ctrl+K ownership.                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | 19  | Chord-bound `editor.*` commands                  | Allowed. Never handed to the Editor layer (§6); dispatched through the sole `CommandBus`, gated by the resolved target's `editorWritable` condition and capability. Read-only targets decline editing commands.                                      | This preserves one target/enablement/claim path for keybindings, palette, and menus. A chord must not infer an editor from mount order or keep a private last-focused pointer.                                                                                                                                                                                                                                                                                                                                                           |
 | 20  | Depth cap                                        | 2 strokes, enforced in the contract regex, `isBindableChord`, and the recorder. The trie itself is N-capable.                                                                                                                                        | VS Code caps its own recorder at two. A deeper prefix tree is a keymap no settings column can render. Product policy, not architecture.                                                                                                                                                                                                                                                                                                                                                                                                  |
 | 21  | Grammar validation                               | Per stroke, never on the whole string.                                                                                                                                                                                                               | Measured: the whole-string verdict is unusable in both directions. The existing warning-is-fatal rule is kept.                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| 22  | Exactly one dispatch per completed chord         | Listener B clears `pendingRef` and calls `stopImmediatePropagation` before dispatching; listener A returns early whenever `pendingRef.current` is set.                                                                                               | Guards against both listeners firing on the completing event.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 22  | Exactly one dispatch per completed chord         | Capture consumes the continuation before dispatch; a WeakMap deduplicates each KeyboardEvent across entry points.                                                                                                                                    | Terminal capture and document listeners share one session.                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | 23  | Accepted limitation                              | While the LSP completion list is open or the find widget has focus, a chord cannot **arm**. Once armed, the capture listener wins.                                                                                                                   | Both are correct local behaviours on inner nodes. Rule 3(b) keeps prefixes off keys those widgets claim.                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 ## Contract change
@@ -547,7 +559,7 @@ export const keybindingOverridesSchema = v.record(
 
 ### What makes it possible
 
-Platform already authors **100%** of the editor's bindings. All three mounts pass
+Platform already authors **100%** of the editor's bindings. The existing editor mounts pass
 `defaultBindings: false`, and `resolveEditorKeymap` drops core layers entirely when it is false.
 The `editor.*` rows come from `apps/web/src/keymap/editor-commands.ts`. The sole runtime dispatch is
 already in place: `CommandBus` resolves a FocusService editor target and calls its registered
@@ -618,17 +630,20 @@ Fixing that means `EditorKeyBinding` grows a sequence form so standalone embedde
 | `apps/web/src/keymap/utils/chord.ts`                                        | **NEW**                                                                                                                                                                                                                                                                                                                                                         | Pure, React-free. `keysConflict` is the one predicate the whole prefix model rests on.                                                                |
 | `apps/web/src/keymap/utils/keymap-trie.ts`                                  | **NEW**                                                                                                                                                                                                                                                                                                                                                         | A flat array of strings cannot represent a prefix relation. Makes `binding XOR children` structural.                                                  |
 | `apps/web/src/keymap/utils/chord-machine.ts`                                | **NEW**                                                                                                                                                                                                                                                                                                                                                         | Pure transition function, so arm/complete/cancel/timeout/repeat/isComposing are provable with no DOM.                                                 |
+| `apps/web/src/keymap/state/chord-session.ts`                                | Stateful DOM adapter, real timer, event deduplication, claimed keyups, and lifecycle logging.                                                                                                                                                                                                                                                                   | Shared by document and terminal entry points.                                                                                                         |
+| `apps/web/src/keymap/providers/command-provider.tsx`                        | Owns the sole keymap hook and exposes `claimKeybinding` and `pendingChord`.                                                                                                                                                                                                                                                                                     | Keeps one resolved table and one pending sequence.                                                                                                    |
+| `apps/web/src/features/terminal/hooks/use-keybindings.ts`                   | Forwards host capture events to the provider before Ghostty encoding.                                                                                                                                                                                                                                                                                           | Preserves ordinary input while preventing command bytes from reaching the shell.                                                                      |
 | `apps/web/src/keymap/utils/format-keys.ts`                                  | **NEW** (moved from `features/menus/utils/shortcut.ts`)                                                                                                                                                                                                                                                                                                         | 4 consumers outside `features/menus/`. Belongs in `keymap/` not `lib/` because `commandShortcut` is keymap policy. Fixes the `split('+')` corruption. |
 | `apps/web/src/keymap/components/pending-chord-indicator.tsx`                | **NEW**                                                                                                                                                                                                                                                                                                                                                         | First `components/` folder under `keymap/`.                                                                                                           |
 | `apps/web/src/keymap/types.ts`                                              | `chord: KeyChord` replaces `hotkey`; `ParsedPlatformKeyBinding.steps`; event gains `isComposing?`/`keyCode?`/`repeat?`                                                                                                                                                                                                                                          | The type is the wall.                                                                                                                                 |
 | `apps/web/src/keymap/active-bindings.ts`                                    | `collidesWith` → `keysConflict`; `isBindableHotkey` → `isBindableChord`; `normalizedHotkey` → `normalizedChord`; `userKeyBinding` builds `chord`; delete `parsedPlatformKeyBindings` + `platformKeyBindingForKeyboardEvent`; export `physicalKeyName`, `LATIN_LETTER_PATTERN`                                                                                   | One predicate widening converts the entire existing shadow pipeline.                                                                                  |
-| `apps/web/src/keymap/use-app-keymap.ts`                                     | Trie memo; listener A bubble + listener B armed-only capture; timeout/blur/visibilitychange/pointerdown; `runBinding` with the capability gate; `isAppKeyBinding` inverted; returns the pending label; **`appKeyBindingsForPane` order unchanged**                                                                                                              | The state machine's home.                                                                                                                             |
+| `apps/web/src/keymap/use-app-keymap.ts`                                     | Builds the pane trie and stable session; tracks the exact focus owner.                                                                                                                                                                                                                                                                                          | One hook instance lives in CommandProvider.                                                                                                           |
 | `apps/web/src/keymap/define-command.ts`                                     | `CommandKeyDefault.hotkey` → `chord`                                                                                                                                                                                                                                                                                                                            | Authoring surface for 143 key literals.                                                                                                               |
 | `apps/web/src/keymap/default-bindings.ts`                                   | Emit `chord` + joined `keys`; `ReservedChord` → `ReservedHotkey`                                                                                                                                                                                                                                                                                                | "Chord" now means a sequence; `:18` and `:96` currently use it for one keystroke.                                                                     |
 | `apps/web/src/keymap/workspace-commands.ts`                                 | 18 literals; `workspace.showSettings` gains a **second** default `{ chord: ['Mod+K','Mod+S'], vscodeCommandId: 'workbench.action.openGlobalKeybindings' }` **after** `Mod+,`                                                                                                                                                                                    | Ships the mechanism with a real user. Order matters: `commandShortcut`'s `.find` returns the first, so the printed hint stays `⌘,`.                   |
 | `apps/web/src/keymap/editor-commands.ts`                                    | 112 literals (mechanical)                                                                                                                                                                                                                                                                                                                                       | Own commit; verify with a before/after table dump.                                                                                                    |
 | `apps/web/src/keymap/editor-keymap.ts`                                      | Multi-stroke guard + `chord[0]`                                                                                                                                                                                                                                                                                                                                 | Keeps a chord string out of `RegisterableHotkey`; the bus already owns the read-only gate.                                                            |
-| `apps/web/src/app-keymap-controller.tsx`                                    | Renders `<PendingChordIndicator>`                                                                                                                                                                                                                                                                                                                               | Already mounted app-wide. No new mount point, no store, no prop drilling.                                                                             |
+| `apps/web/src/app-keymap-controller.tsx`                                    | Reads `pendingChord` from `useCommand` and renders the indicator.                                                                                                                                                                                                                                                                                               | Does not install another keymap hook.                                                                                                                 |
 | `apps/web/src/features/menus/utils/shortcut.ts`                             | **DELETED**                                                                                                                                                                                                                                                                                                                                                     | Moved.                                                                                                                                                |
 | `apps/web/src/features/menus/utils/resolve.ts`                              | `:155` import moves                                                                                                                                                                                                                                                                                                                                             | `trailing: string \| null` unchanged.                                                                                                                 |
 | `apps/web/src/features/command-palette/command-palette-utils.ts`            | `:7` import moves                                                                                                                                                                                                                                                                                                                                               | Unchanged otherwise.                                                                                                                                  |
@@ -667,7 +682,8 @@ Fixing that means `EditorKeyBinding` grows a sequence form so standalone embedde
 
 ## Phases
 
-Each phase leaves `bun run verify` green and is independently shippable.
+The phases define focused completion checks. Validate the affected behavior and report unrelated
+workspace baseline failures separately; do not gate completion on a repository-wide test count.
 
 ### Phase 1 — Vocabulary and the strokes model
 
@@ -718,7 +734,7 @@ cd /Users/shaul/Desktop/D/platform/packages/contracts && vitest run src/tests/se
 - `keysConflict('Mod+K', 'Mod+K Mod+S')` is `true`; `keysConflict('Mod+K2', 'Mod+K Mod+S')` is `false`.
 - `keysConflict('Mod+K Mod+S', 'Mod+K Mod+B')` is `false`.
 - `isBindableChord('Mod+K Mod+S')` is `true`; `'Mod+K Mod+Nonsense'` is `false`.
-- `isBindableChord('Ctrl+W V')` is `false` — the second token is a dead key `'W V'` no event can match.
+- `isBindableChord('Ctrl+W V')` is `true`: the strokes are `Ctrl+W` and `V`.
 - `isBindableChord('Mod+K Mod+S Mod+X')` is `false` (3 > `MAX_CHORD_STROKES`).
 - `isBindableChord('K Mod+S')` is `false` — a bare-key first stroke can never arm in a text field.
 - **Regression guard:** parsing `'Mod+K Mod+S'` through the chord path yields two `ParsedHotkey`s, never the single `{key:'S',meta:true}` raw `parseHotkey` returns.
@@ -789,7 +805,9 @@ cd /Users/shaul/Desktop/D/platform/packages/contracts && vitest run src/tests/se
 
 ### `browser`
 
-**No new browser tests.** There is no trusted keyboard input in this repo: `vitest.browser.config.ts:46-53` registers exactly four `browser.commands`, all mouse. See D10.
+Trusted browser tests use the existing `proofKeyPress` command. Extend the real command/focus
+suite for chord completion and cancellation, and run terminal ownership tests against Ghostty
+for pre-encode claims, ordinary input passthrough, and Kitty key-release suppression. See D10.
 
 ## Risks and open decisions
 
@@ -798,26 +816,21 @@ Every item is resolved with a decision. D1, D2 and D3 are the ones a human shoul
 **D1 — Listener phase. DECIDED: bubble for the unarmed path; capture only while armed.**
 Always-on document capture pre-empts every React `onKeyDown` (React 19 mounts at `#root`, `main.tsx:66`) — including `chord-recorder.tsx:40-47`, whose own comment says "while recording, the whole keyboard belongs to the recorder"; recording `Mod+S` would fire Save. Arming-only capture confines the precedence change to the ≤5s where "the app owns the keyboard" is the stated semantic, and the recorder can never be armed. **Cost accepted:** a prefix cannot arm inside the LSP completion popup or the find widget. Rule 3(b) keeps prefixes off keys those surfaces claim.
 
-**D2 — Terminal chords. DECIDED: intended yes; reconcile the landed Ghostty host before execution.**
-The old `ghostty-web` swallows every Ctrl/Meta key on a bubble listener on its container, ending `preventDefault(), stopPropagation()`, and makes the host `contenteditable`. So the app keymap is **already** dead there for exactly those keys — chords not arming in the terminal today is the status quo, not a regression.
+**D2 — Terminal chords. Implemented through the shared Platform session.**
 
-The `ghostty-webgpu` package-owned textarea host has now landed and prevents browser default only
-when the terminal consumes the event. The precondition for terminal chords therefore exists, but
-this plan's drift check must verify the integrated behavior before deciding whether a setting is
-still required. The intended policy continues to match both references: VS Code ships
-`terminal.integrated.allowChords` at `default: true`, and Zed does it unconditionally.
+Ghostty owns its textarea and can encode keys before document bubble. The terminal host therefore
+forwards keydown and keyup from capture to `CommandProvider`'s `claimKeybinding`. A claim stops
+Ghostty from receiving that event; otherwise its normal input path proceeds. The session tracks
+claimed keyups so Kitty mode cannot leak releases for consumed prefixes or continuations.
 
-**Do not register an inert knob.** During drift reconciliation, either wire
-`terminal.integrated.allowChords` to the landed host in the same pass or record why the host's
-consumption contract makes the setting unnecessary. CLAUDE.md remains explicit: "A key is never
-registered inert. Register it in the same pass that wires its consumer, or do not register it."
-
-When it does ship: scope is **`application`**, not `window` like its three `terminal.integrated.*` neighbours — those are font size, scrollback and cursor blink, all appearance; `allowChords` decides whether a keystroke is a command or reaches the shell, which is execution-reaching.
-
-**Known collision to document at that time:** on Linux and Windows `Mod` is Ctrl, so a `Mod+K` prefix _is_ readline's `kill-line`. VS Code ships the same collision knowingly and their docs name it as the reason for the off switch, verbatim: "setting this to false is particularly useful when you want ctrl+k to go to your shell (not VS Code)." On mac `Mod` is Cmd and there is no conflict.
+No `terminal.integrated.allowChords` setting is added. The resolved keymap already controls which
+keys belong to Platform. On Linux and Windows, overriding `workspace.showSettings` to `Mod+,` or
+unbinding it removes the default Ctrl+K prefix and restores readline kill-line. Ordinary terminal
+input and unavailable single-key commands continue through unchanged. The terminal repository
+needs no change for this ownership boundary.
 
 **D3 — Whole-record invalidation on a hand-typed bad chord. DECIDED: regex in the contract; accept the risk; document the recovery.**
-Valibot's `record` fails `safeParse` for the entire value on one bad entry, so a hand-edited 3-stroke chord drops **every** keybinding override to `{}` with one diagnostic. Mitigations: the write API rejects before disk; the recorder cannot emit it; the diagnostic names the offending command; plan 049b will turn the regex into a draft-07 `pattern` and squiggle it pre-save. **Escape hatch if this bites:** move the grammar into `appliedOverrides`, which drops one entry — at the cost of the typed write error and the future squiggle.
+Valibot's `record` fails `safeParse` for the entire value on one bad entry, so a hand-edited 3-stroke chord drops **every** keybinding override to `{}` with one diagnostic. Mitigations: the write API rejects before disk; the recorder cannot emit it; the diagnostic names the offending command; the generated settings JSON Schema exposes the regex as a draft-07 `pattern` for editor validation. **Escape hatch if this bites:** move the grammar into `appliedOverrides`, which drops one entry — at the cost of the typed write error and the future squiggle.
 
 **D4 — Recorder terminating gesture. DECIDED: commit immediately unless the stroke is a live chord prefix; otherwise `Enter` commits, `Backspace` pops, `Escape` cancels.**
 An auto-commit window silently produces a single-key binding for a slow user. Unconditional `Enter` costs a keypress on every single-key rebind, the common case. The prefix-conditional rule costs nothing on the common path and keeps two existing tests passing verbatim.
@@ -863,9 +876,10 @@ and unmatched-stroke swallowing; synthetic events alone are insufficient.
 
 **D15 — `RegisterableHotkey` has two arms and `chord` inherits both.** `default-bindings.ts:52` produces the string arm; `userKeyBinding` produces the `RawHotkey` object arm. `chordKeys` must normalize both. On linux 11 defaults already have `hotkey !== keys`, so **the Phase 1 table diff must be run per platform, not once.**
 
-## Drift check
+## Baseline drift check
 
-Re-verify each before writing code.
+These checks were written against the pre-change code. The implementation reconciliation above
+records the resolved differences; current tests and symbols govern final validation.
 
 **Uncommitted WIP will shift line numbers.** `packages/contracts/src/settings.ts`, `settings/keys.ts`, `index.ts` and `tests/settings-registry.test.ts` are modified by unrelated LSP work. **Re-locate every contracts line by symbol, not by number.**
 
@@ -897,6 +911,6 @@ Re-verify each before writing code.
 | `features/chat/components/chat-input-submit-plugin.tsx:98-103`        | `event.isComposing \|\| event.keyCode === 229` with its comment                                                                                                                                                                                                                                                                                                | The in-repo precedent for rule 13's 229 check.                                                                                                 |
 | `features/settings/components/json-view.tsx:52`                       | `<Editor active ... />`                                                                                                                                                                                                                                                                                                                                        | A fourth concurrent writer of the single dispatch slot (D5).                                                                                   |
 | `lib/wide-event-scope.ts`                                             | `createWideEventScope` exists and no-ops when logging is off. **`area: 'keymap'` does not exist — use `area: 'command'`**                                                                                                                                                                                                                                      | The chord lifecycle event's mechanism.                                                                                                         |
-| `apps/web/vitest.browser.config.ts:46-53`                             | exactly four `browser.commands`, all mouse                                                                                                                                                                                                                                                                                                                     | D10.                                                                                                                                           |
+| `apps/web/vitest.browser.config.ts`                                   | `proofKeyPress` now supplies trusted keyboard input.                                                                                                                                                                                                                                                                                                           | D10 requires browser proof instead of treating synthetic keydowns as equivalent.                                                               |
 | `docs/vscode-keymap-development.md:117-118, :126, :131-132, :161-162` | the multi-chord Remaining Work entries and the status stamp                                                                                                                                                                                                                                                                                                    | This doc's Remaining Work section is this feature.                                                                                             |
 | `ghostty-webgpu` commit `50788b2`, `src/dom/input.ts`                 | Package-owned textarea host; prevent browser default only when the terminal consumes the event                                                                                                                                                                                                                                                                 | Landed. D2's deferral has collapsed and now requires normal drift reconciliation.                                                              |
