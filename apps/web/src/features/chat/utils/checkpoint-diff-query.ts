@@ -1,3 +1,4 @@
+import { clientLogContext } from '@/lib/environments/state/log-context'
 import type { SessionId } from '@workspace/contracts'
 
 import { getClient, type Client } from '@/lib/client'
@@ -136,6 +137,7 @@ export async function fetchCheckpointDiff(
 
   return observeClientOperation(
     {
+      ...clientLogContext(client),
       action: 'chat.checkpoint_diff.http',
       area: 'chat',
       fromTurnCount: input.fromTurnCount,
@@ -169,6 +171,7 @@ async function fetchFullSessionCheckpointDiff(
 ) {
   return observeClientOperation(
     {
+      ...clientLogContext(client),
       action: 'chat.full_session_checkpoint_diff.http',
       area: 'chat',
       sessionId: input.sessionId,

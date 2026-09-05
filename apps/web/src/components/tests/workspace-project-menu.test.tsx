@@ -30,6 +30,7 @@ function storeWithRoot(path: string | null) {
     searchBuffers: {},
     uiMode: 'workbench',
     workbenchLayout: createDefaultWorkbenchLayout(),
+    worktreeIdByRootPath: {},
     workspaceOrder: path ? [path] : [],
     workspaces: path
       ? {

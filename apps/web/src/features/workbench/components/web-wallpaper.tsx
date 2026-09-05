@@ -10,7 +10,7 @@ import {
   wallpaperInfoQueryOptions,
   wallpaperMediaQueryOptions,
   wallpaperStillQueryOptions,
-} from '@/features/workbench/utils/wallpaper-query'
+} from '@/features/workbench/state/wallpaper-query'
 
 const wallpaperClassName = 'pointer-events-none absolute inset-0 z-0 h-full w-full object-cover'
 

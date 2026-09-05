@@ -1,3 +1,4 @@
+import { testScopedStorage } from '../../../../../test/factories/scoped-storage'
 import { projectIdSchema } from '@workspace/contracts'
 import { afterEach, beforeEach } from 'vitest'
 import * as v from 'valibot'
@@ -31,21 +32,21 @@ afterEach(() => {
 })
 
 test('a collapsed group is still collapsed after a reload', () => {
-  writePersistedRailCollapse([platformId, siteId])
+  writePersistedRailCollapse(testScopedStorage, [platformId, siteId])
 
-  expect(readPersistedRailCollapse()).toEqual([platformId, siteId])
+  expect(readPersistedRailCollapse(testScopedStorage)).toEqual([platformId, siteId])
 })
 
 test('nothing stored reads as nothing collapsed', () => {
-  expect(readPersistedRailCollapse()).toEqual([])
+  expect(readPersistedRailCollapse(testScopedStorage)).toEqual([])
 })
 
 test('junk in storage re-expands everything instead of throwing', () => {
-  STORE.set(STORAGE_KEY, '{"collapsedProjectIds":[7],"version":1}')
-  expect(readPersistedRailCollapse()).toEqual([])
+  testScopedStorage.setItem(STORAGE_KEY, '{"collapsedProjectIds":[7],"version":1}')
+  expect(readPersistedRailCollapse(testScopedStorage)).toEqual([])
 
-  STORE.set(STORAGE_KEY, 'not json at all')
-  expect(readPersistedRailCollapse()).toEqual([])
+  testScopedStorage.setItem(STORAGE_KEY, 'not json at all')
+  expect(readPersistedRailCollapse(testScopedStorage)).toEqual([])
 })
 
 test('an unavailable store costs a re-expanded group, never a thrown click', () => {
@@ -60,6 +61,6 @@ test('an unavailable store costs a re-expanded group, never a thrown click', () 
     },
   })
 
-  expect(() => writePersistedRailCollapse([platformId])).not.toThrow()
-  expect(readPersistedRailCollapse()).toEqual([])
+  expect(() => writePersistedRailCollapse(testScopedStorage, [platformId])).not.toThrow()
+  expect(readPersistedRailCollapse(testScopedStorage)).toEqual([])
 })

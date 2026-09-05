@@ -42,6 +42,7 @@ import { readTerminalMenuTarget, type TerminalMenuTarget } from '@/features/term
 import { readTerminalTheme } from '@/features/terminal/utils/theme'
 import { isFocusOutsideElement } from '@/features/terminal/utils/focus-target'
 import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
+import { useUnavailableEnvironment } from '@/lib/environments/hooks/use-unavailable-environment'
 
 /** Writes to the terminal's socket. False when the connection is not up yet. */
 type TerminalInputSender = (data: string) => boolean
@@ -89,6 +90,8 @@ export function TerminalPanel({
   sessionId,
   ...sectionProps
 }: TerminalPanelProps) {
+  const unavailable = useUnavailableEnvironment()
+  const machineUnavailable = unavailable !== null
   const queryClient = useQueryClient()
   const origin = originForQueryClient(queryClient)
   const focus = useFocusService()
@@ -116,7 +119,10 @@ export function TerminalPanel({
   const [readyTerminalIdentity, setReadyTerminalIdentity] = useState<string | null>(null)
   const registerTerminalLinks = useTerminalLinks(rootPath)
   useTerminalKeybindings(hostRef)
-  useTerminalCommandInbox({ active: active && socketConnected, sendInputRef })
+  useTerminalCommandInbox({
+    active: active && socketConnected && !machineUnavailable,
+    sendInputRef,
+  })
   const {
     focused: terminalFocused,
     ref: terminalFocusTargetRef,
@@ -126,7 +132,7 @@ export function TerminalPanel({
       area: 'terminal',
       id: { kind: 'terminal', rootPath, sessionId },
       onIntent: (intent) => {
-        if (intent !== 'focus' || !active) return false
+        if (intent !== 'focus' || !active || machineUnavailable) return false
 
         const terminal = terminalRef.current
         if (!terminal) return false
@@ -135,7 +141,7 @@ export function TerminalPanel({
         return true
       },
     },
-    active && readyTerminalIdentity === terminalMountIdentity,
+    active && !machineUnavailable && readyTerminalIdentity === terminalMountIdentity,
   )
   const captureTerminalRemountFocus = useEffectEvent(() => {
     restoreFocusAfterRemountRef.current = terminalFocused ? focusIdentity : null
@@ -203,6 +209,7 @@ export function TerminalPanel({
   }, [resolvedTheme])
 
   useEffect(() => {
+    if (machineUnavailable) return
     const host = hostRef.current
     if (!host) return
 
@@ -230,7 +237,15 @@ export function TerminalPanel({
       setMenuTarget(null)
       unmountTerminal()
     }
-  }, [origin, queryClient, rootPath, scrollback, sessionId, terminalMountIdentity])
+  }, [
+    machineUnavailable,
+    origin,
+    queryClient,
+    rootPath,
+    scrollback,
+    sessionId,
+    terminalMountIdentity,
+  ])
 
   useEffect(() => {
     if (!terminalFocusTargetToken) return
@@ -251,6 +266,24 @@ export function TerminalPanel({
       terminalCursorOptions(terminalFocused, cursorBlink),
     )
   }, [cursorBlink, terminalFocused])
+
+  if (unavailable)
+    return (
+      <section
+        {...sectionProps}
+        aria-label='Terminal'
+        className={cn(
+          'text-warning flex min-h-0 flex-col items-center justify-center gap-1 p-4 text-sm',
+          className,
+        )}
+        role='status'
+      >
+        <span>{unavailable.label ?? unavailable.name} is unreachable.</span>
+        <span className='text-muted-foreground text-xs'>
+          The terminal will reconnect when the machine is available.
+        </span>
+      </section>
+    )
 
   return (
     <section

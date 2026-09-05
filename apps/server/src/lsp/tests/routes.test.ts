@@ -28,6 +28,43 @@ afterEach(async () => {
 })
 
 describe('LSP websocket routes', () => {
+  it('rejects an untrusted origin before resolving or acquiring a backend', async () => {
+    const root = await fixtureRoot()
+    const resolveServer = vi.fn()
+    const acquire = vi.fn()
+    const routes = lspRoutes({ paths: createWorkspacePaths(root) }, auth(), {
+      resolveServer,
+      settings: () => ({ servers: {}, languageServers: {}, tyForPython: false }),
+      pool: { acquire },
+    })
+    const ws = fakeSocket({ path: 'src/file.fake', root: '', server: 'unknown' })
+    ws.data.headers.origin = 'http://localhost:9999'
+
+    await routes.open(ws)
+
+    expect(ws.closeDetails).toEqual({ code: 1008, reason: 'unauthorized' })
+    expect(resolveServer).not.toHaveBeenCalled()
+    expect(acquire).not.toHaveBeenCalled()
+  })
+
+  it('rejects a root outside the workspace before acquiring a backend', async () => {
+    const root = await fixtureRoot()
+    const resolveServer = vi.fn()
+    const acquire = vi.fn()
+    const routes = lspRoutes({ paths: createWorkspacePaths(root) }, auth(), {
+      resolveServer,
+      settings: () => ({ servers: {}, languageServers: {}, tyForPython: false }),
+      pool: { acquire },
+    })
+    const ws = fakeSocket({ path: 'src/file.fake', root: '../outside', server: 'unknown' })
+
+    await routes.open(ws)
+
+    expect(ws.closeDetails).toEqual({ code: 1008, reason: 'invalid-root' })
+    expect(resolveServer).not.toHaveBeenCalled()
+    expect(acquire).not.toHaveBeenCalled()
+  })
+
   it('buffers client messages while the server session is opening', async () => {
     const root = await fixtureRoot()
     const createdSessions: FakeLspProxySession[] = []
@@ -125,15 +162,21 @@ function auth() {
 
 function fakeSocket(query: { path: string; root: string; server: string }) {
   const raw = {}
+  const closeDetails: { code: number | undefined; reason: string | undefined } = {
+    code: undefined,
+    reason: undefined,
+  }
   return {
     closed: false,
+    closeDetails,
     data: {
       headers: { origin: TRUSTED_ORIGIN },
       query,
     },
     raw,
-    close() {
+    close(code?: number, reason?: string) {
       this.closed = true
+      this.closeDetails = { code, reason }
     },
     send: () => undefined,
   }

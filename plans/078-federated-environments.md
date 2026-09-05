@@ -10,7 +10,7 @@
 
 ## Status
 
-- **State:** Next environments slice; Plan 068 is complete
+- **State:** Implemented; automated checks pass, live SSH/browser gates open
 - **Priority:** P1
 - **Effort:** XL
 - **Risk:** HIGH — the desktop shell spawns `ssh` and remote processes; the rail, persistence, and
@@ -24,6 +24,26 @@
 - **Known dirty baseline:** re-run `git status --short`; preserve every unrelated path.
 
 Root `PLAN.md` is the sole execution-order authority.
+
+## Execution reconciliation, 2026-09-05
+
+Execution began at `1bd35400f653ab79376976eee0d65b45a9c0ff80` in the existing dirty worktree.
+The concurrent TUI extraction moved environment/store and transport owners into
+`packages/client-core/src/`; the web modules now adapt those owners. The implementation preserves
+that extraction. Workbench, settings UI, and persistence remain web/application owned.
+
+Current source ownership and the rerunnable automated gate are recorded in
+[`docs/federated-environments.md`](../docs/federated-environments.md). Workspace cache version is
+20 and projection cache version is 3. SSH machine aliases hold separate leases on a shared managed
+process record. The final lease release stops that process. Desktop quit waits for cleanup, and
+SSH recovery checks remote health even while a forward remains alive.
+
+The implementation reference records automated verification results. Regression coverage includes
+shutdown cancellation, remote crashes, alias ownership across restarts, command settings ownership,
+disconnected-machine edits, and Git commits that finish after a machine switch.
+
+Live verification remains open: `localhost` has no trusted SSH host key, and no Platform dev
+server was listening during inspection. Do not delete this plan until those gates pass.
 
 ## Drift-check preamble — this is the audit
 
@@ -386,7 +406,7 @@ web (non-desktop) SSH, cross-machine worktree creation (Plan 069 stays single-ma
 ### Verify
 
 ```sh
-cd packages/contracts && bun run test -- src/settings/tests/keys.test.ts && bun run typecheck && cd ../..
+cd packages/contracts && bun run test -- src/tests/settings-registry.test.ts && bun run typecheck && cd ../..
 cd apps/web
 bun --bun vitest run --project node --project dom \
   src/lib/environments/tests/store.test.ts \
@@ -418,7 +438,7 @@ store derives one entry per machine and the primary is not listed.
 ### Verify
 
 ```sh
-cd apps/desktop && bun test src/bun/ssh/tests/remote-scripts.test.ts src/bun/ssh/tests/launcher.test.ts && bun run typecheck && cd ../..
+cd apps/desktop && bun --bun vitest run src/bun/ssh/tests/remote-scripts.test.ts src/bun/ssh/tests/launcher.test.ts && bun run typecheck && cd ../..
 ```
 
 `launcher.test.ts` injects a fake `ssh` spawner (a script that answers the probe, prints a fixed
@@ -453,9 +473,9 @@ process. Record identities, pids, and ports in the plan closeout.
 ```sh
 cd apps/web
 bun --bun vitest run --project node --project dom \
-  src/providers/tests/environment-transports-provider.test.tsx \
-  src/state/tests/environment-recovery.test.ts \
-  src/lib/environments/tests/scoped-storage.test.ts \
+  src/state/tests/environment-connections.test.tsx \
+  src/state/tests/environment-recovery.test.tsx \
+  src/lib/environments/tests/scoped-storage.test.tsx \
   src/features/workspace/state/tests/cache.test.ts \
   src/features/chat/state/tests/chat-projection-cache.test.ts
 bun run typecheck

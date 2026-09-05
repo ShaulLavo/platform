@@ -25,7 +25,8 @@ import { Throttler } from '@tanstack/react-pacer/throttler'
 import { parseEdenSseStream } from '@/lib/eden-events'
 import { toTreePath } from '@/lib/path-formatters'
 import { clientErrors } from '@/lib/structured-errors'
-import { createWideEventScope, type WideEventScope } from '@/lib/wide-event-scope'
+import { createWideEventScope } from '@/lib/wide-event-scope'
+import type { WideEventScope } from '@workspace/observability/scope'
 import {
   parentPath,
   planFetchedOpenFileRefresh,

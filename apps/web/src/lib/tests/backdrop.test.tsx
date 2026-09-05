@@ -33,7 +33,13 @@ describe('backdropFor', () => {
 
 describe('resolveBackdrop', () => {
   it('reads the shell bridge when there is one', () => {
-    window.platformBridge = { backdrop: 'transparent', pickEntry: async () => [] }
+    window.platformBridge = {
+      backdrop: 'transparent',
+      pickEntry: async () => [],
+      connectMachine: async (name) => ({ name, phase: 'idle' }),
+      disconnectMachine: async () => {},
+      onMachineState: () => () => {},
+    }
 
     expect(resolveBackdrop()).toBe('transparent')
   })

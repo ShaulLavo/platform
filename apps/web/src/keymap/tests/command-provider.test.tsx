@@ -1,35 +1,38 @@
+import { testScopedStorage } from '../../../test/factories/scoped-storage'
 import { useEffect } from 'react'
 import { act, waitFor } from '@testing-library/react'
 import type { SettingsMutationRequest, SettingsValues } from '@workspace/contracts'
 
 import { EditorTabActionsProvider } from '@/features/editor/providers/tab-actions-provider'
 import { TestEditorStateProvider as EditorStateProvider } from '../../../test/factories/editor-state-provider'
-import {
-  resetSettingsIntentStore,
-  useSettingsIntentStore,
-} from '@/features/settings/state/intent-store'
+import { useSettingsIntentStore } from '@/features/settings/state/intent-store'
+import { resetSettingsIntentStore } from '@workspace/client-core/settings/intent-store'
 import { resetSettingsSnapshotAdmission } from '@/features/settings/state/snapshot-admission'
 import { fetchSettings } from '@/features/settings/utils/api'
-import { settingsKeys } from '@/features/settings/utils/query-keys'
+import { settingsKeys } from '@workspace/client-core/settings/query-keys'
 import { writeRootFolderCache } from '@/features/workspace/state/cache'
 import { useCommand } from '@/keymap/hooks/use-command'
 import { CommandProvider } from '@/keymap/providers/command-provider'
 import type { PlatformCommandBus } from '@/keymap/providers/command-context'
+import { activeServerOrigin, getClient, setActiveServerOrigin, setClient } from '@/lib/client'
+import { createFolderPath } from '@/lib/file-server'
+import { createInProcessClient } from '../../../test/client'
 import { expect, test } from '../../../test/fixtures'
 import { createTestQueryClient, renderWithProviders } from '../../../test/render'
+import { makeTestServer } from '../../../test/server'
 
 let capturedBus: PlatformCommandBus | null = null
 
 test.beforeEach(() => {
   capturedBus = null
   resetSettingsIntentStore()
-  writeRootFolderCache(null)
+  writeRootFolderCache(testScopedStorage, null)
 })
 
 test.afterEach(() => {
   capturedBus = null
   resetSettingsIntentStore()
-  writeRootFolderCache(null)
+  writeRootFolderCache(testScopedStorage, null)
 })
 
 test('consecutive toggles project landed settings intents before React renders', async ({
@@ -151,6 +154,65 @@ test('consecutive color-mode commands read intents before React renders', async 
   queryClient.clear()
 })
 
+test.for([
+  {
+    command: 'workspace.toggleWallpaper',
+    key: 'workbench.wallpaper.enabled',
+    toggled: false,
+  },
+  {
+    command: 'workspace.toggleDiffViewMode',
+    key: 'editor.diff.viewMode',
+    toggled: 'split',
+  },
+] as const)(
+  '$command reads and writes the primary settings while the remote editor is active',
+  async ({ command, key, toggled }, { client }) => {
+    const primary = createTestQueryClient()
+    const primaryBefore = await fetchSettings(undefined, client)
+    primary.setQueryData(settingsKeys.document(), primaryBefore)
+    const remoteServer = await makeTestServer({ filesystemWatch: false })
+    const remoteClient = createInProcessClient(remoteServer)
+    const previousOrigin = activeServerOrigin()
+    setActiveServerOrigin('http://localhost:3521')
+    const previousRemoteClient = getClient()
+    setClient(remoteClient)
+    const editor = createTestQueryClient()
+    let view: ReturnType<typeof renderCommandProvider> | null = null
+
+    try {
+      const remoteBefore = await fetchSettings(undefined, remoteClient)
+      editor.setQueryData(settingsKeys.document(), remoteBefore)
+      const root = await createFolderPath('remote-project', remoteClient)
+      writeRootFolderCache(testScopedStorage, { ...root, type: 'directory' })
+      view = renderCommandProvider(editor, primary)
+      await waitFor(() => expect(capturedBus).not.toBeNull())
+
+      await act(async () => {
+        const ticket = capturedBus!.dispatch(command, invocation())
+        await expect(ticket.completion).resolves.toEqual({ status: 'handled' })
+      })
+      expect((await fetchSettings(undefined, client)).values[key]).toBe(toggled)
+
+      await act(async () => {
+        const ticket = capturedBus!.dispatch(command, invocation())
+        await expect(ticket.completion).resolves.toEqual({ status: 'handled' })
+      })
+      expect((await fetchSettings(undefined, client)).values[key]).toBe(primaryBefore.values[key])
+      expect((await fetchSettings(undefined, remoteClient)).values).toEqual(remoteBefore.values)
+    } finally {
+      view?.unmount()
+      resetSettingsSnapshotAdmission(primary)
+      resetSettingsSnapshotAdmission(editor)
+      primary.clear()
+      editor.clear()
+      setClient(previousRemoteClient)
+      setActiveServerOrigin(previousOrigin)
+      await remoteServer.cleanup()
+    }
+  },
+)
+
 function BusCapture() {
   const { bus } = useCommand()
   useEffect(() => captureBus(bus), [bus])
@@ -161,7 +223,10 @@ function captureBus(bus: PlatformCommandBus) {
   capturedBus = bus
 }
 
-function renderCommandProvider(queryClient: ReturnType<typeof createTestQueryClient>) {
+function renderCommandProvider(
+  queryClient: ReturnType<typeof createTestQueryClient>,
+  settingsOwner = queryClient,
+) {
   return renderWithProviders(
     <EditorStateProvider>
       <EditorTabActionsProvider requestCloseTab={rejectCloseTab} requestCloseTabs={rejectCloseTabs}>
@@ -170,7 +235,7 @@ function renderCommandProvider(queryClient: ReturnType<typeof createTestQueryCli
         </CommandProvider>
       </EditorTabActionsProvider>
     </EditorStateProvider>,
-    { command: false, queryClient },
+    { command: false, queryClient, settingsOwner },
   )
 }
 

@@ -18,7 +18,8 @@ import type {
   PreparedFileOpenClaim,
   PreparedLiveFileOpenClaim,
 } from '@/lib/file-open-intent/types'
-import { createWideEventScope, type WideEventScope } from '@/lib/wide-event-scope'
+import { createWideEventScope } from '@/lib/wide-event-scope'
+import type { WideEventScope } from '@workspace/observability/scope'
 import { createClientInvariantError } from '@/lib/structured-errors'
 
 const MAX_PREPARED_OPENS = 8

@@ -5,7 +5,7 @@ import type { EditorWorkspaceStoreApi } from '@/features/editor/state/workspace-
 import type { WorkspaceEditService } from '@/features/editor/state/workspace-edit-service'
 import { environmentActivitySignal } from '@/lib/environments/state/activity'
 import { clientForQueryClient, originForQueryClient } from '@/lib/environments/state/query-clients'
-import { workspacePathLeaf } from '@/features/workspace/utils/path'
+import { workspacePathLeaf } from '@workspace/client-core/files/path'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import { log } from '@/lib/client-logging'
 import { openWorkspaceRootPath, recordRecentEntry } from '@/lib/file-server'

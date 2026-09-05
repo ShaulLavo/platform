@@ -13,13 +13,22 @@ import {
 import { beforeEach, describe } from 'vitest'
 import * as v from 'valibot'
 
-import { createClientError } from '@/lib/structured-errors'
+import { createClientError } from '@workspace/client-core/errors'
 import { expect, test } from '../../../../../test/fixtures'
 import { unsupportedChatTransport } from '../../../../../test/factories/chat-transport'
 import { shellSnapshot, sessionShell } from '../../../../../test/factories/chat'
 import { useChatProjectionStore } from '../chat-projection-store'
 import { selectSessionDetailSync, useSessionDetailSyncStore } from '../session-detail-sync-store'
 import { createSessionDetailSubscriptionCache } from '../session-detail-subscriptions'
+import { inProcessOrchestrationSocketFactory } from '@workspace/client-core/test/in-process-orchestration-socket'
+import { createOrchestrationRpcClient } from '@/features/chat/transport/orchestration-rpc-client'
+import { createWorkspaceProjectCommand } from '@/features/chat/utils/command-builders'
+import {
+  DEFAULT_PROVIDER_INSTANCE_ID,
+  DEFAULT_INTERACTION_MODE,
+  DEFAULT_RUNTIME_MODE,
+  commandIdSchema,
+} from '@workspace/contracts'
 
 type ScriptedAttempt = {
   /** Thrown after the attempt's items. Omit to hang until aborted. */
@@ -155,6 +164,57 @@ describe('session detail subscription cache', () => {
     expect(cache.snapshot()[0]?.active).toBe(true)
 
     cache.disposeAll()
+  })
+
+  test('marks a caught-up real session stream live without another data frame', async ({
+    server,
+  }) => {
+    const rpc = createOrchestrationRpcClient({
+      origin: server.origin,
+      createSocket: inProcessOrchestrationSocketFactory({
+        app: server.app,
+        clientOrigin: server.origin,
+      }),
+    })
+    const sessionId = fixtureSessionId(41)
+    const cache = createSessionDetailSubscriptionCache({
+      environmentId: FIXTURE_ENVIRONMENT_ID,
+      transport: rpc,
+    })
+
+    try {
+      const registration = await rpc.dispatchCommand(
+        createWorkspaceProjectCommand({ rootPath: server.root }),
+      )
+      expect(registration.result).not.toBeNull()
+      await rpc.dispatchCommand({
+        type: 'session.create',
+        commandId: v.parse(commandIdSchema, 'create-caught-up-session'),
+        sessionId,
+        worktreeId: registration.result!.worktreeId,
+        title: 'Caught up',
+        modelSelection: { model: 'mock-model', providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID },
+        interactionMode: DEFAULT_INTERACTION_MODE,
+        runtimeMode: DEFAULT_RUNTIME_MODE,
+      })
+      for await (const item of rpc.sessionDetailStream(sessionId)) {
+        expect(item.kind).toBe('snapshot')
+        if (item.kind !== 'snapshot') continue
+        useChatProjectionStore
+          .getState()
+          .syncSessionDetailSnapshot(FIXTURE_ENVIRONMENT_ID, item.snapshot)
+        break
+      }
+      const before = useChatProjectionStore.getState()
+
+      cache.retain(sessionId)
+
+      await expect.poll(() => cache.snapshot()[0]?.status).toBe('live')
+      expect(useChatProjectionStore.getState()).toBe(before)
+    } finally {
+      cache.disposeAll()
+      rpc.close()
+    }
   })
 
   test('climbs the backoff ladder while every attempt keeps failing', async () => {

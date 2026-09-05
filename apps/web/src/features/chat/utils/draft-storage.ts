@@ -1,3 +1,4 @@
+import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
 import type { EnvironmentId } from '@workspace/contracts'
 import {
   interactionModeSchema,
@@ -58,12 +59,13 @@ export function chatInputDraftStorageId(
   return `${environmentId}:${encodeURIComponent(rootPath)}:${draftKey}`
 }
 
-export function readPersistedChatInputDrafts(): PersistedChatInputDraftStorage {
+export function readPersistedChatInputDrafts(
+  storage: ScopedStorage,
+): PersistedChatInputDraftStorage {
   const fallback = emptyPersistedChatInputDrafts()
-  if (!canUseLocalStorage()) return fallback
 
   try {
-    const raw = localStorage.getItem(CHAT_INPUT_DRAFT_STORAGE_KEY)
+    const raw = storage.getItem(CHAT_INPUT_DRAFT_STORAGE_KEY)
     if (!raw) return fallback
 
     const parsed = v.safeParse(persistedChatInputDraftStorageSchema, JSON.parse(raw))
@@ -75,10 +77,11 @@ export function readPersistedChatInputDrafts(): PersistedChatInputDraftStorage {
   }
 }
 
-export function writePersistedChatInputDrafts(storage: PersistedChatInputDraftStorage) {
-  if (!canUseLocalStorage()) return
-
-  localStorage.setItem(CHAT_INPUT_DRAFT_STORAGE_KEY, JSON.stringify(storage))
+export function writePersistedChatInputDrafts(
+  adapter: ScopedStorage,
+  storage: PersistedChatInputDraftStorage,
+) {
+  adapter.setItem(CHAT_INPUT_DRAFT_STORAGE_KEY, JSON.stringify(storage))
 }
 
 export function emptyPersistedChatInputDrafts(): PersistedChatInputDraftStorage {
@@ -86,8 +89,4 @@ export function emptyPersistedChatInputDrafts(): PersistedChatInputDraftStorage 
     draftsByKey: {},
     version: CHAT_INPUT_DRAFT_STORAGE_VERSION,
   }
-}
-
-function canUseLocalStorage() {
-  return typeof localStorage !== 'undefined'
 }

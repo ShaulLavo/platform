@@ -1,3 +1,4 @@
+import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
 import {
   type EnvironmentId,
   type WorktreeId,
@@ -170,8 +171,22 @@ export function createInitialChatProjectionState(): ChatProjectionState {
   return { slices: {} }
 }
 
-export function restoredChatProjectionState(): ChatProjectionState {
-  return hydrateChatProjectionState(createInitialChatProjectionState(), readChatProjectionCache())
+const projectionStorage = new Map<EnvironmentId, ScopedStorage>()
+
+export function restoredChatProjectionState(storage: ScopedStorage): ChatProjectionState {
+  return hydrateChatProjectionState(
+    createInitialChatProjectionState(),
+    readChatProjectionCache(storage),
+  )
+}
+
+export function hydrateEnvironmentChatCache(storage: ScopedStorage) {
+  projectionStorage.set(storage.environmentId, storage)
+  const state = useChatProjectionStore.getState()
+  if (state.slices[storage.environmentId]) return
+  useChatProjectionStore.setState(
+    hydrateChatProjectionState(state, readChatProjectionCache(storage)),
+  )
 }
 
 const EMPTY_SLICE = createInitialChatProjectionSlice()
@@ -195,7 +210,7 @@ function updateSlice(
 }
 
 export const useChatProjectionStore = create<ChatProjectionStore>((set) => ({
-  ...restoredChatProjectionState(),
+  ...createInitialChatProjectionState(),
   applyOrchestrationEvent: (environmentId, event) => {
     recordProjectionMutation('applyEvent', { environmentId, ...chatEventSummary(event) })
     set((state) =>
@@ -306,7 +321,13 @@ function flushProjectionLogScope() {
 let projectionPersistTimer: ReturnType<typeof setTimeout> | null = null
 
 export function flushChatProjectionCache() {
-  return writeChatProjectionCache(chatProjectionCacheFromState(useChatProjectionStore.getState()))
+  const cached = chatProjectionCacheFromState(useChatProjectionStore.getState())
+  let written = true
+  for (const storage of projectionStorage.values()) {
+    if (!cached.slices.some((slice) => slice.environmentId === storage.environmentId)) continue
+    if (!writeChatProjectionCache(storage, cached)) written = false
+  }
+  return written
 }
 
 useChatProjectionStore.subscribe(() => {

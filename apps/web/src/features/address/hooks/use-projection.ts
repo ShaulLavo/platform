@@ -9,7 +9,7 @@ import {
   createAddressProjection,
   PROJECTION_DEBOUNCE_MS,
 } from '@/features/address/state/projection'
-import { parseAddress } from '@/features/address/utils/grammar'
+import { parseAddress } from '@workspace/client-core/address/grammar'
 import { addressFromSnapshot, emptyAddressSnapshot } from '@/features/address/utils/snapshot'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'

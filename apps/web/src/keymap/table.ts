@@ -20,7 +20,7 @@ function iconsById(): Partial<Record<PlatformCommandId, Icon>> {
   const icons: Partial<Record<PlatformCommandId, Icon>> = {}
 
   for (const command of platformCommands) {
-    if (!command.icon) continue
+    if (!('icon' in command) || !command.icon) continue
 
     icons[command.id] = command.icon
   }

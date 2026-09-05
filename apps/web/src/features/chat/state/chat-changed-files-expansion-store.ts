@@ -1,3 +1,7 @@
+import { pruneScopedRecord } from '@/lib/environments/utils/scoped-record'
+import type { EnvironmentId } from '@workspace/contracts'
+import { createEnvironmentRecordPersistence } from '@/lib/environments/state/record-persistence'
+import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
 import { create } from 'zustand'
 
 import {
@@ -33,8 +37,13 @@ const UNSET_EXPANSION: ChatChangedFilesExpansion = {
   updatedAt: 0,
 }
 
+const expansionPersistence = createEnvironmentRecordPersistence<ChatChangedFilesExpansion>({
+  read: (storage) => readPersistedChatChangedFilesExpansion(storage).expansionByKey,
+  write: writePersistedChatChangedFilesExpansion,
+})
+
 export const useChatChangedFilesExpansionStore = create<ChatChangedFilesExpansionStore>((set) => ({
-  expansionByKey: readPersistedChatChangedFilesExpansion().expansionByKey,
+  expansionByKey: {},
   setCardExpanded: (expansionKey, cardExpanded) => {
     set((state) => withExpansion(state, expansionKey, { cardExpanded }))
     persistChatChangedFilesExpansion()
@@ -45,14 +54,19 @@ export const useChatChangedFilesExpansionStore = create<ChatChangedFilesExpansio
   },
 }))
 
-export function chatChangedFilesExpansionKey(summary: ChatTurnDiffSummary) {
-  return `${summary.sessionId}:${summary.turnId}`
+export function chatChangedFilesExpansionKey(
+  environmentId: EnvironmentId,
+  summary: ChatTurnDiffSummary,
+) {
+  return `${environmentId}:${summary.sessionId}:${summary.turnId}`
 }
 
-export function hydrateChatChangedFilesExpansionStoreFromStorage() {
-  useChatChangedFilesExpansionStore.setState({
-    expansionByKey: readPersistedChatChangedFilesExpansion().expansionByKey,
-  })
+export function hydrateChatChangedFilesExpansionStoreFromStorage(storage: ScopedStorage) {
+  const expansionByKey = expansionPersistence.hydrate(
+    storage,
+    useChatChangedFilesExpansionStore.getState().expansionByKey,
+  )
+  useChatChangedFilesExpansionStore.setState({ expansionByKey })
 }
 
 export function resetChatChangedFilesExpansionStore() {
@@ -61,9 +75,7 @@ export function resetChatChangedFilesExpansionStore() {
 
 function persistChatChangedFilesExpansion() {
   try {
-    writePersistedChatChangedFilesExpansion(
-      useChatChangedFilesExpansionStore.getState().expansionByKey,
-    )
+    expansionPersistence.persist(useChatChangedFilesExpansionStore.getState().expansionByKey)
   } catch {
     // A full or blocked localStorage costs the user a remembered disclosure
     // state, which is not worth surfacing anywhere in the transcript.
@@ -78,13 +90,16 @@ function withExpansion(
   const current = state.expansionByKey[expansionKey] ?? UNSET_EXPANSION
 
   return {
-    expansionByKey: pruneChatChangedFilesExpansion({
-      ...state.expansionByKey,
-      [expansionKey]: {
-        ...current,
-        ...changes,
-        updatedAt: nextChatChangedFilesExpansionStamp(state.expansionByKey),
+    expansionByKey: pruneScopedRecord(
+      {
+        ...state.expansionByKey,
+        [expansionKey]: {
+          ...current,
+          ...changes,
+          updatedAt: nextChatChangedFilesExpansionStamp(state.expansionByKey),
+        },
       },
-    }),
+      pruneChatChangedFilesExpansion,
+    ),
   }
 }

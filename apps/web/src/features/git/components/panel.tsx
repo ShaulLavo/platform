@@ -17,6 +17,7 @@ import { parseDiffDocumentId } from '@/features/git/utils/diff-document'
 import { diffDocumentQueryKey } from '@/features/git/utils/diff-document-query'
 import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 import { queryHasNoData } from '@/lib/query-state'
+import { EnvironmentStaleNotice } from '@/components/environment-stale-notice'
 
 const DISABLED_DIFF_QUERY = ['git', 'diffs', 'disabled'] as const
 
@@ -75,6 +76,7 @@ function PanelContent({ className, rootPath }: ComponentProps<'section'> & { roo
         ref={setRootRef}
         tabIndex={-1}
       >
+        <EnvironmentStaleNotice />
         {children}
       </section>
     )
@@ -83,7 +85,7 @@ function PanelContent({ className, rootPath }: ComponentProps<'section'> & { roo
   if (status.isPending) {
     return renderRoot(<PanelLoading />)
   }
-  if (status.isError) {
+  if (status.isError && !status.data) {
     return renderRoot(
       <EmptyState
         align='start'

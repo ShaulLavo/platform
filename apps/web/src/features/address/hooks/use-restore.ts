@@ -1,3 +1,4 @@
+import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
 import { fetchOrchestrationShellSnapshotHttp } from '@/features/chat/transport/orchestration-http-snapshots'
 import { useEffect } from 'react'
 
@@ -6,9 +7,9 @@ import type { Client } from '@/lib/client'
 import { environmentActivitySignal } from '@/lib/environments/state/activity'
 import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 
-import { applicableTabs, parseAddress } from '@/features/address/utils/grammar'
+import { applicableTabs, parseAddress } from '@workspace/client-core/address/grammar'
 import { pathForDocumentToken } from '@/features/address/utils/document-token'
-import { resolveWorkspaceSlug, NO_WORKSPACE_SLUG } from '@/features/address/utils/slug'
+import { resolveWorkspaceSlug, NO_WORKSPACE_SLUG } from '@workspace/client-core/address/slug'
 import { parseSessionToken } from '@/features/address/utils/session-token'
 import { claimAddressRoot } from '@/features/address/state/root-claim'
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
@@ -219,7 +220,8 @@ async function applyCurrentAddress(
   }
   const selectedRoot = environmentId ? checkoutPathForAddress(address, environmentId) : null
   const rootPath =
-    selectedRoot ?? (await resolveRoot(address.workspace, storeApi, trace, client, activity))
+    selectedRoot ??
+    (await resolveRoot(address.workspace, storeApi, trace, client, activity, editor.storage))
   // A newer press started while this one was resolving. Everything below writes store
   // state, so continuing would drag the older address over the newer one.
   if (superseded()) return report({ status: 'pending', reason: 'superseded' }, trace)
@@ -301,11 +303,12 @@ async function resolveRoot(
   trace: ApplyTrace,
   client: Client,
   activity: AbortSignal,
+  storage: ScopedStorage,
 ) {
   // The index only, never `readWorkspaceCache()`: that parses every slice and every
   // search buffer — and a search buffer holds a materialized match list — and sweeps
   // the whole localStorage keyspace, all to read one array, on every back press.
-  const indexed = readWorkspaceOrder(storeApi.getState().rootFolder?.path ?? null)
+  const indexed = readWorkspaceOrder(storage, storeApi.getState().rootFolder?.path ?? null)
   const resolution = await resolvedSlug(slug, indexed, client, activity)
 
   if (resolution.kind === 'resolved') return resolution.rootPath

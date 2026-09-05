@@ -1,3 +1,5 @@
+import { createEnvironmentRecordPersistence } from '@/lib/environments/state/record-persistence'
+import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
 import { scopedSessionKey, type ScopedSessionRef } from '@workspace/contracts'
 import { Debouncer } from '@tanstack/react-pacer/debouncer'
 import { create } from 'zustand'
@@ -29,6 +31,11 @@ const readPersist = new Debouncer(() => flushSessionReadStorage(), {
   wait: SESSION_READ_PERSIST_DEBOUNCE_MS,
 })
 
+const sessionReadPersistence = createEnvironmentRecordPersistence<string>({
+  read: (storage) => readPersistedSessionReads(storage),
+  write: writePersistedSessionReads,
+})
+
 export const useSessionReadStore = create<SessionReadStore>()((set, get) => ({
   markSeen: (ref, completedAt) => {
     const sessionId = scopedSessionKey(ref)
@@ -39,12 +46,12 @@ export const useSessionReadStore = create<SessionReadStore>()((set, get) => ({
     }))
     readPersist.maybeExecute()
   },
-  seenBySessionKey: readPersistedSessionReads(),
+  seenBySessionKey: {},
 }))
 
 function flushSessionReadStorage() {
   readPersist.cancel()
-  writePersistedSessionReads(useSessionReadStore.getState().seenBySessionKey)
+  sessionReadPersistence.persist(useSessionReadStore.getState().seenBySessionKey)
 }
 
 export function resetSessionReadStore() {
@@ -56,4 +63,12 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
   window.addEventListener('beforeunload', () => {
     flushSessionReadStorage()
   })
+}
+
+export function hydrateSessionReadStore(storage: ScopedStorage) {
+  const seenBySessionKey = sessionReadPersistence.hydrate(
+    storage,
+    useSessionReadStore.getState().seenBySessionKey,
+  )
+  useSessionReadStore.setState({ seenBySessionKey })
 }

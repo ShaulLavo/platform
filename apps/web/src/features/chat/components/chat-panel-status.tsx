@@ -1,7 +1,8 @@
 import { HourglassMediumIcon, WarningCircleIcon } from '@phosphor-icons/react'
 import type { ReactNode } from 'react'
 
-import { selectServerConnection, useEnvironmentsStore } from '@/lib/environments/state/store'
+import { selectServerConnection } from '@workspace/client-core/environments/state/store'
+import { useEnvironmentsStore } from '@/lib/environments/state/store'
 
 export function ChatPanelStatus({
   createError,

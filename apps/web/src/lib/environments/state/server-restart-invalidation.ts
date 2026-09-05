@@ -1,7 +1,8 @@
 import type { QueryClient } from '@tanstack/react-query'
 
 import { log } from '@/lib/client-logging'
-import { selectServerConnection, useEnvironmentsStore } from '@/lib/environments/state/store'
+import { selectServerConnection } from '@workspace/client-core/environments/state/store'
+import { useEnvironmentsStore } from '@/lib/environments/state/store'
 
 export function installServerRestartInvalidation(queryClient: QueryClient, origin: string) {
   let seenGeneration = selectServerConnection(useEnvironmentsStore.getState(), origin).generation

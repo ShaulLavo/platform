@@ -1,61 +1,33 @@
+import {
+  createFocusRequestToken,
+  createFocusTargetToken,
+  focusTargetIdsEqual,
+  resolveFocusTarget,
+} from '@workspace/client-core/commands/focus'
+import type {
+  FocusLayout,
+  FocusTargetId,
+  FocusIntent,
+  FocusTransitionOutcome,
+  FocusTransitionTicket,
+  FocusRequestToken,
+  FocusTargetToken,
+} from '@workspace/client-core/commands/focus'
+export { focusTargetIdsEqual } from '@workspace/client-core/commands/focus'
+export type {
+  FocusLayout,
+  FocusTargetId,
+  FocusIntent,
+  FocusTransitionOutcome,
+  FocusTransitionTicket,
+  FocusRequestToken,
+  FocusTargetToken,
+} from '@workspace/client-core/commands/focus'
 import type { EditorKeymapContext } from '@singapor/core/keymap'
 import type { EditorCommandContext, EditorCommandId } from '@singapor/core'
 
-declare const focusRequestTokenBrand: unique symbol
-declare const focusTargetTokenBrand: unique symbol
-
-export type FocusRequestToken = {
-  readonly [focusRequestTokenBrand]: true
-}
-
-export type FocusTargetToken = {
-  readonly [focusTargetTokenBrand]: true
-}
-
-export type FocusArea =
-  | 'chat'
-  | 'command-palette'
-  | 'dialog'
-  | 'editor'
-  | 'file-tree'
-  | 'git'
-  | 'global'
-  | 'logs'
-  | 'problems'
-  | 'search'
-  | 'settings'
-  | 'terminal'
-
-export type FocusLayout = 'chat' | 'workbench'
-
-export type FocusTargetId =
-  | { readonly kind: 'app-shell' }
-  | { readonly kind: 'chat-composer'; readonly key: string }
-  | { readonly kind: 'command-palette' }
-  | {
-      readonly kind: 'editor'
-      readonly key: string
-      readonly side?: 'new' | 'old' | 'stacked'
-      readonly surface: 'diff' | 'document' | 'search-result' | 'settings'
-      readonly tabId?: string
-    }
-  | { readonly kind: 'file-tree'; readonly rootPath: string }
-  | { readonly kind: 'git'; readonly rootPath: string }
-  | { readonly kind: 'logs' }
-  | { readonly kind: 'problems' }
-  | {
-      readonly kind: 'search'
-      readonly rootPath: string
-      readonly surface: 'editor' | 'sidebar'
-    }
-  | { readonly kind: 'settings-dialog' }
-  | { readonly kind: 'settings-page'; readonly tabId: string }
-  | {
-      readonly kind: 'terminal'
-      readonly rootPath: string
-      readonly sessionId: string
-    }
-  | { readonly dialogTarget: object; readonly kind: 'unsaved-dialog' }
+import type { FocusArea } from '@workspace/client-core/commands/focus'
+export type { FocusArea } from '@workspace/client-core/commands/focus'
 
 export type FocusEditorCapability = {
   readonly getInputElement?: () => HTMLElement | null
@@ -69,8 +41,6 @@ export type FocusTargetCapabilities = {
   readonly overlay?: boolean
 }
 
-export type FocusIntent = 'focus' | 'open-search' | 'reveal-active'
-
 export type FocusTargetSnapshot = {
   readonly area: FocusArea
   readonly capabilities: FocusTargetCapabilities
@@ -82,19 +52,6 @@ export type FocusTargetSnapshot = {
 export type ResolvedFocusTarget = FocusTargetSnapshot & {
   readonly element: HTMLElement
   readonly invoke: (intent: FocusIntent) => boolean
-}
-
-export type FocusTransitionOutcome =
-  | { readonly status: 'acknowledged'; readonly targetId: FocusTargetId }
-  | {
-      readonly reason: 'destination-invalid' | 'refused' | 'unregistered'
-      readonly status: 'rejected'
-    }
-  | { readonly by: FocusRequestToken; readonly status: 'superseded' }
-
-export type FocusTransitionTicket = {
-  readonly completion: Promise<FocusTransitionOutcome>
-  readonly token: FocusRequestToken
 }
 
 export type FocusRequestedTransition = {
@@ -186,53 +143,6 @@ const INITIAL_SNAPSHOT: FocusSnapshot = Object.freeze({
   result: null,
   revision: 0,
 })
-
-function createRequestToken(): FocusRequestToken {
-  return Object.freeze({}) as FocusRequestToken
-}
-
-function createTargetToken(): FocusTargetToken {
-  return Object.freeze({}) as FocusTargetToken
-}
-
-function sameEditorTarget(left: Extract<FocusTargetId, { kind: 'editor' }>, right: FocusTargetId) {
-  if (right.kind !== 'editor') return false
-
-  return (
-    left.key === right.key &&
-    left.side === right.side &&
-    left.surface === right.surface &&
-    left.tabId === right.tabId
-  )
-}
-
-export function focusTargetIdsEqual(left: FocusTargetId, right: FocusTargetId): boolean {
-  if (left.kind !== right.kind) return false
-  if (left.kind === 'editor') return sameEditorTarget(left, right)
-  if (left.kind === 'chat-composer') return right.kind === left.kind && left.key === right.key
-  if (left.kind === 'file-tree') {
-    return right.kind === left.kind && left.rootPath === right.rootPath
-  }
-  if (left.kind === 'git') return right.kind === left.kind && left.rootPath === right.rootPath
-  if (left.kind === 'search') {
-    return (
-      right.kind === left.kind && left.rootPath === right.rootPath && left.surface === right.surface
-    )
-  }
-  if (left.kind === 'settings-page') return right.kind === left.kind && left.tabId === right.tabId
-  if (left.kind === 'terminal') {
-    return (
-      right.kind === left.kind &&
-      left.rootPath === right.rootPath &&
-      left.sessionId === right.sessionId
-    )
-  }
-  if (left.kind === 'unsaved-dialog') {
-    return right.kind === left.kind && left.dialogTarget === right.dialogTarget
-  }
-
-  return true
-}
 
 export function focusTargetById(id: FocusTargetId): FocusDestination {
   return {
@@ -391,7 +301,7 @@ export class FocusService {
   private snapshot = INITIAL_SNAPSHOT
 
   register(input: FocusTargetRegistrationInput): FocusTargetRegistration {
-    const token = createTargetToken()
+    const token = createFocusTargetToken()
     const registration: InternalRegistration = {
       ...input,
       capabilities: freezeCapabilities(input.capabilities),
@@ -411,7 +321,7 @@ export class FocusService {
   }
 
   request(destination: FocusDestination, intent: FocusIntent = 'focus'): FocusTransitionTicket {
-    const token = createRequestToken()
+    const token = createFocusRequestToken()
     let settle!: (outcome: FocusTransitionOutcome) => void
     const completion = new Promise<FocusTransitionOutcome>((resolve) => {
       settle = resolve
@@ -432,34 +342,18 @@ export class FocusService {
   }
 
   resolveTarget(options: ResolveFocusTargetOptions): ResolvedFocusTarget | null {
-    if (options.path) {
-      const eventStage = this.resolvePath(pathFromSource(options.path), options.compatible)
-      if (eventStage.status === 'ambiguous') return null
-      if (eventStage.status === 'resolved') return this.resolveRegistration(eventStage.registration)
-    }
-
-    const origin = this.registrationForCompatibleToken(options.origin, options.compatible)
-    if (origin) return this.resolveRegistration(origin)
-
-    const owner = this.registrationForCompatibleToken(this.currentOwner?.token, options.compatible)
-    if (owner) return this.resolveRegistration(owner)
-
-    if (options.exact) {
-      const exactStage = this.resolveMatches(options.compatible, options.exact)
-      if (exactStage.status === 'ambiguous') return null
-      if (exactStage.status === 'resolved') return this.resolveRegistration(exactStage.registration)
-    }
-
-    const last = this.registrationForCompatibleToken(
-      this.lastCommandTarget?.token,
-      options.compatible,
-    )
-    if (last) return this.resolveRegistration(last)
-
-    const uniqueStage = this.resolveMatches(options.compatible)
-    if (uniqueStage.status !== 'resolved') return null
-
-    return this.resolveRegistration(uniqueStage.registration)
+    const registration = resolveFocusTarget({
+      targets: [...this.registrations.values()],
+      compatible: (target) => options.compatible(snapshotFor(target)),
+      event: options.path
+        ? this.resolvePath(pathFromSource(options.path), options.compatible)
+        : undefined,
+      origin: options.origin,
+      owner: this.currentOwner?.token,
+      last: this.lastCommandTarget?.token,
+      exact: options.exact ? (target) => options.exact?.(snapshotFor(target)) === true : undefined,
+    })
+    return registration ? this.resolveRegistration(registration) : null
   }
 
   captureOrigin(source?: FocusOriginSource | null): FocusTargetToken | null {
@@ -569,18 +463,6 @@ export class FocusService {
     }
 
     this.currentOwner = null
-  }
-
-  private registrationForCompatibleToken(
-    token: FocusTargetToken | null | undefined,
-    compatible: (target: FocusTargetSnapshot) => boolean,
-  ) {
-    if (!token) return null
-
-    const registration = this.registrations.get(token)
-    if (!registration) return null
-
-    return compatible(snapshotFor(registration)) ? registration : null
   }
 
   private resolveMatches(

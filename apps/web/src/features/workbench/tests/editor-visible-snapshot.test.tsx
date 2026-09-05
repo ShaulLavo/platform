@@ -1,3 +1,4 @@
+import { testScopedStorage } from '../../../../test/factories/scoped-storage'
 import type {
   EditorPlugin,
   EditorPluginContext,
@@ -133,7 +134,7 @@ test('a held document flushes under its own path before a newly selected path ta
   expect(old.materialize).toHaveBeenCalledTimes(1)
   expect(readMatching()).not.toBeNull()
   expect(
-    readEditorVisibleSnapshotCache({
+    readEditorVisibleSnapshotCache(testScopedStorage, {
       contentVersion: CONTENT_VERSION,
       path: '/repo/src/next.ts',
       rootPath: ROOT_PATH,
@@ -150,7 +151,7 @@ test('a held document flushes under its own path before a newly selected path ta
 })
 
 test('dirty state removes both a matching cold record and its rendered overlay', () => {
-  writeEditorVisibleSnapshotCache(cachedSnapshot())
+  writeEditorVisibleSnapshotCache(testScopedStorage, cachedSnapshot())
   const buffer = controlledBuffer()
   const options = hookOptions({ buffer, documentId: null })
   const { result, rerender } = renderHook(
@@ -167,7 +168,7 @@ test('dirty state removes both a matching cold record and its rendered overlay',
 })
 
 test('a cached selected file never paints above a different held document', () => {
-  writeEditorVisibleSnapshotCache(cachedSnapshot())
+  writeEditorVisibleSnapshotCache(testScopedStorage, cachedSnapshot())
   const buffer = controlledBuffer()
   const options = hookOptions({ buffer, documentId: null })
   const { result, rerender } = renderHook(
@@ -184,7 +185,7 @@ test('a cached selected file never paints above a different held document', () =
 })
 
 test('a cached frame with a different content version is never presented', () => {
-  writeEditorVisibleSnapshotCache(cachedSnapshot())
+  writeEditorVisibleSnapshotCache(testScopedStorage, cachedSnapshot())
   const buffer = controlledBuffer()
   const options = hookOptions({ buffer, documentId: null })
   const { result } = renderHook(
@@ -228,7 +229,7 @@ test('theme previews and committed themes that are not yet applied never persist
 })
 
 test('preview cancellation does not resurrect an already-attempted cold frame', () => {
-  writeEditorVisibleSnapshotCache(cachedSnapshot())
+  writeEditorVisibleSnapshotCache(testScopedStorage, cachedSnapshot())
   const buffer = controlledBuffer()
   const options = hookOptions({ buffer, documentId: null })
   const { result, rerender } = renderHook(
@@ -246,7 +247,7 @@ test('preview cancellation does not resurrect an already-attempted cold frame', 
 })
 
 test('a file-read error removes the matching cached frame', () => {
-  writeEditorVisibleSnapshotCache(cachedSnapshot())
+  writeEditorVisibleSnapshotCache(testScopedStorage, cachedSnapshot())
   const buffer = controlledBuffer()
   const options = hookOptions({ buffer, documentId: null })
   const { result, rerender } = renderHook(
@@ -263,7 +264,7 @@ test('a file-read error removes the matching cached frame', () => {
 
 test('terminal paint dismisses only on the matching next frame', () => {
   const mark = vi.spyOn(performance, 'mark')
-  writeEditorVisibleSnapshotCache(cachedSnapshot())
+  writeEditorVisibleSnapshotCache(testScopedStorage, cachedSnapshot())
   const buffer = controlledBuffer()
   const options = hookOptions({ buffer, documentId: null })
   const { result, rerender } = renderHook(
@@ -311,7 +312,7 @@ test('terminal paint dismisses only on the matching next frame', () => {
 
 test('interaction dismissal preserves the authoritative paint pipeline', () => {
   const mark = vi.spyOn(performance, 'mark')
-  writeEditorVisibleSnapshotCache(cachedSnapshot())
+  writeEditorVisibleSnapshotCache(testScopedStorage, cachedSnapshot())
   const buffer = controlledBuffer()
   const options = hookOptions({ buffer, documentId: null })
   const { result, rerender } = renderHook(
@@ -346,7 +347,7 @@ test('interaction dismissal preserves the authoritative paint pipeline', () => {
 
 test('plain paint survives provider loading and a later painted event remains authoritative', () => {
   const mark = vi.spyOn(performance, 'mark')
-  writeEditorVisibleSnapshotCache(cachedSnapshot())
+  writeEditorVisibleSnapshotCache(testScopedStorage, cachedSnapshot())
   const buffer = controlledBuffer()
   const options = hookOptions({ buffer, documentId: null })
   const { result, rerender } = renderHook(
@@ -412,7 +413,7 @@ test('plain paint survives provider loading and a later painted event remains au
 
 test('pending-theme paint survives an interrupted handoff and marks once', () => {
   const mark = vi.spyOn(performance, 'mark')
-  writeEditorVisibleSnapshotCache(cachedSnapshot())
+  writeEditorVisibleSnapshotCache(testScopedStorage, cachedSnapshot())
   const buffer = controlledBuffer()
   const options = hookOptions({ buffer, documentId: null })
   const renderedOptions = { ...options, documentId: 'document-1' }
@@ -471,7 +472,7 @@ test('pending-theme paint survives an interrupted handoff and marks once', () =>
 
 test('dirty state cancels matching paint before the authoritative frame', () => {
   const mark = vi.spyOn(performance, 'mark')
-  writeEditorVisibleSnapshotCache(cachedSnapshot())
+  writeEditorVisibleSnapshotCache(testScopedStorage, cachedSnapshot())
   const buffer = controlledBuffer()
   const options = hookOptions({ buffer, documentId: null })
   const { result, rerender } = renderHook(
@@ -497,7 +498,7 @@ test('dirty state cancels matching paint before the authoritative frame', () => 
 })
 
 test('the presentation fail-safe bounds a hung cold load', () => {
-  writeEditorVisibleSnapshotCache(cachedSnapshot())
+  writeEditorVisibleSnapshotCache(testScopedStorage, cachedSnapshot())
   const buffer = controlledBuffer()
   const options = hookOptions({ buffer, documentId: null })
   const { result } = renderHook(
@@ -714,6 +715,7 @@ function hookOptions({
 
 function toHookOptions(props: HookProps, buffer: ControlledBuffer) {
   return {
+    storage: testScopedStorage,
     active: props.active,
     fileReadError: props.fileReadError,
     renderedDocument: props.documentId
@@ -813,7 +815,7 @@ function controlledBuffer(): ControlledBuffer {
 }
 
 function readMatching() {
-  return readEditorVisibleSnapshotCache({
+  return readEditorVisibleSnapshotCache(testScopedStorage, {
     contentVersion: CONTENT_VERSION,
     path: PATH,
     rootPath: ROOT_PATH,

@@ -1,3 +1,4 @@
+import { createEnvironmentEntry } from '@workspace/client-core/environments/utils/connection'
 import { waitFor } from '@testing-library/react'
 import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
@@ -25,7 +26,7 @@ import {
 } from '@/lib/client'
 import { queryClientFor } from '@/lib/environments/state/query-clients'
 import { useEnvironmentsStore } from '@/lib/environments/state/store'
-import { workspaceSlug } from '@/features/address/utils/slug'
+import { workspaceSlug } from '@workspace/client-core/address/slug'
 import { addressRootClaimed } from '@/features/address/state/root-claim'
 import { createInProcessClient, createObservedInProcessClient } from '../../../../test/client'
 import { expect, test } from '../../../../test/fixtures'
@@ -213,14 +214,16 @@ test('restores a shared UUID only inside the addressed environment and target ed
   useEnvironmentsStore.setState({
     entries: {
       [originA]: {
+        ...createEnvironmentEntry(originA, originA),
         origin: originA,
         kind: 'primary',
         label: 'A',
         environmentId: descriptorA.environmentId,
       },
       [originB]: {
+        ...createEnvironmentEntry(originB, originA),
         origin: originB,
-        kind: 'dev',
+        kind: 'origin',
         label: 'B',
         environmentId: descriptorB.environmentId,
       },

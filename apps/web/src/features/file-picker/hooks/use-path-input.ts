@@ -4,7 +4,7 @@ import { isDirectoryEntry } from '@/lib/file-system-types'
 import { statPath } from '@/lib/file-server'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 
-import { absolutePickerPath, parsePickerPathInput } from '@/features/file-picker/utils/path-input'
+import { absolutePickerPath, parsePickerPathInput } from '@workspace/client-core/files/path-input'
 
 export function useFilePickerPathInput({
   currentPath,

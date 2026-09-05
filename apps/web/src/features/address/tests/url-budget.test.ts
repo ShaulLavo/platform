@@ -2,7 +2,7 @@ import { afterEach, describe, vi } from 'vitest'
 
 import { expect, test } from '../../../../test/fixtures'
 
-import { formatAddress } from '@/features/address/utils/grammar'
+import { formatAddress } from '@workspace/client-core/address/grammar'
 import { addressFromSnapshot, emptyAddressSnapshot } from '@/features/address/utils/snapshot'
 import { log } from '@/lib/client-logging'
 

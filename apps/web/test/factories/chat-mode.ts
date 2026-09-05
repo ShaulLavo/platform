@@ -27,6 +27,7 @@ export function railEnvironment(
     environmentId: TEST_ENVIRONMENT_ID,
     label: 'Primary',
     isPrimary: true,
+    phase: 'live',
     projects: selectChatProjects(slice),
     worktrees: selectChatWorktrees(slice),
     sessions: selectChatSessions(slice),

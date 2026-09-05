@@ -116,7 +116,7 @@ export function ChatView({
   )
 
   useEffect(() => {
-    if (!activeSessionId) return
+    if (!activeSessionId || transport.closed) return
 
     return transport.retainSessionDetail(activeSessionId)
   }, [activeSessionId, transport])

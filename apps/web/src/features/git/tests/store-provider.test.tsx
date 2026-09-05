@@ -5,6 +5,7 @@ import { GitStoreProvider } from '@/features/git/providers/store-provider'
 import { useGitState } from '@/features/git/state/store'
 import { expect, test } from '../../../../test/fixtures'
 import { renderWithProviders } from '../../../../test/render'
+import { TestEditorStateProvider } from '../../../../test/factories/editor-state-provider'
 
 function CommitMessageProbe() {
   const commitMessage = useGitState((state) => state.commitMessage)
@@ -22,9 +23,11 @@ function CommitMessageProbe() {
 
 function renderAtRoot(rootPath: string) {
   return renderWithProviders(
-    <GitStoreProvider rootPath={rootPath}>
-      <CommitMessageProbe />
-    </GitStoreProvider>,
+    <TestEditorStateProvider>
+      <GitStoreProvider rootPath={rootPath}>
+        <CommitMessageProbe />
+      </GitStoreProvider>
+    </TestEditorStateProvider>,
   )
 }
 
@@ -34,9 +37,11 @@ test('a commit message never follows the user into another project', async () =>
   expect(screen.getByTestId('message')).toHaveTextContent('fix: only meant for project A')
 
   view.rerender(
-    <GitStoreProvider rootPath='/repo/b'>
-      <CommitMessageProbe />
-    </GitStoreProvider>,
+    <TestEditorStateProvider>
+      <GitStoreProvider rootPath='/repo/b'>
+        <CommitMessageProbe />
+      </GitStoreProvider>
+    </TestEditorStateProvider>,
   )
 
   // The commit mutation takes the ACTIVE rootPath, so a message that survived the
@@ -49,14 +54,18 @@ test('switching back returns the message you were part-way through writing', asy
   await userEvent.click(screen.getByRole('button', { name: 'write' }))
 
   view.rerender(
-    <GitStoreProvider rootPath='/repo/b'>
-      <CommitMessageProbe />
-    </GitStoreProvider>,
+    <TestEditorStateProvider>
+      <GitStoreProvider rootPath='/repo/b'>
+        <CommitMessageProbe />
+      </GitStoreProvider>
+    </TestEditorStateProvider>,
   )
   view.rerender(
-    <GitStoreProvider rootPath='/repo/a'>
-      <CommitMessageProbe />
-    </GitStoreProvider>,
+    <TestEditorStateProvider>
+      <GitStoreProvider rootPath='/repo/a'>
+        <CommitMessageProbe />
+      </GitStoreProvider>
+    </TestEditorStateProvider>,
   )
 
   expect(screen.getByTestId('message')).toHaveTextContent('fix: only meant for project A')

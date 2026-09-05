@@ -11,6 +11,7 @@ import {
 
 import { KeybindingSection } from '@/features/settings/components/keybinding-section'
 import { ModelSection } from '@/features/settings/components/model-section'
+import { MachinesSection } from '@/features/settings/components/machines-section'
 import { ProviderSection } from '@/features/settings/components/provider-section'
 import { RowActions } from '@/features/settings/components/row-actions'
 import { BooleanWidget } from '@/features/settings/components/widgets/boolean-widget'
@@ -22,7 +23,7 @@ import { settingInspection } from '@/features/settings/hooks/use-setting-inspect
 import { useSettingsActions } from '@/features/settings/hooks/use-settings-actions'
 import type { SettingsProjection } from '@/features/settings/hooks/use-settings-projection'
 import { useSettingsScope } from '@/features/settings/state/scope-store'
-import { settingRowTitle } from '@/features/settings/utils/humanize'
+import { settingRowTitle } from '@workspace/client-core/settings/humanize'
 
 export function SettingRow({ id, snapshot }: { id: SettingId; snapshot: SettingsProjection }) {
   const descriptor = descriptorFor(id)
@@ -135,6 +136,10 @@ function SettingControl({
 
   if (control.widget === 'models') {
     return <ModelSection />
+  }
+
+  if (control.widget === 'machines') {
+    return <MachinesSection disabled={disabled} />
   }
 
   // Every bindable command by name. The generic record editor this replaces

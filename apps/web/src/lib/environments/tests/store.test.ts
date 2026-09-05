@@ -5,13 +5,10 @@ import { afterEach, beforeEach } from 'vitest'
 import * as v from 'valibot'
 
 import { activeServerOrigin, getClient, setActiveServerOrigin } from '@/lib/client'
-import {
-  resetServerConnectionStore,
-  selectServerConnection,
-  useEnvironmentsStore,
-} from '@/lib/environments/state/store'
-import { selectServerProtocolSkew } from '@/lib/environments/utils/connection'
-import { orchestrationServerConfig } from '../../../../test/factories/orchestration-server-config'
+import { selectServerConnection } from '@workspace/client-core/environments/state/store'
+import { resetServerConnectionStore, useEnvironmentsStore } from '@/lib/environments/state/store'
+import { selectServerProtocolSkew } from '@workspace/client-core/environments/utils/connection'
+import { orchestrationServerConfig } from '@workspace/client-core/test/orchestration-server-config'
 import { expect, test } from '../../../../test/fixtures'
 
 const originA = 'http://localhost:3301'
@@ -47,7 +44,7 @@ test('activation publishes the new origin and client together', () => {
   expect(observed).toEqual([{ storeOrigin: originB, clientOrigin: originB, changedClient: true }])
   expect(useEnvironmentsStore.getState().entries[originB]).toMatchObject({
     origin: originB,
-    kind: 'dev',
+    kind: 'origin',
   })
 })
 

@@ -1,4 +1,4 @@
-import { canonicalServerOrigin } from '@/lib/client'
+import { canonicalServerOrigin } from '@workspace/client-core/transport/client'
 
 const activities = new Map<string, AbortController>()
 

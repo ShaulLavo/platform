@@ -1,5 +1,5 @@
 import { commandShortcut, formatChord, hotkeyTokenLabel } from '@/keymap/utils/format-keys'
-import { CHORD_DISPLAY_SEPARATOR } from '@/keymap/utils/chord'
+import { CHORD_DISPLAY_SEPARATOR } from '@workspace/client-core/commands/chord'
 import { binding } from '../../../test/factories/key-binding'
 import { expect, test } from '../../../test/fixtures'
 

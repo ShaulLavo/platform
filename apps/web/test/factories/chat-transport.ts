@@ -1,6 +1,6 @@
 import { TEST_ENVIRONMENT_ID } from './chat'
 import type { ChatTransport } from '@/features/chat/transport/chat-transport'
-import { createClientError } from '@/lib/structured-errors'
+import { createClientError } from '@workspace/client-core/errors'
 
 /**
  * A `ChatTransport` where every seam refuses loudly, for tests that exercise

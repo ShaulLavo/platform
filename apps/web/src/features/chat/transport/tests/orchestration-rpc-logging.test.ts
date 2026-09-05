@@ -1,8 +1,8 @@
 import { initLogger, type WideEvent } from 'evlog'
 import { vi } from 'vitest'
 
-import { OrchestrationRpcClient } from '@/features/chat/transport/orchestration-rpc-client'
-import { FakeOrchestrationSocket } from '../../../../../test/factories/orchestration-socket'
+import { createOrchestrationRpcClient } from '@/features/chat/transport/orchestration-rpc-client'
+import { FakeOrchestrationSocket } from '@workspace/client-core/test/orchestration-socket'
 import { expect, test } from '../../../../../test/fixtures'
 
 test('owner closure stays informational while a transport failure remains an error', async () => {
@@ -19,9 +19,9 @@ test('owner closure stays informational while a transport failure remains an err
   try {
     for (const explicitlyClosed of [true, false]) {
       const socket = new FakeOrchestrationSocket()
-      const client = new OrchestrationRpcClient({
+      const client = createOrchestrationRpcClient({
         origin: 'http://rpc-logging.test',
-        createSocket: () => socket as unknown as WebSocket,
+        createSocket: () => socket,
       })
       const controller = new AbortController()
       const next = client.shellStream({ signal: controller.signal })[Symbol.asyncIterator]().next()

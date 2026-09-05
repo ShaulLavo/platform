@@ -1,3 +1,4 @@
+import { testScopedStorage } from '../../../../test/factories/scoped-storage'
 import { createEditorBufferSession } from '@singapor/core'
 import { QueryClient } from '@tanstack/react-query'
 import { readFile, writeFile } from 'node:fs/promises'
@@ -32,9 +33,19 @@ test('retains dirty buffers, editor views, and undo history through A/B/A at the
   const queriesB = new QueryClient()
   registerEnvironmentQueryClient(queriesA, 'http://localhost:7077', client)
   registerEnvironmentQueryClient(queriesB, 'http://localhost:7078', client)
-  const workspaceCache = readWorkspaceCache()
-  const a = createEditorRuntime({ preparation, queryClient: queriesA, workspaceCache })
-  const b = createEditorRuntime({ preparation, queryClient: queriesB, workspaceCache })
+  const workspaceCache = readWorkspaceCache(testScopedStorage)
+  const a = createEditorRuntime({
+    storage: testScopedStorage,
+    preparation,
+    queryClient: queriesA,
+    workspaceCache,
+  })
+  const b = createEditorRuntime({
+    storage: testScopedStorage,
+    preparation,
+    queryClient: queriesB,
+    workspaceCache,
+  })
 
   try {
     a.resume()
@@ -86,9 +97,19 @@ test('finishes every A save and cache update on A after its first write is delay
   const queriesB = new QueryClient()
   registerEnvironmentQueryClient(queriesA, 'http://localhost:7077', deferredA.client)
   registerEnvironmentQueryClient(queriesB, 'http://localhost:7078', deferredB.client)
-  const workspaceCache = readWorkspaceCache()
-  const a = createEditorRuntime({ preparation, queryClient: queriesA, workspaceCache })
-  const b = createEditorRuntime({ preparation, queryClient: queriesB, workspaceCache })
+  const workspaceCache = readWorkspaceCache(testScopedStorage)
+  const a = createEditorRuntime({
+    storage: testScopedStorage,
+    preparation,
+    queryClient: queriesA,
+    workspaceCache,
+  })
+  const b = createEditorRuntime({
+    storage: testScopedStorage,
+    preparation,
+    queryClient: queriesB,
+    workspaceCache,
+  })
   const pathsA = ['first.ts', 'second.ts']
   const pathB = 'first.ts'
 

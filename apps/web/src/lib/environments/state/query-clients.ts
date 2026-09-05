@@ -1,11 +1,12 @@
 import { QueryClient } from '@tanstack/react-query'
 
-import { canonicalServerOrigin, environmentClientFor, type Client } from '@/lib/client'
+import { canonicalServerOrigin } from '@workspace/client-core/transport/client'
+import { environmentClientFor, primaryServerOrigin, type Client } from '@/lib/client'
 import { installServerRestartInvalidation } from '@/lib/environments/state/server-restart-invalidation'
 import {
   createQueryClientOwnerConflictError,
   createQueryClientOwnerMissingError,
-} from '@/lib/environments/utils/structured-errors'
+} from '@workspace/client-core/environments/utils/structured-errors'
 import { installFileSnapshotQueryCachePolicy } from '@/lib/file-snapshot-query-cache'
 
 type QueryClientOwner = {
@@ -15,6 +16,10 @@ type QueryClientOwner = {
 
 const queryClients = new Map<string, QueryClient>()
 const owners = new WeakMap<QueryClient, QueryClientOwner>()
+
+export function primaryQueryClient(): QueryClient {
+  return queryClientFor(primaryServerOrigin())
+}
 
 export function queryClientFor(origin: string): QueryClient {
   origin = canonicalServerOrigin(origin)

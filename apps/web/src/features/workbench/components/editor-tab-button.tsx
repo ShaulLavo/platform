@@ -10,6 +10,8 @@ import { TabTrailingSlot } from '@/features/workbench/components/tab-trailing-sl
 import { fileIconStyle } from '@/lib/file-icon-style'
 import { Shimmer } from '@workspace/ui/components/shimmer'
 import { cn } from '@workspace/ui/lib/utils'
+import { LockSimpleIcon } from '@phosphor-icons/react'
+import { useUnavailableEnvironment } from '@/lib/environments/hooks/use-unavailable-environment'
 
 export function EditorTabButton({
   closeTargets,
@@ -32,6 +34,7 @@ export function EditorTabButton({
   readonly loading: boolean
   readonly tab: EditorTabModel
 }) {
+  const unavailable = useUnavailableEnvironment()
   const intentPrefetchRef = useEditorTabIntentPrefetch(tab)
   const { requestCloseTab, selectTab } = useEditorTabActions()
   // Stable ref composition keeps Foresight and DnD from re-registering on every render.
@@ -71,7 +74,11 @@ export function EditorTabButton({
       ref={buttonRef}
       role='tab'
       style={dragStyle}
-      title={tab.title}
+      title={
+        unavailable
+          ? `${tab.title} (read only; ${unavailable.label ?? unavailable.name} is unreachable)`
+          : tab.title
+      }
       type='button'
       onClick={handleSelectTab}
     >
@@ -81,6 +88,9 @@ export function EditorTabButton({
         style={fileIconStyle(tab.icon)}
       />
       {editorTabTitle(tab, loading)}
+      {unavailable ? (
+        <LockSimpleIcon aria-label='Read only' className='text-warning size-3 shrink-0' />
+      ) : null}
       <TabTrailingSlot
         active={tab.active}
         dirty={dirty}

@@ -1,3 +1,8 @@
+import type { ScopedWorktreeRef } from '@workspace/contracts'
+import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
+import { createGitStore, type GitStoreApi } from '@/features/git/state/store'
+import { workspaceLocationId } from '@/features/workspace/utils/location'
+import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
 import { LanguageServerDocumentSyncController } from '@singapor/lsp-plugin'
 import type { QueryClient } from '@tanstack/react-query'
 
@@ -27,16 +32,32 @@ export type EditorRuntime = ReturnType<typeof createEditorRuntime>
 export function createEditorRuntime({
   queryClient,
   workspaceCache,
+  storage,
   preparation,
   restoreAddress = true,
 }: {
   readonly queryClient: QueryClient
+  readonly storage: ScopedStorage
   readonly workspaceCache: CachedWorkspaceState
   readonly preparation: EditorPreparedEnvironment
   readonly restoreAddress?: boolean
 }) {
   const conflictStore = createEditorConflictStore()
   const workspaceStore = createEditorWorkspaceStore(workspaceCache)
+  const gitStores = new Map<string, GitStoreApi>()
+  const bindWorktrees = () => {
+    const worktrees =
+      useChatProjectionStore.getState().slices[storage.environmentId]?.worktreeById ?? {}
+    workspaceStore.getState().bindWorktrees(Object.values(worktrees))
+    for (const worktree of Object.values(worktrees)) {
+      const folderKey = workspaceLocationId(worktree.path, null)
+      const folderStore = gitStores.get(folderKey)
+      if (!folderStore) continue
+      gitStores.set(workspaceLocationId(worktree.path, worktree.id), folderStore)
+      gitStores.delete(folderKey)
+    }
+  }
+  bindWorktrees()
   const documentStore = createEditorDocumentStore({
     scrollPositionSeeds: workspaceStore.getState().scrollPositionByPath,
   })
@@ -79,6 +100,7 @@ export function createEditorRuntime({
     new SettingsSyncService(documentStore, queryClient),
   )
   const editorOpenBenchmarkControl = createEditorOpenBenchmarkControl({
+    storage,
     documentStore,
     fileOpenIntent: fileOpenIntentService,
     mountedEditors,
@@ -99,6 +121,14 @@ export function createEditorRuntime({
     recoveryDiscovery = { generation, promise }
   }
   const subscriptions = [
+    useChatProjectionStore.subscribe((state, previous) => {
+      if (
+        state.slices[storage.environmentId]?.worktreeById ===
+        previous.slices[storage.environmentId]?.worktreeById
+      )
+        return
+      bindWorktrees()
+    }),
     workspaceStore.subscribe(
       (state) => state.rootFolder?.path ?? null,
       (rootPath) => {
@@ -134,7 +164,19 @@ export function createEditorRuntime({
   }
 
   return {
+    storage,
     queryClient,
+    worktreeRefForRoot(rootPath: string): ScopedWorktreeRef | null {
+      const worktreeId = workspaceStore.getState().worktreeIdByRootPath[rootPath]
+      return worktreeId ? { environmentId: storage.environmentId, worktreeId } : null
+    },
+    gitStoreForRoot(rootPath: string) {
+      const worktreeId = workspaceStore.getState().worktreeIdByRootPath[rootPath] ?? null
+      const key = workspaceLocationId(rootPath, worktreeId)
+      const store = gitStores.get(key) ?? createGitStore()
+      gitStores.set(key, store)
+      return store
+    },
     conflictStore,
     workspaceStore,
     documentStore,

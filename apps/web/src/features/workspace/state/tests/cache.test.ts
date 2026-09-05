@@ -1,3 +1,4 @@
+import { testScopedStorage } from '../../../../../test/factories/scoped-storage'
 import { afterEach, beforeEach, describe } from 'vitest'
 import { expect, test as it } from '../../../../../test/fixtures'
 
@@ -57,16 +58,16 @@ describe('workspace cache', () => {
   it('persists git diff tabs when their backing file is in the workspace', () => {
     const diffPath = snapshotDiffDocumentId(snapshotDiff('/repo/src/app.ts'))
 
-    writeRootFolderCache(pickedDirectory('/repo'))
-    writeWorkspaceSliceCache('/repo', {
+    writeRootFolderCache(testScopedStorage, pickedDirectory('/repo'))
+    writeWorkspaceSliceCache(testScopedStorage, '/repo', {
       editorHistory: [diffPath, '/repo/src/readme.md'],
       recentlyClosedEditorPaths: ['/repo/src/closed.ts'],
       scrollPositionByPath: {},
       workbenchPanels: workbenchPanelsForPaths(['/repo/src/readme.md', diffPath], diffPath),
     })
-    writeWorkspaceIndexCache(['/repo'])
+    writeWorkspaceIndexCache(testScopedStorage, ['/repo'])
 
-    expect(readWorkspaceCache().workspaces['/repo']).toMatchObject({
+    expect(readWorkspaceCache(testScopedStorage).workspaces['/repo']).toMatchObject({
       editorHistory: [diffPath, '/repo/src/readme.md'],
       recentlyClosedEditorPaths: ['/repo/src/closed.ts'],
     })
@@ -81,15 +82,15 @@ describe('workspace cache', () => {
   it('restores files and synthetic tabs at the configured filesystem root', () => {
     const diffPath = snapshotDiffDocumentId(snapshotDiff('src/app.ts'))
     const searchPath = searchBufferDocumentId('')
-    writeRootFolderCache(pickedDirectory(''))
-    writeWorkspaceSliceCache('', {
+    writeRootFolderCache(testScopedStorage, pickedDirectory(''))
+    writeWorkspaceSliceCache(testScopedStorage, '', {
       ...emptyWorkspaceSlice(),
       editorHistory: ['src/app.ts', diffPath, searchPath, 'settings:', '/outside.ts'],
       workbenchPanels: workbenchPanelsForPaths(['src/app.ts', diffPath, searchPath], diffPath),
     })
 
-    expect(readWorkspaceCache().workspaceOrder).toEqual([''])
-    expect(readWorkspaceCache().workspaces['']?.editorHistory).toEqual([
+    expect(readWorkspaceCache(testScopedStorage).workspaceOrder).toEqual([''])
+    expect(readWorkspaceCache(testScopedStorage).workspaces['']?.editorHistory).toEqual([
       'src/app.ts',
       diffPath,
       searchPath,
@@ -104,7 +105,7 @@ describe('workspace cache', () => {
   it('filters paths that belong to another workspace out of the slice that owns them', () => {
     const diffPath = snapshotDiffDocumentId(snapshotDiff('/other/src/app.ts'))
 
-    writeWorkspaceSliceCache('/repo', {
+    writeWorkspaceSliceCache(testScopedStorage, '/repo', {
       editorHistory: [diffPath, conflictDiffDocumentId('conflict-1')],
       recentlyClosedEditorPaths: ['/other/src/closed.ts'],
       scrollPositionByPath: {},
@@ -121,7 +122,7 @@ describe('workspace cache', () => {
   })
 
   it('persists scroll positions for workspace paths only', () => {
-    writeWorkspaceSliceCache('/repo', {
+    writeWorkspaceSliceCache(testScopedStorage, '/repo', {
       ...emptyWorkspaceSlice(),
       scrollPositionByPath: {
         '/other/src/elsewhere.ts': { left: 0, top: 40 },
@@ -135,7 +136,7 @@ describe('workspace cache', () => {
   })
 
   it('keeps a search editor tab only for the workspace it searches', () => {
-    writeWorkspaceSliceCache('/repo', {
+    writeWorkspaceSliceCache(testScopedStorage, '/repo', {
       ...emptyWorkspaceSlice(),
       editorHistory: [searchBufferDocumentId('/repo'), searchBufferDocumentId('/other')],
     })
@@ -158,22 +159,22 @@ describe('workspace cache', () => {
       ),
     }
 
-    writeRootFolderCache(pickedDirectory('/repo'))
-    writeWorkspaceSliceCache('/repo', slice)
-    writeWorkspaceIndexCache(['/repo'])
+    writeRootFolderCache(testScopedStorage, pickedDirectory('/repo'))
+    writeWorkspaceSliceCache(testScopedStorage, '/repo', slice)
+    writeWorkspaceIndexCache(testScopedStorage, ['/repo'])
 
-    expect(readWorkspaceCache().workspaces['/repo']).toEqual(slice)
+    expect(readWorkspaceCache(testScopedStorage).workspaces['/repo']).toEqual(slice)
   })
 
   it('sweeps superseded cache versions, which nothing else can reach', () => {
     const stale = 'platform.workspace-state.v17.workspace:/repo'
-    localStorage.setItem(stale, JSON.stringify(emptyWorkspaceSlice()))
-    writeRootFolderCache(pickedDirectory('/repo'))
+    testScopedStorage.setItem(stale, JSON.stringify(emptyWorkspaceSlice()))
+    writeRootFolderCache(testScopedStorage, pickedDirectory('/repo'))
 
-    readWorkspaceCache()
+    readWorkspaceCache(testScopedStorage)
 
-    expect(localStorage.getItem(stale)).toBeNull()
-    expect(readWorkspaceCache().rootFolder?.path).toBe('/repo')
+    expect(testScopedStorage.getItem(stale)).toBeNull()
+    expect(readWorkspaceCache(testScopedStorage).rootFolder?.path).toBe('/repo')
   })
 
   it('persists fixed panel tabs', () => {
@@ -181,7 +182,10 @@ describe('workspace cache', () => {
     panels = setWorkbenchSidebarTab(panels, 'git')
     panels = setWorkbenchBottomTab(panels, 'problems')
 
-    writeWorkspaceSliceCache('/repo', { ...emptyWorkspaceSlice(), workbenchPanels: panels })
+    writeWorkspaceSliceCache(testScopedStorage, '/repo', {
+      ...emptyWorkspaceSlice(),
+      workbenchPanels: panels,
+    })
 
     expect(cachedSlice('/repo').workbenchPanels).toMatchObject({
       activeBottomTab: 'problems',
@@ -190,18 +194,18 @@ describe('workspace cache', () => {
   })
 
   it('restores every remembered project, not just the open one', () => {
-    writeRootFolderCache(pickedDirectory('/repo'))
-    writeWorkspaceSliceCache('/repo', {
+    writeRootFolderCache(testScopedStorage, pickedDirectory('/repo'))
+    writeWorkspaceSliceCache(testScopedStorage, '/repo', {
       ...emptyWorkspaceSlice(),
       workbenchPanels: workbenchPanelsForPaths(['/repo/src/a.ts'], '/repo/src/a.ts'),
     })
-    writeWorkspaceSliceCache('/other', {
+    writeWorkspaceSliceCache(testScopedStorage, '/other', {
       ...emptyWorkspaceSlice(),
       workbenchPanels: workbenchPanelsForPaths(['/other/src/b.ts'], '/other/src/b.ts'),
     })
-    writeWorkspaceIndexCache(['/repo', '/other'])
+    writeWorkspaceIndexCache(testScopedStorage, ['/repo', '/other'])
 
-    const cached = readWorkspaceCache()
+    const cached = readWorkspaceCache(testScopedStorage)
 
     expect(cached.workspaceOrder).toEqual(['/repo', '/other'])
     expect(cached.workspaces['/other']?.workbenchPanels.editorTabs.map((tab) => tab.path)).toEqual([
@@ -210,35 +214,37 @@ describe('workspace cache', () => {
   })
 
   it('leads with the open root even when the index has not caught up', () => {
-    writeRootFolderCache(pickedDirectory('/repo'))
-    writeWorkspaceIndexCache(['/other'])
+    writeRootFolderCache(testScopedStorage, pickedDirectory('/repo'))
+    writeWorkspaceIndexCache(testScopedStorage, ['/other'])
 
-    expect(readWorkspaceCache().workspaceOrder).toEqual(['/repo', '/other'])
+    expect(readWorkspaceCache(testScopedStorage).workspaceOrder).toEqual(['/repo', '/other'])
   })
 
   it('deletes the storage of projects that fall off the index', () => {
-    writeWorkspaceSliceCache('/other', {
+    writeWorkspaceSliceCache(testScopedStorage, '/other', {
       ...emptyWorkspaceSlice(),
       editorHistory: ['/other/src/b.ts'],
     })
-    writeSearchBufferCache('/other', emptySearchBuffer('/other'))
-    writeEditorVisibleSnapshotCache(cachedEditorVisibleSnapshot('/other'))
-    writeWorkspaceIndexCache(['/repo', '/other'])
+    writeSearchBufferCache(testScopedStorage, '/other', emptySearchBuffer('/other'))
+    writeEditorVisibleSnapshotCache(testScopedStorage, cachedEditorVisibleSnapshot('/other'))
+    writeWorkspaceIndexCache(testScopedStorage, ['/repo', '/other'])
 
-    writeWorkspaceIndexCache(['/repo'])
+    writeWorkspaceIndexCache(testScopedStorage, ['/repo'])
 
-    expect(STORE.has(workspaceSliceStorageKey('/other'))).toBe(false)
-    expect(STORE.has(searchBufferStorageKey('/other'))).toBe(false)
-    expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(false)
+    expect(scopedHas(workspaceSliceStorageKey('/other'))).toBe(false)
+    expect(scopedHas(searchBufferStorageKey('/other'))).toBe(false)
+    expect(Boolean(testScopedStorage.getItem(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY))).toBe(
+      false,
+    )
   })
 
   it('leaves a visible snapshot for another root when evicting a workspace', () => {
-    writeEditorVisibleSnapshotCache(cachedEditorVisibleSnapshot('/kept'))
-    writeWorkspaceIndexCache(['/repo', '/other'])
+    writeEditorVisibleSnapshotCache(testScopedStorage, cachedEditorVisibleSnapshot('/kept'))
+    writeWorkspaceIndexCache(testScopedStorage, ['/repo', '/other'])
 
-    writeWorkspaceIndexCache(['/repo'])
+    writeWorkspaceIndexCache(testScopedStorage, ['/repo'])
 
-    expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(true)
+    expect(Boolean(testScopedStorage.getItem(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY))).toBe(true)
   })
 
   it('remembers at most the slice limit', () => {
@@ -247,46 +253,51 @@ describe('workspace cache', () => {
       (_, index) => `/repo-${index}`,
     )
     for (const rootPath of rootPaths) {
-      writeWorkspaceSliceCache(rootPath, emptyWorkspaceSlice())
+      writeWorkspaceSliceCache(testScopedStorage, rootPath, emptyWorkspaceSlice())
     }
 
-    writeWorkspaceIndexCache(rootPaths)
+    writeWorkspaceIndexCache(testScopedStorage, rootPaths)
 
-    expect(readWorkspaceCache().workspaceOrder).toEqual(rootPaths.slice(0, WORKSPACE_SLICE_LIMIT))
-    expect(STORE.has(workspaceSliceStorageKey(rootPaths[WORKSPACE_SLICE_LIMIT]!))).toBe(false)
+    expect(readWorkspaceCache(testScopedStorage).workspaceOrder).toEqual(
+      rootPaths.slice(0, WORKSPACE_SLICE_LIMIT),
+    )
+    expect(scopedHas(workspaceSliceStorageKey(rootPaths[WORKSPACE_SLICE_LIMIT]!))).toBe(false)
   })
 
   it('persists cached search buffer metadata under the workspace it searched', () => {
     const buffer = cachedSearchBuffer('/repo')
 
-    writeRootFolderCache(pickedDirectory('/repo'))
-    writeSearchBufferCache('/repo', buffer)
-    writeWorkspaceIndexCache(['/repo'])
+    writeRootFolderCache(testScopedStorage, pickedDirectory('/repo'))
+    writeSearchBufferCache(testScopedStorage, '/repo', buffer)
+    writeWorkspaceIndexCache(testScopedStorage, ['/repo'])
 
-    expect(readWorkspaceCache().searchBuffers['/repo']).toEqual(buffer)
+    expect(readWorkspaceCache(testScopedStorage).searchBuffers['/repo']).toEqual(buffer)
   })
 
   it('refuses to file a search buffer under a workspace it does not belong to', () => {
-    writeRootFolderCache(pickedDirectory('/repo'))
-    writeSearchBufferCache('/repo', emptySearchBuffer('/other'))
-    writeWorkspaceIndexCache(['/repo'])
+    writeRootFolderCache(testScopedStorage, pickedDirectory('/repo'))
+    writeSearchBufferCache(testScopedStorage, '/repo', emptySearchBuffer('/other'))
+    writeWorkspaceIndexCache(testScopedStorage, ['/repo'])
 
-    expect(readWorkspaceCache().searchBuffers).toEqual({})
-    expect(STORE.has(searchBufferStorageKey('/repo'))).toBe(false)
+    expect(readWorkspaceCache(testScopedStorage).searchBuffers).toEqual({})
+    expect(scopedHas(searchBufferStorageKey('/repo'))).toBe(false)
   })
 
   it('drops only the invalid cache entry while restoring valid workspace state', () => {
-    writeRootFolderCache(pickedDirectory('/repo'))
-    writeWorkspaceSliceCache('/repo', {
+    writeRootFolderCache(testScopedStorage, pickedDirectory('/repo'))
+    writeWorkspaceSliceCache(testScopedStorage, '/repo', {
       ...emptyWorkspaceSlice(),
       editorHistory: ['/repo/src/readme.md'],
     })
-    writeWorkspaceIndexCache(['/repo'])
-    STORE.set(searchBufferStorageKey('/repo'), JSON.stringify({ rootPath: '/repo' }))
+    writeWorkspaceIndexCache(testScopedStorage, ['/repo'])
+    testScopedStorage.setItem(
+      searchBufferStorageKey('/repo'),
+      JSON.stringify({ rootPath: '/repo' }),
+    )
 
-    const cached = readWorkspaceCache()
+    const cached = readWorkspaceCache(testScopedStorage)
 
-    expect(STORE.has(searchBufferStorageKey('/repo'))).toBe(false)
+    expect(scopedHas(searchBufferStorageKey('/repo'))).toBe(false)
     expect(cached.searchBuffers).toEqual({})
     expect(cached.workspaces['/repo']?.editorHistory).toEqual(['/repo/src/readme.md'])
   })
@@ -297,15 +308,15 @@ describe('workspace cache', () => {
       value: fakeLocalStorage({ failingSetKeys: new Set([searchBufferStorageKey('/repo')]) }),
     })
 
-    writeRootFolderCache(pickedDirectory('/repo'))
-    writeWorkspaceSliceCache('/repo', {
+    writeRootFolderCache(testScopedStorage, pickedDirectory('/repo'))
+    writeWorkspaceSliceCache(testScopedStorage, '/repo', {
       ...emptyWorkspaceSlice(),
       editorHistory: ['/repo/src/readme.md'],
     })
-    writeSearchBufferCache('/repo', emptySearchBuffer('/repo'))
-    writeWorkspaceIndexCache(['/repo'])
+    writeSearchBufferCache(testScopedStorage, '/repo', emptySearchBuffer('/repo'))
+    writeWorkspaceIndexCache(testScopedStorage, ['/repo'])
 
-    const cached = readWorkspaceCache()
+    const cached = readWorkspaceCache(testScopedStorage)
 
     expect(cached.searchBuffers).toEqual({})
     expect(cached.workspaces['/repo']?.editorHistory).toEqual(['/repo/src/readme.md'])
@@ -315,16 +326,26 @@ describe('workspace cache', () => {
     writeChatModePanelsCache(createDefaultChatModePanels())
     writeUiModeCache(DEFAULT_WORKSPACE_UI_MODE)
     writeWorkbenchLayoutCache(createDefaultWorkbenchLayout())
-    writeRootFolderCache(pickedDirectory('/repo'))
-    writeSessionSelectionCache({ kind: 'auto' })
-    writeWorkspaceIndexCache(['/repo'])
+    writeRootFolderCache(testScopedStorage, pickedDirectory('/repo'))
+    writeSessionSelectionCache(testScopedStorage, { kind: 'auto' })
+    writeWorkspaceIndexCache(testScopedStorage, ['/repo'])
 
-    expect(new Set(STORE.keys())).toEqual(new Set(Object.values(WORKSPACE_CACHE_STORAGE_KEYS)))
+    expect(new Set(STORE.keys())).toEqual(
+      new Set(
+        Object.entries(WORKSPACE_CACHE_STORAGE_KEYS).map(([name, key]) =>
+          ['uiMode', 'workbenchLayout', 'chatModePanels'].includes(name)
+            ? key
+            : `env:${testScopedStorage.environmentId}|${key}`,
+        ),
+      ),
+    )
   })
 })
 
 function cachedSlice(rootPath: string): CachedWorkspaceSlice {
-  return JSON.parse(STORE.get(workspaceSliceStorageKey(rootPath)) ?? 'null') as CachedWorkspaceSlice
+  return JSON.parse(
+    testScopedStorage.getItem(workspaceSliceStorageKey(rootPath)) ?? 'null',
+  ) as CachedWorkspaceSlice
 }
 
 function snapshotDiff(path: string): FileDiff & { newObjectId: string; oldObjectId: string } {
@@ -474,9 +495,14 @@ function fakeLocalStorage(options: FakeLocalStorageOptions = {}) {
       STORE.delete(key)
     },
     setItem: (key: string, value: string) => {
-      if (options.failingSetKeys?.has(key)) throw new DOMException('localStorage quota exceeded')
+      if (options.failingSetKeys?.has(key.slice(key.indexOf('|') + 1)))
+        throw new DOMException('localStorage quota exceeded')
 
       STORE.set(key, value)
     },
   }
+}
+
+function scopedHas(key: string) {
+  return testScopedStorage.getItem(key) !== null
 }

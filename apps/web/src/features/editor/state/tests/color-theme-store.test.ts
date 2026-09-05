@@ -359,10 +359,10 @@ test('resolves the worker theme to the app-owned registration', async () => {
 
 test('a failed requested theme reports the actual fallback id', async () => {
   vi.resetModules()
-  vi.doMock('@/features/editor/utils/shiki-themes', async () => {
-    const actual = await vi.importActual<typeof import('@/features/editor/utils/shiki-themes')>(
-      '@/features/editor/utils/shiki-themes',
-    )
+  vi.doMock('@workspace/client-core/themes/registration', async () => {
+    const actual = await vi.importActual<
+      typeof import('@workspace/client-core/themes/registration')
+    >('@workspace/client-core/themes/registration')
 
     return {
       ...actual,
@@ -389,7 +389,7 @@ test('a failed requested theme reports the actual fallback id', async () => {
     expect(loaded.registration?.name).toBe('dark-plus')
     expect(loaded.resolvedThemeId).toBe('dark-plus')
   } finally {
-    vi.doUnmock('@/features/editor/utils/shiki-themes')
+    vi.doUnmock('@workspace/client-core/themes/registration')
     vi.resetModules()
   }
 })

@@ -10,7 +10,7 @@ import {
   MAX_CHORD_STROKES,
   normalizedChord,
   parsedChord,
-} from '@/keymap/utils/chord'
+} from '@workspace/client-core/commands/chord'
 import { binding } from '../../../test/factories/key-binding'
 
 test.each([

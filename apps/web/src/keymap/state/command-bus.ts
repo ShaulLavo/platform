@@ -9,7 +9,7 @@ import type {
   CommandTargetKind,
   CommandUndoCategory,
   CommandWhen,
-} from '@/keymap/define-command'
+} from '@workspace/client-core/commands/metadata'
 import {
   commandWhenDisabledReason,
   type CommandWhenSnapshot,

@@ -1,5 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { originForQueryClient } from '@/lib/environments/state/query-clients'
+import { serverEndpoint } from '@/lib/client'
+import { useEnvironmentsStore } from '@/lib/environments/state/store'
 import type { ChatAttachment } from '@workspace/contracts'
 import { cn } from '@workspace/ui/lib/utils'
 import { useState } from 'react'
@@ -19,7 +21,9 @@ export function ChatAttachmentThumbnails({
   attachments: readonly ChatAttachment[]
   className?: string
 }) {
-  const origin = originForQueryClient(useQueryClient())
+  const owner = originForQueryClient(useQueryClient())
+  const environment = useEnvironmentsStore((state) => state.entries[owner])
+  const origin = serverEndpoint(environment?.origin ?? owner)
   const [openIndex, setOpenIndex] = useState<number | null>(null)
   if (attachments.length === 0) return null
 

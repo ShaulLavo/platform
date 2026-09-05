@@ -10,7 +10,8 @@ import {
   type WorkspaceEditTreeRename,
 } from '@/features/editor/utils/workspace-edit-tree-projection'
 import type { WriteFileContentOptions } from '@/lib/file-server'
-import { clientForQueryClient } from '@/lib/environments/state/query-clients'
+import { clientForQueryClient, originForQueryClient } from '@/lib/environments/state/query-clients'
+import { assertEnvironmentWritable } from '@/lib/environments/state/availability'
 import { createFileSyncPorts } from '@/features/editor/utils/file-sync-ports'
 import type { FileResult, StatResult, TreeEntry } from '@/lib/file-system-types'
 import { fileSystemKeys, gitKeys } from '@/lib/query-keys'
@@ -54,6 +55,7 @@ export type WorkspaceFileInspection =
     }
 
 export type FileSyncPorts = {
+  readonly assertWritable?: () => void
   readonly inspectPath?: (path: string, signal: AbortSignal) => Promise<StatResult>
   readonly readFileContent: (path: string, signal: AbortSignal) => Promise<FileResult>
   readonly writeFileContent: FileSyncWriteFileContent
@@ -133,7 +135,7 @@ export class FileSyncService {
   constructor(
     private readonly documentStore: EditorDocumentStoreApi,
     private readonly queryClient: QueryClient,
-    private readonly ports: FileSyncPorts = createFileSyncPorts(clientForQueryClient(queryClient)),
+    private readonly ports: FileSyncPorts = ownedFileSyncPorts(queryClient),
   ) {}
 
   readonly inspectWorkspacePath = async (
@@ -179,6 +181,8 @@ export class FileSyncService {
       throw createClientInvariantError(`Cannot save unsynced editor document ${document.id}`)
     }
 
+    this.ports.assertWritable?.()
+
     const sync = document.sync
     const text = document.buffer.materializeFullText()
     const savedContentRevision = document.contentRevision
@@ -206,6 +210,7 @@ export class FileSyncService {
     request: WorkspaceEditPrepareRequest,
     signal: AbortSignal,
   ): Promise<WorkspaceEditResult> {
+    this.ports.assertWritable?.()
     const transport = this.workspaceMutationTransport()
     signal.throwIfAborted()
     try {
@@ -631,6 +636,14 @@ export class FileSyncService {
     const transport = this.ports.workspaceMutations
     if (transport) return transport
     throw createClientInvariantError('Workspace mutation transport is unavailable')
+  }
+}
+
+function ownedFileSyncPorts(queryClient: QueryClient): FileSyncPorts {
+  const origin = originForQueryClient(queryClient)
+  return {
+    ...createFileSyncPorts(clientForQueryClient(queryClient)),
+    assertWritable: () => assertEnvironmentWritable(origin),
   }
 }
 

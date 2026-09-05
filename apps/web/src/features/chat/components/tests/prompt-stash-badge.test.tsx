@@ -1,3 +1,4 @@
+import { testScopedStorage } from '../../../../../test/factories/scoped-storage'
 import { TEST_ENVIRONMENT_ID as FIXTURE_ENVIRONMENT_ID } from '../../../../../test/factories/chat'
 import { LexicalComposer } from '@lexical/react/LexicalComposer'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
@@ -18,7 +19,8 @@ import {
 } from '@/features/chat/state/chat-input-draft-store'
 import {
   resetPromptStashStore,
-  usePromptStashStore,
+  promptStashStoreFor,
+  initializePromptStashStore,
 } from '@/features/chat/state/prompt-stash-store'
 import { expect, test } from '../../../../../test/fixtures'
 import { renderWithProviders } from '../../../../../test/render'
@@ -84,10 +86,13 @@ test('a stashed prompt can be thrown away without going back to the composer', a
 })
 
 function stashedPrompts() {
-  return usePromptStashStore.getState().entries.map((entry) => entry.prompt)
+  return promptStashStoreFor(testScopedStorage.environmentId)
+    .getState()
+    .entries.map((entry) => entry.prompt)
 }
 
 function renderComposer() {
+  initializePromptStashStore(testScopedStorage)
   resetPromptStashStore()
   resetChatInputDraftStore()
   const state = { editor: null as LexicalEditor | null }

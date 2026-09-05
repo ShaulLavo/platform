@@ -1,15 +1,18 @@
+import { testScopedStorage } from '../../../../../test/factories/scoped-storage'
 import {
   MAX_PROMPT_STASH_ENTRIES,
   resetPromptStashStore,
-  usePromptStashStore,
+  promptStashStoreFor,
+  initializePromptStashStore,
 } from '@/features/chat/state/prompt-stash-store'
 import { expect, test } from '../../../../../test/fixtures'
 
 function stash() {
-  return usePromptStashStore.getState()
+  return promptStashStoreFor(testScopedStorage.environmentId).getState()
 }
 
 test('a stashed prompt comes back exactly as it was typed, and only once', () => {
+  initializePromptStashStore(testScopedStorage)
   resetPromptStashStore()
 
   const entry = stash().stashPrompt('  rewrite the ingestion reactor  ')
@@ -25,6 +28,7 @@ test('a stashed prompt comes back exactly as it was typed, and only once', () =>
 })
 
 test('the newest stash is first in the queue', () => {
+  initializePromptStashStore(testScopedStorage)
   resetPromptStashStore()
 
   stash().stashPrompt('first')
@@ -34,6 +38,7 @@ test('the newest stash is first in the queue', () => {
 })
 
 test('an empty composer stashes nothing', () => {
+  initializePromptStashStore(testScopedStorage)
   resetPromptStashStore()
 
   expect(stash().stashPrompt('   \n  ')).toBeNull()
@@ -41,6 +46,7 @@ test('an empty composer stashes nothing', () => {
 })
 
 test('the queue evicts the oldest prompt rather than growing without bound', () => {
+  initializePromptStashStore(testScopedStorage)
   resetPromptStashStore()
 
   for (let index = 0; index <= MAX_PROMPT_STASH_ENTRIES; index += 1) {
@@ -54,6 +60,7 @@ test('the queue evicts the oldest prompt rather than growing without bound', () 
 })
 
 test('deleting a stashed prompt drops it without handing it back', () => {
+  initializePromptStashStore(testScopedStorage)
   resetPromptStashStore()
 
   const entry = stash().stashPrompt('abandoned idea')

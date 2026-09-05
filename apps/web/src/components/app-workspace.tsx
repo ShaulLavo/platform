@@ -1,4 +1,9 @@
 import { EmptyWorkspace } from '@/components/empty-workspace'
+import { ProjectMachinePicker } from '@/components/project-machine-picker'
+import { useConnectedMachines } from '@/hooks/use-connected-machines'
+import { useQueryClient } from '@tanstack/react-query'
+import { originForQueryClient } from '@/lib/environments/state/query-clients'
+import { primaryServerOrigin } from '@/lib/client'
 import { usePickEntry } from '@/components/use-pick-entry'
 import { WorkspaceView } from '@/features/workspace/components/view'
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
@@ -9,6 +14,9 @@ import { log } from '@/lib/client-logging'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 
 export function AppWorkspace() {
+  const machines = useConnectedMachines()
+  const origin = originForQueryClient(useQueryClient())
+  const chooseMachine = machines.length > 1 || origin !== primaryServerOrigin()
   const pickerOpen = useEditorWorkspaceState((state) => state.pickerOpen)
   const rootFolder = useEditorWorkspaceState((state) => state.rootFolder)
   const openPicker = useEditorWorkspaceState((state) => state.openPicker)
@@ -25,7 +33,7 @@ export function AppWorkspace() {
     mode: 'folder',
     onOpenChange: setPickerOpen,
     onPick: handlePick,
-    open: pickerOpen,
+    open: pickerOpen && !chooseMachine,
     value: rootFolder,
   })
 
@@ -39,6 +47,9 @@ export function AppWorkspace() {
         )}
       </div>
       {picker}
+      {pickerOpen && chooseMachine ? (
+        <ProjectMachinePicker machines={machines} onClose={() => setPickerOpen(false)} />
+      ) : null}
     </>
   )
 }

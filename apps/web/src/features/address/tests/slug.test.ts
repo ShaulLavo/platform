@@ -2,7 +2,11 @@ import { describe } from 'vitest'
 
 import { expect, test } from '../../../../test/fixtures'
 
-import { resolveWorkspaceSlug, workspaceSlug, workspaceSlugs } from '@/features/address/utils/slug'
+import {
+  resolveWorkspaceSlug,
+  workspaceSlug,
+  workspaceSlugs,
+} from '@workspace/client-core/address/slug'
 
 const PLATFORM = '/Users/dev/code/platform'
 const OTHER_PLATFORM = '/Users/dev/forks/platform'

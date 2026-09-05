@@ -1,4 +1,10 @@
 import {
+  decodePath,
+  encodePath,
+  encodeSegment,
+  decodeSegment,
+} from '@workspace/client-core/address/path-token'
+import {
   parseCompareSavedDocumentId,
   compareSavedDocumentId,
 } from '@/features/editor/utils/compare-saved-document'
@@ -14,7 +20,7 @@ import {
   searchBufferDocumentId,
 } from '@/features/search/utils/buffer-document'
 import { isSettingsDocumentId } from '@/features/settings/utils/document'
-import { toWorkspaceAbsolute, toWorkspaceRelative } from '@/features/workspace/utils/path'
+import { toWorkspaceAbsolute, toWorkspaceRelative } from '@workspace/client-core/files/path'
 import { sessionIdSchema, type SessionId } from '@workspace/contracts'
 import * as v from 'valibot'
 
@@ -399,41 +405,4 @@ function relativeOrNull(rootPath: string, path: string | undefined) {
 
 function absoluteOrUndefined(rootPath: string, relative: string | undefined) {
   return relative ? (toWorkspaceAbsolute(rootPath, relative) ?? undefined) : undefined
-}
-
-function decodePath(rootPath: string, segments: readonly string[]) {
-  if (segments.length === 0) return null
-
-  const decoded = segments.map(decodeSegment)
-  if (decoded.some((segment) => segment === null)) return null
-  // An empty or `.` segment means the token went through a normalizer that collapsed
-  // it — `f//a.ts` and `f/./a.ts` both name a DIFFERENT file than `f/a.ts`, and
-  // resolving them anyway opened the wrong one rather than reporting a bad token.
-  if (decoded.some((segment) => segment === '' || segment === '.')) return null
-
-  return toWorkspaceAbsolute(rootPath, decoded.join('/'))
-}
-
-function encodePath(relative: string) {
-  return relative.split('/').map(encodeSegment).join('/')
-}
-
-/**
- * `encodeURIComponent` leaves `~` and `!` alone, and both are structural here — `~`
- * joins tokens inside `?tabs=` and `!turn` marks a checkpoint scope. A file literally
- * named `a~b.ts` would otherwise split the tab list in the wrong place.
- */
-function encodeSegment(value: string) {
-  return encodeURIComponent(value).replaceAll('~', '%7E').replaceAll('!', '%21')
-}
-
-/** Malformed percent-escapes throw; a hand-typed URL must degrade, never crash boot. */
-function decodeSegment(value: string | undefined) {
-  if (value === undefined) return null
-
-  try {
-    return decodeURIComponent(value)
-  } catch {
-    return null
-  }
 }

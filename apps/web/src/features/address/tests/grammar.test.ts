@@ -2,8 +2,8 @@ import { describe } from 'vitest'
 
 import { expect, test } from '../../../../test/fixtures'
 
-import { emptyAddress, formatAddress, parseAddress } from '@/features/address/utils/grammar'
-import type { Address } from '@/features/address/utils/grammar'
+import { emptyAddress, formatAddress, parseAddress } from '@workspace/client-core/address/grammar'
+import type { Address } from '@workspace/client-core/address/grammar'
 
 function fixedPoint(href: string) {
   const once = formatAddress(parseAddress(href))

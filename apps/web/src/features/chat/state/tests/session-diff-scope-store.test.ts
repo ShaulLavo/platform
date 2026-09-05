@@ -1,3 +1,4 @@
+import { testScopedStorage } from '../../../../../test/factories/scoped-storage'
 import {
   TEST_ENVIRONMENT_ID as FIXTURE_ENVIRONMENT_ID,
   fixtureSessionId,
@@ -131,12 +132,12 @@ beforeEach(() => {
     configurable: true,
     value: memoryLocalStorage(),
   })
-  hydrateSessionDiffScopeStoreFromStorage()
+  hydrateSessionDiffScopeStoreFromStorage(testScopedStorage)
 })
 
 afterEach(() => {
   STORE.clear()
-  hydrateSessionDiffScopeStoreFromStorage()
+  hydrateSessionDiffScopeStoreFromStorage(testScopedStorage)
   delete (globalThis as { localStorage?: Storage }).localStorage
 })
 
@@ -155,17 +156,17 @@ test('a picked scope survives a reload', () => {
     )
 
   // What a fresh page load does: drop the in-memory map, read storage back.
-  hydrateSessionDiffScopeStoreFromStorage()
+  hydrateSessionDiffScopeStoreFromStorage(testScopedStorage)
   expect(scopeFor(sessionId)).toEqual({ kind: 'working-tree' })
 })
 
 test('junk in storage falls back to no remembered scope instead of throwing', () => {
-  STORE.set(
+  testScopedStorage.setItem(
     SESSION_DIFF_SCOPE_STORAGE_KEY,
     '{"scopeBySessionKey":{"ad686244-5b2e-59be-805f-ef86eac80feb":{"scope":42}}}',
   )
 
-  hydrateSessionDiffScopeStoreFromStorage()
+  hydrateSessionDiffScopeStoreFromStorage(testScopedStorage)
   expect(scopeFor(parseSessionId('ad686244-5b2e-59be-805f-ef86eac80feb'))).toBeUndefined()
 })
 
@@ -217,7 +218,7 @@ test('a reconciled pick is what a reload reads back', () => {
     turnIdsAfterRevert(sessionId, turnIds, 2),
   )
 
-  hydrateSessionDiffScopeStoreFromStorage()
+  hydrateSessionDiffScopeStoreFromStorage(testScopedStorage)
   expect(scopeFor(sessionId)).toEqual({ filePath: null, kind: 'turn', turnId: turnIds[1] })
 })
 

@@ -1,5 +1,6 @@
 import { railEnvironments } from '@/features/chat-mode/state/rail-environments'
 import { useEnvironmentsStore } from '@/lib/environments/state/store'
+import { createEnvironmentEntry } from '@workspace/client-core/environments/utils/connection'
 import { railEnvironment as environment } from '../../../../../test/factories/chat-mode'
 import {
   environmentIdSchema,
@@ -166,12 +167,14 @@ test('folds multiple endpoints for one confirmed server into one rail environmen
       ...useEnvironmentsStore.getState(),
       entries: {
         'http://localhost:1': {
+          ...createEnvironmentEntry('http://localhost:1', 'http://localhost:2'),
           origin: 'http://localhost:1',
-          kind: 'dev',
+          kind: 'origin',
           label: 'Alias',
           environmentId: TEST_ENVIRONMENT_ID,
         },
         'http://localhost:2': {
+          ...createEnvironmentEntry('http://localhost:2', 'http://localhost:2'),
           origin: 'http://localhost:2',
           kind: 'primary',
           label: 'Primary',
@@ -187,4 +190,27 @@ test('folds multiple endpoints for one confirmed server into one rail environmen
     isPrimary: true,
   })
   expect(sessionRailModel({ environments: folded }).sessions).toHaveLength(1)
+})
+
+test('filters one machine while retaining cached sessions from an unreachable owner', () => {
+  const environments = [
+    environment({ label: 'Primary' }),
+    environment({
+      environmentId: secondEnvironmentId,
+      label: 'Laptop',
+      isPrimary: false,
+      phase: 'offline',
+    }),
+  ]
+  const all = sessionRailModel({ environments })
+  expect(all.groups).toHaveLength(1)
+  expect(all.sessions.filter((session) => session.stale)).toHaveLength(1)
+  const filtered = sessionRailModel({ environments, machineFilter: secondEnvironmentId })
+  expect(filtered.sessions).toHaveLength(1)
+  expect(filtered.projects[0]?.ref.environmentId).toBe(secondEnvironmentId)
+  expect(filtered.sessions[0]).toMatchObject({
+    environmentId: secondEnvironmentId,
+    machineLabel: 'Laptop',
+    stale: true,
+  })
 })

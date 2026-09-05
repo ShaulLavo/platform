@@ -1,3 +1,4 @@
+import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
 import {
   readWorkspaceCacheEntry,
   removeWorkspaceCacheEntry,
@@ -216,9 +217,10 @@ const cachedEditorVisibleSnapshotSchema = v.strictObject({
 })
 
 export function readEditorVisibleSnapshotCache(
+  storage: ScopedStorage,
   key: EditorVisibleSnapshotCacheKey,
 ): CachedEditorVisibleSnapshot | null {
-  const cached = readStoredEditorVisibleSnapshot()
+  const cached = readStoredEditorVisibleSnapshot(storage)
   if (!cached) return null
   if (cached.rootPath !== key.rootPath) return null
   if (cached.path !== key.path) return null
@@ -229,6 +231,7 @@ export function readEditorVisibleSnapshotCache(
 }
 
 export function writeEditorVisibleSnapshotCache(
+  storage: ScopedStorage,
   record: CachedEditorVisibleSnapshot,
 ): EditorVisibleSnapshotCacheWriteResult {
   const parsed = v.safeParse(cachedEditorVisibleSnapshotSchema, record)
@@ -246,6 +249,7 @@ export function writeEditorVisibleSnapshotCache(
     EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY,
     parsed.output,
     {
+      storage,
       maxSerializedBytes: EDITOR_VISIBLE_SNAPSHOT_CACHE_MAX_BYTES,
     },
   )
@@ -262,34 +266,34 @@ export function writeEditorVisibleSnapshotCache(
   return result
 }
 
-export function removeEditorVisibleSnapshotCacheForPath({
-  rootPath,
-  path,
-}: Pick<EditorVisibleSnapshotCacheKey, 'rootPath' | 'path'>) {
-  const cached = readStoredEditorVisibleSnapshot()
+export function removeEditorVisibleSnapshotCacheForPath(
+  storage: ScopedStorage,
+  { rootPath, path }: Pick<EditorVisibleSnapshotCacheKey, 'rootPath' | 'path'>,
+) {
+  const cached = readStoredEditorVisibleSnapshot(storage)
   if (!cached) return
   if (cached.rootPath !== rootPath || cached.path !== path) return
 
-  removeEditorVisibleSnapshotCache()
+  removeEditorVisibleSnapshotCache(storage)
 }
 
-export function removeEditorVisibleSnapshotCacheForRoot(rootPath: string) {
-  const cached = readStoredEditorVisibleSnapshot()
+export function removeEditorVisibleSnapshotCacheForRoot(storage: ScopedStorage, rootPath: string) {
+  const cached = readStoredEditorVisibleSnapshot(storage)
   if (!cached || cached.rootPath !== rootPath) return
 
-  removeEditorVisibleSnapshotCache()
+  removeEditorVisibleSnapshotCache(storage)
 }
 
-export function removeEditorVisibleSnapshotCache() {
-  removeWorkspaceCacheEntry(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)
+export function removeEditorVisibleSnapshotCache(storage: ScopedStorage) {
+  removeWorkspaceCacheEntry(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY, storage)
 }
 
-function readStoredEditorVisibleSnapshot() {
+function readStoredEditorVisibleSnapshot(storage: ScopedStorage) {
   return readWorkspaceCacheEntry<CachedEditorVisibleSnapshot | null>(
     EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY,
     cachedEditorVisibleSnapshotSchema,
     null,
-    { maxSerializedBytes: EDITOR_VISIBLE_SNAPSHOT_CACHE_MAX_BYTES },
+    { storage, maxSerializedBytes: EDITOR_VISIBLE_SNAPSHOT_CACHE_MAX_BYTES },
   )
 }
 

@@ -9,7 +9,7 @@ import {
   classifiedStorageKeys,
   statesClassifiedAs,
 } from '@/features/address/utils/classification'
-import { applicableTabs, MAX_APPLIED_TABS } from '@/features/address/utils/grammar'
+import { applicableTabs, MAX_APPLIED_TABS } from '@workspace/client-core/address/grammar'
 import { addressFromSnapshot } from '@/features/address/utils/snapshot'
 import { emptyAddressSnapshot } from '@/features/address/utils/snapshot'
 

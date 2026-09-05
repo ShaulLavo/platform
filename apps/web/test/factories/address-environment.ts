@@ -1,3 +1,4 @@
+import { createEnvironmentEntry } from '@workspace/client-core/environments/utils/connection'
 import type { EnvironmentId } from '@workspace/contracts'
 import {
   activeServerOrigin,
@@ -21,7 +22,7 @@ export function scopeAddressEnvironment(
   setClient(client)
   useEnvironmentsStore.setState({
     activeOrigin: origin,
-    entries: { [origin]: { origin, environmentId, kind: 'primary', label: null } },
+    entries: { [origin]: { ...createEnvironmentEntry(origin, origin), environmentId } },
     connectionByOrigin: {},
   })
   return () => {

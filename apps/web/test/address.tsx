@@ -1,3 +1,4 @@
+import { testScopedStorage } from './factories/scoped-storage'
 import { waitFor } from '@testing-library/react'
 import { useEffect } from 'react'
 import { expect, onTestFinished } from 'vitest'
@@ -8,7 +9,7 @@ import { useAddressRestore } from '@/features/address/hooks/use-restore'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
 import { createApplicationRuntime } from '@/state/application-runtime'
 import { addressedWorkspaceCache } from '@/features/address/utils/cache'
-import { parseAddress } from '@/features/address/utils/grammar'
+import { parseAddress } from '@workspace/client-core/address/grammar'
 import { readWorkspaceCache } from '@/features/workspace/state/cache'
 import {
   useEditorWorkspaceStoreApi,
@@ -64,9 +65,9 @@ export function seedWorkspaceCache({
 }) {
   const panels = tabPaths.reduce(openEditorPathInWorkbenchPanels, createDefaultWorkbenchPanels())
 
-  writeRootFolderCache(directoryEntry(rootPath))
-  writeWorkspaceIndexCache([rootPath, ...knownRoots])
-  writeWorkspaceSliceCache(rootPath, {
+  writeRootFolderCache(testScopedStorage, directoryEntry(rootPath))
+  writeWorkspaceIndexCache(testScopedStorage, [rootPath, ...knownRoots])
+  writeWorkspaceSliceCache(testScopedStorage, rootPath, {
     editorHistory: [],
     recentlyClosedEditorPaths: [],
     scrollPositionByPath: {},
@@ -129,7 +130,7 @@ export async function renderAddressHarness() {
 
   const application = createApplicationRuntime({
     workspaceCache: addressedWorkspaceCache(
-      readWorkspaceCache(),
+      readWorkspaceCache(testScopedStorage),
       parseAddress(window.location.href),
     ),
     preparation: {

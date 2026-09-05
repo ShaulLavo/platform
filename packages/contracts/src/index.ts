@@ -680,3 +680,14 @@ export {
   normalizeTerminalCols,
   normalizeTerminalRows,
 } from './terminal'
+export {
+  machineNameSchema,
+  machineSchema,
+  machinesSchema,
+  sshMachineSchema,
+  originMachineSchema,
+  type MachineDefinition,
+  type SshMachineDefinition,
+  type OriginMachineDefinition,
+  type Machines,
+} from './machines'

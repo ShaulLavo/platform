@@ -2,7 +2,11 @@ import type { EnvironmentId } from '@workspace/contracts'
 import { confirmedEnvironmentOrigin } from '@/lib/environments/state/domain'
 import { openWorkspaceRootForOwner } from '@/features/workspace/state/open-root'
 import { createEditorActivation, createEditorCommands } from '@/features/editor/state/commands'
-import { closeChatTransportsForEnvironmentSwitch } from '@/features/chat/state/active-transports'
+import { createEnvironmentConnections } from '@/state/environment-connections'
+import { confirmedEnvironmentId } from '@/lib/environments/state/domain'
+import { environmentScopedStorage } from '@/lib/environments/state/scoped-storage'
+import { initializeEnvironmentPersistence } from '@/state/environment-persistence'
+import { restoreEnvironmentSessionSelection } from '@/features/chat-mode/state/session-selection-store'
 import { resetLanguageServerConnectionPool } from '@/features/editor/state/language-server-connection-pool'
 import { createEditorRuntime, type EditorRuntime } from '@/features/editor/state/runtime'
 import type { QueryClient } from '@tanstack/react-query'
@@ -10,7 +14,8 @@ import type { EditorPreparedEnvironment } from '@/features/editor/utils/prepared
 import { readWorkspaceCache, type CachedWorkspaceState } from '@/features/workspace/state/cache'
 import { activateWorkspaceRoot } from '@/features/workspace/state/active-project'
 import { createCommandRuntimeBinding } from '@/keymap/state/runtime-binding'
-import { activeServerOrigin, canonicalServerOrigin } from '@/lib/client'
+import { canonicalServerOrigin } from '@workspace/client-core/transport/client'
+import { activeServerOrigin } from '@/lib/client'
 import {
   resumeEnvironmentActivity,
   suspendEnvironmentActivity,
@@ -33,7 +38,7 @@ export function createApplicationRuntime({
   readonly preparation: EditorPreparedEnvironment
 }) {
   const commandBinding = createCommandRuntimeBinding()
-  const environments = new Map<string, RetainedEnvironment>()
+  const environments = new Map<EnvironmentId, RetainedEnvironment>()
   let current: RetainedEnvironment
 
   function createEnvironment(
@@ -41,9 +46,12 @@ export function createApplicationRuntime({
     seed: CachedWorkspaceState,
     restoreAddress = true,
   ): RetainedEnvironment {
+    const storage = environmentScopedStorage(confirmedEnvironmentId(origin))
+    initializeEnvironmentPersistence(storage)
     const queryClient = queryClientFor(origin)
     const editor = createEditorRuntime({
       queryClient,
+      storage,
       workspaceCache: seed,
       preparation,
       restoreAddress,
@@ -63,30 +71,44 @@ export function createApplicationRuntime({
   }
 
   current = createEnvironment(activeServerOrigin(), workspaceCache)
+  restoreEnvironmentSessionSelection(confirmedEnvironmentId(current.origin))
   resumeEnvironmentActivity(current.origin)
-  environments.set(current.origin, current)
+  environments.set(confirmedEnvironmentId(current.origin), current)
   activateWorkspaceRoot(current.editor.workspaceStore.getState().rootFolder?.path ?? null)
 
+  const connections = createEnvironmentConnections({
+    activateEnvironment: (environmentId) =>
+      application.activateEnvironment(confirmedEnvironmentOrigin(environmentId)),
+  })
+
   const application = {
+    connections,
     commandBinding,
     getSnapshot: () => current,
     subscribe: (listener: () => void) => useEnvironmentsStore.subscribe(listener),
     activateEnvironment(origin: string) {
       origin = canonicalServerOrigin(origin)
       if (current.origin === origin) return
+      const environmentId = confirmedEnvironmentId(origin)
       const next =
-        environments.get(origin) ?? createEnvironment(origin, readWorkspaceCache(), false)
-      environments.set(origin, next)
+        environments.get(environmentId) ??
+        createEnvironment(
+          origin,
+          readWorkspaceCache(environmentScopedStorage(environmentId)),
+          false,
+        )
+      environments.set(environmentId, next)
+      if (current === next) return
       commandBinding.clear()
       suspendEnvironmentActivity(current.origin)
       resetLanguageServerConnectionPool()
       current.editor.suspend()
       void current.queryClient.cancelQueries()
-      closeChatTransportsForEnvironmentSwitch()
-      resumeEnvironmentActivity(origin)
+      resumeEnvironmentActivity(next.origin)
       current = next
       activateWorkspaceRoot(current.editor.workspaceStore.getState().rootFolder?.path ?? null)
-      useEnvironmentsStore.getState().activate(origin)
+      restoreEnvironmentSessionSelection(environmentId)
+      useEnvironmentsStore.getState().activate(next.origin)
     },
     async openEnvironmentWorkspaceRoot(environmentId: EnvironmentId, path: string) {
       const origin = confirmedEnvironmentOrigin(environmentId)
@@ -114,6 +136,7 @@ export function createApplicationRuntime({
       [...environments.values()].some(({ editor }) => editor.hasUnsavedDocuments()),
     dispose() {
       commandBinding.clear()
+      connections.stop()
       for (const environment of environments.values()) {
         suspendEnvironmentActivity(environment.origin)
         environment.unsubscribeRoot()
@@ -121,7 +144,6 @@ export function createApplicationRuntime({
         environment.queryClient.unmount()
       }
       environments.clear()
-      closeChatTransportsForEnvironmentSwitch()
       resetLanguageServerConnectionPool()
     },
   }

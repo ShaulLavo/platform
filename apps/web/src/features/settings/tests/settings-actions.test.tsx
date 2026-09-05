@@ -9,6 +9,7 @@ import { expect, test } from '../../../../test/fixtures'
 import { AppProviders, createTestQueryClient } from '../../../../test/render'
 import { ThemeAwareToaster } from '@/components/theme-aware-toaster'
 import { useSettingsActions } from '@/features/settings/hooks/use-settings-actions'
+import { useSettingsIntentStore } from '@/features/settings/state/intent-store'
 import {
   discardFailedSettingsIntent,
   failSettingsIntent,
@@ -17,15 +18,14 @@ import {
   submitSettingsIntent,
   type SettingsIntentHandle,
   type SettingsSubmission,
-  useSettingsIntentStore,
-} from '@/features/settings/state/intent-store'
+} from '@workspace/client-core/settings/intent-store'
 import {
   admitSettingsEvent,
   resetSettingsSnapshotAdmission,
 } from '@/features/settings/state/snapshot-admission'
 import { fetchSettings, saveSettings } from '@/features/settings/utils/api'
-import { projectSettings } from '@/features/settings/utils/projection'
-import { settingsKeys } from '@/features/settings/utils/query-keys'
+import { projectSettings } from '@workspace/client-core/settings/projection'
+import { settingsKeys } from '@workspace/client-core/settings/query-keys'
 
 test('publishes semantic intent before three scoped transports can settle', async ({
   controlledClient,

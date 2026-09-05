@@ -332,6 +332,7 @@ function cachedWorkspace(slice: Partial<CachedWorkspaceSlice>): CachedWorkspaceS
     searchBuffers: {},
     uiMode: 'workbench',
     workbenchLayout: createDefaultWorkbenchLayout(),
+    worktreeIdByRootPath: {},
     workspaceOrder: [rootFolder.path],
     workspaces: {
       [rootFolder.path]: {

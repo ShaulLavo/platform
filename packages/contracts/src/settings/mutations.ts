@@ -3,6 +3,7 @@ import * as v from 'valibot'
 import { providerInstanceIdSchema, type ProviderInstanceId } from '../chat-ids'
 import { trimmedNonEmptyStringSchema } from '../chat-model'
 import { isRecord } from '../is-record'
+import { machineNameSchema, machineSchema, type MachineDefinition } from '../machines'
 import { providerDriverKindSchema, type ProviderDriverKind } from '../orchestration-runtime'
 import {
   keybindingCommandIdSchema,
@@ -22,6 +23,7 @@ import {
 } from './wire'
 
 const NON_SCALAR_SETTING_IDS = [
+  'environments.machines',
   'lsp.servers',
   'lsp.languageServers',
   'lsp.semanticTokens.servers',
@@ -65,6 +67,17 @@ export type RemoveKeybindingOperation = {
   readonly command: string
 }
 
+export type SetMachineOperation = {
+  readonly kind: 'machine.set'
+  readonly name: string
+  readonly machine: MachineDefinition
+}
+
+export type RemoveMachineOperation = {
+  readonly kind: 'machine.remove'
+  readonly name: string
+}
+
 export type SetModelHiddenOperation = {
   readonly kind: 'model.setHidden'
   readonly ref: ModelRef
@@ -101,6 +114,8 @@ export type SettingsOperation =
   | ResetSettingsOperation
   | SetKeybindingOperation
   | RemoveKeybindingOperation
+  | SetMachineOperation
+  | RemoveMachineOperation
   | SetModelHiddenOperation
   | SetModelOrderOperation
   | SetProviderEnabledOperation
@@ -180,6 +195,12 @@ export const nonSecretProviderSeedSchema: v.GenericSchema<unknown, NonSecretProv
 export const settingsOperationSchema = v.union([
   ...scalarSettingOperationSchemas,
   v.strictObject({ kind: v.literal('reset'), keys: uniqueSettingIdsSchema }),
+  v.strictObject({
+    kind: v.literal('machine.set'),
+    name: machineNameSchema,
+    machine: machineSchema,
+  }),
+  v.strictObject({ kind: v.literal('machine.remove'), name: machineNameSchema }),
   v.strictObject({
     kind: v.literal('keybinding.set'),
     command: keybindingCommandIdSchema,
@@ -280,6 +301,9 @@ export function settingsOperationResourceKeys(
 ): readonly SettingsMutationResourceKey[] {
   if (operation.kind === 'set') return [settingResourceKey(operation.key)]
   if (operation.kind === 'reset') return operation.keys.map(settingResourceKey)
+  if (operation.kind === 'machine.set' || operation.kind === 'machine.remove') {
+    return [memberResourceKey('environments.machines', operation.name)]
+  }
   if (operation.kind === 'keybinding.set' || operation.kind === 'keybinding.remove') {
     return [memberResourceKey('keybindings.overrides', operation.command)]
   }
@@ -312,6 +336,8 @@ function applySettingsOperation(
 ): Readonly<Record<string, unknown>> {
   if (operation.kind === 'set') return replaceSetting(raw, operation.key, operation.value)
   if (operation.kind === 'reset') return resetSettings(raw, operation.keys)
+  if (operation.kind === 'machine.set') return setMachine(raw, operation)
+  if (operation.kind === 'machine.remove') return removeMachine(raw, operation.name)
   if (operation.kind === 'keybinding.set') return setKeybinding(raw, operation)
   if (operation.kind === 'keybinding.remove') return removeKeybinding(raw, operation.command)
   if (operation.kind === 'model.setHidden') return setModelHidden(raw, operation)
@@ -357,6 +383,28 @@ function setKeybinding(
     ...current,
     [operation.command]: operation.keys,
   })
+}
+
+function setMachine(
+  raw: Readonly<Record<string, unknown>>,
+  operation: SetMachineOperation,
+): Readonly<Record<string, unknown>> {
+  const current = recordSetting(raw, 'environments.machines')
+  return replaceSetting(raw, 'environments.machines', {
+    ...current,
+    [operation.name]: operation.machine,
+  })
+}
+
+function removeMachine(
+  raw: Readonly<Record<string, unknown>>,
+  name: string,
+): Readonly<Record<string, unknown>> {
+  const current = recordSetting(raw, 'environments.machines')
+  if (!Object.hasOwn(current, name)) return raw
+  const next = { ...current }
+  delete next[name]
+  return replaceOrResetDefault(raw, 'environments.machines', next)
 }
 
 function removeKeybinding(
@@ -426,7 +474,7 @@ function appendProviderSeed(
 
 function replaceOrResetDefault(
   raw: Readonly<Record<string, unknown>>,
-  key: 'keybindings.overrides' | 'models.hidden' | 'models.order',
+  key: 'environments.machines' | 'keybindings.overrides' | 'models.hidden' | 'models.order',
   value: Readonly<Record<string, unknown>> | readonly unknown[],
 ): Readonly<Record<string, unknown>> {
   if (!jsonEqual(value, descriptorFor(key).default)) return replaceSetting(raw, key, value)
@@ -436,7 +484,7 @@ function replaceOrResetDefault(
 
 function recordSetting(
   raw: Readonly<Record<string, unknown>>,
-  key: 'keybindings.overrides',
+  key: 'environments.machines' | 'keybindings.overrides',
 ): Readonly<Record<string, unknown>> {
   const value = raw[key]
 
@@ -480,6 +528,9 @@ function appendTouchedSettingIds(target: SettingId[], operation: SettingsOperati
 function touchedSettingIds(operation: SettingsOperation): readonly SettingId[] {
   if (operation.kind === 'set') return [operation.key]
   if (operation.kind === 'reset') return operation.keys
+  if (operation.kind === 'machine.set' || operation.kind === 'machine.remove') {
+    return ['environments.machines']
+  }
   if (operation.kind === 'keybinding.set' || operation.kind === 'keybinding.remove') {
     return ['keybindings.overrides']
   }

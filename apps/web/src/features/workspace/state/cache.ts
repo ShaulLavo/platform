@@ -1,3 +1,12 @@
+import {
+  workspaceLocation,
+  workspaceLocationId,
+  workspaceLocationSchema,
+  locationWorktreeId,
+  type WorkspaceLocation,
+  type WorktreeIdsByRootPath,
+} from '@/features/workspace/utils/location'
+import { type ScopedStorage } from '@/lib/environments/state/scoped-storage'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
 import { parseConflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
@@ -27,7 +36,6 @@ import {
   WORKSPACE_CACHE_STORAGE_NAMESPACE as CACHE_KEY_NAMESPACE,
   WORKSPACE_CACHE_STORAGE_PREFIX as CACHE_KEY_PREFIX,
   WORKSPACE_CACHE_VERSION as CACHE_VERSION,
-  canUseWorkspaceCacheStorage as canUseLocalStorage,
   readWorkspaceCacheEntry as readCacheEntry,
   removeWorkspaceCacheEntry as removeCacheEntry,
   workspaceCacheStorageKey,
@@ -37,11 +45,12 @@ import {
   isPathInWorkspace,
   toWorkspaceAbsolute,
   toWorkspaceRelative,
-} from '@/features/workspace/utils/path'
+} from '@workspace/client-core/files/path'
 import {
   environmentIdSchema,
   projectIdSchema,
   sessionIdSchema,
+  type WorktreeId,
   type WorkspaceSearchMatch,
   type WorkspaceSearchMatchMode,
   type WorkspaceSearchQuery,
@@ -70,16 +79,16 @@ export const WORKSPACE_CACHE_STORAGE_KEYS = {
 } as const
 
 /** Per-project state lives under its own key so switching never rewrites another project's. */
-export function workspaceSliceStorageKey(rootPath: string) {
-  return `${WORKSPACE_SLICE_KEY_PREFIX}${rootPath}`
+export function workspaceSliceStorageKey(rootPath: string, worktreeId: WorktreeId | null = null) {
+  return `${WORKSPACE_SLICE_KEY_PREFIX}${workspaceLocationId(rootPath, worktreeId)}`
 }
 
 /**
  * Search results are the one bulky entry — a full match list. Splitting them from the
  * slice keeps a quota failure on search from taking the project's open tabs with it.
  */
-export function searchBufferStorageKey(rootPath: string) {
-  return `${SEARCH_BUFFER_KEY_PREFIX}${rootPath}`
+export function searchBufferStorageKey(rootPath: string, worktreeId: WorktreeId | null = null) {
+  return `${SEARCH_BUFFER_KEY_PREFIX}${workspaceLocationId(rootPath, worktreeId)}`
 }
 
 export type CachedSearchBufferState = {
@@ -125,6 +134,15 @@ const pickedSymlinkDirectorySchema = v.object({
   version: v.optional(v.string(), ''),
 })
 const rootFolderSchema = v.nullable(v.union([pickedDirectorySchema, pickedSymlinkDirectorySchema]))
+const cachedRootSchema = v.pipe(
+  v.object({ folder: rootFolderSchema, location: v.nullable(workspaceLocationSchema) }),
+  v.check((value) =>
+    value.folder === null
+      ? value.location === null
+      : value.location?.rootPath === value.folder.path,
+  ),
+)
+
 const nullableStringSchema = v.nullable(v.string())
 const stringArraySchema = v.array(v.string())
 const entryTypeSchema = v.union([
@@ -268,7 +286,7 @@ const chatModeSelectionSchema = v.union([
 
 const AUTO_SESSION_SELECTION: SessionSelection = { kind: 'auto' }
 
-/** Everything a single project remembers. Keyed by its root path, never merged. */
+/** Each checkout keeps an independent editor slice. */
 export type CachedWorkspaceSlice = {
   editorHistory: string[]
   recentlyClosedEditorPaths: string[]
@@ -277,6 +295,7 @@ export type CachedWorkspaceSlice = {
 }
 
 export type CachedWorkspaceState = {
+  worktreeIdByRootPath: WorktreeIdsByRootPath
   chatModePanels: ChatModePanels
   rootFolder: PickedFsEntry | null
   /** Restored search results, by the root path they belong to. */
@@ -289,12 +308,10 @@ export type CachedWorkspaceState = {
   workspaceOrder: string[]
 }
 
-export function readWorkspaceCache(): CachedWorkspaceState {
-  if (!canUseLocalStorage()) return emptyWorkspaceState()
+export function readWorkspaceCache(storage: ScopedStorage): CachedWorkspaceState {
+  purgeSupersededCacheVersions(storage)
 
-  purgeSupersededCacheVersions()
-
-  return workspaceStateFromCache()
+  return workspaceStateFromCache(storage)
 }
 
 export function writeUiModeCache(uiMode: WorkspaceUiMode) {
@@ -309,44 +326,62 @@ export function writeChatModePanelsCache(chatModePanels: ChatModePanels) {
   writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.chatModePanels, chatModePanels)
 }
 
-/**
- * Which conversation chat mode was last showing. Its own key rather than a field of
- * `CachedWorkspaceState`: that blob belongs to the editor workspace store, while the
- * selection store needs the value synchronously at module init — a selection restored
- * one frame late is a selection the auto-pick has already overwritten.
- */
-export function readSessionSelectionCache(): SessionSelection {
-  if (!canUseLocalStorage()) return AUTO_SESSION_SELECTION
-
+// Restore selection before mounting the environment so auto-pick cannot overwrite it.
+export function readSessionSelectionCache(storage: ScopedStorage): SessionSelection {
   return readCacheEntry(
     WORKSPACE_CACHE_STORAGE_KEYS.chatModeSelection,
     chatModeSelectionSchema,
     AUTO_SESSION_SELECTION,
+    { storage },
   )
 }
 
-export function writeSessionSelectionCache(selection: SessionSelection) {
-  writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.chatModeSelection, selection)
+export function writeSessionSelectionCache(storage: ScopedStorage, selection: SessionSelection) {
+  writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.chatModeSelection, selection, { storage })
 }
 
-export function writeRootFolderCache(rootFolder: PickedFsEntry | null) {
-  writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.rootFolder, rootFolder)
+export function writeRootFolderCache(
+  storage: ScopedStorage,
+  rootFolder: PickedFsEntry | null,
+  worktreeId: WorktreeId | null = null,
+) {
+  writeCacheEntry(
+    WORKSPACE_CACHE_STORAGE_KEYS.rootFolder,
+    {
+      folder: rootFolder,
+      location: rootFolder ? workspaceLocation(rootFolder.path, worktreeId) : null,
+    },
+    { storage },
+  )
 }
 
-export function writeWorkspaceSliceCache(rootPath: string, slice: CachedWorkspaceSlice) {
-  writeCacheEntry(workspaceSliceStorageKey(rootPath), storedSliceForWorkspace(rootPath, slice))
+export function writeWorkspaceSliceCache(
+  storage: ScopedStorage,
+  rootPath: string,
+  slice: CachedWorkspaceSlice,
+  worktreeId: WorktreeId | null = null,
+) {
+  writeCacheEntry(
+    workspaceSliceStorageKey(rootPath, worktreeId),
+    storedSliceForWorkspace(rootPath, slice),
+    {
+      storage,
+    },
+  )
 }
 
 export function writeSearchBufferCache(
+  storage: ScopedStorage,
   rootPath: string,
   searchBuffer: CachedSearchBufferState | null,
+  worktreeId: WorktreeId | null = null,
 ) {
   if (!searchBuffer || searchBuffer.rootPath !== rootPath) {
-    removeCacheEntry(searchBufferStorageKey(rootPath))
+    removeCacheEntry(searchBufferStorageKey(rootPath, worktreeId), storage)
     return
   }
 
-  writeCacheEntry(searchBufferStorageKey(rootPath), searchBuffer)
+  writeCacheEntry(searchBufferStorageKey(rootPath, worktreeId), searchBuffer, { storage })
 }
 
 /**
@@ -354,40 +389,57 @@ export function writeSearchBufferCache(
  * that fell off. Written after the slices themselves so a crash mid-write leaves an
  * orphan slice — harmless — rather than an index pointing at nothing.
  */
-export function writeWorkspaceIndexCache(rootPaths: readonly string[]) {
-  const kept = rootPaths.slice(0, WORKSPACE_SLICE_LIMIT)
-  const keptSet = new Set(kept)
-
-  // Both sources matter: the stored index knows about projects this caller has
-  // forgotten, and `rootPaths` knows about the ones it just trimmed off the end.
-  for (const rootPath of new Set([...readWorkspaceIndex(), ...rootPaths])) {
-    if (keptSet.has(rootPath)) continue
-
-    removeCacheEntry(workspaceSliceStorageKey(rootPath))
-    removeCacheEntry(searchBufferStorageKey(rootPath))
-    removeEditorVisibleSnapshotCacheForRoot(rootPath)
+export function writeWorkspaceIndexCache(
+  storage: ScopedStorage,
+  rootPaths: readonly string[],
+  worktreeIds: WorktreeIdsByRootPath = {},
+) {
+  const locations = rootPaths.map((path) => workspaceLocation(path, worktreeIds[path] ?? null))
+  const kept = locations.slice(0, WORKSPACE_SLICE_LIMIT)
+  const keptSet = new Set(kept.map((location) => location.rootPath))
+  for (const location of [...readWorkspaceIndex(storage), ...locations]) {
+    if (keptSet.has(location.rootPath)) continue
+    const worktreeId = locationWorktreeId(location)
+    removeCacheEntry(workspaceSliceStorageKey(location.rootPath, worktreeId), storage)
+    removeCacheEntry(searchBufferStorageKey(location.rootPath, worktreeId), storage)
+    removeEditorVisibleSnapshotCacheForRoot(storage, location.rootPath)
   }
-
-  writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.workspaceIndex, kept)
+  writeCacheEntry(WORKSPACE_CACHE_STORAGE_KEYS.workspaceIndex, kept, { storage })
 }
 
-function workspaceStateFromCache(): CachedWorkspaceState {
-  const rootFolder = readCacheEntry<PickedFsEntry | null>(
+function workspaceStateFromCache(storage: ScopedStorage): CachedWorkspaceState {
+  const cachedRoot = readCacheEntry<{
+    folder: PickedFsEntry | null
+    location: WorkspaceLocation | null
+  }>(
     WORKSPACE_CACHE_STORAGE_KEYS.rootFolder,
-    rootFolderSchema,
-    null,
+    cachedRootSchema,
+    { folder: null, location: null },
+    { storage },
   )
-  const workspaceOrder = workspaceOrderFromCache(rootFolder?.path ?? null)
+  const rootFolder = cachedRoot.folder
+  const worktreeIdByRootPath: Record<string, WorktreeId> = {}
+  const locations = readWorkspaceIndex(storage)
+  if (cachedRoot.location) locations.push(cachedRoot.location)
+  for (const location of locations) {
+    if (location.kind === 'worktree') worktreeIdByRootPath[location.rootPath] = location.worktreeId
+  }
+  const workspaceOrder = workspaceOrderFromCache(storage, rootFolder?.path ?? null)
   const workspaces: Record<string, CachedWorkspaceSlice> = {}
   const searchBuffers: Record<string, CachedSearchBufferState> = {}
 
   for (const rootPath of workspaceOrder) {
-    workspaces[rootPath] = readWorkspaceSlice(rootPath)
-    const searchBuffer = readSearchBuffer(rootPath)
+    workspaces[rootPath] = readWorkspaceSlice(
+      storage,
+      rootPath,
+      worktreeIdByRootPath[rootPath] ?? null,
+    )
+    const searchBuffer = readSearchBuffer(storage, rootPath, worktreeIdByRootPath[rootPath] ?? null)
     if (searchBuffer) searchBuffers[rootPath] = searchBuffer
   }
 
   return {
+    worktreeIdByRootPath,
     chatModePanels: readCacheEntry(
       WORKSPACE_CACHE_STORAGE_KEYS.chatModePanels,
       chatModePanelsSchema,
@@ -415,20 +467,21 @@ function workspaceStateFromCache(): CachedWorkspaceState {
 /**
  * Just the workspace order — the slug→root oracle — without touching a single slice.
  *
- * `readWorkspaceCache()` parses every slice AND every search buffer, and a search
+ * `readWorkspaceCache(storage)` parses every slice AND every search buffer, and a search
  * buffer carries a materialized match list; it also sweeps the whole localStorage
  * keyspace. A caller that only needs the order should not pay for any of that, least
  * of all on a path that runs per back/forward press.
  */
-export function readWorkspaceOrder(activeRootPath: string | null): readonly string[] {
-  if (!canUseLocalStorage()) return []
-
-  return workspaceOrderFromCache(activeRootPath)
+export function readWorkspaceOrder(
+  storage: ScopedStorage,
+  activeRootPath: string | null,
+): readonly string[] {
+  return workspaceOrderFromCache(storage, activeRootPath)
 }
 
 /** The open root always leads, even when the index predates it or was dropped. */
-function workspaceOrderFromCache(activePath: string | null) {
-  const stored = readWorkspaceIndex()
+function workspaceOrderFromCache(storage: ScopedStorage, activePath: string | null) {
+  const stored = readWorkspaceIndex(storage).map((location) => location.rootPath)
   if (activePath === null) return stored.slice(0, WORKSPACE_SLICE_LIMIT)
 
   return [activePath, ...stored.filter((rootPath) => rootPath !== activePath)].slice(
@@ -437,30 +490,45 @@ function workspaceOrderFromCache(activePath: string | null) {
   )
 }
 
-function readWorkspaceIndex() {
-  return readCacheEntry<string[]>(
-    WORKSPACE_CACHE_STORAGE_KEYS.workspaceIndex,
-    stringArraySchema,
-    [],
-  )
-}
-
-function readWorkspaceSlice(rootPath: string): CachedWorkspaceSlice {
-  return restoredSliceForWorkspace(
-    rootPath,
-    readCacheEntry<CachedWorkspaceSlice>(
-      workspaceSliceStorageKey(rootPath),
-      workspaceSliceSchema,
-      emptyWorkspaceSlice(),
+export function readWorkspaceCheckoutIds(storage: ScopedStorage): WorktreeIdsByRootPath {
+  return Object.fromEntries(
+    readWorkspaceIndex(storage).flatMap((location) =>
+      location.kind === 'worktree' ? [[location.rootPath, location.worktreeId]] : [],
     ),
   )
 }
 
-function readSearchBuffer(rootPath: string) {
+function readWorkspaceIndex(storage: ScopedStorage) {
+  return readCacheEntry<WorkspaceLocation[]>(
+    WORKSPACE_CACHE_STORAGE_KEYS.workspaceIndex,
+    v.array(workspaceLocationSchema),
+    [],
+    { storage },
+  )
+}
+
+function readWorkspaceSlice(
+  storage: ScopedStorage,
+  rootPath: string,
+  worktreeId: WorktreeId | null,
+): CachedWorkspaceSlice {
+  return restoredSliceForWorkspace(
+    rootPath,
+    readCacheEntry<CachedWorkspaceSlice>(
+      workspaceSliceStorageKey(rootPath, worktreeId),
+      workspaceSliceSchema,
+      emptyWorkspaceSlice(),
+      { storage },
+    ),
+  )
+}
+
+function readSearchBuffer(storage: ScopedStorage, rootPath: string, worktreeId: WorktreeId | null) {
   const searchBuffer = readCacheEntry<CachedSearchBufferState | null>(
-    searchBufferStorageKey(rootPath),
+    searchBufferStorageKey(rootPath, worktreeId),
     v.nullable(cachedSearchBufferStateSchema),
     null,
+    { storage },
   )
   if (!searchBuffer) return null
   if (searchBuffer.rootPath !== rootPath) return null
@@ -583,13 +651,11 @@ function mapSlicePaths(
  * quota, not a few bytes. Sweeping them is garbage collection of keys nothing can
  * reach, not a migration: no value is read, translated or preserved.
  */
-function purgeSupersededCacheVersions() {
-  if (!canUseLocalStorage()) return
-
-  const superseded = supersededCacheKeys()
+function purgeSupersededCacheVersions(storage: ScopedStorage) {
+  const superseded = supersededCacheKeys(storage)
   if (superseded.length === 0) return
 
-  for (const key of superseded) removeCacheEntry(key)
+  for (const key of superseded) removeCacheEntry(key, storage)
 
   log.info({
     action: 'workspace.cache_versions_purged',
@@ -599,24 +665,11 @@ function purgeSupersededCacheVersions() {
   })
 }
 
-/**
- * Keys renamed rather than versioned, so the namespace walk below cannot see them.
- * Greenfield rule: delete the orphan instead of teaching anything to read it.
- */
-const RENAMED_CACHE_KEYS = ['platform:prompt-stash:v1'] as const
-
-function supersededCacheKeys() {
+function supersededCacheKeys(storage: ScopedStorage) {
   const keys: string[] = []
 
-  // Collected before any removal: deleting during the walk renumbers the indices.
   try {
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index)
-      if (!key) continue
-      if (RENAMED_CACHE_KEYS.some((renamed) => renamed === key)) {
-        keys.push(key)
-        continue
-      }
+    for (const key of storage.keys(CACHE_KEY_NAMESPACE)) {
       if (!key.startsWith(CACHE_KEY_NAMESPACE)) continue
       if (key.startsWith(`${CACHE_KEY_PREFIX}.`)) continue
 
@@ -638,8 +691,9 @@ export function emptyWorkspaceSlice(): CachedWorkspaceSlice {
   }
 }
 
-function emptyWorkspaceState(): CachedWorkspaceState {
+export function emptyWorkspaceState(): CachedWorkspaceState {
   return {
+    worktreeIdByRootPath: {},
     chatModePanels: createDefaultChatModePanels(),
     rootFolder: null,
     searchBuffers: {},

@@ -1,4 +1,4 @@
-import { MAX_APPLIED_TABS } from '@/features/address/utils/grammar'
+import { MAX_APPLIED_TABS } from '@workspace/client-core/address/grammar'
 import { readSettingsCategory } from '@/features/settings/state/category-store'
 import { settingsDocumentId } from '@/features/settings/utils/document'
 

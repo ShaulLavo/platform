@@ -1,0 +1,165 @@
+import { commandIdSchema, orchestrationWsClientMessageSchema } from '@workspace/contracts'
+import { expect, test, vi } from 'vitest'
+import * as v from 'valibot'
+
+import { selectServerConnection } from '../../environments/state/store'
+import { orchestrationServerConfig } from '../../../test/orchestration-server-config'
+import { rpcClientFixture } from '../../../test/rpc-client'
+import { FakeOrchestrationSocket } from '../../../test/orchestration-socket'
+
+test('ready verifies a handshake without subscriptions or a global WebSocket', async () => {
+  vi.stubGlobal('WebSocket', undefined)
+  const fixture = rpcClientFixture()
+  try {
+    const ready = fixture.client.ready()
+    fixture.socket.open()
+    await ready
+    expect(fixture.socket.sent).toEqual([])
+    expect(selectServerConnection(fixture.environments.getState(), fixture.origin)).toMatchObject({
+      phase: 'connected',
+      generation: 1,
+    })
+  } finally {
+    fixture.client.close()
+    vi.unstubAllGlobals()
+  }
+})
+
+test('disconnect is reported once, preserves generation, and isolates a throwing host callback', async () => {
+  const disconnect = vi.fn(() => {
+    throw 'host callback failed'
+  })
+  const fixture = rpcClientFixture({ onDisconnect: disconnect })
+  const ready = fixture.client.ready()
+  fixture.socket.open()
+  await ready
+  fixture.socket.serverClose({ code: 1006, wasClean: false })
+  fixture.socket.serverClose({ code: 1006, wasClean: false })
+  fixture.client.close()
+  expect(disconnect).toHaveBeenCalledTimes(1)
+  expect(selectServerConnection(fixture.environments.getState(), fixture.origin)).toMatchObject({
+    phase: 'disconnected',
+    generation: 1,
+    serverInstanceId: 'server-1',
+  })
+})
+
+test('owner closure rejects readiness without reporting an unexpected disconnect', async () => {
+  const disconnect = vi.fn()
+  const fixture = rpcClientFixture({ onDisconnect: disconnect })
+  const ready = fixture.client.ready().catch((error: unknown) => error)
+  fixture.client.close()
+  expect(await ready).toMatchObject({ code: 'ORCHESTRATION_RPC_CLOSED' })
+  fixture.socket.open()
+  expect(fixture.socket.sent).toEqual([])
+  expect(disconnect).not.toHaveBeenCalled()
+})
+
+test('a rejected protocol keeps its refusal state after teardown', async () => {
+  const fixture = rpcClientFixture()
+  const ready = fixture.client.ready().catch((error: unknown) => error)
+  fixture.socket.open(false)
+  fixture.socket.deliver({
+    kind: 'connected',
+    config: orchestrationServerConfig({ protocolVersion: 999 }),
+  })
+  expect(await ready).toMatchObject({ code: 'ENVIRONMENT_PROTOCOL_MISMATCH' })
+  expect(selectServerConnection(fixture.environments.getState(), fixture.origin)).toMatchObject({
+    phase: 'protocol-mismatch',
+    generation: 0,
+  })
+  fixture.client.close()
+})
+
+test('synchronization follows consumed data and never enters the projection stream', async () => {
+  const fixture = rpcClientFixture()
+  const synchronized = vi.fn()
+  const controller = new AbortController()
+  const stream = fixture.client.shellStream({
+    signal: controller.signal,
+    onSynchronized: synchronized,
+  })
+  const iterator = stream[Symbol.asyncIterator]()
+  const first = iterator.next()
+  fixture.socket.open()
+  const subscription = await subscriptionMessage(fixture.socket)
+  const snapshot = {
+    kind: 'snapshot',
+    snapshot: {
+      projects: [],
+      worktrees: [],
+      sessions: [],
+      snapshotSequence: 7,
+      updatedAt: '2026-09-05T00:00:00.000Z',
+    },
+  }
+  fixture.socket.deliver({
+    kind: 'subscription.next',
+    subscriptionId: subscription.subscriptionId,
+    item: snapshot,
+  })
+  fixture.socket.deliver({
+    kind: 'subscription.next',
+    subscriptionId: subscription.subscriptionId,
+    item: { kind: 'synchronized', sequence: 7 },
+  })
+  expect((await first).value).toEqual(snapshot)
+  expect(synchronized).not.toHaveBeenCalled()
+  const next = iterator.next()
+  await vi.waitFor(() => expect(synchronized).toHaveBeenCalledTimes(1))
+  controller.abort()
+  expect(await next).toMatchObject({ done: true })
+  fixture.client.close()
+})
+
+test('zero-gap resume reports synchronization without yielding a data item', async () => {
+  const fixture = rpcClientFixture()
+  const synchronized = vi.fn()
+  const controller = new AbortController()
+  const next = fixture.client
+    .shellStream({ afterSequence: 7, signal: controller.signal, onSynchronized: synchronized })
+    [Symbol.asyncIterator]()
+    .next()
+  fixture.socket.open()
+  const subscription = await subscriptionMessage(fixture.socket)
+  expect(subscription.afterSequence).toBe(7)
+  fixture.socket.deliver({
+    kind: 'subscription.next',
+    subscriptionId: subscription.subscriptionId,
+    item: { kind: 'synchronized', sequence: 7 },
+  })
+  await vi.waitFor(() => expect(synchronized).toHaveBeenCalledTimes(1))
+  controller.abort()
+  expect(await next).toMatchObject({ done: true })
+  fixture.client.close()
+})
+
+test('a dropped command is rejected without opening another socket or resending', async () => {
+  const socket = new FakeOrchestrationSocket()
+  const createSocket = vi.fn(() => socket)
+  const fixture = rpcClientFixture({ createSocket })
+  const result = fixture.client
+    .dispatchCommand({
+      type: 'project.create',
+      commandId: v.parse(commandIdSchema, 'core-no-command-retry'),
+      defaultModelSelection: null,
+      title: 'Project',
+      workspaceRoot: '/project',
+    })
+    .catch((error: unknown) => error)
+  socket.open()
+  await vi.waitFor(() => expect(socket.sent).toHaveLength(1))
+  socket.serverClose({ code: 1006, wasClean: false })
+  expect(await result).toMatchObject({ code: 'ORCHESTRATION_WS_CLOSED' })
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  expect(createSocket).toHaveBeenCalledTimes(1)
+  expect(socket.sent).toHaveLength(1)
+  fixture.client.close()
+})
+
+async function subscriptionMessage(socket: FakeOrchestrationSocket) {
+  await vi.waitFor(() => expect(socket.sent).toHaveLength(1))
+  const message = v.parse(orchestrationWsClientMessageSchema, JSON.parse(socket.sent[0]!))
+  if (message.kind !== 'subscribe') return expect.unreachable('Expected the subscription frame')
+  return message
+}

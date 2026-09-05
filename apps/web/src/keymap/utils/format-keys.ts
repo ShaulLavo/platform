@@ -1,7 +1,11 @@
 import { detectPlatform } from '@tanstack/hotkeys'
 
 import type { PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
-import { CHORD_DISPLAY_SEPARATOR, chordStrokes, type PlatformName } from '@/keymap/utils/chord'
+import {
+  CHORD_DISPLAY_SEPARATOR,
+  chordStrokes,
+  type PlatformName,
+} from '@workspace/client-core/commands/chord'
 
 export function commandShortcut(
   command: PlatformCommandId,

@@ -69,6 +69,7 @@ function storeWithRoot(rootFolder: PickedFsEntry) {
     searchBuffers: {},
     uiMode: 'workbench',
     workbenchLayout: createDefaultWorkbenchLayout(),
+    worktreeIdByRootPath: {},
     workspaceOrder: [rootFolder.path],
     workspaces: {},
   })

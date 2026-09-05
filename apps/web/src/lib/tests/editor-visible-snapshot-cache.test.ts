@@ -1,3 +1,4 @@
+import { testScopedStorage } from '../../../test/factories/scoped-storage'
 import { afterEach, beforeEach, vi } from 'vitest'
 import type { EditorVisibleSnapshotJSON } from '@singapor/core'
 
@@ -33,9 +34,9 @@ afterEach(() => {
 test('round-trips one matching record and leaves mismatches untouched', () => {
   const record = cachedSnapshot('/repo', '/repo/src/app.ts', 'dark-plus')
 
-  expect(writeEditorVisibleSnapshotCache(record).status).toBe('written')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, record).status).toBe('written')
   expect(
-    readEditorVisibleSnapshotCache({
+    readEditorVisibleSnapshotCache(testScopedStorage, {
       contentVersion: CONTENT_VERSION,
       rootPath: '/repo',
       path: '/repo/src/app.ts',
@@ -43,7 +44,7 @@ test('round-trips one matching record and leaves mismatches untouched', () => {
     }),
   ).toEqual(record)
   expect(
-    readEditorVisibleSnapshotCache({
+    readEditorVisibleSnapshotCache(testScopedStorage, {
       contentVersion: CONTENT_VERSION,
       rootPath: '/other',
       path: '/repo/src/app.ts',
@@ -51,24 +52,27 @@ test('round-trips one matching record and leaves mismatches untouched', () => {
     }),
   ).toBeNull()
   expect(
-    readEditorVisibleSnapshotCache({
+    readEditorVisibleSnapshotCache(testScopedStorage, {
       contentVersion: 'stat:2:5',
       rootPath: '/repo',
       path: '/repo/src/app.ts',
       themeId: 'dark-plus',
     }),
   ).toBeNull()
-  expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(true)
+  expect(Boolean(testScopedStorage.getItem(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY))).toBe(true)
 })
 
 test('a write overwrites the single prior record', () => {
-  writeEditorVisibleSnapshotCache(cachedSnapshot('/first', '/first/a.ts', 'dark-plus'))
+  writeEditorVisibleSnapshotCache(
+    testScopedStorage,
+    cachedSnapshot('/first', '/first/a.ts', 'dark-plus'),
+  )
   const latest = cachedSnapshot('/second', '/second/b.ts', 'light-plus')
 
-  writeEditorVisibleSnapshotCache(latest)
+  writeEditorVisibleSnapshotCache(testScopedStorage, latest)
 
   expect(
-    readEditorVisibleSnapshotCache({
+    readEditorVisibleSnapshotCache(testScopedStorage, {
       contentVersion: CONTENT_VERSION,
       rootPath: '/first',
       path: '/first/a.ts',
@@ -76,7 +80,7 @@ test('a write overwrites the single prior record', () => {
     }),
   ).toBeNull()
   expect(
-    readEditorVisibleSnapshotCache({
+    readEditorVisibleSnapshotCache(testScopedStorage, {
       contentVersion: CONTENT_VERSION,
       rootPath: '/second',
       path: '/second/b.ts',
@@ -86,19 +90,19 @@ test('a write overwrites the single prior record', () => {
 })
 
 test('removes malformed, unsupported, and deeply invalid records', () => {
-  STORE.set(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY, '{not json')
+  testScopedStorage.setItem(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY, '{not json')
   expect(readMatchingSnapshot()).toBeNull()
-  expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(false)
+  expect(Boolean(testScopedStorage.getItem(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY))).toBe(false)
 
   const unsupported = { ...cachedSnapshot(), cacheVersion: 3 }
-  STORE.set(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY, JSON.stringify(unsupported))
+  testScopedStorage.setItem(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY, JSON.stringify(unsupported))
   expect(readMatchingSnapshot()).toBeNull()
 
   const invalid = structuredClone(cachedSnapshot())
   invalid.snapshot.rows[0]!.chunks[0]!.runs[0]!.end = 99
-  STORE.set(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY, JSON.stringify(invalid))
+  testScopedStorage.setItem(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY, JSON.stringify(invalid))
   expect(readMatchingSnapshot()).toBeNull()
-  expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(false)
+  expect(Boolean(testScopedStorage.getItem(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY))).toBe(false)
 })
 
 test('rejects invalid geometry, gutter lane ids, and run fidelity', () => {
@@ -125,13 +129,15 @@ test('rejects invalid geometry, gutter lane ids, and run fidelity', () => {
 
 test('a rejected write preserves the prior record and emits a structured warning', () => {
   const prior = cachedSnapshot('/repo', '/repo/src/prior.ts')
-  expect(writeEditorVisibleSnapshotCache(prior).status).toBe('written')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, prior).status).toBe('written')
   const warn = vi.spyOn(log, 'warn')
   const invalid = structuredClone(cachedSnapshot())
   invalid.snapshot.gutterWidth += 1
 
   expect(writeUntyped(invalid).status).toBe('invalid')
-  expect(STORE.get(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(JSON.stringify(prior))
+  expect(testScopedStorage.getItem(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(
+    JSON.stringify(prior),
+  )
   expect(warn).toHaveBeenCalledWith(
     expect.objectContaining({
       action: 'editor.visible_snapshot.cache_write',
@@ -143,32 +149,38 @@ test('a rejected write preserves the prior record and emits a structured warning
 test('rejects nonterminal paint and impossible mounted text geometry', () => {
   const loading = structuredClone(cachedSnapshot())
   loading.snapshot.initialHighlightStatus = 'loading'
-  expect(writeEditorVisibleSnapshotCache(loading).status).toBe('invalid')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, loading).status).toBe('invalid')
 
   const zeroRowHeight = structuredClone(cachedSnapshot())
   zeroRowHeight.snapshot.metrics.rowHeight = 0
-  expect(writeEditorVisibleSnapshotCache(zeroRowHeight).status).toBe('invalid')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, zeroRowHeight).status).toBe('invalid')
 
   const zeroCharacterWidth = structuredClone(cachedSnapshot())
   zeroCharacterWidth.snapshot.metrics.characterWidth = 0
-  expect(writeEditorVisibleSnapshotCache(zeroCharacterWidth).status).toBe('invalid')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, zeroCharacterWidth).status).toBe(
+    'invalid',
+  )
 
   const zeroMountedHeight = structuredClone(cachedSnapshot())
   zeroMountedHeight.snapshot.rows[0]!.height = 0
-  expect(writeEditorVisibleSnapshotCache(zeroMountedHeight).status).toBe('invalid')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, zeroMountedHeight).status).toBe(
+    'invalid',
+  )
 
   const missingBufferRow = structuredClone(cachedSnapshot())
   missingBufferRow.snapshot.rows[0]!.bufferRow = missingBufferRow.snapshot.lineCount
-  expect(writeEditorVisibleSnapshotCache(missingBufferRow).status).toBe('invalid')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, missingBufferRow).status).toBe(
+    'invalid',
+  )
 
   const oversizedSpacer = structuredClone(cachedSnapshot())
   oversizedSpacer.snapshot.rows[0]!.leftSpacerWidth = oversizedSpacer.snapshot.contentWidth + 1
-  expect(writeEditorVisibleSnapshotCache(oversizedSpacer).status).toBe('invalid')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, oversizedSpacer).status).toBe('invalid')
 
   const overlappingRows = structuredClone(cachedSnapshot())
   overlappingRows.snapshot.rows.push({ ...paintRow(), index: 1, top: 10 })
   overlappingRows.snapshot.totalHeight = 30
-  expect(writeEditorVisibleSnapshotCache(overlappingRows).status).toBe('invalid')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, overlappingRows).status).toBe('invalid')
 })
 
 test('accepts a row bottom within the geometry tolerance', () => {
@@ -180,7 +192,7 @@ test('accepts a row bottom within the geometry tolerance', () => {
   expect(record.snapshot.rows[0]!.top + record.snapshot.rows[0]!.height).toBeGreaterThan(
     record.snapshot.totalHeight,
   )
-  expect(writeEditorVisibleSnapshotCache(record).status).toBe('written')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, record).status).toBe('written')
 })
 
 test('rejects row, chunk, part, and run count overflows', () => {
@@ -191,11 +203,11 @@ test('rejects row, chunk, part, and run count overflows', () => {
     top: index * 20,
   }))
   rowOverflow.snapshot.totalHeight = 8_020
-  expect(writeEditorVisibleSnapshotCache(rowOverflow).status).toBe('invalid')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, rowOverflow).status).toBe('invalid')
 
   const chunkOverflow = cachedSnapshot()
   chunkOverflow.snapshot.rows[0]!.chunks = Array.from({ length: 4_097 }, emptyPaintChunk)
-  expect(writeEditorVisibleSnapshotCache(chunkOverflow).status).toBe('invalid')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, chunkOverflow).status).toBe('invalid')
 
   const partOverflow = cachedSnapshot()
   partOverflow.snapshot.rows[0]!.chunks = [
@@ -204,11 +216,11 @@ test('rejects row, chunk, part, and run count overflows', () => {
       parts: Array.from({ length: 16_385 }, () => ({ kind: 'text' as const, text: '' })),
     },
   ]
-  expect(writeEditorVisibleSnapshotCache(partOverflow).status).toBe('invalid')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, partOverflow).status).toBe('invalid')
 
   const runOverflow = cachedSnapshot()
   runOverflow.snapshot.rows[0]!.chunks = [paintChunkWithRuns(2_049)]
-  expect(writeEditorVisibleSnapshotCache(runOverflow).status).toBe('invalid')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, runOverflow).status).toBe('invalid')
 })
 
 test('enforces aggregate chunk, part, and run caps across rows', () => {
@@ -223,7 +235,7 @@ test('enforces aggregate chunk, part, and run caps across rows', () => {
     },
   ]
   chunkOverflow.snapshot.totalHeight = 40
-  expect(writeEditorVisibleSnapshotCache(chunkOverflow).status).toBe('invalid')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, chunkOverflow).status).toBe('invalid')
 
   const partOverflow = cachedSnapshot()
   partOverflow.snapshot.rows[0]!.chunks = [
@@ -236,63 +248,73 @@ test('enforces aggregate chunk, part, and run caps across rows', () => {
       parts: Array.from({ length: 8_192 }, () => ({ kind: 'text' as const, text: '' })),
     },
   ]
-  expect(writeEditorVisibleSnapshotCache(partOverflow).status).toBe('invalid')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, partOverflow).status).toBe('invalid')
 
   const runOverflow = cachedSnapshot()
   runOverflow.snapshot.rows[0]!.chunks = [paintChunkWithRuns(1_025), paintChunkWithRuns(1_024)]
-  expect(writeEditorVisibleSnapshotCache(runOverflow).status).toBe('invalid')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, runOverflow).status).toBe('invalid')
 })
 
 test('rejects an oversized write before storage and an oversized read before parsing', () => {
   const prior = cachedSnapshot('/repo', '/repo/src/prior.ts')
-  expect(writeEditorVisibleSnapshotCache(prior).status).toBe('written')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, prior).status).toBe('written')
   const oversized = cachedSnapshot()
   const text = 'x'.repeat(EDITOR_VISIBLE_SNAPSHOT_CACHE_MAX_BYTES / 2)
   oversized.snapshot.rows[0]!.chunks = [exactPaintChunk(text)]
 
-  const writeResult = writeEditorVisibleSnapshotCache(oversized)
+  const writeResult = writeEditorVisibleSnapshotCache(testScopedStorage, oversized)
   expect(writeResult.status).toBe('oversized')
   expect(writeResult.serializedBytes).toBeGreaterThan(EDITOR_VISIBLE_SNAPSHOT_CACHE_MAX_BYTES)
-  expect(STORE.get(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(JSON.stringify(prior))
+  expect(testScopedStorage.getItem(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(
+    JSON.stringify(prior),
+  )
 
   const parse = vi.spyOn(JSON, 'parse')
-  STORE.set(
+  testScopedStorage.setItem(
     EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY,
     'x'.repeat(EDITOR_VISIBLE_SNAPSHOT_CACHE_MAX_BYTES / 2 + 1),
   )
   expect(readMatchingSnapshot()).toBeNull()
   expect(parse).not.toHaveBeenCalled()
-  expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(false)
+  expect(Boolean(testScopedStorage.getItem(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY))).toBe(false)
 })
 
 test('a quota failure preserves the prior visible snapshot', () => {
   const prior = cachedSnapshot('/repo', '/repo/src/prior.ts')
   const serializedPrior = JSON.stringify(prior)
-  STORE.set(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY, serializedPrior)
+  testScopedStorage.setItem(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY, serializedPrior)
   STORE.set('unrelated', 'keep')
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
     value: memoryLocalStorage({ failSnapshotWrites: true }),
   })
 
-  expect(writeEditorVisibleSnapshotCache(cachedSnapshot()).status).toBe('storage-failed')
-  expect(STORE.get(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(serializedPrior)
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, cachedSnapshot()).status).toBe(
+    'storage-failed',
+  )
+  expect(testScopedStorage.getItem(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(serializedPrior)
   expect(STORE.get('unrelated')).toBe('keep')
 })
 
 test('root and path removals affect only a matching record', () => {
-  writeEditorVisibleSnapshotCache(cachedSnapshot('/repo', '/repo/src/app.ts'))
+  writeEditorVisibleSnapshotCache(testScopedStorage, cachedSnapshot('/repo', '/repo/src/app.ts'))
 
-  removeEditorVisibleSnapshotCacheForRoot('/other')
-  removeEditorVisibleSnapshotCacheForPath({ rootPath: '/repo', path: '/repo/src/other.ts' })
-  expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(true)
+  removeEditorVisibleSnapshotCacheForRoot(testScopedStorage, '/other')
+  removeEditorVisibleSnapshotCacheForPath(testScopedStorage, {
+    rootPath: '/repo',
+    path: '/repo/src/other.ts',
+  })
+  expect(Boolean(testScopedStorage.getItem(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY))).toBe(true)
 
-  removeEditorVisibleSnapshotCacheForPath({ rootPath: '/repo', path: '/repo/src/app.ts' })
-  expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(false)
+  removeEditorVisibleSnapshotCacheForPath(testScopedStorage, {
+    rootPath: '/repo',
+    path: '/repo/src/app.ts',
+  })
+  expect(Boolean(testScopedStorage.getItem(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY))).toBe(false)
 
-  writeEditorVisibleSnapshotCache(cachedSnapshot('/repo', '/repo/src/app.ts'))
-  removeEditorVisibleSnapshotCacheForRoot('/repo')
-  expect(STORE.has(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY)).toBe(false)
+  writeEditorVisibleSnapshotCache(testScopedStorage, cachedSnapshot('/repo', '/repo/src/app.ts'))
+  removeEditorVisibleSnapshotCacheForRoot(testScopedStorage, '/repo')
+  expect(Boolean(testScopedStorage.getItem(EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY))).toBe(false)
 })
 
 test('accepts wrapped and injected display indices beyond document line count', () => {
@@ -321,11 +343,11 @@ test('accepts wrapped and injected display indices beyond document line count', 
   record.snapshot.totalHeight = 60
   record.snapshot.viewport.visibleRange = { start: 0, end: 3 }
 
-  expect(writeEditorVisibleSnapshotCache(record).status).toBe('written')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, record).status).toBe('written')
 })
 
 function readMatchingSnapshot() {
-  return readEditorVisibleSnapshotCache({
+  return readEditorVisibleSnapshotCache(testScopedStorage, {
     contentVersion: CONTENT_VERSION,
     rootPath: '/repo',
     path: '/repo/src/app.ts',
@@ -434,7 +456,7 @@ function paintChunkWithRuns(count: number) {
 }
 
 function writeUntyped(value: unknown) {
-  return writeEditorVisibleSnapshotCache(value as CachedEditorVisibleSnapshot)
+  return writeEditorVisibleSnapshotCache(testScopedStorage, value as CachedEditorVisibleSnapshot)
 }
 
 type Mutable<T> = {
@@ -451,7 +473,11 @@ function memoryLocalStorage({ failSnapshotWrites = false } = {}): Storage {
     key: (index) => Array.from(STORE.keys())[index] ?? null,
     removeItem: (key) => void STORE.delete(key),
     setItem: (key, value) => {
-      if (failSnapshotWrites && key === EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY) {
+      if (
+        failSnapshotWrites &&
+        key ===
+          `env:${testScopedStorage.environmentId}|${EDITOR_VISIBLE_SNAPSHOT_CACHE_STORAGE_KEY}`
+      ) {
         throw new DOMException('localStorage quota exceeded')
       }
 

@@ -5,7 +5,8 @@ import { RingLoader } from '@workspace/ui/components/ring-loader'
 import { Spinner } from '@workspace/ui/components/spinner'
 
 import { clientForQueryClient, originForQueryClient } from '@/lib/environments/state/query-clients'
-import { selectServerConnection, useEnvironmentsStore } from '@/lib/environments/state/store'
+import { selectServerConnection } from '@workspace/client-core/environments/state/store'
+import { useEnvironmentsStore } from '@/lib/environments/state/store'
 import { readEnvironmentDescriptor } from '@/lib/environments/utils/descriptor'
 import { toClientError } from '@/lib/client-error-taxonomy'
 
@@ -16,6 +17,10 @@ export function EnvironmentConnectionGate({
   readonly origin: string
   readonly children: ReactNode
 }) {
+  const known = useEnvironmentsStore(
+    (state) =>
+      state.entries[origin]?.descriptor !== null && Boolean(state.entries[origin]?.environmentId),
+  )
   const connection = useEnvironmentsStore((state) => selectServerConnection(state, origin))
   const query = useQuery({
     queryKey: ['environment-descriptor'],
@@ -24,6 +29,7 @@ export function EnvironmentConnectionGate({
       readEnvironmentDescriptor(originForQueryClient(client), signal, clientForQueryClient(client)),
     retry: false,
   })
+  if (known) return children
   const refused = connection.phase === 'identity-drift' || connection.phase === 'protocol-mismatch'
   if (refused || (query.isError && !query.data)) {
     return (

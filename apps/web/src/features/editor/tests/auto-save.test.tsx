@@ -12,7 +12,7 @@ import { createTestEditorRuntime } from '../../../../test/factories/editor-runti
 import { useAutoSave } from '@/features/editor/hooks/use-auto-save'
 import { WorkspaceEditServiceContext } from '@/features/editor/providers/workspace-edit-context'
 import type { WorkspaceEditService } from '@/features/editor/state/workspace-edit-service'
-import { settingsKeys } from '@/features/settings/utils/query-keys'
+import { settingsKeys } from '@workspace/client-core/settings/query-keys'
 import type { FileResult } from '@/lib/file-system-types'
 
 function harness(

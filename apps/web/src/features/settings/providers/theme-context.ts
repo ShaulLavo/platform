@@ -1,7 +1,7 @@
 import type { SettingsValues } from '@workspace/contracts'
 import { createContext } from 'react'
 
-import type { SettingsSubmission } from '@/features/settings/state/intent-store'
+import type { SettingsSubmission } from '@workspace/client-core/settings/intent-store'
 
 export type Theme = SettingsValues['workbench.colorTheme']
 export type ResolvedTheme = Exclude<Theme, 'system'>

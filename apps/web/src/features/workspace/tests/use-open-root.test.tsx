@@ -192,6 +192,7 @@ function emptyWorkspaceStore() {
     searchBuffers: {},
     uiMode: 'workbench',
     workbenchLayout: createDefaultWorkbenchLayout(),
+    worktreeIdByRootPath: {},
     workspaceOrder: [],
     workspaces: {},
   })

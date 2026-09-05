@@ -1,5 +1,4 @@
-import { treaty } from '@elysia/eden'
-import type { App } from 'server/testing'
+import { createEnvironmentClient, type Client } from '@workspace/client-core/transport/client'
 
 import type { TestServer } from './server'
 
@@ -11,7 +10,7 @@ type InjectedSettingsError = {
 
 // Eden client that calls the real app directly — every request goes through
 // `app.handle`, so there is no socket, no port, and nothing mocked.
-export function createInProcessClient(server: TestServer): ReturnType<typeof treaty<App>> {
+export function createInProcessClient(server: TestServer): Client {
   return createClient(server, directInProcessFetcher(server))
 }
 
@@ -330,9 +329,10 @@ function normalizeInProcessSseHeaders(response: Response) {
 }
 
 function createClient(server: TestServer, fetcher: typeof fetch) {
-  return treaty<App>(server.origin, {
+  return createEnvironmentClient({
+    origin: server.origin,
     fetcher,
-    headers: { origin: server.origin },
+    headers: () => ({ origin: server.origin }),
   })
 }
 

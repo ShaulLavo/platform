@@ -56,7 +56,11 @@ export async function lspRouteSemanticTokens(
   pool: LspNegotiationSource,
 ) {
   const match = query.server
-    ? await resolveExplicitLspRouteMatch(paths, routeMatchInput(query), settings)
+    ? await resolveExplicitLspRouteMatch(
+        resolveRouteTarget(paths, routeMatchInput(query)),
+        query.server,
+        settings,
+      )
     : bestLspMatchForFeature(
         await resolveLspRouteMatches(paths, routeMatchInput(query), settings),
         'semanticTokens',
@@ -112,13 +116,27 @@ export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig, deps: LspRou
           outcome: 'auth_failed',
           status: authError.statusCode,
         })
-        socket.close()
+        socket.close(1008, 'unauthorized')
+        return
+      }
+
+      const target = resolveRouteTarget(fs.paths, socket)
+      if (!target) {
+        rejectPendingLspSession(sessions, socket, pending)
+        recordProcessWarning('lsp.session.rejected', {
+          area: 'lsp',
+          operation: 'open',
+          outcome: 'invalid_root',
+          path: socket.path,
+          rootPath: socket.root,
+        })
+        socket.close(1008, 'invalid-root')
         return
       }
 
       const match = await resolveExplicitLspRouteMatch(
-        fs.paths,
-        socket,
+        target,
+        socket.serverId,
         deps.settings(),
         resolveServer,
       )
@@ -172,15 +190,7 @@ export function lspRoutes(fs: LspRouteFileSystem, auth: AuthConfig, deps: LspRou
   }
 }
 
-/**
- * Says why before closing, for the two rejections that happen after auth.
- *
- * Without it these are bare closes, and a bare close is the failure mode §7.1
- * describes: the browser's transport clears its handlers and reports nothing, so
- * a language server that never started looks exactly like one that is fine. An
- * auth rejection deliberately gets no reason — that one is answering a client
- * that has not proved it should be told anything.
- */
+// Backend failures use an LSP notification; policy refusals use close code 1008.
 function closeWithReason(socket: LspWebSocket, outcome: string, serverId: string) {
   socket.send(
     JSON.stringify({
@@ -285,20 +295,17 @@ async function resolveLspRouteMatches(
 }
 
 async function resolveExplicitLspRouteMatch(
-  paths: WorkspacePaths,
-  input: LspRouteMatchInput,
+  target: ReturnType<typeof resolveRouteTarget>,
+  serverId: string | null,
   settings: LspSettings,
   resolve: typeof resolveLspServer = resolveLspServer,
 ): Promise<LspServerMatch | null> {
-  if (!input.serverId) return null
+  if (!target || !serverId) return null
 
   try {
-    const target = resolveRouteTarget(paths, input)
-    if (!target) return null
-
     return resolve({
       filePath: target.filePath,
-      serverId: input.serverId,
+      serverId,
       settings,
       workspaceRoot: target.workspaceRoot,
     })
@@ -310,9 +317,13 @@ async function resolveExplicitLspRouteMatch(
 function resolveRouteTarget(paths: WorkspacePaths, input: LspRouteMatchInput) {
   if (!input.path) return null
 
-  return {
-    filePath: paths.resolve(input.path).absolutePath,
-    workspaceRoot: paths.resolve(input.root).absolutePath,
+  try {
+    return {
+      filePath: paths.resolve(input.path).absolutePath,
+      workspaceRoot: paths.resolve(input.root).absolutePath,
+    }
+  } catch {
+    return null
   }
 }
 
@@ -331,7 +342,7 @@ function routeMatchInput(query: v.InferOutput<typeof lspMatchQuerySchema>): LspR
 }
 
 type LspWebSocket = {
-  close(): unknown
+  close(code?: number, reason?: string): unknown
   data: unknown
   key: object
   path: string
@@ -347,7 +358,8 @@ function websocketObject(value: unknown): LspWebSocket | null {
   const close = value.close
   const send = value.send
   return {
-    close: () => (typeof close === 'function' ? close.call(value) : undefined),
+    close: (code, reason) =>
+      typeof close === 'function' ? close.call(value, code, reason) : undefined,
     data: value.data,
     key: websocketKey(value),
     path: queryValue(value.data, 'path') ?? '',

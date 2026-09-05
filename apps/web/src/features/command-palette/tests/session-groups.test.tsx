@@ -123,6 +123,7 @@ function sessionItem(
     key: scopedSessionKey({ environmentId: TEST_ENVIRONMENT_ID, sessionId: id }),
     environmentId: TEST_ENVIRONMENT_ID,
     machineLabel: null,
+    stale: false,
     projectGroupKey: projectId,
     attentionReason: null,
     hasError: false,

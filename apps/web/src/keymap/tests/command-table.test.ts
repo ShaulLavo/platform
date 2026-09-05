@@ -5,7 +5,7 @@ import { expect, test as it } from '../../../test/fixtures'
 
 import { platformCommandSpecs } from '@/keymap/command-registry'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
-import type { CommandUndoCategory, CommandWhen } from '@/keymap/define-command'
+import type { CommandUndoCategory, CommandWhen } from '@workspace/client-core/commands/metadata'
 import {
   hiddenPaletteCommandIds,
   platformCommand,

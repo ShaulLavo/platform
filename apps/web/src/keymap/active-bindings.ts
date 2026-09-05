@@ -2,7 +2,12 @@ import { detectPlatform } from '@tanstack/hotkeys'
 import type { KeybindingOverrides } from '@workspace/contracts'
 
 import type { FocusArea } from '@/lib/focus/state/service'
-import { chordKeys, isBindableChord, keysConflict, parsedChord } from '@/keymap/utils/chord'
+import {
+  chordKeys,
+  isBindableChord,
+  keysConflict,
+  parsedChord,
+} from '@workspace/client-core/commands/chord'
 
 import { commandHotkeyMeta } from '@/keymap/command-registry'
 import { platformCommand, platformCommands } from '@/keymap/table'

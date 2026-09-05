@@ -121,7 +121,7 @@ export class TerminalService {
         outcome: 'auth_failed',
         status: authError.statusCode,
       })
-      socket.close()
+      socket.close(1008, 'unauthorized')
       return
     }
 
@@ -153,7 +153,7 @@ export class TerminalService {
         operation: 'open',
         outcome: 'invalid_root',
       })
-      socket.close()
+      socket.close(1008, 'invalid-root')
       return
     }
 
@@ -347,12 +347,14 @@ export class TerminalSession {
 
     this.disposed = true
     this.cancelDetachTimer()
+    const connection = this.connection
     this.connection = null
     this.dataDisposable?.dispose()
     this.exitDisposable?.dispose()
     this.killPty(options.kill ?? true)
     this.recordSession()
     this.onDispose(this)
+    connection?.close()
   }
 
   private emitReady() {
@@ -514,7 +516,7 @@ export class TerminalSession {
 const socketSessions = new WeakMap<object, TerminalSession>()
 
 type TerminalWebSocket = {
-  close(): unknown
+  close(code?: number, reason?: string): unknown
   data: unknown
   key: object
   input: TerminalOpenInput | null
@@ -528,7 +530,8 @@ function terminalWebSocketObject(value: unknown): TerminalWebSocket | null {
   const close = value.close
   const send = value.send
   return {
-    close: () => (typeof close === 'function' ? close.call(value) : undefined),
+    close: (code, reason) =>
+      typeof close === 'function' ? close.call(value, code, reason) : undefined,
     data: value.data,
     key: websocketKey(value),
     input: openInputFromWebSocketData(value.data),

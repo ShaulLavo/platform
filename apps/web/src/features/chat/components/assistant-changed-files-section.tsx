@@ -1,3 +1,4 @@
+import { useChatTransport } from '@/features/chat/hooks/use-chat-transport'
 import { CaretRightIcon } from '@phosphor-icons/react'
 import { cn } from '@workspace/ui/lib/utils'
 import { useState } from 'react'
@@ -28,7 +29,8 @@ const ACTION_BUTTON_CLASS =
 
 export function AssistantChangedFilesSection({ summary }: { summary: ChatTurnDiffSummary }) {
   const { openCheckpointDiff, openSessionCheckpointDiff } = useChatTimelineActions()
-  const expansionKey = chatChangedFilesExpansionKey(summary)
+  const { environmentId } = useChatTransport()
+  const expansionKey = chatChangedFilesExpansionKey(environmentId, summary)
   const expansion = useChatChangedFilesExpansionStore((state) => state.expansionByKey[expansionKey])
   const setCardExpanded = useChatChangedFilesExpansionStore((state) => state.setCardExpanded)
   const setDirectoriesExpanded = useChatChangedFilesExpansionStore(

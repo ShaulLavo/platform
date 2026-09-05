@@ -15,7 +15,7 @@ import {
   type BuiltinEditorThemeDefinition,
 } from '@/features/editor/utils/theme-catalog'
 import { shikiThemeContentHash } from '@/features/editor/utils/theme-content-hash'
-import { loadVscodeThemeRegistration } from '@/features/editor/utils/shiki-themes'
+import { loadVscodeThemeRegistration } from '@workspace/client-core/themes/registration'
 import { log } from '@/lib/client-logging'
 import { clientErrors, createClientInvariantError } from '@/lib/structured-errors'
 

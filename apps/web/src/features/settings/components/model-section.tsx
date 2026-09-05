@@ -7,6 +7,7 @@ import { providerListQueryOptions } from '@/features/chat/utils/provider-query'
 import { useSettingValue } from '../hooks/use-setting-value'
 import { EmptyRow } from './empty-row'
 import { ModelRow } from './model-row'
+import { useSettingsOwner } from '@/features/settings/hooks/use-settings-owner'
 
 /**
  * The model list, as the single control over both `models.hidden` and `models.order`.
@@ -24,7 +25,7 @@ import { ModelRow } from './model-row'
  * instead, which is what this screen exists to toggle.
  */
 export function ModelSection() {
-  const { data } = useQuery(providerListQueryOptions())
+  const { data } = useQuery(providerListQueryOptions(), useSettingsOwner())
   const hidden = useSettingValue('models.hidden')
   const order = useSettingValue('models.order')
   const rows = modelPreferenceRows(providerModelOptions(data?.providers), { hidden, order })

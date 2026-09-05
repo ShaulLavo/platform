@@ -13,19 +13,19 @@ a bare root `bun run verify`.
 
 ## Executable plan inventory
 
-| Plan                                                                                    | State                                   |
-| --------------------------------------------------------------------------------------- | --------------------------------------- |
-| [066 — package Ghostty config resolver](066-package-ghostty-config-resolver.md)         | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
-| [067 — integrate Ghostty config appearance](067-integrate-ghostty-config-appearance.md) | **BLOCKED ON 066 REVIEWED ARTIFACT**    |
-| [078 — federated environments](078-federated-environments.md)                           | **NEXT ENVIRONMENTS SLICE**             |
-| [069 — worktree lifecycle](069-worktree-lifecycle.md)                                   | **PROPOSED — ROOT SCHEDULING**          |
-| [071 — syntax highlight retry](071-syntax-highlight-retry.md)                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
-| [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                         | **IMPLEMENTED — BROWSER VERIFIED**      |
-| [057 — standalone Editor chords and shared keymap](057-editor-native-vscode-keymap.md)  | **NEXT — STANDALONE EXECUTION FIRST**   |
-| [073 — Electrobun 2.x migration](073-electrobun-v2-migration.md)                        | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
-| [074 — Bun-native PTY](074-bun-native-pty.md)                                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
-| [075 — terminal renderer fallbacks](075-terminal-renderer-fallbacks.md)                 | **PROPOSED — BLOCKED ON TIER DECISION** |
-| [076 — watch-reload child reaping](076-watch-reload-child-reaping.md)                   | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
+| Plan                                                                                    | State                                                    |
+| --------------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| [066 — package Ghostty config resolver](066-package-ghostty-config-resolver.md)         | **PROPOSED — ROOT GO/NO-GO SCHEDULING**                  |
+| [067 — integrate Ghostty config appearance](067-integrate-ghostty-config-appearance.md) | **BLOCKED ON 066 REVIEWED ARTIFACT**                     |
+| [078 — federated environments](078-federated-environments.md)                           | **IMPLEMENTED — AUTOMATED CHECKS PASS; LIVE GATES OPEN** |
+| [069 — worktree lifecycle](069-worktree-lifecycle.md)                                   | **PROPOSED — ROOT SCHEDULING**                           |
+| [071 — syntax highlight retry](071-syntax-highlight-retry.md)                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING**                  |
+| [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                         | **IMPLEMENTED — BROWSER VERIFIED**                       |
+| [057 — standalone Editor chords and shared keymap](057-editor-native-vscode-keymap.md)  | **NEXT — STANDALONE EXECUTION FIRST**                    |
+| [073 — Electrobun 2.x migration](073-electrobun-v2-migration.md)                        | **PROPOSED — ROOT GO/NO-GO SCHEDULING**                  |
+| [074 — Bun-native PTY](074-bun-native-pty.md)                                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING**                  |
+| [075 — terminal renderer fallbacks](075-terminal-renderer-fallbacks.md)                 | **PROPOSED — BLOCKED ON TIER DECISION**                  |
+| [076 — watch-reload child reaping](076-watch-reload-child-reaping.md)                   | **PROPOSED — ROOT GO/NO-GO SCHEDULING**                  |
 
 ## Dependency notes
 
@@ -42,13 +42,14 @@ a bare root `bun run verify`.
   before editor consumers mount. Switching preserves unsaved buffers and routes pending work to
   its original owner. Query consumers remount under one outer command bus that captures the active
   runtime. Chat transports close explicitly and WebSocket auth refusal uses `1008`. Focused tests
-  and the two-server A → B → A browser workflow pass. The dev-only loopback switch and shared
-  browser persistence remain until Plan 078.
+  and the two-server A → B → A browser workflow pass. Plan 078 removes the dev-only loopback
+  switch and scopes browser persistence by confirmed environment identity.
 - Plan 068 is implemented and its executable plan is deleted. The
   [session-domain reference](../docs/session-domain.md) links the contracts, registration,
   recovery, discovery, and environment-scoped navigation tests. It supplies explicit
   Project → Worktree → Session ownership and the server's three attention states.
-- Plan 078 is the next environments slice: the `environments.machines` setting and page, the
+- Plan 078 is implemented with automated checks passing and live localhost SSH
+  and browser gates open. It supplies the `environments.machines` setting and page, the
   desktop SSH launcher (probe, reuse-or-launch, loopback forward, no install, no pairing), one chat
   connection per machine, scoped persistence, the flat cross-machine rail with repository grouping,
   chips and a machine filter, add-project-on-machine, and the workbench switch. Direct `https://`

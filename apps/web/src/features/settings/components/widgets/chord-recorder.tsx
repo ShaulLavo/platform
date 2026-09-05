@@ -1,18 +1,15 @@
 import { Button } from '@workspace/ui/components/button'
 import { useState, type KeyboardEvent } from 'react'
 
-import {
-  recordedStroke,
-  recorderLabel,
-  recordingControl,
-} from '@/features/settings/utils/recording'
+import { recorderLabel } from '@/features/settings/utils/recording'
+import { recordedStroke, recordingControl } from '@workspace/client-core/settings/recording'
 import type { PlatformKeyBinding } from '@/keymap/types'
 import {
   isBindableChord,
   isChordPrefix,
   MAX_CHORD_STROKES,
   normalizedChord,
-} from '@/keymap/utils/chord'
+} from '@workspace/client-core/commands/chord'
 
 export function ChordRecorder({
   bindings = [],

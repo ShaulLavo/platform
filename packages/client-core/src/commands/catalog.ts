@@ -1,0 +1,29 @@
+import { settingsCommandMetadata } from './settings'
+import { editorCommandMetadata } from './editor'
+import { environmentCommandMetadata } from './environment'
+import { foundationCommandMetadata } from './foundation'
+import { SESSION_JUMP_POSITIONS } from './session-jump'
+import { sessionJumpMetadata, workspaceCommandMetadata } from './workspace'
+import type { CommandMetadata } from './metadata'
+
+export const commandMetadata = [
+  ...Object.values(workspaceCommandMetadata),
+  ...Object.values(editorCommandMetadata),
+  ...Object.values(environmentCommandMetadata),
+  ...SESSION_JUMP_POSITIONS.map(sessionJumpMetadata),
+  ...Object.values(foundationCommandMetadata),
+  ...Object.values(settingsCommandMetadata),
+]
+
+export type CommandId = (typeof commandMetadata)[number]['id']
+const byId: ReadonlyMap<string, CommandMetadata<CommandId>> = new Map(
+  commandMetadata.map((command) => [command.id, command]),
+)
+
+export function commandById(id: string): CommandMetadata<CommandId> | null {
+  return byId.get(id) ?? null
+}
+
+export function isCommandId(id: string): id is CommandId {
+  return byId.has(id)
+}

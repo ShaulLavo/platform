@@ -1,3 +1,4 @@
+import { testScopedStorage } from '../../../../test/factories/scoped-storage'
 import { createTestApplicationRuntime } from '../../../../test/factories/application-runtime'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -9,13 +10,11 @@ import { createTestQueryClient, renderWithProviders } from '../../../../test/ren
 import { TestCommandProvider } from '../../../../test/factories/command-runtime'
 import { CommandPalette } from '@/components/command-palette'
 import { TestEditorStateProvider as EditorStateProvider } from '../../../../test/factories/editor-state-provider'
-import {
-  resetSettingsIntentStore,
-  useSettingsIntentStore,
-} from '@/features/settings/state/intent-store'
+import { useSettingsIntentStore } from '@/features/settings/state/intent-store'
+import { resetSettingsIntentStore } from '@workspace/client-core/settings/intent-store'
 import { resetSettingsSnapshotAdmission } from '@/features/settings/state/snapshot-admission'
 import { fetchSettings } from '@/features/settings/utils/api'
-import { settingsKeys } from '@/features/settings/utils/query-keys'
+import { settingsKeys } from '@workspace/client-core/settings/query-keys'
 import { useTheme } from '@/features/settings/hooks/use-theme'
 import { writeRootFolderCache } from '@/features/workspace/state/cache'
 
@@ -23,7 +22,7 @@ test('real palette preview and cancel write nothing while selection dispatches o
   controlledClient,
 }) => {
   resetSettingsIntentStore()
-  writeRootFolderCache(null)
+  writeRootFolderCache(testScopedStorage, null)
   const queryClient = createTestQueryClient()
   const before = await fetchSettings()
   queryClient.setQueryData(settingsKeys.document(), before)
@@ -80,7 +79,7 @@ test('real palette preview and cancel write nothing while selection dispatches o
   resetSettingsSnapshotAdmission(queryClient)
   resetSettingsIntentStore()
   queryClient.clear()
-  writeRootFolderCache(null)
+  writeRootFolderCache(testScopedStorage, null)
 })
 
 function PaletteHarness() {

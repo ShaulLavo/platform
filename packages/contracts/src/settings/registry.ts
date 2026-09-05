@@ -1,6 +1,7 @@
 import * as v from 'valibot'
 import { isRecord } from '../is-record'
 import type { ModelRef, ProviderInstanceConfig } from '../settings'
+import type { MachineDefinition } from '../machines'
 
 /**
  * A dotted key, lowercase-ish, with no empty segments. Deliberately rejects the
@@ -44,6 +45,7 @@ export type SettingWidget =
   | 'keybindings'
   | 'providers'
   | 'models'
+  | 'machines'
   | 'complex'
 
 /**
@@ -79,6 +81,7 @@ type ValueWidget<TValue> =
   | (TValue extends readonly unknown[] ? 'list' : never)
   | (TValue extends readonly ProviderInstanceConfig[] ? 'providers' : never)
   | (TValue extends readonly ModelRef[] ? 'models' : never)
+  | (TValue extends Readonly<Record<string, MachineDefinition>> ? 'machines' : never)
   | (TValue extends Readonly<Record<string, string | null>> ? 'record' | 'keybindings' : never)
 
 /**

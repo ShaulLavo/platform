@@ -11,7 +11,8 @@ import {
   portFromEnv,
   runtimeUrl,
 } from '../../../../scripts/runtime-network'
-import type { DesktopRPC, PlatformPickOptions } from '../shared/rpc'
+import type { DesktopRPC } from '../shared/rpc'
+import type { PlatformPickOptions } from '../shared/bridge'
 import {
   handoffPrelude,
   shellBackdrop,
@@ -27,6 +28,10 @@ import {
   shouldInheritChildOutput,
 } from './observability'
 import { attachWindowVibrancy } from './vibrancy'
+import { readSshClientId } from './ssh/client-id'
+import { createSshLauncher } from './ssh/launcher'
+import { readPrimaryMachines } from './ssh/records'
+import { createQuitHandler } from './quit'
 
 type ChildProcess = ReturnType<typeof Bun.spawn>
 
@@ -51,12 +56,21 @@ const SERVER_ALLOWED_ORIGINS = allowedOriginsForWebPort(
 )
 const childProcesses = new Set<ChildProcess>()
 
-let stopping = false
+let stopping: Promise<void> | null = null
+let sshLauncher: ReturnType<typeof createSshLauncher> | null = null
 
-Electrobun.events.on('before-quit', async () => {
-  await stopProcesses()
-  await flushDesktopObservability()
-})
+Electrobun.events.on(
+  'before-quit',
+  createQuitHandler({
+    cleanup: async () => {
+      await stopProcesses()
+      await flushDesktopObservability()
+    },
+    quit: Utils.quit,
+    reportError: (error) =>
+      recordDesktopError('desktop.stop_failed', { error: errorMessage(error) }),
+  }),
+)
 
 try {
   await startDesktop()
@@ -129,14 +143,24 @@ function spawnWeb() {
 }
 
 async function openMainWindow() {
+  const clientId = await readSshClientId(Utils.paths.userData)
   const rpc = BrowserView.defineRPC<DesktopRPC>({
     maxRequestTime: 120_000,
     handlers: {
       requests: {
         pickEntry,
+        connectMachine: ({ name }) => launcher.connectMachine(name),
+        disconnectMachine: ({ name }) => launcher.disconnectMachine(name),
       },
     },
   })
+  const launcher = createSshLauncher({
+    clientId,
+    webOrigin: WEB_URL,
+    readMachines: () => readPrimaryMachines(SERVER_URL, WEB_URL),
+    publish: (state) => rpc.send.machineState(state),
+  })
+  sshLauncher = launcher
   const backdrop = await resolveBackdrop()
 
   new BrowserWindow({
@@ -434,10 +458,8 @@ function canConnect(host: string, port: number) {
   })
 }
 
-async function stopProcesses() {
-  if (stopping) return
-
-  stopping = true
+function stopProcesses(): Promise<void> {
+  if (stopping) return stopping
   const children = [...childProcesses]
   childProcesses.clear()
 
@@ -445,7 +467,11 @@ async function stopProcesses() {
     child.kill()
   }
 
-  await Promise.allSettled(children.map((child) => child.exited))
+  stopping = Promise.allSettled([
+    sshLauncher?.close(),
+    ...children.map((child) => child.exited),
+  ]).then(() => undefined)
+  return stopping
 }
 
 function allowedFileTypes(accept: readonly string[] | undefined) {

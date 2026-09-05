@@ -1,3 +1,4 @@
+import { testScopedStorage } from '../../../../../test/factories/scoped-storage'
 import { TEST_ENVIRONMENT_ID as FIXTURE_ENVIRONMENT_ID } from '../../../../../test/factories/chat'
 import { afterEach, beforeEach } from 'vitest'
 import { DEFAULT_PROVIDER_INSTANCE_ID } from '@workspace/contracts'
@@ -35,6 +36,7 @@ beforeEach(() => {
     value: quotaLimitedLocalStorage(),
   })
   resetChatInputDraftStore()
+  hydrateChatInputDraftStoreFromStorage(testScopedStorage)
 })
 
 afterEach(() => {
@@ -48,7 +50,7 @@ test('persists a draft with images without writing the image bytes', () => {
 
   expect(flushChatInputDraftStorage()).toBe(true)
 
-  const raw = STORE.get(CHAT_INPUT_DRAFT_STORAGE_KEY) ?? ''
+  const raw = testScopedStorage.getItem(CHAT_INPUT_DRAFT_STORAGE_KEY) ?? ''
   expect(raw).not.toContain('base64')
   expect(JSON.parse(raw).version).toBe(2)
   // The composer still shows the attachment — only the persisted copy loses it.
@@ -66,7 +68,7 @@ test('restores prompt and model selection but drops attachments on hydrate', () 
   expect(flushChatInputDraftStorage()).toBe(true)
 
   resetChatInputDraftStore()
-  hydrateChatInputDraftStoreFromStorage()
+  hydrateChatInputDraftStoreFromStorage(testScopedStorage)
 
   const draft = useChatInputDraftStore.getState().getDraft(TARGET)
   expect(draft.prompt).toBe('Explain this screenshot')
@@ -87,7 +89,7 @@ test('keeps the text draft when the images would blow the storage quota', () => 
   expect(useChatInputDraftStore.getState().persistenceError).toBeNull()
 
   resetChatInputDraftStore()
-  hydrateChatInputDraftStoreFromStorage()
+  hydrateChatInputDraftStoreFromStorage(testScopedStorage)
 
   expect(useChatInputDraftStore.getState().getDraft(TARGET).prompt).toBe(
     'Compare these two screenshots',
@@ -97,7 +99,7 @@ test('keeps the text draft when the images would blow the storage quota', () => 
 test('drops stored image records that carry no preview source', () => {
   const draftId =
     chatInputDraftStorageId(FIXTURE_ENVIRONMENT_ID, TARGET.rootPath, TARGET.draftKey) ?? ''
-  STORE.set(
+  testScopedStorage.setItem(
     CHAT_INPUT_DRAFT_STORAGE_KEY,
     JSON.stringify({
       draftsByKey: {
@@ -118,7 +120,7 @@ test('drops stored image records that carry no preview source', () => {
     }),
   )
 
-  hydrateChatInputDraftStoreFromStorage()
+  hydrateChatInputDraftStoreFromStorage(testScopedStorage)
 
   const draft = useChatInputDraftStore.getState().getDraft(TARGET)
   expect(draft.prompt).toBe('Ship it')
@@ -132,7 +134,7 @@ test('clears a draft after successful send cleanup', () => {
 
   expect(flushChatInputDraftStorage()).toBe(true)
   expect(useChatInputDraftStore.getState().getDraft(TARGET).prompt).toBe('')
-  expect(STORE.get(CHAT_INPUT_DRAFT_STORAGE_KEY)).toContain('"draftsByKey":{}')
+  expect(testScopedStorage.getItem(CHAT_INPUT_DRAFT_STORAGE_KEY)).toContain('"draftsByKey":{}')
 })
 
 test('keeps in-memory attachments when local storage persistence fails', () => {
@@ -156,7 +158,7 @@ test('captured terminal output survives a reload, unlike image bytes', () => {
   store.addImages(TARGET, [imageAttachment('image-1')])
 
   expect(flushChatInputDraftStorage()).toBe(true)
-  hydrateChatInputDraftStoreFromStorage()
+  hydrateChatInputDraftStoreFromStorage(testScopedStorage)
 
   const restored = useChatInputDraftStore.getState().getDraft(TARGET)
   expect(restored.terminalContexts).toEqual([terminalContext('context-1')])

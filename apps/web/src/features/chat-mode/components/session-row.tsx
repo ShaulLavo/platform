@@ -1,4 +1,5 @@
 import { SessionAttentionIndicator } from '@/features/chat-mode/components/session-attention-indicator'
+import { MachineChip } from '@/components/machine-chip'
 import { scopedSessionKey } from '@workspace/contracts'
 import { Button } from '@workspace/ui/components/button'
 import { useSortable } from '@dnd-kit/sortable'
@@ -105,11 +106,15 @@ export function SessionRow({
           ) : null}
           {session.branch || session.machineLabel ? (
             <span className='flex min-w-0 items-center gap-1.5 pl-[14px] text-[11px] leading-4 opacity-60'>
-              <GitBranchIcon className='size-3 shrink-0' />
-              <span className='truncate'>
-                {[session.machineLabel, session.branch].filter(Boolean).join(' · ')}
+              {session.machineLabel ? <MachineChip label={session.machineLabel} /> : null}
+              {session.branch ? <GitBranchIcon className='size-3 shrink-0' /> : null}
+              <span className='truncate' title={session.worktreePath}>
+                {session.branch}
               </span>
             </span>
+          ) : null}
+          {session.stale ? (
+            <span className='text-warning pl-[14px] text-[10px]'>Cached · machine unavailable</span>
           ) : null}
           {session.hasError ? (
             <span className='text-destructive pl-[14px] text-[11px]'>Error</span>

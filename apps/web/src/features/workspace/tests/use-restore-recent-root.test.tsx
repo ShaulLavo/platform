@@ -1,3 +1,4 @@
+import { testScopedStorage } from '../../../../test/factories/scoped-storage'
 import { waitFor } from '@testing-library/react'
 
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
@@ -32,7 +33,7 @@ test('restores the most recent backend folder when browser workspace state is em
   )
 
   await waitFor(() => expect(workspaceStore.getState().rootFolder?.path).toBe('anubis'))
-  await waitFor(() => expect(readWorkspaceCache().rootFolder?.path).toBe('anubis'))
+  await waitFor(() => expect(readWorkspaceCache(testScopedStorage).rootFolder?.path).toBe('anubis'))
 })
 
 function RecentWorkspaceRecovery() {
@@ -49,6 +50,7 @@ function emptyWorkspaceStore() {
     searchBuffers: {},
     uiMode: 'workbench',
     workbenchLayout: createDefaultWorkbenchLayout(),
+    worktreeIdByRootPath: {},
     workspaceOrder: [],
     workspaces: {},
   })

@@ -4,9 +4,9 @@ import type { SettingsOperation, SettingsSnapshot, SettingsValues } from '@works
 import {
   activeSettingsIntentsFor,
   type ActiveSettingsIntent,
-} from '@/features/settings/state/intent-store'
-import { projectSettings } from '@/features/settings/utils/projection'
-import { settingsKeys } from '@/features/settings/utils/query-keys'
+} from '@workspace/client-core/settings/intent-store'
+import { projectSettings } from '@workspace/client-core/settings/projection'
+import { settingsKeys } from '@workspace/client-core/settings/query-keys'
 
 type ColorTheme = SettingsValues['workbench.colorTheme']
 

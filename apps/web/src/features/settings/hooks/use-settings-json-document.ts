@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
 import { useEditorDocumentState } from '@/features/editor/state/document-state'
 import { useSettingsDocument } from '@/features/settings/hooks/use-settings-document'
@@ -28,7 +29,7 @@ import { settingsJsonDocumentId } from '@/features/settings/utils/json-document'
 export function useSettingsJsonDocument(tabId: string, tabPath: string) {
   const scope = useSettingsScope()
   const view = useSettingsView()
-  const settings = useSettingsDocument()
+  const settings = useSettingsDocument(useQueryClient())
   const active = isSettingsDocumentId(tabPath) && view === 'json'
   const documentId = active ? settingsJsonDocumentId(scope) : null
   const file = active ? settings.data?.layers.find((layer) => layer.id === scope)?.file : undefined

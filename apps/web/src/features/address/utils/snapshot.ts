@@ -1,4 +1,4 @@
-import type { Address } from '@/features/address/utils/grammar'
+import type { Address } from '@workspace/client-core/address/grammar'
 import { log } from '@/lib/client-logging'
 import { reportTabOmission } from '@/features/address/state/tab-omission-logging'
 import { documentTokenForPath } from '@/features/address/utils/document-token'
@@ -7,8 +7,8 @@ import {
   formatAddress,
   MAX_APPLIED_TABS,
   TAB_SEPARATOR,
-} from '@/features/address/utils/grammar'
-import { NO_WORKSPACE_SLUG, workspaceSlug } from '@/features/address/utils/slug'
+} from '@workspace/client-core/address/grammar'
+import { NO_WORKSPACE_SLUG, workspaceSlug } from '@workspace/client-core/address/slug'
 import { isSettingsDocumentId } from '@/features/settings/utils/document'
 
 /**

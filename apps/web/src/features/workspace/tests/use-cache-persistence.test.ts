@@ -1,3 +1,4 @@
+import { testScopedStorage } from '../../../../test/factories/scoped-storage'
 import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/layout'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -217,6 +218,7 @@ function harness() {
   const searchStore = createSearchBufferStore()
   const writes: CacheWrite[] = []
   const unsubscribe = subscribeWorkspaceCachePersistence({
+    storage: testScopedStorage,
     cacheWriters: recordingCacheWriters(writes),
     documentStore,
     searchStore,
@@ -233,6 +235,7 @@ function cachedWorkspace(): CachedWorkspaceState {
     searchBuffers: {},
     uiMode: 'workbench',
     workbenchLayout: createDefaultWorkbenchLayout(),
+    worktreeIdByRootPath: {},
     workspaceOrder: ['/repo'],
     workspaces: {
       '/repo': {

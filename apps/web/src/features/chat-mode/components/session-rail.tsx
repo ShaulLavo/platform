@@ -24,6 +24,8 @@ import { SessionBulkBar } from '@/features/chat-mode/components/session-bulk-bar
 import { SessionGroup } from '@/features/chat-mode/components/session-group'
 import { SessionGroupHeader } from '@/features/chat-mode/components/session-group-header'
 import { SessionScopeMenu } from '@/features/chat-mode/components/session-scope-menu'
+import { SessionMachineMenu } from '@/features/chat-mode/components/session-machine-menu'
+import { MachineConnectionRows } from '@/features/chat-mode/components/machine-connection-rows'
 import { useRailDragSensors } from '@/features/chat-mode/hooks/use-rail-drag-sensors'
 import { useSessionSearch } from '@/features/chat-mode/hooks/use-session-search'
 import { useChatRailOrder } from '@/features/chat-mode/providers/rail-order-context'
@@ -58,6 +60,7 @@ export function SessionRail() {
   const collapsedProjectIds = useSessionRailStore((state) => state.collapsedProjectIds)
   const query = useSessionRailStore((state) => state.query)
   const scope = useSessionRailStore((state) => state.scope)
+  const machineFilter = useSessionRailStore((state) => state.machineFilter)
   const view = useSessionRailStore((state) => state.view)
   const setQuery = useSessionRailStore((state) => state.setQuery)
   const setScope = useSessionRailStore((state) => state.setScope)
@@ -80,6 +83,7 @@ export function SessionRail() {
     environments,
     query,
     scope,
+    machineFilter,
     searchMatches,
     seenBySessionKey,
     view,
@@ -146,6 +150,7 @@ export function SessionRail() {
           scopeTitle={model.scopeTitle}
           onSelectScope={setScope}
         />
+        <SessionMachineMenu />
         <Button
           aria-label='Archived sessions'
           aria-pressed={view === 'archived'}
@@ -189,6 +194,7 @@ export function SessionRail() {
           </Button>
         ) : null}
       </div>
+      <MachineConnectionRows />
       <div className='min-h-0 flex-1 overflow-y-auto'>
         <div className='compact:gap-1 compact:pb-2 flex flex-col gap-2 px-1 pb-3'>
           <DndContext

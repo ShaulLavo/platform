@@ -33,6 +33,20 @@ test('round-trips semantic operations through the real server', async ({ client 
   expect((await fetchSettings()).values).toEqual(result.snapshot.values)
 })
 
+test('preserves date-shaped setting strings exactly as saved', async ({ client }) => {
+  expect(client).toBeDefined()
+  const values = ['2026-09-05', '2026-09-05T12:34:56+03:00']
+
+  for (const [index, value] of values.entries()) {
+    await saveSettings({
+      mutationId: `literal-string-${index}`,
+      operations: [{ key: 'editor.fontFamily', kind: 'set', value }],
+      target: 'user',
+    })
+    expect((await fetchSettings()).values['editor.fontFamily']).toBe(value)
+  }
+})
+
 test('rejects a retained mutation id reused for another intent', async ({ client }) => {
   expect(client).toBeDefined()
 

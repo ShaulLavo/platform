@@ -1,3 +1,4 @@
+import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
 import type { Query, QueryClient } from '@tanstack/react-query'
 
 import {
@@ -28,6 +29,7 @@ import { createClientInvariantError } from '@/lib/structured-errors'
 const BENCHMARK_TARGET_TAB_PREFIX = 'editor-open-benchmark-target:'
 
 export function createEditorOpenBenchmarkControl({
+  storage,
   documentStore,
   fileOpenIntent,
   mountedEditors,
@@ -36,6 +38,7 @@ export function createEditorOpenBenchmarkControl({
   uiStore,
   workspaceStore,
 }: {
+  readonly storage: ScopedStorage
   readonly documentStore: EditorDocumentStoreApi
   readonly fileOpenIntent: FileOpenIntentService
   readonly mountedEditors: MountedEditorRegistry
@@ -73,6 +76,7 @@ export function createEditorOpenBenchmarkControl({
       resetRunning = true
       try {
         return await resetEditorOpenSample({
+          storage,
           commands,
           documentStore,
           fileOpenIntent,
@@ -89,6 +93,7 @@ export function createEditorOpenBenchmarkControl({
 }
 
 async function resetEditorOpenSample({
+  storage,
   commands,
   documentStore,
   fileOpenIntent,
@@ -98,6 +103,7 @@ async function resetEditorOpenSample({
   workspaceStore,
 }: {
   readonly commands: EditorCommands
+  readonly storage: ScopedStorage
   readonly documentStore: EditorDocumentStoreApi
   readonly fileOpenIntent: FileOpenIntentService
   readonly mountedEditors: MountedEditorRegistry
@@ -116,7 +122,7 @@ async function resetEditorOpenSample({
 
   await clearTargetQueries(request, queryClient)
   deleteCleanTargetDocument(request.path, documentStore)
-  removeEditorVisibleSnapshotCacheForPath(request)
+  removeEditorVisibleSnapshotCacheForPath(storage, request)
   const result = await fileOpenIntent.finishBenchmarkSample(request.sampleId)
   await Promise.all([
     ...result.highlighterRuntimeSessionIds.map((runtimeSessionId) =>
@@ -128,7 +134,7 @@ async function resetEditorOpenSample({
   ])
   await awaitEditorSyntaxWorkerIdleFences()
   await nextTaskAndFrame()
-  removeEditorVisibleSnapshotCacheForPath(request)
+  removeEditorVisibleSnapshotCacheForPath(storage, request)
   assertTargetStateCleared(request, documentStore, mountedEditors, queryClient, workspaceStore)
   fileOpenIntent.releaseBenchmarkSample(request.sampleId)
   return { ...result, quiescent: true as const }

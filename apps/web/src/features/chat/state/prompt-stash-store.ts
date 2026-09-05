@@ -1,3 +1,6 @@
+import type { EnvironmentId } from '@workspace/contracts'
+import { createClientInvariantError } from '@/lib/structured-errors'
+import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
 import * as v from 'valibot'
 import { create } from 'zustand'
 
@@ -36,44 +39,11 @@ type PromptStashStore = {
   takeEntry: (entryId: string) => PromptStashEntry | null
 }
 
-type StashStorage = Pick<Storage, 'getItem' | 'setItem'>
-
-// Ids only have to be unique within the queue, and two stashes can land in the
-// same millisecond, so the clock is paired with a counter rather than trusted
-// alone. Module scope, but deterministic — no import-time randomness.
-let entrySequence = 0
-
-/**
- * Reading the `localStorage` property itself can throw when storage is blocked
- * by policy, so the access is guarded rather than only the get/set calls on it —
- * otherwise importing this module would take down the app at load. Where there
- * is no storage at all the queue still works for the session; it simply does not
- * outlive the tab.
- */
-function resolveStashStorage(): StashStorage {
+function readPersistedEntries(storage: ScopedStorage): readonly PromptStashEntry[] {
   try {
-    if (typeof localStorage !== 'undefined') return localStorage
-  } catch {
-    // Blocked by policy: fall through to the in-memory queue.
-  }
+    const raw = storage.getItem(PROMPT_STASH_STORAGE_KEY)
+    if (!raw) return []
 
-  const values = new Map<string, string>()
-
-  return {
-    getItem: (key) => values.get(key) ?? null,
-    setItem: (key, value) => {
-      values.set(key, value)
-    },
-  }
-}
-
-const stashStorage = resolveStashStorage()
-
-function readPersistedEntries(): readonly PromptStashEntry[] {
-  const raw = stashStorage.getItem(PROMPT_STASH_STORAGE_KEY)
-  if (!raw) return []
-
-  try {
     const parsed = v.safeParse(stashStorageSchema, JSON.parse(raw))
 
     return parsed.success ? parsed.output.entries : []
@@ -87,9 +57,9 @@ function readPersistedEntries(): readonly PromptStashEntry[] {
  * keystroke, not a per-character autosave, so there is nothing to coalesce and
  * the caller needs an honest answer about whether the write landed.
  */
-function writeEntries(entries: readonly PromptStashEntry[]) {
+function writeEntries(storage: ScopedStorage, entries: readonly PromptStashEntry[]) {
   try {
-    stashStorage.setItem(PROMPT_STASH_STORAGE_KEY, JSON.stringify({ entries }))
+    storage.setItem(PROMPT_STASH_STORAGE_KEY, JSON.stringify({ entries }))
 
     return true
   } catch {
@@ -97,49 +67,66 @@ function writeEntries(entries: readonly PromptStashEntry[]) {
   }
 }
 
-export const usePromptStashStore = create<PromptStashStore>((set, get) => ({
-  entries: readPersistedEntries(),
-  removeEntry: (entryId) => {
-    const entries = get().entries
-    const next = entries.filter((entry) => entry.id !== entryId)
-    if (next.length === entries.length) return
+export function createPromptStashStore(storage: ScopedStorage) {
+  let entrySequence = 0
+  return create<PromptStashStore>((set, get) => ({
+    entries: readPersistedEntries(storage),
+    removeEntry: (entryId) => {
+      const entries = get().entries
+      const next = entries.filter((entry) => entry.id !== entryId)
+      if (next.length === entries.length) return
 
-    writeEntries(next)
-    set({ entries: next })
-  },
-  stashPrompt: (prompt) => {
-    const trimmed = prompt.trim()
-    if (!trimmed) return null
+      writeEntries(storage, next)
+      set({ entries: next })
+    },
+    stashPrompt: (prompt) => {
+      const trimmed = prompt.trim()
+      if (!trimmed) return null
 
-    entrySequence += 1
-    const entry: PromptStashEntry = {
-      createdAt: new Date().toISOString(),
-      id: `stash-${Date.now()}-${entrySequence}`,
-      prompt: trimmed,
-    }
-    const next = [entry, ...get().entries].slice(0, MAX_PROMPT_STASH_ENTRIES)
-    // A rejected write must leave nothing behind: the caller keeps the composer
-    // intact on failure, and a visible-but-unwritten entry would duplicate it.
-    if (!writeEntries(next)) return null
+      entrySequence += 1
+      const entry: PromptStashEntry = {
+        createdAt: new Date().toISOString(),
+        id: `stash-${Date.now()}-${entrySequence}`,
+        prompt: trimmed,
+      }
+      const next = [entry, ...get().entries].slice(0, MAX_PROMPT_STASH_ENTRIES)
+      // A rejected write must leave nothing behind: the caller keeps the composer
+      // intact on failure, and a visible-but-unwritten entry would duplicate it.
+      if (!writeEntries(storage, next)) return null
 
-    set({ entries: next })
+      set({ entries: next })
 
-    return entry
-  },
-  takeEntry: (entryId) => {
-    const entries = get().entries
-    const entry = entries.find((candidate) => candidate.id === entryId)
-    if (!entry) return null
+      return entry
+    },
+    takeEntry: (entryId) => {
+      const entries = get().entries
+      const entry = entries.find((candidate) => candidate.id === entryId)
+      if (!entry) return null
 
-    const next = entries.filter((candidate) => candidate.id !== entryId)
-    writeEntries(next)
-    set({ entries: next })
+      const next = entries.filter((candidate) => candidate.id !== entryId)
+      writeEntries(storage, next)
+      set({ entries: next })
 
-    return entry
-  },
-}))
+      return entry
+    },
+  }))
+}
+
+const promptStashes = new Map<EnvironmentId, ReturnType<typeof createPromptStashStore>>()
+
+export function initializePromptStashStore(storage: ScopedStorage) {
+  if (promptStashes.has(storage.environmentId)) return
+  promptStashes.set(storage.environmentId, createPromptStashStore(storage))
+}
+
+export function promptStashStoreFor(environmentId: EnvironmentId) {
+  const store = promptStashes.get(environmentId)
+  if (store) return store
+  throw createClientInvariantError('The machine prompt stash has not been initialized.')
+}
 
 export function resetPromptStashStore() {
-  writeEntries([])
-  usePromptStashStore.setState({ entries: [] })
+  for (const store of promptStashes.values()) {
+    for (const entry of store.getState().entries) store.getState().removeEntry(entry.id)
+  }
 }

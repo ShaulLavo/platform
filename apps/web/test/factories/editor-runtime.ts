@@ -1,7 +1,8 @@
+import { testScopedStorage } from './scoped-storage'
 import type { QueryClient } from '@tanstack/react-query'
 
 import { addressedWorkspaceCache } from '@/features/address/utils/cache'
-import { parseAddress } from '@/features/address/utils/grammar'
+import { parseAddress } from '@workspace/client-core/address/grammar'
 import { createEditorRuntime } from '@/features/editor/state/runtime'
 import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
 import { readWorkspaceCache, type CachedWorkspaceState } from '@/features/workspace/state/cache'
@@ -11,12 +12,13 @@ import { registerEnvironmentQueryClient } from '@/lib/environments/state/query-c
 export function createTestEditorRuntime(
   queryClient: QueryClient,
   workspaceCache: CachedWorkspaceState = addressedWorkspaceCache(
-    readWorkspaceCache(),
+    readWorkspaceCache(testScopedStorage),
     parseAddress(window.location.href),
   ),
 ) {
   registerEnvironmentQueryClient(queryClient, activeServerOrigin(), getClient())
   return createEditorRuntime({
+    storage: testScopedStorage,
     queryClient,
     workspaceCache,
     preparation: {

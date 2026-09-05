@@ -2,7 +2,7 @@ import {
   fileBackedDocumentPath,
   savableDocumentPath,
 } from '@/features/editor/utils/file-backed-document'
-import type { CommandTargetKind, CommandWhen } from '@/keymap/define-command'
+import type { CommandTargetKind, CommandWhen } from '@workspace/client-core/commands/metadata'
 import {
   editorKeyConditionMatches,
   type EditorKeyCondition,

@@ -6,7 +6,7 @@ import path from 'node:path'
 import { useLanguageServerMatches } from '@/features/editor/hooks/use-language-server-matches'
 import { useLanguageServerMatchConfiguration } from '@/features/editor/providers/language-server-match-context'
 import { languageServerMatchQueryOptions } from '@/features/editor/utils/language-server-match-query'
-import { settingsKeys } from '@/features/settings/utils/query-keys'
+import { settingsKeys } from '@workspace/client-core/settings/query-keys'
 import { expect, test } from '../../../../../test/fixtures'
 import { createTestQueryClient, renderHookWithProviders } from '../../../../../test/render'
 

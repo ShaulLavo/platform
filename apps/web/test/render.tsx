@@ -24,6 +24,10 @@ import { HotkeysProvider } from '@tanstack/react-hotkeys'
 import { ActiveEnvironmentApplication } from '@/components/active-environment-application'
 import { ApplicationRuntimeProvider } from '@/providers/application-runtime-provider'
 import type { ApplicationRuntime } from '@/state/application-runtime'
+import type { EnvironmentConnections } from '@/state/environment-connections'
+import { EnvironmentConnectionsContext } from '@/providers/environment-connections-context'
+import { SettingsOwnerProvider } from '@/features/settings/providers/owner-provider'
+import { createTestEnvironmentConnections } from './factories/environment-connections'
 
 // Retry/gc off so failing queries surface immediately and no timers outlive a test.
 export function createTestQueryClient() {
@@ -36,6 +40,8 @@ export function createTestQueryClient() {
 
 export type RenderWithProvidersOptions = Omit<RenderOptions, 'wrapper'> & {
   application?: ApplicationRuntime
+  connections?: EnvironmentConnections
+  settingsOwner?: QueryClient
   command?: TestCommandRuntimeOptions | false
   focusService?: FocusService
   queryClient?: QueryClient
@@ -50,42 +56,55 @@ export type RenderWithProvidersResult = RenderResult & { queryClient: QueryClien
 // drifting copy of this stack.
 export function AppProviders({
   application,
+  connections,
+  settingsOwner,
   children,
   command,
   focusService,
   queryClient,
 }: {
   readonly application?: ApplicationRuntime
+  readonly connections?: EnvironmentConnections
+  readonly settingsOwner?: QueryClient
   readonly children: ReactNode
   readonly command?: TestCommandRuntimeOptions | false
   readonly focusService?: FocusService
   readonly queryClient: QueryClient
 }) {
   const [binding] = useState(createCommandRuntimeBinding)
+  const [defaultConnections] = useState(
+    () => connections ?? application?.connections ?? createTestEnvironmentConnections(),
+  )
   const child = application ? (
     <ApplicationRuntimeProvider application={application}>{children}</ApplicationRuntimeProvider>
   ) : (
     children
   )
-  const content = <TooltipProvider delay={0}>{child}</TooltipProvider>
+  const content = (
+    <EnvironmentConnectionsContext value={connections ?? defaultConnections}>
+      <TooltipProvider delay={0}>{child}</TooltipProvider>
+    </EnvironmentConnectionsContext>
+  )
 
   return (
     <QueryClientProvider client={queryClient}>
-      <LanguageServerMatchProvider>
-        <FocusProvider service={focusService}>
-          <AppearanceProvider bootDensity={readSettingsMirror()['workbench.density']}>
-            <EditorColorThemeProvider>
-              {command === false ? (
-                <CommandBusProvider binding={binding}>{content}</CommandBusProvider>
-              ) : (
-                <TestCommandProvider options={command} queryClient={queryClient}>
-                  {content}
-                </TestCommandProvider>
-              )}
-            </EditorColorThemeProvider>
-          </AppearanceProvider>
-        </FocusProvider>
-      </LanguageServerMatchProvider>
+      <SettingsOwnerProvider queryClient={settingsOwner ?? queryClient}>
+        <LanguageServerMatchProvider>
+          <FocusProvider service={focusService}>
+            <AppearanceProvider bootDensity={readSettingsMirror()['workbench.density']}>
+              <EditorColorThemeProvider>
+                {command === false ? (
+                  <CommandBusProvider binding={binding}>{content}</CommandBusProvider>
+                ) : (
+                  <TestCommandProvider options={command} queryClient={queryClient}>
+                    {content}
+                  </TestCommandProvider>
+                )}
+              </EditorColorThemeProvider>
+            </AppearanceProvider>
+          </FocusProvider>
+        </LanguageServerMatchProvider>
+      </SettingsOwnerProvider>
     </QueryClientProvider>
   )
 }
@@ -120,6 +139,8 @@ export function renderWithProviders(
   ui: ReactElement,
   {
     application,
+    connections,
+    settingsOwner,
     command,
     focusService,
     queryClient = createTestQueryClient(),
@@ -133,6 +154,8 @@ export function renderWithProviders(
     return (
       <AppProviders
         application={application}
+        connections={connections}
+        settingsOwner={settingsOwner}
         command={command}
         focusService={focusService}
         queryClient={queryClient}
@@ -149,6 +172,8 @@ export function renderHookWithProviders<Result, Props>(
   callback: (props: Props) => Result,
   {
     application,
+    connections,
+    settingsOwner,
     command,
     focusService,
     queryClient = createTestQueryClient(),
@@ -162,6 +187,8 @@ export function renderHookWithProviders<Result, Props>(
     return (
       <AppProviders
         application={application}
+        connections={connections}
+        settingsOwner={settingsOwner}
         command={command}
         focusService={focusService}
         queryClient={queryClient}
@@ -179,13 +206,15 @@ export function renderApplication(ui: ReactNode, application: ApplicationRuntime
   return render(
     <StrictMode>
       <ApplicationRuntimeProvider application={application}>
-        <FocusProvider>
-          <HotkeysProvider>
-            <CommandBusProvider binding={application.commandBinding}>
-              <ActiveEnvironmentApplication bootDensity='cozy'>{ui}</ActiveEnvironmentApplication>
-            </CommandBusProvider>
-          </HotkeysProvider>
-        </FocusProvider>
+        <EnvironmentConnectionsContext value={application.connections}>
+          <FocusProvider>
+            <HotkeysProvider>
+              <CommandBusProvider binding={application.commandBinding}>
+                <ActiveEnvironmentApplication bootDensity='cozy'>{ui}</ActiveEnvironmentApplication>
+              </CommandBusProvider>
+            </HotkeysProvider>
+          </FocusProvider>
+        </EnvironmentConnectionsContext>
       </ApplicationRuntimeProvider>
     </StrictMode>,
   )

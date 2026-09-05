@@ -1,6 +1,6 @@
 import { expect, test } from '@/../test/fixtures'
 
-import { absolutePickerPath, parsePickerPathInput } from '@/features/file-picker/utils/path-input'
+import { absolutePickerPath, parsePickerPathInput } from '@workspace/client-core/files/path-input'
 
 const serverInfo = {
   homePath: 'Users/tester',

@@ -8,12 +8,12 @@ import { renderWithProviders } from '../../../../test/render'
 import { expect, test } from '../../../../test/fixtures'
 import { fetchSettings, saveSettings } from '@/features/settings/utils/api'
 import { SettingsPage } from '../components/page'
-import { matchingSettingIds } from '../utils/search'
+import { matchingSettingIds } from '@workspace/client-core/settings/search'
 import {
   createEditorWorkspaceStore,
   EditorWorkspaceStateContext,
 } from '@/features/editor/state/workspace-state'
-import { readWorkspaceCache } from '@/features/workspace/state/cache'
+import { emptyWorkspaceState } from '@/features/workspace/state/cache'
 import { TestEditorStateProvider as EditorStateProvider } from '../../../../test/factories/editor-state-provider'
 import { selectSettingsScope } from '@/features/settings/state/scope-store'
 import { selectSettingsView } from '@/features/settings/state/view-store'
@@ -130,7 +130,7 @@ test('refuses an application-scoped key from the workspace tab, and says why', a
   // The Workspace tab is gated on a folder being open, so the page needs a
   // workspace store with a root for the tab to be reachable at all.
   const store = createEditorWorkspaceStore({
-    ...readWorkspaceCache(),
+    ...emptyWorkspaceState(),
     rootFolder: {
       birthtimeMs: 0,
       mtimeMs: 0,

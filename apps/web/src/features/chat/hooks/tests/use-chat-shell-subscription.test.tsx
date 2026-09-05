@@ -7,11 +7,11 @@ import type {
 } from '@workspace/contracts'
 import { act, renderHook, waitFor } from '@testing-library/react'
 
-import { OrchestrationRpcClient } from '@/features/chat/transport/orchestration-rpc-client'
-import { FakeOrchestrationSocket } from '../../../../../test/factories/orchestration-socket'
+import { createOrchestrationRpcClient } from '@/features/chat/transport/orchestration-rpc-client'
+import { FakeOrchestrationSocket } from '@workspace/client-core/test/orchestration-socket'
 import { useChatShellSubscription } from '@/features/chat/hooks/use-chat-shell-subscription'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
-import { createClientError } from '@/lib/structured-errors'
+import { createClientError } from '@workspace/client-core/errors'
 import { unsupportedChatTransport } from '../../../../../test/factories/chat-transport'
 import { expect, test } from '../../../../../test/fixtures'
 
@@ -127,9 +127,9 @@ test.each([
   { code: 1008, phase: 'blocked' },
 ])('a silent socket close $code enters $phase', async ({ code, phase }) => {
   const socket = new FakeOrchestrationSocket()
-  const rpc = new OrchestrationRpcClient({
+  const rpc = createOrchestrationRpcClient({
     origin: 'http://shell-close.test',
-    createSocket: () => socket as unknown as WebSocket,
+    createSocket: () => socket,
   })
   const transport = unsupportedChatTransport({ shellStream: rpc.shellStream.bind(rpc) })
   const view = renderHook(() => useChatShellSubscription(transport))

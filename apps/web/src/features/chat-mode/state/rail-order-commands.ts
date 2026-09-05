@@ -98,6 +98,7 @@ function railOrderModel() {
   return sessionRailModel({
     environments: currentRailEnvironments(),
     orderOverrides: useRailOrderStore.getState(),
+    machineFilter: useSessionRailStore.getState().machineFilter,
     view: useSessionRailStore.getState().view,
   })
 }

@@ -1,3 +1,5 @@
+import { createEnvironmentRecordPersistence } from '@/lib/environments/state/record-persistence'
+import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
 import type {
   ChatAttachment,
   EnvironmentId,
@@ -90,6 +92,15 @@ const EMPTY_CHAT_INPUT_DRAFT: ChatInputDraft = {
   terminalContexts: EMPTY_TERMINAL_CONTEXTS,
   updatedAt: null,
 }
+
+const draftPersistence = createEnvironmentRecordPersistence<PersistedChatInputDraft>({
+  read: (storage) => readPersistedChatInputDrafts(storage).draftsByKey,
+  write: (storage, draftsByKey) =>
+    writePersistedChatInputDrafts(storage, {
+      ...emptyPersistedChatInputDrafts(),
+      draftsByKey: { ...draftsByKey },
+    }),
+})
 
 const draftPersist = new Debouncer(() => flushChatInputDraftStorage(), {
   wait: CHAT_INPUT_DRAFT_PERSIST_DEBOUNCE_MS,
@@ -189,7 +200,9 @@ export function flushChatInputDraftStorage() {
   draftPersist.cancel()
 
   try {
-    writePersistedChatInputDrafts(persistedStorageFromState(useChatInputDraftStore.getState()))
+    draftPersistence.persist(
+      persistedStorageFromState(useChatInputDraftStore.getState()).draftsByKey,
+    )
     clearDraftPersistenceError()
     return true
   } catch {
@@ -198,8 +211,14 @@ export function flushChatInputDraftStorage() {
   }
 }
 
-export function hydrateChatInputDraftStoreFromStorage() {
-  useChatInputDraftStore.setState(createInitialChatInputDraftState())
+export function hydrateChatInputDraftStoreFromStorage(storage: ScopedStorage) {
+  const draftsByKey = hydrateDrafts({
+    ...emptyPersistedChatInputDrafts(),
+    draftsByKey: draftPersistence.hydrate(storage),
+  })
+  useChatInputDraftStore.setState((state) => ({
+    draftsByKey: { ...state.draftsByKey, ...draftsByKey },
+  }))
 }
 
 export function resetChatInputDraftStore() {
@@ -212,7 +231,7 @@ export function resetChatInputDraftStore() {
 
 function createInitialChatInputDraftState(): ChatInputDraftState {
   return {
-    draftsByKey: hydrateDrafts(readPersistedChatInputDrafts()),
+    draftsByKey: {},
     persistenceError: null,
   }
 }

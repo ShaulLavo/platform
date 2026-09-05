@@ -61,9 +61,10 @@ import {
   type WorkspaceFileSnapshot,
   type WorkspaceMutationProjectionReceipt,
 } from '@/features/editor/state/file-sync-service'
-import { normalizeWorkspaceRoot } from '@/features/workspace/utils/path'
+import { normalizeWorkspaceRoot } from '@workspace/client-core/files/path'
 import { toClientError } from '@/lib/client-error-taxonomy'
-import { createClientError, createClientInvariantError } from '@/lib/structured-errors'
+import { createClientError } from '@workspace/client-core/errors'
+import { createClientInvariantError } from '@/lib/structured-errors'
 
 export const MAX_WORKSPACE_EDIT_UNDO_GROUPS = 20
 

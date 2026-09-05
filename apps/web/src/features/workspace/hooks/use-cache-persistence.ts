@@ -1,3 +1,5 @@
+import { useEditorRuntime } from '@/features/editor/hooks/use-runtime'
+import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
 import { Debouncer } from '@tanstack/react-pacer/debouncer'
 import { useEffect } from 'react'
 import type { EditorScrollPosition } from '@singapor/core'
@@ -19,6 +21,7 @@ import {
   useSearchBufferStoreApi,
 } from '@/features/search/state/buffer-state'
 import {
+  readWorkspaceCheckoutIds,
   type CachedSearchBufferState,
   type CachedWorkspaceSlice,
   writeChatModePanelsCache,
@@ -33,17 +36,22 @@ import { addLifecycleFlush } from '@/lib/lifecycle-flush'
 
 const WORKSPACE_CACHE_WRITE_DEBOUNCE_MS = 350
 
+type WithoutStorage<T> = T extends (storage: ScopedStorage, ...args: infer A) => infer R
+  ? (...args: A) => R
+  : never
+
 export type WorkspaceCacheWriters = {
   chatModePanels: typeof writeChatModePanelsCache
-  rootFolder: typeof writeRootFolderCache
-  searchBuffer: typeof writeSearchBufferCache
+  rootFolder: WithoutStorage<typeof writeRootFolderCache>
+  searchBuffer: WithoutStorage<typeof writeSearchBufferCache>
   uiMode: typeof writeUiModeCache
   workbenchLayout: typeof writeWorkbenchLayoutCache
-  workspaceIndex: typeof writeWorkspaceIndexCache
-  workspaceSlice: typeof writeWorkspaceSliceCache
+  workspaceIndex: WithoutStorage<typeof writeWorkspaceIndexCache>
+  workspaceSlice: WithoutStorage<typeof writeWorkspaceSliceCache>
 }
 
 type WorkspaceCachePersistenceOptions = {
+  storage: ScopedStorage
   cacheWriters?: WorkspaceCacheWriters
   debounceMs?: number
   documentStore: EditorDocumentStoreApi
@@ -51,17 +59,29 @@ type WorkspaceCachePersistenceOptions = {
   workspaceStore: EditorWorkspaceStoreApi
 }
 
-const WORKSPACE_CACHE_WRITERS = {
-  chatModePanels: writeChatModePanelsCache,
-  rootFolder: writeRootFolderCache,
-  searchBuffer: writeSearchBufferCache,
-  uiMode: writeUiModeCache,
-  workbenchLayout: writeWorkbenchLayoutCache,
-  workspaceIndex: writeWorkspaceIndexCache,
-  workspaceSlice: writeWorkspaceSliceCache,
-} satisfies WorkspaceCacheWriters
+function workspaceCacheWriters(
+  storage: ScopedStorage,
+  workspaceStore: EditorWorkspaceStoreApi,
+): WorkspaceCacheWriters {
+  const worktreeId = (rootPath: string | undefined) =>
+    rootPath === undefined
+      ? null
+      : (workspaceStore.getState().worktreeIdByRootPath[rootPath] ?? null)
+  return {
+    chatModePanels: writeChatModePanelsCache,
+    rootFolder: (root) => writeRootFolderCache(storage, root, worktreeId(root?.path)),
+    searchBuffer: (root, buffer) => writeSearchBufferCache(storage, root, buffer, worktreeId(root)),
+    uiMode: writeUiModeCache,
+    workbenchLayout: writeWorkbenchLayoutCache,
+    workspaceIndex: (roots) =>
+      writeWorkspaceIndexCache(storage, roots, workspaceStore.getState().worktreeIdByRootPath),
+    workspaceSlice: (root, slice) =>
+      writeWorkspaceSliceCache(storage, root, slice, worktreeId(root)),
+  }
+}
 
 export function useWorkspaceCachePersistence() {
+  const { storage } = useEditorRuntime()
   const documentStore = useEditorDocumentStoreApi()
   const workspaceStore = useEditorWorkspaceStoreApi()
   const searchStore = useSearchBufferStoreApi()
@@ -69,23 +89,34 @@ export function useWorkspaceCachePersistence() {
   useEffect(
     () =>
       subscribeWorkspaceCachePersistence({
+        storage,
         documentStore,
         searchStore,
         workspaceStore,
       }),
-    [documentStore, searchStore, workspaceStore],
+    [documentStore, searchStore, storage, workspaceStore],
   )
 }
 
 export function subscribeWorkspaceCachePersistence({
-  cacheWriters = WORKSPACE_CACHE_WRITERS,
+  storage,
+  cacheWriters,
   debounceMs = WORKSPACE_CACHE_WRITE_DEBOUNCE_MS,
   documentStore,
   searchStore,
   workspaceStore,
 }: WorkspaceCachePersistenceOptions) {
+  const writers = cacheWriters ?? workspaceCacheWriters(storage, workspaceStore)
+  const workspace = workspaceStore.getState()
+  const cachedRoots = workspaceSlicesCacheValue(workspace).order
+  const bindings = Object.entries(workspace.worktreeIdByRootPath).filter(([root]) =>
+    cachedRoots.includes(root),
+  )
+  const cachedBindings = bindings.length > 0 ? readWorkspaceCheckoutIds(storage) : {}
+  if (bindings.some(([root, id]) => cachedBindings[root] !== id))
+    persistCheckoutOwnership(writers, workspaceStore, searchStore)
   const subscriptions = workspaceCacheSubscriptions({
-    cacheWriters,
+    cacheWriters: writers,
     debounceMs,
     documentStore,
     searchStore,
@@ -188,15 +219,32 @@ function workspaceCacheSubscriptions({
     subscribeScrollPositions({ debounceMs, documentStore, workspaceStore }),
     subscribeWorkspaceSlices({ cacheWriters, debounceMs, workspaceStore }),
     subscribeSearchBuffers({ cacheWriters, debounceMs, searchStore }),
+    subscribeCacheEntry({
+      debounceMs,
+      select: (state) => state.worktreeIdByRootPath,
+      store: workspaceStore,
+      write: () => persistCheckoutOwnership(cacheWriters, workspaceStore, searchStore),
+    }),
   ]
 }
 
-/**
- * Scroll positions live in the document store (keyed by tab) but persist with the
- * workspace slice (keyed by path). The workspace store stays the single slice writer;
- * this subscription just keeps its scrollPositionByPath current, and the slice
- * subscription does the actual cache write.
- */
+function persistCheckoutOwnership(
+  writers: WorkspaceCacheWriters,
+  workspace: EditorWorkspaceStoreApi,
+  search: SearchBufferStoreApi,
+) {
+  const state = workspace.getState()
+  const slices = workspaceSlicesCacheValue(state)
+  writers.rootFolder(state.rootFolder)
+  for (const [root, slice] of slices.slices) writers.workspaceSlice(root, slice)
+  writers.workspaceIndex(slices.order)
+  const buffers = searchBuffersCacheValue(search.getState())
+  if (buffers.active) writers.searchBuffer(buffers.active.rootPath, buffers.active)
+  for (const [root, buffer] of buffers.parked)
+    writers.searchBuffer(root, cachedSearchBufferState(buffer))
+}
+
+// Flush document scroll positions into the workspace slice before writing its cache.
 function subscribeScrollPositions({
   debounceMs,
   documentStore,

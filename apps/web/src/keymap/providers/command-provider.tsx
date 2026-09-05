@@ -1,5 +1,7 @@
+import { selectSettingsScope } from '@/features/settings/state/scope-store'
 import { useEditorRuntime } from '@/features/editor/hooks/use-runtime'
-import { DevOriginDialog } from '@/features/environments/components/dev-origin-dialog'
+import { MachinePickerDialog } from '@/features/environments/components/machine-picker-dialog'
+import { selectSettingsCategory } from '@/features/settings/state/category-store'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { DEFAULT_SETTING_VALUES, type SettingsSnapshot } from '@workspace/contracts'
@@ -17,6 +19,7 @@ import { useOpenFileAtRef } from '@/features/git/hooks/use-open-file-at-ref'
 import { SettingsDialog } from '@/features/settings/components/dialog'
 import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 import { useSettingsActions } from '@/features/settings/hooks/use-settings-actions'
+import { useSettingsOwner } from '@/features/settings/hooks/use-settings-owner'
 import { useSettingsStream } from '@/features/settings/hooks/use-settings-stream'
 import { useTheme } from '@/features/settings/hooks/use-theme'
 import { readLiveSettingsProjection } from '@/features/settings/state/live-projection'
@@ -85,6 +88,7 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
   const workspace = useEditorWorkspaceStoreApi()
   const workspaceEdits = useWorkspaceEditService()
   const queryClient = useQueryClient()
+  const settingsOwner = useSettingsOwner()
   const editor = useEditorCommands()
   const openFileAtRef = useOpenFileAtRef()
   const openWorkspaceRoot = useOpenWorkspaceRoot()
@@ -99,7 +103,9 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
   const [paletteSearch, setPaletteSearchState] = useState('')
   const [paletteScope, setPaletteScopeState] = useState<PaletteScope | null>(null)
   const [paletteOrigin, setPaletteOrigin] = useState<FocusTargetToken | null>(null)
-  const [environmentDialogOpen, setEnvironmentDialogOpen] = useState(false)
+  const [environmentDialog, setEnvironmentDialog] = useState<
+    'switch' | 'connect' | 'disconnect' | null
+  >(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsOrigin, setSettingsOrigin] = useState<FocusTargetToken | null>(null)
   const adaptersRef = useRef(
@@ -210,7 +216,7 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
     },
     focus,
     settings: {
-      readSnapshot: () => readCommandSettingsSnapshot(queryClient, snapshotSettingsRef.current),
+      readSnapshot: () => readCommandSettingsSnapshot(settingsOwner, snapshotSettingsRef.current),
       setDiffViewMode: (mode, initiator) =>
         adaptersRef.current.setDiffViewMode('editor.diff.viewMode', mode, undefined, initiator),
       setTheme: (value, initiator) => adaptersRef.current.setTheme(value, initiator),
@@ -223,7 +229,12 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
         ),
     },
     shell: {
-      showEnvironmentDialog: () => setEnvironmentDialogOpen(true),
+      showEnvironmentDialog: setEnvironmentDialog,
+      showMachines: () => {
+        selectSettingsScope('user')
+        selectSettingsCategory('Machines')
+        setSettingsOpen(true)
+      },
       openPicker: () => workspace.getState().openPicker(),
       openWorkspaceRoot: (rootPath) => adaptersRef.current.openWorkspaceRoot(rootPath),
       showCommandPalette: (initialSearch = '', origin) => {
@@ -348,8 +359,8 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
   return (
     <CommandContext value={value}>
       {children}
-      {import.meta.env.DEV && environmentDialogOpen ? (
-        <DevOriginDialog open onOpenChange={setEnvironmentDialogOpen} />
+      {environmentDialog ? (
+        <MachinePickerDialog mode={environmentDialog} onClose={() => setEnvironmentDialog(null)} />
       ) : null}
       <AppKeymapController />
       <CommandPalette />

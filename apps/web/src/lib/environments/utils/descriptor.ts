@@ -1,18 +1,11 @@
-import { healthDescriptorSchema } from '@workspace/contracts'
-import * as v from 'valibot'
-
+import { readEnvironmentDescriptor as readDescriptor } from '@workspace/client-core/environments/descriptor'
 import { environmentClientFor, type Client } from '@/lib/client'
 import { useEnvironmentsStore } from '@/lib/environments/state/store'
 
-export async function readEnvironmentDescriptor(
+export function readEnvironmentDescriptor(
   origin: string,
   signal: AbortSignal,
   client: Client = environmentClientFor(origin),
 ) {
-  const { data, error } = await client.health.get({ fetch: { signal } })
-  if (error) throw error
-  signal.throwIfAborted()
-  const descriptor = v.parse(healthDescriptorSchema, data)
-  useEnvironmentsStore.getState().recordDescriptor(origin, descriptor)
-  return descriptor
+  return readDescriptor({ origin, signal, client, environments: useEnvironmentsStore })
 }

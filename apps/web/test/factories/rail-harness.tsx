@@ -1,3 +1,6 @@
+import { createEnvironmentEntry } from '@workspace/client-core/environments/utils/connection'
+import { environmentScopedStorage } from '@/lib/environments/state/scoped-storage'
+import { activeEnvironmentId } from '@/lib/environments/state/domain'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
@@ -44,7 +47,7 @@ import { unwrapEdenResponse } from '@/lib/eden-events'
 import { createApplicationRuntime } from '@/state/application-runtime'
 import { readWorkspaceCache } from '@/features/workspace/state/cache'
 import { TestEditorStateProvider } from './editor-state-provider'
-import { inProcessOrchestrationSocketFactory } from './in-process-orchestration-socket'
+import { inProcessOrchestrationSocketFactory } from '@workspace/client-core/test/in-process-orchestration-socket'
 import { renderWithProviders } from '../render'
 import type { TestServer } from '../server'
 
@@ -72,6 +75,7 @@ export async function createRailHarness(
     activeOrigin: origin,
     entries: {
       [origin]: {
+        ...createEnvironmentEntry(origin, origin),
         origin,
         kind: 'primary',
         label: descriptor.label,
@@ -123,10 +127,11 @@ export async function createRailHarness(
     query: '',
     renaming: null,
     scope: null,
+    machineFilter: null,
     view: 'active',
   })
   const application = createApplicationRuntime({
-    workspaceCache: readWorkspaceCache(),
+    workspaceCache: readWorkspaceCache(environmentScopedStorage(activeEnvironmentId())),
     preparation: {
       appliedThemeContentHash: null,
       appliedThemeId: null,
@@ -136,7 +141,10 @@ export async function createRailHarness(
   })
   setSessionProjectOpener(application.openEnvironmentWorkspaceRoot)
   const transport = createChatTransport(origin, {
-    createSocket: inProcessOrchestrationSocketFactory(server),
+    createSocket: inProcessOrchestrationSocketFactory({
+      app: server.app,
+      clientOrigin: server.origin,
+    }),
   })
   const context: ChatModeSession = {
     activeSession: { status: 'ready', sessionId: sessionIds[0]! },

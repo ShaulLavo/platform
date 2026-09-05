@@ -4,7 +4,7 @@ import { parseHotkey } from '@tanstack/hotkeys'
 
 import { expect, test as it } from '@/keymap/../../test/fixtures'
 import { binding } from '@/keymap/../../test/factories/key-binding'
-import { chordStrokes } from '@/keymap/utils/chord'
+import { chordStrokes } from '@workspace/client-core/commands/chord'
 
 import {
   activePlatformKeyBindings,

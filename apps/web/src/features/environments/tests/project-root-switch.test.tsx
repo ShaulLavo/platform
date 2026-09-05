@@ -1,3 +1,6 @@
+import { readEnvironmentDescriptor } from '@/lib/environments/utils/descriptor'
+import { environmentScopedStorage } from '@/lib/environments/state/scoped-storage'
+import { confirmedEnvironmentId } from '@/lib/environments/state/domain'
 import { act, screen, waitFor } from '@testing-library/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { join } from 'node:path'
@@ -40,7 +43,6 @@ test.for([
   const previousOrigin = activeServerOrigin()
   const previousEnvironments = useEnvironmentsStore.getState()
   const previousProject = useActiveProjectStore.getState()
-  const previousRoot = readWorkspaceCache().rootFolder
   setActiveServerOrigin(originA)
   const previousClientA = getClient()
   setClient(client)
@@ -48,9 +50,14 @@ test.for([
   const previousClientB = getClient()
   setClient(clientB)
   useEnvironmentsStore.getState().activate(originA)
-  writeRootFolderCache({ ...rootAEntry, type: 'directory' })
+  await readEnvironmentDescriptor(originA, new AbortController().signal)
+  await readEnvironmentDescriptor(originB, new AbortController().signal)
+  writeRootFolderCache(environmentScopedStorage(confirmedEnvironmentId(originA)), {
+    ...rootAEntry,
+    type: 'directory',
+  })
   const application = createApplicationRuntime({
-    workspaceCache: readWorkspaceCache(),
+    workspaceCache: readWorkspaceCache(environmentScopedStorage(confirmedEnvironmentId(originA))),
     preparation: {
       appliedThemeContentHash: null,
       appliedThemeId: null,
@@ -70,7 +77,10 @@ test.for([
       expect(info.workspaceIndex?.scanRoot).toBe(join(server.root, 'a'))
     })
 
-    writeRootFolderCache({ ...rootBEntry, type: 'directory' })
+    writeRootFolderCache(environmentScopedStorage(confirmedEnvironmentId(originB)), {
+      ...rootBEntry,
+      type: 'directory',
+    })
     act(() => {
       application.activateEnvironment(originB)
       expect(application.getSnapshot().editor.workspaceStore.getState().rootFolder?.path).toBe(
@@ -114,7 +124,6 @@ test.for([
     useEnvironmentsStore.setState(previousEnvironments, true)
     useActiveProjectStore.setState(previousProject, true)
     setActiveServerOrigin(previousOrigin)
-    writeRootFolderCache(previousRoot)
     await secondServer.cleanup()
   }
 })

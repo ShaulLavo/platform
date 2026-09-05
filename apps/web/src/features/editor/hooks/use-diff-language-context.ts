@@ -5,7 +5,7 @@ import type {
   DiffLanguageHost,
   DiffLanguageServerContext,
 } from '@/features/editor/utils/diff-language-context'
-import { isPathInWorkspace, toWorkspaceAbsolute } from '@/features/workspace/utils/path'
+import { isPathInWorkspace, toWorkspaceAbsolute } from '@workspace/client-core/files/path'
 
 /** Platform-owned live text and host capabilities for a reusable diff editor. */
 export function useDiffLanguageContext(

@@ -1,3 +1,4 @@
+import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
 import * as v from 'valibot'
 
 import type { SessionSeenStamps } from '@/features/chat-mode/utils/session-unread'
@@ -16,11 +17,9 @@ const persistedSessionReadsSchema = v.object({
   version: v.literal(SESSION_READ_STORAGE_VERSION),
 })
 
-export function readPersistedSessionReads(): SessionSeenStamps {
-  if (!canUseLocalStorage()) return {}
-
+export function readPersistedSessionReads(storage: ScopedStorage): SessionSeenStamps {
   try {
-    const raw = localStorage.getItem(SESSION_READ_STORAGE_KEY)
+    const raw = storage.getItem(SESSION_READ_STORAGE_KEY)
     if (!raw) return {}
 
     const parsed = v.safeParse(persistedSessionReadsSchema, JSON.parse(raw))
@@ -32,10 +31,11 @@ export function readPersistedSessionReads(): SessionSeenStamps {
   }
 }
 
-export function writePersistedSessionReads(seenBySessionKey: SessionSeenStamps) {
-  if (!canUseLocalStorage()) return
-
-  localStorage.setItem(
+export function writePersistedSessionReads(
+  adapter: ScopedStorage,
+  seenBySessionKey: SessionSeenStamps,
+) {
+  adapter.setItem(
     SESSION_READ_STORAGE_KEY,
     JSON.stringify({
       seenBySessionKey: prunedSessionReads(seenBySessionKey),
@@ -55,8 +55,4 @@ function prunedSessionReads(seenBySessionKey: SessionSeenStamps): SessionSeenSta
       .toSorted(([, left], [, right]) => right.localeCompare(left))
       .slice(0, MAX_SESSION_READ_ENTRIES),
   )
-}
-
-function canUseLocalStorage() {
-  return typeof localStorage !== 'undefined'
 }

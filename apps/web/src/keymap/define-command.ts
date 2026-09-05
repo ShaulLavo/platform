@@ -1,15 +1,13 @@
-import { editorCommandMutates } from '@singapor/core/keymap'
+import type { CommandMetadata, CommandExecution } from '@workspace/client-core/commands/metadata'
 import type { EditorKeymapContext } from '@singapor/core/keymap'
 import type { EditorSaveService } from '@/features/editor/state/save-service'
-import type { EditorCommandId } from '@singapor/core'
 import type { Icon } from '@phosphor-icons/react'
-import type { KeyChord } from '@/keymap/types'
 import type { QueryClient } from '@tanstack/react-query'
 
 import type { EditorCommands } from '@/features/editor/state/commands'
 import type { EditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
 import type { Theme } from '@/features/settings/providers/theme-context'
-import type { SettingsSubmission } from '@/features/settings/state/intent-store'
+import type { SettingsSubmission } from '@workspace/client-core/settings/intent-store'
 import type { ChatModePanels } from '@/features/chat-mode/utils/panels'
 import type { RequestCloseTab } from '@/features/editor/hooks/use-dirty-tab-close'
 import type { EditorDocumentStoreApi } from '@/features/editor/state/document-state'
@@ -24,41 +22,6 @@ import type {
 } from '@/keymap/state/command-bus'
 import type { FocusService, FocusTargetToken, ResolvedFocusTarget } from '@/lib/focus/state/service'
 import type { WorkspaceUiMode } from '@/lib/ui-mode'
-
-type CommandPlatformName = 'linux' | 'mac' | 'windows'
-
-export type CommandTargetKind = 'editor' | 'workspace'
-
-export type CommandWhen =
-  | 'chatMode'
-  | 'editorTarget'
-  | 'editorWritable'
-  | 'fileBackedTab'
-  | 'saveableTab'
-  | 'tabOpen'
-  | 'workspaceOpen'
-  | 'workspaceEditRedoable'
-  | 'workspaceEditUndoable'
-  | 'workspaceMutable'
-
-export type CommandExecution = 'async' | 'sync'
-
-export type CommandUndoCategory =
-  | 'file-operation'
-  | 'text-edit'
-  | 'view-only'
-  | 'workspace-operation'
-
-/** One default key for a command. */
-export type CommandKeyDefault = {
-  readonly chord: KeyChord
-  readonly pane?: import('@/lib/focus/state/service').FocusArea | 'any'
-  readonly platforms?: readonly CommandPlatformName[]
-  readonly preventDefault?: boolean
-  readonly stopPropagation?: boolean
-  /** VS Code command represented by this specific default binding, used for keymap import/export. */
-  readonly vscodeCommandId?: string
-}
 
 export type WorkspaceCommandSnapshot = {
   readonly activeDocumentSavable: boolean
@@ -102,7 +65,8 @@ export type WorkspaceCommandRuntime = {
     readonly openWorkspaceRoot: (
       rootPath: string,
     ) => Promise<'already-open' | 'failed' | 'opened' | 'superseded'>
-    readonly showEnvironmentDialog: () => void
+    readonly showEnvironmentDialog: (mode: 'switch' | 'connect' | 'disconnect') => void
+    readonly showMachines: () => void
     readonly showCommandPalette: (
       initialSearch?: string,
       origin?: FocusTargetToken | null,
@@ -143,25 +107,7 @@ export type WorkspaceCommandHandlerContext = CommandHandlerContext<
   CommandInvocation
 >
 
-type CommandBase<Id extends string> = {
-  readonly id: Id
-  readonly title: string
-  readonly description?: string
-  readonly category: string
-  /** Never set today; read by the palette's keyword builder. Kept as a hook. */
-  readonly aliases?: readonly string[]
-  readonly vscodeCommandIds?: readonly string[]
-  readonly icon?: Icon
-  readonly keys?: readonly CommandKeyDefault[]
-  readonly execution: CommandExecution
-  readonly target: CommandTargetKind
-  readonly undoCategory: CommandUndoCategory
-  readonly when: readonly CommandWhen[]
-  /** Running it only switches palette mode, so the palette stays open. */
-  readonly keepsPaletteOpen?: boolean
-  /** Not offered in the `>` command list. */
-  readonly hiddenInPalette?: boolean
-}
+type CommandBase<Id extends string> = CommandMetadata<Id> & { readonly icon?: Icon }
 
 export type WorkspaceCommand<
   Id extends string = string,
@@ -185,33 +131,4 @@ export function defineCommand<
   const Execution extends CommandExecution,
 >(command: WorkspaceCommand<Id, Execution>): WorkspaceCommand<Id, Execution> {
   return command
-}
-
-/**
- * Takes the bare `EditorCommandId` and prefixes it, so an editor command can
- * only be declared for something `@singapor/core` actually implements. Every
- * editor command needs a registered Editor target to act on. Every one of its
- * keys belongs to the editor pane. Target, execution, and the writable gate are
- * derived here so they cannot drift across Editor rows.
- */
-export function defineEditorCommand<const Id extends EditorCommandId>(
-  command: Omit<
-    EditorCommand<`editor.${Id}`>,
-    'category' | 'execution' | 'id' | 'target' | 'when'
-  > & {
-    readonly id: Id
-  },
-): EditorCommand<`editor.${Id}`> {
-  const when: CommandWhen[] = ['editorTarget']
-  if (editorCommandMutates(command.id)) when.push('editorWritable')
-
-  return {
-    ...command,
-    category: 'Editor',
-    execution: 'sync',
-    id: `editor.${command.id}`,
-    keys: command.keys?.map((key) => ({ pane: 'editor', ...key })),
-    target: 'editor',
-    when,
-  }
 }

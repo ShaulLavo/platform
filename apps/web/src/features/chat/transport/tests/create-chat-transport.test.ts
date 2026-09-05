@@ -14,7 +14,7 @@ import { activeServerOrigin, getClient, setActiveServerOrigin, setClient } from 
 import { expect, test } from '../../../../../test/fixtures'
 import { makeTestServer } from '../../../../../test/server'
 import { createInProcessClient } from '../../../../../test/client'
-import { inProcessOrchestrationSocketFactory } from '../../../../../test/factories/in-process-orchestration-socket'
+import { inProcessOrchestrationSocketFactory } from '@workspace/client-core/test/in-process-orchestration-socket'
 
 const SESSION_ID = v.parse(sessionIdSchema, '0c9faaac-3e76-560c-a0e0-1adfa868c5c6')
 
@@ -42,10 +42,16 @@ test('two transports dispatch and read snapshots from their owning servers after
       v.parse(healthDescriptorSchema, (await createInProcessClient(serverB).health.get()).data),
     )
   const transportA = createChatTransport(originA, {
-    createSocket: inProcessOrchestrationSocketFactory(serverA),
+    createSocket: inProcessOrchestrationSocketFactory({
+      app: serverA.app,
+      clientOrigin: serverA.origin,
+    }),
   })
   const transportB = createChatTransport(originB, {
-    createSocket: inProcessOrchestrationSocketFactory(serverB),
+    createSocket: inProcessOrchestrationSocketFactory({
+      app: serverB.app,
+      clientOrigin: serverB.origin,
+    }),
   })
 
   try {

@@ -1,3 +1,5 @@
+import { hydrateEnvironmentChatCache } from '@/features/chat/state/chat-projection-store'
+import { testScopedStorage } from '../../../../../test/factories/scoped-storage'
 import { selectChatProjectionSlice } from '@/features/chat/state/chat-projection-store'
 import { fixtureSessionId } from '../../../../../test/factories/chat'
 import {
@@ -49,6 +51,7 @@ beforeEach(() => {
     value: fakeLocalStorage(),
   })
   useChatProjectionStore.getState().resetChatProjection()
+  hydrateEnvironmentChatCache(testScopedStorage)
 })
 
 afterEach(() => {
@@ -71,7 +74,10 @@ test('a cold reload paints the shell and the open transcript from cache, then re
   expect(flushChatProjectionCache()).toBe(true)
 
   // What the next process sees before any socket has connected.
-  const painted = selectChatProjectionSlice(restoredChatProjectionState(), FIXTURE_ENVIRONMENT_ID)
+  const painted = selectChatProjectionSlice(
+    restoredChatProjectionState(testScopedStorage),
+    FIXTURE_ENVIRONMENT_ID,
+  )
 
   expect(selectChatSidebarSessions(painted).map((session) => session.title)).toEqual(['Session'])
   expect(
@@ -98,16 +104,19 @@ test('a version mismatch drops the cache instead of half-reading it', () => {
   useChatProjectionStore.getState().syncShellSnapshot(FIXTURE_ENVIRONMENT_ID, shellSnapshot())
   expect(flushChatProjectionCache()).toBe(true)
 
-  const stored = JSON.parse(STORE.get(CHAT_PROJECTION_CACHE_STORAGE_KEY) ?? '{}')
-  STORE.set(
+  const stored = JSON.parse(testScopedStorage.getItem(CHAT_PROJECTION_CACHE_STORAGE_KEY) ?? '{}')
+  testScopedStorage.setItem(
     CHAT_PROJECTION_CACHE_STORAGE_KEY,
     JSON.stringify({ ...stored, version: stored.version + 1 }),
   )
 
-  expect(readChatProjectionCache()).toBeNull()
-  expect(STORE.has(CHAT_PROJECTION_CACHE_STORAGE_KEY)).toBe(false)
+  expect(readChatProjectionCache(testScopedStorage)).toBeNull()
+  expect(scopedHas(CHAT_PROJECTION_CACHE_STORAGE_KEY)).toBe(false)
   expect(
-    selectChatProjectionSlice(restoredChatProjectionState(), FIXTURE_ENVIRONMENT_ID).projectIds,
+    selectChatProjectionSlice(
+      restoredChatProjectionState(testScopedStorage),
+      FIXTURE_ENVIRONMENT_ID,
+    ).projectIds,
   ).toEqual([])
 })
 
@@ -160,9 +169,12 @@ test('a transcript whose session fell out of the cached shell is skipped, not ha
     ...cached,
     slices: cached.slices.map((slice) => ({ ...slice, sessions: [kept] })),
   }
-  STORE.set(CHAT_PROJECTION_CACHE_STORAGE_KEY, JSON.stringify(withoutSession))
+  testScopedStorage.setItem(CHAT_PROJECTION_CACHE_STORAGE_KEY, JSON.stringify(withoutSession))
 
-  const painted = selectChatProjectionSlice(restoredChatProjectionState(), FIXTURE_ENVIRONMENT_ID)
+  const painted = selectChatProjectionSlice(
+    restoredChatProjectionState(testScopedStorage),
+    FIXTURE_ENVIRONMENT_ID,
+  )
 
   expect(painted.sessionIds).toEqual([kept.id])
   expect(painted.messageIdsBySessionId).toEqual({})
@@ -177,7 +189,10 @@ test('an empty projection is cacheable and restores to an empty shell', () => {
     )
   expect(flushChatProjectionCache()).toBe(true)
 
-  const painted = selectChatProjectionSlice(restoredChatProjectionState(), FIXTURE_ENVIRONMENT_ID)
+  const painted = selectChatProjectionSlice(
+    restoredChatProjectionState(testScopedStorage),
+    FIXTURE_ENVIRONMENT_ID,
+  )
 
   expect(painted.projectIds).toEqual([])
   expect(painted.sessionIds).toEqual([])
@@ -236,4 +251,8 @@ function fakeLocalStorage(): Storage {
       STORE.set(key, value)
     },
   }
+}
+
+function scopedHas(key: string) {
+  return testScopedStorage.getItem(key) !== null
 }

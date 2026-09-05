@@ -1,7 +1,7 @@
 import { TEST_WORKTREE_ID } from '../../../../test/factories/chat'
 import { vi } from 'vitest'
 
-import { createEnvironmentClient } from '@/lib/client'
+import { createEnvironmentClient } from '@workspace/client-core/transport/client'
 import {
   environmentActivitySignal,
   resumeEnvironmentActivity,
@@ -20,8 +20,8 @@ test('same-path terminal and LSP sockets retain their owner and close before act
   resumeEnvironmentActivity(originB)
   const signalA = environmentActivitySignal(originA)
   const signalB = environmentActivitySignal(originB)
-  const clientA = createEnvironmentClient(originA)
-  const clientB = createEnvironmentClient(originB)
+  const clientA = createEnvironmentClient({ origin: originA })
+  const clientB = createEnvironmentClient({ origin: originB })
 
   try {
     connectTerminalSocket({ worktreeId: TEST_WORKTREE_ID, terminalId: 'main' }, clientA, signalA)

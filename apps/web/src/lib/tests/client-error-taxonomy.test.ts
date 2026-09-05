@@ -2,7 +2,8 @@ import { vi } from 'vitest'
 
 import { expect, test } from '../../../test/fixtures'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
-import { log, observeClientOperation, sanitizeRecord } from '@/lib/client-logging'
+import { log, observeClientOperation } from '@/lib/client-logging'
+import { sanitizeRecord } from '@workspace/observability/sanitize'
 
 test('classifies fetch failures and carries request context into the client error', async () => {
   const error = new TypeError('network error')

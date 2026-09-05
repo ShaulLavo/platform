@@ -1,11 +1,14 @@
+import { environmentLogContext } from '@/lib/environments/state/log-context'
+import { originForQueryClient } from '@/lib/environments/state/query-clients'
 import { modelRefKey, type SettingId, type SettingsOperation } from '@workspace/contracts'
 
-import type { ActiveSettingsIntent } from '@/features/settings/state/intent-store'
+import type { ActiveSettingsIntent } from '@workspace/client-core/settings/intent-store'
 
 export function settingsMutationLogContext(entry: ActiveSettingsIntent) {
   const metadata = operationMetadata(entry.request.operations)
 
   return {
+    ...environmentLogContext(originForQueryClient(entry.owner)),
     affectedIds: metadata.affectedIds,
     clientSequence: entry.clientSequence,
     initiator: entry.initiator,
@@ -32,6 +35,11 @@ function appendOperationMetadata(
   if (operation.kind === 'set') return appendUnique(settingIds, operation.key)
   if (operation.kind === 'reset') {
     for (const key of operation.keys) appendUnique(settingIds, key)
+    return
+  }
+  if (operation.kind === 'machine.set' || operation.kind === 'machine.remove') {
+    appendUnique(settingIds, 'environments.machines')
+    appendUnique(affectedIds, operation.name)
     return
   }
   if (operation.kind === 'keybinding.set' || operation.kind === 'keybinding.remove') {

@@ -16,13 +16,13 @@ import {
 import {
   resetSettingsIntentStore,
   submitSettingsIntent,
-} from '@/features/settings/state/intent-store'
+} from '@workspace/client-core/settings/intent-store'
 import {
   refreshConfirmedSettings,
   resetSettingsSnapshotAdmission,
 } from '@/features/settings/state/snapshot-admission'
 import { fetchSettings, saveSettings } from '@/features/settings/utils/api'
-import { settingsKeys } from '@/features/settings/utils/query-keys'
+import { settingsKeys } from '@workspace/client-core/settings/query-keys'
 
 function wrapper(queryClient: QueryClient) {
   return ({ children }: { children: ReactNode }) =>

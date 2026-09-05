@@ -1,3 +1,4 @@
+import type { QuickAccessMode } from '@workspace/client-core/commands/palette'
 import type { Theme } from '@/features/settings/providers/theme-context'
 import type { TreeEntry } from '@/lib/file-system-types'
 import type { PlatformCommandId } from '@/keymap/types'
@@ -57,17 +58,7 @@ export type PaletteScope = {
   readonly returnSearch: string | null
 }
 
-export type QuickAccessMode =
-  | 'colorMode'
-  | 'colorTheme'
-  | 'commands'
-  | 'editors'
-  | 'files'
-  | 'gotoLine'
-  | 'scripts'
-  | 'sessions'
-  | 'symbols'
-  | 'views'
+export type { QuickAccessMode } from '@workspace/client-core/commands/palette'
 
 export type QuickOpenFileMatch = {
   readonly birthtimeMs?: number

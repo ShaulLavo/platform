@@ -1,3 +1,6 @@
+import { ChatTransportContext } from '@/features/chat/providers/transport-context'
+import { unsupportedChatTransport } from '../../../../../test/factories/chat-transport'
+import { testScopedStorage } from '../../../../../test/factories/scoped-storage'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach } from 'vitest'
@@ -43,13 +46,18 @@ function withProviders(children: ReactNode) {
     revertToCheckpoint: () => undefined,
   }
 
-  return <ChatTimelineActionsContext value={actions}>{children}</ChatTimelineActionsContext>
+  return (
+    <ChatTransportContext value={unsupportedChatTransport()}>
+      <ChatTimelineActionsContext value={actions}>{children}</ChatTimelineActionsContext>
+    </ChatTransportContext>
+  )
 }
 
 beforeEach(() => {
   openedDiffs.length = 0
   localStorage.clear()
   resetChatChangedFilesExpansionStore()
+  hydrateChatChangedFilesExpansionStoreFromStorage(testScopedStorage)
 })
 
 afterEach(() => {
@@ -107,7 +115,7 @@ test('the expanded state survives a reload', async () => {
 
   // A fresh page load: in-memory state gone, storage read back.
   resetChatChangedFilesExpansionStore()
-  hydrateChatChangedFilesExpansionStoreFromStorage()
+  hydrateChatChangedFilesExpansionStoreFromStorage(testScopedStorage)
 
   const { container } = renderSection(summary)
   expect(card(container)?.dataset.changedFilesState).toBe('expanded')

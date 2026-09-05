@@ -1,10 +1,8 @@
-import { createError, defineErrorCatalog, type ErrorOptions } from 'evlog'
+import { defineErrorCatalog } from 'evlog'
+import { createClientError } from '@workspace/client-core/errors'
+import { rpcErrorPayload } from '@workspace/client-core/transport/rpc-error'
 
 import { toClientError } from './client-error-taxonomy'
-
-type ClientStructuredErrorOptions = Omit<ErrorOptions, 'cause'> & {
-  cause?: unknown
-}
 
 export const clientErrors = defineErrorCatalog('client', {
   CLIENT_INVARIANT_ERROR: {
@@ -124,15 +122,6 @@ export const clientErrors = defineErrorCatalog('client', {
   },
 })
 
-export function createClientError(options: ClientStructuredErrorOptions) {
-  const { cause, ...rest } = options
-
-  return createError({
-    ...rest,
-    ...(cause === undefined ? {} : { cause: cause as Error }),
-  })
-}
-
 export function createClientInvariantError(message: string, cause?: unknown) {
   return createClientError({
     cause,
@@ -173,14 +162,4 @@ function statusFromRpcError(error: unknown) {
 
   const status = error.status
   return typeof status === 'number' ? status : clientErrors.RPC_FAILED.status
-}
-
-function rpcErrorPayload(error: unknown) {
-  if (!error || typeof error !== 'object') return null
-
-  const container = 'value' in error ? error.value : error
-  if (!container || typeof container !== 'object') return null
-  if (!('error' in container)) return null
-
-  return container.error
 }

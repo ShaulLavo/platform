@@ -37,6 +37,7 @@ describe('terminal service', () => {
     await service.routes(auth()).open(ws)
 
     expect(ws.closed).toBe(true)
+    expect(ws.closeDetails).toEqual({ code: 1008, reason: 'unauthorized' })
     expect(pty.spawns).toEqual([])
   })
 
@@ -96,6 +97,7 @@ describe('terminal service', () => {
     await service.routes(auth()).open(ws)
 
     expect(ws.closed).toBe(true)
+    expect(ws.closeDetails).toEqual({ code: 1008, reason: 'invalid-root' })
     expect(pty.spawns).toEqual([])
   })
 
@@ -326,17 +328,23 @@ function fakeSocket(
   origin: string = TRUSTED_ORIGIN,
 ) {
   const messages: TerminalServerMessage[] = []
+  const closeDetails: { code: number | undefined; reason: string | undefined } = {
+    code: undefined,
+    reason: undefined,
+  }
   const raw = {}
   return {
     closed: false,
+    closeDetails,
     data: {
       headers: { origin },
       query: { worktreeId: registrations.get(path.join(root, subdirectory)), terminalId: session },
     },
     messages,
     raw,
-    close() {
+    close(code?: number, reason?: string) {
       this.closed = true
+      this.closeDetails = { code, reason }
     },
     send(message: string) {
       messages.push(JSON.parse(message) as TerminalServerMessage)

@@ -2,7 +2,7 @@ import {
   useChatProjectionStore,
   type ChatProjectionState,
 } from '@/features/chat/state/chat-projection-store'
-import type { EnvironmentsState } from '@/lib/environments/state/store'
+import { type EnvironmentsState } from '@workspace/client-core/environments/state/store'
 import { useEnvironmentsStore } from '@/lib/environments/state/store'
 import type { SessionRailEnvironment } from '@/features/chat-mode/utils/session-rail-model'
 import {
@@ -23,8 +23,9 @@ export function railEnvironments(
     if (byIdentity.has(entry.environmentId) && entry.kind !== 'primary') continue
     byIdentity.set(entry.environmentId, {
       environmentId: entry.environmentId,
-      label: entry.label,
+      label: entry.label ?? entry.name,
       isPrimary: entry.kind === 'primary',
+      phase: entry.phase,
       projects: selectChatProjects(slice),
       worktrees: selectChatWorktrees(slice),
       sessions: selectChatSessions(slice),
@@ -39,7 +40,9 @@ export function createRailEnvironmentsSelector(entries: EnvironmentsState['entri
     const next = railEnvironments(projection, { entries }).map((environment) => {
       const held = previous.find((entry) => entry.environmentId === environment.environmentId)
       if (
-        held?.projects === environment.projects &&
+        held?.phase === environment.phase &&
+        held.label === environment.label &&
+        held.projects === environment.projects &&
         held.worktrees === environment.worktrees &&
         held.sessions === environment.sessions
       )

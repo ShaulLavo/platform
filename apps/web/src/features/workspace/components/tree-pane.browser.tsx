@@ -14,7 +14,7 @@ import { afterEach, expect, test } from 'vitest'
 import { TestEditorStateProvider as EditorStateProvider } from '../../../../test/factories/editor-state-provider'
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
-import { settingsKeys } from '@/features/settings/utils/query-keys'
+import { settingsKeys } from '@workspace/client-core/settings/query-keys'
 import { TreePane } from '@/features/workspace/components/tree-pane'
 import {
   FileTreeActionsContext,

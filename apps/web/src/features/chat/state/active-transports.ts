@@ -12,28 +12,37 @@ import type { EnvironmentId } from '@workspace/contracts'
 import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import { resetSessionEarlierPageStore } from '@/features/chat/state/session-earlier-page-store'
 
-const activeTransports = new Set<ChatTransport>()
-let projectionOrigin: string | null = null
+const activeTransports = new Map<EnvironmentId, ChatTransport>()
+const listeners = new Set<() => void>()
 
-export function registerActiveChatTransport(origin: string, transport: ChatTransport) {
-  if (projectionOrigin !== null && projectionOrigin !== origin) {
-    closeChatTransportsForEnvironmentSwitch()
-  }
-  projectionOrigin = origin
-  activeTransports.add(transport)
+export function transportFor(environmentId: EnvironmentId) {
+  return activeTransports.get(environmentId) ?? null
+}
+
+export function subscribeTransports(listener: () => void) {
+  listeners.add(listener)
   return () => {
-    activeTransports.delete(transport)
-    transport.close()
+    listeners.delete(listener)
   }
 }
 
-export function closeChatTransportsForEnvironmentSwitch() {
-  for (const transport of activeTransports) {
+export function registerChatTransport(transport: ChatTransport) {
+  const held = activeTransports.get(transport.environmentId)
+  if (held && held !== transport) held.close()
+  activeTransports.set(transport.environmentId, transport)
+  for (const listener of listeners) listener()
+  return () => {
+    if (activeTransports.get(transport.environmentId) !== transport) return
     transport.close()
+    for (const listener of listeners) listener()
   }
+}
+
+export function closeChatTransports() {
+  for (const transport of activeTransports.values()) transport.close()
   activeTransports.clear()
-  projectionOrigin = null
   resetSessionEarlierPageStore()
+  for (const listener of listeners) listener()
 }
 
 export async function dispatchCommandForEnvironment(
@@ -41,6 +50,8 @@ export async function dispatchCommandForEnvironment(
   command: ClientOrchestrationCommand,
 ) {
   const origin = confirmedEnvironmentOrigin(environmentId)
+  const live = transportFor(environmentId)
+  if (live) return live.dispatchCommand(command)
   const client = environmentClientFor(origin)
   const response = await client.orchestration.commands.post(command)
   confirmedEnvironmentId(origin)
@@ -53,7 +64,7 @@ export async function dispatchCommandForEnvironment(
     }),
   )
   if (
-    Array.from(activeTransports).some(
+    Array.from(activeTransports.values()).some(
       (transport) => transport.environmentId === environmentId && !transport.closed,
     )
   )

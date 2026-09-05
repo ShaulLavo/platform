@@ -1,8 +1,9 @@
+import { globalChromeStorage, type StorageAccess } from '@/lib/environments/state/scoped-storage'
 import { reportError, toClientError } from '@/lib/client-error-taxonomy'
 import * as v from 'valibot'
 
 // Local-only UI cache versions are dropped on mismatch, never migrated.
-export const WORKSPACE_CACHE_VERSION = 19
+export const WORKSPACE_CACHE_VERSION = 20
 export const WORKSPACE_CACHE_STORAGE_PREFIX = `platform.workspace-state.v${WORKSPACE_CACHE_VERSION}`
 export const WORKSPACE_CACHE_STORAGE_NAMESPACE = 'platform.workspace-state.v'
 
@@ -17,6 +18,7 @@ export type WorkspaceCacheWriteResult = {
 }
 
 type WorkspaceCacheEntryOptions = {
+  readonly storage?: StorageAccess
   readonly maxSerializedBytes?: number
 }
 
@@ -34,13 +36,11 @@ export function readWorkspaceCacheEntry<T>(
   fallback: T,
   options: WorkspaceCacheEntryOptions = {},
 ): T {
-  if (!canUseWorkspaceCacheStorage()) return fallback
-
   try {
-    const serialized = localStorage.getItem(key)
+    const serialized = (options.storage ?? globalChromeStorage).getItem(key)
     if (!serialized) return fallback
     if (serializedEntryIsOversized(serialized, options.maxSerializedBytes)) {
-      removeWorkspaceCacheEntry(key)
+      removeWorkspaceCacheEntry(key, options.storage)
       reportInvalidCacheEntry()
       return fallback
     }
@@ -48,11 +48,11 @@ export function readWorkspaceCacheEntry<T>(
     const result = v.safeParse(schema, JSON.parse(serialized))
     if (result.success) return result.output as T
 
-    removeWorkspaceCacheEntry(key)
+    removeWorkspaceCacheEntry(key, options.storage)
     reportInvalidCacheEntry()
     return fallback
   } catch (error) {
-    removeWorkspaceCacheEntry(key)
+    removeWorkspaceCacheEntry(key, options.storage)
     reportError(toClientError({ code: 'OPERATION_FAILED', error }))
     return fallback
   }
@@ -63,10 +63,6 @@ export function writeWorkspaceCacheEntry(
   value: unknown,
   options: WorkspaceCacheEntryOptions = {},
 ): WorkspaceCacheWriteResult {
-  if (!canUseWorkspaceCacheStorage()) {
-    return { serializedBytes: null, status: 'unavailable' }
-  }
-
   let serialized: string | undefined
   try {
     serialized = JSON.stringify(value)
@@ -84,25 +80,22 @@ export function writeWorkspaceCacheEntry(
   }
 
   try {
-    localStorage.setItem(key, serialized)
+    ;(options.storage ?? globalChromeStorage).setItem(key, serialized)
     return { serializedBytes, status: 'written' }
   } catch {
     return { serializedBytes, status: 'storage-failed' }
   }
 }
 
-export function removeWorkspaceCacheEntry(key: string) {
-  if (!canUseWorkspaceCacheStorage()) return
-
+export function removeWorkspaceCacheEntry(
+  key: string,
+  storage: StorageAccess = globalChromeStorage,
+) {
   try {
-    localStorage.removeItem(key)
+    storage.removeItem(key)
   } catch {
     // A blocked store must not prevent the app from opening.
   }
-}
-
-export function canUseWorkspaceCacheStorage() {
-  return typeof localStorage !== 'undefined'
 }
 
 function serializedEntryIsOversized(serialized: string, maxSerializedBytes?: number) {

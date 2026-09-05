@@ -1,3 +1,4 @@
+import { testScopedStorage } from '../../../../test/factories/scoped-storage'
 import { createTestApplicationRuntime } from '../../../../test/factories/application-runtime'
 import { act, screen, waitFor } from '@testing-library/react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -9,7 +10,7 @@ import { TestEditorStateProvider as EditorStateProvider } from '../../../../test
 import type {
   SettingsIntentSettlement,
   SettingsSubmission,
-} from '@/features/settings/state/intent-store'
+} from '@workspace/client-core/settings/intent-store'
 import { writeRootFolderCache } from '@/features/workspace/state/cache'
 import { useCommand } from '@/keymap/hooks/use-command'
 import { TestCommandProvider } from '../../../../test/factories/command-runtime'
@@ -20,11 +21,11 @@ import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 import { focusTargetById } from '@/lib/focus/state/service'
 
 test.beforeEach(() => {
-  writeRootFolderCache(null)
+  writeRootFolderCache(testScopedStorage, null)
 })
 
 test.afterEach(() => {
-  writeRootFolderCache(null)
+  writeRootFolderCache(testScopedStorage, null)
 })
 
 test('waits for async command settlement before closing and restoring its origin', async () => {

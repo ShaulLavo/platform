@@ -1,3 +1,4 @@
+import { clientLogContext } from '@/lib/environments/state/log-context'
 import { getClient, type Client } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
 import { unwrapEdenResponse } from '@/lib/eden-events'
@@ -25,6 +26,7 @@ export async function fetchBlobDiff(
 ): Promise<FileDiff[]> {
   return observeClientOperation(
     {
+      ...clientLogContext(client),
       action: 'git.diff_blob',
       area: 'git',
       hasNewObject: Boolean(query.newObjectId),

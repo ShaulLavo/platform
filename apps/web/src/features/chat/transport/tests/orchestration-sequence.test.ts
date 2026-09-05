@@ -6,7 +6,7 @@ import * as v from 'valibot'
 import {
   guardOrchestrationStreamSequence,
   orchestrationStreamItemSequence,
-} from '../orchestration-sequence'
+} from '@workspace/client-core/transport/utils/sequence'
 
 describe('orchestration stream sequence guards', () => {
   it('reads sequence values from snapshots and stream events', () => {

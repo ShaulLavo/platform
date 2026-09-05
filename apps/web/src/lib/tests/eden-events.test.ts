@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { normalizeEdenDates, parseEdenSseStream } from '../eden-events'
+import { normalizeEdenDates } from '@workspace/client-core/transport/normalize-dates'
+import { parseEdenSseStream } from '../eden-events'
 
 describe('Eden SSE events', () => {
   it('normalizes Date values to wire-compatible ISO strings', () => {

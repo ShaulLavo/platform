@@ -1,3 +1,4 @@
+import { clientLogContext } from '@/lib/environments/state/log-context'
 import type {
   OrchestrationShellSnapshot,
   OrchestrationSessionDetailSnapshot,
@@ -26,10 +27,7 @@ const ORCHESTRATION_SNAPSHOT_TIMEOUT_MS = 60_000
  */
 export function fetchOrchestrationShellSnapshotHttp(client: Client) {
   return observeClientOperation(
-    {
-      action: 'chat.shell_snapshot.http',
-      area: 'chat',
-    },
+    { ...clientLogContext(client), action: 'chat.shell_snapshot.http', area: 'chat' },
     async () => {
       const response = await client.orchestration['shell-snapshot'].get({
         fetch: { signal: snapshotTimeoutSignal() },
@@ -58,6 +56,7 @@ export function fetchOrchestrationSessionDetailSnapshotHttp(
 ) {
   return observeClientOperation(
     {
+      ...clientLogContext(client),
       action: 'chat.session_detail_snapshot.http',
       area: 'chat',
       sessionId,

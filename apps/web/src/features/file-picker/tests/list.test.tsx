@@ -5,7 +5,7 @@ import { expect, test } from '../../../../test/fixtures'
 import { FileList } from '@/features/file-picker/list'
 import { FilePickerSessionActionsContext } from '@/features/file-picker/providers/session-actions-context'
 import { saveSettings } from '@/features/settings/utils/api'
-import { settingsKeys } from '@/features/settings/utils/query-keys'
+import { settingsKeys } from '@workspace/client-core/settings/query-keys'
 import type { FsEntry } from '@/lib/file-system-types'
 import { createTestQueryClient, renderWithProviders } from '../../../../test/render'
 

@@ -1,10 +1,11 @@
 import type { EnvironmentId } from '@workspace/contracts'
-import { canonicalServerOrigin } from '@/lib/client'
+import { canonicalServerOrigin } from '@workspace/client-core/transport/client'
 import {
   createEnvironmentIdentityDriftError,
   createEnvironmentProtocolMismatchError,
-} from '@/lib/environments/utils/structured-errors'
-import { selectServerConnection, useEnvironmentsStore } from '@/lib/environments/state/store'
+} from '@workspace/client-core/environments/utils/structured-errors'
+import { selectServerConnection } from '@workspace/client-core/environments/state/store'
+import { useEnvironmentsStore } from '@/lib/environments/state/store'
 import { createClientInvariantError } from '@/lib/structured-errors'
 
 export function confirmedEnvironmentId(origin: string): EnvironmentId {

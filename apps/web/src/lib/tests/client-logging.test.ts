@@ -1,12 +1,21 @@
+import { useEnvironmentsStore } from '@/lib/environments/state/store'
+import { createEnvironmentEntry } from '@workspace/client-core/environments/utils/connection'
+import { activeServerOrigin, setActiveServerOrigin } from '@/lib/client'
+import { environmentLogContext } from '@/lib/environments/state/log-context'
+import { environmentIdSchema } from '@workspace/contracts'
 import { createTestQueryClient } from '../../../test/render'
 import { DEFAULT_PROVIDER_DRIVER_KIND, providerInstanceIdSchema } from '@workspace/contracts'
 import * as v from 'valibot'
 import { afterEach, beforeEach, vi } from 'vitest'
 
 import { expect, test } from '../../../test/fixtures'
-import type { ActiveSettingsIntent } from '@/features/settings/state/intent-store'
+import type { ActiveSettingsIntent } from '@workspace/client-core/settings/intent-store'
 import { settingsMutationLogContext } from '@/features/settings/utils/mutation-observability'
 import { log, observeClientOperation } from '@/lib/client-logging'
+import { superviseSettingsStream } from '@/features/settings/hooks/use-settings-stream'
+import { resetSettingsSnapshotAdmission } from '@/features/settings/state/snapshot-admission'
+import { originForQueryClient } from '@/lib/environments/state/query-clients'
+import { createWideEventScope } from '@/lib/wide-event-scope'
 
 const { emittedEvents } = vi.hoisted(() => ({
   emittedEvents: [] as EmittedClientEvent[],
@@ -112,6 +121,7 @@ test('emits mutation metadata without values and redacts raw or path diagnostics
         operationKinds: ['set', 'provider.setEnabled'],
         runtime: 'browser',
         environmentId: null,
+        machine: 'local',
         secret: '[redacted]',
         settingIds: ['workbench.colorTheme', 'providers.instances'],
         target: 'user',
@@ -162,3 +172,108 @@ function settingsIntentWithPrivateValues(): ActiveSettingsIntent {
     transportSettled: false,
   }
 }
+
+test('delayed operations and inactive-owner work retain captured machine attribution', async () => {
+  const previous = useEnvironmentsStore.getState()
+  const previousOrigin = activeServerOrigin()
+  const originA = 'http://localhost:39901'
+  const originB = 'http://localhost:39902'
+  const idA = v.parse(environmentIdSchema, '01900000-0000-4000-8000-000000000001')
+  const idB = v.parse(environmentIdSchema, '01900000-0000-4000-8000-000000000002')
+  useEnvironmentsStore.setState({
+    entries: {
+      [originA]: {
+        ...createEnvironmentEntry(originA, originA),
+        name: 'machine-a',
+        environmentId: idA,
+      },
+      [originB]: {
+        ...createEnvironmentEntry(originB, originA),
+        name: 'machine-b',
+        environmentId: idB,
+      },
+    },
+  })
+  const gate = Promise.withResolvers<void>()
+  try {
+    setActiveServerOrigin(originA)
+    const delayed = observeClientOperation(
+      { action: 'test.delayed', area: 'test' },
+      () => gate.promise,
+    )
+    setActiveServerOrigin(originB)
+    gate.resolve()
+    await delayed
+    await observeClientOperation(
+      { ...environmentLogContext(originA), action: 'test.inactive', area: 'test' },
+      async () => {},
+    )
+    await observeClientOperation(
+      { environmentId: idA, action: 'test.explicit-owner', area: 'test' },
+      async () => {},
+    )
+    log.info({ environmentId: idA, action: 'test.direct-owner', area: 'test' })
+    const scope = createWideEventScope({
+      environmentId: idA,
+      action: 'test.scope-owner',
+      area: 'test',
+    })
+    expect(scope.getContext()).toMatchObject({ environmentId: idA, machine: 'machine-a' })
+    const events = emittedEvents.filter(({ event }) => event.area === 'test')
+    expect(events).toHaveLength(4)
+    for (const { event } of events)
+      expect(event).toMatchObject({ environmentId: idA, machine: 'machine-a' })
+
+    log.info({
+      environmentId: idA,
+      machine: 'captured-machine-name',
+      action: 'test.explicit-machine',
+      area: 'test',
+    })
+    expect(emittedEvents.at(-1)?.event.machine).toBe('captured-machine-name')
+    log.info({ environmentId: null, action: 'test.unknown-owner', area: 'test' })
+    expect(emittedEvents.at(-1)?.event).toMatchObject({ environmentId: null, machine: null })
+  } finally {
+    useEnvironmentsStore.setState(previous, true)
+    setActiveServerOrigin(previousOrigin)
+  }
+})
+
+test('a settings stream keeps its primary owner when it finishes under a remote workbench', async ({
+  controlledClient,
+}) => {
+  const previous = useEnvironmentsStore.getState()
+  const previousOrigin = activeServerOrigin()
+  const queryClient = createTestQueryClient()
+  const originA = originForQueryClient(queryClient)
+  const originB = 'http://localhost:39903'
+  const idA = v.parse(environmentIdSchema, '01900000-0000-4000-8000-000000000003')
+  useEnvironmentsStore.setState({
+    entries: {
+      [originA]: {
+        ...createEnvironmentEntry(originA, originA),
+        name: 'machine-a',
+        environmentId: idA,
+      },
+      [originB]: { ...createEnvironmentEntry(originB, originA), name: 'machine-b' },
+    },
+  })
+  const abort = new AbortController()
+  const supervisor = superviseSettingsStream(queryClient, abort.signal)
+  try {
+    await controlledClient.controller.waitForSettingsStreamRequest(1)
+    setActiveServerOrigin(originB)
+    abort.abort()
+    await supervisor
+    expect(emittedEvents.find(({ event }) => event.action === 'settings.stream')).toMatchObject({
+      event: { environmentId: idA, machine: 'machine-a', outcome: 'aborted' },
+    })
+  } finally {
+    abort.abort()
+    await supervisor
+    resetSettingsSnapshotAdmission(queryClient)
+    queryClient.clear()
+    useEnvironmentsStore.setState(previous, true)
+    setActiveServerOrigin(previousOrigin)
+  }
+})

@@ -13,6 +13,7 @@ import {
   type SessionAttentionReason,
 } from '@workspace/contracts'
 import type { ChatSessionListProjection } from '@/features/chat/state/chat-projection-selectors'
+import type { EnvironmentPhase } from '@workspace/client-core/environments/utils/connection'
 import { compareProjectsForRail } from '@/features/chat-mode/utils/project-order'
 import { compareSessionsForRail } from '@/features/chat-mode/utils/session-order'
 import {
@@ -27,6 +28,7 @@ export type SessionRailEnvironment = {
   readonly environmentId: EnvironmentId
   readonly label: string | null
   readonly isPrimary: boolean
+  readonly phase: EnvironmentPhase
   readonly projects: readonly OrchestrationProjectShell[]
   readonly worktrees: readonly OrchestrationWorktreeShell[]
   readonly sessions: readonly ChatSessionListProjection[]
@@ -36,6 +38,7 @@ export type SessionRailItem = {
   readonly key: string
   readonly environmentId: EnvironmentId
   readonly machineLabel: string | null
+  readonly stale: boolean
   readonly projectGroupKey: ProjectId
   readonly activityAt: string
   readonly origin: ChatSessionListProjection['origin']
@@ -107,6 +110,7 @@ export function sessionRailModel({
   orderOverrides = { projectOrderKeys: {}, sessionOrderKeys: {} },
   query = '',
   scope = null,
+  machineFilter = null,
   searchMatches = {},
   seenBySessionKey = {},
   view = 'active',
@@ -118,10 +122,15 @@ export function sessionRailModel({
   readonly orderOverrides?: RailOrderOverrides
   readonly query?: string
   readonly scope?: SessionRailScope
+  readonly machineFilter?: EnvironmentId | null
   readonly searchMatches?: SessionSearchMatches
   readonly seenBySessionKey?: SessionSeenStamps
   readonly view?: SessionRailView
 }): SessionRailModel {
+  const visibleEnvironments =
+    machineFilter === null
+      ? environments
+      : environments.filter((environment) => environment.environmentId === machineFilter)
   const allItems = environments.flatMap((environment) =>
     environment.sessions.map((session) => {
       const ref = { environmentId: environment.environmentId, sessionId: session.id }
@@ -134,10 +143,12 @@ export function sessionRailModel({
           : null,
         seenBySessionKey[key],
         orderOverrides.sessionOrderKeys[key],
+        environment.phase !== 'live',
       )
     }),
   )
   const items = allItems
+    .filter((item) => machineFilter === null || item.environmentId === machineFilter)
     .filter((item) =>
       view === 'archived' ? item.archived : !item.archived || item.status === 'needs-input',
     )
@@ -156,7 +167,7 @@ ${item.machineLabel ?? ''}`
       Boolean(searchMatches[item.key]),
   )
   const projectsById = new Map<ProjectId, SessionRailProject>()
-  for (const environment of environments) {
+  for (const environment of visibleEnvironments) {
     for (const project of environment.projects) {
       if (projectsById.has(project.id)) continue
       const worktree = environment.worktrees.find(
@@ -226,6 +237,7 @@ export function sessionRailItem(
   machineLabel: string | null = null,
   seenAt?: string,
   pendingOrderKey?: string,
+  stale = false,
 ): SessionRailItem {
   const ref = { environmentId, sessionId: session.id }
   return {
@@ -233,6 +245,7 @@ export function sessionRailItem(
     key: scopedSessionKey(ref),
     environmentId,
     machineLabel,
+    stale,
     projectGroupKey: session.project.id,
     activityAt: session.activityAt,
     origin: session.origin,

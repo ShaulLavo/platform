@@ -1,11 +1,11 @@
 import { defaultEditorKeyBindings, vscodeEditorKeyBindings } from '@singapor/core/keymap'
 import { detectPlatform } from '@tanstack/hotkeys'
 
-import { chordKeys } from '@/keymap/utils/chord'
+import { chordKeys } from '@workspace/client-core/commands/chord'
 
 import { editorCommands } from '@/keymap/editor-commands'
 import { commandHotkeyMeta } from '@/keymap/command-registry'
-import type { CommandKeyDefault } from '@/keymap/define-command'
+import type { CommandKeyDefault } from '@workspace/client-core/commands/metadata'
 import { platformCommands, type CommandEntry } from '@/keymap/table'
 import type { KeyChord, PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
 

@@ -1,3 +1,4 @@
+import { testScopedStorage } from '../../../../test/factories/scoped-storage'
 import '@workspace/ui/globals.css'
 import '@singapor/core/style.css'
 import '@singapor/gutters/style.css'
@@ -197,7 +198,7 @@ test(
     const themeId = prepareRealFileTest()
     const gate = installDelayedReadClient()
     const record = await cachedSnapshotForExistingTarget(path, rootPath, themeId)
-    expect(writeEditorVisibleSnapshotCache(record).status).toBe('written')
+    expect(writeEditorVisibleSnapshotCache(testScopedStorage, record).status).toBe('written')
 
     const host = mountRealFileEditor(path, rootPath)
 
@@ -256,7 +257,7 @@ test('a real file-read error removes both the cold paint and its matching record
   const themeId = prepareRealFileTest()
   const gate = installDelayedReadClient()
   const record = cachedSnapshotForTarget(path, rootPath, themeId, 'stat:missing')
-  expect(writeEditorVisibleSnapshotCache(record).status).toBe('written')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, record).status).toBe('written')
 
   const host = mountRealFileEditor(path, rootPath)
   await expect.poll(gate.observedStatus).toBe(404)
@@ -267,7 +268,7 @@ test('a real file-read error removes both the cold paint and its matching record
   await expect.poll(() => host.querySelector('[data-editor-visible-snapshot]')).toBeNull()
   await expect
     .poll(() =>
-      readEditorVisibleSnapshotCache({
+      readEditorVisibleSnapshotCache(testScopedStorage, {
         contentVersion: record.contentVersion,
         path,
         rootPath,
@@ -286,7 +287,7 @@ test.each(['pointerdown', 'touchmove', 'wheel'] as const)(
     const themeId = prepareRealFileTest()
     const gate = installDelayedReadClient()
     const record = await cachedSnapshotForExistingTarget(path, rootPath, themeId)
-    expect(writeEditorVisibleSnapshotCache(record).status).toBe('written')
+    expect(writeEditorVisibleSnapshotCache(testScopedStorage, record).status).toBe('written')
 
     const host = mountRealFileEditor(path, rootPath)
     await expect.poll(gate.observedStatus).toBe(200)
@@ -308,7 +309,7 @@ test.each(['pointerdown', 'touchmove', 'wheel'] as const)(
     expect(hiddenAtBubble).toBe(true)
     expect(overlay.hidden).toBe(true)
     expect(
-      readEditorVisibleSnapshotCache({
+      readEditorVisibleSnapshotCache(testScopedStorage, {
         contentVersion: record.contentVersion,
         path,
         rootPath,
@@ -320,7 +321,9 @@ test.each(['pointerdown', 'touchmove', 'wheel'] as const)(
 )
 
 test('the cached mark stays distinct from matching next-frame authoritative paint', async () => {
-  expect(writeEditorVisibleSnapshotCache(cachedSnapshot()).status).toBe('written')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, cachedSnapshot()).status).toBe(
+    'written',
+  )
   const host = document.createElement('div')
   host.dataset.workbench = ''
   host.style.height = '120px'
@@ -350,7 +353,9 @@ test('the cached mark stays distinct from matching next-frame authoritative pain
 })
 
 test('a ready exact document still paints its cached frame before authoritative paint', async () => {
-  expect(writeEditorVisibleSnapshotCache(cachedSnapshot()).status).toBe('written')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, cachedSnapshot()).status).toBe(
+    'written',
+  )
   const host = document.createElement('div')
   host.dataset.workbench = ''
   host.style.height = '120px'
@@ -403,7 +408,9 @@ test('capture-phase focus hides the visual before focus reaches the live target'
 })
 
 async function mountInteractionHarness(kind: InteractionKind) {
-  expect(writeEditorVisibleSnapshotCache(cachedSnapshot()).status).toBe('written')
+  expect(writeEditorVisibleSnapshotCache(testScopedStorage, cachedSnapshot()).status).toBe(
+    'written',
+  )
   const host = document.createElement('div')
   host.dataset.workbench = ''
   host.style.height = '120px'
@@ -421,6 +428,7 @@ async function mountInteractionHarness(kind: InteractionKind) {
 
 function PaintHarness({ live }: { live: boolean }) {
   const binding = useEditorVisibleSnapshot({
+    storage: testScopedStorage,
     active: true,
     fileReadError: false,
     renderedDocument: live
@@ -490,6 +498,7 @@ function InteractionHarness({
   observations: boolean[]
 }) {
   const binding = useEditorVisibleSnapshot({
+    storage: testScopedStorage,
     active: true,
     fileReadError: false,
     renderedDocument: null,

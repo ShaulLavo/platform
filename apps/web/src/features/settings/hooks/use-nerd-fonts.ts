@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useSettingsOwner } from '@/features/settings/hooks/use-settings-owner'
 
 import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 
@@ -10,14 +11,18 @@ import { clientForQueryClient } from '@/lib/environments/state/query-clients'
  * — picking one here means the user gets it, not that they already had it.
  */
 export function useNerdFonts() {
-  return useQuery({
-    queryFn: async ({ client }) => {
-      const response = await clientForQueryClient(client).fonts.get()
+  const owner = useSettingsOwner()
+  return useQuery(
+    {
+      queryFn: async ({ client }) => {
+        const response = await clientForQueryClient(client).fonts.get()
 
-      return Object.keys(response.data ?? {}).sort((a, b) => a.localeCompare(b))
+        return Object.keys(response.data ?? {}).sort((a, b) => a.localeCompare(b))
+      },
+      queryKey: ['fonts', 'nerd-fonts'],
+      // The catalogue is a release manifest; it does not move while the app is open.
+      staleTime: Number.POSITIVE_INFINITY,
     },
-    queryKey: ['fonts', 'nerd-fonts'],
-    // The catalogue is a release manifest; it does not move while the app is open.
-    staleTime: Number.POSITIVE_INFINITY,
-  })
+    owner,
+  )
 }

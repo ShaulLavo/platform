@@ -1,3 +1,4 @@
+import type { CommandTargetKind } from '@workspace/client-core/commands/metadata'
 import { showChatModeToolTab } from '@/features/chat-mode/utils/panels'
 import { parseCompareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'
 import { isSavableEditorDocument } from '@/features/editor/utils/save'
@@ -8,7 +9,6 @@ import {
   activeEditorTabForWorkbenchPanels,
 } from '@/features/workbench/utils/panels'
 import type {
-  CommandTargetKind,
   PlatformCommandTarget,
   WorkspaceCommandHandlerContext,
   WorkspaceCommandRuntime,

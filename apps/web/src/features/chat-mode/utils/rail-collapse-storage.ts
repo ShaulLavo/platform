@@ -1,3 +1,4 @@
+import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
 import { projectIdSchema, type ProjectId } from '@workspace/contracts'
 import * as v from 'valibot'
 
@@ -17,11 +18,9 @@ const persistedRailCollapseSchema = v.object({
 
 const NO_PROJECT_IDS: readonly ProjectId[] = []
 
-export function readPersistedRailCollapse(): readonly ProjectId[] {
-  if (!canUseLocalStorage()) return NO_PROJECT_IDS
-
+export function readPersistedRailCollapse(storage: ScopedStorage): readonly ProjectId[] {
   try {
-    const raw = localStorage.getItem(RAIL_COLLAPSE_STORAGE_KEY)
+    const raw = storage.getItem(RAIL_COLLAPSE_STORAGE_KEY)
     if (!raw) return NO_PROJECT_IDS
 
     const parsed = v.safeParse(persistedRailCollapseSchema, JSON.parse(raw))
@@ -33,11 +32,12 @@ export function readPersistedRailCollapse(): readonly ProjectId[] {
   }
 }
 
-export function writePersistedRailCollapse(collapsedProjectIds: readonly ProjectId[]) {
-  if (!canUseLocalStorage()) return
-
+export function writePersistedRailCollapse(
+  adapter: ScopedStorage,
+  collapsedProjectIds: readonly ProjectId[],
+) {
   try {
-    localStorage.setItem(
+    adapter.setItem(
       RAIL_COLLAPSE_STORAGE_KEY,
       JSON.stringify({
         collapsedProjectIds: collapsedProjectIds.slice(0, MAX_COLLAPSED_PROJECTS),
@@ -48,8 +48,4 @@ export function writePersistedRailCollapse(collapsedProjectIds: readonly Project
     // A full or unavailable store costs the user a re-expanded group on the
     // next reload. Nothing here is worth interrupting a click over.
   }
-}
-
-function canUseLocalStorage() {
-  return typeof localStorage !== 'undefined'
 }

@@ -3,7 +3,7 @@ import {
   parseAddress,
   type Address,
   type AddressEnvironments,
-} from '@/features/address/utils/grammar'
+} from '@workspace/client-core/address/grammar'
 import { log } from '@/lib/client-logging'
 
 /**

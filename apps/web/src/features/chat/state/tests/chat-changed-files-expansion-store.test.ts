@@ -1,3 +1,4 @@
+import { testScopedStorage } from '../../../../../test/factories/scoped-storage'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import {
@@ -32,7 +33,7 @@ function expansion(key: string) {
 }
 
 function storedKeys() {
-  const raw = STORE.get(CHAT_CHANGED_FILES_EXPANSION_STORAGE_KEY) ?? '{}'
+  const raw = testScopedStorage.getItem(CHAT_CHANGED_FILES_EXPANSION_STORAGE_KEY) ?? '{}'
   return Object.keys(JSON.parse(raw).expansionByKey ?? {})
 }
 
@@ -43,6 +44,7 @@ beforeEach(() => {
     value: memoryLocalStorage(),
   })
   resetChatChangedFilesExpansionStore()
+  hydrateChatChangedFilesExpansionStoreFromStorage(testScopedStorage)
 })
 
 afterEach(() => {
@@ -53,46 +55,52 @@ afterEach(() => {
 
 describe('chat changed-files expansion store', () => {
   it('reports nothing chosen until the user chooses', () => {
-    expect(expansion('session-1:turn-1')).toBeUndefined()
+    expect(expansion(`${testScopedStorage.environmentId}:session-1:turn-1`)).toBeUndefined()
   })
 
   it('keeps the card and its folders as independent choices', () => {
     const { setCardExpanded, setDirectoriesExpanded } = useChatChangedFilesExpansionStore.getState()
 
-    setCardExpanded('session-1:turn-1', true)
-    expect(expansion('session-1:turn-1')).toMatchObject({
+    setCardExpanded(`${testScopedStorage.environmentId}:session-1:turn-1`, true)
+    expect(expansion(`${testScopedStorage.environmentId}:session-1:turn-1`)).toMatchObject({
       cardExpanded: true,
       directoriesExpanded: null,
     })
 
-    setDirectoriesExpanded('session-1:turn-1', false)
-    expect(expansion('session-1:turn-1')).toMatchObject({
+    setDirectoriesExpanded(`${testScopedStorage.environmentId}:session-1:turn-1`, false)
+    expect(expansion(`${testScopedStorage.environmentId}:session-1:turn-1`)).toMatchObject({
       cardExpanded: true,
       directoriesExpanded: false,
     })
   })
 
   it('survives a reload', () => {
-    useChatChangedFilesExpansionStore.getState().setCardExpanded('session-1:turn-1', true)
+    useChatChangedFilesExpansionStore
+      .getState()
+      .setCardExpanded(`${testScopedStorage.environmentId}:session-1:turn-1`, true)
 
     // What a fresh page load does: drop the in-memory store, read storage back.
     resetChatChangedFilesExpansionStore()
-    expect(expansion('session-1:turn-1')).toBeUndefined()
+    expect(expansion(`${testScopedStorage.environmentId}:session-1:turn-1`)).toBeUndefined()
 
-    hydrateChatChangedFilesExpansionStoreFromStorage()
-    expect(expansion('session-1:turn-1')).toMatchObject({ cardExpanded: true })
+    hydrateChatChangedFilesExpansionStoreFromStorage(testScopedStorage)
+    expect(expansion(`${testScopedStorage.environmentId}:session-1:turn-1`)).toMatchObject({
+      cardExpanded: true,
+    })
   })
 
   it('drops storage written under a different version instead of trusting it', () => {
-    localStorage.setItem(
+    testScopedStorage.setItem(
       CHAT_CHANGED_FILES_EXPANSION_STORAGE_KEY,
       JSON.stringify({
-        expansionByKey: { 'session-1:turn-1': { cardExpanded: true } },
+        expansionByKey: {
+          [`${testScopedStorage.environmentId}:session-1:turn-1`]: { cardExpanded: true },
+        },
         version: 2,
       }),
     )
 
-    hydrateChatChangedFilesExpansionStoreFromStorage()
+    hydrateChatChangedFilesExpansionStoreFromStorage(testScopedStorage)
 
     expect(useChatChangedFilesExpansionStore.getState().expansionByKey).toEqual({})
   })
@@ -102,13 +110,13 @@ describe('chat changed-files expansion store', () => {
     const total = CHAT_CHANGED_FILES_EXPANSION_LIMIT + 25
 
     for (let index = 0; index < total; index += 1) {
-      setCardExpanded(`session-${index}:turn-1`, true)
+      setCardExpanded(`${testScopedStorage.environmentId}:session-${index}:turn-1`, true)
     }
 
     const keys = Object.keys(useChatChangedFilesExpansionStore.getState().expansionByKey)
     expect(keys).toHaveLength(CHAT_CHANGED_FILES_EXPANSION_LIMIT)
-    expect(keys).toContain(`session-${total - 1}:turn-1`)
-    expect(keys).not.toContain('session-0:turn-1')
+    expect(keys).toContain(`${testScopedStorage.environmentId}:session-${total - 1}:turn-1`)
+    expect(keys).not.toContain(`${testScopedStorage.environmentId}:session-0:turn-1`)
     expect(storedKeys()).toHaveLength(CHAT_CHANGED_FILES_EXPANSION_LIMIT)
   })
 })

@@ -1,0 +1,98 @@
+import { readCachedEnvironmentBindings } from '@/features/chat/state/chat-projection-cache'
+import { useEnvironmentsStore } from '@/lib/environments/state/store'
+import { createBootRuntime } from '@/state/bootstrap-runtime'
+import { useEffect, useState, type ReactNode } from 'react'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { HotkeysProvider } from '@tanstack/react-hotkeys'
+import { ActiveEnvironmentApplication } from '@/components/active-environment-application'
+import { LoadingState } from '@workspace/ui/components/loading-state'
+import { Button } from '@workspace/ui/components/button'
+import { SettingsOwnerProvider } from '@/features/settings/providers/owner-provider'
+import { FocusProvider } from '@/lib/focus/providers/provider'
+import { CommandBusProvider } from '@/keymap/providers/bus-provider'
+import { ApplicationRuntimeProvider } from '@/providers/application-runtime-provider'
+import { EnvironmentTransportsProvider } from '@/providers/environment-transports-provider'
+import { type ApplicationRuntime } from '@/state/application-runtime'
+import { primaryQueryClient } from '@/lib/environments/state/query-clients'
+import { primaryServerOrigin } from '@/lib/client'
+import { readEnvironmentDescriptor } from '@/lib/environments/utils/descriptor'
+import { errorMessage } from '@/lib/error-message'
+
+export function ApplicationBootstrap({
+  boot,
+  children,
+}: {
+  readonly boot: { readonly 'workbench.density': 'compact' | 'cozy' }
+  readonly children: ReactNode
+}) {
+  const [application, setApplication] = useState<ApplicationRuntime | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [attempt, setAttempt] = useState(0)
+  useEffect(() => {
+    const abort = new AbortController()
+    const cached = readCachedEnvironmentBindings(['local']).find(
+      (binding) => binding.origin === primaryServerOrigin(),
+    )
+    let runtime: ApplicationRuntime | null = null
+    try {
+      if (cached) runtime = createBootRuntime(cached.descriptor, true)
+    } catch {
+      // Cached metadata cannot prevent a fresh descriptor check.
+    }
+    // oxlint-disable-next-line oxc-react-compiler/set-state-in-effect -- constructing the cached runtime starts subscriptions and must stay in the mount effect.
+    if (runtime) setApplication(runtime)
+    void readEnvironmentDescriptor(
+      primaryServerOrigin(),
+      AbortSignal.any([abort.signal, AbortSignal.timeout(10_000)]),
+    )
+      .then((descriptor) => {
+        if (abort.signal.aborted) return
+        runtime ??= createBootRuntime(descriptor)
+        setApplication(runtime)
+        setError(null)
+      })
+      .catch((cause: unknown) => {
+        if (abort.signal.aborted) return
+        const message = errorMessage(cause, 'Cannot connect to the local machine.')
+        if (runtime)
+          useEnvironmentsStore.getState().setPhase(primaryServerOrigin(), 'offline', message)
+        if (!runtime) setError(message)
+      })
+    return () => {
+      abort.abort()
+      runtime?.dispose()
+    }
+  }, [attempt])
+  if (error)
+    return (
+      <div role='alert' className='text-destructive p-4'>
+        {error}
+        <Button onClick={() => setAttempt(attempt + 1)}>Retry connection</Button>
+      </div>
+    )
+  if (!application)
+    return (
+      <LoadingState label='Connecting to local machine'>
+        <div className='skeleton-sweep h-4 w-48' />
+      </LoadingState>
+    )
+  return (
+    <QueryClientProvider client={primaryQueryClient()}>
+      <SettingsOwnerProvider queryClient={primaryQueryClient()}>
+        <ApplicationRuntimeProvider application={application}>
+          <EnvironmentTransportsProvider connections={application.connections}>
+            <FocusProvider>
+              <HotkeysProvider>
+                <CommandBusProvider binding={application.commandBinding}>
+                  <ActiveEnvironmentApplication bootDensity={boot['workbench.density']}>
+                    {children}
+                  </ActiveEnvironmentApplication>
+                </CommandBusProvider>
+              </HotkeysProvider>
+            </FocusProvider>
+          </EnvironmentTransportsProvider>
+        </ApplicationRuntimeProvider>
+      </SettingsOwnerProvider>
+    </QueryClientProvider>
+  )
+}

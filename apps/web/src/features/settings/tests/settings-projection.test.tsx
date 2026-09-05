@@ -11,6 +11,7 @@ import { expect, test } from '../../../../test/fixtures'
 import { settingsSnapshot } from '../../../../test/factories/settings'
 import { createTestQueryClient } from '../../../../test/render'
 import { providerQueryKeys } from '@/features/chat/utils/provider-query'
+import { useSettingsIntentStore } from '@/features/settings/state/intent-store'
 import {
   acknowledgeSettingsIntent,
   discardFailedSettingsIntent,
@@ -19,8 +20,7 @@ import {
   retrySettingsIntent,
   settingsIntentStatus,
   submitSettingsIntent,
-  useSettingsIntentStore,
-} from '@/features/settings/state/intent-store'
+} from '@workspace/client-core/settings/intent-store'
 import {
   admitSettingsEvent,
   admitSettingsMutationResult,
@@ -30,8 +30,8 @@ import {
   resetSettingsSnapshotAdmission,
 } from '@/features/settings/state/snapshot-admission'
 import { fetchSettings, saveSettings } from '@/features/settings/utils/api'
-import { projectSettings } from '@/features/settings/utils/projection'
-import { settingsKeys } from '@/features/settings/utils/query-keys'
+import { projectSettings } from '@workspace/client-core/settings/projection'
+import { settingsKeys } from '@workspace/client-core/settings/query-keys'
 
 test('replays pending intents in one strict process-wide order', () => {
   resetSettingsIntentStore()

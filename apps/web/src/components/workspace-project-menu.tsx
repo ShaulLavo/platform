@@ -1,7 +1,11 @@
 import { useActiveChatProjection } from '@/features/chat/hooks/use-active-projection'
 import { CaretDownIcon, FolderOpenIcon, FolderPlusIcon } from '@phosphor-icons/react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { Button } from '@workspace/ui/components/button'
+import { MachinePhase } from '@/components/machine-phase'
+import { useEnvironmentsStore } from '@/lib/environments/state/store'
+import { originForQueryClient } from '@/lib/environments/state/query-clients'
 
 import {
   selectChatProjects,
@@ -27,6 +31,8 @@ import { cn } from '@workspace/ui/lib/utils'
 const EMPTY_FOLDERS: readonly { name: string; path: string }[] = []
 
 export function WorkspaceProjectMenu({ workspaceTitle }: { readonly workspaceTitle: string }) {
+  const origin = originForQueryClient(useQueryClient())
+  const machine = useEnvironmentsStore((state) => state.entries[origin])
   const [open, setOpen] = useState(false)
   const rootPath = useEditorWorkspaceState((state) => state.rootFolder?.path ?? null)
   const openPicker = useEditorWorkspaceState((state) => state.openPicker)
@@ -57,8 +63,9 @@ export function WorkspaceProjectMenu({ workspaceTitle }: { readonly workspaceTit
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger
         render={
-          <button
+          <Button
             aria-label='Switch project'
+            variant='ghost'
             className={cn(
               NATIVE_WINDOW_NO_DRAG_CLASS,
               'hover:bg-accent focus-visible:ring-ring/50 compact:gap-1.5 compact:px-1.5 compact:py-0.5 flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left outline-none focus-visible:ring-1',
@@ -69,6 +76,12 @@ export function WorkspaceProjectMenu({ workspaceTitle }: { readonly workspaceTit
       >
         <FolderOpenIcon className='text-muted-foreground size-4 shrink-0' weight='duotone' />
         <span className='truncate text-xs font-medium'>{workspaceTitle}</span>
+        {machine ? (
+          <span className='text-muted-foreground flex min-w-0 items-center gap-1 text-[10px]'>
+            <MachinePhase label={machine.label ?? machine.name} phase={machine.phase} />
+            <span className='truncate'>{machine.label ?? machine.name}</span>
+          </span>
+        ) : null}
         <CaretDownIcon className='text-muted-foreground size-3 shrink-0' />
       </DropdownMenuTrigger>
       <DropdownMenuContent

@@ -1,9 +1,9 @@
-# Environments — Strategy
+# Environments strategy
 
-> **STATUS: REVIEWED STRATEGY; PLANS 077 AND 068 IMPLEMENTED.** Root
+> **Status: Implemented; automated checks pass; live SSH/browser gates open.** Root
 > [`PLAN.md`](../PLAN.md) owns execution order. The [session domain](session-domain.md) supplies
 > repository identity, checkout ownership, recovery, and scoped browser records.
-> [Plan 078](../plans/078-federated-environments.md) is the remaining executable environments slice.
+> [Plan 078](../plans/078-federated-environments.md) remains open for its localhost SSH and browser checks.
 > This strategy document authorizes nothing by itself.
 
 ## 0. What changed since the first design, and why
@@ -25,7 +25,7 @@ Two things flip:
 | ------------------------------------ | -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
 | One or several environments at once? | One                                          | **Several connected, one workbench.** Chat federates every connected machine; files, terminal, LSP and tabs follow one machine at a time (§3).     |
 | Scoped `{environmentId, id}` refs?   | Deferred; "needed for simultaneity only"     | **Mandatory.** Plan 068 makes project ids deterministic from repository identity, so the same repo on two machines has the _same_ project id (§2). |
-| First remote transport?              | TLS or tailnet origin, after pairing (M4–M5) | **SSH port forward first, no pairing** (§3, §4). The mesh https origin comes second, pairing only when a client outside SSH reach exists.          |
+| First remote transport?              | TLS or tailnet origin, after pairing (M4–M5) | **SSH forward and direct-origin entries are implemented** (§3, §4). Mesh deployment checks and pairing remain deferred.                            |
 
 ## 1. What an environment is
 
@@ -40,13 +40,13 @@ The client learns the environment identity from the authenticated descriptor and
 
 | Our noun                   | Relationship to an environment                                                                                                                                                                       |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Server origin              | Runtime connection address. Plan 077 keys each client, QueryClient, and retained workbench runtime by its canonical origin.                                                                          |
+| Server origin              | Connection route to a confirmed `EnvironmentId`. Endpoint replacement preserves that environment's client, QueryClient, and retained runtime.                                                        |
 | Workspace root             | Many per environment; selecting a root does not change environment identity.                                                                                                                         |
 | Project, worktree, session | Owned by an environment. Plan 068 derives project ids from repository identity, so the same repository can have the same `ProjectId` on two servers. Browser records then use `(environmentId, id)`. |
 | Provider instance          | Per environment. Each machine uses its own provider credentials and available binaries.                                                                                                              |
-| Terminal session, LSP      | Child processes on the owning machine. Client connections close when the dev workbench switches away.                                                                                                |
-| Editor tab, diff document  | Paths and buffers belong to the retained editor runtime for an origin. The same path on two machines can contain different bytes. Persisted namespaces remain Plan 078 work (§2.4).                  |
-| Settings document          | The Plan 077 dev switch reads and writes the selected server's settings. Reading client settings from the primary environment is the Plan 078 target (§3.4).                                         |
+| Terminal session, LSP      | Child processes on the owning machine. The active workbench mounts that machine's client connections.                                                                                                |
+| Editor tab, diff document  | Paths and buffers belong to the retained editor runtime for an `EnvironmentId`. Browser cache namespaces separate identical paths on different machines (§2.4).                                      |
+| Settings document          | Client settings use the primary environment's document. Each server retains its own server-consumed settings (§3.4).                                                                                 |
 | `ChatTransport`            | The implemented chat connection interface. `createChatTransport(origin)` owns its RPC client, detail subscriptions, and earlier-page loader, with an explicit `close()`.                             |
 
 ## 2. Data model
@@ -65,9 +65,10 @@ advances connection generation and invalidates that environment's server caches.
 { ok, environmentId, label, protocolVersion, serverVersion, platform: { os, arch }, ...fs.info() }
 ```
 
-The initial workbench waits for this descriptor. Both the descriptor and WS handshake check
-identity and protocol compatibility before accepting the server. No unauthenticated descriptor
-exists. Pairing remains deferred with the clients that need it.
+Without a cached descriptor, the initial workbench waits for `/health`. A cached descriptor can
+restore stale content while fresh health checks run. Both the descriptor and WS handshake check
+identity and protocol compatibility before accepting current server data. No unauthenticated
+descriptor exists. Pairing remains deferred with the clients that need it.
 
 ### 2.2 Repository identity and the same repo on two machines
 
@@ -104,30 +105,46 @@ Git status and diff caches, mutation state, and invalidation targets retain this
 
 ### 2.3 Client registry
 
-Plan 078 adds configured machines. An SSH target reaches execution through the launcher, so
-machines belong in the settings registry:
+Configured machines use the `environments.machines` registry entry. Its `Machines` type is a
+record of names to `MachineDefinition`, with these fields:
 
 ```ts
-'environments.machines': record<name, { kind: 'ssh', target, repoPath, port? } | { kind: 'origin', url }>
+type MachineDefinition =
+  | { kind: 'ssh'; target: string; repoPath: string; remotePort?: number; label?: string }
+  | { kind: 'origin'; url: string; label?: string }
 ```
 
-`machine` scope, custom `machines` widget, edited on a Settings → Machines page. The local
-environment is implicit and never listed. Ephemeral state (connection phase, descriptor, last
-error, environmentId once learned, forwarded local port) lives in a Zustand store rebuilt on launch.
+The setting has `machine` scope because SSH configuration reaches execution through the launcher.
+Settings → Machines edits it through the `machines` widget. The primary environment is implicit,
+and `local` is reserved rather than stored as a configured entry. A Zustand store holds connection
+phase, descriptor, last error, confirmed identity, and forwarded port.
 
-### 2.4 Scoping persisted state — the namespace, not the key
+`platform.environments.connected.v1` stores the connected machine names. The existing settings
+mirror supplies cached configuration during startup. When the primary settings projection arrives,
+it removes deleted names and stops their connections. Removing a configured machine hides its rail
+data while preserving its disk cache and retained editor state. Explicit disconnect keeps cached
+rows readable.
 
-Plan 078 moves per-environment localStorage keys (`workspace-cache-storage.ts`, `chat-projection-cache.ts`,
+### 2.4 Environment storage namespaces
+
+Per-environment localStorage owners (`workspace-cache-storage.ts`, `chat-projection-cache.ts`,
 chat drafts, session reads, changed-files expansion, thread diff scope, prompt stash, rail
-collapse) behind one `environmentScopedStorage(environmentId)` adapter that prefixes
+collapse) use one `environmentScopedStorage(environmentId)` adapter that prefixes
 `env:${environmentId}|`. Global chrome (theme, palette, ui mode, workbench layout, address cache)
-stays unscoped. No migration: the developer clears site data once.
+stays unscoped. Workspace cache version 20 and chat projection cache version 3 replace the old
+caches without migration. Old development site data can be cleared once. Version sweeps enumerate
+only the captured environment namespace.
 
-The environment namespace separates machines. Within it, checkout state remains keyed by
-`worktreeId`, and files opened for that checkout retain their file identity beneath that owner.
-Unsaved buffers, tabs, commit drafts, and pending Git mutations must not be keyed by the logical
-project alone. Switching checkouts preserves unsaved buffers and their save destination, including
-when two machines expose the same absolute path. This does not require persisting unsaved text.
+Within each environment namespace, registered checkout caches use confirmed `WorktreeId` values.
+An unregistered folder has an explicit folder location until the server supplies a Worktree record.
+The retained editor runtime maps root paths to those records and owns Git commit drafts. Switching
+checkouts preserves unsaved buffers and their save destination, including when two machines expose
+the same absolute path. Unsaved editor text remains in memory.
+
+Each chat projection cache also records its machine names, endpoint, and descriptor. Cold startup
+restores configured, previously connected machines from their own caches and marks them stale
+until their connections are live. Cached metadata supplies expected identity; fresh health checks
+validate it before opening a transport.
 
 ## 3. Transport and connection model
 
@@ -143,18 +160,18 @@ a delayed save, a queued mutation, or its cache invalidation to another machine.
 
 ### 3.2 Several connections, one workbench
 
-Plan 077 implements the workbench lifetimes that federation needs. Each origin retains an
-imperative editor runtime with its document buffers, dirty text, views, undo history, workspace
-state, and save service. The QueryClient remains mounted for the application lifetime, so queued
-mutations can resume while that origin's React consumers are absent.
+Each confirmed environment retains an imperative editor runtime with its document buffers, dirty
+text, views, undo history, workspace state, Git drafts, and save service. The QueryClient remains
+mounted for the application lifetime, so queued mutations can resume while that environment's
+React consumers are absent.
 
 Switching keys the active query-consumer subtree by origin. Changing only the QueryClientProvider
 value does not move existing React Query observers to a different client. The keyed subtree
 recreates those consumers while retaining the editor and saver objects above it. Browser storage
-seeds a runtime only when that origin is first opened; returning to an existing runtime preserves
-its in-memory state. One outer command bus captures the active runtime for each dispatch.
+seeds a runtime only when that environment is first opened. Returning to an existing runtime
+preserves its in-memory state. One outer command bus captures the active runtime for each dispatch.
 
-The Plan 078 federation target adds:
+Federation uses these owners:
 
 - One `ChatTransport` per connected environment, with its own RPC client, subscriptions, shell
   supervisor, and reconnect state. The projection store holds one slice per environment, and the
@@ -165,26 +182,25 @@ The Plan 078 federation target adds:
 - Chat connections that remain open when the workbench moves elsewhere. A running turn keeps
   streaming into its owning environment's projection.
 
-The current dev switch closes outgoing chat transports and clears their projection before opening
-the selected server. Concurrent chat connections and persisted environment namespaces remain
-Plan 078 work.
+The dev-only origin switch has been removed. Workbench switches preserve outgoing chat transports
+and projections. Disconnect and configuration removal have separate lifetimes from workbench
+selection.
 
 ### 3.3 How a client reaches a machine
 
-Both transports reduce to an origin; platform never learns which one produced it.
+Both connection types supply a validated endpoint to the same client and transport owners.
 
-1. **SSH port forward (first).** The desktop shell owns it, like t3code's `DesktopSshEnvironment`:
+1. **SSH port forward.** The desktop shell owns it, like t3code's `DesktopSshEnvironment`:
    probe the target with `ssh -o BatchMode=yes`, start or reuse `bun apps/server/src/index.ts` in
    the configured repo checkout bound to remote loopback with `SERVER_ALLOWED_ORIGINS` set to the
    client's own page origin, forward the remote port to a local port with `ssh -N -L`, wait on
    `/health`, record the `environmentId`. Both ends stay loopback, the server's loopback assertion
    and origin allowlist are untouched, and the SSH key is the credential. `mesh`'s key-only SSH door
    on port 2222 is just an SSH target; a stock `~/.ssh/config` `Host` entry makes it one line.
-2. **Direct origin (second).** `{ kind: 'origin', url }` for an `https://` origin such as the one
-   `mesh serve pc 3001 --at /platform` publishes on the tailnet with a real certificate. Needs the
-   remote server started with the client's origin allowed, and two things to verify in a spike
-   before it is scheduled: WebSocket upgrades through mesh's reverse proxy and path-prefix tolerance
-   (mesh strips the prefix and sends `X-Forwarded-Prefix`; the server has no base-path support).
+2. **Direct origin.** `{ kind: 'origin', url }` accepts HTTPS or loopback HTTP URLs. The remote
+   server must allow the client's page origin. The mesh deployment remains unverified, including
+   WebSocket upgrades through its reverse proxy and path-prefix handling for
+   `mesh serve pc 3001 --at /platform`. Those deployment checks remain unscheduled.
    A plain `http://` non-loopback origin is refused with a real message, never upgraded silently.
 
 There is no install step. The remote machine has the repository and Bun already; the launcher only
@@ -192,14 +208,14 @@ starts or reuses the server. A version skew surfaces as the existing WS protocol
 
 ### 3.4 Settings across machines
 
-Plan 077's dev switch reads and writes the selected server's settings. Query hooks and retained
-settings save services use their owning client, so a pending A write stays on A after selecting B.
+Client settings belong to the primary environment. `SettingsOwnerProvider` retains its QueryClient
+above the active workbench. `useSettingValue`, `readSettingsMirror`, and the Settings page use that
+primary document when a remote workbench is selected. Pending settings operations retain their
+owning client.
 
-Plan 078 changes client settings ownership to the primary environment. Under that target,
-`useSettingValue` and `readSettingsMirror` read the primary settings document, and the Settings
-page edits it. Each server continues reading its own server-consumed keys, including LSP,
-terminal, and fonts. Workspace-scoped values on a remote machine stay with that server's
-consumers. Editing the remote server's settings file remains an operation on that machine.
+Each server continues reading its own server-consumed keys, including LSP and terminal
+configuration. Workspace-scoped values on a remote machine stay with that server's consumers.
+Editing the remote server's settings file remains an operation on that machine.
 
 ## 4. Auth and trust model
 
@@ -243,9 +259,9 @@ repository identity joins the same group.
 
 ### 5.3 The workbench
 
-The titlebar project menu shows the active machine with a status dot; the command palette gains
+The titlebar project menu shows the active machine with a status dot; the command palette exposes
 `environment.switch`, `environment.connect`, `environment.openMachines`. Switching is described in
-§3.2. The address gains an optional `@<environmentId>` segment before the workspace segment,
+§3.2. The address accepts an optional `@<environmentId>` segment before the workspace segment,
 omitted for the local environment, so a chat or editor link names the machine it belongs to.
 
 ### 5.4 Honest failure, per machine
@@ -253,9 +269,9 @@ omitted for the local environment, so a chat or editor link names the machine it
 Per-environment state, never a global modal. Rail header and Machines page show each machine's
 phase; the workbench surfaces show, when its machine is unreachable: a stale-marked tree and git
 panel painted from cache, a dead-terminal banner (not a spinner), a read-only editor with saves
-refused with a reason, and chat's existing reconnecting phase. One recovery coordinator keyed by
-environment retries every machine on `online` and focus; a paired remote must heal exactly like the
-local server does.
+refused with a reason, and chat's reconnecting phase. Recovery runs independently for each machine,
+with backoff and retries on `online` and focus. Blocked connections and identity drift require an
+explicit retry.
 
 ### 5.5 Settings → Machines
 
@@ -284,16 +300,22 @@ must choose its layout and bind every section's queries, mutations, and file lin
 
 Plan 077 is implemented. It supplies persistent environment identity, authenticated descriptors,
 identity and protocol checks, canonical origin registries, retained editor and QueryClient
-lifetimes, owner-bound operations, closeable chat transports, explicit `1008` auth refusal, and a
-dev-only loopback origin switch.
+lifetimes, owner-bound operations, closeable chat transports, and explicit `1008` auth refusal.
+Its dev-only loopback origin switch has been removed by Plan 078.
 
 Plan 068 is also implemented. The [session-domain reference](session-domain.md) links its
 repository identity, checkout ownership, recovery, and environment-scoped navigation owners.
 
-Plan 078 is next: machines settings, SSH launch, concurrent chat connections, scoped persistence,
-a cross-machine rail, and workbench switching. Plan 069 has its domain prerequisite but remains
-unscheduled. It adds worktree selection, creation, and cleanup on one machine. The Git overview in
-§5.6 also remains unscheduled. Direct-origin checks and pairing follow only on demand.
+Plan 078 is implemented and its automated verification passed. Machines settings, SSH launch,
+concurrent chat connections, scoped persistence, the cross-machine rail, and retained workbench
+switching are described in [the implementation reference](federated-environments.md). Its live
+localhost SSH and browser gates remain open, so the executable plan remains in place.
+
+The [implementation reference](federated-environments.md#verification) records the automated
+verification results. The checks are defined in `scripts/verify-federated-environments.sh`.
+Plan 069 has its domain prerequisite but remains
+unscheduled. It adds worktree selection, creation, and cleanup on one machine. The Git overview
+in §5.6 also remains unscheduled. Mesh deployment checks and pairing follow only on demand.
 
 ## 7. What we deliberately will not copy from the reference
 
@@ -310,7 +332,7 @@ unscheduled. It adds worktree selection, creation, and cleanup on one machine. T
 11. Silently upgrading a bare typed host to `https://`; we error with the real reason.
 12. A client-side logical-project layer for grouping; our server-derived project id already groups.
 
-## Appendix: implemented owners after Plan 077
+## Appendix: implemented owners
 
 - `apps/server/src/db/environment-identity.ts` reads the persisted identity row. The authenticated
   `/health` route in `apps/server/src/app.ts` and WS handshake in `orchestration/ws-rpc.ts` report
@@ -318,23 +340,32 @@ unscheduled. It adds worktree selection, creation, and cleanup on one machine. T
 - `apps/web/src/lib/client.ts` owns runtime clients and canonical origin handling.
   `lib/environments/state/query-clients.ts` gives each QueryClient a fixed origin and client.
   Equivalent canonical origin spellings share both registries.
-- `apps/web/src/components/environment-connection-gate.tsx` waits for the initial authenticated
-  descriptor and blocks identity drift or protocol mismatch. Connection state and restart
-  invalidation belong to `lib/environments/state/`, keyed by canonical origin.
+- `apps/web/src/components/application-bootstrap.tsx` admits a fresh authenticated descriptor or
+  cached expected identity. `state/bootstrap-runtime.ts` restores the initial runtime, and
+  `state/environment-connections.ts` validates fresh descriptors before connecting each machine.
+  Connection state and identity checks live in `packages/client-core/src/environments/`.
 - `apps/web/src/state/application-runtime.ts` retains editor runtimes and mounted QueryClients
   across switches. The keyed consumers live in `components/active-environment-application.tsx`.
   Queued mutations remain able to resume on their owning client after those consumers unmount.
 - `apps/web/src/features/editor/state/runtime.ts` owns buffers, views, history, workspace edits,
-  and save services. `state/save-service.ts` keeps every save in a batch on that runtime's client.
-  The application guard checks dirty documents across all retained runtimes. The active editor
+  Git drafts, and save services. `state/save-service.ts` keeps every save in a batch on that
+  runtime's client. The application guard checks dirty documents across all retained runtimes. The active editor
   root also updates the shared project pointer, including when cached-root validation clears it.
 - `apps/web/src/keymap/providers/bus-provider.tsx` mounts one command bus above the keyed consumers.
   `keymap/state/command-bus.ts` captures the bound runtime once per dispatch. Pending commands keep
   that runtime when the visible environment changes.
 - `apps/web/src/features/chat/transport/create-chat-transport.ts` owns a closeable RPC client,
   detail-subscription cache, earlier-page loader, and abortable HTTP snapshots. Closing a transport
-  releases those resources and rejects pending work. The dev switch closes outgoing transports
-  and resets projections through `features/chat/state/active-transports.ts`.
+  releases those resources and rejects pending work. `state/environment-connections.ts` retains
+  one transport per confirmed identity through `features/chat/state/active-transports.ts`,
+  independently of the active workbench.
+- `apps/web/src/lib/environments/state/scoped-storage.ts` captures each environment namespace.
+  `state/environment-persistence.ts` initializes its stores, and
+  `features/chat/state/chat-projection-cache.ts` records projection and descriptor bindings for
+  cold startup.
+- `apps/desktop/src/bun/ssh/launcher.ts` owns SSH forwards and remote process records.
+  `apps/web/src/features/settings/providers/owner-provider.tsx` keeps client settings on the
+  primary environment above the keyed workbench.
 - `apps/server/src/orchestration/ws-rpc.ts` sends code `1008` for authentication refusal.
   `apps/web/src/features/chat/transport/orchestration-rpc-client.ts` treats that code as blocked;
   an ordinary clean close remains reconnectable.

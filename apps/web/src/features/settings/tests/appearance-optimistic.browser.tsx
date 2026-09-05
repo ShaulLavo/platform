@@ -12,9 +12,9 @@ import { clientInstanceId, instanceHeaderName } from '@/lib/instance-id'
 import {
   resetSettingsIntentStore,
   type SettingsSubmission,
-} from '@/features/settings/state/intent-store'
+} from '@workspace/client-core/settings/intent-store'
 import { resetSettingsSnapshotAdmission } from '@/features/settings/state/snapshot-admission'
-import { settingsKeys } from '@/features/settings/utils/query-keys'
+import { settingsKeys } from '@workspace/client-core/settings/query-keys'
 
 let root: Root | null = null
 let restoreClient: Client | null = null

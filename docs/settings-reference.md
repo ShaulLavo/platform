@@ -25,6 +25,7 @@ stays safe to read, share and export.
 | ---------------------------------- | ------------ | ------ | ---------------------------------------------------------------------------------------- |
 | `workbench.colorTheme`             | `"system"`   | window | Light or dark, or follow the operating system.                                           |
 | `workbench.palette`                | `"graphite"` | window | Warm near-greyscale, or warm stone surfaces with a sage accent.                          |
+| `workbench.reduceMotion`           | `false`      | window | Slow terminal loading indicators while keeping progress visible.                         |
 | `workbench.density`                | `"compact"`  | window | Use tighter compact spacing or roomier cozy spacing throughout the app.                  |
 | `workbench.surface.opacity`        | `80`         | window | How opaque panels and sidebars are over the wallpaper. 100 turns the glass material off. |
 | `workbench.surface.contentOpacity` | `95`         | window | How opaque the editor and terminal background is.                                        |
@@ -42,17 +43,18 @@ stays safe to read, share and export.
 
 ## Editor
 
-| Setting                             | Default           | Scope  | What it does                                                                       |
-| ----------------------------------- | ----------------- | ------ | ---------------------------------------------------------------------------------- |
-| `editor.fontFamily`                 | `"JetBrainsMono"` | window | Font for the editor and, unless overridden, the terminal.                          |
-| `editor.fontSize`                   | `13`              | window | Editor font size in pixels.                                                        |
-| `editor.lineHeight`                 | `24`              | window | Editor row height in pixels.                                                       |
-| `editor.tabSize`                    | `4`               | window | Rendered width of a tab character, in spaces.                                      |
-| `editor.diff.viewMode`              | `"stacked"`       | window | Show diffs side by side or stacked.                                                |
-| `editor.minimap.enabled`            | `true`            | window | Show the minimap beside the editor. _(restart)_                                    |
-| `editor.guides.indentation`         | `true`            | window | Draw indentation guides (scope lines). _(restart)_                                 |
-| `editor.syntaxHighlighting.enabled` | `true`            | window | Colour code by syntax. Turning this off makes very large files faster. _(restart)_ |
-| `editor.decode.mode`                | `"off"`           | window | Animate a file as it opens, as if it were being written. _(restart)_               |
+| Setting                             | Default           | Scope   | What it does                                                                                                                                                                                 |
+| ----------------------------------- | ----------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `editor.fontFamily`                 | `"JetBrainsMono"` | window  | Font for the editor and, unless overridden, the terminal.                                                                                                                                    |
+| `editor.externalEditor`             | `""`              | machine | Executable used by the terminal client to edit settings JSON. Blank uses the local EDITOR executable, then vi. Supply one executable path; shell commands and arguments are not interpreted. |
+| `editor.fontSize`                   | `13`              | window  | Editor font size in pixels.                                                                                                                                                                  |
+| `editor.lineHeight`                 | `24`              | window  | Editor row height in pixels.                                                                                                                                                                 |
+| `editor.tabSize`                    | `4`               | window  | Rendered width of a tab character, in spaces.                                                                                                                                                |
+| `editor.diff.viewMode`              | `"stacked"`       | window  | Show diffs side by side or stacked.                                                                                                                                                          |
+| `editor.minimap.enabled`            | `true`            | window  | Show the minimap beside the editor. _(restart)_                                                                                                                                              |
+| `editor.guides.indentation`         | `true`            | window  | Draw indentation guides (scope lines). _(restart)_                                                                                                                                           |
+| `editor.syntaxHighlighting.enabled` | `true`            | window  | Colour code by syntax. Turning this off makes very large files faster. _(restart)_                                                                                                           |
+| `editor.decode.mode`                | `"off"`           | window  | Animate a file as it opens, as if it were being written. _(restart)_                                                                                                                         |
 
 ## Files
 
@@ -88,6 +90,12 @@ stays safe to read, share and export.
 | ----------------------- | ------- | ------ | ------------------------------------------------- |
 | `logs.defaultTimeRange` | `"1h"`  | window | Time range the logs view opens on.                |
 | `logs.slowThresholdMs`  | `500`   | window | How many milliseconds counts as a slow operation. |
+
+## Machines
+
+| Setting                 | Default | Scope   | What it does                                                                                    |
+| ----------------------- | ------- | ------- | ----------------------------------------------------------------------------------------------- |
+| `environments.machines` | `{}`    | machine | SSH targets and direct origins available to this client. The local machine is always available. |
 
 ## Models
 

@@ -1,3 +1,4 @@
+import { OrchestrationRpcClient } from '@workspace/client-core/transport/orchestration-rpc-client'
 import {
   environmentIdSchema,
   sessionIdSchema,
@@ -7,15 +8,12 @@ import { describe } from 'vitest'
 import * as v from 'valibot'
 
 import { isBlockedStreamError } from '@/features/chat/utils/stream-reconnect'
-import { OrchestrationRpcClient } from '@/features/chat/transport/orchestration-rpc-client'
-import {
-  resetServerConnectionStore,
-  selectServerConnection,
-  useEnvironmentsStore,
-} from '@/lib/environments/state/store'
-import { FakeOrchestrationSocket } from '../../../../../test/factories/orchestration-socket'
+import { createOrchestrationRpcClient } from '@/features/chat/transport/orchestration-rpc-client'
+import { selectServerConnection } from '@workspace/client-core/environments/state/store'
+import { resetServerConnectionStore, useEnvironmentsStore } from '@/lib/environments/state/store'
+import { FakeOrchestrationSocket } from '@workspace/client-core/test/orchestration-socket'
 import { expect, test } from '../../../../../test/fixtures'
-import { orchestrationServerConfig } from '../../../../../test/factories/orchestration-server-config'
+import { orchestrationServerConfig } from '@workspace/client-core/test/orchestration-server-config'
 import { createWorkspaceProjectCommand } from '@/features/chat/utils/command-builders'
 
 const ORIGIN = 'http://orchestration.test'
@@ -208,8 +206,8 @@ function createClient(
     slowRequestMs?: number
   } = {},
 ) {
-  return new OrchestrationRpcClient({
-    createSocket: () => socket as unknown as WebSocket,
+  return createOrchestrationRpcClient({
+    createSocket: () => socket,
     heartbeatIntervalMs: HEARTBEAT_MS,
     heartbeatTimeoutMs: HEARTBEAT_TIMEOUT_MS,
     origin: ORIGIN,
@@ -257,11 +255,11 @@ describe('orchestration rpc permanent close', () => {
     const origin = 'http://LOCALHOST:37779/'
     const socket = new FakeOrchestrationSocket()
     const urls: string[] = []
-    const client = new OrchestrationRpcClient({
+    const client = createOrchestrationRpcClient({
       origin,
       createSocket: (url) => {
         urls.push(url)
-        return socket as unknown as WebSocket
+        return socket
       },
     })
     const stream = captureOutcome(client.shellStream()[Symbol.asyncIterator]().next())
@@ -298,11 +296,11 @@ describe('orchestration rpc permanent close', () => {
     async (open) => {
       const socket = new FakeOrchestrationSocket()
       let socketCount = 0
-      const client = new OrchestrationRpcClient({
+      const client = createOrchestrationRpcClient({
         origin: ORIGIN,
         createSocket: () => {
           socketCount += 1
-          return socket as unknown as WebSocket
+          return socket
         },
         heartbeatIntervalMs: 10_000,
       })
@@ -346,9 +344,9 @@ describe('orchestration rpc permanent close', () => {
     const origin = 'http://identity-drift.test'
     useEnvironmentsStore.getState().recordHandshake(origin, orchestrationServerConfig())
     const socket = new FakeOrchestrationSocket()
-    const client = new OrchestrationRpcClient({
+    const client = createOrchestrationRpcClient({
       origin,
-      createSocket: () => socket as unknown as WebSocket,
+      createSocket: () => socket,
     })
     const result = captureOutcome(client.sessionDetailPage({ sessionId: SESSION_ID }))
     await tick()

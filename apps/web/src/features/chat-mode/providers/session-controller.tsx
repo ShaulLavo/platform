@@ -1,9 +1,11 @@
 import { useApplicationRuntime } from '@/hooks/use-application-runtime'
 import { useActiveChatProjection } from '@/features/chat/hooks/use-active-projection'
 import { useEffect, type ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
 import { useChatTransport } from '@/features/chat/hooks/use-chat-transport'
-import { useChatShellSubscription } from '@/features/chat/hooks/use-chat-shell-subscription'
+import { useEnvironmentsStore } from '@/lib/environments/state/store'
+import { originForQueryClient } from '@/lib/environments/state/query-clients'
 import { useWorkspaceChatProject } from '@/features/chat/hooks/use-workspace-chat-project'
 import { selectChatSessionsForProject } from '@/features/chat/state/chat-projection-selectors'
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
@@ -33,7 +35,8 @@ export function ChatModeSessionController({
 }) {
   const application = useApplicationRuntime()
   const transport = useChatTransport()
-  const shell = useChatShellSubscription(transport)
+  const origin = originForQueryClient(useQueryClient())
+  const shellError = useEnvironmentsStore((state) => state.entries[origin]?.lastError ?? null)
   const activeWorkspaceRoot = useActiveProjectStore((state) => state.workspaceRoot)
   const rootPath = activeWorkspaceRoot ?? editorRootPath
   const projectState = useWorkspaceChatProject({ transport, rootPath })
@@ -81,7 +84,7 @@ export function ChatModeSessionController({
       hasProject: projectState.project !== null,
       projectError: projectState.error,
       retryError: retry.error,
-      shellError: shell.error,
+      shellError,
     }),
     openProject: (workspaceRoot) => void openWorkspaceRoot(workspaceRoot),
     project: projectState.project,

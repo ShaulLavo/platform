@@ -1,3 +1,4 @@
+import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
 import { turnIdSchema, type TurnId } from '@workspace/contracts'
 import * as v from 'valibot'
 
@@ -54,12 +55,13 @@ function emptyPersistedSessionDiffScopes(): PersistedSessionDiffScopeStorage {
 }
 
 /** Anything written by a different shape is dropped whole — a pick is a preference, not data. */
-export function readPersistedSessionDiffScopes(): PersistedSessionDiffScopeStorage {
+export function readPersistedSessionDiffScopes(
+  storage: ScopedStorage,
+): PersistedSessionDiffScopeStorage {
   const fallback = emptyPersistedSessionDiffScopes()
-  if (typeof localStorage === 'undefined') return fallback
 
   try {
-    const raw = localStorage.getItem(SESSION_DIFF_SCOPE_STORAGE_KEY)
+    const raw = storage.getItem(SESSION_DIFF_SCOPE_STORAGE_KEY)
     if (!raw) return fallback
 
     const parsed = v.safeParse(persistedStorageSchema, JSON.parse(raw))
@@ -75,11 +77,10 @@ export function readPersistedSessionDiffScopes(): PersistedSessionDiffScopeStora
 }
 
 export function writePersistedSessionDiffScopes(
+  adapter: ScopedStorage,
   scopeBySessionKey: Readonly<Record<string, PersistedSessionDiffScopeEntry>>,
 ) {
-  if (typeof localStorage === 'undefined') return
-
-  localStorage.setItem(
+  adapter.setItem(
     SESSION_DIFF_SCOPE_STORAGE_KEY,
     JSON.stringify({
       scopeBySessionKey,

@@ -1,3 +1,4 @@
+import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
 import type { EnvironmentId, ProjectId, ScopedSessionRef, SessionId } from '@workspace/contracts'
 import { create } from 'zustand'
 
@@ -59,9 +60,11 @@ type SessionSelectionStore = {
  * A factory rather than a bare store so a restart is something a test can perform:
  * building a second store reads the cache exactly the way a cold load does.
  */
-export function createSessionSelectionStore() {
-  const remembered = readSessionSelectionCache()
-  const store = create<SessionSelectionStore>()((set) => ({
+const selectionStorage = new Map<EnvironmentId, ScopedStorage>()
+let restoringSelection = false
+
+function selectionStore(remembered: SessionSelection) {
+  return create<SessionSelectionStore>()((set) => ({
     releaseSession: (ref, sessionIds) =>
       set((state) => releasedSelection(state.selection, ref, sessionIds)),
     restored: remembered.kind !== 'auto',
@@ -73,24 +76,49 @@ export function createSessionSelectionStore() {
     startDraft: (environmentId, projectId) =>
       set({ restored: false, selection: { kind: 'draft', environmentId, projectId } }),
   }))
+}
 
-  // Written on the spot, not debounced: selections change at click speed, and a
-  // trailing write is exactly the one a reload would lose.
+export function createSessionSelectionStore(storage: ScopedStorage) {
+  initializeSessionSelectionStorage(storage)
+  const store = selectionStore(readSessionSelectionCache(storage))
   store.subscribe((state, previous) => {
     if (state.selection === previous.selection) return
-
-    writeSessionSelectionCache(state.selection)
+    writeSessionSelectionCache(storage, state.selection)
   })
-
   return store
 }
 
-export const useSessionSelectionStore = createSessionSelectionStore()
+export const useSessionSelectionStore = selectionStore({ kind: 'auto' })
 
-/** Drops both the live pick and the remembered one, the way a fresh profile starts. */
+useSessionSelectionStore.subscribe((state, previous) => {
+  if (restoringSelection) return
+  if (state.selection === previous.selection) return
+  const owner = state.selection.kind === 'auto' ? previous.selection : state.selection
+  if (owner.kind === 'auto') return
+  const storage = selectionStorage.get(owner.environmentId)
+  if (storage) writeSessionSelectionCache(storage, state.selection)
+})
+
+export function initializeSessionSelectionStorage(storage: ScopedStorage) {
+  selectionStorage.set(storage.environmentId, storage)
+}
+
+export function restoreEnvironmentSessionSelection(environmentId: EnvironmentId) {
+  const storage = selectionStorage.get(environmentId)
+  if (!storage) return
+  const selection = readSessionSelectionCache(storage)
+  restoringSelection = true
+  try {
+    useSessionSelectionStore.setState({ restored: selection.kind !== 'auto', selection })
+  } finally {
+    restoringSelection = false
+  }
+}
+
 export function resetSessionSelectionStore() {
   useSessionSelectionStore.setState({ restored: false, selection: { kind: 'auto' } })
-  writeSessionSelectionCache({ kind: 'auto' })
+  for (const storage of selectionStorage.values())
+    writeSessionSelectionCache(storage, { kind: 'auto' })
 }
 
 /** An empty patch leaves the store untouched, so an unrelated pick survives. */

@@ -1,3 +1,4 @@
+import { useEditorRuntime } from '@/features/editor/hooks/use-runtime'
 import { WarningCircleIcon } from '@phosphor-icons/react'
 
 import { CompareSavedView } from '@/features/editor/components/compare-saved-view'
@@ -44,6 +45,7 @@ export function FileEditorBody({
   rootPath: string
   tabId: string
 }) {
+  const { storage } = useEditorRuntime()
   const actions = useEditorSurfaceActions()
   const { service: fileOpenIntent } = useFileOpenIntent()
   // Neither a diff nor a compare document is file-backed, so neither can own a live editor
@@ -61,6 +63,7 @@ export function FileEditorBody({
   const { appliedThemeId, committedThemeId, selectedThemeId } = useEditorColorTheme()
   const snapshotActive = active && !diffDocument && !comparePath
   const visibleSnapshot = useEditorVisibleSnapshot({
+    storage,
     active: snapshotActive,
     fileReadError: fileState.status === 'error',
     renderedDocument: editorDocument

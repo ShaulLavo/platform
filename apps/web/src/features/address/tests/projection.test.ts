@@ -3,7 +3,7 @@ import { describe } from 'vitest'
 import { expect, test } from '../../../../test/fixtures'
 
 import { createAddressProjection } from '@/features/address/state/projection'
-import { emptyAddress, type Address } from '@/features/address/utils/grammar'
+import { emptyAddress, type Address } from '@workspace/client-core/address/grammar'
 
 function harness() {
   const written: string[] = []

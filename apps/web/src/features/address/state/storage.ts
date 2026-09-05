@@ -1,4 +1,4 @@
-import { DEV_SEARCH_KEYS } from '@/features/address/utils/grammar'
+import { DEV_SEARCH_KEYS } from '@workspace/client-core/address/grammar'
 import { log } from '@/lib/client-logging'
 
 /**

@@ -43,7 +43,7 @@ import {
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
-import { workspacePathLeaf } from '@/features/workspace/utils/path'
+import { workspacePathLeaf } from '@workspace/client-core/files/path'
 
 import {
   appendTerminalContextsToPrompt,

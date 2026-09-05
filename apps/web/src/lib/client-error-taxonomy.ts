@@ -1,3 +1,4 @@
+import { isConnectivityError } from '@workspace/client-core/transport/connectivity-error'
 import { toast } from 'sonner'
 import type { ErrorCategory } from '@workspace/contracts'
 import { clientErrorMetadata } from './client-error-context'
@@ -150,21 +151,6 @@ function categorizedClientError(
     message,
     operation: metadata?.operation,
   }
-}
-
-const connectivityErrorMessages = new Set([
-  'failed to fetch',
-  'fetch failed',
-  'load failed',
-  'network error',
-  'network request failed',
-  'networkerror when attempting to fetch resource.',
-])
-
-function isConnectivityError(input: unknown): boolean {
-  if (!(input instanceof TypeError)) return false
-
-  return connectivityErrorMessages.has(input.message.toLowerCase())
 }
 
 function isAbortError(input: unknown): boolean {

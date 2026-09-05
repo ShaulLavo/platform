@@ -5,6 +5,7 @@
   "workspaces": {
     "packages": [
       "apps/*",
+      "packages/client-core",
       "packages/contracts",
       "packages/observability",
       "packages/tree",

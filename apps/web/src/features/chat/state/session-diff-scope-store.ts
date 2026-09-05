@@ -1,3 +1,6 @@
+import { pruneScopedRecord } from '@/lib/environments/utils/scoped-record'
+import { createEnvironmentRecordPersistence } from '@/lib/environments/state/record-persistence'
+import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
 import { scopedSessionKey, type ScopedSessionRef, type TurnId } from '@workspace/contracts'
 import { create } from 'zustand'
 
@@ -24,8 +27,13 @@ type SessionDiffScopeStore = {
   selectSessionDiffScope: (ref: ScopedSessionRef, scope: SessionDiffScope) => void
 }
 
+const sessionDiffPersistence = createEnvironmentRecordPersistence<PersistedSessionDiffScopeEntry>({
+  read: (storage) => readPersistedSessionDiffScopes(storage).scopeBySessionKey,
+  write: writePersistedSessionDiffScopes,
+})
+
 export const useSessionDiffScopeStore = create<SessionDiffScopeStore>((set) => ({
-  scopeBySessionKey: readPersistedSessionDiffScopes().scopeBySessionKey,
+  scopeBySessionKey: {},
   reconcileTurnScope: (ref, availableTurnIds) => {
     const sessionId = scopedSessionKey(ref)
     set((state) => {
@@ -47,15 +55,17 @@ export const useSessionDiffScopeStore = create<SessionDiffScopeStore>((set) => (
 }))
 
 /** What a fresh page load does. Tests use it to prove a pick crossed localStorage. */
-export function hydrateSessionDiffScopeStoreFromStorage() {
-  useSessionDiffScopeStore.setState({
-    scopeBySessionKey: readPersistedSessionDiffScopes().scopeBySessionKey,
-  })
+export function hydrateSessionDiffScopeStoreFromStorage(storage: ScopedStorage) {
+  const scopeBySessionKey = sessionDiffPersistence.hydrate(
+    storage,
+    useSessionDiffScopeStore.getState().scopeBySessionKey,
+  )
+  useSessionDiffScopeStore.setState({ scopeBySessionKey })
 }
 
 function persistSessionDiffScopes() {
   try {
-    writePersistedSessionDiffScopes(useSessionDiffScopeStore.getState().scopeBySessionKey)
+    sessionDiffPersistence.persist(useSessionDiffScopeStore.getState().scopeBySessionKey)
   } catch {
     // A full or blocked store costs the user a pane that reopens on the branch
     // diff. Nothing here is worth interrupting a click over.
@@ -68,9 +78,12 @@ function withSessionDiffScope(
   scope: SessionDiffScope,
 ) {
   return {
-    scopeBySessionKey: pruneSessionDiffScopes({
-      ...state.scopeBySessionKey,
-      [sessionId]: { scope, updatedAt: nextSessionDiffScopeStamp(state.scopeBySessionKey) },
-    }),
+    scopeBySessionKey: pruneScopedRecord(
+      {
+        ...state.scopeBySessionKey,
+        [sessionId]: { scope, updatedAt: nextSessionDiffScopeStamp(state.scopeBySessionKey) },
+      },
+      pruneSessionDiffScopes,
+    ),
   }
 }

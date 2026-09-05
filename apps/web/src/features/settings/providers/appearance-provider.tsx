@@ -7,7 +7,7 @@ import { useSettingsDocument } from '@/features/settings/hooks/use-settings-docu
 import { useSettingsProjection } from '@/features/settings/hooks/use-settings-projection'
 import { WorkbenchDensityBootContext } from '@/features/settings/providers/density-context'
 import { ThemeContext, type Theme } from '@/features/settings/providers/theme-context'
-import type { SettingsSubmission } from '@/features/settings/state/intent-store'
+import type { SettingsSubmission } from '@workspace/client-core/settings/intent-store'
 import {
   applyAppearance,
   resolveColorTheme,

@@ -3,7 +3,7 @@ import { activeServerOrigin, environmentClientFor, setActiveServerOrigin } from 
 import { environmentActivitySignal } from '@/lib/environments/state/activity'
 import { queryClientFor } from '@/lib/environments/state/query-clients'
 import { useEnvironmentsStore } from '@/lib/environments/state/store'
-import { orchestrationServerConfig } from '../../../../test/factories/orchestration-server-config'
+import { orchestrationServerConfig } from '@workspace/client-core/test/orchestration-server-config'
 import { expect, test } from '../../../../test/fixtures'
 
 test('equivalent origin spellings share clients, caches, identity and activity', () => {
@@ -15,6 +15,9 @@ test('equivalent origin spellings share clients, caches, identity and activity',
     useEnvironmentsStore.getState().activate(alias)
     expect(activeServerOrigin()).toBe(origin)
     expect(useEnvironmentsStore.getState().activeOrigin).toBe(origin)
+    setActiveServerOrigin(original)
+    useEnvironmentsStore.getState().activate(alias)
+    expect(activeServerOrigin()).toBe(origin)
     expect(environmentClientFor(alias)).toBe(environmentClientFor(origin))
     expect(queryClientFor(alias)).toBe(queryClientFor(origin))
     expect(environmentActivitySignal(alias)).toBe(environmentActivitySignal(origin))

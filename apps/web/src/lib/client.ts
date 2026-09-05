@@ -1,20 +1,33 @@
-import { treaty } from '@elysia/eden'
-
-import type { App } from 'server/client-contract'
+import { createEndpointClient } from '@/lib/environments/state/endpoint-client'
+import {
+  canonicalServerOrigin,
+  createEnvironmentClient,
+  type Client,
+} from '@workspace/client-core/transport/client'
 
 import { clientInstanceId, instanceHeaderName } from '@/lib/instance-id'
 
 const defaultServerUrl = 'http://localhost:3001'
 
-export type Client = ReturnType<typeof treaty<App>>
+export type { Client }
 
-let selectedOrigin = canonicalServerOrigin(import.meta.env.VITE_SERVER_URL ?? defaultServerUrl)
+const primaryOrigin = canonicalServerOrigin(import.meta.env.VITE_SERVER_URL ?? defaultServerUrl)
+let selectedOrigin = primaryOrigin
+const endpoints = new Map<string, string>()
 const clients = new Map<string, Client>()
+const clientOrigins = new WeakMap<Client, string>()
 
-export function createEnvironmentClient(origin: string): Client {
-  return treaty<App>(canonicalServerOrigin(origin), {
-    headers: () => ({ [instanceHeaderName]: clientInstanceId() }),
-  })
+export function primaryServerOrigin(): string {
+  return primaryOrigin
+}
+
+export function serverEndpoint(origin: string): string {
+  origin = canonicalServerOrigin(origin)
+  return endpoints.get(origin) ?? origin
+}
+
+export function replaceEnvironmentEndpoint(owner: string, endpoint: string): void {
+  endpoints.set(canonicalServerOrigin(owner), canonicalServerOrigin(endpoint))
 }
 
 export function activeServerOrigin(): string {
@@ -30,8 +43,17 @@ export function environmentClientFor(origin: string): Client {
   const existing = clients.get(origin)
   if (existing) return existing
 
-  const client = createEnvironmentClient(origin)
+  const client = createEndpointClient({
+    origin,
+    resolveEndpoint: serverEndpoint,
+    createClient: (endpoint) =>
+      createEnvironmentClient({
+        origin: endpoint,
+        headers: () => ({ [instanceHeaderName]: clientInstanceId() }),
+      }),
+  })
   clients.set(origin, client)
+  clientOrigins.set(client, origin)
   return client
 }
 
@@ -41,8 +63,9 @@ export function getClient(): Client {
 
 export function setClient(client: Client) {
   clients.set(selectedOrigin, client)
+  clientOrigins.set(client, selectedOrigin)
 }
 
-export function canonicalServerOrigin(origin: string): string {
-  return new URL(origin).origin
+export function originForClient(client: Client): string | null {
+  return clientOrigins.get(client) ?? null
 }

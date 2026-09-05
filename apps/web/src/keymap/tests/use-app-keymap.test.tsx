@@ -10,7 +10,7 @@ import { binding } from '../../../test/factories/key-binding'
 import { createTestCommandRuntime } from '../../../test/factories/command-runtime'
 import { createTestQueryClient } from '../../../test/render'
 import { FocusService, type FocusArea, type FocusTargetToken } from '@/lib/focus/state/service'
-import { CHORD_TIMEOUT_MS } from '@/keymap/utils/chord'
+import { CHORD_TIMEOUT_MS } from '@workspace/client-core/commands/chord'
 
 afterEach(() => vi.useRealTimers())
 

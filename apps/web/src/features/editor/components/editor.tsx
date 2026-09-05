@@ -41,6 +41,7 @@ import type {
 } from '@singapor/core'
 import { editorPreparedDocumentTags } from '@/features/editor/utils/prepared-document'
 import { useFileOpenIntent } from '@/lib/file-open-intent/providers/context'
+import { useUnavailableEnvironment } from '@/lib/environments/hooks/use-unavailable-environment'
 
 const NO_ADDITIONAL_PLUGINS: readonly EditorPlugin[] = []
 
@@ -77,13 +78,15 @@ export function Editor({
   onStatusSourceChange,
   onTextChange,
 }: EditorProps) {
+  const unavailable = useUnavailableEnvironment()
+  const editability = unavailable ? 'readonly' : liveDocument.editability
   const { appliedThemeContentHash, appliedThemeId, editorTheme, selectedThemeId } =
     useEditorColorTheme()
   const syntaxHighlightingEnabled = useSettingValue('editor.syntaxHighlighting.enabled')
   const { mountedEditors } = useFileOpenIntent()
   const diagnosticPeek = useDiagnosticPeek({ active, filePath: liveDocument.path })
   const { languageServer, languageServerStatusSource } = useLanguageServerPlugin({
-    enabled: active,
+    enabled: active && unavailable === null,
     filePath: liveDocument.path,
     languageServerTarget,
     rootPath,
@@ -166,7 +169,7 @@ export function Editor({
       rowBackground: true,
     },
     document,
-    editability: liveDocument.editability,
+    editability,
     keymap: HOSTED_EDITOR_KEYMAP,
     onChange: (_state, change) => {
       if (!change || change.kind === 'selection' || change.kind === 'none') return
@@ -192,7 +195,7 @@ export function Editor({
         dispatch: controller.commands.dispatchCommand,
         getInputElement: () => controller.getEditor()?.getInputElement() ?? null,
         readKeymapContext: () => controller.getEditor()?.getKeymapContext() ?? null,
-        writable: liveDocument.editability === 'editable',
+        writable: editability === 'editable',
       },
     },
     id: {

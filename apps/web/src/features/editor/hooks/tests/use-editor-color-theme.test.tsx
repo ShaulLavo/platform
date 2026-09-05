@@ -11,17 +11,17 @@ type PendingThemeLoad = {
 }
 
 afterEach(() => {
-  vi.doUnmock('@/features/editor/utils/shiki-themes')
+  vi.doUnmock('@workspace/client-core/themes/registration')
   vi.resetModules()
 })
 
 test('a late older theme load cannot overwrite the newer applied theme id', async () => {
   const pending = new Map<string, PendingThemeLoad>()
   vi.resetModules()
-  vi.doMock('@/features/editor/utils/shiki-themes', async () => {
-    const actual = await vi.importActual<typeof import('@/features/editor/utils/shiki-themes')>(
-      '@/features/editor/utils/shiki-themes',
-    )
+  vi.doMock('@workspace/client-core/themes/registration', async () => {
+    const actual = await vi.importActual<
+      typeof import('@workspace/client-core/themes/registration')
+    >('@workspace/client-core/themes/registration')
 
     return {
       ...actual,

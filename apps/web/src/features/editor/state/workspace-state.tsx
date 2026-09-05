@@ -1,3 +1,5 @@
+import type { OrchestrationWorktreeShell, WorktreeId } from '@workspace/contracts'
+import type { WorktreeIdsByRootPath } from '@/features/workspace/utils/location'
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import type { ChatModePanels } from '@/features/chat-mode/utils/panels'
 import type { WorkbenchLayout } from '@/features/workbench/utils/layout'
@@ -9,7 +11,7 @@ import {
   type WorkbenchPanels,
 } from '@/features/workbench/utils/panels'
 import type { CachedWorkspaceSlice, CachedWorkspaceState } from '@/features/workspace/state/cache'
-import { emptyWorkspaceSlice, readWorkspaceCache } from '@/features/workspace/state/cache'
+import { emptyWorkspaceSlice, emptyWorkspaceState } from '@/features/workspace/state/cache'
 import { clientErrors } from '@/lib/structured-errors'
 import type { EditorScrollPosition } from '@singapor/core'
 import { createContext, use } from 'react'
@@ -24,6 +26,7 @@ type ParkedWorkspace = CachedWorkspaceSlice & {
 }
 
 type EditorWorkspaceStoreState = CachedWorkspaceSlice & {
+  worktreeIdByRootPath: WorktreeIdsByRootPath
   chatModePanels: ChatModePanels
   openFilePaths: string[]
   /** Every project except the open one, by root path. */
@@ -36,6 +39,7 @@ type EditorWorkspaceStoreState = CachedWorkspaceSlice & {
 }
 
 type EditorWorkspaceStoreActions = {
+  bindWorktrees: (worktrees: readonly Pick<OrchestrationWorktreeShell, 'id' | 'path'>[]) => void
   clearRootFolder: () => void
   openPicker: () => void
   setChatModePanels: (panels: ChatModePanels) => void
@@ -76,13 +80,23 @@ export function useEditorWorkspaceState<T>(selector: (state: EditorWorkspaceStor
 }
 
 export function createEditorWorkspaceStore(
-  initialState: CachedWorkspaceState = readWorkspaceCache(),
+  initialState: CachedWorkspaceState = emptyWorkspaceState(),
 ) {
   const activeRootPath = initialState.rootFolder?.path ?? null
 
   return createStore<EditorWorkspaceStore>()(
     subscribeWithSelector((set, get) => ({
       ...activeWorkspaceState(sliceForRootPath(initialState, activeRootPath)),
+      worktreeIdByRootPath: initialState.worktreeIdByRootPath,
+      bindWorktrees: (worktrees) => {
+        const current = get().worktreeIdByRootPath
+        const additions: Record<string, WorktreeId> = {}
+        for (const worktree of worktrees) {
+          if (current[worktree.path] !== worktree.id) additions[worktree.path] = worktree.id
+        }
+        if (Object.keys(additions).length > 0)
+          set({ worktreeIdByRootPath: { ...current, ...additions } })
+      },
       chatModePanels: initialState.chatModePanels,
       parkedWorkspaces: parkedWorkspacesFromCache(initialState, activeRootPath),
       pickerOpen: false,

@@ -1,4 +1,4 @@
-import { createClientError } from '@/lib/structured-errors'
+import { createClientError } from '@workspace/client-core/errors'
 import {
   isBlockedStreamError,
   STREAM_RECONNECT_DELAYS_MS,

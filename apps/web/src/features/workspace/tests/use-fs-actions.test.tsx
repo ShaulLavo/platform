@@ -9,7 +9,7 @@ import type { WorkspaceEditService } from '@/features/editor/state/workspace-edi
 import { useFsActions } from '@/features/workspace/hooks/use-fs-actions'
 import { createFileContent, ensureFolderPath, fetchFile, fetchTree } from '@/lib/file-server'
 import type { TreeEntry } from '@/lib/file-system-types'
-import { createClientError } from '@/lib/structured-errors'
+import { createClientError } from '@workspace/client-core/errors'
 import { treeModel } from '@/lib/tree-model'
 
 import { expect, test } from '../../../../test/fixtures'

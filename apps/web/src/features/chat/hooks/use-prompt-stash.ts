@@ -1,3 +1,4 @@
+import { useStore } from 'zustand'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import type { LexicalEditor } from 'lexical'
 import { useEffect, useState } from 'react'
@@ -9,7 +10,7 @@ import {
   type ChatInputDraftTarget,
 } from '@/features/chat/state/chat-input-draft-store'
 import {
-  usePromptStashStore,
+  promptStashStoreFor,
   type PromptStashEntry,
 } from '@/features/chat/state/prompt-stash-store'
 
@@ -22,7 +23,8 @@ import {
  */
 export function usePromptStash(draftTarget: ChatInputDraftTarget) {
   const [editor] = useLexicalComposerContext()
-  const entries = usePromptStashStore((state) => state.entries)
+  const stashStore = promptStashStoreFor(draftTarget.environmentId)
+  const entries = useStore(stashStore, (state) => state.entries)
   const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
@@ -45,11 +47,11 @@ export function usePromptStash(draftTarget: ChatInputDraftTarget) {
   }, [draftTarget, editor])
 
   function removeEntry(entry: PromptStashEntry) {
-    usePromptStashStore.getState().removeEntry(entry.id)
+    promptStashStoreFor(draftTarget.environmentId).getState().removeEntry(entry.id)
   }
 
   function restoreEntry(entry: PromptStashEntry) {
-    const stash = usePromptStashStore.getState()
+    const stash = promptStashStoreFor(draftTarget.environmentId).getState()
     const current = readChatInputDraftPrompt(draftTarget)
     // Restoring on top of a prompt in progress would destroy it, so the
     // composer's own text swaps into the queue instead of being overwritten. A
@@ -72,7 +74,7 @@ function stashComposerPrompt(draftTarget: ChatInputDraftTarget, editor: LexicalE
   const prompt = readChatInputDraftPrompt(draftTarget)
   if (!prompt.trim()) return false
   // The composer is only emptied on the strength of the write landing.
-  if (!usePromptStashStore.getState().stashPrompt(prompt)) return false
+  if (!promptStashStoreFor(draftTarget.environmentId).getState().stashPrompt(prompt)) return false
 
   writeComposerPrompt(draftTarget, editor, '')
 

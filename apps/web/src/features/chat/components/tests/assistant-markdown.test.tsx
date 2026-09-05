@@ -233,6 +233,7 @@ function createWorkspaceStore() {
     searchBuffers: {},
     uiMode: 'workbench',
     workbenchLayout: createDefaultWorkbenchLayout(),
+    worktreeIdByRootPath: {},
     workspaceOrder: [ROOT_PATH],
     workspaces: {},
   })

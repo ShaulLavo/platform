@@ -1,3 +1,4 @@
+import { orchestrationServerConfig } from '@workspace/client-core/test/orchestration-server-config'
 import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_PROVIDER_DRIVER_KIND,
@@ -27,10 +28,7 @@ import type {
   ProjectionSession,
 } from '@/features/chat/state/chat-projection-store'
 
-export const TEST_ENVIRONMENT_ID = v.parse(
-  environmentIdSchema,
-  'd47787b9-67dc-460c-8aa2-d4ed932b1568',
-)
+export const TEST_ENVIRONMENT_ID = orchestrationServerConfig().environmentId
 export const TEST_PROJECT_ID = v.parse(projectIdSchema, '609d2bd3-7993-5564-9918-c603beaa32c6')
 export const TEST_WORKTREE_ID = v.parse(worktreeIdSchema, 'dfc43652-d2f6-554d-ab37-88239fa016f6')
 export const TEST_SESSION_ID = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')

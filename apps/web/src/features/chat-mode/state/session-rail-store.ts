@@ -1,4 +1,6 @@
-import type { ProjectId, ScopedSessionRef } from '@workspace/contracts'
+import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
+import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
+import type { EnvironmentId, ProjectId, ScopedSessionRef } from '@workspace/contracts'
 import { create } from 'zustand'
 
 import {
@@ -34,13 +36,36 @@ type SessionRailStore = {
   readonly query: string
   readonly renaming: SessionRenameTarget | null
   readonly scope: SessionRailScope
+  readonly machineFilter: EnvironmentId | null
   readonly view: SessionRailView
   readonly endRename: () => void
   readonly setQuery: (query: string) => void
   readonly setScope: (scope: SessionRailScope) => void
+  readonly setMachineFilter: (machineFilter: EnvironmentId | null) => void
   readonly setView: (view: SessionRailView) => void
   readonly startRename: (target: SessionRenameTarget) => void
   readonly toggleProjectCollapsed: (projectId: ProjectId) => void
+}
+
+const collapseStorage = new Map<EnvironmentId, ScopedStorage>()
+
+export function hydrateSessionRailCollapse(storage: ScopedStorage) {
+  collapseStorage.set(storage.environmentId, storage)
+  const restored = readPersistedRailCollapse(storage)
+  useSessionRailStore.setState((state) => ({
+    collapsedProjectIds: [...new Set([...state.collapsedProjectIds, ...restored])],
+  }))
+}
+
+function persistRailCollapse(collapsedProjectIds: readonly ProjectId[]) {
+  const slices = useChatProjectionStore.getState().slices
+  for (const storage of collapseStorage.values()) {
+    const projects = slices[storage.environmentId]?.projectById ?? {}
+    writePersistedRailCollapse(
+      storage,
+      collapsedProjectIds.filter((id) => projects[id] !== undefined),
+    )
+  }
 }
 
 export const useSessionRailStore = create<SessionRailStore>()((set) => ({
@@ -48,13 +73,15 @@ export const useSessionRailStore = create<SessionRailStore>()((set) => ({
   // about a project the user is not working in, and re-expanding every group on
   // reload undoes the tidying they did on purpose. Scope, view and search text
   // stay in memory — those describe a moment, not a preference.
-  collapsedProjectIds: readPersistedRailCollapse(),
+  collapsedProjectIds: NO_PROJECT_IDS,
   endRename: () => set({ renaming: null }),
   query: '',
   renaming: null,
   scope: null,
+  machineFilter: null,
   setQuery: (query) => set({ query }),
   setScope: (scope) => set({ scope }),
+  setMachineFilter: (machineFilter) => set({ machineFilter }),
   setView: (view) => set({ view }),
   startRename: (renaming) => set({ renaming }),
   toggleProjectCollapsed: (projectId) =>
@@ -63,7 +90,7 @@ export const useSessionRailStore = create<SessionRailStore>()((set) => ({
       // Written on the click rather than debounced: a collapse is one rare
       // deliberate act, not a keystroke stream, and a reload right after it is
       // exactly when the user notices it did not stick.
-      writePersistedRailCollapse(collapsedProjectIds)
+      persistRailCollapse(collapsedProjectIds)
 
       return { collapsedProjectIds }
     }),
@@ -71,7 +98,7 @@ export const useSessionRailStore = create<SessionRailStore>()((set) => ({
 }))
 
 export function resetSessionRailCollapse() {
-  writePersistedRailCollapse(NO_PROJECT_IDS)
+  persistRailCollapse(NO_PROJECT_IDS)
   useSessionRailStore.setState({ collapsedProjectIds: NO_PROJECT_IDS })
 }
 

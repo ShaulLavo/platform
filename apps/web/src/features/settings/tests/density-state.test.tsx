@@ -12,7 +12,7 @@ import { expect, test } from '../../../../test/fixtures'
 import { useWorkbenchDensity } from '../hooks/use-workbench-density'
 import { AppearanceProvider } from '../providers/appearance-provider'
 import { writeBootMirror } from '../utils/boot-mirror'
-import { settingsKeys } from '../utils/query-keys'
+import { settingsKeys } from '@workspace/client-core/settings/query-keys'
 
 const BOOT_MIRROR_KEY = 'platform.settings-boot-mirror.v1'
 

@@ -3,7 +3,7 @@ import { describe } from 'vitest'
 import { expect, test } from '../../../../test/fixtures'
 
 import { searchParamsFor, searchStateFor } from '@/features/address/utils/search-params'
-import { emptyAddress, formatAddress, parseAddress } from '@/features/address/utils/grammar'
+import { emptyAddress, formatAddress, parseAddress } from '@workspace/client-core/address/grammar'
 
 const BUFFER = {
   caseSensitive: true,

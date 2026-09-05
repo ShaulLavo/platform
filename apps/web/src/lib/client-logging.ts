@@ -1,11 +1,12 @@
-import { useEnvironmentsStore } from '@/lib/environments/state/store'
+import { limitDiagnosticString, sanitizeRecord } from '@workspace/observability/sanitize'
 import { initLogger, log as evlog, type LogLevel } from 'evlog'
 import { createHttpLogDrain } from 'evlog/http'
 import { errorNumberField, errorStringField } from '@workspace/contracts'
 import { observabilityEnabledFromEnv } from '@workspace/observability/env'
 
 import { annotateClientError } from '@/lib/client-error-context'
-import { activeServerOrigin } from '@/lib/client'
+import { primaryServerOrigin } from '@/lib/client'
+import { eventLogContext } from '@/lib/environments/state/log-context'
 import { clientInstanceId, instanceQueryParam } from '@/lib/instance-id'
 
 export type ClientLogLevel = LogLevel
@@ -26,30 +27,6 @@ type ClientLogApi = Record<ClientLogLevel, ClientLogMethod>
 
 const serviceName = 'platform-web'
 const ingestPath = '/_log/ingest'
-const maxStringLength = 2_000
-const redactedDiagnosticValue = '[redacted]'
-// Server logs already retain stack traces, so the client keeps them for the
-// same diagnostic value while credentials and request payloads stay redacted.
-const sensitiveFields = new Set([
-  'absolutePath',
-  'authorization',
-  'body',
-  'content',
-  'cookie',
-  'cwd',
-  'dest',
-  'destination',
-  'fileName',
-  'filename',
-  'password',
-  'patch',
-  'secret',
-  'set-cookie',
-  'text',
-  'token',
-  'x-api-key',
-])
-
 let initialized = false
 let clientEventSequence = 0
 
@@ -93,7 +70,7 @@ export async function observeClientOperation<T>(
   classifyError?: (error: unknown) => string,
 ): Promise<T> {
   const startedAt = performance.now()
-  const { level, signal, ...baseEvent } = event
+  const { level, signal, ...baseEvent } = { ...eventLogContext(event), ...event }
 
   try {
     const result = await operation()
@@ -162,7 +139,7 @@ function withClientEventId(event: ClientLogInput) {
 // drain falls back to sendBeacon on page hide, and sendBeacon cannot send
 // custom headers.
 function logIngestEndpoint() {
-  const endpoint = `${activeServerOrigin().replace(/\/$/u, '')}${ingestPath}`
+  const endpoint = `${primaryServerOrigin().replace(/\/$/u, '')}${ingestPath}`
 
   return `${endpoint}?${instanceQueryParam}=${encodeURIComponent(clientInstanceId())}`
 }
@@ -182,58 +159,13 @@ function clientLogMinLevel(): ClientLogLevel {
 }
 
 function safeClientEvent(event: Record<string, unknown>) {
-  return {
-    ...sanitizeRecord(event),
-    runtime: 'browser',
-    environmentId:
-      typeof event.environmentId === 'string' || event.environmentId === null
-        ? event.environmentId
-        : (useEnvironmentsStore.getState().entries[activeServerOrigin()]?.environmentId ?? null),
-  }
-}
-
-function sanitizeDiagnosticValue(value: unknown, seen = new WeakSet<object>()): unknown {
-  if (value instanceof Error) return sanitizeError(value, seen)
-  if (Array.isArray(value)) return value.map((item) => sanitizeDiagnosticValue(item, seen))
-  if (!isRecord(value)) return sanitizePrimitive(value)
-  if (seen.has(value)) return '[circular]'
-
-  seen.add(value)
-  return sanitizeRecord(value, seen)
-}
-
-function sanitizeError(error: Error, seen: WeakSet<object>) {
-  if (seen.has(error)) return '[circular]'
-
-  seen.add(error)
-  return {
-    cause: sanitizeDiagnosticValue(error.cause, seen),
-    message: limitString(error.message),
-    name: error.name,
-    stack: error.stack,
-  }
+  return { ...eventLogContext(event), ...sanitizeRecord(event), runtime: 'browser' }
 }
 
 function clientErrorContext(event: ClientLogEvent): Record<string, unknown> {
   const { action: _action, area: _area, ...context } = event
 
   return context
-}
-
-export function sanitizeRecord(record: Record<string, unknown>, seen = new WeakSet<object>()) {
-  const safe: Record<string, unknown> = {}
-
-  for (const [key, value] of Object.entries(record)) {
-    safe[key] = sensitiveFields.has(key)
-      ? redactedDiagnosticValue
-      : sanitizeDiagnosticValue(value, seen)
-  }
-
-  return safe
-}
-
-function sanitizePrimitive(value: unknown) {
-  return typeof value === 'string' ? limitString(value) : value
 }
 
 function summarizeResult<T>(
@@ -249,7 +181,7 @@ function errorSummary(error: unknown) {
   if (error instanceof Error) {
     return {
       code,
-      message: limitString(error.message),
+      message: limitDiagnosticString(error.message),
       name: error.name,
       status,
     }
@@ -257,7 +189,7 @@ function errorSummary(error: unknown) {
 
   return {
     code,
-    message: limitString(String(error)),
+    message: limitDiagnosticString(String(error)),
     name: typeof error,
     status,
   }
@@ -281,14 +213,4 @@ function isAbortError(error: unknown) {
 
 function elapsedMs(startedAt: number) {
   return Math.round((performance.now() - startedAt) * 100) / 100
-}
-
-function limitString(value: string) {
-  if (value.length <= maxStringLength) return value
-
-  return value.slice(0, maxStringLength)
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

@@ -9,7 +9,7 @@ import {
   toWorkspaceAbsolute,
   toWorkspaceRelative,
   workspacePathLeaf,
-} from '@/features/workspace/utils/path'
+} from '@workspace/client-core/files/path'
 
 const ROOT = '/Users/dev/code/platform'
 

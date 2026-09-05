@@ -7,7 +7,7 @@ import type {
 
 import { errorMessage } from '@/lib/error-message'
 import type { ChatTransport } from '@/features/chat/transport/chat-transport'
-import { createOrchestrationRpcClosedError } from '@/features/chat/transport/structured-errors'
+import { createOrchestrationRpcClosedError } from '@workspace/client-core/transport/structured-errors'
 import {
   chatStreamItemSummary,
   createChatPipelineScope,
@@ -277,10 +277,15 @@ export function createSessionDetailSubscriptionCache(
       error: entry.sync.error,
       status: connectingStatus(entry),
     })
+    const onSynchronized = () => {
+      if (signal.aborted) return
+      markSessionDetailStreamLive(entry)
+    }
 
     try {
       for await (const item of options.transport.sessionDetailStream(entry.sessionId, {
         afterSequence,
+        onSynchronized,
         signal,
       })) {
         if (signal.aborted) return { blocked: false, error: null }

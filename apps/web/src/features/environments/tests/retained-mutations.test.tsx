@@ -1,3 +1,6 @@
+import { readEnvironmentDescriptor } from '@/lib/environments/utils/descriptor'
+import { environmentScopedStorage } from '@/lib/environments/state/scoped-storage'
+import { confirmedEnvironmentId } from '@/lib/environments/state/domain'
 import { execFileSync } from 'node:child_process'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -47,8 +50,10 @@ test('an offline Git mutation resumes on A while its provider is unmounted and B
   const previousClientB = getClient()
   setClient(createInProcessClient(secondServer))
   useEnvironmentsStore.getState().activate(originA)
+  await readEnvironmentDescriptor(originA, new AbortController().signal)
+  await readEnvironmentDescriptor(originB, new AbortController().signal)
   const application = createApplicationRuntime({
-    workspaceCache: readWorkspaceCache(),
+    workspaceCache: readWorkspaceCache(environmentScopedStorage(confirmedEnvironmentId(originA))),
     preparation: {
       appliedThemeContentHash: null,
       appliedThemeId: null,

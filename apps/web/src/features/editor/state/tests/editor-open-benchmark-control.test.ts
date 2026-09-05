@@ -1,3 +1,4 @@
+import { testScopedStorage } from '../../../../../test/factories/scoped-storage'
 // @vitest-environment happy-dom
 
 import { QueryClient } from '@tanstack/react-query'
@@ -28,6 +29,7 @@ describe('editor-open benchmark control', () => {
     })
     const quarantineBenchmarkSample = vi.fn()
     const control = createEditorOpenBenchmarkControl({
+      storage: testScopedStorage,
       documentStore: createEditorDocumentStore(),
       fileOpenIntent: { quarantineBenchmarkSample } as unknown as FileOpenIntentService,
       mountedEditors: new MountedEditorRegistry(),

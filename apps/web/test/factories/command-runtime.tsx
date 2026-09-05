@@ -20,7 +20,7 @@ import {
 } from '@/features/editor/state/workspace-state'
 import { DEFAULT_DIFF_VIEW_MODE } from '@/features/editor/utils/diff-view-mode'
 import { createSearchBufferStore } from '@/features/search/state/buffer-state'
-import type { SettingsSubmission } from '@/features/settings/state/intent-store'
+import type { SettingsSubmission } from '@workspace/client-core/settings/intent-store'
 import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/layout'
 import { emptyWorkspaceSlice, type CachedWorkspaceState } from '@/features/workspace/state/cache'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
@@ -290,6 +290,7 @@ function createRuntime(
   }
   const shell: WorkspaceCommandRuntime['shell'] = {
     showEnvironmentDialog: () => {},
+    showMachines: () => {},
     openPicker: () => workspace.getState().openPicker(),
     openWorkspaceRoot: (rootPath) => openTestWorkspaceRoot(rootPath, editor, workspace),
     showCommandPalette: () => focus.request(focusTargetById({ kind: 'command-palette' })),
@@ -342,6 +343,7 @@ function createTestWorkspaceStore(rootPath: string | null) {
     searchBuffers: {},
     uiMode: 'workbench',
     workbenchLayout: createDefaultWorkbenchLayout(),
+    worktreeIdByRootPath: {},
     workspaceOrder: rootPath ? [rootPath] : [],
     workspaces,
   }

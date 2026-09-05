@@ -1,3 +1,6 @@
+import { readEnvironmentDescriptor } from '@/lib/environments/utils/descriptor'
+import { environmentScopedStorage } from '@/lib/environments/state/scoped-storage'
+import { confirmedEnvironmentId } from '@/lib/environments/state/domain'
 import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { healthDescriptorSchema } from '@workspace/contracts'
@@ -36,8 +39,10 @@ test('the real provider stack moves observers and mutation invalidations between
   useEnvironmentsStore.getState().activate(originA)
   const identityA = v.parse(healthDescriptorSchema, (await client.health.get()).data).environmentId
   const identityB = v.parse(healthDescriptorSchema, (await clientB.health.get()).data).environmentId
+  await readEnvironmentDescriptor(originA, new AbortController().signal)
+  await readEnvironmentDescriptor(originB, new AbortController().signal)
   const application = createApplicationRuntime({
-    workspaceCache: readWorkspaceCache(),
+    workspaceCache: readWorkspaceCache(environmentScopedStorage(confirmedEnvironmentId(originA))),
     preparation: {
       appliedThemeContentHash: null,
       appliedThemeId: null,

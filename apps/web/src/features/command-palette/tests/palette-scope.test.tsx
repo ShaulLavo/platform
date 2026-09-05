@@ -1,3 +1,4 @@
+import { testScopedStorage } from '../../../../test/factories/scoped-storage'
 import { createTestApplicationRuntime } from '../../../../test/factories/application-runtime'
 import { screen, waitFor } from '@testing-library/react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -12,11 +13,11 @@ import { expect, test } from '../../../../test/fixtures'
 import { renderWithProviders } from '../../../../test/render'
 
 test.beforeEach(() => {
-  writeRootFolderCache(null)
+  writeRootFolderCache(testScopedStorage, null)
 })
 
 test.afterEach(() => {
-  writeRootFolderCache(null)
+  writeRootFolderCache(testScopedStorage, null)
 })
 
 test('a sub-picker opens on an empty input under its own scope chip', async () => {

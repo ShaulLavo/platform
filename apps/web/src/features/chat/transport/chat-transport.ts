@@ -12,7 +12,7 @@ import type {
   SessionId,
 } from '@workspace/contracts'
 
-import type { OrchestrationStreamInput } from '../transport/orchestration-streams'
+import type { OrchestrationStreamInput } from '@workspace/client-core/transport/streams'
 
 export type ChatTransport = {
   readonly environmentId: EnvironmentId

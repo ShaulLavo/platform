@@ -23,7 +23,7 @@ import { testDiffLanguageHost } from '../../../../../test/factories/diff-languag
 import { expect, test } from '../../../../../test/fixtures'
 import { createTestQueryClient, renderWithProviders } from '../../../../../test/render'
 import { DEFAULT_SETTING_VALUES } from '@workspace/contracts'
-import { settingsKeys } from '@/features/settings/utils/query-keys'
+import { settingsKeys } from '@workspace/client-core/settings/query-keys'
 
 // Real git, real routes, and the editor's real diff view: its rows are ordinary
 // elements carrying `data-editor-virtual-row`, which is the only thing the

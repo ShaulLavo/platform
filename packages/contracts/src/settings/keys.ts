@@ -1,4 +1,5 @@
 import * as v from 'valibot'
+import { machinesSchema } from '../machines'
 import {
   keybindingOverridesSchema,
   lspLanguageServerListsSchema,
@@ -29,6 +30,18 @@ import { defineSetting, type SettingDescriptor } from './registry'
 const percentSchema = v.pipe(v.number(), v.integer(), v.minValue(0), v.maxValue(100))
 
 export const SETTINGS_REGISTRY = {
+  'environments.machines': defineSetting({
+    schema: machinesSchema,
+    default: {},
+    scope: 'machine',
+    widget: 'machines',
+    merge: 'record',
+    category: 'Machines',
+    title: 'Connected machines',
+    description:
+      'SSH targets and direct origins available to this client. The local machine is always available.',
+    keywords: ['remote', 'ssh', 'environment', 'server', 'connect'],
+  }),
   'workbench.colorTheme': defineSetting({
     schema: v.picklist(['dark', 'light', 'system'] as const),
     default: 'system',
@@ -58,6 +71,16 @@ export const SETTINGS_REGISTRY = {
       'accent',
       'appearance',
     ],
+  }),
+  'workbench.reduceMotion': defineSetting({
+    schema: v.boolean(),
+    default: false,
+    scope: 'window',
+    widget: 'boolean',
+    category: 'Appearance',
+    title: 'Reduce terminal motion',
+    description: 'Slow terminal loading indicators while keeping progress visible.',
+    keywords: ['tui', 'terminal', 'animation', 'accessibility', 'motion'],
   }),
   'workbench.density': defineSetting({
     schema: v.picklist(['compact', 'cozy'] as const),
@@ -141,6 +164,17 @@ export const SETTINGS_REGISTRY = {
     category: 'Editor',
     description: 'Font for the editor and, unless overridden, the terminal.',
     keywords: ['font', 'typeface', 'monospace', 'nerd font', 'editor'],
+  }),
+  'editor.externalEditor': defineSetting({
+    schema: v.pipe(v.string(), v.trim()),
+    default: '',
+    scope: 'machine',
+    widget: 'string',
+    category: 'Editor',
+    title: 'External editor',
+    description:
+      'Executable used by the terminal client to edit settings JSON. Blank uses the local EDITOR executable, then vi. Supply one executable path; shell commands and arguments are not interpreted.',
+    keywords: ['tui', 'terminal', 'json', 'editor', 'executable'],
   }),
   'editor.fontSize': defineSetting({
     schema: v.pipe(v.number(), v.integer(), v.minValue(6), v.maxValue(72)),

@@ -2,19 +2,19 @@ import { QueryClient } from '@tanstack/react-query'
 import { afterEach } from 'vitest'
 
 import { createEditorDocumentStore } from '@/features/editor/state/document-state'
+import { useSettingsIntentStore } from '@/features/settings/state/intent-store'
 import {
   failSettingsIntent,
   resetSettingsIntentStore,
   settingsIntentStatus,
   submitSettingsIntent,
-  useSettingsIntentStore,
-} from '@/features/settings/state/intent-store'
+} from '@workspace/client-core/settings/intent-store'
 import { readLiveSettingsProjection } from '@/features/settings/state/live-projection'
 import { admitSettingsMutationResult } from '@/features/settings/state/snapshot-admission'
 import { SettingsSyncService } from '@/features/settings/state/sync-service'
 import { fetchSettings, saveSettings } from '@/features/settings/utils/api'
 import { settingsJsonDocumentId } from '@/features/settings/utils/json-document'
-import { settingsKeys } from '@/features/settings/utils/query-keys'
+import { settingsKeys } from '@workspace/client-core/settings/query-keys'
 import { activeServerOrigin, getClient, setActiveServerOrigin, setClient } from '@/lib/client'
 import { registerEnvironmentQueryClient } from '@/lib/environments/state/query-clients'
 

@@ -1,4 +1,5 @@
 import { SessionAttentionIndicator } from '@/features/chat-mode/components/session-attention-indicator'
+import { ScopeChip } from '@/features/command-palette/scope-chip'
 import { GitBranchIcon } from '@phosphor-icons/react'
 import { CommandItem, CommandShortcut } from '@workspace/ui/components/command'
 
@@ -25,10 +26,9 @@ export function SessionPaletteRow({ session }: { readonly session: SessionRailIt
     >
       <SessionAttentionIndicator status={session.status} />
       <span className='max-w-[55%] shrink-0 truncate font-medium'>{session.title}</span>
+      {session.machineLabel ? <ScopeChip label={session.machineLabel} /> : null}
       <span className='text-muted-foreground flex min-w-0 flex-1 items-center gap-1.5 truncate text-[11px]'>
-        <span className='truncate'>
-          {[session.machineLabel, session.projectTitle].filter(Boolean).join(' · ')}
-        </span>
+        <span className='truncate'>{session.projectTitle}</span>
         {session.branch ? <GitBranchIcon className='size-3 shrink-0' /> : null}
         {session.branch ? <span className='truncate'>{session.branch}</span> : null}
       </span>

@@ -6,6 +6,7 @@ import { providerListQueryOptions } from '@/features/chat/utils/provider-query'
 import { providerSettingRows } from '../utils/provider-rows'
 import { EmptyRow } from './empty-row'
 import { ProviderRow } from './provider-row'
+import { useSettingsOwner } from '@/features/settings/hooks/use-settings-owner'
 
 /**
  * The provider list, as the control for `providers.instances`.
@@ -19,7 +20,7 @@ import { ProviderRow } from './provider-row'
  * providers were live behind it.
  */
 export function ProviderSection({ saved }: { saved: readonly ProviderInstanceConfig[] }) {
-  const { data } = useQuery(providerListQueryOptions())
+  const { data } = useQuery(providerListQueryOptions(), useSettingsOwner())
   const instances = providerSettingRows({ saved, snapshots: data?.providers ?? [] })
 
   if (instances.length === 0) return <EmptyRow>No providers are available.</EmptyRow>

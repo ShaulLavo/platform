@@ -7,6 +7,7 @@ import {
   layerAllowsScope,
   settingRowIds,
   type ModelRef,
+  type MachineDefinition,
   type ProviderInstanceConfig,
   type ScalarSettingId,
   type SettingId,
@@ -14,7 +15,8 @@ import {
   type SettingsValues,
   type SettingsWriteTarget,
 } from '@workspace/contracts'
-import { useMutation, useMutationState, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useMutationState, type QueryClient } from '@tanstack/react-query'
+import { useSettingsOwner } from '@/features/settings/hooks/use-settings-owner'
 
 import type { PlatformCommandId } from '@/keymap/types'
 import {
@@ -28,7 +30,7 @@ import {
   submitSettingsIntent,
   type ActiveSettingsIntent,
   type SettingsSubmission,
-} from '@/features/settings/state/intent-store'
+} from '@workspace/client-core/settings/intent-store'
 import { readLiveColorTheme } from '@/features/settings/state/live-projection'
 import { saveSettings } from '@/features/settings/utils/api'
 import { settingsMutationLogContext } from '@/features/settings/utils/mutation-observability'
@@ -41,7 +43,7 @@ import {
   settingsResultRequiresActiveEpochRetry,
   settingsRetryDelay,
   shouldRetrySettingsTransport,
-} from '@/features/settings/utils/mutation-policy'
+} from '@workspace/client-core/settings/mutation-policy'
 import { dismissSaveError, notifySaveError } from '@/features/settings/utils/notify-save-error'
 import { providerEnabledOperation } from '@/features/settings/utils/operations'
 import { admitSettingsMutationResult } from '@/features/settings/state/snapshot-admission'
@@ -60,39 +62,20 @@ export const SETTINGS_MUTATION_SCOPE = 'settings-document'
 
 /** Semantic settings actions shared by commands and settings controls. */
 export function useSettingsActions() {
-  const queryClient = useQueryClient()
+  const queryClient = useSettingsOwner()
   const client = clientForQueryClient(queryClient)
   const projection = useSettingsProjection()
-  const transport = useMutation({
-    mutationFn: (entry: ActiveSettingsIntent) => transportSettingsIntent(entry, client),
-    mutationKey: SETTINGS_MUTATION_KEY,
-    onError: (error, entry) => {
-      logSettingsMutationFailure(entry, error)
-      if (settingsIntentStatus(entry.request.mutationId) === 'acknowledged') return
-
-      const failed = failSettingsIntent(entry.request.mutationId, error)
-      if (!failed) return
-      if (failed.superseded) return
-
-      notifySaveError({
-        discard: () => discardFailedMutation(failed.request.mutationId),
-        error,
-        mutationId: failed.request.mutationId,
-        retry: () => retryFailedIntent(failed.request.mutationId, transport.mutate),
-      })
-    },
-    onSettled: (_result, _error, entry) => {
-      settleSettingsIntentTransport(entry.request.mutationId)
-    },
-    onSuccess: async ({ result: initialResult, startedAt }, entry) => {
-      let admitted
-      try {
-        admitted = await admitSuccessfulMutation(queryClient, entry, initialResult)
-      } catch (error) {
-        annotateSettingsTransportError(entry, startedAt, error)
+  const transport = useMutation(
+    {
+      mutationFn: (entry: ActiveSettingsIntent) => transportSettingsIntent(entry, client),
+      mutationKey: SETTINGS_MUTATION_KEY,
+      onError: (error, entry) => {
         logSettingsMutationFailure(entry, error)
+        if (settingsIntentStatus(entry.request.mutationId) === 'acknowledged') return
+
         const failed = failSettingsIntent(entry.request.mutationId, error)
-        if (!failed || failed.superseded) return
+        if (!failed) return
+        if (failed.superseded) return
 
         notifySaveError({
           discard: () => discardFailedMutation(failed.request.mutationId),
@@ -100,33 +83,58 @@ export function useSettingsActions() {
           mutationId: failed.request.mutationId,
           retry: () => retryFailedIntent(failed.request.mutationId, transport.mutate),
         })
-        return
-      }
+      },
+      onSettled: (_result, _error, entry) => {
+        settleSettingsIntentTransport(entry.request.mutationId)
+      },
+      onSuccess: async ({ result: initialResult, startedAt }, entry) => {
+        let admitted
+        try {
+          admitted = await admitSuccessfulMutation(queryClient, entry, initialResult)
+        } catch (error) {
+          annotateSettingsTransportError(entry, startedAt, error)
+          logSettingsMutationFailure(entry, error)
+          const failed = failSettingsIntent(entry.request.mutationId, error)
+          if (!failed || failed.superseded) return
 
-      const { admission, result } = admitted
-      log.info({
-        action: 'settings.write',
-        appliedEpoch: result.appliedVersion.epoch,
-        appliedSequence: result.appliedVersion.sequence,
-        area: 'settings',
-        clientInstanceId: clientInstanceId(),
-        durationMs: settingsDurationSince(startedAt),
-        duplicate: result.duplicate,
-        ...settingsMutationLogContext(entry),
-        outcome: settingsMutationSuccessOutcome(result, admission.snapshot),
-        queueWaitMs: settingsDurationBetween(entry.enqueuedAt, startedAt),
-        snapshotEpoch: admission.snapshot?.serverVersion.epoch,
-        snapshotSequence: admission.snapshot?.serverVersion.sequence,
-      })
+          notifySaveError({
+            discard: () => discardFailedMutation(failed.request.mutationId),
+            error,
+            mutationId: failed.request.mutationId,
+            retry: () => retryFailedIntent(failed.request.mutationId, transport.mutate),
+          })
+          return
+        }
+
+        const { admission, result } = admitted
+        log.info({
+          action: 'settings.write',
+          appliedEpoch: result.appliedVersion.epoch,
+          appliedSequence: result.appliedVersion.sequence,
+          area: 'settings',
+          clientInstanceId: clientInstanceId(),
+          durationMs: settingsDurationSince(startedAt),
+          duplicate: result.duplicate,
+          ...settingsMutationLogContext(entry),
+          outcome: settingsMutationSuccessOutcome(result, admission.snapshot),
+          queueWaitMs: settingsDurationBetween(entry.enqueuedAt, startedAt),
+          snapshotEpoch: admission.snapshot?.serverVersion.epoch,
+          snapshotSequence: admission.snapshot?.serverVersion.sequence,
+        })
+      },
+      retry: shouldRetrySettingsTransport,
+      retryDelay: settingsRetryDelay,
+      scope: { id: SETTINGS_MUTATION_SCOPE },
     },
-    retry: shouldRetrySettingsTransport,
-    retryDelay: settingsRetryDelay,
-    scope: { id: SETTINGS_MUTATION_SCOPE },
-  })
-  const pendingTransports = useMutationState({
-    filters: { mutationKey: SETTINGS_MUTATION_KEY, status: 'pending' },
-    select: () => true,
-  })
+    queryClient,
+  )
+  const pendingTransports = useMutationState(
+    {
+      filters: { mutationKey: SETTINGS_MUTATION_KEY, status: 'pending' },
+      select: () => true,
+    },
+    queryClient,
+  )
 
   const submit = (
     target: SettingsWriteTarget,
@@ -181,6 +189,9 @@ export function useSettingsActions() {
 
   return {
     isSaving: pendingTransports.length > 0,
+    setMachine: (name: string, machine: MachineDefinition) =>
+      submit('user', [{ kind: 'machine.set', name, machine }]),
+    removeMachine: (name: string) => submit('user', [{ kind: 'machine.remove', name }]),
     moveModel: (ref: ModelRef, direction: -1 | 1, displayed: readonly ModelRef[]) =>
       submit(targetFor('models.order'), [
         { kind: 'model.setOrder', order: withMovedModel(displayed, ref, direction) },
@@ -229,7 +240,7 @@ async function transportSettingsIntent(entry: ActiveSettingsIntent, client: Clie
 }
 
 async function admitSuccessfulMutation(
-  queryClient: ReturnType<typeof useQueryClient>,
+  queryClient: QueryClient,
   entry: ActiveSettingsIntent,
   initialResult: Awaited<ReturnType<typeof saveSettings>>,
 ) {
@@ -261,7 +272,7 @@ async function retrySettingsTransport(entry: ActiveSettingsIntent, client: Clien
 }
 
 async function awaitSettingsAdmission(
-  queryClient: ReturnType<typeof useQueryClient>,
+  queryClient: QueryClient,
   result: Awaited<ReturnType<typeof saveSettings>>,
 ) {
   const admission = await admitSettingsMutationResult(queryClient, result)

@@ -1,3 +1,5 @@
+import { readDirectory, readFilePreview } from '@workspace/client-core/files/read'
+import { clientLogContext } from '@/lib/environments/state/log-context'
 import { getClient, type Client } from '@/lib/client'
 import type {
   FileResult,
@@ -26,7 +28,6 @@ import type {
   WorkspaceSearchMeasurement,
 } from '@workspace/contracts'
 
-const TREE_LOAD_DEPTH = 1
 const TREE_LOG_DELAY_MS = 250
 const treeLogs = createCoalescedLogQueue({
   delayMs: TREE_LOG_DELAY_MS,
@@ -157,14 +158,7 @@ export async function fetchTree(path: string, signal: AbortSignal, client: Clien
   const startedAt = performance.now()
 
   try {
-    const response = await client.fs.tree.get({
-      query: { depth: TREE_LOAD_DEPTH, path },
-      fetch: { signal },
-    })
-
-    if (response.error) throw createRpcError(response.error)
-
-    const result = response.data as TreeResult
+    const result = await readDirectory({ client, path, signal }).catch(rethrowFileReadError)
     queueTreeSuccessLog(path, result, startedAt)
     return result
   } catch (error) {
@@ -181,14 +175,7 @@ export async function fetchFile(path: string, signal: AbortSignal, client: Clien
   const startedAt = performance.now()
 
   try {
-    const response = await client.fs.read.get({
-      query: { path },
-      fetch: { signal },
-    })
-
-    if (response.error) throw createRpcError(response.error)
-
-    const result = response.data as FileResult
+    const result = await readFilePreview({ client, path, signal }).catch(rethrowFileReadError)
     queueReadSuccessLog(path, result, startedAt)
     return result
   } catch (error) {
@@ -217,6 +204,7 @@ export async function fetchQuickOpenFiles(
 
   return observeClientOperation(
     {
+      ...clientLogContext(client),
       action: 'fs.quick_open_files',
       area: 'fs',
       method: 'GET',
@@ -261,6 +249,7 @@ export async function writeFileContent(
   const writeOptions = normalizeWriteFileContentOptions(options)
   return observeClientOperation(
     {
+      ...clientLogContext(client),
       action: 'fs.write',
       area: 'fs',
       hasBaseVersion: writeOptions.baseVersion !== undefined && writeOptions.baseVersion !== null,
@@ -323,6 +312,7 @@ export async function createFileContent(
 ) {
   return observeClientOperation(
     {
+      ...clientLogContext(client),
       action: 'fs.create_file',
       area: 'fs',
       contentBytes: new Blob([content]).size,
@@ -358,6 +348,7 @@ async function requestFolderCreation(
 ) {
   return observeClientOperation(
     {
+      ...clientLogContext(client),
       action: 'fs.create_folder',
       area: 'fs',
       method: 'POST',
@@ -381,7 +372,15 @@ async function requestFolderCreation(
 
 export async function renamePath(from: string, to: string, client: Client = getClient()) {
   return observeClientOperation(
-    { action: 'fs.rename', area: 'fs', from, method: 'POST', path: to, route: '/fs/rename' },
+    {
+      ...clientLogContext(client),
+      action: 'fs.rename',
+      area: 'fs',
+      from,
+      method: 'POST',
+      path: to,
+      route: '/fs/rename',
+    },
     async () => {
       const response = await client.fs.rename.post({ from, to })
 
@@ -396,6 +395,7 @@ export async function renamePath(from: string, to: string, client: Client = getC
 export async function copyPath(from: string, to: string, client: Client = getClient()) {
   return observeClientOperation(
     {
+      ...clientLogContext(client),
       action: 'fs.copy',
       area: 'fs',
       from,
@@ -419,7 +419,15 @@ export async function copyPath(from: string, to: string, client: Client = getCli
 
 export async function deletePath(path: string, recursive: boolean, client: Client = getClient()) {
   return observeClientOperation(
-    { action: 'fs.delete', area: 'fs', method: 'POST', path, recursive, route: '/fs/delete' },
+    {
+      ...clientLogContext(client),
+      action: 'fs.delete',
+      area: 'fs',
+      method: 'POST',
+      path,
+      recursive,
+      route: '/fs/delete',
+    },
     async () => {
       const response = await client.fs.delete.post({ path, recursive })
 
@@ -433,7 +441,14 @@ export async function deletePath(path: string, recursive: boolean, client: Clien
 
 export async function fetchServerInfo(signal: AbortSignal, client: Client = getClient()) {
   return observeClientOperation(
-    { action: 'fs.server_info', area: 'fs', method: 'GET', route: '/health', signal },
+    {
+      ...clientLogContext(client),
+      action: 'fs.server_info',
+      area: 'fs',
+      method: 'GET',
+      route: '/health',
+      signal,
+    },
     async () => {
       const response = await client.health.get({ fetch: { signal } })
 
@@ -450,7 +465,15 @@ export async function fetchServerInfo(signal: AbortSignal, client: Client = getC
 
 export async function statPath(path: string, signal: AbortSignal, client: Client = getClient()) {
   return observeClientOperation(
-    { action: 'fs.stat', area: 'fs', method: 'GET', path, route: '/fs/stat', signal },
+    {
+      ...clientLogContext(client),
+      action: 'fs.stat',
+      area: 'fs',
+      method: 'GET',
+      path,
+      route: '/fs/stat',
+      signal,
+    },
     async () => {
       const response = await client.fs.stat.get({ query: { path }, fetch: { signal } })
 
@@ -470,6 +493,7 @@ export async function openWorkspaceRootPath(
 ) {
   return observeClientOperation(
     {
+      ...clientLogContext(client),
       action: 'fs.open_workspace_root',
       area: 'fs',
       generation,
@@ -504,6 +528,7 @@ export async function fetchRecentEntries(
 ) {
   return observeClientOperation(
     {
+      ...clientLogContext(client),
       action: 'fs.recents',
       area: 'fs',
       ...options,
@@ -524,7 +549,14 @@ export async function fetchRecentEntries(
 
 export async function recordRecentEntry(path: string, client: Client = getClient()) {
   return observeClientOperation(
-    { action: 'fs.record_recent', area: 'fs', method: 'POST', path, route: '/fs/recents' },
+    {
+      ...clientLogContext(client),
+      action: 'fs.record_recent',
+      area: 'fs',
+      method: 'POST',
+      path,
+      route: '/fs/recents',
+    },
     async () => {
       const response = await client.fs.recents.post({ path })
 
@@ -677,4 +709,9 @@ function elapsedMs(startedAt: number) {
 
 function roundMs(value: number) {
   return Math.round(value * 100) / 100
+}
+
+function rethrowFileReadError(error: unknown): never {
+  if (error instanceof Error) throw error
+  throw createRpcError(error)
 }

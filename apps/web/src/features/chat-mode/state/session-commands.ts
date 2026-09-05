@@ -108,6 +108,7 @@ function visibleSessions() {
     orderOverrides: useRailOrderStore.getState(),
     query: rail.query,
     scope: rail.scope,
+    machineFilter: rail.machineFilter,
     searchMatches: useSessionSearchStore.getState().matchBySessionKey,
     seenBySessionKey: useSessionReadStore.getState().seenBySessionKey,
     view: rail.view,

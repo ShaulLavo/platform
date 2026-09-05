@@ -13,10 +13,11 @@ import type {
 import { clientInstanceId } from '@/lib/instance-id'
 import { createClientInvariantError } from '@/lib/structured-errors'
 import type { Client } from '@/lib/client'
-import { clientForQueryClient } from '@/lib/environments/state/query-clients'
+import { clientForQueryClient, originForQueryClient } from '@/lib/environments/state/query-clients'
+import { assertEnvironmentWritable } from '@/lib/environments/state/availability'
 
 import { saveSettingsText } from '@/features/settings/utils/api'
-import { settingsKeys } from '@/features/settings/utils/query-keys'
+import { settingsKeys } from '@workspace/client-core/settings/query-keys'
 import {
   admitSettingsRawResult,
   refreshConfirmedSettings,
@@ -59,6 +60,7 @@ export class SettingsSyncService {
     allowMatchingConflictCompletion: boolean,
   ): Promise<void> {
     if (document.sync.kind !== 'settings') return
+    assertEnvironmentWritable(originForQueryClient(this.queryClient))
 
     const sync = document.sync
     if (sync.revision === null) return

@@ -1,6 +1,6 @@
 import { pathForDocumentToken } from '@/features/address/utils/document-token'
-import { applicableTabs, type Address } from '@/features/address/utils/grammar'
-import { NO_WORKSPACE_SLUG, resolveWorkspaceSlug } from '@/features/address/utils/slug'
+import { applicableTabs, type Address } from '@workspace/client-core/address/grammar'
+import { NO_WORKSPACE_SLUG, resolveWorkspaceSlug } from '@workspace/client-core/address/slug'
 import { isChatModeToolTab, showChatModeToolTab } from '@/features/chat-mode/utils/panels'
 import {
   openEditorPathInWorkbenchPanels,

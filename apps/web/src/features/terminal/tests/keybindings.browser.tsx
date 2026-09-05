@@ -4,7 +4,7 @@ import { flushSync } from 'react-dom'
 import { commands } from 'vitest/browser'
 import { expect, test } from 'vitest'
 
-import { CHORD_TIMEOUT_MS } from '@/keymap/utils/chord'
+import { CHORD_TIMEOUT_MS } from '@workspace/client-core/commands/chord'
 
 import { binding } from '../../../../test/factories/key-binding'
 import { createTerminalKeymap } from '../../../../test/factories/terminal-keymap'

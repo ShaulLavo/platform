@@ -7,7 +7,6 @@ export function useCommitAction(rootPath: string) {
   const { discardLiveEditorDocument, selectFile } = useEditorCommands()
   const message = useGitState((state) => state.commitMessage)
   const setMessage = useGitState((state) => state.setCommitMessage)
-  const resetMessage = useGitState((state) => state.resetCommitMessage)
   const commit = useCommitMutation(rootPath)
   const isPending = useCommitPending(rootPath)
   const trimmedMessage = message.trim()
@@ -17,14 +16,10 @@ export function useCommitAction(rootPath: string) {
 
     commit.mutate(trimmedMessage, {
       onSuccess: (result) => {
-        if (result.kind === 'message-file') {
-          discardLiveEditorDocument(result.path)
-          // TODO: when save is implemented, saving COMMIT_EDITMSG should complete or abort the git commit.
-          selectFile(result.path)
-          return
-        }
-
-        resetMessage()
+        if (result.kind !== 'message-file') return
+        discardLiveEditorDocument(result.path)
+        // TODO: when save is implemented, saving COMMIT_EDITMSG should complete or abort the git commit.
+        selectFile(result.path)
       },
     })
   }

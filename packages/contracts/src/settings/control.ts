@@ -37,6 +37,7 @@ export type SettingControl =
   | { readonly widget: 'keybindings' }
   | { readonly widget: 'providers'; readonly value: readonly ProviderInstanceConfig[] }
   | { readonly widget: 'models' }
+  | { readonly widget: 'machines' }
   | { readonly widget: 'unsupported' }
 
 export function settingControl(id: SettingId, value: SettingValue<SettingId>): SettingControl {
@@ -74,6 +75,7 @@ export function settingControl(id: SettingId, value: SettingValue<SettingId>): S
   // The model catalogue is not in the settings document, so the control sources
   // its own rows and the stored value tells it nothing.
   if (widget === 'models') return { widget }
+  if (widget === 'machines') return { widget }
 
   return { widget: 'unsupported' }
 }

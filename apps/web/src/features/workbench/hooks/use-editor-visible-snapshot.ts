@@ -1,3 +1,4 @@
+import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
 import type {
   EditorInitialPaintEvent,
   EditorPlugin,
@@ -40,6 +41,7 @@ type EditorSnapshotThemeIdentity = {
 }
 
 type UseEditorVisibleSnapshotOptions = {
+  readonly storage: ScopedStorage
   readonly active: boolean
   readonly fileReadError: boolean
   readonly renderedDocument: RenderedSnapshotDocument | null
@@ -76,6 +78,7 @@ type EditorVisibleSnapshotPerformanceGlobal = typeof globalThis & {
 }
 
 type CaptureRuntime = {
+  readonly storage: ScopedStorage
   active: boolean
   appliedThemeId: string | null
   cachedPaintFrame: number | null
@@ -109,6 +112,7 @@ export type EditorVisibleSnapshotBinding = {
 
 /** Owns the visual-only capture and handoff for one file editor pane. */
 export function useEditorVisibleSnapshot({
+  storage,
   active,
   fileReadError,
   renderedDocument,
@@ -118,6 +122,7 @@ export function useEditorVisibleSnapshot({
   const presentationIdentity = cachePresentationIdentity(active, selectedTarget, theme)
   const [presented, setPresented] = useState<PresentedSnapshot>(() =>
     initialPresentedSnapshot(
+      storage,
       presentationIdentity,
       active,
       fileReadError,
@@ -129,6 +134,7 @@ export function useEditorVisibleSnapshot({
   if (presented.identity !== presentationIdentity) {
     setPresented(
       initialPresentedSnapshot(
+        storage,
         presentationIdentity,
         active,
         fileReadError,
@@ -141,6 +147,7 @@ export function useEditorVisibleSnapshot({
   } else if (!presented.attempted && renderedDocument === null) {
     setPresented(
       initialPresentedSnapshot(
+        storage,
         presentationIdentity,
         active,
         fileReadError,
@@ -154,21 +161,21 @@ export function useEditorVisibleSnapshot({
 
   const overlayRef = useRef<HTMLDivElement>(null)
   const runtimeRef = useRef<CaptureRuntime | (() => CaptureRuntime)>(() =>
-    createCaptureRuntime(active, renderedDocument, selectedTarget, theme),
+    createCaptureRuntime(storage, active, renderedDocument, selectedTarget, theme),
   )
   const dismissOverlay = useMemo(
     () => (removeTarget?: SnapshotPath) => {
       const overlay = overlayRef.current
       if (overlay) overlay.hidden = true
       cancelOverlayPresentation(currentCaptureRuntime(runtimeRef))
-      if (removeTarget) removeEditorVisibleSnapshotCacheForPath(removeTarget)
+      if (removeTarget) removeEditorVisibleSnapshotCacheForPath(storage, removeTarget)
       setPresented((current) => {
         if (current.record === null) return current
 
         return { ...current, attempted: true, record: null }
       })
     },
-    [],
+    [storage],
   )
   // Event handlers must not forward their synthetic event as a cache-removal target.
   const dismissOverlayForInteraction = useMemo(() => () => dismissOverlay(), [dismissOverlay])
@@ -363,12 +370,14 @@ function currentCaptureRuntime(runtimeRef: {
 }
 
 function createCaptureRuntime(
+  storage: ScopedStorage,
   active: boolean,
   renderedDocument: RenderedSnapshotDocument | null,
   selectedTarget: SnapshotTarget,
   theme: EditorSnapshotThemeIdentity,
 ): CaptureRuntime {
   return {
+    storage,
     active,
     appliedThemeId: theme.appliedThemeId,
     cachedPaintFrame: null,
@@ -508,7 +517,7 @@ function flushCapture(runtime: CaptureRuntime, expectedGeneration = runtime.gene
       updateKind: pending.kind,
     },
   )
-  const result = writeEditorVisibleSnapshotCache({
+  const result = writeEditorVisibleSnapshotCache(runtime.storage, {
     cacheVersion: 2,
     contentVersion,
     path: rendered.path,
@@ -713,6 +722,7 @@ function cancelAuthoritativePaintFrame(runtime: CaptureRuntime): void {
 }
 
 function initialPresentedSnapshot(
+  storage: ScopedStorage,
   identity: string,
   active: boolean,
   fileReadError: boolean,
@@ -744,7 +754,7 @@ function initialPresentedSnapshot(
     attempted: true,
     attemptedIdentities,
     identity,
-    record: readEditorVisibleSnapshotCache({
+    record: readEditorVisibleSnapshotCache(storage, {
       contentVersion,
       path: selectedTarget.path,
       rootPath: selectedTarget.rootPath,

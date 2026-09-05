@@ -2,7 +2,7 @@ import { createEditorDocumentStore } from '@/features/editor/state/document-stat
 import { SettingsSyncService } from '@/features/settings/state/sync-service'
 import { fetchSettings, saveSettingsText } from '@/features/settings/utils/api'
 import { settingsJsonDocumentId } from '@/features/settings/utils/json-document'
-import { settingsKeys } from '@/features/settings/utils/query-keys'
+import { settingsKeys } from '@workspace/client-core/settings/query-keys'
 
 import { createTestQueryClient } from '../../../../test/render'
 import { expect, test } from '../../../../test/fixtures'

@@ -1,5 +1,5 @@
-import type { EnvironmentEntry } from '@/lib/environments/utils/connection'
-import type { AddressEnvironments } from '@/features/address/utils/grammar'
+import type { EnvironmentEntry } from '@workspace/client-core/environments/utils/connection'
+import type { AddressEnvironments } from '@workspace/client-core/address/grammar'
 
 export function addressEnvironments(
   entries: Readonly<Record<string, EnvironmentEntry>>,

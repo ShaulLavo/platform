@@ -1,7 +1,12 @@
 import { createClientInvariantError } from '@/lib/structured-errors'
 
 import type { PlatformKeyBinding } from '@/keymap/types'
-import { chordKeys, isBindableChord, parsedChord, type PlatformName } from '@/keymap/utils/chord'
+import {
+  chordKeys,
+  isBindableChord,
+  parsedChord,
+  type PlatformName,
+} from '@workspace/client-core/commands/chord'
 
 type BindingOptions = Partial<Omit<PlatformKeyBinding, 'keys' | 'chord'>> & {
   readonly platform?: PlatformName

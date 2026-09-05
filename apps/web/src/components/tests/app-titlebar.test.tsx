@@ -66,6 +66,7 @@ function createTitlebarStore() {
     searchBuffers: {},
     uiMode: 'workbench',
     workbenchLayout: createDefaultWorkbenchLayout(),
+    worktreeIdByRootPath: {},
     workspaceOrder: ['/repo'],
     workspaces: {
       '/repo': {

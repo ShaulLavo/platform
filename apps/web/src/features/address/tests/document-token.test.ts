@@ -3,7 +3,7 @@ import { describe } from 'vitest'
 import { expect, test } from '../../../../test/fixtures'
 
 import { documentTokenForPath, pathForDocumentToken } from '@/features/address/utils/document-token'
-import { emptyAddress, formatAddress, parseAddress } from '@/features/address/utils/grammar'
+import { emptyAddress, formatAddress, parseAddress } from '@workspace/client-core/address/grammar'
 import { compareSavedDocumentId } from '@/features/editor/utils/compare-saved-document'
 import { conflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
 import {

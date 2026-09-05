@@ -8,11 +8,11 @@ import { useTheme } from '@/features/settings/hooks/use-theme'
 import {
   resetSettingsIntentStore,
   type SettingsSubmission,
-} from '@/features/settings/state/intent-store'
+} from '@workspace/client-core/settings/intent-store'
 import { resetSettingsSnapshotAdmission } from '@/features/settings/state/snapshot-admission'
 import { readSettingsMirror } from '@/features/settings/utils/boot-mirror'
 import { dismissSaveError } from '@/features/settings/utils/notify-save-error'
-import { settingsKeys } from '@/features/settings/utils/query-keys'
+import { settingsKeys } from '@workspace/client-core/settings/query-keys'
 
 test('submitted theme intent hands preview to projection and updates boot mirror only after ack', async ({
   client,

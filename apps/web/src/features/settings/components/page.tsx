@@ -4,6 +4,7 @@ import { Input } from '@workspace/ui/components/input'
 import { OrbitLoader } from '@workspace/ui/components/orbit-loader'
 import { XIcon } from '@phosphor-icons/react'
 import { useCallback, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
 import { DiagnosticsBanner } from '@/features/settings/components/diagnostics-banner'
 import { MalformedBanner } from '@/features/settings/components/malformed-banner'
@@ -18,10 +19,12 @@ import { useHasWorkspace } from '@/features/settings/hooks/use-has-workspace'
 import { useSettingsActions } from '@/features/settings/hooks/use-settings-actions'
 import { useSettingsDocument } from '@/features/settings/hooks/use-settings-document'
 import { useSettingsProjection } from '@/features/settings/hooks/use-settings-projection'
+import { useSettingsOwner } from '@/features/settings/hooks/use-settings-owner'
+import { SettingsOwnerProvider } from '@/features/settings/providers/owner-provider'
 import { useSettingsScope } from '@/features/settings/state/scope-store'
 import { useSettingsView } from '@/features/settings/state/view-store'
 import { isSettingAvailable } from '@/features/settings/utils/availability'
-import { matchingSettingIds } from '@/features/settings/utils/search'
+import { matchingSettingIds } from '@workspace/client-core/settings/search'
 import { documentBackdrop } from '@/lib/platform/backdrop'
 import { isDesktop } from '@/lib/platform/bridge'
 import type { EditorRenderDocument } from '@/features/editor/utils/render-document'
@@ -46,18 +49,23 @@ export function SettingsPage({
   rootPath?: string
   tabId?: string
 } = {}) {
-  const document = useSettingsDocument()
-  const projection = useSettingsProjection()
+  const view = useSettingsView()
+  const showJson = view === 'json' && tabId !== ''
+  const editorOwner = useQueryClient()
+  const settingsOwner = useSettingsOwner()
+  const document = useSettingsDocument(showJson ? editorOwner : undefined)
+  const projection = useSettingsProjection(showJson ? editorOwner : undefined)
   const { isSaving } = useSettingsActions()
   const scope = useSettingsScope()
-  const hasWorkspace = useHasWorkspace()
+  const editorHasWorkspace = useHasWorkspace()
+  const hasWorkspace =
+    showJson || editorOwner === settingsOwner
+      ? editorHasWorkspace
+      : Boolean(document.data?.layers.some((layer) => layer.id === 'workspace'))
   const [query, setQuery] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const selectedCategory = useSettingsCategory()
-  const view = useSettingsView()
-  // The dialog mount has no tab to bind an editor to, so it only has the form.
-  const showJson = view === 'json' && tabId !== ''
   const { ref: focusTargetRef } = useFocusTarget<HTMLDivElement>(
     {
       area: 'settings',
@@ -109,7 +117,12 @@ export function SettingsPage({
             the row below picks which file the tab is showing. */}
         <div className='flex items-center justify-end gap-1'>
           {tabId ? <ViewToggle /> : null}
-          <PageActions scope={scope} />
+          <SettingsOwnerProvider
+            key={showJson ? 'editor' : 'global'}
+            queryClient={showJson ? editorOwner : settingsOwner}
+          >
+            <PageActions scope={scope} />
+          </SettingsOwnerProvider>
         </div>
         <ScopeTabs hasWorkspace={hasWorkspace} />
         {showJson ? null : (

@@ -1,3 +1,4 @@
+import { testScopedStorage } from '../../../../../test/factories/scoped-storage'
 import { TEST_ENVIRONMENT_ID } from '../../../../../test/factories/chat'
 import { projectIdSchema, sessionIdSchema } from '@workspace/contracts'
 import * as v from 'valibot'
@@ -17,16 +18,18 @@ const sessionId = v.parse(sessionIdSchema, '0cecbcf1-b3a4-5425-826e-9780b43b7832
 test('the session on the stage survives a restart', () => {
   resetSessionSelectionStore()
 
-  createSessionSelectionStore().getState().selectSession(TEST_ENVIRONMENT_ID, projectId, sessionId)
+  createSessionSelectionStore(testScopedStorage)
+    .getState()
+    .selectSession(TEST_ENVIRONMENT_ID, projectId, sessionId)
 
-  expect(readSessionSelectionCache()).toEqual({
+  expect(readSessionSelectionCache(testScopedStorage)).toEqual({
     kind: 'session',
     environmentId: TEST_ENVIRONMENT_ID,
     projectId,
     sessionId,
   })
   // A second store is what a cold load is: it reads the cache the same way.
-  const reloaded = createSessionSelectionStore()
+  const reloaded = createSessionSelectionStore(testScopedStorage)
   expect(reloaded.getState().selection).toEqual({
     kind: 'session',
     environmentId: TEST_ENVIRONMENT_ID,
@@ -40,9 +43,11 @@ test('the session on the stage survives a restart', () => {
 test('a draft is remembered as a draft, not as the newest session', () => {
   resetSessionSelectionStore()
 
-  createSessionSelectionStore().getState().startDraft(TEST_ENVIRONMENT_ID, projectId)
+  createSessionSelectionStore(testScopedStorage)
+    .getState()
+    .startDraft(TEST_ENVIRONMENT_ID, projectId)
 
-  expect(createSessionSelectionStore().getState().selection).toEqual({
+  expect(createSessionSelectionStore(testScopedStorage).getState().selection).toEqual({
     kind: 'draft',
     environmentId: TEST_ENVIRONMENT_ID,
     projectId,
@@ -52,7 +57,7 @@ test('a draft is remembered as a draft, not as the newest session', () => {
 test('a cold profile starts on the auto pick', () => {
   resetSessionSelectionStore()
 
-  const store = createSessionSelectionStore()
+  const store = createSessionSelectionStore(testScopedStorage)
 
   expect(store.getState().selection).toEqual({ kind: 'auto' })
   expect(store.getState().restored).toBe(false)

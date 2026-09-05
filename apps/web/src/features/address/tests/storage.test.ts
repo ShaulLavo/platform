@@ -2,7 +2,7 @@ import { describe, afterEach, beforeEach } from 'vitest'
 
 import { expect, test } from '../../../../test/fixtures'
 
-import { parseAddress } from '@/features/address/utils/grammar'
+import { parseAddress } from '@workspace/client-core/address/grammar'
 import {
   readAddressCache,
   restoreAddressFromStorage,

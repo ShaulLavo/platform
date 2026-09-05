@@ -1,4 +1,5 @@
-import { createWideEventScope, type WideEventScope } from '@/lib/wide-event-scope'
+import { createWideEventScope } from '@/lib/wide-event-scope'
+import type { WideEventScope } from '@workspace/observability/scope'
 
 export type WorkspaceEditOperationPhase =
   | 'committing'

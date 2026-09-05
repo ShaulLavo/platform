@@ -1,3 +1,4 @@
+import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
 import * as v from 'valibot'
 
 export const CHAT_CHANGED_FILES_EXPANSION_STORAGE_KEY = 'platform.chat-changed-files-expansion.v1'
@@ -42,12 +43,13 @@ export function emptyPersistedChatChangedFilesExpansion(): PersistedChatChangedF
  * The version gate. Anything written by a different shape is dropped whole
  * rather than repaired — expansion is a preference, not data anyone can lose.
  */
-export function readPersistedChatChangedFilesExpansion(): PersistedChatChangedFilesExpansionStorage {
+export function readPersistedChatChangedFilesExpansion(
+  storage: ScopedStorage,
+): PersistedChatChangedFilesExpansionStorage {
   const fallback = emptyPersistedChatChangedFilesExpansion()
-  if (typeof localStorage === 'undefined') return fallback
 
   try {
-    const raw = localStorage.getItem(CHAT_CHANGED_FILES_EXPANSION_STORAGE_KEY)
+    const raw = storage.getItem(CHAT_CHANGED_FILES_EXPANSION_STORAGE_KEY)
     if (!raw) return fallback
 
     const parsed = v.safeParse(persistedExpansionStorageSchema, JSON.parse(raw))
@@ -63,11 +65,10 @@ export function readPersistedChatChangedFilesExpansion(): PersistedChatChangedFi
 }
 
 export function writePersistedChatChangedFilesExpansion(
+  adapter: ScopedStorage,
   expansionByKey: Readonly<Record<string, PersistedChatChangedFilesExpansion>>,
 ) {
-  if (typeof localStorage === 'undefined') return
-
-  localStorage.setItem(
+  adapter.setItem(
     CHAT_CHANGED_FILES_EXPANSION_STORAGE_KEY,
     JSON.stringify({
       expansionByKey,

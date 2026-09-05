@@ -145,9 +145,10 @@ plan has been deleted; source and tests are linked from the domain reference.
 
 The remaining order is:
 
-1. **Plan 078 — federated environments.** Next. Machines setting and page, desktop SSH launcher over
-   a loopback-to-loopback forward, one chat connection per machine, scoped persistence,
-   cross-machine rail, machine selection, and per-machine failure states.
+1. **Plan 078 — federated environments.** Implemented; automated checks pass.
+   Machines settings, the desktop SSH launcher, independent chat connections, scoped persistence,
+   the cross-machine rail, machine selection, and per-machine failure states are in place.
+   Live localhost SSH and browser gates remain open; retain the plan until they pass.
 2. **Later, on demand only:** the direct `https://` origin check through the mesh proxy, then pairing,
    issued sessions, and revocation for a client that cannot SSH. The auth analysis in Git history
    (`docs/environments-and-remote-plan.md@1325b003`) remains the reference for that plan.
@@ -175,7 +176,8 @@ its scope. Nothing in this lane binds a server off loopback.
 - **Deleted:** completed plans 038, 068, and 077, and superseded plan 058.
 - **Editor lane:** Plans 056 and 057 are complete. Standalone Editor chord execution was
   verified before Platform adopted the shared runtime.
-- **Promoted:** environments foundations 077 and 068 are complete; Plan 078 is next.
+- **Promoted:** environments foundations 077 and 068 are complete; Plan 078 is implemented with
+  automated checks passing and live SSH/browser gates open.
 - **Deferred:** the mesh https proxy check and pairing/sessions, until a client that cannot SSH
   exists; all compatibility work for the obsolete per-tab/active-editor/one-server architecture.
 - **Proposed independently:** accepted four-target config-resolver feasibility evidence makes Plan

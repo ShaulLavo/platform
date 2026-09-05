@@ -113,6 +113,7 @@
         "@tanstack/react-pacer": "^0.22.1",
         "@tanstack/react-query": "^5.101.0",
         "@tanstack/react-virtual": "3.14.2",
+        "@workspace/client-core": "workspace:*",
         "@workspace/contracts": "workspace:*",
         "@workspace/observability": "workspace:*",
         "@workspace/tree": "workspace:*",
@@ -158,6 +159,29 @@
         "typescript-eslint": "^8.61.0",
         "vite": "^8.0.16",
         "vitest": "^4.1.8",
+      },
+    },
+    "packages/client-core": {
+      "name": "@workspace/client-core",
+      "version": "0.0.0",
+      "dependencies": {
+        "@elysia/eden": "^1.4.10",
+        "@shikijs/themes": "4.2.0",
+        "@singapor/core": "0.1.2",
+        "@tanstack/hotkeys": "^0.8.0",
+        "@tanstack/query-core": "^5.101.0",
+        "@workspace/contracts": "workspace:*",
+        "evlog": "catalog:",
+        "server": "workspace:*",
+        "valibot": "^1.4.1",
+        "zustand": "^5.0.14",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.3.14",
+        "@typescript/native-preview": "7.0.0-dev.20260707.2",
+        "oxfmt": "0.64.0",
+        "oxlint": "1.70.0",
+        "vitest": "catalog:",
       },
     },
     "packages/contracts": {
@@ -1206,6 +1230,8 @@
     "@vscode/l10n": ["@vscode/l10n@0.0.18", "", {}, "sha512-KYSIHVmslkaCDyw013pphY+d7x1qV8IZupYfeIfzNA+nsaWHbn5uPuQRvdRFsa9zFzGeudPuoGoZ1Op4jrJXIQ=="],
 
     "@webgpu/types": ["@webgpu/types@0.1.72", "", {}, "sha512-0cF7RFM2edNoiIS1ODJp0/Gzv4/xSXhwoR0YCza+OWpJWtn4wmo9DvK91aLlH9+uUnwIriP7ZiC3WitmyhuzBw=="],
+
+    "@workspace/client-core": ["@workspace/client-core@workspace:packages/client-core"],
 
     "@workspace/contracts": ["@workspace/contracts@workspace:packages/contracts"],
 

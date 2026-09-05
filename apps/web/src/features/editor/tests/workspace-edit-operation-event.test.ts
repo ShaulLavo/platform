@@ -1,4 +1,4 @@
-import type { WideEventScope } from '@/lib/wide-event-scope'
+import type { WideEventScope } from '@workspace/observability/scope'
 import { WorkspaceEditOperationEvent } from '@/features/editor/state/workspace-edit-operation-event'
 import { expect, test } from '../../../../test/fixtures'
 

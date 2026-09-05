@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { humanizeSettingId } from '../humanize'
+import { humanizeSettingId } from '@workspace/client-core/settings/humanize'
 
 describe('humanizeSettingId', () => {
   it('drops the namespace and splits camelCase', () => {

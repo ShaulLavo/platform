@@ -7,11 +7,13 @@ import { commitChangesStreaming } from '@/features/git/utils/api'
 import { mutationKeys } from '@/features/git/utils/mutation-keys'
 import { notifyMutationError } from '@/features/git/utils/notify-mutation-error'
 import { commitProgressStoreFor } from '@/features/git/state/commit-progress-store'
+import { useGitStoreApi } from '@/features/git/state/store'
 import { useWorkspaceInvalidation } from './use-workspace-invalidation'
 
 export function useCommitMutation(rootPath: string) {
   const invalidate = useWorkspaceInvalidation()
   const queryClient = useQueryClient()
+  const store = useGitStoreApi()
 
   return useMutation({
     // Streaming, so the repository's hooks can be seen working. A commit is the
@@ -29,8 +31,9 @@ export function useCommitMutation(rootPath: string) {
       )
     },
     mutationKey: mutationKeys.commit(rootPath),
+    onMutate: () => ({ store, revision: store.getState().commitMessageRevision }),
     onError: notifyMutationError,
-    onSuccess: (result) => {
+    onSuccess: (result, _message, draft) => {
       if (result.kind === 'message-file') {
         void queryClient.invalidateQueries({
           queryKey: fileSystemKeys.fileSnapshot(result.path),
@@ -39,6 +42,8 @@ export function useCommitMutation(rootPath: string) {
         return
       }
 
+      if (draft && draft.store.getState().commitMessageRevision === draft.revision)
+        draft.store.getState().resetCommitMessage()
       toast.success('Committed changes')
       // Only on success: a rejected commit's output is the explanation, and
       // clearing it would take away the only thing that says what to fix.

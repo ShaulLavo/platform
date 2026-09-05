@@ -7,7 +7,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./env": "./src/env.ts",
-    "./env-file": "./src/env-file.ts"
+    "./env-file": "./src/env-file.ts",
+    "./scope": "./src/scope.ts",
+    "./sanitize": "./src/sanitize.ts"
   },
   "scripts": {
     "build": "tsgo --noEmit",

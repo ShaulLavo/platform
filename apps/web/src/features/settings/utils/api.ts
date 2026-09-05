@@ -1,3 +1,6 @@
+import { writeSettings, writeSettingsText } from '@workspace/client-core/settings/write'
+import { clientLogContext } from '@/lib/environments/state/log-context'
+import { readSettings } from '@workspace/client-core/settings/read'
 import {
   errorNumberField,
   errorStringField,
@@ -10,24 +13,18 @@ import {
 
 import { getClient, type Client } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
-import { toClientError } from '@/lib/client-error-taxonomy'
-import { unwrapEdenResponse } from '@/lib/eden-events'
-import { createClientInvariantError } from '@/lib/structured-errors'
+import { createRpcError } from '@/lib/structured-errors'
 
 export async function fetchSettings(
   signal?: AbortSignal,
   client: Client = getClient(),
 ): Promise<SettingsSnapshot> {
   return observeClientOperation(
-    { action: 'settings.read', area: 'settings', signal },
-    async () => {
-      const response = await client.settings.get({ fetch: { signal } })
-
-      return unwrapEdenResponse(response, {
-        requireData: true,
-        emptyMessage: 'settings server returned an empty response',
-      })
-    },
+    { ...clientLogContext(client), action: 'settings.read', area: 'settings', signal },
+    () =>
+      readSettings({ client, signal }).catch((error: unknown) => {
+        throw createRpcError(error)
+      }),
     summarizeSettings,
   )
 }
@@ -36,11 +33,8 @@ export async function saveSettings(
   request: SettingsMutationRequest,
   client: Client = getClient(),
 ): Promise<SettingsMutationResult> {
-  const response = await client.settings.write.post(request)
-
-  return unwrapEdenResponse(response, {
-    requireData: true,
-    emptyMessage: 'settings server returned an empty response',
+  return writeSettings({ client, request }).catch((error: unknown) => {
+    throw createRpcError(error)
   })
 }
 
@@ -51,41 +45,19 @@ export async function saveSettingsText(
 ): Promise<SettingsRawWriteResult> {
   return observeClientOperation(
     {
+      ...clientLogContext(client),
       action: 'settings.write-raw',
       area: 'settings',
       target: request.target,
       writeId: request.writeId,
     },
-    () => postRawWithRetry(request, client),
+    () =>
+      writeSettingsText({ client, request }).catch((error: unknown) => {
+        throw createRpcError(error)
+      }),
     summarizeRawWriteResult,
     rawWriteFailureOutcome,
   )
-}
-
-async function postRawWithRetry(request: SettingsRawWriteRequest, client: Client) {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      const response = await client.settings.raw.post(request)
-      return unwrapEdenResponse(response, {
-        requireData: true,
-        emptyMessage: 'settings server returned an empty response',
-      })
-    } catch (error) {
-      if (!shouldRetryRawTransport(error) || attempt === 2) throw error
-
-      await new Promise<void>((resolve) => globalThis.setTimeout(resolve, 100 * 2 ** attempt))
-    }
-  }
-
-  throw createClientInvariantError('Raw settings retry ended without a result')
-}
-
-function shouldRetryRawTransport(error: unknown) {
-  if (errorStringField(error, 'code') === 'settings.RAW_REVISION_STALE') return false
-  if (toClientError(error).category === 'connectivity') return true
-
-  const status = errorNumberField(error, 'status') ?? errorNumberField(error, 'statusCode')
-  return status !== undefined && status >= 500
 }
 
 function summarizeRawWriteResult(result: SettingsRawWriteResult) {

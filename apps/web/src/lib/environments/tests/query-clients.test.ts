@@ -15,7 +15,7 @@ import { installServerRestartInvalidation } from '@/lib/environments/state/serve
 import { resetServerConnectionStore, useEnvironmentsStore } from '@/lib/environments/state/store'
 import { fileSystemKeys } from '@/lib/query-keys'
 import { createInProcessClient } from '../../../../test/client'
-import { orchestrationServerConfig } from '../../../../test/factories/orchestration-server-config'
+import { orchestrationServerConfig } from '@workspace/client-core/test/orchestration-server-config'
 import { expect, test } from '../../../../test/fixtures'
 import { makeTestServer } from '../../../../test/server'
 
