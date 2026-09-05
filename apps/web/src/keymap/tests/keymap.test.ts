@@ -1,3 +1,4 @@
+import { appKeyBindingsForPane } from '@/keymap/utils/app-bindings'
 import { describe } from 'vitest'
 import { parseHotkey } from '@tanstack/hotkeys'
 

@@ -1,4 +1,4 @@
-import type { EditorKeymapLayer, EditorTheme } from '@singapor/core'
+import type { EditorTheme } from '@singapor/core'
 import { memo, useRef } from 'react'
 
 import { SEARCH_RESULT_FILE_EDITOR_POOL_HIDDEN_STYLE } from '@/features/search/utils/result-editor-constants'
@@ -21,7 +21,7 @@ type SearchResultFileEditorPoolSlotProps = {
   canReplace?: boolean
   editorTheme: EditorTheme
   entry: SearchResultFileEditorPoolEntry
-  keymapLayers: readonly EditorKeymapLayer[]
+
   replaceVisible: boolean
   treeId: string
   viewport: SearchResultVirtualListViewport
@@ -33,7 +33,7 @@ export const SearchResultFileEditorPoolSlot = memo(
     canReplace,
     editorTheme,
     entry,
-    keymapLayers,
+
     replaceVisible,
     treeId,
     viewport,
@@ -75,12 +75,10 @@ export const SearchResultFileEditorPoolSlot = memo(
       >
         {renderEditor ? (
           <SearchResultFileEditor
-            active={active}
             activeResultId={active ? activeResultId : null}
             canReplace={canReplace}
             editorTheme={editorTheme}
             file={file}
-            keymapLayers={keymapLayers}
             lineWindow={lineWindow}
             replaceVisible={replaceVisible}
           />

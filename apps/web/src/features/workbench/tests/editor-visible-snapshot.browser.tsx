@@ -599,7 +599,6 @@ function RealFileEditorBody({ path, rootPath }: { path: string; rootPath: string
       <FileEditorBody
         active
         definitionTarget={null}
-        editorKeymapLayers={[]}
         fileState={fileState}
         fileVersion={fileVersion}
         languageServerReferences={null}

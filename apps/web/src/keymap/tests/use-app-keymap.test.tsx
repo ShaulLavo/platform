@@ -2,10 +2,6 @@ import { detectPlatform } from '@tanstack/react-hotkeys'
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, vi } from 'vitest'
 
-import { commandShortcut, formatChord } from '@/keymap/utils/format-keys'
-import { resolvedPlatformKeyBindings } from '@/keymap/active-bindings'
-import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
-import type { PlatformCommandBus } from '@/keymap/providers/command-context'
 import { useAppKeymap } from '@/keymap/use-app-keymap'
 import type { PlatformCommandId } from '@/keymap/types'
 
@@ -17,128 +13,6 @@ import { FocusService, type FocusArea, type FocusTargetToken } from '@/lib/focus
 import { CHORD_TIMEOUT_MS } from '@/keymap/utils/chord'
 
 afterEach(() => vi.useRealTimers())
-
-test('runs the command a pressed key is bound to', () => {
-  const dispatched = mountKeymap()
-
-  pressKey(document.body, { code: 'F1', key: 'F1' })
-
-  expect(dispatched).toEqual(['workspace.showCommandPalette'])
-})
-
-test('leaves a bare-key shortcut alone while a text field has the caret', () => {
-  const dispatched = mountKeymap()
-  const input = document.createElement('input')
-  document.body.append(input)
-  input.focus()
-
-  pressKey(input, { code: 'F1', key: 'F1' })
-
-  expect(dispatched).toEqual([])
-  input.remove()
-})
-
-test('leaves a bare-key shortcut alone inside a shadow-DOM text field', () => {
-  const dispatched = mountKeymap()
-  const host = document.createElement('div')
-  const shadow = host.attachShadow({ mode: 'open' })
-  const input = document.createElement('input')
-  shadow.append(input)
-  document.body.append(host)
-  input.focus()
-
-  pressKey(input, { code: 'F1', composed: true, key: 'F1' })
-
-  expect(dispatched).toEqual([])
-  host.remove()
-})
-
-test('runs the override instead of the default once a command is rebound', () => {
-  const dispatched = mountKeymap({ 'workspace.saveFile': 'Mod+Alt+S' })
-
-  pressKey(document.body, { code: 'KeyS', key: 's', ...modifierKeys() })
-  expect(dispatched).toEqual([])
-
-  pressKey(document.body, { altKey: true, code: 'KeyS', key: 's', ...modifierKeys() })
-  expect(dispatched).toEqual(['workspace.saveFile'])
-})
-
-test('runs the shortcut the menus and palette print for a rebound command', () => {
-  // The hint surfaces read the table the hook is handed, so the two cannot
-  // disagree: pressing what the hint spells has to reach the command.
-  const bindings = keyTable({ 'workspace.saveFile': 'Mod+Alt+S' })
-  const dispatched = mountBindings(bindings)
-
-  expect(commandShortcut('workspace.saveFile', bindings)).toBe(formatChord('Mod+Alt+S'))
-  expect(commandShortcut('workspace.saveFile', bindings)).not.toBe(formatChord('Mod+S'))
-  pressKey(document.body, { altKey: true, code: 'KeyS', key: 's', ...modifierKeys() })
-
-  expect(dispatched).toEqual(['workspace.saveFile'])
-})
-
-test('stops running a default whose key an override took', () => {
-  // Mod+B is the sidebar toggle by default; handing it to Save leaves the
-  // toggle with nothing to answer, which is what the settings row reports.
-  const dispatched = mountKeymap({ 'workspace.saveFile': 'Mod+B' })
-
-  pressKey(document.body, { code: 'KeyB', key: 'b', ...modifierKeys() })
-
-  expect(dispatched).toEqual(['workspace.saveFile'])
-})
-
-test('leaves a trusted key alone when the command declines synchronously', () => {
-  const declined = mountBindings(keyTable(), false)
-  const declinedEvent = pressKey(document.body, { code: 'F1', key: 'F1' })
-
-  expect(declinedEvent.defaultPrevented).toBe(false)
-  expect(declined).toEqual(['workspace.showCommandPalette'])
-})
-
-test('suppresses a trusted key after the command claims it synchronously', () => {
-  const claimed = mountBindings(keyTable(), true)
-  const event = pressKey(document.body, { code: 'F1', key: 'F1' })
-
-  expect(event.defaultPrevented).toBe(true)
-  expect(claimed).toEqual(['workspace.showCommandPalette'])
-})
-
-test('suppresses a reserved browser chord without dispatching', () => {
-  const dispatched = mountBindings(keyTable())
-  const event = pressKey(document.body, { code: 'Tab', ctrlKey: true, key: 'Tab' })
-
-  expect(event.defaultPrevented).toBe(true)
-  expect(dispatched).toEqual([])
-})
-
-function keyTable(overrides: Record<string, string | null> = {}) {
-  const platform = detectPlatform()
-
-  return resolvedPlatformKeyBindings(defaultPlatformKeyBindings(platform), overrides, platform)
-}
-
-function mountKeymap(overrides: Record<string, string | null> = {}) {
-  return mountBindings(keyTable(overrides))
-}
-
-function mountBindings(bindings: ReturnType<typeof keyTable>, claimed = true) {
-  const dispatched: PlatformCommandId[] = []
-  const bus: Pick<PlatformCommandBus, 'dispatch'> = {
-    dispatch: (command: PlatformCommandId) => {
-      dispatched.push(command)
-      return { claimed, completion: Promise.resolve({ status: 'handled' } as const) }
-    },
-  }
-
-  renderHook(() =>
-    useAppKeymap({
-      bindings,
-      bus,
-      focusedPane: 'global',
-    }),
-  )
-
-  return dispatched
-}
 
 function pressKey(target: EventTarget, init: KeyboardEventInit) {
   const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init })
@@ -307,27 +181,42 @@ test('changing owner within one pane, changing pane, and unmounting cancel the s
   registration.unregister()
 })
 
-test('a handoff tries an unavailable command once and lets its key reach the terminal', () => {
+test('a handoff checks an unavailable command once and lets its key reach the terminal', () => {
   const harness = mountChordRuntime()
   const event = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'F2' })
   const dispatch = vi.spyOn(harness.bus, 'dispatch')
+  const capture = vi.spyOn(harness.bus, 'capture')
   let claimed = true
   act(() => {
     claimed = harness.result.current.claimKeybinding(event)
     document.body.dispatchEvent(event)
   })
   expect(claimed).toBe(false)
-  expect(dispatch).toHaveBeenCalledTimes(1)
+  expect(dispatch).not.toHaveBeenCalled()
+  expect(capture).toHaveBeenCalledTimes(1)
   expect(event.defaultPrevented).toBe(false)
 })
 
 test('an unavailable chord completion is still swallowed after the prefix committed it', () => {
-  const harness = mountChordRuntime('workspace.focusEditor')
+  const harness = mountChordRuntime('editor.undo')
+  const target = {
+    area: 'editor' as const,
+    id: { kind: 'editor' as const, surface: 'document' as const, key: 'conditional' },
+    capabilities: { editor: { dispatch: () => true, writable: true } },
+    onIntent: () => false,
+  }
+  const registration = harness.focus.register({ ...target, element: document.body })
   pressKey(document.body, { code: 'KeyK', key: 'k', ...modifierKeys() })
+  expect(harness.result.current.pendingChord).not.toBeNull()
+  registration.update({
+    ...target,
+    capabilities: { editor: { dispatch: () => true, writable: false } },
+  })
   const completion = pressKey(document.body, { code: 'KeyS', key: 's', ...modifierKeys() })
   expect(completion.defaultPrevented).toBe(true)
   expect(harness.result.current.pendingChord).toBeNull()
   expect(harness.calls).toEqual([])
+  registration.unregister()
 })
 
 function mountChordRuntime(
@@ -459,7 +348,7 @@ test('holding a chord completion does not dispatch its standalone binding', () =
   })
   pressKey(document.body, { code: 'F2', key: 'F2' })
   pressKey(document.body, { code: 'F2', key: 'F2', repeat: true })
-  expect(dispatch).toHaveBeenCalledTimes(3)
+  expect(dispatch).toHaveBeenCalledTimes(1)
 })
 
 test('single-stroke commands still dispatch on repeat', () => {
@@ -468,6 +357,40 @@ test('single-stroke commands still dispatch on repeat', () => {
   pressKey(document.body, { code: 'F3', key: 'F3', repeat: true })
 
   expect(harness.calls).toEqual([false, false])
+})
+
+test('changing document identity or native input under one focus token cancels synchronously', () => {
+  const harness = mountChordRuntime()
+  const first = document.createElement('input')
+  const second = document.createElement('input')
+  const host = document.createElement('section')
+  host.append(first, second)
+  document.body.append(host)
+  let input = first
+  const target = {
+    area: 'editor' as const,
+    id: { kind: 'editor' as const, key: 'before', surface: 'document' as const },
+    capabilities: {
+      editor: { writable: true, dispatch: () => false, getInputElement: () => input },
+    },
+    onIntent: () => false,
+  }
+  const registration = harness.focus.register({ ...target, element: host })
+  document.addEventListener('focusin', harness.focus.handleFocusIn, true)
+  act(() => first.focus())
+  pressKey(first, { key: 'k', code: 'KeyK', ...modifierKeys() })
+  expect(harness.result.current.pendingChord).not.toBeNull()
+  act(() => registration.update({ ...target, id: { ...target.id, key: 'after' } }))
+  expect(harness.result.current.pendingChord).toBeNull()
+
+  pressKey(first, { key: 'k', code: 'KeyK', ...modifierKeys() })
+  expect(harness.result.current.pendingChord).not.toBeNull()
+  input = second
+  act(() => registration.update({ ...target, id: { ...target.id, key: 'after' } }))
+  expect(harness.result.current.pendingChord).toBeNull()
+  registration.unregister()
+  document.removeEventListener('focusin', harness.focus.handleFocusIn, true)
+  host.remove()
 })
 
 test.each(['x', 'y'])('a held chord stroke %s stays above descendant key handlers', (key) => {

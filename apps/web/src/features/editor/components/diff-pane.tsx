@@ -107,6 +107,8 @@ export function DiffPane({
     capabilities: {
       editor: {
         dispatch: controller.commands.dispatchCommand,
+        getInputElement: () => controller.getEditor()?.getInputElement() ?? null,
+        readKeymapContext: () => controller.getEditor()?.getKeymapContext() ?? null,
         writable: false,
       },
     },

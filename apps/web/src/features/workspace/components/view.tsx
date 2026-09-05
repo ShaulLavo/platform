@@ -4,14 +4,12 @@ import { ChatModeSurfaceView } from '@/features/chat-mode/components/surface-vie
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import { EditorSurfaceLayoutView } from '@/features/workbench/components/editor-surface-layout-view'
 import type { PickedFsEntry } from '@/lib/file-system-types'
-import type { EditorKeymapLayer } from '@singapor/core'
 
 type WorkspaceViewProps = {
-  editorKeymapLayers: readonly EditorKeymapLayer[]
   rootFolder: PickedFsEntry
 }
 
-export function WorkspaceView({ editorKeymapLayers, rootFolder }: WorkspaceViewProps) {
+export function WorkspaceView({ rootFolder }: WorkspaceViewProps) {
   const rootPath = rootFolder.path
   const uiMode = useEditorWorkspaceState((state) => state.uiMode)
 
@@ -22,12 +20,9 @@ export function WorkspaceView({ editorKeymapLayers, rootFolder }: WorkspaceViewP
         <div className='flex h-full min-w-[1024px] flex-col'>
           <div className='relative min-h-0 flex-1 overflow-hidden' data-terminal-overlay-bounds>
             {uiMode === 'chat' ? (
-              <ChatModeSurfaceView editorKeymapLayers={editorKeymapLayers} rootPath={rootPath} />
+              <ChatModeSurfaceView rootPath={rootPath} />
             ) : (
-              <EditorSurfaceLayoutView
-                editorKeymapLayers={editorKeymapLayers}
-                rootPath={rootPath}
-              />
+              <EditorSurfaceLayoutView rootPath={rootPath} />
             )}
           </div>
         </div>

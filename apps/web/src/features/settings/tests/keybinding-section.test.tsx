@@ -127,7 +127,7 @@ test('reads the selected preset before showing shortcut rows', async ({ client }
     (row) => row.command === 'editor.editor.fold',
   )
   expect(fold).toBeDefined()
-  expect(recorder).toHaveTextContent(formatChord(fold?.keys ?? ''))
+  await waitFor(() => expect(recorder).toHaveTextContent(formatChord(fold?.keys ?? '')))
 })
 
 test('shows reservations and preset omissions in the resolution report', async ({ client }) => {

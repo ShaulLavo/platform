@@ -15,7 +15,7 @@ import { EditorVisibleSnapshot } from '@/features/workbench/components/editor-vi
 import { useFileOpenIntent } from '@/lib/file-open-intent/providers/context'
 import type { FileResult } from '@/lib/file-system-types'
 import type { LoadState } from '@/lib/load-state'
-import type { EditorInitialPaintEvent, EditorKeymapLayer } from '@singapor/core'
+import type { EditorInitialPaintEvent } from '@singapor/core'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
@@ -25,7 +25,7 @@ export function FileEditorBody({
   active,
   liveDocument,
   definitionTarget,
-  editorKeymapLayers,
+
   fileState,
   fileVersion,
   languageServerReferences,
@@ -36,7 +36,7 @@ export function FileEditorBody({
   active: boolean
   liveDocument: EditorRenderDocument | null
   definitionTarget: LanguageServerDefinitionTarget | null
-  editorKeymapLayers: readonly EditorKeymapLayer[]
+
   fileState: LoadState<FileResult>
   fileVersion: string | null
   languageServerReferences: LanguageServerReferencesResult | null
@@ -128,7 +128,6 @@ export function FileEditorBody({
             additionalPlugins={visibleSnapshot.additionalPlugins}
             definitionTarget={currentActions ? definitionTarget : null}
             document={editorDocument}
-            keymapLayers={editorKeymapLayers}
             rootPath={rootPath}
             tabId={tabId}
             onInitialPaint={recordInitialPaint}

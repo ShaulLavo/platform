@@ -5,7 +5,6 @@ import {
   MagnifyingGlassIcon,
   ScrollIcon,
 } from '@phosphor-icons/react'
-import type { EditorKeymapLayer } from '@singapor/core'
 import type { ReactNode } from 'react'
 
 import { SearchPane } from '@/features/workspace/components/search-pane'
@@ -22,12 +21,10 @@ import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 
 export function SidebarPanel({
-  editorKeymapLayers,
   panels,
   rootPath,
   onPanelsChange,
 }: {
-  readonly editorKeymapLayers: readonly EditorKeymapLayer[]
   readonly panels: WorkbenchPanels
   readonly rootPath: string
   readonly onPanelsChange: (panels: WorkbenchPanels) => void
@@ -75,7 +72,6 @@ export function SidebarPanel({
       </nav>
       <div className='min-h-0 min-w-0 flex-1 overflow-hidden'>
         {renderSidebarPanel({
-          editorKeymapLayers,
           rootPath,
           tab: panels.activeSidebarTab,
         })}
@@ -115,19 +111,16 @@ function sidebarTabButton({
 }
 
 function renderSidebarPanel({
-  editorKeymapLayers,
   rootPath,
   tab,
 }: {
-  readonly editorKeymapLayers: readonly EditorKeymapLayer[]
   readonly rootPath: string
   readonly tab: WorkbenchSidebarTab
 }) {
   if (tab === 'chat') return <ChatSidePanel rootPath={rootPath} />
   if (tab === 'git') return <GitChangesPanel rootPath={rootPath} />
   if (tab === 'logs') return <LogsPanel active />
-  if (tab === 'search')
-    return <SearchPane editorKeymapLayers={editorKeymapLayers} rootPath={rootPath} />
+  if (tab === 'search') return <SearchPane rootPath={rootPath} />
 
   return <FileNavigatorPanel rootPath={rootPath} />
 }

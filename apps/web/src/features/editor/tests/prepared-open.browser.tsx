@@ -220,7 +220,6 @@ function PreparedOpenHarness() {
       {activeTab ? (
         <EditorSurfaceTabBody
           active
-          editorKeymapLayers={[]}
           path={activeTab.path}
           rootPath={ROOT_PATH}
           tabId={activeTab.id}

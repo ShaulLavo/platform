@@ -1,4 +1,3 @@
-import type { EditorKeymapLayer } from '@singapor/core'
 import { FileDashedIcon } from '@phosphor-icons/react'
 import { EmptyState } from '@workspace/ui/components/empty-state'
 
@@ -12,13 +11,13 @@ import type { WorkbenchPanels } from '@/features/workbench/utils/panels'
 
 export function CodePanel({
   conflicts,
-  editorKeymapLayers,
+
   gitFiles = EMPTY_GIT_FILES,
   panels,
   rootPath,
 }: {
   readonly conflicts: EditorTabConflictMap
-  readonly editorKeymapLayers: readonly EditorKeymapLayer[]
+
   readonly gitFiles?: readonly FileStatus[]
   readonly panels: WorkbenchPanels
   readonly rootPath: string
@@ -43,7 +42,6 @@ export function CodePanel({
         {activeTab ? (
           <EditorSurfaceTabBody
             active
-            editorKeymapLayers={editorKeymapLayers}
             path={activeTab.path}
             rootPath={rootPath}
             tabId={activeTab.id}

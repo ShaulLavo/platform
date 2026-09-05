@@ -1,4 +1,3 @@
-import type { EditorKeymapLayer } from '@singapor/core'
 import {
   memo,
   useCallback,
@@ -33,14 +32,13 @@ import {
   searchResultVirtualRowId,
   searchResultVirtualRows,
 } from '@/features/search/utils/result-view-model'
-import { readonlyEditorKeymapLayers } from '@/keymap/editor-keymap'
 
 type SearchResultEditorSurfaceProps = {
   activeResultId: SearchResultId | null
   canReplace?: boolean
   displayedResultsQuery: string | null
   groups: readonly WorkspaceSearchFileGroup[]
-  keymapLayers: readonly EditorKeymapLayer[]
+
   prewarmEditorPool?: boolean
   replaceVisible: boolean
   resultsQuery: string
@@ -55,7 +53,7 @@ export const SearchResultEditorSurface = memo(
     canReplace,
     displayedResultsQuery,
     groups,
-    keymapLayers,
+
     prewarmEditorPool = true,
     replaceVisible,
     resultsQuery,
@@ -63,10 +61,6 @@ export const SearchResultEditorSurface = memo(
     const actions = useSearchResultActions()
     const treeId = useId()
     const parentRef = useRef<HTMLDivElement | null>(null)
-    const readonlyKeymapLayers = useMemo(
-      () => readonlyEditorKeymapLayers(keymapLayers),
-      [keymapLayers],
-    )
     const blocks = useMemo(
       () => searchResultFileBlocks(groups, resultsQuery),
       [groups, resultsQuery],
@@ -170,7 +164,6 @@ export const SearchResultEditorSurface = memo(
             activeResultId={activeResultId}
             canReplace={canReplace}
             editorTheme={editorTheme}
-            keymapLayers={readonlyKeymapLayers}
             parentRef={parentRef}
             prewarmEditorPool={prewarmEditorPool}
             replaceVisible={replaceVisible}

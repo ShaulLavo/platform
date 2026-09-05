@@ -1,17 +1,20 @@
 import '@workspace/ui/globals.css'
+import '@singapor/core/style.css'
+import { createKeymapEditor } from '../../../test/factories/keymap-editor'
+import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
+import { useFocusService } from '@/lib/focus/hooks/use-service'
 import { commands } from 'vitest/browser'
 import { binding } from '../../../test/factories/key-binding'
 import { detectPlatform } from '@tanstack/react-hotkeys'
 import {
   useEffect,
-  useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 
 import { EditorTabActionsProvider } from '@/features/editor/providers/tab-actions-provider'
 import { TestEditorStateProvider as EditorStateProvider } from '../../../test/factories/editor-state-provider'
@@ -20,10 +23,8 @@ import { useContextMenu } from '@/features/menus/hooks/use-context-menu'
 import { actionItem, section } from '@/features/menus/utils/model'
 import { useCommand } from '@/keymap/hooks/use-command'
 import { CommandProvider } from '@/keymap/providers/command-provider'
-import type { PlatformCommandBus } from '@/keymap/providers/command-context'
 import type { CommandDispatchTicket } from '@/keymap/state/command-bus'
-import type { PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
-import { useAppKeymap } from '@/keymap/use-app-keymap'
+import type { PlatformKeyBinding } from '@/keymap/types'
 import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 import { FocusProvider } from '@/lib/focus/providers/provider'
 import { FocusService } from '@/lib/focus/state/service'
@@ -57,16 +58,17 @@ const trustedKeyBindings: readonly PlatformKeyBinding[] = [
 ]
 
 let root: Root | null = null
-let dispatchedKeys: PlatformCommandId[] = []
 let editorDispatches: string[] = []
 let lastEditorTicket: CommandDispatchTicket | null = null
 let removeSecondEditor: (() => void) | null = null
 let trustedKeyRecords: TrustedKeyRecord[] = []
+let nativeEditors: ReturnType<typeof createKeymapEditor>[] = []
 
 afterEach(() => {
+  for (const editor of nativeEditors) editor.dispose()
+  nativeEditors = []
   flushSync(() => root?.unmount())
   root = null
-  dispatchedKeys = []
   editorDispatches = []
   lastEditorTicket = null
   removeSecondEditor = null
@@ -75,10 +77,210 @@ afterEach(() => {
   localStorage.clear()
 })
 
+test('shared editor and app prefixes dispatch once through real editor input', async () => {
+  const calls: boolean[] = []
+  const bindings = [
+    binding('Mod+K Mod+A', {
+      command: 'editor.selectAll',
+      pane: 'editor',
+      platform: detectPlatform(),
+    }),
+    binding('Mod+K Mod+S', { command: 'workspace.toggleWallpaper', platform: detectPlatform() }),
+  ]
+  const view = renderHookWithProviders(
+    () => ({ command: useCommand(), focus: useFocusService() }),
+    {
+      command: {
+        bindings,
+        runtime: {
+          settings: {
+            setWallpaperEnabled: (value) => {
+              calls.push(value)
+              return { kind: 'noop' }
+            },
+          },
+        },
+      },
+    },
+  )
+  const target = createKeymapEditor(view.result.current.focus, { key: 'shared' })
+  nativeEditors.push(target)
+  target.editor.focus()
+  await commands.proofKeyPress({ key: 'ControlOrMeta+k' })
+  expect(target.editor.getKeymapContext().hasSelection).toBe(false)
+  await commands.proofKeyPress({ key: 'ControlOrMeta+a' })
+  expect(target.editor.getKeymapContext().hasSelection).toBe(true)
+  expect(target.dispatched).toEqual(['selectAll'])
+  await commands.proofKeyPress({ key: 'ControlOrMeta+k' })
+  await commands.proofKeyPress({ key: 'ControlOrMeta+s' })
+  expect(calls).toEqual([false])
+  expect(target.dispatched).toEqual(['selectAll'])
+  expect(target.editor.materializeFullText()).toBe('first line\nsecond line\nthird line')
+  view.unmount()
+})
+
+test('conditional chord alternatives read real selection again on the second stroke', async () => {
+  const chord = { pane: 'editor' as const, platform: detectPlatform() }
+  const bindings: readonly PlatformKeyBinding[] = [
+    {
+      ...binding('Mod+K Mod+X', { ...chord, command: 'editor.indentSelection' }),
+      editorWhen: ['hasSelection'],
+    },
+    {
+      ...binding('Mod+K Mod+X', { ...chord, command: 'editor.selectAll' }),
+      editorWhen: ['!findVisible'],
+    },
+  ]
+  const view = renderHookWithProviders(
+    () => ({ command: useCommand(), focus: useFocusService() }),
+    { command: { bindings } },
+  )
+  const target = createKeymapEditor(view.result.current.focus, { key: 'conditional' })
+  nativeEditors.push(target)
+  target.editor.focus()
+  target.editor.setSelection(0, 5)
+  await commands.proofKeyPress({ key: 'ControlOrMeta+k' })
+  target.editor.setSelection(0)
+  await commands.proofKeyPress({ key: 'ControlOrMeta+x' })
+  expect(target.dispatched).toEqual(['selectAll'])
+  expect(target.editor.getKeymapContext().hasSelection).toBe(true)
+  await commands.proofKeyPress({ key: 'ControlOrMeta+k' })
+  await commands.proofKeyPress({ key: 'ControlOrMeta+x' })
+  expect(target.dispatched).toEqual(['selectAll', 'indentSelection'])
+  view.unmount()
+})
+
+test('moving between real editors in one pane cancels the pending owner', async () => {
+  const bindings = [
+    binding('Mod+K Mod+A', {
+      command: 'editor.selectAll',
+      pane: 'editor',
+      platform: detectPlatform(),
+    }),
+  ]
+  const view = renderHookWithProviders(
+    () => ({ command: useCommand(), focus: useFocusService() }),
+    { command: { bindings } },
+  )
+  const first = createKeymapEditor(view.result.current.focus, { key: 'first' })
+  const second = createKeymapEditor(view.result.current.focus, { key: 'second' })
+  nativeEditors.push(first, second)
+  first.editor.focus()
+  await commands.proofKeyPress({ key: 'ControlOrMeta+k' })
+  expect(view.result.current.command.pendingChord).not.toBeNull()
+  second.editor.focus()
+  await expect.poll(() => view.result.current.command.pendingChord).toBeNull()
+  await commands.proofKeyPress({ key: 'ControlOrMeta+a' })
+  expect(first.dispatched).toEqual([])
+  expect(second.dispatched).toEqual([])
+  view.unmount()
+})
+
+test('real editor navigation and deletion work while nested inputs keep their own editing', async () => {
+  const view = renderHookWithProviders(() => ({ command: useCommand(), focus: useFocusService() }))
+  const target = createKeymapEditor(view.result.current.focus, { key: 'editing' })
+  nativeEditors.push(target)
+  target.editor.focus()
+  target.editor.setSelection(0)
+  await commands.proofKeyPress({ key: 'ArrowDown' })
+  expect(target.editor.getState().cursor.row).toBe(1)
+  await commands.proofKeyPress({ key: 'Home' })
+  expect(target.editor.getState().cursor.column).toBe(0)
+  await commands.proofKeyPress({ key: 'Backspace' })
+  expect(target.editor.materializeFullText()).toBe('first linesecond line\nthird line')
+  await commands.proofKeyPress({ key: 'Shift+End' })
+  expect(target.editor.getKeymapContext().hasSelection).toBe(true)
+  await commands.proofKeyPress({ key: 'PageUp' })
+  expect(target.editor.getState().cursor.row).toBe(0)
+
+  const nested = document.createElement('input')
+  nested.value = 'local input'
+  target.container.append(nested)
+  nested.focus()
+  nested.setSelectionRange(nested.value.length, nested.value.length)
+  const before = target.editor.materializeFullText()
+  const count = target.dispatched.length
+  await commands.proofKeyPress({ key: 'Backspace' })
+  await commands.proofKeyPress({ key: 'Control+Backspace' })
+  expect(nested.value).not.toBe('local input')
+  expect(target.editor.materializeFullText()).toBe(before)
+  expect(target.dispatched.length).toBe(count)
+  view.unmount()
+})
+
+test('Tab focus mode lets a native editor release and regain Tab editing', async () => {
+  const bindings = [
+    ...defaultPlatformKeyBindings(),
+    binding('Control+Alt+F8', {
+      command: 'editor.editor.action.toggleTabFocusMode',
+      pane: 'editor',
+      platform: detectPlatform(),
+    }),
+  ]
+  const view = renderHookWithProviders(
+    () => ({ command: useCommand(), focus: useFocusService() }),
+    { command: { bindings } },
+  )
+  const target = createKeymapEditor(view.result.current.focus, { key: 'tab' })
+  nativeEditors.push(target)
+  const next = document.createElement('input')
+  document.body.append(next)
+  target.editor.focus()
+  await commands.proofKeyPress({ key: 'Control+Alt+F8' })
+  expect(target.editor.getKeymapContext().tabFocusMode).toBe(true)
+  const before = target.editor.materializeFullText()
+  await commands.proofKeyPress({ key: 'Tab' })
+  expect(document.activeElement).toBe(next)
+  expect(target.editor.materializeFullText()).toBe(before)
+  target.editor.focus()
+  await commands.proofKeyPress({ key: 'Control+Alt+F8' })
+  await commands.proofKeyPress({ key: 'Tab' })
+  expect(document.activeElement).toBe(target.editor.getInputElement())
+  expect(target.editor.materializeFullText()).not.toBe(before)
+  view.unmount()
+})
+
+test('read-only diff, search, and settings targets keep navigation and never mutate a writable sibling', async () => {
+  const view = renderHookWithProviders(() => ({ command: useCommand(), focus: useFocusService() }))
+  const writable = createKeymapEditor(view.result.current.focus, { key: 'writable' })
+  nativeEditors.push(writable)
+  writable.editor.focus()
+  for (const surface of ['diff', 'search-result', 'settings'] as const) {
+    const readonly = createKeymapEditor(view.result.current.focus, {
+      key: surface,
+      surface,
+      writable: false,
+    })
+    nativeEditors.push(readonly)
+    readonly.editor.focus()
+    readonly.editor.setSelection(0)
+    await commands.proofKeyPress({ key: 'ArrowDown' })
+    expect(readonly.editor.getState().cursor.row).toBe(1)
+    await commands.proofKeyPress({ key: 'Backspace' })
+    await commands.proofKeyPress({ key: 'ControlOrMeta+z' })
+    expect(readonly.editor.materializeFullText()).toBe('first line\nsecond line\nthird line')
+    expect(readonly.dispatched).not.toContain('undo')
+    expect(readonly.dispatched).not.toContain('deleteBackward')
+  }
+  expect(writable.dispatched).toEqual([])
+  expect(writable.editor.materializeFullText()).toBe('first line\nsecond line\nthird line')
+  view.unmount()
+})
+
 test('trusted keys suppress only synchronous claims and reserved chords', async () => {
-  mount(<TrustedKeyHarness />)
-  const target = await element('[data-trusted-key-target]')
-  await expect.poll(() => target.dataset.ready).toBe('true')
+  const view = renderHookWithProviders(() => useCommand(), {
+    command: { bindings: trustedKeyBindings },
+  })
+  const dispatch = vi.spyOn(view.result.current.bus, 'dispatch')
+  const target = document.createElement('button')
+  document.body.append(target)
+  const recordKey = (event: KeyboardEvent) =>
+    trustedKeyRecords.push({
+      defaultPrevented: event.defaultPrevented,
+      key: event.key,
+      trusted: event.isTrusted,
+    })
+  document.addEventListener('keydown', recordKey)
   target.focus()
 
   await commands.proofKeyPress({ key: 'F2' })
@@ -91,7 +293,9 @@ test('trusted keys suppress only synchronous claims and reserved chords', async 
     { defaultPrevented: true, key: 'F3', trusted: true },
     { defaultPrevented: true, key: 'F4', trusted: true },
   ])
-  expect(dispatchedKeys).toEqual(['workspace.focusEditor', 'workspace.toggleWallpaper'])
+  expect(dispatch.mock.calls.map(([command]) => command)).toEqual(['workspace.toggleWallpaper'])
+  document.removeEventListener('keydown', recordKey)
+  view.unmount()
 })
 
 test('trusted chord completion, unmatched text and expiry preserve the focused input', async () => {
@@ -318,49 +522,6 @@ test('a virtual menu restores the context target rather than prior DOM focus', a
     sessionId: 'browser',
   })
 })
-
-function TrustedKeyHarness() {
-  const targetRef = useRef<HTMLButtonElement>(null)
-  useAppKeymap({
-    bindings: trustedKeyBindings,
-    bus: trustedKeyBus,
-    focusedPane: 'global',
-  })
-  useEffect(() => {
-    const recordKey = (event: KeyboardEvent) => {
-      trustedKeyRecords.push({
-        defaultPrevented: event.defaultPrevented,
-        key: event.key,
-        trusted: event.isTrusted,
-      })
-    }
-    document.addEventListener('keydown', recordKey)
-    if (targetRef.current) targetRef.current.dataset.ready = 'true'
-
-    return () => document.removeEventListener('keydown', recordKey)
-  }, [])
-
-  return (
-    <button data-trusted-key-target ref={targetRef}>
-      Trusted key target
-    </button>
-  )
-}
-
-const trustedKeyBus = {
-  dispatch: (command: PlatformCommandId) => {
-    dispatchedKeys.push(command)
-    const claimed = command === 'workspace.toggleWallpaper'
-    return {
-      claimed,
-      completion: Promise.resolve(
-        claimed
-          ? ({ status: 'handled' } as const)
-          : ({ reason: 'target-unavailable', status: 'unhandled' } as const),
-      ),
-    }
-  },
-} as unknown as PlatformCommandBus
 
 function EditorRoutingHarness() {
   const { bus } = useCommand()

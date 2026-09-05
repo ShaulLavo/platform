@@ -94,6 +94,7 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
   const diffViewMode = useSettingValue('editor.diff.viewMode')
   const wallpaperEnabled = useSettingValue('workbench.wallpaper.enabled')
   const overrides = useSettingValue('keybindings.overrides')
+  const preset = useSettingValue('keybindings.preset')
   const [paletteOpen, setPaletteOpenState] = useState(false)
   const [paletteSearch, setPaletteSearchState] = useState('')
   const [paletteScope, setPaletteScopeState] = useState<PaletteScope | null>(null)
@@ -253,7 +254,7 @@ export function CommandProvider({ children }: { readonly children: ReactNode }) 
   }))
   const { binding, bus } = useBusBinding()
   useLayoutEffect(() => binding.bind(runtime), [binding, runtime])
-  const defaults = useMemo(() => defaultPlatformKeyBindings(), [])
+  const defaults = useMemo(() => defaultPlatformKeyBindings(undefined, preset), [preset])
   // Stable identity is required by the document listener and every shortcut-hint consumer.
   const bindings = useMemo(
     () => resolvedPlatformKeyBindings(defaults, overrides),

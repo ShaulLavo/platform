@@ -1,9 +1,5 @@
-import type {
-  EditorKeymapLayer,
-  EditorKeymapOptions,
-  EditorPlugin,
-  EditorTheme,
-} from '@singapor/core'
+import { HOSTED_EDITOR_KEYMAP } from '@/keymap/editor-keymap'
+import type { EditorPlugin, EditorTheme } from '@singapor/core'
 import { EditorHost, useEditor } from '@singapor/react'
 import {
   memo,
@@ -26,7 +22,6 @@ import {
   SEARCH_RESULT_CURSOR_LINE_HIGHLIGHT,
   SEARCH_RESULT_FILE_EDITOR_ROW_GAP,
   SEARCH_RESULT_FILE_EDITOR_TEXT_METRICS,
-  SEARCH_RESULT_INACTIVE_EDITOR_KEYMAP,
 } from '@/features/search/utils/result-editor-constants'
 import {
   currentSearchResultFileLine,
@@ -53,24 +48,22 @@ import {
 import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 
 type SearchResultFileEditorProps = {
-  active: boolean
   activeResultId: SearchResultId | null
   canReplace?: boolean
   editorTheme: EditorTheme
   file: SearchResultFileBlock
-  keymapLayers: readonly EditorKeymapLayer[]
+
   lineWindow: SearchResultFileEditorLineWindow
   replaceVisible: boolean
 }
 
 export const SearchResultFileEditor = memo(
   ({
-    active,
     activeResultId,
     canReplace,
     editorTheme,
     file,
-    keymapLayers,
+
     lineWindow,
     replaceVisible,
   }: SearchResultFileEditorProps) => {
@@ -101,16 +94,6 @@ export const SearchResultFileEditor = memo(
       [],
     )
     const plugins = useMemo(() => createFileResultEditorPlugins(syntaxPlugins), [syntaxPlugins])
-    const editorKeymap = useMemo(
-      () =>
-        active
-          ? ({
-              defaultBindings: false,
-              layers: keymapLayers,
-            } satisfies EditorKeymapOptions)
-          : SEARCH_RESULT_INACTIVE_EDITOR_KEYMAP,
-      [active, keymapLayers],
-    )
     const editorStyle = useMemo(
       () => searchResultFileEditorStyle(visibleDocument),
       [visibleDocument],
@@ -120,7 +103,7 @@ export const SearchResultFileEditor = memo(
       cursorLineHighlight: SEARCH_RESULT_CURSOR_LINE_HIGHLIGHT,
       document,
       editability: 'readonly',
-      keymap: editorKeymap,
+      keymap: HOSTED_EDITOR_KEYMAP,
       lineHeight: EXCERPT_EDITOR_LINE_HEIGHT,
       plugins,
       rangeDecorations,
@@ -136,6 +119,8 @@ export const SearchResultFileEditor = memo(
       capabilities: {
         editor: {
           dispatch: controller.commands.dispatchCommand,
+          getInputElement: () => controller.getEditor()?.getInputElement() ?? null,
+          readKeymapContext: () => controller.getEditor()?.getKeymapContext() ?? null,
           writable: false,
         },
       },

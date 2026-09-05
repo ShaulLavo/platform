@@ -1,5 +1,3 @@
-import { useMemo } from 'react'
-
 import { EmptyWorkspace } from '@/components/empty-workspace'
 import { usePickEntry } from '@/components/use-pick-entry'
 import { WorkspaceView } from '@/features/workspace/components/view'
@@ -9,13 +7,8 @@ import { useValidateRootFolder } from '@/features/workspace/hooks/use-validate-r
 import { useWorkspaceEvents } from '@/features/workspace/hooks/use-events'
 import { log } from '@/lib/client-logging'
 import type { PickedFsEntry } from '@/lib/file-system-types'
-import { editorKeymapLayersFromPlatform } from '@/keymap/editor-keymap'
-import { useCommand } from '@/keymap/hooks/use-command'
 
 export function AppWorkspace() {
-  const { bindings } = useCommand()
-  // The editor and document listener must consume the same resolved binding table.
-  const editorKeymapLayers = useMemo(() => editorKeymapLayersFromPlatform(bindings), [bindings])
   const pickerOpen = useEditorWorkspaceState((state) => state.pickerOpen)
   const rootFolder = useEditorWorkspaceState((state) => state.rootFolder)
   const openPicker = useEditorWorkspaceState((state) => state.openPicker)
@@ -40,7 +33,7 @@ export function AppWorkspace() {
     <>
       <div className='flex h-full min-h-0 flex-col'>
         {rootFolder ? (
-          <WorkspaceView editorKeymapLayers={editorKeymapLayers} rootFolder={rootFolder} />
+          <WorkspaceView rootFolder={rootFolder} />
         ) : (
           <EmptyWorkspace onChooseFolder={openPicker} />
         )}

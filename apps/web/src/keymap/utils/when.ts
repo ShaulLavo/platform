@@ -3,6 +3,20 @@ import {
   savableDocumentPath,
 } from '@/features/editor/utils/file-backed-document'
 import type { CommandTargetKind, CommandWhen } from '@/keymap/define-command'
+import {
+  editorKeyConditionMatches,
+  type EditorKeyCondition,
+  type EditorKeymapContext,
+} from '@singapor/core/keymap'
+
+export function editorBindingConditionsMatch(
+  conditions: readonly EditorKeyCondition[] | undefined,
+  context: EditorKeymapContext | null,
+): boolean {
+  if (!conditions?.length) return true
+  if (!context) return false
+  return conditions.every((condition) => editorKeyConditionMatches(condition, context))
+}
 
 export type CommandWhenSnapshot = {
   readonly activeDocumentSavable?: boolean

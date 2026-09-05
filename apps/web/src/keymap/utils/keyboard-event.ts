@@ -1,13 +1,20 @@
 const NON_TEXT_INPUT_TYPES = new Set(['button', 'reset', 'submit'])
 
-export function eventTargetsTextEntry(event: KeyboardEvent) {
-  if (isTextEntryElement(document.activeElement)) return true
-  if (isTextEntryElement(event.target)) return true
+export function eventTargetsTextEntry(
+  event: KeyboardEvent,
+  editorInput: HTMLElement | null = null,
+) {
+  if (isTextEntryElement(document.activeElement, editorInput)) return true
+  if (isTextEntryElement(event.target, editorInput)) return true
 
-  return event.composedPath().some(isTextEntryElement)
+  return event.composedPath().some((target) => isTextEntryElement(target, editorInput))
 }
 
-function isTextEntryElement(target: EventTarget | null | undefined) {
+function isTextEntryElement(
+  target: EventTarget | null | undefined,
+  editorInput: HTMLElement | null,
+) {
+  if (target === editorInput) return false
   if (target instanceof HTMLInputElement)
     return !NON_TEXT_INPUT_TYPES.has(target.type.toLowerCase())
   if (target instanceof HTMLTextAreaElement) return true

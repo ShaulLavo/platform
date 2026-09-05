@@ -1,4 +1,3 @@
-import type { EditorKeymapLayer } from '@singapor/core'
 import {
   PersistedResizablePanelGroup,
   ResizableHandle,
@@ -28,7 +27,7 @@ import type { WorkbenchPanels } from '@/features/workbench/utils/panels'
 
 export function ChatModeLayout({
   conflicts,
-  editorKeymapLayers,
+
   gitFiles,
   panels,
   rootPath,
@@ -36,7 +35,7 @@ export function ChatModeLayout({
   onPanelsChange,
 }: {
   readonly conflicts: EditorTabConflictMap
-  readonly editorKeymapLayers: readonly EditorKeymapLayer[]
+
   readonly gitFiles: readonly FileStatus[]
   readonly panels: ChatModePanels
   readonly rootPath: string
@@ -95,7 +94,6 @@ export function ChatModeLayout({
             >
               <ToolPane
                 conflicts={conflicts}
-                editorKeymapLayers={editorKeymapLayers}
                 gitFiles={gitFiles}
                 rootPath={rootPath}
                 tab={panels.activeToolTab}

@@ -24,7 +24,6 @@ import { isSettingAvailable } from '@/features/settings/utils/availability'
 import { matchingSettingIds } from '@/features/settings/utils/search'
 import { documentBackdrop } from '@/lib/platform/backdrop'
 import { isDesktop } from '@/lib/platform/bridge'
-import type { EditorKeymapLayer } from '@singapor/core'
 import type { EditorRenderDocument } from '@/features/editor/utils/render-document'
 import {
   selectSettingsCategory,
@@ -39,12 +38,10 @@ import { useFocusTarget } from '@/lib/focus/hooks/use-target'
  * real editor bound to this tab — not because the form needs them.
  */
 export function SettingsPage({
-  editorKeymapLayers = [],
   liveDocument = null,
   rootPath = '',
   tabId = '',
 }: {
-  editorKeymapLayers?: readonly EditorKeymapLayer[]
   liveDocument?: EditorRenderDocument | null
   rootPath?: string
   tabId?: string
@@ -168,7 +165,6 @@ export function SettingsPage({
           <div className='min-h-0 flex-1'>
             <SettingsJsonView
               diagnostics={document.data.diagnostics}
-              editorKeymapLayers={editorKeymapLayers}
               file={selectedFile}
               liveDocument={liveDocument}
               rootPath={rootPath}

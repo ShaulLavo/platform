@@ -115,20 +115,11 @@ browser-visible host paths, or cold-start reads triggered by a disabled workbenc
 
 ## Ordered Platform editor lane
 
-Plan 056 is complete at Platform `0f5b0618`. The remaining editor work is
-**Plan 057, standalone Editor chords and the shared Platform keymap**, delivered in lockstep with
-Editor.
+Plans 056 and 057 are complete. Standalone Editor executes default and custom chords, and
+Platform uses the shared runtime with its command-bus and terminal ownership policies intact.
+Default and VS Code presets, conditional bindings, and Settings resolution diagnostics are wired.
 
-First, prove automatic chord execution through standalone Editor's ordinary binding options and
-its built public keymap entry point. Standalone default and custom chords must work before
-Platform adopts that runtime. Then migrate Platform's combined app and editor table, disable the
-embedded Editor matcher, and remove Platform's duplicate engine. Preserve the existing command
-bus, target and enablement policy, and terminal handoff.
-
-Follow [`plans/057-editor-native-vscode-keymap.md`](plans/057-editor-native-vscode-keymap.md).
-Baseline work has started; see [`plans/057-baseline.md`](plans/057-baseline.md) for
-the pinned Editor revision, binding comparison, and outstanding verification gates.
-Both repositories must pass their paired verification before this lane is complete.
+See [Plan 057 delivery](plans/057-delivery.md) for the paired revision, verification, and boundaries.
 
 ## Environments lane (foundation completed 2026-09-05)
 
@@ -184,8 +175,8 @@ loopback and the existing origin allowlist is the whole guard.
 ## Promotion, rewrite, defer, and deletion decisions
 
 - **Deleted:** completed plans 038 and 077, and superseded plan 058.
-- **Editor lane:** Plan 056 is complete. Revised Plan 057 is next, with standalone Editor chord
-  execution verified before Platform adopts the shared runtime.
+- **Editor lane:** Plans 056 and 057 are complete. Standalone Editor chord execution was
+  verified before Platform adopted the shared runtime.
 - **Promoted:** environments foundation 077 is complete; remaining order is 068 → 078.
 - **Deferred:** the mesh https proxy check and pairing/sessions, until a client that cannot SSH
   exists; all compatibility work for the obsolete per-tab/active-editor/one-server architecture.

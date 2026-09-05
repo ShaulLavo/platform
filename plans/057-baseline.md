@@ -1,7 +1,7 @@
 # Plan 057 baseline
 
-Recorded on 2026-09-05. Shortcut ownership is unchanged. The standalone runtime and
-Platform migration remain to be implemented.
+Historical baseline recorded on 2026-09-05, before implementation.
+See [delivery](057-delivery.md) for the completed runtime and Platform migration.
 
 ## Dependency pairing
 
@@ -26,7 +26,7 @@ and built binding contents independently for each platform, and exits unsuccessf
 if they differ. It records command IDs, conditions, resolved editor-pane bindings,
 reservations, trie drops, and commands absent from Platform's registry.
 
-An optional first argument selects a built module to compare. A control module that
+Use `--built PATH` to select a built module to compare. A control module that
 changed one binding to `F24` without changing the row count produced exit code 1.
 The actual installed build produced exit code 0 before and after the Editor build.
 
