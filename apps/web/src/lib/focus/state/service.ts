@@ -1,3 +1,4 @@
+import type { EditorKeymapContext } from '@singapor/core/keymap'
 import type { EditorCommandContext, EditorCommandId } from '@singapor/core'
 
 declare const focusRequestTokenBrand: unique symbol
@@ -57,6 +58,8 @@ export type FocusTargetId =
   | { readonly dialogTarget: object; readonly kind: 'unsaved-dialog' }
 
 export type FocusEditorCapability = {
+  readonly getInputElement?: () => HTMLElement | null
+  readonly readKeymapContext?: () => EditorKeymapContext | null
   readonly dispatch: (command: EditorCommandId, context?: EditorCommandContext) => boolean
   readonly writable: boolean
 }
@@ -154,6 +157,7 @@ export type ResolveFocusTargetOptions = {
 type InternalRegistration = {
   area: FocusArea
   capabilities: FocusTargetCapabilities
+  editorInput: HTMLElement | null
   readonly element: HTMLElement
   id: FocusTargetId
   onIntent: (intent: FocusIntent, element: HTMLElement) => boolean
@@ -391,6 +395,7 @@ export class FocusService {
     const registration: InternalRegistration = {
       ...input,
       capabilities: freezeCapabilities(input.capabilities),
+      editorInput: input.capabilities?.editor?.getInputElement?.() ?? null,
       token,
     }
     this.registrations.set(token, registration)
@@ -706,12 +711,15 @@ export class FocusService {
     if (!registration) return
 
     const capabilities = freezeCapabilities(update.capabilities)
+    const editorInput = capabilities.editor?.getInputElement?.() ?? null
     const publicChanged =
       registration.area !== update.area ||
       !focusTargetIdsEqual(registration.id, update.id) ||
+      registration.editorInput !== editorInput ||
       !capabilitiesEqual(registration.capabilities, capabilities)
     registration.area = update.area
     registration.capabilities = capabilities
+    registration.editorInput = editorInput
     registration.id = update.id
     registration.onIntent = update.onIntent
 

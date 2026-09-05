@@ -1,4 +1,3 @@
-import type { EditorKeymapLayer } from '@singapor/core'
 import { Button } from '@workspace/ui/components/button'
 
 import { SearchPane } from '@/features/workspace/components/search-pane'
@@ -23,14 +22,14 @@ type ThreadDiffScopeState = ReturnType<typeof useThreadDiffScope>
 
 export function ToolPane({
   conflicts,
-  editorKeymapLayers,
+
   gitFiles,
   rootPath,
   tab,
   workbenchPanels,
 }: {
   readonly conflicts: EditorTabConflictMap
-  readonly editorKeymapLayers: readonly EditorKeymapLayer[]
+
   readonly gitFiles: readonly FileStatus[]
   /** The project root. Individual tools act on the session's checkout below. */
   readonly rootPath: string
@@ -51,7 +50,6 @@ export function ToolPane({
     return (
       <CodePanel
         conflicts={conflicts}
-        editorKeymapLayers={editorKeymapLayers}
         gitFiles={gitFiles}
         panels={workbenchPanels}
         rootPath={rootPath}
@@ -81,7 +79,7 @@ export function ToolPane({
     )
   }
   if (tab === 'search') {
-    return <SearchPane editorKeymapLayers={editorKeymapLayers} rootPath={toolRoot} />
+    return <SearchPane rootPath={toolRoot} />
   }
 
   return (

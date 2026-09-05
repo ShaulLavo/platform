@@ -240,19 +240,43 @@ export class CommandBus<
     id: Id,
     invocation: Invocation,
   ): CommandInspection<Id, Runtime, Snapshot, Target, Invocation> {
+    return this.capture(invocation).inspect(id)
+  }
+
+  capture(invocation: Invocation) {
+    const runtime = this.#options.captureRuntime()
+    const snapshot = runtime ? this.#options.captureSnapshot(runtime, invocation) : null
+    const targets = new Map<CommandTargetKind, Target | null>()
+    const inspections = new Map<Id, CommandInspection<Id, Runtime, Snapshot, Target, Invocation>>()
+    const inspect = (id: Id) => {
+      const existing = inspections.get(id)
+      if (existing) return existing
+      const inspection = this.#inspectCaptured(id, invocation, runtime, snapshot, targets)
+      inspections.set(id, inspection)
+      return inspection
+    }
+    return {
+      inspect,
+      dispatch: (id: Id) => this.dispatch(id, invocation, inspect(id)),
+    }
+  }
+
+  #inspectCaptured(
+    id: Id,
+    invocation: Invocation,
+    runtime: Runtime | null,
+    snapshot: Snapshot | null,
+    targets: Map<CommandTargetKind, Target | null>,
+  ): CommandInspection<Id, Runtime, Snapshot, Target, Invocation> {
     const entry = this.#options.lookup(id)
     if (!entry) return disabledInspection(commandInspectionDisabledReasons.unknownCommand)
+    if (!runtime || !snapshot)
+      return disabledInspection(commandInspectionDisabledReasons.runtimeUnavailable)
 
-    const runtime = this.#options.captureRuntime()
-    if (!runtime) return disabledInspection(commandInspectionDisabledReasons.runtimeUnavailable)
-
-    const snapshot = this.#options.captureSnapshot(runtime, invocation)
-    const target = this.#options.resolveTarget({
-      entry,
-      invocation,
-      runtime,
-      snapshot,
-    })
+    const target = targets.has(entry.target)
+      ? (targets.get(entry.target) ?? null)
+      : this.#options.resolveTarget({ entry, invocation, runtime, snapshot })
+    targets.set(entry.target, target)
     if (!target || target.kind !== entry.target) {
       return disabledInspection(commandInspectionDisabledReasons.targetUnavailable, {
         entry,
@@ -267,11 +291,23 @@ export class CommandBus<
     return { entry, runtime, snapshot, status: 'ready', target }
   }
 
-  dispatch(id: Id, invocation: Invocation): CommandDispatchTicket {
+  dispatch(
+    id: Id,
+    invocation: Invocation,
+    captured?: CommandInspection<Id, Runtime, Snapshot, Target, Invocation>,
+  ): CommandDispatchTicket {
+    return this.#dispatch(id, invocation, () => captured ?? this.inspect(id, invocation))
+  }
+
+  #dispatch(
+    id: Id,
+    invocation: Invocation,
+    inspect: () => CommandInspection<Id, Runtime, Snapshot, Target, Invocation>,
+  ): CommandDispatchTicket {
     const startedAt = this.#now()
     let inspection: CommandInspection<Id, Runtime, Snapshot, Target, Invocation>
     try {
-      inspection = this.inspect(id, invocation)
+      inspection = inspect()
     } catch (error) {
       return this.#failedInspectionTicket(id, invocation, startedAt, error)
     }

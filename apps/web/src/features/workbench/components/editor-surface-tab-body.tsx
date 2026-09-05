@@ -22,7 +22,7 @@ import { SettingsPage } from '@/features/settings/components/page'
 import { isSettingsDocumentId } from '@/features/settings/utils/document'
 import { useSettingsJsonDocument } from '@/features/settings/hooks/use-settings-json-document'
 import { useSelectedFile } from '@/features/workspace/hooks/use-selected-file'
-import type { DocumentSessionChange, EditorKeymapLayer } from '@singapor/core'
+import type { DocumentSessionChange } from '@singapor/core'
 import type {
   LanguageServerDefinitionTarget,
   LanguageServerReferencesResult,
@@ -32,14 +32,14 @@ import { useFileOpenIntent } from '@/lib/file-open-intent/providers/context'
 export function EditorSurfaceTabBody({
   active,
   definitionTarget,
-  editorKeymapLayers,
+
   path,
   rootPath,
   tabId,
 }: {
   active: boolean
   definitionTarget?: LanguageServerDefinitionTarget
-  editorKeymapLayers: readonly EditorKeymapLayer[]
+
   path: string
   rootPath: string
   tabId: string
@@ -207,24 +207,11 @@ export function EditorSurfaceTabBody({
   // and nothing to save, so falling through to the editor machinery would only
   // give it a spinner for a file that does not exist.
   if (isSettingsDocumentId(path)) {
-    return (
-      <SettingsPage
-        editorKeymapLayers={editorKeymapLayers}
-        liveDocument={selectedLiveDocument}
-        rootPath={rootPath}
-        tabId={tabId}
-      />
-    )
+    return <SettingsPage liveDocument={selectedLiveDocument} rootPath={rootPath} tabId={tabId} />
   }
 
   if (selectedSearchBuffer) {
-    return (
-      <SearchPane
-        compact={false}
-        editorKeymapLayers={editorKeymapLayers}
-        rootPath={selectedSearchBuffer.rootPath}
-      />
-    )
+    return <SearchPane compact={false} rootPath={selectedSearchBuffer.rootPath} />
   }
 
   return (
@@ -233,7 +220,6 @@ export function EditorSurfaceTabBody({
         active={active}
         liveDocument={selectedLiveDocument}
         definitionTarget={definitionTarget ?? (active ? uiDefinitionTarget : null)}
-        editorKeymapLayers={editorKeymapLayers}
         fileState={fileState}
         fileVersion={fileVersion}
         languageServerReferences={active ? languageServerReferences : null}

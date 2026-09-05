@@ -1,6 +1,5 @@
 import { Editor } from '@/features/editor/components/editor'
 import type { EditorRenderDocument } from '@/features/editor/utils/render-document'
-import type { EditorKeymapLayer } from '@singapor/core'
 import type { SettingsDiagnostic, SettingsLayerFile } from '@workspace/contracts'
 
 import { JsonLoading } from '@/features/settings/components/json-loading'
@@ -19,7 +18,7 @@ import { SETTINGS_LANGUAGE_SERVER_TARGET } from '@/features/settings/utils/langu
  */
 export function SettingsJsonView({
   diagnostics,
-  editorKeymapLayers,
+
   file,
   liveDocument,
   rootPath,
@@ -27,7 +26,7 @@ export function SettingsJsonView({
   tabId,
 }: {
   diagnostics: readonly SettingsDiagnostic[]
-  editorKeymapLayers: readonly EditorKeymapLayer[]
+
   file: SettingsLayerFile | null
   liveDocument: EditorRenderDocument | null
   rootPath: string
@@ -49,7 +48,6 @@ export function SettingsJsonView({
           active
           additionalPlugins={diagnosticsPlugins}
           document={liveDocument}
-          keymapLayers={editorKeymapLayers}
           languageServerTarget={SETTINGS_LANGUAGE_SERVER_TARGET}
           rootPath={rootPath}
           tabId={tabId}

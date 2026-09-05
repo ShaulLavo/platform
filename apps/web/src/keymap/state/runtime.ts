@@ -87,6 +87,8 @@ export function resolveCommandTarget(
   if (!focusTarget || !capability) return null
 
   return {
+    keymapContext: capability.readKeymapContext?.() ?? null,
+    inputElement: capability.getInputElement?.() ?? null,
     focusTarget,
     kind: 'editor',
     logIdentity: editorLogIdentity(focusTarget.id),

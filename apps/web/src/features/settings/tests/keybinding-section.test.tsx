@@ -1,7 +1,8 @@
+import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import { fetchSettings } from '@/features/settings/utils/api'
+import { fetchSettings, saveSettings } from '@/features/settings/utils/api'
 import { formatChord } from '@/keymap/utils/format-keys'
 
 import { KeybindingSection } from '../components/keybinding-section'
@@ -29,6 +30,34 @@ test('the search box narrows the list', async ({ client }) => {
 
   expect(screen.queryByRole('button', { name: SAVE_RECORDER })).toBeNull()
   expect(screen.getByText('Toggle Files pane')).toBeDefined()
+})
+
+test('records and resets a command omitted by the default preset', async ({ client }) => {
+  expect(client).toBeDefined()
+  renderWithProviders(<KeybindingSection />)
+  await screen.findByRole('button', { name: SAVE_RECORDER })
+  await userEvent.type(screen.getByLabelText('Search keyboard shortcuts'), 'Rename symbol')
+
+  const recorderName = 'Record a shortcut for editor.editor.action.rename'
+  const recorder = screen.getByRole('button', { name: recorderName })
+  expect(screen.getByRole('button', { name: 'Unbind Rename symbol' })).toBeDisabled()
+  await userEvent.click(recorder)
+  fireEvent.keyDown(recorder, { key: 'F2' })
+
+  await waitFor(async () => {
+    const snapshot = await fetchSettings()
+    expect(snapshot.values['keybindings.overrides']['editor.editor.action.rename']).toBe('F2')
+  })
+  await userEvent.click(screen.getByRole('button', { name: 'Reset Rename symbol' }))
+
+  await waitFor(async () => {
+    const snapshot = await fetchSettings()
+    expect(snapshot.values['keybindings.overrides']).not.toHaveProperty(
+      'editor.editor.action.rename',
+    )
+  })
+  expect(screen.getByRole('button', { name: recorderName })).toBeDefined()
+  expect(screen.getByRole('button', { name: 'Unbind Rename symbol' })).toBeDisabled()
 })
 
 test('says so when nothing matches', async ({ client }) => {
@@ -109,4 +138,35 @@ test('records two strokes through the server and renders the saved shortcut as g
     expect(snapshot.values['keybindings.overrides']['workspace.saveFile']).toBe('Mod+K Mod+S')
   })
   await waitFor(() => expect(recorder.textContent).toBe(formatChord('Mod+K Mod+S')))
+})
+
+test('reads the selected preset before showing shortcut rows', async ({ client }) => {
+  expect(client).toBeDefined()
+  await saveSettings({
+    mutationId: 'keybinding-vscode-preset',
+    operations: [{ kind: 'set', key: 'keybindings.preset', value: 'vscode' }],
+    target: 'user',
+  })
+  renderWithProviders(<KeybindingSection />)
+  const recorder = await screen.findByRole('button', {
+    name: 'Record a shortcut for editor.editor.fold',
+  })
+  const fold = defaultPlatformKeyBindings(undefined, 'vscode').find(
+    (row) => row.command === 'editor.editor.fold',
+  )
+  expect(fold).toBeDefined()
+  await waitFor(() => expect(recorder).toHaveTextContent(formatChord(fold?.keys ?? '')))
+})
+
+test('shows reservations and preset omissions in the resolution report', async ({ client }) => {
+  expect(client).toBeDefined()
+  renderWithProviders(<KeybindingSection />)
+  await userEvent.click(await screen.findByText('Shortcut resolution'))
+  expect(screen.getByRole('list', { name: 'Shortcut resolution report' })).toHaveTextContent(
+    'reservation',
+  )
+  expect(screen.getByRole('list', { name: 'Unmapped VS Code bindings' })).toHaveTextContent(
+    'workbench.action.quickOpenPreviousEditor',
+  )
+  expect(screen.getByRole('list', { name: 'Preset omissions' })).toBeDefined()
 })

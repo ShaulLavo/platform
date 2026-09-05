@@ -1,6 +1,8 @@
+import type { KeyChord, EditorKeyCondition } from '@singapor/core/keymap'
+export type { KeyChord } from '@singapor/core/keymap'
 import type { environmentCommands } from '@/keymap/environment-commands'
 import type { FocusArea } from '@/lib/focus/state/service'
-import type { HotkeyMeta, ParsedHotkey, RegisterableHotkey } from '@tanstack/hotkeys'
+import type { HotkeyMeta } from '@tanstack/hotkeys'
 
 // `import type` on purpose: it is erased, so the command table can keep reading
 // `SESSION_JUMP_POSITIONS` from here without a runtime cycle.
@@ -52,9 +54,8 @@ export type MenuSurfaceId =
   | 'terminal'
   | 'titlebar'
 
-export type KeyChord = readonly [RegisterableHotkey, ...RegisterableHotkey[]]
-
 export type PlatformKeyBinding = {
+  readonly editorWhen?: readonly EditorKeyCondition[]
   readonly keys: string
   readonly chord: KeyChord
   readonly command: PlatformCommandId | null
@@ -80,14 +81,6 @@ export type KeyBindingKeyboardEvent = {
   readonly repeat?: boolean
   readonly metaKey: boolean
   readonly shiftKey: boolean
-}
-
-/** A binding with each stroke parsed once, so matching never re-parses. */
-export type ParsedPlatformKeyBinding = {
-  readonly binding: PlatformKeyBinding
-  /** Only the first stroke decides whether a binding fires in a text field. */
-  readonly firesWhileTyping: boolean
-  readonly steps: readonly [ParsedHotkey, ...ParsedHotkey[]]
 }
 
 /** One command's effective binding, as the settings editor lists it. */

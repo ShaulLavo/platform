@@ -1,4 +1,3 @@
-import type { EditorKeymapLayer } from '@singapor/core'
 import {
   ResizableHandle,
   ResizablePanel,
@@ -26,7 +25,7 @@ import {
 
 export function WorkbenchLayout({
   conflicts,
-  editorKeymapLayers,
+
   gitFiles,
   layout,
   panels,
@@ -35,7 +34,7 @@ export function WorkbenchLayout({
   onPanelsChange,
 }: {
   readonly conflicts: EditorTabConflictMap
-  readonly editorKeymapLayers: readonly EditorKeymapLayer[]
+
   readonly gitFiles: readonly FileStatus[]
   readonly layout: WorkbenchLayout
   readonly panels: WorkbenchPanels
@@ -73,12 +72,7 @@ export function WorkbenchLayout({
               maxSize={SIDEBAR_MAX_SIZE}
               minSize={SIDEBAR_MIN_SIZE}
             >
-              <SidebarPanel
-                editorKeymapLayers={editorKeymapLayers}
-                panels={panels}
-                rootPath={rootPath}
-                onPanelsChange={onPanelsChange}
-              />
+              <SidebarPanel panels={panels} rootPath={rootPath} onPanelsChange={onPanelsChange} />
             </ResizablePanel>
             <ResizableHandle id='sidebar-handle' withHandle />
           </>
@@ -94,7 +88,6 @@ export function WorkbenchLayout({
             <ResizablePanel className='min-h-0 min-w-0 overflow-hidden' id='editor' minSize={160}>
               <CodePanel
                 conflicts={conflicts}
-                editorKeymapLayers={editorKeymapLayers}
                 gitFiles={gitFiles}
                 panels={panels}
                 rootPath={rootPath}

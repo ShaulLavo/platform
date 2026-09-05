@@ -1,4 +1,4 @@
-import type { BrowserTextMetrics, EditorKeymapOptions } from '@singapor/core'
+import type { BrowserTextMetrics } from '@singapor/core'
 import type { CSSProperties } from 'react'
 
 import type { SearchResultVirtualListViewport } from '@/features/search/utils/result-virtual-list'
@@ -44,6 +44,3 @@ export const SEARCH_RESULT_FILE_EDITOR_TEXT_METRICS = {
   characterWidth: EXCERPT_EDITOR_CHARACTER_WIDTH,
   rowHeight: EXCERPT_EDITOR_LINE_HEIGHT,
 } satisfies BrowserTextMetrics
-export const SEARCH_RESULT_INACTIVE_EDITOR_KEYMAP = {
-  enabled: false,
-} satisfies EditorKeymapOptions

@@ -30,6 +30,5 @@ export const DIFF_CURSOR_LINE_HIGHLIGHT: EditorCursorLineHighlightOptions = {
 
 /** A real `Editor` otherwise brings find and the edit commands into a read-only diff. */
 export const DIFF_KEYMAP: EditorKeymapOptions = {
-  defaultBindings: false,
-  layers: [],
+  enabled: false,
 }

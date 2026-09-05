@@ -1,5 +1,4 @@
 import { memo, useCallback, useRef } from 'react'
-import type { EditorKeymapLayer } from '@singapor/core'
 
 import { SearchControls } from '@/features/workspace/components/search-controls'
 import { SearchResults } from '@/features/workspace/components/search-results'
@@ -8,11 +7,11 @@ import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 export const SearchPane = memo(
   ({
     compact = true,
-    editorKeymapLayers,
+
     rootPath,
   }: {
     readonly compact?: boolean
-    readonly editorKeymapLayers: readonly EditorKeymapLayer[]
+
     readonly rootPath: string
   }) => {
     const rootRef = useRef<HTMLElement | null>(null)
@@ -46,11 +45,7 @@ export const SearchPane = memo(
         ref={setRootRef}
       >
         <SearchControls rootPath={rootPath} showOpenInEditorButton={compact} />
-        <SearchResults
-          compact={compact}
-          editorKeymapLayers={editorKeymapLayers}
-          rootPath={rootPath}
-        />
+        <SearchResults compact={compact} rootPath={rootPath} />
       </section>
     )
   },

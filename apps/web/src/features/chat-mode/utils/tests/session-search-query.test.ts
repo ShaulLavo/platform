@@ -1,5 +1,5 @@
 import { providerInstanceIdSchema, type ModelSelection } from '@workspace/contracts'
-import { QueryClient } from '@tanstack/react-query'
+import { createTestQueryClient } from '../../../../../test/render'
 import * as v from 'valibot'
 
 import {
@@ -59,7 +59,7 @@ test('surrounding whitespace does not mint a second cache entry', ({ client }) =
 function runSearch(query: string) {
   // A throwaway client per call so a cached answer can never stand in for a
   // real round trip.
-  return new QueryClient().fetchQuery(sessionSearchQueryOptions({ query }))
+  return createTestQueryClient().fetchQuery(sessionSearchQueryOptions({ query }))
 }
 
 async function seedThread(

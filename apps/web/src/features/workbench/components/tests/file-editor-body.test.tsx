@@ -61,7 +61,6 @@ function body({
         <FileEditorBody
           active={false}
           definitionTarget={null}
-          editorKeymapLayers={[]}
           fileState={{ status: 'loading' }}
           fileVersion={null}
           languageServerReferences={null}

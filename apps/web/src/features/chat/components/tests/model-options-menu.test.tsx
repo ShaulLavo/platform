@@ -1,4 +1,3 @@
-import { QueryClient } from '@tanstack/react-query'
 import { DEFAULT_PROVIDER_INSTANCE_ID, type ModelSelection } from '@workspace/contracts'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -13,7 +12,7 @@ import {
 } from '@/features/chat/state/chat-input-draft-store'
 import { providerModel, providerSnapshot } from '../../../../../test/factories/chat'
 import { expect, test } from '../../../../../test/fixtures'
-import { renderWithProviders } from '../../../../../test/render'
+import { createTestQueryClient, renderWithProviders } from '../../../../../test/render'
 
 const draftTarget: ChatInputDraftTarget = {
   draftKey: 'thread-options',
@@ -93,9 +92,7 @@ function renderMenu({
     useChatInputDraftStore.getState().setModelSelection(draftTarget, { ...modelSelection, options })
   }
 
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { gcTime: Number.POSITIVE_INFINITY, retry: false } },
-  })
+  const queryClient = createTestQueryClient()
   queryClient.setQueryData(providerListQueryOptions().queryKey, {
     providers: [
       providerSnapshot({

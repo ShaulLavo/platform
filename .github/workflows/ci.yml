@@ -13,7 +13,7 @@ concurrency:
 
 env:
   # Keep the linked Editor API and Platform consumers on an exact revision.
-  EDITOR_REF: d31e73066af3ca2c2b6de7c48b5d84345ccea0e4
+  EDITOR_REF: 9abb944f3a2b8d6516953fdec75e8df5e1a94811
 
 jobs:
   quality:

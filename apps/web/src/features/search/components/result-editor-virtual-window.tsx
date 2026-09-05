@@ -1,4 +1,4 @@
-import type { EditorKeymapLayer, EditorTheme } from '@singapor/core'
+import type { EditorTheme } from '@singapor/core'
 import { memo, useMemo, type RefObject } from 'react'
 
 import { SEARCH_RESULT_VIRTUAL_PADDING } from '@/features/search/utils/result-editor-constants'
@@ -18,7 +18,7 @@ type SearchResultEditorVirtualWindowProps = {
   readonly activeResultId: SearchResultId | null
   readonly canReplace?: boolean
   readonly editorTheme: EditorTheme
-  readonly keymapLayers: readonly EditorKeymapLayer[]
+
   readonly parentRef: RefObject<HTMLDivElement | null>
   readonly prewarmEditorPool: boolean
   readonly replaceVisible: boolean
@@ -33,7 +33,7 @@ export const SearchResultEditorVirtualWindow = memo(
     activeResultId,
     canReplace,
     editorTheme,
-    keymapLayers,
+
     parentRef,
     prewarmEditorPool,
     replaceVisible,
@@ -93,7 +93,6 @@ export const SearchResultEditorVirtualWindow = memo(
             editorTheme={editorTheme}
             entry={entry}
             key={`file-results-pool:${entry.key}`}
-            keymapLayers={keymapLayers}
             replaceVisible={replaceVisible}
             treeId={treeId}
             viewport={viewport}

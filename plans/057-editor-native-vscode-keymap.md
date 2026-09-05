@@ -8,15 +8,15 @@
 
 ## Status
 
-- **State:** In progress. Dependency pin and binding comparison prepared; see [baseline](057-baseline.md).
+- **State:** Complete. See [delivery and verification](057-delivery.md) and [decision trail](057-decisions.tsv).
 - **Priority:** P2
 - **Effort:** XL
 - **Risk:** High. Shortcut ownership changes can break navigation, text editing, or focus without a type error.
 - **Category:** Implementation plan
 - **Depends on:** [Plan 056](056-multi-step-chord-keymap.md), implemented at Platform `0f5b0618`,
   and the existing `CommandBus` and `FocusService`.
-- **Source reconciliation:** Platform `0f5b0618`, Editor `d31e730`, and installed
-  `@singapor/core` 0.1.2. Concurrent environment work can move Platform providers and command wiring.
+- **Historical source reconciliation:** Platform `0f5b0618`, Editor `d31e730`, and installed
+  `@singapor/core` 0.1.2. Delivered Editor pairing: `9abb944f3a2b8d6516953fdec75e8df5e1a94811`.
 
 ## Required outcome
 
@@ -33,7 +33,7 @@ Deliver both modes. Chord-shaped types, preset data, or Platform-only browser te
 that the Editor package supports chords. The standalone execution gate must pass before the
 Platform takeover begins.
 
-## Current behavior and the gap
+## Baseline behavior and the gap
 
 - Platform supplies single-stroke editor bindings through `keymap/editor-keymap.ts`.
   Editor mounts use `defaultBindings: false` plus the supplied layers.

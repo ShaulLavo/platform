@@ -111,6 +111,12 @@
       },
       "type": "object"
     },
+    "keybindings.preset": {
+      "default": "default",
+      "description": "Editor shortcuts to use before applying your overrides. Default uses the native editor pack; vscode uses the VS Code pack.",
+      "enum": ["default", "vscode"],
+      "type": "string"
+    },
     "logs.defaultTimeRange": {
       "default": "1h",
       "description": "Time range the logs view opens on.",

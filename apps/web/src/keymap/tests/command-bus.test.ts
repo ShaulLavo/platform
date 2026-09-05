@@ -38,6 +38,20 @@ const enabledSnapshot: TestSnapshot = {
   workspaceOpen: true,
 }
 
+test('one captured stroke reuses its snapshot and target through inspection and dispatch', async () => {
+  const run = vi.fn<() => ImmediateCommandDisposition>(() => ({ status: 'handled' }))
+  const harness = commandBusHarness(syncWorkspaceDefinition(run, ['workspaceOpen']))
+  const stroke = harness.bus.capture(invocation)
+  expect(stroke.inspect('test.command').status).toBe('ready')
+  expect(stroke.inspect('test.command').status).toBe('ready')
+  await expect(stroke.dispatch('test.command').completion).resolves.toEqual({ status: 'handled' })
+  expect(harness.captureSnapshot).toHaveBeenCalledTimes(1)
+  expect(run).toHaveBeenCalledTimes(1)
+
+  harness.bus.capture(invocation).inspect('test.command')
+  expect(harness.captureSnapshot).toHaveBeenCalledTimes(2)
+})
+
 test('disabled inspection does not execute and dispatch remains unclaimed', async () => {
   const run = vi.fn<() => ImmediateCommandDisposition>(() => ({ status: 'handled' }))
   const definition = syncWorkspaceDefinition(run, ['workspaceOpen'])

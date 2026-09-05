@@ -1,5 +1,4 @@
 import { LexicalComposer } from '@lexical/react/LexicalComposer'
-import { QueryClient } from '@tanstack/react-query'
 import { threadIdSchema, type ClientOrchestrationCommand } from '@workspace/contracts'
 import { screen } from '@testing-library/react'
 import { createRef } from 'react'
@@ -16,7 +15,7 @@ import {
   type ChatInputDraftTarget,
 } from '@/features/chat/state/chat-input-draft-store'
 import { expect, test } from '../../../../../test/fixtures'
-import { renderWithProviders } from '../../../../../test/render'
+import { createTestQueryClient, renderWithProviders } from '../../../../../test/render'
 
 const threadId = v.parse(threadIdSchema, 'thread-actions')
 const draftTarget: ChatInputDraftTarget = { draftKey: threadId, rootPath: '/repo/platform' }
@@ -71,9 +70,7 @@ function actionsRow(container: HTMLElement) {
 function renderActions() {
   resetChatInputDraftStore()
 
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { gcTime: Number.POSITIVE_INFINITY, retry: false } },
-  })
+  const queryClient = createTestQueryClient()
   queryClient.setQueryData(providerListQueryOptions().queryKey, { providers: [] })
 
   async function dispatchCommand(_command: ClientOrchestrationCommand) {

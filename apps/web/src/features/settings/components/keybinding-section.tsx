@@ -1,27 +1,22 @@
+import { KeybindingResolution } from '@/features/settings/components/keybinding-resolution'
 import { Input } from '@workspace/ui/components/input'
 import { useState } from 'react'
 
-import { commandKeyBindings } from '@/keymap/active-bindings'
-import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
+import { commandKeyBindings, keyBindingResolution } from '@/keymap/active-bindings'
+import { presetPlatformKeyBindings } from '@/keymap/default-bindings'
 
 import { useSettingValue } from '../hooks/use-setting-value'
 import { commandsShadowedBy, matchingKeybindingRows } from '../utils/keybinding-rows'
 import { EmptyRow } from './empty-row'
 import { KeybindingRow } from './keybinding-row'
 
-/**
- * Every bindable command, as the single control over `keybindings.overrides`.
- *
- * The rows are read back out of the *resolved* table rather than off the
- * override document, so the list says what is in force rather than what was
- * asked for — including a command whose chord another command's override took.
- * The search box is not optional at ~90 rows: without it the only way to reach
- * a command is to scroll a list sorted by nothing the user chose.
- */
 export function KeybindingSection() {
   const overrides = useSettingValue('keybindings.overrides')
+  const preset = useSettingValue('keybindings.preset')
   const [query, setQuery] = useState('')
-  const rows = commandKeyBindings(defaultPlatformKeyBindings(), overrides)
+  const defaults = presetPlatformKeyBindings(undefined, preset)
+  const rows = commandKeyBindings(defaults.bindings, overrides)
+  const { report } = keyBindingResolution(defaults.bindings, overrides)
   const visible = matchingKeybindingRows(rows, query)
 
   return (
@@ -31,6 +26,11 @@ export function KeybindingSection() {
         onChange={(event) => setQuery(event.currentTarget.value)}
         placeholder='Search commands'
         value={query}
+      />
+      <KeybindingResolution
+        report={report}
+        omitted={defaults.omitted}
+        unmapped={defaults.unmapped}
       />
       <div className='border-border flex max-h-64 flex-col overflow-y-auto rounded-md border'>
         {visible.length === 0 ? <EmptyRow>No commands match this search.</EmptyRow> : null}

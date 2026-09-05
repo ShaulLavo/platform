@@ -1,3 +1,4 @@
+import { HOSTED_EDITOR_KEYMAP } from '@/keymap/editor-keymap'
 import { useEditor } from '@singapor/react'
 import type {
   LanguageServerDefinitionTarget,
@@ -35,8 +36,6 @@ import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 import type {
   DocumentSessionChange,
   EditorInitialPaintEvent,
-  EditorKeymapLayer,
-  EditorKeymapOptions,
   EditorPlugin,
   EditorScrollPosition,
 } from '@singapor/core'
@@ -48,7 +47,7 @@ const NO_ADDITIONAL_PLUGINS: readonly EditorPlugin[] = []
 type EditorProps = {
   active: boolean
   document: EditorRenderDocument
-  keymapLayers: readonly EditorKeymapLayer[]
+
   languageServerTarget?: LanguageServerDocumentTarget
   additionalPlugins?: readonly EditorPlugin[]
   rootPath: string
@@ -67,7 +66,7 @@ export function Editor({
   additionalPlugins = NO_ADDITIONAL_PLUGINS,
   definitionTarget,
   document: liveDocument,
-  keymapLayers,
+
   languageServerTarget,
   rootPath,
   tabId,
@@ -159,14 +158,6 @@ export function Editor({
       preparedTags,
     ],
   )
-  const editorKeymap = useMemo(
-    () =>
-      ({
-        defaultBindings: false,
-        layers: keymapLayers,
-      }) satisfies EditorKeymapOptions,
-    [keymapLayers],
-  )
   const rowPositioning = editorPerformanceLayoutVariant() === 'absolute-rows' ? 'top' : 'transform'
   const controller = useEditor({
     cursorLineHighlight: {
@@ -176,7 +167,7 @@ export function Editor({
     },
     document,
     editability: liveDocument.editability,
-    keymap: editorKeymap,
+    keymap: HOSTED_EDITOR_KEYMAP,
     onChange: (_state, change) => {
       if (!change || change.kind === 'selection' || change.kind === 'none') return
 
@@ -199,6 +190,8 @@ export function Editor({
     capabilities: {
       editor: {
         dispatch: controller.commands.dispatchCommand,
+        getInputElement: () => controller.getEditor()?.getInputElement() ?? null,
+        readKeymapContext: () => controller.getEditor()?.getKeymapContext() ?? null,
         writable: liveDocument.editability === 'editable',
       },
     },

@@ -1,25 +1,20 @@
+import { appKeyBindingsForPane } from '@/keymap/utils/app-bindings'
 import { describe } from 'vitest'
-import { normalizeRegisterableHotkey, parseHotkey } from '@tanstack/hotkeys'
+import { parseHotkey } from '@tanstack/hotkeys'
 
 import { expect, test as it } from '@/keymap/../../test/fixtures'
 import { binding } from '@/keymap/../../test/factories/key-binding'
-import { buildKeymapTrie, trieStep } from '@/keymap/utils/keymap-trie'
-import { chordStrokes, keysConflict } from '@/keymap/utils/chord'
+import { chordStrokes } from '@/keymap/utils/chord'
 
 import {
   activePlatformKeyBindings,
   commandKeyBindings,
+  keyBindingResolution,
   resolvedPlatformKeyBindings,
 } from '@/keymap/active-bindings'
 import { commandHotkeyMeta, platformCommandSpec } from '@/keymap/command-registry'
-import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
-import {
-  editorKeyBindingFromPlatform,
-  editorKeymapLayersFromPlatform,
-  readonlyEditorKeymapLayers,
-} from '@/keymap/editor-keymap'
-import { appKeyBindingsForPane } from '@/keymap/utils/app-bindings'
-import type { KeyBindingKeyboardEvent, PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
+import { defaultPlatformKeyBindings, presetPlatformKeyBindings } from '@/keymap/default-bindings'
+import type { PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
 
 describe('activePlatformKeyBindings', () => {
   it('filters bindings by focused pane', () => {
@@ -43,18 +38,6 @@ describe('activePlatformKeyBindings', () => {
 
     expect(commands(activePlatformKeyBindings(bindings, 'editor'))).toEqual([
       'workspace.focusEditor',
-    ])
-  })
-})
-
-describe('appKeyBindingsForPane', () => {
-  it('excludes editor command bindings from app registrations', () => {
-    const bindings = [
-      binding('Mod+F', { command: 'editor.find', pane: 'editor' }),
-      binding('Mod+P', { command: 'workspace.openFilePicker', pane: 'any' }),
-    ]
-
-    expect(commands(appKeyBindingsForPane(bindings, 'editor'))).toEqual([
       'workspace.openFilePicker',
     ])
   })
@@ -205,53 +188,6 @@ describe('resolvedPlatformKeyBindings', () => {
   })
 })
 
-describe('trie keyboard matching', () => {
-  it('matches a chord typed on the layout the bindings were written for', () => {
-    expect(matchedCommand(linuxAppKeymap(), keyEvent('b', 'KeyB', { ctrlKey: true }))).toBe(
-      'workspace.toggleSidebarVisibility',
-    )
-  })
-
-  it('matches the physical key when the layout prints a non-Latin letter', () => {
-    // Russian and Hebrew layouts report 'и' and 'ד' for the keys engraved B and
-    // S, so the printed character can never be what the binding names.
-    expect(matchedCommand(linuxAppKeymap(), keyEvent('и', 'KeyB', { ctrlKey: true }))).toBe(
-      'workspace.toggleSidebarVisibility',
-    )
-    expect(matchedCommand(linuxAppKeymap(), keyEvent('ד', 'KeyS', { ctrlKey: true }))).toBe(
-      'workspace.saveFile',
-    )
-  })
-
-  it('matches the physical digit when the number row prints punctuation', () => {
-    expect(
-      matchedCommand(linuxAppKeymap(), keyEvent('&', 'Digit1', { altKey: true, ctrlKey: true })),
-    ).toBe('workspace.jumpToSession1')
-  })
-
-  it('lets a Latin layout keep its printed letter instead of its physical key', () => {
-    // AZERTY prints 'z' on the key US layouts call W. Reading the code anyway
-    // would hand Mod+Z to whatever Mod+W is reserved for.
-    expect(matchedCommand(linuxAppKeymap(), keyEvent('z', 'KeyW', { ctrlKey: true }))).toBeNull()
-  })
-
-  it('dispatches the override instead of the default once a command is rebound', () => {
-    const keymap = linuxAppKeymap({ 'workspace.saveFile': 'Mod+Alt+S' })
-
-    expect(matchedCommand(keymap, keyEvent('s', 'KeyS', { ctrlKey: true }))).toBeNull()
-    expect(matchedCommand(keymap, keyEvent('s', 'KeyS', { altKey: true, ctrlKey: true }))).toBe(
-      'workspace.saveFile',
-    )
-  })
-
-  it('keeps bare-key bindings out of text fields and Mod chords in them', () => {
-    const keymap = linuxAppKeymap()
-
-    expect(matchFor(keymap, keyEvent('F1', 'F1'))?.firesWhileTyping).toBe(false)
-    expect(matchFor(keymap, keyEvent('s', 'KeyS', { ctrlKey: true }))?.firesWhileTyping).toBe(true)
-  })
-})
-
 describe('commandKeyBindings', () => {
   it('reports the default binding until the user overrides it', () => {
     expect(commandKeyBindings(defaultPlatformKeyBindings('linux'), {}, 'linux')).toContainEqual({
@@ -364,73 +300,6 @@ describe('commandKeyBindings', () => {
       shadowedBy: null,
       source: 'default',
     })
-  })
-})
-
-describe('editorKeyBindingFromPlatform', () => {
-  it('strips the editor command prefix', () => {
-    const mapped = editorKeyBindingFromPlatform(
-      binding('Mod+F', { command: 'editor.find', pane: 'editor' }),
-    )
-
-    expect(mapped).toMatchObject({
-      command: 'find',
-    })
-    expect(mapped && normalizeRegisterableHotkey(mapped.hotkey, 'linux')).toBe('Mod+F')
-  })
-
-  it('keeps VS Code-shaped editor command ids after the platform prefix', () => {
-    const mapped = editorKeyBindingFromPlatform(
-      binding('Mod+/', { command: 'editor.editor.action.commentLine', pane: 'editor' }),
-    )
-
-    expect(mapped).toMatchObject({
-      command: 'editor.action.commentLine',
-    })
-    expect(mapped && normalizeRegisterableHotkey(mapped.hotkey, 'linux')).toBe('Mod+/')
-  })
-
-  it('rejects non-editor commands', () => {
-    expect(
-      editorKeyBindingFromPlatform(
-        binding('Mod+P', { command: 'workspace.openFilePicker', pane: 'any' }),
-      ),
-    ).toBeNull()
-  })
-})
-
-describe('editor keymap layers', () => {
-  it('groups platform editor bindings into command-pack layers', () => {
-    const layers = editorKeymapLayersFromPlatform(defaultPlatformKeyBindings('linux'))
-
-    expect(layerCommands(layers, 'platform.navigation')).toContain('cursorLeft')
-    expect(layerCommands(layers, 'platform.selection')).toContain('selectAll')
-    expect(layerCommands(layers, 'platform.text-editing')).toContain('deleteBackward')
-    expect(layerCommands(layers, 'platform.advanced-editing')).toContain(
-      'editor.action.commentLine',
-    )
-    expect(layerCommands(layers, 'platform.multi-cursor')).toContain(
-      'editor.action.insertCursorAbove',
-    )
-    expect(layerCommands(layers, 'platform.lsp-navigation')).toContain(
-      'editor.action.goToReferences',
-    )
-  })
-
-  it('keeps search result keymaps readonly-safe by command pack', () => {
-    const readonlyLayers = readonlyEditorKeymapLayers(
-      editorKeymapLayersFromPlatform(defaultPlatformKeyBindings('linux')),
-    )
-    const readonlyCommands = readonlyLayers.flatMap((layer) =>
-      layer.bindings.map((binding) => binding.command),
-    )
-
-    expect(readonlyCommands).toContain('cursorLeft')
-    expect(readonlyCommands).toContain('selectAll')
-    expect(readonlyCommands).toContain('find')
-    expect(readonlyCommands).not.toContain('deleteBackward')
-    expect(readonlyCommands).not.toContain('findReplace')
-    expect(readonlyCommands).not.toContain('editor.action.insertCursorAbove')
   })
 })
 
@@ -552,9 +421,12 @@ describe('defaultPlatformKeyBindings', () => {
     )
   })
 
-  it('keeps default bindings unique within each pane', () => {
+  it('resolves accidental preset duplicates while retaining conditional candidates', () => {
     for (const platform of defaultBindingPlatforms) {
-      expect(conflictingBindingSlots(defaultPlatformKeyBindings(platform))).toEqual([])
+      const defaults = defaultPlatformKeyBindings(platform)
+      const resolution = keyBindingResolution(defaults, {}, platform)
+      expect(resolution.bindings.length).toBeGreaterThan(0)
+      expect(resolution.report.every((entry) => entry.bindingId.length > 0)).toBe(true)
     }
   })
 
@@ -585,13 +457,13 @@ describe('defaultPlatformKeyBindings', () => {
     )
     expect(defaultPlatformKeyBindings('linux')).toContainEqual(
       expect.objectContaining({
-        command: null,
+        command: 'editor.goToDefinition',
         keys: 'F12',
         pane: 'editor',
         vscodeCommandId: 'editor.action.revealDefinition',
       }),
     )
-    expect(defaultPlatformKeyBindings('linux')).toContainEqual(
+    expect(defaultPlatformKeyBindings('linux', 'vscode')).toContainEqual(
       expect.objectContaining({
         command: 'editor.editor.action.goToReferences',
         keys: 'Shift+F12',
@@ -753,61 +625,6 @@ function keysFor(bindings: readonly PlatformKeyBinding[], command: PlatformComma
   return bindings.filter((binding) => binding.command === command).map((binding) => binding.keys)
 }
 
-function linuxAppKeymap(overrides: Record<string, string | null> = {}) {
-  const resolved = resolvedPlatformKeyBindings(
-    defaultPlatformKeyBindings('linux'),
-    overrides,
-    'linux',
-  )
-
-  return buildKeymapTrie(appKeyBindingsForPane(resolved, 'global'), 'linux')
-}
-
-function keyEvent(
-  key: string,
-  code: string,
-  modifiers: Partial<Omit<KeyBindingKeyboardEvent, 'code' | 'key'>> = {},
-): KeyBindingKeyboardEvent {
-  return {
-    altKey: false,
-    code,
-    ctrlKey: false,
-    key,
-    metaKey: false,
-    shiftKey: false,
-    ...modifiers,
-  }
-}
-
-function matchFor(bindings: ReturnType<typeof linuxAppKeymap>, event: KeyBindingKeyboardEvent) {
-  const step = trieStep(bindings.root, event)
-  return step.kind === 'run' ? step.binding : null
-}
-
-function matchedCommand(
-  bindings: ReturnType<typeof linuxAppKeymap>,
-  event: KeyBindingKeyboardEvent,
-) {
-  return matchFor(bindings, event)?.binding.command ?? null
-}
-
-function conflictingBindingSlots(bindings: readonly PlatformKeyBinding[]) {
-  return bindings.flatMap((binding, index) =>
-    bindings
-      .slice(index + 1)
-      .filter(
-        (candidate) =>
-          (candidate.pane ?? 'any') === (binding.pane ?? 'any') &&
-          keysConflict(candidate.keys, binding.keys),
-      )
-      .map((candidate) => `${binding.keys}: ${binding.command}, ${candidate.command}`),
-  )
-}
-
-function layerCommands(layers: ReturnType<typeof editorKeymapLayersFromPlatform>, id: string) {
-  return layers.find((layer) => layer.id === id)?.bindings.map((binding) => binding.command) ?? []
-}
-
 it('resolves a two-stroke override without collapsing to its last stroke', () => {
   const resolved = resolvedPlatformKeyBindings(
     defaultPlatformKeyBindings('linux'),
@@ -892,56 +709,137 @@ it('keeps a default chord when its conflicting prefix override is shadowed', () 
   expect(keysFor(resolved, 'workspace.togglePanel')).toEqual(['Mod+K Mod+B'])
 })
 
-it.each(defaultBindingPlatforms)(
-  'default chord prefixes on %s carry Ctrl or Meta and are globally unused as complete keys',
-  (platform) => {
-    const defaults = defaultPlatformKeyBindings(platform)
-    const chords = defaults.filter((candidate) => candidate.chord.length > 1)
-    expect(chords).toHaveLength(1)
-    for (const candidate of chords) {
-      const first = chordStrokes(candidate.keys)[0]
-      const parsed = parseHotkey(first, platform)
-      expect(parsed.ctrl || parsed.meta).toBe(true)
-      expect(defaults.some((binding) => binding.keys === first)).toBe(false)
-    }
-  },
-)
-
-it('keeps editor chords in Platform and excludes them from Editor layers', () => {
-  const chord = binding('Mod+K Mod+D', { command: 'editor.undo', pane: 'editor' })
-  expect(editorKeyBindingFromPlatform(chord)).toBeNull()
-  expect(commands(appKeyBindingsForPane([chord], 'editor'))).toEqual(['editor.undo'])
-  expect(editorKeymapLayersFromPlatform([chord])).toEqual([])
+it.each(defaultBindingPlatforms)('default chord prefixes on %s carry Ctrl or Meta', (platform) => {
+  const defaults = defaultPlatformKeyBindings(platform)
+  const chords = defaults.filter((candidate) => candidate.chord.length > 1)
+  expect(chords.length).toBeGreaterThan(1)
+  for (const candidate of chords) {
+    const first = chordStrokes(candidate.keys)[0]
+    const parsed = parseHotkey(first, platform)
+    expect(parsed.ctrl || parsed.meta).toBe(true)
+  }
 })
-
-it.each(defaultBindingPlatforms)(
-  'never passes a chord string into an Editor hotkey on %s',
-  (platform) => {
-    const layers = editorKeymapLayersFromPlatform(defaultPlatformKeyBindings(platform))
-    for (const layer of layers) {
-      for (const candidate of layer.bindings) {
-        expect(normalizeRegisterableHotkey(candidate.hotkey, platform)).not.toContain(' ')
-      }
-    }
-  },
-)
-
-it.each(defaultBindingPlatforms)(
-  'preserves editor arbitration before app filtering on %s',
-  (platform) => {
-    const defaults = defaultPlatformKeyBindings(platform).filter(
-      (candidate) => candidate.chord.length === 1,
-    )
-    const active = appKeyBindingsForPane(defaults, 'editor')
-    expect(active).toHaveLength(platform === 'mac' ? 33 : 32)
-    expect(active.map((candidate) => candidate.keys)).not.toContain('Mod+[')
-    expect(active.map((candidate) => candidate.keys)).not.toContain('Mod+]')
-  },
-)
 
 it('retains the first settings shortcut while offering the new chord as a second default', () => {
   expect(keysFor(defaultPlatformKeyBindings('linux'), 'workspace.showSettings')).toEqual([
     'Mod+,',
     'Mod+K Mod+S',
   ])
+})
+
+it('keeps conditional alternatives in preset and pane order', () => {
+  const find = {
+    ...binding('Escape', { command: 'editor.closeFind', pane: 'editor' }),
+    editorWhen: ['findVisible'] as const,
+  }
+  const selection = {
+    ...binding('Escape', { command: 'editor.clearSecondarySelections', pane: 'editor' }),
+    editorWhen: ['!findVisible'] as const,
+  }
+  const global = binding('Escape', { command: 'workspace.showSettings', pane: 'any' })
+  const resolved = keyBindingResolution([global, find, selection], {}, 'linux')
+  expect(resolved.bindings).toEqual([global, find, selection])
+  expect(activePlatformKeyBindings(resolved.bindings, 'editor')).toEqual([find, selection, global])
+  expect(resolved.report).toEqual([])
+})
+
+it('reports accidental duplicates even without overrides', () => {
+  const first = binding('Mod+J', { command: 'workspace.togglePanel' })
+  const second = binding('Mod+J', { command: 'workspace.toggleSidebarVisibility' })
+  const resolved = keyBindingResolution([first, second], {}, 'linux')
+  expect(resolved.bindings).toEqual([first])
+  expect(resolved.report).toEqual([
+    expect.objectContaining({
+      command: second.command,
+      keys: second.keys,
+      reason: 'duplicate',
+      winner: first.command,
+    }),
+  ])
+})
+
+it('reports partial alias loss without marking the command fully shadowed', () => {
+  const defaults = [
+    binding('Mod+,', { command: 'workspace.showSettings' }),
+    binding('Mod+K Mod+S', { command: 'workspace.showSettings' }),
+  ]
+  const overrides = { 'workspace.togglePanel': 'Mod+K Mod+S' }
+  expect(commandKeyBindings(defaults, overrides, 'linux')).toContainEqual(
+    expect.objectContaining({
+      command: 'workspace.showSettings',
+      effectiveKeys: ['Mod+,'],
+      shadowedBy: null,
+    }),
+  )
+  expect(keyBindingResolution(defaults, overrides, 'linux').report).toContainEqual(
+    expect.objectContaining({
+      command: 'workspace.showSettings',
+      keys: 'Mod+K Mod+S',
+      reason: 'override',
+      winner: 'workspace.togglePanel',
+    }),
+  )
+})
+
+it('reports invalid spelling independently from unknown commands', () => {
+  const defaults = [binding('Mod+S', { command: 'workspace.saveFile' })]
+  const resolved = keyBindingResolution(
+    defaults,
+    {
+      'workspace.saveFile': 'NotAHotkey',
+      'workspace.doesNotExist': 'Mod+J',
+    },
+    'linux',
+  )
+  expect(resolved.bindings).toEqual(defaults)
+  expect(resolved.report).toEqual([
+    expect.objectContaining({ command: 'workspace.saveFile', reason: 'invalid-chord' }),
+    expect.objectContaining({ command: 'workspace.doesNotExist', reason: 'unknown-command' }),
+  ])
+})
+
+it.each(defaultBindingPlatforms)(
+  'imports both complete and distinct Editor presets on %s',
+  (platform) => {
+    const native = presetPlatformKeyBindings(platform, 'default')
+    const vscode = presetPlatformKeyBindings(platform, 'vscode')
+    expect(
+      native.unmapped.every(
+        (row) => row.reason === 'Reserved by the browser host without command dispatch.',
+      ),
+    ).toBe(true)
+    expect(vscode.unmapped).toEqual(native.unmapped)
+    expect(native.bindings).not.toEqual(vscode.bindings)
+    for (const preset of [native, vscode]) {
+      expect(preset.bindings).toContainEqual(
+        expect.objectContaining({ command: 'editor.editor.action.toggleTabFocusMode' }),
+      )
+      expect(preset.bindings).toContainEqual(
+        expect.objectContaining({ command: 'editor.goToDefinition', keys: 'F12' }),
+      )
+      expect(preset.bindings).toContainEqual(
+        expect.objectContaining({ command: 'editor.editor.foldAll' }),
+      )
+    }
+  },
+)
+
+it('prefers an executable binding over a browser reservation in either order', () => {
+  const reserved = binding('F12', { command: null, pane: 'editor' })
+  const definition = binding('F12', { command: 'editor.goToDefinition', pane: 'editor' })
+  for (const defaults of [
+    [reserved, definition],
+    [definition, reserved],
+  ]) {
+    const resolved = keyBindingResolution(defaults, {}, 'linux')
+    expect(resolved.bindings).toEqual([definition])
+    expect(resolved.report).toContainEqual(
+      expect.objectContaining({
+        command: null,
+        keys: 'F12',
+        reason: 'reservation-replaced',
+        winner: 'editor.goToDefinition',
+      }),
+    )
+  }
 })

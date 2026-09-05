@@ -1,3 +1,4 @@
+import { parseArgs } from 'node:util'
 import { execFileSync } from 'node:child_process'
 import { readFileSync, realpathSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
@@ -6,8 +7,13 @@ import { normalizeRegisterableHotkey } from '@tanstack/hotkeys'
 import { activePlatformKeyBindings } from '@/keymap/active-bindings'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
 import { editorCommands } from '@/keymap/editor-commands'
-import { buildKeymapTrie, trieStep } from '@/keymap/utils/keymap-trie'
+import { buildKeymapTrie, trieStep } from '@singapor/core/keymap'
 
+const { values } = parseArgs({
+  args: process.argv.slice(2),
+  options: { built: { type: 'string' }, baseline: { type: 'string' } },
+})
+const baseline = values.baseline ? JSON.parse(readFileSync(values.baseline, 'utf8')) : null
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const editorPackage = resolve(
   dirname(realpathSync(fileURLToPath(import.meta.resolve('@singapor/core')))),
@@ -15,9 +21,9 @@ const editorPackage = resolve(
 )
 const editorRoot = resolve(editorPackage, '../..')
 const built = await import(
-  process.argv[2] ? pathToFileURL(resolve(process.argv[2])).href : '@singapor/core'
+  values.built ? pathToFileURL(resolve(values.built)).href : '@singapor/core/keymap'
 )
-const source = await import(pathToFileURL(resolve(editorPackage, 'src/editor/keymap.ts')).href)
+const source = await import(pathToFileURL(resolve(editorPackage, 'src/public/keymap.ts')).href)
 const commandSource = await import(
   pathToFileURL(resolve(editorPackage, 'src/editor/commands.ts')).href
 )
@@ -34,15 +40,14 @@ function revision(root) {
   return execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim()
 }
 
-function editorRows(api, platform) {
-  return api.defaultEditorKeymapLayers(platform).map((layer) => ({
+function editorRows(api, platform, preset = 'default') {
+  return api.presetEditorKeymapLayers(preset, platform).map((layer) => ({
     id: layer.id,
     source: layer.source ?? null,
     bindings: layer.bindings.map((binding) => ({
       ...binding,
-      hotkey: undefined,
       command: binding.command,
-      keys: normalizeRegisterableHotkey(binding.hotkey, platform),
+      keys: binding.chord.map((stroke) => normalizeRegisterableHotkey(stroke, platform)).join(' '),
       preventDefault: binding.preventDefault ?? null,
       stopPropagation: binding.stopPropagation ?? null,
     })),
@@ -54,22 +59,44 @@ function platformReport(platform) {
   const builtRows = editorRows(built, platform)
   const bindings = defaultPlatformKeyBindings(platform)
   const active = activePlatformKeyBindings(bindings, 'editor')
-  const trie = buildKeymapTrie(active, platform)
+  const trie = buildKeymapTrie(
+    active.map((binding) => ({ chord: binding.chord, payload: binding })),
+    platform,
+  )
   const commands = new Set(sourceRows.flatMap((layer) => layer.bindings.map((row) => row.command)))
   return {
     sourceMatchesBuild: JSON.stringify(sourceRows) === JSON.stringify(builtRows),
+    vscodeSourceMatchesBuild:
+      JSON.stringify(editorRows(source, platform, 'vscode')) ===
+      JSON.stringify(editorRows(built, platform, 'vscode')),
     sourceRows,
     builtRows,
     missingBoundEditorCommands: [...commands].filter((id) => !registered.has(id)).sort(),
     unboundEditorCommands: commandIds.filter((id) => !commands.has(id)).sort(),
     platformBindings: bindings,
     activeEditorBindings: active,
-    trieDropped: trie.dropped,
+
     reservations: bindings.filter((binding) => binding.command === null),
     platformOnlyCommands: bindings
       .filter((binding) => binding.command && !binding.command.startsWith('editor.'))
       .map((binding) => binding.command),
     benchmark: benchmark(trie),
+    extractionBenchmark: compareBaseline(platform),
+  }
+}
+
+function compareBaseline(platform) {
+  if (!baseline) return null
+  const previous = baseline.platforms[platform]
+  const trie = buildKeymapTrie(
+    previous.activeEditorBindings.map((binding) => ({ chord: binding.chord, payload: binding })),
+    platform,
+  )
+  const current = benchmark(trie)
+  return {
+    previous: previous.benchmark,
+    current,
+    sameOutcomes: JSON.stringify(previous.benchmark.results) === JSON.stringify(current.results),
   }
 }
 
@@ -84,11 +111,14 @@ function benchmark(trie) {
     { key: 'F24', code: 'F24' },
   ].map((event) => ({ altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, ...event }))
   const iterations = 100_000
-  for (let index = 0; index < 10_000; index += 1) trieStep(trie.root, events[index % events.length])
+  for (let index = 0; index < 10_000; index += 1) trieStep(trie, events[index % events.length])
   const results = { miss: 0, arm: 0, run: 0 }
   const started = performance.now()
   for (let index = 0; index < iterations; index += 1) {
-    results[trieStep(trie.root, events[index % events.length]).kind] += 1
+    const edge = trieStep(trie, events[index % events.length])
+    let outcome = 'miss'
+    if (edge) outcome = edge.node.candidates.length ? 'run' : 'arm'
+    results[outcome] += 1
   }
   return { iterations, elapsedMs: performance.now() - started, results, events }
 }
@@ -112,4 +142,12 @@ process.stdout.write(
     2,
   )}\n`,
 )
-if (Object.values(platforms).some((report) => !report.sourceMatchesBuild)) process.exitCode = 1
+if (
+  Object.values(platforms).some(
+    (report) =>
+      !report.sourceMatchesBuild ||
+      !report.vscodeSourceMatchesBuild ||
+      report.extractionBenchmark?.sameOutcomes === false,
+  )
+)
+  process.exitCode = 1

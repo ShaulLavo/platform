@@ -1,4 +1,4 @@
-import { detectPlatform, PUNCTUATION_CODE_MAP } from '@tanstack/hotkeys'
+import { detectPlatform } from '@tanstack/hotkeys'
 import type { KeybindingOverrides } from '@workspace/contracts'
 
 import type { FocusArea } from '@/lib/focus/state/service'
@@ -15,14 +15,26 @@ import type {
 
 type PlatformName = ReturnType<typeof detectPlatform>
 
-type SelectedBinding = {
-  readonly binding: PlatformKeyBinding
-  readonly priority: number
+export type BindingResolutionEntry = {
+  readonly bindingId: string
+  readonly command: string | null
+  readonly keys: string | null
+  readonly reason:
+    | 'duplicate'
+    | 'reservation'
+    | 'reservation-replaced'
+    | 'unreachable-prefix'
+    | 'override'
+    | 'unbound'
+    | 'replaced'
+    | 'unknown-command'
+    | 'invalid-chord'
+  readonly winner: PlatformCommandId | null
 }
 
-type KeyBindingResolution = {
+export type KeyBindingResolution = {
   readonly bindings: readonly PlatformKeyBinding[]
-  /** Command whose binding was dropped → the command that took the key. */
+  readonly report: readonly BindingResolutionEntry[]
   readonly shadowedBy: ReadonlyMap<PlatformCommandId, PlatformCommandId>
 }
 
@@ -33,19 +45,6 @@ export type CommandKeyBindingRow = CommandKeyBinding & {
   readonly shadowedBy: PlatformCommandId | null
 }
 
-const LETTER_CODE_PATTERN = /^Key([A-Z])$/
-const DIGIT_CODE_PATTERN = /^Digit([0-9])$/
-export const LATIN_LETTER_PATTERN = /^[A-Z]$/
-const NO_SHADOWED_COMMANDS: ReadonlyMap<PlatformCommandId, PlatformCommandId> = new Map()
-
-/**
- * A user override replaces its command's defaults outright: the settings
- * document stores one hotkey per command, so a command with two defaults loses
- * both. An override naming a command this build does not have, or a hotkey no
- * keyboard can produce, is left out — it would drop a working default and
- * dispatch nothing in its place. Bindings the override shadows are dropped; see
- * `liveKeyBindings`.
- */
 export function resolvedPlatformKeyBindings(
   defaults: readonly PlatformKeyBinding[],
   overrides: KeybindingOverrides,
@@ -58,21 +57,14 @@ export function activePlatformKeyBindings(
   bindings: readonly PlatformKeyBinding[],
   focusedPane: FocusArea,
 ): readonly PlatformKeyBinding[] {
-  const selected = new Map<string, SelectedBinding>()
-
-  for (const binding of bindings) {
-    selectActiveBinding(selected, binding, focusedPane)
-  }
-
-  return Array.from(selected.values(), ({ binding }) => binding)
+  // Pane-specific candidates precede globals; ties retain preset order.
+  return bindings
+    .filter((binding) => bindingMatchesFocusedPane(binding, focusedPane))
+    .toSorted(
+      (left, right) => bindingPriority(right, focusedPane) - bindingPriority(left, focusedPane),
+    )
 }
 
-/**
- * One row per command the key table can reach, read back out of the resolved
- * table rather than off the override document, so the settings editor lists
- * what is in force instead of what was asked for: a command whose key another
- * command's override took reports the key it lost and names the winner.
- */
 export function commandKeyBindings(
   defaults: readonly PlatformKeyBinding[],
   overrides: KeybindingOverrides,
@@ -83,57 +75,127 @@ export function commandKeyBindings(
   const live = liveBindingsByCommand(bindings)
   const defaultKeys = defaultKeysByCommand(defaults)
 
-  for (const command of applied.keys()) {
-    if (defaultKeys.has(command)) continue
-
-    defaultKeys.set(command, [])
-  }
-
-  return Array.from(defaultKeys, ([command, keys]) =>
+  return platformCommands.map(({ id: command }) =>
     commandKeyBindingRow({
       applied,
       command,
-      defaultKeys: keys,
+      defaultKeys: defaultKeys.get(command) ?? [],
       live: live.get(command) ?? [],
       shadowedBy: shadowedBy.get(command) ?? null,
     }),
   )
 }
 
-function keyBindingResolution(
+export function keyBindingResolution(
   defaults: readonly PlatformKeyBinding[],
   overrides: KeybindingOverrides,
-  platform: PlatformName,
+  platform: PlatformName = detectPlatform(),
 ): KeyBindingResolution {
+  const preset = resolvePresetBindings(defaults)
   const entries = appliedOverrides(overrides)
-  if (entries.length === 0) return { bindings: defaults, shadowedBy: NO_SHADOWED_COMMANDS }
-
   const overridden = new Set(entries.map(([command]) => command))
-  const kept = defaults.filter((binding) => !binding.command || !overridden.has(binding.command))
+  const kept = preset.bindings.filter(
+    (binding) => !binding.command || !overridden.has(binding.command),
+  )
   const bound = entries.flatMap(([command, keys]) =>
     userKeyBinding(defaults, command, keys, platform),
   )
-
-  return liveKeyBindings(kept, bound)
+  const resolved = liveKeyBindings(kept, bound)
+  return {
+    ...resolved,
+    report: [
+      ...preset.report,
+      ...overrideReport(defaults, overrides, overridden),
+      ...resolved.report,
+    ],
+  }
 }
 
-/**
- * Collision policy: a user binding takes the key it names, and every binding it
- * would have to beat is dropped rather than kept. Two bindings only collide
- * inside one pane — a global Mod+F and an editor-pane Mod+F are separate slots
- * that `activePlatformKeyBindings` arbitrates per keystroke — so a pane is the
- * scope in which a key can be claimed. Dropping is what keeps the table honest:
- * the matcher reaches exactly one binding per pane and key, so a kept loser
- * would have the palette, the menus and the settings editor all advertise a
- * shortcut that provably does nothing. Two overrides naming one key are the
- * same story, and the later one in the settings document wins, which is the
- * order the matcher would have resolved them in anyway.
- */
+function resolvePresetBindings(defaults: readonly PlatformKeyBinding[]) {
+  const bindings: PlatformKeyBinding[] = []
+  const report: BindingResolutionEntry[] = []
+  for (const [index, binding] of defaults.entries()) {
+    const executable = binding.command
+      ? null
+      : defaults.find((candidate) => candidate.command && collidesWith(candidate, binding))
+    if (executable) {
+      report.push(resolutionEntry(binding, index, 'reservation-replaced', executable.command))
+      continue
+    }
+    const winner = bindings.find((candidate) => presetConflict(candidate, binding))
+    if (winner) {
+      const reason = winner.keys === binding.keys ? 'duplicate' : 'unreachable-prefix'
+      report.push(resolutionEntry(binding, index, reason, winner.command))
+      continue
+    }
+    bindings.push(binding)
+    if (!binding.command) report.push(resolutionEntry(binding, index, 'reservation'))
+  }
+  return { bindings, report }
+}
+
+function presetConflict(candidate: PlatformKeyBinding, binding: PlatformKeyBinding) {
+  if ((candidate.pane ?? 'any') !== (binding.pane ?? 'any')) return false
+  if (!keysConflict(candidate.keys, binding.keys)) return false
+  if (!candidate.command) return true
+  if (!binding.command && candidate.keys === binding.keys) return true
+  // A command may be disabled or decline, so its longer alternatives remain reachable.
+  if (candidate.keys !== binding.keys) return false
+  return bindingConditions(candidate) === bindingConditions(binding)
+}
+
+function bindingConditions(binding: PlatformKeyBinding) {
+  const command = binding.command ? platformCommand(binding.command) : null
+  return JSON.stringify([command?.when ?? [], binding.editorWhen ?? []])
+}
+
+function resolutionEntry(
+  binding: PlatformKeyBinding,
+  index: number,
+  reason: BindingResolutionEntry['reason'],
+  winner: PlatformCommandId | null = null,
+): BindingResolutionEntry {
+  return {
+    bindingId: `${binding.source}:${binding.pane ?? 'any'}:${index}:${binding.command ?? 'reservation'}:${binding.keys}`,
+    command: binding.command,
+    keys: binding.keys,
+    reason,
+    winner,
+  }
+}
+
+function overrideReport(
+  defaults: readonly PlatformKeyBinding[],
+  overrides: KeybindingOverrides,
+  applied: ReadonlySet<PlatformCommandId>,
+): BindingResolutionEntry[] {
+  const known = knownCommands()
+  const report: BindingResolutionEntry[] = []
+  for (const [command, keys] of Object.entries(overrides)) {
+    if (!known.has(command) || (keys !== null && !isBindableChord(keys))) {
+      report.push({
+        bindingId: `user:${command}`,
+        command,
+        keys,
+        reason: known.has(command) ? 'invalid-chord' : 'unknown-command',
+        winner: null,
+      })
+    }
+  }
+  for (const [index, binding] of defaults.entries()) {
+    if (!binding.command || !applied.has(binding.command)) continue
+    const reason = overrides[binding.command] === null ? 'unbound' : 'replaced'
+    report.push(resolutionEntry(binding, index, reason))
+  }
+  return report
+}
+
 function liveKeyBindings(
   kept: readonly PlatformKeyBinding[],
   bound: readonly PlatformKeyBinding[],
 ): KeyBindingResolution {
   const shadowedBy = new Map<PlatformCommandId, PlatformCommandId>()
+  const report: BindingResolutionEntry[] = []
   const liveOverrides: PlatformKeyBinding[] = []
   const bindings: PlatformKeyBinding[] = []
 
@@ -142,6 +204,7 @@ function liveKeyBindings(
     const winner = bindingClaimingKey(liveOverrides, binding)
     if (winner) {
       recordShadowedCommand(shadowedBy, binding, winner)
+      report.push(resolutionEntry(binding, report.length, 'override', winner.command))
       continue
     }
 
@@ -152,6 +215,7 @@ function liveKeyBindings(
     const winner = bindingClaimingKey(liveOverrides, binding)
     if (winner) {
       recordShadowedCommand(shadowedBy, binding, winner)
+      report.push(resolutionEntry(binding, report.length, 'override', winner.command))
       continue
     }
 
@@ -159,7 +223,7 @@ function liveKeyBindings(
   }
 
   bindings.push(...liveOverrides.reverse())
-  return { bindings, shadowedBy }
+  return { bindings, report, shadowedBy }
 }
 
 function bindingClaimingKey(
@@ -186,20 +250,6 @@ function recordShadowedCommand(
   if (!winner.command) return
 
   shadowedBy.set(shadowed.command, winner.command)
-}
-
-function selectActiveBinding(
-  selected: Map<string, SelectedBinding>,
-  binding: PlatformKeyBinding,
-  focusedPane: FocusArea,
-) {
-  if (!bindingMatchesFocusedPane(binding, focusedPane)) return
-
-  const priority = bindingPriority(binding, focusedPane)
-  const current = selected.get(binding.keys)
-  if (current && current.priority > priority) return
-
-  selected.set(binding.keys, { binding, priority })
 }
 
 function bindingMatchesFocusedPane(binding: PlatformKeyBinding, focusedPane: FocusArea) {
@@ -261,6 +311,7 @@ function userKeyBinding(
     {
       command,
       chord,
+      editorWhen: template?.editorWhen,
       keys: chordKeys(chord, platform),
       meta: commandHotkeyMeta(command),
       pane: template?.pane ?? commandDefaultPane(command),
@@ -351,21 +402,4 @@ function defaultKeysByCommand(bindings: readonly PlatformKeyBinding[]) {
   }
 
   return byCommand
-}
-
-/**
- * `event.code` names the physical key whatever the layout prints on it. Without
- * this a Cyrillic or Hebrew layout reports 'я' or 'ז' for the key labelled Z,
- * and every Mod+Z-shaped binding silently stops working.
- */
-export function physicalKeyName(code: string | undefined): string | null {
-  if (!code) return null
-
-  const letter = LETTER_CODE_PATTERN.exec(code)?.[1]
-  if (letter) return letter
-
-  const digit = DIGIT_CODE_PATTERN.exec(code)?.[1]
-  if (digit) return digit
-
-  return PUNCTUATION_CODE_MAP[code] ?? null
 }

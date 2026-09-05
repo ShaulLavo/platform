@@ -1,3 +1,5 @@
+import { editorCommandMutates } from '@singapor/core/keymap'
+import type { EditorKeymapContext } from '@singapor/core/keymap'
 import type { EditorSaveService } from '@/features/editor/state/save-service'
 import type { EditorCommandId } from '@singapor/core'
 import type { Icon } from '@phosphor-icons/react'
@@ -121,6 +123,8 @@ export type WorkspaceCommandRuntime = {
 
 export type PlatformCommandTarget =
   | {
+      readonly keymapContext: EditorKeymapContext | null
+      readonly inputElement: HTMLElement | null
       readonly focusTarget: ResolvedFocusTarget
       readonly kind: 'editor'
       readonly logIdentity: string
@@ -199,7 +203,7 @@ export function defineEditorCommand<const Id extends EditorCommandId>(
   },
 ): EditorCommand<`editor.${Id}`> {
   const when: CommandWhen[] = ['editorTarget']
-  if (command.undoCategory === 'text-edit') when.push('editorWritable')
+  if (editorCommandMutates(command.id)) when.push('editorWritable')
 
   return {
     ...command,

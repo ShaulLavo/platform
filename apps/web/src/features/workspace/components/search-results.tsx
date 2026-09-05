@@ -1,6 +1,5 @@
 import { useCallback, useMemo } from 'react'
 import type { WorkspaceSearchMatch } from '@workspace/contracts'
-import type { EditorKeymapLayer } from '@singapor/core'
 
 import { useEditorCommands } from '@/features/editor/state/commands'
 import {
@@ -21,11 +20,11 @@ import type { SearchResultOpenTarget } from '@/features/search/utils/result-view
 
 export function SearchResults({
   compact = true,
-  editorKeymapLayers,
+
   rootPath,
 }: {
   readonly compact?: boolean
-  readonly editorKeymapLayers: readonly EditorKeymapLayer[]
+
   readonly rootPath: string
 }) {
   const { activeResultId, groups, replaceText, replaceVisible, resultsQuery, resultsSearchQuery } =
@@ -97,7 +96,6 @@ export function SearchResults({
           canReplace={replaceVisible ? canReplace : false}
           displayedResultsQuery={resultsSearchQuery?.query ?? null}
           groups={groups}
-          keymapLayers={editorKeymapLayers}
           replaceVisible={Boolean(replaceVisible)}
           resultsQuery={resultsQuery}
         />
