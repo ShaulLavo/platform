@@ -1,3 +1,5 @@
+import { editorCommandMutates } from '@singapor/core/keymap'
+import { editorCommandIdFromPlatform } from '@/keymap/editor-keymap'
 import { describe } from 'vitest'
 import { expect, test as it } from '../../../test/fixtures'
 
@@ -26,7 +28,6 @@ const RESERVED_HOTKEYS = [
   'Mod+2',
   'Mod+3',
   'Mod+W',
-  'F12',
 ]
 const MAC_ONLY_RESERVED_HOTKEY = 'Mod+Alt+Tab'
 
@@ -116,6 +117,13 @@ const TEXT_EDIT_COMMAND_IDS = [
   'editor.deleteForward',
   'editor.indentSelection',
   'editor.outdentSelection',
+  'editor.deleteWordPartLeft',
+  'editor.deleteWordPartRight',
+  'editor.editor.action.autoFix',
+  'editor.editor.action.inlineSuggest.commit',
+  'editor.editor.action.inlineSuggest.acceptNextWord',
+  'editor.editor.action.reindentlines',
+  'editor.editor.action.reindentselectedlines',
 ] as const satisfies readonly PlatformCommandId[]
 
 const FILE_OPERATION_COMMAND_IDS = [
@@ -194,9 +202,7 @@ describe('command table', () => {
     expect(new Set(ids).size).toBe(ids.length)
   })
 
-  it('has complete execution metadata on all 142 rows', () => {
-    expect(platformCommands).toHaveLength(142)
-
+  it('has complete execution metadata on all rows', () => {
     for (const command of platformCommands) {
       expect(['async', 'sync']).toContain(command.execution)
       expect(['editor', 'workspace']).toContain(command.target)
@@ -229,8 +235,11 @@ describe('command table', () => {
     for (const command of platformCommands) {
       if (command.target !== 'editor') continue
 
-      const when =
-        command.undoCategory === 'text-edit' ? ['editorTarget', 'editorWritable'] : ['editorTarget']
+      const editorId = editorCommandIdFromPlatform(command.id)
+      expect(editorId).not.toBeNull()
+      const mutates = editorId !== null && editorCommandMutates(editorId)
+      expect(command.undoCategory).toBe(mutates ? 'text-edit' : 'view-only')
+      const when = mutates ? ['editorTarget', 'editorWritable'] : ['editorTarget']
       expect({ id: command.id, when: command.when }).toEqual({ id: command.id, when })
     }
   })
@@ -258,7 +267,7 @@ describe('command table', () => {
 
   it('keeps the browser-hostile chords reserved', () => {
     const mac = reservedBindings('mac')
-    expect(mac).toHaveLength(9)
+    expect(mac).toHaveLength(8)
     expect(mac.map((binding) => binding.chord[0])).toEqual(RESERVED_HOTKEYS)
 
     for (const binding of mac) {

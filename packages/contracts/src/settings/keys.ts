@@ -591,6 +591,17 @@ export const SETTINGS_REGISTRY = {
       'Explicit leading order for the picker. Models named by neither list stay visible after these, in provider order.',
     keywords: ['model', 'order', 'sort', 'picker'],
   }),
+  'keybindings.preset': defineSetting({
+    schema: v.picklist(['default', 'vscode'] as const),
+    default: 'default',
+    scope: 'application',
+    widget: 'enum',
+    category: 'Keyboard shortcuts',
+    title: 'Keyboard preset',
+    description:
+      'Editor shortcuts to use before applying your overrides. Default uses the native editor pack; vscode uses the VS Code pack.',
+    keywords: ['keybinding', 'shortcut', 'preset', 'vscode', 'keymap'],
+  }),
   'keybindings.overrides': defineSetting({
     schema: keybindingOverridesSchema,
     default: {},
