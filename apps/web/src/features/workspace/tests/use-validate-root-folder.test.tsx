@@ -1,8 +1,8 @@
 import { createDefaultWorkbenchLayout } from '@/features/workbench/utils/layout'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
-import { renderHook, waitFor } from '@testing-library/react'
+import { waitFor } from '@testing-library/react'
 import path from 'node:path'
-import type { ReactNode } from 'react'
+import { renderWithProviders } from '../../../../test/render'
 
 import { expect, test } from '../../../../test/fixtures'
 import {
@@ -75,11 +75,14 @@ function storeWithRoot(rootFolder: PickedFsEntry) {
 }
 
 function renderValidation(store: ReturnType<typeof storeWithRoot>) {
-  const wrapper = ({ children }: { children: ReactNode }) => (
+  return renderWithProviders(
     <EditorWorkspaceStateContext.Provider value={store}>
-      {children}
-    </EditorWorkspaceStateContext.Provider>
+      <RootValidation />
+    </EditorWorkspaceStateContext.Provider>,
   )
+}
 
-  return renderHook(() => useValidateRootFolder(), { wrapper })
+function RootValidation() {
+  useValidateRootFolder()
+  return null
 }

@@ -78,6 +78,7 @@ test('only the terminal assistant message shows its metadata row', () => {
   const shown = renderBubble(chatMessage({ text: 'Done.' }), { showAssistantCopyButton: true })
   expect(shown.container.querySelector('[data-assistant-message-meta]')).not.toBeNull()
 
+  shown.unmount()
   const hidden = renderBubble(chatMessage({ text: 'Still working.' }))
   expect(hidden.container.querySelector('[data-assistant-message-meta]')).toBeNull()
 })

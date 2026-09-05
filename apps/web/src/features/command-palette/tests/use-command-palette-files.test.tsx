@@ -1,6 +1,5 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { renderHook, waitFor } from '@testing-library/react'
-import type { ReactNode } from 'react'
+import { waitFor } from '@testing-library/react'
+import { renderHookWithProviders } from '../../../../test/render'
 
 import { expect, test } from '../../../../test/fixtures'
 import type { FilePaletteItem } from '@/features/command-palette/command-palette-types'
@@ -13,10 +12,7 @@ test('does not show stale quick-open file results after the query changes', asyn
   await client.fs['create-file'].post({ path: 'repo/rendering.ts' })
   await client.fs['create-file'].post({ path: 'repo/default-bindings.ts' })
 
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
-  const { result, rerender } = renderHook(
+  const { result, rerender, queryClient } = renderHookWithProviders(
     ({ query }: { query: string }) =>
       useCommandPaletteFiles({
         mode: 'files',
@@ -27,7 +23,6 @@ test('does not show stale quick-open file results after the query changes', asyn
       }),
     {
       initialProps: { query: 'rendering' },
-      wrapper: queryClientWrapper(queryClient),
     },
   )
 
@@ -44,12 +39,6 @@ test('does not show stale quick-open file results after the query changes', asyn
   )
   queryClient.clear()
 })
-
-function queryClientWrapper(queryClient: QueryClient) {
-  return function Wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-  }
-}
 
 function emptyTreeState(): LoadState<TreeModel> {
   return {

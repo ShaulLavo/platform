@@ -11,7 +11,7 @@ import type {
   ParsedWorkspaceEdit,
   WorkspaceEditOperation,
 } from '@singapor/lsp-plugin/workspace-edit'
-import { QueryClient } from '@tanstack/react-query'
+import { createTestQueryClient } from '../render'
 import {
   nodeWorkspaceEditFileSystemDriver,
   type WorkspaceEditFileSystemDriver,
@@ -28,7 +28,7 @@ import { fetchFile, fetchTree, writeFileContent } from '@/lib/file-server'
 import { fileSystemKeys } from '@/lib/query-keys'
 import { treeModel } from '@/lib/tree-model'
 
-import { createInProcessClient } from '../client'
+import { createInProcessClient, createRestartableInProcessClient } from '../client'
 import { expect, test } from '../fixtures'
 import { makeTestServer, type TestServer } from '../server'
 
@@ -397,7 +397,8 @@ test('evicts the oldest history group at the cap and releases every path', async
 test('invalidates history when the server epoch changes after restart', async () => {
   const previous = getClient()
   const firstServer = await makeTestServer()
-  setClient(createInProcessClient(firstServer))
+  const connection = createRestartableInProcessClient(firstServer)
+  setClient(connection.client)
   try {
     const harness = createHarness()
     const livePath = 'restart-live.ts'
@@ -425,7 +426,7 @@ test('invalidates history when the server epoch changes after restart', async ()
 
     const restarted = await makeTestServer()
     try {
-      setClient(createInProcessClient(restarted))
+      connection.reconnect(restarted)
       await harness.fileSync.discoverWorkspaceRecovery('')
       expect(harness.service.getSnapshot()).toMatchObject({ canRedo: false, canUndo: false })
       await expect(harness.service.undo()).resolves.toBe(false)
@@ -764,7 +765,7 @@ type IntegrationHarness = ReturnType<typeof createHarness>
 
 function createHarness() {
   const store = createEditorDocumentStore()
-  const queryClient = new QueryClient()
+  const queryClient = createTestQueryClient()
   const fileSync = new FileSyncService(store, queryClient)
   const service = new WorkspaceEditService({
     documentStore: store,

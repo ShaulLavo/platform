@@ -15,6 +15,17 @@ export function createInProcessClient(server: TestServer): ReturnType<typeof tre
   return createClient(server, directInProcessFetcher(server))
 }
 
+export function createRestartableInProcessClient(server: TestServer) {
+  let currentFetch = directInProcessFetcher(server)
+  const fetcher = ((input, init) => currentFetch(input, init)) as typeof fetch
+  return {
+    client: createClient(server, fetcher),
+    reconnect(nextServer: TestServer) {
+      currentFetch = directInProcessFetcher(nextServer)
+    },
+  }
+}
+
 export function createObservedInProcessClient(
   server: TestServer,
   beforeRequest: (request: Request) => void | Promise<void>,

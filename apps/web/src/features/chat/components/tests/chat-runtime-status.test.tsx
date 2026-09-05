@@ -1,4 +1,3 @@
-import { QueryClient } from '@tanstack/react-query'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
@@ -9,7 +8,7 @@ import { ChatProviderSignInProvider } from '@/features/chat/providers/provider-s
 import type { ChatThread } from '@/features/chat/state/chat-projection-store'
 import { providerSnapshot, thread } from '../../../../../test/factories/chat'
 import { expect, test } from '../../../../../test/fixtures'
-import { renderWithProviders } from '../../../../../test/render'
+import { createTestQueryClient, renderWithProviders } from '../../../../../test/render'
 
 const idleCommandState: ChatCommandState = {
   commandFailure: null,
@@ -74,9 +73,7 @@ function renderStatus({
   commandState?: ChatCommandState
   thread?: ChatThread
 } = {}) {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { gcTime: Number.POSITIVE_INFINITY, retry: false } },
-  })
+  const queryClient = createTestQueryClient()
   queryClient.setQueryData(providerListQueryOptions().queryKey, {
     providers: [providerSnapshot()],
   })
