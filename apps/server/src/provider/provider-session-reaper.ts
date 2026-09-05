@@ -1,4 +1,4 @@
-import type { OrchestrationSessionStatus, ThreadId } from '@workspace/contracts'
+import type { SessionRuntimeStatus, SessionId } from '@workspace/contracts'
 
 import {
   recordChatPipelineInfo,
@@ -18,9 +18,9 @@ export const IDLE_PROVIDER_SESSION_DEADLINE_MS = 30 * 60 * 1000
  * which lose real state if the process dies. `starting` has not reported yet,
  * and `stopped`/`error` have no process left to reclaim.
  */
-const REAPABLE_STATUS: OrchestrationSessionStatus = 'ready'
+const REAPABLE_STATUS: SessionRuntimeStatus = 'ready'
 
-type StopSession = (input: { threadId: ThreadId }) => Promise<unknown>
+type StopRuntime = (input: { sessionId: SessionId }) => Promise<unknown>
 
 /**
  * Reclaims the child processes of sessions nobody is using.
@@ -42,18 +42,21 @@ export class ProviderSessionReaper {
   private readonly deadlineMs: number
   private readonly directory: ProviderSessionDirectory
   private readonly now: () => number
-  private readonly stopSession: StopSession
+  private readonly isLaunching: (sessionId: SessionId) => boolean
+  private readonly stopRuntime: StopRuntime
 
   constructor(options: {
     deadlineMs?: number
     directory: ProviderSessionDirectory
     now?: () => number
-    stopSession: StopSession
+    isLaunching?: (sessionId: SessionId) => boolean
+    stopRuntime: StopRuntime
   }) {
     this.deadlineMs = options.deadlineMs ?? IDLE_PROVIDER_SESSION_DEADLINE_MS
     this.directory = options.directory
     this.now = options.now ?? Date.now
-    this.stopSession = options.stopSession
+    this.isLaunching = options.isLaunching ?? (() => false)
+    this.stopRuntime = options.stopRuntime
   }
 
   /**
@@ -61,45 +64,46 @@ export class ProviderSessionReaper {
    * the user actually asked for, and one adapter that cannot stop must not fail
    * the turn that triggered the sweep.
    */
-  async sweep(options: { exceptThreadId?: ThreadId } = {}) {
-    const idle = this.idleBindings(options.exceptThreadId)
+  async sweep(options: { exceptSessionId?: SessionId } = {}) {
+    const idle = this.idleBindings(options.exceptSessionId)
     if (idle.length === 0) return []
 
-    const reaped: ThreadId[] = []
+    const reaped: SessionId[] = []
     for (const binding of idle) {
       const stopped = await this.reap(binding)
       if (!stopped) continue
 
-      reaped.push(binding.threadId)
+      reaped.push(binding.sessionId)
     }
 
     recordChatPipelineInfo('chat.pipeline.provider_session_reaper.sweep', {
       deadlineMs: this.deadlineMs,
       idleCount: idle.length,
       reapedCount: reaped.length,
-      threadIds: reaped,
+      sessionIds: reaped,
     })
 
     return reaped
   }
 
-  private idleBindings(exceptThreadId: ThreadId | undefined) {
+  private idleBindings(exceptSessionId: SessionId | undefined) {
     const cutoff = new Date(this.now() - this.deadlineMs).toISOString()
 
     return this.directory
       .listIdleSince(cutoff, REAPABLE_STATUS)
-      .filter((binding) => binding.threadId !== exceptThreadId)
+      .filter((binding) => binding.sessionId !== exceptSessionId)
+      .filter((binding) => !this.isLaunching(binding.sessionId))
   }
 
   private async reap(binding: ProviderRuntimeBindingWithMetadata) {
     try {
-      await this.stopSession({ threadId: binding.threadId })
+      await this.stopRuntime({ sessionId: binding.sessionId })
       return true
     } catch (error) {
       recordChatPipelineWarning('chat.pipeline.provider_session_reaper.stop_failed', {
         error,
         lastSeenAt: binding.lastSeenAt,
-        threadId: binding.threadId,
+        sessionId: binding.sessionId,
       })
       return false
     }

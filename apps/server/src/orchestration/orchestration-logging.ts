@@ -1,4 +1,4 @@
-import type { ThreadId } from '@workspace/contracts'
+import type { ClientOrchestrationCommand, SessionId } from '@workspace/contracts'
 import { recordProcessInfo, recordProcessWarning, type OperationContext } from '../observability'
 import type {
   OrchestrationCommand,
@@ -47,7 +47,7 @@ export function chatOperationContext(
 }
 
 export function orchestrationCommandSummary(
-  command: OrchestrationCommand,
+  command: OrchestrationCommand | ClientOrchestrationCommand,
   attachmentIngest?: CommandAttachmentIngest,
 ) {
   const summary: ChatPipelineContext = {
@@ -55,18 +55,18 @@ export function orchestrationCommandSummary(
     commandType: command.type,
   }
 
-  if ('threadId' in command) summary.threadId = command.threadId
+  if ('sessionId' in command) summary.sessionId = command.sessionId
   if ('projectId' in command) summary.projectId = command.projectId
   if ('turnId' in command) summary.turnId = command.turnId
 
-  if (command.type === 'thread.turn.start') {
+  if (command.type === 'session.turn.start') {
     summary.attachmentCount = command.message.attachments.length
-    summary.bootstrapCreateThread = Boolean(command.bootstrap?.createThread)
+    summary.bootstrapCreateSession = Boolean(command.bootstrap?.createSession)
     summary.interactionMode = command.interactionMode
     summary.messageId = command.message.messageId
     summary.model = command.modelSelection?.model
     summary.providerInstanceId = command.modelSelection?.providerInstanceId
-    summary.projectId = command.bootstrap?.createThread?.projectId
+    summary.worktreeId = command.bootstrap?.createSession?.worktreeId
     summary.runtimeMode = command.runtimeMode
     summary.textLength = command.message.text.length
   }
@@ -92,7 +92,7 @@ export function orchestrationEventSummary(event: OrchestrationEvent) {
     eventId: event.eventId,
     eventType: event.type,
     sequence: event.sequence,
-    threadId: threadIdFromEvent(event),
+    sessionId: sessionIdFromEvent(event),
     ...eventPayloadSummary(event),
   }
 }
@@ -103,7 +103,7 @@ export function orchestrationEventBatchSummary(events: readonly OrchestrationEve
     eventTypes: events.map((event) => event.type),
     maxSequence: events.at(-1)?.sequence ?? null,
     sequences: events.map((event) => event.sequence),
-    threadIds: uniqueValues(threadIdsFromEvents(events)),
+    sessionIds: uniqueValues(sessionIdsFromEvents(events)),
   }
 }
 
@@ -112,7 +112,7 @@ export function orchestrationReplaySummary(input: OrchestrationReplayEventsInput
     afterSequence: input.afterSequence,
     aggregateId: input.aggregateId,
     aggregateKind: input.aggregateKind,
-    threadId: input.threadId,
+    sessionId: input.sessionId,
   }
 }
 
@@ -120,15 +120,15 @@ export function providerRuntimeEventSummary(event: ProviderRuntimeEvent) {
   const summary: ChatPipelineContext = {
     eventId: event.eventId,
     eventType: event.type,
-    threadId: event.threadId,
+    sessionId: event.sessionId,
   }
 
   if ('turnId' in event) summary.turnId = event.turnId
   if ('providerInstanceId' in event) summary.providerInstanceId = event.providerInstanceId
 
-  if (event.type === 'session.set') {
+  if (event.type === 'runtime.set') {
     summary.activeTurnId = event.turnId
-    summary.providerSessionId = event.providerSessionId
+    summary.providerBindingHandle = event.providerBindingHandle
     summary.runtimeMode = event.runtimeMode
     summary.sessionStatus = event.status
   }
@@ -159,14 +159,14 @@ export function providerTurnSummary(input: ProviderTurnInput) {
     providerInstanceId: input.providerInstanceId,
     runtimeMode: input.runtimeMode,
     textLength: input.messageText.length,
-    threadId: input.thread.id,
+    sessionId: input.sessionId,
     turnId: input.turnId,
   }
 }
 
 export function providerTurnControlSummary(input: ProviderTurnControlInput) {
   return {
-    threadId: input.threadId,
+    sessionId: input.sessionId,
     turnId: input.turnId,
   }
 }
@@ -178,10 +178,9 @@ export function providerBindingSummary(binding: ProviderRuntimeBindingWithMetada
     adapterKey: binding.adapterKey,
     providerDriverKind: binding.providerDriverKind,
     providerInstanceId: binding.providerInstanceId,
-    providerSessionId: binding.providerSessionId,
+    providerBindingHandle: binding.providerBindingHandle,
     runtimeMode: binding.runtimeMode,
-    status: binding.status,
-    threadId: binding.threadId,
+    sessionId: binding.sessionId,
   }
 }
 
@@ -224,7 +223,7 @@ function errorField(error: Error, key: string) {
 }
 
 function eventPayloadSummary(event: OrchestrationEvent): ChatPipelineContext {
-  if (event.type === 'thread.message-sent') {
+  if (event.type === 'session.message-sent') {
     return {
       messageId: event.payload.messageId,
       messageRole: event.payload.role,
@@ -233,21 +232,21 @@ function eventPayloadSummary(event: OrchestrationEvent): ChatPipelineContext {
       turnId: event.payload.turnId,
     }
   }
-  if (event.type === 'thread.turn-start-requested') {
+  if (event.type === 'session.turn-start-requested') {
     return {
       messageId: event.payload.messageId,
       turnId: event.payload.turnId,
     }
   }
-  if (event.type === 'thread.session-set') {
+  if (event.type === 'session.runtime-set') {
     return {
-      activeTurnId: event.payload.session.activeTurnId,
-      providerInstanceId: event.payload.session.providerInstanceId,
-      providerSessionId: event.payload.session.providerSessionId,
-      sessionStatus: event.payload.session.status,
+      activeTurnId: event.payload.runtime.activeTurnId,
+      providerInstanceId: event.payload.runtime.providerInstanceId,
+      providerBindingHandle: event.payload.runtime.providerBindingHandle,
+      sessionStatus: event.payload.runtime.status,
     }
   }
-  if (event.type === 'thread.activity-appended') {
+  if (event.type === 'session.activity-appended') {
     return {
       activityId: event.payload.activity.id,
       activityKind: event.payload.activity.kind,
@@ -259,9 +258,9 @@ function eventPayloadSummary(event: OrchestrationEvent): ChatPipelineContext {
   return {}
 }
 
-function threadIdFromEvent(event: OrchestrationEvent): ThreadId | undefined {
-  if ('threadId' in event.payload) return event.payload.threadId
-  if (event.aggregateKind === 'thread') return event.aggregateId as ThreadId
+function sessionIdFromEvent(event: OrchestrationEvent): SessionId | undefined {
+  if ('sessionId' in event.payload) return event.payload.sessionId
+  if (event.aggregateKind === 'session') return event.aggregateId as SessionId
 
   return undefined
 }
@@ -270,15 +269,15 @@ function uniqueValues(values: string[]) {
   return Array.from(new Set(values))
 }
 
-function threadIdsFromEvents(events: readonly OrchestrationEvent[]) {
-  const threadIds: string[] = []
+function sessionIdsFromEvents(events: readonly OrchestrationEvent[]) {
+  const sessionIds: string[] = []
 
   for (const event of events) {
-    const threadId = threadIdFromEvent(event)
-    if (!threadId) continue
+    const sessionId = sessionIdFromEvent(event)
+    if (!sessionId) continue
 
-    threadIds.push(threadId)
+    sessionIds.push(sessionId)
   }
 
-  return threadIds
+  return sessionIds
 }

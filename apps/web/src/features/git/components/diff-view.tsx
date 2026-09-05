@@ -22,7 +22,7 @@ import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
  * diff gets the same tree-sitter highlighting, theming and virtualized scrolling
  * a file does. Snapshot ids (the git panel) resolve to one file; checkpoint ids
  * resolve to one file for a `file` scope and to every touched file for a `turn`
- * or `thread` scope.
+ * or `session` scope.
  */
 export function DiffView({
   documentInfo,

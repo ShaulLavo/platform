@@ -44,8 +44,11 @@ describe('isPathInWorkspace', () => {
     expect(isPathInWorkspace('/Users/dev/code/other/a.ts', ROOT)).toBe(false)
   })
 
-  test('rejects everything when there is no root', () => {
+  test('the configured filesystem root accepts relative paths', () => {
     expect(isPathInWorkspace('/a.ts', '')).toBe(false)
+    expect(isPathInWorkspace('a.ts', '')).toBe(true)
+    expect(isPathInWorkspace('', '')).toBe(true)
+    expect(isPathInWorkspace('../a.ts', '')).toBe(false)
   })
 })
 
@@ -85,7 +88,7 @@ describe('toWorkspaceRelative / toWorkspaceAbsolute', () => {
     expect(toWorkspaceAbsolute(ROOT, '../secrets/a.ts')).toBeNull()
     expect(toWorkspaceAbsolute(ROOT, 'apps/../../escape.ts')).toBeNull()
     expect(toWorkspaceAbsolute(ROOT, '')).toBeNull()
-    expect(toWorkspaceAbsolute('', 'a.ts')).toBeNull()
+    expect(toWorkspaceAbsolute('', 'a.ts')).toBe('a.ts')
   })
 
   test('keeps a literal `..` inside a filename, which is not a segment', () => {
@@ -99,4 +102,11 @@ describe('toWorkspaceRelative / toWorkspaceAbsolute', () => {
       expect(toWorkspaceAbsolute(ROOT, relative)).toBe(absolute)
     }
   })
+})
+
+test('configured filesystem root round-trips a file and its own selection', () => {
+  expect(toWorkspaceRelative('', 'src/main.ts')).toBe('src/main.ts')
+  expect(toWorkspaceAbsolute('', 'src/main.ts')).toBe('src/main.ts')
+  expect(toWorkspaceRelative('', '')).toBe('.')
+  expect(toWorkspaceAbsolute('', '.')).toBe('')
 })

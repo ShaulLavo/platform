@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT_ID as FIXTURE_ENVIRONMENT_ID } from '../../../../../test/factories/chat'
 import { renderHook } from '@testing-library/react'
 import type { LexicalEditor } from 'lexical'
 import { beforeEach } from 'vitest'
@@ -15,7 +16,11 @@ import {
 } from '@/features/chat/state/composer-inbox-store'
 import { expect, test } from '../../../../../test/fixtures'
 
-const TARGET: ChatInputDraftTarget = { draftKey: 'thread-1', rootPath: '/repo' }
+const TARGET: ChatInputDraftTarget = {
+  environmentId: FIXTURE_ENVIRONMENT_ID,
+  draftKey: 'ad686244-5b2e-59be-805f-ef86eac80feb',
+  rootPath: '/repo',
+}
 const FAILURE = {
   lineEnd: 812,
   lineStart: 810,

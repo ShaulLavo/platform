@@ -1,7 +1,7 @@
-import type { ProjectionThread } from '@/features/chat/state/chat-projection-store'
+import type { ProjectionSession } from '@/features/chat/state/chat-projection-store'
 import { compareOrderKeys } from '@/features/chat-mode/utils/rail-reorder'
 
-type SessionOrderSource = Pick<ProjectionThread, 'createdAt' | 'id' | 'pinOrderKey'>
+type SessionOrderSource = Pick<ProjectionSession, 'createdAt' | 'id' | 'pinOrderKey'>
 
 /**
  * The one order every chat-mode surface sorts by: the sessions the user has

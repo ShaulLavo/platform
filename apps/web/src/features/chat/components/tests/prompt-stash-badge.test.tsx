@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT_ID as FIXTURE_ENVIRONMENT_ID } from '../../../../../test/factories/chat'
 import { LexicalComposer } from '@lexical/react/LexicalComposer'
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { ContentEditable } from '@lexical/react/LexicalContentEditable'
@@ -23,7 +24,8 @@ import { expect, test } from '../../../../../test/fixtures'
 import { renderWithProviders } from '../../../../../test/render'
 
 const draftTarget: ChatInputDraftTarget = {
-  draftKey: 'thread-stash',
+  environmentId: FIXTURE_ENVIRONMENT_ID,
+  draftKey: '736c83c6-b5a4-5584-92a3-30e04eb26b13',
   rootPath: '/repo/platform',
 }
 

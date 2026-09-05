@@ -1,13 +1,12 @@
 import { eq } from 'drizzle-orm'
 import * as v from 'valibot'
-import type {
-  OrchestrationCommand,
-  OrchestrationCommandReceipt,
-  OrchestrationEvent,
-} from './schemas'
+import type { OrchestrationCommand, OrchestrationCommandReceipt } from './schemas'
 import { orchestrationCommandReceiptSchema } from './schemas'
 import { getDefaultPlatformDatabase } from '../db/client'
 import { isEvlogError } from '../observability'
+import type { ProjectRegistrationResult } from '@workspace/contracts'
+import { commandFingerprint } from './utils/command-intent'
+import { sessionDomainErrors } from './structured-errors'
 import { orchestrationCommandReceipts, type OrchestrationCommandReceiptRow } from '../db/schema'
 import type { OrchestrationDatabase } from './event-store'
 import {
@@ -33,8 +32,12 @@ export class OrchestrationCommandReceipts {
     return row ? rowToReceipt(row) : null
   }
 
-  recordAccepted(command: OrchestrationCommand, events: OrchestrationEvent[]) {
-    const sequence = lastSequence(events)
+  recordAccepted(
+    command: OrchestrationCommand,
+    sequence: number,
+    result: ProjectRegistrationResult | null,
+    intentFingerprint = commandFingerprint(command),
+  ) {
     const aggregate = commandAggregate(command)
     const receipt = {
       acceptedAt: new Date().toISOString(),
@@ -44,7 +47,8 @@ export class OrchestrationCommandReceipts {
       commandJson: JSON.stringify(command),
       commandType: command.type,
       error: null,
-      resultJson: JSON.stringify({ sequence }),
+      resultJson: result ? JSON.stringify(result) : null,
+      intentFingerprint,
       resultSequence: sequence,
       status: 'accepted' as const,
     }
@@ -58,7 +62,11 @@ export class OrchestrationCommandReceipts {
     return rowToReceipt(receipt)
   }
 
-  recordRejected(command: OrchestrationCommand, error: unknown) {
+  recordRejected(
+    command: OrchestrationCommand,
+    error: unknown,
+    intentFingerprint = commandFingerprint(command),
+  ) {
     const aggregate = commandAggregate(command)
     const receipt = {
       acceptedAt: new Date().toISOString(),
@@ -69,6 +77,7 @@ export class OrchestrationCommandReceipts {
       commandType: command.type,
       error: errorMessage(error),
       resultJson: null,
+      intentFingerprint,
       resultSequence: null,
       status: 'rejected' as const,
     }
@@ -105,28 +114,58 @@ export function isDurableCommandRejection(error: unknown) {
   return error.status >= 400 && error.status < 500
 }
 
-function commandAggregate(command: OrchestrationCommand) {
-  if (isProjectCommand(command)) {
-    return { id: command.projectId, kind: 'project' as const }
+export function commandAggregate(command: OrchestrationCommand) {
+  switch (command.type) {
+    case 'project.create':
+    case 'project.delete':
+    case 'project.meta.update':
+    case 'project.reorder':
+    case 'project.revive':
+      return { id: command.projectId, kind: 'project' as const }
+    case 'worktree.meta.update':
+    case 'worktree.register':
+    case 'worktree.revive':
+      return { id: command.worktreeId, kind: 'worktree' as const }
+    case 'session.activity.append':
+    case 'session.approval.respond':
+    case 'session.archive':
+    case 'session.checkpoint.revert':
+    case 'session.create':
+    case 'session.delete':
+    case 'session.deletion.update':
+    case 'session.discover':
+    case 'session.discovery-metadata.update':
+    case 'session.interaction-mode.set':
+    case 'session.message.assistant.complete':
+    case 'session.message.assistant.delta':
+    case 'session.meta.update':
+    case 'session.pin':
+    case 'session.pin.reorder':
+    case 'session.proposed-plan.upsert':
+    case 'session.provider-start.adopt':
+    case 'session.provider-start.claim':
+    case 'session.provider-start.settle':
+    case 'session.revert.complete':
+    case 'session.runtime-mode.set':
+    case 'session.runtime.recover':
+    case 'session.runtime.set':
+    case 'session.runtime.stop':
+    case 'session.settle':
+    case 'session.snooze':
+    case 'session.turn.diff.complete':
+    case 'session.turn.interrupt':
+    case 'session.turn.start':
+    case 'session.unarchive':
+    case 'session.unpin':
+    case 'session.unsettle':
+    case 'session.unsnooze':
+    case 'session.user-input.respond':
+      return { id: command.sessionId, kind: 'session' as const }
+    default: {
+      const exhaustive: never = command
+      return exhaustive
+    }
   }
-
-  return { id: command.threadId, kind: 'thread' as const }
-}
-
-/**
- * Matched on the type prefix rather than a hand-listed union: the runtime test
- * already is the prefix, and a listed union silently drifts every time a
- * project command is added — the receipt then looks for a `threadId` that a
- * project command does not have.
- */
-function isProjectCommand(
-  command: OrchestrationCommand,
-): command is Extract<OrchestrationCommand, { type: `project.${string}` }> {
-  return command.type.startsWith('project.')
-}
-
-function lastSequence(events: OrchestrationEvent[]) {
-  return events.at(-1)?.sequence ?? null
 }
 
 function rowToReceipt(row: OrchestrationCommandReceiptRow): OrchestrationCommandReceipt {
@@ -137,6 +176,8 @@ function rowToReceipt(row: OrchestrationCommandReceiptRow): OrchestrationCommand
     commandId: row.commandId,
     commandType: row.commandType,
     error: row.error,
+    intentFingerprint: row.intentFingerprint,
+    result: row.resultJson ? JSON.parse(row.resultJson) : null,
     resultSequence: row.resultSequence,
     status: row.status,
   })
@@ -146,4 +187,13 @@ function errorMessage(error: unknown) {
   if (error instanceof Error) return error.message
 
   return String(error)
+}
+
+export function verifyReceiptIntent(
+  receipt: OrchestrationCommandReceipt,
+  commandType: string,
+  fingerprint: string,
+) {
+  if (receipt.commandType === commandType && receipt.intentFingerprint === fingerprint) return
+  throw sessionDomainErrors.COMMAND_ID_COLLISION({ commandId: receipt.commandId })
 }

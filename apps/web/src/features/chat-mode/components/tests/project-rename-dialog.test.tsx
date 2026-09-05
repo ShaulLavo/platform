@@ -1,90 +1,45 @@
-import type { ClientOrchestrationCommand } from '@workspace/contracts'
-import { projectIdSchema, threadIdSchema } from '@workspace/contracts'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import * as v from 'valibot'
-import { vi } from 'vitest'
-
-import type { ChatTransport } from '@/features/chat/transport/chat-transport'
-import { ProjectRenameDialog } from '@/features/chat-mode/components/project-rename-dialog'
-import {
-  ChatModeSessionContext,
-  type ChatModeSession,
-} from '@/features/chat-mode/providers/session-context'
+import { createProjectDeleteCommand } from '@/features/chat/utils/command-builders'
 import { useProjectRenameRequestStore } from '@/features/chat-mode/state/project-rename-request-store'
-import { chatProject } from '../../../../../test/factories/chat'
+import { createRailHarness, renderRailHarness } from '../../../../../test/factories/rail-harness'
 import { expect, test } from '../../../../../test/fixtures'
-import { renderWithProviders } from '../../../../../test/render'
 
-// `sonner` is third-party and is the only mock this plan permits — same shape
-// as `features/git/tests/notify-mutation-error.test.ts`.
-const { toastError } = vi.hoisted(() => ({ toastError: vi.fn() }))
-vi.mock('sonner', () => ({ toast: { error: toastError } }))
-
-const projectId = v.parse(projectIdSchema, 'project-platform')
-const threadId = v.parse(threadIdSchema, 'thread-platform')
-
-function renderDialog(dispatchCommand: ChatTransport['dispatchCommand']) {
-  toastError.mockReset()
-  useProjectRenameRequestStore.setState({ request: { projectId, title: 'platform' } })
-
-  // Copied from `project-menu.test.tsx`, with `transport` swapped for the
-  // injected dispatch.
-  const session: ChatModeSession = {
-    activeSession: { status: 'ready', threadId },
-    addProject: () => {},
-    transport: { dispatchCommand } as ChatTransport,
-    error: null,
-    openProject: () => {},
-    project: chatProject({ id: projectId, title: 'platform', workspaceRoot: '/repo/platform' }),
-    ready: true,
-    retrying: false,
-    retryProject: () => {},
-    rootPath: '/repo/platform',
-    selectSession: () => {},
-    startDraft: () => {},
-  }
-
-  renderWithProviders(
-    <ChatModeSessionContext value={session}>
-      <ProjectRenameDialog />
-    </ChatModeSessionContext>,
-  )
-}
-
-async function rename(next: string) {
-  const input = await screen.findByLabelText('Project name')
+test('accepted project rename updates the server and closes its dialog', async ({
+  client,
+  server,
+}) => {
+  const h = await createRailHarness(client, server)
+  renderRailHarness(h)
+  await userEvent.pointer({
+    keys: '[MouseRight]',
+    target: screen.getByTitle(h.context.worktree!.path),
+  })
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Rename Project' }))
+  const input = screen.getByRole('textbox', { name: 'Project name' })
   await userEvent.clear(input)
-  await userEvent.type(input, next)
-  await userEvent.click(screen.getByRole('button', { name: 'Rename' }))
-}
-
-test('a refused rename keeps the dialog open and says why', async () => {
-  renderDialog((async () => {
-    throw new Error('socket closed')
-  }) as ChatTransport['dispatchCommand'])
-
-  await rename('platform-two')
-
-  await waitFor(() =>
-    expect(toastError).toHaveBeenCalledWith('Could not rename the project', {
-      description: 'socket closed',
-    }),
-  )
-  // The dialog is the user's only way back to the rename; dismissing on
-  // dispatch told them it landed when it had not.
-  expect(useProjectRenameRequestStore.getState().request).not.toBeNull()
-  expect(screen.getByRole('button', { name: 'Rename' })).toBeVisible()
-})
-
-test('an accepted rename closes the dialog', async () => {
-  renderDialog((async (_command: ClientOrchestrationCommand) => ({
-    deduped: false,
-    sequence: 1,
-  })) as ChatTransport['dispatchCommand'])
-
-  await rename('platform-two')
-
+  await userEvent.type(input, 'Updated project{Enter}')
   await waitFor(() => expect(useProjectRenameRequestStore.getState().request).toBeNull())
-  expect(toastError).not.toHaveBeenCalled()
+  expect((await h.refresh()).projects[0]?.title).toBe('Updated project')
+})
+test('a project removed while the dialog is open leaves a refused rename reviewable', async ({
+  client,
+  server,
+}) => {
+  const h = await createRailHarness(client, server)
+  renderRailHarness(h)
+  await userEvent.pointer({
+    keys: '[MouseRight]',
+    target: screen.getByTitle(h.context.worktree!.path),
+  })
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Rename Project' }))
+  await h.dispatch(createProjectDeleteCommand({ projectId: h.projectId }))
+  const input = screen.getByRole('textbox', { name: 'Project name' })
+  await userEvent.clear(input)
+  await userEvent.type(input, 'Cannot rename{Enter}')
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Rename' })).toBeEnabled())
+  expect(useProjectRenameRequestStore.getState().request?.ref).toEqual({
+    environmentId: h.environmentId,
+    projectId: h.projectId,
+  })
 })

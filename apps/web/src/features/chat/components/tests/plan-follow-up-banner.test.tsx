@@ -1,12 +1,17 @@
+import {
+  TEST_WORKTREE_ID,
+  shellSnapshot,
+  TEST_ENVIRONMENT_ID as FIXTURE_ENVIRONMENT_ID,
+} from '../../../../../test/factories/chat'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {
   proposedPlanIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
   type ClientOrchestrationCommand,
   type OrchestrationProposedPlan,
-  type OrchestrationThreadDetailSnapshot,
-  type ThreadId,
+  type OrchestrationSessionDetailSnapshot,
+  type SessionId,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
@@ -21,13 +26,14 @@ import { useChatOptimisticStore } from '@/features/chat/state/chat-optimistic-st
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { unsupportedChatTransport } from '../../../../../test/factories/chat-transport'
 import { expect, test } from '../../../../../test/fixtures'
-import { thread as threadFactory } from '../../../../../test/factories/chat'
+import { session as sessionFactory } from '../../../../../test/factories/chat'
 import { renderWithProviders } from '../../../../../test/render'
 
 const PLAN_MARKDOWN = '# Ship the retry queue\n\n1. Add the queue\n2. Drain it on boot'
-const THREAD_ID = v.parse(threadIdSchema, 'thread-1')
+const SESSION_ID = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
 const draftTarget: ChatInputDraftTarget = {
-  draftKey: THREAD_ID,
+  environmentId: FIXTURE_ENVIRONMENT_ID,
+  draftKey: SESSION_ID,
   rootPath: '/repo/platform',
 }
 
@@ -57,9 +63,9 @@ test('implementing starts a turn that points back at the plan it came from', asy
   expect(dispatched).toHaveLength(1)
   expect(dispatched[0]).toMatchObject({
     interactionMode: 'default',
-    sourceProposedPlan: { planId: 'plan-1', threadId: 'thread-1' },
-    threadId: 'thread-1',
-    type: 'thread.turn.start',
+    sourceProposedPlan: { planId: 'plan-1', sessionId: 'ad686244-5b2e-59be-805f-ef86eac80feb' },
+    sessionId: 'ad686244-5b2e-59be-805f-ef86eac80feb',
+    type: 'session.turn.start',
   })
 })
 
@@ -69,7 +75,7 @@ test('the implementation turn carries the plan itself as the prompt', async () =
   await userEvent.click(screen.getByRole('button', { name: 'Implement' }))
 
   const command = dispatched[0]
-  expect(command?.type === 'thread.turn.start' && command.message.text).toContain(
+  expect(command?.type === 'session.turn.start' && command.message.text).toContain(
     'Drain it on boot',
   )
 })
@@ -83,7 +89,7 @@ test('refining stays in plan mode and never claims the plan was implemented', as
   expect(dispatched[0]).toMatchObject({
     interactionMode: 'plan',
     message: { text: 'drop step 2' },
-    type: 'thread.turn.start',
+    type: 'session.turn.start',
   })
   expect(dispatched[0]).not.toHaveProperty('sourceProposedPlan', expect.anything())
 })
@@ -103,95 +109,98 @@ test('an implemented plan offers nothing — the loop is closed', () => {
   expect(screen.queryByRole('status', { name: 'Plan ready' })).not.toBeInTheDocument()
 })
 
-test('a thread already running a turn hides the action so no duplicate build starts', () => {
+test('a session already running a turn hides the action so no duplicate build starts', () => {
   renderBanner({ busy: true })
 
   expect(screen.queryByRole('button', { name: 'Implement' })).not.toBeInTheDocument()
 })
 
-test('a plan can be built in a thread of its own, seeded with the plan itself', async () => {
+test('a plan can be built in a session of its own, seeded with the plan itself', async () => {
   const { dispatched } = renderBanner()
 
-  await userEvent.click(screen.getByRole('button', { name: 'Implement in a new thread' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Implement in a new session' }))
 
   const command = dispatched[0]
   expect(command).toMatchObject({
     bootstrap: {
-      createThread: { projectId: 'project-1', title: 'Implement Ship the retry queue' },
+      createSession: { worktreeId: TEST_WORKTREE_ID, title: 'Implement Ship the retry queue' },
     },
     interactionMode: 'default',
-    sourceProposedPlan: { planId: 'plan-1', threadId: 'thread-1' },
-    type: 'thread.turn.start',
+    sourceProposedPlan: { planId: 'plan-1', sessionId: 'ad686244-5b2e-59be-805f-ef86eac80feb' },
+    type: 'session.turn.start',
   })
-  expect(command?.type === 'thread.turn.start' && command.message.text).toContain(
+  expect(command?.type === 'session.turn.start' && command.message.text).toContain(
     'Drain it on boot',
   )
-  expect(command?.type === 'thread.turn.start' && command.threadId).not.toBe(THREAD_ID)
+  expect(command?.type === 'session.turn.start' && command.sessionId).not.toBe(SESSION_ID)
 })
 
-test('the thread a plan was split into is handed to the host to show', async () => {
+test('the session a plan was split into is handed to the host to show', async () => {
   const { created, dispatched } = renderBanner()
 
-  await userEvent.click(screen.getByRole('button', { name: 'Implement in a new thread' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Implement in a new session' }))
 
   // Reported rather than selected here: the sidebar panel and the chat stage
   // keep their selection in different places, and only the host knows which.
   const command = dispatched[0]
-  expect(created).toEqual([command?.type === 'thread.turn.start' ? command.threadId : null])
+  expect(created).toEqual([command?.type === 'session.turn.start' ? command.sessionId : null])
 })
 
-test('a rejected split leaves the stage on the thread that has the plan', async () => {
+test('a rejected split leaves the stage on the session that has the plan', async () => {
   const { created } = renderBanner({ dispatch: () => Promise.reject(new Error('offline')) })
 
-  await userEvent.click(screen.getByRole('button', { name: 'Implement in a new thread' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Implement in a new session' }))
 
-  // No thread was created, so nothing should be handed over to show.
+  // No session was created, so nothing should be handed over to show.
   expect(created).toEqual([])
-  expect(await screen.findByRole('button', { name: 'Implement in a new thread' })).toBeEnabled()
+  expect(await screen.findByRole('button', { name: 'Implement in a new session' })).toBeEnabled()
 })
 
-test('typed feedback withdraws the new-thread action — there is no plan to build yet', async () => {
+test('typed feedback withdraws the new-session action — there is no plan to build yet', async () => {
   renderBanner()
 
   useChatInputDraftStore.getState().setPrompt(draftTarget, 'drop step 2')
 
   expect(await screen.findByRole('button', { name: 'Refine' })).toBeEnabled()
   expect(
-    screen.queryByRole('button', { name: 'Implement in a new thread' }),
+    screen.queryByRole('button', { name: 'Implement in a new session' }),
   ).not.toBeInTheDocument()
 })
 
-test('the thread holding the plan stops offering it once the build is split off', async () => {
+test('the session holding the plan stops offering it once the build is split off', async () => {
   const { snapshotRequests } = renderBanner()
 
-  await userEvent.click(screen.getByRole('button', { name: 'Implement in a new thread' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Implement in a new session' }))
 
-  // The plan is stamped implemented on the source thread, and that write appends
-  // nothing to its aggregate — resnapshotting it is the only way it ever finds out.
+  // Source detail reconciliation observes the separately emitted implementation event.
   await waitFor(() => {
     expect(screen.queryByRole('status', { name: 'Plan ready' })).not.toBeInTheDocument()
   })
-  expect(snapshotRequests).toContain(THREAD_ID)
+  expect(snapshotRequests).toContain(SESSION_ID)
 })
 
-test('a host that cannot show the new thread does not undo the accepted turn', async () => {
+test('a host that cannot show the new session does not undo the accepted turn', async () => {
   const { dispatched, snapshotRequests } = renderBanner({
-    onThreadCreated: () => {
-      throw new Error('no stage for this thread')
+    onSessionCreated: () => {
+      throw new Error('no stage for this session')
     },
   })
 
-  await userEvent.click(screen.getByRole('button', { name: 'Implement in a new thread' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Implement in a new session' }))
 
   // The server accepted the command and the turn is running, so the message it
   // will answer stays on screen and the projection still catches up.
   const command = dispatched[0]
-  const splitThreadId = command?.type === 'thread.turn.start' ? command.threadId : THREAD_ID
+  const splitSessionId = command?.type === 'session.turn.start' ? command.sessionId : SESSION_ID
   expect(
-    Object.keys(useChatOptimisticStore.getState().messagesByThreadId[splitThreadId] ?? {}),
+    Object.keys(
+      useChatOptimisticStore.getState().messagesBySessionKey[
+        `${FIXTURE_ENVIRONMENT_ID}:${splitSessionId}`
+      ] ?? {},
+    ),
   ).toHaveLength(1)
   await waitFor(() => {
-    expect(snapshotRequests).toContain(splitThreadId)
+    expect(snapshotRequests).toContain(splitSessionId)
   })
 })
 
@@ -201,7 +210,11 @@ test('a rejected dispatch drops the optimistic message so the timeline stays hon
   await userEvent.click(screen.getByRole('button', { name: 'Implement' }))
 
   expect(
-    Object.keys(useChatOptimisticStore.getState().messagesByThreadId[THREAD_ID] ?? {}),
+    Object.keys(
+      useChatOptimisticStore.getState().messagesBySessionKey[
+        `${FIXTURE_ENVIRONMENT_ID}:${SESSION_ID}`
+      ] ?? {},
+    ),
   ).toHaveLength(0)
   expect(await screen.findByRole('button', { name: 'Implement' })).toBeEnabled()
 })
@@ -209,67 +222,76 @@ test('a rejected dispatch drops the optimistic message so the timeline stays hon
 function renderBanner({
   busy = false,
   dispatch,
-  onThreadCreated,
+  onSessionCreated,
   plan: planOverrides,
 }: {
   busy?: boolean
-  dispatch?: () => Promise<{ deduped: boolean; sequence: number }>
-  onThreadCreated?: (threadId: ThreadId) => void
+  dispatch?: () => Promise<{ result: null; deduped: boolean; sequence: number }>
+  onSessionCreated?: (sessionId: SessionId) => void
   plan?: Partial<OrchestrationProposedPlan>
 } = {}) {
   resetChatInputDraftStore()
-  useChatOptimisticStore.setState({ messagesByThreadId: {} })
+  useChatOptimisticStore.setState({ messagesBySessionKey: {} })
   useChatProjectionStore.getState().resetChatProjection()
 
-  // The factory's default thread is mid-turn, which is exactly the busy case.
-  const seeded = threadFactory(busy ? {} : { latestTurn: null, session: null })
+  // The factory's default session is mid-turn, which is exactly the busy case.
+  const seeded = sessionFactory(busy ? {} : { latestTurn: null, runtime: null })
+  useChatProjectionStore.getState().syncShellSnapshot(
+    FIXTURE_ENVIRONMENT_ID,
+    shellSnapshot({
+      projects: [seeded.project],
+      worktrees: [seeded.worktree],
+      sessions: [seeded],
+    }),
+  )
   // Server-side truth for the plan, mutated by dispatch the way the projection is:
   // a turn started from a plan stamps that plan, wherever the plan lives.
   let implementedAt = planOverrides?.implementedAt ?? null
-  const sourceSnapshot = (): OrchestrationThreadDetailSnapshot => ({
+  const sourceSnapshot = (): OrchestrationSessionDetailSnapshot => ({
     checkpoints: [],
     proposedPlans: [proposedPlan({ ...planOverrides, implementedAt })],
-    snapshotSequence: 1,
-    // The store's ChatThread drops `deletedAt`; the wire snapshot still carries it.
-    thread: { ...seeded, deletedAt: null },
+    snapshotSequence: implementedAt ? 2 : 1,
+    // The store's ChatSession drops `deletedAt`; the wire snapshot still carries it.
+    session: { deletion: null, ...seeded, deletedAt: null },
   })
-  useChatProjectionStore.getState().syncThreadDetailSnapshot(sourceSnapshot())
+  useChatProjectionStore
+    .getState()
+    .syncSessionDetailSnapshot(FIXTURE_ENVIRONMENT_ID, sourceSnapshot())
 
-  const created: ThreadId[] = []
+  const created: SessionId[] = []
   const dispatched: ClientOrchestrationCommand[] = []
-  const snapshotRequests: ThreadId[] = []
+  const snapshotRequests: SessionId[] = []
   const transport = unsupportedChatTransport({
     dispatchCommand: async (command) => {
       dispatched.push(command)
       if (dispatch) return dispatch()
 
-      // The stamp lands on the plan's thread even when the turn runs elsewhere,
-      // and it appends nothing to that thread's aggregate — hence no event here.
-      if (command.type === 'thread.turn.start' && command.sourceProposedPlan) {
+      // The source plan receives its own newer aggregate event on implementation.
+      if (command.type === 'session.turn.start' && command.sourceProposedPlan) {
         implementedAt = '2026-05-28T00:00:09.000Z'
       }
 
-      return { deduped: false, sequence: 1 }
+      return { result: null, deduped: false, sequence: 1 }
     },
     replayEvents: async () => ({ events: [] }),
     shellStream: async function* () {},
-    threadDetailSnapshot: async (threadId) => {
-      snapshotRequests.push(threadId)
-      if (threadId === seeded.id) return sourceSnapshot()
+    sessionDetailSnapshot: async (sessionId) => {
+      snapshotRequests.push(sessionId)
+      if (sessionId === seeded.id) return sourceSnapshot()
 
-      return splitThreadSnapshot(threadId)
+      return splitSessionSnapshot(sessionId)
     },
-    threadDetailStream: async function* () {},
+    sessionDetailStream: async function* () {},
   })
 
   renderWithProviders(
     <ChatPlanFollowUpProvider
       draftTarget={draftTarget}
       transport={transport}
-      threadId={seeded.id}
-      onThreadCreated={(threadId) => {
-        created.push(threadId)
-        onThreadCreated?.(threadId)
+      sessionId={seeded.id}
+      onSessionCreated={(sessionId) => {
+        created.push(sessionId)
+        onSessionCreated?.(sessionId)
       }}
     >
       <PlanFollowUpBanner draftTarget={draftTarget} />
@@ -279,15 +301,15 @@ function renderBanner({
   return { created, dispatched, snapshotRequests }
 }
 
-/** The thread the build was split into: real thread, no plans of its own yet. */
-function splitThreadSnapshot(threadId: ThreadId): OrchestrationThreadDetailSnapshot {
-  const split = threadFactory({ id: threadId, latestTurn: null, session: null })
+/** The session the build was split into: real session, no plans of its own yet. */
+function splitSessionSnapshot(sessionId: SessionId): OrchestrationSessionDetailSnapshot {
+  const split = sessionFactory({ id: sessionId, latestTurn: null, runtime: null })
 
   return {
     checkpoints: [],
     proposedPlans: [],
     snapshotSequence: 1,
-    thread: { ...split, deletedAt: null },
+    session: { deletion: null, ...split, deletedAt: null },
   }
 }
 
@@ -297,10 +319,10 @@ function proposedPlan(
   return {
     createdAt: '2026-05-28T00:00:02.000Z',
     id: v.parse(proposedPlanIdSchema, 'plan-1'),
-    implementationThreadId: null,
+    implementationSessionId: null,
     implementedAt: null,
     planMarkdown: PLAN_MARKDOWN,
-    threadId: THREAD_ID,
+    sessionId: SESSION_ID,
     turnId: 'turn-1',
     updatedAt: '2026-05-28T00:00:02.000Z',
     ...overrides,

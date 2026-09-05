@@ -4,6 +4,7 @@ import type { ChatAttachment } from '@workspace/contracts'
 import type { ReactNode } from 'react'
 
 import { TestEditorStateProvider as EditorStateProvider } from '../../../../../test/factories/editor-state-provider'
+import { ChatAttachmentThumbnails } from '@/features/chat/components/chat-attachment-thumbnails'
 import { MessageBubble } from '@/features/chat/components/message-bubble'
 import {
   ChatTimelineActionsContext,
@@ -11,7 +12,8 @@ import {
 } from '@/features/chat/providers/timeline-actions-context'
 import { chatMessage } from '../../../../../test/factories/chat'
 import { expect, test } from '../../../../../test/fixtures'
-import { renderWithProviders } from '../../../../../test/render'
+import { activeServerOrigin, setActiveServerOrigin } from '@/lib/client'
+import { createTestQueryClient, renderWithProviders } from '../../../../../test/render'
 
 const LONG_USER_TEXT = Array.from({ length: 40 }, (_, index) => `line ${index}`).join('\n')
 
@@ -126,6 +128,23 @@ test('a sent image renders as a thumbnail and opens in a lightbox', async () => 
   expect(await screen.findByAltText('diagram.png')).toBeInTheDocument()
 })
 
+test('attachment URLs stay with the transcript query client after an active environment switch', () => {
+  const ownerOrigin = activeServerOrigin()
+  const queryClient = createTestQueryClient()
+  setActiveServerOrigin('http://other-machine.test')
+  try {
+    const { container } = renderWithProviders(
+      <ChatAttachmentThumbnails attachments={[imageAttachment('owned-image', 'owned.png')]} />,
+      { queryClient },
+    )
+    expect(container.querySelector('img')?.getAttribute('src')).toBe(
+      `${ownerOrigin}/attachments/owned-image.png`,
+    )
+  } finally {
+    setActiveServerOrigin(ownerOrigin)
+  }
+})
+
 test('an image type the server never stored falls back to its file name', () => {
   const { container } = renderBubble(
     chatMessage({
@@ -171,7 +190,7 @@ function renderBubble(
 function withProviders(children: ReactNode) {
   const actions: ChatTimelineActions = {
     openCheckpointDiff: () => undefined,
-    openThreadCheckpointDiff: () => undefined,
+    openSessionCheckpointDiff: () => undefined,
     revertToCheckpoint: () => undefined,
   }
 

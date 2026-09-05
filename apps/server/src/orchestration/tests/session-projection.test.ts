@@ -1,0 +1,252 @@
+import { afterEach, describe, expect, it } from 'vitest'
+import { createMetadataDatabase, type MetadataDatabaseHandle } from '../../db/client'
+import { migratePlatformDatabase } from '../../db/migrations'
+import { projectionTurns } from '../../db/schema'
+import { OrchestrationEventStore } from '../event-store'
+import { OrchestrationProjectionPipeline } from '../projection-pipeline'
+import { OrchestrationSnapshotQuery } from '../snapshot-query'
+import { ProjectionShellRowReader } from '../shell-row-reader'
+import { DOMAIN_AT, DOMAIN_IDS, domainBootstrap, domainEvent } from './factories/session-domain'
+
+const handles: MetadataDatabaseHandle[] = []
+afterEach(() => {
+  for (const handle of handles.splice(0)) handle.close()
+})
+
+function database() {
+  const handle = createMetadataDatabase({ databasePath: ':memory:' })
+  handles.push(handle)
+  migratePlatformDatabase(handle.db)
+  return handle.db
+}
+
+describe('session domain projection', () => {
+  it('interrupts ambiguous provider adoption even after assistant text completed', () => {
+    const db = database()
+    const pipeline = new OrchestrationProjectionPipeline(db)
+    pipeline.applyEvents(domainBootstrap())
+    pipeline.applyEvents([
+      domainEvent(
+        'session.turn-start-requested',
+        {
+          sessionId: DOMAIN_IDS.session,
+          turnId: DOMAIN_IDS.turn,
+          messageId: 'message-fixture',
+          createdAt: DOMAIN_AT,
+        },
+        4,
+      ),
+      domainEvent(
+        'session.provider-start-claimed',
+        {
+          sessionId: DOMAIN_IDS.session,
+          turnId: DOMAIN_IDS.turn,
+          generation: 1,
+          runtimeEpoch: 'epoch-1',
+          createdAt: DOMAIN_AT,
+        },
+        5,
+      ),
+      domainEvent(
+        'session.provider-start-adopted',
+        {
+          sessionId: DOMAIN_IDS.session,
+          turnId: DOMAIN_IDS.turn,
+          generation: 1,
+          runtimeEpoch: 'epoch-1',
+          createdAt: DOMAIN_AT,
+        },
+        6,
+      ),
+      domainEvent(
+        'session.message-sent',
+        {
+          sessionId: DOMAIN_IDS.session,
+          turnId: DOMAIN_IDS.turn,
+          messageId: 'assistant-complete',
+          role: 'assistant',
+          text: 'Done',
+          attachments: [],
+          streaming: false,
+          createdAt: DOMAIN_AT,
+          updatedAt: DOMAIN_AT,
+        },
+        7,
+      ),
+    ])
+    expect(db.select().from(projectionTurns).get()).toMatchObject({
+      state: 'completed',
+      providerStartState: 'adopted',
+    })
+    pipeline.applyEvents([
+      domainEvent(
+        'session.runtime-recovered',
+        {
+          sessionId: DOMAIN_IDS.session,
+          turnId: DOMAIN_IDS.turn,
+          observedSequence: 6,
+          runtimeEpoch: 'epoch-1',
+          message: 'Runtime ownership was lost',
+          createdAt: DOMAIN_AT,
+        },
+        8,
+      ),
+    ])
+    expect(db.select().from(projectionTurns).get()).toMatchObject({
+      state: 'interrupted',
+      providerStartState: 'interrupted',
+      providerStartSequence: 8,
+    })
+  })
+
+  it('drains more than one replay page before the first complete snapshot', () => {
+    const db = database()
+    const store = new OrchestrationEventStore(db)
+    store.append(domainBootstrap())
+    store.append(
+      Array.from({ length: 1_102 }, (_, index) =>
+        domainEvent(
+          'project.meta-updated',
+          { projectId: DOMAIN_IDS.project, title: `Project ${index}`, updatedAt: DOMAIN_AT },
+          index + 4,
+        ),
+      ),
+    )
+    const pipeline = new OrchestrationProjectionPipeline(db, store)
+    expect(pipeline.catchUp()).toMatchObject({ eventCount: 1_105, pageCount: 2, sequence: 1_105 })
+    expect(new OrchestrationSnapshotQuery(db).shellSnapshot()).toMatchObject({
+      snapshotSequence: 1_105,
+      projects: [{ id: DOMAIN_IDS.project, title: 'Project 1101' }],
+      worktrees: [{ id: DOMAIN_IDS.worktree, projectId: DOMAIN_IDS.project }],
+      sessions: [
+        { id: DOMAIN_IDS.session, worktreeId: DOMAIN_IDS.worktree, attentionState: 'settled' },
+      ],
+    })
+    expect(pipeline.catchUp()).toMatchObject({ eventCount: 0, sequence: 1_105 })
+  })
+  it('keeps point reads, snapshots and read-model attention coherent', () => {
+    const db = database()
+    const pipeline = new OrchestrationProjectionPipeline(db)
+    pipeline.applyEvents(domainBootstrap())
+    pipeline.applyEvents([
+      domainEvent(
+        'session.activity-appended',
+        {
+          sessionId: DOMAIN_IDS.session,
+          activity: {
+            id: 'approval-activity',
+            sessionId: DOMAIN_IDS.session,
+            turnId: null,
+            tone: 'approval',
+            kind: 'approval.requested',
+            summary: 'Approve',
+            payload: { requestId: 'approval-1' },
+            createdAt: DOMAIN_AT,
+          },
+        },
+        4,
+      ),
+    ])
+    const snapshots = new OrchestrationSnapshotQuery(db)
+    const readers = new ProjectionShellRowReader(db)
+    expect(readers.sessionShell(DOMAIN_IDS.session)).toEqual(snapshots.shellSnapshot().sessions[0])
+    expect(readers.worktreeShell(DOMAIN_IDS.worktree)).toEqual(
+      snapshots.shellSnapshot().worktrees[0],
+    )
+    expect(snapshots.fullReadModel().sessions.get(DOMAIN_IDS.session)).toMatchObject({
+      attentionState: 'needs-input',
+      attentionReason: 'approval',
+      pendingApprovalCount: 1,
+      hasError: false,
+    })
+  })
+  it('persists claims and exposes recovery interruptions after acknowledgement', () => {
+    const db = database()
+    const pipeline = new OrchestrationProjectionPipeline(db)
+    pipeline.applyEvents(domainBootstrap())
+    pipeline.applyEvents([
+      domainEvent(
+        'session.turn-start-requested',
+        {
+          sessionId: DOMAIN_IDS.session,
+          turnId: DOMAIN_IDS.turn,
+          messageId: 'message-fixture',
+          createdAt: DOMAIN_AT,
+        },
+        4,
+      ),
+    ])
+    pipeline.applyEvents([
+      domainEvent(
+        'session.provider-start-claimed',
+        {
+          sessionId: DOMAIN_IDS.session,
+          turnId: DOMAIN_IDS.turn,
+          generation: 1,
+          runtimeEpoch: 'epoch-1',
+          createdAt: DOMAIN_AT,
+        },
+        5,
+      ),
+    ])
+    expect(db.select().from(projectionTurns).get()).toMatchObject({
+      providerStartState: 'claimed',
+      providerStartGeneration: 1,
+      providerStartSequence: 5,
+      runtimeEpoch: 'epoch-1',
+    })
+    pipeline.applyEvents([
+      domainEvent(
+        'session.runtime-recovered',
+        {
+          sessionId: DOMAIN_IDS.session,
+          turnId: DOMAIN_IDS.turn,
+          observedSequence: 5,
+          runtimeEpoch: 'epoch-1',
+          message: 'Provider start interrupted',
+          createdAt: DOMAIN_AT,
+        },
+        6,
+      ),
+    ])
+    const snapshots = new OrchestrationSnapshotQuery(db)
+    expect(snapshots.sessionDetailSnapshot(DOMAIN_IDS.session).session).toMatchObject({
+      attentionReason: 'interruption',
+      hasError: true,
+      latestTurn: { providerStartState: 'interrupted', state: 'interrupted' },
+    })
+    pipeline.applyEvents([
+      domainEvent(
+        'session.settled',
+        {
+          sessionId: DOMAIN_IDS.session,
+          settledAt: DOMAIN_AT,
+          updatedAt: DOMAIN_AT,
+          acknowledgedFailureThroughSequence: 6,
+        },
+        7,
+      ),
+    ])
+    expect(snapshots.shellSnapshot().sessions[0]).toMatchObject({
+      attentionState: 'settled',
+      hasError: false,
+    })
+    pipeline.applyEvents([
+      domainEvent(
+        'session.runtime-recovered',
+        {
+          sessionId: DOMAIN_IDS.session,
+          observedSequence: 7,
+          runtimeEpoch: 'epoch-2',
+          message: 'Another interruption',
+          createdAt: DOMAIN_AT,
+        },
+        8,
+      ),
+    ])
+    expect(snapshots.shellSnapshot().sessions[0]).toMatchObject({
+      attentionReason: 'interruption',
+      hasError: true,
+    })
+  })
+})

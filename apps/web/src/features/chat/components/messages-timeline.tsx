@@ -8,7 +8,7 @@ import { useEffect, useLayoutEffect, useMemo, useReducer, useState, type Dispatc
 
 import { chatTimelineItemEstimate, chatTimelineItems } from '@/features/chat/utils/timeline-items'
 import type { ChatTimelineItem } from '@/features/chat/utils/timeline-items'
-import type { ChatThread } from '../state/chat-projection-store'
+import type { ChatSession } from '../state/chat-projection-store'
 import type { OptimisticChatMessage } from '../state/chat-optimistic-store'
 import {
   initialTimelineScrollState,
@@ -35,7 +35,7 @@ import {
   timelineMinimapViewportBand,
   type TimelineMinimapMark,
 } from '../utils/timeline-minimap'
-import { useThreadEarlierPage } from '../hooks/use-thread-earlier-page'
+import { useSessionEarlierPage } from '../hooks/use-session-earlier-page'
 import { ChatWelcomeView } from './chat-welcome-view'
 import { TimelineLoadEarlier } from './timeline-load-earlier'
 import { TimelineMinimap } from './timeline-minimap'
@@ -50,11 +50,11 @@ type TimelineVirtualizer = Virtualizer<HTMLDivElement, Element>
 export function MessagesTimeline({
   checkpointRevertPending = false,
   optimisticMessages,
-  thread,
+  session,
 }: {
   checkpointRevertPending?: boolean
   optimisticMessages: readonly OptimisticChatMessage[]
-  thread: ChatThread
+  session: ChatSession
 }) {
   const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null)
   const [scrollState, dispatch] = useReducer(timelineScrollReducer, initialTimelineScrollState)
@@ -67,20 +67,20 @@ export function MessagesTimeline({
   const items = useMemo(
     () =>
       chatTimelineItems({
-        activities: thread.activities,
-        latestTurn: thread.latestTurn,
-        messages: thread.messages,
+        activities: session.activities,
+        latestTurn: session.latestTurn,
+        messages: session.messages,
         optimisticMessages,
-        proposedPlans: thread.proposedPlans,
-        turnDiffSummaries: thread.turnDiffSummaries,
+        proposedPlans: session.proposedPlans,
+        turnDiffSummaries: session.turnDiffSummaries,
       }),
     [
       optimisticMessages,
-      thread.activities,
-      thread.latestTurn,
-      thread.messages,
-      thread.proposedPlans,
-      thread.turnDiffSummaries,
+      session.activities,
+      session.latestTurn,
+      session.messages,
+      session.proposedPlans,
+      session.turnDiffSummaries,
     ],
   )
   // eslint-disable-next-line oxc-react-compiler/immutability -- the effect below installs `shouldAdjustScrollPositionOnItemSizeChange`, which virtual-core exposes as an instance property rather than a `useVirtualizer` option, so there is nowhere else to put it. The compiler already bails on this component (see the file header), so the freeze it is enforcing buys nothing here.
@@ -97,7 +97,7 @@ export function MessagesTimeline({
   })
   const virtualItems = virtualizer.getVirtualItems()
   const disclosureSettling = disclosureSettleTick !== null
-  const earlierPage = useThreadEarlierPage(thread.id)
+  const earlierPage = useSessionEarlierPage(session.id)
   // Offered only to a reader who has walked back to the oldest row held. Pinned
   // to the live edge there is nothing to ask for, and an affordance floating
   // over the newest message while the agent types is pure noise.
@@ -125,10 +125,10 @@ export function MessagesTimeline({
     dispatch({
       firstItemId: items[0]?.id ?? null,
       latestUserItemId: resolveTimelineAnchorItemId(items),
-      threadId: thread.id,
+      sessionId: session.id,
       type: 'items-changed',
     })
-  }, [items, thread.id])
+  }, [items, session.id])
 
   // Ahead of every other scroll effect: a page that landed above the viewport
   // has already pushed the reader's row down, and anything that measures the

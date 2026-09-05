@@ -4,7 +4,7 @@ import {
   DEFAULT_RUNTIME_MODE,
   providerDriverKindSchema,
   providerInstanceIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 import { describe, expect, it } from 'vitest'
@@ -18,7 +18,7 @@ import { ProviderSessionDirectory } from '../provider-session-directory'
 
 const DRIVER_KIND = v.parse(providerDriverKindSchema, 'sleeper')
 const INSTANCE_ID = v.parse(providerInstanceIdSchema, 'sleeper-1')
-const THREAD_ID = v.parse(threadIdSchema, 'thread-1')
+const SESSION_ID = v.parse(sessionIdSchema, 'ee84050b-1b17-5fe8-9f71-0983f1fceccc')
 
 /**
  * A driver whose instance owns a real child process, which is the only way to
@@ -69,14 +69,15 @@ describe('provider shutdown', () => {
       sessionDirectory: new ProviderSessionDirectory(fixture.database),
     })
     const adapter = registry.getByInstance(INSTANCE_ID)
-    await service.ensureSession({
+    await service.ensureRuntime({
       providerInstanceId: INSTANCE_ID,
       runtimeMode: DEFAULT_RUNTIME_MODE,
       runtimePayload: {
         cwd: '/workspace',
         modelSelection: { model: 'gpt-5.5', providerInstanceId: INSTANCE_ID },
       },
-      threadId: THREAD_ID,
+      sessionId: SESSION_ID,
+      runtimeEpoch: 'epoch-shutdown',
     })
 
     expect(children).toHaveLength(1)
@@ -85,7 +86,7 @@ describe('provider shutdown', () => {
     await service.shutdown()
 
     expect(isRunning(children[0]!.pid)).toBe(false)
-    expect(await adapter.hasSession({ threadId: THREAD_ID })).toBe(false)
+    expect(await adapter.hasRuntime({ sessionId: SESSION_ID })).toBe(false)
     expect(registry.listInstances()).toEqual([])
     fixture.close()
   })

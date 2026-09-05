@@ -151,10 +151,10 @@ function referenceLabel(
 }
 
 export function workspaceRelativePath(path: string, rootPath: string | null) {
-  if (!rootPath) return null
+  if (rootPath === null) return null
 
   const root = rootPath.replace(/\/+$/u, '')
-  if (root.length === 0) return null
+  if (root.length === 0) return path.startsWith('/') ? null : path
   if (!path.startsWith(`${root}/`)) return null
 
   return path.slice(root.length + 1)
@@ -163,12 +163,12 @@ export function workspaceRelativePath(path: string, rootPath: string | null) {
 /** Relative references only resolve once we know which project the chat is in. */
 function absolutePath(path: string, rootPath: string | null) {
   if (path.startsWith('/')) return normalizeSegments(path)
-  if (!rootPath) return null
+  if (rootPath === null) return null
 
   const root = rootPath.replace(/\/+$/u, '')
   const relative = path.replace(RELATIVE_PREFIX, (prefix) => (prefix === '../' ? '../' : ''))
 
-  return normalizeSegments(`${root}/${relative}`)
+  return normalizeSegments(root ? `${root}/${relative}` : relative)
 }
 
 function normalizeSegments(path: string) {
@@ -182,7 +182,7 @@ function normalizeSegments(path: string) {
     segments.pop()
   }
 
-  return `/${segments.join('/')}`
+  return `${path.startsWith('/') ? '/' : ''}${segments.join('/')}`
 }
 
 function looksLikePath(bare: string) {

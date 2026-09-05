@@ -1,3 +1,4 @@
+import { createTestApplicationRuntime } from '../../../../test/factories/application-runtime'
 import { act, screen, waitFor } from '@testing-library/react'
 import { useQueryClient } from '@tanstack/react-query'
 import userEvent from '@testing-library/user-event'
@@ -90,7 +91,7 @@ function renderPalette({
         settingsDestination={settingsDestination}
       />
     </EditorStateProvider>,
-    { command: false },
+    { application: createTestApplicationRuntime(), command: false },
   )
 }
 

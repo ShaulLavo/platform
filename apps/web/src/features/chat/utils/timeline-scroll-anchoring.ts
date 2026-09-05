@@ -82,7 +82,7 @@ export interface TimelineScrollState {
    * the page that landed in front of it. Null once absorbed.
    */
   readonly prependedAboveItemId: string | null
-  readonly threadId: string | null
+  readonly sessionId: string | null
 }
 
 export type TimelineScrollEvent =
@@ -96,7 +96,7 @@ export type TimelineScrollEvent =
   | {
       readonly firstItemId: string | null
       readonly latestUserItemId: string | null
-      readonly threadId: string
+      readonly sessionId: string
       readonly type: 'items-changed'
     }
 
@@ -109,7 +109,7 @@ export const initialTimelineScrollState: TimelineScrollState = {
   parkedAnchorItemId: null,
   pendingInitialScroll: false,
   prependedAboveItemId: null,
-  threadId: null,
+  sessionId: null,
 }
 
 /** Distance from the viewport bottom down to the real content bottom. */
@@ -286,16 +286,16 @@ function reduceItemsChanged(
   {
     firstItemId,
     latestUserItemId,
-    threadId,
+    sessionId,
   }: Extract<TimelineScrollEvent, { type: 'items-changed' }>,
 ): TimelineScrollState {
-  if (threadId !== state.threadId) {
+  if (sessionId !== state.sessionId) {
     return {
       ...initialTimelineScrollState,
       firstItemId,
       latestUserItemId,
       pendingInitialScroll: true,
-      threadId,
+      sessionId,
     }
   }
 

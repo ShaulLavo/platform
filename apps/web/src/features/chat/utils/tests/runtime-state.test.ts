@@ -6,9 +6,9 @@ import {
   type ProviderSnapshot,
 } from '@workspace/contracts'
 
-import type { ChatThread } from '@/features/chat/state/chat-projection-store'
+import type { ChatSession } from '@/features/chat/state/chat-projection-store'
 import { chatRuntimeAlerts } from '@/features/chat/utils/runtime-state'
-import { thread } from '../../../../../test/factories/chat'
+import { session } from '../../../../../test/factories/chat'
 
 describe('chat runtime state', () => {
   it('renders only attention-worthy command, provider, and pending action states', () => {
@@ -21,7 +21,7 @@ describe('chat runtime state', () => {
       },
       provider: provider({ auth: { status: 'unauthenticated' }, status: 'error' }),
       providerError: null,
-      thread: thread({
+      session: session({
         hasActionableProposedPlan: true,
         pendingApprovalCount: 1,
         pendingUserInputCount: 2,
@@ -46,7 +46,7 @@ describe('chat runtime state', () => {
         supportsSignIn: true,
       }),
       providerError: null,
-      thread: thread(),
+      session: session(),
     })
 
     expect(providerAlert.signIn).toEqual({
@@ -60,16 +60,16 @@ describe('chat runtime state', () => {
     const lastError = 'OAuth session expired and could not be refreshed'
     // Auth `unknown`, not `unauthenticated`: the CLI has not said either way, so
     // the only signal that credentials are gone is the turn that just failed.
-    const [threadAlert] = chatRuntimeAlerts({
+    const [sessionAlert] = chatRuntimeAlerts({
       commandState: idle(),
       provider: provider({ auth: { status: 'unknown' }, supportsSignIn: true }),
       providerError: null,
-      thread: threadWithError(lastError),
+      session: sessionWithError(lastError),
     })
 
-    expect(threadAlert).toMatchObject({
+    expect(sessionAlert).toMatchObject({
       detail: lastError,
-      id: 'thread:error',
+      id: 'session:error',
       signIn: { providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID, providerLabel: 'Codex' },
       title: 'Sign-in required',
     })
@@ -82,46 +82,46 @@ describe('chat runtime state', () => {
    */
   it('stops demanding sign-in once the provider is authenticated again', () => {
     const lastError = 'OAuth session expired and could not be refreshed'
-    const [threadAlert] = chatRuntimeAlerts({
+    const [sessionAlert] = chatRuntimeAlerts({
       commandState: idle(),
       provider: provider({
         auth: { email: 'someone@example.com', status: 'authenticated' },
         supportsSignIn: true,
       }),
       providerError: null,
-      thread: threadWithError(lastError),
+      session: sessionWithError(lastError),
     })
 
-    expect(threadAlert).toMatchObject({
+    expect(sessionAlert).toMatchObject({
       detail: lastError,
-      id: 'thread:error',
+      id: 'session:error',
       signIn: null,
-      title: 'Thread error',
+      title: 'Session error',
     })
   })
 
-  it('leaves non-auth thread errors alone', () => {
-    const [threadAlert] = chatRuntimeAlerts({
+  it('leaves non-auth session errors alone', () => {
+    const [sessionAlert] = chatRuntimeAlerts({
       commandState: idle(),
       provider: provider({ supportsSignIn: true }),
       providerError: null,
-      thread: threadWithError('spawn claude ENOENT'),
+      session: sessionWithError('spawn claude ENOENT'),
     })
 
-    expect(threadAlert.title).toBe('Thread error')
-    expect(threadAlert.signIn).toBe(null)
+    expect(sessionAlert.title).toBe('Session error')
+    expect(sessionAlert.signIn).toBe(null)
   })
 
   it('never offers sign-in for a provider the server cannot sign in', () => {
-    const [threadAlert] = chatRuntimeAlerts({
+    const [sessionAlert] = chatRuntimeAlerts({
       commandState: idle(),
       provider: provider({ auth: { status: 'unknown' } }),
       providerError: null,
-      thread: threadWithError('Invalid API key · Please run /login'),
+      session: sessionWithError('Invalid API key · Please run /login'),
     })
 
-    expect(threadAlert.title).toBe('Sign-in required')
-    expect(threadAlert.signIn).toBe(null)
+    expect(sessionAlert.title).toBe('Sign-in required')
+    expect(sessionAlert.signIn).toBe(null)
   })
 
   it('sorts what the user can act on above what is merely happening', () => {
@@ -129,7 +129,7 @@ describe('chat runtime state', () => {
       commandState: { ...idle(), sendPending: true },
       provider: provider({ message: 'Rate limited', status: 'warning' }),
       providerError: null,
-      thread: thread({ pendingUserInputCount: 1 }),
+      session: session({ pendingUserInputCount: 1 }),
     })
 
     // Produced in the order busy, warning, action — sorted the other way round,
@@ -142,19 +142,19 @@ describe('chat runtime state', () => {
       commandState: { ...idle(), commandFailure: 'Dispatch rejected' },
       provider: provider(),
       providerError: null,
-      thread: thread({ pendingApprovalCount: 1 }),
+      session: session({ pendingApprovalCount: 1 }),
     })
     const [request] = chatRuntimeAlerts({
       commandState: idle(),
       provider: provider(),
       providerError: null,
-      thread: thread({ pendingApprovalCount: 1 }),
+      session: session({ pendingApprovalCount: 1 }),
     })
 
     // The key carries the message: waving away one failure must not swallow the
     // next, different one under the same id.
     expect(failure.dismissKey).toBe('command:failure:Command failed:Dispatch rejected')
-    // The turn is parked on the answer; hiding the ask would strand the thread.
+    // The turn is parked on the answer; hiding the ask would strand the session.
     expect(request.dismissKey).toBeNull()
   })
 
@@ -168,7 +168,7 @@ describe('chat runtime state', () => {
       },
       provider: provider(),
       providerError: null,
-      thread: thread({ hasActionableProposedPlan: true }),
+      session: session({ hasActionableProposedPlan: true }),
     })
 
     expect(alerts).toEqual([])
@@ -184,10 +184,10 @@ function idle() {
   }
 }
 
-function threadWithError(lastError: string): ChatThread {
-  const base = thread()
+function sessionWithError(lastError: string): ChatSession {
+  const base = session()
 
-  return { ...base, session: base.session ? { ...base.session, lastError } : null }
+  return { ...base, runtime: base.runtime ? { ...base.runtime, lastError } : null }
 }
 
 function provider(overrides: Partial<ProviderSnapshot> = {}): ProviderSnapshot {

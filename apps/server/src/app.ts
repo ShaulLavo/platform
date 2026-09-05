@@ -1,3 +1,4 @@
+import { createInternalError } from './observability/structured-errors'
 import { cors } from '@elysiajs/cors'
 import type { HealthDescriptor } from '@workspace/contracts'
 import { hostname } from 'node:os'
@@ -28,10 +29,11 @@ import {
   runDetached,
 } from './observability'
 import { OrchestrationEngine } from './orchestration/engine'
+import { requireWorktree } from './orchestration/read-model'
 import { OrchestrationCheckpointDiffQuery } from './orchestration/checkpoint-diff-query'
 import type { OrchestrationDatabase } from './orchestration/event-store'
 import { orchestrationRoutes } from './orchestration/routes'
-import { OrchestrationThreadSearchQuery } from './orchestration/thread-search-query'
+import { OrchestrationSessionSearchQuery } from './orchestration/session-search-query'
 import { orchestrationWsRoutes, orchestrationWsServerConfig } from './orchestration/ws-rpc'
 import {
   createDefaultProviderAdapterRegistry,
@@ -44,7 +46,7 @@ import { mergeProviderInstanceConfigs } from './provider/utils/instance-config-m
 import { SettingsStore, type SettingsStoreOptions } from './settings/store'
 import { TerminalService, type TerminalPtyFactory } from './terminal/service'
 import { wallpaperRoutes } from './wallpaper/routes'
-import { isActiveBinding, ProviderSessionDirectory } from './provider/provider-session-directory'
+import { ProviderSessionDirectory } from './provider/provider-session-directory'
 import { ProviderService } from './provider/provider-service'
 
 export type AppOptions = FileSystemServiceOptions & {
@@ -55,6 +57,7 @@ export type AppOptions = FileSystemServiceOptions & {
   }
   fonts?: FontService
   orchestration?: {
+    attachmentsDir?: string
     database?: OrchestrationDatabase
     providerAdapterRegistry?: ProviderAdapterRegistry
     providerRuntime?: boolean
@@ -76,6 +79,14 @@ export type AppOptions = FileSystemServiceOptions & {
   settings?: Omit<SettingsStoreOptions, 'workspaceRoot'>
 }
 
+const appOrchestration = new WeakMap<object, OrchestrationEngine>()
+
+export function orchestrationForApp(app: object) {
+  const engine = appOrchestration.get(app)
+  if (!engine) throw createInternalError('App has no orchestration engine')
+  return engine
+}
+
 const appCleanups = new WeakMap<object, () => Promise<void>>()
 
 export function createApp(options: AppOptions) {
@@ -83,7 +94,12 @@ export function createApp(options: AppOptions) {
   const git = new GitService(fs.paths, {
     maxTextFileBytes: fs.info().maxTextFileBytes,
   })
-  const terminal = new TerminalService(Object.assign({ paths: fs.paths }, options.terminal))
+  const terminal = new TerminalService({
+    ...options.terminal,
+    paths: fs.paths,
+    resolveWorktree: async (worktreeId) =>
+      requireWorktree(await orchestration.readModelSnapshot(), worktreeId).canonicalPath,
+  })
   const fonts = options.fonts ?? new NerdFontService()
   const database = options.orchestration?.database ?? getDefaultPlatformDatabase()
   // Before the registry, because the registry is built *from* it. One SQLite
@@ -111,12 +127,7 @@ export function createApp(options: AppOptions) {
         // so an unfiltered scan reports every instance ever used as live, and
         // the deferral would never resolve.
         hasLiveSessions: (providerInstanceId) =>
-          new ProviderSessionDirectory(database)
-            .listBindings()
-            .some(
-              (binding) =>
-                binding.providerInstanceId === providerInstanceId && isActiveBinding(binding),
-            ),
+          providerService.hasActiveRuntimeForInstance(providerInstanceId),
       },
     )
   // A saved provider list is inert unless something re-runs the registry when
@@ -134,6 +145,8 @@ export function createApp(options: AppOptions) {
     sessionDirectory: new ProviderSessionDirectory(database),
   })
   const orchestration = new OrchestrationEngine(database, {
+    attachmentsDir: options.orchestration?.attachmentsDir,
+    registration: { git, paths: fs.paths },
     providerRuntime: options.orchestration?.providerRuntime
       ? { checkpointGit: git, providerService }
       : false,
@@ -142,7 +155,7 @@ export function createApp(options: AppOptions) {
   const serverConfig = orchestrationWsServerConfig(identity)
   const commitMessages = new CommitMessageGenerator(git, providerAdapterRegistry, providerService)
   const checkpointDiff = new OrchestrationCheckpointDiffQuery(database, git)
-  const threadSearch = new OrchestrationThreadSearchQuery(database)
+  const sessionSearch = new OrchestrationSessionSearchQuery(database)
   const auth = createAuthConfig(options.auth)
   // Read through the store on every call rather than captured once: a language
   // server that only picked up a settings change on restart would be a knob the
@@ -159,7 +172,7 @@ export function createApp(options: AppOptions) {
       tyForPython: values['lsp.experimental.tyForPython'],
     }
   }
-  // The one knob that cannot be threaded as a parameter — see the comment on
+  // The one knob that cannot be sessioned as a parameter — see the comment on
   // `setLspDownloadPolicy`.
   setLspDownloadPolicy(() => settings.snapshot().values['lsp.downloadRuntimes'])
   const lspPool =
@@ -168,7 +181,7 @@ export function createApp(options: AppOptions) {
       () => settings.snapshot().values['lsp.idleTimeoutMs'],
       () => settings.snapshot().values['lsp.semanticTokens.delta'],
     )
-  const cleanup = appCleanup(terminal, fs, settings, lspPool, providerService)
+  const cleanup = appCleanup(terminal, fs, settings, lspPool, providerService, orchestration)
 
   const app = new Elysia({ name: 'platform' })
   applyObservability(app)
@@ -220,8 +233,8 @@ export function createApp(options: AppOptions) {
     .ws('/lsp', lspRoutes(fs, auth, { pool: lspPool, settings: lspSettings }))
     .ws('/terminal', terminal.routes(auth))
     .use(providerRoutes(providerAdapterRegistry))
-    .use(orchestrationRoutes(orchestration, checkpointDiff, threadSearch))
-    .use(attachmentRoutes())
+    .use(orchestrationRoutes(orchestration, checkpointDiff, sessionSearch))
+    .use(attachmentRoutes({ attachmentsDir: options.orchestration?.attachmentsDir }))
     .use(fontRoutes(fonts))
     .use(wallpaperRoutes())
     .use(settingsRoutes(settings))
@@ -229,6 +242,7 @@ export function createApp(options: AppOptions) {
     .use(fsRoutes(fs))
     .onStop(cleanup)
   appCleanups.set(configured, cleanup)
+  appOrchestration.set(configured, orchestration)
   return configured
 }
 
@@ -268,6 +282,7 @@ function appCleanup(
   settings: SettingsStore,
   lspPool: LspSessionPool,
   providerService: ProviderService,
+  orchestration: OrchestrationEngine,
 ) {
   let closed = false
 
@@ -283,6 +298,7 @@ function appCleanup(
     // Releases the settings file watchers; without this a test run leaks a
     // native handle per app it builds.
     settings.close()
+    await orchestration.close()
     await providerService.shutdown()
     await fs.close()
     await flushObservability()

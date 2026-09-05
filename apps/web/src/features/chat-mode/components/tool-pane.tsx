@@ -6,7 +6,7 @@ import { ChatDiffStatLabel } from '@/features/chat/components/chat-diff-stat-lab
 import { CheckpointLoading } from '@/features/chat-mode/components/checkpoint-loading'
 import { useSessionTerminalId } from '@/features/chat-mode/hooks/use-session-terminal-id'
 import { useSessionToolRoot } from '@/features/chat-mode/hooks/use-session-tool-root'
-import { useThreadDiffScope } from '@/features/chat/hooks/use-thread-diff-scope'
+import { useSessionDiffScope } from '@/features/chat/hooks/use-session-diff-scope'
 import { Panel as GitPanel } from '@/features/git/components/panel'
 import type { FileStatus } from '@/features/git/utils/types'
 import { LogsPanel } from '@/features/logs/components/panel'
@@ -18,7 +18,7 @@ import { ToolPaneHeader } from '@/features/workbench/components/tool-pane-header
 import type { WorkbenchPanels } from '@/features/workbench/utils/panels'
 import type { ChatModeToolTab } from '@/features/chat-mode/utils/panels'
 
-type ThreadDiffScopeState = ReturnType<typeof useThreadDiffScope>
+type SessionDiffScopeState = ReturnType<typeof useSessionDiffScope>
 
 export function ToolPane({
   conflicts,
@@ -39,7 +39,7 @@ export function ToolPane({
   // Read for every tab, not just the git one: the hook is what moves a pick off a
   // turn a revert deleted, and it can only do that while it is mounted. Tying it
   // to the git tab would leave a dangling turn in storage until the tab is opened.
-  const diffScope = useThreadDiffScope()
+  const diffScope = useSessionDiffScope()
   // These are *this session's* tools, so every one of them follows the session's
   // checkout rather than the project root. Same value for a session with no
   // worktree; the difference only appears once one has its own.
@@ -102,7 +102,7 @@ export function ToolPane({
  * its own: the scope bar has to sit between the header and the panel body, and
  * that panel belongs to the workbench sidebar too.
  */
-function gitToolPane(rootPath: string, diffScope: ThreadDiffScopeState) {
+function gitToolPane(rootPath: string, diffScope: SessionDiffScopeState) {
   const { latestTurnId, scope, selectTurnScope, selectWorkingTreeScope } = diffScope
 
   return (
@@ -120,7 +120,7 @@ function gitToolPane(rootPath: string, diffScope: ThreadDiffScopeState) {
         })}
         {scopeButton({
           active: scope.kind === 'turn',
-          // A thread that has not produced a checkpoint has no turn to show, and
+          // A session that has not produced a checkpoint has no turn to show, and
           // an inert button is worse than one that says so.
           disabled: !latestTurnId,
           label: 'Turn',
@@ -163,7 +163,7 @@ function scopeButton({
   )
 }
 
-function turnScopeBody({ openTurnFile, turnSummary }: ThreadDiffScopeState) {
+function turnScopeBody({ openTurnFile, turnSummary }: SessionDiffScopeState) {
   // No summary yet means the checkpoint has not streamed in — pending, not
   // absent. 'missing' below is the state that means there is nothing to show.
   if (!turnSummary) {

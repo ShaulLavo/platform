@@ -1,3 +1,9 @@
+import * as v from 'valibot'
+import {
+  terminalOpenInputSchema,
+  type TerminalOpenInput,
+  type WorktreeId,
+} from '@workspace/contracts'
 import { realpathSync } from 'node:fs'
 import path from 'node:path'
 import {
@@ -48,6 +54,7 @@ export type TerminalServiceOptions = {
   detachTtlMs?: number
   env?: NodeJS.ProcessEnv
   paths: WorkspacePaths
+  resolveWorktree: (worktreeId: WorktreeId) => Promise<string>
   ptyFactory?: TerminalPtyFactory
 }
 
@@ -59,8 +66,6 @@ type TerminalConnection = {
 
 const DEFAULT_COLS = 80
 const DEFAULT_ROWS = 24
-const DEFAULT_TERMINAL_SESSION_ID = 'default'
-const MAX_TERMINAL_SESSION_ID_LENGTH = 96
 const TERMINAL_REPLAY_BUFFER_BYTES = 256 * 1024
 const TERMINAL_DETACHED_TTL_MS = 10 * 60 * 1000
 
@@ -68,18 +73,23 @@ export class TerminalService {
   private readonly detachTtlMs: number
   private readonly env: NodeJS.ProcessEnv
   private readonly paths: WorkspacePaths
+  private readonly resolveWorktree: TerminalServiceOptions['resolveWorktree']
+  private readonly opening = new WeakSet<object>()
   private readonly persistentSessions = new Map<string, TerminalSession>()
   private readonly ptyFactory: TerminalPtyFactory
+  private disposed = false
 
   constructor({
     detachTtlMs = TERMINAL_DETACHED_TTL_MS,
     env = process.env,
     paths,
+    resolveWorktree,
     ptyFactory = defaultTerminalPtyFactory,
   }: TerminalServiceOptions) {
     this.detachTtlMs = detachTtlMs
     this.env = env
     this.paths = paths
+    this.resolveWorktree = resolveWorktree
     this.ptyFactory = ptyFactory
   }
 
@@ -92,13 +102,14 @@ export class TerminalService {
   }
 
   dispose() {
+    this.disposed = true
     for (const session of this.persistentSessions.values()) {
       session.dispose()
     }
     this.persistentSessions.clear()
   }
 
-  private open(ws: unknown, auth: AuthConfig) {
+  private async open(ws: unknown, auth: AuthConfig) {
     const socket = terminalWebSocketObject(ws)
     if (!socket) return
     const authError = authenticateWebSocketData(socket.data, auth)
@@ -114,7 +125,28 @@ export class TerminalService {
       return
     }
 
-    const root = this.resolveRoot(socket.root)
+    if (this.disposed || !socket.input) {
+      socket.close()
+      return
+    }
+    this.opening.add(socket.key)
+    const root = await this.resolveWorktree(socket.input.worktreeId)
+      .then((worktreePath) => this.resolveRoot(worktreePath))
+      .catch((error: unknown) => {
+        recordProcessWarning('terminal.session.rejected', {
+          area: 'terminal',
+          operation: 'open',
+          outcome: 'invalid_worktree',
+          error,
+        })
+        return null
+      })
+    if (!this.opening.has(socket.key)) return
+    this.opening.delete(socket.key)
+    if (this.disposed) {
+      socket.close()
+      return
+    }
     if (!root) {
       recordProcessWarning('terminal.session.rejected', {
         area: 'terminal',
@@ -130,8 +162,9 @@ export class TerminalService {
       close: socket.close,
       send: socket.send,
     }
-    const sessionId = socket.sessionId
-    const sessionKey = terminalSessionKey(root.relativePath, sessionId)
+    const sessionId = socket.input.terminalId
+    const worktreeId = socket.input.worktreeId
+    const sessionKey = terminalSessionKey(worktreeId, sessionId)
     const existing = this.persistentSessions.get(sessionKey)
     if (existing) {
       socketSessions.set(socket.key, existing)
@@ -141,6 +174,9 @@ export class TerminalService {
 
     const session = new TerminalSession({
       cwd: root.absolutePath,
+      cols: socket.input.cols ?? DEFAULT_COLS,
+      rows: socket.input.rows ?? DEFAULT_ROWS,
+      worktreeId,
       detachTtlMs: this.detachTtlMs,
       env: this.env,
       onDispose: () => this.persistentSessions.delete(sessionKey),
@@ -171,6 +207,7 @@ export class TerminalService {
     const socket = terminalWebSocketObject(ws)
     if (!socket) return
 
+    this.opening.delete(socket.key)
     const session = socketSessions.get(socket.key)
     socketSessions.delete(socket.key)
     session?.detach(socket.key)
@@ -178,7 +215,10 @@ export class TerminalService {
 
   private resolveRoot(root: string) {
     try {
-      return this.paths.resolve(root)
+      if (!path.isAbsolute(root)) return this.paths.resolve(root)
+      this.paths.assertInside(root)
+      this.paths.assertRealInside(realpathSync(root))
+      return { absolutePath: root, relativePath: this.paths.toRelative(root) }
     } catch (error) {
       if (isFsError(error)) return null
 
@@ -188,6 +228,9 @@ export class TerminalService {
 }
 
 export class TerminalSession {
+  readonly worktreeId: WorktreeId
+  private readonly cols: number
+  private readonly rows: number
   private readonly cwd: string
   private readonly detachTtlMs: number
   private readonly env: NodeJS.ProcessEnv
@@ -216,6 +259,9 @@ export class TerminalSession {
 
   constructor({
     cwd,
+    cols,
+    rows,
+    worktreeId,
     detachTtlMs,
     env,
     onDispose,
@@ -224,6 +270,9 @@ export class TerminalSession {
     sessionId,
   }: {
     cwd: string
+    cols: number
+    rows: number
+    worktreeId: WorktreeId
     detachTtlMs: number
     env: NodeJS.ProcessEnv
     onDispose: (session: TerminalSession) => void
@@ -231,7 +280,10 @@ export class TerminalSession {
     rootPath: string
     sessionId: string
   }) {
+    this.cols = cols
+    this.rows = rows
     this.cwd = cwd
+    this.worktreeId = worktreeId
     this.detachTtlMs = detachTtlMs
     this.env = env
     this.onDispose = onDispose
@@ -372,10 +424,10 @@ export class TerminalSession {
     try {
       return {
         pty: this.ptyFactory({
-          cols: DEFAULT_COLS,
+          cols: this.cols,
           cwd: this.cwd,
           env: terminalEnv(this.env),
-          rows: DEFAULT_ROWS,
+          rows: this.rows,
           shell,
         }),
         shell,
@@ -463,8 +515,7 @@ type TerminalWebSocket = {
   close(): unknown
   data: unknown
   key: object
-  root: string
-  sessionId: string
+  input: TerminalOpenInput | null
   send(message: string): unknown
 }
 
@@ -478,8 +529,7 @@ function terminalWebSocketObject(value: unknown): TerminalWebSocket | null {
     close: () => (typeof close === 'function' ? close.call(value) : undefined),
     data: value.data,
     key: websocketKey(value),
-    root: rootFromWebSocketData(value.data),
-    sessionId: sessionIdFromWebSocketData(value.data),
+    input: openInputFromWebSocketData(value.data),
     send: (message) => send.call(value, message),
   }
 }
@@ -488,12 +538,19 @@ function websocketKey(value: Record<string, unknown>): object {
   return isRecord(value.raw) ? value.raw : value
 }
 
-function rootFromWebSocketData(data: unknown) {
-  return queryValueFromWebSocketData(data, 'root') ?? ''
+function openInputFromWebSocketData(data: unknown): TerminalOpenInput | null {
+  const result = v.safeParse(terminalOpenInputSchema, {
+    worktreeId: queryValueFromWebSocketData(data, 'worktreeId'),
+    terminalId: queryValueFromWebSocketData(data, 'terminalId'),
+    cols: optionalQueryNumber(data, 'cols'),
+    rows: optionalQueryNumber(data, 'rows'),
+  })
+  return result.success ? result.output : null
 }
 
-function sessionIdFromWebSocketData(data: unknown) {
-  return terminalSessionId(queryValueFromWebSocketData(data, 'session'))
+function optionalQueryNumber(data: unknown, key: string) {
+  const value = queryValueFromWebSocketData(data, key)
+  return value === null ? undefined : Number(value)
 }
 
 function queryValueFromWebSocketData(data: unknown, key: string) {
@@ -508,15 +565,6 @@ function queryValueFromWebSocketData(data: unknown, key: string) {
   } catch {
     return null
   }
-}
-
-function terminalSessionId(value: unknown) {
-  if (typeof value !== 'string') return DEFAULT_TERMINAL_SESSION_ID
-
-  const trimmed = value.trim()
-  if (!trimmed) return DEFAULT_TERMINAL_SESSION_ID
-
-  return trimmed.slice(0, MAX_TERMINAL_SESSION_ID_LENGTH)
 }
 
 function terminalSessionKey(rootPath: string, sessionId: string) {

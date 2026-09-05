@@ -1,4 +1,4 @@
-import { messageIdSchema, type MessageId, type ThreadId, type TurnId } from '@workspace/contracts'
+import { messageIdSchema, type MessageId, type SessionId, type TurnId } from '@workspace/contracts'
 import * as v from 'valibot'
 
 const ASSISTANT_MESSAGE_IDS_BY_TURN_CAPACITY = 10_000
@@ -110,15 +110,15 @@ export class ProviderRuntimeBuffers {
     })
   }
 
-  rememberAssistantMessageId(threadId: ThreadId, turnId: TurnId, messageId: MessageId) {
-    const key = turnCacheKey(threadId, turnId)
+  rememberAssistantMessageId(sessionId: SessionId, turnId: TurnId, messageId: MessageId) {
+    const key = turnCacheKey(sessionId, turnId)
     const messageIds = this.assistantMessageIdsByTurn.get(key) ?? new Set<MessageId>()
     messageIds.add(messageId)
     this.assistantMessageIdsByTurn.set(key, messageIds)
   }
 
-  forgetAssistantMessageId(threadId: ThreadId, turnId: TurnId, messageId: MessageId) {
-    const key = turnCacheKey(threadId, turnId)
+  forgetAssistantMessageId(sessionId: SessionId, turnId: TurnId, messageId: MessageId) {
+    const key = turnCacheKey(sessionId, turnId)
     const messageIds = this.assistantMessageIdsByTurn.get(key)
     if (!messageIds) return
 
@@ -131,41 +131,41 @@ export class ProviderRuntimeBuffers {
     this.assistantMessageIdsByTurn.set(key, messageIds)
   }
 
-  assistantMessageIdsForTurn(threadId: ThreadId, turnId: TurnId) {
-    return new Set(this.assistantMessageIdsByTurn.get(turnCacheKey(threadId, turnId)) ?? [])
+  assistantMessageIdsForTurn(sessionId: SessionId, turnId: TurnId) {
+    return new Set(this.assistantMessageIdsByTurn.get(turnCacheKey(sessionId, turnId)) ?? [])
   }
 
-  clearAssistantMessageIdsForTurn(threadId: ThreadId, turnId: TurnId) {
-    this.assistantMessageIdsByTurn.delete(turnCacheKey(threadId, turnId))
+  clearAssistantMessageIdsForTurn(sessionId: SessionId, turnId: TurnId) {
+    this.assistantMessageIdsByTurn.delete(turnCacheKey(sessionId, turnId))
   }
 
-  activeAssistantMessageIdForTurn(threadId: ThreadId, turnId: TurnId) {
-    return this.assistantSegmentStateByTurn.get(turnCacheKey(threadId, turnId))?.activeMessageId
+  activeAssistantMessageIdForTurn(sessionId: SessionId, turnId: TurnId) {
+    return this.assistantSegmentStateByTurn.get(turnCacheKey(sessionId, turnId))?.activeMessageId
   }
 
   getOrCreateAssistantMessageId(input: {
     baseKey: string
-    threadId: ThreadId
+    sessionId: SessionId
     turnId: TurnId | undefined
   }) {
     if (!input.turnId) return assistantSegmentMessageId(input.baseKey, 0)
 
-    const activeMessageId = this.activeAssistantMessageIdForTurn(input.threadId, input.turnId)
+    const activeMessageId = this.activeAssistantMessageIdForTurn(input.sessionId, input.turnId)
     if (activeMessageId) return activeMessageId
 
-    return this.startAssistantSegmentForTurn(input.threadId, input.turnId, input.baseKey)
+    return this.startAssistantSegmentForTurn(input.sessionId, input.turnId, input.baseKey)
   }
 
-  markActiveAssistantSegmentComplete(threadId: ThreadId, turnId: TurnId) {
-    const key = turnCacheKey(threadId, turnId)
+  markActiveAssistantSegmentComplete(sessionId: SessionId, turnId: TurnId) {
+    const key = turnCacheKey(sessionId, turnId)
     const state = this.assistantSegmentStateByTurn.get(key)
     if (!state) return
 
     this.assistantSegmentStateByTurn.set(key, { ...state, activeMessageId: null })
   }
 
-  clearAssistantSegmentStateForTurn(threadId: ThreadId, turnId: TurnId) {
-    this.assistantSegmentStateByTurn.delete(turnCacheKey(threadId, turnId))
+  clearAssistantSegmentStateForTurn(sessionId: SessionId, turnId: TurnId) {
+    this.assistantSegmentStateByTurn.delete(turnCacheKey(sessionId, turnId))
   }
 
   appendBufferedAssistantText(messageId: MessageId, delta: string) {
@@ -207,8 +207,8 @@ export class ProviderRuntimeBuffers {
     this.bufferedProposedPlanById.delete(planId)
   }
 
-  clearTurnStateForSession(threadId: ThreadId) {
-    const turnPrefix = `${threadId}:`
+  clearTurnStateForSession(sessionId: SessionId) {
+    const turnPrefix = `${sessionId}:`
     for (const key of this.assistantMessageIdsByTurn.keys()) {
       this.clearTurnMessageKey(key, turnPrefix)
     }
@@ -216,12 +216,12 @@ export class ProviderRuntimeBuffers {
       if (key.startsWith(turnPrefix)) this.assistantSegmentStateByTurn.delete(key)
     }
     for (const key of this.bufferedProposedPlanById.keys()) {
-      if (key.startsWith(proposedPlanPrefix(threadId))) this.bufferedProposedPlanById.delete(key)
+      if (key.startsWith(proposedPlanPrefix(sessionId))) this.bufferedProposedPlanById.delete(key)
     }
   }
 
-  private startAssistantSegmentForTurn(threadId: ThreadId, turnId: TurnId, baseKey: string) {
-    const key = turnCacheKey(threadId, turnId)
+  private startAssistantSegmentForTurn(sessionId: SessionId, turnId: TurnId, baseKey: string) {
+    const key = turnCacheKey(sessionId, turnId)
     const existing = this.assistantSegmentStateByTurn.get(key)
     const state = nextAssistantSegmentState(existing, baseKey)
     this.assistantSegmentStateByTurn.set(key, state)
@@ -266,10 +266,10 @@ function assistantSegmentMessageId(baseKey: string, segmentIndex: number) {
   return v.parse(messageIdSchema, `assistant:${baseKey}${suffix}`)
 }
 
-function turnCacheKey(threadId: ThreadId, turnId: TurnId) {
-  return `${threadId}:${turnId}`
+function turnCacheKey(sessionId: SessionId, turnId: TurnId) {
+  return `${sessionId}:${turnId}`
 }
 
-function proposedPlanPrefix(threadId: ThreadId) {
-  return `plan:${threadId}:`
+function proposedPlanPrefix(sessionId: SessionId) {
+  return `plan:${sessionId}:`
 }

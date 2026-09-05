@@ -1,5 +1,5 @@
 /**
- * Shared reconnect policy for the orchestration streams (shell and thread
+ * Shared reconnect policy for the orchestration streams (shell and session
  * detail). Both supervisors climb the same ladder so a server restart produces
  * one predictable retry cadence instead of two competing ones.
  */

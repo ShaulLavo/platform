@@ -1,3 +1,6 @@
+import * as v from 'valibot'
+import { sessionIdSchema, type SessionId } from '@workspace/contracts'
+import { claudeTerminalResumeArgv } from '../../utils/claude-terminal-resume'
 import { describe, expect, it } from 'vitest'
 import type {
   InteractionMode,
@@ -10,8 +13,9 @@ import {
   claudeModelId,
   claudePermissionMode,
   claudeQueryOptions,
-  claudeResumeSessionId,
 } from '../utils/claude-query-options'
+
+const SESSION_ID = v.parse(sessionIdSchema, '7b37c40b-ad92-4800-94aa-b3c4a7c64828')
 
 const CLAUDE_INSTANCE = 'claude' as ProviderInstanceId
 const CODEX_INSTANCE = 'codex' as ProviderInstanceId
@@ -26,14 +30,15 @@ function modelSelection(overrides: Partial<ModelSelection> = {}): ModelSelection
 
 function queryOptions(overrides: {
   interactionMode?: InteractionMode
-  resumeCursor?: unknown
+  resumeExisting?: boolean
   runtimeMode: RuntimeMode
-  sessionId?: string
+  sessionId?: SessionId
 }) {
   return claudeQueryOptions({
     abortController: new AbortController(),
     cwd: '/tmp/workspace',
     model: 'claude-opus-5',
+    sessionId: SESSION_ID,
     ...overrides,
   })
 }
@@ -104,6 +109,7 @@ describe('claudeQueryOptions', () => {
       abortController,
       cwd: '/tmp/workspace',
       model: 'claude-opus-5',
+      sessionId: SESSION_ID,
       runtimeMode: 'full-access',
     })
 
@@ -128,35 +134,14 @@ describe('claudeQueryOptions', () => {
     expect('canUseTool' in options).toBe(false)
   })
 
-  it('resumes from a session cursor', () => {
-    const options = queryOptions({ resumeCursor: 'session-abc', runtimeMode: 'full-access' })
-
-    expect(options.resume).toBe('session-abc')
-  })
-
-  it('names a fresh session with the minted id', () => {
-    const options = queryOptions({ runtimeMode: 'full-access', sessionId: 'session-new' })
-
-    expect(options.sessionId).toBe('session-new')
-    expect('resume' in options).toBe(false)
-  })
-
-  /** The SDK rejects the pair outright unless `forkSession` rides along. */
-  it('never emits resume and sessionId together', () => {
-    const options = queryOptions({
-      resumeCursor: 'session-abc',
-      runtimeMode: 'full-access',
-      sessionId: 'session-new',
-    })
-
-    expect(options.resume).toBe('session-abc')
-    expect('sessionId' in options).toBe(false)
-  })
-
-  it('ignores non-string and blank resume cursors', () => {
-    expect('resume' in queryOptions({ resumeCursor: null, runtimeMode: 'full-access' })).toBe(false)
-    expect('resume' in queryOptions({ resumeCursor: '  ', runtimeMode: 'full-access' })).toBe(false)
-    expect('resume' in queryOptions({ resumeCursor: 42, runtimeMode: 'full-access' })).toBe(false)
+  it('uses the same raw UUID for SDK create, SDK resume and terminal argv', () => {
+    const fresh = queryOptions({ runtimeMode: 'full-access' })
+    const resumed = queryOptions({ runtimeMode: 'full-access', resumeExisting: true })
+    expect(fresh.sessionId).toBe(SESSION_ID)
+    expect(fresh.resume).toBeUndefined()
+    expect(resumed.resume).toBe(SESSION_ID)
+    expect(resumed.sessionId).toBeUndefined()
+    expect(claudeTerminalResumeArgv(SESSION_ID)).toEqual(['claude', '--resume', SESSION_ID])
   })
 
   it('forwards canUseTool when supplied', async () => {
@@ -166,20 +151,11 @@ describe('claudeQueryOptions', () => {
       canUseTool,
       cwd: '/tmp/workspace',
       model: 'claude-opus-5',
+      sessionId: SESSION_ID,
       runtimeMode: 'approval-required',
     })
 
     expect(options.canUseTool).toBe(canUseTool)
-  })
-})
-
-describe('claudeResumeSessionId', () => {
-  it('accepts a non-empty string and rejects everything else', () => {
-    expect(claudeResumeSessionId('session-abc')).toBe('session-abc')
-    expect(claudeResumeSessionId('  session-abc  ')).toBe('session-abc')
-    expect(claudeResumeSessionId('')).toBeNull()
-    expect(claudeResumeSessionId(undefined)).toBeNull()
-    expect(claudeResumeSessionId({ sessionId: 'session-abc' })).toBeNull()
   })
 })
 

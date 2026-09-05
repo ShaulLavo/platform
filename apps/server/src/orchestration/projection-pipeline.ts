@@ -1,16 +1,23 @@
-import { and, asc, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm'
-import type { OrchestrationSessionStatus } from '@workspace/contracts'
-import type { OrchestrationEvent } from './schemas'
+import { or, and, asc, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm'
+import * as v from 'valibot'
+import {
+  ORCHESTRATION_REPLAY_MAX_EVENTS,
+  orchestrationLatestTurnSchema,
+  type SessionDeletionState,
+  type SessionRuntimeStatus,
+} from '@workspace/contracts'
+import type { OrchestrationEvent } from '@workspace/contracts'
 import { getDefaultPlatformDatabase } from '../db/client'
 import {
   projectionProjects,
+  projectionWorktrees,
   projectionState,
-  projectionThreadActivities,
-  projectionThreadCheckpoints,
-  projectionThreadMessages,
-  projectionThreadProposedPlans,
-  projectionThreadSessions,
-  projectionThreads,
+  projectionSessionActivities,
+  projectionSessionCheckpoints,
+  projectionSessionMessages,
+  projectionSessionProposedPlans,
+  projectionSessionRuntime,
+  projectionSessions,
   projectionTurns,
 } from '../db/schema'
 import type { OrchestrationDatabase } from './event-store'
@@ -25,14 +32,16 @@ import {
   mergedMessageText,
   PLAN_PROGRESS_ACTIVITY_KIND,
   settledTurnStateForSessionStatus,
-  threadPlanProgress,
-  type ThreadPlanProgress,
+  sessionPlanProgress,
+  type SessionPlanProgress,
 } from './read-model'
 import {
   isPendingRequestActivityKind,
   PENDING_REQUEST_ACTIVITY_KINDS,
   pendingRequestCounts,
 } from './pending-requests'
+
+import { sessionAttention } from './utils/session-attention'
 
 export const ORCHESTRATION_PROJECTOR_NAME = 'orchestration'
 
@@ -50,15 +59,24 @@ export class OrchestrationProjectionPipeline {
 
   catchUp() {
     const afterSequence = this.lastAppliedSequence()
-    recordChatPipelineInfo('chat.pipeline.projection.catch_up.start', { afterSequence })
-    const events = this.eventStore.readAfter({ afterSequence })
-    this.applyEvents(events)
+    let sequence = afterSequence
+    let eventCount = 0
+    let pageCount = 0
+    while (true) {
+      const events = this.eventStore.readAfter({ afterSequence: sequence })
+      this.applyEvents(events)
+      sequence = events.at(-1)?.sequence ?? sequence
+      eventCount += events.length
+      pageCount += 1
+      if (events.length < ORCHESTRATION_REPLAY_MAX_EVENTS) break
+    }
     recordChatPipelineInfo('chat.pipeline.projection.catch_up.complete', {
       afterSequence,
-      ...orchestrationEventBatchSummary(events),
+      eventCount,
+      pageCount,
+      sequence,
     })
-
-    return events
+    return { afterSequence, eventCount, pageCount, sequence }
   }
 
   applyEvents(events: OrchestrationEvent[]) {
@@ -94,7 +112,9 @@ export class OrchestrationProjectionPipeline {
    */
   private applyEventAtomically(event: OrchestrationEvent) {
     this.database.transaction(() => {
+      if (event.sequence <= this.lastAppliedSequence()) return
       this.applyEvent(event)
+      this.refreshAttentionForEvent(event)
       this.markApplied(event.sequence)
     })
   }
@@ -102,6 +122,7 @@ export class OrchestrationProjectionPipeline {
   private applyEvent(event: OrchestrationEvent) {
     switch (event.type) {
       case 'project.created':
+      case 'project.revived':
         this.upsertProject(event)
         return
       case 'project.meta-updated':
@@ -113,7 +134,6 @@ export class OrchestrationProjectionPipeline {
           scriptsJson: jsonOrUndefined(event.payload.scripts),
           title: event.payload.title,
           updatedAt: event.payload.updatedAt,
-          workspaceRoot: event.payload.workspaceRoot,
         })
         return
       case 'project.reordered':
@@ -125,150 +145,319 @@ export class OrchestrationProjectionPipeline {
           updatedAt: event.payload.deletedAt,
         })
         return
-      case 'thread.created':
-        this.upsertThread(event)
+      case 'worktree.registered':
+      case 'worktree.revived':
+        this.upsertWorktree(event)
         return
-      case 'thread.meta-updated':
-        this.updateThread(event.payload.threadId, {
-          branch: event.payload.branch,
+      case 'worktree.retired':
+        this.database
+          .update(projectionWorktrees)
+          .set({
+            retiredAt: event.payload.retiredAt,
+            retirementSequence: event.sequence,
+            updatedAt: event.payload.retiredAt,
+          })
+          .where(eq(projectionWorktrees.worktreeId, event.payload.worktreeId))
+          .run()
+        return
+      case 'worktree.meta-updated':
+        this.database
+          .update(projectionWorktrees)
+          .set({ branch: event.payload.branch, updatedAt: event.payload.updatedAt })
+          .where(eq(projectionWorktrees.worktreeId, event.payload.worktreeId))
+          .run()
+        return
+      case 'session.provider-start-claimed':
+      case 'session.provider-start-adopted':
+      case 'session.provider-start-settled':
+        this.updateProviderStart(event)
+        return
+      case 'session.runtime-recovered':
+        this.recoverRuntime(event)
+        return
+      case 'session.deletion-updated':
+        this.updateDeletion(event.payload.sessionId, event.payload.deletion)
+        return
+      case 'session.discovery-metadata-updated':
+        this.updateSession(event.payload.sessionId, {
+          title: event.payload.title,
+          updatedAt: event.payload.updatedAt,
+        })
+        return
+      case 'session.created':
+        this.upsertSession(event)
+        return
+      case 'session.meta-updated':
+        this.updateSession(event.payload.sessionId, {
           modelSelectionJson: jsonOrUndefined(event.payload.modelSelection),
           title: event.payload.title,
           updatedAt: event.payload.updatedAt,
-          worktreePath: event.payload.worktreePath,
         })
         return
-      case 'thread.message-sent':
+      case 'session.message-sent':
         this.upsertMessage(event)
         return
-      case 'thread.turn-start-requested':
+      case 'session.turn-start-requested':
         this.upsertTurn(event)
         return
-      case 'thread.session-set':
-        this.upsertSession(event)
+      case 'session.runtime-set':
+        this.upsertRuntime(event)
         this.settleRunningTurns(
-          event.payload.threadId,
-          event.payload.session.status,
-          event.payload.session.updatedAt,
+          event.payload.sessionId,
+          event.payload.runtime.status,
+          event.payload.runtime.updatedAt,
         )
         return
-      case 'thread.activity-appended':
+      case 'session.activity-appended':
         this.upsertActivity(event)
         this.updateTurnForActivity(event)
         this.refreshPendingRequestCountsForActivity(event)
         this.refreshPlanProgressForActivity(event)
         return
-      case 'thread.deleted':
-        this.updateThread(event.payload.threadId, {
+      case 'session.deleted':
+        this.updateDeletion(event.payload.sessionId, {
+          deletionSequence: event.sequence,
+          providerStop: 'requested',
+          blobCleanup: 'requested',
+          providerStopError: null,
+          blobCleanupError: null,
+          updatedAt: event.payload.deletedAt,
+        })
+        this.updateSession(event.payload.sessionId, {
           deletedAt: event.payload.deletedAt,
           updatedAt: event.payload.deletedAt,
         })
         return
-      case 'thread.archived':
-        this.updateThread(event.payload.threadId, {
+      case 'session.archived':
+        this.updateSession(event.payload.sessionId, {
           archivedAt: event.payload.archivedAt,
           updatedAt: event.payload.updatedAt,
         })
         return
-      case 'thread.unarchived':
-        this.updateThread(event.payload.threadId, {
+      case 'session.unarchived':
+        this.updateSession(event.payload.sessionId, {
           archivedAt: null,
           updatedAt: event.payload.updatedAt,
         })
         return
-      case 'thread.settled':
-        this.updateThread(event.payload.threadId, {
+      case 'session.settled':
+        this.updateSession(event.payload.sessionId, {
           settledAt: event.payload.settledAt,
           settledOverride: 'settled',
+          acknowledgedFailureThroughSequence: event.payload.acknowledgedFailureThroughSequence,
           updatedAt: event.payload.updatedAt,
         })
         return
-      case 'thread.unsettled':
+      case 'session.unsettled':
         // "user" is an explicit keep-active override; "activity" resets to
-        // neutral so the thread can settle on its own again.
-        this.updateThread(event.payload.threadId, {
+        // neutral so the session can settle on its own again.
+        this.updateSession(event.payload.sessionId, {
           settledAt: null,
           settledOverride: event.payload.reason === 'user' ? 'active' : null,
           updatedAt: event.payload.updatedAt,
         })
         return
-      case 'thread.snoozed':
-        this.updateThread(event.payload.threadId, {
+      case 'session.snoozed':
+        this.updateSession(event.payload.sessionId, {
           snoozedAt: event.payload.snoozedAt,
           snoozedUntil: event.payload.snoozedUntil,
           updatedAt: event.payload.updatedAt,
         })
         return
-      case 'thread.unsnoozed':
-        this.updateThread(event.payload.threadId, {
+      case 'session.unsnoozed':
+        this.updateSession(event.payload.sessionId, {
           snoozedAt: null,
           snoozedUntil: null,
           updatedAt: event.payload.updatedAt,
         })
         return
-      case 'thread.pinned':
+      case 'session.pinned':
         // An absent key is "keep what is there": a re-pin must not overwrite the
-        // slot the user already dragged this thread into.
-        this.updateThread(event.payload.threadId, {
+        // slot the user already dragged this session into.
+        this.updateSession(event.payload.sessionId, {
           pinOrderKey: event.payload.pinOrderKey,
           pinnedAt: event.payload.pinnedAt,
           updatedAt: event.payload.updatedAt,
         })
         return
-      case 'thread.unpinned':
-        this.updateThread(event.payload.threadId, {
+      case 'session.unpinned':
+        this.updateSession(event.payload.sessionId, {
           pinOrderKey: null,
           pinnedAt: null,
           updatedAt: event.payload.updatedAt,
         })
         return
-      case 'thread.pin-reordered':
-        this.updateThread(event.payload.threadId, {
+      case 'session.pin-reordered':
+        this.updateSession(event.payload.sessionId, {
           pinOrderKey: event.payload.orderKey,
           updatedAt: event.payload.updatedAt,
         })
         return
-      case 'thread.runtime-mode-set':
-        this.updateThread(event.payload.threadId, {
+      case 'session.runtime-mode-set':
+        this.updateSession(event.payload.sessionId, {
           runtimeMode: event.payload.runtimeMode,
           updatedAt: event.payload.updatedAt,
         })
         return
-      case 'thread.interaction-mode-set':
-        this.updateThread(event.payload.threadId, {
+      case 'session.interaction-mode-set':
+        this.updateSession(event.payload.sessionId, {
           interactionMode: event.payload.interactionMode,
           updatedAt: event.payload.updatedAt,
         })
         return
-      case 'thread.turn-interrupt-requested':
+      case 'session.turn-interrupt-requested':
         this.completeTurn(
-          event.payload.threadId,
+          event.payload.sessionId,
           event.payload.turnId,
           'interrupted',
           event.payload.createdAt,
         )
         return
-      case 'thread.turn-diff-completed':
+      case 'session.turn-diff-completed':
         this.upsertCheckpoint(event)
         return
-      case 'thread.session-stop-requested':
-        this.updateSessionStatus(event.payload.threadId, 'stopped', event.payload.createdAt)
-        this.settleRunningTurns(event.payload.threadId, 'stopped', event.payload.createdAt)
+      case 'session.runtime-stop-requested':
+        this.updateSessionStatus(event.payload.sessionId, 'stopped', event.payload.createdAt)
+        this.settleRunningTurns(event.payload.sessionId, 'stopped', event.payload.createdAt)
         return
-      case 'thread.proposed-plan-upserted':
+      case 'session.proposed-plan-implemented':
+        this.markProposedPlanImplemented(event)
+        return
+      case 'session.proposed-plan-upserted':
         this.upsertProposedPlan(event)
         return
-      case 'thread.checkpoint-revert-requested':
+      case 'session.checkpoint-revert-requested':
         return
-      case 'thread.reverted':
-        this.pruneThreadAfterRevert(event)
+      case 'session.reverted':
+        this.pruneSessionAfterRevert(event)
         return
-      case 'thread.approval-response-requested':
-      case 'thread.user-input-response-requested':
+      case 'session.approval-response-requested':
+      case 'session.user-input-response-requested':
         return
     }
   }
 
-  private upsertProject(event: Extract<OrchestrationEvent, { type: 'project.created' }>) {
+  private upsertWorktree(
+    event: Extract<OrchestrationEvent, { type: 'worktree.registered' | 'worktree.revived' }>,
+  ) {
+    const row = { ...event.payload, retiredAt: null, retirementSequence: null }
+    this.database
+      .insert(projectionWorktrees)
+      .values(row)
+      .onConflictDoUpdate({ target: projectionWorktrees.worktreeId, set: row })
+      .run()
+  }
+
+  private updateProviderStart(
+    event: Extract<
+      OrchestrationEvent,
+      {
+        type:
+          | 'session.provider-start-claimed'
+          | 'session.provider-start-adopted'
+          | 'session.provider-start-settled'
+      }
+    >,
+  ) {
+    const providerStartState = PROVIDER_START_STATE[event.type]
+    this.database
+      .update(projectionTurns)
+      .set({
+        providerStartState,
+        providerStartGeneration: event.payload.generation,
+        providerStartSequence: event.sequence,
+        runtimeEpoch: event.payload.runtimeEpoch,
+      })
+      .where(
+        and(
+          eq(projectionTurns.sessionId, event.payload.sessionId),
+          eq(projectionTurns.turnId, event.payload.turnId),
+        ),
+      )
+      .run()
+    this.refreshLatestTurn(event.payload.sessionId, event.payload.createdAt)
+  }
+
+  private recoverRuntime(
+    event: Extract<OrchestrationEvent, { type: 'session.runtime-recovered' }>,
+  ) {
+    this.database
+      .update(projectionSessionRuntime)
+      .set({
+        status: 'interrupted',
+        activeTurnId: null,
+        lastError: event.payload.message,
+        updatedAt: event.payload.createdAt,
+      })
+      .where(eq(projectionSessionRuntime.sessionId, event.payload.sessionId))
+      .run()
+    this.database
+      .update(projectionTurns)
+      .set({
+        state: 'interrupted',
+        providerStartState: 'interrupted',
+        providerStartSequence: event.sequence,
+        completedAt: event.payload.createdAt,
+      })
+      .where(
+        and(
+          eq(projectionTurns.sessionId, event.payload.sessionId),
+          inArray(projectionTurns.providerStartState, ['claimed', 'adopted']),
+          event.payload.turnId ? eq(projectionTurns.turnId, event.payload.turnId) : undefined,
+        ),
+      )
+      .run()
+    this.refreshLatestTurn(event.payload.sessionId, event.payload.createdAt)
+    this.updateSession(event.payload.sessionId, {
+      latestInterruptionSequence: event.sequence,
+      runtimeSequence: event.sequence,
+    })
+  }
+
+  private updateDeletion(sessionId: string, deletion: SessionDeletionState) {
+    this.updateSession(sessionId, {
+      deletionSequence: deletion.deletionSequence,
+      providerStopState: deletion.providerStop,
+      blobCleanupState: deletion.blobCleanup,
+      providerStopError: deletion.providerStopError,
+      blobCleanupError: deletion.blobCleanupError,
+      deletionUpdatedAt: deletion.updatedAt,
+    })
+  }
+
+  private refreshAttentionForEvent(event: OrchestrationEvent) {
+    if (event.aggregateKind !== 'session') return
+    const failure = failureKind(event)
+    if (failure === 'failure')
+      this.updateSession(event.aggregateId, { latestFailureSequence: event.sequence })
+    if (failure === 'interruption')
+      this.updateSession(event.aggregateId, { latestInterruptionSequence: event.sequence })
+    this.refreshAttention(event.aggregateId)
+  }
+
+  private refreshAttention(sessionId: string) {
+    const row = this.database
+      .select()
+      .from(projectionSessions)
+      .where(eq(projectionSessions.sessionId, sessionId))
+      .get()
+    if (!row) return
+    const runtime =
+      this.database
+        .select()
+        .from(projectionSessionRuntime)
+        .where(eq(projectionSessionRuntime.sessionId, sessionId))
+        .get() ?? null
+    const latestTurn = row.latestTurnJson
+      ? v.parse(orchestrationLatestTurnSchema, JSON.parse(row.latestTurnJson))
+      : null
+    const attention = sessionAttention({ ...row, latestTurn, runtime })
+    this.updateSession(sessionId, attention)
+  }
+
+  private upsertProject(
+    event: Extract<OrchestrationEvent, { type: 'project.created' | 'project.revived' }>,
+  ) {
     this.database
       .insert(projectionProjects)
       .values({
@@ -284,7 +473,9 @@ export class OrchestrationProjectionPipeline {
         scriptsJson: null,
         title: event.payload.title,
         updatedAt: event.payload.updatedAt,
-        workspaceRoot: event.payload.workspaceRoot,
+        repositoryKey: event.payload.repositoryKey,
+        repositoryKind: event.payload.repositoryKind,
+        repositoryIdentityJson: JSON.stringify(event.payload.repositoryIdentity),
       })
       .onConflictDoUpdate({
         target: projectionProjects.projectId,
@@ -293,18 +484,16 @@ export class OrchestrationProjectionPipeline {
           deletedAt: null,
           title: event.payload.title,
           updatedAt: event.payload.updatedAt,
-          workspaceRoot: event.payload.workspaceRoot,
         },
       })
       .run()
   }
 
-  private upsertThread(event: Extract<OrchestrationEvent, { type: 'thread.created' }>) {
+  private upsertSession(event: Extract<OrchestrationEvent, { type: 'session.created' }>) {
     this.database
-      .insert(projectionThreads)
+      .insert(projectionSessions)
       .values({
         archivedAt: null,
-        branch: event.payload.branch,
         createdAt: event.payload.createdAt,
         deletedAt: null,
         hasActionableProposedPlan: false,
@@ -318,40 +507,45 @@ export class OrchestrationProjectionPipeline {
         pinOrderKey: null,
         planProgressJson: null,
         pinnedAt: null,
-        projectId: event.payload.projectId,
+        worktreeId: event.payload.worktreeId,
+        origin: event.payload.origin,
+        attentionState: 'settled',
+        attentionReason: null,
+        hasError: false,
         runtimeMode: event.payload.runtimeMode,
         settledAt: null,
         settledOverride: null,
         snoozedAt: null,
         snoozedUntil: null,
-        threadId: event.payload.threadId,
+        sessionId: event.payload.sessionId,
         title: event.payload.title,
         updatedAt: event.payload.updatedAt,
-        worktreePath: event.payload.worktreePath,
       })
       .onConflictDoUpdate({
-        target: projectionThreads.threadId,
+        target: projectionSessions.sessionId,
         set: {
           archivedAt: null,
-          branch: event.payload.branch,
           deletedAt: null,
           interactionMode: event.payload.interactionMode,
           modelSelectionJson: JSON.stringify(event.payload.modelSelection),
-          projectId: event.payload.projectId,
+          worktreeId: event.payload.worktreeId,
+          origin: event.payload.origin,
+          attentionState: 'settled',
+          attentionReason: null,
+          hasError: false,
           runtimeMode: event.payload.runtimeMode,
           title: event.payload.title,
           updatedAt: event.payload.updatedAt,
-          worktreePath: event.payload.worktreePath,
         },
       })
       .run()
   }
 
-  private upsertMessage(event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>) {
+  private upsertMessage(event: Extract<OrchestrationEvent, { type: 'session.message-sent' }>) {
     const existing = this.database
       .select()
-      .from(projectionThreadMessages)
-      .where(eq(projectionThreadMessages.messageId, event.payload.messageId))
+      .from(projectionSessionMessages)
+      .where(eq(projectionSessionMessages.messageId, event.payload.messageId))
       .get()
     const text = mergedMessageText(existing?.text ?? null, event.payload)
     // turnId and attachments are backfilled, never erased: a later frame that
@@ -363,7 +557,7 @@ export class OrchestrationProjectionPipeline {
         : (existing?.attachmentsJson ?? '[]')
 
     this.database
-      .insert(projectionThreadMessages)
+      .insert(projectionSessionMessages)
       .values({
         attachmentsJson,
         createdAt: event.payload.createdAt,
@@ -371,12 +565,12 @@ export class OrchestrationProjectionPipeline {
         role: event.payload.role,
         streaming: event.payload.streaming,
         text,
-        threadId: event.payload.threadId,
+        sessionId: event.payload.sessionId,
         turnId,
         updatedAt: event.payload.updatedAt,
       })
       .onConflictDoUpdate({
-        target: projectionThreadMessages.messageId,
+        target: projectionSessionMessages.messageId,
         set: {
           attachmentsJson,
           streaming: event.payload.streaming,
@@ -387,39 +581,41 @@ export class OrchestrationProjectionPipeline {
       })
       .run()
 
-    this.updateThreadForMessage(event)
+    this.updateSessionForMessage(event)
   }
 
-  private updateThreadForMessage(
-    event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
+  private updateSessionForMessage(
+    event: Extract<OrchestrationEvent, { type: 'session.message-sent' }>,
   ) {
     if (event.payload.role === 'user') {
-      this.updateThread(event.payload.threadId, {
+      this.updateSession(event.payload.sessionId, {
         latestUserMessageAt: event.payload.createdAt,
         updatedAt: event.payload.updatedAt,
       })
       return
     }
 
-    this.updateThread(event.payload.threadId, { updatedAt: event.payload.updatedAt })
+    this.updateSession(event.payload.sessionId, { updatedAt: event.payload.updatedAt })
     this.updateAssistantTurn(event)
   }
 
-  private updateAssistantTurn(event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>) {
+  private updateAssistantTurn(
+    event: Extract<OrchestrationEvent, { type: 'session.message-sent' }>,
+  ) {
     if (event.payload.role !== 'assistant') return
     if (!event.payload.turnId) return
 
-    const turn = this.selectTurn(event.payload.threadId, event.payload.turnId)
+    const turn = this.selectTurn(event.payload.sessionId, event.payload.turnId)
     const state = assistantTurnState(turn?.state, event.payload.streaming)
     const completedAt = assistantTurnCompletedAt(turn?.completedAt, event)
     const startedAt = turn?.startedAt ?? event.payload.createdAt
     const requestedAt = turn?.requestedAt ?? event.payload.createdAt
 
     this.upsertAssistantTurn(event, { completedAt, requestedAt, startedAt, state })
-    this.updateThreadLatestTurnForAssistantMessage(event)
+    this.updateSessionLatestTurnForAssistantMessage(event)
   }
 
-  private upsertTurn(event: Extract<OrchestrationEvent, { type: 'thread.turn-start-requested' }>) {
+  private upsertTurn(event: Extract<OrchestrationEvent, { type: 'session.turn-start-requested' }>) {
     const latestTurn = {
       assistantMessageId: null,
       completedAt: null,
@@ -427,6 +623,10 @@ export class OrchestrationProjectionPipeline {
       sourceProposedPlan: event.payload.sourceProposedPlan,
       startedAt: null,
       state: 'running',
+      providerStartState: 'queued',
+      providerStartGeneration: 0,
+      providerStartSequence: event.sequence,
+      runtimeEpoch: null,
       turnId: event.payload.turnId,
     }
 
@@ -439,12 +639,16 @@ export class OrchestrationProjectionPipeline {
         sourceProposedPlanJson: jsonOrUndefined(event.payload.sourceProposedPlan),
         startedAt: null,
         state: 'running',
-        threadId: event.payload.threadId,
+        providerStartState: 'queued',
+        providerStartGeneration: 0,
+        providerStartSequence: event.sequence,
+        runtimeEpoch: null,
+        sessionId: event.payload.sessionId,
         turnId: event.payload.turnId,
         userMessageId: event.payload.messageId,
       })
       .onConflictDoUpdate({
-        target: [projectionTurns.threadId, projectionTurns.turnId],
+        target: [projectionTurns.sessionId, projectionTurns.turnId],
         set: {
           requestedAt: event.payload.createdAt,
           state: 'running',
@@ -453,7 +657,7 @@ export class OrchestrationProjectionPipeline {
       })
       .run()
 
-    this.updateThread(event.payload.threadId, {
+    this.updateSession(event.payload.sessionId, {
       interactionMode: event.payload.interactionMode,
       latestTurnId: event.payload.turnId,
       latestTurnJson: JSON.stringify(latestTurn),
@@ -463,59 +667,56 @@ export class OrchestrationProjectionPipeline {
       runtimeMode: event.payload.runtimeMode,
       updatedAt: event.payload.createdAt,
     })
-    this.markProposedPlanImplemented(event)
   }
 
   /**
    * Starting a turn from a plan is the moment the plan stops being actionable.
-   * The plan can live on another thread, so the flag is refreshed there, not on
-   * the thread that ran the turn.
+   * The plan can live on another session, so the flag is refreshed there, not on
+   * the session that ran the turn.
    */
   private markProposedPlanImplemented(
-    event: Extract<OrchestrationEvent, { type: 'thread.turn-start-requested' }>,
+    event: Extract<OrchestrationEvent, { type: 'session.proposed-plan-implemented' }>,
   ) {
-    const source = event.payload.sourceProposedPlan
-    if (!source) return
-
     this.database
-      .update(projectionThreadProposedPlans)
+      .update(projectionSessionProposedPlans)
       .set({
-        implementationThreadId: event.payload.threadId,
-        implementedAt: event.payload.createdAt,
-        updatedAt: event.payload.createdAt,
+        implementationSessionId: event.payload.implementationSessionId,
+        implementedAt: event.payload.implementedAt,
+        updatedAt: event.payload.updatedAt,
       })
       .where(
         and(
-          eq(projectionThreadProposedPlans.planId, source.planId),
-          isNull(projectionThreadProposedPlans.implementedAt),
+          eq(projectionSessionProposedPlans.planId, event.payload.planId),
+          eq(projectionSessionProposedPlans.sessionId, event.payload.sessionId),
+          isNull(projectionSessionProposedPlans.implementedAt),
         ),
       )
       .run()
-    this.refreshActionableProposedPlan(source.threadId)
+    this.refreshActionableProposedPlan(event.payload.sessionId)
   }
 
   private upsertProposedPlan(
-    event: Extract<OrchestrationEvent, { type: 'thread.proposed-plan-upserted' }>,
+    event: Extract<OrchestrationEvent, { type: 'session.proposed-plan-upserted' }>,
   ) {
     const plan = event.payload.proposedPlan
     const row = {
       createdAt: plan.createdAt,
-      implementationThreadId: plan.implementationThreadId ?? null,
+      implementationSessionId: plan.implementationSessionId ?? null,
       implementedAt: plan.implementedAt ?? null,
       planId: plan.id,
       planMarkdown: plan.planMarkdown,
-      threadId: event.payload.threadId,
+      sessionId: event.payload.sessionId,
       turnId: plan.turnId,
       updatedAt: plan.updatedAt,
     }
 
     this.database
-      .insert(projectionThreadProposedPlans)
+      .insert(projectionSessionProposedPlans)
       .values(row)
       .onConflictDoUpdate({
-        target: projectionThreadProposedPlans.planId,
+        target: projectionSessionProposedPlans.planId,
         set: {
-          implementationThreadId: row.implementationThreadId,
+          implementationSessionId: row.implementationSessionId,
           implementedAt: row.implementedAt,
           planMarkdown: row.planMarkdown,
           turnId: row.turnId,
@@ -523,8 +724,8 @@ export class OrchestrationProjectionPipeline {
         },
       })
       .run()
-    this.updateThread(event.payload.threadId, { updatedAt: plan.updatedAt })
-    this.refreshActionableProposedPlan(event.payload.threadId)
+    this.updateSession(event.payload.sessionId, { updatedAt: plan.updatedAt })
+    this.refreshActionableProposedPlan(event.payload.sessionId)
   }
 
   /**
@@ -532,39 +733,39 @@ export class OrchestrationProjectionPipeline {
    * carries no plan history, so both projections read "the last plan we heard
    * about" and agree.
    */
-  private refreshActionableProposedPlan(threadId: string) {
-    const latest = this.latestProposedPlan(threadId)
+  private refreshActionableProposedPlan(sessionId: string) {
+    const latest = this.latestProposedPlan(sessionId)
 
-    this.updateThread(threadId, {
+    this.updateSession(sessionId, {
       hasActionableProposedPlan: latest !== undefined && latest.implementedAt === null,
     })
   }
 
-  private latestProposedPlan(threadId: string) {
+  private latestProposedPlan(sessionId: string) {
     return this.database
       .select()
-      .from(projectionThreadProposedPlans)
-      .where(eq(projectionThreadProposedPlans.threadId, threadId))
+      .from(projectionSessionProposedPlans)
+      .where(eq(projectionSessionProposedPlans.sessionId, sessionId))
       .orderBy(
-        desc(projectionThreadProposedPlans.updatedAt),
-        desc(projectionThreadProposedPlans.planId),
+        desc(projectionSessionProposedPlans.updatedAt),
+        desc(projectionSessionProposedPlans.planId),
       )
       .limit(1)
       .get()
   }
 
   private upsertCheckpoint(
-    event: Extract<OrchestrationEvent, { type: 'thread.turn-diff-completed' }>,
+    event: Extract<OrchestrationEvent, { type: 'session.turn-diff-completed' }>,
   ) {
-    const { assistantMessageId, completedAt, status, threadId, turnId } = event.payload
-    const existing = this.selectCheckpoint(threadId, turnId)
+    const { assistantMessageId, completedAt, status, sessionId, turnId } = event.payload
+    const existing = this.selectCheckpoint(sessionId, turnId)
     // Mid-turn diff updates carry a placeholder ref with status "missing". Once
     // a real capture has landed, a later placeholder must change nothing at all
     // — not the ref, and not the turn's state.
     if (existing && existing.status !== 'missing' && status === 'missing') return
 
     this.database
-      .insert(projectionThreadCheckpoints)
+      .insert(projectionSessionCheckpoints)
       .values({
         assistantMessageId,
         checkpointRef: event.payload.checkpointRef,
@@ -572,11 +773,11 @@ export class OrchestrationProjectionPipeline {
         completedAt,
         filesJson: JSON.stringify(event.payload.files),
         status,
-        threadId,
+        sessionId,
         turnId,
       })
       .onConflictDoUpdate({
-        target: [projectionThreadCheckpoints.threadId, projectionThreadCheckpoints.turnId],
+        target: [projectionSessionCheckpoints.sessionId, projectionSessionCheckpoints.turnId],
         set: {
           assistantMessageId,
           checkpointRef: event.payload.checkpointRef,
@@ -589,10 +790,10 @@ export class OrchestrationProjectionPipeline {
       .run()
     // Recording a checkpoint is not a turn ending: a placeholder arrives while
     // the session is still streaming the very turn it describes.
-    if (this.isSessionRunningTurn(threadId, turnId)) return
+    if (this.isSessionRunningTurn(sessionId, turnId)) return
 
     this.completeTurn(
-      threadId,
+      sessionId,
       turnId,
       status === 'error' ? 'error' : 'completed',
       completedAt,
@@ -600,56 +801,62 @@ export class OrchestrationProjectionPipeline {
     )
   }
 
-  private isSessionRunningTurn(threadId: string, turnId: string) {
+  private isSessionRunningTurn(sessionId: string, turnId: string) {
     const session = this.database
       .select()
-      .from(projectionThreadSessions)
-      .where(eq(projectionThreadSessions.threadId, threadId))
+      .from(projectionSessionRuntime)
+      .where(eq(projectionSessionRuntime.sessionId, sessionId))
       .get()
     if (session?.status !== 'running' && session?.status !== 'waiting') return false
 
     return session.activeTurnId === turnId
   }
 
-  private selectCheckpoint(threadId: string, turnId: string) {
+  private selectCheckpoint(sessionId: string, turnId: string) {
     return this.database
       .select()
-      .from(projectionThreadCheckpoints)
+      .from(projectionSessionCheckpoints)
       .where(
         and(
-          eq(projectionThreadCheckpoints.threadId, threadId),
-          eq(projectionThreadCheckpoints.turnId, turnId),
+          eq(projectionSessionCheckpoints.sessionId, sessionId),
+          eq(projectionSessionCheckpoints.turnId, turnId),
         ),
       )
       .get()
   }
 
-  private upsertSession(event: Extract<OrchestrationEvent, { type: 'thread.session-set' }>) {
+  private upsertRuntime(event: Extract<OrchestrationEvent, { type: 'session.runtime-set' }>) {
+    this.updateSession(event.payload.sessionId, { runtimeSequence: event.sequence })
     this.database
-      .insert(projectionThreadSessions)
+      .insert(projectionSessionRuntime)
       .values({
-        activeTurnId: event.payload.session.activeTurnId,
-        lastError: event.payload.session.lastError,
-        providerInstanceId: event.payload.session.providerInstanceId ?? 'codex',
-        providerName: event.payload.session.providerName,
-        providerSessionId: event.payload.session.providerSessionId,
-        providerThreadId: null,
-        runtimeMode: event.payload.session.runtimeMode ?? 'full-access',
-        status: event.payload.session.status,
-        threadId: event.payload.threadId,
-        updatedAt: event.payload.session.updatedAt,
+        activeTurnId: event.payload.runtime.activeTurnId,
+        lastError: event.payload.runtime.lastError,
+        providerInstanceId: event.payload.runtime.providerInstanceId ?? 'codex',
+        providerName: event.payload.runtime.providerName,
+        providerBindingHandle: event.payload.runtime.providerBindingHandle,
+        providerConversationMarker: event.payload.runtime.providerConversationMarker,
+        providerResumeCursor: event.payload.runtime.providerResumeCursor,
+        runtimeEpoch: event.payload.runtime.runtimeEpoch,
+        runtimeMode: event.payload.runtime.runtimeMode ?? 'full-access',
+        status: event.payload.runtime.status,
+        sessionId: event.payload.sessionId,
+        updatedAt: event.payload.runtime.updatedAt,
       })
       .onConflictDoUpdate({
-        target: projectionThreadSessions.threadId,
+        target: projectionSessionRuntime.sessionId,
         set: {
-          activeTurnId: event.payload.session.activeTurnId,
-          lastError: event.payload.session.lastError,
-          providerInstanceId: event.payload.session.providerInstanceId ?? 'codex',
-          providerName: event.payload.session.providerName,
-          providerSessionId: event.payload.session.providerSessionId,
-          runtimeMode: event.payload.session.runtimeMode ?? 'full-access',
-          status: event.payload.session.status,
-          updatedAt: event.payload.session.updatedAt,
+          activeTurnId: event.payload.runtime.activeTurnId,
+          lastError: event.payload.runtime.lastError,
+          providerInstanceId: event.payload.runtime.providerInstanceId ?? 'codex',
+          providerName: event.payload.runtime.providerName,
+          providerBindingHandle: event.payload.runtime.providerBindingHandle,
+          providerConversationMarker: event.payload.runtime.providerConversationMarker,
+          providerResumeCursor: event.payload.runtime.providerResumeCursor,
+          runtimeEpoch: event.payload.runtime.runtimeEpoch,
+          runtimeMode: event.payload.runtime.runtimeMode ?? 'full-access',
+          status: event.payload.runtime.status,
+          updatedAt: event.payload.runtime.updatedAt,
         },
       })
       .run()
@@ -662,11 +869,13 @@ export class OrchestrationProjectionPipeline {
    * and `sequence` are where the activity sits in the stream, not content — a
    * revision must correct the entry, never reorder the timeline around it.
    */
-  private upsertActivity(event: Extract<OrchestrationEvent, { type: 'thread.activity-appended' }>) {
+  private upsertActivity(
+    event: Extract<OrchestrationEvent, { type: 'session.activity-appended' }>,
+  ) {
     const payloadJson = JSON.stringify(event.payload.activity.payload)
 
     this.database
-      .insert(projectionThreadActivities)
+      .insert(projectionSessionActivities)
       .values({
         activityId: event.payload.activity.id,
         createdAt: event.payload.activity.createdAt,
@@ -674,12 +883,12 @@ export class OrchestrationProjectionPipeline {
         payloadJson,
         sequence: event.payload.activity.sequence ?? event.sequence,
         summary: event.payload.activity.summary,
-        threadId: event.payload.threadId,
+        sessionId: event.payload.sessionId,
         tone: event.payload.activity.tone,
         turnId: event.payload.activity.turnId,
       })
       .onConflictDoUpdate({
-        target: projectionThreadActivities.activityId,
+        target: projectionSessionActivities.activityId,
         set: {
           kind: event.payload.activity.kind,
           payloadJson,
@@ -688,20 +897,20 @@ export class OrchestrationProjectionPipeline {
           // turnId is backfilled, never erased — same rule as messages: a later
           // frame that carries no turn must keep the one the first frame bound,
           // or the activity drops out of its turn's fold.
-          turnId: sql`coalesce(excluded.turn_id, ${projectionThreadActivities.turnId})`,
+          turnId: sql`coalesce(excluded.turn_id, ${projectionSessionActivities.turnId})`,
         },
       })
       .run()
   }
 
   private updateTurnForActivity(
-    event: Extract<OrchestrationEvent, { type: 'thread.activity-appended' }>,
+    event: Extract<OrchestrationEvent, { type: 'session.activity-appended' }>,
   ) {
     if (!isProviderTurnFailureActivity(event.payload.activity.kind)) return
     if (!event.payload.activity.turnId) return
 
     this.completeTurn(
-      event.payload.threadId,
+      event.payload.sessionId,
       event.payload.activity.turnId,
       'error',
       event.payload.activity.createdAt,
@@ -713,24 +922,24 @@ export class OrchestrationProjectionPipeline {
    * storm of tool-call activities never pays for the fold.
    */
   private refreshPendingRequestCountsForActivity(
-    event: Extract<OrchestrationEvent, { type: 'thread.activity-appended' }>,
+    event: Extract<OrchestrationEvent, { type: 'session.activity-appended' }>,
   ) {
     if (!isPendingRequestActivityKind(event.payload.activity.kind)) return
 
-    this.refreshPendingRequestCounts(event.payload.threadId)
+    this.refreshPendingRequestCounts(event.payload.sessionId)
   }
 
   /**
-   * The counters are a fold over the thread's whole activity history, recomputed
+   * The counters are a fold over the session's whole activity history, recomputed
    * rather than incremented: a replayed event (the upsert above), a revised
    * activity or a revert then can never leave them drifted from the request
    * state they describe. This is the same fold the settle guard runs against the
    * read model (`pending-requests.ts`).
    */
-  private refreshPendingRequestCounts(threadId: string) {
-    const counts = pendingRequestCounts(this.requestActivities(threadId))
+  private refreshPendingRequestCounts(sessionId: string) {
+    const counts = pendingRequestCounts(this.requestActivities(sessionId))
 
-    this.updateThread(threadId, {
+    this.updateSession(sessionId, {
       pendingApprovalCount: counts.approvals,
       pendingUserInputCount: counts.userInputs,
     })
@@ -741,49 +950,49 @@ export class OrchestrationProjectionPipeline {
    * activities never pays for the refold.
    */
   private refreshPlanProgressForActivity(
-    event: Extract<OrchestrationEvent, { type: 'thread.activity-appended' }>,
+    event: Extract<OrchestrationEvent, { type: 'session.activity-appended' }>,
   ) {
     if (!isPlanProgressActivityKind(event.payload.activity.kind)) return
 
-    this.refreshPlanProgress(event.payload.threadId)
+    this.refreshPlanProgress(event.payload.sessionId)
   }
 
   /**
-   * A refold over the thread's retained plan activities, never an in-place
+   * A refold over the session's retained plan activities, never an in-place
    * advance: a replayed snapshot, a revised one, or a revert that pruned the
    * planning turn then cannot leave the rail narrating a step that no longer
    * exists. The in-memory model runs the same fold over the same activities.
    */
-  private refreshPlanProgress(threadId: string) {
-    const progress = threadPlanProgress(this.planActivities(threadId))
+  private refreshPlanProgress(sessionId: string) {
+    const progress = sessionPlanProgress(this.planActivities(sessionId))
 
-    this.updateThread(threadId, {
+    this.updateSession(sessionId, {
       planProgressJson: progress === null ? null : JSON.stringify(progress),
     })
   }
 
   /**
    * Filtered by kind in SQL rather than folded over the whole history: a plan
-   * snapshot is a handful of rows in a thread that can hold thousands.
+   * snapshot is a handful of rows in a session that can hold thousands.
    */
-  private planActivities(threadId: string) {
+  private planActivities(sessionId: string) {
     const rows = this.database
       .select({
-        kind: projectionThreadActivities.kind,
-        payloadJson: projectionThreadActivities.payloadJson,
-        turnId: projectionThreadActivities.turnId,
+        kind: projectionSessionActivities.kind,
+        payloadJson: projectionSessionActivities.payloadJson,
+        turnId: projectionSessionActivities.turnId,
       })
-      .from(projectionThreadActivities)
+      .from(projectionSessionActivities)
       .where(
         and(
-          eq(projectionThreadActivities.threadId, threadId),
-          eq(projectionThreadActivities.kind, PLAN_PROGRESS_ACTIVITY_KIND),
+          eq(projectionSessionActivities.sessionId, sessionId),
+          eq(projectionSessionActivities.kind, PLAN_PROGRESS_ACTIVITY_KIND),
         ),
       )
       .orderBy(
-        asc(projectionThreadActivities.sequence),
-        asc(projectionThreadActivities.createdAt),
-        asc(projectionThreadActivities.activityId),
+        asc(projectionSessionActivities.sequence),
+        asc(projectionSessionActivities.createdAt),
+        asc(projectionSessionActivities.activityId),
       )
       .all()
 
@@ -792,33 +1001,33 @@ export class OrchestrationProjectionPipeline {
       payload: parseActivityPayload(row.payloadJson),
       // The column stores what the branded id serialized to; this read is the
       // boundary that hands it back.
-      turnId: row.turnId as ThreadPlanProgress['turnId'],
+      turnId: row.turnId as SessionPlanProgress['turnId'],
     }))
   }
 
   /**
    * Filtered by kind in SQL, exactly like `planActivities`: the fold reacts to
-   * six kinds, and a thread's activity table holds every tool call it ever made
+   * six kinds, and a session's activity table holds every tool call it ever made
    * with its diff in the payload. Reading and parsing those to ignore them is
-   * what made an approval cost more the longer the thread ran.
+   * what made an approval cost more the longer the session ran.
    */
-  private requestActivities(threadId: string) {
+  private requestActivities(sessionId: string) {
     const rows = this.database
       .select({
-        kind: projectionThreadActivities.kind,
-        payloadJson: projectionThreadActivities.payloadJson,
+        kind: projectionSessionActivities.kind,
+        payloadJson: projectionSessionActivities.payloadJson,
       })
-      .from(projectionThreadActivities)
+      .from(projectionSessionActivities)
       .where(
         and(
-          eq(projectionThreadActivities.threadId, threadId),
-          inArray(projectionThreadActivities.kind, PENDING_REQUEST_ACTIVITY_KINDS),
+          eq(projectionSessionActivities.sessionId, sessionId),
+          inArray(projectionSessionActivities.kind, PENDING_REQUEST_ACTIVITY_KINDS),
         ),
       )
       .orderBy(
-        asc(projectionThreadActivities.sequence),
-        asc(projectionThreadActivities.createdAt),
-        asc(projectionThreadActivities.activityId),
+        asc(projectionSessionActivities.sequence),
+        asc(projectionSessionActivities.createdAt),
+        asc(projectionSessionActivities.activityId),
       )
       .all()
 
@@ -826,7 +1035,7 @@ export class OrchestrationProjectionPipeline {
   }
 
   private completeTurn(
-    threadId: string,
+    sessionId: string,
     turnId: string | undefined,
     state: 'completed' | 'interrupted' | 'error',
     completedAt: string,
@@ -834,80 +1043,96 @@ export class OrchestrationProjectionPipeline {
   ) {
     if (!turnId) return
 
-    const turn = this.selectTurn(threadId, turnId)
+    const turn = this.selectTurn(sessionId, turnId)
     const nextAssistantMessageId =
       assistantMessageId === undefined ? (turn?.assistantMessageId ?? null) : assistantMessageId
 
     this.database
       .update(projectionTurns)
-      .set({ assistantMessageId: nextAssistantMessageId, completedAt, state })
-      .where(and(eq(projectionTurns.threadId, threadId), eq(projectionTurns.turnId, turnId)))
+      .set({
+        assistantMessageId: nextAssistantMessageId,
+        completedAt,
+        state,
+        providerStartState: state === 'interrupted' ? 'interrupted' : 'settled',
+      })
+      .where(and(eq(projectionTurns.sessionId, sessionId), eq(projectionTurns.turnId, turnId)))
       .run()
-    const updatedTurn = this.selectTurn(threadId, turnId)
-
-    this.updateThread(threadId, {
-      latestTurnJson: updatedTurn ? JSON.stringify(latestTurnJson(updatedTurn)) : null,
-      updatedAt: completedAt,
-    })
+    this.refreshLatestTurn(sessionId, completedAt)
   }
 
   /**
    * Leaving the "running" session status is the turn-end signal. Without it a
    * turn that ended with no assistant message — or whose session errored
-   * mid-turn — stays `running` in SQL forever and the thread spins.
+   * mid-turn — stays `running` in SQL forever and the session spins.
    */
-  private settleRunningTurns(
-    threadId: string,
-    status: OrchestrationSessionStatus,
-    settledAt: string,
-  ) {
+  private settleRunningTurns(sessionId: string, status: SessionRuntimeStatus, settledAt: string) {
     const state = settledTurnStateForSessionStatus(status)
     if (!state) return
 
     const running = this.database
       .select({ turnId: projectionTurns.turnId })
       .from(projectionTurns)
-      .where(and(eq(projectionTurns.threadId, threadId), eq(projectionTurns.state, 'running')))
+      .where(
+        and(
+          eq(projectionTurns.sessionId, sessionId),
+          or(
+            eq(projectionTurns.state, 'running'),
+            inArray(projectionTurns.providerStartState, ['claimed', 'adopted']),
+          ),
+        ),
+      )
       .all()
-    // Touching nothing keeps the thread's updatedAt — and the shell snapshot
+    // Touching nothing keeps the session's updatedAt — and the shell snapshot
     // timestamp — stable when a session status carries no turn news.
     if (running.length === 0) return
 
     this.database
       .update(projectionTurns)
-      .set({ completedAt: settledAt, state })
-      .where(and(eq(projectionTurns.threadId, threadId), eq(projectionTurns.state, 'running')))
+      .set({
+        completedAt: settledAt,
+        state,
+        providerStartState: state === 'interrupted' ? 'interrupted' : 'settled',
+      })
+      .where(
+        and(
+          eq(projectionTurns.sessionId, sessionId),
+          or(
+            eq(projectionTurns.state, 'running'),
+            inArray(projectionTurns.providerStartState, ['claimed', 'adopted']),
+          ),
+        ),
+      )
       .run()
-    this.refreshLatestTurn(threadId, settledAt)
+    this.refreshLatestTurn(sessionId, settledAt)
   }
 
-  private refreshLatestTurn(threadId: string, updatedAt: string) {
+  private refreshLatestTurn(sessionId: string, updatedAt: string) {
     const row = this.database
       .select()
-      .from(projectionThreads)
-      .where(eq(projectionThreads.threadId, threadId))
+      .from(projectionSessions)
+      .where(eq(projectionSessions.sessionId, sessionId))
       .get()
     if (!row?.latestTurnId) return
 
-    const turn = this.selectTurn(threadId, row.latestTurnId)
+    const turn = this.selectTurn(sessionId, row.latestTurnId)
     if (!turn) return
 
-    this.updateThread(threadId, {
+    this.updateSession(sessionId, {
       latestTurnJson: JSON.stringify(latestTurnJson(turn)),
       updatedAt,
     })
   }
 
-  private selectTurn(threadId: string, turnId: string) {
+  private selectTurn(sessionId: string, turnId: string) {
     return this.database
       .select()
       .from(projectionTurns)
-      .where(and(eq(projectionTurns.threadId, threadId), eq(projectionTurns.turnId, turnId)))
+      .where(and(eq(projectionTurns.sessionId, sessionId), eq(projectionTurns.turnId, turnId)))
       .get()
   }
 
   private upsertAssistantTurn(
-    event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
+    event: Extract<OrchestrationEvent, { type: 'session.message-sent' }>,
     turn: {
       completedAt: string | null
       requestedAt: string
@@ -927,12 +1152,16 @@ export class OrchestrationProjectionPipeline {
         sourceProposedPlanJson: null,
         startedAt: turn.startedAt,
         state: turn.state,
-        threadId: event.payload.threadId,
+        providerStartState: turn.state === 'running' ? 'adopted' : 'settled',
+        providerStartGeneration: 0,
+        providerStartSequence: event.sequence,
+        runtimeEpoch: null,
+        sessionId: event.payload.sessionId,
         turnId,
         userMessageId: null,
       })
       .onConflictDoUpdate({
-        target: [projectionTurns.threadId, projectionTurns.turnId],
+        target: [projectionTurns.sessionId, projectionTurns.turnId],
         set: {
           assistantMessageId: event.payload.messageId,
           completedAt: turn.completedAt,
@@ -944,61 +1173,63 @@ export class OrchestrationProjectionPipeline {
       .run()
   }
 
-  private updateThreadLatestTurnForAssistantMessage(
-    event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
+  private updateSessionLatestTurnForAssistantMessage(
+    event: Extract<OrchestrationEvent, { type: 'session.message-sent' }>,
   ) {
     const turnId = event.payload.turnId
     if (!turnId) return
 
     const row = this.database
       .select()
-      .from(projectionThreads)
-      .where(eq(projectionThreads.threadId, event.payload.threadId))
+      .from(projectionSessions)
+      .where(eq(projectionSessions.sessionId, event.payload.sessionId))
       .get()
     if (row?.latestTurnId && row.latestTurnId !== turnId) return
 
-    const updatedTurn = this.selectTurn(event.payload.threadId, turnId)
+    const updatedTurn = this.selectTurn(event.payload.sessionId, turnId)
 
-    this.updateThread(event.payload.threadId, {
+    this.updateSession(event.payload.sessionId, {
       latestTurnId: turnId,
       latestTurnJson: updatedTurn ? JSON.stringify(latestTurnJson(updatedTurn)) : null,
       updatedAt: event.payload.updatedAt,
     })
   }
 
-  private pruneThreadAfterRevert(event: Extract<OrchestrationEvent, { type: 'thread.reverted' }>) {
-    const threadId = event.payload.threadId
+  private pruneSessionAfterRevert(
+    event: Extract<OrchestrationEvent, { type: 'session.reverted' }>,
+  ) {
+    const sessionId = event.payload.sessionId
     const retainedTurnIds = new Set(
-      this.dropCheckpointsAfterRevert(threadId, event.payload.turnCount).map((row) => row.turnId),
+      this.dropCheckpointsAfterRevert(sessionId, event.payload.turnCount).map((row) => row.turnId),
     )
     const messages = this.database
       .select()
-      .from(projectionThreadMessages)
-      .where(eq(projectionThreadMessages.threadId, threadId))
+      .from(projectionSessionMessages)
+      .where(eq(projectionSessionMessages.sessionId, sessionId))
       .all()
       .filter((message) => shouldRetainAfterRevert(message.turnId, retainedTurnIds))
     const activities = this.database
       .select()
-      .from(projectionThreadActivities)
-      .where(eq(projectionThreadActivities.threadId, threadId))
+      .from(projectionSessionActivities)
+      .where(eq(projectionSessionActivities.sessionId, sessionId))
       .all()
       .filter((activity) => shouldRetainAfterRevert(activity.turnId, retainedTurnIds))
     const turns = this.database
       .select()
       .from(projectionTurns)
-      .where(eq(projectionTurns.threadId, threadId))
+      .where(eq(projectionTurns.sessionId, sessionId))
       .all()
       .filter((turn) => retainedTurnIds.has(turn.turnId))
     const latestTurn = latestProjectionTurn(turns)
 
-    this.replaceThreadMessages(threadId, messages)
-    this.replaceThreadActivities(threadId, activities)
-    this.database.delete(projectionTurns).where(eq(projectionTurns.threadId, threadId)).run()
+    this.replaceSessionMessages(sessionId, messages)
+    this.replaceSessionActivities(sessionId, activities)
+    this.database.delete(projectionTurns).where(eq(projectionTurns.sessionId, sessionId)).run()
     if (turns.length > 0) {
       this.database.insert(projectionTurns).values(turns.map(turnInsertRow)).run()
     }
 
-    this.updateThread(threadId, {
+    this.updateSession(sessionId, {
       latestTurnId: latestTurn?.turnId ?? null,
       latestTurnJson: latestTurn ? JSON.stringify(latestTurnJson(latestTurn)) : null,
       latestUserMessageAt: latestUserMessageAt(messages),
@@ -1006,86 +1237,86 @@ export class OrchestrationProjectionPipeline {
     })
     // Requests pruned with their turns must not keep the counters flagged, and a
     // plan pruned with its turn must not keep narrating a step.
-    this.refreshPendingRequestCounts(threadId)
-    this.refreshPlanProgress(threadId)
-    this.dropProposedPlansAfterRevert(threadId, retainedTurnIds)
-    this.refreshActionableProposedPlan(threadId)
+    this.refreshPendingRequestCounts(sessionId)
+    this.refreshPlanProgress(sessionId)
+    this.dropProposedPlansAfterRevert(sessionId, retainedTurnIds)
+    this.refreshActionableProposedPlan(sessionId)
   }
 
   /** Drops the checkpoints the revert undid and returns the ones that survive. */
-  private dropCheckpointsAfterRevert(threadId: string, turnCount: number) {
+  private dropCheckpointsAfterRevert(sessionId: string, turnCount: number) {
     this.database
-      .delete(projectionThreadCheckpoints)
+      .delete(projectionSessionCheckpoints)
       .where(
         and(
-          eq(projectionThreadCheckpoints.threadId, threadId),
-          gt(projectionThreadCheckpoints.checkpointTurnCount, turnCount),
+          eq(projectionSessionCheckpoints.sessionId, sessionId),
+          gt(projectionSessionCheckpoints.checkpointTurnCount, turnCount),
         ),
       )
       .run()
 
-    return this.threadCheckpointRows(threadId)
+    return this.sessionCheckpointRows(sessionId)
   }
 
   /** A plan belongs to the turn that proposed it; an unturned plan outlives every revert. */
-  private dropProposedPlansAfterRevert(threadId: string, retainedTurnIds: Set<string>) {
+  private dropProposedPlansAfterRevert(sessionId: string, retainedTurnIds: Set<string>) {
     const droppedIds = this.database
       .select({
-        planId: projectionThreadProposedPlans.planId,
-        turnId: projectionThreadProposedPlans.turnId,
+        planId: projectionSessionProposedPlans.planId,
+        turnId: projectionSessionProposedPlans.turnId,
       })
-      .from(projectionThreadProposedPlans)
-      .where(eq(projectionThreadProposedPlans.threadId, threadId))
+      .from(projectionSessionProposedPlans)
+      .where(eq(projectionSessionProposedPlans.sessionId, sessionId))
       .all()
       .filter((plan) => !shouldRetainAfterRevert(plan.turnId, retainedTurnIds))
       .map((plan) => plan.planId)
     if (droppedIds.length === 0) return
 
     this.database
-      .delete(projectionThreadProposedPlans)
-      .where(inArray(projectionThreadProposedPlans.planId, droppedIds))
+      .delete(projectionSessionProposedPlans)
+      .where(inArray(projectionSessionProposedPlans.planId, droppedIds))
       .run()
   }
 
-  private threadCheckpointRows(threadId: string) {
+  private sessionCheckpointRows(sessionId: string) {
     return this.database
       .select()
-      .from(projectionThreadCheckpoints)
-      .where(eq(projectionThreadCheckpoints.threadId, threadId))
+      .from(projectionSessionCheckpoints)
+      .where(eq(projectionSessionCheckpoints.sessionId, sessionId))
       .all()
   }
 
-  private replaceThreadMessages(
-    threadId: string,
-    rows: Array<typeof projectionThreadMessages.$inferSelect>,
+  private replaceSessionMessages(
+    sessionId: string,
+    rows: Array<typeof projectionSessionMessages.$inferSelect>,
   ) {
     this.database
-      .delete(projectionThreadMessages)
-      .where(eq(projectionThreadMessages.threadId, threadId))
+      .delete(projectionSessionMessages)
+      .where(eq(projectionSessionMessages.sessionId, sessionId))
       .run()
     if (rows.length === 0) return
 
-    this.database.insert(projectionThreadMessages).values(rows).run()
+    this.database.insert(projectionSessionMessages).values(rows).run()
   }
 
-  private replaceThreadActivities(
-    threadId: string,
-    rows: Array<typeof projectionThreadActivities.$inferSelect>,
+  private replaceSessionActivities(
+    sessionId: string,
+    rows: Array<typeof projectionSessionActivities.$inferSelect>,
   ) {
     this.database
-      .delete(projectionThreadActivities)
-      .where(eq(projectionThreadActivities.threadId, threadId))
+      .delete(projectionSessionActivities)
+      .where(eq(projectionSessionActivities.sessionId, sessionId))
       .run()
     if (rows.length === 0) return
 
-    this.database.insert(projectionThreadActivities).values(rows).run()
+    this.database.insert(projectionSessionActivities).values(rows).run()
   }
 
-  private updateSessionStatus(threadId: string, status: 'stopped', updatedAt: string) {
+  private updateSessionStatus(sessionId: string, status: 'stopped', updatedAt: string) {
     this.database
-      .update(projectionThreadSessions)
+      .update(projectionSessionRuntime)
       .set({ status, updatedAt })
-      .where(eq(projectionThreadSessions.threadId, threadId))
+      .where(eq(projectionSessionRuntime.sessionId, sessionId))
       .run()
   }
 
@@ -1097,11 +1328,11 @@ export class OrchestrationProjectionPipeline {
       .run()
   }
 
-  private updateThread(threadId: string, patch: Partial<typeof projectionThreads.$inferInsert>) {
+  private updateSession(sessionId: string, patch: Partial<typeof projectionSessions.$inferInsert>) {
     this.database
-      .update(projectionThreads)
+      .update(projectionSessions)
       .set(compactPatch(patch))
-      .where(eq(projectionThreads.threadId, threadId))
+      .where(eq(projectionSessions.sessionId, sessionId))
       .run()
   }
 
@@ -1172,7 +1403,7 @@ function isProviderTurnFailureActivity(kind: string) {
 
 function assistantTurnCompletedAt(
   current: string | null | undefined,
-  event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
+  event: Extract<OrchestrationEvent, { type: 'session.message-sent' }>,
 ) {
   if (event.payload.streaming) return current ?? null
 
@@ -1204,6 +1435,10 @@ function latestTurnJson(turn: typeof projectionTurns.$inferSelect) {
     sourceProposedPlan: parseJsonOrUndefined(turn.sourceProposedPlanJson),
     startedAt: turn.startedAt,
     state: turn.state,
+    providerStartState: turn.providerStartState,
+    providerStartGeneration: turn.providerStartGeneration,
+    providerStartSequence: turn.providerStartSequence,
+    runtimeEpoch: turn.runtimeEpoch,
     turnId: turn.turnId,
   }
 }
@@ -1211,20 +1446,11 @@ function latestTurnJson(turn: typeof projectionTurns.$inferSelect) {
 function turnInsertRow(
   turn: typeof projectionTurns.$inferSelect,
 ): typeof projectionTurns.$inferInsert {
-  return {
-    assistantMessageId: turn.assistantMessageId,
-    completedAt: turn.completedAt,
-    requestedAt: turn.requestedAt,
-    sourceProposedPlanJson: turn.sourceProposedPlanJson,
-    startedAt: turn.startedAt,
-    state: turn.state,
-    threadId: turn.threadId,
-    turnId: turn.turnId,
-    userMessageId: turn.userMessageId,
-  }
+  const { rowId: _rowId, ...row } = turn
+  return row
 }
 
-function latestUserMessageAt(messages: Array<typeof projectionThreadMessages.$inferSelect>) {
+function latestUserMessageAt(messages: Array<typeof projectionSessionMessages.$inferSelect>) {
   return (
     messages
       .filter((message) => message.role === 'user')
@@ -1249,4 +1475,32 @@ function parseActivityPayload(payloadJson: string): unknown {
   } catch {
     return null
   }
+}
+
+const PROVIDER_START_STATE = {
+  'session.provider-start-claimed': 'claimed',
+  'session.provider-start-adopted': 'adopted',
+  'session.provider-start-settled': 'settled',
+} as const
+
+function failureKind(event: OrchestrationEvent) {
+  if (event.type === 'session.runtime-set') return runtimeFailureKind(event.payload.runtime.status)
+  if (
+    event.type === 'session.runtime-recovered' ||
+    event.type === 'session.turn-interrupt-requested'
+  )
+    return 'interruption'
+  if (event.type === 'session.turn-diff-completed' && event.payload.status === 'error')
+    return 'failure'
+  if (event.type !== 'session.activity-appended') return null
+  return isProviderTurnFailureActivity(event.payload.activity.kind) ||
+    event.payload.activity.kind === 'runtime.error'
+    ? 'failure'
+    : null
+}
+
+function runtimeFailureKind(status: SessionRuntimeStatus) {
+  if (status === 'error') return 'failure'
+  if (status === 'interrupted') return 'interruption'
+  return null
 }

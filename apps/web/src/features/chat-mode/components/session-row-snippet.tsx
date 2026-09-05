@@ -1,5 +1,3 @@
-import type { ThreadId } from '@workspace/contracts'
-
 import { HighlightedPreview } from '@/features/search/components/highlight'
 import { useSessionSearchStore } from '@/features/chat-mode/state/session-search-store'
 
@@ -9,10 +7,10 @@ import { useSessionSearchStore } from '@/features/chat-mode/state/session-search
  * renders as a row the user cannot explain.
  *
  * The row subscribes to its own match rather than being handed one, so a search
- * does not have to be threaded through the group that only forwards it.
+ * does not have to be sessioned through the group that only forwards it.
  */
-export function SessionRowSnippet({ threadId }: { readonly threadId: ThreadId }) {
-  const match = useSessionSearchStore((state) => state.matchByThreadId[threadId])
+export function SessionRowSnippet({ sessionKey }: { readonly sessionKey: string }) {
+  const match = useSessionSearchStore((state) => state.matchBySessionKey[sessionKey])
   // The query the matches belong to, not the one being typed: highlighting
   // against a live keystroke misses on every frame before the request settles.
   const matchedQuery = useSessionSearchStore((state) => state.matchedQuery)

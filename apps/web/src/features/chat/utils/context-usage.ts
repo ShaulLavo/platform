@@ -1,10 +1,10 @@
-import type { OrchestrationThreadActivity } from '@workspace/contracts'
+import type { OrchestrationSessionActivity } from '@workspace/contracts'
 import * as v from 'valibot'
 
 /**
  * Providers report context occupancy as a `context-window.updated` activity whose
  * payload is the adapter's own usage snapshot. This is the one place that shape is
- * read, so a provider that omits a field degrades the gauge instead of the thread.
+ * read, so a provider that omits a field degrades the gauge instead of the session.
  */
 export const CONTEXT_WINDOW_ACTIVITY_KIND = 'context-window.updated'
 
@@ -33,7 +33,7 @@ export type ContextUsage = {
 }
 
 /**
- * The newest usable snapshot in the thread. Activities arrive oldest-first, so the
+ * The newest usable snapshot in the session. Activities arrive oldest-first, so the
  * scan runs backwards and stops at the first snapshot that reports occupancy.
  *
  * A provider can report used tokens without a window size (Claude's per-turn result
@@ -43,7 +43,7 @@ export type ContextUsage = {
  * and the most recent known window is carried onto it.
  */
 export function contextUsageForActivities(
-  activities: readonly OrchestrationThreadActivity[],
+  activities: readonly OrchestrationSessionActivity[],
 ): ContextUsage | null {
   let latest: ContextUsage | null = null
 

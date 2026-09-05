@@ -1,3 +1,4 @@
+import { useEnvironmentId } from '@/lib/environments/hooks/use-environment-id'
 import { LexicalComposer, type InitialConfigType } from '@lexical/react/LexicalComposer'
 import { useQuery } from '@tanstack/react-query'
 import type {
@@ -91,10 +92,11 @@ export function ChatInput({
   rootPath: string
   runtimeMode: RuntimeMode
 }) {
-  const inputKey = `${rootPath}:${draftKey}`
+  const environmentId = useEnvironmentId()
+  const inputKey = `${environmentId}:${rootPath}:${draftKey}`
   const draftTarget = useMemo<ChatInputDraftTarget>(
-    () => ({ draftKey, rootPath }),
-    [draftKey, rootPath],
+    () => ({ environmentId, draftKey, rootPath }),
+    [environmentId, draftKey, rootPath],
   )
   const imagesSelector = useMemo(
     () => (state: ChatInputDraftStore) => selectChatInputDraftImages(state, draftTarget),

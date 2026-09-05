@@ -105,7 +105,7 @@ function event(overrides: Partial<LogEventSummary>): LogEventSummary {
     service: null,
     source: null,
     status: null,
-    threadId: null,
+    sessionId: null,
     timestamp: '2026-05-25T10:00:00.000Z',
     ...overrides,
   }

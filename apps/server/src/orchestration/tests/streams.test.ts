@@ -13,7 +13,7 @@ import { readEnvironmentIdentity } from '../../db/environment-identity'
 import {
   assistantDeltaEvent,
   createShellWorkspace,
-  threadDeletedEvent,
+  sessionDeletedEvent,
 } from './factories/shell-workspace'
 
 type ShellWorkspace = ReturnType<typeof createShellWorkspace>
@@ -21,18 +21,23 @@ type ShellWorkspace = ReturnType<typeof createShellWorkspace>
 const TEST_COALESCE_WINDOW_MS = 5
 
 describe('shell stream deltas', () => {
-  it('reads only the changed thread, not the whole workspace', async () => {
+  it('reads only the changed session, not the whole workspace', async () => {
     const workspace = createShellWorkspace(40)
     const reader = await openShellStream(workspace, { targeted: true })
 
     workspace.resetQueryCount()
-    const events = workspace.commit([assistantDeltaEvent('thread-7', 'hello')])
+    const events = workspace.commit([
+      assistantDeltaEvent('00000000-0000-4000-8000-000000000007', 'hello'),
+    ])
     reader.streams.publish(events)
     const frame = await reader.next()
 
-    // One thread row + one session row. Never the workspace.
+    // One session row + one session row. Never the workspace.
     expect(workspace.queryCount()).toBe(2)
-    expect(frame).toMatchObject({ kind: 'thread-upserted', thread: { id: 'thread-7' } })
+    expect(frame).toMatchObject({
+      kind: 'session-upserted',
+      session: { id: '00000000-0000-4000-8000-000000000007' },
+    })
     await reader.close()
     workspace.close()
   })
@@ -42,28 +47,34 @@ describe('shell stream deltas', () => {
     const reader = await openShellStream(workspace, { targeted: false })
 
     workspace.resetQueryCount()
-    const events = workspace.commit([assistantDeltaEvent('thread-7', 'hello')])
+    const events = workspace.commit([
+      assistantDeltaEvent('00000000-0000-4000-8000-000000000007', 'hello'),
+    ])
     reader.streams.publish(events)
     await reader.next()
 
-    // projects + threads + snapshot sequence + one session query per thread.
-    expect(workspace.queryCount()).toBe(43)
+    // projects + sessions + snapshot sequence + one session query per session.
+    expect(workspace.queryCount()).toBe(44)
     await reader.close()
     workspace.close()
   })
 
-  it('collapses a burst of deltas for one thread into a single read', async () => {
+  it('collapses a burst of deltas for one session into a single read', async () => {
     const workspace = createShellWorkspace(40)
     const reader = await openShellStream(workspace, { targeted: true })
 
     workspace.resetQueryCount()
     for (let index = 0; index < 50; index += 1) {
-      reader.streams.publish(workspace.commit([assistantDeltaEvent('thread-7', `delta-${index}`)]))
+      reader.streams.publish(
+        workspace.commit([
+          assistantDeltaEvent('00000000-0000-4000-8000-000000000007', `delta-${index}`),
+        ]),
+      )
     }
     const frame = await reader.next()
 
     expect(workspace.queryCount()).toBe(2)
-    expect(frame.kind).toBe('thread-upserted')
+    expect(frame.kind).toBe('session-upserted')
     expect(await reader.settle()).toBe('idle')
     await reader.close()
     workspace.close()
@@ -73,9 +84,9 @@ describe('shell stream deltas', () => {
     const small = await windowedDeltaQueries(4)
     const large = await windowedDeltaQueries(150)
 
-    // Two windows, one changed thread each: its row plus its session. The
-    // pre-coalescing path read every thread in the workspace per event, so this
-    // count growing with `threadCount` is the regression to catch.
+    // Two windows, one changed session each: its row plus its session. The
+    // pre-coalescing path read every session in the workspace per event, so this
+    // count growing with `sessionCount` is the regression to catch.
     expect(small).toBe(4)
     expect(large).toBe(4)
   })
@@ -85,13 +96,16 @@ describe('shell stream deltas', () => {
     const reader = await openShellStream(workspace, { targeted: true })
 
     const events = workspace.commit([
-      assistantDeltaEvent('thread-2', 'about to go'),
-      threadDeletedEvent('thread-2'),
+      assistantDeltaEvent('00000000-0000-4000-8000-000000000002', 'about to go'),
+      sessionDeletedEvent('00000000-0000-4000-8000-000000000002'),
     ])
     reader.streams.publish(events)
     const frame = await reader.next()
 
-    expect(frame).toMatchObject({ kind: 'thread-removed', threadId: 'thread-2' })
+    expect(frame).toMatchObject({
+      kind: 'session-removed',
+      sessionId: '00000000-0000-4000-8000-000000000002',
+    })
     await reader.close()
     workspace.close()
   })
@@ -103,8 +117,12 @@ describe('shell stream resume', () => {
     const hub = new OrchestrationStreamHub()
     const streams = shellStreams(workspace, hub, true)
 
-    const first = workspace.commit([assistantDeltaEvent('thread-1', 'one')])
-    const second = workspace.commit([assistantDeltaEvent('thread-2', 'two')])
+    const first = workspace.commit([
+      assistantDeltaEvent('00000000-0000-4000-8000-000000000001', 'one'),
+    ])
+    const second = workspace.commit([
+      assistantDeltaEvent('00000000-0000-4000-8000-000000000002', 'two'),
+    ])
     streams.publish(first)
     streams.publish(second)
     const cursor = first.at(-1)?.sequence ?? 0
@@ -114,7 +132,10 @@ describe('shell stream resume', () => {
     const replayed = await reader.next()
     const synchronized = await reader.next()
 
-    expect(replayed).toMatchObject({ kind: 'thread-upserted', thread: { id: 'thread-2' } })
+    expect(replayed).toMatchObject({
+      kind: 'session-upserted',
+      session: { id: '00000000-0000-4000-8000-000000000002' },
+    })
     expect(synchronized).toEqual({ kind: 'synchronized', sequence: second.at(-1)?.sequence })
     // The replayed delta's own two reads, and nothing that looks like a snapshot.
     expect(workspace.queryCount()).toBe(2)
@@ -142,7 +163,9 @@ describe('shell stream resume', () => {
     const workspace = createShellWorkspace(20)
     const hub = new OrchestrationStreamHub()
     const streams = shellStreams(workspace, hub, true)
-    const events = workspace.commit([assistantDeltaEvent('thread-1', 'one')])
+    const events = workspace.commit([
+      assistantDeltaEvent('00000000-0000-4000-8000-000000000001', 'one'),
+    ])
     streams.publish(events)
 
     workspace.resetQueryCount()
@@ -164,8 +187,12 @@ describe('resume plan', () => {
 
     // Committed but never published: the hub's tail starts after these, which is
     // what an eviction looks like from `resumePlan`'s side.
-    const unpublished = workspace.commit([assistantDeltaEvent('thread-1', 'before the tail')])
-    const retained = workspace.commit([assistantDeltaEvent('thread-2', 'in the tail')])
+    const unpublished = workspace.commit([
+      assistantDeltaEvent('00000000-0000-4000-8000-000000000001', 'before the tail'),
+    ])
+    const retained = workspace.commit([
+      assistantDeltaEvent('00000000-0000-4000-8000-000000000002', 'in the tail'),
+    ])
     streams.publish(retained)
 
     const oldest = retained[0]?.sequence ?? 0
@@ -196,7 +223,9 @@ describe('event replay bounds', () => {
   it('pages a replay instead of decoding the whole log', () => {
     const workspace = createShellWorkspace(1)
     for (let index = 0; index < 1_100; index += 1) {
-      workspace.eventStore.append([assistantDeltaEvent('thread-0', `delta-${index}`)])
+      workspace.eventStore.append([
+        assistantDeltaEvent('00000000-0000-4000-8000-000000000000', `delta-${index}`),
+      ])
     }
 
     const capped = workspace.eventStore.readAfter({ afterSequence: 0 })
@@ -268,13 +297,15 @@ function shellReader(streams: OrchestrationStreams, options: { afterSequence?: n
 }
 
 /** Reads a delta in each of two separate coalescing windows and counts the queries. */
-async function windowedDeltaQueries(threadCount: number) {
-  const workspace = createShellWorkspace(threadCount)
+async function windowedDeltaQueries(sessionCount: number) {
+  const workspace = createShellWorkspace(sessionCount)
   const reader = await openShellStream(workspace, { targeted: true })
 
   workspace.resetQueryCount()
   for (const text of ['first', 'second']) {
-    reader.streams.publish(workspace.commit([assistantDeltaEvent('thread-1', text)]))
+    reader.streams.publish(
+      workspace.commit([assistantDeltaEvent('00000000-0000-4000-8000-000000000001', text)]),
+    )
     await reader.next()
   }
   const queries = workspace.queryCount()

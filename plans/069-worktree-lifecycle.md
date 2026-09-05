@@ -9,7 +9,7 @@
 
 ## Status
 
-- **State:** Blocked on Plan 068 completion and root scheduling
+- **State:** Domain prerequisite complete; awaiting root scheduling
 - **Priority:** P0 after Plan 068
 - **Effort:** L
 - **Risk:** HIGH — filesystem creation/removal with crash recovery and dirty-work protection

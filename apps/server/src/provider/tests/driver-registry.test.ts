@@ -5,7 +5,7 @@ import {
   DEFAULT_RUNTIME_MODE,
   providerDriverKindSchema,
   providerInstanceIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
   type ProviderInstanceId,
 } from '@workspace/contracts'
 import * as v from 'valibot'
@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createInternalError } from '../../observability/structured-errors'
 import type { MockProviderAdapter } from '../adapters/mock'
 import type { ProviderInstanceConfig } from '../driver'
-import type { ProviderSessionStartInput } from '../types'
+import type { ProviderRuntimeStartInput } from '../types'
 import { MOCK_DRIVER_KIND, mockDriver } from '../drivers/mock'
 import { ProviderAdapterRegistry } from '../provider-adapter-registry'
 import { ProviderStatusCache } from '../status-cache'
@@ -40,14 +40,14 @@ describe('provider driver registry', () => {
     const work = adapterFor(registry, WORK)
     const personal = adapterFor(registry, PERSONAL)
     await writeFile(path.join(home, 'work.json'), 'work@example.com')
-    await work.startSession(sessionInput(WORK))
+    await work.startRuntime(sessionInput(WORK))
 
     expect(work).not.toBe(personal)
     expect(work.env.PLATFORM_MOCK_CREDENTIALS).toBe(path.join(home, 'work.json'))
     expect(personal.env.PLATFORM_MOCK_CREDENTIALS).toBe(path.join(home, 'personal.json'))
     // The session started on one account is invisible to the other.
-    expect(await work.hasSession({ threadId: threadId() })).toBe(true)
-    expect(await personal.hasSession({ threadId: threadId() })).toBe(false)
+    expect(await work.hasRuntime({ sessionId: sessionId() })).toBe(true)
+    expect(await personal.hasRuntime({ sessionId: sessionId() })).toBe(false)
     expect(await registry.refreshSnapshot(WORK)).toMatchObject({
       auth: { label: 'work@example.com', status: 'authenticated' },
       displayLabel: 'mock-work',
@@ -64,7 +64,7 @@ describe('provider driver registry', () => {
     const registry = createRegistry()
     await registry.reconcile([instance(WORK, { credentialsPath: path.join(home, 'work.json') })])
     const work = adapterFor(registry, WORK)
-    await work.startSession(sessionInput(WORK))
+    await work.startRuntime(sessionInput(WORK))
 
     await registry.reconcile([
       instance(WORK, { credentialsPath: path.join(home, 'work.json') }),
@@ -73,7 +73,7 @@ describe('provider driver registry', () => {
 
     // An untouched entry keeps its adapter, so its running sessions survive.
     expect(adapterFor(registry, WORK)).toBe(work)
-    expect(await work.hasSession({ threadId: threadId() })).toBe(true)
+    expect(await work.hasRuntime({ sessionId: sessionId() })).toBe(true)
     expect(registry.listInstances()).toEqual([WORK, PERSONAL])
 
     await registry.reconcile([instance(PERSONAL, { credentialsPath: path.join(home, 'p.json') })])
@@ -81,7 +81,7 @@ describe('provider driver registry', () => {
     expect(registry.listInstances()).toEqual([PERSONAL])
     expect(registry.adapter(WORK)).toBeNull()
     // Removal disposes the instance, which stops everything it was running.
-    expect(await work.hasSession({ threadId: threadId() })).toBe(false)
+    expect(await work.hasRuntime({ sessionId: sessionId() })).toBe(false)
   })
 
   it('rebuilds an instance whose config changed', async () => {
@@ -200,18 +200,19 @@ function instance(
   }
 }
 
-function sessionInput(providerInstanceId: ProviderInstanceId): ProviderSessionStartInput {
+function sessionInput(providerInstanceId: ProviderInstanceId): ProviderRuntimeStartInput {
   return {
     cwd: '/workspace',
     modelSelection: { model: 'gpt-5.5', providerInstanceId },
     providerInstanceId,
     runtimeMode: DEFAULT_RUNTIME_MODE,
-    threadId: threadId(),
+    runtimeEpoch: 'epoch-driver',
+    sessionId: sessionId(),
   }
 }
 
-function threadId() {
-  return v.parse(threadIdSchema, 'thread-1')
+function sessionId() {
+  return v.parse(sessionIdSchema, 'ee84050b-1b17-5fe8-9f71-0983f1fceccc')
 }
 
 async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 5_000) {

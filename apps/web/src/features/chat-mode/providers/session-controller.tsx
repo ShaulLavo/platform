@@ -1,10 +1,11 @@
+import { useApplicationRuntime } from '@/hooks/use-application-runtime'
+import { useActiveChatProjection } from '@/features/chat/hooks/use-active-projection'
 import { useEffect, type ReactNode } from 'react'
 
 import { useChatTransport } from '@/features/chat/hooks/use-chat-transport'
 import { useChatShellSubscription } from '@/features/chat/hooks/use-chat-shell-subscription'
 import { useWorkspaceChatProject } from '@/features/chat/hooks/use-workspace-chat-project'
-import { selectChatSessionThreadsForProject } from '@/features/chat/state/chat-projection-selectors'
-import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
+import { selectChatSessionsForProject } from '@/features/chat/state/chat-projection-selectors'
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import { ProjectDeleteDialog } from '@/features/chat-mode/components/project-delete-dialog'
 import { ProjectRenameDialog } from '@/features/chat-mode/components/project-rename-dialog'
@@ -30,22 +31,23 @@ export function ChatModeSessionController({
   /** Where the editor currently is. Chat follows it only until a project is activated. */
   readonly editorRootPath: string
 }) {
+  const application = useApplicationRuntime()
   const transport = useChatTransport()
   const shell = useChatShellSubscription(transport)
   const activeWorkspaceRoot = useActiveProjectStore((state) => state.workspaceRoot)
   const rootPath = activeWorkspaceRoot ?? editorRootPath
   const projectState = useWorkspaceChatProject({ transport, rootPath })
   const projectId = projectState.project?.id ?? null
-  const projectThreads = useChatProjectionStore((state) =>
-    selectChatSessionThreadsForProject(state, projectId),
+  const projectSessions = useActiveChatProjection((state) =>
+    selectChatSessionsForProject(state, projectId),
   )
-  const threads = projectThreads
-    .filter((thread) => !thread.archivedAt)
+  const sessions = projectSessions
+    .filter((session) => !session.archivedAt)
     .toSorted(compareSessionsForRail)
-  const threadIds = threads.map((thread) => thread.id)
-  const archivedThreadIds = projectThreads
-    .filter((thread) => Boolean(thread.archivedAt))
-    .map((thread) => thread.id)
+  const sessionIds = sessions.map((session) => session.id)
+  const archivedSessionIds = projectSessions
+    .filter((session) => Boolean(session.archivedAt))
+    .map((session) => session.id)
   const restored = useSessionSelectionStore((state) => state.restored)
   const selection = useSessionSelectionStore((state) => state.selection)
   const selectSession = useSessionSelectionStore((state) => state.selectSession)
@@ -59,18 +61,19 @@ export function ChatModeSessionController({
   // Keyboard session commands run from the app keymap, far above this tree, so the
   // one app-level thing they need is handed down to them for as long as chat mode is up.
   useEffect(() => {
-    setSessionProjectOpener(openWorkspaceRoot)
+    setSessionProjectOpener(application.openEnvironmentWorkspaceRoot)
 
     return () => setSessionProjectOpener(null)
-  }, [openWorkspaceRoot])
+  }, [application])
 
   const value: ChatModeSession = {
     activeSession: activeSession({
-      archivedThreadIds,
+      environmentId: transport.environmentId,
+      archivedSessionIds,
       projectId,
       restored,
       selection,
-      threadIds,
+      sessionIds,
     }),
     addProject,
     transport,
@@ -82,14 +85,16 @@ export function ChatModeSessionController({
     }),
     openProject: (workspaceRoot) => void openWorkspaceRoot(workspaceRoot),
     project: projectState.project,
+    worktree: projectState.worktree,
     ready: projectState.status === 'ready',
     retrying: retry.retrying,
     retryProject: retry.retryProject,
     // The project's own root, never the editor's: a draft dispatched here stamps this
-    // path into the event log as the thread's worktree, and that stamp is permanent.
-    rootPath: projectState.project?.workspaceRoot ?? rootPath,
-    selectSession,
-    startDraft,
+    // path into the event log as the session's worktree, and that stamp is permanent.
+    rootPath: projectState.worktree?.path ?? rootPath,
+    selectSession: (projectId, sessionId) =>
+      selectSession(transport.environmentId, projectId, sessionId),
+    startDraft: (projectId) => startDraft(transport.environmentId, projectId),
   }
 
   return (

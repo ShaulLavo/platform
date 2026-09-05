@@ -1,4 +1,4 @@
-import type { OrchestrationThreadActivity } from '@workspace/contracts'
+import type { OrchestrationSessionActivity } from '@workspace/contracts'
 
 export type ChatActivityIconKey =
   | 'approval'
@@ -56,7 +56,7 @@ const TOOL_FAILURE_PATTERNS = [
 ]
 
 export function chatActivityPresentation(
-  activity: OrchestrationThreadActivity,
+  activity: OrchestrationSessionActivity,
 ): ChatActivityPresentation {
   const payload = recordPayload(activity.payload)
   const data = recordPayload(payload.data)
@@ -82,14 +82,14 @@ export function chatActivityPresentation(
  * Lifecycle events of one tool call share a provider item id (Codex `id`, Claude
  * `tool_use_id`); it is the only key that folds "started" and "completed" into one row.
  */
-export function chatActivityToolCallId(activity: OrchestrationThreadActivity) {
+export function chatActivityToolCallId(activity: OrchestrationSessionActivity) {
   const data = recordPayload(recordPayload(activity.payload).data)
 
   return stringValue(data.id) ?? stringValue(data.tool_use_id) ?? stringValue(data.toolUseId)
 }
 
 export function chatActivityPlanSteps(
-  activity: OrchestrationThreadActivity,
+  activity: OrchestrationSessionActivity,
 ): readonly ChatActivityPlanStep[] {
   if (activity.kind !== 'turn.plan.updated') return []
 
@@ -123,7 +123,7 @@ function planStepStatus(value: unknown): ChatActivityPlanStepStatus {
   return 'pending'
 }
 
-function activityTitle(activity: OrchestrationThreadActivity, payload: Record<string, unknown>) {
+function activityTitle(activity: OrchestrationSessionActivity, payload: Record<string, unknown>) {
   if (activity.kind === 'approval.requested') return 'Approval requested'
   if (activity.kind === 'approval.resolved') return 'Approval resolved'
   if (activity.kind === 'user-input.requested') return 'User input requested'
@@ -141,7 +141,7 @@ function activityTitle(activity: OrchestrationThreadActivity, payload: Record<st
 }
 
 function taskCompletedTitle(
-  activity: OrchestrationThreadActivity,
+  activity: OrchestrationSessionActivity,
   payload: Record<string, unknown>,
 ) {
   const summary = stringValue(payload.summary)
@@ -153,7 +153,7 @@ function taskCompletedTitle(
 }
 
 function completedTaskTitle(
-  activity: OrchestrationThreadActivity,
+  activity: OrchestrationSessionActivity,
   payload: Record<string, unknown>,
 ) {
   const status = stringValue(payload.status)
@@ -164,7 +164,7 @@ function completedTaskTitle(
 }
 
 function taskProgressTitle(
-  activity: OrchestrationThreadActivity,
+  activity: OrchestrationSessionActivity,
   payload: Record<string, unknown>,
 ) {
   const summary = stringValue(payload.summary)
@@ -176,14 +176,14 @@ function taskProgressTitle(
   return 'Thinking'
 }
 
-function toolTitle(activity: OrchestrationThreadActivity) {
+function toolTitle(activity: OrchestrationSessionActivity) {
   const title = compactActivityLabel(activity.summary)
   if (title) return title
 
   return 'Tool'
 }
 
-function activityIcon(activity: OrchestrationThreadActivity): ChatActivityIconKey {
+function activityIcon(activity: OrchestrationSessionActivity): ChatActivityIconKey {
   if (activity.kind === 'turn.plan.updated') return 'task'
   if (activity.tone === 'error') return 'error'
   if (activity.tone === 'thinking') return 'thinking'
@@ -197,7 +197,7 @@ function activityIcon(activity: OrchestrationThreadActivity): ChatActivityIconKe
 }
 
 function activityDetail(
-  activity: OrchestrationThreadActivity,
+  activity: OrchestrationSessionActivity,
   payload: Record<string, unknown>,
   title: string,
 ) {
@@ -210,7 +210,7 @@ function activityDetail(
   return null
 }
 
-function activityStatus(activity: OrchestrationThreadActivity, payload: Record<string, unknown>) {
+function activityStatus(activity: OrchestrationSessionActivity, payload: Record<string, unknown>) {
   const status = stringValue(payload.status)
   if (status) return formatStatus(status)
   if (activity.kind === 'tool.started') return 'Started'
@@ -224,7 +224,7 @@ function activityStatus(activity: OrchestrationThreadActivity, payload: Record<s
 }
 
 function activityOutcome(
-  activity: OrchestrationThreadActivity,
+  activity: OrchestrationSessionActivity,
   payload: Record<string, unknown>,
   data: Record<string, unknown>,
   texts: readonly (string | null)[],

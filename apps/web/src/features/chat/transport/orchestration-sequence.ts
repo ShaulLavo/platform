@@ -1,9 +1,9 @@
 import type {
   OrchestrationShellStreamItem,
-  OrchestrationThreadStreamItem,
+  OrchestrationSessionStreamItem,
 } from '@workspace/contracts'
 
-export type OrchestrationStreamItem = OrchestrationShellStreamItem | OrchestrationThreadStreamItem
+export type OrchestrationStreamItem = OrchestrationShellStreamItem | OrchestrationSessionStreamItem
 
 export function orchestrationStreamItemSequence(item: OrchestrationStreamItem) {
   if (item.kind === 'snapshot') return item.snapshot.snapshotSequence

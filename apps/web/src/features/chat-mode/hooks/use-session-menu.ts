@@ -1,4 +1,7 @@
-import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
+import {
+  useChatProjectionStore,
+  selectChatProjectionSlice,
+} from '@/features/chat/state/chat-projection-store'
 import { useSessionActions } from '@/features/chat-mode/hooks/use-session-actions'
 import { openSessionRow, startSessionDraft } from '@/features/chat-mode/state/session-commands'
 import {
@@ -16,19 +19,23 @@ export function useSessionMenu(session: SessionRailItem, surface: SessionRenameS
   const setScope = useSessionRailStore((state) => state.setScope)
   // The rail item is a view model and carries no provider session; that comes from
   // the summary the projection already holds.
-  const agentSession = useChatProjectionStore((state) => state.threadById[session.id]?.session)
+  const agentSession = useChatProjectionStore(
+    (state) =>
+      selectChatProjectionSlice(state, session.environmentId).sessionById[session.id]?.runtime,
+  )
 
   return sessionMenu({
-    archive: () => actions.archive(session.id),
+    archive: () => actions.archive(session.ref),
     archived: session.archived,
     canStopAgent: canStopAgentSession(agentSession),
-    deleteSession: () => actions.deleteSession(session.id, session.title),
-    newSession: () => startSessionDraft(session.projectId),
+    deleteSession: () => actions.deleteSession(session.ref, session.title),
+    newSession: () =>
+      startSessionDraft({ environmentId: session.environmentId, projectId: session.projectId }),
     open: () => openSessionRow(session),
-    rename: () => startRename({ surface, threadId: session.id }),
+    rename: () => startRename({ surface, ref: session.ref }),
     scopedToProject: scope === session.projectId,
     scopeToProject: () => setScope(session.projectId),
-    stopAgent: () => actions.stopAgent(session.id),
-    unarchive: () => actions.unarchive(session.id),
+    stopAgent: () => actions.stopAgent(session.ref),
+    unarchive: () => actions.unarchive(session.ref),
   })
 }

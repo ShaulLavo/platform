@@ -35,6 +35,7 @@ export function createTestQueryClient() {
 }
 
 export type RenderWithProvidersOptions = Omit<RenderOptions, 'wrapper'> & {
+  application?: ApplicationRuntime
   command?: TestCommandRuntimeOptions | false
   focusService?: FocusService
   queryClient?: QueryClient
@@ -48,18 +49,25 @@ export type RenderWithProvidersResult = RenderResult & { queryClient: QueryClien
 // `createRoot` rather than Testing Library and would otherwise grow a second,
 // drifting copy of this stack.
 export function AppProviders({
+  application,
   children,
   command,
   focusService,
   queryClient,
 }: {
+  readonly application?: ApplicationRuntime
   readonly children: ReactNode
   readonly command?: TestCommandRuntimeOptions | false
   readonly focusService?: FocusService
   readonly queryClient: QueryClient
 }) {
   const [binding] = useState(createCommandRuntimeBinding)
-  const content = <TooltipProvider delay={0}>{children}</TooltipProvider>
+  const child = application ? (
+    <ApplicationRuntimeProvider application={application}>{children}</ApplicationRuntimeProvider>
+  ) : (
+    children
+  )
+  const content = <TooltipProvider delay={0}>{child}</TooltipProvider>
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -111,6 +119,7 @@ type HappyDomDeviceApi = { settings: { device: { prefersColorScheme: string } } 
 export function renderWithProviders(
   ui: ReactElement,
   {
+    application,
     command,
     focusService,
     queryClient = createTestQueryClient(),
@@ -122,7 +131,12 @@ export function renderWithProviders(
 
   function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <AppProviders command={command} focusService={focusService} queryClient={queryClient}>
+      <AppProviders
+        application={application}
+        command={command}
+        focusService={focusService}
+        queryClient={queryClient}
+      >
         {children}
       </AppProviders>
     )
@@ -134,6 +148,7 @@ export function renderWithProviders(
 export function renderHookWithProviders<Result, Props>(
   callback: (props: Props) => Result,
   {
+    application,
     command,
     focusService,
     queryClient = createTestQueryClient(),
@@ -145,7 +160,12 @@ export function renderHookWithProviders<Result, Props>(
 
   function Wrapper({ children }: { children: ReactNode }) {
     return (
-      <AppProviders command={command} focusService={focusService} queryClient={queryClient}>
+      <AppProviders
+        application={application}
+        command={command}
+        focusService={focusService}
+        queryClient={queryClient}
+      >
         {children}
       </AppProviders>
     )

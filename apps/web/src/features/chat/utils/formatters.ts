@@ -1,6 +1,6 @@
 import type { ModelSelection, ProviderSnapshot } from '@workspace/contracts'
 
-import type { ChatThreadListProjection } from '@/features/chat/state/chat-projection-selectors'
+import type { ChatSessionListProjection } from '@/features/chat/state/chat-projection-selectors'
 
 // Building an `Intl.DateTimeFormat` costs orders of magnitude more than formatting with
 // one, and these run once per row inside virtualized lists. One formatter per option set,
@@ -19,21 +19,21 @@ const HOUR_MS = 60 * MINUTE_MS
 const DAY_MS = 24 * HOUR_MS
 const WEEK_MS = 7 * DAY_MS
 
-export function compareChatSidebarThreads(
-  left: ChatThreadListProjection,
-  right: ChatThreadListProjection,
+export function compareChatSidebarSessions(
+  left: ChatSessionListProjection,
+  right: ChatSessionListProjection,
 ) {
   return (
-    threadSortTimestamp(right).localeCompare(threadSortTimestamp(left)) ||
+    sessionSortTimestamp(right).localeCompare(sessionSortTimestamp(left)) ||
     left.id.localeCompare(right.id)
   )
 }
 
-export function chatThreadPreview(thread: ChatThreadListProjection) {
-  if (thread.latestTurn?.state === 'running') return 'Working'
-  if (thread.session?.lastError) return thread.session.lastError
-  if (thread.latestUserMessageAt)
-    return `Last message ${formatChatTimestamp(thread.latestUserMessageAt)}`
+export function chatSessionPreview(session: ChatSessionListProjection) {
+  if (session.latestTurn?.state === 'running') return 'Working'
+  if (session.runtime?.lastError) return session.runtime.lastError
+  if (session.latestUserMessageAt)
+    return `Last message ${formatChatTimestamp(session.latestUserMessageAt)}`
 
   return 'No messages yet'
 }
@@ -155,8 +155,8 @@ export function formatWorkingTimer(startIso: string, endIso: string) {
   return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`
 }
 
-function threadSortTimestamp(thread: ChatThreadListProjection) {
-  return thread.activityAt
+function sessionSortTimestamp(session: ChatSessionListProjection) {
+  return session.activityAt
 }
 
 function calendarDateLabel(date: Date, now: Date) {

@@ -1,9 +1,10 @@
+import { useActiveChatProjection } from '@/features/chat/hooks/use-active-projection'
 import type {
   ApprovalRequestId,
-  OrchestrationThreadActivity,
-  ThreadApprovalRespondCommand,
-  ThreadId,
-  ThreadUserInputRespondCommand,
+  OrchestrationSessionActivity,
+  SessionApprovalRespondCommand,
+  SessionId,
+  SessionUserInputRespondCommand,
 } from '@workspace/contracts'
 import { useMemo, useState, type ReactNode } from 'react'
 
@@ -17,8 +18,7 @@ import {
   ChatPendingRequestsContext,
   type ChatPendingRequests,
 } from '@/features/chat/providers/pending-requests-context'
-import { selectChatThreadById } from '@/features/chat/state/chat-projection-selectors'
-import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
+import { selectChatSessionById } from '@/features/chat/state/chat-projection-selectors'
 import { derivePendingApprovals } from '@/features/chat/utils/pending-approvals'
 import { derivePendingUserInputs } from '@/features/chat/utils/pending-user-input'
 
@@ -26,11 +26,11 @@ type DispatchCommand = ChatTransport['dispatchCommand']
 type RespondingRequestIds = ReadonlySet<ApprovalRequestId>
 type SetResponding = (update: (current: RespondingRequestIds) => RespondingRequestIds) => void
 
-const NO_ACTIVITIES: readonly OrchestrationThreadActivity[] = []
+const NO_ACTIVITIES: readonly OrchestrationSessionActivity[] = []
 const NONE_RESPONDING: RespondingRequestIds = new Set()
 
 /**
- * Owns the thread's blocking requests: it derives the open approvals and user
+ * Owns the session's blocking requests: it derives the open approvals and user
  * input prompts straight from the activity stream, so a request becomes
  * answerable the moment its activity lands, and it turns the two answers into
  * dispatched commands.
@@ -42,14 +42,14 @@ const NONE_RESPONDING: RespondingRequestIds = new Set()
 export function ChatPendingRequestsProvider({
   children,
   dispatchCommand,
-  threadId,
+  sessionId,
 }: {
   readonly children: ReactNode
   readonly dispatchCommand: DispatchCommand
-  readonly threadId: ThreadId
+  readonly sessionId: SessionId
 }) {
-  const activities = useChatProjectionStore(
-    (state) => selectChatThreadById(state, threadId)?.activities ?? NO_ACTIVITIES,
+  const activities = useActiveChatProjection(
+    (state) => selectChatSessionById(state, sessionId)?.activities ?? NO_ACTIVITIES,
   )
   const [responding, setResponding] = useState<RespondingRequestIds>(NONE_RESPONDING)
   // Context value identity: these panels sit beside the composer, so a fresh
@@ -64,7 +64,7 @@ export function ChatPendingRequestsProvider({
           command: createApprovalRespondCommand({
             decision,
             requestId,
-            threadId,
+            sessionId,
           }),
           context: { decision },
           dispatchCommand,
@@ -76,7 +76,7 @@ export function ChatPendingRequestsProvider({
           command: createUserInputRespondCommand({
             answers,
             requestId,
-            threadId,
+            sessionId,
           }),
           // Count only: an answer can be a credential the provider asked for.
           context: { answerCount: Object.keys(answers).length },
@@ -85,7 +85,7 @@ export function ChatPendingRequestsProvider({
           setResponding,
         }),
     }),
-    [activities, dispatchCommand, responding, threadId],
+    [activities, dispatchCommand, responding, sessionId],
   )
 
   return <ChatPendingRequestsContext value={value}>{children}</ChatPendingRequestsContext>
@@ -98,7 +98,7 @@ async function dispatchPendingRequestResponse({
   requestId,
   setResponding,
 }: {
-  command: ThreadApprovalRespondCommand | ThreadUserInputRespondCommand
+  command: SessionApprovalRespondCommand | SessionUserInputRespondCommand
   context: Record<string, unknown>
   dispatchCommand: DispatchCommand
   requestId: ApprovalRequestId

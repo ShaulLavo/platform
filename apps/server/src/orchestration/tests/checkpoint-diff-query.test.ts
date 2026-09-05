@@ -6,11 +6,12 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { drizzle } from 'drizzle-orm/bun-sqlite'
 import * as v from 'valibot'
 import {
+  worktreeIdSchema,
   commandIdSchema,
   messageIdSchema,
   projectIdSchema,
   providerInstanceIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
   turnIdSchema,
 } from '@workspace/contracts'
 
@@ -21,15 +22,15 @@ import { createWorkspacePaths } from '../../fs/path'
 import { GitService } from '../../git/service'
 import { OrchestrationEngine } from '../engine'
 import { OrchestrationCheckpointDiffQuery } from '../checkpoint-diff-query'
-import { checkpointRefForThreadTurn } from '../checkpoint-refs'
+import { checkpointRefForSessionTurn } from '../checkpoint-refs'
 
 const now = '2026-05-29T00:00:00.000Z'
 const modelSelection = {
   model: 'gpt-5-codex',
   providerInstanceId: v.parse(providerInstanceIdSchema, 'codex'),
 }
-const projectId = v.parse(projectIdSchema, 'project-1')
-const threadId = v.parse(threadIdSchema, 'thread-1')
+const projectId = v.parse(projectIdSchema, '10000000-0000-4000-8000-000000000001')
+const sessionId = v.parse(sessionIdSchema, '00000000-0000-4000-8000-000000000001')
 const turnId = v.parse(turnIdSchema, 'turn-1')
 const roots: string[] = []
 
@@ -38,7 +39,7 @@ afterEach(async () => {
 })
 
 describe('orchestration checkpoint diff query', () => {
-  it('validates empty ranges against a real thread', async () => {
+  it('validates empty ranges against a real session', async () => {
     const root = await fixtureRoot()
     const sqlite = new Database(':memory:', { create: true })
     const database = drizzle({ client: sqlite, schema })
@@ -52,10 +53,10 @@ describe('orchestration checkpoint diff query', () => {
       await expect(
         checkpointDiff.turnDiff({
           fromTurnCount: 0,
-          threadId,
+          sessionId,
           toTurnCount: 0,
         }),
-      ).rejects.toThrow('Thread not found')
+      ).rejects.toThrow('Session not found')
     } finally {
       sqlite.close()
     }
@@ -64,8 +65,8 @@ describe('orchestration checkpoint diff query', () => {
   it('reads historical turn diffs from checkpoint refs', async () => {
     const root = await fixtureRoot()
     await initGitRepository(root)
-    const turnZeroRef = checkpointRefForThreadTurn(threadId, 0)
-    const turnOneRef = checkpointRefForThreadTurn(threadId, 1)
+    const turnZeroRef = checkpointRefForSessionTurn(sessionId, 0)
+    const turnOneRef = checkpointRefForSessionTurn(sessionId, 1)
 
     await writeFile(path.join(root, 'app.txt'), 'before\n')
     await runGit(root, ['add', 'app.txt'])
@@ -85,10 +86,10 @@ describe('orchestration checkpoint diff query', () => {
     )
 
     try {
-      await dispatchCheckpointThread(engine, root, turnOneRef)
+      await dispatchCheckpointSession(engine, root, turnOneRef)
       const diffs = await checkpointDiff.turnDiff({
         fromTurnCount: 0,
-        threadId,
+        sessionId,
         toTurnCount: 1,
       })
 
@@ -115,8 +116,8 @@ describe('orchestration checkpoint diff query', () => {
   it('hides whitespace-only hunks for display and counts them by default', async () => {
     const root = await fixtureRoot()
     await initGitRepository(root)
-    const turnZeroRef = checkpointRefForThreadTurn(threadId, 0)
-    const turnOneRef = checkpointRefForThreadTurn(threadId, 1)
+    const turnZeroRef = checkpointRefForSessionTurn(sessionId, 0)
+    const turnOneRef = checkpointRefForSessionTurn(sessionId, 1)
 
     await writeFile(path.join(root, 'app.txt'), 'before\n')
     await runGit(root, ['add', 'app.txt'])
@@ -137,19 +138,19 @@ describe('orchestration checkpoint diff query', () => {
     )
 
     try {
-      await dispatchCheckpointThread(engine, root, turnOneRef)
+      await dispatchCheckpointSession(engine, root, turnOneRef)
 
       const display = await checkpointDiff.turnDiff({
         fromTurnCount: 0,
         ignoreWhitespace: true,
-        threadId,
+        sessionId,
         toTurnCount: 1,
       })
       expect(display).toEqual([])
 
       const honest = await checkpointDiff.turnDiff({
         fromTurnCount: 0,
-        threadId,
+        sessionId,
         toTurnCount: 1,
       })
       expect(honest).toHaveLength(1)
@@ -159,12 +160,25 @@ describe('orchestration checkpoint diff query', () => {
   })
 })
 
-async function dispatchCheckpointThread(
+async function dispatchCheckpointSession(
   engine: OrchestrationEngine,
   workspaceRoot: string,
   checkpointRef: string,
 ) {
   await engine.dispatch({
+    worktreeId: v.parse(worktreeIdSchema, '20000000-0000-4000-8000-000000000001'),
+    repositoryKey: 'fixture-repository',
+    repositoryKind: 'directory',
+    repositoryIdentity: { source: 'path', canonical: workspaceRoot },
+    canonicalPath: workspaceRoot,
+    path: workspaceRoot,
+    branch: null,
+    registrationGeneration: 0,
+    kind: 'current',
+    ownership: 'protected',
+    createdAt: '2026-05-24T00:00:00.000Z',
+    updatedAt: '2026-05-24T00:00:00.000Z',
+    intentFingerprint: 'fixture-intent',
     commandId: v.parse(commandIdSchema, 'cmd-project'),
     defaultModelSelection: modelSelection,
     projectId,
@@ -173,16 +187,15 @@ async function dispatchCheckpointThread(
     workspaceRoot,
   })
   await engine.dispatch({
-    branch: null,
-    commandId: v.parse(commandIdSchema, 'cmd-thread'),
+    worktreeId: v.parse(worktreeIdSchema, '20000000-0000-4000-8000-000000000001'),
+
+    commandId: v.parse(commandIdSchema, 'cmd-session'),
     interactionMode: 'default',
     modelSelection,
-    projectId,
     runtimeMode: 'full-access',
-    threadId,
-    title: 'Thread',
-    type: 'thread.create',
-    worktreePath: workspaceRoot,
+    sessionId,
+    title: 'Session',
+    type: 'session.create',
   })
   await engine.dispatch({
     assistantMessageId: v.parse(messageIdSchema, 'message-2'),
@@ -193,9 +206,9 @@ async function dispatchCheckpointThread(
     createdAt: now,
     files: [{ additions: 1, deletions: 1, kind: 'modified', path: 'app.txt' }],
     status: 'ready',
-    threadId,
+    sessionId,
     turnId,
-    type: 'thread.turn.diff.complete',
+    type: 'session.turn.diff.complete',
   })
 }
 
@@ -225,5 +238,5 @@ async function runGit(root: string, args: readonly string[]) {
   ])
   if (exitCode === 0) return { stderr, stdout }
 
-  throw new Error(`${stderr}${stdout}`.trim())
+  throw new TypeError(`${stderr}${stdout}`.trim())
 }

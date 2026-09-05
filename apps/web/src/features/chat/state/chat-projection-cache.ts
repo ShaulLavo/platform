@@ -1,152 +1,82 @@
 import {
+  environmentIdSchema,
   orchestrationMessageSchema,
   orchestrationProjectShellSchema,
-  orchestrationThreadActivitySchema,
-  orchestrationThreadShellSchema,
-  threadIdSchema,
-  type OrchestrationThread,
-  type OrchestrationThreadShell,
-  type ThreadId,
+  orchestrationSessionActivitySchema,
+  orchestrationSessionShellSchema,
+  orchestrationWorktreeShellSchema,
+  sessionIdSchema,
+  type OrchestrationSessionShell,
+  type SessionId,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
 import {
   CHAT_PROJECTION_CACHE_ACTIVITY_LIMIT,
   CHAT_PROJECTION_CACHE_MESSAGE_LIMIT,
-  CHAT_PROJECTION_CACHE_THREAD_LIMIT,
+  CHAT_PROJECTION_CACHE_SESSION_LIMIT,
   CHAT_PROJECTION_CACHE_TRANSCRIPT_LIMIT,
-} from './chat-cache-constants'
-import type { ChatProjectionState, ProjectionThread } from './chat-projection-store'
+} from '@/features/chat/state/chat-cache-constants'
+import {
+  createInitialChatProjectionSlice,
+  type ChatProjectionSlice,
+  type ChatProjectionState,
+  type ProjectionSession,
+} from '@/features/chat/state/chat-projection-store'
 import {
   syncChatProjectionShellSnapshot,
-  syncChatProjectionThreadDetailSnapshot,
-} from './chat-projection-writers'
+  syncChatProjectionSessionDetailSnapshot,
+} from '@/features/chat/state/chat-projection-writers'
 
 export const CHAT_PROJECTION_CACHE_STORAGE_KEY = 'platform.chat-projection'
+const CHAT_PROJECTION_CACHE_VERSION = 2
 
-/**
- * Bump on any shape change. The key is deliberately stable so a bump drops the
- * one entry instead of orphaning it under an old key — greenfield, so a stale
- * shape is deleted rather than migrated.
- */
-const CHAT_PROJECTION_CACHE_VERSION = 1
-
-const cachedChatTranscriptSchema = v.object({
-  activities: v.array(orchestrationThreadActivitySchema),
+const cachedTranscriptSchema = v.object({
+  activities: v.array(orchestrationSessionActivitySchema),
   messages: v.array(orchestrationMessageSchema),
-  threadId: threadIdSchema,
+  sessionId: sessionIdSchema,
 })
-
-const cachedChatProjectionSchema = v.object({
+const cachedSliceSchema = v.object({
+  environmentId: environmentIdSchema,
   projects: v.array(orchestrationProjectShellSchema),
-  threads: v.array(orchestrationThreadShellSchema),
-  transcripts: v.array(cachedChatTranscriptSchema),
+  worktrees: v.array(orchestrationWorktreeShellSchema),
+  sessions: v.array(orchestrationSessionShellSchema),
+  transcripts: v.array(cachedTranscriptSchema),
   updatedAt: v.string(),
+})
+const cachedProjectionSchema = v.object({
+  slices: v.array(cachedSliceSchema),
   version: v.literal(CHAT_PROJECTION_CACHE_VERSION),
 })
 
-export type CachedChatProjection = v.InferOutput<typeof cachedChatProjectionSchema>
+export type CachedChatProjection = v.InferOutput<typeof cachedProjectionSchema>
+type CachedSlice = v.InferOutput<typeof cachedSliceSchema>
 
-/**
- * Reads the painted-before-connect snapshot. Anything that fails the version
- * gate or the schema is deleted here rather than partially applied: a half-read
- * projection is indistinguishable from server truth once it is in the store.
- */
 export function readChatProjectionCache(): CachedChatProjection | null {
-  if (!canUseLocalStorage()) return null
-
+  if (typeof localStorage === 'undefined') return null
   try {
     const raw = localStorage.getItem(CHAT_PROJECTION_CACHE_STORAGE_KEY)
     if (!raw) return null
-
-    const parsed = v.safeParse(cachedChatProjectionSchema, JSON.parse(raw))
+    const parsed = v.safeParse(cachedProjectionSchema, JSON.parse(raw))
     if (parsed.success) return parsed.output
-
-    removeChatProjectionCache()
-    return null
   } catch {
     removeChatProjectionCache()
     return null
   }
+  removeChatProjectionCache()
+  return null
 }
 
-/**
- * Transcripts are the bulky part, so a quota failure retries shell-only before
- * giving up: losing the open conversation's head still beats a blank sidebar.
- */
 export function writeChatProjectionCache(cached: CachedChatProjection) {
-  if (!canUseLocalStorage()) return false
+  if (typeof localStorage === 'undefined') return false
   if (setCacheEntry(cached)) return true
-  if (setCacheEntry({ ...cached, transcripts: [] })) return true
-
+  const shellOnly = {
+    ...cached,
+    slices: cached.slices.map((slice) => ({ ...slice, transcripts: [] })),
+  }
+  if (setCacheEntry(shellOnly)) return true
   removeChatProjectionCache()
   return false
-}
-
-function removeChatProjectionCache() {
-  if (!canUseLocalStorage()) return
-
-  try {
-    localStorage.removeItem(CHAT_PROJECTION_CACHE_STORAGE_KEY)
-  } catch {
-    // Private-mode storage failures must never keep the app from opening.
-  }
-}
-
-export function chatProjectionCacheFromState(state: ChatProjectionState): CachedChatProjection {
-  return {
-    projects: state.projectIds.flatMap((projectId) => state.projectById[projectId] ?? []),
-    threads: cachedShellThreads(state),
-    transcripts: cachedTranscripts(state),
-    updatedAt: state.lastAppliedShellUpdatedAt ?? new Date().toISOString(),
-    version: CHAT_PROJECTION_CACHE_VERSION,
-  }
-}
-
-/**
- * Replays the cached snapshot through the real writers, so a painted-from-cache
- * store is shaped exactly like a served one. Sequence cursors are deliberately
- * left at zero: the first server snapshot must outrank the cache and replace it
- * wholesale, and the detail stream must resume from the beginning rather than
- * from a cursor no live subscription ever earned.
- */
-export function hydrateChatProjectionState(
-  state: ChatProjectionState,
-  cached: CachedChatProjection | null,
-): ChatProjectionState {
-  if (!cached) return state
-
-  let nextState = syncChatProjectionShellSnapshot(state, {
-    projects: cached.projects,
-    snapshotSequence: 0,
-    threads: cached.threads,
-    updatedAt: cached.updatedAt,
-  })
-
-  for (const transcript of cached.transcripts) {
-    const thread = cachedTranscriptThread(cached, transcript)
-    if (!thread) continue
-
-    nextState = syncChatProjectionThreadDetailSnapshot(nextState, {
-      checkpoints: [],
-      proposedPlans: [],
-      snapshotSequence: 0,
-      thread,
-    })
-  }
-
-  return {
-    ...nextState,
-    bootstrapComplete: false,
-    lastAppliedShellSequence: 0,
-    lastAppliedShellUpdatedAt: null,
-    threadDetailSequenceById: {},
-    // The cache holds a short tail by design, so replaying it through the
-    // snapshot writer concludes "no earlier history" for every thread. Dropped
-    // rather than trusted: unknown reads as "offer the page", and the real
-    // snapshot settles it moments later.
-    threadHasEarlierById: {},
-  }
 }
 
 function setCacheEntry(cached: CachedChatProjection) {
@@ -158,82 +88,115 @@ function setCacheEntry(cached: CachedChatProjection) {
   }
 }
 
-function cachedShellThreads(state: ChatProjectionState) {
-  const threads: OrchestrationThreadShell[] = []
-
-  for (const threadId of state.threadIds) {
-    if (threads.length >= CHAT_PROJECTION_CACHE_THREAD_LIMIT) break
-
-    const thread = state.threadById[threadId]
-    if (!thread) continue
-
-    threads.push(shellFromProjectionThread(thread))
+function removeChatProjectionCache() {
+  try {
+    localStorage.removeItem(CHAT_PROJECTION_CACHE_STORAGE_KEY)
+  } catch {
+    return
   }
-
-  return threads
 }
 
-/**
- * Exactly the fields `orchestrationThreadShellSchema` defines. The client-only facts
- * — the arranged pin slot, the provenance stamps, the live turn — are deliberately
- * absent: the reader parses this back through the same schema and would strip them.
- */
-function shellFromProjectionThread(thread: ProjectionThread): OrchestrationThreadShell {
+export function chatProjectionCacheFromState(state: ChatProjectionState): CachedChatProjection {
   return {
-    archivedAt: thread.archivedAt,
-    branch: thread.branch,
-    createdAt: thread.createdAt,
-    hasActionableProposedPlan: thread.hasActionableProposedPlan,
-    id: thread.id,
-    interactionMode: thread.interactionMode,
-    latestTurn: thread.latestTurn,
-    latestUserMessageAt: thread.latestUserMessageAt,
-    modelSelection: thread.modelSelection,
-    pendingApprovalCount: thread.pendingApprovalCount,
-    pendingUserInputCount: thread.pendingUserInputCount,
-    // `planProgress` is optional on the schema, so leaving it out would compile and
-    // silently drop the plan-progress label from every cache-hydrated rail row.
-    planProgress: thread.planProgress,
-    projectId: thread.projectId,
-    runtimeMode: thread.runtimeMode,
-    session: thread.session,
-    title: thread.title,
-    updatedAt: thread.updatedAt,
-    worktreePath: thread.worktreePath,
+    slices: Object.entries(state.slices).map(([environmentId, slice]) => ({
+      environmentId: v.parse(environmentIdSchema, environmentId),
+      projects: slice.projectIds.flatMap((id) => slice.projectById[id] ?? []),
+      worktrees: slice.worktreeIds.flatMap((id) => slice.worktreeById[id] ?? []),
+      sessions: cachedShellSessions(slice),
+      transcripts: cachedTranscripts(slice),
+      updatedAt: slice.lastAppliedShellUpdatedAt ?? new Date().toISOString(),
+    })),
+    version: CHAT_PROJECTION_CACHE_VERSION,
   }
 }
 
-/**
- * Only threads whose detail has actually been synced carry a transcript, which
- * is the closest the projection gets to knowing which conversation is open —
- * opening one is what retains its detail subscription. Newest first, so the
- * budget goes to the thread the user is most likely to land back on.
- */
-function cachedTranscripts(state: ChatProjectionState) {
-  const threadIds = (Object.keys(state.threadById) as ThreadId[]).filter(
-    (threadId) => state.threadById[threadId]?.detailSynced,
-  )
-  const ordered = threadIds.toSorted((left, right) =>
-    threadDetailUpdatedAt(state, right).localeCompare(threadDetailUpdatedAt(state, left)),
-  )
-
-  return ordered.slice(0, CHAT_PROJECTION_CACHE_TRANSCRIPT_LIMIT).map((threadId) => ({
-    activities: transcriptTail(
-      state.activityIdsByThreadId[threadId],
-      state.activityByThreadId[threadId],
-      CHAT_PROJECTION_CACHE_ACTIVITY_LIMIT,
-    ),
-    messages: transcriptTail(
-      state.messageIdsByThreadId[threadId],
-      state.messageByThreadId[threadId],
-      CHAT_PROJECTION_CACHE_MESSAGE_LIMIT,
-    ),
-    threadId,
-  }))
+export function hydrateChatProjectionState(
+  state: ChatProjectionState,
+  cached: CachedChatProjection | null,
+): ChatProjectionState {
+  if (!cached) return state
+  const slices = { ...state.slices }
+  for (const cachedSlice of cached.slices)
+    slices[cachedSlice.environmentId] = hydrateSlice(cachedSlice)
+  return { slices }
 }
 
-function threadDetailUpdatedAt(state: ChatProjectionState, threadId: ThreadId) {
-  return state.threadById[threadId]?.updatedAt ?? ''
+function hydrateSlice(cached: CachedSlice): ChatProjectionSlice {
+  let slice = syncChatProjectionShellSnapshot(createInitialChatProjectionSlice(), {
+    projects: cached.projects,
+    worktrees: cached.worktrees,
+    sessions: cached.sessions,
+    snapshotSequence: 0,
+    updatedAt: cached.updatedAt,
+  })
+  for (const transcript of cached.transcripts) {
+    const shell = cached.sessions.find((session) => session.id === transcript.sessionId)
+    if (!shell) continue
+    slice = syncChatProjectionSessionDetailSnapshot(slice, {
+      checkpoints: [],
+      proposedPlans: [],
+      snapshotSequence: 0,
+      session: {
+        ...shell,
+        activities: transcript.activities,
+        messages: transcript.messages,
+        deletedAt: null,
+        deletion: null,
+      },
+    })
+  }
+  return {
+    ...slice,
+    bootstrapComplete: false,
+    lastAppliedShellSequence: 0,
+    lastAppliedShellUpdatedAt: null,
+    sessionDetailSequenceById: {},
+  }
+}
+
+function cachedShellSessions(slice: ChatProjectionSlice): OrchestrationSessionShell[] {
+  return slice.sessionIds.slice(0, CHAT_PROJECTION_CACHE_SESSION_LIMIT).flatMap((id) => {
+    const session = slice.sessionById[id]
+    return session ? [shellFromProjection(session)] : []
+  })
+}
+
+function shellFromProjection(session: ProjectionSession): OrchestrationSessionShell {
+  const {
+    detailSynced: _detail,
+    liveTurn: _turn,
+    metaSource: _source,
+    runtimeKnown: _known,
+    pendingSourceProposedPlan: _plan,
+    ...shell
+  } = session
+  return shell
+}
+
+function cachedTranscripts(slice: ChatProjectionSlice): CachedSlice['transcripts'] {
+  return slice.sessionIds
+    .filter((id) => slice.sessionById[id]?.detailSynced)
+    .toSorted((left, right) =>
+      detailUpdatedAt(slice, right).localeCompare(detailUpdatedAt(slice, left)),
+    )
+    .slice(0, CHAT_PROJECTION_CACHE_TRANSCRIPT_LIMIT)
+    .map((sessionId) => ({
+      activities: transcriptTail(
+        slice.activityIdsBySessionId[sessionId],
+        slice.activityBySessionId[sessionId],
+        CHAT_PROJECTION_CACHE_ACTIVITY_LIMIT,
+      ),
+      messages: transcriptTail(
+        slice.messageIdsBySessionId[sessionId],
+        slice.messageBySessionId[sessionId],
+        CHAT_PROJECTION_CACHE_MESSAGE_LIMIT,
+      ),
+      sessionId,
+    }))
+}
+
+function detailUpdatedAt(slice: ChatProjectionSlice, sessionId: SessionId) {
+  return slice.sessionById[sessionId]?.updatedAt ?? ''
 }
 
 function transcriptTail<TId extends string, TValue>(
@@ -242,37 +205,5 @@ function transcriptTail<TId extends string, TValue>(
   limit: number,
 ): TValue[] {
   if (!ids || !byId) return []
-
   return ids.slice(-limit).flatMap((id) => byId[id] ?? [])
-}
-
-function cachedTranscriptThread(
-  cached: CachedChatProjection,
-  transcript: CachedChatProjection['transcripts'][number],
-): OrchestrationThread | null {
-  const shell = cached.threads.find((thread) => thread.id === transcript.threadId)
-  if (!shell) return null
-
-  return {
-    activities: transcript.activities,
-    archivedAt: shell.archivedAt,
-    branch: shell.branch,
-    createdAt: shell.createdAt,
-    deletedAt: null,
-    id: shell.id,
-    interactionMode: shell.interactionMode,
-    latestTurn: shell.latestTurn,
-    messages: transcript.messages,
-    modelSelection: shell.modelSelection,
-    projectId: shell.projectId,
-    runtimeMode: shell.runtimeMode,
-    session: shell.session,
-    title: shell.title,
-    updatedAt: shell.updatedAt,
-    worktreePath: shell.worktreePath,
-  }
-}
-
-function canUseLocalStorage() {
-  return typeof localStorage !== 'undefined'
 }

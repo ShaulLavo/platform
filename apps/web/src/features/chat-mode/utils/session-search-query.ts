@@ -1,8 +1,8 @@
 import {
-  ORCHESTRATION_THREAD_SEARCH_DEFAULT_LIMIT,
-  ORCHESTRATION_THREAD_SEARCH_MIN_QUERY_LENGTH,
-  orchestrationSearchThreadsResultSchema,
-  type OrchestrationSearchThreadsResult,
+  ORCHESTRATION_SESSION_SEARCH_DEFAULT_LIMIT,
+  ORCHESTRATION_SESSION_SEARCH_MIN_QUERY_LENGTH,
+  orchestrationSearchSessionsResultSchema,
+  type OrchestrationSearchSessionsResult,
 } from '@workspace/contracts'
 import { queryOptions } from '@tanstack/react-query'
 import * as v from 'valibot'
@@ -21,7 +21,7 @@ import { unwrapEdenResponse } from '@/lib/eden-events'
 export const SESSION_SEARCH_DEBOUNCE_MS = 220
 
 const SESSION_SEARCH_STALE_TIME_MS = 30_000
-const EMPTY_SESSION_SEARCH: OrchestrationSearchThreadsResult = { matches: [] }
+const EMPTY_SESSION_SEARCH: OrchestrationSearchSessionsResult = { matches: [] }
 
 const sessionSearchQueryKeys = {
   all: ['chat-session-search'] as const,
@@ -32,17 +32,17 @@ type SessionSearchQueryKey = ReturnType<typeof sessionSearchQueryKeys.search>
 
 /** The server rejects anything shorter, so a one-character query never leaves the browser. */
 export function isSessionSearchQuery(query: string) {
-  return query.trim().length >= ORCHESTRATION_THREAD_SEARCH_MIN_QUERY_LENGTH
+  return query.trim().length >= ORCHESTRATION_SESSION_SEARCH_MIN_QUERY_LENGTH
 }
 
 export function sessionSearchQueryOptions(input: { limit?: number; query: string }) {
-  const limit = input.limit ?? ORCHESTRATION_THREAD_SEARCH_DEFAULT_LIMIT
+  const limit = input.limit ?? ORCHESTRATION_SESSION_SEARCH_DEFAULT_LIMIT
   const query = input.query.trim()
 
   return queryOptions<
-    OrchestrationSearchThreadsResult,
+    OrchestrationSearchSessionsResult,
     Error,
-    OrchestrationSearchThreadsResult,
+    OrchestrationSearchSessionsResult,
     SessionSearchQueryKey
   >({
     enabled: isSessionSearchQuery(query),
@@ -69,7 +69,7 @@ async function searchSessions({
   limit: number
   query: string
   signal: AbortSignal
-}): Promise<OrchestrationSearchThreadsResult> {
+}): Promise<OrchestrationSearchSessionsResult> {
   return observeClientOperation(
     {
       action: 'chat.session_search.http',
@@ -81,16 +81,16 @@ async function searchSessions({
       signal,
     },
     async () => {
-      const response = await client.orchestration['thread-search'].post(
+      const response = await client.orchestration['session-search'].post(
         { limit, query },
         { fetch: { signal } },
       )
 
       return v.parse(
-        orchestrationSearchThreadsResultSchema,
+        orchestrationSearchSessionsResultSchema,
         unwrapEdenResponse(response, {
           requireData: true,
-          emptyMessage: 'thread search returned an empty response',
+          emptyMessage: 'session search returned an empty response',
           normalizeDates: true,
         }),
       )

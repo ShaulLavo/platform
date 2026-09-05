@@ -1,3 +1,4 @@
+import type { TerminalOpenInput } from '@workspace/contracts'
 import { activeServerOrigin, getClient, type Client } from '@/lib/client'
 import { environmentActivitySignal } from '@/lib/environments/state/activity'
 
@@ -29,16 +30,12 @@ type LanguageServerSocketOptions = {
 }
 
 export function connectTerminalSocket(
-  rootPath: string,
-  sessionId: string,
+  input: TerminalOpenInput,
   client: Client = getClient(),
   signal: AbortSignal = environmentActivitySignal(activeServerOrigin()),
 ): EdenServerSocket {
   signal.throwIfAborted()
-  return adaptEdenSocket(
-    client.terminal.subscribe({ query: { root: rootPath, session: sessionId } }),
-    signal,
-  )
+  return adaptEdenSocket(client.terminal.subscribe({ query: input }), signal)
 }
 
 export function connectLanguageServerSocket(

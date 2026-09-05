@@ -2,7 +2,6 @@ import { closestCenter, DndContext, type DragEndEvent } from '@dnd-kit/core'
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { ThreadId } from '@workspace/contracts'
 
 import { SessionGroupHeader } from '@/features/chat-mode/components/session-group-header'
 import { SessionRow } from '@/features/chat-mode/components/session-row'
@@ -17,13 +16,13 @@ const SESSION_DND_MODIFIERS = [restrictToVerticalAxis]
  * One project's band: a sortable row in the rail's project list, and the list its
  * own sessions sort inside. The two lists are separate drag contexts because a
  * session never leaves its project — moving one across bands would have to
- * reassign the thread, which is a different command entirely.
+ * reassign the session, which is a different command entirely.
  */
 export function SessionGroup({
-  activeThreadId,
+  activeSessionKey,
   group,
 }: {
-  readonly activeThreadId: ThreadId | null
+  readonly activeSessionKey: string | null
   readonly group: SessionRailGroup
 }) {
   const { reorderSession } = useChatRailOrder()
@@ -32,7 +31,7 @@ export function SessionGroup({
     attributes: {
       roleDescription: 'sortable project band',
     },
-    id: group.project.id,
+    id: group.key,
   })
 
   function handleSessionDragEnd(event: DragEndEvent) {
@@ -57,11 +56,15 @@ export function SessionGroup({
         onDragEnd={handleSessionDragEnd}
       >
         <SortableContext
-          items={group.sessions.map((session) => session.id)}
+          items={group.sessions.map((session) => session.key)}
           strategy={verticalListSortingStrategy}
         >
           {group.sessions.map((session) => (
-            <SessionRow active={session.id === activeThreadId} key={session.id} session={session} />
+            <SessionRow
+              active={session.key === activeSessionKey}
+              key={session.key}
+              session={session}
+            />
           ))}
         </SortableContext>
       </DndContext>

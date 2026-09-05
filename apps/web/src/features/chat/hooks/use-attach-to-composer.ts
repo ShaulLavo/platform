@@ -11,7 +11,7 @@ import { useComposerInboxStore } from '../state/composer-inbox-store'
  * the composer and bring the composer on screen.
  *
  * Narrow on purpose: surfaces hand over *what* they captured and nothing else.
- * They do not learn which thread is open, they do not touch the draft store, and
+ * They do not learn which session is open, they do not touch the draft store, and
  * they never hold a reference to the editor — which is what stops each new
  * capture surface growing a handle of its own.
  */

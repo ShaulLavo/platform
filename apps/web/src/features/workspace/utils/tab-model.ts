@@ -189,7 +189,7 @@ function tabDiffChange(
 
 /**
  * A diff tab knows which file it is showing, so the tab menu can jump to it.
- * Thread and turn checkpoint diffs span many files and have no single target.
+ * Session and turn checkpoint diffs span many files and have no single target.
  */
 function tabDiffSource(
   path: string,

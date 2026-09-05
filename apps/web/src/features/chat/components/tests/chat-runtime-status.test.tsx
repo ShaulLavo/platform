@@ -5,8 +5,8 @@ import { ChatRuntimeStatus } from '@/features/chat/components/chat-runtime-statu
 import type { ChatCommandState } from '@/features/chat/utils/runtime-state'
 import { providerListQueryOptions } from '@/features/chat/utils/provider-query'
 import { ChatProviderSignInProvider } from '@/features/chat/providers/provider-sign-in-provider'
-import type { ChatThread } from '@/features/chat/state/chat-projection-store'
-import { providerSnapshot, thread } from '../../../../../test/factories/chat'
+import type { ChatSession } from '@/features/chat/state/chat-projection-store'
+import { providerSnapshot, session } from '../../../../../test/factories/chat'
 import { expect, test } from '../../../../../test/fixtures'
 import { createTestQueryClient, renderWithProviders } from '../../../../../test/render'
 
@@ -43,7 +43,7 @@ test('the folded notices are still reachable', async () => {
 test('a dismissed failure stays dismissed while nothing about it has changed', async () => {
   const { rerender } = renderStatus({
     commandState: { ...idleCommandState, commandFailure: 'Dispatch rejected' },
-    thread: thread({ pendingApprovalCount: 0 }),
+    session: session({ pendingApprovalCount: 0 }),
   })
 
   await userEvent.click(await screen.findByRole('button', { name: 'Dismiss Command failed' }))
@@ -59,7 +59,7 @@ test('a dismissed failure stays dismissed while nothing about it has changed', a
   expect(await screen.findByText('Worktree is locked')).toBeVisible()
 })
 
-test('a request the thread is parked on cannot be dismissed', async () => {
+test('a request the session is parked on cannot be dismissed', async () => {
   renderStatus()
 
   await screen.findByText('Approval requested')
@@ -68,10 +68,10 @@ test('a request the thread is parked on cannot be dismissed', async () => {
 
 function renderStatus({
   commandState = idleCommandState,
-  thread: chatThread = thread({ pendingApprovalCount: 1 }),
+  session: chatSession = session({ pendingApprovalCount: 1 }),
 }: {
   commandState?: ChatCommandState
-  thread?: ChatThread
+  session?: ChatSession
 } = {}) {
   const queryClient = createTestQueryClient()
   queryClient.setQueryData(providerListQueryOptions().queryKey, {
@@ -81,7 +81,11 @@ function renderStatus({
   function statusTree(commandFailure: string | null) {
     return (
       <ChatProviderSignInProvider>
-        <ChatRuntimeStatus {...commandState} commandFailure={commandFailure} thread={chatThread} />
+        <ChatRuntimeStatus
+          {...commandState}
+          commandFailure={commandFailure}
+          session={chatSession}
+        />
       </ChatProviderSignInProvider>
     )
   }

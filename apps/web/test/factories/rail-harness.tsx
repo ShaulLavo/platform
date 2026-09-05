@@ -1,0 +1,199 @@
+import { mkdir } from 'node:fs/promises'
+import { join } from 'node:path'
+import {
+  healthDescriptorSchema,
+  sessionIdSchema,
+  commandIdSchema,
+  orchestrationDispatchResultSchema,
+  DEFAULT_PROVIDER_INSTANCE_ID,
+  type ClientOrchestrationCommand,
+} from '@workspace/contracts'
+import * as v from 'valibot'
+import { onTestFinished } from 'vitest'
+import {
+  ChatModeSessionContext,
+  type ChatModeSession,
+} from '@/features/chat-mode/providers/session-context'
+import { ChatRailOrderProvider } from '@/features/chat-mode/providers/rail-order-provider'
+import { SessionRail } from '@/features/chat-mode/components/session-rail'
+import { SessionDeleteDialog } from '@/features/chat-mode/components/session-delete-dialog'
+import { ProjectDeleteDialog } from '@/features/chat-mode/components/project-delete-dialog'
+import { ProjectRenameDialog } from '@/features/chat-mode/components/project-rename-dialog'
+import { StageHeader } from '@/features/chat-mode/components/stage-header'
+import { sessionRailModel } from '@/features/chat-mode/utils/session-rail-model'
+import { currentRailEnvironments } from '@/features/chat-mode/state/rail-environments'
+import { setSessionProjectOpener } from '@/features/chat-mode/state/session-commands'
+import { resetSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
+import { resetRailOrderStore } from '@/features/chat-mode/state/rail-order-store'
+import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
+import { useSessionMultiSelectStore } from '@/features/chat-mode/state/session-multi-select-store'
+import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
+import { createChatTransport } from '@/features/chat/transport/create-chat-transport'
+import { fetchOrchestrationShellSnapshotHttp } from '@/features/chat/transport/orchestration-http-snapshots'
+import { createProjectRegistrationCommand } from '@/lib/environments/utils/registration'
+import { useEnvironmentsStore } from '@/lib/environments/state/store'
+import {
+  activeServerOrigin,
+  setActiveServerOrigin,
+  setClient,
+  getClient,
+  type Client,
+} from '@/lib/client'
+import { unwrapEdenResponse } from '@/lib/eden-events'
+import { createApplicationRuntime } from '@/state/application-runtime'
+import { readWorkspaceCache } from '@/features/workspace/state/cache'
+import { TestEditorStateProvider } from './editor-state-provider'
+import { renderWithProviders } from '../render'
+import type { TestServer } from '../server'
+
+let harnessOriginSequence = 0
+
+export async function createRailHarness(
+  client: Client,
+  server: TestServer,
+  titles: readonly string[] = ['First', 'Second'],
+) {
+  const previousEnvironments = useEnvironmentsStore.getState()
+  const previousOrigin = activeServerOrigin()
+  const previousClient = getClient()
+  const origin = `http://localhost:${37600 + harnessOriginSequence++}`
+  setActiveServerOrigin(origin)
+  setClient(client)
+  const descriptor = v.parse(
+    healthDescriptorSchema,
+    unwrapEdenResponse(await client.health.get(), {
+      requireData: true,
+      emptyMessage: 'health missing',
+    }),
+  )
+  useEnvironmentsStore.setState({
+    activeOrigin: origin,
+    entries: {
+      [origin]: {
+        origin,
+        kind: 'primary',
+        label: descriptor.label,
+        environmentId: descriptor.environmentId,
+      },
+    },
+  })
+  const environmentId = descriptor.environmentId
+  const dispatch = async (command: ClientOrchestrationCommand) =>
+    v.parse(
+      orchestrationDispatchResultSchema,
+      unwrapEdenResponse(await client.orchestration.commands.post(command), {
+        requireData: true,
+        normalizeDates: true,
+        emptyMessage: 'receipt missing',
+      }),
+    )
+  await mkdir(join(server.root, 'project'))
+  const receipt = await dispatch(
+    createProjectRegistrationCommand({ workspaceRoot: 'project', title: 'Rail project' }),
+  )
+  const { projectId, worktreeId } = receipt.result!
+  const sessionIds = titles.map((_, index) =>
+    v.parse(sessionIdSchema, `f0000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`),
+  )
+  for (const [index, title] of titles.entries())
+    await dispatch({
+      type: 'session.create',
+      runtimeMode: 'approval-required',
+      interactionMode: 'default',
+      commandId: v.parse(commandIdSchema, `rail-session-${index}`),
+      sessionId: sessionIds[index]!,
+      worktreeId,
+      title,
+      modelSelection: { model: 'mock-model', providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID },
+    })
+  useChatProjectionStore.getState().resetChatProjection()
+  const refresh = async () => {
+    const snapshot = await fetchOrchestrationShellSnapshotHttp(client)
+    useChatProjectionStore.getState().syncShellSnapshot(environmentId, snapshot)
+    return snapshot
+  }
+  const snapshot = await refresh()
+  resetSessionSelectionStore()
+  resetRailOrderStore()
+  useSessionMultiSelectStore.getState().clear()
+  useSessionRailStore.setState({
+    collapsedProjectIds: [],
+    query: '',
+    renaming: null,
+    scope: null,
+    view: 'active',
+  })
+  const application = createApplicationRuntime({
+    workspaceCache: readWorkspaceCache(),
+    preparation: {
+      appliedThemeContentHash: null,
+      appliedThemeId: null,
+      selectedThemeId: 'dark-plus',
+      syntaxHighlightingEnabled: false,
+    },
+  })
+  setSessionProjectOpener(application.openEnvironmentWorkspaceRoot)
+  const transport = createChatTransport(origin)
+  const context: ChatModeSession = {
+    activeSession: { status: 'ready', sessionId: sessionIds[0]! },
+    addProject: () => {},
+    transport,
+    error: null,
+    openProject: (path) => {
+      void application.openEnvironmentWorkspaceRoot(environmentId, path)
+    },
+    project: snapshot.projects.find((project) => project.id === projectId)!,
+    worktree: snapshot.worktrees.find((worktree) => worktree.id === worktreeId)!,
+    ready: true,
+    retrying: false,
+    retryProject: () => {},
+    rootPath: server.root,
+    selectSession: () => {},
+    startDraft: () => {},
+  }
+  onTestFinished(() => {
+    setSessionProjectOpener(null)
+    transport.close()
+    application.dispose()
+    useEnvironmentsStore.setState(previousEnvironments, true)
+    setActiveServerOrigin(previousOrigin)
+    setClient(previousClient)
+  })
+  return {
+    context,
+    environmentId,
+    projectId,
+    worktreeId,
+    sessionIds,
+    dispatch,
+    refresh,
+    application,
+  }
+}
+export function renderRailHarness(
+  harness: Awaited<ReturnType<typeof createRailHarness>>,
+  header = false,
+) {
+  const model = sessionRailModel({ environments: currentRailEnvironments() })
+  const row = model.sessions.find((session) => session.id === harness.sessionIds[0]) ?? null
+  return renderWithProviders(
+    <TestEditorStateProvider>
+      <ChatModeSessionContext value={harness.context}>
+        <ChatRailOrderProvider>
+          {header ? (
+            <StageHeader
+              contextUsage={null}
+              projectTitle={harness.context.project?.title ?? null}
+              session={row}
+            />
+          ) : (
+            <SessionRail />
+          )}
+          <SessionDeleteDialog />
+          <ProjectDeleteDialog />
+          <ProjectRenameDialog />
+        </ChatRailOrderProvider>
+      </ChatModeSessionContext>
+    </TestEditorStateProvider>,
+  )
+}

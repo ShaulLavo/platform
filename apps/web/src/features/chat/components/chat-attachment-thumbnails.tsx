@@ -1,3 +1,5 @@
+import { useQueryClient } from '@tanstack/react-query'
+import { originForQueryClient } from '@/lib/environments/state/query-clients'
 import type { ChatAttachment } from '@workspace/contracts'
 import { cn } from '@workspace/ui/lib/utils'
 import { useState } from 'react'
@@ -8,7 +10,7 @@ import { ChatImageLightbox } from './chat-image-lightbox'
 /**
  * What the user actually sent, in the transcript. A file-name chip proved that
  * an image was attached without ever showing which one; the thumbnail is the
- * only form that survives scrolling back through a long thread.
+ * only form that survives scrolling back through a long session.
  */
 export function ChatAttachmentThumbnails({
   attachments,
@@ -17,10 +19,11 @@ export function ChatAttachmentThumbnails({
   attachments: readonly ChatAttachment[]
   className?: string
 }) {
+  const origin = originForQueryClient(useQueryClient())
   const [openIndex, setOpenIndex] = useState<number | null>(null)
   if (attachments.length === 0) return null
 
-  const images = chatAttachmentImages(attachments)
+  const images = chatAttachmentImages(attachments, origin)
   const unrenderable = unrenderableChatAttachments(attachments)
 
   return (

@@ -1,5 +1,8 @@
-import { selectChatSidebarThreadsForProject } from '@/features/chat/state/chat-projection-selectors'
-import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
+import {
+  useChatProjectionStore,
+  selectChatProjectionSlice,
+} from '@/features/chat/state/chat-projection-store'
+import { selectChatSidebarSessionsForProject } from '@/features/chat/state/chat-projection-selectors'
 import { useProjectActions } from '@/features/chat-mode/hooks/use-project-actions'
 import { startSessionDraft } from '@/features/chat-mode/state/session-commands'
 import { useProjectRenameRequestStore } from '@/features/chat-mode/state/project-rename-request-store'
@@ -22,20 +25,24 @@ export function useProjectMenu(group: SessionRailGroup) {
   // Counted across the whole project, not the group: in the archive view the band
   // lists filed sessions, but the ones "Archive All" would act on live in the inbox.
   const archivableCount = useChatProjectionStore(
-    (state) => selectChatSidebarThreadsForProject(state, project.id).length,
+    (state) =>
+      selectChatSidebarSessionsForProject(
+        selectChatProjectionSlice(state, project.ref.environmentId),
+        project.id,
+      ).length,
   )
 
   return projectMenu({
-    archiveAllSessions: () => actions.archiveAllSessions(project.id),
+    archiveAllSessions: () => actions.archiveAllSessions(project.ref),
     canArchiveSessions: archivableCount > 0,
     collapsed: group.collapsed,
     copyPath: () => void copyTextToClipboard(project.workspaceRoot, 'path'),
     deleteProject: () => actions.deleteProject(project),
-    newSession: () => startSessionDraft(project.id),
+    newSession: () => startSessionDraft(project.ref),
     renameProject: () =>
       useProjectRenameRequestStore
         .getState()
-        .requestRename({ projectId: project.id, title: project.title }),
+        .requestRename({ ref: project.ref, title: project.title }),
     scopedToProject: scope === project.id,
     scopeToProject: () => setScope(project.id),
     toggleCollapsed: () => toggleProjectCollapsed(project.id),

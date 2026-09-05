@@ -1,13 +1,10 @@
+import { SessionAttentionIndicator } from '@/features/chat-mode/components/session-attention-indicator'
+import { scopedSessionKey } from '@workspace/contracts'
 import { CaretRightIcon, GitBranchIcon } from '@phosphor-icons/react'
 
 import { ContextUsageRing } from '@/features/chat/components/context-usage-ring'
 import type { ContextUsage } from '@/features/chat/utils/context-usage'
-import {
-  threadStatusDotClass,
-  threadStatusLabel,
-  threadStatusTextClass,
-  type ThreadStatus,
-} from '@/features/chat/utils/thread-status'
+import { sessionStatusLabel, sessionStatusTextClass } from '@/features/chat/utils/session-status'
 import { BranchActions } from '@/features/git/components/branch-actions'
 import { SessionRename } from '@/features/chat-mode/components/session-rename'
 import { StageSessionMenu } from '@/features/chat-mode/components/stage-session-menu'
@@ -29,7 +26,9 @@ export function StageHeader({
   const { rootPath } = useChatModeSession()
   const renaming = useSessionRailStore((state) => state.renaming)
   const editing =
-    Boolean(session) && renaming?.surface === 'header' && renaming.threadId === session?.id
+    Boolean(session) &&
+    renaming?.surface === 'header' &&
+    scopedSessionKey(renaming.ref) === session?.key
 
   return (
     <header className='border-border/60 compact:h-10 compact:gap-1.5 compact:px-2 flex h-11 shrink-0 items-center gap-2 border-b px-3'>
@@ -68,25 +67,19 @@ export function StageHeader({
           rootPath={session.worktreePath ?? rootPath}
         />
       ) : null}
-      {session ? statusBadge(session.status) : null}
+      {session && session.status !== 'settled' ? (
+        <span
+          className={cn(
+            'flex shrink-0 items-center gap-1.5 text-[11px]',
+            sessionStatusTextClass(session.status),
+          )}
+        >
+          <SessionAttentionIndicator status={session.status} />
+          {sessionStatusLabel(session.status)}
+        </span>
+      ) : null}
       {contextUsage ? <ContextUsageRing usage={contextUsage} /> : null}
       {session ? <StageSessionMenu session={session} /> : null}
     </header>
-  )
-}
-
-function statusBadge(status: ThreadStatus) {
-  if (status === 'idle') return null
-
-  return (
-    <span
-      className={cn(
-        'flex shrink-0 items-center gap-1.5 text-[11px]',
-        threadStatusTextClass(status),
-      )}
-    >
-      <span className={cn('size-1.5 rounded-full', threadStatusDotClass(status))} />
-      {threadStatusLabel(status)}
-    </span>
   )
 }

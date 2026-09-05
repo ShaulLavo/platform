@@ -63,8 +63,8 @@ const INTERACTION_MODE_OPTIONS: readonly ComposerControlOption<InteractionMode>[
 
 /**
  * Access and plan/build controls for one composer. The draft's override wins
- * over the thread's committed values, exactly like the model picker, so the
- * trigger reflects the pick before the thread projection catches up.
+ * over the session's committed values, exactly like the model picker, so the
+ * trigger reflects the pick before the session projection catches up.
  */
 export function ComposerControlsMenu({
   disabled,
@@ -74,7 +74,7 @@ export function ComposerControlsMenu({
 }: {
   readonly disabled: boolean
   readonly draftTarget: ChatInputDraftTarget
-  /** The thread's committed mode — the fallback when the draft has no override. */
+  /** The session's committed mode — the fallback when the draft has no override. */
   readonly interactionMode: InteractionMode
   readonly runtimeMode: RuntimeMode
 }) {

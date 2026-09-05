@@ -1,29 +1,22 @@
 import { asc, eq } from 'drizzle-orm'
 import * as v from 'valibot'
 
-import { orchestrationErrors } from '../observability'
 import type { GitFileDiff, GitService } from '../git/service'
-import {
-  projectionProjects,
-  projectionThreadCheckpoints,
-  projectionThreads,
-  type ProjectionProjectRow,
-  type ProjectionThreadCheckpointRow,
-  type ProjectionThreadRow,
-} from '../db/schema'
+import { projectionSessionCheckpoints, type ProjectionSessionCheckpointRow } from '../db/schema'
 import type { OrchestrationDatabase } from './event-store'
-import { checkpointRefForThreadTurn } from './checkpoint-refs'
+import { checkpointRefForSessionTurn } from './checkpoint-refs'
 import { checkpointErrors } from './structured-errors'
+import { readSessionOwner } from './session-owner'
 import {
-  orchestrationGetFullThreadDiffInputSchema,
+  orchestrationGetFullSessionDiffInputSchema,
   orchestrationGetTurnDiffInputSchema,
-  type OrchestrationGetFullThreadDiffInput,
+  type OrchestrationGetFullSessionDiffInput,
   type OrchestrationGetTurnDiffInput,
 } from './schemas'
 
-type ThreadCheckpointContext = {
-  checkpoints: ProjectionThreadCheckpointRow[]
-  threadId: string
+type SessionCheckpointContext = {
+  checkpoints: ProjectionSessionCheckpointRow[]
+  sessionId: string
   workspacePath: string
 }
 
@@ -40,7 +33,7 @@ export class OrchestrationCheckpointDiffQuery {
     const query = v.parse(orchestrationGetTurnDiffInputSchema, input)
     validateTurnRange(query)
 
-    const context = this.threadCheckpointContext(query.threadId)
+    const context = this.sessionCheckpointContext(query.sessionId)
     if (query.fromTurnCount === query.toTurnCount) return []
 
     const refs = checkpointRefsForRange(query, context)
@@ -54,63 +47,40 @@ export class OrchestrationCheckpointDiffQuery {
     })
   }
 
-  fullThreadDiff(input: OrchestrationGetFullThreadDiffInput): Promise<GitFileDiff[]> {
-    const query = v.parse(orchestrationGetFullThreadDiffInputSchema, input)
+  fullSessionDiff(input: OrchestrationGetFullSessionDiffInput): Promise<GitFileDiff[]> {
+    const query = v.parse(orchestrationGetFullSessionDiffInputSchema, input)
 
     return this.turnDiff({
       fromTurnCount: 0,
       ignoreWhitespace: query.ignoreWhitespace,
-      threadId: query.threadId,
+      sessionId: query.sessionId,
       toTurnCount: query.toTurnCount,
     })
   }
 
-  private threadCheckpointContext(threadId: string): ThreadCheckpointContext {
-    const thread = this.threadRow(threadId)
-    const project = this.projectRow(thread.projectId)
-    const workspacePath = thread.worktreePath ?? project.workspaceRoot
+  private sessionCheckpointContext(sessionId: string): SessionCheckpointContext {
+    const { worktree } = readSessionOwner(this.database, sessionId)
+    const workspacePath = worktree.canonicalPath
 
     return {
-      checkpoints: this.checkpointRows(threadId),
-      threadId,
+      checkpoints: this.checkpointRows(sessionId),
+      sessionId,
       workspacePath,
     }
   }
 
-  private threadRow(threadId: string): ProjectionThreadRow {
-    const row = this.database
-      .select()
-      .from(projectionThreads)
-      .where(eq(projectionThreads.threadId, threadId))
-      .get()
-    if (!row || row.deletedAt) throw orchestrationErrors.THREAD_NOT_FOUND({ threadId })
-
-    return row
-  }
-
-  private projectRow(projectId: string): ProjectionProjectRow {
-    const row = this.database
-      .select()
-      .from(projectionProjects)
-      .where(eq(projectionProjects.projectId, projectId))
-      .get()
-    if (!row || row.deletedAt) throw orchestrationErrors.PROJECT_NOT_FOUND({ projectId })
-
-    return row
-  }
-
   /** The projection is the source: reverts already pruned what it no longer holds. */
-  private checkpointRows(threadId: string) {
+  private checkpointRows(sessionId: string) {
     return this.database
       .select()
-      .from(projectionThreadCheckpoints)
-      .where(eq(projectionThreadCheckpoints.threadId, threadId))
-      .orderBy(asc(projectionThreadCheckpoints.checkpointTurnCount))
+      .from(projectionSessionCheckpoints)
+      .where(eq(projectionSessionCheckpoints.sessionId, sessionId))
+      .orderBy(asc(projectionSessionCheckpoints.checkpointTurnCount))
       .all()
   }
 
   private async assertCheckpointRefAvailable(
-    context: ThreadCheckpointContext,
+    context: SessionCheckpointContext,
     ref: string,
     turnCount: number,
   ) {
@@ -131,7 +101,7 @@ function validateTurnRange(input: OrchestrationGetTurnDiffInput) {
 
 function checkpointRefsForRange(
   input: OrchestrationGetTurnDiffInput,
-  context: ThreadCheckpointContext,
+  context: SessionCheckpointContext,
 ) {
   const availableTurnCount = maxCheckpointTurnCount(context.checkpoints)
   if (input.toTurnCount > availableTurnCount) {
@@ -147,7 +117,7 @@ function checkpointRefsForRange(
   }
 }
 
-function maxCheckpointTurnCount(checkpoints: readonly ProjectionThreadCheckpointRow[]) {
+function maxCheckpointTurnCount(checkpoints: readonly ProjectionSessionCheckpointRow[]) {
   let maxTurnCount = 0
 
   for (const checkpoint of checkpoints) {
@@ -157,8 +127,8 @@ function maxCheckpointTurnCount(checkpoints: readonly ProjectionThreadCheckpoint
   return maxTurnCount
 }
 
-function checkpointRefForTurnCount(context: ThreadCheckpointContext, turnCount: number) {
-  if (turnCount === 0) return checkpointRefForThreadTurn(context.threadId, 0)
+function checkpointRefForTurnCount(context: SessionCheckpointContext, turnCount: number) {
+  if (turnCount === 0) return checkpointRefForSessionTurn(context.sessionId, 0)
 
   const checkpoint = context.checkpoints.find(
     (candidate) => candidate.checkpointTurnCount === turnCount,

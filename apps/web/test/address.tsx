@@ -1,12 +1,15 @@
 import { waitFor } from '@testing-library/react'
 import { useEffect } from 'react'
-import { expect } from 'vitest'
+import { expect, onTestFinished } from 'vitest'
 
 import { useAddressProjection } from '@/features/address/hooks/use-projection'
 import { PROJECTION_DEBOUNCE_MS } from '@/features/address/state/projection'
 import { useAddressRestore } from '@/features/address/hooks/use-restore'
 import { createDefaultChatModePanels } from '@/features/chat-mode/utils/panels'
-import { TestEditorStateProvider as EditorStateProvider } from './factories/editor-state-provider'
+import { createApplicationRuntime } from '@/state/application-runtime'
+import { addressedWorkspaceCache } from '@/features/address/utils/cache'
+import { parseAddress } from '@/features/address/utils/grammar'
+import { readWorkspaceCache } from '@/features/workspace/state/cache'
 import {
   useEditorWorkspaceStoreApi,
   type EditorWorkspaceStoreApi,
@@ -29,7 +32,7 @@ import {
   writeChatModePanelsCache,
 } from '@/features/workspace/state/cache'
 
-import { renderWithProviders } from './render'
+import { renderApplication } from './render'
 
 /**
  * Mounts the two address hooks over the real store stack.
@@ -124,15 +127,27 @@ function Harness({ expose }: { readonly expose: (harness: AddressHarness) => voi
 export async function renderAddressHarness() {
   let harness: AddressHarness | null = null
 
-  const rendered = renderWithProviders(
-    <EditorStateProvider>
-      <Harness
-        expose={(next) => {
-          harness = next
-        }}
-      />
-    </EditorStateProvider>,
+  const application = createApplicationRuntime({
+    workspaceCache: addressedWorkspaceCache(
+      readWorkspaceCache(),
+      parseAddress(window.location.href),
+    ),
+    preparation: {
+      appliedThemeContentHash: null,
+      appliedThemeId: null,
+      selectedThemeId: 'dark',
+      syntaxHighlightingEnabled: false,
+    },
+  })
+  const rendered = renderApplication(
+    <Harness
+      expose={(next) => {
+        harness = next
+      }}
+    />,
+    application,
   )
+  onTestFinished(() => application.dispose())
 
   // `waitFor` retries until the assertion stops failing, so this IS the wait.
   await waitFor(() => {
@@ -141,6 +156,7 @@ export async function renderAddressHarness() {
 
   return {
     ...rendered,
+    application,
     get harness() {
       if (!harness) return expect.unreachable('address harness never mounted')
 

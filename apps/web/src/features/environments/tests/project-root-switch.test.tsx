@@ -63,7 +63,7 @@ test.for([
   try {
     await waitFor(() => expect(screen.getByTestId('active-origin').textContent).toBe(originA))
     expect(screen.getByTestId('editor-root').textContent).toBe('a')
-    expect(screen.getByTestId('project-root').textContent).toBe('a')
+    expect(screen.getByTestId('bf451e7b-070d-5d48-b2e4-227226449bc9').textContent).toBe('a')
     const editorA = application.getSnapshot().editor
     await waitFor(async () => {
       const info = await fetchServerInfo(new AbortController().signal, client)
@@ -85,7 +85,9 @@ test.for([
       expect(editorB.workspaceStore.getState().rootFolder?.path ?? null).toBe(expectedRootB),
     )
     expect(screen.getByTestId('editor-root').textContent).toBe(expectedRootB ?? 'none')
-    expect(screen.getByTestId('project-root').textContent).toBe(expectedRootB ?? 'none')
+    expect(screen.getByTestId('bf451e7b-070d-5d48-b2e4-227226449bc9').textContent).toBe(
+      expectedRootB ?? 'none',
+    )
     expect(useActiveProjectStore.getState().workspaceRoot).toBe(expectedRootB)
     await waitFor(async () => {
       if (missingOnB) return
@@ -97,7 +99,7 @@ test.for([
     await waitFor(() => expect(screen.getByTestId('active-origin').textContent).toBe(originA))
     expect(application.getSnapshot().editor).toBe(editorA)
     expect(screen.getByTestId('editor-root').textContent).toBe('a')
-    expect(screen.getByTestId('project-root').textContent).toBe('a')
+    expect(screen.getByTestId('bf451e7b-070d-5d48-b2e4-227226449bc9').textContent).toBe('a')
     expect(useActiveProjectStore.getState().workspaceRoot).toBe('a')
     expect(editorB.workspaceStore.getState().rootFolder?.path ?? null).toBe(expectedRootB)
   } finally {
@@ -126,7 +128,7 @@ function ProjectRoots() {
     <>
       <output data-testid='active-origin'>{originForQueryClient(queryClient)}</output>
       <output data-testid='editor-root'>{root ?? 'none'}</output>
-      <output data-testid='project-root'>{project ?? 'none'}</output>
+      <output data-testid='bf451e7b-070d-5d48-b2e4-227226449bc9'>{project ?? 'none'}</output>
     </>
   )
 }

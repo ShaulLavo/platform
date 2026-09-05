@@ -7,17 +7,18 @@ import { OrchestrationEventStore, type PendingOrchestrationEvent } from '../../e
 import { OrchestrationProjectionPipeline } from '../../projection-pipeline'
 import { OrchestrationSnapshotQuery } from '../../snapshot-query'
 
-export const WORKSPACE_PROJECT_ID = 'project-shell'
+export const WORKSPACE_PROJECT_ID = '10000000-0000-4000-8000-000000000002'
 
+const WORKTREE_ID = '20000000-0000-4000-8000-000000000002'
 const CREATED_AT = '2026-05-24T00:00:00.000Z'
 
 /**
- * A projected workspace with `threadCount` live threads, plus a read handle
+ * A projected workspace with `sessionCount` live sessions, plus a read handle
  * that counts the queries a stream issues. Query counts are the only honest
  * assertion here: wall time on an in-memory SQLite is dominated by noise, while
  * "does a delta read the whole workspace" is exactly a count.
  */
-export function createShellWorkspace(threadCount: number) {
+export function createShellWorkspace(sessionCount: number) {
   const sqlite = new Database(':memory:', { create: true })
   const database = drizzle({ client: sqlite, schema })
   migrateOrchestrationDatabase(database)
@@ -25,12 +26,27 @@ export function createShellWorkspace(threadCount: number) {
   const eventStore = new OrchestrationEventStore(database)
   const pipeline = new OrchestrationProjectionPipeline(database, eventStore)
   const counter = countingDatabase(database)
-  const threadIds = Array.from({ length: threadCount }, (_, index) => `thread-${index}`)
+  const sessionIds = Array.from(
+    { length: sessionCount },
+    (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
+  )
 
   const seeded = eventStore.append([
     projectCreatedEvent(),
-    ...threadIds.map((threadId) => threadCreatedEvent(threadId)),
-    ...threadIds.map((threadId) => sessionSetEvent(threadId)),
+    workspaceEvent(WORKTREE_ID, 'worktree', 'worktree.registered', {
+      worktreeId: WORKTREE_ID,
+      projectId: WORKSPACE_PROJECT_ID,
+      registrationGeneration: 0,
+      canonicalPath: '/workspace',
+      path: '/workspace',
+      branch: null,
+      kind: 'current',
+      ownership: 'protected',
+      createdAt: CREATED_AT,
+      updatedAt: CREATED_AT,
+    }),
+    ...sessionIds.map((sessionId) => sessionCreatedEvent(sessionId)),
+    ...sessionIds.map((sessionId) => runtimeSetEvent(sessionId)),
   ])
   pipeline.applyEvents(seeded)
 
@@ -43,7 +59,7 @@ export function createShellWorkspace(threadCount: number) {
     resetQueryCount: counter.reset,
     queryCount: counter.count,
     snapshots: new OrchestrationSnapshotQuery(counter.database),
-    threadIds,
+    sessionIds,
     /** Appends, projects, and returns sequenced events ready to publish. */
     commit: (pending: PendingOrchestrationEvent[]) => {
       const events = eventStore.append(pending)
@@ -54,24 +70,24 @@ export function createShellWorkspace(threadCount: number) {
   }
 }
 
-export function assistantDeltaEvent(threadId: string, text: string, occurredAt = CREATED_AT) {
-  return workspaceEvent(threadId, 'thread', 'thread.message-sent', {
+export function assistantDeltaEvent(sessionId: string, text: string, occurredAt = CREATED_AT) {
+  return workspaceEvent(sessionId, 'session', 'session.message-sent', {
     attachments: [],
     createdAt: occurredAt,
-    messageId: `message-${threadId}`,
+    messageId: `message-${sessionId}`,
     role: 'assistant',
     streaming: true,
     text,
-    threadId,
+    sessionId,
     turnId: null,
     updatedAt: occurredAt,
   })
 }
 
-export function threadDeletedEvent(threadId: string, occurredAt = CREATED_AT) {
-  return workspaceEvent(threadId, 'thread', 'thread.deleted', {
+export function sessionDeletedEvent(sessionId: string, occurredAt = CREATED_AT) {
+  return workspaceEvent(sessionId, 'session', 'session.deleted', {
     deletedAt: occurredAt,
-    threadId,
+    sessionId,
   })
 }
 
@@ -82,45 +98,49 @@ function projectCreatedEvent() {
     projectId: WORKSPACE_PROJECT_ID,
     title: 'Shell',
     updatedAt: CREATED_AT,
-    workspaceRoot: '/workspace',
+    repositoryKey: 'shell-fixture',
+    repositoryKind: 'directory',
+    repositoryIdentity: { source: 'path', canonical: '/workspace' },
   })
 }
 
-function threadCreatedEvent(threadId: string) {
-  return workspaceEvent(threadId, 'thread', 'thread.created', {
-    branch: null,
+function sessionCreatedEvent(sessionId: string) {
+  return workspaceEvent(sessionId, 'session', 'session.created', {
     createdAt: CREATED_AT,
     interactionMode: 'default',
     modelSelection: { model: 'gpt-5-codex', providerInstanceId: 'codex' },
-    projectId: WORKSPACE_PROJECT_ID,
+    worktreeId: WORKTREE_ID,
+    origin: 'platform',
     runtimeMode: 'full-access',
-    threadId,
-    title: threadId,
+    sessionId,
+    title: sessionId,
     updatedAt: CREATED_AT,
-    worktreePath: null,
   })
 }
 
-function sessionSetEvent(threadId: string) {
-  return workspaceEvent(threadId, 'thread', 'thread.session-set', {
-    session: {
+function runtimeSetEvent(sessionId: string) {
+  return workspaceEvent(sessionId, 'session', 'session.runtime-set', {
+    runtime: {
       activeTurnId: null,
       lastError: null,
       providerInstanceId: 'codex',
       providerName: 'codex',
-      providerSessionId: `provider-session-${threadId}`,
+      providerBindingHandle: `provider-session-${sessionId}`,
+      providerConversationMarker: null,
+      providerResumeCursor: null,
+      runtimeEpoch: 'epoch-fixture',
       runtimeMode: 'full-access',
       status: 'running',
-      threadId,
+      sessionId,
       updatedAt: CREATED_AT,
     },
-    threadId,
+    sessionId,
   })
 }
 
 function workspaceEvent(
   aggregateId: string,
-  aggregateKind: 'project' | 'thread',
+  aggregateKind: 'project' | 'worktree' | 'session',
   type: string,
   payload: unknown,
   occurredAt = CREATED_AT,

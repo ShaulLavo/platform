@@ -22,12 +22,12 @@ export function SessionGroups({ projects, sessions }: SessionGroupsProps) {
     <>
       <CommandGroup heading='Sessions'>
         {sessions.map((session) => (
-          <SessionPaletteRow key={session.id} session={session} />
+          <SessionPaletteRow key={session.key} session={session} />
         ))}
       </CommandGroup>
       <CommandGroup heading='New session in…'>
         {projects.map((project) => (
-          <SessionProjectPaletteRow key={project.id} project={project} />
+          <SessionProjectPaletteRow key={project.key} project={project} />
         ))}
       </CommandGroup>
     </>

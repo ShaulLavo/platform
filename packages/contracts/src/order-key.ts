@@ -6,7 +6,7 @@
  * neighbours are never rewritten, and two clients that saw the same drop
  * converge on the same order without a shared counter.
  *
- * One algorithm serves every arranged list: the pinned thread block (which
+ * One algorithm serves every arranged list: the pinned session block (which
  * persists its key as `pinOrderKey`) and the project list (`orderKey`).
  */
 export const ORDER_KEY_DIGITS = 'abcdefghijklmnopqrstuvwxyz'
@@ -98,14 +98,14 @@ export type PinOrderAssignment = {
 }
 
 /**
- * The writes needed to realize a new pinned order. When the moved thread lands
+ * The writes needed to realize a new pinned order. When the moved session lands
  * between two keyed (or absent) neighbours this is a single write to the moved
- * thread. When a neighbour is keyless — a thread pinned before reordering
+ * session. When a neighbour is keyless — a session pinned before reordering
  * existed — the whole section gets fresh spread keys, a one-time
  * materialization; every move after that is single-write again.
  */
 export function planPinnedReorder(input: {
-  /** Thread ids in the desired visual order, after the move. */
+  /** Session ids in the desired visual order, after the move. */
   readonly orderedIds: readonly string[]
   readonly keysById: ReadonlyMap<string, string | null | undefined>
   readonly movedId: string
@@ -149,7 +149,7 @@ function singleOrderKeyWrite(
 }
 
 /**
- * A row of an arranged list. Threads persist their key as `pinOrderKey` and
+ * A row of an arranged list. Sessions persist their key as `pinOrderKey` and
  * projects as `orderKey`; the sort reads whichever the row carries so both
  * lists run on this one comparison instead of two that can drift.
  */

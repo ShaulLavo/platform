@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT_ID } from './factories/chat'
 import { test as base } from 'vitest'
 
 import { getClient, setClient } from '@/lib/client'
@@ -22,7 +23,7 @@ type Fixtures = {
 export const test = base.extend<Fixtures>({
   // eslint-disable-next-line no-empty-pattern -- Vitest fixture callbacks must destructure the context object.
   server: async ({}, provide) => {
-    const server = await makeTestServer()
+    const server = await makeTestServer({ environmentId: TEST_ENVIRONMENT_ID })
     await provide(server)
     await server.cleanup()
   },

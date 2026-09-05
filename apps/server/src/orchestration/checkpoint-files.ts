@@ -6,7 +6,7 @@ import type { GitFileDiff } from '../git/types'
 /**
  * The checkpoint file summary a turn shows in "changed files". It is a stat
  * line, not the diff: the patch text stays in git and is fetched on demand by
- * the diff routes, so a thread with hundreds of turns does not carry every
+ * the diff routes, so a session with hundreds of turns does not carry every
  * hunk it ever produced in the event log.
  */
 export function checkpointFilesFromDiffs(

@@ -1,29 +1,18 @@
-import { projectIdSchema, threadIdSchema } from '@workspace/contracts'
-import * as v from 'valibot'
-
-import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import {
   jumpToSession,
   selectAdjacentSession,
-  setSessionProjectOpener,
   startScopedSessionDraft,
 } from '@/features/chat-mode/state/session-commands'
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
-import { resetSessionReadStore } from '@/features/chat-mode/state/session-read-store'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
-import { useActiveProjectStore } from '@/features/workspace/state/active-project'
-import { chatProject, shellSnapshot, threadShell } from '../../../test/factories/chat'
-import { expect, test } from '../../../test/fixtures'
 import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
-import { SESSION_JUMP_POSITIONS, sessionJumpCommandId } from '@/keymap/types'
-import type { PlatformCommandId } from '@/keymap/types'
-
-const platformId = v.parse(projectIdSchema, 'project-platform')
-const siteId = v.parse(projectIdSchema, 'project-site')
-const first = v.parse(threadIdSchema, 'thread-first')
-const second = v.parse(threadIdSchema, 'thread-second')
-const third = v.parse(threadIdSchema, 'thread-third')
-
+import {
+  SESSION_JUMP_POSITIONS,
+  sessionJumpCommandId,
+  type PlatformCommandId,
+} from '@/keymap/types'
+import { createRailHarness } from '../../../test/factories/rail-harness'
+import { expect, test } from '../../../test/fixtures'
 test('every session command is reachable from the keyboard', () => {
   const bound = boundCommands()
 
@@ -46,86 +35,66 @@ test('every session command is reachable from the keyboard', () => {
   ])
 })
 
-test('jumping by position selects the nth row the rail is drawing', () => {
-  seedSessions()
-
-  expect(jumpToSession(2)).toBe(true)
-  expect(selectedThreadId()).toBe(second)
-
-  expect(jumpToSession(3)).toBe(true)
-  expect(selectedThreadId()).toBe(third)
+test('jumping selects the requested scoped row only after its real root opens', async ({
+  client,
+  server,
+}) => {
+  const h = await createRailHarness(client, server, ['First', 'Second', 'Third'])
+  expect(await jumpToSession(2)).toBe(true)
+  expect(selectedSessionId()).toBe(h.sessionIds[1])
+  expect(h.application.getSnapshot().editor.workspaceStore.getState().rootFolder?.path).toBe(
+    h.context.worktree!.path,
+  )
 })
-
-test('jumping past the end of the list selects nothing', () => {
-  seedSessions()
-  jumpToSession(1)
-
-  expect(jumpToSession(4)).toBe(false)
-  expect(selectedThreadId()).toBe(first)
+test('jumping past the end preserves selection', async ({ client, server }) => {
+  const h = await createRailHarness(client, server)
+  await jumpToSession(1)
+  const selected = selectedSessionId()
+  expect(await jumpToSession(3)).toBe(false)
+  expect(selectedSessionId()).toBe(selected)
+  expect(h.sessionIds).toContain(selected)
 })
-
-test('next and previous walk the list and wrap at both ends', () => {
-  seedSessions()
-  jumpToSession(1)
-
-  selectAdjacentSession('next')
-  expect(selectedThreadId()).toBe(second)
-
-  selectAdjacentSession('previous')
-  expect(selectedThreadId()).toBe(first)
-
-  // Off the top comes back round the bottom, so the keys never dead-end.
-  selectAdjacentSession('previous')
-  expect(selectedThreadId()).toBe(third)
+test('next and previous traverse the visible order and wrap', async ({ client, server }) => {
+  await createRailHarness(client, server, ['First', 'Second', 'Third'])
+  await jumpToSession(1)
+  const first = selectedSessionId()
+  await selectAdjacentSession('next')
+  const second = selectedSessionId()
+  expect(second).not.toBe(first)
+  await selectAdjacentSession('previous')
+  expect(selectedSessionId()).toBe(first)
+  await selectAdjacentSession('previous')
+  expect(selectedSessionId()).not.toBe(first)
+  await selectAdjacentSession('next')
+  expect(selectedSessionId()).toBe(first)
 })
-
-test('traversal counts the rows the user can see, not every thread', () => {
-  seedSessions()
-  useSessionRailStore.getState().setQuery('second')
-
-  expect(jumpToSession(1)).toBe(true)
-  expect(selectedThreadId()).toBe(second)
-  // The filtered list holds one row: there is nowhere else to step to.
-  selectAdjacentSession('next')
-  expect(selectedThreadId()).toBe(second)
+test('traversal uses the same filtered rows as the rail', async ({ client, server }) => {
+  const h = await createRailHarness(client, server)
+  useSessionRailStore.getState().setQuery('Second')
+  expect(await jumpToSession(1)).toBe(true)
+  expect(selectedSessionId()).toBe(h.sessionIds[1])
+  await selectAdjacentSession('next')
+  expect(selectedSessionId()).toBe(h.sessionIds[1])
 })
-
-test('jumping to a session in another project activates that project first', () => {
-  const opened: string[] = []
-  seedSessions()
-  setSessionProjectOpener((workspaceRoot) => opened.push(workspaceRoot))
-
-  jumpToSession(3)
-
-  expect(opened).toEqual(['/repo/site'])
-})
-
-test('a new session goes to the scoped project when the list is narrowed to one', () => {
-  seedSessions()
-  useSessionRailStore.getState().setScope(siteId)
-
-  expect(startScopedSessionDraft()).toBe(true)
+test('new session uses the scoped project and leaves the archive view', async ({
+  client,
+  server,
+}) => {
+  const h = await createRailHarness(client, server)
+  useSessionRailStore.getState().setScope(h.projectId)
+  useSessionRailStore.getState().setView('archived')
+  expect(await startScopedSessionDraft()).toBe(true)
   expect(useSessionSelectionStore.getState().selection).toEqual({
     kind: 'draft',
-    projectId: siteId,
+    environmentId: h.environmentId,
+    projectId: h.projectId,
   })
-})
-
-test('a new session leaves the archive browser, which could never show it', () => {
-  seedSessions()
-  useSessionRailStore.getState().setView('archived')
-
-  startScopedSessionDraft()
-
   expect(useSessionRailStore.getState().view).toBe('active')
 })
-
-function selectedThreadId() {
+function selectedSessionId() {
   const { selection } = useSessionSelectionStore.getState()
-
-  return selection.kind === 'session' ? selection.threadId : null
+  return selection.kind === 'session' ? selection.sessionId : null
 }
-
 function boundCommands() {
   const commands = new Map<PlatformCommandId, string[]>()
   for (const binding of defaultPlatformKeyBindings('mac')) {
@@ -135,41 +104,4 @@ function boundCommands() {
     commands.set(binding.command, keys)
   }
   return commands
-}
-
-function seedSessions() {
-  useSessionRailStore.setState({ query: '', renaming: null, scope: null, view: 'active' })
-  useSessionSelectionStore.setState({ selection: { kind: 'auto' } })
-  useActiveProjectStore.setState({ workspaceRoot: '/repo/platform' })
-  setSessionProjectOpener(null)
-  resetSessionReadStore()
-  useChatProjectionStore.getState().resetChatProjection()
-  useChatProjectionStore.getState().syncShellSnapshot(
-    shellSnapshot({
-      projects: [
-        chatProject({ id: platformId, title: 'platform', workspaceRoot: '/repo/platform' }),
-        chatProject({ id: siteId, title: 'site', workspaceRoot: '/repo/site' }),
-      ],
-      threads: [
-        threadShell({
-          createdAt: '2026-05-09T00:00:00.000Z',
-          id: first,
-          projectId: platformId,
-          title: 'First session',
-        }),
-        threadShell({
-          createdAt: '2026-05-05T00:00:00.000Z',
-          id: second,
-          projectId: platformId,
-          title: 'Second session',
-        }),
-        threadShell({
-          createdAt: '2026-05-01T00:00:00.000Z',
-          id: third,
-          projectId: siteId,
-          title: 'Third session',
-        }),
-      ],
-    }),
-  )
 }

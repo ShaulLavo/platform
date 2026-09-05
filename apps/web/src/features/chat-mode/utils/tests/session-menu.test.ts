@@ -1,5 +1,5 @@
-import type { OrchestrationSession, OrchestrationSessionStatus } from '@workspace/contracts'
-import { threadIdSchema } from '@workspace/contracts'
+import type { SessionRuntimeState, SessionRuntimeStatus } from '@workspace/contracts'
+import { sessionIdSchema } from '@workspace/contracts'
 import * as v from 'valibot'
 
 import {
@@ -67,7 +67,7 @@ test('every item runs its own callback', () => {
 })
 
 test('a live agent session can be stopped in every state that still holds a process', () => {
-  const stoppable: OrchestrationSessionStatus[] = [
+  const stoppable: SessionRuntimeStatus[] = [
     'idle',
     'starting',
     'running',
@@ -91,7 +91,7 @@ test('a stopped or failed session has nothing left to stop', () => {
   expect(canStopAgentSession(session('error'))).toBe(false)
 })
 
-test('a thread that never started a session cannot be stopped', () => {
+test('a session that never started a session cannot be stopped', () => {
   expect(canStopAgentSession(null)).toBe(false)
   expect(canStopAgentSession(undefined)).toBe(false)
 })
@@ -143,15 +143,18 @@ function menuContext({
   }
 }
 
-function session(status: OrchestrationSessionStatus): OrchestrationSession {
+function session(status: SessionRuntimeStatus): SessionRuntimeState {
   return {
     activeTurnId: null,
     lastError: null,
     providerName: 'mock',
-    providerSessionId: null,
+    providerBindingHandle: null,
+    providerConversationMarker: null,
+    providerResumeCursor: null,
+    runtimeEpoch: 'test',
     runtimeMode: 'approval-required',
     status,
-    threadId: v.parse(threadIdSchema, 'thread-one'),
+    sessionId: v.parse(sessionIdSchema, '09415529-5ee5-5ad1-a96c-092eac1e03bf'),
     updatedAt: '2026-05-09T00:00:00.000Z',
   }
 }

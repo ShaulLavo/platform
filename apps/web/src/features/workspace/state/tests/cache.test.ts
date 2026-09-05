@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe } from 'vitest'
+import { expect, test as it } from '../../../../../test/fixtures'
 
 import type { PickedFsEntry } from '@/lib/file-system-types'
 import { conflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
@@ -74,6 +75,29 @@ describe('workspace cache', () => {
     expect(cachedSlice('/repo').workbenchPanels.editorTabs.map((tab) => tab.path)).toEqual([
       './src/readme.md',
       diffPath,
+    ])
+  })
+
+  it('restores files and synthetic tabs at the configured filesystem root', () => {
+    const diffPath = snapshotDiffDocumentId(snapshotDiff('src/app.ts'))
+    const searchPath = searchBufferDocumentId('')
+    writeRootFolderCache(pickedDirectory(''))
+    writeWorkspaceSliceCache('', {
+      ...emptyWorkspaceSlice(),
+      editorHistory: ['src/app.ts', diffPath, searchPath, 'settings:', '/outside.ts'],
+      workbenchPanels: workbenchPanelsForPaths(['src/app.ts', diffPath, searchPath], diffPath),
+    })
+
+    expect(readWorkspaceCache().workspaceOrder).toEqual([''])
+    expect(readWorkspaceCache().workspaces['']?.editorHistory).toEqual([
+      'src/app.ts',
+      diffPath,
+      searchPath,
+    ])
+    expect(cachedSlice('').workbenchPanels.editorTabs.map((tab) => tab.path)).toEqual([
+      './src/app.ts',
+      diffPath,
+      searchPath,
     ])
   })
 

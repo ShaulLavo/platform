@@ -10,8 +10,8 @@
 
 ## Status
 
-- **State:** Blocked on Plan 068; scheduled after it in root `PLAN.md`
-- **Priority:** P1 after Plan 068
+- **State:** Next environments slice; Plan 068 is complete
+- **Priority:** P1
 - **Effort:** XL
 - **Risk:** HIGH — the desktop shell spawns `ssh` and remote processes; the rail, persistence, and
   workbench root switch all change owners at once; a wrong storage scope reads as data loss.
@@ -82,7 +82,7 @@ RPC has `pickEntry`, no `environments.*` setting exists, and the storage prefixe
   `apps/web/src/features/chat/state/chat-projection-cache.ts:25,55-90`,
   `apps/web/src/features/chat/utils/draft-storage.ts`,
   `apps/web/src/features/chat/utils/changed-files-expansion-storage.ts`,
-  `apps/web/src/features/chat/utils/thread-diff-scope-storage.ts`,
+  `apps/web/src/features/chat/utils/session-diff-scope-storage.ts`,
   `apps/web/src/features/chat/state/prompt-stash-store.ts`,
   `apps/web/src/features/chat-mode/utils/session-read-storage.ts`,
   `apps/web/src/features/chat-mode/utils/rail-collapse-storage.ts`. Global chrome owners that stay

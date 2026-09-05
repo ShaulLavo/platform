@@ -4,7 +4,7 @@
  * One-way and stable across runs, which is what makes it usable as an identity: the
  * `ProjectId` derived from it is the join key to server-side orchestration state, so
  * what gets hashed — the absolute root path — must never change, or every existing
- * project row and every thread hanging off it is orphaned.
+ * project row and every session hanging off it is orphaned.
  */
 export function stablePathHash(value: string) {
   let hash = 0x811c9dc5

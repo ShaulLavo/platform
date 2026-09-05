@@ -1,8 +1,8 @@
-import type { ProjectId } from '@workspace/contracts'
+import type { ScopedProjectRef } from '@workspace/contracts'
 import { create } from 'zustand'
 
 export type ProjectDeleteRequest = {
-  readonly projectId: ProjectId
+  readonly ref: ScopedProjectRef
   /** Sessions the cascade will take with it, archived ones included. */
   readonly sessionCount: number
   readonly title: string

@@ -42,7 +42,7 @@ export function ModelPickerTrigger({
           <PopoverTrigger
             render={
               <button
-                // A locked thread reports itself with aria-disabled rather than the
+                // A locked session reports itself with aria-disabled rather than the
                 // native attribute: a natively disabled button swallows pointer
                 // events, so the tooltip explaining the lock would never open.
                 aria-disabled={locked}
@@ -106,7 +106,7 @@ function triggerTooltipLabel({
   modelLabel: string
   statusLabel: string
 }) {
-  if (locked) return `${modelLabel} - locked for this thread`
+  if (locked) return `${modelLabel} - locked for this session`
 
   return `${modelLabel} - ${statusLabel}`
 }

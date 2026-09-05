@@ -12,7 +12,7 @@ import {
   type ProviderSnapshot,
   type ProviderUserInputAnswers,
   type ApprovalRequestId,
-  type ThreadId,
+  type SessionId,
 } from '@workspace/contracts'
 import { ProviderRuntimeEventStream } from '../provider-runtime-event-stream'
 import type {
@@ -20,12 +20,13 @@ import type {
   ProviderCommandCatalogInput,
   ProviderCommandCatalogResult,
   ProviderRuntimeEvent,
-  ProviderSessionStartInput,
+  ProviderRuntimeStartInput,
   ProviderTurnInput,
 } from '../types'
 import { sessionInputFromTurn } from './utils/session-input'
 
 export type MockProviderAdapterOptions = {
+  operationTimeoutMs?: number
   approvalError?: string
   auth?: ProviderSnapshot['auth']
   beforeComplete?: () => Promise<void> | void
@@ -72,29 +73,30 @@ const MOCK_COMMAND_CATALOG: ProviderCommandCatalogResult = {
 }
 
 export class MockProviderAdapter implements ProviderAdapter {
+  readonly operationTimeoutMs: number
   readonly adapterKey: ProviderInstanceId
   readonly capabilities = MOCK_ADAPTER_CAPABILITIES
   readonly driverKind: ProviderDriverKind
   readonly approvalResponses: Array<{
     decision: ProviderApprovalDecision
     requestId: ApprovalRequestId
-    threadId: ThreadId
+    sessionId: SessionId
   }> = []
-  readonly interruptedThreads: ThreadId[] = []
+  readonly interruptedSessions: SessionId[] = []
   readonly commandCatalogReads: ProviderCommandCatalogInput[] = []
-  readonly rollbacks: Array<{ numTurns: number; threadId: ThreadId }> = []
-  readonly startedSessions: ProviderSessionStartInput[] = []
+  readonly rollbacks: Array<{ numTurns: number; sessionId: SessionId }> = []
+  readonly startedSessions: ProviderRuntimeStartInput[] = []
   readonly startedTurns: ProviderTurnInput[] = []
   readonly userInputResponses: Array<{
     answers: ProviderUserInputAnswers
     requestId: ApprovalRequestId
-    threadId: ThreadId
+    sessionId: SessionId
   }> = []
   readonly env: NodeJS.ProcessEnv
   /** Mutable so a harness can make a healthy provider start failing mid-run. */
   probeError: string | null
   private readonly events = new ProviderRuntimeEventStream()
-  private readonly sessions = new Map<ThreadId, ProviderSessionStartInput>()
+  private readonly sessions = new Map<SessionId, ProviderRuntimeStartInput>()
   private readonly settings: ProviderInstanceSettings
   private readonly approvalError: string | null
   private readonly authOverride: ProviderSnapshot['auth'] | null
@@ -108,6 +110,7 @@ export class MockProviderAdapter implements ProviderAdapter {
   private readonly userInputError: string | null
 
   constructor(options: MockProviderAdapterOptions = {}) {
+    this.operationTimeoutMs = options.operationTimeoutMs ?? 30_000
     this.adapterKey =
       options.providerInstanceId ?? DEFAULT_CODEX_PROVIDER_SETTINGS.providerInstanceId
     this.driverKind = options.driverKind ?? DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind
@@ -167,55 +170,59 @@ export class MockProviderAdapter implements ProviderAdapter {
     return this.events.subscribe(subscriber)
   }
 
-  async startSession(input: ProviderSessionStartInput) {
+  async startRuntime(input: ProviderRuntimeStartInput) {
     // Mirrors the real adapters: a session that was not resumed mints the
     // cursor its own conversation can later be resumed from.
-    const resumeCursor = input.resumeCursor ?? `mock-thread:${input.threadId}`
+    const providerResumeCursor =
+      input.providerResumeCursor ?? `mock-conversation:${input.sessionId}`
     this.startedSessions.push(input)
-    this.sessions.set(input.threadId, { ...input, resumeCursor })
+    this.sessions.set(input.sessionId, { ...input, providerResumeCursor })
     this.events.publish({
       createdAt: new Date().toISOString(),
-      eventId: `mock-session-started:${input.threadId}`,
-      payload: { resume: resumeCursor },
+      eventId: `mock-session-started:${input.sessionId}`,
+      payload: { resume: providerResumeCursor },
       provider: this.driverKind,
       providerInstanceId: input.providerInstanceId,
-      providerSessionId: `mock:${input.threadId}`,
+      providerBindingHandle: `mock:${input.sessionId}`,
       raw: {
         payload: input,
         source: 'codex.sdk.thread-event',
       },
       runtimeMode: input.runtimeMode,
-      threadId: input.threadId,
-      type: 'session.started',
+      runtimeEpoch: input.runtimeEpoch,
+      sessionId: input.sessionId,
+      type: 'runtime.started',
     })
     this.events.publish({
       createdAt: new Date().toISOString(),
-      eventId: `mock-thread-started:${input.threadId}`,
-      payload: { providerThreadId: `mock-thread:${input.threadId}` },
+      eventId: `mock-conversation-started:${input.sessionId}`,
+      payload: { providerConversationMarker: `mock-conversation:${input.sessionId}` },
       provider: this.driverKind,
       providerInstanceId: input.providerInstanceId,
-      providerSessionId: `mock:${input.threadId}`,
+      providerBindingHandle: `mock:${input.sessionId}`,
       runtimeMode: input.runtimeMode,
-      threadId: input.threadId,
-      type: 'thread.started',
+      runtimeEpoch: input.runtimeEpoch,
+      sessionId: input.sessionId,
+      type: 'conversation.started',
     })
 
     return {
       cwd: input.cwd,
       model: input.modelSelection.model,
       providerInstanceId: input.providerInstanceId as ProviderInstanceId,
-      providerSessionId: `mock:${input.threadId}`,
-      providerThreadId: `mock-thread:${input.threadId}`,
-      resumeCursor,
+      providerBindingHandle: `mock:${input.sessionId}`,
+      providerConversationMarker: `mock-conversation:${input.sessionId}`,
+      providerResumeCursor,
       runtimeMode: input.runtimeMode,
       status: 'ready' as const,
-      threadId: input.threadId,
+      runtimeEpoch: input.runtimeEpoch,
+      sessionId: input.sessionId,
     }
   }
 
   async sendTurn(input: ProviderTurnInput) {
     this.startedTurns.push(input)
-    if (!this.sessions.has(input.thread.id)) await this.startSession(sessionInputFromTurn(input))
+    if (!this.sessions.has(input.sessionId)) await this.startRuntime(sessionInputFromTurn(input))
     if (this.shouldFail) throw createInternalError('Mock provider failed')
     await Promise.resolve(this.beforeComplete?.())
 
@@ -226,9 +233,10 @@ export class MockProviderAdapter implements ProviderAdapter {
       payload: { model: input.modelSelection.model },
       provider: this.driverKind,
       providerInstanceId: input.providerInstanceId,
-      providerSessionId: `mock:${input.thread.id}`,
+      providerBindingHandle: `mock:${input.sessionId}`,
       runtimeMode: input.runtimeMode,
-      threadId: input.thread.id,
+      runtimeEpoch: input.runtimeEpoch,
+      sessionId: input.sessionId,
       turnId: input.turnId,
       type: 'turn.started',
     })
@@ -237,7 +245,8 @@ export class MockProviderAdapter implements ProviderAdapter {
       delta: this.responseText,
       eventId: `mock-delta:${input.turnId}`,
       messageId,
-      threadId: input.thread.id,
+      runtimeEpoch: input.runtimeEpoch,
+      sessionId: input.sessionId,
       turnId: input.turnId,
       type: 'assistant.delta',
     })
@@ -245,7 +254,8 @@ export class MockProviderAdapter implements ProviderAdapter {
       completedAt: new Date().toISOString(),
       eventId: `mock-complete:${input.turnId}`,
       messageId,
-      threadId: input.thread.id,
+      runtimeEpoch: input.runtimeEpoch,
+      sessionId: input.sessionId,
       turnId: input.turnId,
       type: 'assistant.complete',
     })
@@ -255,37 +265,38 @@ export class MockProviderAdapter implements ProviderAdapter {
       payload: { state: 'completed' },
       provider: this.driverKind,
       providerInstanceId: input.providerInstanceId,
-      providerSessionId: `mock:${input.thread.id}`,
+      providerBindingHandle: `mock:${input.sessionId}`,
       runtimeMode: input.runtimeMode,
-      threadId: input.thread.id,
+      runtimeEpoch: input.runtimeEpoch,
+      sessionId: input.sessionId,
       turnId: input.turnId,
       type: 'turn.completed',
     })
   }
 
-  async hasSession({ threadId }: { threadId: ThreadId }) {
-    return this.sessions.has(threadId)
+  async hasRuntime({ sessionId }: { sessionId: SessionId }) {
+    return this.sessions.has(sessionId)
   }
 
-  async rollbackThread({ numTurns, threadId }: { numTurns: number; threadId: ThreadId }) {
+  async rollbackSession({ numTurns, sessionId }: { numTurns: number; sessionId: SessionId }) {
     if (!Number.isInteger(numTurns) || numTurns < 1) {
       throw createInternalError('Mock provider rollback requires numTurns >= 1.')
     }
 
-    this.rollbacks.push({ numTurns, threadId })
+    this.rollbacks.push({ numTurns, sessionId })
   }
 
-  async interruptTurn({ threadId }: { threadId: ThreadId }) {
+  async interruptTurn({ sessionId }: { sessionId: SessionId }) {
     if (this.interruptError) throw createInternalError(this.interruptError)
 
-    this.interruptedThreads.push(threadId)
+    this.interruptedSessions.push(sessionId)
   }
 
-  async stopSession({ threadId }: { threadId: ThreadId }) {
+  async stopRuntime({ sessionId }: { sessionId: SessionId }) {
     if (this.stopError) throw createInternalError(this.stopError)
 
-    this.sessions.delete(threadId)
-    this.interruptedThreads.push(threadId)
+    this.sessions.delete(sessionId)
+    this.interruptedSessions.push(sessionId)
   }
 
   async stopAll() {
@@ -295,7 +306,7 @@ export class MockProviderAdapter implements ProviderAdapter {
   async respondApproval(input: {
     decision: ProviderApprovalDecision
     requestId: ApprovalRequestId
-    threadId: ThreadId
+    sessionId: SessionId
   }) {
     if (this.approvalError) throw createInternalError(this.approvalError)
 
@@ -305,7 +316,7 @@ export class MockProviderAdapter implements ProviderAdapter {
   async respondUserInput(input: {
     answers: ProviderUserInputAnswers
     requestId: ApprovalRequestId
-    threadId: ThreadId
+    sessionId: SessionId
   }) {
     if (this.userInputError) throw createInternalError(this.userInputError)
 

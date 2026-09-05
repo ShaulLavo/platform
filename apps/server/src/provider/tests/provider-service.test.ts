@@ -9,9 +9,8 @@ import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_PROVIDER_INSTANCE_ID,
   DEFAULT_RUNTIME_MODE,
-  projectIdSchema,
   providerInstanceIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
   turnIdSchema,
 } from '@workspace/contracts'
 import { migrateOrchestrationDatabase } from '../../db/migrations'
@@ -24,6 +23,146 @@ import { ProviderSessionDirectory } from '../provider-session-directory'
 import type { ProviderRuntimeEvent, ProviderTurnInput } from '../types'
 
 describe('ProviderService', () => {
+  it('closes a launch that resolves after the shutdown wait times out', async () => {
+    const fixture = createFixture()
+    const adapter = new MockProviderAdapter({ operationTimeoutMs: 5 })
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const originalStart = adapter.startRuntime.bind(adapter)
+    adapter.startRuntime = async (input) => {
+      entered.resolve()
+      await release.promise
+      return originalStart(input)
+    }
+    const service = new ProviderService({
+      adapterRegistry: new ProviderAdapterRegistry([adapter]),
+      sessionDirectory: new ProviderSessionDirectory(fixture.database),
+    })
+    const turn = providerTurnInput()
+    let databaseClosed = false
+    const launch = service
+      .ensureRuntime({
+        providerInstanceId: turn.providerInstanceId,
+        runtimeMode: turn.runtimeMode,
+        runtimePayload: providerSessionPayload(turn),
+        runtimeEpoch: turn.runtimeEpoch,
+        sessionId: turn.sessionId,
+      })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      )
+    try {
+      await entered.promise
+      await service.shutdown()
+      fixture.close()
+      databaseClosed = true
+      release.resolve()
+      expect(await launch).toMatchObject({ code: 'provider.SERVICE_CLOSED' })
+      expect(await adapter.hasRuntime({ sessionId: turn.sessionId })).toBe(false)
+    } finally {
+      release.resolve()
+      await launch
+      await adapter.stopAll()
+      if (!databaseClosed) fixture.close()
+    }
+  })
+
+  it('offers the current epoch only for a live runtime with every launch option unchanged', async () => {
+    const fixture = createFixture()
+    const adapter = new MockProviderAdapter()
+    const service = new ProviderService({
+      adapterRegistry: new ProviderAdapterRegistry([adapter]),
+      sessionDirectory: new ProviderSessionDirectory(fixture.database),
+    })
+    const turn = providerTurnInput()
+    const input = {
+      providerInstanceId: turn.providerInstanceId,
+      runtimeMode: turn.runtimeMode,
+      runtimePayload: providerSessionPayload(turn),
+      runtimeEpoch: turn.runtimeEpoch,
+      sessionId: turn.sessionId,
+    }
+    try {
+      await service.ensureRuntime(input)
+      expect(await service.reusableRuntimeEpoch(input)).toBe(turn.runtimeEpoch)
+      expect(
+        await service.reusableRuntimeEpoch({ ...input, runtimeMode: 'approval-required' }),
+      ).toBeNull()
+      expect(
+        await service.reusableRuntimeEpoch({
+          ...input,
+          runtimePayload: { ...input.runtimePayload, cwd: '/other' },
+        }),
+      ).toBeNull()
+      expect(
+        await service.reusableRuntimeEpoch({
+          ...input,
+          runtimePayload: { ...input.runtimePayload, interactionMode: 'plan' },
+        }),
+      ).toBeNull()
+      expect(
+        await service.reusableRuntimeEpoch({
+          ...input,
+          runtimePayload: {
+            ...input.runtimePayload,
+            modelSelection: { ...turn.modelSelection, options: { reasoningEffort: 'high' } },
+          },
+        }),
+      ).toBeNull()
+      await service.stopRuntime({ sessionId: turn.sessionId })
+      expect(await service.reusableRuntimeEpoch(input)).toBeNull()
+    } finally {
+      await service.shutdown()
+      fixture.close()
+    }
+  })
+
+  it.each(['startRuntime', 'ensureRuntime'] as const)(
+    'fences cleanup behind a pending %s without treating it as no binding',
+    async (method) => {
+      const fixture = createFixture()
+      const adapter = new MockProviderAdapter({ operationTimeoutMs: 5 })
+      const release = Promise.withResolvers<void>()
+      const originalStart = adapter.startRuntime.bind(adapter)
+      adapter.startRuntime = async (input) => {
+        await release.promise
+        return originalStart(input)
+      }
+      const service = new ProviderService({
+        adapterRegistry: new ProviderAdapterRegistry([adapter]),
+        sessionDirectory: new ProviderSessionDirectory(fixture.database),
+      })
+      const turn = providerTurnInput()
+      const launch = service[method]({
+        providerInstanceId: turn.providerInstanceId,
+        runtimeMode: turn.runtimeMode,
+        runtimePayload: providerSessionPayload(turn),
+        runtimeEpoch: turn.runtimeEpoch,
+        sessionId: turn.sessionId,
+      })
+      try {
+        expect(await service.hasActiveRuntimeForInstance(turn.providerInstanceId)).toBe(true)
+        await expect(service.hasRuntime({ sessionId: turn.sessionId })).rejects.toMatchObject({
+          code: 'provider.OPERATION_TIMED_OUT',
+        })
+        await expect(service.stopRuntime({ sessionId: turn.sessionId })).rejects.toMatchObject({
+          code: 'provider.OPERATION_TIMED_OUT',
+        })
+        release.resolve()
+        await launch
+        expect(await service.hasRuntime({ sessionId: turn.sessionId })).toBe(true)
+        await service.stopRuntime({ sessionId: turn.sessionId })
+        expect(await adapter.hasRuntime({ sessionId: turn.sessionId })).toBe(false)
+      } finally {
+        release.resolve()
+        await launch
+        await service.shutdown()
+        fixture.close()
+      }
+    },
+  )
+
   it('reuses compatible session bindings and resets incompatible ones', async () => {
     const fixture = createFixture()
     const adapter = new MockProviderAdapter()
@@ -32,26 +171,29 @@ describe('ProviderService', () => {
       sessionDirectory: new ProviderSessionDirectory(fixture.database),
     })
     const input = providerTurnInput()
-    const first = await service.ensureSession({
+    const first = await service.ensureRuntime({
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
       runtimePayload: providerSessionPayload(input),
-      threadId: input.thread.id,
+      sessionId: input.sessionId,
+      runtimeEpoch: input.runtimeEpoch,
     })
-    const reused = await service.ensureSession({
+    const reused = await service.ensureRuntime({
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
-      runtimePayload: { ...providerSessionPayload(input), activeTurnId: input.turnId },
-      threadId: input.thread.id,
+      runtimePayload: providerSessionPayload(input),
+      sessionId: input.sessionId,
+      runtimeEpoch: input.runtimeEpoch,
     })
-    const reset = await service.ensureSession({
+    const reset = await service.ensureRuntime({
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
       runtimePayload: {
         ...providerSessionPayload(input),
         cwd: '/other-workspace',
       },
-      threadId: input.thread.id,
+      sessionId: input.sessionId,
+      runtimeEpoch: input.runtimeEpoch,
     })
 
     expect(first).toMatchObject({ reused: false })
@@ -71,30 +213,36 @@ describe('ProviderService', () => {
       sessionDirectory: new ProviderSessionDirectory(fixture.database),
     })
     const input = providerTurnInput()
-    const started = await service.ensureSession({
+    const started = await service.ensureRuntime({
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
       runtimePayload: providerSessionPayload(input),
-      threadId: input.thread.id,
+      sessionId: input.sessionId,
+      runtimeEpoch: input.runtimeEpoch,
     })
-    const switched = await service.ensureSession({
+    const switched = await service.ensureRuntime({
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
       runtimePayload: {
         ...providerSessionPayload(input),
         modelSelection: { ...input.modelSelection, model: 'gpt-5.5' },
       },
-      threadId: input.thread.id,
+      sessionId: input.sessionId,
+      runtimeEpoch: input.runtimeEpoch,
     })
 
-    expect(started.binding.resumeCursor).toBe('mock-thread:thread-1')
+    expect(started.binding.providerResumeCursor).toBe(
+      'mock-conversation:ee84050b-1b17-5fe8-9f71-0983f1fceccc',
+    )
     expect(switched).toMatchObject({ reused: false })
     // The session restarts, the conversation does not.
-    expect(adapter.startedSessions.map((session) => session.resumeCursor)).toEqual([
+    expect(adapter.startedSessions.map((session) => session.providerResumeCursor)).toEqual([
       null,
-      'mock-thread:thread-1',
+      'mock-conversation:ee84050b-1b17-5fe8-9f71-0983f1fceccc',
     ])
-    expect(switched.binding.resumeCursor).toBe('mock-thread:thread-1')
+    expect(switched.binding.providerResumeCursor).toBe(
+      'mock-conversation:ee84050b-1b17-5fe8-9f71-0983f1fceccc',
+    )
     fixture.close()
   })
 
@@ -113,18 +261,22 @@ describe('ProviderService', () => {
       adapterKey: adapter.adapterKey,
       providerDriverKind: adapter.driverKind,
       providerInstanceId: input.providerInstanceId,
-      providerSessionId: 'mock:thread-1',
-      resumeCursor: 'mock-thread:thread-1',
+      providerBindingHandle: 'mock:ee84050b-1b17-5fe8-9f71-0983f1fceccc',
+      providerResumeCursor: 'mock-conversation:ee84050b-1b17-5fe8-9f71-0983f1fceccc',
       runtimeMode: input.runtimeMode,
       runtimePayload: providerSessionPayload(input),
-      status: 'ready',
-      threadId: input.thread.id,
+      sessionId: input.sessionId,
+      runtimeEpoch: input.runtimeEpoch,
     })
 
     await service.sendTurn(input)
 
-    expect(adapter.startedTurns[0]?.resumeCursor).toBe('mock-thread:thread-1')
-    expect(adapter.startedSessions[0]?.resumeCursor).toBe('mock-thread:thread-1')
+    expect(adapter.startedTurns[0]?.providerResumeCursor).toBe(
+      'mock-conversation:ee84050b-1b17-5fe8-9f71-0983f1fceccc',
+    )
+    expect(adapter.startedSessions[0]?.providerResumeCursor).toBe(
+      'mock-conversation:ee84050b-1b17-5fe8-9f71-0983f1fceccc',
+    )
     fixture.close()
   })
 
@@ -141,32 +293,21 @@ describe('ProviderService', () => {
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
       runtimePayload: providerSessionPayload(input),
-      threadId: input.thread.id,
+      sessionId: input.sessionId,
+      runtimeEpoch: input.runtimeEpoch,
     }
 
-    await service.ensureSession(ensureInput)
-    // Compaction, or an approval nobody has answered: the process is alive and
-    // holding real state that dies with it.
-    directory.markStatus(input.thread.id, 'waiting')
-
-    // Listed while parked. The reuse call below writes the binding again, so
-    // this is asserted before it rather than after.
-    expect(service.listSessions()).toContainEqual(
-      expect.objectContaining({ status: 'waiting', threadId: input.thread.id }),
+    await service.ensureRuntime(ensureInput)
+    expect(await service.listActiveRuntimes()).toContainEqual(
+      expect.objectContaining({ sessionId: input.sessionId }),
     )
-    expect(await service.ensureSession(ensureInput)).toMatchObject({ reused: true })
-
-    // The negative: inverting the predicate must not make every status active.
-    for (const dead of ['stopped', 'error', 'idle'] as const) {
-      directory.markStatus(input.thread.id, dead)
-      expect(service.listSessions()).not.toContainEqual(
-        expect.objectContaining({ threadId: input.thread.id }),
-      )
-    }
+    expect(await service.ensureRuntime(ensureInput)).toMatchObject({ reused: true })
+    await adapter.stopRuntime({ sessionId: input.sessionId })
+    expect(await service.listActiveRuntimes()).toEqual([])
     fixture.close()
   })
 
-  it('drops the cursor when a thread is repointed at another provider instance', async () => {
+  it('refuses to repoint a session at another provider instance', async () => {
     const fixture = createFixture()
     const codex = new MockProviderAdapter()
     const other = new MockProviderAdapter({
@@ -178,25 +319,28 @@ describe('ProviderService', () => {
       sessionDirectory: directory,
     })
     const input = providerTurnInput()
-    await service.ensureSession({
+    await service.ensureRuntime({
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
       runtimePayload: providerSessionPayload(input),
-      threadId: input.thread.id,
+      sessionId: input.sessionId,
+      runtimeEpoch: input.runtimeEpoch,
     })
 
-    await service.ensureSession({
-      providerInstanceId: other.adapterKey,
-      runtimeMode: input.runtimeMode,
-      runtimePayload: {
-        ...providerSessionPayload(input),
-        modelSelection: { ...input.modelSelection, providerInstanceId: other.adapterKey },
-      },
-      threadId: input.thread.id,
-    })
+    await expect(
+      service.ensureRuntime({
+        providerInstanceId: other.adapterKey,
+        runtimeMode: input.runtimeMode,
+        runtimePayload: {
+          ...providerSessionPayload(input),
+          modelSelection: { ...input.modelSelection, providerInstanceId: other.adapterKey },
+        },
+        sessionId: input.sessionId,
+        runtimeEpoch: input.runtimeEpoch,
+      }),
+    ).rejects.toThrow('The session belongs to another provider instance')
 
-    // Another account cannot resume this one's conversation.
-    expect(other.startedSessions.map((session) => session.resumeCursor)).toEqual([null])
+    expect(other.startedSessions).toHaveLength(0)
     fixture.close()
   })
 
@@ -214,17 +358,18 @@ describe('ProviderService', () => {
       fanOutEvents.push(event)
     })
 
-    await service.startSession({
+    await service.startRuntime({
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
       runtimePayload: providerSessionPayload(input),
-      threadId: input.thread.id,
+      sessionId: input.sessionId,
+      runtimeEpoch: input.runtimeEpoch,
     })
     await service.sendTurn(input)
     await waitForRuntimeEvent(fanOutEvents, 'turn.completed')
-    const activeSessions = service.listSessions()
-    await service.interruptTurn({ threadId: input.thread.id, turnId: input.turnId })
-    await service.stopSession({ threadId: input.thread.id })
+    const activeSessions = await service.listActiveRuntimes()
+    await service.interruptTurn({ sessionId: input.sessionId, turnId: input.turnId })
+    await service.stopRuntime({ sessionId: input.sessionId })
     unsubscribe()
 
     expect(adapter.startedTurns).toHaveLength(1)
@@ -233,7 +378,7 @@ describe('ProviderService', () => {
       providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
       turnId: input.turnId,
     })
-    expect(adapter.interruptedThreads).toEqual([input.thread.id, input.thread.id])
+    expect(adapter.interruptedSessions).toEqual([input.sessionId, input.sessionId])
     expect(fanOutEvents.map((event) => event.type)).toContain('turn.started')
     expect(fanOutEvents.map((event) => event.type)).toContain('assistant.delta')
     expect(fanOutEvents.map((event) => event.type)).toContain('assistant.complete')
@@ -243,10 +388,44 @@ describe('ProviderService', () => {
       'assistant.complete',
       'turn.completed',
     ])
-    expect(activeSessions).toContainEqual(
-      expect.objectContaining({ status: 'ready', threadId: input.thread.id }),
+    expect(activeSessions).toContainEqual(expect.objectContaining({ sessionId: input.sessionId }))
+    expect(directory.getBinding(input.sessionId)).not.toHaveProperty('status')
+    expect(await service.hasRuntime({ sessionId: input.sessionId })).toBe(false)
+    fixture.close()
+  })
+
+  it('bounds cleanup and liveness checks by the adapter operation timeout', async () => {
+    class UnresponsiveAdapter extends MockProviderAdapter {
+      unresponsive = false
+      override async stopRuntime() {
+        await new Promise(() => {})
+      }
+      override async hasRuntime(input: { sessionId: ProviderTurnInput['sessionId'] }) {
+        if (this.unresponsive) return new Promise<boolean>(() => {})
+        return super.hasRuntime(input)
+      }
+    }
+    const fixture = createFixture()
+    const adapter = new UnresponsiveAdapter({ operationTimeoutMs: 5 })
+    const service = new ProviderService({
+      adapterRegistry: new ProviderAdapterRegistry([adapter]),
+      sessionDirectory: new ProviderSessionDirectory(fixture.database),
+    })
+    const input = providerTurnInput()
+    await service.ensureRuntime({
+      providerInstanceId: input.providerInstanceId,
+      runtimeMode: input.runtimeMode,
+      runtimePayload: providerSessionPayload(input),
+      sessionId: input.sessionId,
+      runtimeEpoch: input.runtimeEpoch,
+    })
+    adapter.unresponsive = true
+    await expect(service.stopRuntime({ sessionId: input.sessionId })).rejects.toThrow(
+      'The provider operation timed out',
     )
-    expect(directory.getBinding(input.thread.id)).toMatchObject({ status: 'stopped' })
+    await expect(service.hasRuntime({ sessionId: input.sessionId })).rejects.toThrow(
+      'The provider operation timed out',
+    )
     fixture.close()
   })
 
@@ -277,9 +456,9 @@ describe('ProviderService', () => {
       ephemeral: true,
       runtimeMode: 'approval-required',
     })
-    const generatedThreadId = adapter.startedTurns[0]!.thread.id
-    expect(directory.getBinding(generatedThreadId)).toBeNull()
-    expect(await adapter.hasSession({ threadId: generatedThreadId })).toBe(false)
+    const generatedSessionId = adapter.startedTurns[0]!.sessionId
+    expect(directory.getBinding(generatedSessionId)).toBeNull()
+    expect(await adapter.hasRuntime({ sessionId: generatedSessionId })).toBe(false)
     fixture.close()
   })
 
@@ -301,16 +480,16 @@ describe('ProviderService', () => {
     })
 
     await waitForCondition(() => adapter.startedTurns.length === 1, 'provider turn did not start')
-    const generatedThreadId = adapter.startedTurns[0]!.thread.id
+    const generatedSessionId = adapter.startedTurns[0]!.sessionId
     controller.abort()
     await waitForCondition(
-      async () => !(await adapter.hasSession({ threadId: generatedThreadId })),
+      async () => !(await adapter.hasRuntime({ sessionId: generatedSessionId })),
       'cancelled provider session stayed open',
     )
     gate.resolve()
 
     await expect(generation).rejects.toThrow('Provider text generation was cancelled.')
-    expect(adapter.interruptedThreads).toEqual([generatedThreadId, generatedThreadId])
+    expect(adapter.interruptedSessions).toEqual([generatedSessionId, generatedSessionId])
     await service.shutdown()
     fixture.close()
   })
@@ -347,9 +526,7 @@ describe('ProviderService', () => {
 })
 
 function providerTurnInput(): ProviderTurnInput {
-  const now = '2026-05-28T00:00:00.000Z'
-  const projectId = v.parse(projectIdSchema, 'project-1')
-  const threadId = v.parse(threadIdSchema, 'thread-1')
+  const sessionId = v.parse(sessionIdSchema, 'ee84050b-1b17-5fe8-9f71-0983f1fceccc')
   const turnId = v.parse(turnIdSchema, 'turn-1')
   const modelSelection = {
     model: 'gpt-5-codex',
@@ -362,37 +539,10 @@ function providerTurnInput(): ProviderTurnInput {
     interactionMode: DEFAULT_INTERACTION_MODE,
     messageText: 'Say hello',
     modelSelection,
-    project: {
-      createdAt: now,
-      defaultModelSelection: modelSelection,
-      deletedAt: null,
-      id: projectId,
-      orderKey: null,
-      scripts: [],
-      title: 'Platform',
-      updatedAt: now,
-      workspaceRoot: '/workspace',
-    },
     providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
     runtimeMode: DEFAULT_RUNTIME_MODE,
-    thread: {
-      activities: [],
-      archivedAt: null,
-      branch: null,
-      createdAt: now,
-      deletedAt: null,
-      id: threadId,
-      interactionMode: DEFAULT_INTERACTION_MODE,
-      latestTurn: null,
-      messages: [],
-      modelSelection,
-      projectId,
-      runtimeMode: DEFAULT_RUNTIME_MODE,
-      session: null,
-      title: 'Test thread',
-      updatedAt: now,
-      worktreePath: '/workspace',
-    },
+    sessionId,
+    runtimeEpoch: 'runtime-epoch',
     turnId,
   }
 }
@@ -424,7 +574,6 @@ async function waitForCondition(predicate: () => boolean | Promise<boolean>, mes
 
 function providerSessionPayload(input: ProviderTurnInput) {
   return {
-    activeTurnId: null,
     cwd: input.cwd,
     interactionMode: input.interactionMode,
     modelSelection: input.modelSelection,
@@ -467,14 +616,15 @@ describe('ProviderService adapter streams', () => {
       expect(registry.getByInstance(MOCK_INSTANCE)).not.toBe(first)
 
       const input = providerTurnInput()
-      await service.ensureSession({
+      await service.ensureRuntime({
         providerInstanceId: MOCK_INSTANCE,
         runtimeMode: input.runtimeMode,
         runtimePayload: {
           ...providerSessionPayload(input),
           modelSelection: { ...input.modelSelection, providerInstanceId: MOCK_INSTANCE },
         },
-        threadId: input.thread.id,
+        sessionId: input.sessionId,
+        runtimeEpoch: input.runtimeEpoch,
       })
       await service.drainRuntimeEvents()
 

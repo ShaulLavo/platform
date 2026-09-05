@@ -39,7 +39,7 @@ function renderSection(summary: ChatTurnDiffSummary) {
 function withProviders(children: ReactNode) {
   const actions: ChatTimelineActions = {
     openCheckpointDiff: (_summary, path?: string) => void openedDiffs.push(path),
-    openThreadCheckpointDiff: () => undefined,
+    openSessionCheckpointDiff: () => undefined,
     revertToCheckpoint: () => undefined,
   }
 

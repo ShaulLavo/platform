@@ -14,11 +14,11 @@ const COMPOSER_TERMINAL_ID = 'chat-terminal'
  * next one.
  *
  * The server keys PTYs by this id (`terminal/service.ts`), so a stable id per
- * thread is also what lets a shell survive switching away and back.
+ * session is also what lets a shell survive switching away and back.
  */
 export function useSessionTerminalId() {
   const { activeSession } = useChatModeSession()
-  if (!activeSession.threadId) return COMPOSER_TERMINAL_ID
+  if (!activeSession.sessionId) return COMPOSER_TERMINAL_ID
 
-  return `chat-terminal:${activeSession.threadId}`
+  return `chat-terminal:${activeSession.sessionId}`
 }

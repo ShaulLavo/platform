@@ -24,6 +24,7 @@ import { isSettingsDocumentId } from '@/features/settings/utils/document'
  * percentages, no theme, no scroll offsets, no open/closed chrome booleans.
  */
 export type AddressSnapshot = {
+  readonly environmentId: Address['environmentId']
   readonly activeDocumentPath: string | null
   readonly bottomTab: Address['bottom']
   readonly editorTabPaths: readonly string[]
@@ -37,7 +38,7 @@ export type AddressSnapshot = {
   readonly rootPath: string | null
   readonly settingsCategory: string | null
   /**
-   * Chat mode's thread, as a token: `t/<threadId>`, `t/new`, or absent for an
+   * Chat mode's session, as a token: `t/<sessionId>`, `t/new`, or absent for an
    * auto-pick. Chat mode's selection only — the workbench sidebar's chat tab keeps
    * its own unpersisted pick, and addressing both would make `t/` ambiguous about
    * which surface it targets.
@@ -48,12 +49,13 @@ export type AddressSnapshot = {
   /** `log.*` — the dashboard's filters. */
   readonly logs: Readonly<Record<string, string>> | null
   readonly sidebarTab: Address['side']
-  readonly threadDiffScope: string | null
+  readonly sessionDiffScope: string | null
   readonly toolTab: string | null
 }
 
 export function emptyAddressSnapshot(): AddressSnapshot {
   return {
+    environmentId: null,
     activeDocumentPath: null,
     bottomTab: null,
     editorTabPaths: [],
@@ -68,7 +70,7 @@ export function emptyAddressSnapshot(): AddressSnapshot {
     sessionToken: null,
     settingsCategory: null,
     sidebarTab: null,
-    threadDiffScope: null,
+    sessionDiffScope: null,
     toolTab: null,
   }
 }
@@ -82,9 +84,10 @@ export function emptyAddressSnapshot(): AddressSnapshot {
 export function addressFromSnapshot(snapshot: AddressSnapshot): Address {
   // Passthrough survives even here: with no folder open there is nothing else to
   // name, but the dev params still have to reach the code that reads them.
-  if (!snapshot.rootPath) {
+  if (snapshot.rootPath === null) {
     return {
       ...emptyAddress(),
+      environmentId: snapshot.environmentId,
       passthrough: { ...snapshot.passthrough },
       workspace: NO_WORKSPACE_SLUG,
     }
@@ -97,8 +100,9 @@ export function addressFromSnapshot(snapshot: AddressSnapshot): Address {
 
   return withinUrlBudget({
     ...emptyAddress(),
+    environmentId: snapshot.environmentId,
     bottom: snapshot.bottomTab,
-    diff: snapshot.threadDiffScope,
+    diff: snapshot.sessionDiffScope,
     document: snapshot.mode === 'chat' ? snapshot.sessionToken : documentToken(active),
     focus: snapshot.focus,
     mode: snapshot.mode,

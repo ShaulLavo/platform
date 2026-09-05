@@ -17,9 +17,8 @@ a bare root `bun run verify`.
 | --------------------------------------------------------------------------------------- | --------------------------------------- |
 | [066 — package Ghostty config resolver](066-package-ghostty-config-resolver.md)         | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
 | [067 — integrate Ghostty config appearance](067-integrate-ghostty-config-appearance.md) | **BLOCKED ON 066 REVIEWED ARTIFACT**    |
-| [068 — session domain model](068-session-domain-model.md)                               | **READY — NEXT ENVIRONMENTS SLICE**     |
-| [078 — federated environments](078-federated-environments.md)                           | **BLOCKED ON 068**                      |
-| [069 — worktree lifecycle](069-worktree-lifecycle.md)                                   | **BLOCKED ON 068 AND ROOT SCHEDULING**  |
+| [078 — federated environments](078-federated-environments.md)                           | **NEXT ENVIRONMENTS SLICE**             |
+| [069 — worktree lifecycle](069-worktree-lifecycle.md)                                   | **PROPOSED — ROOT SCHEDULING**          |
 | [071 — syntax highlight retry](071-syntax-highlight-retry.md)                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING** |
 | [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                         | **IMPLEMENTED — BROWSER VERIFIED**      |
 | [057 — standalone Editor chords and shared keymap](057-editor-native-vscode-keymap.md)  | **NEXT — STANDALONE EXECUTION FIRST**   |
@@ -45,21 +44,16 @@ a bare root `bun run verify`.
   runtime. Chat transports close explicitly and WebSocket auth refusal uses `1008`. Focused tests
   and the two-server A → B → A browser workflow pass. The dev-only loopback switch and shared
   browser persistence remain until Plan 078.
-- Plan 068 is the session-domain foundation: it replaces the current thread-shaped aggregate with
-  explicit Project → Worktree → Session ownership, makes Claude's raw UUID the portable session
-  identity, imports terminal-born Claude sessions through commands/events/receipts, and projects
-  `needs-input` / `working` / `settled` for the sidebar. It deliberately resets obsolete greenfield
-  orchestration state rather than maintaining compatibility aliases. Since 2026-09-05 it is
-  environment-aware: repository identity is machine-independent (origin remote, else root commit),
-  so the same repository on two machines shares a `ProjectId`; the web projection store is one slice
-  per environment keyed by scoped refs; the rail model and address grammar carry the environment.
-  It builds on the completed Plan 077 foundation and populates exactly one environment.
-- Plan 078 federates environments after 068: the `environments.machines` setting and page, the
+- Plan 068 is implemented and its executable plan is deleted. The
+  [session-domain reference](../docs/session-domain.md) links the contracts, registration,
+  recovery, discovery, and environment-scoped navigation tests. It supplies explicit
+  Project → Worktree → Session ownership and the server's three attention states.
+- Plan 078 is the next environments slice: the `environments.machines` setting and page, the
   desktop SSH launcher (probe, reuse-or-launch, loopback forward, no install, no pairing), one chat
   connection per machine, scoped persistence, the flat cross-machine rail with repository grouping,
   chips and a machine filter, add-project-on-machine, and the workbench switch. Direct `https://`
   origins are accepted but the mesh proxy check and pairing are scheduled separately, on demand.
-- Plan 069 executes strictly after Plan 068. It adds explicit current-branch versus new-worktree
+- Plan 069 has its session-domain prerequisite. It adds explicit current-branch versus new-worktree
   creation, durable provisioning and cleanup recovery, and shared worktree chips on the same event
   spine. It must not restore the checkout reactor's project-root fallback or implement the reserved
   Orca compare view. Root `PLAN.md` has not scheduled it yet.

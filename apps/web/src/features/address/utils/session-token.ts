@@ -1,25 +1,18 @@
 import type { SessionSelection } from '@/features/chat-mode/utils/active-session'
-import type { ProjectId, ThreadId } from '@workspace/contracts'
-
-/**
- * Chat mode's three selection variants, as the document slot of a chat address.
- *
- * `ThreadId` is `thread-` plus a client-minted UUID living in this machine's SQLite,
- * so a thread link is a this-machine link until sessions sync. That is not hidden —
- * the restore reports `unavailable` and the stage says so, because a link that
- * silently fell through to the newest thread would read as the app losing your place.
- *
- * The `projectId` is deliberately absent: it is a one-way hash of an absolute path
- * and must never appear in a URL. It is re-derived from the workspace the address
- * already names.
- */
+import {
+  sessionIdSchema,
+  type EnvironmentId,
+  type ProjectId,
+  type SessionId,
+} from '@workspace/contracts'
+import * as v from 'valibot'
 
 const SESSION_TOKEN_PREFIX = 't'
 const DRAFT_TOKEN = 't/new'
 
 export function sessionTokenFor(selection: SessionSelection) {
   if (selection.kind === 'session') {
-    return `${SESSION_TOKEN_PREFIX}/${encodeURIComponent(selection.threadId)}`
+    return `${SESSION_TOKEN_PREFIX}/${encodeURIComponent(selection.sessionId)}`
   }
   if (selection.kind === 'draft') return DRAFT_TOKEN
 
@@ -29,7 +22,7 @@ export function sessionTokenFor(selection: SessionSelection) {
 
 export type ParsedSessionToken =
   | { readonly kind: 'draft' }
-  | { readonly kind: 'session'; readonly threadId: ThreadId }
+  | { readonly kind: 'session'; readonly sessionId: SessionId }
   | { readonly kind: 'rejected' }
 
 export function parseSessionToken(token: string | null): ParsedSessionToken | null {
@@ -39,32 +32,35 @@ export function parseSessionToken(token: string | null): ParsedSessionToken | nu
   const [prefix, ...rest] = token.split('/')
   if (prefix !== SESSION_TOKEN_PREFIX) return null
 
-  const threadId = decodeThreadId(rest.join('/'))
-  if (!threadId) return { kind: 'rejected' }
+  const sessionId = decodeSessionId(rest.join('/'))
+  if (!sessionId) return { kind: 'rejected' }
 
-  return { kind: 'session', threadId: threadId as ThreadId }
+  return { kind: 'session', sessionId }
 }
 
 export function sessionSelectionFor(
   parsed: ParsedSessionToken,
+  environmentId: EnvironmentId,
   projectId: ProjectId,
 ): SessionSelection | null {
-  if (parsed.kind === 'draft') return { kind: 'draft', projectId }
-  if (parsed.kind === 'session') return { kind: 'session', projectId, threadId: parsed.threadId }
+  if (parsed.kind === 'draft') return { kind: 'draft', environmentId, projectId }
+  if (parsed.kind === 'session')
+    return { kind: 'session', environmentId, projectId, sessionId: parsed.sessionId }
 
   return null
 }
 
 /**
- * Thread ids are compared by exact equality everywhere, so an abbreviated one does
+ * Session ids are compared by exact equality everywhere, so an abbreviated one does
  * not resolve — a prefix is rejected rather than guessed at.
  */
-function decodeThreadId(raw: string) {
+function decodeSessionId(raw: string) {
   if (!raw) return null
 
   try {
-    const threadId = decodeURIComponent(raw)
-    return threadId.startsWith('thread-') ? threadId : null
+    const sessionId = decodeURIComponent(raw)
+    const parsed = v.safeParse(sessionIdSchema, sessionId)
+    return parsed.success ? parsed.output : null
   } catch {
     return null
   }

@@ -98,10 +98,10 @@ function proposedPlan(
   return {
     createdAt: '2026-05-28T00:00:02.000Z',
     id: 'plan-1',
-    implementationThreadId: null,
+    implementationSessionId: null,
     implementedAt: null,
     planMarkdown: PLAN_MARKDOWN,
-    threadId: 'thread-1',
+    sessionId: 'ad686244-5b2e-59be-805f-ef86eac80feb',
     turnId: 'turn-1',
     updatedAt: '2026-05-28T00:00:02.000Z',
     ...overrides,

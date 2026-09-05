@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import {
   eventIdSchema,
   messageIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
   turnIdSchema,
   type OrchestrationMessage,
 } from '@workspace/contracts'
@@ -13,10 +13,10 @@ import { TimelineRow } from '@/features/chat/components/timeline-row'
 import { chatTimelineItems, type ChatTimelineItem } from '@/features/chat/utils/timeline-items'
 import { useChatWorkLogExpansionStore } from '@/features/chat/state/chat-work-log-expansion-store'
 import { expect, test } from '../../../../../test/fixtures'
-import { chatMessage, threadActivity } from '../../../../../test/factories/chat'
+import { chatMessage, sessionActivity } from '../../../../../test/factories/chat'
 import { renderWithProviders } from '../../../../../test/render'
 
-const threadId = v.parse(threadIdSchema, 'thread-1')
+const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
 const turnId = v.parse(turnIdSchema, 'turn-1')
 
 test('a settled turn hides its work until the fold is opened', async () => {
@@ -71,6 +71,10 @@ function settledTurnFold(): ChatTimelineItem {
       toolActivity('event-2', timestamp(4), 'Run tests completed'),
     ],
     latestTurn: {
+      providerStartState: 'adopted' as const,
+      providerStartGeneration: 1,
+      providerStartSequence: 1,
+      runtimeEpoch: 'test-epoch',
       assistantMessageId: v.parse(messageIdSchema, 'message-2'),
       completedAt: timestamp(5),
       requestedAt: timestamp(1),
@@ -109,13 +113,13 @@ function assistantMessage(): OrchestrationMessage {
 }
 
 function toolActivity(id: string, createdAt: string, summary: string) {
-  return threadActivity({
+  return sessionActivity({
     createdAt,
     id: v.parse(eventIdSchema, id),
     kind: 'tool.completed',
     payload: { itemType: 'command_execution', status: 'completed' },
     summary,
-    threadId,
+    sessionId,
     tone: 'tool',
     turnId,
   })

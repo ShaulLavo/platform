@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest'
-import { ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE } from '@workspace/contracts'
+import { ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE } from '@workspace/contracts'
 import {
-  MAX_THREAD_ACTIVITIES,
-  MAX_THREAD_MESSAGES,
-  type OrchestrationProjectedThread,
+  MAX_SESSION_ACTIVITIES,
+  MAX_SESSION_MESSAGES,
+  type OrchestrationProjectedSession,
   type OrchestrationReadModel,
 } from '../read-model'
 import {
@@ -11,8 +11,8 @@ import {
   applyIncrementally,
   createProjectionFixture,
   messageSentEvent,
-  threadBootstrapEvents,
-  THREAD_ID,
+  sessionBootstrapEvents,
+  SESSION_ID,
 } from './factories/projection'
 
 const fixtures: Array<{ close: () => void }> = []
@@ -30,41 +30,41 @@ describe('in-memory read model bounds', () => {
 
     let model = projectMessages(
       fixture,
-      applyIncrementally(fixture, threadBootstrapEvents()),
+      applyIncrementally(fixture, sessionBootstrapEvents()),
       0,
-      MAX_THREAD_MESSAGES + 500,
+      MAX_SESSION_MESSAGES + 500,
     )
 
-    for (let index = 0; index < MAX_THREAD_ACTIVITIES + 100; index += 1) {
+    for (let index = 0; index < MAX_SESSION_ACTIVITIES + 100; index += 1) {
       const batch = fixture.append([activityAppendedEvent({ id: `event-activity-${index}` })])
       fixture.pipeline.applyEvents(batch)
       model = fixture.snapshots.refreshReadModel(model, batch)
     }
 
-    const thread = projectedThread(model)
+    const session = projectedSession(model)
 
-    expect(thread.messages).toHaveLength(MAX_THREAD_MESSAGES)
-    expect(thread.messages.at(-1)?.id).toBe(`message-${MAX_THREAD_MESSAGES + 499}`)
-    expect(thread.activities).toHaveLength(MAX_THREAD_ACTIVITIES)
-    expect(thread.activities.at(-1)?.id).toBe(`event-activity-${MAX_THREAD_ACTIVITIES + 99}`)
+    expect(session.messages).toHaveLength(MAX_SESSION_MESSAGES)
+    expect(session.messages.at(-1)?.id).toBe(`message-${MAX_SESSION_MESSAGES + 499}`)
+    expect(session.activities).toHaveLength(MAX_SESSION_ACTIVITIES)
+    expect(session.activities.at(-1)?.id).toBe(`event-activity-${MAX_SESSION_ACTIVITIES + 99}`)
   })
 
   it('refreshes the caller model in place instead of rebuilding it', () => {
     const fixture = createProjectionFixture()
     fixtures.push(fixture)
 
-    const model = applyIncrementally(fixture, threadBootstrapEvents())
-    const messages = projectedThread(model).messages
+    const model = applyIncrementally(fixture, sessionBootstrapEvents())
+    const messages = projectedSession(model).messages
 
     const next = projectMessages(fixture, model, 1, 1)
 
     expect(next).toBe(model)
-    expect(projectedThread(next).messages).toBe(messages)
+    expect(projectedSession(next).messages).toBe(messages)
   })
 
   /**
    * The regression this guards is that projecting one message used to *clone*
-   * the retained messages, so dispatch cost grew with thread length (17x at 4k).
+   * the retained messages, so dispatch cost grew with session length (17x at 4k).
    *
    * It used to assert that as a wall-clock ratio, and that assertion failed
    * three times on a loaded machine while nowhere near 17x — a stopwatch shared
@@ -81,11 +81,11 @@ describe('in-memory read model bounds', () => {
 
     const filled = projectMessages(
       fixture,
-      applyIncrementally(fixture, threadBootstrapEvents()),
+      applyIncrementally(fixture, sessionBootstrapEvents()),
       0,
       400,
     )
-    const before = projectedThread(filled).messages
+    const before = projectedSession(filled).messages
     // Snapshotted as values: the projector appends in place, so the array
     // reference itself is not a stable "before" and asserting on its length
     // later would be reading the "after".
@@ -94,7 +94,7 @@ describe('in-memory read model bounds', () => {
     const beforeTail = before.at(-1)
 
     const after = projectMessages(fixture, filled, 400, 1)
-    const afterMessages = projectedThread(after).messages
+    const afterMessages = projectedSession(after).messages
 
     // The same objects, not merely equal ones — `toBe` is the whole point.
     // Whether the array is reused or rebuilt is an implementation detail worth
@@ -108,8 +108,8 @@ describe('in-memory read model bounds', () => {
     const fixture = createProjectionFixture()
     fixtures.push(fixture)
 
-    fixture.pipeline.applyEvents(fixture.append(threadBootstrapEvents()))
-    for (let index = 0; index < MAX_THREAD_MESSAGES + 50; index += 1) {
+    fixture.pipeline.applyEvents(fixture.append(sessionBootstrapEvents()))
+    for (let index = 0; index < MAX_SESSION_MESSAGES + 50; index += 1) {
       fixture.pipeline.applyEvents(
         fixture.append([
           messageSentEvent({
@@ -122,15 +122,15 @@ describe('in-memory read model bounds', () => {
       )
     }
 
-    const hydrated = projectedThread(fixture.snapshots.fullReadModel())
+    const hydrated = projectedSession(fixture.snapshots.fullReadModel())
 
-    expect(hydrated.messages).toHaveLength(MAX_THREAD_MESSAGES)
-    expect(hydrated.messages.at(-1)?.id).toBe(`message-${MAX_THREAD_MESSAGES + 49}`)
-    // The detail snapshot is a window, not the thread: everything older is a
-    // `threadDetailPage` walk away, so nothing here is trimmed out of reach.
-    const window = fixture.snapshots.threadDetailSnapshot(THREAD_ID).thread.messages
-    expect(window).toHaveLength(ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE)
-    expect(window.at(-1)?.id).toBe(`message-${MAX_THREAD_MESSAGES + 49}`)
+    expect(hydrated.messages).toHaveLength(MAX_SESSION_MESSAGES)
+    expect(hydrated.messages.at(-1)?.id).toBe(`message-${MAX_SESSION_MESSAGES + 49}`)
+    // The detail snapshot is a window, not the session: everything older is a
+    // `sessionDetailPage` walk away, so nothing here is trimmed out of reach.
+    const window = fixture.snapshots.sessionDetailSnapshot(SESSION_ID).session.messages
+    expect(window).toHaveLength(ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE)
+    expect(window.at(-1)?.id).toBe(`message-${MAX_SESSION_MESSAGES + 49}`)
   })
 })
 
@@ -158,9 +158,9 @@ function messageCreatedAt(index: number) {
   return new Date(Date.UTC(2026, 4, 24) + index * 1000).toISOString()
 }
 
-function projectedThread(model: OrchestrationReadModel) {
-  const thread = model.threads.get(THREAD_ID)
-  expect(thread).toBeDefined()
+function projectedSession(model: OrchestrationReadModel) {
+  const session = model.sessions.get(SESSION_ID)
+  expect(session).toBeDefined()
 
-  return thread as OrchestrationProjectedThread
+  return session as OrchestrationProjectedSession
 }

@@ -1,10 +1,16 @@
-import { providerInstanceIdSchema, type ModelSelection } from '@workspace/contracts'
+import {
+  orchestrationDispatchResultSchema,
+  providerInstanceIdSchema,
+  type ClientOrchestrationCommand,
+  type ModelSelection,
+  type ProjectId,
+} from '@workspace/contracts'
 import * as v from 'valibot'
-
+import type { Client } from '@/lib/client'
 import {
   createProjectDefaultModelCommand,
+  createProjectMetaCommand,
   createWorkspaceProjectCommand,
-  workspaceProjectId,
 } from '@/features/chat/utils/command-builders'
 import { expect, test } from '../../../../../test/fixtures'
 
@@ -13,77 +19,43 @@ const claudeSelection: ModelSelection = {
   providerInstanceId: v.parse(providerInstanceIdSchema, 'claude'),
 }
 
-test('a new project stores no invented model default', async ({ client }) => {
-  const rootPath = '/workspace/no-default'
-  await dispatch(client, createWorkspaceProjectCommand({ rootPath }))
-
-  const project = await readProject(client, rootPath)
+test('a registered project stores no invented model default', async ({ client, server }) => {
+  const receipt = await dispatch(client, createWorkspaceProjectCommand({ rootPath: server.root }))
+  const project = await readProject(client, receipt.result!.projectId)
   expect(project?.defaultModelSelection).toBeNull()
 })
 
-test('picking a model persists it as the project default', async ({ client }) => {
-  const rootPath = '/workspace/persisted'
-  await dispatch(client, createWorkspaceProjectCommand({ rootPath }))
-
+test('picking a model persists it as the project default', async ({ client, server }) => {
+  const receipt = await dispatch(client, createWorkspaceProjectCommand({ rootPath: server.root }))
+  const projectId = receipt.result!.projectId
   await dispatch(
     client,
-    createProjectDefaultModelCommand({
-      defaultModelSelection: claudeSelection,
-      projectId: workspaceProjectId(rootPath),
-    }),
+    createProjectDefaultModelCommand({ defaultModelSelection: claudeSelection, projectId }),
   )
-
-  const project = await readProject(client, rootPath)
-  expect(project?.defaultModelSelection).toEqual(claudeSelection)
-  expect(project?.title).toBe('persisted')
+  expect((await readProject(client, projectId))?.defaultModelSelection).toEqual(claudeSelection)
 })
 
-test('a metadata update that omits the model leaves the stored default alone', async ({
-  client,
-}) => {
-  const rootPath = '/workspace/rename-safe'
-  const projectId = workspaceProjectId(rootPath)
-  await dispatch(client, createWorkspaceProjectCommand({ rootPath }))
+test('renaming a project retains its stored model', async ({ client, server }) => {
+  const receipt = await dispatch(client, createWorkspaceProjectCommand({ rootPath: server.root }))
+  const projectId = receipt.result!.projectId
   await dispatch(
     client,
-    createProjectDefaultModelCommand({
-      defaultModelSelection: claudeSelection,
-      projectId,
-    }),
+    createProjectDefaultModelCommand({ defaultModelSelection: claudeSelection, projectId }),
   )
-
-  // A rename carries no defaultModelSelection. Collapsing absent onto null here is
-  // what would silently wipe the user's remembered model.
-  await dispatch(client, {
-    commandId: crypto.randomUUID(),
-    projectId,
+  await dispatch(client, createProjectMetaCommand({ projectId, title: 'Renamed' }))
+  expect(await readProject(client, projectId)).toMatchObject({
     title: 'Renamed',
-    type: 'project.meta.update',
+    defaultModelSelection: claudeSelection,
   })
-
-  const project = await readProject(client, rootPath)
-  expect(project?.title).toBe('Renamed')
-  expect(project?.defaultModelSelection).toEqual(claudeSelection)
 })
 
-async function dispatch(
-  client: { orchestration: { commands: { post: Function } } },
-  command: unknown,
-) {
+async function dispatch(client: Client, command: ClientOrchestrationCommand) {
   const response = await client.orchestration.commands.post(command)
   expect(response.error).toBeNull()
-
-  return response
+  return v.parse(orchestrationDispatchResultSchema, response.data)
 }
-
-async function readProject(
-  client: { orchestration: { 'shell-snapshot': { get: Function } } },
-  rootPath: string,
-) {
+async function readProject(client: Client, projectId: ProjectId) {
   const snapshot = await client.orchestration['shell-snapshot'].get()
   expect(snapshot.error).toBeNull()
-
-  return snapshot.data.projects.find(
-    (project: { id: string }) => project.id === workspaceProjectId(rootPath),
-  )
+  return snapshot.data?.projects.find((project) => project.id === projectId)
 }

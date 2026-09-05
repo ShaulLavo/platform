@@ -1,6 +1,14 @@
+import {
+  shellSnapshot,
+  TEST_ENVIRONMENT_ID as FIXTURE_ENVIRONMENT_ID,
+} from '../../../../../test/factories/chat'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { eventIdSchema, type ClientOrchestrationCommand, type ThreadId } from '@workspace/contracts'
+import {
+  eventIdSchema,
+  type ClientOrchestrationCommand,
+  type SessionId,
+} from '@workspace/contracts'
 import type { ReactNode } from 'react'
 import * as v from 'valibot'
 
@@ -8,7 +16,7 @@ import { PendingApprovalPanel } from '@/features/chat/components/pending-approva
 import { ChatPendingRequestsProvider } from '@/features/chat/providers/pending-requests-provider'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { expect, test } from '../../../../../test/fixtures'
-import { threadActivity, thread as threadFactory } from '../../../../../test/factories/chat'
+import { sessionActivity, session as sessionFactory } from '../../../../../test/factories/chat'
 import { renderWithProviders } from '../../../../../test/render'
 
 const REQUEST_ID = 'approval-1'
@@ -32,7 +40,7 @@ test('allowing dispatches the respond command for that request', async () => {
   expect(dispatched[0]).toMatchObject({
     decision: 'accept',
     requestId: REQUEST_ID,
-    type: 'thread.approval.respond',
+    type: 'session.approval.respond',
   })
 })
 
@@ -41,7 +49,7 @@ test('each decision sends its own verb', async () => {
 
   await userEvent.click(screen.getByRole('button', { name: 'Deny' }))
 
-  expect(dispatched[0]).toMatchObject({ decision: 'decline', type: 'thread.approval.respond' })
+  expect(dispatched[0]).toMatchObject({ decision: 'decline', type: 'session.approval.respond' })
 })
 
 test('a resolved approval leaves nothing to answer', () => {
@@ -69,7 +77,7 @@ test('a failed dispatch re-enables the row so the agent can still be unblocked',
 })
 
 function requestedActivity() {
-  return threadActivity({
+  return sessionActivity({
     payload: {
       detail: 'rm -rf build',
       requestId: REQUEST_ID,
@@ -80,7 +88,7 @@ function requestedActivity() {
 }
 
 function resolvedActivity() {
-  return threadActivity({
+  return sessionActivity({
     id: v.parse(eventIdSchema, 'event-activity-2'),
     kind: 'approval.resolved',
     payload: { decision: 'accept', requestId: REQUEST_ID, requestKind: 'command' },
@@ -90,17 +98,25 @@ function resolvedActivity() {
 }
 
 function renderPanel(
-  activities: ReturnType<typeof threadActivity>[],
-  dispatch?: () => Promise<{ deduped: boolean; sequence: number }>,
+  activities: ReturnType<typeof sessionActivity>[],
+  dispatch?: () => Promise<{ result: null; deduped: boolean; sequence: number }>,
 ) {
-  const seeded = threadFactory({ activities })
+  const seeded = sessionFactory({ activities })
   useChatProjectionStore.getState().resetChatProjection()
-  useChatProjectionStore.getState().syncThreadDetailSnapshot({
+  useChatProjectionStore.getState().syncShellSnapshot(
+    FIXTURE_ENVIRONMENT_ID,
+    shellSnapshot({
+      projects: [seeded.project],
+      worktrees: [seeded.worktree],
+      sessions: [seeded],
+    }),
+  )
+  useChatProjectionStore.getState().syncSessionDetailSnapshot(FIXTURE_ENVIRONMENT_ID, {
     checkpoints: [],
     proposedPlans: [],
     snapshotSequence: 1,
-    // The store's ChatThread drops `deletedAt`; the wire snapshot still carries it.
-    thread: { ...seeded, deletedAt: null },
+    // The store's ChatSession drops `deletedAt`; the wire snapshot still carries it.
+    session: { deletion: null, ...seeded, deletedAt: null },
   })
 
   const dispatched: ClientOrchestrationCommand[] = []
@@ -108,11 +124,11 @@ function renderPanel(
     dispatched.push(command)
     if (dispatch) return dispatch()
 
-    return { deduped: false, sequence: 1 }
+    return { result: null, deduped: false, sequence: 1 }
   }
 
   renderWithProviders(
-    <Wrap dispatchCommand={dispatchCommand} threadId={seeded.id}>
+    <Wrap dispatchCommand={dispatchCommand} sessionId={seeded.id}>
       <PendingApprovalPanel />
     </Wrap>,
   )
@@ -123,17 +139,18 @@ function renderPanel(
 function Wrap({
   children,
   dispatchCommand,
-  threadId,
+  sessionId,
 }: {
   children: ReactNode
   dispatchCommand: (command: ClientOrchestrationCommand) => Promise<{
+    result: null
     deduped: boolean
     sequence: number
   }>
-  threadId: ThreadId
+  sessionId: SessionId
 }) {
   return (
-    <ChatPendingRequestsProvider dispatchCommand={dispatchCommand} threadId={threadId}>
+    <ChatPendingRequestsProvider dispatchCommand={dispatchCommand} sessionId={sessionId}>
       {children}
     </ChatPendingRequestsProvider>
   )

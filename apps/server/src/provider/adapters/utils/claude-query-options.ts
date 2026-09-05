@@ -4,6 +4,7 @@ import type {
   ModelSelection,
   ProviderInstanceId,
   RuntimeMode,
+  SessionId,
 } from '@workspace/contracts'
 import { DEFAULT_CLAUDE_MODEL, ONE_MILLION_CONTEXT_SUFFIX } from './claude-models'
 import { claudeReasoningQueryOptions, type ClaudeReasoning } from './claude-reasoning'
@@ -34,11 +35,10 @@ export type ClaudeQueryOptionsInput = ClaudeRuntimeSelection & {
   model: string
   /** False keeps isolated utility turns out of the provider's transcript store. */
   persistSession?: boolean
-  /** Effort/thinking for this thread; absent means "send neither". */
+  /** Effort/thinking for this session; absent means "send neither". */
   reasoning?: ClaudeReasoning
-  resumeCursor?: unknown
-  /** Session id minted by the caller for a brand-new conversation. */
-  sessionId?: string
+  resumeExisting?: boolean
+  sessionId: SessionId
 }
 
 export type ClaudeSessionOptions = Pick<Options, 'resume' | 'sessionId'>
@@ -84,14 +84,6 @@ export function claudeModelId(input: {
   return `${model}${ONE_MILLION_CONTEXT_SUFFIX}`
 }
 
-/** Resume cursors are persisted as `unknown`; ours is the SDK `session_id`. */
-export function claudeResumeSessionId(resumeCursor: unknown): string | null {
-  if (typeof resumeCursor !== 'string') return null
-
-  const sessionId = resumeCursor.trim()
-  return sessionId.length > 0 ? sessionId : null
-}
-
 /**
  * `resume` and `sessionId` are mutually exclusive — the SDK rejects the pair
  * unless `forkSession` rides along, which we never want. Resuming keeps the id
@@ -99,18 +91,15 @@ export function claudeResumeSessionId(resumeCursor: unknown): string | null {
  * is what lets the caller know the session id before the CLI announces it.
  */
 export function claudeSessionOptions(input: {
-  resume: string | null
-  sessionId?: string
+  resumeExisting?: boolean
+  sessionId: SessionId
 }): ClaudeSessionOptions {
-  if (input.resume) return { resume: input.resume }
-  if (input.sessionId) return { sessionId: input.sessionId }
+  if (input.resumeExisting) return { resume: input.sessionId }
 
-  return {}
+  return { sessionId: input.sessionId }
 }
 
 export function claudeQueryOptions(input: ClaudeQueryOptionsInput): Options {
-  const resume = claudeResumeSessionId(input.resumeCursor)
-
   return {
     abortController: input.abortController,
     cwd: input.cwd,
@@ -121,7 +110,7 @@ export function claudeQueryOptions(input: ClaudeQueryOptionsInput): Options {
     systemPrompt: { preset: 'claude_code', type: 'preset' },
     ...claudeReasoningQueryOptions(input.reasoning ?? {}),
     ...claudePermissionOptions(input),
-    ...claudeSessionOptions({ resume, ...(input.sessionId ? { sessionId: input.sessionId } : {}) }),
+    ...claudeSessionOptions(input),
     ...(input.canUseTool ? { canUseTool: input.canUseTool } : {}),
     // Absent `env` makes the CLI inherit process.env untouched, which is what a
     // single-instance install wants. When it is present it carries

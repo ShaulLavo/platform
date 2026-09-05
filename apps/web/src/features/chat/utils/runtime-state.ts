@@ -5,7 +5,7 @@ import {
   providerSignInTarget,
   type ProviderSignInTarget,
 } from '@/features/chat/utils/provider-auth'
-import type { ChatThread } from '@/features/chat/state/chat-projection-store'
+import type { ChatSession } from '@/features/chat/state/chat-projection-store'
 
 export type ChatRuntimeAlertTone = 'busy' | 'error' | 'warning'
 
@@ -57,19 +57,19 @@ export function chatRuntimeAlerts({
   provider,
   providerError,
   providerLoading = false,
-  thread,
+  session,
 }: {
   commandState: ChatCommandState
   provider: ProviderSnapshot | undefined
   providerError: string | null
   providerLoading?: boolean
-  thread: ChatThread
+  session: ChatSession
 }) {
   return [
     ...commandAlerts(commandState),
-    ...providerAlerts(provider, providerError, providerLoading, thread),
-    ...threadErrorAlerts(thread, provider),
-    ...pendingActionAlerts(thread),
+    ...providerAlerts(provider, providerError, providerLoading, session),
+    ...sessionErrorAlerts(session, provider),
+    ...pendingActionAlerts(session),
   ].sort((left, right) => left.priority - right.priority)
 }
 
@@ -104,7 +104,7 @@ function providerAlerts(
   provider: ProviderSnapshot | undefined,
   providerError: string | null,
   providerLoading: boolean,
-  thread: ChatThread,
+  session: ChatSession,
 ): ChatRuntimeAlert[] {
   if (providerError) {
     return [
@@ -121,7 +121,7 @@ function providerAlerts(
   if (!provider) {
     return [
       alert({
-        detail: `No snapshot for ${thread.modelSelection.providerInstanceId}`,
+        detail: `No snapshot for ${session.modelSelection.providerInstanceId}`,
         dismissible: true,
         id: 'provider',
         title: 'Provider unavailable',
@@ -176,11 +176,11 @@ function providerAlerts(
   return []
 }
 
-function threadErrorAlerts(
-  thread: ChatThread,
+function sessionErrorAlerts(
+  session: ChatSession,
   provider: ProviderSnapshot | undefined,
 ): ChatRuntimeAlert[] {
-  const lastError = thread.session?.lastError
+  const lastError = session.runtime?.lastError
   if (lastError) {
     return [
       alert({
@@ -188,14 +188,14 @@ function threadErrorAlerts(
         // `lastError` is a persisted record of a past turn: it outlives the turn
         // that produced it, so the user has to be able to put it away.
         dismissible: true,
-        id: 'thread:error',
+        id: 'session:error',
         signIn: authSignIn(lastError, provider),
-        title: threadErrorTitle(lastError, provider),
+        title: sessionErrorTitle(lastError, provider),
         tone: 'error',
       }),
     ]
   }
-  if (thread.latestTurn?.state === 'error') {
+  if (session.latestTurn?.state === 'error') {
     return [alert({ dismissible: true, id: 'turn:error', title: 'Turn failed', tone: 'error' })]
   }
 
@@ -203,13 +203,13 @@ function threadErrorAlerts(
 }
 
 /**
- * A mid-turn credential failure is not a mystery "thread error": name it, so the
+ * A mid-turn credential failure is not a mystery "session error": name it, so the
  * title matches the Sign in button sitting next to it.
  */
-function threadErrorTitle(lastError: string, provider: ProviderSnapshot | undefined) {
+function sessionErrorTitle(lastError: string, provider: ProviderSnapshot | undefined) {
   if (needsSignIn(lastError, provider)) return 'Sign-in required'
 
-  return 'Thread error'
+  return 'Session error'
 }
 
 /** Sign-in is only offered for messages that actually mean "sign in again". */
@@ -232,15 +232,15 @@ function needsSignIn(message: string | null | undefined, provider: ProviderSnaps
   return true
 }
 
-function pendingActionAlerts(thread: ChatThread): ChatRuntimeAlert[] {
+function pendingActionAlerts(session: ChatSession): ChatRuntimeAlert[] {
   const alerts: ChatRuntimeAlert[] = []
 
   // Never dismissible: the turn is parked on the answer, so hiding the ask
-  // would leave the thread stalled with nothing on screen to explain it.
-  if (thread.pendingApprovalCount > 0) {
+  // would leave the session stalled with nothing on screen to explain it.
+  if (session.pendingApprovalCount > 0) {
     alerts.push(
       alert({
-        detail: `${thread.pendingApprovalCount} pending`,
+        detail: `${session.pendingApprovalCount} pending`,
         id: 'approval',
         priority: ALERT_PRIORITY.action,
         title: 'Approval requested',
@@ -248,10 +248,10 @@ function pendingActionAlerts(thread: ChatThread): ChatRuntimeAlert[] {
       }),
     )
   }
-  if (thread.pendingUserInputCount > 0) {
+  if (session.pendingUserInputCount > 0) {
     alerts.push(
       alert({
-        detail: `${thread.pendingUserInputCount} pending`,
+        detail: `${session.pendingUserInputCount} pending`,
         id: 'user-input',
         priority: ALERT_PRIORITY.action,
         title: 'User input requested',

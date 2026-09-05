@@ -27,7 +27,7 @@ const ACTION_BUTTON_CLASS =
   'border-border bg-background hover:bg-muted hover:text-foreground h-6 border px-2 text-xs font-medium transition-colors'
 
 export function AssistantChangedFilesSection({ summary }: { summary: ChatTurnDiffSummary }) {
-  const { openCheckpointDiff, openThreadCheckpointDiff } = useChatTimelineActions()
+  const { openCheckpointDiff, openSessionCheckpointDiff } = useChatTimelineActions()
   const expansionKey = chatChangedFilesExpansionKey(summary)
   const expansion = useChatChangedFilesExpansionStore((state) => state.expansionByKey[expansionKey])
   const setCardExpanded = useChatChangedFilesExpansionStore((state) => state.setCardExpanded)
@@ -54,12 +54,12 @@ export function AssistantChangedFilesSection({ summary }: { summary: ChatTurnDif
     }
   }
 
-  async function handleOpenThreadDiff() {
+  async function handleOpenSessionDiff() {
     if (!diffAvailable) return
 
     setDiffError(null)
     try {
-      await openThreadCheckpointDiff(summary)
+      await openSessionCheckpointDiff(summary)
     } catch (error) {
       setDiffError(errorMessage(error, 'Checkpoint diff unavailable.'))
     }
@@ -118,9 +118,9 @@ export function AssistantChangedFilesSection({ summary }: { summary: ChatTurnDif
               className={ACTION_BUTTON_CLASS}
               data-scroll-anchor-ignore
               type='button'
-              onClick={() => void handleOpenThreadDiff()}
+              onClick={() => void handleOpenSessionDiff()}
             >
-              Thread diff
+              Session diff
             </button>
           ) : null}
           {expanded ? (

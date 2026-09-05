@@ -53,40 +53,43 @@ afterEach(() => {
 
 describe('chat changed-files expansion store', () => {
   it('reports nothing chosen until the user chooses', () => {
-    expect(expansion('thread-1:turn-1')).toBeUndefined()
+    expect(expansion('session-1:turn-1')).toBeUndefined()
   })
 
   it('keeps the card and its folders as independent choices', () => {
     const { setCardExpanded, setDirectoriesExpanded } = useChatChangedFilesExpansionStore.getState()
 
-    setCardExpanded('thread-1:turn-1', true)
-    expect(expansion('thread-1:turn-1')).toMatchObject({
+    setCardExpanded('session-1:turn-1', true)
+    expect(expansion('session-1:turn-1')).toMatchObject({
       cardExpanded: true,
       directoriesExpanded: null,
     })
 
-    setDirectoriesExpanded('thread-1:turn-1', false)
-    expect(expansion('thread-1:turn-1')).toMatchObject({
+    setDirectoriesExpanded('session-1:turn-1', false)
+    expect(expansion('session-1:turn-1')).toMatchObject({
       cardExpanded: true,
       directoriesExpanded: false,
     })
   })
 
   it('survives a reload', () => {
-    useChatChangedFilesExpansionStore.getState().setCardExpanded('thread-1:turn-1', true)
+    useChatChangedFilesExpansionStore.getState().setCardExpanded('session-1:turn-1', true)
 
     // What a fresh page load does: drop the in-memory store, read storage back.
     resetChatChangedFilesExpansionStore()
-    expect(expansion('thread-1:turn-1')).toBeUndefined()
+    expect(expansion('session-1:turn-1')).toBeUndefined()
 
     hydrateChatChangedFilesExpansionStoreFromStorage()
-    expect(expansion('thread-1:turn-1')).toMatchObject({ cardExpanded: true })
+    expect(expansion('session-1:turn-1')).toMatchObject({ cardExpanded: true })
   })
 
   it('drops storage written under a different version instead of trusting it', () => {
     localStorage.setItem(
       CHAT_CHANGED_FILES_EXPANSION_STORAGE_KEY,
-      JSON.stringify({ expansionByKey: { 'thread-1:turn-1': { cardExpanded: true } }, version: 2 }),
+      JSON.stringify({
+        expansionByKey: { 'session-1:turn-1': { cardExpanded: true } },
+        version: 2,
+      }),
     )
 
     hydrateChatChangedFilesExpansionStoreFromStorage()
@@ -94,18 +97,18 @@ describe('chat changed-files expansion store', () => {
     expect(useChatChangedFilesExpansionStore.getState().expansionByKey).toEqual({})
   })
 
-  it('bounds the entries deleted threads would otherwise leave behind forever', () => {
+  it('bounds the entries deleted sessions would otherwise leave behind forever', () => {
     const { setCardExpanded } = useChatChangedFilesExpansionStore.getState()
     const total = CHAT_CHANGED_FILES_EXPANSION_LIMIT + 25
 
     for (let index = 0; index < total; index += 1) {
-      setCardExpanded(`thread-${index}:turn-1`, true)
+      setCardExpanded(`session-${index}:turn-1`, true)
     }
 
     const keys = Object.keys(useChatChangedFilesExpansionStore.getState().expansionByKey)
     expect(keys).toHaveLength(CHAT_CHANGED_FILES_EXPANSION_LIMIT)
-    expect(keys).toContain(`thread-${total - 1}:turn-1`)
-    expect(keys).not.toContain('thread-0:turn-1')
+    expect(keys).toContain(`session-${total - 1}:turn-1`)
+    expect(keys).not.toContain('session-0:turn-1')
     expect(storedKeys()).toHaveLength(CHAT_CHANGED_FILES_EXPANSION_LIMIT)
   })
 })

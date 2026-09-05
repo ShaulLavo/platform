@@ -1,4 +1,4 @@
-import type { ThreadDiffScope } from '@/features/chat/utils/thread-diff-scope-storage'
+import type { SessionDiffScope } from '@/features/chat/utils/session-diff-scope-storage'
 import type { TurnId } from '@workspace/contracts'
 
 /**
@@ -22,14 +22,14 @@ import type { TurnId } from '@workspace/contracts'
  */
 const WORKING_TREE = 'wt'
 
-export function diffScopeParam(scope: ThreadDiffScope | null) {
+export function diffScopeParam(scope: SessionDiffScope | null) {
   if (!scope) return null
   if (scope.kind === 'working-tree') return WORKING_TREE
 
   return scope.turnId
 }
 
-export function diffScopeFor(param: string | null): ThreadDiffScope | null {
+export function diffScopeFor(param: string | null): SessionDiffScope | null {
   if (!param) return null
   if (param === WORKING_TREE) return { kind: 'working-tree' }
 

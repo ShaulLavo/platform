@@ -1,4 +1,5 @@
-import type { ModelSelection, ThreadId } from '@workspace/contracts'
+import { useActiveChatProjection } from '@/features/chat/hooks/use-active-projection'
+import type { ModelSelection, SessionId } from '@workspace/contracts'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { notifyChatCommandError } from '@/features/chat/notify-command-error'
@@ -6,19 +7,19 @@ import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import {
   createCheckpointRevertCommand,
   createProjectDefaultModelCommand,
-  createThreadInterruptCommand,
+  createSessionInterruptCommand,
   createTurnSubmission,
 } from '@/features/chat/utils/command-builders'
 import { dispatchChatCommand, replayAfterDispatch } from '@/features/chat/utils/command-dispatch'
-import { scheduleThreadProjectionSyncAfterDispatch } from '@/features/chat/utils/command-sync'
+import { scheduleSessionProjectionSyncAfterDispatch } from '@/features/chat/utils/command-sync'
 import { optimisticMessageSummary } from '@/features/chat/utils/pipeline-logging'
-import { isChatThreadBusy } from '@/features/chat/utils/thread-busy'
-import { createChatThreadSelector } from '../state/chat-projection-selectors'
+import { isChatSessionBusy } from '@/features/chat/utils/session-busy'
+import { createChatSessionSelector } from '../state/chat-projection-selectors'
 import {
-  createOptimisticMessagesForThreadSelector,
+  createOptimisticMessagesForSessionSelector,
   useChatOptimisticStore,
 } from '../state/chat-optimistic-store'
-import { type ChatThread, useChatProjectionStore } from '../state/chat-projection-store'
+import { type ChatSession } from '../state/chat-projection-store'
 import { ChatTransportContext } from '@/features/chat/providers/transport-context'
 import { ChatInput, type ChatInputSubmitPayload } from './chat-input'
 import { ChatRuntimeStatus } from './chat-runtime-status'
@@ -33,61 +34,69 @@ import { ChatTimelineActionsProvider } from '../providers/timeline-actions-provi
 import type { ChatInputDraftTarget } from '../state/chat-input-draft-store'
 
 export function ChatView({
-  activeThreadId,
+  activeSessionId,
   transport,
-  onThreadCreated,
+  onSessionCreated,
   rootPath,
 }: {
-  activeThreadId: ThreadId | null
+  activeSessionId: SessionId | null
   transport: ChatTransport
   /**
-   * Puts a thread this view created — splitting a plan off to build it — on
+   * Puts a session this view created — splitting a plan off to build it — on
    * screen. Each host keeps its own selection, so only it can honour this.
    */
-  onThreadCreated: (threadId: ThreadId) => void
+  onSessionCreated: (sessionId: SessionId) => void
   rootPath: string
 }) {
-  const threadSelector = useMemo(() => createChatThreadSelector(activeThreadId), [activeThreadId])
+  const sessionSelector = useMemo(
+    () => createChatSessionSelector(activeSessionId),
+    [activeSessionId],
+  )
   const optimisticMessagesSelector = useMemo(
-    () => createOptimisticMessagesForThreadSelector(activeThreadId),
-    [activeThreadId],
+    () =>
+      createOptimisticMessagesForSessionSelector(
+        activeSessionId
+          ? { environmentId: transport.environmentId, sessionId: activeSessionId }
+          : null,
+      ),
+    [activeSessionId, transport.environmentId],
   )
   // The same target ChatInput builds for itself, so a mode pick lands on the
   // draft the send path reads. Stable identity is required: it feeds the
   // composer modes context value.
   const draftTarget = useMemo<ChatInputDraftTarget>(
-    () => ({ draftKey: activeThreadId, rootPath }),
-    [activeThreadId, rootPath],
+    () => ({ environmentId: transport.environmentId, draftKey: activeSessionId, rootPath }),
+    [transport.environmentId, activeSessionId, rootPath],
   )
-  const thread = useChatProjectionStore(threadSelector)
+  const session = useActiveChatProjection(sessionSelector)
   const optimisticMessages = useChatOptimisticStore(optimisticMessagesSelector)
   const [sendError, setSendError] = useState<string | null>(null)
   const [interrupting, setInterrupting] = useState(false)
   const [revertingCheckpoint, setRevertingCheckpoint] = useState(false)
   const [sending, setSending] = useState(false)
-  const busy = isChatThreadBusy(thread)
+  const busy = isChatSessionBusy(session)
   // Stable identity is required because this is part of the timeline action context value.
   const handleRevertToCheckpoint = useCallback(
     async (turnCount: number) => {
-      if (!thread) return
+      if (!session) return
       if (busy) {
         setSendError('Interrupt the current turn before reverting checkpoints.')
         return
       }
       if (!confirmCheckpointRevert(turnCount)) return
 
-      await revertThreadToCheckpoint({
+      await revertSessionToCheckpoint({
         transport,
         setRevertingCheckpoint,
         setSendError,
-        thread,
+        session,
         turnCount,
       })
     },
-    [busy, transport, thread],
+    [busy, transport, session],
   )
 
-  const projectId = thread?.projectId
+  const projectId = session?.project.id
   // Stable identity is required because this is part of the model picker context value.
   const handlePersistModelSelection = useCallback(
     (next: ModelSelection) => {
@@ -107,42 +116,47 @@ export function ChatView({
   )
 
   useEffect(() => {
-    if (!activeThreadId) return
+    if (!activeSessionId) return
 
-    return transport.retainThreadDetail(activeThreadId)
-  }, [activeThreadId, transport])
+    return transport.retainSessionDetail(activeSessionId)
+  }, [activeSessionId, transport])
 
   useEffect(() => {
-    if (!thread) return
+    if (!session) return
 
-    useChatOptimisticStore.getState().clearResolvedOptimisticMessages(thread.id, thread.messages)
-  }, [thread])
+    useChatOptimisticStore
+      .getState()
+      .clearResolvedOptimisticMessages(
+        { environmentId: transport.environmentId, sessionId: session.id },
+        session.messages,
+      )
+  }, [session, transport.environmentId])
 
-  if (!activeThreadId) {
+  if (!activeSessionId) {
     return (
       <div className='text-muted-foreground flex min-h-0 flex-1 items-center justify-center px-4 text-center text-xs'>
         Preparing workspace chat
       </div>
     )
   }
-  if (!thread) {
+  if (!session) {
     return (
       <div className='text-muted-foreground flex min-h-0 flex-1 items-center justify-center px-4 text-center text-xs'>
-        Loading thread
+        Loading session
       </div>
     )
   }
 
   async function handleSend(payload: ChatInputSubmitPayload) {
-    if (!thread) return false
+    if (!session) return false
 
-    return submitChatTurn({ transport, payload, setSendError, setSending, thread })
+    return submitChatTurn({ transport, payload, setSendError, setSending, session })
   }
 
   async function handleStop() {
-    if (!thread) return
+    if (!session) return
 
-    await dispatchThreadStop({ transport, setInterrupting, setSendError, thread })
+    await dispatchSessionStop({ transport, setInterrupting, setSendError, session })
   }
 
   return (
@@ -152,14 +166,14 @@ export function ChatView({
         interruptPending={interrupting}
         sendPending={sending}
         stopPending={false}
-        thread={thread}
+        session={session}
       />
       <ChatTransportContext value={transport}>
         <ChatTimelineActionsProvider revertToCheckpoint={handleRevertToCheckpoint}>
           <MessagesTimeline
             checkpointRevertPending={revertingCheckpoint}
             optimisticMessages={optimisticMessages}
-            thread={thread}
+            session={session}
           />
         </ChatTimelineActionsProvider>
       </ChatTransportContext>
@@ -169,19 +183,19 @@ export function ChatView({
       <ChatComposerModesProvider
         dispatchCommand={transport.dispatchCommand}
         draftTarget={draftTarget}
-        threadId={thread.id}
+        sessionId={session.id}
       >
         <ChatPendingRequestsProvider
           dispatchCommand={transport.dispatchCommand}
-          threadId={thread.id}
+          sessionId={session.id}
         >
           <PendingApprovalPanel />
           <PendingUserInputPanel />
           <ChatPlanFollowUpProvider
             draftTarget={draftTarget}
             transport={transport}
-            onThreadCreated={onThreadCreated}
-            threadId={thread.id}
+            onSessionCreated={onSessionCreated}
+            sessionId={session.id}
           >
             <PlanFollowUpBanner draftTarget={draftTarget} />
           </ChatPlanFollowUpProvider>
@@ -189,13 +203,13 @@ export function ChatView({
             busy={busy}
             commandStatusLabel={interrupting ? 'Interrupting' : null}
             disabled={interrupting}
-            draftKey={thread.id}
+            draftKey={session.id}
             error={null}
-            interactionMode={thread.interactionMode}
-            modelSelection={thread.modelSelection}
-            modelSelectionLocked={thread.messages.length > 0 || thread.latestTurn !== null}
+            interactionMode={session.interactionMode}
+            modelSelection={session.modelSelection}
+            modelSelectionLocked={session.messages.length > 0 || session.latestTurn !== null}
             rootPath={rootPath}
-            runtimeMode={thread.runtimeMode}
+            runtimeMode={session.runtimeMode}
             onPersistModelSelection={handlePersistModelSelection}
             onStop={handleStop}
             onSubmit={handleSend}
@@ -211,13 +225,13 @@ async function submitChatTurn({
   payload,
   setSendError,
   setSending,
-  thread,
+  session,
 }: {
   transport: ChatTransport
   payload: ChatInputSubmitPayload
   setSendError: (value: string | null) => void
   setSending: (value: boolean) => void
-  thread: ChatThread
+  session: ChatSession
 }): Promise<boolean> {
   const { attachments, interactionMode, modelSelection, runtimeMode, terminalContexts, text } =
     payload
@@ -229,7 +243,7 @@ async function submitChatTurn({
     runtimeMode,
     terminalContexts,
     text,
-    threadId: thread.id,
+    sessionId: session.id,
   })
   setSendError(null)
   setSending(true)
@@ -240,14 +254,18 @@ async function submitChatTurn({
         scope.increment('command.submitCount')
         useChatOptimisticStore
           .getState()
-          .addOptimisticMessage(submission.command.commandId, submission.optimisticMessage)
+          .addOptimisticMessage(
+            transport.environmentId,
+            submission.command.commandId,
+            submission.optimisticMessage,
+          )
         scope.increment('command.optimisticAddedCount')
         scope.set({
           optimistic: optimisticMessageSummary({
             commandId: submission.command.commandId,
             messageId: submission.optimisticMessage.id,
             textLength: text.length,
-            threadId: thread.id,
+            sessionId: session.id,
           }),
         })
       },
@@ -263,15 +281,18 @@ async function submitChatTurn({
       },
       dispatchCommand: transport.dispatchCommand,
       onAccepted: (result) =>
-        scheduleThreadProjectionSyncAfterDispatch({
+        scheduleSessionProjectionSyncAfterDispatch({
           transport,
           replayAfterSequence: replayAfterDispatch(submission.command, result),
-          threadId: thread.id,
+          sessionId: session.id,
         }),
       onFailed: () =>
         useChatOptimisticStore
           .getState()
-          .removeOptimisticMessage(thread.id, submission.optimisticMessage.id),
+          .removeOptimisticMessage(
+            { environmentId: transport.environmentId, sessionId: session.id },
+            submission.optimisticMessage.id,
+          ),
     })
     if (outcome.ok) return true
 
@@ -282,24 +303,24 @@ async function submitChatTurn({
   }
 }
 
-async function dispatchThreadStop({
+async function dispatchSessionStop({
   transport,
   setInterrupting,
   setSendError,
-  thread,
+  session,
 }: {
   transport: ChatTransport
   setInterrupting: (value: boolean) => void
   setSendError: (value: string | null) => void
-  thread: ChatThread
+  session: ChatSession
 }) {
   setInterrupting(true)
   try {
     const outcome = await dispatchChatCommand({
       action: 'chat.stop.dispatch.summary',
-      command: createThreadInterruptCommand({
-        threadId: thread.id,
-        turnId: thread.latestTurn?.turnId,
+      command: createSessionInterruptCommand({
+        sessionId: session.id,
+        turnId: session.latestTurn?.turnId,
       }),
       dispatchCommand: transport.dispatchCommand,
     })
@@ -309,32 +330,32 @@ async function dispatchThreadStop({
   }
 }
 
-async function revertThreadToCheckpoint({
+async function revertSessionToCheckpoint({
   transport,
   setRevertingCheckpoint,
   setSendError,
-  thread,
+  session,
   turnCount,
 }: {
   transport: ChatTransport
   setRevertingCheckpoint: (value: boolean) => void
   setSendError: (value: string | null) => void
-  thread: ChatThread
+  session: ChatSession
   turnCount: number
 }) {
   setRevertingCheckpoint(true)
   setSendError(null)
-  const command = createCheckpointRevertCommand({ threadId: thread.id, turnCount })
+  const command = createCheckpointRevertCommand({ sessionId: session.id, turnCount })
   try {
     const outcome = await dispatchChatCommand({
       action: 'chat.checkpoint_revert.dispatch.summary',
       command,
       dispatchCommand: transport.dispatchCommand,
       onAccepted: (result) =>
-        scheduleThreadProjectionSyncAfterDispatch({
+        scheduleSessionProjectionSyncAfterDispatch({
           transport,
           replayAfterSequence: replayAfterDispatch(command, result),
-          threadId: thread.id,
+          sessionId: session.id,
         }),
     })
     if (!outcome.ok) setSendError(outcome.message)
@@ -349,8 +370,8 @@ function confirmCheckpointRevert(turnCount: number) {
 
   return window.confirm(
     [
-      `Revert this thread to checkpoint ${turnCount}?`,
-      'This will discard newer messages and turn diffs in this thread.',
+      `Revert this session to checkpoint ${turnCount}?`,
+      'This will discard newer messages and turn diffs in this session.',
       'This action cannot be undone.',
     ].join('\n'),
   )

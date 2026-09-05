@@ -1,25 +1,25 @@
+import { TEST_PROJECT_ID, TEST_WORKTREE_ID } from '../../../../../test/factories/chat'
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_PROVIDER_INSTANCE_ID,
   DEFAULT_RUNTIME_MODE,
   projectMetaUpdateCommandSchema,
-  threadIdSchema,
+  sessionIdSchema,
   type ModelSelection,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
 import {
-  createDraftThreadSubmission,
+  createDraftSessionSubmission,
   createCheckpointRevertCommand,
   createProjectDefaultModelCommand,
   createProjectMetaCommand,
   createProjectScriptsCommand,
-  createThreadInterruptCommand,
+  createSessionInterruptCommand,
   createTurnSubmission,
   createWorkspaceProjectCommand,
-  threadTitleFromPrompt,
-  workspaceProjectId,
+  sessionTitleFromPrompt,
   workspaceProjectTitle,
 } from '@/features/chat/utils/command-builders'
 
@@ -29,11 +29,12 @@ const testModelSelection: ModelSelection = {
 }
 
 describe('chat command builders', () => {
-  it('derives a stable project identity from the workspace path', () => {
+  it('registers a checkout without inventing authoritative identifiers', () => {
     const rootPath = '/Users/test/workspace/platform'
     const command = createWorkspaceProjectCommand({ rootPath })
 
-    expect(command.projectId).toBe(workspaceProjectId(rootPath))
+    expect(command).not.toHaveProperty('projectId')
+    expect(command).not.toHaveProperty('worktreeId')
     expect(command.title).toBe('platform')
     expect(command.workspaceRoot).toBe(rootPath)
     // No invented default: the model is resolved from live providers at compose time.
@@ -41,7 +42,7 @@ describe('chat command builders', () => {
   })
 
   it('builds a project default-model update that touches nothing else', () => {
-    const projectId = workspaceProjectId('/Users/test/workspace/platform')
+    const projectId = TEST_PROJECT_ID
     const command = createProjectDefaultModelCommand({
       defaultModelSelection: testModelSelection,
       projectId,
@@ -57,7 +58,7 @@ describe('chat command builders', () => {
   })
 
   it('builds a turn command and matching optimistic user message', () => {
-    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
     const modelSelection: ModelSelection = {
       model: 'codex-test',
       providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
@@ -77,43 +78,38 @@ describe('chat command builders', () => {
       modelSelection,
       runtimeMode: DEFAULT_RUNTIME_MODE,
       text: 'Explain the workspace',
-      threadId,
+      sessionId,
     })
 
-    expect(submission.command.type).toBe('thread.turn.start')
+    expect(submission.command.type).toBe('session.turn.start')
     expect(submission.command.message.messageId).toBe(submission.optimisticMessage.id)
     expect(submission.optimisticMessage.turnId).toBe(submission.command.turnId)
     expect(submission.optimisticMessage.text).toBe('Explain the workspace')
     expect(submission.command.message.attachments).toEqual(submission.optimisticMessage.attachments)
   })
 
-  it('builds a draft thread turn with bootstrap create-thread metadata', () => {
-    const projectId = workspaceProjectId('/Users/test/workspace/platform')
-    const submission = createDraftThreadSubmission({
+  it('builds a draft session turn with bootstrap create-session metadata', () => {
+    const submission = createDraftSessionSubmission({
       createdAt: '2026-05-24T12:00:00.000Z',
       modelSelection: testModelSelection,
-      projectId,
-      rootPath: '/Users/test/workspace/platform',
-      text: 'Fix the draft thread flow',
+      worktreeId: TEST_WORKTREE_ID,
+      text: 'Fix the draft session flow',
     })
 
-    expect(submission.command.type).toBe('thread.turn.start')
-    expect(submission.command.bootstrap?.createThread).toMatchObject({
-      projectId,
-      title: 'Fix the draft thread flow',
-      worktreePath: '/Users/test/workspace/platform',
+    expect(submission.command.type).toBe('session.turn.start')
+    expect(submission.command.bootstrap?.createSession).toMatchObject({
+      worktreeId: TEST_WORKTREE_ID,
+      title: 'Fix the draft session flow',
     })
     expect(submission.command.message.messageId).toBe(submission.optimisticMessage.id)
-    expect(submission.command.threadId).toBe(submission.optimisticMessage.threadId)
+    expect(submission.command.sessionId).toBe(submission.optimisticMessage.sessionId)
   })
 
-  it('does not derive thread titles from secret-bearing prompts', () => {
-    const projectId = workspaceProjectId('/Users/test/workspace/platform')
-    const draft = createDraftThreadSubmission({
+  it('does not derive session titles from secret-bearing prompts', () => {
+    const draft = createDraftSessionSubmission({
       createdAt: '2026-05-24T12:00:00.000Z',
       modelSelection: testModelSelection,
-      projectId,
-      rootPath: '/Users/test/workspace/platform',
+      worktreeId: TEST_WORKTREE_ID,
       text: 'Rotate the API key in staging',
     })
     const turn = createTurnSubmission({
@@ -125,17 +121,17 @@ describe('chat command builders', () => {
       },
       runtimeMode: DEFAULT_RUNTIME_MODE,
       text: 'The password is hunter2',
-      threadId: v.parse(threadIdSchema, 'thread-1'),
+      sessionId: v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb'),
     })
 
-    expect(threadTitleFromPrompt('Fix tokenizer tests')).toBe('Fix tokenizer tests')
-    expect(threadTitleFromPrompt('The access_key is abc123')).toBeUndefined()
-    expect(draft.command.bootstrap?.createThread?.title).toBe('New chat')
+    expect(sessionTitleFromPrompt('Fix tokenizer tests')).toBe('Fix tokenizer tests')
+    expect(sessionTitleFromPrompt('The access_key is abc123')).toBeUndefined()
+    expect(draft.command.bootstrap?.createSession?.title).toBe('New chat')
     expect(draft.command.titleSeed).toBe('New chat')
     expect(turn.command.titleSeed).toBeUndefined()
   })
 
-  it('appends captured terminal output after the prompt without renaming the thread', () => {
+  it('appends captured terminal output after the prompt without renaming the session', () => {
     const terminalContexts = [
       { lineEnd: 812, lineStart: 810, source: 'terminal-1', text: 'make: *** [build] Error 1' },
     ]
@@ -146,13 +142,12 @@ describe('chat command builders', () => {
       runtimeMode: DEFAULT_RUNTIME_MODE,
       terminalContexts,
       text: 'Why is this failing?',
-      threadId: v.parse(threadIdSchema, 'thread-1'),
+      sessionId: v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb'),
     })
-    const draft = createDraftThreadSubmission({
+    const draft = createDraftSessionSubmission({
       createdAt: '2026-05-24T12:00:00.000Z',
       modelSelection: testModelSelection,
-      projectId: workspaceProjectId('/Users/test/workspace/platform'),
-      rootPath: '/Users/test/workspace/platform',
+      worktreeId: TEST_WORKTREE_ID,
       terminalContexts,
       // Nothing typed: the title must not fall back to the attached markup.
       text: '',
@@ -163,43 +158,43 @@ describe('chat command builders', () => {
     )
     expect(turn.command.message.text).toBe(turn.optimisticMessage.text)
     expect(turn.command.titleSeed).toBe('Why is this failing?')
-    expect(draft.command.bootstrap?.createThread?.title).toBe('New chat')
+    expect(draft.command.bootstrap?.createSession?.title).toBe('New chat')
     expect(draft.command.message.text).toContain('<terminal_context>')
   })
 
-  it('keeps interrupt commands scoped to the active thread and turn', () => {
-    const threadId = v.parse(threadIdSchema, 'thread-1')
-    const command = createThreadInterruptCommand({ threadId })
+  it('keeps interrupt commands scoped to the active session and turn', () => {
+    const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
+    const command = createSessionInterruptCommand({ sessionId })
 
-    expect(command.type).toBe('thread.turn.interrupt')
-    expect(command.threadId).toBe(threadId)
+    expect(command.type).toBe('session.turn.interrupt')
+    expect(command.sessionId).toBe(sessionId)
     expect(command.turnId).toBeUndefined()
   })
 
   it('builds checkpoint revert commands for user-row rollback affordances', () => {
-    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
     const command = createCheckpointRevertCommand({
-      threadId,
+      sessionId,
       turnCount: 2,
     })
 
     expect(command).toMatchObject({
-      threadId,
+      sessionId,
       turnCount: 2,
-      type: 'thread.checkpoint.revert',
+      type: 'session.checkpoint.revert',
     })
   })
 
   it('formats workspace and prompt titles for compact sidebar use', () => {
     expect(workspaceProjectTitle('/Users/test/workspace/platform/')).toBe('platform')
-    expect(threadTitleFromPrompt('  Fix the failing chat projection tests  ')).toBe(
+    expect(sessionTitleFromPrompt('  Fix the failing chat projection tests  ')).toBe(
       'Fix the failing chat projection tests',
     )
-    expect(threadTitleFromPrompt('x'.repeat(80))).toHaveLength(50)
+    expect(sessionTitleFromPrompt('x'.repeat(80))).toHaveLength(48)
   })
 
   it('a project rename names only the field it changes', () => {
-    const projectId = workspaceProjectId('/Users/test/workspace/platform')
+    const projectId = TEST_PROJECT_ID
     const command = createProjectMetaCommand({ projectId, title: 'Renamed' })
 
     // The projection patches compactly, so an absent key means "leave it alone".
@@ -218,7 +213,7 @@ describe('chat command builders', () => {
 
   it('saved scripts are written as a whole list, empty included', () => {
     const cleared = createProjectScriptsCommand({
-      projectId: workspaceProjectId('/Users/test/workspace/platform'),
+      projectId: TEST_PROJECT_ID,
       scripts: [],
     })
 

@@ -39,8 +39,8 @@ export const gitKeys = {
     fromTurnCount: number
     ignoreWhitespace?: boolean
     path?: string
-    scope?: 'file' | 'thread' | 'turn'
-    threadId: string
+    scope?: 'file' | 'session' | 'turn'
+    sessionId: string
     toTurnCount: number
   }) => [...gitKeys.diffs(), 'checkpoint', query] as const,
   diff: (path: string, staged: boolean) => [...gitKeys.diffs(), path, staged] as const,

@@ -1,3 +1,4 @@
+import { useEnvironmentId } from '@/lib/environments/hooks/use-environment-id'
 import { useQuery } from '@tanstack/react-query'
 import { useDebouncedValue } from '@tanstack/react-pacer/debouncer'
 import { useEffect } from 'react'
@@ -21,6 +22,7 @@ const NO_MATCHES: readonly [] = []
  * question the rail cannot answer.
  */
 export function useSessionSearch() {
+  const environmentId = useEnvironmentId()
   const query = useSessionRailStore((state) => state.query)
   const [settledQuery] = useDebouncedValue(query, { wait: SESSION_SEARCH_DEBOUNCE_MS })
   const result = useQuery(sessionSearchQueryOptions({ query: settledQuery }))
@@ -31,6 +33,6 @@ export function useSessionSearch() {
   const searching = isSessionSearchQuery(query) && (result.isFetching || settledQuery !== query)
 
   useEffect(() => {
-    sync({ matches, query: settledQuery.trim(), searching })
-  }, [matches, searching, settledQuery, sync])
+    sync({ environmentId, matches, query: settledQuery.trim(), searching })
+  }, [environmentId, matches, searching, settledQuery, sync])
 }

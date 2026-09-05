@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT_ID } from './chat'
 import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import { createClientError } from '@/lib/structured-errors'
 
@@ -12,16 +13,17 @@ import { createClientError } from '@/lib/structured-errors'
  */
 export function unsupportedChatTransport(overrides: Partial<ChatTransport> = {}): ChatTransport {
   return {
+    environmentId: TEST_ENVIRONMENT_ID,
     closed: false,
     close: () => unsupported('close'),
-    retainThreadDetail: () => unsupported('retainThreadDetail'),
+    retainSessionDetail: () => unsupported('retainSessionDetail'),
     loadEarlierPage: () => unsupported('loadEarlierPage'),
     dispatchCommand: () => unsupported('dispatchCommand'),
     replayEvents: () => unsupported('replayEvents'),
     shellStream: () => unsupportedStream('shellStream'),
-    threadDetailPage: () => unsupported('threadDetailPage'),
-    threadDetailSnapshot: () => unsupported('threadDetailSnapshot'),
-    threadDetailStream: () => unsupportedStream('threadDetailStream'),
+    sessionDetailPage: () => unsupported('sessionDetailPage'),
+    sessionDetailSnapshot: () => unsupported('sessionDetailSnapshot'),
+    sessionDetailStream: () => unsupportedStream('sessionDetailStream'),
     ...overrides,
   }
 }

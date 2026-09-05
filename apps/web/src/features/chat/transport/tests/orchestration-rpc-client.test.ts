@@ -1,4 +1,8 @@
-import { threadIdSchema, type OrchestrationWsClientMessage } from '@workspace/contracts'
+import {
+  environmentIdSchema,
+  sessionIdSchema,
+  type OrchestrationWsClientMessage,
+} from '@workspace/contracts'
 import { describe } from 'vitest'
 import * as v from 'valibot'
 
@@ -18,7 +22,7 @@ const ORIGIN = 'http://orchestration.test'
 const HEARTBEAT_MS = 10
 const HEARTBEAT_TIMEOUT_MS = 20
 const SLOW_REQUEST_MS = 15
-const THREAD_ID = v.parse(threadIdSchema, 'thread-1')
+const SESSION_ID = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
 
 describe('orchestration rpc client liveness', () => {
   test('an unanswered heartbeat tears the socket down so subscriptions can reconnect', async () => {
@@ -80,12 +84,12 @@ describe('orchestration rpc client transport boundary', () => {
     const surface = Object.getOwnPropertyNames(OrchestrationRpcClient.prototype)
 
     // Frames are written in order, so a snapshot for a workspace with hundreds
-    // of threads would stall every ping, dispatch and subscription frame behind
+    // of sessions would stall every ping, dispatch and subscription frame behind
     // it. Those two reads belong on `orchestration-http-snapshots.ts`; the
     // subscriptions still deliver `kind: 'snapshot'` frames, which is fine —
     // they are part of the ordered stream rather than a one-shot read.
     expect(surface).not.toContain('shellSnapshot')
-    expect(surface).not.toContain('threadDetailSnapshot')
+    expect(surface).not.toContain('sessionDetailSnapshot')
   })
 })
 
@@ -120,7 +124,7 @@ describe('orchestration rpc client connection identity', () => {
     resetServerConnectionStore()
     const socket = new FakeOrchestrationSocket()
     const client = createClient(socket, latencyOnly())
-    const page = captureOutcome(client.threadDetailPage({ threadId: THREAD_ID }))
+    const page = captureOutcome(client.sessionDetailPage({ sessionId: SESSION_ID }))
 
     await tick()
     socket.open()
@@ -146,8 +150,8 @@ describe('orchestration rpc client connection identity', () => {
     const socketB = new FakeOrchestrationSocket()
     const clientA = createClient(socketA, latencyOnly())
     const clientB = createClient(socketB, latencyOnly())
-    const first = captureOutcome(clientA.threadDetailPage({ threadId: THREAD_ID }))
-    const second = captureOutcome(clientB.threadDetailPage({ threadId: THREAD_ID }))
+    const first = captureOutcome(clientA.sessionDetailPage({ sessionId: SESSION_ID }))
+    const second = captureOutcome(clientB.sessionDetailPage({ sessionId: SESSION_ID }))
     await tick()
     socketA.open()
     socketB.open()
@@ -166,7 +170,7 @@ describe('orchestration rpc client connection identity', () => {
     resetServerConnectionStore()
     const socket = new FakeOrchestrationSocket()
     const client = createClient(socket, latencyOnly())
-    const failure = captureOutcome(client.threadDetailPage({ threadId: THREAD_ID }))
+    const failure = captureOutcome(client.sessionDetailPage({ sessionId: SESSION_ID }))
 
     await tick()
     socket.open()
@@ -303,7 +307,7 @@ describe('orchestration rpc permanent close', () => {
         heartbeatIntervalMs: 10_000,
       })
       const stream = captureOutcome(client.shellStream()[Symbol.asyncIterator]().next())
-      const request = captureOutcome(client.threadDetailPage({ threadId: THREAD_ID }))
+      const request = captureOutcome(client.sessionDetailPage({ sessionId: SESSION_ID }))
       await tick()
       if (open) socket.open()
       await tick()
@@ -316,7 +320,9 @@ describe('orchestration rpc permanent close', () => {
       await tick()
       expect(socket.sent).toHaveLength(frameCount)
       expect(client.closed).toBe(true)
-      expect(await captureOutcome(client.threadDetailPage({ threadId: THREAD_ID }))).toMatchObject({
+      expect(
+        await captureOutcome(client.sessionDetailPage({ sessionId: SESSION_ID })),
+      ).toMatchObject({
         code: 'ORCHESTRATION_RPC_CLOSED',
       })
       expect(socketCount).toBe(1)
@@ -344,13 +350,15 @@ describe('orchestration rpc permanent close', () => {
       origin,
       createSocket: () => socket as unknown as WebSocket,
     })
-    const result = captureOutcome(client.threadDetailPage({ threadId: THREAD_ID }))
+    const result = captureOutcome(client.sessionDetailPage({ sessionId: SESSION_ID }))
     await tick()
     socket.open(false)
     expect(socket.sent).toEqual([])
     socket.deliver({
       kind: 'connected',
-      config: orchestrationServerConfig({ environmentId: 'other-environment' }),
+      config: orchestrationServerConfig({
+        environmentId: v.parse(environmentIdSchema, 'a4ed57c5-1f10-4f56-8f9b-893740aab7db'),
+      }),
     })
     expect(await result).toMatchObject({ code: 'ENVIRONMENT_IDENTITY_DRIFT', status: 403 })
     expect(selectServerConnection(useEnvironmentsStore.getState(), origin).phase).toBe(

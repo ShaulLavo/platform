@@ -1,14 +1,16 @@
-import type { ProviderSessionStartInput, ProviderTurnInput } from '../../types'
+import type { ProviderRuntimeStartInput, ProviderTurnInput } from '../../types'
 
-export function sessionInputFromTurn(input: ProviderTurnInput): ProviderSessionStartInput {
+export function sessionInputFromTurn(input: ProviderTurnInput): ProviderRuntimeStartInput {
   return {
     cwd: input.cwd,
     ephemeral: input.ephemeral,
+    resumeExisting: input.resumeExisting,
     interactionMode: input.interactionMode,
     modelSelection: input.modelSelection,
     providerInstanceId: input.providerInstanceId,
-    resumeCursor: input.resumeCursor ?? null,
+    providerResumeCursor: input.providerResumeCursor ?? null,
     runtimeMode: input.runtimeMode,
-    threadId: input.thread.id,
+    sessionId: input.sessionId,
+    runtimeEpoch: input.runtimeEpoch,
   }
 }

@@ -1,29 +1,28 @@
 import { createInternalError } from '../observability/structured-errors'
+import { sessionIdentityErrors } from './structured-errors'
 
 import type {
   ModelSelection,
-  OrchestrationSessionStatus,
   ProviderInstanceId,
   ProviderSnapshot,
   RuntimeMode,
-  ThreadId,
+  SessionId,
 } from '@workspace/contracts'
 import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
-  threadIdSchema,
+  sessionIdSchema,
   turnIdSchema,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 import { providerContinuationKey } from './driver'
-import type { ProviderSessionStartPayload } from './session-payload'
+import type { ProviderRuntimeStartPayload } from './session-payload'
 import type {
   ProviderAdapterRegistry,
   ProviderInstanceRoutingInfo,
 } from './provider-adapter-registry'
 import { createDefaultProviderAdapterRegistry } from './provider-adapter-registry'
 import {
-  isActiveBinding,
   ProviderSessionDirectory,
   type ProviderRuntimeBindingWithMetadata,
 } from './provider-session-directory'
@@ -40,10 +39,11 @@ import {
 import type {
   ProviderApprovalResponseInput,
   ProviderRuntimeEvent,
-  ProviderSessionStartInput,
+  ProviderRuntimeStartInput,
   ProviderTurnControlInput,
   ProviderTurnInput,
   ProviderUserInputResponseInput,
+  ProviderSessionDiscoveryInput,
 } from './types'
 import {
   ProviderTextGenerationTask,
@@ -58,25 +58,27 @@ export type ProviderServiceOptions = {
   sessionDirectory?: ProviderSessionDirectory
 }
 
-export type ProviderStartSessionInput = {
+export type ProviderStartRuntimeInput = {
   providerInstanceId: ProviderInstanceId
-  providerSessionId?: string | null
-  resumeCursor?: unknown | null
+  providerBindingHandle?: string | null
+  providerResumeCursor?: unknown | null
   runtimeMode: RuntimeMode
-  runtimePayload: ProviderSessionStartPayload
-  status?: OrchestrationSessionStatus
-  threadId: ThreadId
+  runtimePayload: ProviderRuntimeStartPayload
+  runtimeEpoch: string
+  resumeExisting?: boolean
+  sessionId: SessionId
 }
 
-export type ProviderEnsureSessionInput = {
+export type ProviderEnsureRuntimeInput = {
   providerInstanceId: ProviderInstanceId
   runtimeMode: RuntimeMode
-  runtimePayload: ProviderSessionStartPayload
-  status?: OrchestrationSessionStatus
-  threadId: ThreadId
+  runtimePayload: ProviderRuntimeStartPayload
+  runtimeEpoch: string
+  resumeExisting?: boolean
+  sessionId: SessionId
 }
 
-export type ProviderEnsureSessionResult = {
+export type ProviderEnsureRuntimeResult = {
   binding: ProviderRuntimeBindingWithMetadata
   reused: boolean
 }
@@ -95,17 +97,24 @@ type ProviderRuntimeEventTask = {
   providerInstanceId: ProviderInstanceId
 }
 
+type PendingProviderLaunch = {
+  adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>
+  completion: Promise<void>
+  providerInstanceId: ProviderInstanceId
+}
+
 export class ProviderService {
   private readonly adapterSubscriptions = new Map<ProviderInstanceId, AdapterSubscription>()
   private readonly adapterRegistry: ProviderAdapterRegistry
+  private readonly pendingLaunches = new Map<SessionId, PendingProviderLaunch>()
   private readonly reaper: ProviderSessionReaper
   private readonly runtimeEventListeners = new Set<ProviderRuntimeEventListener>()
   private readonly runtimeEvents = new SerialWorker<ProviderRuntimeEventTask>((task) =>
     this.handleRuntimeEvent(task),
   )
   private readonly sessionDirectory: ProviderSessionDirectory
-  private readonly suppressedTextGenerationThreads = new Set<ThreadId>()
-  private readonly textGenerationTasks = new Map<ThreadId, ProviderTextGenerationTask>()
+  private readonly suppressedTextGenerationSessions = new Set<SessionId>()
+  private readonly textGenerationTasks = new Map<SessionId, ProviderTextGenerationTask>()
   private shuttingDown = false
   private unsubscribeRegistry: (() => void) | null = null
 
@@ -115,7 +124,8 @@ export class ProviderService {
     this.reaper = new ProviderSessionReaper({
       deadlineMs: options.idleSessionDeadlineMs,
       directory: this.sessionDirectory,
-      stopSession: (input) => this.stopSession(input),
+      isLaunching: (sessionId) => this.pendingLaunches.has(sessionId),
+      stopRuntime: (input) => this.stopRuntime(input),
     })
     this.startAdapterEventStreams()
   }
@@ -124,8 +134,8 @@ export class ProviderService {
    * Liveness, called for every runtime event the ingestion pipeline accepts.
    * The reaper's deadline is only safe to act on because this is fed.
    */
-  markSessionSeen(threadId: ThreadId) {
-    this.sessionDirectory.markSeen(threadId)
+  markRuntimeSeen(sessionId: SessionId) {
+    this.sessionDirectory.markSeen(sessionId)
   }
 
   /**
@@ -142,34 +152,45 @@ export class ProviderService {
       unsubscribe()
     }
     this.adapterSubscriptions.clear()
+    const pendingLaunches = await Promise.allSettled(
+      [...this.pendingLaunches.values()].map((launch) =>
+        boundedProviderOperation(launch.adapter, launch.completion),
+      ),
+    )
     await this.adapterRegistry.dispose()
-    recordChatPipelineInfo('chat.pipeline.provider_service.shutdown.complete', {})
+    recordChatPipelineInfo('chat.pipeline.provider_service.shutdown.complete', {
+      pendingLaunchCount: pendingLaunches.length,
+      timedOutLaunchCount: pendingLaunches.filter((result) => result.status === 'rejected').length,
+    })
   }
 
-  async startSession(input: ProviderStartSessionInput) {
+  async startRuntime(input: ProviderStartRuntimeInput) {
+    return this.trackLaunch(input, () => this.startRuntimeOperation(input))
+  }
+
+  private async startRuntimeOperation(input: ProviderStartRuntimeInput) {
     recordChatPipelineInfo('chat.pipeline.provider_service.start_session.start', {
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
-      status: input.status ?? 'starting',
-      threadId: input.threadId,
+      sessionId: input.sessionId,
     })
     const adapter = this.adapterRegistry.getByInstance(input.providerInstanceId)
-    const session = await adapter.startSession(
-      providerSessionStartInput(input, input.runtimePayload),
+    this.recordLaunch(input, adapter)
+    const session = await adapter.startRuntime(
+      providerRuntimeStartInput(input, input.runtimePayload),
     )
+    this.requireRunning()
     const binding = this.sessionDirectory.upsert({
       adapterKey: adapter.adapterKey,
       providerDriverKind: adapter.driverKind,
       providerInstanceId: input.providerInstanceId,
-      providerSessionId: input.providerSessionId ?? session.providerSessionId,
-      resumeCursor: session.resumeCursor ?? input.resumeCursor ?? null,
+      providerBindingHandle: input.providerBindingHandle ?? session.providerBindingHandle,
+      providerResumeCursor: session.providerResumeCursor ?? input.providerResumeCursor ?? null,
       runtimeMode: input.runtimeMode,
-      runtimePayload: {
-        ...input.runtimePayload,
-        providerThreadId: session.providerThreadId ?? null,
-      },
-      status: input.status ?? session.status,
-      threadId: input.threadId,
+      runtimePayload: input.runtimePayload,
+      runtimeEpoch: input.runtimeEpoch,
+      providerConversationMarker: session.providerConversationMarker ?? null,
+      sessionId: input.sessionId,
     })
     recordChatPipelineInfo('chat.pipeline.provider_service.start_session.complete', {
       ...providerBindingSummary(binding),
@@ -178,27 +199,39 @@ export class ProviderService {
     return binding
   }
 
-  async ensureSession(input: ProviderEnsureSessionInput): Promise<ProviderEnsureSessionResult> {
+  async ensureRuntime(input: ProviderEnsureRuntimeInput): Promise<ProviderEnsureRuntimeResult> {
+    return this.trackLaunch(input, () => this.ensureRuntimeOperation(input))
+  }
+
+  private async ensureRuntimeOperation(
+    input: ProviderEnsureRuntimeInput,
+  ): Promise<ProviderEnsureRuntimeResult> {
     recordChatPipelineInfo('chat.pipeline.provider_service.ensure_session.start', {
       model: input.runtimePayload.modelSelection?.model,
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
-      threadId: input.threadId,
+      sessionId: input.sessionId,
     })
-    // Reclaim before allocating, and never the thread being ensured: its own
+    // Reclaim before allocating, and never the session being ensured: its own
     // binding can easily be the oldest one here.
-    await this.reaper.sweep({ exceptThreadId: input.threadId })
+    await this.reaper.sweep({ exceptSessionId: input.sessionId })
     const adapter = this.adapterRegistry.getByInstance(input.providerInstanceId)
-    const existing = this.sessionDirectory.getBinding(input.threadId)
-    const reusableBinding = canReuseProviderBinding(existing, input, adapter) ? existing : null
+    const existing = this.sessionDirectory.getBinding(input.sessionId)
+    if (existing && existing.providerInstanceId !== input.providerInstanceId)
+      throw sessionIdentityErrors.SESSION_PROVIDER_CONFLICT()
+    const reusableBinding =
+      existing?.runtimeEpoch === input.runtimeEpoch &&
+      canReuseProviderBinding(existing, input, adapter)
+        ? existing
+        : null
     const activeReusableBinding = reusableBinding
       ? await activeProviderBinding(adapter, reusableBinding)
       : null
     if (activeReusableBinding) {
+      this.requireRunning()
       const binding = this.sessionDirectory.upsert({
         ...bindingForUpsert(activeReusableBinding),
         runtimePayload: input.runtimePayload,
-        status: input.status ?? activeReusableBinding.status,
       })
       recordChatPipelineInfo('chat.pipeline.provider_service.ensure_session.complete', {
         ...providerBindingSummary(binding),
@@ -215,22 +248,23 @@ export class ProviderService {
     const continuation = continuableBinding(existing, adapter, input.providerInstanceId, {
       modelChanged: bindingModelChanged(existing, input.runtimePayload.modelSelection),
     })
-    const session = await adapter.startSession(
-      providerSessionStartInput(input, input.runtimePayload, continuation),
+    this.recordLaunch(input, adapter)
+    const session = await adapter.startRuntime(
+      providerRuntimeStartInput(input, input.runtimePayload, continuation),
     )
+    this.requireRunning()
     const binding = this.sessionDirectory.upsert({
       adapterKey: adapter.adapterKey,
       providerDriverKind: adapter.driverKind,
       providerInstanceId: input.providerInstanceId,
-      providerSessionId: session.providerSessionId,
-      resumeCursor: session.resumeCursor ?? continuation?.resumeCursor ?? null,
+      providerBindingHandle: session.providerBindingHandle,
+      providerResumeCursor:
+        session.providerResumeCursor ?? continuation?.providerResumeCursor ?? null,
       runtimeMode: input.runtimeMode,
-      runtimePayload: {
-        ...input.runtimePayload,
-        providerThreadId: session.providerThreadId ?? null,
-      },
-      status: input.status ?? session.status,
-      threadId: input.threadId,
+      runtimePayload: input.runtimePayload,
+      runtimeEpoch: input.runtimeEpoch,
+      providerConversationMarker: session.providerConversationMarker ?? null,
+      sessionId: input.sessionId,
     })
 
     recordChatPipelineInfo('chat.pipeline.provider_service.ensure_session.complete', {
@@ -254,14 +288,12 @@ export class ProviderService {
     const turn = this.turnWithResumeCursor(input, adapter)
 
     try {
-      this.sessionDirectory.markStatus(input.thread.id, 'running')
       await adapter.sendTurn(turn)
       recordChatPipelineInfo('chat.pipeline.provider_service.send_turn.complete', {
         ...providerTurnSummary(input),
         durationMs: elapsedMs(startedAt),
       })
     } catch (error) {
-      this.markTurnFailed(input, error)
       recordChatPipelineWarning('chat.pipeline.provider_service.send_turn.failed', {
         ...providerTurnSummary(input),
         durationMs: elapsedMs(startedAt),
@@ -282,11 +314,11 @@ export class ProviderService {
     let turnStarted = false
     let interruptPromise: Promise<void> | null = null
     let stopPromise: Promise<void> | null = null
-    const stopSession = () => {
+    const stopRuntime = () => {
       if (!sessionStarted) return Promise.resolve()
       if (stopPromise) return stopPromise
 
-      stopPromise = this.stopTextGenerationSession(adapter, ids.threadId)
+      stopPromise = this.stopTextGenerationSession(adapter, ids.sessionId)
       return stopPromise
     }
     const interrupt = () => {
@@ -294,7 +326,7 @@ export class ProviderService {
 
       interruptPromise = Promise.all([
         this.interruptTextGenerationTurn(adapter, ids, turnStarted),
-        stopSession(),
+        stopRuntime(),
       ]).then(noop)
       return interruptPromise
     }
@@ -304,26 +336,27 @@ export class ProviderService {
       ...ids,
     })
     const abort = () => void task.interrupt()
-    this.textGenerationTasks.set(ids.threadId, task)
+    this.textGenerationTasks.set(ids.sessionId, task)
     input.signal?.addEventListener('abort', abort, { once: true })
     recordChatPipelineInfo('chat.pipeline.provider_service.text_generation.start', {
       model: input.modelSelection.model,
       promptLength: input.messageText.length,
       providerInstanceId,
-      threadId: ids.threadId,
+      sessionId: ids.sessionId,
       turnId: ids.turnId,
     })
 
     try {
       throwIfTextGenerationAborted(input.signal)
-      await adapter.startSession({
+      await adapter.startRuntime({
         cwd: input.cwd,
         ephemeral: true,
         interactionMode: DEFAULT_INTERACTION_MODE,
         modelSelection: input.modelSelection,
         providerInstanceId,
         runtimeMode: 'approval-required',
-        threadId: ids.threadId,
+        sessionId: ids.sessionId,
+        runtimeEpoch: ids.runtimeEpoch,
       })
       sessionStarted = true
       throwIfTextGenerationAborted(input.signal)
@@ -337,7 +370,8 @@ export class ProviderService {
         modelSelection: input.modelSelection,
         providerInstanceId,
         runtimeMode: 'approval-required',
-        thread: { id: ids.threadId },
+        sessionId: ids.sessionId,
+        runtimeEpoch: ids.runtimeEpoch,
         turnId: ids.turnId,
       })
       await this.drainRuntimeEvents()
@@ -348,7 +382,7 @@ export class ProviderService {
         model: input.modelSelection.model,
         outputLength: result.text.length,
         providerInstanceId,
-        threadId: ids.threadId,
+        sessionId: ids.sessionId,
         turnId: ids.turnId,
       })
       return result
@@ -362,16 +396,16 @@ export class ProviderService {
         error: failure,
         model: input.modelSelection.model,
         providerInstanceId,
-        threadId: ids.threadId,
+        sessionId: ids.sessionId,
         turnId: ids.turnId,
       })
       throw failure
     } finally {
       input.signal?.removeEventListener('abort', abort)
-      await stopSession()
+      await stopRuntime()
       await this.drainRuntimeEvents()
-      this.suppressCompletedTextGeneration(ids.threadId)
-      this.textGenerationTasks.delete(ids.threadId)
+      this.suppressCompletedTextGeneration(ids.sessionId)
+      this.textGenerationTasks.delete(ids.sessionId)
       adapterLease.release()
     }
   }
@@ -380,7 +414,7 @@ export class ProviderService {
     recordChatPipelineInfo('chat.pipeline.provider_service.interrupt.start', {
       ...providerTurnControlSummary(input),
     })
-    const routed = this.routeThread(input.threadId)
+    const routed = this.routeSession(input.sessionId)
     if (!routed) {
       recordChatPipelineWarning('chat.pipeline.provider_service.interrupt.missing_binding', {
         ...providerTurnControlSummary(input),
@@ -389,11 +423,8 @@ export class ProviderService {
     }
 
     await routed.adapter.interruptTurn(input)
-    const binding = this.sessionDirectory.upsert({
-      ...bindingForUpsert(routed.binding),
-      runtimePayload: { activeTurnId: null },
-      status: 'ready',
-    })
+    this.sessionDirectory.markSeen(input.sessionId)
+    const binding = routed.binding
     recordChatPipelineInfo('chat.pipeline.provider_service.interrupt.complete', {
       ...providerBindingSummary(binding),
       ...providerTurnControlSummary(input),
@@ -402,20 +433,18 @@ export class ProviderService {
     return binding
   }
 
-  async stopSession(input: { threadId: ThreadId }) {
+  async stopRuntime(input: { sessionId: SessionId }) {
     recordChatPipelineInfo('chat.pipeline.provider_service.stop.start', input)
-    const routed = this.routeThread(input.threadId)
+    await this.awaitPendingLaunch(input.sessionId)
+    const routed = this.routeSession(input.sessionId)
     if (!routed) {
       recordChatPipelineWarning('chat.pipeline.provider_service.stop.missing_binding', input)
       return null
     }
 
-    await routed.adapter.stopSession(input)
-    const binding = this.sessionDirectory.upsert({
-      ...bindingForUpsert(routed.binding),
-      runtimePayload: { activeTurnId: null },
-      status: 'stopped',
-    })
+    await boundedProviderOperation(routed.adapter, routed.adapter.stopRuntime(input))
+    this.sessionDirectory.markSeen(input.sessionId)
+    const binding = routed.binding
     recordChatPipelineInfo('chat.pipeline.provider_service.stop.complete', {
       ...providerBindingSummary(binding),
     })
@@ -426,13 +455,13 @@ export class ProviderService {
   async respondApproval(input: ProviderApprovalResponseInput) {
     recordChatPipelineInfo('chat.pipeline.provider_service.approval.start', {
       requestId: input.requestId,
-      threadId: input.threadId,
+      sessionId: input.sessionId,
     })
-    const routed = this.routeThread(input.threadId)
+    const routed = this.routeSession(input.sessionId)
     if (!routed) {
       recordChatPipelineWarning('chat.pipeline.provider_service.approval.missing_binding', {
         requestId: input.requestId,
-        threadId: input.threadId,
+        sessionId: input.sessionId,
       })
       return false
     }
@@ -440,7 +469,7 @@ export class ProviderService {
     await routed.adapter.respondApproval(input)
     recordChatPipelineInfo('chat.pipeline.provider_service.approval.complete', {
       requestId: input.requestId,
-      threadId: input.threadId,
+      sessionId: input.sessionId,
     })
     return true
   }
@@ -448,13 +477,13 @@ export class ProviderService {
   async respondUserInput(input: ProviderUserInputResponseInput) {
     recordChatPipelineInfo('chat.pipeline.provider_service.user_input.start', {
       requestId: input.requestId,
-      threadId: input.threadId,
+      sessionId: input.sessionId,
     })
-    const routed = this.routeThread(input.threadId)
+    const routed = this.routeSession(input.sessionId)
     if (!routed) {
       recordChatPipelineWarning('chat.pipeline.provider_service.user_input.missing_binding', {
         requestId: input.requestId,
-        threadId: input.threadId,
+        sessionId: input.sessionId,
       })
       return false
     }
@@ -462,13 +491,70 @@ export class ProviderService {
     await routed.adapter.respondUserInput(input)
     recordChatPipelineInfo('chat.pipeline.provider_service.user_input.complete', {
       requestId: input.requestId,
-      threadId: input.threadId,
+      sessionId: input.sessionId,
     })
     return true
   }
 
-  listSessions() {
-    return this.sessionDirectory.listBindings().filter(isActiveBinding)
+  async listActiveRuntimes() {
+    const bindings = this.sessionDirectory.listBindings()
+    const active = await Promise.all(
+      bindings.map(async (binding) => {
+        const adapter = this.adapterRegistry.adapter(binding.providerInstanceId)
+        if (
+          !adapter ||
+          !(await boundedProviderOperation(
+            adapter,
+            adapter.hasRuntime({ sessionId: binding.sessionId }),
+          ))
+        )
+          return null
+        return binding
+      }),
+    )
+    return active.filter((binding) => binding !== null)
+  }
+
+  async hasActiveRuntimeForInstance(providerInstanceId: ProviderInstanceId) {
+    if (
+      [...this.pendingLaunches.values()].some(
+        (launch) => launch.providerInstanceId === providerInstanceId,
+      )
+    )
+      return true
+    const active = await this.listActiveRuntimes()
+    return active.some((binding) => binding.providerInstanceId === providerInstanceId)
+  }
+
+  discoveryInstances() {
+    return this.adapterRegistry
+      .listInstances()
+      .filter((id) => Boolean(this.adapterRegistry.adapter(id)?.discoverSessions))
+  }
+
+  discoverSessions(
+    input: ProviderSessionDiscoveryInput & { providerInstanceId: ProviderInstanceId },
+  ) {
+    const adapter = this.adapterRegistry.getByInstance(input.providerInstanceId)
+    return adapter.discoverSessions?.(input) ?? Promise.resolve([])
+  }
+
+  async hasRuntime(input: { sessionId: SessionId }) {
+    await this.awaitPendingLaunch(input.sessionId)
+    const routed = this.routeSession(input.sessionId)
+    if (!routed) return false
+    return boundedProviderOperation(routed.adapter, routed.adapter.hasRuntime(input))
+  }
+
+  async reusableRuntimeEpoch(
+    input: Omit<ProviderEnsureRuntimeInput, 'runtimeEpoch'>,
+  ): Promise<string | null> {
+    await this.awaitPendingLaunch(input.sessionId)
+    const adapter = this.adapterRegistry.getByInstance(input.providerInstanceId)
+    const binding = this.sessionDirectory.getBinding(input.sessionId)
+    if (!binding || !canReuseProviderBinding(binding, input, adapter)) return null
+    const active = await activeProviderBinding(adapter, binding)
+    return active?.runtimeEpoch ?? null
   }
 
   getCapabilities(providerInstanceId: ProviderInstanceId): Promise<ProviderSnapshot['traits']> {
@@ -481,13 +567,15 @@ export class ProviderService {
     return this.adapterRegistry.getInstanceRoutingInfo(providerInstanceId)
   }
 
-  async rollbackConversation(input: { numTurns: number; threadId: ThreadId }) {
+  async rollbackConversation(input: { numTurns: number; sessionId: SessionId }) {
     if (input.numTurns === 0) return Promise.resolve()
-    const routed = this.routeThread(input.threadId)
+    const routed = this.routeSession(input.sessionId)
     if (!routed)
-      throw createInternalError(`No active provider session is bound to thread ${input.threadId}.`)
+      throw createInternalError(
+        `No active provider session is bound to session ${input.sessionId}.`,
+      )
 
-    await routed.adapter.rollbackThread(input)
+    await routed.adapter.rollbackSession(input)
   }
 
   subscribeRuntimeEvents(listener: ProviderRuntimeEventListener) {
@@ -505,25 +593,26 @@ export class ProviderService {
     return this.runtimeEvents.isIdle()
   }
 
-  bindingForThread(threadId: ThreadId) {
-    return this.sessionDirectory.getBinding(threadId)
+  bindingForSession(sessionId: SessionId) {
+    return this.sessionDirectory.getBinding(sessionId)
   }
 
   private turnWithResumeCursor(
     input: ProviderTurnInput,
     adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>,
   ): ProviderTurnInput {
-    if (input.resumeCursor !== undefined && input.resumeCursor !== null) return input
+    if (input.providerResumeCursor !== undefined && input.providerResumeCursor !== null)
+      return input
 
-    const binding = this.sessionDirectory.getBinding(input.thread.id)
+    const binding = this.sessionDirectory.getBinding(input.sessionId)
     const continuation = continuableBinding(binding, adapter, input.providerInstanceId)
     if (!continuation) return input
 
-    return { ...input, resumeCursor: continuation.resumeCursor }
+    return { ...input, providerResumeCursor: continuation.providerResumeCursor }
   }
 
-  private routeThread(threadId: ThreadId) {
-    const binding = this.sessionDirectory.getBinding(threadId)
+  private routeSession(sessionId: SessionId) {
+    const binding = this.sessionDirectory.getBinding(sessionId)
     if (!binding) return null
 
     const adapter = this.adapterRegistry.getByInstance(binding.providerInstanceId)
@@ -531,15 +620,87 @@ export class ProviderService {
     return { adapter, binding }
   }
 
+  private trackLaunch<T>(
+    input: ProviderStartRuntimeInput | ProviderEnsureRuntimeInput,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    this.requireRunning()
+    const adapter = this.adapterRegistry.getByInstance(input.providerInstanceId)
+    const previous = this.pendingLaunches.get(input.sessionId)
+    const result = Promise.resolve(previous?.completion).then(async () => {
+      this.requireRunning()
+      try {
+        return await operation()
+      } finally {
+        await this.stopShutdownLaunch(adapter, input.sessionId)
+      }
+    })
+    const launch = {
+      adapter,
+      providerInstanceId: input.providerInstanceId,
+      completion: result.then(noop, noop),
+    }
+    // Publish ownership before the reaper or adapter gets its first asynchronous turn.
+    this.pendingLaunches.set(input.sessionId, launch)
+    return result.finally(() => {
+      if (this.pendingLaunches.get(input.sessionId) === launch)
+        this.pendingLaunches.delete(input.sessionId)
+    })
+  }
+
+  private async awaitPendingLaunch(sessionId: SessionId) {
+    const launch = this.pendingLaunches.get(sessionId)
+    if (!launch) return
+    await boundedProviderOperation(launch.adapter, launch.completion)
+  }
+
+  private requireRunning() {
+    if (this.shuttingDown) throw sessionIdentityErrors.SERVICE_CLOSED()
+  }
+
+  private async stopShutdownLaunch(
+    adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>,
+    sessionId: SessionId,
+  ) {
+    if (!this.shuttingDown) return
+    await boundedProviderOperation(adapter, adapter.stopRuntime({ sessionId })).catch((error) => {
+      recordChatPipelineWarning('chat.pipeline.provider_service.shutdown.late_launch', {
+        error,
+        providerInstanceId: adapter.adapterKey,
+        sessionId,
+      })
+    })
+  }
+
+  private recordLaunch(
+    input: ProviderStartRuntimeInput | ProviderEnsureRuntimeInput,
+    adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>,
+  ) {
+    const existing = this.sessionDirectory.getBinding(input.sessionId)
+    if (existing && existing.providerInstanceId !== input.providerInstanceId) {
+      throw sessionIdentityErrors.SESSION_PROVIDER_CONFLICT()
+    }
+
+    this.sessionDirectory.upsert({
+      adapterKey: adapter.adapterKey,
+      providerDriverKind: adapter.driverKind,
+      providerInstanceId: input.providerInstanceId,
+      runtimeEpoch: input.runtimeEpoch,
+      runtimeMode: input.runtimeMode,
+      runtimePayload: input.runtimePayload,
+      sessionId: input.sessionId,
+    })
+  }
+
   private async stopTextGenerationSession(
     adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>,
-    threadId: ThreadId,
+    sessionId: SessionId,
   ) {
-    await adapter.stopSession({ threadId }).catch((error) => {
+    await adapter.stopRuntime({ sessionId }).catch((error) => {
       recordChatPipelineWarning('chat.pipeline.provider_service.text_generation.stop_failed', {
         error,
         providerInstanceId: adapter.adapterKey,
-        threadId,
+        sessionId,
       })
     })
   }
@@ -551,22 +712,22 @@ export class ProviderService {
   ) {
     if (!turnStarted) return
 
-    await adapter.interruptTurn({ threadId: ids.threadId, turnId: ids.turnId }).catch((error) => {
+    await adapter.interruptTurn({ sessionId: ids.sessionId, turnId: ids.turnId }).catch((error) => {
       recordChatPipelineWarning('chat.pipeline.provider_service.text_generation.interrupt_failed', {
         error,
         providerInstanceId: adapter.adapterKey,
-        threadId: ids.threadId,
+        sessionId: ids.sessionId,
         turnId: ids.turnId,
       })
     })
   }
 
-  private suppressCompletedTextGeneration(threadId: ThreadId) {
-    this.suppressedTextGenerationThreads.add(threadId)
-    if (this.suppressedTextGenerationThreads.size <= 1_024) return
+  private suppressCompletedTextGeneration(sessionId: SessionId) {
+    this.suppressedTextGenerationSessions.add(sessionId)
+    if (this.suppressedTextGenerationSessions.size <= 1_024) return
 
-    const oldest = this.suppressedTextGenerationThreads.values().next().value
-    if (oldest) this.suppressedTextGenerationThreads.delete(oldest)
+    const oldest = this.suppressedTextGenerationSessions.values().next().value
+    if (oldest) this.suppressedTextGenerationSessions.delete(oldest)
   }
 
   private startAdapterEventStreams() {
@@ -635,12 +796,15 @@ export class ProviderService {
     // replaced belongs to a stream nothing is listening to any more.
     if (this.adapterSubscriptions.get(task.providerInstanceId)?.adapter !== task.adapter) return
 
-    const textGeneration = this.textGenerationTasks.get(task.event.threadId)
+    const textGeneration = this.textGenerationTasks.get(task.event.sessionId)
     if (textGeneration) {
       if (textGeneration.accept(task.event)) await textGeneration.interrupt()
       return
     }
-    if (this.suppressedTextGenerationThreads.has(task.event.threadId)) return
+    if (this.suppressedTextGenerationSessions.has(task.event.sessionId)) return
+
+    const binding = this.sessionDirectory.getBinding(task.event.sessionId)
+    if (binding && binding.runtimeEpoch !== task.event.runtimeEpoch) return
 
     this.recordRuntimeEvent(task.event, task.adapter)
     await this.emitRuntimeEvent(task.event)
@@ -651,29 +815,17 @@ export class ProviderService {
     nextProviderInstanceId: ProviderInstanceId,
   ) {
     if (!binding) return
-    if (!isActiveBinding(binding)) return
     if (binding.providerInstanceId === nextProviderInstanceId) return
 
     const adapter = this.adapterRegistry.adapter(binding.providerInstanceId)
     if (!adapter) return
 
-    await adapter.stopSession({ threadId: binding.threadId }).catch((error) => {
+    await adapter.stopRuntime({ sessionId: binding.sessionId }).catch((error) => {
       recordChatPipelineWarning('chat.pipeline.provider_service.stop_replaced.failed', {
         error,
         providerInstanceId: binding.providerInstanceId,
-        threadId: binding.threadId,
+        sessionId: binding.sessionId,
       })
-    })
-  }
-
-  private markTurnFailed(input: ProviderTurnInput, error: unknown) {
-    const binding = this.sessionDirectory.getBinding(input.thread.id)
-    if (!binding) return
-
-    this.sessionDirectory.upsert({
-      ...bindingForUpsert(binding),
-      runtimePayload: { activeTurnId: null, lastError: providerErrorMessage(error) },
-      status: 'error',
     })
   }
 
@@ -693,18 +845,7 @@ export class ProviderService {
     this.sessionDirectory.upsert({
       adapterKey: adapter.adapterKey,
       providerDriverKind: adapter.driverKind,
-      providerInstanceId: update.providerInstanceId,
-      providerSessionId: update.providerSessionId,
-      resumeCursor: update.resumeCursor,
-      runtimeMode: update.runtimeMode,
-      runtimePayload: {
-        activeTurnId: update.activeTurnId,
-        lastError: update.lastError,
-        lastRuntimeEvent: event.type,
-        providerThreadId: update.providerThreadId,
-      },
-      status: update.status,
-      threadId: update.threadId,
+      ...update,
     })
   }
 
@@ -724,9 +865,11 @@ function bindingForUpsert(binding: ProviderRuntimeBindingWithMetadata) {
     adapterKey: binding.adapterKey,
     providerDriverKind: binding.providerDriverKind,
     providerInstanceId: binding.providerInstanceId,
-    providerSessionId: binding.providerSessionId,
+    providerBindingHandle: binding.providerBindingHandle,
+    providerConversationMarker: binding.providerConversationMarker,
+    runtimeEpoch: binding.runtimeEpoch,
     runtimeMode: binding.runtimeMode,
-    threadId: binding.threadId,
+    sessionId: binding.sessionId,
   }
 }
 
@@ -734,7 +877,8 @@ async function activeProviderBinding(
   adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>,
   binding: ProviderRuntimeBindingWithMetadata,
 ) {
-  if (await adapter.hasSession({ threadId: binding.threadId })) return binding
+  if (await boundedProviderOperation(adapter, adapter.hasRuntime({ sessionId: binding.sessionId })))
+    return binding
 
   return null
 }
@@ -742,7 +886,7 @@ async function activeProviderBinding(
 /**
  * The binding whose resume cursor the next session may adopt. A cursor is
  * minted by one account inside one driver, so it only travels within the same
- * continuation identity — repointing a thread at another provider or another
+ * continuation identity — repointing a session at another provider or another
  * account correctly starts a fresh conversation.
  */
 function continuableBinding(
@@ -752,7 +896,6 @@ function continuableBinding(
   options: { modelChanged: boolean } = { modelChanged: false },
 ) {
   if (!binding) return null
-  if (binding.resumeCursor === null || binding.resumeCursor === undefined) return null
 
   const bindingKey = providerContinuationKey({
     driverKind: binding.providerDriverKind,
@@ -777,155 +920,52 @@ function bindingModelChanged(
   return !modelSelectionsEqual(binding.runtimePayload?.modelSelection, modelSelection)
 }
 
-function providerSessionStartInput(
-  input: ProviderStartSessionInput | ProviderEnsureSessionInput,
-  payload: ProviderSessionStartPayload,
+function providerRuntimeStartInput(
+  input: ProviderStartRuntimeInput | ProviderEnsureRuntimeInput,
+  payload: ProviderRuntimeStartPayload,
   reusableBinding?: ProviderRuntimeBindingWithMetadata | null,
-): ProviderSessionStartInput {
+): ProviderRuntimeStartInput {
   return {
     cwd: payload.cwd,
     interactionMode: payload.interactionMode,
     modelSelection: payload.modelSelection,
     providerInstanceId: input.providerInstanceId,
-    resumeCursor: reusableBinding?.resumeCursor ?? startInputResumeCursor(input),
+    providerResumeCursor: reusableBinding?.providerResumeCursor ?? startInputResumeCursor(input),
     runtimeMode: input.runtimeMode,
-    threadId: input.threadId,
+    sessionId: input.sessionId,
+    runtimeEpoch: input.runtimeEpoch,
+    resumeExisting: input.resumeExisting || Boolean(reusableBinding?.providerBindingHandle),
   }
 }
 
-function startInputResumeCursor(input: ProviderStartSessionInput | ProviderEnsureSessionInput) {
-  if ('resumeCursor' in input) return input.resumeCursor ?? null
+function startInputResumeCursor(input: ProviderStartRuntimeInput | ProviderEnsureRuntimeInput) {
+  if ('providerResumeCursor' in input) return input.providerResumeCursor ?? null
 
   return null
 }
 
 function bindingUpdateFromRuntimeEvent(event: ProviderRuntimeEvent) {
-  if (event.type === 'session.set') return bindingUpdateFromSessionSet(event)
-  const providerInstanceId = providerInstanceIdFromEvent(event)
-  if (!providerInstanceId) return null
-
-  const status = bindingStatusFromRuntimeEvent(event)
-  if (!status) return null
+  if (!('providerInstanceId' in event) || !event.providerInstanceId) return null
+  if (!('providerBindingHandle' in event)) return null
 
   return {
-    activeTurnId: activeTurnIdFromRuntimeEvent(event),
-    lastError: lastErrorFromRuntimeEvent(event),
-    providerInstanceId,
-    providerSessionId: providerSessionIdFromEvent(event),
-    providerThreadId: providerThreadIdFromRuntimeEvent(event),
-    resumeCursor: resumeCursorFromRuntimeEvent(event),
-    runtimeMode: runtimeModeFromEvent(event),
-    status,
-    threadId: event.threadId,
-  }
-}
-
-function providerInstanceIdFromEvent(event: ProviderRuntimeEvent) {
-  if (!('providerInstanceId' in event)) return null
-
-  return event.providerInstanceId ?? null
-}
-
-function providerSessionIdFromEvent(event: ProviderRuntimeEvent) {
-  if (!('providerSessionId' in event)) return null
-
-  return event.providerSessionId ?? null
-}
-
-function runtimeModeFromEvent(event: ProviderRuntimeEvent) {
-  if (!('runtimeMode' in event)) return DEFAULT_RUNTIME_MODE
-
-  return event.runtimeMode ?? DEFAULT_RUNTIME_MODE
-}
-
-function bindingUpdateFromSessionSet(
-  event: Extract<ProviderRuntimeEvent, { type: 'session.set' }>,
-) {
-  return {
-    activeTurnId: event.turnId,
-    lastError: event.lastError ?? null,
     providerInstanceId: event.providerInstanceId,
-    providerSessionId: event.providerSessionId,
-    providerThreadId: null,
-    resumeCursor: undefined,
+    providerBindingHandle: event.providerBindingHandle,
+    providerConversationMarker:
+      event.type === 'conversation.started' ? event.payload.providerConversationMarker : undefined,
+    providerResumeCursor: event.type === 'runtime.started' ? event.payload.resume : undefined,
     runtimeMode: event.runtimeMode ?? DEFAULT_RUNTIME_MODE,
-    status: bindingStatusFromSessionSet(event.status),
-    threadId: event.threadId,
+    runtimeEpoch: event.runtimeEpoch,
+    sessionId: event.sessionId,
   }
-}
-
-/**
- * The one rule left between a session status and the binding row it writes:
- * `interrupted` describes the turn that just ended, and the process behind it
- * is idle and reclaimable — which is exactly what `ready` means to the reaper,
- * the only status it may touch. Everything else is copied through.
- */
-function bindingStatusFromSessionSet(status: OrchestrationSessionStatus) {
-  if (status === 'interrupted') return 'ready' as const
-
-  return status
-}
-
-function bindingStatusFromRuntimeEvent(
-  event: Exclude<ProviderRuntimeEvent, { type: 'session.set' }>,
-): OrchestrationSessionStatus | null {
-  switch (event.type) {
-    case 'session.started':
-    case 'thread.started':
-      return 'ready'
-    case 'session.state.changed':
-      return event.payload.state
-    case 'turn.started':
-      return 'running'
-    case 'turn.completed':
-      return event.payload.state === 'failed' ? 'error' : 'ready'
-    case 'runtime.error':
-      return 'error'
-    case 'session.exited':
-      return 'stopped'
-    default:
-      return null
-  }
-}
-
-function activeTurnIdFromRuntimeEvent(event: ProviderRuntimeEvent) {
-  if (event.type === 'turn.completed') return null
-  if (event.type === 'session.exited') return null
-
-  return event.turnId ?? null
-}
-
-function lastErrorFromRuntimeEvent(event: ProviderRuntimeEvent) {
-  if (event.type === 'runtime.error') return event.payload.message
-  if (event.type === 'turn.completed' && event.payload.state === 'failed') {
-    return event.payload.errorMessage ?? 'Turn failed'
-  }
-  if (event.type === 'session.state.changed' && event.payload.state === 'error') {
-    return event.payload.reason ?? 'Provider session error'
-  }
-
-  return null
-}
-
-function providerThreadIdFromRuntimeEvent(event: ProviderRuntimeEvent) {
-  if (event.type === 'thread.started') return event.payload.providerThreadId ?? null
-
-  return null
-}
-
-function resumeCursorFromRuntimeEvent(event: ProviderRuntimeEvent) {
-  if (event.type !== 'session.started') return undefined
-
-  return event.payload.resume ?? undefined
 }
 
 function canReuseProviderBinding(
   binding: ProviderRuntimeBindingWithMetadata | null,
-  input: ProviderEnsureSessionInput,
+  input: Omit<ProviderEnsureRuntimeInput, 'runtimeEpoch'>,
   adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>,
 ) {
   if (!binding) return false
-  if (!isActiveBinding(binding)) return false
   if (binding.adapterKey !== adapter.adapterKey) return false
   if (binding.providerDriverKind !== adapter.driverKind) return false
   if (binding.providerInstanceId !== input.providerInstanceId) return false
@@ -933,6 +973,7 @@ function canReuseProviderBinding(
 
   const payload = binding.runtimePayload
   if (payload?.cwd !== input.runtimePayload.cwd) return false
+  if (payload?.interactionMode !== input.runtimePayload.interactionMode) return false
   if (payload?.runtimeMode && payload.runtimeMode !== input.runtimeMode) return false
 
   return modelSelectionsEqual(payload?.modelSelection, input.runtimePayload.modelSelection)
@@ -951,18 +992,31 @@ function jsonEqual(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
-function providerErrorMessage(error: unknown) {
-  if (error instanceof Error) return error.message
-
-  return String(error)
-}
-
 function noop() {}
+
+async function boundedProviderOperation<T>(
+  adapter: { operationTimeoutMs: number },
+  operation: Promise<T>,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(sessionIdentityErrors.OPERATION_TIMED_OUT()),
+      adapter.operationTimeoutMs,
+    )
+  })
+  try {
+    return await Promise.race([operation, timeout])
+  } finally {
+    clearTimeout(timer)
+  }
+}
 
 function textGenerationIds() {
   const id = crypto.randomUUID()
   return {
-    threadId: v.parse(threadIdSchema, `text-generation:${id}`),
+    sessionId: v.parse(sessionIdSchema, id),
+    runtimeEpoch: crypto.randomUUID(),
     turnId: v.parse(turnIdSchema, `text-generation:${id}`),
   }
 }

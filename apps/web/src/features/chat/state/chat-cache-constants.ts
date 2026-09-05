@@ -3,9 +3,9 @@ export const CHAT_CHECKPOINT_CACHE_LIMIT = 500
 export const CHAT_PROPOSED_PLAN_CACHE_LIMIT = 200
 export const CHAT_ACTIVITY_CACHE_LIMIT = 500
 
-export const THREAD_DETAIL_SUBSCRIPTION_IDLE_EVICTION_MS = 15 * 60 * 1000
-export const MAX_CACHED_THREAD_DETAIL_SUBSCRIPTIONS = 32
-export const SIDEBAR_THREAD_DETAIL_PREWARM_LIMIT = 10
+export const SESSION_DETAIL_SUBSCRIPTION_IDLE_EVICTION_MS = 15 * 60 * 1000
+export const MAX_CACHED_SESSION_DETAIL_SUBSCRIPTIONS = 32
+export const SIDEBAR_SESSION_DETAIL_PREWARM_LIMIT = 10
 
 /**
  * Ceilings for the projection snapshot that paints the shell before the socket
@@ -13,7 +13,7 @@ export const SIDEBAR_THREAD_DETAIL_PREWARM_LIMIT = 10
  * state, and only the visible head of a transcript is worth a byte of it: the
  * detail stream replaces the whole slice the moment it lands.
  */
-export const CHAT_PROJECTION_CACHE_THREAD_LIMIT = 200
+export const CHAT_PROJECTION_CACHE_SESSION_LIMIT = 200
 export const CHAT_PROJECTION_CACHE_TRANSCRIPT_LIMIT = 3
 export const CHAT_PROJECTION_CACHE_MESSAGE_LIMIT = 40
 export const CHAT_PROJECTION_CACHE_ACTIVITY_LIMIT = 40

@@ -1,3 +1,7 @@
+import { addressRootClaimed, subscribeAddressRoot } from '@/features/address/state/root-claim'
+import { scopedSessionKey } from '@workspace/contracts'
+import { useEnvironmentsStore } from '@/lib/environments/state/store'
+import { addressEnvironments } from '@/features/address/utils/environments'
 import { useEffect, useState } from 'react'
 
 import { writeAddressCache } from '@/features/address/state/storage'
@@ -9,7 +13,7 @@ import { parseAddress } from '@/features/address/utils/grammar'
 import { addressFromSnapshot, emptyAddressSnapshot } from '@/features/address/utils/snapshot'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
-import { useThreadDiffScopeStore } from '@/features/chat/state/thread-diff-scope-store'
+import { useSessionDiffScopeStore } from '@/features/chat/state/session-diff-scope-store'
 import { diffScopeParam } from '@/features/address/utils/diff-scope'
 import { sessionTokenFor } from '@/features/address/utils/session-token'
 import { useSearchBufferStoreApi } from '@/features/search/state/buffer-state'
@@ -53,6 +57,8 @@ export function useAddressProjection() {
 
   useEffect(() => {
     const projection = createAddressProjection({
+      isSuspended: addressRootClaimed,
+      environments: () => addressEnvironments(useEnvironmentsStore.getState().entries),
       // A timer, not `requestAnimationFrame`: rAF does not fire in a background or
       // not-yet-interacted tab, which left the address stuck at `/` until the user
       // clicked something.
@@ -80,6 +86,9 @@ export function useAddressProjection() {
     })
 
     const project = () => {
+      if (addressRootClaimed()) return
+      const catalog = addressEnvironments(useEnvironmentsStore.getState().entries)
+      if (parseAddress(window.location.href, catalog).rejectedEnvironment) return
       projection.project(
         addressFromSnapshot(snapshotFromStore(storeApi, uiStoreApi, searchStoreApi, passthrough)),
       )
@@ -105,9 +114,11 @@ export function useAddressProjection() {
     project()
     window.addEventListener('pagehide', flushNow)
     window.addEventListener('popstate', adopt)
+    const unsubscribeRootClaim = subscribeAddressRoot(project)
+    const unsubscribeEnvironments = useEnvironmentsStore.subscribe(project)
     const unsubscribeSelection = useSessionSelectionStore.subscribe(project)
     const unsubscribeRail = useSessionRailStore.subscribe(project)
-    const unsubscribeDiffScope = useThreadDiffScopeStore.subscribe(project)
+    const unsubscribeDiffScope = useSessionDiffScopeStore.subscribe(project)
     const unsubscribeWorkspace = storeApi.subscribe(project)
     const unsubscribeUi = uiStoreApi.subscribe(project)
     const unsubscribeSearch = searchStoreApi.subscribe(project)
@@ -121,6 +132,8 @@ export function useAddressProjection() {
       projection.cancel()
       window.removeEventListener('pagehide', flushNow)
       window.removeEventListener('popstate', adopt)
+      unsubscribeRootClaim()
+      unsubscribeEnvironments()
       unsubscribeDiffScope()
       unsubscribeRail()
       unsubscribeSelection()
@@ -141,13 +154,17 @@ function snapshotFromStore(
 ) {
   const state = storeApi.getState()
   const rootPath = state.rootFolder?.path ?? null
-  if (!rootPath) return { ...emptyAddressSnapshot(), passthrough }
+  if (rootPath === null) return { ...emptyAddressSnapshot(), passthrough }
 
+  const environments = useEnvironmentsStore.getState()
+  const entry = environments.entries[environments.activeOrigin]
+  const environmentId = entry?.kind === 'primary' ? null : (entry?.environmentId ?? null)
   const panels = state.workbenchPanels
   const defaults = createDefaultWorkbenchPanels()
 
   return {
     ...emptyAddressSnapshot(),
+    environmentId,
     activeDocumentPath: activeEditorTabForWorkbenchPanels(panels)?.path ?? null,
     focus: focusFor(uiStoreApi, activeEditorTabForWorkbenchPanels(panels)?.path ?? null),
     bottomTab: orAbsent(panels.activeBottomTab, defaults.activeBottomTab),
@@ -170,7 +187,7 @@ function snapshotFromStore(
     logs: logsParamsFor(readLogsFilters(), defaultLogsFilterState()),
     search: searchParamsFor(searchStoreApi.getState().active),
     sessionToken: sessionTokenFor(useSessionSelectionStore.getState().selection),
-    threadDiffScope: threadDiffScopeParam(),
+    sessionDiffScope: sessionDiffScopeParam(),
     settingsCategory: settingsCategoryOrNull(),
     sidebarTab: orAbsent(panels.activeSidebarTab, defaults.activeSidebarTab),
     toolTab: orAbsent(
@@ -229,14 +246,14 @@ function orAbsent<T>(value: T | null, fallback: T) {
 }
 
 /**
- * The scope of the thread on stage, not of every remembered thread. Only chat mode
- * shows it, and only the selected thread's pick is where the user is.
+ * The scope of the session on stage, not of every remembered session. Only chat mode
+ * shows it, and only the selected session's pick is where the user is.
  */
-function threadDiffScopeParam() {
+function sessionDiffScopeParam() {
   const selection = useSessionSelectionStore.getState().selection
   if (selection.kind !== 'session') return null
 
-  const entry = useThreadDiffScopeStore.getState().scopeByThreadId[selection.threadId]
+  const entry = useSessionDiffScopeStore.getState().scopeBySessionKey[scopedSessionKey(selection)]
 
   return entry ? diffScopeParam(entry.scope) : null
 }

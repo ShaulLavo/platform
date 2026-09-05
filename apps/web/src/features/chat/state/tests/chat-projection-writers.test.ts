@@ -1,4 +1,9 @@
 import {
+  chatWorktree as fixtureWorktree,
+  chatProject as fixtureProject,
+  sessionShell as fixtureSessionShell,
+} from '../../../../../test/factories/chat'
+import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_PROVIDER_INSTANCE_ID,
   DEFAULT_RUNTIME_MODE,
@@ -7,330 +12,338 @@ import {
   messageIdSchema,
   projectIdSchema,
   proposedPlanIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
   turnIdSchema,
   type OrchestrationCheckpointSummary,
   type OrchestrationEvent,
   type OrchestrationMessage,
   type OrchestrationProjectShell,
   type OrchestrationProposedPlan,
-  type OrchestrationThread,
-  type OrchestrationThreadActivity,
-  type OrchestrationThreadDetailSnapshot,
-  type OrchestrationThreadShell,
+  type OrchestrationSession,
+  type OrchestrationSessionActivity,
+  type OrchestrationSessionDetailSnapshot,
+  type OrchestrationSessionShell,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
 import { CHAT_ACTIVITY_CACHE_LIMIT, CHAT_MESSAGE_CACHE_LIMIT } from '../chat-cache-constants'
-import { createInitialChatProjectionState } from '../chat-projection-store'
+import { createInitialChatProjectionSlice } from '../chat-projection-store'
 import {
   applyChatProjectionEvent,
   applyChatProjectionShellStreamItem,
   syncChatProjectionShellSnapshot,
-  syncChatProjectionThreadDetailSnapshot,
+  syncChatProjectionSessionDetailSnapshot,
 } from '../chat-projection-writers'
 import { expect, test } from '../../../../../test/fixtures'
 
-test('preserves existing detail for threads still present in a shell snapshot', () => {
-  const threadId = parseThreadId('thread-1')
-  const message = makeMessage(1, threadId)
-  let state = createInitialChatProjectionState()
+test('preserves existing detail for sessions still present in a shell snapshot', () => {
+  const sessionId = parseSessionId('ad686244-5b2e-59be-805f-ef86eac80feb')
+  const message = makeMessage(1, sessionId)
+  let state = createInitialChatProjectionSlice()
 
-  state = syncChatProjectionThreadDetailSnapshot(
+  state = syncChatProjectionSessionDetailSnapshot(
     state,
     makeDetailSnapshot({
       snapshotSequence: 1,
-      thread: makeThreadDetail({ id: threadId, messages: [message], title: 'detail title' }),
+      session: makeSessionDetail({ id: sessionId, messages: [message], title: 'detail title' }),
     }),
   )
   state = syncChatProjectionShellSnapshot(state, {
+    worktrees: [fixtureWorktree()],
     projects: [makeProject()],
     snapshotSequence: 2,
-    threads: [makeThreadShell({ id: threadId, title: 'shell title' })],
+    sessions: [makeSessionShell({ id: sessionId, title: 'shell title' })],
     updatedAt: timestamp(2),
   })
 
-  expect(state.messageIdsByThreadId[threadId]).toEqual([message.id])
-  expect(state.messageByThreadId[threadId]?.[message.id]?.text).toBe(message.text)
-  expect(state.threadById[threadId]?.title).toBe('shell title')
+  expect(state.messageIdsBySessionId[sessionId]).toEqual([message.id])
+  expect(state.messageBySessionId[sessionId]?.[message.id]?.text).toBe(message.text)
+  expect(state.sessionById[sessionId]?.title).toBe('shell title')
 })
 
-test('removes all thread-scoped state when the shell removes a thread', () => {
-  const threadId = parseThreadId('thread-1')
-  const otherThreadId = parseThreadId('thread-2')
-  let state = createInitialChatProjectionState()
+test('removes all session-scoped state when the shell removes a session', () => {
+  const sessionId = parseSessionId('ad686244-5b2e-59be-805f-ef86eac80feb')
+  const otherSessionId = parseSessionId('83820f69-dec0-53d9-9ab5-fddbd1dabb2d')
+  let state = createInitialChatProjectionSlice()
 
   state = syncChatProjectionShellSnapshot(state, {
+    worktrees: [fixtureWorktree()],
     projects: [makeProject()],
     snapshotSequence: 1,
-    threads: [makeThreadShell({ id: threadId }), makeThreadShell({ id: otherThreadId })],
+    sessions: [makeSessionShell({ id: sessionId }), makeSessionShell({ id: otherSessionId })],
     updatedAt: timestamp(1),
   })
-  state = syncChatProjectionThreadDetailSnapshot(
+  state = syncChatProjectionSessionDetailSnapshot(
     state,
     makeDetailSnapshot({
       snapshotSequence: 2,
-      thread: makeThreadDetail({
-        activities: [makeActivity(1, threadId)],
-        id: threadId,
-        messages: [makeMessage(1, threadId)],
+      session: makeSessionDetail({
+        activities: [makeActivity(1, sessionId)],
+        id: sessionId,
+        messages: [makeMessage(1, sessionId)],
       }),
     }),
   )
   state = applyChatProjectionShellStreamItem(state, {
-    kind: 'thread-removed',
+    kind: 'session-removed',
     sequence: 3,
-    threadId,
+    sessionId,
   })
 
-  expect(state.threadIds).toEqual([otherThreadId])
-  expect(state.threadById[threadId]).toBeUndefined()
-  expect(state.messageIdsByThreadId[threadId]).toBeUndefined()
-  expect(state.activityIdsByThreadId[threadId]).toBeUndefined()
-  expect(state.threadIdsByProjectId[parseProjectId('project-1')]).toEqual([otherThreadId])
+  expect(state.sessionIds).toEqual([otherSessionId])
+  expect(state.sessionById[sessionId]).toBeUndefined()
+  expect(state.messageIdsBySessionId[sessionId]).toBeUndefined()
+  expect(state.activityIdsBySessionId[sessionId]).toBeUndefined()
+  expect(state.sessionIdsByWorktreeId[fixtureWorktree().id]).toEqual([otherSessionId])
 })
 
-test('applies a detail snapshot only to the target thread detail slices', () => {
-  const threadId = parseThreadId('thread-1')
-  const otherThreadId = parseThreadId('thread-2')
-  const otherMessage = makeMessage(2, otherThreadId)
-  let state = createInitialChatProjectionState()
+test('applies a detail snapshot only to the target session detail slices', () => {
+  const sessionId = parseSessionId('ad686244-5b2e-59be-805f-ef86eac80feb')
+  const otherSessionId = parseSessionId('83820f69-dec0-53d9-9ab5-fddbd1dabb2d')
+  const otherMessage = makeMessage(2, otherSessionId)
+  let state = createInitialChatProjectionSlice()
 
   state = syncChatProjectionShellSnapshot(state, {
+    worktrees: [fixtureWorktree()],
     projects: [makeProject()],
     snapshotSequence: 1,
-    threads: [
-      makeThreadShell({ id: threadId, title: 'shell thread' }),
-      makeThreadShell({ id: otherThreadId, title: 'other shell thread' }),
+    sessions: [
+      makeSessionShell({ id: sessionId, title: 'shell session' }),
+      makeSessionShell({ id: otherSessionId, title: 'other shell session' }),
     ],
     updatedAt: timestamp(1),
   })
-  state = syncChatProjectionThreadDetailSnapshot(
+  state = syncChatProjectionSessionDetailSnapshot(
     state,
     makeDetailSnapshot({
       snapshotSequence: 2,
-      thread: makeThreadDetail({ id: otherThreadId, messages: [otherMessage] }),
+      session: makeSessionDetail({ id: otherSessionId, messages: [otherMessage] }),
     }),
   )
-  state = syncChatProjectionThreadDetailSnapshot(
+  state = syncChatProjectionSessionDetailSnapshot(
     state,
     makeDetailSnapshot({
       snapshotSequence: 3,
-      thread: makeThreadDetail({
-        id: threadId,
-        messages: [makeMessage(1, threadId)],
-        title: 'detail thread',
+      session: makeSessionDetail({
+        id: sessionId,
+        messages: [makeMessage(1, sessionId)],
+        title: 'detail session',
       }),
     }),
   )
 
-  expect(state.messageIdsByThreadId[otherThreadId]).toEqual([otherMessage.id])
-  expect(state.messageIdsByThreadId[threadId]).toEqual([parseMessageId('message-1')])
-  expect(state.threadById[threadId]?.title).toBe('shell thread')
+  expect(state.messageIdsBySessionId[otherSessionId]).toEqual([otherMessage.id])
+  expect(state.messageIdsBySessionId[sessionId]).toEqual([parseMessageId('message-1')])
+  expect(state.sessionById[sessionId]?.title).toBe('shell session')
 })
 
-test('a thread detail snapshot cannot revert shell-published metadata', () => {
-  const threadId = parseThreadId('thread-1')
-  let state = createInitialChatProjectionState()
+test('a session detail snapshot cannot revert shell-published metadata', () => {
+  const sessionId = parseSessionId('ad686244-5b2e-59be-805f-ef86eac80feb')
+  let state = createInitialChatProjectionSlice()
 
   state = syncChatProjectionShellSnapshot(state, {
+    worktrees: [fixtureWorktree()],
     projects: [makeProject()],
     snapshotSequence: 1,
-    threads: [makeThreadShell({ branch: 'main', id: threadId, title: 'shell thread' })],
+    sessions: [makeSessionShell({ id: sessionId, title: 'shell session' })],
     updatedAt: timestamp(1),
   })
 
-  const threadBefore = state.threadById[threadId]
-  const threadIds = state.threadIds
+  const sessionBefore = state.sessionById[sessionId]
+  const sessionIds = state.sessionIds
 
-  state = syncChatProjectionThreadDetailSnapshot(
+  state = syncChatProjectionSessionDetailSnapshot(
     state,
     makeDetailSnapshot({
       snapshotSequence: 2,
-      thread: makeThreadDetail({
-        branch: 'stale-detail-branch',
-        id: threadId,
-        title: 'detail thread',
-        worktreePath: '/stale/worktree',
+      session: makeSessionDetail({
+        id: sessionId,
+        title: 'detail session',
       }),
     }),
   )
 
-  expect(state.threadById[threadId]).toMatchObject({
-    branch: 'main',
+  expect(state.sessionById[sessionId]).toMatchObject({
     metaSource: 'shell',
-    session: threadBefore?.session,
-    title: 'shell thread',
-    worktreePath: threadBefore?.worktreePath,
+    runtime: sessionBefore?.runtime,
+    title: 'shell session',
+    worktreeId: sessionBefore?.worktreeId,
   })
-  expect(state.threadById[threadId]?.detailSynced).toBe(true)
-  expect(state.threadIds).toBe(threadIds)
+  expect(state.sessionById[sessionId]?.detailSynced).toBe(true)
+  expect(state.sessionIds).toBe(sessionIds)
 })
 
 test('trims message and activity detail arrays deterministically', () => {
-  const threadId = parseThreadId('thread-1')
+  const sessionId = parseSessionId('ad686244-5b2e-59be-805f-ef86eac80feb')
   const messages = Array.from({ length: CHAT_MESSAGE_CACHE_LIMIT + 5 }, (_, index) =>
-    makeMessage(index, threadId),
+    makeMessage(index, sessionId),
   )
   const activities = Array.from({ length: CHAT_ACTIVITY_CACHE_LIMIT + 5 }, (_, index) =>
-    makeActivity(index, threadId),
+    makeActivity(index, sessionId),
   )
 
-  const state = syncChatProjectionThreadDetailSnapshot(
-    createInitialChatProjectionState(),
+  const state = syncChatProjectionSessionDetailSnapshot(
+    createInitialChatProjectionSlice(),
     makeDetailSnapshot({
       snapshotSequence: 1,
-      thread: makeThreadDetail({ activities, id: threadId, messages }),
+      session: makeSessionDetail({ activities, id: sessionId, messages }),
     }),
   )
 
-  expect(state.messageIdsByThreadId[threadId]).toHaveLength(CHAT_MESSAGE_CACHE_LIMIT)
-  expect(state.activityIdsByThreadId[threadId]).toHaveLength(CHAT_ACTIVITY_CACHE_LIMIT)
-  expect(state.messageIdsByThreadId[threadId]?.[0]).toBe(messages[5]?.id)
-  expect(state.activityIdsByThreadId[threadId]?.[0]).toBe(activities[5]?.id)
+  expect(state.messageIdsBySessionId[sessionId]).toHaveLength(CHAT_MESSAGE_CACHE_LIMIT)
+  expect(state.activityIdsBySessionId[sessionId]).toHaveLength(CHAT_ACTIVITY_CACHE_LIMIT)
+  expect(state.messageIdsBySessionId[sessionId]?.[0]).toBe(messages[5]?.id)
+  expect(state.activityIdsBySessionId[sessionId]?.[0]).toBe(activities[5]?.id)
 })
 
 test('ignores stale shell and detail snapshots', () => {
-  const threadId = parseThreadId('thread-1')
-  let state = createInitialChatProjectionState()
+  const sessionId = parseSessionId('ad686244-5b2e-59be-805f-ef86eac80feb')
+  let state = createInitialChatProjectionSlice()
 
   state = syncChatProjectionShellSnapshot(state, {
+    worktrees: [fixtureWorktree()],
     projects: [makeProject({ title: 'new project' })],
     snapshotSequence: 5,
-    threads: [makeThreadShell({ id: threadId, title: 'new thread' })],
+    sessions: [makeSessionShell({ id: sessionId, title: 'new session' })],
     updatedAt: timestamp(5),
   })
   state = syncChatProjectionShellSnapshot(state, {
+    worktrees: [fixtureWorktree()],
     projects: [makeProject({ title: 'old project' })],
     snapshotSequence: 4,
-    threads: [makeThreadShell({ id: threadId, title: 'old thread' })],
+    sessions: [makeSessionShell({ id: sessionId, title: 'old session' })],
     updatedAt: timestamp(4),
   })
-  state = syncChatProjectionThreadDetailSnapshot(
+  state = syncChatProjectionSessionDetailSnapshot(
     state,
     makeDetailSnapshot({
       snapshotSequence: 6,
-      thread: makeThreadDetail({ id: threadId, messages: [makeMessage(6, threadId)] }),
+      session: makeSessionDetail({ id: sessionId, messages: [makeMessage(6, sessionId)] }),
     }),
   )
-  state = syncChatProjectionThreadDetailSnapshot(
+  state = syncChatProjectionSessionDetailSnapshot(
     state,
     makeDetailSnapshot({
       snapshotSequence: 5,
-      thread: makeThreadDetail({ id: threadId, messages: [makeMessage(5, threadId)] }),
+      session: makeSessionDetail({ id: sessionId, messages: [makeMessage(5, sessionId)] }),
     }),
   )
 
-  expect(state.projectById[parseProjectId('project-1')]?.title).toBe('new project')
-  expect(state.threadById[threadId]?.title).toBe('new thread')
-  expect(state.messageIdsByThreadId[threadId]).toEqual([parseMessageId('message-6')])
+  expect(state.projectById[parseProjectId('609d2bd3-7993-5564-9918-c603beaa32c6')]?.title).toBe(
+    'new project',
+  )
+  expect(state.sessionById[sessionId]?.title).toBe('new session')
+  expect(state.messageIdsBySessionId[sessionId]).toEqual([parseMessageId('message-6')])
 })
 
 test('applies equal-sequence detail snapshots as authoritative detail state', () => {
-  const threadId = parseThreadId('thread-1')
-  const message = makeMessage(6, threadId)
-  let state = createInitialChatProjectionState()
+  const sessionId = parseSessionId('ad686244-5b2e-59be-805f-ef86eac80feb')
+  const message = makeMessage(6, sessionId)
+  let state = createInitialChatProjectionSlice()
 
-  state = syncChatProjectionThreadDetailSnapshot(
+  state = syncChatProjectionSessionDetailSnapshot(
     state,
     makeDetailSnapshot({
       snapshotSequence: 6,
-      thread: makeThreadDetail({ id: threadId, messages: [] }),
+      session: makeSessionDetail({ id: sessionId, messages: [] }),
     }),
   )
-  state = syncChatProjectionThreadDetailSnapshot(
+  state = syncChatProjectionSessionDetailSnapshot(
     state,
     makeDetailSnapshot({
       snapshotSequence: 6,
-      thread: makeThreadDetail({ id: threadId, messages: [message] }),
+      session: makeSessionDetail({ id: sessionId, messages: [message] }),
     }),
   )
 
-  expect(state.messageIdsByThreadId[threadId]).toEqual([message.id])
-  expect(state.messageByThreadId[threadId]?.[message.id]?.text).toBe(message.text)
+  expect(state.messageIdsBySessionId[sessionId]).toEqual([message.id])
+  expect(state.messageBySessionId[sessionId]?.[message.id]?.text).toBe(message.text)
 })
 
 // The snapshot is the whole truth for plans and checkpoints: a plan resolved (or turns
 // reverted) while the stream was down leaves no event behind to remove it, so merging
 // would keep the ghost — and an actionable ghost pins the subscription against eviction.
 test('a detail snapshot drops plans and turn diffs the server no longer reports', () => {
-  const threadId = parseThreadId('thread-1')
+  const sessionId = parseSessionId('ad686244-5b2e-59be-805f-ef86eac80feb')
   const turnId = parseTurnId('turn-1')
   const planId = parseProposedPlanId('plan-1')
-  let state = createInitialChatProjectionState()
+  let state = createInitialChatProjectionSlice()
 
   state = syncChatProjectionShellSnapshot(state, {
+    worktrees: [fixtureWorktree()],
     projects: [makeProject()],
     snapshotSequence: 1,
-    threads: [makeThreadShell({ id: threadId })],
+    sessions: [makeSessionShell({ id: sessionId })],
     updatedAt: timestamp(1),
   })
-  state = applyChatProjectionEvent(state, proposedPlanUpsertedEvent(threadId, planId, 2))
-  state = applyChatProjectionEvent(state, turnDiffCompletedEvent(threadId, turnId, 3))
+  state = applyChatProjectionEvent(state, proposedPlanUpsertedEvent(sessionId, planId, 2))
+  state = applyChatProjectionEvent(state, turnDiffCompletedEvent(sessionId, turnId, 3))
 
-  expect(state.proposedPlanIdsByThreadId[threadId]).toEqual([planId])
-  expect(state.turnDiffIdsByThreadId[threadId]).toEqual([turnId])
+  expect(state.proposedPlanIdsBySessionId[sessionId]).toEqual([planId])
+  expect(state.turnDiffIdsBySessionId[sessionId]).toEqual([turnId])
 
-  state = syncChatProjectionThreadDetailSnapshot(
+  state = syncChatProjectionSessionDetailSnapshot(
     state,
-    makeDetailSnapshot({ snapshotSequence: 4, thread: makeThreadDetail({ id: threadId }) }),
+    makeDetailSnapshot({ snapshotSequence: 4, session: makeSessionDetail({ id: sessionId }) }),
   )
 
-  expect(state.proposedPlanIdsByThreadId[threadId]).toEqual([])
-  expect(state.proposedPlanByThreadId[threadId]).toEqual({})
-  expect(state.turnDiffIdsByThreadId[threadId]).toEqual([])
-  expect(state.turnDiffSummaryByThreadId[threadId]).toEqual({})
+  expect(state.proposedPlanIdsBySessionId[sessionId]).toEqual([])
+  expect(state.proposedPlanBySessionId[sessionId]).toEqual({})
+  expect(state.turnDiffIdsBySessionId[sessionId]).toEqual([])
+  expect(state.turnDiffSummaryBySessionId[sessionId]).toEqual({})
 })
 
 test('a cold detail snapshot paints the plans and checkpoints it carries', () => {
-  const threadId = parseThreadId('thread-1')
+  const sessionId = parseSessionId('ad686244-5b2e-59be-805f-ef86eac80feb')
   const olderPlanId = parseProposedPlanId('plan-older')
   const newerPlanId = parseProposedPlanId('plan-newer')
   const turnId = parseTurnId('turn-1')
 
-  const state = syncChatProjectionThreadDetailSnapshot(
-    createInitialChatProjectionState(),
+  const state = syncChatProjectionSessionDetailSnapshot(
+    createInitialChatProjectionSlice(),
     makeDetailSnapshot({
       checkpoints: [makeCheckpoint(turnId)],
       proposedPlans: [
-        makeProposedPlan({ createdAt: timestamp(4), id: newerPlanId, threadId }),
-        makeProposedPlan({ createdAt: timestamp(2), id: olderPlanId, threadId }),
+        makeProposedPlan({ createdAt: timestamp(4), id: newerPlanId, sessionId }),
+        makeProposedPlan({ createdAt: timestamp(2), id: olderPlanId, sessionId }),
       ],
       snapshotSequence: 1,
-      thread: makeThreadDetail({ id: threadId }),
+      session: makeSessionDetail({ id: sessionId }),
     }),
   )
 
-  expect(state.proposedPlanIdsByThreadId[threadId]).toEqual([olderPlanId, newerPlanId])
-  expect(state.turnDiffIdsByThreadId[threadId]).toEqual([turnId])
-  expect(state.turnDiffSummaryByThreadId[threadId]?.[turnId]).toMatchObject({
+  expect(state.proposedPlanIdsBySessionId[sessionId]).toEqual([olderPlanId, newerPlanId])
+  expect(state.turnDiffIdsBySessionId[sessionId]).toEqual([turnId])
+  expect(state.turnDiffSummaryBySessionId[sessionId]?.[turnId]).toMatchObject({
     checkpointRef: 'checkpoint-1',
     files: [{ additions: 3, deletions: 1, kind: 'modified', path: 'src/a.ts' }],
-    threadId,
+    sessionId,
   })
 })
 
 // The detail cursor is retained across a shell resnapshot, so the turn-start event that
 // stamped this is never replayed: wiping it loses the plan banner until the next turn.
 test('a shell resnapshot preserves the pending source proposed plan', () => {
-  const threadId = parseThreadId('thread-1')
+  const sessionId = parseSessionId('ad686244-5b2e-59be-805f-ef86eac80feb')
   const turnId = parseTurnId('turn-1')
   const planId = parseProposedPlanId('plan-1')
-  let state = createInitialChatProjectionState()
+  let state = createInitialChatProjectionSlice()
 
   state = syncChatProjectionShellSnapshot(state, {
+    worktrees: [fixtureWorktree()],
     projects: [makeProject()],
     snapshotSequence: 1,
-    threads: [makeThreadShell({ id: threadId })],
+    sessions: [makeSessionShell({ id: sessionId })],
     updatedAt: timestamp(1),
   })
-  state = applyChatProjectionEvent(state, turnStartRequestedEvent(threadId, turnId, planId))
+  state = applyChatProjectionEvent(state, turnStartRequestedEvent(sessionId, turnId, planId))
   state = syncChatProjectionShellSnapshot(state, {
+    worktrees: [fixtureWorktree()],
     projects: [makeProject()],
     snapshotSequence: 3,
-    threads: [
-      makeThreadShell({
-        id: threadId,
+    sessions: [
+      makeSessionShell({
+        id: sessionId,
         latestTurn: runningLatestTurn(turnId),
         updatedAt: timestamp(3),
       }),
@@ -338,46 +351,48 @@ test('a shell resnapshot preserves the pending source proposed plan', () => {
     updatedAt: timestamp(3),
   })
 
-  expect(state.threadById[threadId]?.pendingSourceProposedPlan).toEqual({
+  expect(state.sessionById[sessionId]?.pendingSourceProposedPlan).toEqual({
     planId,
-    threadId,
+    sessionId,
   })
 })
 
-// The shell carries no pin state, so a resnapshot is the only thing that can drop the
-// slot the user dragged this session into. It must survive.
-test('a shell resnapshot preserves the arranged pin slot', () => {
-  const threadId = parseThreadId('thread-1')
-  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionState(), {
+// The server snapshot is authoritative after reconnect, including cleared pin state.
+test('a shell resnapshot publishes the authoritative arranged pin slot', () => {
+  const sessionId = parseSessionId('ad686244-5b2e-59be-805f-ef86eac80feb')
+  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionSlice(), {
+    worktrees: [fixtureWorktree()],
     projects: [makeProject()],
     snapshotSequence: 1,
-    threads: [makeThreadShell({ id: threadId })],
+    sessions: [makeSessionShell({ id: sessionId })],
     updatedAt: timestamp(1),
   })
 
-  state = applyChatProjectionEvent(state, threadPinnedEvent(threadId, 'm'))
+  state = applyChatProjectionEvent(state, sessionPinnedEvent(sessionId, 'm'))
 
   state = syncChatProjectionShellSnapshot(state, {
+    worktrees: [fixtureWorktree()],
     projects: [makeProject()],
     snapshotSequence: 3,
-    threads: [makeThreadShell({ id: threadId, updatedAt: timestamp(2) })],
+    sessions: [makeSessionShell({ id: sessionId, updatedAt: timestamp(2) })],
     updatedAt: timestamp(2),
   })
 
-  expect(state.threadById[threadId]?.pinOrderKey).toBe('m')
+  expect(state.sessionById[sessionId]?.pinOrderKey).toBeNull()
 })
 
 test('keeps published turns shell-owned while detail events update the live turn', () => {
-  const threadId = parseThreadId('thread-1')
+  const sessionId = parseSessionId('ad686244-5b2e-59be-805f-ef86eac80feb')
   const turnId = parseTurnId('turn-1')
-  let state = createInitialChatProjectionState()
+  let state = createInitialChatProjectionSlice()
 
   state = syncChatProjectionShellSnapshot(state, {
+    worktrees: [fixtureWorktree()],
     projects: [makeProject()],
     snapshotSequence: 1,
-    threads: [
-      makeThreadShell({
-        id: threadId,
+    sessions: [
+      makeSessionShell({
+        id: sessionId,
         latestTurn: runningLatestTurn(turnId),
         updatedAt: timestamp(1),
       }),
@@ -385,11 +400,11 @@ test('keeps published turns shell-owned while detail events update the live turn
     updatedAt: timestamp(1),
   })
 
-  const publishedTurn = state.threadById[threadId]?.latestTurn
-  state = applyChatProjectionEvent(state, assistantCompleteEvent(threadId, turnId))
+  const publishedTurn = state.sessionById[sessionId]?.latestTurn
+  state = applyChatProjectionEvent(state, assistantCompleteEvent(sessionId, turnId))
 
-  expect(state.threadById[threadId]?.latestTurn).toBe(publishedTurn)
-  expect(state.threadById[threadId]?.liveTurn).toMatchObject({
+  expect(state.sessionById[sessionId]?.latestTurn).toBe(publishedTurn)
+  expect(state.sessionById[sessionId]?.liveTurn).toMatchObject({
     assistantMessageId: parseMessageId('message-assistant'),
     completedAt: timestamp(4),
     state: 'completed',
@@ -398,25 +413,26 @@ test('keeps published turns shell-owned while detail events update the live turn
 })
 
 test('marks live provider turn failures as terminal in local turn state', () => {
-  const threadId = parseThreadId('thread-1')
+  const sessionId = parseSessionId('ad686244-5b2e-59be-805f-ef86eac80feb')
   const turnId = parseTurnId('turn-1')
-  let state = createInitialChatProjectionState()
+  let state = createInitialChatProjectionSlice()
 
   state = syncChatProjectionShellSnapshot(state, {
+    worktrees: [fixtureWorktree()],
     projects: [makeProject()],
     snapshotSequence: 1,
-    threads: [
-      makeThreadShell({
-        id: threadId,
+    sessions: [
+      makeSessionShell({
+        id: sessionId,
         latestTurn: runningLatestTurn(turnId),
         updatedAt: timestamp(1),
       }),
     ],
     updatedAt: timestamp(1),
   })
-  state = applyChatProjectionEvent(state, providerFailureActivityEvent(threadId, turnId))
+  state = applyChatProjectionEvent(state, providerFailureActivityEvent(sessionId, turnId))
 
-  expect(state.threadById[threadId]?.liveTurn).toMatchObject({
+  expect(state.sessionById[sessionId]?.liveTurn).toMatchObject({
     completedAt: timestamp(5),
     state: 'error',
     turnId,
@@ -424,17 +440,18 @@ test('marks live provider turn failures as terminal in local turn state', () => 
 })
 
 test('projects streamed assistant deltas before completion without duplicating text', () => {
-  const threadId = parseThreadId('thread-1')
+  const sessionId = parseSessionId('ad686244-5b2e-59be-805f-ef86eac80feb')
   const turnId = parseTurnId('turn-1')
   const messageId = parseMessageId('message-assistant')
-  let state = createInitialChatProjectionState()
+  let state = createInitialChatProjectionSlice()
 
   state = syncChatProjectionShellSnapshot(state, {
+    worktrees: [fixtureWorktree()],
     projects: [makeProject()],
     snapshotSequence: 1,
-    threads: [
-      makeThreadShell({
-        id: threadId,
+    sessions: [
+      makeSessionShell({
+        id: sessionId,
         latestTurn: { ...runningLatestTurn(turnId), startedAt: timestamp(1) },
         updatedAt: timestamp(1),
       }),
@@ -448,7 +465,7 @@ test('projects streamed assistant deltas before completion without duplicating t
       sequence: 2,
       streaming: true,
       text: 'Hello ',
-      threadId,
+      sessionId,
       turnId,
     }),
   )
@@ -459,20 +476,27 @@ test('projects streamed assistant deltas before completion without duplicating t
       sequence: 3,
       streaming: true,
       text: 'world',
-      threadId,
+      sessionId,
       turnId,
     }),
   )
   state = applyChatProjectionEvent(
     state,
-    assistantMessageEvent({ messageId, sequence: 4, streaming: false, text: '', threadId, turnId }),
+    assistantMessageEvent({
+      messageId,
+      sequence: 4,
+      streaming: false,
+      text: '',
+      sessionId,
+      turnId,
+    }),
   )
 
-  expect(state.messageByThreadId[threadId]?.[messageId]).toMatchObject({
+  expect(state.messageBySessionId[sessionId]?.[messageId]).toMatchObject({
     streaming: false,
     text: 'Hello world',
   })
-  expect(state.threadById[threadId]?.liveTurn).toMatchObject({
+  expect(state.sessionById[sessionId]?.liveTurn).toMatchObject({
     assistantMessageId: messageId,
     completedAt: timestamp(4),
     state: 'completed',
@@ -481,58 +505,61 @@ test('projects streamed assistant deltas before completion without duplicating t
 })
 
 test('projects the latest user message stamp before the next shell publish', () => {
-  const threadId = parseThreadId('thread-1')
-  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionState(), {
+  const sessionId = parseSessionId('ad686244-5b2e-59be-805f-ef86eac80feb')
+  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionSlice(), {
+    worktrees: [fixtureWorktree()],
     projects: [makeProject()],
     snapshotSequence: 1,
-    threads: [makeThreadShell({ id: threadId })],
+    sessions: [makeSessionShell({ id: sessionId })],
     updatedAt: timestamp(1),
   })
 
-  state = applyChatProjectionEvent(state, userMessageEvent(threadId))
+  state = applyChatProjectionEvent(state, userMessageEvent(sessionId))
 
-  expect(state.threadById[threadId]?.latestUserMessageAt).toBe(timestamp(2))
+  expect(state.sessionById[sessionId]?.latestUserMessageAt).toBe(timestamp(2))
 })
 
 function makeDetailSnapshot({
   checkpoints = [],
   proposedPlans = [],
   snapshotSequence,
-  thread,
+  session,
 }: {
   checkpoints?: OrchestrationCheckpointSummary[]
   proposedPlans?: OrchestrationProposedPlan[]
   snapshotSequence: number
-  thread: OrchestrationThread
-}): OrchestrationThreadDetailSnapshot {
-  return { checkpoints, proposedPlans, snapshotSequence, thread }
+  session: OrchestrationSession
+}): OrchestrationSessionDetailSnapshot {
+  return { checkpoints, proposedPlans, snapshotSequence, session }
 }
 
 function makeProject(
   overrides: Partial<OrchestrationProjectShell> = {},
 ): OrchestrationProjectShell {
   return {
+    ...fixtureProject(),
     createdAt: timestamp(0),
     defaultModelSelection: null,
-    id: parseProjectId('project-1'),
+    id: parseProjectId('609d2bd3-7993-5564-9918-c603beaa32c6'),
     orderKey: null,
     scripts: [],
     title: 'Project',
     updatedAt: timestamp(0),
-    workspaceRoot: '/workspace',
+
     ...overrides,
   }
 }
 
-function makeThreadShell(
-  overrides: Partial<OrchestrationThreadShell> = {},
-): OrchestrationThreadShell {
+function makeSessionShell(
+  overrides: Partial<OrchestrationSessionShell> = {},
+): OrchestrationSessionShell {
   return {
+    ...fixtureSessionShell(),
     archivedAt: null,
-    branch: null,
+
     createdAt: timestamp(0),
     hasActionableProposedPlan: false,
-    id: parseThreadId('thread-1'),
+    id: parseSessionId('ad686244-5b2e-59be-805f-ef86eac80feb'),
     interactionMode: DEFAULT_INTERACTION_MODE,
     latestTurn: null,
     latestUserMessageAt: null,
@@ -542,19 +569,20 @@ function makeThreadShell(
     },
     pendingApprovalCount: 0,
     pendingUserInputCount: 0,
-    projectId: parseProjectId('project-1'),
+
     runtimeMode: DEFAULT_RUNTIME_MODE,
-    session: null,
-    title: 'Thread',
+    runtime: null,
+    title: 'Session',
     updatedAt: timestamp(0),
-    worktreePath: null,
+
     ...overrides,
   }
 }
 
-function makeThreadDetail(overrides: Partial<OrchestrationThread> = {}): OrchestrationThread {
+function makeSessionDetail(overrides: Partial<OrchestrationSession> = {}): OrchestrationSession {
   return {
-    ...makeThreadShell(overrides),
+    deletion: null,
+    ...makeSessionShell(overrides),
     activities: [],
     deletedAt: null,
     messages: [],
@@ -568,10 +596,10 @@ function makeProposedPlan(
   return {
     createdAt: timestamp(2),
     id: parseProposedPlanId('plan-1'),
-    implementationThreadId: null,
+    implementationSessionId: null,
     implementedAt: null,
     planMarkdown: '# Plan',
-    threadId: parseThreadId('thread-1'),
+    sessionId: parseSessionId('ad686244-5b2e-59be-805f-ef86eac80feb'),
     turnId: null,
     updatedAt: timestamp(2),
     ...overrides,
@@ -596,6 +624,10 @@ function makeCheckpoint(
 
 function runningLatestTurn(turnId: ReturnType<typeof parseTurnId>) {
   return {
+    providerStartState: 'adopted' as const,
+    providerStartGeneration: 1,
+    providerStartSequence: 1,
+    runtimeEpoch: 'test-epoch',
     assistantMessageId: null,
     completedAt: null,
     requestedAt: timestamp(1),
@@ -607,7 +639,7 @@ function runningLatestTurn(turnId: ReturnType<typeof parseTurnId>) {
 
 function makeMessage(
   index: number,
-  threadId: ReturnType<typeof parseThreadId>,
+  sessionId: ReturnType<typeof parseSessionId>,
 ): OrchestrationMessage {
   return {
     attachments: [],
@@ -616,19 +648,19 @@ function makeMessage(
     role: 'assistant',
     streaming: false,
     text: `message ${index}`,
-    threadId,
+    sessionId,
     turnId: null,
     updatedAt: timestamp(index),
   }
 }
 
 test('trims the oldest message when a streamed append crosses the cache limit', () => {
-  const threadId = parseThreadId('thread-trim-messages')
+  const sessionId = parseSessionId('6bd01084-e7f5-5394-a5b7-a741d79008f3')
   const turnId = parseTurnId('turn-trim-messages')
-  let state = createInitialChatProjectionState()
+  let state = createInitialChatProjectionSlice()
 
-  // Sequences start at 1: `applyThreadEventWithSequenceGuard` silently drops
-  // an event whose sequence is not greater than the thread's last one.
+  // Sequences start at 1: `applySessionEventWithSequenceGuard` silently drops
+  // an event whose sequence is not greater than the session's last one.
   for (let index = 1; index <= CHAT_MESSAGE_CACHE_LIMIT; index += 1) {
     state = applyChatProjectionEvent(
       state,
@@ -637,7 +669,7 @@ test('trims the oldest message when a streamed append crosses the cache limit', 
         sequence: index,
         streaming: false,
         text: 'held',
-        threadId,
+        sessionId,
         turnId,
       }),
     )
@@ -649,21 +681,21 @@ test('trims the oldest message when a streamed append crosses the cache limit', 
       sequence: CHAT_MESSAGE_CACHE_LIMIT + 1,
       streaming: false,
       text: 'overflow',
-      threadId,
+      sessionId,
       turnId,
     }),
   )
 
   const firstId = parseMessageId('message-1')
-  expect(state.messageIdsByThreadId[threadId]).toHaveLength(CHAT_MESSAGE_CACHE_LIMIT)
-  expect(state.messageIdsByThreadId[threadId]).not.toContain(firstId)
-  expect(state.messageByThreadId[threadId]?.[firstId]).toBeUndefined()
-  expect(state.threadHasEarlierById[threadId]).toBe(true)
+  expect(state.messageIdsBySessionId[sessionId]).toHaveLength(CHAT_MESSAGE_CACHE_LIMIT)
+  expect(state.messageIdsBySessionId[sessionId]).not.toContain(firstId)
+  expect(state.messageBySessionId[sessionId]?.[firstId]).toBeUndefined()
+  expect(state.sessionHasEarlierById[sessionId]).toBe(true)
 }, 30_000)
 
 test('orders an out-of-sequence appended activity by sequence, not arrival', () => {
-  const threadId = parseThreadId('thread-activity-order')
-  let state = createInitialChatProjectionState()
+  const sessionId = parseSessionId('f0c28e51-0f0a-59da-a7da-1a6b3be9bb98')
+  let state = createInitialChatProjectionSlice()
 
   for (const [eventSequence, activitySequence] of [
     [1, 1],
@@ -673,14 +705,14 @@ test('orders an out-of-sequence appended activity by sequence, not arrival', () 
     state = applyChatProjectionEvent(
       state,
       activityAppendedEvent(
-        threadId,
+        sessionId,
         eventSequence,
-        makeActivity(activitySequence, threadId, { sequence: activitySequence }),
+        makeActivity(activitySequence, sessionId, { sequence: activitySequence }),
       ),
     )
   }
 
-  expect(state.activityIdsByThreadId[threadId]).toEqual([
+  expect(state.activityIdsBySessionId[sessionId]).toEqual([
     parseEventId('event-1'),
     parseEventId('event-2'),
     parseEventId('event-3'),
@@ -688,40 +720,40 @@ test('orders an out-of-sequence appended activity by sequence, not arrival', () 
 })
 
 test('trims the oldest activity when an appended activity crosses the cache limit', () => {
-  const threadId = parseThreadId('thread-trim-activities')
-  let state = createInitialChatProjectionState()
+  const sessionId = parseSessionId('d5aeaecc-96f1-5a6d-8bcb-2c2483ed44f4')
+  let state = createInitialChatProjectionSlice()
 
   for (let index = 1; index <= CHAT_ACTIVITY_CACHE_LIMIT + 1; index += 1) {
     state = applyChatProjectionEvent(
       state,
-      activityAppendedEvent(threadId, index, makeActivity(index, threadId, { sequence: index })),
+      activityAppendedEvent(sessionId, index, makeActivity(index, sessionId, { sequence: index })),
     )
   }
 
   const firstId = parseEventId('event-1')
-  expect(state.activityIdsByThreadId[threadId]).toHaveLength(CHAT_ACTIVITY_CACHE_LIMIT)
-  expect(state.activityIdsByThreadId[threadId]).not.toContain(firstId)
-  expect(state.activityByThreadId[threadId]?.[firstId]).toBeUndefined()
-  expect(state.threadHasEarlierById[threadId]).toBe(true)
+  expect(state.activityIdsBySessionId[sessionId]).toHaveLength(CHAT_ACTIVITY_CACHE_LIMIT)
+  expect(state.activityIdsBySessionId[sessionId]).not.toContain(firstId)
+  expect(state.activityBySessionId[sessionId]?.[firstId]).toBeUndefined()
+  expect(state.sessionHasEarlierById[sessionId]).toBe(true)
 }, 30_000)
 
 function activityAppendedEvent(
-  threadId: ReturnType<typeof parseThreadId>,
+  sessionId: ReturnType<typeof parseSessionId>,
   eventSequence: number,
-  activity: OrchestrationThreadActivity,
+  activity: OrchestrationSessionActivity,
 ): OrchestrationEvent {
   return {
-    ...makeThreadEvent(threadId, eventSequence, `activity-${eventSequence}`),
-    payload: { activity, threadId },
-    type: 'thread.activity-appended',
+    ...makeSessionEvent(sessionId, eventSequence, `activity-${eventSequence}`),
+    payload: { activity, sessionId },
+    type: 'session.activity-appended',
   }
 }
 
 function makeActivity(
   index: number,
-  threadId: ReturnType<typeof parseThreadId>,
-  overrides: Partial<OrchestrationThreadActivity> = {},
-): OrchestrationThreadActivity {
+  sessionId: ReturnType<typeof parseSessionId>,
+  overrides: Partial<OrchestrationSessionActivity> = {},
+): OrchestrationSessionActivity {
   return {
     createdAt: timestamp(index),
     id: parseEventId(`event-${index}`),
@@ -729,38 +761,38 @@ function makeActivity(
     payload: null,
     sequence: index,
     summary: `activity ${index}`,
-    threadId,
+    sessionId,
     tone: 'tool',
     turnId: null,
     ...overrides,
   }
 }
 
-function threadPinnedEvent(
-  threadId: ReturnType<typeof parseThreadId>,
+function sessionPinnedEvent(
+  sessionId: ReturnType<typeof parseSessionId>,
   pinOrderKey: string,
 ): OrchestrationEvent {
   return {
-    ...makeThreadEvent(threadId, 2, 'pinned'),
+    ...makeSessionEvent(sessionId, 2, 'pinned'),
     payload: {
       pinOrderKey,
       pinnedAt: timestamp(2),
-      threadId,
+      sessionId,
       updatedAt: timestamp(2),
     },
-    type: 'thread.pinned',
+    type: 'session.pinned',
   }
 }
 
-function makeThreadEvent(
-  threadId: ReturnType<typeof parseThreadId>,
+function makeSessionEvent(
+  sessionId: ReturnType<typeof parseSessionId>,
   sequence: number,
   slug: string,
-): Omit<Extract<OrchestrationEvent, { type: 'thread.message-sent' }>, 'payload' | 'type'> {
+): Omit<Extract<OrchestrationEvent, { type: 'session.message-sent' }>, 'payload' | 'type'> {
   return {
     actorKind: 'provider',
-    aggregateId: threadId,
-    aggregateKind: 'thread',
+    aggregateId: sessionId,
+    aggregateKind: 'session',
     causationEventId: null,
     commandId: parseCommandId(`command-${slug}`),
     correlationId: parseCommandId(`command-${slug}`),
@@ -772,11 +804,11 @@ function makeThreadEvent(
 }
 
 function assistantCompleteEvent(
-  threadId: ReturnType<typeof parseThreadId>,
+  sessionId: ReturnType<typeof parseSessionId>,
   turnId: ReturnType<typeof parseTurnId>,
 ): OrchestrationEvent {
   return {
-    ...makeThreadEvent(threadId, 2, 'assistant-complete'),
+    ...makeSessionEvent(sessionId, 2, 'assistant-complete'),
     occurredAt: timestamp(4),
     payload: {
       attachments: [],
@@ -785,17 +817,17 @@ function assistantCompleteEvent(
       role: 'assistant',
       streaming: false,
       text: '',
-      threadId,
+      sessionId,
       turnId,
       updatedAt: timestamp(4),
     },
-    type: 'thread.message-sent',
+    type: 'session.message-sent',
   }
 }
 
-function userMessageEvent(threadId: ReturnType<typeof parseThreadId>): OrchestrationEvent {
+function userMessageEvent(sessionId: ReturnType<typeof parseSessionId>): OrchestrationEvent {
   return {
-    ...makeThreadEvent(threadId, 2, 'user-message'),
+    ...makeSessionEvent(sessionId, 2, 'user-message'),
     payload: {
       attachments: [],
       createdAt: timestamp(2),
@@ -803,11 +835,11 @@ function userMessageEvent(threadId: ReturnType<typeof parseThreadId>): Orchestra
       role: 'user',
       streaming: false,
       text: 'Ship it',
-      threadId,
+      sessionId,
       turnId: null,
       updatedAt: timestamp(2),
     },
-    type: 'thread.message-sent',
+    type: 'session.message-sent',
   }
 }
 
@@ -816,18 +848,18 @@ function assistantMessageEvent({
   sequence,
   streaming,
   text,
-  threadId,
+  sessionId,
   turnId,
 }: {
   messageId: ReturnType<typeof parseMessageId>
   sequence: number
   streaming: boolean
   text: string
-  threadId: ReturnType<typeof parseThreadId>
+  sessionId: ReturnType<typeof parseSessionId>
   turnId: ReturnType<typeof parseTurnId>
 }): OrchestrationEvent {
   return {
-    ...makeThreadEvent(threadId, sequence, `assistant-${sequence}`),
+    ...makeSessionEvent(sessionId, sequence, `assistant-${sequence}`),
     payload: {
       attachments: [],
       createdAt: timestamp(sequence),
@@ -835,82 +867,82 @@ function assistantMessageEvent({
       role: 'assistant',
       streaming,
       text,
-      threadId,
+      sessionId,
       turnId,
       updatedAt: timestamp(sequence),
     },
-    type: 'thread.message-sent',
+    type: 'session.message-sent',
   }
 }
 
 function providerFailureActivityEvent(
-  threadId: ReturnType<typeof parseThreadId>,
+  sessionId: ReturnType<typeof parseSessionId>,
   turnId: ReturnType<typeof parseTurnId>,
 ): OrchestrationEvent {
   return {
-    ...makeThreadEvent(threadId, 3, 'provider-failure'),
+    ...makeSessionEvent(sessionId, 3, 'provider-failure'),
     occurredAt: timestamp(5),
     payload: {
-      activity: makeActivity(5, threadId, {
+      activity: makeActivity(5, sessionId, {
         kind: 'provider.turn.start.failed',
         payload: { detail: 'failed' },
         summary: 'Provider turn start failed',
         tone: 'error',
         turnId,
       }),
-      threadId,
+      sessionId,
     },
-    type: 'thread.activity-appended',
+    type: 'session.activity-appended',
   }
 }
 
 function proposedPlanUpsertedEvent(
-  threadId: ReturnType<typeof parseThreadId>,
+  sessionId: ReturnType<typeof parseSessionId>,
   planId: ReturnType<typeof parseProposedPlanId>,
   sequence: number,
 ): OrchestrationEvent {
   return {
-    ...makeThreadEvent(threadId, sequence, `plan-${sequence}`),
+    ...makeSessionEvent(sessionId, sequence, `plan-${sequence}`),
     payload: {
-      proposedPlan: makeProposedPlan({ id: planId, threadId }),
-      threadId,
+      proposedPlan: makeProposedPlan({ id: planId, sessionId }),
+      sessionId,
     },
-    type: 'thread.proposed-plan-upserted',
+    type: 'session.proposed-plan-upserted',
   }
 }
 
 function turnDiffCompletedEvent(
-  threadId: ReturnType<typeof parseThreadId>,
+  sessionId: ReturnType<typeof parseSessionId>,
   turnId: ReturnType<typeof parseTurnId>,
   sequence: number,
 ): OrchestrationEvent {
   return {
-    ...makeThreadEvent(threadId, sequence, `turn-diff-${sequence}`),
+    ...makeSessionEvent(sessionId, sequence, `turn-diff-${sequence}`),
     payload: {
       ...makeCheckpoint(turnId),
-      threadId,
+      sessionId,
     },
-    type: 'thread.turn-diff-completed',
+    type: 'session.turn-diff-completed',
   }
 }
 
 function turnStartRequestedEvent(
-  threadId: ReturnType<typeof parseThreadId>,
+  sessionId: ReturnType<typeof parseSessionId>,
   turnId: ReturnType<typeof parseTurnId>,
   planId: ReturnType<typeof parseProposedPlanId>,
 ): OrchestrationEvent {
   return {
-    ...makeThreadEvent(threadId, 2, 'turn-start'),
+    ...makeSessionEvent(sessionId, 2, 'turn-start'),
     payload: {
       createdAt: timestamp(2),
       interactionMode: DEFAULT_INTERACTION_MODE,
       messageId: parseMessageId('message-user'),
       runtimeMode: DEFAULT_RUNTIME_MODE,
-      sourceProposedPlan: { planId, threadId },
-      threadId,
+      sourceProposedPlan: { planId, sessionId },
+      sessionId,
       turnId,
     },
-    type: 'thread.turn-start-requested',
+    type: 'session.turn-start-requested',
   }
 }
 
@@ -918,8 +950,8 @@ function parseProjectId(value: string) {
   return v.parse(projectIdSchema, value)
 }
 
-function parseThreadId(value: string) {
-  return v.parse(threadIdSchema, value)
+function parseSessionId(value: string) {
+  return v.parse(sessionIdSchema, value)
 }
 
 function parseMessageId(value: string) {

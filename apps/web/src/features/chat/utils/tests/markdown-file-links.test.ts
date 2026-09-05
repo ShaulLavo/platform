@@ -68,3 +68,18 @@ test('a relative reference without a workspace root cannot be opened', () => {
   expect(resolveInlineCodeFileReference('src/foo.ts:42', null)).toBeNull()
   expect(resolveMarkdownLinkFileReference('src/foo.ts', null)).toBeNull()
 })
+
+test('a file reference at the configured filesystem root keeps its API-relative path', () => {
+  expect(resolveInlineCodeFileReference('src/main.ts:8', '')).toEqual({
+    path: 'src/main.ts',
+    line: 8,
+    column: null,
+    label: 'src/main.ts:8',
+  })
+  expect(resolveInlineCodeFileReference('src/main.ts:8', 'repo')).toEqual({
+    path: 'repo/src/main.ts',
+    line: 8,
+    column: null,
+    label: 'src/main.ts:8',
+  })
+})

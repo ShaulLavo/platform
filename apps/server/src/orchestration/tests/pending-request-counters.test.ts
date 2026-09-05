@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import type { PendingOrchestrationEvent } from '../event-store'
-import type { OrchestrationProjectedThread, OrchestrationReadModel } from '../read-model'
+import type { OrchestrationProjectedSession, OrchestrationReadModel } from '../read-model'
 import {
   activityAppendedEvent,
   applyIncrementally,
   createProjectionFixture,
   pendingEvent,
-  threadBootstrapEvents,
+  sessionBootstrapEvents,
   turnDiffCompletedEvent,
   turnStartEvent,
-  THREAD_ID,
+  SESSION_ID,
 } from './factories/projection'
 
 const requestedAt = '2026-05-24T00:01:00.000Z'
@@ -24,19 +24,19 @@ afterEach(() => {
 describe('pending request counters', () => {
   it('counts open approval and user-input requests in both projections', () => {
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       turnStartEvent('turn-1', requestedAt),
       approvalRequested('req-1'),
       userInputRequested('req-2'),
     ])
 
     expectCounts(projected.memory, 1, 1)
-    expectCounts(projected.sqlThread, 1, 1)
+    expectCounts(projected.sqlSession, 1, 1)
   })
 
   it('closes the counter when the request resolves', () => {
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       turnStartEvent('turn-1', requestedAt),
       approvalRequested('req-1'),
       userInputRequested('req-2'),
@@ -44,12 +44,12 @@ describe('pending request counters', () => {
     ])
 
     expectCounts(projected.memory, 0, 1)
-    expectCounts(projected.sqlThread, 0, 1)
+    expectCounts(projected.sqlSession, 0, 1)
   })
 
   it('keeps a request open through a transient respond failure and closes it on a dead one', () => {
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       turnStartEvent('turn-1', requestedAt),
       approvalRequested('req-1'),
       requestActivity('provider.approval.respond.failed', 'activity-fail-1', 'req-1', {
@@ -58,10 +58,10 @@ describe('pending request counters', () => {
     ])
 
     expectCounts(projected.memory, 1, 0)
-    expectCounts(projected.sqlThread, 1, 0)
+    expectCounts(projected.sqlSession, 1, 0)
 
     const dead = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       turnStartEvent('turn-1', requestedAt),
       approvalRequested('req-1'),
       requestActivity('provider.approval.respond.failed', 'activity-fail-2', 'req-1', {
@@ -70,24 +70,24 @@ describe('pending request counters', () => {
     ])
 
     expectCounts(dead.memory, 0, 0)
-    expectCounts(dead.sqlThread, 0, 0)
+    expectCounts(dead.sqlSession, 0, 0)
   })
 
   it('does not double-count a replayed request activity', () => {
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       turnStartEvent('turn-1', requestedAt),
       approvalRequested('req-1'),
       approvalRequested('req-1', 'activity-approval-1'),
     ])
 
     expectCounts(projected.memory, 1, 0)
-    expectCounts(projected.sqlThread, 1, 0)
+    expectCounts(projected.sqlSession, 1, 0)
   })
 
   it('drops the requests a revert pruned and keeps the ones it retained', () => {
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       turnStartEvent('turn-1', requestedAt),
       approvalRequested('req-1', 'activity-approval-1', 'turn-1'),
       turnDiffCompletedEvent({ checkpointTurnCount: 1, turnId: 'turn-1' }),
@@ -95,14 +95,14 @@ describe('pending request counters', () => {
       userInputRequested('req-2', 'activity-input-2', 'turn-2'),
       turnDiffCompletedEvent({ checkpointTurnCount: 2, turnId: 'turn-2' }),
       pendingEvent(
-        'thread.reverted',
-        { revertedAt: '2026-05-24T00:05:00.000Z', threadId: THREAD_ID, turnCount: 1 },
+        'session.reverted',
+        { revertedAt: '2026-05-24T00:05:00.000Z', sessionId: SESSION_ID, turnCount: 1 },
         '2026-05-24T00:05:00.000Z',
       ),
     ])
 
     expectCounts(projected.memory, 1, 0)
-    expectCounts(projected.sqlThread, 1, 0)
+    expectCounts(projected.sqlSession, 1, 0)
   })
 
   it('survives a storm of unrelated activities and still closes on resolve', () => {
@@ -110,17 +110,17 @@ describe('pending request counters', () => {
       activityAppendedEvent({ id: `activity-tool-${index}` }),
     )
     const open = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       turnStartEvent('turn-1', requestedAt),
       approvalRequested('req-1'),
       ...noise,
     ])
 
     expectCounts(open.memory, 1, 0)
-    expectCounts(open.sqlThread, 1, 0)
+    expectCounts(open.sqlSession, 1, 0)
 
     const closed = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       turnStartEvent('turn-1', requestedAt),
       approvalRequested('req-1'),
       ...noise,
@@ -128,7 +128,7 @@ describe('pending request counters', () => {
     ])
 
     expectCounts(closed.memory, 0, 0)
-    expectCounts(closed.sqlThread, 0, 0)
+    expectCounts(closed.sqlSession, 0, 0)
   })
 })
 
@@ -139,21 +139,25 @@ function project(events: PendingOrchestrationEvent[]) {
   const model = applyIncrementally(fixture, events)
 
   return {
-    memory: projectedThread(model),
-    sqlThread: projectedThread(fixture.snapshots.fullReadModel()),
+    memory: projectedSession(model),
+    sqlSession: projectedSession(fixture.snapshots.fullReadModel()),
   }
 }
 
-function projectedThread(model: OrchestrationReadModel) {
-  const thread = model.threads.get(THREAD_ID)
-  expect(thread).toBeDefined()
+function projectedSession(model: OrchestrationReadModel) {
+  const session = model.sessions.get(SESSION_ID)
+  expect(session).toBeDefined()
 
-  return thread as OrchestrationProjectedThread
+  return session as OrchestrationProjectedSession
 }
 
-function expectCounts(thread: OrchestrationProjectedThread, approvals: number, userInputs: number) {
-  expect(thread.pendingApprovalCount).toBe(approvals)
-  expect(thread.pendingUserInputCount).toBe(userInputs)
+function expectCounts(
+  session: OrchestrationProjectedSession,
+  approvals: number,
+  userInputs: number,
+) {
+  expect(session.pendingApprovalCount).toBe(approvals)
+  expect(session.pendingUserInputCount).toBe(userInputs)
 }
 
 function approvalRequested(requestId: string, id = 'activity-approval-1', turnId = 'turn-1') {

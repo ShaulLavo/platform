@@ -1,3 +1,4 @@
+import { OrchestrationSnapshotQuery } from '../snapshot-query'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -7,7 +8,7 @@ import * as v from 'valibot'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
   providerInstanceIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
   turnIdSchema,
   type ProviderInstanceId,
 } from '@workspace/contracts'
@@ -19,12 +20,10 @@ import { createWorkspacePaths } from '../../fs/path'
 import { GitService } from '../../git/service'
 import { MockProviderAdapter } from '../../provider/adapters/mock'
 import { ProviderAdapterRegistry } from '../../provider/provider-adapter-registry'
-import { ProviderService } from '../../provider/provider-service'
-import { ProviderSessionDirectory } from '../../provider/provider-session-directory'
 import type { ProviderRuntimeEvent } from '../../provider/types'
 import { CheckpointReactor } from '../checkpoint-reactor'
 import { OrchestrationCheckpointDiffQuery } from '../checkpoint-diff-query'
-import { checkpointRefForThreadTurn } from '../checkpoint-refs'
+import { checkpointRefForSessionTurn } from '../checkpoint-refs'
 import { OrchestrationEngine } from '../engine'
 import { ProviderRuntimeIngestion } from '../provider-runtime-ingestion'
 import { orchestrationCommandSchema, type OrchestrationCommand } from '../schemas'
@@ -33,7 +32,7 @@ const now = '2026-06-01T00:00:00.000Z'
 const later = '2026-06-01T00:01:00.000Z'
 const providerInstanceId = v.parse(providerInstanceIdSchema, 'codex')
 const modelSelection = { model: 'gpt-5-codex', providerInstanceId }
-const threadId = v.parse(threadIdSchema, 'thread-1')
+const sessionId = v.parse(sessionIdSchema, '00000000-0000-4000-8000-000000000001')
 const turnOneId = v.parse(turnIdSchema, 'turn-1')
 const roots: string[] = []
 
@@ -50,8 +49,10 @@ describe('checkpoint reactor', () => {
 
     await runTurn(engine, root)
 
-    expect(await gitRefExists(root, checkpointRefForThreadTurn(threadId, 0))).toBe(true)
-    expect(await gitShow(root, `${checkpointRefForThreadTurn(threadId, 0)}:app.txt`)).toBe('base\n')
+    expect(await gitRefExists(root, checkpointRefForSessionTurn(sessionId, 0))).toBe(true)
+    expect(await gitShow(root, `${checkpointRefForSessionTurn(sessionId, 0)}:app.txt`)).toBe(
+      'base\n',
+    )
     fixture.close()
   })
 
@@ -69,16 +70,15 @@ describe('checkpoint reactor', () => {
 
     await runTurn(engine, root)
 
-    const checkpoint = engine.readModelSnapshot().threads.get(threadId)?.checkpointByTurnId[
-      turnOneId
-    ]
+    const checkpoint = (await engine.readModelSnapshot()).sessions.get(sessionId)
+      ?.checkpointByTurnId[turnOneId]
     expect(checkpoint).toMatchObject({
-      checkpointRef: checkpointRefForThreadTurn(threadId, 1),
+      checkpointRef: checkpointRefForSessionTurn(sessionId, 1),
       checkpointTurnCount: 1,
       status: 'ready',
     })
-    expect(await gitRefExists(root, checkpointRefForThreadTurn(threadId, 1))).toBe(true)
-    expect(turnDiffFiles(engine)).toEqual([
+    expect(await gitRefExists(root, checkpointRefForSessionTurn(sessionId, 1))).toBe(true)
+    expect(await turnDiffFiles(engine)).toEqual([
       { additions: 1, deletions: 0, kind: 'added', path: 'added.txt' },
       { additions: 1, deletions: 0, kind: 'modified', path: 'app.txt' },
     ])
@@ -100,7 +100,7 @@ describe('checkpoint reactor', () => {
       fixture.database,
       new GitService(createWorkspacePaths(root), { maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES }),
     )
-    const diffs = await diffQuery.turnDiff({ fromTurnCount: 0, threadId, toTurnCount: 1 })
+    const diffs = await diffQuery.turnDiff({ fromTurnCount: 0, sessionId, toTurnCount: 1 })
 
     expect(diffs).toMatchObject([
       {
@@ -126,41 +126,41 @@ describe('checkpoint reactor', () => {
     const reactor = standaloneCheckpointReactor(fixture, engine, root)
     engine.subscribeDomainEvents(reactor)
     const ingestion = new ProviderRuntimeIngestion((command) => engine.dispatch(command), {
-      getReadModel: () => engine.readModelSnapshot(),
+      getReadModel: () => new OrchestrationSnapshotQuery(fixture.database).fullReadModel(),
     })
 
-    await dispatchThreadWithTurn(engine, root)
+    await dispatchSessionWithTurn(engine, root)
     await reactor.drain()
     await ingestion.ingest(turnStartedEvent())
     await writeFile(path.join(root, 'app.txt'), 'base\nagent\n')
     await ingestion.ingest(turnDiffUpdatedEvent('diff-1'))
 
-    const placeholder = checkpointForTurn(engine)
+    const placeholder = await checkpointForTurn(engine)
     expect(placeholder).toMatchObject({
-      checkpointRef: checkpointRefForThreadTurn(threadId, 1),
+      checkpointRef: checkpointRefForSessionTurn(sessionId, 1),
       checkpointTurnCount: 1,
       status: 'missing',
     })
-    expect(turnDiffFiles(engine)).toEqual([
+    expect(await turnDiffFiles(engine)).toEqual([
       { additions: 1, deletions: 0, kind: 'modified', path: 'app.txt' },
     ])
 
     await ingestion.ingest(turnCompletedEvent())
     await reactor.drain()
 
-    expect(checkpointForTurn(engine)).toMatchObject({
-      checkpointRef: checkpointRefForThreadTurn(threadId, 1),
+    expect(await checkpointForTurn(engine)).toMatchObject({
+      checkpointRef: checkpointRefForSessionTurn(sessionId, 1),
       // The placeholder's slot is reused: a second slot would leave the diff
       // routes asking git for a turn that was never captured.
       checkpointTurnCount: 1,
       status: 'ready',
     })
-    expect(await gitRefExists(root, checkpointRefForThreadTurn(threadId, 1))).toBe(true)
+    expect(await gitRefExists(root, checkpointRefForSessionTurn(sessionId, 1))).toBe(true)
 
     await ingestion.ingest(turnDiffUpdatedEvent('diff-late'))
     await reactor.drain()
 
-    expect(checkpointForTurn(engine)?.status).toBe('ready')
+    expect((await checkpointForTurn(engine))?.status).toBe('ready')
     fixture.close()
   })
 
@@ -172,14 +172,14 @@ describe('checkpoint reactor', () => {
     const reactor = standaloneCheckpointReactor(fixture, engine, root)
     engine.subscribeDomainEvents(reactor)
 
-    await dispatchThreadWithTurn(engine, root)
+    await dispatchSessionWithTurn(engine, root)
     await reactor.drain()
 
-    const baselineRef = checkpointRefForThreadTurn(threadId, 0)
+    const baselineRef = checkpointRefForSessionTurn(sessionId, 0)
     const captured = await gitRevParse(root, baselineRef)
     // The same committed batch, redelivered — exactly what the engine does when
     // a later dispatch throws after its events were durable.
-    reactor.handleEvents(engine.replay({ afterSequence: 0 }).events)
+    reactor.handleEvents((await engine.replay({ afterSequence: 0 })).events)
     await writeFile(path.join(root, 'app.txt'), 'drifted\n')
     await reactor.drain()
 
@@ -194,10 +194,10 @@ describe('checkpoint reactor', () => {
 
     await runTurn(engine, root)
 
-    const thread = engine.readModelSnapshot().threads.get(threadId)
-    expect(thread?.latestTurn).toMatchObject({ state: 'completed', turnId: turnOneId })
-    expect(thread?.checkpointByTurnId).toEqual({})
-    expect(thread?.messages.some((message) => message.role === 'assistant')).toBe(true)
+    const session = (await engine.readModelSnapshot()).sessions.get(sessionId)
+    expect(session?.latestTurn).toMatchObject({ state: 'completed', turnId: turnOneId })
+    expect(session?.checkpointByTurnId).toEqual({})
+    expect(session?.messages.some((message) => message.role === 'assistant')).toBe(true)
     fixture.close()
   })
 
@@ -225,17 +225,17 @@ describe('checkpoint reactor', () => {
       command({
         commandId: 'cmd-revert',
         createdAt: later,
-        threadId,
+        sessionId,
         turnCount: 1,
-        type: 'thread.checkpoint.revert',
+        type: 'session.checkpoint.revert',
       }),
     )
     await engine.providerRuntimeIdle()
 
     expect(await readFile(path.join(root, 'app.txt'), 'utf8')).toBe('one\n')
-    expect(await gitRefExists(root, checkpointRefForThreadTurn(threadId, 2))).toBe(false)
+    expect(await gitRefExists(root, checkpointRefForSessionTurn(sessionId, 2))).toBe(false)
     expect(await stagedStatusEntries(root)).toEqual([])
-    expect(adapter.rollbacks).toContainEqual({ numTurns: 1, threadId })
+    expect(adapter.rollbacks).toContainEqual({ numTurns: 1, sessionId })
     fixture.close()
   })
 })
@@ -247,7 +247,7 @@ function checkpointEngine(
 ) {
   return new OrchestrationEngine(fixture.database, {
     providerRuntime: {
-      adapterRegistry: new ProviderAdapterRegistry([adapter]),
+      adapterRegistry: new ProviderAdapterRegistry({ adapters: [adapter] }),
       checkpointGit: new GitService(createWorkspacePaths(root), {
         maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES,
       }),
@@ -262,13 +262,9 @@ function standaloneCheckpointReactor(
 ) {
   return new CheckpointReactor({
     dispatch: (command) => engine.dispatch(command),
-    getReadModel: () => engine.readModelSnapshot(),
+    getReadModel: () => new OrchestrationSnapshotQuery(fixture.database).fullReadModel(),
     git: new GitService(createWorkspacePaths(root), {
       maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES,
-    }),
-    providerService: new ProviderService({
-      adapterRegistry: new ProviderAdapterRegistry([new MockProviderAdapter()]),
-      sessionDirectory: new ProviderSessionDirectory(fixture.database),
     }),
   })
 }
@@ -282,26 +278,38 @@ async function runTurn(
     turnId: 'turn-1',
   },
 ) {
-  if (turn.turnId === 'turn-1') await dispatchThread(engine, workspaceRoot)
+  if (turn.turnId === 'turn-1') await dispatchSession(engine, workspaceRoot)
 
   await engine.dispatch(turnStartCommand(turn))
   await engine.providerRuntimeIdle()
 }
 
-async function dispatchThreadWithTurn(engine: OrchestrationEngine, workspaceRoot: string) {
-  await dispatchThread(engine, workspaceRoot)
+async function dispatchSessionWithTurn(engine: OrchestrationEngine, workspaceRoot: string) {
+  await dispatchSession(engine, workspaceRoot)
   await engine.dispatch(
     turnStartCommand({ commandId: 'cmd-turn-1-start', messageId: 'message-1', turnId: 'turn-1' }),
   )
 }
 
-async function dispatchThread(engine: OrchestrationEngine, workspaceRoot: string) {
+async function dispatchSession(engine: OrchestrationEngine, workspaceRoot: string) {
   await engine.dispatch(
     command({
+      worktreeId: '20000000-0000-4000-8000-000000000001',
+      repositoryKey: 'fixture-repository',
+      repositoryKind: 'directory',
+      repositoryIdentity: { source: 'path', canonical: workspaceRoot },
+      canonicalPath: workspaceRoot,
+      path: workspaceRoot,
+      branch: null,
+      registrationGeneration: 0,
+      kind: 'current',
+      ownership: 'protected',
+      updatedAt: '2026-05-24T00:00:00.000Z',
+      intentFingerprint: 'fixture-intent',
       commandId: 'cmd-project-create',
       createdAt: now,
       defaultModelSelection: modelSelection,
-      projectId: 'project-1',
+      projectId: '10000000-0000-4000-8000-000000000001',
       title: 'Platform',
       type: 'project.create',
       workspaceRoot,
@@ -309,17 +317,17 @@ async function dispatchThread(engine: OrchestrationEngine, workspaceRoot: string
   )
   await engine.dispatch(
     command({
-      branch: null,
-      commandId: 'cmd-thread-create',
+      worktreeId: '20000000-0000-4000-8000-000000000001',
+
+      commandId: 'cmd-session-create',
       createdAt: now,
       interactionMode: 'default',
       modelSelection,
-      projectId: 'project-1',
+
       runtimeMode: 'full-access',
-      threadId,
-      title: 'Thread',
-      type: 'thread.create',
-      worktreePath: workspaceRoot,
+      sessionId,
+      title: 'Session',
+      type: 'session.create',
     }),
   )
 }
@@ -332,9 +340,9 @@ function turnStartCommand(turn: { commandId: string; messageId: string; turnId: 
     message: { messageId: turn.messageId, role: 'user', text: 'Build it' },
     modelSelection,
     runtimeMode: 'full-access',
-    threadId,
+    sessionId,
     turnId: turn.turnId,
-    type: 'thread.turn.start',
+    type: 'session.turn.start',
   })
 }
 
@@ -344,9 +352,10 @@ function turnStartedEvent(): ProviderRuntimeEvent {
     eventId: 'runtime-turn-started',
     payload: { model: modelSelection.model },
     providerInstanceId: providerInstanceId as ProviderInstanceId,
-    providerSessionId: 'mock:thread-1',
-    threadId,
+    providerBindingHandle: 'mock:session-1',
+    sessionId,
     turnId: turnOneId,
+    runtimeEpoch: 'epoch-fixture',
     type: 'turn.started',
   }
 }
@@ -357,9 +366,10 @@ function turnCompletedEvent(): ProviderRuntimeEvent {
     eventId: 'runtime-turn-completed',
     payload: { state: 'completed' },
     providerInstanceId: providerInstanceId as ProviderInstanceId,
-    providerSessionId: 'mock:thread-1',
-    threadId,
+    providerBindingHandle: 'mock:session-1',
+    sessionId,
     turnId: turnOneId,
+    runtimeEpoch: 'epoch-fixture',
     type: 'turn.completed',
   }
 }
@@ -381,19 +391,20 @@ function turnDiffUpdatedEvent(eventId: string): ProviderRuntimeEvent {
       ].join('\n'),
     },
     providerInstanceId: providerInstanceId as ProviderInstanceId,
-    threadId,
+    sessionId,
     turnId: turnOneId,
+    runtimeEpoch: 'epoch-fixture',
     type: 'turn.diff.updated',
   }
 }
 
-function checkpointForTurn(engine: OrchestrationEngine) {
-  return engine.readModelSnapshot().threads.get(threadId)?.checkpointByTurnId[turnOneId]
+async function checkpointForTurn(engine: OrchestrationEngine) {
+  return (await engine.readModelSnapshot()).sessions.get(sessionId)?.checkpointByTurnId[turnOneId]
 }
 
-function turnDiffFiles(engine: OrchestrationEngine) {
-  const events = engine.replay({ afterSequence: 0 }).events
-  const completed = events.filter((event) => event.type === 'thread.turn-diff-completed')
+async function turnDiffFiles(engine: OrchestrationEngine) {
+  const events = (await engine.replay({ afterSequence: 0 })).events
+  const completed = events.filter((event) => event.type === 'session.turn-diff-completed')
   const files = completed.at(-1)?.payload.files ?? []
 
   return [...files].toSorted((left, right) => left.path.localeCompare(right.path))
@@ -471,5 +482,5 @@ async function runGit(root: string, args: readonly string[], allowFailure = fals
   ])
   if (allowFailure || exitCode === 0) return { exitCode, stderr, stdout }
 
-  throw new Error(`${stderr}${stdout}`.trim())
+  throw new TypeError(`${stderr}${stdout}`.trim())
 }

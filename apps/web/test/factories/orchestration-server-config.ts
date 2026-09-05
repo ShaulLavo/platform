@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT_ID } from './chat'
 import {
   ORCHESTRATION_WS_PROTOCOL_VERSION,
   type OrchestrationWsServerConfig,
@@ -6,7 +7,7 @@ import {
 export function orchestrationServerConfig(overrides: Partial<OrchestrationWsServerConfig> = {}) {
   return {
     capabilities: { resume: true, synchronizedMarker: true },
-    environmentId: 'environment-1',
+    environmentId: TEST_ENVIRONMENT_ID,
     limits: { replayMaxEvents: 1_000, resumeMaxGap: 1_000 },
     protocolVersion: ORCHESTRATION_WS_PROTOCOL_VERSION,
     serverInstanceId: 'server-1',

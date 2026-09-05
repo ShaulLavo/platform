@@ -166,11 +166,11 @@ test('cancels and ignores a stale result when the repository root changes', asyn
       expect(screen.getByRole('status')).toHaveTextContent('Generating commit message…')
 
       view.rerender(<ControlsTree hasLocalChanges={false} rootPath='repo-b' />)
-      await waitFor(() => expect(adapter.interruptedThreads.length).toBeGreaterThanOrEqual(1))
+      await waitFor(() => expect(adapter.interruptedSessions.length).toBeGreaterThanOrEqual(1))
       expect(screen.getByRole('textbox', { name: 'Commit message' })).toHaveValue('')
 
       gate.resolve()
-      await waitFor(() => expect(adapter.interruptedThreads.length).toBeGreaterThanOrEqual(2))
+      await waitFor(() => expect(adapter.interruptedSessions.length).toBeGreaterThanOrEqual(2))
       view.rerender(<ControlsTree hasLocalChanges rootPath='repo-a' />)
       expect(screen.getByRole('textbox', { name: 'Commit message' })).toHaveValue('')
     },
@@ -196,7 +196,7 @@ test('finishes cancellation before allowing a fresh generation request', async (
       )
 
       expect(screen.getByRole('button', { name: 'Cancelling commit message…' })).toBeDisabled()
-      await waitFor(() => expect(adapter.interruptedThreads.length).toBeGreaterThanOrEqual(1))
+      await waitFor(() => expect(adapter.interruptedSessions.length).toBeGreaterThanOrEqual(1))
 
       gate.resolve()
       const generate = await screen.findByRole('button', { name: 'Generate commit message' })

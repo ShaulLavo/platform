@@ -1,5 +1,6 @@
 import type {
   ChatAttachment,
+  EnvironmentId,
   InteractionMode,
   ModelSelection,
   RuntimeMode,
@@ -21,6 +22,7 @@ const CHAT_INPUT_DRAFT_PERSIST_DEBOUNCE_MS = 300
 const CHAT_INPUT_DRAFT_PERSISTENCE_ERROR = 'Chat draft could not be saved locally.'
 
 export type ChatInputDraftTarget = {
+  environmentId: EnvironmentId
   draftKey: string | null
   rootPath: string
 }
@@ -219,7 +221,7 @@ function chatInputDraftForTarget(
   state: Pick<ChatInputDraftState, 'draftsByKey'>,
   target: ChatInputDraftTarget,
 ) {
-  const draftId = chatInputDraftStorageId(target.rootPath, target.draftKey)
+  const draftId = chatInputDraftStorageId(target.environmentId, target.rootPath, target.draftKey)
   if (!draftId) return EMPTY_CHAT_INPUT_DRAFT
 
   return state.draftsByKey[draftId] ?? EMPTY_CHAT_INPUT_DRAFT
@@ -230,7 +232,7 @@ function updateDraftForTarget(
   target: ChatInputDraftTarget,
   update: (draft: ChatInputDraft) => ChatInputDraft,
 ): ChatInputDraftState {
-  const draftId = chatInputDraftStorageId(target.rootPath, target.draftKey)
+  const draftId = chatInputDraftStorageId(target.environmentId, target.rootPath, target.draftKey)
   if (!draftId) return state
 
   const draft = state.draftsByKey[draftId] ?? EMPTY_CHAT_INPUT_DRAFT
@@ -251,7 +253,7 @@ function removeDraftForTarget(
   state: ChatInputDraftState,
   target: ChatInputDraftTarget,
 ): ChatInputDraftState {
-  const draftId = chatInputDraftStorageId(target.rootPath, target.draftKey)
+  const draftId = chatInputDraftStorageId(target.environmentId, target.rootPath, target.draftKey)
   if (!draftId) return state
 
   return removeDraftById(state, draftId)

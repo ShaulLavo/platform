@@ -11,8 +11,8 @@ export function SessionProjectPaletteRow({ project }: { readonly project: Sessio
   return (
     <CommandItem
       keywords={[project.title, project.workspaceRoot, project.qualifier ?? '']}
-      value={sessionProjectItemValue(project.id)}
-      onSelect={() => startSessionDraft(project.id)}
+      value={sessionProjectItemValue(project.key)}
+      onSelect={() => startSessionDraft(project.ref)}
     >
       <PlusIcon className='text-muted-foreground' weight='bold' />
       <span className='max-w-[55%] shrink-0 truncate font-medium'>{project.title}</span>

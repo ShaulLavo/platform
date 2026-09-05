@@ -1,4 +1,4 @@
-import type { ThreadId } from '@workspace/contracts'
+import type { SessionId } from '@workspace/contracts'
 
 /**
  * What a click on a session row is asking for. The rail is a list, and a list that
@@ -23,13 +23,13 @@ export function sessionClickIntent(modifiers: SessionClickModifiers): SessionCli
   return 'open'
 }
 
-export function toggledThreadIds(
-  threadIds: readonly ThreadId[],
-  threadId: ThreadId,
-): readonly ThreadId[] {
-  if (!threadIds.includes(threadId)) return [...threadIds, threadId]
+export function toggledSessionIds(
+  sessionIds: readonly SessionId[],
+  sessionId: SessionId,
+): readonly SessionId[] {
+  if (!sessionIds.includes(sessionId)) return [...sessionIds, sessionId]
 
-  return threadIds.filter((candidate) => candidate !== threadId)
+  return sessionIds.filter((candidate) => candidate !== sessionId)
 }
 
 /**
@@ -37,16 +37,16 @@ export function toggledThreadIds(
  * anchor that has scrolled out of the visible list (filtered away, archived) leaves
  * nothing to span, so the target becomes the whole range and the new anchor.
  */
-export function threadIdRange(
-  orderedThreadIds: readonly ThreadId[],
-  anchorThreadId: ThreadId | null,
-  threadId: ThreadId,
-): readonly ThreadId[] {
-  const target = orderedThreadIds.indexOf(threadId)
+export function sessionIdRange(
+  orderedSessionIds: readonly SessionId[],
+  anchorSessionId: SessionId | null,
+  sessionId: SessionId,
+): readonly SessionId[] {
+  const target = orderedSessionIds.indexOf(sessionId)
   if (target === -1) return []
 
-  const anchor = anchorThreadId ? orderedThreadIds.indexOf(anchorThreadId) : -1
-  if (anchor === -1) return [threadId]
+  const anchor = anchorSessionId ? orderedSessionIds.indexOf(anchorSessionId) : -1
+  if (anchor === -1) return [sessionId]
 
-  return orderedThreadIds.slice(Math.min(anchor, target), Math.max(anchor, target) + 1)
+  return orderedSessionIds.slice(Math.min(anchor, target), Math.max(anchor, target) + 1)
 }

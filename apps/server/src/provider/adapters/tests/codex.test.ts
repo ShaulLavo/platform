@@ -6,8 +6,7 @@ import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_PROVIDER_INSTANCE_ID,
   DEFAULT_RUNTIME_MODE,
-  projectIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
   turnIdSchema,
   type ProviderInstanceId,
 } from '@workspace/contracts'
@@ -35,7 +34,7 @@ if (process.argv[2] !== 'app-server') {
 }
 
 let threadStartCount = 0;
-let lastThreadStartParams = null;
+let lastSessionStartParams = null;
 
 // One JSON line per app-server event a test needs to see from the outside: the
 // working directory each process was spawned in, and the params of every
@@ -55,7 +54,7 @@ function fail(id, message) {
   send({ id, error: { message } });
 }
 
-function fakeThread(turns = []) {
+function fakeSession(turns = []) {
   return {
     cliVersion: '9.9.9',
     createdAt: 0,
@@ -262,7 +261,7 @@ function handle(message) {
   }
   if (message.method === 'thread/start') {
     threadStartCount += 1;
-    lastThreadStartParams = message.params;
+    lastSessionStartParams = message.params;
     if (mode !== 'echo-mode-params' && !assertStartParams(message)) return;
     if (mode === 'malformed-thread-start') {
       send({ id: message.id, result: { thread: {} } });
@@ -270,7 +269,7 @@ function handle(message) {
     }
     send({
       method: 'thread/started',
-      params: { thread: fakeThread() },
+      params: { thread: fakeSession() },
     });
     send({
       id: message.id,
@@ -281,7 +280,7 @@ function handle(message) {
         model: 'gpt-5.5',
         modelProvider: 'openai',
         sandbox: { type: 'dangerFullAccess' },
-        thread: fakeThread(),
+        thread: fakeSession(),
       },
     });
     return;
@@ -305,10 +304,10 @@ function handle(message) {
           mode: collaborationMode?.mode ?? null,
           reasoningEffort: collaborationMode?.settings?.reasoning_effort ?? null,
           settingsModel: collaborationMode?.settings?.model ?? null,
-          threadApprovalsReviewer: lastThreadStartParams?.approvalsReviewer ?? null,
-          threadEphemeral: lastThreadStartParams?.ephemeral ?? null,
+          threadApprovalsReviewer: lastSessionStartParams?.approvalsReviewer ?? null,
+          threadEphemeral: lastSessionStartParams?.ephemeral ?? null,
           threadPersistsExtendedHistory:
-            lastThreadStartParams?.persistExtendedHistory ?? null,
+            lastSessionStartParams?.persistExtendedHistory ?? null,
           threadStarts: threadStartCount,
           turnDeveloperInstructions: message.params.developerInstructions ?? null,
         })
@@ -499,7 +498,7 @@ function handle(message) {
     send({
       id: message.id,
       result: {
-        thread: fakeThread([
+        thread: fakeSession([
           fakeTurn('completed', [{ id: 'item-1', type: 'agentMessage', text: 'hello' }]),
         ]),
       },
@@ -514,7 +513,7 @@ function handle(message) {
     send({
       id: message.id,
       result: {
-        thread: fakeThread(),
+        thread: fakeSession(),
       },
     });
     return;
@@ -556,6 +555,32 @@ type EchoedModeParams = {
 }
 
 describe('CodexProviderAdapter', () => {
+  it('starts a new process when the caller chooses a new runtime epoch', async () => {
+    await withFakeCodex(async ({ spawnLogPath }) => {
+      const adapter = new CodexProviderAdapter()
+      const events: ProviderRuntimeEvent[] = []
+      collectAdapterEvents(adapter, events)
+      const first = providerTurnInput()
+      try {
+        await adapter.sendTurn(first)
+        await adapter.sendTurn({
+          ...first,
+          turnId: v.parse(turnIdSchema, 'turn-epoch-2'),
+          runtimeEpoch: 'replacement-epoch',
+        })
+        await settleRuntimeEvents()
+        expect(await countFakeCodexSpawns(spawnLogPath)).toBe(2)
+        expect(
+          events
+            .filter((event) => event.type === 'runtime.started')
+            .map((event) => event.runtimeEpoch),
+        ).toEqual([first.runtimeEpoch, 'replacement-epoch'])
+      } finally {
+        await adapter.stopAll()
+      }
+    })
+  })
+
   it('uses the app-server protocol and keeps early turn notifications', async () => {
     await withFakeCodex(async () => {
       const adapter = new CodexProviderAdapter()
@@ -566,10 +591,10 @@ describe('CodexProviderAdapter', () => {
       const snapshot = await adapter.snapshot()
       await adapter.sendTurn(input)
       await settleRuntimeEvents()
-      const sessions = await adapter.listSessions()
-      const hasSession = await adapter.hasSession({ threadId: input.thread.id })
-      await adapter.stopSession({ threadId: input.thread.id })
-      const hasSessionAfterStop = await adapter.hasSession({ threadId: input.thread.id })
+      const sessions = await adapter.listActiveRuntimes()
+      const hasRuntime = await adapter.hasRuntime({ sessionId: input.sessionId })
+      await adapter.stopRuntime({ sessionId: input.sessionId })
+      const hasRuntimeAfterStop = await adapter.hasRuntime({ sessionId: input.sessionId })
 
       expect(adapter.capabilities).toEqual({
         listCommands: true,
@@ -595,14 +620,14 @@ describe('CodexProviderAdapter', () => {
           { description: 'An effort level this schema predates', effort: 'hyperdrive' },
         ],
       })
-      expect(hasSession).toBe(true)
-      expect(hasSessionAfterStop).toBe(false)
+      expect(hasRuntime).toBe(true)
+      expect(hasRuntimeAfterStop).toBe(false)
       expect(sessions).toContainEqual(
         expect.objectContaining({
           model: 'codex',
-          providerThreadId: 'provider-thread-1',
+          providerConversationMarker: 'provider-thread-1',
           status: 'ready',
-          threadId: input.thread.id,
+          sessionId: input.sessionId,
         }),
       )
       expect(events).toContainEqual(
@@ -612,7 +637,7 @@ describe('CodexProviderAdapter', () => {
             delta: 'Hello from app-server',
             streamKind: 'assistant_text',
           }),
-          threadId: input.thread.id,
+          sessionId: input.sessionId,
           turnId: input.turnId,
           type: 'content.delta',
         }),
@@ -625,7 +650,7 @@ describe('CodexProviderAdapter', () => {
             itemType: 'assistant_message',
             status: 'completed',
           }),
-          threadId: input.thread.id,
+          sessionId: input.sessionId,
           turnId: input.turnId,
           type: 'item.completed',
         }),
@@ -633,7 +658,7 @@ describe('CodexProviderAdapter', () => {
       expect(events).toContainEqual(
         expect.objectContaining({
           payload: { state: 'completed' },
-          threadId: input.thread.id,
+          sessionId: input.sessionId,
           turnId: input.turnId,
           type: 'turn.completed',
         }),
@@ -641,8 +666,8 @@ describe('CodexProviderAdapter', () => {
       expect(events).toContainEqual(
         expect.objectContaining({
           payload: { state: 'ready' },
-          threadId: input.thread.id,
-          type: 'session.state.changed',
+          sessionId: input.sessionId,
+          type: 'runtime.state.changed',
         }),
       )
     })
@@ -659,11 +684,11 @@ describe('CodexProviderAdapter', () => {
         )
 
         await waitForFakeCodexEvent(spawnLogPath, 'turn/start')
-        expect(await adapter.hasSession({ threadId: input.thread.id })).toBe(true)
-        await adapter.stopSession({ threadId: input.thread.id })
+        expect(await adapter.hasRuntime({ sessionId: input.sessionId })).toBe(true)
+        await adapter.stopRuntime({ sessionId: input.sessionId })
 
         expect(await outcome).toBeInstanceOf(Error)
-        expect(await adapter.hasSession({ threadId: input.thread.id })).toBe(false)
+        expect(await adapter.hasRuntime({ sessionId: input.sessionId })).toBe(false)
       },
       { mode: 'hold-turn-start' },
     )
@@ -695,7 +720,7 @@ describe('CodexProviderAdapter', () => {
       await adapter.sendTurn(input)
       await adapter.stopAll()
 
-      expect(await adapter.hasSession({ threadId: input.thread.id })).toBe(false)
+      expect(await adapter.hasRuntime({ sessionId: input.sessionId })).toBe(false)
     })
   })
 
@@ -750,7 +775,7 @@ describe('CodexProviderAdapter', () => {
         await settleRuntimeEvents()
         await adapter.sendTurn(planTurn)
         await settleRuntimeEvents()
-        const sessions = await adapter.listSessions()
+        const sessions = await adapter.listActiveRuntimes()
         const spawns = await countFakeCodexSpawns(spawnLogPath)
         await adapter.stopAll()
 
@@ -825,7 +850,7 @@ describe('CodexProviderAdapter', () => {
 
         // Every runtime mode we ship reviews with the user. What matters is that
         // the field is spelled out each time: omit it and Codex keeps whichever
-        // reviewer the thread was last configured with.
+        // reviewer the session was last configured with.
         const echoes = echoedModeParams(events)
         expect(echoes.map((echo) => echo.approvalsReviewer)).toEqual(['user', 'user', 'user'])
         expect(echoes.map((echo) => echo.threadApprovalsReviewer)).toEqual(['user', 'user', 'user'])
@@ -987,7 +1012,7 @@ describe('CodexProviderAdapter', () => {
               summary: 'Thinking',
               taskId: 'reasoning:reasoning-1',
             }),
-            threadId: input.thread.id,
+            sessionId: input.sessionId,
             turnId: input.turnId,
             type: 'task.progress',
           }),
@@ -997,7 +1022,7 @@ describe('CodexProviderAdapter', () => {
               summary: 'Inspecting the repo.',
               taskId: 'reasoning:reasoning-1',
             }),
-            threadId: input.thread.id,
+            sessionId: input.sessionId,
             turnId: input.turnId,
             type: 'task.progress',
           }),
@@ -1019,7 +1044,9 @@ describe('CodexProviderAdapter', () => {
         await settleRuntimeEvents()
         await adapter.stopAll()
 
-        const usageEvents = events.filter((event) => event.type === 'thread.token-usage.updated')
+        const usageEvents = events.filter(
+          (event) => event.type === 'conversation.token-usage.updated',
+        )
         expect(usageEvents).toEqual([
           expect.objectContaining({
             payload: {
@@ -1034,8 +1061,8 @@ describe('CodexProviderAdapter', () => {
                 usedTokens: 1600,
               },
             },
-            threadId: input.thread.id,
-            type: 'thread.token-usage.updated',
+            sessionId: input.sessionId,
+            type: 'conversation.token-usage.updated',
           }),
         ])
       },
@@ -1090,10 +1117,10 @@ describe('CodexProviderAdapter', () => {
     const input = providerTurnInput()
 
     await expect(
-      adapter.rollbackThread({ numTurns: 1, threadId: input.thread.id }),
+      adapter.rollbackSession({ numTurns: 1, sessionId: input.sessionId }),
     ).rejects.toThrow('Codex thread/rollback requires an active session')
     await expect(
-      adapter.rollbackThread({ numTurns: 0, threadId: input.thread.id }),
+      adapter.rollbackSession({ numTurns: 0, sessionId: input.sessionId }),
     ).rejects.toThrow('Codex thread rollback requires numTurns')
   })
 
@@ -1224,9 +1251,7 @@ async function settleRuntimeEvents() {
 }
 
 function providerTurnInput(): ProviderTurnInput {
-  const now = '2026-05-28T00:00:00.000Z'
-  const projectId = v.parse(projectIdSchema, 'project-1')
-  const threadId = v.parse(threadIdSchema, 'thread-1')
+  const sessionId = v.parse(sessionIdSchema, 'ee84050b-1b17-5fe8-9f71-0983f1fceccc')
   const turnId = v.parse(turnIdSchema, 'turn-1')
   const modelSelection = {
     model: 'codex',
@@ -1239,37 +1264,10 @@ function providerTurnInput(): ProviderTurnInput {
     interactionMode: DEFAULT_INTERACTION_MODE,
     messageText: 'Say hello',
     modelSelection,
-    project: {
-      createdAt: now,
-      defaultModelSelection: modelSelection,
-      deletedAt: null,
-      id: projectId,
-      orderKey: null,
-      scripts: [],
-      title: 'Platform',
-      updatedAt: now,
-      workspaceRoot: 'Users/shaul/Desktop/platform',
-    },
     providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
     runtimeMode: DEFAULT_RUNTIME_MODE,
-    thread: {
-      activities: [],
-      archivedAt: null,
-      branch: null,
-      createdAt: now,
-      deletedAt: null,
-      id: threadId,
-      interactionMode: DEFAULT_INTERACTION_MODE,
-      latestTurn: null,
-      messages: [],
-      modelSelection,
-      projectId,
-      runtimeMode: DEFAULT_RUNTIME_MODE,
-      session: null,
-      title: 'Test thread',
-      updatedAt: now,
-      worktreePath: 'Users/shaul/Desktop/platform',
-    },
+    sessionId,
+    runtimeEpoch: 'runtime-epoch',
     turnId,
   }
 }

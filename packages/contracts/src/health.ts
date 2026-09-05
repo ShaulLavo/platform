@@ -1,9 +1,10 @@
 import * as v from 'valibot'
+import { environmentIdSchema } from './chat-ids'
 import { nonNegativeIntegerSchema, trimmedNonEmptyStringSchema } from './chat-model'
 
 export const healthDescriptorSchema = v.looseObject({
   ok: v.literal(true),
-  environmentId: trimmedNonEmptyStringSchema,
+  environmentId: environmentIdSchema,
   label: trimmedNonEmptyStringSchema,
   protocolVersion: nonNegativeIntegerSchema,
   serverVersion: trimmedNonEmptyStringSchema,

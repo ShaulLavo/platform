@@ -1,3 +1,7 @@
+import {
+  shellSnapshot,
+  TEST_ENVIRONMENT_ID as FIXTURE_ENVIRONMENT_ID,
+} from '../../../../../test/factories/chat'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { eventIdSchema, type ClientOrchestrationCommand } from '@workspace/contracts'
@@ -7,7 +11,7 @@ import { PendingUserInputPanel } from '@/features/chat/components/pending-user-i
 import { ChatPendingRequestsProvider } from '@/features/chat/providers/pending-requests-provider'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { expect, test } from '../../../../../test/fixtures'
-import { threadActivity, thread as threadFactory } from '../../../../../test/factories/chat'
+import { sessionActivity, session as sessionFactory } from '../../../../../test/factories/chat'
 import { renderWithProviders } from '../../../../../test/render'
 
 const REQUEST_ID = 'user-input-1'
@@ -22,7 +26,7 @@ test('a single-select question renders its options and submits the chosen value'
   expect(dispatched[0]).toMatchObject({
     answers: { framework: 'vitest' },
     requestId: REQUEST_ID,
-    type: 'thread.user-input.respond',
+    type: 'session.user-input.respond',
   })
 })
 
@@ -47,7 +51,7 @@ test('a multi-question prompt walks both answers into one response', async () =>
 
   expect(dispatched[0]).toMatchObject({
     answers: { framework: 'vitest', notes: 'cover the revert path' },
-    type: 'thread.user-input.respond',
+    type: 'session.user-input.respond',
   })
 })
 
@@ -96,7 +100,7 @@ function notes() {
 }
 
 function requestedActivity(questions: readonly unknown[]) {
-  return threadActivity({
+  return sessionActivity({
     kind: 'user-input.requested',
     payload: { questions, requestId: REQUEST_ID },
     summary: 'User input requested',
@@ -105,7 +109,7 @@ function requestedActivity(questions: readonly unknown[]) {
 }
 
 function resolvedActivity() {
-  return threadActivity({
+  return sessionActivity({
     id: v.parse(eventIdSchema, 'event-activity-2'),
     kind: 'user-input.resolved',
     payload: { answers: { framework: 'vitest' }, requestId: REQUEST_ID },
@@ -115,17 +119,25 @@ function resolvedActivity() {
   })
 }
 
-function renderPanel(activities: ReturnType<typeof threadActivity>[]) {
-  const seeded = threadFactory({ activities })
+function renderPanel(activities: ReturnType<typeof sessionActivity>[]) {
+  const seeded = sessionFactory({ activities })
   useChatProjectionStore.getState().resetChatProjection()
+  useChatProjectionStore.getState().syncShellSnapshot(
+    FIXTURE_ENVIRONMENT_ID,
+    shellSnapshot({
+      projects: [seeded.project],
+      worktrees: [seeded.worktree],
+      sessions: [seeded],
+    }),
+  )
   useChatProjectionStore
     .getState()
-    // The store's ChatThread drops `deletedAt`; the wire snapshot still carries it.
-    .syncThreadDetailSnapshot({
+    // The store's ChatSession drops `deletedAt`; the wire snapshot still carries it.
+    .syncSessionDetailSnapshot(FIXTURE_ENVIRONMENT_ID, {
       checkpoints: [],
       proposedPlans: [],
       snapshotSequence: 1,
-      thread: { ...seeded, deletedAt: null },
+      session: { deletion: null, ...seeded, deletedAt: null },
     })
 
   const dispatched: ClientOrchestrationCommand[] = []
@@ -134,9 +146,9 @@ function renderPanel(activities: ReturnType<typeof threadActivity>[]) {
     <ChatPendingRequestsProvider
       dispatchCommand={async (command) => {
         dispatched.push(command)
-        return { deduped: false, sequence: 1 }
+        return { result: null, deduped: false, sequence: 1 }
       }}
-      threadId={seeded.id}
+      sessionId={seeded.id}
     >
       <PendingUserInputPanel />
     </ChatPendingRequestsProvider>,

@@ -3,7 +3,7 @@ import {
   type ClientOrchestrationCommand,
   type OrchestrationReplayEventsInput,
   type OrchestrationShellStreamItem,
-  type OrchestrationThreadStreamItem,
+  type OrchestrationSessionStreamItem,
   type OrchestrationWsClientMessage,
   type OrchestrationWsError,
   type OrchestrationWsRequest,
@@ -12,8 +12,8 @@ import {
   type OrchestrationWsServerMessage,
   type OrchestrationWsSubscribe,
   type OrchestrationWsSubscriptionId,
-  type OrchestrationWsThreadDetailPageInput,
-  type ThreadId,
+  type OrchestrationWsSessionDetailPageInput,
+  type SessionId,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
@@ -47,7 +47,7 @@ type RpcSubscription<T> = {
   method: OrchestrationWsSubscribe['method']
   queue: AsyncSubscriptionQueue<T>
   scope: WideEventScope
-  threadId?: ThreadId
+  sessionId?: SessionId
 }
 
 export type OrchestrationRpcClientOptions = {
@@ -126,23 +126,23 @@ export class OrchestrationRpcClient {
     )
   }
 
-  threadDetailPage(input: OrchestrationWsThreadDetailPageInput) {
+  sessionDetailPage(input: OrchestrationWsSessionDetailPageInput) {
     return observeClientOperation(
       {
-        action: 'chat.thread_detail_page.rpc',
+        action: 'chat.session_detail_page.rpc',
         area: 'chat',
         // The boundary tells a first page from a continuation; the anchor ids
         // themselves say nothing a reader of the log needs.
         fromActivityAnchor: Boolean(input.beforeActivity),
         fromMessageAnchor: Boolean(input.beforeMessage),
-        threadId: input.threadId,
+        sessionId: input.sessionId,
       },
       async () => {
-        const request: OrchestrationWsRequestOf<'threadDetailPage'> = {
+        const request: OrchestrationWsRequestOf<'sessionDetailPage'> = {
           input,
           kind: 'request',
-          method: 'threadDetailPage',
-          requestId: this.nextRequestId('threadDetailPage'),
+          method: 'sessionDetailPage',
+          requestId: this.nextRequestId('sessionDetailPage'),
         }
 
         return this.sendRequest(request)
@@ -194,16 +194,16 @@ export class OrchestrationRpcClient {
     yield* guardOrchestrationStreamSequence(stream, streamGuardSequence(input.afterSequence))
   }
 
-  async *threadDetailStream(threadId: ThreadId, input: OrchestrationStreamInput = {}) {
+  async *sessionDetailStream(sessionId: SessionId, input: OrchestrationStreamInput = {}) {
     const afterSequence = input.afterSequence ?? 0
     const subscription: OrchestrationWsSubscribe = {
       afterSequence,
       kind: 'subscribe',
-      method: 'subscribeThread',
-      subscriptionId: this.nextSubscriptionId('thread'),
-      threadId,
+      method: 'subscribeSession',
+      subscriptionId: this.nextSubscriptionId('session'),
+      sessionId,
     }
-    const stream = this.subscribe<OrchestrationThreadStreamItem>(subscription, input.signal)
+    const stream = this.subscribe<OrchestrationSessionStreamItem>(subscription, input.signal)
 
     yield* guardOrchestrationStreamSequence(stream, streamGuardSequence(input.afterSequence))
   }
@@ -267,20 +267,20 @@ export class OrchestrationRpcClient {
     if (signal?.aborted) return
 
     const queue = new AsyncSubscriptionQueue<T>()
-    const threadId = message.method === 'subscribeThread' ? message.threadId : undefined
+    const sessionId = message.method === 'subscribeSession' ? message.sessionId : undefined
     const scope = createWideEventScope({
       action: 'orchestration.ws.subscription.summary',
       afterSequence: message.afterSequence,
       area: 'orchestration',
       method: message.method,
       subscriptionId: message.subscriptionId,
-      threadId,
+      sessionId,
     })
     const subscription: RpcSubscription<T> = {
       method: message.method,
       queue,
       scope,
-      threadId,
+      sessionId,
     }
     this.subscriptions.set(message.subscriptionId, subscription as RpcSubscription<unknown>)
     const abort = () => queue.close()

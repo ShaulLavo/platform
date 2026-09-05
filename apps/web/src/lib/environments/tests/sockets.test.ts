@@ -1,3 +1,4 @@
+import { TEST_WORKTREE_ID } from '../../../../test/factories/chat'
 import { vi } from 'vitest'
 
 import { createEnvironmentClient } from '@/lib/client'
@@ -23,7 +24,7 @@ test('same-path terminal and LSP sockets retain their owner and close before act
   const clientB = createEnvironmentClient(originB)
 
   try {
-    connectTerminalSocket('/same-root', 'main', clientA, signalA)
+    connectTerminalSocket({ worktreeId: TEST_WORKTREE_ID, terminalId: 'main' }, clientA, signalA)
     const LspA = languageServerWebSocketConstructor(clientA, signalA)
     new LspA('ws://localhost/lsp?root=/same-root&path=main.ts&server=typescript')
     const old = RecordingServerSocket.opened.slice()
@@ -36,7 +37,7 @@ test('same-path terminal and LSP sockets retain their owner and close before act
     expect(old.every((socket) => socket.readyState === RecordingServerSocket.CLOSED)).toBe(true)
     expect(() => new LspA('ws://localhost/lsp?root=/same-root&path=main.ts')).toThrow()
 
-    connectTerminalSocket('/same-root', 'main', clientB, signalB)
+    connectTerminalSocket({ worktreeId: TEST_WORKTREE_ID, terminalId: 'main' }, clientB, signalB)
     const LspB = languageServerWebSocketConstructor(clientB, signalB)
     new LspB('ws://localhost/lsp?root=/same-root&path=main.ts&server=typescript')
     const current = RecordingServerSocket.opened.slice(2)

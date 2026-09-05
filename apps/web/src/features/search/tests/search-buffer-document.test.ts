@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe } from 'vitest'
+import { expect, test, test as it } from '../../../../test/fixtures'
 
 import {
   parseSearchBufferDocumentId,
@@ -26,4 +27,9 @@ describe('search buffer document ids', () => {
       '/Users/shaul/project search results',
     )
   })
+})
+
+test('round-trips the configured filesystem root', () => {
+  const id = searchBufferDocumentId('')
+  expect(parseSearchBufferDocumentId(id)).toEqual({ id, rootPath: '' })
 })

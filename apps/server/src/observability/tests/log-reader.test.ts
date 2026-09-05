@@ -103,10 +103,10 @@ describe('log reader', () => {
     const dir = await fixtureLogDir()
     await writeLogEvents(dir, [
       {
-        action: 'orchestration.thread_stream.error',
+        action: 'orchestration.session_stream.error',
         area: 'orchestration',
         level: 'warn',
-        threadId: 'thread-1',
+        sessionId: '00000000-0000-4000-8000-000000000001',
         timestamp: '2026-05-25T10:03:00.000Z',
       },
     ])
@@ -114,10 +114,10 @@ describe('log reader', () => {
     const page = await logs.events()
     const detail = await logs.event(page.events[0].id)
 
-    expect(detail?.event.threadId).toBe('thread-1')
+    expect(detail?.event.sessionId).toBe('00000000-0000-4000-8000-000000000001')
     expect(detail?.rawJson).toMatchObject({
-      action: 'orchestration.thread_stream.error',
-      threadId: 'thread-1',
+      action: 'orchestration.session_stream.error',
+      sessionId: '00000000-0000-4000-8000-000000000001',
     })
   })
 
@@ -189,7 +189,7 @@ describe('log reader', () => {
     // Generous on purpose: this guards against a tail that never fires, not
     // against a slow one. A loaded CI runner needs well past 2s to poll.
     const result = await withTimeout(nextEvent, 15_000)
-    if (result.done) throw new Error('expected live event')
+    if (result.done) throw new TypeError('expected live event')
 
     abort.abort()
     await iterator.return?.(result.value)

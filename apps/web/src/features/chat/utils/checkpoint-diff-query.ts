@@ -1,4 +1,4 @@
-import type { ThreadId } from '@workspace/contracts'
+import type { SessionId } from '@workspace/contracts'
 
 import { getClient, type Client } from '@/lib/client'
 import { observeClientOperation } from '@/lib/client-logging'
@@ -19,8 +19,8 @@ export type CheckpointDiffQueryInput = {
    */
   ignoreWhitespace?: boolean
   path?: string
-  scope?: 'file' | 'thread' | 'turn'
-  threadId: ThreadId
+  scope?: 'file' | 'session' | 'turn'
+  sessionId: SessionId
   toTurnCount: number
 }
 
@@ -31,7 +31,7 @@ export function checkpointDiffQueryKey(input: CheckpointDiffQueryInput) {
     ignoreWhitespace: input.ignoreWhitespace,
     path: input.path,
     scope: input.scope,
-    threadId: input.threadId,
+    sessionId: input.sessionId,
     toTurnCount: input.toTurnCount,
   })
 }
@@ -46,20 +46,20 @@ export function checkpointDiffInputForSummary(
     ignoreWhitespace: true,
     path,
     scope: path ? 'file' : 'turn',
-    threadId: summary.threadId,
+    sessionId: summary.sessionId,
     toTurnCount: summary.checkpointTurnCount,
   }
 }
 
-export function checkpointFullThreadDiffInputForSummary(
+export function checkpointFullSessionDiffInputForSummary(
   summary: ChatTurnDiffSummary,
 ): CheckpointDiffQueryInput {
   return {
     fromTurnCount: 0,
     ignoreWhitespace: true,
-    path: checkpointFullThreadDocumentPath(summary),
-    scope: 'thread',
-    threadId: summary.threadId,
+    path: checkpointFullSessionDocumentPath(summary),
+    scope: 'session',
+    sessionId: summary.sessionId,
     toTurnCount: summary.checkpointTurnCount,
   }
 }
@@ -86,7 +86,7 @@ export function checkpointDiffDocumentInput(
     path,
     scope: 'file',
     status: diff ? diffStatus(diff) : undefined,
-    threadId: rangeInput.threadId,
+    sessionId: rangeInput.sessionId,
     toTurnCount: rangeInput.toTurnCount,
   }
 }
@@ -100,21 +100,21 @@ export function checkpointTurnDiffDocumentInput(
     fromTurnCount: rangeInput.fromTurnCount,
     path: checkpointTurnDocumentPath(summary),
     scope: 'turn',
-    threadId: rangeInput.threadId,
+    sessionId: rangeInput.sessionId,
     toTurnCount: rangeInput.toTurnCount,
   }
 }
 
-export function checkpointFullThreadDiffDocumentInput(
+export function checkpointFullSessionDiffDocumentInput(
   summary: ChatTurnDiffSummary,
 ): CheckpointDiffDocumentInput {
-  const input = checkpointFullThreadDiffInputForSummary(summary)
+  const input = checkpointFullSessionDiffInputForSummary(summary)
 
   return {
     fromTurnCount: input.fromTurnCount,
-    path: input.path ?? checkpointFullThreadDocumentPath(summary),
-    scope: 'thread',
-    threadId: input.threadId,
+    path: input.path ?? checkpointFullSessionDocumentPath(summary),
+    scope: 'session',
+    sessionId: input.sessionId,
     toTurnCount: input.toTurnCount,
   }
 }
@@ -130,8 +130,8 @@ export async function fetchCheckpointDiff(
   signal?: AbortSignal,
   client: Client = getClient(),
 ) {
-  if (input.scope === 'thread') {
-    return fetchFullThreadCheckpointDiff(input, signal, client)
+  if (input.scope === 'session') {
+    return fetchFullSessionCheckpointDiff(input, signal, client)
   }
 
   return observeClientOperation(
@@ -141,7 +141,7 @@ export async function fetchCheckpointDiff(
       fromTurnCount: input.fromTurnCount,
       path: checkpointDiffFilePath(input),
       scope: input.scope,
-      threadId: input.threadId,
+      sessionId: input.sessionId,
       toTurnCount: input.toTurnCount,
     },
     async () => {
@@ -150,7 +150,7 @@ export async function fetchCheckpointDiff(
         query: {
           fromTurnCount: input.fromTurnCount,
           ignoreWhitespace: input.ignoreWhitespace ?? true,
-          threadId: input.threadId,
+          sessionId: input.sessionId,
           toTurnCount: input.toTurnCount,
         },
       })
@@ -162,24 +162,24 @@ export async function fetchCheckpointDiff(
   )
 }
 
-async function fetchFullThreadCheckpointDiff(
-  input: Pick<CheckpointDiffQueryInput, 'ignoreWhitespace' | 'threadId' | 'toTurnCount'>,
+async function fetchFullSessionCheckpointDiff(
+  input: Pick<CheckpointDiffQueryInput, 'ignoreWhitespace' | 'sessionId' | 'toTurnCount'>,
   signal: AbortSignal | undefined,
   client: Client,
 ) {
   return observeClientOperation(
     {
-      action: 'chat.full_thread_checkpoint_diff.http',
+      action: 'chat.full_session_checkpoint_diff.http',
       area: 'chat',
-      threadId: input.threadId,
+      sessionId: input.sessionId,
       toTurnCount: input.toTurnCount,
     },
     async () => {
-      const response = await client.orchestration['full-thread-diff'].get({
+      const response = await client.orchestration['full-session-diff'].get({
         fetch: { signal },
         query: {
           ignoreWhitespace: input.ignoreWhitespace ?? true,
-          threadId: input.threadId,
+          sessionId: input.sessionId,
           toTurnCount: input.toTurnCount,
         },
       })
@@ -256,6 +256,6 @@ function checkpointTurnDocumentPath(summary: ChatTurnDiffSummary) {
   return `checkpoint-turn-${summary.checkpointTurnCount}`
 }
 
-function checkpointFullThreadDocumentPath(summary: ChatTurnDiffSummary) {
-  return `checkpoint-thread-${summary.checkpointTurnCount}`
+function checkpointFullSessionDocumentPath(summary: ChatTurnDiffSummary) {
+  return `checkpoint-session-${summary.checkpointTurnCount}`
 }

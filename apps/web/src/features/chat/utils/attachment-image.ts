@@ -1,7 +1,5 @@
 import { chatAttachmentUrlPath, type ChatAttachment } from '@workspace/contracts'
 
-import { activeServerOrigin } from '@/lib/client'
-
 /** What both the composer and the transcript hand the lightbox to paint. */
 export type ChatAttachmentImage = {
   id: string
@@ -23,21 +21,21 @@ type StagedAttachment = {
  * stored allowlist — the server dropped that blob at ingest, so there is
  * genuinely nothing to show and the caller must fall back to the file name.
  */
-export function chatAttachmentImageSrc(attachment: ChatAttachment): string | null {
+export function chatAttachmentImageSrc(attachment: ChatAttachment, origin: string): string | null {
   const urlPath = chatAttachmentUrlPath(attachment)
   if (!urlPath) return null
 
-  // Plan 078 passes the owning environment's origin when transcripts from several machines coexist.
-  return `${activeServerOrigin().replace(/\/+$/u, '')}${urlPath}`
+  return `${origin.replace(/\/+$/u, '')}${urlPath}`
 }
 
 export function chatAttachmentImages(
   attachments: readonly ChatAttachment[],
+  origin: string,
 ): ChatAttachmentImage[] {
   const images: ChatAttachmentImage[] = []
 
   for (const attachment of attachments) {
-    const src = chatAttachmentImageSrc(attachment)
+    const src = chatAttachmentImageSrc(attachment, origin)
     if (!src) continue
 
     images.push({
@@ -54,7 +52,7 @@ export function chatAttachmentImages(
 export function unrenderableChatAttachments(
   attachments: readonly ChatAttachment[],
 ): ChatAttachment[] {
-  return attachments.filter((attachment) => !chatAttachmentImageSrc(attachment))
+  return attachments.filter((attachment) => !chatAttachmentUrlPath(attachment))
 }
 
 export function stagedAttachmentImages(

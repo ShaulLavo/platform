@@ -1,3 +1,7 @@
+import { RingLoader } from '@workspace/ui/components/ring-loader'
+import { errorMessage } from '@/lib/error-message'
+import { registerTerminalCheckout } from '@/features/terminal/state/register-checkout'
+import type { WorktreeId } from '@workspace/contracts'
 import { useQueryClient } from '@tanstack/react-query'
 import type { Client } from '@/lib/client'
 import { clientForQueryClient, originForQueryClient } from '@/lib/environments/state/query-clients'
@@ -105,6 +109,10 @@ export function TerminalPanel({
   const [socketConnected, setSocketConnected] = useState(false)
   const focusIdentity = terminalFocusIdentity(rootPath, sessionId)
   const terminalMountIdentity = `${origin}\u0000${focusIdentity}\u0000${scrollback}`
+  const [terminalFailure, setTerminalFailure] = useState<{
+    identity: string
+    message: string
+  } | null>(null)
   const [readyTerminalIdentity, setReadyTerminalIdentity] = useState<string | null>(null)
   const registerTerminalLinks = useTerminalLinks(rootPath)
   useTerminalKeybindings(hostRef)
@@ -199,6 +207,7 @@ export function TerminalPanel({
     if (!host) return
 
     const unmountTerminal = mountTerminal({
+      origin,
       client: clientForQueryClient(queryClient),
       signal: environmentActivitySignal(origin),
       host,
@@ -206,6 +215,7 @@ export function TerminalPanel({
       scrollback,
       sessionId,
       onConnectedChange: handleTerminalConnectedChange,
+      onFailed: (message) => setTerminalFailure({ identity: terminalMountIdentity, message }),
       onReady: handleTerminalReady,
       onScrollbackLengthChange: handleTerminalScrollbackLengthChange,
     })
@@ -246,7 +256,7 @@ export function TerminalPanel({
     <section
       aria-label='Terminal'
       {...sectionProps}
-      className={cn('flex min-h-0 min-w-0 flex-col overflow-hidden', className)}
+      className={cn('relative flex min-h-0 min-w-0 flex-col overflow-hidden', className)}
       onBlurCapture={handleTerminalBlur}
       onContextMenuCapture={handleTerminalContextMenu}
       onFocusCapture={handleTerminalFocus}
@@ -256,6 +266,20 @@ export function TerminalPanel({
         className='compact:px-2 compact:py-1 min-h-0 min-w-0 flex-1 overflow-hidden px-3 py-2 font-mono'
         ref={hostRef}
       />
+      {terminalFailure?.identity === terminalMountIdentity ? (
+        <p
+          role='alert'
+          className='text-destructive absolute inset-0 flex items-center justify-center p-4 text-sm'
+        >
+          {terminalFailure.message}
+        </p>
+      ) : null}
+      {readyTerminalIdentity !== terminalMountIdentity &&
+      terminalFailure?.identity !== terminalMountIdentity ? (
+        <div className='pointer-events-none absolute inset-0 flex items-center justify-center'>
+          <RingLoader label='Opening terminal' className='text-muted-foreground size-6' />
+        </div>
+      ) : null}
       {contextMenu.anchor && menuTarget ? (
         <TerminalMenu
           anchor={contextMenu.anchor}
@@ -274,6 +298,7 @@ type TerminalPanelProps = ComponentPropsWithoutRef<'section'> & {
 }
 
 function mountTerminal({
+  origin,
   client,
   signal,
   host,
@@ -281,9 +306,11 @@ function mountTerminal({
   scrollback,
   sessionId,
   onConnectedChange,
+  onFailed,
   onReady,
   onScrollbackLengthChange,
 }: {
+  origin: string
   client: Client
   signal: AbortSignal
   host: HTMLDivElement
@@ -291,6 +318,7 @@ function mountTerminal({
   scrollback: number
   sessionId: string
   onConnectedChange: (connected: boolean) => void
+  onFailed: (message: string) => void
   onReady: (terminal: GhosttyWebGpuTerminal, sendInput: TerminalInputSender) => void
   onScrollbackLengthChange: (length: number) => void
 }) {
@@ -304,7 +332,10 @@ function mountTerminal({
   const inputDecoder = new TextDecoder()
 
   const open = async () => {
-    const runtime = await initializeGhostty()
+    const [runtime, worktreeId] = await Promise.all([
+      initializeGhostty(),
+      registerTerminalCheckout({ client, origin, rootPath, signal }),
+    ])
     if (cancelled || signal.aborted) return
 
     const nextTerminal = await createTerminal(runtime, scrollback)
@@ -341,7 +372,7 @@ function mountTerminal({
       getTerminalDimensions: () => terminalDimensions,
       isCancelled: () => cancelled,
       onConnectedChange,
-      rootPath,
+      worktreeId,
       sessionId,
       terminal,
     })
@@ -350,6 +381,7 @@ function mountTerminal({
   void open().catch((error: unknown) => {
     if (cancelled || signal.aborted) return
 
+    onFailed(errorMessage(error, 'Could not open the terminal.'))
     reportError(toClientError(error))
   })
 
@@ -370,7 +402,7 @@ function openTerminalSocket({
   getTerminalDimensions,
   isCancelled,
   onConnectedChange,
-  rootPath,
+  worktreeId,
   sessionId,
   terminal,
 }: {
@@ -379,11 +411,11 @@ function openTerminalSocket({
   getTerminalDimensions: () => TerminalDimensions | null
   isCancelled: () => boolean
   onConnectedChange: (connected: boolean) => void
-  rootPath: string
+  worktreeId: WorktreeId
   sessionId: string
   terminal: GhosttyWebGpuTerminal
 }) {
-  const socket = connectTerminalSocket(rootPath, sessionId, client, signal)
+  const socket = connectTerminalSocket({ worktreeId, terminalId: sessionId }, client, signal)
 
   socket.addEventListener('open', () => {
     if (isCancelled() || signal.aborted) return

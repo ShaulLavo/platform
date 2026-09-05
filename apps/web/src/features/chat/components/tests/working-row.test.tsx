@@ -7,6 +7,10 @@ import { expect, test } from '../../../../../test/fixtures'
 import { renderWithProviders } from '../../../../../test/render'
 
 const LATEST_TURN: OrchestrationLatestTurn = {
+  providerStartState: 'adopted' as const,
+  providerStartGeneration: 1,
+  providerStartSequence: 1,
+  runtimeEpoch: 'test-epoch',
   assistantMessageId: null,
   completedAt: null,
   requestedAt: '2026-05-28T00:00:00.000Z',

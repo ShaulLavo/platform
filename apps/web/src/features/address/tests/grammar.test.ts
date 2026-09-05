@@ -155,9 +155,9 @@ describe('owned search params', () => {
   })
 
   // The rail scope is a ProjectId — a one-way hash of an absolute path — so it is not
-  // addressable, and `diff` carries the thread diff scope alone.
-  test('keeps the thread diff scope on its own key', () => {
-    expect(parseAddress('/~p/chat/t/thread-1?diff=turn-4a1b').diff).toBe('turn-4a1b')
+  // addressable, and `diff` carries the session diff scope alone.
+  test('keeps the session diff scope on its own key', () => {
+    expect(parseAddress('/~p/chat/t/session-1?diff=turn-4a1b').diff).toBe('turn-4a1b')
   })
 })
 
@@ -170,7 +170,7 @@ describe('fixed point over hostile input', () => {
       '/',
       '/~platform',
       '/~platform/chat',
-      '/~platform/chat/t/thread-9f3a1c2e?tool=git&diff=wt',
+      '/~platform/chat/t/session-9f3a1c2e?tool=git&diff=wt',
       '/~platform/workbench/f/apps/web/src/main.tsx?side=git&bottom=problems#L21,9',
       '/~platform/workbench/s?decode=diffusion',
       '/~platform/workbench/f/a%20b/%C3%BCn%C3%AF.ts#L1',
@@ -327,6 +327,42 @@ describe('every owned field survives a round trip', () => {
     for (const [name, patch] of cases) {
       const address = { ...emptyAddress(), mode: 'workbench' as const, workspace: 'p', ...patch }
       expect(parseAddress(formatAddress(address)), `${name} did not survive`).toEqual(address)
+    }
+  })
+})
+
+describe('environment segment', () => {
+  const primary =
+    '2ba57809-12c4-44f7-8f4c-c8424cf4ac6c' as import('@workspace/contracts').EnvironmentId
+  const remote =
+    'cbdf3845-cc34-44f6-a097-840f38eac2b6' as import('@workspace/contracts').EnvironmentId
+  const environments = { knownEnvironmentIds: [primary, remote], primaryEnvironmentId: primary }
+
+  test('round-trips the confirmed remote identity before the workspace segment', () => {
+    const href = `/@${remote}/~repo/chat/t/7c9ac8fb-14ad-4a20-8e54-d1756e4f9f97`
+    const parsed = parseAddress(href, environments)
+    expect(parsed).toMatchObject({
+      environmentId: remote,
+      rejectedEnvironment: null,
+      workspace: 'repo',
+      mode: 'chat',
+    })
+    expect(formatAddress(parsed, primary)).toBe(href)
+  })
+
+  test('omits primary identity and leaves unscoped addresses on primary', () => {
+    const parsed = parseAddress(`/@${primary}/~repo/chat/t/new`, environments)
+    expect(parsed.environmentId).toBeNull()
+    expect(formatAddress(parsed, primary)).toBe('/~repo/chat/t/new')
+    expect(parseAddress('/~repo/chat/t/new', environments).environmentId).toBeNull()
+  })
+
+  test('preserves an unknown or malformed environment as a rejected token', () => {
+    const unknown = '881e6a1b-b230-4e14-acdc-082db3f36e8e'
+    for (const id of [unknown, 'bad-id']) {
+      const parsed = parseAddress(`/@${id}/~repo/chat/t/new`, environments)
+      expect(parsed).toMatchObject({ environmentId: null, rejectedEnvironment: id })
+      expect(formatAddress(parsed)).toBe(`/@${id}/~repo/chat/t/new`)
     }
   })
 })

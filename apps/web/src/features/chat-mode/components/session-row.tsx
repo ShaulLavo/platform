@@ -1,10 +1,12 @@
+import { SessionAttentionIndicator } from '@/features/chat-mode/components/session-attention-indicator'
+import { scopedSessionKey } from '@workspace/contracts'
+import { Button } from '@workspace/ui/components/button'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GitBranchIcon } from '@phosphor-icons/react'
 
 import { formatChatRelativeTime } from '@/features/chat/utils/formatters'
 import { useCoarseNow } from '@/features/chat/hooks/use-coarse-now'
-import { threadStatusDotClass, threadStatusLabel } from '@/features/chat/utils/thread-status'
 import { SessionMenu } from '@/features/chat-mode/components/session-menu'
 import { SessionRename } from '@/features/chat-mode/components/session-rename'
 import { SessionRowSnippet } from '@/features/chat-mode/components/session-row-snippet'
@@ -27,15 +29,17 @@ export function SessionRow({
   // label stuck at whatever it said when the row mounted.
   const nowMs = useCoarseNow()
   const renaming = useSessionRailStore((state) => state.renaming)
-  const marked = useSessionMultiSelectStore((state) => state.threadIds.includes(session.id))
+  const marked = useSessionMultiSelectStore((state) =>
+    state.refs.some((ref) => scopedSessionKey(ref) === session.key),
+  )
   const { attributes, isDragging, listeners, setNodeRef, transform, transition } = useSortable({
     attributes: {
       roleDescription: 'sortable session row',
     },
-    id: session.id,
+    id: session.key,
   })
 
-  if (renaming?.surface === 'rail' && renaming.threadId === session.id) {
+  if (renaming?.surface === 'rail' && scopedSessionKey(renaming.ref) === session.key) {
     return (
       <SessionRename
         className='bg-accent text-foreground compact:px-1.5 compact:py-1 h-auto rounded-md border-transparent px-2 py-1.5 text-[13px] leading-5'
@@ -48,7 +52,8 @@ export function SessionRow({
     <SessionMenu
       session={session}
       trigger={
-        <button
+        <Button
+          variant='ghost'
           {...attributes}
           {...listeners}
           aria-current={active ? 'true' : undefined}
@@ -74,12 +79,7 @@ export function SessionRow({
           onClick={(event) => activateSessionRow(session, sessionClickIntent(event))}
         >
           <span className='flex w-full min-w-0 items-center gap-2'>
-            <span
-              aria-label={threadStatusLabel(session.status)}
-              className={cn('size-1.5 shrink-0 rounded-full', threadStatusDotClass(session.status))}
-              role='status'
-              title={threadStatusLabel(session.status)}
-            />
+            <SessionAttentionIndicator status={session.status} />
             <span
               className={cn(
                 'min-w-0 flex-1 truncate text-[13px] leading-5',
@@ -100,44 +100,23 @@ export function SessionRow({
               {formatChatRelativeTime(session.activityAt, nowMs)}
             </span>
           </span>
-          {sessionSubline(session)}
-          <SessionRowSnippet threadId={session.id} />
-        </button>
+          {session.origin === 'discovered' ? (
+            <span className='text-muted-foreground pl-[14px] text-[11px]'>External session</span>
+          ) : null}
+          {session.branch || session.machineLabel ? (
+            <span className='flex min-w-0 items-center gap-1.5 pl-[14px] text-[11px] leading-4 opacity-60'>
+              <GitBranchIcon className='size-3 shrink-0' />
+              <span className='truncate'>
+                {[session.machineLabel, session.branch].filter(Boolean).join(' · ')}
+              </span>
+            </span>
+          ) : null}
+          {session.hasError ? (
+            <span className='text-destructive pl-[14px] text-[11px]'>Error</span>
+          ) : null}
+          <SessionRowSnippet sessionKey={session.key} />
+        </Button>
       }
     />
-  )
-}
-
-/**
- * One subline, not two: the row is a recall aid, and stacking a branch under a
- * step turns a dense list into a three-line one. A plan step wins while it is
- * running because it is the answer to "what is this doing", and the branch is
- * still on the header of the session once it is opened.
- */
-function sessionSubline(session: SessionRailItem) {
-  const progress = session.planProgress
-  if (progress) {
-    return (
-      <span className='flex min-w-0 items-center gap-1.5 pl-[14px] text-[11px] leading-4 opacity-60'>
-        <span className='shrink-0 tabular-nums'>
-          {progress.stepNumber}/{progress.totalSteps}
-        </span>
-        <span className='truncate'>{progress.step}</span>
-      </span>
-    )
-  }
-
-  return sessionBranch(session)
-}
-
-/** The project name lives on the group header now, so the row only carries the branch. */
-function sessionBranch(session: SessionRailItem) {
-  if (!session.branch) return null
-
-  return (
-    <span className='flex min-w-0 items-center gap-1.5 pl-[14px] text-[11px] leading-4 opacity-60'>
-      <GitBranchIcon className='size-3 shrink-0' />
-      <span className='truncate'>{session.branch}</span>
-    </span>
   )
 }

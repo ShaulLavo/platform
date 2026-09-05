@@ -1,7 +1,7 @@
 import {
   eventIdSchema,
-  threadIdSchema,
-  type OrchestrationThreadActivity,
+  sessionIdSchema,
+  type OrchestrationSessionActivity,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
@@ -62,14 +62,14 @@ test('takes the newest count and carries the last known window size onto it', ()
   expect(usage).toMatchObject({ maxTokens: 200_000, ratio: 0.1, usedTokens: 20_000 })
 })
 
-test('reports a window-less thread rather than hiding the gauge', () => {
+test('reports a window-less session rather than hiding the gauge', () => {
   const usage = contextUsageForActivities([activity(1, { usedTokens: 4200 })])
 
   expect(usage).toMatchObject({ maxTokens: null, ratio: null, usedTokens: 4200 })
 })
 
 test('ignores activities that are not context-window snapshots', () => {
-  const unrelated: OrchestrationThreadActivity = {
+  const unrelated: OrchestrationSessionActivity = {
     ...activity(1, { maxTokens: 200_000, usedTokens: 10 }),
     kind: 'context-compaction',
   }
@@ -84,14 +84,14 @@ test('abbreviates token counts for a gauge that has no room', () => {
   expect(formatContextTokens(1_250_000)).toBe('1.3M')
 })
 
-function activity(index: number, payload: unknown): OrchestrationThreadActivity {
+function activity(index: number, payload: unknown): OrchestrationSessionActivity {
   return {
     createdAt: `2026-05-28T00:00:0${index}.000Z`,
     id: v.parse(eventIdSchema, `event-${index}`),
     kind: CONTEXT_WINDOW_ACTIVITY_KIND,
     payload,
     summary: 'Context window updated',
-    threadId: v.parse(threadIdSchema, 'thread-1'),
+    sessionId: v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb'),
     tone: 'info',
     turnId: null,
   }

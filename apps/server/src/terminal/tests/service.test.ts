@@ -1,5 +1,4 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdir } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
@@ -8,15 +7,22 @@ import {
   type TerminalServerMessage,
 } from '@workspace/contracts'
 
+import { createOrchestrationFixture } from '../../../test/factories/orchestration'
+import { requireWorktree } from '../../orchestration/read-model'
 import { createAuthConfig } from '../../auth'
 import { createWorkspacePaths } from '../../fs/path'
 import { TerminalService, type TerminalPtyExitEvent, type TerminalPtyFactory } from '../service'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
-const roots: string[] = []
+const fixtures = new Map<string, Awaited<ReturnType<typeof createOrchestrationFixture>>>()
+const registrations = new Map<string, string>()
+const services: TerminalService[] = []
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
+  services.splice(0).forEach((service) => service.dispose())
+  await Promise.all([...fixtures.values()].map((fixture) => fixture.close()))
+  fixtures.clear()
+  registrations.clear()
 })
 
 describe('terminal service', () => {
@@ -26,9 +32,9 @@ describe('terminal service', () => {
     const root = await fixtureRoot()
     const pty = createFakePtyFactory()
     const service = testService(root, { env: {}, ptyFactory: pty.factory })
-    const ws = fakeSocket('', undefined, 'http://localhost:9999')
+    const ws = fakeSocket(root, '', undefined, 'http://localhost:9999')
 
-    service.routes(auth()).open(ws)
+    await service.routes(auth()).open(ws)
 
     expect(ws.closed).toBe(true)
     expect(pty.spawns).toEqual([])
@@ -36,15 +42,14 @@ describe('terminal service', () => {
 
   it('spawns the user shell in the resolved workspace cwd', async () => {
     const root = await fixtureRoot()
-    await mkdir(path.join(root, 'project'))
     const pty = createFakePtyFactory()
     const service = testService(root, {
       env: { SHELL: '/bin/zsh' },
       ptyFactory: pty.factory,
     })
-    const ws = fakeSocket('project')
+    const ws = fakeSocket(root, 'project')
 
-    service.routes(auth()).open(ws)
+    await service.routes(auth()).open(ws)
 
     expect(pty.spawns).toEqual([
       expect.objectContaining({
@@ -68,9 +73,9 @@ describe('terminal service', () => {
       env: {},
       ptyFactory: pty.factory,
     })
-    const ws = fakeSocket('')
+    const ws = fakeSocket(root, '')
 
-    service.routes(auth()).open(ws)
+    await service.routes(auth()).open(ws)
 
     expect(pty.spawns.map((spawn) => spawn.shell)).toEqual(['bash', 'sh'])
     expect(ws.messages[0]).toMatchObject({ shell: 'sh', type: 'ready' })
@@ -81,9 +86,9 @@ describe('terminal service', () => {
     const pty = createFakePtyFactory()
     const service = testService(root, { ptyFactory: pty.factory })
     const routes = service.routes(auth())
-    const ws = fakeSocket('')
+    const ws = fakeSocket(root, '')
 
-    routes.open(ws)
+    await routes.open(ws)
     routes.message(ws, { type: 'input', data: 'pwd\r' })
     routes.message(ws, { type: 'input', data: 1 })
     routes.message(ws, '{')
@@ -102,9 +107,9 @@ describe('terminal service', () => {
     const pty = createFakePtyFactory()
     const service = testService(root, { ptyFactory: pty.factory })
     const routes = service.routes(auth())
-    const ws = fakeSocket('')
+    const ws = fakeSocket(root, '')
 
-    routes.open(ws)
+    await routes.open(ws)
     routes.close(ws)
 
     expect(pty.ptys).toHaveLength(1)
@@ -115,19 +120,39 @@ describe('terminal service', () => {
     expect(pty.ptys[0]?.killed).toBe(true)
   })
 
+  it('does not spawn a PTY when disposed during worktree resolution', async () => {
+    const root = await fixtureRoot()
+    const resolution = Promise.withResolvers<void>()
+    const pty = createFakePtyFactory()
+    const service = testService(root, {
+      beforeWorktreeResolution: resolution.promise,
+      env: {},
+      ptyFactory: pty.factory,
+    })
+    const ws = fakeSocket(root, '')
+    const opening = service.routes(auth()).open(ws)
+
+    service.dispose()
+    resolution.resolve()
+    await opening
+
+    expect(pty.spawns).toEqual([])
+    expect(ws.closed).toBe(true)
+  })
+
   it('reuses the PTY and replays buffered output on reconnect', async () => {
     const root = await fixtureRoot()
     const pty = createFakePtyFactory()
     const service = testService(root, { ptyFactory: pty.factory })
     const routes = service.routes(auth())
-    const first = fakeSocket('project')
+    const first = fakeSocket(root, 'project')
 
-    routes.open(first)
+    await routes.open(first)
     pty.ptys[0]?.emit('streamed-output\r\n')
     routes.close(first)
 
-    const second = fakeSocket('project')
-    routes.open(second)
+    const second = fakeSocket(root, 'project')
+    await routes.open(second)
 
     expect(pty.ptys).toHaveLength(1)
     expect(pty.ptys[0]?.killed).toBe(false)
@@ -139,15 +164,14 @@ describe('terminal service', () => {
 
   it('keeps terminal tab sessions isolated within the same workspace', async () => {
     const root = await fixtureRoot()
-    await mkdir(path.join(root, 'project'))
     const pty = createFakePtyFactory()
     const service = testService(root, { ptyFactory: pty.factory })
     const routes = service.routes(auth())
-    const first = fakeSocket('project', 'terminal-1')
-    const second = fakeSocket('project', 'terminal-2')
+    const first = fakeSocket(root, 'project', 'terminal-1')
+    const second = fakeSocket(root, 'project', 'terminal-2')
 
-    routes.open(first)
-    routes.open(second)
+    await routes.open(first)
+    await routes.open(second)
     routes.message(first, { type: 'input', data: 'echo first\r' })
     routes.message(second, { type: 'input', data: 'echo second\r' })
 
@@ -163,11 +187,11 @@ describe('terminal service', () => {
     const pty = createFakePtyFactory()
     const service = testService(root, { ptyFactory: pty.factory })
     const routes = service.routes(auth())
-    const first = fakeSocket('', 'terminal-1')
-    const second = fakeSocket('', 'terminal-2')
+    const first = fakeSocket(root, '', 'terminal-1')
+    const second = fakeSocket(root, '', 'terminal-2')
 
-    routes.open(first)
-    routes.open(second)
+    await routes.open(first)
+    await routes.open(second)
     routes.message(first, { type: 'dispose' })
 
     expect(pty.ptys[0]?.killed).toBe(true)
@@ -181,9 +205,9 @@ describe('terminal service', () => {
     const pty = createFakePtyFactory()
     const service = testService(root, { detachTtlMs: 0, ptyFactory: pty.factory })
     const routes = service.routes(auth())
-    const ws = fakeSocket('')
+    const ws = fakeSocket(root, '')
 
-    routes.open(ws)
+    await routes.open(ws)
     routes.close(ws)
     await Bun.sleep(10)
 
@@ -202,9 +226,9 @@ describe('terminal service', () => {
       },
     })
     const routes = service.routes(auth())
-    const ws = fakeSocket('')
+    const ws = fakeSocket(root, '')
 
-    routes.open(ws)
+    await routes.open(ws)
     routes.message(ws, {
       data: 'printf platform-terminal-ready\\n\nexit\n',
       type: 'input',
@@ -221,20 +245,37 @@ describe('terminal service', () => {
 function testService(
   root: string,
   options: {
+    beforeWorktreeResolution?: Promise<void>
     detachTtlMs?: number
     env?: NodeJS.ProcessEnv
     ptyFactory?: TerminalPtyFactory
   } = {},
 ) {
-  return new TerminalService({
+  const fixture = fixtures.get(root)
+  if (!fixture) throw new TypeError('Missing fixture')
+  const { beforeWorktreeResolution, ...serviceOptions } = options
+  const service = new TerminalService({
     paths: createWorkspacePaths(root),
-    ...options,
+    resolveWorktree: async (id) => {
+      await beforeWorktreeResolution
+      return requireWorktree(await fixture.engine.readModelSnapshot(), id).canonicalPath
+    },
+    ...serviceOptions,
   })
+  services.push(service)
+  return service
 }
 
 async function fixtureRoot() {
-  const root = await mkdtemp(path.join(tmpdir(), 'platform-terminal-'))
-  roots.push(root)
+  const fixture = await createOrchestrationFixture()
+  const root = fixture.checkout
+  fixtures.set(root, fixture)
+  await mkdir(path.join(root, 'project'))
+  for (const checkout of [root, path.join(root, 'project')]) {
+    const result = (await fixture.register(checkout)).result
+    if (!result) throw new TypeError('Missing registration')
+    registrations.set(checkout, result.worktreeId)
+  }
   return root
 }
 
@@ -242,14 +283,19 @@ function auth() {
   return createAuthConfig({ allowedOrigins: [TRUSTED_ORIGIN] })
 }
 
-function fakeSocket(root: string, session?: string, origin: string = TRUSTED_ORIGIN) {
+function fakeSocket(
+  root: string,
+  subdirectory: string,
+  session = 'terminal-default',
+  origin: string = TRUSTED_ORIGIN,
+) {
   const messages: TerminalServerMessage[] = []
   const raw = {}
   return {
     closed: false,
     data: {
       headers: { origin },
-      query: { root, session },
+      query: { worktreeId: registrations.get(path.join(root, subdirectory)), terminalId: session },
     },
     messages,
     raw,
@@ -271,7 +317,7 @@ function createFakePtyFactory({
   const spawns: Parameters<TerminalPtyFactory>[0][] = []
   const factory: TerminalPtyFactory = (options) => {
     spawns.push(options)
-    if (failShells.has(options.shell)) throw new Error('missing shell')
+    if (failShells.has(options.shell)) throw new TypeError('missing shell')
 
     const pty = new FakePty()
     ptys.push(pty)
@@ -289,7 +335,7 @@ async function waitForTerminalOutput(messages: readonly TerminalServerMessage[],
     await Bun.sleep(25)
   }
 
-  throw new Error(`Timed out waiting for terminal output: ${text}`)
+  throw new TypeError(`Timed out waiting for terminal output: ${text}`)
 }
 
 function terminalOutputText(messages: readonly TerminalServerMessage[]) {

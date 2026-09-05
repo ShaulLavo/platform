@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT_ID as FIXTURE_ENVIRONMENT_ID } from '../../../../../test/factories/chat'
 import { DEFAULT_PROVIDER_INSTANCE_ID, type ModelSelection } from '@workspace/contracts'
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -15,7 +16,8 @@ import { expect, test } from '../../../../../test/fixtures'
 import { createTestQueryClient, renderWithProviders } from '../../../../../test/render'
 
 const draftTarget: ChatInputDraftTarget = {
-  draftKey: 'thread-options',
+  environmentId: FIXTURE_ENVIRONMENT_ID,
+  draftKey: 'a5dc7509-a238-536c-9fbb-16f29f69dd82',
   rootPath: '/repo/platform',
 }
 const modelSelection: ModelSelection = {

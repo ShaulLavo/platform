@@ -1,9 +1,9 @@
+import { useActiveChatProjection } from '@/features/chat/hooks/use-active-projection'
 import type { Client } from '@/lib/client'
 import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 import { useQuery } from '@tanstack/react-query'
 
-import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
-import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
+import { selectWorktreeAtPath } from '@/features/chat/state/chat-projection-selectors'
 import {
   packageJsonScripts,
   packageScriptRunner,
@@ -32,11 +32,13 @@ export function useCommandPaletteScripts({
   readonly enabled: boolean
   readonly rootPath: string | null
 }) {
-  const projects = useChatProjectionStore(selectChatProjects)
-  const saved =
-    projects.find((project) => project.workspaceRoot === rootPath)?.scripts ?? NO_SCRIPTS
+  const slice = useActiveChatProjection((state) => state)
+  const worktree = rootPath !== null ? selectWorktreeAtPath(slice, rootPath) : undefined
+  const saved = worktree
+    ? (slice.projectById[worktree.projectId]?.scripts ?? NO_SCRIPTS)
+    : NO_SCRIPTS
   const { data: discovered } = useQuery({
-    enabled: enabled && Boolean(rootPath),
+    enabled: enabled && rootPath !== null,
     queryFn: ({ signal, client }) =>
       discoverPackageScripts(rootPath ?? '', signal, clientForQueryClient(client)),
     queryKey: ['command-palette', 'scripts', rootPath ?? ''],
@@ -56,7 +58,11 @@ async function discoverPackageScripts(rootPath: string, signal: AbortSignal, cli
   const names = tree.entries.map((entry) => entry.name)
   if (!names.includes('package.json')) return NO_SCRIPTS
 
-  const manifest = await fetchFile(`${rootPath}/package.json`, signal, client).catch(() => null)
+  const manifest = await fetchFile(
+    rootPath ? `${rootPath}/package.json` : 'package.json',
+    signal,
+    client,
+  ).catch(() => null)
   if (!manifest) return NO_SCRIPTS
 
   return packageJsonScripts(manifest.content, packageScriptRunner(names))

@@ -1,4 +1,11 @@
-import type { CommandId, MessageId, OrchestrationMessage, ThreadId } from '@workspace/contracts'
+import {
+  scopedSessionKey,
+  type ScopedSessionRef,
+  type EnvironmentId,
+  type CommandId,
+  type MessageId,
+  type OrchestrationMessage,
+} from '@workspace/contracts'
 import { Debouncer } from '@tanstack/react-pacer/debouncer'
 import { create } from 'zustand'
 
@@ -14,16 +21,20 @@ export type OptimisticChatMessage = OrchestrationMessage & {
 }
 
 type ChatOptimisticState = {
-  messagesByThreadId: Record<ThreadId, Record<MessageId, OptimisticChatMessage>>
+  messagesBySessionKey: Record<string, Record<MessageId, OptimisticChatMessage>>
 }
 
 type ChatOptimisticActions = {
-  addOptimisticMessage: (commandId: CommandId, message: OrchestrationMessage) => void
+  addOptimisticMessage: (
+    environmentId: EnvironmentId,
+    commandId: CommandId,
+    message: OrchestrationMessage,
+  ) => void
   clearResolvedOptimisticMessages: (
-    threadId: ThreadId,
+    ref: ScopedSessionRef,
     resolvedMessages: readonly OrchestrationMessage[],
   ) => void
-  removeOptimisticMessage: (threadId: ThreadId, messageId: MessageId) => void
+  removeOptimisticMessage: (ref: ScopedSessionRef, messageId: MessageId) => void
 }
 
 export type ChatOptimisticStore = ChatOptimisticState & ChatOptimisticActions
@@ -37,23 +48,24 @@ const optimisticLogFlush = new Debouncer(flushOptimisticLogScope, {
 })
 
 export const useChatOptimisticStore = create<ChatOptimisticStore>((set, get) => ({
-  messagesByThreadId: {},
-  addOptimisticMessage: (commandId, message) => {
+  messagesBySessionKey: {},
+  addOptimisticMessage: (environmentId, commandId, message) => {
+    const sessionKey = scopedSessionKey({ environmentId, sessionId: message.sessionId })
     recordOptimisticMutation(
       'add',
       optimisticMessageSummary({
         commandId,
         messageId: message.id,
         textLength: message.text.length,
-        threadId: message.threadId,
+        sessionId: message.sessionId,
       }),
     )
 
     set((state) => ({
-      messagesByThreadId: {
-        ...state.messagesByThreadId,
-        [message.threadId]: {
-          ...state.messagesByThreadId[message.threadId],
+      messagesBySessionKey: {
+        ...state.messagesBySessionKey,
+        [sessionKey]: {
+          ...state.messagesBySessionKey[sessionKey],
           [message.id]: {
             ...message,
             commandId,
@@ -63,24 +75,22 @@ export const useChatOptimisticStore = create<ChatOptimisticStore>((set, get) => 
       },
     }))
   },
-  clearResolvedOptimisticMessages: (threadId, resolvedMessages) => {
-    // Runs once per streamed token delta. An optimistic message only exists in the
-    // window between send and the server's echo, and `replaceThreadMessages` drops
-    // the thread key when the last one resolves — so this bail is the common case,
-    // and it has to happen before the id set is built and before the log scope is
-    // touched, or a streaming turn drives the debouncer per token.
-    if (!get().messagesByThreadId[threadId]) return
+  clearResolvedOptimisticMessages: (ref, resolvedMessages) => {
+    const sessionId = scopedSessionKey(ref)
+    // Most streamed deltas have no optimistic message to reconcile.
+    if (!get().messagesBySessionKey[sessionId]) return
 
     const resolvedMessageIds = new Set(resolvedMessages.map((message) => message.id))
     recordOptimisticMutation('clearResolved', {
       resolvedMessageCount: resolvedMessageIds.size,
-      threadId,
+      sessionId,
     })
-    set((state) => clearResolvedMessages(state, threadId, resolvedMessageIds))
+    set((state) => clearResolvedMessages(state, sessionId, resolvedMessageIds))
   },
-  removeOptimisticMessage: (threadId, messageId) => {
-    recordOptimisticMutation('remove', { messageId, threadId })
-    set((state) => removeOptimisticMessage(state, threadId, messageId))
+  removeOptimisticMessage: (ref, messageId) => {
+    const sessionId = scopedSessionKey(ref)
+    recordOptimisticMutation('remove', { messageId, sessionId })
+    set((state) => removeOptimisticMessage(state, sessionId, messageId))
   },
 }))
 
@@ -112,14 +122,17 @@ function flushOptimisticLogScope() {
   scope?.end()
 }
 
-export function createOptimisticMessagesForThreadSelector(threadId: ThreadId | null | undefined) {
+export function createOptimisticMessagesForSessionSelector(
+  ref: ScopedSessionRef | null | undefined,
+) {
+  const sessionId = ref ? scopedSessionKey(ref) : null
   let previousMessagesById: Record<MessageId, OptimisticChatMessage> | undefined
   let previousMessages: OptimisticChatMessage[] = EMPTY_OPTIMISTIC_MESSAGES
 
   return (state: ChatOptimisticStore) => {
-    if (!threadId) return EMPTY_OPTIMISTIC_MESSAGES
+    if (!sessionId) return EMPTY_OPTIMISTIC_MESSAGES
 
-    const messagesById = state.messagesByThreadId[threadId]
+    const messagesById = state.messagesBySessionKey[sessionId]
     if (!messagesById) return EMPTY_OPTIMISTIC_MESSAGES
     if (previousMessagesById === messagesById) return previousMessages
 
@@ -132,10 +145,10 @@ export function createOptimisticMessagesForThreadSelector(threadId: ThreadId | n
 
 function clearResolvedMessages(
   state: ChatOptimisticState,
-  threadId: ThreadId,
+  sessionId: string,
   resolvedMessageIds: ReadonlySet<MessageId>,
 ): ChatOptimisticState {
-  const messages = state.messagesByThreadId[threadId]
+  const messages = state.messagesBySessionKey[sessionId]
   if (!messages) return state
 
   const nextMessages = Object.fromEntries(
@@ -145,45 +158,45 @@ function clearResolvedMessages(
   ) as Record<MessageId, OptimisticChatMessage>
   if (Object.keys(nextMessages).length === Object.keys(messages).length) return state
 
-  return replaceThreadMessages(state, threadId, nextMessages)
+  return replaceSessionMessages(state, sessionId, nextMessages)
 }
 
 function removeOptimisticMessage(
   state: ChatOptimisticState,
-  threadId: ThreadId,
+  sessionId: string,
   messageId: MessageId,
 ): ChatOptimisticState {
-  const messages = state.messagesByThreadId[threadId]
+  const messages = state.messagesBySessionKey[sessionId]
   if (!messages?.[messageId]) return state
 
   const { [messageId]: _removed, ...nextMessages } = messages
 
-  return replaceThreadMessages(
+  return replaceSessionMessages(
     state,
-    threadId,
+    sessionId,
     nextMessages as Record<MessageId, OptimisticChatMessage>,
   )
 }
 
-function replaceThreadMessages(
+function replaceSessionMessages(
   state: ChatOptimisticState,
-  threadId: ThreadId,
+  sessionId: string,
   messages: Record<MessageId, OptimisticChatMessage>,
 ): ChatOptimisticState {
   if (Object.keys(messages).length > 0) {
     return {
       ...state,
-      messagesByThreadId: {
-        ...state.messagesByThreadId,
-        [threadId]: messages,
+      messagesBySessionKey: {
+        ...state.messagesBySessionKey,
+        [sessionId]: messages,
       },
     }
   }
 
-  const { [threadId]: _removedThread, ...messagesByThreadId } = state.messagesByThreadId
+  const { [sessionId]: _removedSession, ...messagesBySessionKey } = state.messagesBySessionKey
 
   return {
     ...state,
-    messagesByThreadId: messagesByThreadId as ChatOptimisticState['messagesByThreadId'],
+    messagesBySessionKey: messagesBySessionKey as ChatOptimisticState['messagesBySessionKey'],
   }
 }

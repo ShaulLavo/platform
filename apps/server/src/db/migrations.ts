@@ -11,67 +11,28 @@ export type Migration = {
   readonly up: (database: PlatformDatabase) => void
 }
 
-/**
- * The ordered, forward-only ledger for the platform database. Append new
- * versions here; never edit or renumber an existing one — a developer database
- * that already recorded it will not run it again.
- *
- * Version 1 is the baseline: it is the whole schema as it stood before the
- * ledger existed, written entirely with `IF NOT EXISTS`. That is what makes it
- * safe against developer databases created by the old ad-hoc migrate function —
- * against those it does nothing and only records the baseline row, which is
- * exactly the reconciliation later versions need to start from.
- */
+// Version 11 replaces obsolete developer chat state while preserving machine identity and files.
 export const platformMigrations: readonly Migration[] = [
-  { version: 1, name: 'platform_baseline', up: applyPlatformBaseline },
-  {
-    version: 2,
-    name: 'thread_proposed_plan_and_checkpoint_projections',
-    up: applyThreadProposedPlanAndCheckpointProjections,
-  },
-  { version: 3, name: 'app_settings', up: applyAppSettings },
-  { version: 4, name: 'thread_lifecycle_columns', up: applyThreadLifecycleColumns },
-  { version: 5, name: 'project_order_key', up: applyProjectOrderKey },
-  { version: 6, name: 'thread_plan_progress', up: applyThreadPlanProgress },
-  { version: 7, name: 'project_scripts', up: applyProjectScripts },
-  { version: 8, name: 'drop_app_settings', up: applyDropAppSettings },
-  { version: 9, name: 'thread_activity_kind_index', up: applyThreadActivityKindIndex },
-  { version: 10, name: 'environment_identity', up: applyEnvironmentIdentity },
+  { version: 11, name: 'session_domain', up: applySessionDomain },
 ]
 
-/**
- * Applies every migration the database has not recorded yet, in version order.
- *
- * Each migration runs in its own `IMMEDIATE` transaction together with its
- * ledger row, so the write lock is held for the whole step: two processes
- * starting at once cannot both apply the same version, and a crash mid-step
- * leaves neither the DDL nor the ledger row behind.
- */
 export function migratePlatformDatabase(
   database: PlatformDatabase = getDefaultPlatformDatabase(),
   migrations: readonly Migration[] = platformMigrations,
 ): readonly Migration[] {
   const startedAt = performance.now()
   createLedger(database)
-
   const recorded = recordedVersions(database)
   const applied: Migration[] = []
-
   for (const migration of migrations) {
     if (recorded.has(migration.version)) continue
     if (!applyMigration(database, migration)) continue
     applied.push(migration)
   }
-
   reportApplied(applied, startedAt)
-
   return applied
 }
 
-/**
- * Feature entry points. The platform runs on a single SQLite file, so both of
- * these run the same ledger over the same tables.
- */
 export function migrateMetadataDatabase(database: PlatformDatabase = getDefaultPlatformDatabase()) {
   return migratePlatformDatabase(database)
 }
@@ -171,404 +132,277 @@ function reportApplied(applied: readonly Migration[], startedAt: number) {
   })
 }
 
-function applyPlatformBaseline(database: PlatformDatabase) {
-  createFileMetadataTables(database)
-  createOrchestrationEventTables(database)
-  createProjectionTables(database)
-  createProviderRuntimeTables(database)
+function applySessionDomain(database: PlatformDatabase) {
+  database.run(sql`DROP TABLE IF EXISTS provider_session_runtime`)
+  database.run(sql`DROP TABLE IF EXISTS projection_thread_messages`)
+  database.run(sql`DROP TABLE IF EXISTS projection_thread_activities`)
+  database.run(sql`DROP TABLE IF EXISTS projection_thread_sessions`)
+  database.run(sql`DROP TABLE IF EXISTS projection_thread_proposed_plans`)
+  database.run(sql`DROP TABLE IF EXISTS projection_thread_checkpoints`)
+  database.run(sql`DROP TABLE IF EXISTS projection_session_messages`)
+  database.run(sql`DROP TABLE IF EXISTS projection_session_activities`)
+  database.run(sql`DROP TABLE IF EXISTS projection_session_runtime`)
+  database.run(sql`DROP TABLE IF EXISTS projection_session_proposed_plans`)
+  database.run(sql`DROP TABLE IF EXISTS projection_session_checkpoints`)
+  database.run(sql`DROP TABLE IF EXISTS projection_turns`)
+  database.run(sql`DROP TABLE IF EXISTS projection_threads`)
+  database.run(sql`DROP TABLE IF EXISTS projection_sessions`)
+  database.run(sql`DROP TABLE IF EXISTS projection_worktrees`)
+  database.run(sql`DROP TABLE IF EXISTS projection_projects`)
+  database.run(sql`DROP TABLE IF EXISTS projection_state`)
+  database.run(sql`DROP TABLE IF EXISTS orchestration_command_receipts`)
+  database.run(sql`DROP TABLE IF EXISTS orchestration_events`)
+  for (const statement of SESSION_DOMAIN_SCHEMA) database.run(sql.raw(statement))
+  if (database.select().from(environmentIdentity).get() === undefined) {
+    database
+      .insert(environmentIdentity)
+      .values({ id: crypto.randomUUID(), createdAt: new Date().toISOString() })
+      .run()
+  }
+  database.run(sql`DELETE FROM schema_migrations WHERE version < 11`)
 }
 
-function createFileMetadataTables(database: PlatformDatabase) {
-  database.run(sql`
-		CREATE TABLE IF NOT EXISTS fs_metadata (
-			path TEXT PRIMARY KEY NOT NULL,
-			name TEXT NOT NULL,
-			entry_type TEXT NOT NULL,
-			size INTEGER NOT NULL,
-			mtime_ms INTEGER NOT NULL,
-			birthtime_ms INTEGER NOT NULL DEFAULT 0,
-			last_picked_at INTEGER,
-			pick_count INTEGER NOT NULL DEFAULT 0,
-			created_at INTEGER NOT NULL,
-			updated_at INTEGER NOT NULL
-		)
-	`)
-  database.run(sql`
-		CREATE INDEX IF NOT EXISTS fs_metadata_recent_idx
-		ON fs_metadata (last_picked_at DESC)
-	`)
-  database.run(sql`
-		CREATE INDEX IF NOT EXISTS fs_metadata_entry_type_idx
-		ON fs_metadata (entry_type)
-	`)
-}
-
-function createOrchestrationEventTables(database: PlatformDatabase) {
-  database.run(sql`
-		CREATE TABLE IF NOT EXISTS orchestration_events (
-			sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-			event_id TEXT NOT NULL UNIQUE,
-			aggregate_kind TEXT NOT NULL,
-			aggregate_id TEXT NOT NULL,
-			stream_version INTEGER NOT NULL,
-			event_type TEXT NOT NULL,
-			occurred_at TEXT NOT NULL,
-			command_id TEXT,
-			causation_event_id TEXT,
-			correlation_id TEXT,
-			actor_kind TEXT NOT NULL,
-			payload_json TEXT NOT NULL,
-			metadata_json TEXT NOT NULL
-		)
-	`)
-  database.run(sql`
-		CREATE UNIQUE INDEX IF NOT EXISTS orchestration_events_stream_version_idx
-		ON orchestration_events (aggregate_kind, aggregate_id, stream_version)
-	`)
-  database.run(sql`
-		CREATE INDEX IF NOT EXISTS orchestration_events_sequence_idx
-		ON orchestration_events (sequence)
-	`)
-  database.run(sql`
-		CREATE INDEX IF NOT EXISTS orchestration_events_aggregate_sequence_idx
-		ON orchestration_events (aggregate_kind, aggregate_id, sequence)
-	`)
-  database.run(sql`
-		CREATE INDEX IF NOT EXISTS orchestration_events_command_id_idx
-		ON orchestration_events (command_id)
-	`)
-  database.run(sql`
-		CREATE INDEX IF NOT EXISTS orchestration_events_correlation_id_idx
-		ON orchestration_events (correlation_id)
-	`)
-
-  database.run(sql`
-		CREATE TABLE IF NOT EXISTS orchestration_command_receipts (
-			command_id TEXT PRIMARY KEY NOT NULL,
-			command_type TEXT NOT NULL,
-			aggregate_kind TEXT NOT NULL,
-			aggregate_id TEXT NOT NULL,
-			accepted_at TEXT NOT NULL,
-			result_sequence INTEGER,
-			status TEXT NOT NULL,
-			command_json TEXT NOT NULL,
-			result_json TEXT,
-			error TEXT
-		)
-	`)
-  database.run(sql`
-		CREATE INDEX IF NOT EXISTS orchestration_command_receipts_aggregate_idx
-		ON orchestration_command_receipts (aggregate_kind, aggregate_id)
-	`)
-  database.run(sql`
-		CREATE INDEX IF NOT EXISTS orchestration_command_receipts_sequence_idx
-		ON orchestration_command_receipts (result_sequence)
-	`)
-}
-
-function createProjectionTables(database: PlatformDatabase) {
-  database.run(sql`
-		CREATE TABLE IF NOT EXISTS projection_state (
-			projector TEXT PRIMARY KEY NOT NULL,
-			last_applied_sequence INTEGER NOT NULL,
-			updated_at TEXT NOT NULL
-		)
-	`)
-
-  database.run(sql`
-		CREATE TABLE IF NOT EXISTS projection_projects (
-			project_id TEXT PRIMARY KEY NOT NULL,
-			title TEXT NOT NULL,
-			workspace_root TEXT NOT NULL,
-			default_model_selection_json TEXT,
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL,
-			deleted_at TEXT
-		)
-	`)
-  database.run(sql`
-		CREATE INDEX IF NOT EXISTS projection_projects_updated_at_idx
-		ON projection_projects (updated_at)
-	`)
-
-  database.run(sql`
-		CREATE TABLE IF NOT EXISTS projection_threads (
-			thread_id TEXT PRIMARY KEY NOT NULL,
-			project_id TEXT NOT NULL,
-			title TEXT NOT NULL,
-			runtime_mode TEXT NOT NULL,
-			interaction_mode TEXT NOT NULL,
-			model_selection_json TEXT NOT NULL,
-			branch TEXT,
-			worktree_path TEXT,
-			latest_turn_id TEXT,
-			latest_turn_json TEXT,
-			latest_user_message_at TEXT,
-			pending_approval_count INTEGER NOT NULL DEFAULT 0,
-			pending_user_input_count INTEGER NOT NULL DEFAULT 0,
-			has_actionable_proposed_plan INTEGER NOT NULL DEFAULT 0,
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL,
-			archived_at TEXT,
-			deleted_at TEXT
-		)
-	`)
-  database.run(sql`
-		CREATE INDEX IF NOT EXISTS projection_threads_project_deleted_created_idx
-		ON projection_threads (project_id, deleted_at, created_at)
-	`)
-
-  database.run(sql`
-		CREATE TABLE IF NOT EXISTS projection_thread_messages (
-			message_id TEXT PRIMARY KEY NOT NULL,
-			thread_id TEXT NOT NULL,
-			turn_id TEXT,
-			role TEXT NOT NULL,
-			text TEXT NOT NULL,
-			attachments_json TEXT NOT NULL DEFAULT '[]',
-			streaming INTEGER NOT NULL,
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)
-	`)
-  database.run(sql`
-		CREATE INDEX IF NOT EXISTS projection_thread_messages_thread_created_idx
-		ON projection_thread_messages (thread_id, created_at)
-	`)
-
-  database.run(sql`
-		CREATE TABLE IF NOT EXISTS projection_thread_activities (
-			activity_id TEXT PRIMARY KEY NOT NULL,
-			thread_id TEXT NOT NULL,
-			turn_id TEXT,
-			tone TEXT NOT NULL,
-			kind TEXT NOT NULL,
-			summary TEXT NOT NULL,
-			payload_json TEXT NOT NULL,
-			sequence INTEGER,
-			created_at TEXT NOT NULL
-		)
-	`)
-  database.run(sql`
-		CREATE INDEX IF NOT EXISTS projection_thread_activities_thread_created_idx
-		ON projection_thread_activities (thread_id, created_at)
-	`)
-
-  database.run(sql`
-		CREATE TABLE IF NOT EXISTS projection_thread_sessions (
-			thread_id TEXT PRIMARY KEY NOT NULL,
-			status TEXT NOT NULL,
-			provider_name TEXT,
-			provider_instance_id TEXT NOT NULL,
-			provider_session_id TEXT,
-			provider_thread_id TEXT,
-			runtime_mode TEXT NOT NULL,
-			active_turn_id TEXT,
-			last_error TEXT,
-			updated_at TEXT NOT NULL
-		)
-	`)
-  database.run(sql`
-		CREATE INDEX IF NOT EXISTS projection_thread_sessions_provider_session_idx
-		ON projection_thread_sessions (provider_session_id)
-	`)
-  database.run(sql`
-		CREATE INDEX IF NOT EXISTS projection_thread_sessions_provider_instance_idx
-		ON projection_thread_sessions (provider_instance_id)
-	`)
-
-  database.run(sql`
-		CREATE TABLE IF NOT EXISTS projection_turns (
-			row_id INTEGER PRIMARY KEY AUTOINCREMENT,
-			thread_id TEXT NOT NULL,
-			turn_id TEXT NOT NULL,
-			user_message_id TEXT,
-			assistant_message_id TEXT,
-			state TEXT NOT NULL,
-			source_proposed_plan_json TEXT,
-			requested_at TEXT NOT NULL,
-			started_at TEXT,
-			completed_at TEXT,
-			UNIQUE (thread_id, turn_id)
-		)
-	`)
-  database.run(sql`
-		CREATE INDEX IF NOT EXISTS projection_turns_thread_requested_idx
-		ON projection_turns (thread_id, requested_at)
-	`)
-}
-
-/**
- * Plan markdown and checkpoint summaries used to exist only inside the event
- * log: the plan payload was thrown away at projection time, and every reader
- * that wanted checkpoints re-folded the whole thread stream. These two tables
- * are what makes both survive a reload without a scan.
- */
-function applyThreadProposedPlanAndCheckpointProjections(database: PlatformDatabase) {
-  database.run(sql`
-		CREATE TABLE projection_thread_proposed_plans (
-			plan_id TEXT PRIMARY KEY NOT NULL,
-			thread_id TEXT NOT NULL,
-			turn_id TEXT,
-			plan_markdown TEXT NOT NULL,
-			implemented_at TEXT,
-			implementation_thread_id TEXT,
-			created_at TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)
-	`)
-  database.run(sql`
-		CREATE INDEX projection_thread_proposed_plans_thread_created_idx
-		ON projection_thread_proposed_plans (thread_id, created_at)
-	`)
-  database.run(sql`
-		CREATE INDEX projection_thread_proposed_plans_thread_updated_idx
-		ON projection_thread_proposed_plans (thread_id, updated_at)
-	`)
-
-  database.run(sql`
-		CREATE TABLE projection_thread_checkpoints (
-			thread_id TEXT NOT NULL,
-			turn_id TEXT NOT NULL,
-			checkpoint_turn_count INTEGER NOT NULL,
-			checkpoint_ref TEXT NOT NULL,
-			status TEXT NOT NULL,
-			files_json TEXT NOT NULL,
-			assistant_message_id TEXT,
-			completed_at TEXT NOT NULL,
-			PRIMARY KEY (thread_id, turn_id)
-		)
-	`)
-  database.run(sql`
-		CREATE INDEX projection_thread_checkpoints_thread_turn_count_idx
-		ON projection_thread_checkpoints (thread_id, checkpoint_turn_count)
-	`)
-}
-
-/**
- * Durable user settings. One row per top-level section rather than a single
- * settings blob: a write only touches the sections it changes, and a section
- * the user never touched simply has no row, so its default comes from the
- * contract instead of a stale copy frozen at install time.
- */
-function applyAppSettings(database: PlatformDatabase) {
-  database.run(sql`
-		CREATE TABLE app_settings (
-			section TEXT PRIMARY KEY NOT NULL,
-			value_json TEXT NOT NULL,
-			updated_at TEXT NOT NULL
-		)
-	`)
-}
-
-/**
- * The settle / snooze / pin lifecycle. Every column is nullable with no
- * default: "the user has said nothing about this thread" is the ground state,
- * and it has to be distinguishable from "the user explicitly kept it active".
- */
-function applyThreadLifecycleColumns(database: PlatformDatabase) {
-  database.run(sql`ALTER TABLE projection_threads ADD COLUMN settled_override TEXT`)
-  database.run(sql`ALTER TABLE projection_threads ADD COLUMN settled_at TEXT`)
-  database.run(sql`ALTER TABLE projection_threads ADD COLUMN snoozed_until TEXT`)
-  database.run(sql`ALTER TABLE projection_threads ADD COLUMN snoozed_at TEXT`)
-  database.run(sql`ALTER TABLE projection_threads ADD COLUMN pinned_at TEXT`)
-  database.run(sql`ALTER TABLE projection_threads ADD COLUMN pin_order_key TEXT`)
-  database.run(sql`
-		CREATE INDEX projection_threads_pinned_order_idx
-		ON projection_threads (pinned_at, pin_order_key)
-	`)
-}
-
-/**
- * The user's own project order. Nullable with no default: "never dragged" has
- * to stay distinguishable from a placed key, because an unplaced project sorts
- * after the arranged run rather than into the middle of it.
- */
-function applyProjectOrderKey(database: PlatformDatabase) {
-  database.run(sql`ALTER TABLE projection_projects ADD COLUMN order_key TEXT`)
-}
-
-/**
- * Which plan step a thread is on, as a projected column rather than a scan: the
- * shell delta reader serves one row per event, and folding a thread's activity
- * history there is what the row reader exists to avoid. Nullable with no
- * default — a thread that has never planned carries nothing, which is exactly
- * what the fold yields for it.
- */
-function applyThreadPlanProgress(database: PlatformDatabase) {
-  database.run(sql`ALTER TABLE projection_threads ADD COLUMN plan_progress_json TEXT`)
-}
-
-function applyProjectScripts(database: PlatformDatabase) {
-  database.run(sql`ALTER TABLE projection_projects ADD COLUMN scripts_json TEXT`)
-}
-
-/**
- * The pending-request counters read only six activity kinds out of a table that
- * holds every tool call a thread ever made. Without this index the kind filter
- * still visits every row of the thread — `(thread_id, created_at)` can only
- * seek on the thread.
- */
-function applyThreadActivityKindIndex(database: PlatformDatabase) {
-  database.run(sql`
-		CREATE INDEX IF NOT EXISTS projection_thread_activities_thread_kind_idx
-		ON projection_thread_activities (thread_id, kind)
-	`)
-}
-
-function applyEnvironmentIdentity(database: PlatformDatabase) {
-  database.run(sql`
-    CREATE TABLE environment_identity (
-      id TEXT PRIMARY KEY NOT NULL,
-      created_at TEXT NOT NULL
-    )
-  `)
-  database
-    .insert(environmentIdentity)
-    .values({ id: crypto.randomUUID(), createdAt: new Date().toISOString() })
-    .run()
-}
-
-function createProviderRuntimeTables(database: PlatformDatabase) {
-  database.run(sql`
-		CREATE TABLE IF NOT EXISTS provider_session_runtime (
-			thread_id TEXT PRIMARY KEY NOT NULL,
-			provider_driver_kind TEXT NOT NULL,
-			provider_instance_id TEXT NOT NULL,
-			provider_session_id TEXT,
-			adapter_key TEXT NOT NULL,
-			runtime_mode TEXT NOT NULL,
-			status TEXT NOT NULL,
-			last_seen_at TEXT NOT NULL,
-			resume_cursor_json TEXT,
-			runtime_payload_json TEXT
-		)
-	`)
-  database.run(sql`
-		CREATE INDEX IF NOT EXISTS provider_session_runtime_status_idx
-		ON provider_session_runtime (status)
-	`)
-  database.run(sql`
-		CREATE INDEX IF NOT EXISTS provider_session_runtime_provider_instance_idx
-		ON provider_session_runtime (provider_instance_id)
-	`)
-  database.run(sql`
-		CREATE INDEX IF NOT EXISTS provider_session_runtime_provider_session_idx
-		ON provider_session_runtime (provider_session_id)
-	`)
-}
-
-/**
- * Settings moved out of SQLite and into `~/.platform/settings.json`.
- *
- * No data is carried across. This project is greenfield with no external users,
- * and the row this drops held provider config, model preferences and keybinding
- * overrides — all of which a developer re-enters in seconds. Writing migration
- * code to move three rows would outlive the reason it existed.
- *
- * Version 3 stays in the ledger as history; a database that already recorded it
- * never re-runs it, which is why migrations are only ever appended.
- */
-function applyDropAppSettings(database: PlatformDatabase) {
-  database.run(sql`DROP TABLE IF EXISTS app_settings`)
-}
+const SESSION_DOMAIN_SCHEMA = [
+  `CREATE TABLE IF NOT EXISTS "environment_identity" (
+  "id" text PRIMARY KEY NOT NULL,
+  "created_at" text NOT NULL
+)`,
+  `CREATE TABLE IF NOT EXISTS "fs_metadata" (
+  "path" text PRIMARY KEY NOT NULL,
+  "name" text NOT NULL,
+  "entry_type" text NOT NULL,
+  "size" integer NOT NULL,
+  "mtime_ms" integer NOT NULL,
+  "birthtime_ms" integer NOT NULL DEFAULT 0,
+  "last_picked_at" integer,
+  "pick_count" integer NOT NULL DEFAULT 0,
+  "created_at" integer NOT NULL,
+  "updated_at" integer NOT NULL
+)`,
+  `CREATE TABLE IF NOT EXISTS "orchestration_command_receipts" (
+  "command_id" text PRIMARY KEY NOT NULL,
+  "command_type" text NOT NULL,
+  "aggregate_kind" text NOT NULL,
+  "aggregate_id" text NOT NULL,
+  "accepted_at" text NOT NULL,
+  "result_sequence" integer,
+  "status" text NOT NULL,
+  "command_json" text NOT NULL,
+  "intent_fingerprint" text NOT NULL,
+  "result_json" text,
+  "error" text,
+  CONSTRAINT "orchestration_receipt_result_sequence" CHECK (("status" = 'accepted' AND "result_sequence" IS NOT NULL) OR ("status" = 'rejected' AND "result_sequence" IS NULL))
+)`,
+  `CREATE TABLE IF NOT EXISTS "orchestration_events" (
+  "sequence" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+  "event_id" text NOT NULL UNIQUE,
+  "aggregate_kind" text NOT NULL,
+  "aggregate_id" text NOT NULL,
+  "stream_version" integer NOT NULL,
+  "event_type" text NOT NULL,
+  "occurred_at" text NOT NULL,
+  "command_id" text,
+  "causation_event_id" text,
+  "correlation_id" text,
+  "actor_kind" text NOT NULL,
+  "payload_json" text NOT NULL,
+  "metadata_json" text NOT NULL
+)`,
+  `CREATE TABLE IF NOT EXISTS "projection_projects" (
+  "project_id" text PRIMARY KEY NOT NULL,
+  "title" text NOT NULL,
+  "repository_key" text NOT NULL,
+  "repository_kind" text NOT NULL,
+  "repository_identity_json" text NOT NULL,
+  "default_model_selection_json" text,
+  "created_at" text NOT NULL,
+  "updated_at" text NOT NULL,
+  "deleted_at" text,
+  "order_key" text,
+  "scripts_json" text
+)`,
+  `CREATE TABLE IF NOT EXISTS "projection_session_activities" (
+  "activity_id" text PRIMARY KEY NOT NULL,
+  "session_id" text NOT NULL,
+  "turn_id" text,
+  "tone" text NOT NULL,
+  "kind" text NOT NULL,
+  "summary" text NOT NULL,
+  "payload_json" text NOT NULL,
+  "sequence" integer,
+  "created_at" text NOT NULL,
+  FOREIGN KEY ("session_id") REFERENCES "projection_sessions" ("session_id")
+)`,
+  `CREATE TABLE IF NOT EXISTS "projection_session_checkpoints" (
+  "session_id" text NOT NULL,
+  "turn_id" text NOT NULL,
+  "checkpoint_turn_count" integer NOT NULL,
+  "checkpoint_ref" text NOT NULL,
+  "status" text NOT NULL,
+  "files_json" text NOT NULL,
+  "assistant_message_id" text,
+  "completed_at" text NOT NULL,
+  PRIMARY KEY ("session_id", "turn_id"),
+  FOREIGN KEY ("session_id") REFERENCES "projection_sessions" ("session_id")
+)`,
+  `CREATE TABLE IF NOT EXISTS "projection_session_messages" (
+  "message_id" text PRIMARY KEY NOT NULL,
+  "session_id" text NOT NULL,
+  "turn_id" text,
+  "role" text NOT NULL,
+  "text" text NOT NULL,
+  "attachments_json" text NOT NULL DEFAULT '[]',
+  "streaming" integer NOT NULL,
+  "created_at" text NOT NULL,
+  "updated_at" text NOT NULL,
+  FOREIGN KEY ("session_id") REFERENCES "projection_sessions" ("session_id")
+)`,
+  `CREATE TABLE IF NOT EXISTS "projection_session_proposed_plans" (
+  "plan_id" text PRIMARY KEY NOT NULL,
+  "session_id" text NOT NULL,
+  "turn_id" text,
+  "plan_markdown" text NOT NULL,
+  "implemented_at" text,
+  "implementation_session_id" text,
+  "created_at" text NOT NULL,
+  "updated_at" text NOT NULL,
+  FOREIGN KEY ("session_id") REFERENCES "projection_sessions" ("session_id")
+)`,
+  `CREATE TABLE IF NOT EXISTS "projection_session_runtime" (
+  "session_id" text PRIMARY KEY NOT NULL,
+  "status" text NOT NULL,
+  "provider_name" text,
+  "provider_instance_id" text NOT NULL,
+  "provider_binding_handle" text,
+  "provider_conversation_marker" text,
+  "provider_resume_cursor" text,
+  "runtime_epoch" text NOT NULL,
+  "runtime_mode" text NOT NULL,
+  "active_turn_id" text,
+  "last_error" text,
+  "updated_at" text NOT NULL,
+  FOREIGN KEY ("session_id") REFERENCES "projection_sessions" ("session_id")
+)`,
+  `CREATE TABLE IF NOT EXISTS "projection_sessions" (
+  "session_id" text PRIMARY KEY NOT NULL,
+  "worktree_id" text NOT NULL,
+  "origin" text NOT NULL,
+  "attention_state" text NOT NULL,
+  "attention_reason" text,
+  "has_error" integer NOT NULL DEFAULT 0,
+  "acknowledged_failure_through_sequence" integer,
+  "latest_failure_sequence" integer,
+  "latest_interruption_sequence" integer,
+  "runtime_sequence" integer,
+  "provider_stop_state" text,
+  "blob_cleanup_state" text,
+  "provider_stop_error" text,
+  "blob_cleanup_error" text,
+  "deletion_updated_at" text,
+  "deletion_sequence" integer,
+  "title" text NOT NULL,
+  "runtime_mode" text NOT NULL,
+  "interaction_mode" text NOT NULL,
+  "model_selection_json" text NOT NULL,
+  "latest_turn_id" text,
+  "latest_turn_json" text,
+  "latest_user_message_at" text,
+  "pending_approval_count" integer NOT NULL DEFAULT 0,
+  "pending_user_input_count" integer NOT NULL DEFAULT 0,
+  "has_actionable_proposed_plan" integer NOT NULL DEFAULT 0,
+  "plan_progress_json" text,
+  "created_at" text NOT NULL,
+  "updated_at" text NOT NULL,
+  "archived_at" text,
+  "deleted_at" text,
+  "settled_override" text,
+  "settled_at" text,
+  "snoozed_until" text,
+  "snoozed_at" text,
+  "pinned_at" text,
+  "pin_order_key" text,
+  FOREIGN KEY ("worktree_id") REFERENCES "projection_worktrees" ("worktree_id")
+)`,
+  `CREATE TABLE IF NOT EXISTS "projection_state" (
+  "projector" text PRIMARY KEY NOT NULL,
+  "last_applied_sequence" integer NOT NULL,
+  "updated_at" text NOT NULL
+)`,
+  `CREATE TABLE IF NOT EXISTS "projection_turns" (
+  "row_id" integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+  "session_id" text NOT NULL,
+  "turn_id" text NOT NULL,
+  "user_message_id" text,
+  "assistant_message_id" text,
+  "state" text NOT NULL,
+  "source_proposed_plan_json" text,
+  "provider_start_state" text NOT NULL,
+  "provider_start_generation" integer NOT NULL,
+  "provider_start_sequence" integer NOT NULL,
+  "runtime_epoch" text,
+  "requested_at" text NOT NULL,
+  "started_at" text,
+  "completed_at" text,
+  FOREIGN KEY ("session_id") REFERENCES "projection_sessions" ("session_id")
+)`,
+  `CREATE TABLE IF NOT EXISTS "projection_worktrees" (
+  "worktree_id" text PRIMARY KEY NOT NULL,
+  "project_id" text NOT NULL,
+  "registration_generation" integer NOT NULL,
+  "canonical_path" text NOT NULL,
+  "path" text NOT NULL,
+  "branch" text,
+  "kind" text NOT NULL,
+  "ownership" text NOT NULL,
+  "created_at" text NOT NULL,
+  "updated_at" text NOT NULL,
+  "retired_at" text,
+  "retirement_sequence" integer,
+  FOREIGN KEY ("project_id") REFERENCES "projection_projects" ("project_id"),
+  CONSTRAINT "projection_worktrees_current_protected" CHECK ("kind" != 'current' OR "ownership" = 'protected'),
+  CONSTRAINT "projection_worktrees_registration_generation" CHECK ("registration_generation" >= 0)
+)`,
+  `CREATE TABLE IF NOT EXISTS "provider_session_runtime" (
+  "session_id" text PRIMARY KEY NOT NULL,
+  "provider_driver_kind" text NOT NULL,
+  "provider_instance_id" text NOT NULL,
+  "provider_binding_handle" text,
+  "provider_conversation_marker" text,
+  "runtime_epoch" text NOT NULL,
+  "adapter_key" text NOT NULL,
+  "runtime_mode" text NOT NULL,
+  "last_seen_at" text NOT NULL,
+  "provider_resume_cursor_json" text,
+  "runtime_payload_json" text,
+  FOREIGN KEY ("session_id") REFERENCES "projection_sessions" ("session_id")
+)`,
+  `CREATE INDEX IF NOT EXISTS "orchestration_command_receipts_aggregate_idx" ON "orchestration_command_receipts" ("aggregate_kind", "aggregate_id")`,
+  `CREATE INDEX IF NOT EXISTS "orchestration_command_receipts_sequence_idx" ON "orchestration_command_receipts" ("result_sequence")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "orchestration_events_stream_version_idx" ON "orchestration_events" ("aggregate_kind", "aggregate_id", "stream_version")`,
+  `CREATE INDEX IF NOT EXISTS "orchestration_events_sequence_idx" ON "orchestration_events" ("sequence")`,
+  `CREATE INDEX IF NOT EXISTS "orchestration_events_aggregate_sequence_idx" ON "orchestration_events" ("aggregate_kind", "aggregate_id", "sequence")`,
+  `CREATE INDEX IF NOT EXISTS "orchestration_events_command_id_idx" ON "orchestration_events" ("command_id")`,
+  `CREATE INDEX IF NOT EXISTS "orchestration_events_correlation_id_idx" ON "orchestration_events" ("correlation_id")`,
+  `CREATE INDEX IF NOT EXISTS "projection_projects_updated_at_idx" ON "projection_projects" ("updated_at")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "projection_projects_live_repository_idx" ON "projection_projects" ("repository_key") WHERE "deleted_at" IS NULL`,
+  `CREATE INDEX IF NOT EXISTS "projection_session_activities_session_created_idx" ON "projection_session_activities" ("session_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "projection_session_activities_session_kind_idx" ON "projection_session_activities" ("session_id", "kind")`,
+  `CREATE INDEX IF NOT EXISTS "projection_session_checkpoints_session_turn_count_idx" ON "projection_session_checkpoints" ("session_id", "checkpoint_turn_count")`,
+  `CREATE INDEX IF NOT EXISTS "projection_session_messages_session_created_idx" ON "projection_session_messages" ("session_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "projection_session_proposed_plans_session_created_idx" ON "projection_session_proposed_plans" ("session_id", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "projection_session_proposed_plans_session_updated_idx" ON "projection_session_proposed_plans" ("session_id", "updated_at")`,
+  `CREATE INDEX IF NOT EXISTS "projection_session_runtime_binding_handle_idx" ON "projection_session_runtime" ("provider_binding_handle")`,
+  `CREATE INDEX IF NOT EXISTS "projection_session_runtime_provider_instance_idx" ON "projection_session_runtime" ("provider_instance_id")`,
+  `CREATE INDEX IF NOT EXISTS "projection_sessions_worktree_deleted_created_idx" ON "projection_sessions" ("worktree_id", "deleted_at", "created_at")`,
+  `CREATE INDEX IF NOT EXISTS "projection_sessions_pinned_order_idx" ON "projection_sessions" ("pinned_at", "pin_order_key")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "projection_turns_session_turn_idx" ON "projection_turns" ("session_id", "turn_id")`,
+  `CREATE INDEX IF NOT EXISTS "projection_turns_session_requested_idx" ON "projection_turns" ("session_id", "requested_at")`,
+  `CREATE INDEX IF NOT EXISTS "projection_turns_provider_start_idx" ON "projection_turns" ("provider_start_state", "session_id")`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "projection_worktrees_live_path_idx" ON "projection_worktrees" ("canonical_path") WHERE "retired_at" IS NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "projection_worktrees_current_idx" ON "projection_worktrees" ("project_id") WHERE "retired_at" IS NULL AND "kind" = 'current'`,
+  `CREATE INDEX IF NOT EXISTS "projection_worktrees_project_idx" ON "projection_worktrees" ("project_id")`,
+  `CREATE INDEX IF NOT EXISTS "provider_session_runtime_provider_instance_idx" ON "provider_session_runtime" ("provider_instance_id")`,
+  `CREATE INDEX IF NOT EXISTS "provider_session_runtime_binding_handle_idx" ON "provider_session_runtime" ("provider_binding_handle")`,
+  `CREATE INDEX IF NOT EXISTS fs_metadata_recent_idx ON fs_metadata (last_picked_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS fs_metadata_entry_type_idx ON fs_metadata (entry_type)`,
+] as const

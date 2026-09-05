@@ -57,7 +57,7 @@ function renderEmptyState({
 }) {
   const calls = { addProjectCount: 0, retries: 0 }
   const session: ChatModeSession = {
-    activeSession: { status: 'auto', threadId: null },
+    activeSession: { status: 'auto', sessionId: null },
     addProject: () => {
       calls.addProjectCount += 1
     },
@@ -70,6 +70,7 @@ function renderEmptyState({
     error,
     openProject: () => {},
     project: null,
+    worktree: null,
     ready: false,
     retrying,
     retryProject: () => {

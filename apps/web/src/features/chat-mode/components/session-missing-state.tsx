@@ -11,7 +11,7 @@ import { Button } from '@workspace/ui/components/button'
  * session" forever, which is indistinguishable from an app that stopped responding.
  */
 export function SessionMissingState() {
-  const { project } = useChatModeSession()
+  const { project, transport } = useChatModeSession()
 
   return (
     <StageNotice
@@ -19,7 +19,13 @@ export function SessionMissingState() {
       title='That session is gone'
     >
       {project ? (
-        <Button size='sm' type='button' onClick={() => startSessionDraft(project.id)}>
+        <Button
+          size='sm'
+          type='button'
+          onClick={() =>
+            startSessionDraft({ environmentId: transport.environmentId, projectId: project.id })
+          }
+        >
           <PlusIcon data-icon='inline-start' />
           Start a new session
         </Button>

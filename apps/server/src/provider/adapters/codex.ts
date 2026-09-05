@@ -16,18 +16,19 @@ import {
   type ProviderSkill,
   type ProviderSnapshot,
   type RuntimeMode,
-  type ThreadId,
+  type SessionId,
   type TurnId,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 import type {
   ProviderAdapter,
-  ProviderAdapterSession,
+  ProviderAdapterRuntime,
   ProviderApprovalResponseInput,
   ProviderCommandCatalogInput,
   ProviderCommandCatalogResult,
   ProviderRuntimeEvent,
-  ProviderSessionStartInput,
+  ProviderRuntimeEventPayload,
+  ProviderRuntimeStartInput,
   ProviderTurnInput,
   ProviderUserInputResponseInput,
 } from '../types'
@@ -91,7 +92,7 @@ type CodexReasoningState = {
   lastEmittedSummary: string | null
   providerTurnId: string
   summaryParts: Map<number, string>
-  threadId: ThreadId
+  sessionId: SessionId
   turnId: TurnId
 }
 
@@ -163,12 +164,13 @@ export type CodexAdapterOptions = {
 }
 
 export class CodexProviderAdapter implements ProviderAdapter {
+  readonly operationTimeoutMs = REQUEST_TIMEOUT_MS
   readonly adapterKey: ProviderInstanceId
   readonly capabilities = CODEX_ADAPTER_CAPABILITIES
   readonly driverKind = DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind
   private readonly env: NodeJS.ProcessEnv
   private readonly events = new ProviderRuntimeEventStream()
-  private readonly sessions = new Map<ThreadId, CodexAppServerSession>()
+  private readonly sessions = new Map<SessionId, CodexAppServerSession>()
   private readonly settings: ProviderInstanceSettings
 
   constructor(options: CodexAdapterOptions = {}) {
@@ -244,29 +246,29 @@ export class CodexProviderAdapter implements ProviderAdapter {
   }
 
   /** Adapter-local inspection, not part of the driver SPI. */
-  async listSessions() {
+  async listActiveRuntimes() {
     return Array.from(this.sessions.values())
       .filter((session) => session.isActive())
       .map((session) => session.snapshot())
   }
 
-  async hasSession({ threadId }: { threadId: ThreadId }) {
-    return Boolean(this.sessions.get(threadId)?.isActive())
+  async hasRuntime({ sessionId }: { sessionId: SessionId }) {
+    return Boolean(this.sessions.get(sessionId)?.isActive())
   }
 
-  async rollbackThread({ numTurns, threadId }: { numTurns: number; threadId: ThreadId }) {
+  async rollbackSession({ numTurns, sessionId }: { numTurns: number; sessionId: SessionId }) {
     if (!Number.isInteger(numTurns) || numTurns < 1) {
       throw createInternalError('Codex thread rollback requires numTurns to be an integer >= 1.')
     }
 
-    return this.requireSession(threadId, 'thread/rollback').rollbackThread(numTurns)
+    return this.requireSession(sessionId, 'thread/rollback').rollbackSession(numTurns)
   }
 
   subscribeEvents(subscriber: (event: ProviderRuntimeEvent) => void) {
     return this.events.subscribe(subscriber)
   }
 
-  async startSession(input: ProviderSessionStartInput) {
+  async startRuntime(input: ProviderRuntimeStartInput) {
     const session = await this.ensureRuntimeSession(input)
     return session.snapshot()
   }
@@ -285,17 +287,17 @@ export class CodexProviderAdapter implements ProviderAdapter {
     })
   }
 
-  async interruptTurn({ threadId, turnId }: { threadId: ThreadId; turnId?: TurnId }) {
-    recordChatPipelineInfo('chat.pipeline.codex_adapter.interrupt', { threadId, turnId })
-    await this.sessions.get(threadId)?.interruptTurn(turnId)
+  async interruptTurn({ sessionId, turnId }: { sessionId: SessionId; turnId?: TurnId }) {
+    recordChatPipelineInfo('chat.pipeline.codex_adapter.interrupt', { sessionId, turnId })
+    await this.sessions.get(sessionId)?.interruptTurn(turnId)
   }
 
-  async stopSession({ threadId }: { threadId: ThreadId }) {
-    recordChatPipelineInfo('chat.pipeline.codex_adapter.stop', { threadId })
-    const session = this.sessions.get(threadId)
+  async stopRuntime({ sessionId }: { sessionId: SessionId }) {
+    recordChatPipelineInfo('chat.pipeline.codex_adapter.stop', { sessionId })
+    const session = this.sessions.get(sessionId)
     if (!session) return
 
-    this.sessions.delete(threadId)
+    this.sessions.delete(sessionId)
     await session.close()
   }
 
@@ -311,27 +313,36 @@ export class CodexProviderAdapter implements ProviderAdapter {
   }
 
   async respondApproval(input: ProviderApprovalResponseInput) {
-    await this.requireSession(input.threadId, 'approval/respond').respondApproval(input)
+    await this.requireSession(input.sessionId, 'approval/respond').respondApproval(input)
   }
 
   async respondUserInput(input: ProviderUserInputResponseInput) {
-    await this.requireSession(input.threadId, 'user-input/respond').respondUserInput(input)
+    await this.requireSession(input.sessionId, 'user-input/respond').respondUserInput(input)
   }
 
-  private async ensureRuntimeSession(input: ProviderSessionStartInput) {
-    const existing = this.sessions.get(input.threadId)
+  private async ensureRuntimeSession(input: ProviderRuntimeStartInput) {
+    const existing = this.sessions.get(input.sessionId)
     const cwd = normalizeWorkspaceCwd(input.cwd)
     const model = normalizeCodexModel(input.modelSelection.model)
     const interactionMode = input.interactionMode ?? DEFAULT_INTERACTION_MODE
     const modelOptions = codexModelOptions(input)
     const ephemeral = input.ephemeral ?? false
-    if (existing?.matches({ cwd, ephemeral, model, runtimeMode: input.runtimeMode })) {
+    if (
+      existing?.matches({
+        cwd,
+        ephemeral,
+        model,
+        runtimeMode: input.runtimeMode,
+        runtimeEpoch: input.runtimeEpoch,
+      })
+    ) {
       recordChatPipelineInfo('chat.pipeline.codex_adapter.session.reuse', {
         interactionMode,
         model,
         reconfigured: existing.reconfigureInteractionMode(interactionMode),
         runtimeMode: input.runtimeMode,
-        threadId: input.threadId,
+        runtimeEpoch: input.runtimeEpoch,
+        sessionId: input.sessionId,
       })
       return existing
     }
@@ -341,9 +352,10 @@ export class CodexProviderAdapter implements ProviderAdapter {
         interactionMode,
         model,
         runtimeMode: input.runtimeMode,
-        threadId: input.threadId,
+        runtimeEpoch: input.runtimeEpoch,
+        sessionId: input.sessionId,
       })
-      this.sessions.delete(input.threadId)
+      this.sessions.delete(input.sessionId)
       await existing.close()
     }
 
@@ -352,7 +364,8 @@ export class CodexProviderAdapter implements ProviderAdapter {
       model,
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
-      threadId: input.threadId,
+      runtimeEpoch: input.runtimeEpoch,
+      sessionId: input.sessionId,
     })
     const session = await CodexAppServerSession.start({
       cwd,
@@ -363,27 +376,29 @@ export class CodexProviderAdapter implements ProviderAdapter {
       model,
       modelOptions,
       providerInstanceId: input.providerInstanceId,
-      resumeCursor: input.resumeCursor,
+      providerResumeCursor: input.providerResumeCursor,
       runtimeMode: input.runtimeMode,
-      threadId: input.threadId,
+      runtimeEpoch: input.runtimeEpoch,
+      sessionId: input.sessionId,
     })
-    this.sessions.set(input.threadId, session)
+    this.sessions.set(input.sessionId, session)
     recordChatPipelineInfo('chat.pipeline.codex_adapter.session.started', {
       interactionMode,
       model,
       runtimeMode: input.runtimeMode,
-      threadId: input.threadId,
+      runtimeEpoch: input.runtimeEpoch,
+      sessionId: input.sessionId,
     })
 
     return session
   }
 
-  private requireSession(threadId: ThreadId, operation: string) {
-    const session = this.sessions.get(threadId)
+  private requireSession(sessionId: SessionId, operation: string) {
+    const session = this.sessions.get(sessionId)
     if (session?.isActive()) return session
 
     throw createInternalError(
-      `Codex ${operation} requires an active session for thread ${threadId}.`,
+      `Codex ${operation} requires an active session for thread ${sessionId}.`,
     )
   }
 }
@@ -392,23 +407,24 @@ class CodexAppServerSession {
   private readonly canonicalTurnByProviderTurnId = new Map<string, TurnId>()
   private readonly client: CodexAppServerRpcClient
   private readonly cwd: string
-  private readonly emit: (event: ProviderRuntimeEvent) => void
+  private readonly emit: (event: ProviderRuntimeEventPayload) => void
   private readonly ephemeral: boolean
   private readonly model: string
   private readonly pendingApprovals = new Map<ApprovalRequestId, PendingCodexApproval>()
   private readonly pendingUserInputs = new Map<ApprovalRequestId, PendingCodexUserInput>()
   private readonly providerInstanceId: ProviderTurnInput['providerInstanceId']
-  private readonly providerSessionId: string
-  private readonly providerThreadId: string
-  private readonly resumeCursor: unknown | null
+  private readonly providerBindingHandle: string
+  private readonly providerConversationMarker: string
+  private readonly providerResumeCursor: unknown | null
   private readonly reasoningItems = new Map<string, CodexReasoningState>()
   private readonly runtimeMode: RuntimeMode
-  private readonly threadId: ThreadId
+  private readonly runtimeEpoch: string
+  private readonly sessionId: SessionId
   private readonly turns = new Map<string, ActiveProviderTurn>()
   private activeProviderTurnId: string | null = null
   private interactionMode: InteractionMode
   private pendingTurn: ActiveProviderTurn | null = null
-  private status: ProviderAdapterSession['status'] = 'ready'
+  private status: ProviderAdapterRuntime['status'] = 'ready'
 
   private constructor(input: {
     client: CodexAppServerRpcClient
@@ -418,23 +434,25 @@ class CodexAppServerSession {
     interactionMode: InteractionMode
     model: string
     providerInstanceId: ProviderTurnInput['providerInstanceId']
-    providerThreadId: string
-    resumeCursor: unknown | null
+    providerConversationMarker: string
+    providerResumeCursor: unknown | null
     runtimeMode: RuntimeMode
-    threadId: ThreadId
+    runtimeEpoch: string
+    sessionId: SessionId
   }) {
     this.client = input.client
     this.cwd = input.cwd
-    this.emit = input.emit
+    this.emit = (event) => input.emit({ ...event, runtimeEpoch: input.runtimeEpoch })
+    this.runtimeEpoch = input.runtimeEpoch
     this.ephemeral = input.ephemeral
     this.interactionMode = input.interactionMode
     this.model = input.model
     this.providerInstanceId = input.providerInstanceId
-    this.providerSessionId = `codex:${input.providerThreadId}`
-    this.providerThreadId = input.providerThreadId
-    this.resumeCursor = input.resumeCursor
+    this.providerBindingHandle = `codex:${input.providerConversationMarker}`
+    this.providerConversationMarker = input.providerConversationMarker
+    this.providerResumeCursor = input.providerResumeCursor
     this.runtimeMode = input.runtimeMode
-    this.threadId = input.threadId
+    this.sessionId = input.sessionId
     this.client.onMessage((message) => this.handleMessage(message))
   }
 
@@ -447,9 +465,10 @@ class CodexAppServerSession {
     model: string
     modelOptions: CodexModelOptions
     providerInstanceId: ProviderTurnInput['providerInstanceId']
-    resumeCursor?: unknown | null
+    providerResumeCursor?: unknown | null
     runtimeMode: RuntimeMode
-    threadId: ThreadId
+    runtimeEpoch: string
+    sessionId: SessionId
   }) {
     recordChatPipelineInfo('chat.pipeline.codex_session.start', {
       interactionMode: input.interactionMode,
@@ -457,16 +476,17 @@ class CodexAppServerSession {
       ephemeral: input.ephemeral,
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
-      threadId: input.threadId,
+      runtimeEpoch: input.runtimeEpoch,
+      sessionId: input.sessionId,
     })
     const client = CodexAppServerRpcClient.start(input.env)
     try {
       await initializeCodexClient(client)
-      const response = await openCodexThread(client, input)
-      const providerThreadId = readThreadIdFromThreadResponse(response)
+      const response = await openCodexSession(client, input)
+      const providerConversationMarker = readConversationMarkerFromResponse(response)
       recordChatPipelineInfo('chat.pipeline.codex_session.started', {
-        providerThreadId,
-        threadId: input.threadId,
+        providerConversationMarker,
+        sessionId: input.sessionId,
       })
 
       const session = new CodexAppServerSession({
@@ -477,34 +497,36 @@ class CodexAppServerSession {
         interactionMode: input.interactionMode,
         model: input.model,
         providerInstanceId: input.providerInstanceId,
-        providerThreadId,
-        resumeCursor: providerThreadId,
+        providerConversationMarker,
+        providerResumeCursor: providerConversationMarker,
         runtimeMode: input.runtimeMode,
-        threadId: input.threadId,
+        runtimeEpoch: input.runtimeEpoch,
+        sessionId: input.sessionId,
       })
-      session.emitSessionStarted(input.resumeCursor ?? null)
-      session.emitThreadStarted()
+      session.emitSessionStarted(input.providerResumeCursor ?? null)
+      session.emitConversationStarted()
 
       return session
     } catch (error) {
       recordChatPipelineWarning('chat.pipeline.codex_session.start.failed', {
         error,
-        threadId: input.threadId,
+        sessionId: input.sessionId,
       })
       client.close()
       throw error
     }
   }
 
-  /**
-   * Interaction mode is deliberately not part of this check. cwd, model, and
-   * runtime mode are baked into `thread/start`, so changing one needs a new
-   * app-server thread; the collaboration mode rides on every `turn/start`, so
-   * changing it only needs `reconfigureInteractionMode` — replacing the session
-   * would throw away the conversation Codex holds for this thread.
-   */
-  matches(input: { cwd: string; ephemeral: boolean; model: string; runtimeMode: RuntimeMode }) {
+  // Within one epoch, collaboration mode can change through the next turn/start.
+  matches(input: {
+    cwd: string
+    ephemeral: boolean
+    model: string
+    runtimeMode: RuntimeMode
+    runtimeEpoch: string
+  }) {
     if (this.client.isClosed()) return false
+    if (this.runtimeEpoch !== input.runtimeEpoch) return false
     if (this.cwd !== input.cwd) return false
     if (this.ephemeral !== input.ephemeral) return false
     if (this.model !== input.model) return false
@@ -528,22 +550,26 @@ class CodexAppServerSession {
     return !this.client.isClosed() && this.status !== 'stopped'
   }
 
-  snapshot(): ProviderAdapterSession {
+  snapshot(): ProviderAdapterRuntime {
     return {
+      runtimeEpoch: this.runtimeEpoch,
       cwd: this.cwd,
       model: this.model,
       providerInstanceId: this.providerInstanceId,
-      providerSessionId: this.providerSessionId,
-      providerThreadId: this.providerThreadId,
-      resumeCursor: this.resumeCursor,
+      providerBindingHandle: this.providerBindingHandle,
+      providerConversationMarker: this.providerConversationMarker,
+      providerResumeCursor: this.providerResumeCursor,
       runtimeMode: this.runtimeMode,
       status: this.status,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
     }
   }
 
-  async rollbackThread(numTurns: number): Promise<void> {
-    await this.client.request('thread/rollback', { numTurns, threadId: this.providerThreadId })
+  async rollbackSession(numTurns: number): Promise<void> {
+    await this.client.request('thread/rollback', {
+      numTurns,
+      threadId: this.providerConversationMarker,
+    })
     this.status = 'ready'
   }
 
@@ -551,8 +577,8 @@ class CodexAppServerSession {
     recordChatPipelineInfo('chat.pipeline.codex_session.send_turn.start', {
       ...providerTurnSummary(input),
       messageId,
-      providerSessionId: this.providerSessionId,
-      providerThreadId: this.providerThreadId,
+      providerBindingHandle: this.providerBindingHandle,
+      providerConversationMarker: this.providerConversationMarker,
     })
     const activeTurn = activeProviderTurn({
       canonicalTurnId: input.turnId,
@@ -564,16 +590,16 @@ class CodexAppServerSession {
     this.ingestSession('running', input.turnId)
     try {
       recordChatPipelineInfo('chat.pipeline.codex_session.turn_start_request', {
-        providerThreadId: this.providerThreadId,
-        threadId: this.threadId,
+        providerConversationMarker: this.providerConversationMarker,
+        sessionId: this.sessionId,
         turnId: input.turnId,
       })
       const response = await this.client.request('turn/start', turnStartParams(this, input))
       const providerTurnId = readTurnIdFromTurnResponse(response)
       recordChatPipelineInfo('chat.pipeline.codex_session.turn_start_response', {
-        providerThreadId: this.providerThreadId,
+        providerConversationMarker: this.providerConversationMarker,
         providerTurnId,
-        threadId: this.threadId,
+        sessionId: this.sessionId,
         turnId: input.turnId,
       })
       if (activeTurn.settled()) {
@@ -593,7 +619,7 @@ class CodexAppServerSession {
       this.rejectUnmappedTurn(activeTurn, error)
       recordChatPipelineWarning('chat.pipeline.codex_session.send_turn.failed', {
         error,
-        threadId: this.threadId,
+        sessionId: this.sessionId,
         turnId: input.turnId,
       })
       this.status = 'error'
@@ -602,20 +628,20 @@ class CodexAppServerSession {
 
     await activeTurn.promise
     recordChatPipelineInfo('chat.pipeline.codex_session.send_turn.complete', {
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: input.turnId,
     })
   }
 
-  providerThreadIdForTurn() {
-    return this.providerThreadId
+  providerConversationMarkerForTurn() {
+    return this.providerConversationMarker
   }
 
   async interruptTurn(turnId: TurnId | undefined) {
     const providerTurnId = this.providerTurnIdForCanonical(turnId)
     if (!providerTurnId) {
       recordChatPipelineWarning('chat.pipeline.codex_session.interrupt.missing_provider_turn', {
-        threadId: this.threadId,
+        sessionId: this.sessionId,
         turnId,
       })
       return
@@ -623,53 +649,53 @@ class CodexAppServerSession {
 
     recordChatPipelineInfo('chat.pipeline.codex_session.interrupt_request', {
       providerTurnId,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId,
     })
     await this.client.request('turn/interrupt', {
-      threadId: this.providerThreadId,
+      threadId: this.providerConversationMarker,
       turnId: providerTurnId,
     })
   }
 
   async close() {
     recordChatPipelineInfo('chat.pipeline.codex_session.close', {
-      providerSessionId: this.providerSessionId,
-      threadId: this.threadId,
+      providerBindingHandle: this.providerBindingHandle,
+      sessionId: this.sessionId,
     })
     this.status = 'stopped'
     this.rejectAllTurns(createInternalError('Codex session stopped.'))
     this.client.close()
   }
 
-  private emitSessionStarted(resumeCursor: unknown | null) {
+  private emitSessionStarted(providerResumeCursor: unknown | null) {
     this.status = 'ready'
     this.emit({
       createdAt: new Date().toISOString(),
       eventId: runtimeEventId('codex-session-started'),
-      payload: { resume: resumeCursor ?? this.resumeCursor },
+      payload: { resume: providerResumeCursor ?? this.providerResumeCursor },
       provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
       providerName: DEFAULT_CODEX_PROVIDER_SETTINGS.displayLabel,
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
-      type: 'session.started',
+      sessionId: this.sessionId,
+      type: 'runtime.started',
     })
   }
 
-  private emitThreadStarted() {
+  private emitConversationStarted() {
     this.emit({
       createdAt: new Date().toISOString(),
       eventId: runtimeEventId('codex-thread-started'),
-      payload: { providerThreadId: this.providerThreadId },
+      payload: { providerConversationMarker: this.providerConversationMarker },
       provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
       providerName: DEFAULT_CODEX_PROVIDER_SETTINGS.displayLabel,
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
-      type: 'thread.started',
+      sessionId: this.sessionId,
+      type: 'conversation.started',
     })
   }
 
@@ -689,10 +715,10 @@ class CodexAppServerSession {
       },
       provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       requestId: input.requestId,
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: pending.turnId,
       type: 'request.resolved',
     })
@@ -711,10 +737,10 @@ class CodexAppServerSession {
       payload: { answers: input.answers },
       provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       requestId: input.requestId,
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: pending.turnId,
       type: 'user-input.resolved',
     })
@@ -725,7 +751,7 @@ class CodexAppServerSession {
     recordChatPipelineInfo('chat.pipeline.codex_session.message', {
       hasId: message.id !== undefined,
       method: message.method,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
     })
     if (message.id !== undefined) {
       void this.handleServerRequest(message).catch((error) => {
@@ -772,11 +798,11 @@ class CodexAppServerSession {
         providerRequestId: stringField(params, 'approvalId') ?? String(message.id),
         providerTurnId: stringField(params, 'turnId') ?? undefined,
       },
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       raw: rawRequest(method, message.params),
       requestId,
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId,
       type: 'request.opened',
     })
@@ -804,11 +830,11 @@ class CodexAppServerSession {
         providerRequestId: String(message.id),
         providerTurnId: stringField(params, 'turnId') ?? undefined,
       },
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       raw: rawRequest('item/tool/requestUserInput', message.params),
       requestId,
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId,
       type: 'user-input.requested',
     })
@@ -826,7 +852,7 @@ class CodexAppServerSession {
 
     switch (notification.method) {
       case 'thread/started':
-        this.handleThreadStartedNotification(notification.params)
+        this.handleSessionStartedNotification(notification.params)
         return
       case 'turn/started':
         this.handleTurnStarted(notification.params)
@@ -843,22 +869,22 @@ class CodexAppServerSession {
     }
   }
 
-  private handleThreadStartedNotification(
+  private handleSessionStartedNotification(
     params: CodexServerNotificationParamsByMethod['thread/started'],
   ) {
-    const providerThreadId = readProviderThreadId(params.thread)
+    const providerConversationMarker = readProviderConversationMarker(params.thread)
     this.emit({
       createdAt: new Date().toISOString(),
       eventId: runtimeEventId('codex-thread-started-notification'),
-      payload: { providerThreadId },
+      payload: { providerConversationMarker },
       provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
       providerName: DEFAULT_CODEX_PROVIDER_SETTINGS.displayLabel,
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       raw: rawNotification('thread/started', params),
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
-      type: 'thread.started',
+      sessionId: this.sessionId,
+      type: 'conversation.started',
     })
   }
 
@@ -867,11 +893,11 @@ class CodexAppServerSession {
       case 'process/stderr':
         return this.handleProcessStderrNotification(params)
       case 'thread/status/changed':
-        return this.handleThreadStatusChangedNotification(params)
+        return this.handleSessionStatusChangedNotification(params)
       case 'thread/name/updated':
-        return this.handleThreadNameUpdatedNotification(params)
+        return this.handleSessionNameUpdatedNotification(params)
       case 'thread/tokenUsage/updated':
-        return this.handleThreadTokenUsageUpdatedNotification(params)
+        return this.handleSessionTokenUsageUpdatedNotification(params)
       case 'turn/diff/updated':
         return this.handleTurnDiffUpdatedNotification(params)
       case 'turn/plan/updated':
@@ -906,7 +932,7 @@ class CodexAppServerSession {
       case 'deprecationNotice':
         return this.handleWarningLikeNotification(method, params)
       case 'thread/compacted':
-        return this.handleThreadCompactedNotification(params)
+        return this.handleSessionCompactedNotification(params)
       case 'thread/realtime/started':
       case 'thread/realtime/itemAdded':
       case 'thread/realtime/outputAudio/delta':
@@ -944,10 +970,10 @@ class CodexAppServerSession {
     return true
   }
 
-  private handleThreadStatusChangedNotification(params: unknown) {
+  private handleSessionStatusChangedNotification(params: unknown) {
     const state = threadStateFromValue(stringField(asRecord(params), 'status'))
     this.emitRuntimeNotification(
-      'thread.state.changed',
+      'conversation.state.changed',
       { detail: params, state },
       'thread/status/changed',
       params,
@@ -955,10 +981,10 @@ class CodexAppServerSession {
     return true
   }
 
-  private handleThreadNameUpdatedNotification(params: unknown) {
+  private handleSessionNameUpdatedNotification(params: unknown) {
     const name = stringField(asRecord(params), 'name') ?? stringField(asRecord(params), 'title')
     this.emitRuntimeNotification(
-      'thread.metadata.updated',
+      'conversation.metadata.updated',
       { metadata: asRecord(params), ...(name ? { name } : {}) },
       'thread/name/updated',
       params,
@@ -966,9 +992,9 @@ class CodexAppServerSession {
     return true
   }
 
-  private handleThreadTokenUsageUpdatedNotification(params: unknown) {
+  private handleSessionTokenUsageUpdatedNotification(params: unknown) {
     this.emitRuntimeNotification(
-      'thread.token-usage.updated',
+      'conversation.token-usage.updated',
       { usage: tokenUsageSnapshot(params) },
       'thread/tokenUsage/updated',
       params,
@@ -1196,9 +1222,9 @@ class CodexAppServerSession {
     return true
   }
 
-  private handleThreadCompactedNotification(params: unknown) {
+  private handleSessionCompactedNotification(params: unknown) {
     this.emitRuntimeNotification(
-      'thread.state.changed',
+      'conversation.state.changed',
       { detail: params, state: 'compacted' },
       'thread/compacted',
       params,
@@ -1237,11 +1263,11 @@ class CodexAppServerSession {
         providerRequestId: options.requestId,
         providerTurnId,
       },
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       raw: rawNotification(method, params),
       requestId: options.requestId,
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: canonicalTurnId(this.canonicalTurnByProviderTurnId, providerTurnId),
       type,
     } as ProviderRuntimeEvent)
@@ -1322,10 +1348,10 @@ class CodexAppServerSession {
         providerItemId: stringField(record, 'id') ?? undefined,
         providerTurnId: context.providerTurnId,
       },
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       raw: rawNotification(type.replace('.', '/'), params),
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: canonicalTurnId(this.canonicalTurnByProviderTurnId, context.providerTurnId),
       type,
     })
@@ -1343,7 +1369,7 @@ class CodexAppServerSession {
       recordChatPipelineWarning('chat.pipeline.codex_session.assistant_item.missing_turn', {
         itemId: item.id,
         providerTurnId: context.providerTurnId,
-        threadId: this.threadId,
+        sessionId: this.sessionId,
       })
       return true
     }
@@ -1361,10 +1387,10 @@ class CodexAppServerSession {
       provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
       providerRefs: { providerItemId: item.id, providerTurnId: context.providerTurnId },
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       raw: rawNotification('item/completed', params),
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: turn.canonicalTurnId,
       type: 'item.completed',
     })
@@ -1424,7 +1450,7 @@ class CodexAppServerSession {
       recordChatPipelineWarning('chat.pipeline.codex_session.delta.ignored', {
         deltaLength: params.delta.length,
         hasProviderTurnId: Boolean(params.turnId),
-        threadId: this.threadId,
+        sessionId: this.sessionId,
       })
       return
     }
@@ -1433,7 +1459,7 @@ class CodexAppServerSession {
     if (!turn) {
       recordChatPipelineWarning('chat.pipeline.codex_session.delta.missing_turn', {
         providerTurnId: params.turnId,
-        threadId: this.threadId,
+        sessionId: this.sessionId,
       })
       return
     }
@@ -1442,7 +1468,7 @@ class CodexAppServerSession {
       deltaLength: params.delta.length,
       messageId: turn.messageId,
       providerTurnId: params.turnId,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: turn.canonicalTurnId,
     })
     this.emit({
@@ -1456,10 +1482,10 @@ class CodexAppServerSession {
       provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
       providerRefs: { providerItemId: params.itemId, providerTurnId: params.turnId },
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       raw: rawNotification('item/agentMessage/delta', params),
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: turn.canonicalTurnId,
       type: 'content.delta',
     })
@@ -1468,14 +1494,14 @@ class CodexAppServerSession {
   private handleTurnStarted(params: CodexServerNotificationParamsByMethod['turn/started']) {
     if (!params.turn.id) {
       recordChatPipelineWarning('chat.pipeline.codex_session.turn_started.ignored', {
-        threadId: this.threadId,
+        sessionId: this.sessionId,
       })
       return
     }
 
     recordChatPipelineInfo('chat.pipeline.codex_session.turn_started', {
       providerTurnId: params.turn.id,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
     })
     this.attachPendingTurn(params.turn.id)
     const turn = this.turnForProviderTurnId(params.turn.id)
@@ -1488,10 +1514,10 @@ class CodexAppServerSession {
       provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
       providerRefs: { providerTurnId: params.turn.id },
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       raw: rawNotification('turn/started', params),
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: turn.canonicalTurnId,
       type: 'turn.started',
     })
@@ -1502,7 +1528,7 @@ class CodexAppServerSession {
   ) {
     if (!params.turn.id) {
       recordChatPipelineWarning('chat.pipeline.codex_session.turn_completed.ignored', {
-        threadId: this.threadId,
+        sessionId: this.sessionId,
       })
       return
     }
@@ -1511,7 +1537,7 @@ class CodexAppServerSession {
     if (!activeTurn) {
       recordChatPipelineWarning('chat.pipeline.codex_session.turn_completed.missing_turn', {
         providerTurnId: params.turn.id,
-        threadId: this.threadId,
+        sessionId: this.sessionId,
       })
       return
     }
@@ -1519,7 +1545,7 @@ class CodexAppServerSession {
     recordChatPipelineInfo('chat.pipeline.codex_session.turn_completed', {
       providerTurnId: params.turn.id,
       status: params.turn.status,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: activeTurn.canonicalTurnId,
     })
     await this.emitReasoningItemsFromTurn(params.turn, activeTurn)
@@ -1546,10 +1572,10 @@ class CodexAppServerSession {
       payload: { class: 'provider_error', detail: params.error, message },
       provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       raw: rawNotification('error', params),
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: canonicalTurnId(this.canonicalTurnByProviderTurnId, params.turnId ?? undefined),
       type: 'runtime.error',
     })
@@ -1567,7 +1593,7 @@ class CodexAppServerSession {
     recordChatPipelineInfo('chat.pipeline.codex_session.complete_turn', {
       messageId: turn.messageId,
       providerTurnId,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: turn.canonicalTurnId,
     })
     this.emit({
@@ -1577,9 +1603,9 @@ class CodexAppServerSession {
       provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
       providerRefs: { providerTurnId },
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: turn.canonicalTurnId,
       type: 'turn.completed',
     })
@@ -1587,7 +1613,7 @@ class CodexAppServerSession {
       completedAt,
       eventId: runtimeEventId('codex-assistant-complete'),
       messageId: turn.messageId,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: turn.canonicalTurnId,
       type: 'assistant.complete',
     })
@@ -1655,11 +1681,11 @@ class CodexAppServerSession {
       provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
       providerName: DEFAULT_CODEX_PROVIDER_SETTINGS.displayLabel,
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       ...(turnId ? { turnId } : {}),
-      type: 'session.state.changed',
+      type: 'runtime.state.changed',
     })
   }
 
@@ -1720,9 +1746,9 @@ class CodexAppServerSession {
       provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
       providerRefs: { providerTurnId },
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: turn.canonicalTurnId,
       type: 'turn.completed',
     })
@@ -1733,9 +1759,9 @@ class CodexAppServerSession {
       provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
       providerRefs: { providerTurnId },
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: turn.canonicalTurnId,
       type: 'runtime.error',
     })
@@ -1751,9 +1777,9 @@ class CodexAppServerSession {
       payload: { errorMessage: message, state: 'failed' },
       provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: turn.canonicalTurnId,
       type: 'turn.completed',
     })
@@ -1763,9 +1789,9 @@ class CodexAppServerSession {
       payload: { class: 'provider_error', message },
       provider: DEFAULT_CODEX_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: turn.canonicalTurnId,
       type: 'runtime.error',
     })
@@ -1795,7 +1821,7 @@ class CodexAppServerSession {
       lastEmittedSummary: null,
       providerTurnId,
       summaryParts: new Map(),
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: turn.canonicalTurnId,
     }
     this.reasoningItems.set(key, state)
@@ -1874,9 +1900,9 @@ class CodexAppServerSession {
         providerItemId: input.state.itemId,
         providerTurnId: input.state.providerTurnId,
       },
-      providerSessionId: this.providerSessionId,
+      providerBindingHandle: this.providerBindingHandle,
       runtimeMode: this.runtimeMode,
-      threadId: input.state.threadId,
+      sessionId: input.state.sessionId,
       turnId: input.state.turnId,
       type: 'task.progress',
     })
@@ -1886,7 +1912,7 @@ class CodexAppServerSession {
     recordChatPipelineWarning('chat.pipeline.codex_session.reasoning.missing_turn', {
       providerTurnId,
       stage,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
     })
   }
 
@@ -2281,23 +2307,24 @@ async function initializeCodexClient(
   return response
 }
 
-async function openCodexThread(
+async function openCodexSession(
   client: CodexAppServerRpcClient,
   input: {
     cwd: string
     ephemeral: boolean
     model: string
     modelOptions: CodexModelOptions
-    resumeCursor?: unknown | null
+    providerResumeCursor?: unknown | null
     runtimeMode: RuntimeMode
   },
 ) {
-  const resumeThreadId = typeof input.resumeCursor === 'string' ? input.resumeCursor : null
-  if (!resumeThreadId) return client.request('thread/start', threadStartParams(input))
+  const resumeSessionId =
+    typeof input.providerResumeCursor === 'string' ? input.providerResumeCursor : null
+  if (!resumeSessionId) return client.request('thread/start', threadStartParams(input))
 
   return client.requestRaw<CodexClientRequestResultByMethod['thread/start']>('thread/resume', {
     ...threadResumeParams(input),
-    threadId: resumeThreadId,
+    threadId: resumeSessionId,
   })
 }
 
@@ -2323,7 +2350,7 @@ function threadStartParams(input: {
   modelOptions: CodexModelOptions
   runtimeMode: RuntimeMode
 }): CodexClientRequestParamsByMethod['thread/start'] {
-  const runtime = runtimeModeToThreadConfig(input.runtimeMode)
+  const runtime = runtimeModeToSessionConfig(input.runtimeMode)
 
   return {
     approvalPolicy: runtime.approvalPolicy,
@@ -2344,7 +2371,7 @@ function threadResumeParams(input: {
   modelOptions: CodexModelOptions
   runtimeMode: RuntimeMode
 }) {
-  const runtime = runtimeModeToThreadConfig(input.runtimeMode)
+  const runtime = runtimeModeToSessionConfig(input.runtimeMode)
 
   return {
     approvalsReviewer: runtime.approvalsReviewer,
@@ -2359,7 +2386,7 @@ function turnStartParams(
   session: CodexAppServerSession,
   input: ProviderTurnInput,
 ): CodexClientRequestParamsByMethod['turn/start'] {
-  const runtime = runtimeModeToThreadConfig(input.runtimeMode)
+  const runtime = runtimeModeToSessionConfig(input.runtimeMode)
   const modelOptions = codexModelOptions(input)
   const model = normalizeCodexModel(input.modelSelection.model)
 
@@ -2378,7 +2405,7 @@ function turnStartParams(
     sandboxPolicy: runtime.sandboxPolicy,
     ...(modelOptions.effort ? { effort: modelOptions.effort } : {}),
     ...(modelOptions.serviceTier ? { serviceTier: modelOptions.serviceTier } : {}),
-    threadId: session.providerThreadIdForTurn(),
+    threadId: session.providerConversationMarkerForTurn(),
   } as CodexClientRequestParamsByMethod['turn/start']
 }
 
@@ -2444,7 +2471,7 @@ function codexTextElements(input: ProviderTurnInput) {
 }
 
 function codexModelOptions(
-  input: ProviderTurnInput | ProviderSessionStartInput,
+  input: ProviderTurnInput | ProviderRuntimeStartInput,
 ): CodexModelOptions {
   if (input.modelSelection.providerInstanceId !== input.providerInstanceId) return {}
 
@@ -2480,7 +2507,7 @@ function codexReasoningEffort(options: ModelOptions): CodexReasoningEffort | und
  * accepts `auto_review` and `guardian_subagent`, and a mode that wants one
  * changes this table rather than any call site.
  */
-function runtimeModeToThreadConfig(runtimeMode: RuntimeMode) {
+function runtimeModeToSessionConfig(runtimeMode: RuntimeMode) {
   if (runtimeMode === 'approval-required') {
     return {
       approvalPolicy: 'untrusted',
@@ -2613,13 +2640,13 @@ function fallbackModels(): ProviderModel[] {
   ]
 }
 
-function readThreadIdFromThreadResponse(
+function readConversationMarkerFromResponse(
   response: CodexClientRequestResultByMethod['thread/start'],
 ) {
   return response.thread.id
 }
 
-function readProviderThreadId(thread: unknown) {
+function readProviderConversationMarker(thread: unknown) {
   return stringField(asRecord(thread), 'id') ?? undefined
 }
 
@@ -2922,7 +2949,7 @@ function tokenUsageSnapshot(params: unknown) {
   return {
     cachedInputTokens: last.cachedInputTokens,
     // Codex compacts on its own once the window fills; the gauge reads this to
-    // explain a used-token count that drops mid-thread.
+    // explain a used-token count that drops mid-conversation.
     compactsAutomatically: true,
     inputTokens: last.inputTokens,
     outputTokens: last.outputTokens,
@@ -3008,17 +3035,17 @@ function hookOutcome(record: Record<string, unknown>) {
 function realtimeEventType(method: string): ProviderRuntimeEvent['type'] {
   switch (method) {
     case 'thread/realtime/started':
-      return 'thread.realtime.started'
+      return 'conversation.realtime.started'
     case 'thread/realtime/itemAdded':
-      return 'thread.realtime.item-added'
+      return 'conversation.realtime.item-added'
     case 'thread/realtime/outputAudio/delta':
-      return 'thread.realtime.audio.delta'
+      return 'conversation.realtime.audio.delta'
     case 'thread/realtime/error':
-      return 'thread.realtime.error'
+      return 'conversation.realtime.error'
     case 'thread/realtime/closed':
-      return 'thread.realtime.closed'
+      return 'conversation.realtime.closed'
     default:
-      return 'thread.realtime.error'
+      return 'conversation.realtime.error'
   }
 }
 

@@ -1,7 +1,7 @@
 import {
   approvalRequestIdSchema,
   type ApprovalRequestId,
-  type OrchestrationThreadActivity,
+  type OrchestrationSessionActivity,
   type TurnId,
 } from '@workspace/contracts'
 import * as v from 'valibot'
@@ -51,11 +51,11 @@ type ApprovalPayload = v.InferOutput<typeof approvalPayloadSchema>
  * request the moment its activity lands, with no second round trip.
  */
 export function derivePendingApprovals(
-  activities: readonly OrchestrationThreadActivity[],
+  activities: readonly OrchestrationSessionActivity[],
 ): PendingApproval[] {
   const open = new Map<ApprovalRequestId, PendingApproval>()
 
-  for (const activity of orderedThreadActivities(activities)) {
+  for (const activity of orderedSessionActivities(activities)) {
     if (!isApprovalActivity(activity.kind)) continue
 
     const parsed = v.safeParse(approvalPayloadSchema, activity.payload)
@@ -78,15 +78,15 @@ export function derivePendingApprovals(
  * caller's array order breaks the remaining ties, which keeps repeated
  * derivations over the same input identical.
  */
-export function orderedThreadActivities(
-  activities: readonly OrchestrationThreadActivity[],
-): OrchestrationThreadActivity[] {
+export function orderedSessionActivities(
+  activities: readonly OrchestrationSessionActivity[],
+): OrchestrationSessionActivity[] {
   return [...activities].sort(compareActivityOrder)
 }
 
 function compareActivityOrder(
-  left: OrchestrationThreadActivity,
-  right: OrchestrationThreadActivity,
+  left: OrchestrationSessionActivity,
+  right: OrchestrationSessionActivity,
 ) {
   const bySequence = compareSequence(left.sequence, right.sequence)
   if (bySequence !== 0) return bySequence
@@ -106,7 +106,7 @@ function isApprovalActivity(kind: string) {
 }
 
 function pendingApproval(
-  activity: OrchestrationThreadActivity,
+  activity: OrchestrationSessionActivity,
   payload: ApprovalPayload,
 ): PendingApproval {
   return {

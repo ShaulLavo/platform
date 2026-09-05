@@ -1,3 +1,5 @@
+import { environmentIdSchema, type EnvironmentId } from '@workspace/contracts'
+import * as v from 'valibot'
 import { NO_WORKSPACE_SLUG } from '@/features/address/utils/slug'
 
 /**
@@ -33,8 +35,10 @@ export type AddressMode = (typeof ADDRESS_MODES)[number]
  * segment costs the field it names and nothing else, where a schema would throw.
  */
 export type Address = {
+  readonly environmentId: EnvironmentId | null
+  readonly rejectedEnvironment: string | null
   readonly bottom: 'terminal' | 'problems' | null
-  /** Thread diff scope. Deliberately NOT `scope`: the rail owns no addressable scope. */
+  /** Session diff scope. Deliberately NOT `scope`: the rail owns no addressable scope. */
   readonly diff: string | null
   readonly document: string | null
   readonly focus: {
@@ -62,6 +66,8 @@ const SEARCH_PREFIX = 's.'
 
 export function emptyAddress(): Address {
   return {
+    environmentId: null,
+    rejectedEnvironment: null,
     bottom: null,
     diff: null,
     document: null,
@@ -83,7 +89,12 @@ export function emptyAddress(): Address {
  * The URL is untrusted input parsed by a normalizing parser, never a schema that
  * throws. A garbage segment costs the field it names and nothing else.
  */
-export function parseAddress(href: string): Address {
+export type AddressEnvironments = {
+  readonly knownEnvironmentIds: readonly EnvironmentId[]
+  readonly primaryEnvironmentId: EnvironmentId | null
+}
+
+export function parseAddress(href: string, environments?: AddressEnvironments): Address {
   const url = safeUrl(href)
   if (!url) return emptyAddress()
 
@@ -93,11 +104,14 @@ export function parseAddress(href: string): Address {
   // `r/refs%2Fheads%2Fmain/src/a.ts` into `r/refs/heads/main/src/a.ts`, which then
   // split into the wrong fields and restored the wrong document.
   const segments = url.pathname.split('/').filter(Boolean)
+  const environmentSegment = segments[0]?.startsWith('@') ? segments.shift() : undefined
+  const environment = parseEnvironment(environmentSegment, environments)
   const [workspaceSegment, ...rest] = segments
 
   return {
     ...emptyAddress(),
     ...searchFields(url.searchParams, url.search),
+    ...environment,
     document: rest.slice(1).join('/') || null,
     focus: parseFocus(url.hash),
     mode: addressMode(rest[0]),
@@ -105,28 +119,47 @@ export function parseAddress(href: string): Address {
   }
 }
 
-export function serializeAddress(address: Address) {
+export function serializeAddress(address: Address, primaryEnvironmentId?: EnvironmentId | null) {
   return {
     hash: serializeFocus(address.focus),
-    pathname: serializePathname(address),
+    pathname: serializePathname(address, primaryEnvironmentId),
     search: serializeSearch(address),
   }
 }
 
-export function formatAddress(address: Address) {
-  const { hash, pathname, search } = serializeAddress(address)
+export function formatAddress(address: Address, primaryEnvironmentId?: EnvironmentId | null) {
+  const { hash, pathname, search } = serializeAddress(address, primaryEnvironmentId)
 
   return `${pathname}${search}${hash}`
 }
 
-function serializePathname(address: Address) {
+function serializePathname(address: Address, primaryEnvironmentId?: EnvironmentId | null) {
   if (!address.workspace) return '/'
 
-  const segments = [`${WORKSPACE_PREFIX}${encodeSlug(address.workspace)}`]
+  const segments: string[] = []
+  if (address.environmentId && address.environmentId !== primaryEnvironmentId)
+    segments.push(`@${address.environmentId}`)
+  if (address.rejectedEnvironment)
+    segments.push(`@${encodeURIComponent(address.rejectedEnvironment)}`)
+  segments.push(`${WORKSPACE_PREFIX}${encodeSlug(address.workspace)}`)
   if (address.mode) segments.push(address.mode)
   if (address.mode && address.document) segments.push(address.document)
 
   return `/${segments.join('/')}`
+}
+
+function parseEnvironment(
+  segment: string | undefined,
+  environments: AddressEnvironments | undefined,
+) {
+  if (!segment) return { environmentId: null, rejectedEnvironment: null }
+  const raw = decodeOrEmpty(segment.slice(1))
+  const parsed = v.safeParse(environmentIdSchema, raw)
+  if (!parsed.success || !environments?.knownEnvironmentIds.includes(parsed.output)) {
+    return { environmentId: null, rejectedEnvironment: raw }
+  }
+  const environmentId = parsed.output === environments.primaryEnvironmentId ? null : parsed.output
+  return { environmentId, rejectedEnvironment: null }
 }
 
 /**

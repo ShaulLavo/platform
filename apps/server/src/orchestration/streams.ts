@@ -1,14 +1,14 @@
 import {
   ORCHESTRATION_RESUME_MAX_GAP,
   type OrchestrationShellStreamFrame,
-  type OrchestrationThreadStreamFrame,
+  type OrchestrationSessionStreamFrame,
 } from '@workspace/contracts'
 import {
   orchestrationShellStreamItemSchema,
   type OrchestrationEvent,
   type OrchestrationShellStreamItem,
-  type OrchestrationThreadStreamItem,
-} from './schemas'
+  type OrchestrationSessionStreamItem,
+} from '@workspace/contracts'
 import type { OrchestrationSnapshotQuery } from './snapshot-query'
 import * as v from 'valibot'
 import type { PlatformDatabase } from '../db/client'
@@ -76,23 +76,29 @@ const RETAINED_EVENT_LIMIT = 4_000
 
 /**
  * Shell deltas are coalesced over this window. It bounds the extra latency
- * before a new thread appears in the sidebar (imperceptible) while collapsing a
+ * before a new session appears in the sidebar (imperceptible) while collapsing a
  * streaming turn's delta storm into one read per changed aggregate.
  */
 const SHELL_COALESCE_WINDOW_MS = 25
 const SHELL_COALESCE_MAX_EVENTS = 512
 
 const DETAIL_EVENT_TYPES = new Set<OrchestrationEvent['type']>([
-  'thread.message-sent',
-  'thread.turn-start-requested',
-  'thread.turn-interrupt-requested',
-  'thread.session-stop-requested',
-  'thread.activity-appended',
-  'thread.proposed-plan-upserted',
-  'thread.turn-diff-completed',
-  'thread.checkpoint-revert-requested',
-  'thread.reverted',
-  'thread.session-set',
+  'session.message-sent',
+  'session.turn-start-requested',
+  'session.turn-interrupt-requested',
+  'session.runtime-stop-requested',
+  'session.activity-appended',
+  'session.proposed-plan-upserted',
+  'session.proposed-plan-implemented',
+  'session.turn-diff-completed',
+  'session.checkpoint-revert-requested',
+  'session.reverted',
+  'session.runtime-set',
+  'session.provider-start-claimed',
+  'session.provider-start-adopted',
+  'session.provider-start-settled',
+  'session.runtime-recovered',
+  'session.deletion-updated',
 ])
 
 export class OrchestrationStreamHub {
@@ -206,7 +212,7 @@ export class OrchestrationStreamHub {
 
 /**
  * Fan-out for committed domain events to server-side reactors (provider command
- * reactor, checkpoint reactor, thread deletion reactor, ...).
+ * reactor, checkpoint reactor, session deletion reactor, ...).
  *
  * Reactors run *after* the write transaction has committed, so a reactor may
  * never unwind an event that is already durable: each one is isolated, and a
@@ -298,24 +304,24 @@ export class OrchestrationStreams {
     }
   }
 
-  async *threadDetail(
-    threadId: string,
+  async *sessionDetail(
+    sessionId: string,
     options: OrchestrationStreamOptions = {},
-  ): AsyncGenerator<OrchestrationThreadStreamFrame> {
+  ): AsyncGenerator<OrchestrationSessionStreamFrame> {
     const eventBatches = this.hub.subscribe(options.signal)
-    const start = this.startThreadDetail(threadId, options.afterSequence ?? 0)
+    const start = this.startSessionDetail(sessionId, options.afterSequence ?? 0)
     let sequence = start.sequence
 
     yield* start.items
     yield { kind: 'synchronized', sequence }
 
     for await (const events of eventBatches) {
-      const result = detailItemsAfter(events, threadId, sequence)
+      const result = detailItemsAfter(events, sessionId, sequence)
       sequence = result.sequence
-      recordChatPipelineInfo('chat.pipeline.thread_stream.batch', {
+      recordChatPipelineInfo('chat.pipeline.session_stream.batch', {
         emittedItemCount: result.items.length,
         sequence,
-        threadId,
+        sessionId,
         ...orchestrationEventBatchSummary(events),
       })
       yield* result.items
@@ -349,7 +355,7 @@ export class OrchestrationStreams {
       resumeSkipReason: plan.reason,
       rowReaderKind: this.rowReaderKind,
       snapshotSequence: snapshot.snapshotSequence,
-      threadCount: snapshot.threads.length,
+      sessionCount: snapshot.sessions.length,
     })
 
     return {
@@ -358,40 +364,40 @@ export class OrchestrationStreams {
     }
   }
 
-  private startThreadDetail(threadId: string, afterSequence: number) {
+  private startSessionDetail(sessionId: string, afterSequence: number) {
     const plan = this.hub.resumePlan(afterSequence)
     if (plan.kind === 'replay') {
-      const result = detailItemsAfter(plan.events, threadId, afterSequence)
-      recordChatPipelineInfo('chat.pipeline.thread_stream.start', {
+      const result = detailItemsAfter(plan.events, sessionId, afterSequence)
+      recordChatPipelineInfo('chat.pipeline.session_stream.start', {
         afterSequence,
         emittedItemCount: result.items.length,
         mode: 'replay',
         replayEventCount: plan.events.length,
         resumeGap: plan.gap,
         sequence: result.sequence,
-        threadId,
+        sessionId,
       })
 
       return { items: result.items, sequence: result.sequence }
     }
 
-    const snapshot = this.snapshots.threadDetailSnapshot(threadId)
+    const snapshot = this.snapshots.sessionDetailSnapshot(sessionId)
     this.hub.observeSequence(snapshot.snapshotSequence)
-    recordChatPipelineInfo('chat.pipeline.thread_stream.start', {
-      activityCount: snapshot.thread.activities.length,
+    recordChatPipelineInfo('chat.pipeline.session_stream.start', {
+      activityCount: snapshot.session.activities.length,
       afterSequence,
-      latestTurnState: snapshot.thread.latestTurn?.state ?? null,
-      messageCount: snapshot.thread.messages.length,
+      latestTurnState: snapshot.session.latestTurn?.state ?? null,
+      messageCount: snapshot.session.messages.length,
       mode: 'snapshot',
       resumeGap: plan.gap,
       resumeSkipReason: plan.reason,
-      sessionStatus: snapshot.thread.session?.status ?? null,
+      sessionStatus: snapshot.session.runtime?.status ?? null,
       snapshotSequence: snapshot.snapshotSequence,
-      threadId,
+      sessionId,
     })
 
     return {
-      items: [{ kind: 'snapshot', snapshot } satisfies OrchestrationThreadStreamItem],
+      items: [{ kind: 'snapshot', snapshot } satisfies OrchestrationSessionStreamItem],
       sequence: Math.max(afterSequence, snapshot.snapshotSequence),
     }
   }
@@ -421,7 +427,8 @@ export class OrchestrationStreams {
 
   private shellItemForEvent(event: OrchestrationEvent): OrchestrationShellStreamItem | null {
     if (event.aggregateKind === 'project') return this.projectItem(event)
-    if (event.aggregateKind === 'thread') return this.threadItem(event)
+    if (event.aggregateKind === 'worktree') return this.worktreeItem(event)
+    if (event.aggregateKind === 'session') return this.sessionItem(event)
 
     return null
   }
@@ -437,14 +444,24 @@ export class OrchestrationStreams {
     })
   }
 
-  private threadItem(event: OrchestrationEvent): OrchestrationShellStreamItem {
-    const thread = this.rowReader.threadShell(event.aggregateId)
-    if (thread) return { kind: 'thread-upserted', sequence: event.sequence, thread }
+  private worktreeItem(event: OrchestrationEvent): OrchestrationShellStreamItem {
+    const worktree = this.rowReader.worktreeShell(event.aggregateId)
+    if (worktree) return { kind: 'worktree-upserted', worktree, sequence: event.sequence }
+    return v.parse(orchestrationShellStreamItemSchema, {
+      kind: 'worktree-removed',
+      worktreeId: event.aggregateId,
+      sequence: event.sequence,
+    })
+  }
+
+  private sessionItem(event: OrchestrationEvent): OrchestrationShellStreamItem {
+    const session = this.rowReader.sessionShell(event.aggregateId)
+    if (session) return { kind: 'session-upserted', sequence: event.sequence, session }
 
     return v.parse(orchestrationShellStreamItemSchema, {
-      kind: 'thread-removed',
+      kind: 'session-removed',
       sequence: event.sequence,
-      threadId: event.aggregateId,
+      sessionId: event.aggregateId,
     })
   }
 }
@@ -501,15 +518,15 @@ function maxSequence(events: readonly OrchestrationEvent[], sequence: number) {
   return highest
 }
 
-function detailItemsAfter(events: OrchestrationEvent[], threadId: string, sequence: number) {
-  const items: OrchestrationThreadStreamItem[] = []
+function detailItemsAfter(events: OrchestrationEvent[], sessionId: string, sequence: number) {
+  const items: OrchestrationSessionStreamItem[] = []
   let nextSequence = sequence
 
   for (const event of events) {
     if (event.sequence <= nextSequence) continue
 
     nextSequence = event.sequence
-    if (!isDetailEventForThread(event, threadId)) continue
+    if (!isDetailEventForSession(event, sessionId)) continue
 
     items.push({ event, kind: 'event' })
   }
@@ -609,9 +626,9 @@ async function* eventBatchGenerator(
   }
 }
 
-function isDetailEventForThread(event: OrchestrationEvent, threadId: string) {
-  if (event.aggregateKind !== 'thread') return false
-  if (event.aggregateId !== threadId) return false
+function isDetailEventForSession(event: OrchestrationEvent, sessionId: string) {
+  if (event.aggregateKind !== 'session') return false
+  if (event.aggregateId !== sessionId) return false
 
   return DETAIL_EVENT_TYPES.has(event.type)
 }

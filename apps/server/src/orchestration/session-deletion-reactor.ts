@@ -1,0 +1,167 @@
+import { eq } from 'drizzle-orm'
+import * as v from 'valibot'
+import {
+  chatAttachmentsSchema,
+  commandIdSchema,
+  type SessionId,
+  type SessionDeletionState,
+} from '@workspace/contracts'
+import { deleteAttachmentBlobs } from '../attachments/store'
+import { projectionSessionMessages } from '../db/schema'
+import type { OrchestrationDatabase } from './event-store'
+import type { ProviderService } from '../provider/provider-service'
+import type { OrchestrationReadModel } from './read-model'
+import type { OrchestrationCommand, OrchestrationEvent } from './schemas'
+import { internalCommandKey } from './utils/repository-ids'
+import { recordChatPipelineInfo, recordChatPipelineWarning } from './orchestration-logging'
+import { SerialWorker } from './serial-worker'
+import type { OrchestrationDomainEventReactor } from './streams'
+import { sessionDomainErrors } from './structured-errors'
+
+type Options = {
+  attachmentsDir: string
+  database: OrchestrationDatabase
+  providerService: ProviderService | null
+  getReadModel: () => OrchestrationReadModel
+  dispatch: (command: OrchestrationCommand) => Promise<unknown>
+}
+
+export class SessionDeletionReactor implements OrchestrationDomainEventReactor {
+  readonly name = 'session-deletion-reactor'
+  private readonly worker: SerialWorker<SessionId>
+  private readonly cleaning = new Set<SessionId>()
+  private readonly generation = crypto.randomUUID()
+  private attempt = 0
+
+  private readonly options: Options
+
+  constructor(options: Options) {
+    this.options = options
+    this.worker = new SerialWorker((sessionId) => this.cleanup(sessionId))
+  }
+
+  handleEvents(events: OrchestrationEvent[]) {
+    for (const event of events) {
+      if (event.type !== 'session.deleted') continue
+      this.enqueue(event.payload.sessionId)
+    }
+  }
+
+  async recover() {
+    for (const session of this.options.getReadModel().sessions.values()) {
+      if (!session.deletedAt || !session.deletion || cleanupComplete(session.deletion)) continue
+      this.enqueue(session.id)
+    }
+    await this.drain()
+  }
+
+  drain() {
+    return this.worker.drain()
+  }
+  isIdle() {
+    return this.worker.isIdle()
+  }
+
+  private enqueue(sessionId: SessionId) {
+    if (this.cleaning.has(sessionId)) return
+    this.cleaning.add(sessionId)
+    void this.worker
+      .enqueue(sessionId)
+      .catch((error) => {
+        recordChatPipelineWarning('chat.pipeline.session_deletion.cleanup', { sessionId, error })
+      })
+      .finally(() => this.cleaning.delete(sessionId))
+  }
+
+  private async cleanup(sessionId: SessionId) {
+    const previous = this.options.getReadModel().sessions.get(sessionId)?.deletion
+    if (!previous || cleanupComplete(previous)) return
+    const startedAt = performance.now()
+    const provider = await this.releaseRuntime(sessionId, previous)
+    const blobs = await this.reclaimBlobs(sessionId, previous)
+    const deletion: SessionDeletionState = {
+      ...previous,
+      ...provider,
+      ...blobs,
+      updatedAt: new Date().toISOString(),
+    }
+    await this.options.dispatch({
+      type: 'session.deletion.update',
+      sessionId,
+      deletion,
+      commandId: v.parse(
+        commandIdSchema,
+        internalCommandKey(
+          'session-deletion',
+          sessionId,
+          deletion.deletionSequence,
+          this.generation,
+          ++this.attempt,
+        ),
+      ),
+    })
+    const context = {
+      sessionId,
+      ...deletion,
+      durationMs: Math.round(performance.now() - startedAt),
+    }
+    if (cleanupComplete(deletion)) {
+      recordChatPipelineInfo('chat.pipeline.session_deletion.cleanup', context)
+      return
+    }
+    recordChatPipelineWarning('chat.pipeline.session_deletion.cleanup', context)
+  }
+
+  private async releaseRuntime(
+    sessionId: SessionId,
+    previous: SessionDeletionState,
+  ): Promise<Pick<SessionDeletionState, 'providerStop' | 'providerStopError'>> {
+    if (previous.providerStop === 'completed' || previous.providerStop === 'no-binding') {
+      return { providerStop: previous.providerStop, providerStopError: null }
+    }
+    try {
+      const service = this.options.providerService
+      if (!service || !(await service.hasRuntime({ sessionId })))
+        return { providerStop: 'no-binding', providerStopError: null }
+      await service.stopRuntime({ sessionId })
+      if (await service.hasRuntime({ sessionId }))
+        throw sessionDomainErrors.CLEANUP_FAILED({ sessionId })
+      return { providerStop: 'completed', providerStopError: null }
+    } catch (error) {
+      return { providerStop: 'failed', providerStopError: errorMessage(error) }
+    }
+  }
+
+  private async reclaimBlobs(
+    sessionId: SessionId,
+    previous: SessionDeletionState,
+  ): Promise<Pick<SessionDeletionState, 'blobCleanup' | 'blobCleanupError'>> {
+    if (previous.blobCleanup === 'completed')
+      return { blobCleanup: 'completed', blobCleanupError: null }
+    try {
+      const rows = this.options.database
+        .select({ attachments: projectionSessionMessages.attachmentsJson })
+        .from(projectionSessionMessages)
+        .where(eq(projectionSessionMessages.sessionId, sessionId))
+        .all()
+      const attachments = rows.flatMap((row) =>
+        v.parse(chatAttachmentsSchema, JSON.parse(row.attachments)),
+      )
+      await deleteAttachmentBlobs({ attachments, attachmentsDir: this.options.attachmentsDir })
+      return { blobCleanup: 'completed', blobCleanupError: null }
+    } catch (error) {
+      return { blobCleanup: 'failed', blobCleanupError: errorMessage(error) }
+    }
+  }
+}
+
+function cleanupComplete(state: SessionDeletionState) {
+  return (
+    (state.providerStop === 'completed' || state.providerStop === 'no-binding') &&
+    state.blobCleanup === 'completed'
+  )
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error)
+}

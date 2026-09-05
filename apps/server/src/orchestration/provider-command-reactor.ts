@@ -1,3 +1,5 @@
+import { resolveSessionOwner } from './session-owner'
+import { internalCommandKey } from './utils/repository-ids'
 import { createInternalError } from '../observability/structured-errors'
 
 import type {
@@ -7,9 +9,9 @@ import type {
   OrchestrationEvent,
   OrchestrationMessage,
   OrchestrationProject,
-  OrchestrationThread,
+  OrchestrationSession,
   RuntimeMode,
-  ThreadId,
+  SessionId,
   TurnId,
 } from '@workspace/contracts'
 import * as v from 'valibot'
@@ -18,15 +20,12 @@ import {
   DEFAULT_CODEX_PROVIDER_SETTINGS,
   DEFAULT_RUNTIME_MODE,
 } from '@workspace/contracts'
-import type { OrchestrationSessionStatus } from '@workspace/contracts'
+import type { SessionRuntimeStatus } from '@workspace/contracts'
 import type { ProviderService } from '../provider/provider-service'
-import type {
-  ProviderSessionRuntimePayload,
-  ProviderSessionStartPayload,
-} from '../provider/session-payload'
+import type { ProviderRuntimeStartPayload } from '../provider/session-payload'
 import type { ProviderRuntimeEvent } from '../provider/types'
 import type { GitService } from '../git/service'
-import { checkpointRefForThreadTurn } from './checkpoint-refs'
+import { checkpointRefForSessionTurn } from './checkpoint-refs'
 import { BoundedTtlCache } from './provider-runtime-buffers'
 import type { OrchestrationReadModel } from './read-model'
 import { ProviderRuntimeIngestion } from './provider-runtime-ingestion'
@@ -43,13 +42,12 @@ type ProviderIntentEvent = Extract<
   OrchestrationEvent,
   {
     type:
-      | 'thread.runtime-mode-set'
-      | 'thread.turn-start-requested'
-      | 'thread.turn-interrupt-requested'
-      | 'thread.session-stop-requested'
-      | 'thread.checkpoint-revert-requested'
-      | 'thread.approval-response-requested'
-      | 'thread.user-input-response-requested'
+      | 'session.turn-start-requested'
+      | 'session.turn-interrupt-requested'
+      | 'session.runtime-stop-requested'
+      | 'session.checkpoint-revert-requested'
+      | 'session.approval-response-requested'
+      | 'session.user-input-response-requested'
   }
 >
 
@@ -64,7 +62,7 @@ export class ProviderCommandReactor {
    * after the agent's first write is worse than no photograph at all, because
    * turn one then diffs against its own output.
    */
-  private readonly beforeTurnStart: ((threadId: ThreadId) => Promise<void>) | null
+  private readonly beforeTurnStart: ((sessionId: SessionId) => Promise<void>) | null
   private readonly checkpointGit: GitService | null
   private readonly dispatch: ((command: OrchestrationCommand) => Promise<unknown> | unknown) | null
   private readonly getReadModel: () => OrchestrationReadModel
@@ -72,7 +70,6 @@ export class ProviderCommandReactor {
   private readonly ingestion: ProviderRuntimeIngestion
   private readonly pendingProviderActions = new Set<Promise<void>>()
   private readonly providerService: ProviderService
-  private readonly threadModelSelections = new Map<string, ModelSelection>()
   private readonly worker: SerialWorker<ProviderIntentEvent>
 
   constructor({
@@ -85,7 +82,7 @@ export class ProviderCommandReactor {
     providerService,
     turnStartKeyTtlMs,
   }: {
-    beforeTurnStart?: (threadId: ThreadId) => Promise<void>
+    beforeTurnStart?: (sessionId: SessionId) => Promise<void>
     checkpointGit?: GitService | null
     dispatch?: (command: OrchestrationCommand) => Promise<unknown> | unknown
     getReadModel: () => OrchestrationReadModel
@@ -174,32 +171,29 @@ export class ProviderCommandReactor {
       ...orchestrationEventSummary(event),
     })
     switch (event.type) {
-      case 'thread.runtime-mode-set':
-        await this.runtimeModeSet(event)
-        return
-      case 'thread.turn-start-requested':
+      case 'session.turn-start-requested':
         await this.startTurn(event)
         return
-      case 'thread.turn-interrupt-requested':
+      case 'session.turn-interrupt-requested':
         await this.interruptTurn(event)
         return
-      case 'thread.session-stop-requested':
-        await this.stopSession(event)
+      case 'session.runtime-stop-requested':
+        await this.stopRuntime(event)
         return
-      case 'thread.checkpoint-revert-requested':
+      case 'session.checkpoint-revert-requested':
         await this.revertCheckpoint(event)
         return
-      case 'thread.approval-response-requested':
+      case 'session.approval-response-requested':
         await this.respondApproval(event)
         return
-      case 'thread.user-input-response-requested':
+      case 'session.user-input-response-requested':
         await this.respondUserInput(event)
         return
     }
   }
 
   private async startTurn(
-    event: Extract<ProviderIntentEvent, { type: 'thread.turn-start-requested' }>,
+    event: Extract<ProviderIntentEvent, { type: 'session.turn-start-requested' }>,
   ) {
     if (this.hasHandledTurnStart(event)) {
       recordChatPipelineInfo('chat.pipeline.provider_reactor.turn_start.deduped', {
@@ -224,104 +218,196 @@ export class ProviderCommandReactor {
         providerInstanceId: context.modelSelection.providerInstanceId,
         runtimeMode: context.runtimeMode,
         textLength: context.message.text.length,
-        threadId: context.thread.id,
+        sessionId: context.session.id,
         turnId: event.payload.turnId,
       })
       if (context.message.role !== 'user') {
         throw createInternalError(`Provider turn ${event.payload.turnId} requires a user message.`)
       }
 
-      this.rememberModelSelection(context.thread.id, context.modelSelection)
-      await this.beforeTurnStart?.(context.thread.id)
-      await this.ensureSessionForTurn(context, event.payload.turnId)
+      if (!(await this.claimTurn(event, context))) return
+      this.handledTurnStarts.set(turnStartKeyForEvent(event), true)
+      await this.beforeTurnStart?.(context.session.id)
+      if (!this.ownsStart(event, context, 'claimed')) return
+      await this.ensureSessionForTurn(context)
+      if (!this.ownsStart(event, context, 'claimed')) {
+        await this.releaseAbandonedStart(context)
+        return
+      }
+      await this.adoptTurn(event, context)
+      if (!this.ownsStart(event, context, 'adopted')) {
+        await this.releaseAbandonedStart(context)
+        return
+      }
       this.trackProviderAction(this.sendTurn(event, context))
     } catch (error) {
-      await this.handleTurnFailure(
-        event,
-        context.thread.id,
-        context.modelSelection,
-        error,
-        context.runtimeMode,
-      )
+      if (
+        !this.ownsStart(event, context, 'claimed') &&
+        !this.ownsStart(event, context, 'adopted')
+      ) {
+        await this.releaseAbandonedStart(context)
+        return
+      }
+      await this.handleTurnFailure(event, context, error)
     }
   }
 
-  private async runtimeModeSet(
-    event: Extract<ProviderIntentEvent, { type: 'thread.runtime-mode-set' }>,
+  private ownsStart(
+    event: Extract<ProviderIntentEvent, { type: 'session.turn-start-requested' }>,
+    context: ProviderTurnContext,
+    state: 'claimed' | 'adopted',
   ) {
-    const context = this.sessionContext(event.payload.threadId, event.payload.runtimeMode)
-    if (!context) return
-    if (!hasActiveSession(context.thread)) return
+    const current = this.getReadModel().sessions.get(context.session.id)
+    const turn = current?.latestTurn
+    return (
+      !current?.deletedAt &&
+      turn?.turnId === event.payload.turnId &&
+      turn.runtimeEpoch === context.runtimeEpoch &&
+      turn.providerStartState === state
+    )
+  }
 
-    const ensured = await this.providerService.ensureSession({
-      providerInstanceId: context.modelSelection.providerInstanceId,
-      runtimeMode: context.runtimeMode,
-      runtimePayload: runtimePayloadFromSessionContext(context, null),
-      threadId: context.thread.id,
+  private async releaseAbandonedStart(context: ProviderTurnContext) {
+    const binding = this.providerService.bindingForSession(context.session.id)
+    if (binding?.runtimeEpoch !== context.runtimeEpoch) return
+    await this.providerService.stopRuntime({ sessionId: context.session.id })
+  }
+
+  private async claimTurn(
+    event: Extract<ProviderIntentEvent, { type: 'session.turn-start-requested' }>,
+    context: ProviderTurnContext,
+  ) {
+    const turn = this.getReadModel().sessions.get(context.session.id)?.latestTurn
+    if (!turn || turn.turnId !== event.payload.turnId || turn.providerStartState !== 'queued')
+      return false
+    if (!this.dispatch) return false
+    const observation = await this.providerService
+      .reusableRuntimeEpoch({
+        providerInstanceId: context.modelSelection.providerInstanceId,
+        runtimeMode: context.runtimeMode,
+        runtimePayload: runtimePayloadFromSessionContext(context),
+        resumeExisting: context.session.origin === 'discovered',
+        sessionId: context.session.id,
+      })
+      .then((epoch) => ({ epoch }))
+      .catch((error: unknown) => ({ epoch: null, error }))
+    const previousStatus = context.session.runtime?.status
+    const mustRelease = previousStatus === 'interrupted' || previousStatus === 'error'
+    context.runtimeEpoch = mustRelease
+      ? crypto.randomUUID()
+      : (observation.epoch ?? crypto.randomUUID())
+    await this.dispatch({
+      type: 'session.provider-start.claim',
+      sessionId: context.session.id,
+      turnId: turn.turnId,
+      generation: turn.providerStartGeneration + 1,
+      observedSequence: turn.providerStartSequence,
+      runtimeEpoch: context.runtimeEpoch,
+      createdAt: new Date().toISOString(),
+      commandId: v.parse(
+        commandIdSchema,
+        internalCommandKey(
+          'provider-start-claim',
+          context.session.id,
+          turn.turnId,
+          turn.providerStartSequence,
+        ),
+      ),
     })
+    if ('error' in observation) throw observation.error
+    if (mustRelease) await this.providerService.stopRuntime({ sessionId: context.session.id })
+    return true
+  }
 
-    recordChatPipelineInfo('chat.pipeline.provider_reactor.runtime_mode_set.ensured', {
-      providerInstanceId: ensured.binding.providerInstanceId,
-      reused: ensured.reused,
-      runtimeMode: ensured.binding.runtimeMode,
-      threadId: context.thread.id,
+  private async adoptTurn(
+    event: Extract<ProviderIntentEvent, { type: 'session.turn-start-requested' }>,
+    context: ProviderTurnContext,
+  ) {
+    const turn = this.getReadModel().sessions.get(context.session.id)?.latestTurn
+    if (!turn || turn.turnId !== event.payload.turnId || !this.dispatch) return
+    await this.dispatch({
+      type: 'session.provider-start.adopt',
+      sessionId: context.session.id,
+      turnId: turn.turnId,
+      generation: turn.providerStartGeneration,
+      observedSequence: turn.providerStartSequence,
+      runtimeEpoch: context.runtimeEpoch,
+      createdAt: new Date().toISOString(),
+      commandId: v.parse(
+        commandIdSchema,
+        internalCommandKey(
+          'provider-start-adopt',
+          context.session.id,
+          turn.turnId,
+          turn.providerStartSequence,
+          context.runtimeEpoch,
+        ),
+      ),
     })
   }
 
-  private ensureSessionForTurn(context: ProviderTurnContext, turnId: TurnId) {
-    return this.providerService.ensureSession({
+  private runtimeEpochFor(sessionId: SessionId) {
+    const session = this.getReadModel().sessions.get(sessionId)
+    return (
+      session?.latestTurn?.runtimeEpoch ??
+      session?.runtime?.runtimeEpoch ??
+      `unclaimed:${sessionId}`
+    )
+  }
+
+  private ensureSessionForTurn(context: ProviderTurnContext) {
+    return this.providerService.ensureRuntime({
       providerInstanceId: context.modelSelection.providerInstanceId,
       runtimeMode: context.runtimeMode,
-      runtimePayload: runtimePayloadFromSessionContext(context, turnId),
-      threadId: context.thread.id,
+      runtimePayload: runtimePayloadFromSessionContext(context),
+      runtimeEpoch: context.runtimeEpoch,
+      resumeExisting: context.session.origin === 'discovered',
+      sessionId: context.session.id,
     })
   }
 
   private async sendTurn(
-    event: Extract<ProviderIntentEvent, { type: 'thread.turn-start-requested' }>,
+    event: Extract<ProviderIntentEvent, { type: 'session.turn-start-requested' }>,
     context: ProviderTurnContext,
   ) {
     try {
       await this.providerService.sendTurn({
         attachments: context.message.attachments,
-        cwd: context.thread.worktreePath ?? context.project.workspaceRoot,
+        cwd: context.worktree.canonicalPath,
         interactionMode: context.interactionMode,
         messageText: context.message.text,
         modelSelection: context.modelSelection,
-        project: context.project,
         providerInstanceId: context.modelSelection.providerInstanceId,
         runtimeMode: context.runtimeMode,
-        thread: context.thread,
+        sessionId: context.session.id,
+        runtimeEpoch: context.runtimeEpoch,
+        resumeExisting: context.session.origin === 'discovered',
         turnId: event.payload.turnId,
       })
       recordChatPipelineInfo('chat.pipeline.provider_reactor.turn_start.sent', {
-        threadId: context.thread.id,
+        sessionId: context.session.id,
         turnId: event.payload.turnId,
       })
     } catch (error) {
-      await this.handleTurnFailure(
-        event,
-        context.thread.id,
-        context.modelSelection,
-        error,
-        context.runtimeMode,
-      )
+      await this.handleTurnFailure(event, context, error)
     }
   }
 
   private async interruptTurn(
-    event: Extract<ProviderIntentEvent, { type: 'thread.turn-interrupt-requested' }>,
+    event: Extract<ProviderIntentEvent, { type: 'session.turn-interrupt-requested' }>,
   ) {
+    const runtimeEpoch = this.runtimeEpochFor(event.payload.sessionId)
     recordChatPipelineInfo('chat.pipeline.provider_reactor.interrupt.start', {
       ...orchestrationEventSummary(event),
     })
     try {
       const binding = await this.providerService.interruptTurn({
-        threadId: event.payload.threadId,
+        sessionId: event.payload.sessionId,
         turnId: event.payload.turnId,
       })
       if (!binding) {
         await this.appendProviderFailureActivity({
+          runtimeEpoch,
           detail: noActiveSessionDetail(),
           event,
           kind: 'provider.turn.interrupt.failed',
@@ -330,16 +416,20 @@ export class ProviderCommandReactor {
         return
       }
 
+      const currentTurn = this.getReadModel().sessions.get(event.payload.sessionId)?.latestTurn
+      if (currentTurn?.turnId !== event.payload.turnId) return
       await this.ingestSession({
         providerInstanceId: binding.providerInstanceId,
-        providerSessionId: binding.providerSessionId,
+        providerBindingHandle: binding.providerBindingHandle,
         runtimeMode: binding.runtimeMode,
+        runtimeEpoch,
         status: 'interrupted',
-        threadId: event.payload.threadId,
+        sessionId: event.payload.sessionId,
         turnId: event.payload.turnId ?? null,
       })
     } catch (error) {
       await this.appendProviderFailureActivity({
+        runtimeEpoch,
         detail: providerErrorMessage(error),
         event,
         kind: 'provider.turn.interrupt.failed',
@@ -348,42 +438,36 @@ export class ProviderCommandReactor {
     }
   }
 
-  private async stopSession(
-    event: Extract<ProviderIntentEvent, { type: 'thread.session-stop-requested' }>,
+  private async stopRuntime(
+    event: Extract<ProviderIntentEvent, { type: 'session.runtime-stop-requested' }>,
   ) {
+    const runtimeEpoch = this.runtimeEpochFor(event.payload.sessionId)
     recordChatPipelineInfo('chat.pipeline.provider_reactor.stop.start', {
       ...orchestrationEventSummary(event),
     })
     try {
-      const binding = await this.providerService.stopSession({ threadId: event.payload.threadId })
+      const binding = await this.providerService.stopRuntime({ sessionId: event.payload.sessionId })
       if (!binding) {
         recordChatPipelineWarning('chat.pipeline.provider_reactor.stop.missing_binding', {
           ...orchestrationEventSummary(event),
         })
         return
       }
-
-      await this.ingestSession({
-        providerInstanceId: binding.providerInstanceId,
-        providerSessionId: binding.providerSessionId,
-        runtimeMode: binding.runtimeMode,
-        status: 'stopped',
-        threadId: event.payload.threadId,
-        turnId: null,
-      })
     } catch (error) {
       await this.appendProviderFailureActivity({
+        runtimeEpoch,
         detail: providerErrorMessage(error),
         event,
-        kind: 'provider.session.stop.failed',
+        kind: 'provider.runtime.stop.failed',
         summary: 'Provider session stop failed',
       })
     }
   }
 
   private async revertCheckpoint(
-    event: Extract<ProviderIntentEvent, { type: 'thread.checkpoint-revert-requested' }>,
+    event: Extract<ProviderIntentEvent, { type: 'session.checkpoint-revert-requested' }>,
   ) {
+    const runtimeEpoch = this.runtimeEpochFor(event.payload.sessionId)
     recordChatPipelineInfo('chat.pipeline.provider_reactor.checkpoint_revert.start', {
       ...orchestrationEventSummary(event),
       turnCount: event.payload.turnCount,
@@ -392,8 +476,9 @@ export class ProviderCommandReactor {
       const context = this.checkpointRevertContext(event)
       if (!context) {
         await this.appendProviderFailureActivity({
+          runtimeEpoch,
           detail:
-            'Checkpoint revert cannot run without a thread, project, Git service, and command dispatcher.',
+            'Checkpoint revert cannot run without a session, project, Git service, and command dispatcher.',
           event,
           kind: 'checkpoint.revert.failed',
           summary: 'Checkpoint revert failed',
@@ -416,20 +501,20 @@ export class ProviderCommandReactor {
       if (rollbackTurns > 0) {
         await this.providerService.rollbackConversation({
           numTurns: rollbackTurns,
-          threadId: event.payload.threadId,
+          sessionId: event.payload.sessionId,
         })
       }
 
-      // The projection prune comes first: `thread.reverted` is what tells every
+      // The projection prune comes first: `session.reverted` is what tells every
       // client which checkpoints still exist, and a ref deleted ahead of it
       // leaves the UI offering a diff whose ref is already gone.
       await Promise.resolve(
         context.dispatch({
           commandId: v.parse(commandIdSchema, `checkpoint-revert-complete:${event.eventId}`),
           createdAt: new Date().toISOString(),
-          threadId: event.payload.threadId,
+          sessionId: event.payload.sessionId,
           turnCount: event.payload.turnCount,
-          type: 'thread.revert.complete',
+          type: 'session.revert.complete',
         }),
       )
       await context.git.deleteRefs({
@@ -439,7 +524,7 @@ export class ProviderCommandReactor {
       recordChatPipelineInfo('chat.pipeline.provider_reactor.checkpoint_revert.complete', {
         deletedRefCount: context.staleRefs.length,
         rollbackTurns,
-        threadId: event.payload.threadId,
+        sessionId: event.payload.sessionId,
         turnCount: event.payload.turnCount,
         // A revert must read as an edit, not as a commit someone prepared. This
         // is the observable for that: anything staged here is the bug.
@@ -447,6 +532,7 @@ export class ProviderCommandReactor {
       })
     } catch (error) {
       await this.appendProviderFailureActivity({
+        runtimeEpoch,
         detail: providerErrorMessage(error),
         event,
         kind: 'checkpoint.revert.failed',
@@ -456,17 +542,19 @@ export class ProviderCommandReactor {
   }
 
   private async respondApproval(
-    event: Extract<ProviderIntentEvent, { type: 'thread.approval-response-requested' }>,
+    event: Extract<ProviderIntentEvent, { type: 'session.approval-response-requested' }>,
   ) {
+    const runtimeEpoch = this.runtimeEpochFor(event.payload.sessionId)
     try {
       const handled = await this.providerService.respondApproval({
         decision: event.payload.decision,
         requestId: event.payload.requestId,
-        threadId: event.payload.threadId,
+        sessionId: event.payload.sessionId,
       })
       if (handled) return
 
       await this.appendProviderFailureActivity({
+        runtimeEpoch,
         detail: noActiveSessionDetail(),
         event,
         kind: 'provider.approval.respond.failed',
@@ -475,6 +563,7 @@ export class ProviderCommandReactor {
       })
     } catch (error) {
       await this.appendProviderFailureActivity({
+        runtimeEpoch,
         detail: approvalResponseFailureDetail(error, event.payload.requestId),
         event,
         kind: 'provider.approval.respond.failed',
@@ -485,17 +574,19 @@ export class ProviderCommandReactor {
   }
 
   private async respondUserInput(
-    event: Extract<ProviderIntentEvent, { type: 'thread.user-input-response-requested' }>,
+    event: Extract<ProviderIntentEvent, { type: 'session.user-input-response-requested' }>,
   ) {
+    const runtimeEpoch = this.runtimeEpochFor(event.payload.sessionId)
     try {
       const handled = await this.providerService.respondUserInput({
         answers: event.payload.answers,
         requestId: event.payload.requestId,
-        threadId: event.payload.threadId,
+        sessionId: event.payload.sessionId,
       })
       if (handled) return
 
       await this.appendProviderFailureActivity({
+        runtimeEpoch,
         detail: noActiveSessionDetail(),
         event,
         kind: 'provider.user-input.respond.failed',
@@ -504,6 +595,7 @@ export class ProviderCommandReactor {
       })
     } catch (error) {
       await this.appendProviderFailureActivity({
+        runtimeEpoch,
         detail: userInputResponseFailureDetail(error, event.payload.requestId),
         event,
         kind: 'provider.user-input.respond.failed',
@@ -519,21 +611,23 @@ export class ProviderCommandReactor {
     kind:
       | 'checkpoint.revert.failed'
       | 'provider.approval.respond.failed'
-      | 'provider.session.stop.failed'
+      | 'provider.runtime.stop.failed'
       | 'provider.turn.interrupt.failed'
       | 'provider.turn.start.failed'
       | 'provider.user-input.respond.failed'
     requestId?: string
+    runtimeEpoch: string
     summary: string
   }) {
     await this.ingestion.ingest({
       createdAt: providerFailureCreatedAt(input.event),
       detail: input.detail,
       eventId: runtimeEventId(input.kind),
+      runtimeEpoch: input.runtimeEpoch,
       kind: input.kind,
       payload: providerFailurePayload(input.detail, input.requestId),
       summary: input.summary,
-      threadId: input.event.payload.threadId,
+      sessionId: input.event.payload.sessionId,
       tone: 'error',
       turnId: turnIdForProviderFailure(input.event),
       type: 'activity.append',
@@ -541,54 +635,55 @@ export class ProviderCommandReactor {
   }
 
   private async turnContext(
-    event: Extract<ProviderIntentEvent, { type: 'thread.turn-start-requested' }>,
+    event: Extract<ProviderIntentEvent, { type: 'session.turn-start-requested' }>,
   ) {
     const model = this.getReadModel()
-    const thread = model.threads.get(event.payload.threadId)
-    if (!thread) return null
+    const session = model.sessions.get(event.payload.sessionId)
+    if (!session) return null
 
-    const project = model.projects.get(thread.projectId)
-    if (!project) return null
+    const { project, worktree } = resolveSessionOwner(model, session.id)
 
-    const message = thread.messages.find((candidate) => candidate.id === event.payload.messageId)
+    const message = session.messages.find((candidate) => candidate.id === event.payload.messageId)
     if (!message) return null
 
-    const modelSelection =
-      event.payload.modelSelection ??
-      this.threadModelSelections.get(thread.id) ??
-      thread.modelSelection
+    const modelSelection = event.payload.modelSelection ?? session.modelSelection
 
     return {
-      interactionMode: event.payload.interactionMode ?? thread.interactionMode,
+      interactionMode: event.payload.interactionMode ?? session.interactionMode,
       message,
+      runtimeEpoch: session.latestTurn?.runtimeEpoch ?? crypto.randomUUID(),
       modelSelection,
       project,
-      runtimeMode: event.payload.runtimeMode ?? thread.runtimeMode ?? DEFAULT_RUNTIME_MODE,
-      thread,
+      worktree,
+      runtimeMode: event.payload.runtimeMode ?? session.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+      session,
     }
   }
 
   private async handleTurnFailure(
-    event: Extract<ProviderIntentEvent, { type: 'thread.turn-start-requested' }>,
-    threadId: ThreadId,
-    modelSelection: ModelSelection,
+    event: Extract<ProviderIntentEvent, { type: 'session.turn-start-requested' }>,
+    context: ProviderTurnContext,
     error: unknown,
-    runtimeMode: RuntimeMode,
   ) {
+    const { session, modelSelection, runtimeMode, runtimeEpoch } = context
+    const sessionId = session.id
     const detail = providerErrorMessage(error)
     await this.appendProviderFailureActivity({
       detail,
       event,
+      runtimeEpoch,
       kind: 'provider.turn.start.failed',
       summary: 'Provider turn start failed',
     })
     await this.ingestSession({
       lastError: detail,
+      runtimeEpoch,
       providerInstanceId: modelSelection.providerInstanceId,
-      providerSessionId: providerSessionId(threadId),
+      providerBindingHandle:
+        this.providerService.bindingForSession(sessionId)?.providerBindingHandle ?? null,
       runtimeMode,
       status: 'error',
-      threadId,
+      sessionId,
       turnId: event.payload.turnId,
     })
   }
@@ -596,18 +691,20 @@ export class ProviderCommandReactor {
   private async ingestSession(input: {
     lastError?: string | null
     providerInstanceId: ModelSelection['providerInstanceId']
-    providerSessionId: string | null
+    providerBindingHandle: string | null
     runtimeMode?: RuntimeMode
-    status: OrchestrationSessionStatus
-    threadId: ThreadId
+    runtimeEpoch: string
+    status: SessionRuntimeStatus
+    sessionId: SessionId
     turnId: TurnId | null
   }) {
     recordChatPipelineInfo('chat.pipeline.provider_reactor.ingest_session', {
       providerInstanceId: input.providerInstanceId,
-      providerSessionId: input.providerSessionId,
+      providerBindingHandle: input.providerBindingHandle,
+      runtimeEpoch: input.runtimeEpoch,
       runtimeMode: input.runtimeMode,
       sessionStatus: input.status,
-      threadId: input.threadId,
+      sessionId: input.sessionId,
       turnId: input.turnId,
     })
     await this.ingestion.ingest({
@@ -616,12 +713,13 @@ export class ProviderCommandReactor {
       lastError: input.lastError,
       providerInstanceId: input.providerInstanceId,
       providerName: providerDisplayName(input.providerInstanceId),
-      providerSessionId: input.providerSessionId,
+      providerBindingHandle: input.providerBindingHandle,
+      runtimeEpoch: input.runtimeEpoch,
       runtimeMode: input.runtimeMode,
       status: input.status,
-      threadId: input.threadId,
+      sessionId: input.sessionId,
       turnId: input.turnId,
-      type: 'session.set',
+      type: 'runtime.set',
     })
   }
 
@@ -633,51 +731,28 @@ export class ProviderCommandReactor {
   }
 
   private hasHandledTurnStart(
-    event: Extract<ProviderIntentEvent, { type: 'thread.turn-start-requested' }>,
+    event: Extract<ProviderIntentEvent, { type: 'session.turn-start-requested' }>,
   ) {
     const key = turnStartKeyForEvent(event)
     const handled = this.handledTurnStarts.has(key)
-    this.handledTurnStarts.set(key, true)
 
     return handled
   }
 
-  private rememberModelSelection(threadId: ThreadId, modelSelection: ModelSelection) {
-    this.threadModelSelections.set(threadId, modelSelection)
-  }
-
-  private sessionContext(threadId: ThreadId, runtimeMode: RuntimeMode) {
-    const model = this.getReadModel()
-    const thread = model.threads.get(threadId)
-    if (!thread) return null
-
-    const project = model.projects.get(thread.projectId)
-    if (!project) return null
-
-    return {
-      interactionMode: thread.interactionMode,
-      modelSelection: this.threadModelSelections.get(thread.id) ?? thread.modelSelection,
-      project,
-      runtimeMode,
-      thread,
-    }
-  }
-
   private checkpointRevertContext(
-    event: Extract<ProviderIntentEvent, { type: 'thread.checkpoint-revert-requested' }>,
+    event: Extract<ProviderIntentEvent, { type: 'session.checkpoint-revert-requested' }>,
   ) {
     const git = this.checkpointGit
     const dispatch = this.dispatch
     if (!git || !dispatch) return null
 
     const model = this.getReadModel()
-    const thread = model.threads.get(event.payload.threadId)
-    if (!thread) return null
+    const session = model.sessions.get(event.payload.sessionId)
+    if (!session) return null
 
-    const project = model.projects.get(thread.projectId)
-    if (!project) return null
+    const { worktree } = resolveSessionOwner(model, session.id)
 
-    const checkpoints = Object.values(thread.checkpointByTurnId).toSorted(
+    const checkpoints = Object.values(session.checkpointByTurnId).toSorted(
       (left, right) => left.checkpointTurnCount - right.checkpointTurnCount,
     )
     const currentTurnCount = maxCheckpointTurnCount(checkpoints)
@@ -688,7 +763,7 @@ export class ProviderCommandReactor {
     }
 
     const targetRef = checkpointRefForTurnCount(
-      event.payload.threadId,
+      event.payload.sessionId,
       event.payload.turnCount,
       checkpoints,
     )
@@ -702,10 +777,7 @@ export class ProviderCommandReactor {
       git,
       staleRefs,
       targetRef,
-      workspacePath: workspacePathForCheckpointRevert({
-        fallbackWorkspacePath: thread.worktreePath ?? project.workspaceRoot,
-        providerPayload: this.providerService.bindingForThread(thread.id)?.runtimePayload,
-      }),
+      workspacePath: worktree.canonicalPath,
     }
   }
 
@@ -747,21 +819,16 @@ async function revertedIndexSummary(git: GitService, workspacePath: string) {
 
 function isProviderIntentEvent(event: OrchestrationEvent): event is ProviderIntentEvent {
   switch (event.type) {
-    case 'thread.runtime-mode-set':
-    case 'thread.turn-start-requested':
-    case 'thread.turn-interrupt-requested':
-    case 'thread.session-stop-requested':
-    case 'thread.checkpoint-revert-requested':
-    case 'thread.approval-response-requested':
-    case 'thread.user-input-response-requested':
+    case 'session.turn-start-requested':
+    case 'session.turn-interrupt-requested':
+    case 'session.runtime-stop-requested':
+    case 'session.checkpoint-revert-requested':
+    case 'session.approval-response-requested':
+    case 'session.user-input-response-requested':
       return true
     default:
       return false
   }
-}
-
-function providerSessionId(threadId: ThreadId) {
-  return `provider-session:${threadId}`
 }
 
 function runtimeEventId(prefix: string) {
@@ -794,22 +861,13 @@ function turnIdForProviderFailure(event: ProviderIntentEvent) {
 
 function runtimePayloadFromSessionContext(
   context: ProviderSessionContext,
-  turnId: TurnId | null,
-): ProviderSessionStartPayload {
+): ProviderRuntimeStartPayload {
   return {
-    activeTurnId: turnId,
-    cwd: context.thread.worktreePath ?? context.project.workspaceRoot,
+    cwd: context.worktree.canonicalPath,
     interactionMode: context.interactionMode,
-    lastError: null,
     modelSelection: context.modelSelection,
     runtimeMode: context.runtimeMode,
   }
-}
-
-function hasActiveSession(thread: OrchestrationThread) {
-  if (!thread.session) return false
-
-  return thread.session.status !== 'stopped'
 }
 
 function maxCheckpointTurnCount(checkpoints: Array<{ checkpointTurnCount: number }>) {
@@ -823,7 +881,7 @@ function maxCheckpointTurnCount(checkpoints: Array<{ checkpointTurnCount: number
 }
 
 function checkpointRefForTurnCount(
-  threadId: ThreadId,
+  sessionId: SessionId,
   turnCount: number,
   checkpoints: Array<{
     checkpointRef: string
@@ -831,7 +889,7 @@ function checkpointRefForTurnCount(
     status: 'ready' | 'missing' | 'error'
   }>,
 ) {
-  if (turnCount === 0) return checkpointRefForThreadTurn(threadId, 0)
+  if (turnCount === 0) return checkpointRefForSessionTurn(sessionId, 0)
 
   const checkpoint = checkpoints.find((candidate) => candidate.checkpointTurnCount === turnCount)
   if (!checkpoint || checkpoint.status !== 'ready') {
@@ -841,15 +899,8 @@ function checkpointRefForTurnCount(
   return checkpoint.checkpointRef
 }
 
-function workspacePathForCheckpointRevert(input: {
-  fallbackWorkspacePath: string
-  providerPayload: ProviderSessionRuntimePayload | null | undefined
-}) {
-  return input.providerPayload?.cwd ?? input.fallbackWorkspacePath
-}
-
 function turnStartKeyForEvent(
-  event: Extract<ProviderIntentEvent, { type: 'thread.turn-start-requested' }>,
+  event: Extract<ProviderIntentEvent, { type: 'session.turn-start-requested' }>,
 ) {
   if (event.commandId !== null) return `command:${event.commandId}`
 
@@ -857,7 +908,7 @@ function turnStartKeyForEvent(
 }
 
 function noActiveSessionDetail() {
-  return 'No active provider session is bound to this thread.'
+  return 'No active provider session is bound to this session.'
 }
 
 function approvalResponseFailureDetail(error: unknown, requestId: string) {
@@ -905,10 +956,12 @@ type ProviderSessionContext = {
   interactionMode: InteractionMode
   modelSelection: ModelSelection
   project: OrchestrationProject
+  worktree: ReturnType<typeof resolveSessionOwner>['worktree']
   runtimeMode: RuntimeMode
-  thread: OrchestrationThread
+  session: OrchestrationSession
 }
 
 type ProviderTurnContext = ProviderSessionContext & {
   message: OrchestrationMessage
+  runtimeEpoch: string
 }

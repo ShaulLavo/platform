@@ -1,3 +1,4 @@
+import { TEST_ENVIRONMENT_ID as FIXTURE_ENVIRONMENT_ID } from '../../../../../test/factories/chat'
 import { afterEach, beforeEach } from 'vitest'
 import { DEFAULT_PROVIDER_INSTANCE_ID } from '@workspace/contracts'
 
@@ -22,7 +23,8 @@ const SCREENSHOT_BASE64_CHARS = 3 * 1024 * 1024
 
 const STORE = new Map<string, string>()
 const TARGET: ChatInputDraftTarget = {
-  draftKey: 'thread-1',
+  environmentId: FIXTURE_ENVIRONMENT_ID,
+  draftKey: 'ad686244-5b2e-59be-805f-ef86eac80feb',
   rootPath: '/repo',
 }
 
@@ -48,7 +50,7 @@ test('persists a draft with images without writing the image bytes', () => {
 
   const raw = STORE.get(CHAT_INPUT_DRAFT_STORAGE_KEY) ?? ''
   expect(raw).not.toContain('base64')
-  expect(JSON.parse(raw).version).toBe(1)
+  expect(JSON.parse(raw).version).toBe(2)
   // The composer still shows the attachment — only the persisted copy loses it.
   expect(useChatInputDraftStore.getState().getDraft(TARGET).images).toHaveLength(1)
 })
@@ -93,7 +95,8 @@ test('keeps the text draft when the images would blow the storage quota', () => 
 })
 
 test('drops stored image records that carry no preview source', () => {
-  const draftId = chatInputDraftStorageId(TARGET.rootPath, TARGET.draftKey) ?? ''
+  const draftId =
+    chatInputDraftStorageId(FIXTURE_ENVIRONMENT_ID, TARGET.rootPath, TARGET.draftKey) ?? ''
   STORE.set(
     CHAT_INPUT_DRAFT_STORAGE_KEY,
     JSON.stringify({
@@ -111,7 +114,7 @@ test('drops stored image records that carry no preview source', () => {
           prompt: 'Ship it',
         },
       },
-      version: 1,
+      version: 2,
     }),
   )
 
@@ -181,7 +184,7 @@ test('dropping the last capture leaves no draft behind', () => {
   expect(useChatInputDraftStore.getState().getDraft(TARGET).terminalContexts).toHaveLength(0)
   expect(
     useChatInputDraftStore.getState().draftsByKey[
-      chatInputDraftStorageId(TARGET.rootPath, TARGET.draftKey) ?? ''
+      chatInputDraftStorageId(FIXTURE_ENVIRONMENT_ID, TARGET.rootPath, TARGET.draftKey) ?? ''
     ],
   ).toBeUndefined()
 })

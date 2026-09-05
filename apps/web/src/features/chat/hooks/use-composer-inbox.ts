@@ -9,10 +9,10 @@ import { useComposerInboxStore, type ComposerInboxEntry } from '../state/compose
  * Moves work waiting in the inbox onto this composer — chips onto the draft,
  * text into the editor at the caret.
  *
- * The draft is the durable home: it survives a thread switch and a reload, so
+ * The draft is the durable home: it survives a session switch and a reload, so
  * the inbox only holds anything for the gap between "the user asked" and "a
- * composer exists". Draining is keyed on `pending` alone — a thread switch
- * changes `draftTarget` but must not re-deliver work the previous thread owns.
+ * composer exists". Draining is keyed on `pending` alone — a session switch
+ * changes `draftTarget` but must not re-deliver work the previous session owns.
  */
 export function useComposerInbox(
   draftTarget: ChatInputDraftTarget,
@@ -34,7 +34,7 @@ export function useComposerInbox(
 
     applyComposerInboxEntries(entries, draftTarget, editorRef.current)
     // `draftTarget` and the editor ref are read, not depended on: re-running on
-    // a thread switch would take from an already-empty inbox at best, and
+    // a session switch would take from an already-empty inbox at best, and
     // re-home someone else's capture at worst.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [editorReady, pending])

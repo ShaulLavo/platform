@@ -5,7 +5,9 @@ import {
   eventIdSchema,
   messageIdSchema,
   projectIdSchema,
-  threadIdSchema,
+  proposedPlanIdSchema,
+  worktreeIdSchema,
+  sessionIdSchema,
   turnIdSchema,
 } from './chat-ids'
 import {
@@ -17,11 +19,16 @@ import {
   orchestrationMessageRoleSchema,
   orchestrationProjectScriptSchema,
   orchestrationProposedPlanSchema,
-  orchestrationSessionSchema,
-  orchestrationThreadActivitySchema,
+  sessionRuntimeStateSchema,
+  repositoryIdentitySchema,
+  repositoryKindSchema,
+  sessionOriginSchema,
+  sessionDeletionStateSchema,
+  worktreeRegistrationEntries,
+  orchestrationSessionActivitySchema,
   orderKeySchema,
   sourceProposedPlanReferenceSchema,
-  threadLifecycleReasonSchema,
+  sessionLifecycleReasonSchema,
   trimmedNonEmptyStringSchema,
 } from './chat-model'
 import {
@@ -34,13 +41,15 @@ import {
   runtimeModeSchema,
 } from './orchestration-runtime'
 
-export const orchestrationAggregateKindSchema = v.picklist(['project', 'thread'])
+export const orchestrationAggregateKindSchema = v.picklist(['project', 'worktree', 'session'])
 export const orchestrationActorKindSchema = v.picklist(['client', 'server', 'provider'])
 
 export const projectCreatedPayloadSchema = v.object({
   projectId: projectIdSchema,
   title: trimmedNonEmptyStringSchema,
-  workspaceRoot: trimmedNonEmptyStringSchema,
+  repositoryKey: trimmedNonEmptyStringSchema,
+  repositoryKind: repositoryKindSchema,
+  repositoryIdentity: repositoryIdentitySchema,
   defaultModelSelection: v.nullable(modelSelectionSchema),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
@@ -49,7 +58,6 @@ export const projectCreatedPayloadSchema = v.object({
 export const projectMetaUpdatedPayloadSchema = v.object({
   projectId: projectIdSchema,
   title: v.optional(trimmedNonEmptyStringSchema),
-  workspaceRoot: v.optional(trimmedNonEmptyStringSchema),
   defaultModelSelection: v.optional(v.nullable(modelSelectionSchema)),
   // Absent means "unchanged", an empty array means "the user removed them all".
   // Collapsing the two would make clearing the list impossible.
@@ -73,109 +81,114 @@ export const projectDeletedPayloadSchema = v.object({
   deletedAt: isoDateTimeSchema,
 })
 
-export const threadCreatedPayloadSchema = v.object({
-  threadId: threadIdSchema,
-  projectId: projectIdSchema,
+export const projectRevivedPayloadSchema = projectCreatedPayloadSchema
+export const worktreeRegisteredPayloadSchema = v.object(worktreeRegistrationEntries)
+export const worktreeRevivedPayloadSchema = worktreeRegisteredPayloadSchema
+export const worktreeRetiredPayloadSchema = v.object({
+  worktreeId: worktreeIdSchema,
+  retiredAt: isoDateTimeSchema,
+})
+export const worktreeMetaUpdatedPayloadSchema = v.object({
+  worktreeId: worktreeIdSchema,
+  branch: v.nullable(trimmedNonEmptyStringSchema),
+  updatedAt: isoDateTimeSchema,
+})
+
+export const sessionCreatedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
+  worktreeId: worktreeIdSchema,
+  origin: sessionOriginSchema,
   title: trimmedNonEmptyStringSchema,
   modelSelection: modelSelectionSchema,
   runtimeMode: v.optional(runtimeModeSchema, DEFAULT_RUNTIME_MODE),
   interactionMode: v.optional(interactionModeSchema, DEFAULT_INTERACTION_MODE),
-  branch: v.nullable(trimmedNonEmptyStringSchema),
-  worktreePath: v.nullable(trimmedNonEmptyStringSchema),
-  /**
-   * The thread asked to run in a checkout of its own. A fact about how it was
-   * created, not projected state — the worktree that answers it arrives later
-   * as a `thread.meta-updated` carrying the real path.
-   */
-  requestWorktree: v.optional(v.boolean(), false),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
 })
 
-export const threadMetaUpdatedPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionMetaUpdatedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   title: v.optional(trimmedNonEmptyStringSchema),
   modelSelection: v.optional(modelSelectionSchema),
-  branch: v.optional(v.nullable(trimmedNonEmptyStringSchema)),
-  worktreePath: v.optional(v.nullable(trimmedNonEmptyStringSchema)),
   updatedAt: isoDateTimeSchema,
 })
 
-export const threadDeletedPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionDeletedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   deletedAt: isoDateTimeSchema,
 })
 
-export const threadArchivedPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionArchivedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   archivedAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
 })
 
-export const threadUnarchivedPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionUnarchivedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   updatedAt: isoDateTimeSchema,
 })
 
-export const threadSettledPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionSettledPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   settledAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
+  acknowledgedFailureThroughSequence: v.nullable(nonNegativeIntegerSchema),
 })
 
-export const threadUnsettledPayloadSchema = v.object({
-  threadId: threadIdSchema,
-  reason: threadLifecycleReasonSchema,
+export const sessionUnsettledPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
+  reason: sessionLifecycleReasonSchema,
   updatedAt: isoDateTimeSchema,
 })
 
-export const threadSnoozedPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionSnoozedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   snoozedUntil: isoDateTimeSchema,
   snoozedAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
 })
 
-export const threadUnsnoozedPayloadSchema = v.object({
-  threadId: threadIdSchema,
-  reason: threadLifecycleReasonSchema,
+export const sessionUnsnoozedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
+  reason: sessionLifecycleReasonSchema,
   updatedAt: isoDateTimeSchema,
 })
 
-export const threadPinnedPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionPinnedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   pinnedAt: isoDateTimeSchema,
-  // Absent when re-pinning an already-pinned thread — the key the user already
+  // Absent when re-pinning an already-pinned session — the key the user already
   // placed wins over a raced duplicate — and when the pin carried no slot.
   pinOrderKey: v.optional(orderKeySchema),
   updatedAt: isoDateTimeSchema,
 })
 
-export const threadUnpinnedPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionUnpinnedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   updatedAt: isoDateTimeSchema,
 })
 
-export const threadPinReorderedPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionPinReorderedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   orderKey: orderKeySchema,
   updatedAt: isoDateTimeSchema,
 })
 
-export const threadRuntimeModeSetPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionRuntimeModeSetPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   runtimeMode: runtimeModeSchema,
   updatedAt: isoDateTimeSchema,
 })
 
-export const threadInteractionModeSetPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionInteractionModeSetPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   interactionMode: v.optional(interactionModeSchema, DEFAULT_INTERACTION_MODE),
   updatedAt: isoDateTimeSchema,
 })
 
-export const threadMessageSentPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionMessageSentPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   messageId: messageIdSchema,
   role: orchestrationMessageRoleSchema,
   text: v.string(),
@@ -186,8 +199,8 @@ export const threadMessageSentPayloadSchema = v.object({
   updatedAt: isoDateTimeSchema,
 })
 
-export const threadTurnStartRequestedPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionTurnStartRequestedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   turnId: turnIdSchema,
   messageId: messageIdSchema,
   modelSelection: v.optional(modelSelectionSchema),
@@ -198,34 +211,42 @@ export const threadTurnStartRequestedPayloadSchema = v.object({
   createdAt: isoDateTimeSchema,
 })
 
-export const threadTurnInterruptRequestedPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionTurnInterruptRequestedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   turnId: v.optional(turnIdSchema),
   createdAt: isoDateTimeSchema,
 })
 
-export const threadSessionStopRequestedPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionRuntimeStopRequestedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   createdAt: isoDateTimeSchema,
 })
 
-export const threadSessionSetPayloadSchema = v.object({
-  threadId: threadIdSchema,
-  session: orchestrationSessionSchema,
+export const sessionRuntimeSetPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
+  runtime: sessionRuntimeStateSchema,
 })
 
-export const threadActivityAppendedPayloadSchema = v.object({
-  threadId: threadIdSchema,
-  activity: orchestrationThreadActivitySchema,
+export const sessionActivityAppendedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
+  activity: orchestrationSessionActivitySchema,
 })
 
-export const threadProposedPlanUpsertedPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionProposedPlanUpsertedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   proposedPlan: orchestrationProposedPlanSchema,
 })
 
-export const threadTurnDiffCompletedPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionProposedPlanImplementedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
+  planId: proposedPlanIdSchema,
+  implementationSessionId: sessionIdSchema,
+  implementedAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema,
+})
+
+export const sessionTurnDiffCompletedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   turnId: turnIdSchema,
   checkpointTurnCount: nonNegativeIntegerSchema,
   checkpointRef: trimmedNonEmptyStringSchema,
@@ -235,30 +256,59 @@ export const threadTurnDiffCompletedPayloadSchema = v.object({
   completedAt: isoDateTimeSchema,
 })
 
-export const threadCheckpointRevertRequestedPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionCheckpointRevertRequestedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   turnCount: nonNegativeIntegerSchema,
   createdAt: isoDateTimeSchema,
 })
 
-export const threadRevertedPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionRevertedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   turnCount: nonNegativeIntegerSchema,
   revertedAt: isoDateTimeSchema,
 })
 
-export const threadApprovalResponseRequestedPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionApprovalResponseRequestedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   requestId: approvalRequestIdSchema,
   decision: providerApprovalDecisionSchema,
   createdAt: isoDateTimeSchema,
 })
 
-export const threadUserInputResponseRequestedPayloadSchema = v.object({
-  threadId: threadIdSchema,
+export const sessionUserInputResponseRequestedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
   requestId: approvalRequestIdSchema,
   answers: providerUserInputAnswersSchema,
   createdAt: isoDateTimeSchema,
+})
+
+export const sessionProviderStartPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
+  turnId: turnIdSchema,
+  generation: nonNegativeIntegerSchema,
+  runtimeEpoch: trimmedNonEmptyStringSchema,
+  createdAt: isoDateTimeSchema,
+})
+
+export const sessionRuntimeRecoveredPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
+  turnId: v.optional(turnIdSchema),
+  observedSequence: nonNegativeIntegerSchema,
+  runtimeEpoch: trimmedNonEmptyStringSchema,
+  message: trimmedNonEmptyStringSchema,
+  createdAt: isoDateTimeSchema,
+})
+
+export const sessionDeletionUpdatedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
+  deletion: sessionDeletionStateSchema,
+})
+
+export const sessionDiscoveryMetadataUpdatedPayloadSchema = v.object({
+  sessionId: sessionIdSchema,
+  title: trimmedNonEmptyStringSchema,
+  sourceUpdatedAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema,
 })
 
 export const orchestrationEventMetadataSchema = v.object({
@@ -273,7 +323,7 @@ const eventBaseSchema = {
   sequence: nonNegativeIntegerSchema,
   eventId: eventIdSchema,
   aggregateKind: orchestrationAggregateKindSchema,
-  aggregateId: v.union([projectIdSchema, threadIdSchema]),
+  aggregateId: v.union([projectIdSchema, worktreeIdSchema, sessionIdSchema]),
   occurredAt: isoDateTimeSchema,
   commandId: v.nullable(commandIdSchema),
   causationEventId: v.nullable(eventIdSchema),
@@ -293,41 +343,53 @@ const eventBaseSchema = {
  * one row here.
  *
  * The order below is the order the catalog has always been read in (project
- * lifecycle, thread lifecycle, then turn traffic). valibot dispatches on the
+ * lifecycle, session lifecycle, then turn traffic). valibot dispatches on the
  * discriminator, not on position, so the order is documentation — but do not
  * alphabetise it.
  */
 export const ORCHESTRATION_EVENT_PAYLOADS = {
   'project.created': projectCreatedPayloadSchema,
+  'project.revived': projectRevivedPayloadSchema,
   'project.meta-updated': projectMetaUpdatedPayloadSchema,
   'project.reordered': projectReorderedPayloadSchema,
   'project.deleted': projectDeletedPayloadSchema,
-  'thread.created': threadCreatedPayloadSchema,
-  'thread.meta-updated': threadMetaUpdatedPayloadSchema,
-  'thread.deleted': threadDeletedPayloadSchema,
-  'thread.archived': threadArchivedPayloadSchema,
-  'thread.unarchived': threadUnarchivedPayloadSchema,
-  'thread.settled': threadSettledPayloadSchema,
-  'thread.unsettled': threadUnsettledPayloadSchema,
-  'thread.snoozed': threadSnoozedPayloadSchema,
-  'thread.unsnoozed': threadUnsnoozedPayloadSchema,
-  'thread.pinned': threadPinnedPayloadSchema,
-  'thread.unpinned': threadUnpinnedPayloadSchema,
-  'thread.pin-reordered': threadPinReorderedPayloadSchema,
-  'thread.runtime-mode-set': threadRuntimeModeSetPayloadSchema,
-  'thread.interaction-mode-set': threadInteractionModeSetPayloadSchema,
-  'thread.message-sent': threadMessageSentPayloadSchema,
-  'thread.turn-start-requested': threadTurnStartRequestedPayloadSchema,
-  'thread.turn-interrupt-requested': threadTurnInterruptRequestedPayloadSchema,
-  'thread.session-stop-requested': threadSessionStopRequestedPayloadSchema,
-  'thread.session-set': threadSessionSetPayloadSchema,
-  'thread.activity-appended': threadActivityAppendedPayloadSchema,
-  'thread.proposed-plan-upserted': threadProposedPlanUpsertedPayloadSchema,
-  'thread.turn-diff-completed': threadTurnDiffCompletedPayloadSchema,
-  'thread.checkpoint-revert-requested': threadCheckpointRevertRequestedPayloadSchema,
-  'thread.reverted': threadRevertedPayloadSchema,
-  'thread.approval-response-requested': threadApprovalResponseRequestedPayloadSchema,
-  'thread.user-input-response-requested': threadUserInputResponseRequestedPayloadSchema,
+  'worktree.registered': worktreeRegisteredPayloadSchema,
+  'worktree.revived': worktreeRevivedPayloadSchema,
+  'worktree.retired': worktreeRetiredPayloadSchema,
+  'worktree.meta-updated': worktreeMetaUpdatedPayloadSchema,
+  'session.created': sessionCreatedPayloadSchema,
+  'session.meta-updated': sessionMetaUpdatedPayloadSchema,
+  'session.deleted': sessionDeletedPayloadSchema,
+  'session.archived': sessionArchivedPayloadSchema,
+  'session.unarchived': sessionUnarchivedPayloadSchema,
+  'session.settled': sessionSettledPayloadSchema,
+  'session.unsettled': sessionUnsettledPayloadSchema,
+  'session.snoozed': sessionSnoozedPayloadSchema,
+  'session.unsnoozed': sessionUnsnoozedPayloadSchema,
+  'session.pinned': sessionPinnedPayloadSchema,
+  'session.unpinned': sessionUnpinnedPayloadSchema,
+  'session.pin-reordered': sessionPinReorderedPayloadSchema,
+  'session.runtime-mode-set': sessionRuntimeModeSetPayloadSchema,
+  'session.interaction-mode-set': sessionInteractionModeSetPayloadSchema,
+  'session.message-sent': sessionMessageSentPayloadSchema,
+  'session.turn-start-requested': sessionTurnStartRequestedPayloadSchema,
+  'session.turn-interrupt-requested': sessionTurnInterruptRequestedPayloadSchema,
+  'session.runtime-stop-requested': sessionRuntimeStopRequestedPayloadSchema,
+  'session.runtime-set': sessionRuntimeSetPayloadSchema,
+  'session.activity-appended': sessionActivityAppendedPayloadSchema,
+  'session.proposed-plan-upserted': sessionProposedPlanUpsertedPayloadSchema,
+  'session.proposed-plan-implemented': sessionProposedPlanImplementedPayloadSchema,
+  'session.turn-diff-completed': sessionTurnDiffCompletedPayloadSchema,
+  'session.checkpoint-revert-requested': sessionCheckpointRevertRequestedPayloadSchema,
+  'session.reverted': sessionRevertedPayloadSchema,
+  'session.approval-response-requested': sessionApprovalResponseRequestedPayloadSchema,
+  'session.user-input-response-requested': sessionUserInputResponseRequestedPayloadSchema,
+  'session.provider-start-claimed': sessionProviderStartPayloadSchema,
+  'session.provider-start-adopted': sessionProviderStartPayloadSchema,
+  'session.provider-start-settled': sessionProviderStartPayloadSchema,
+  'session.runtime-recovered': sessionRuntimeRecoveredPayloadSchema,
+  'session.deletion-updated': sessionDeletionUpdatedPayloadSchema,
+  'session.discovery-metadata-updated': sessionDiscoveryMetadataUpdatedPayloadSchema,
 }
 
 export type OrchestrationEventType = keyof typeof ORCHESTRATION_EVENT_PAYLOADS
@@ -362,6 +424,6 @@ export const orchestrationEventSchema = v.variant('type', orchestrationEventVari
 export type OrchestrationAggregateKind = v.InferOutput<typeof orchestrationAggregateKindSchema>
 export type OrchestrationActorKind = v.InferOutput<typeof orchestrationActorKindSchema>
 export type ProjectCreatedPayload = v.InferOutput<typeof projectCreatedPayloadSchema>
-export type ThreadCreatedPayload = v.InferOutput<typeof threadCreatedPayloadSchema>
+export type SessionCreatedPayload = v.InferOutput<typeof sessionCreatedPayloadSchema>
 export type OrchestrationEventMetadata = v.InferOutput<typeof orchestrationEventMetadataSchema>
 export type OrchestrationEvent = v.InferOutput<typeof orchestrationEventSchema>

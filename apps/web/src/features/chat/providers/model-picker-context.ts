@@ -4,7 +4,7 @@ import { createContext } from 'react'
 import type { ProviderModelOption } from '@/features/chat/utils/provider-model-options'
 
 export type ChatModelPicker = {
-  /** True while the thread pins its provider and model, so the picker is read-only. */
+  /** True while the session pins its provider and model, so the picker is read-only. */
   readonly locked: boolean
   /** The selection the composer will send with the next turn, or null when no provider offers one. */
   readonly modelSelection: ModelSelection | null

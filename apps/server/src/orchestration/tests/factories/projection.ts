@@ -7,8 +7,9 @@ import { OrchestrationProjectionPipeline } from '../../projection-pipeline'
 import { OrchestrationSnapshotQuery } from '../../snapshot-query'
 import { createEmptyReadModel, type OrchestrationReadModel } from '../../read-model'
 
-export const PROJECT_ID = 'project-1'
-export const THREAD_ID = 'thread-1'
+export const PROJECT_ID = '10000000-0000-4000-8000-000000000001'
+export const WORKTREE_ID = '20000000-0000-4000-8000-000000000001'
+export const SESSION_ID = '00000000-0000-4000-8000-000000000001'
 
 export function createProjectionFixture() {
   const sqlite = new Database(':memory:', { create: true })
@@ -35,7 +36,7 @@ export function pendingEvent(
   const pending = {
     actorKind: 'client',
     // The aggregate follows the payload, exactly as the decider does it, so a
-    // fixture can name a thread other than the default one.
+    // fixture can name a session other than the default one.
     ...aggregate(payload),
     causationEventId: null,
     commandId: null,
@@ -51,9 +52,11 @@ export function pendingEvent(
 }
 
 function aggregate(payload: unknown) {
-  const record = payload as { projectId?: string; threadId?: string }
-  if (record.threadId) return { aggregateId: record.threadId, aggregateKind: 'thread' } as const
+  const record = payload as { projectId?: string; worktreeId?: string; sessionId?: string }
+  if (record.sessionId) return { aggregateId: record.sessionId, aggregateKind: 'session' } as const
 
+  if (record.worktreeId)
+    return { aggregateId: record.worktreeId, aggregateKind: 'worktree' } as const
   return { aggregateId: record.projectId ?? PROJECT_ID, aggregateKind: 'project' } as const
 }
 
@@ -78,26 +81,25 @@ export function applyIncrementally(
   return model
 }
 
-export function threadCreatedEvent(threadId: string, createdAt = '2026-05-24T00:00:00.000Z') {
+export function sessionCreatedEvent(sessionId: string, createdAt = '2026-05-24T00:00:00.000Z') {
   return pendingEvent(
-    'thread.created',
+    'session.created',
     {
-      branch: null,
       createdAt,
       interactionMode: 'default',
       modelSelection: { model: 'gpt-5-codex', providerInstanceId: 'codex' },
-      projectId: PROJECT_ID,
+      worktreeId: WORKTREE_ID,
+      origin: 'platform',
       runtimeMode: 'full-access',
-      threadId,
+      sessionId,
       title: 'Projection',
       updatedAt: createdAt,
-      worktreePath: null,
     },
     createdAt,
   )
 }
 
-export function threadBootstrapEvents(createdAt = '2026-05-24T00:00:00.000Z') {
+export function sessionBootstrapEvents(createdAt = '2026-05-24T00:00:00.000Z') {
   return [
     pendingEvent(
       'project.created',
@@ -107,29 +109,47 @@ export function threadBootstrapEvents(createdAt = '2026-05-24T00:00:00.000Z') {
         projectId: PROJECT_ID,
         title: 'Platform',
         updatedAt: createdAt,
-        workspaceRoot: '/workspace',
+        repositoryKey: 'projection-fixture',
+        repositoryKind: 'directory',
+        repositoryIdentity: { source: 'path', canonical: '/workspace' },
       },
       createdAt,
     ),
-    threadCreatedEvent(THREAD_ID, createdAt),
+    pendingEvent(
+      'worktree.registered',
+      {
+        worktreeId: WORKTREE_ID,
+        projectId: PROJECT_ID,
+        registrationGeneration: 0,
+        canonicalPath: '/workspace',
+        path: '/workspace',
+        branch: null,
+        kind: 'current',
+        ownership: 'protected',
+        createdAt,
+        updatedAt: createdAt,
+      },
+      createdAt,
+    ),
+    sessionCreatedEvent(SESSION_ID, createdAt),
   ]
 }
 
-export function turnStartEventOnThread(
-  threadId: string,
+export function turnStartEventOnSession(
+  sessionId: string,
   turnId: string,
   requestedAt: string,
-  sourceProposedPlan?: { planId: string; threadId: string },
+  sourceProposedPlan?: { planId: string; sessionId: string },
 ) {
   return pendingEvent(
-    'thread.turn-start-requested',
+    'session.turn-start-requested',
     {
       createdAt: requestedAt,
       interactionMode: 'default',
       messageId: `message-user-${turnId}`,
       runtimeMode: 'full-access',
       sourceProposedPlan,
-      threadId,
+      sessionId,
       turnId,
     },
     requestedAt,
@@ -139,15 +159,15 @@ export function turnStartEventOnThread(
 export function turnStartEvent(
   turnId: string,
   requestedAt: string,
-  sourceProposedPlan?: { planId: string; threadId: string },
+  sourceProposedPlan?: { planId: string; sessionId: string },
 ) {
-  return turnStartEventOnThread(THREAD_ID, turnId, requestedAt, sourceProposedPlan)
+  return turnStartEventOnSession(SESSION_ID, turnId, requestedAt, sourceProposedPlan)
 }
 
 export function proposedPlanUpsertedEvent(input: {
   createdAt?: string
   implementedAt?: string | null
-  implementationThreadId?: string | null
+  implementationSessionId?: string | null
   planId: string
   planMarkdown: string
   turnId?: string | null
@@ -157,19 +177,19 @@ export function proposedPlanUpsertedEvent(input: {
   const updatedAt = input.updatedAt ?? createdAt
 
   return pendingEvent(
-    'thread.proposed-plan-upserted',
+    'session.proposed-plan-upserted',
     {
       proposedPlan: {
         createdAt,
         id: input.planId,
-        implementationThreadId: input.implementationThreadId ?? null,
+        implementationSessionId: input.implementationSessionId ?? null,
         implementedAt: input.implementedAt ?? null,
         planMarkdown: input.planMarkdown,
-        threadId: THREAD_ID,
+        sessionId: SESSION_ID,
         turnId: input.turnId ?? null,
         updatedAt,
       },
-      threadId: THREAD_ID,
+      sessionId: SESSION_ID,
     },
     updatedAt,
   )
@@ -187,22 +207,22 @@ export function turnDiffCompletedEvent(input: {
   const completedAt = input.completedAt ?? '2026-05-24T00:04:00.000Z'
 
   return pendingEvent(
-    'thread.turn-diff-completed',
+    'session.turn-diff-completed',
     {
       assistantMessageId: input.assistantMessageId ?? null,
-      checkpointRef: input.checkpointRef ?? `refs/platform/${THREAD_ID}/${input.turnId}`,
+      checkpointRef: input.checkpointRef ?? `refs/platform/${SESSION_ID}/${input.turnId}`,
       checkpointTurnCount: input.checkpointTurnCount,
       completedAt,
       files: input.files ?? [],
       status: input.status ?? 'ready',
-      threadId: THREAD_ID,
+      sessionId: SESSION_ID,
       turnId: input.turnId,
     },
     completedAt,
   )
 }
 
-export function sessionSetEvent(
+export function runtimeSetEvent(
   session: Partial<{
     activeTurnId: string | null
     lastError: string | null
@@ -213,20 +233,23 @@ export function sessionSetEvent(
   const updatedAt = session.updatedAt ?? '2026-05-24T00:02:00.000Z'
 
   return pendingEvent(
-    'thread.session-set',
+    'session.runtime-set',
     {
-      session: {
+      runtime: {
         activeTurnId: session.activeTurnId ?? null,
         lastError: session.lastError ?? null,
         providerInstanceId: 'codex',
         providerName: 'codex',
-        providerSessionId: 'provider-session-1',
+        providerBindingHandle: 'provider-session-1',
+        providerConversationMarker: null,
+        providerResumeCursor: null,
+        runtimeEpoch: 'epoch-fixture',
         runtimeMode: 'full-access',
         status: session.status ?? 'running',
-        threadId: THREAD_ID,
+        sessionId: SESSION_ID,
         updatedAt,
       },
-      threadId: THREAD_ID,
+      sessionId: SESSION_ID,
     },
     updatedAt,
   )
@@ -246,7 +269,7 @@ export function messageSentEvent(input: {
   const updatedAt = input.updatedAt ?? createdAt
 
   return pendingEvent(
-    'thread.message-sent',
+    'session.message-sent',
     {
       attachments: input.attachments ?? [],
       createdAt,
@@ -254,7 +277,7 @@ export function messageSentEvent(input: {
       role: input.role ?? 'assistant',
       streaming: input.streaming,
       text: input.text,
-      threadId: THREAD_ID,
+      sessionId: SESSION_ID,
       turnId: input.turnId ?? null,
       updatedAt,
     },
@@ -274,7 +297,7 @@ export function activityAppendedEvent(input: {
   const createdAt = input.createdAt ?? '2026-05-24T00:01:30.000Z'
 
   return pendingEvent(
-    'thread.activity-appended',
+    'session.activity-appended',
     {
       activity: {
         createdAt,
@@ -282,12 +305,30 @@ export function activityAppendedEvent(input: {
         kind: input.kind ?? 'tool.started',
         payload: input.payload ?? null,
         summary: input.summary ?? 'Tool started',
-        threadId: THREAD_ID,
+        sessionId: SESSION_ID,
         tone: input.tone ?? 'tool',
         turnId: input.turnId ?? null,
       },
-      threadId: THREAD_ID,
+      sessionId: SESSION_ID,
     },
     createdAt,
+  )
+}
+
+export function proposedPlanImplementedEvent(
+  implementationSessionId: string,
+  implementedAt: string,
+  planId = 'plan-1',
+) {
+  return pendingEvent(
+    'session.proposed-plan-implemented',
+    {
+      sessionId: SESSION_ID,
+      planId,
+      implementationSessionId,
+      implementedAt,
+      updatedAt: implementedAt,
+    },
+    implementedAt,
   )
 }

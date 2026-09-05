@@ -23,7 +23,7 @@ import {
 export function SessionDeleteDialog() {
   const request = useSessionDeleteRequestStore((state) => state.request)
   const actions = useSessionActions()
-  const count = request?.threadIds.length ?? 1
+  const count = request?.refs.length ?? 1
 
   return (
     <Dialog onOpenChange={(open) => open || actions.cancelDelete()} open={request !== null}>

@@ -7,32 +7,47 @@ import {
   sessionSelectionFor,
   sessionTokenFor,
 } from '@/features/address/utils/session-token'
-import type { ProjectId, ThreadId } from '@workspace/contracts'
+import type { EnvironmentId, ProjectId, SessionId } from '@workspace/contracts'
 
-const THREAD = 'thread-9f3a1c2e-77b0-4d51-9a2e-0c8f1b6d4a10' as ThreadId
-const PROJECT = 'project-3f9c1a2b' as ProjectId
+const ENVIRONMENT = '499c1da4-fd11-4701-a7d1-0d19381e8fd5' as EnvironmentId
+const SESSION = '5f7f875d-6e41-5275-8927-06a9e5a4a2e1' as SessionId
+const PROJECT = '55c44f54-ec6c-528c-9f47-e6d153540158' as ProjectId
 
 describe('sessionTokenFor', () => {
   test('encodes the three selection variants', () => {
-    expect(sessionTokenFor({ kind: 'session', projectId: PROJECT, threadId: THREAD })).toBe(
-      `t/${THREAD}`,
+    expect(
+      sessionTokenFor({
+        kind: 'session',
+        environmentId: ENVIRONMENT,
+        projectId: PROJECT,
+        sessionId: SESSION,
+      }),
+    ).toBe(`t/${SESSION}`)
+    expect(sessionTokenFor({ kind: 'draft', environmentId: ENVIRONMENT, projectId: PROJECT })).toBe(
+      't/new',
     )
-    expect(sessionTokenFor({ kind: 'draft', projectId: PROJECT })).toBe('t/new')
     expect(sessionTokenFor({ kind: 'auto' })).toBeNull()
   })
 
-  // ProjectId is a one-way hash of an absolute path and must never reach a URL.
+  // The session UUID resolves its project through the addressed environment.
   test('never leaks the project id', () => {
     expect(
-      sessionTokenFor({ kind: 'session', projectId: PROJECT, threadId: THREAD }),
+      sessionTokenFor({
+        kind: 'session',
+        environmentId: ENVIRONMENT,
+        projectId: PROJECT,
+        sessionId: SESSION,
+      }),
     ).not.toContain(PROJECT)
-    expect(sessionTokenFor({ kind: 'draft', projectId: PROJECT })).not.toContain(PROJECT)
+    expect(
+      sessionTokenFor({ kind: 'draft', environmentId: ENVIRONMENT, projectId: PROJECT }),
+    ).not.toContain(PROJECT)
   })
 })
 
 describe('parseSessionToken', () => {
-  test('round-trips a thread and a draft', () => {
-    expect(parseSessionToken(`t/${THREAD}`)).toEqual({ kind: 'session', threadId: THREAD })
+  test('round-trips a session and a draft', () => {
+    expect(parseSessionToken(`t/${SESSION}`)).toEqual({ kind: 'session', sessionId: SESSION })
     expect(parseSessionToken('t/new')).toEqual({ kind: 'draft' })
   })
 
@@ -41,17 +56,12 @@ describe('parseSessionToken', () => {
     expect(parseSessionToken('f/src/a.ts')).toBeNull()
   })
 
-  /**
-   * Shape only. The parser checks the `thread-` prefix and nothing else, because a
-   * `ThreadId` is an opaque branded string — there is no format to validate against.
-   * An abbreviated id therefore parses and then simply matches no thread, which is the
-   * restore reporting `unavailable` rather than the parser guessing.
-   */
-  test('accepts any `thread-` shaped id without resolving it to a thread', () => {
-    expect(parseSessionToken('t/thread-9f3a')).toEqual({ kind: 'session', threadId: 'thread-9f3a' })
+  test('rejects prefixed and abbreviated identifiers', () => {
+    expect(parseSessionToken('t/session-9f3a')).toEqual({ kind: 'rejected' })
+    expect(parseSessionToken(`t/session-${SESSION}`)).toEqual({ kind: 'rejected' })
   })
 
-  test('rejects a malformed thread id rather than guessing', () => {
+  test('rejects a malformed session id rather than guessing', () => {
     expect(parseSessionToken('t/9f3a1c2e')).toEqual({ kind: 'rejected' })
     expect(parseSessionToken('t/')).toEqual({ kind: 'rejected' })
     expect(parseSessionToken('t/%E0%A4%A')).toEqual({ kind: 'rejected' })
@@ -59,16 +69,20 @@ describe('parseSessionToken', () => {
 })
 
 describe('sessionSelectionFor', () => {
-  test('rebuilds the selection with a project id derived from the workspace', () => {
-    expect(sessionSelectionFor({ kind: 'session', threadId: THREAD }, PROJECT)).toEqual({
+  test('rebuilds the selection with a confirmed environment and project', () => {
+    expect(
+      sessionSelectionFor({ kind: 'session', sessionId: SESSION }, ENVIRONMENT, PROJECT),
+    ).toEqual({
       kind: 'session',
+      environmentId: ENVIRONMENT,
       projectId: PROJECT,
-      threadId: THREAD,
+      sessionId: SESSION,
     })
-    expect(sessionSelectionFor({ kind: 'draft' }, PROJECT)).toEqual({
+    expect(sessionSelectionFor({ kind: 'draft' }, ENVIRONMENT, PROJECT)).toEqual({
       kind: 'draft',
+      environmentId: ENVIRONMENT,
       projectId: PROJECT,
     })
-    expect(sessionSelectionFor({ kind: 'rejected' }, PROJECT)).toBeNull()
+    expect(sessionSelectionFor({ kind: 'rejected' }, ENVIRONMENT, PROJECT)).toBeNull()
   })
 })

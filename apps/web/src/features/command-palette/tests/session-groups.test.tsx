@@ -1,4 +1,6 @@
-import { projectIdSchema, threadIdSchema } from '@workspace/contracts'
+import { TEST_ENVIRONMENT_ID } from '../../../../test/factories/chat'
+import { scopedSessionKey, scopedProjectKey } from '@workspace/contracts'
+import { projectIdSchema, sessionIdSchema } from '@workspace/contracts'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
@@ -21,10 +23,10 @@ import type {
 import { Command, CommandInput, CommandList } from '@workspace/ui/components/command'
 import { expect, test } from '../../../../test/fixtures'
 
-const platformId = v.parse(projectIdSchema, 'project-platform')
-const siteId = v.parse(projectIdSchema, 'project-site')
-const railThreadId = v.parse(threadIdSchema, 'thread-rail')
-const footerThreadId = v.parse(threadIdSchema, 'thread-footer')
+const platformId = v.parse(projectIdSchema, 'fcad4a69-3e68-5de2-8303-a2c1ebe8f60c')
+const siteId = v.parse(projectIdSchema, '9b1fd4f4-7ba9-5967-87f0-3efd01bbc4d5')
+const railSessionId = v.parse(sessionIdSchema, '5e84cb50-b170-5280-aaba-14c8bebda2db')
+const footerSessionId = v.parse(sessionIdSchema, '9916594d-2e09-584d-a570-d93eb168900b')
 
 test('the sess prefix puts the palette in session mode', () => {
   expect(quickAccessMode('sess footer')).toBe('sessions')
@@ -41,7 +43,7 @@ test('finds a session by its title and opens it', async () => {
   await userEvent.click(screen.getByText('Fix the footer'))
 
   expect(actions.selectSession).toHaveBeenCalledWith(
-    expect.objectContaining({ id: footerThreadId }),
+    expect.objectContaining({ id: footerSessionId }),
   )
 })
 
@@ -53,7 +55,10 @@ test('offers a new session in a project the query names', async () => {
   // The project row is the one carrying the workspace root.
   await userEvent.click(screen.getByText('/repo/site'))
 
-  expect(actions.startSessionDraft).toHaveBeenCalledWith(siteId)
+  expect(actions.startSessionDraft).toHaveBeenCalledWith({
+    environmentId: TEST_ENVIRONMENT_ID,
+    projectId: siteId,
+  })
 })
 
 function renderSessionPalette() {
@@ -102,31 +107,38 @@ function commandPaletteActions(): CommandPaletteActions {
 
 function sessionItems(): readonly SessionRailItem[] {
   return [
-    sessionItem(railThreadId, 'Ship the rail', platformId, 'platform'),
-    sessionItem(footerThreadId, 'Fix the footer', siteId, 'site'),
+    sessionItem(railSessionId, 'Ship the rail', platformId, 'platform'),
+    sessionItem(footerSessionId, 'Fix the footer', siteId, 'site'),
   ]
 }
 
 function sessionItem(
-  id: typeof railThreadId,
+  id: typeof railSessionId,
   title: string,
   projectId: typeof platformId,
   projectTitle: string,
 ): SessionRailItem {
   return {
+    ref: { environmentId: TEST_ENVIRONMENT_ID, sessionId: id },
+    key: scopedSessionKey({ environmentId: TEST_ENVIRONMENT_ID, sessionId: id }),
+    environmentId: TEST_ENVIRONMENT_ID,
+    machineLabel: null,
+    projectGroupKey: projectId,
+    attentionReason: null,
+    hasError: false,
     activityAt: '2026-05-09T00:00:00.000Z',
     archived: false,
+    origin: 'platform',
     branch: null,
     createdAt: '2026-05-09T00:00:00.000Z',
     id,
     pinOrderKey: null,
-    planProgress: null,
     projectId,
     projectTitle,
-    status: 'idle',
+    status: 'settled',
     title,
     unread: false,
-    worktreePath: null,
+    worktreePath: '/repo/platform',
   }
 }
 
@@ -134,22 +146,28 @@ function sessionProjects(): readonly SessionRailProject[] {
   return [
     {
       active: true,
+      ref: { environmentId: TEST_ENVIRONMENT_ID, projectId: platformId },
+      key: scopedProjectKey({ environmentId: TEST_ENVIRONMENT_ID, projectId: platformId }),
+      createdAt: '2026-05-01T00:00:00Z',
       id: platformId,
       orderKey: null,
       qualifier: null,
       sessionCount: 1,
-      status: 'idle',
+      status: 'settled',
       title: 'platform',
       unreadCount: 0,
       workspaceRoot: '/repo/platform',
     },
     {
       active: false,
+      ref: { environmentId: TEST_ENVIRONMENT_ID, projectId: siteId },
+      key: scopedProjectKey({ environmentId: TEST_ENVIRONMENT_ID, projectId: siteId }),
+      createdAt: '2026-05-01T00:00:00Z',
       id: siteId,
       orderKey: null,
       qualifier: null,
       sessionCount: 1,
-      status: 'idle',
+      status: 'settled',
       title: 'site',
       unreadCount: 0,
       workspaceRoot: '/repo/site',

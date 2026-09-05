@@ -1,25 +1,25 @@
 import { Elysia } from 'elysia'
 import * as v from 'valibot'
 import {
-  ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE,
-  orchestrationSearchThreadsInputSchema,
+  ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE,
+  orchestrationSearchSessionsInputSchema,
 } from '@workspace/contracts'
 import {
   clientOrchestrationCommandSchema,
   orchestrationReplayEventsInputSchema,
-  threadIdSchema,
+  sessionIdSchema,
 } from './schemas'
 import type { OrchestrationEngine } from './engine'
 import type { OrchestrationCheckpointDiffQuery } from './checkpoint-diff-query'
-import type { OrchestrationThreadSearchQuery } from './thread-search-query'
+import type { OrchestrationSessionSearchQuery } from './session-search-query'
 import { sseResponse, toSse } from '../sse'
 import { observeRequestOperation } from '../observability'
 import { chatOperationContext, orchestrationReplaySummary } from './orchestration-logging'
 
 const ORCHESTRATION_STREAM_HEARTBEAT_MS = 15_000
 
-const threadDetailQuerySchema = v.object({
-  threadId: threadIdSchema,
+const sessionDetailQuerySchema = v.object({
+  sessionId: sessionIdSchema,
 })
 
 const streamQuerySchema = v.object({
@@ -37,25 +37,25 @@ const booleanQueryValueSchema = v.pipe(
 const turnDiffQuerySchema = v.object({
   fromTurnCount: turnCountQueryValueSchema,
   ignoreWhitespace: v.optional(booleanQueryValueSchema),
-  threadId: threadIdSchema,
+  sessionId: sessionIdSchema,
   toTurnCount: turnCountQueryValueSchema,
 })
 
-const fullThreadDiffQuerySchema = v.object({
+const fullSessionDiffQuerySchema = v.object({
   ignoreWhitespace: v.optional(booleanQueryValueSchema),
-  threadId: threadIdSchema,
+  sessionId: sessionIdSchema,
   toTurnCount: turnCountQueryValueSchema,
 })
 
-const threadDetailStreamQuerySchema = v.object({
+const sessionDetailStreamQuerySchema = v.object({
   afterSequence: v.optional(v.pipe(v.string(), v.toNumber(), v.integer(), v.minValue(0)), '0'),
-  threadId: threadIdSchema,
+  sessionId: sessionIdSchema,
 })
 
 export function orchestrationRoutes(
   engine: OrchestrationEngine,
   checkpointDiff: OrchestrationCheckpointDiffQuery,
-  threadSearch: OrchestrationThreadSearchQuery,
+  sessionSearch: OrchestrationSessionSearchQuery,
 ) {
   return new Elysia({ name: 'orchestration-routes' }).group('/orchestration', (app) =>
     app
@@ -84,51 +84,54 @@ export function orchestrationRoutes(
           (snapshot) => ({
             projectCount: snapshot.projects.length,
             snapshotSequence: snapshot.snapshotSequence,
-            threadCount: snapshot.threads.length,
+            sessionCount: snapshot.sessions.length,
           }),
         ),
       )
       .get(
-        '/thread-detail',
+        '/session-detail',
         ({ query }) =>
           observeRequestOperation(
-            chatOperationContext('orchestration.thread_detail_snapshot', {
-              threadId: query.threadId,
+            chatOperationContext('orchestration.session_detail_snapshot', {
+              sessionId: query.sessionId,
             }),
-            async () => engine.threadDetailSnapshot(query.threadId),
+            async () => engine.sessionDetailSnapshot(query.sessionId),
             (snapshot) => ({
-              activityCount: snapshot.thread.activities.length,
-              // A full window means the thread is longer than the snapshot: the
+              activityCount: snapshot.session.activities.length,
+              // A full window means the session is longer than the snapshot: the
               // rest is reachable only if the client pages backwards, so these
               // are the fields that tell a truncated timeline from a short one.
               activityWindowFull:
-                snapshot.thread.activities.length === ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE,
-              messageCount: snapshot.thread.messages.length,
+                snapshot.session.activities.length === ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE,
+              messageCount: snapshot.session.messages.length,
               messageWindowFull:
-                snapshot.thread.messages.length === ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE,
+                snapshot.session.messages.length === ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE,
               snapshotSequence: snapshot.snapshotSequence,
-              windowSize: ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE,
+              windowSize: ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE,
             }),
           ),
         {
-          query: threadDetailQuerySchema,
+          query: sessionDetailQuerySchema,
         },
       )
       .post(
-        '/thread-search',
+        '/session-search',
         ({ body }) =>
           observeRequestOperation(
             // The query text is user content and stays off the wide event; its
             // length is what explains a slow scan or a bounds rejection.
-            chatOperationContext('orchestration.thread_search', {
+            chatOperationContext('orchestration.session_search', {
               limit: body.limit,
               queryLength: body.query.length,
             }),
-            async () => threadSearch.search(body),
+            async () => {
+              await engine.ready
+              return sessionSearch.search(body)
+            },
             (result) => ({ matchCount: result.matches.length }),
           ),
         {
-          body: orchestrationSearchThreadsInputSchema,
+          body: orchestrationSearchSessionsInputSchema,
         },
       )
       .get(
@@ -138,10 +141,13 @@ export function orchestrationRoutes(
             chatOperationContext('orchestration.turn_diff', {
               fromTurnCount: query.fromTurnCount,
               ignoreWhitespace: query.ignoreWhitespace ?? false,
-              threadId: query.threadId,
+              sessionId: query.sessionId,
               toTurnCount: query.toTurnCount,
             }),
-            async () => checkpointDiff.turnDiff(query),
+            async () => {
+              await engine.ready
+              return checkpointDiff.turnDiff(query)
+            },
             (diffs) => ({ diffCount: diffs.length }),
           ),
         {
@@ -149,19 +155,22 @@ export function orchestrationRoutes(
         },
       )
       .get(
-        '/full-thread-diff',
+        '/full-session-diff',
         ({ query }) =>
           observeRequestOperation(
-            chatOperationContext('orchestration.full_thread_diff', {
+            chatOperationContext('orchestration.full_session_diff', {
               ignoreWhitespace: query.ignoreWhitespace ?? false,
-              threadId: query.threadId,
+              sessionId: query.sessionId,
               toTurnCount: query.toTurnCount,
             }),
-            async () => checkpointDiff.fullThreadDiff(query),
+            async () => {
+              await engine.ready
+              return checkpointDiff.fullSessionDiff(query)
+            },
             (diffs) => ({ diffCount: diffs.length }),
           ),
         {
-          query: fullThreadDiffQuerySchema,
+          query: fullSessionDiffQuerySchema,
         },
       )
       .get(
@@ -182,11 +191,11 @@ export function orchestrationRoutes(
         },
       )
       .get(
-        '/thread-detail-stream',
+        '/session-detail-stream',
         ({ query, request }) =>
           sseResponse(
             toSse(
-              engine.threadDetailStream(query.threadId, {
+              engine.sessionDetailStream(query.sessionId, {
                 afterSequence: query.afterSequence,
                 signal: request.signal,
               }),
@@ -198,7 +207,7 @@ export function orchestrationRoutes(
             request.signal,
           ),
         {
-          query: threadDetailStreamQuerySchema,
+          query: sessionDetailStreamQuerySchema,
         },
       )
       .post(

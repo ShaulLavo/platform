@@ -37,8 +37,8 @@ describe('client command attachment ingest', () => {
   it('writes attachment bytes to disk and keeps base64 out of every persisted surface', async () => {
     const fixture = await createFixture()
 
-    await fixture.engine.dispatchClientCommand(projectCreateCommand())
-    await fixture.engine.dispatchClientCommand(threadCreateCommand())
+    await fixture.engine.dispatch(v.parse(orchestrationCommandSchema, projectCreateCommand()))
+    await fixture.engine.dispatchClientCommand(sessionCreateCommand())
     await fixture.engine.dispatchClientCommand(turnStartCommand([pngAttachment()]))
 
     const blob = await readFile(path.join(fixture.attachmentsDir, 'attachment-1.png'))
@@ -47,10 +47,12 @@ describe('client command attachment ingest', () => {
     expect(persistedJson(fixture.database)).not.toContain('dataUrl')
     expect(persistedJson(fixture.database)).not.toContain('base64')
 
-    const projected = fixture.database.select().from(schema.projectionThreadMessages).all()
+    const projected = fixture.database.select().from(schema.projectionSessionMessages).all()
     expect(projected.map((row) => JSON.parse(row.attachmentsJson))).toEqual([[pngMetadata()]])
 
-    const message = fixture.engine.threadDetailSnapshot('thread-1').thread.messages[0]
+    const message = (
+      await fixture.engine.sessionDetailSnapshot('00000000-0000-4000-8000-000000000001')
+    ).session.messages[0]
     expect(message).toMatchObject({ id: 'message-1', text: 'What is in this screenshot?' })
     expect(message?.attachments).toEqual([pngMetadata()])
   })
@@ -58,8 +60,8 @@ describe('client command attachment ingest', () => {
   it('drops an unwritable attachment instead of failing the turn', async () => {
     const fixture = await createFixture()
 
-    await fixture.engine.dispatchClientCommand(projectCreateCommand())
-    await fixture.engine.dispatchClientCommand(threadCreateCommand())
+    await fixture.engine.dispatch(v.parse(orchestrationCommandSchema, projectCreateCommand()))
+    await fixture.engine.dispatchClientCommand(sessionCreateCommand())
     const result = await fixture.engine.dispatchClientCommand(
       turnStartCommand([
         {
@@ -76,7 +78,9 @@ describe('client command attachment ingest', () => {
     expect(result.deduped).toBe(false)
     expect(existsSync(fixture.attachmentsDir)).toBe(false)
 
-    const message = fixture.engine.threadDetailSnapshot('thread-1').thread.messages[0]
+    const message = (
+      await fixture.engine.sessionDetailSnapshot('00000000-0000-4000-8000-000000000001')
+    ).session.messages[0]
     expect(message?.text).toBe('What is in this screenshot?')
     expect(message?.attachments).toEqual([])
   })
@@ -84,8 +88,8 @@ describe('client command attachment ingest', () => {
   it('keeps the writable attachments of a partially broken batch', async () => {
     const fixture = await createFixture()
 
-    await fixture.engine.dispatchClientCommand(projectCreateCommand())
-    await fixture.engine.dispatchClientCommand(threadCreateCommand())
+    await fixture.engine.dispatch(v.parse(orchestrationCommandSchema, projectCreateCommand()))
+    await fixture.engine.dispatchClientCommand(sessionCreateCommand())
     await fixture.engine.dispatchClientCommand(
       turnStartCommand([
         {
@@ -100,7 +104,9 @@ describe('client command attachment ingest', () => {
       ]),
     )
 
-    const message = fixture.engine.threadDetailSnapshot('thread-1').thread.messages[0]
+    const message = (
+      await fixture.engine.sessionDetailSnapshot('00000000-0000-4000-8000-000000000001')
+    ).session.messages[0]
     expect(message?.attachments).toEqual([pngMetadata()])
     expect(existsSync(path.join(fixture.attachmentsDir, 'attachment-heic.heic'))).toBe(false)
     expect(existsSync(path.join(fixture.attachmentsDir, 'attachment-1.png'))).toBe(true)
@@ -127,7 +133,7 @@ describe('orchestrationCommandSummary', () => {
       attachmentDropReasons: ['attachment-svg: unsupported image type'],
       attachmentsDropped: 1,
       attachmentsPersisted: 1,
-      commandType: 'thread.turn.start',
+      commandType: 'session.turn.start',
     })
   })
 })
@@ -174,29 +180,41 @@ function pngMetadata() {
 
 function projectCreateCommand() {
   return {
+    worktreeId: '20000000-0000-4000-8000-000000000001',
+    repositoryKey: 'fixture-repository',
+    repositoryKind: 'directory',
+    repositoryIdentity: { source: 'path', canonical: '/workspace' },
+    canonicalPath: '/workspace',
+    path: '/workspace',
+    branch: null,
+    registrationGeneration: 0,
+    kind: 'current',
+    ownership: 'protected',
+    updatedAt: '2026-05-24T00:00:00.000Z',
+    intentFingerprint: 'fixture-intent',
     commandId: 'cmd-project-create',
     createdAt: now,
     defaultModelSelection: null,
-    projectId: 'project-1',
+    projectId: '10000000-0000-4000-8000-000000000001',
     title: 'Platform',
     type: 'project.create',
     workspaceRoot: '/workspace',
   }
 }
 
-function threadCreateCommand() {
+function sessionCreateCommand() {
   return {
-    branch: null,
-    commandId: 'cmd-thread-create',
+    worktreeId: '20000000-0000-4000-8000-000000000001',
+
+    commandId: 'cmd-session-create',
     createdAt: now,
     interactionMode: 'default',
     modelSelection: { model: 'gpt-5-codex', providerInstanceId: 'codex' },
-    projectId: 'project-1',
+
     runtimeMode: 'full-access',
-    threadId: 'thread-1',
+    sessionId: '00000000-0000-4000-8000-000000000001',
     title: 'Attachments',
-    type: 'thread.create',
-    worktreePath: null,
+    type: 'session.create',
   }
 }
 
@@ -212,8 +230,8 @@ function turnStartCommand(attachments: readonly unknown[]) {
       text: 'What is in this screenshot?',
     },
     runtimeMode: 'full-access',
-    threadId: 'thread-1',
+    sessionId: '00000000-0000-4000-8000-000000000001',
     turnId: 'turn-1',
-    type: 'thread.turn.start',
+    type: 'session.turn.start',
   }
 }

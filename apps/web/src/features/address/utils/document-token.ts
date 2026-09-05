@@ -15,7 +15,8 @@ import {
 } from '@/features/search/utils/buffer-document'
 import { isSettingsDocumentId } from '@/features/settings/utils/document'
 import { toWorkspaceAbsolute, toWorkspaceRelative } from '@/features/workspace/utils/path'
-import type { ThreadId } from '@workspace/contracts'
+import { sessionIdSchema, type SessionId } from '@workspace/contracts'
+import * as v from 'valibot'
 
 /**
  * The one place document kinds are encoded. Every other field in an address is a plain
@@ -117,7 +118,7 @@ function diffToken(
 function checkpointToken(
   rootPath: string,
   query: {
-    threadId: ThreadId
+    sessionId: SessionId
     fromTurnCount: number
     toTurnCount: number
     scope?: string
@@ -139,9 +140,9 @@ function checkpointToken(
     oldPath: relativeOrNull(rootPath, query.oldPath),
     status: query.status,
   })
-  const head = `k/${encodeSegment(query.threadId)}/${turns}${extras}`
+  const head = `k/${encodeSegment(query.sessionId)}/${turns}${extras}`
 
-  if (scope === 'thread') return { kind: 'token', token: head }
+  if (scope === 'session') return { kind: 'token', token: head }
   if (scope === 'turn') return { kind: 'token', token: `${head}${TURN_SCOPE_SUFFIX}` }
 
   const relative = toWorkspaceRelative(rootPath, query.filePath ?? '')
@@ -254,14 +255,14 @@ function snapshotDiffPath(rootPath: string, segments: readonly string[]): Parsed
 }
 
 function checkpointDiffPath(rootPath: string, segments: readonly string[]): ParsedDocumentToken {
-  const threadId = threadIdOrNull(decodeSegment(segments[0]))
+  const sessionId = sessionIdOrNull(decodeSegment(segments[0]))
   const turnSegment = segments[1] ?? ''
   const isTurnScope = turnSegment.endsWith(TURN_SCOPE_SUFFIX)
   const turns = parseTurnRange(
     isTurnScope ? turnSegment.slice(0, -TURN_SCOPE_SUFFIX.length) : turnSegment,
   )
-  if (!threadId || !turns)
-    return { kind: 'rejected', reason: 'checkpoint token needs a thread id and a turn range' }
+  if (!sessionId || !turns)
+    return { kind: 'rejected', reason: 'checkpoint token needs a session id and a turn range' }
 
   const filePath = segments.length > 2 ? decodePath(rootPath, segments.slice(2)) : null
   const scope = checkpointScope(filePath, isTurnScope)
@@ -274,12 +275,12 @@ function checkpointDiffPath(rootPath: string, segments: readonly string[]): Pars
       newObjectId: turns.newObjectId,
       oldObjectId: turns.oldObjectId,
       oldPath: absoluteOrUndefined(rootPath, turns.oldPath),
-      // Thread- and turn-scope checkpoints carry a synthetic path, matching what the
+      // Session- and turn-scope checkpoints carry a synthetic path, matching what the
       // checkpoint query mints for them.
       path: filePath ?? `checkpoint-${scope}-${turns.to}`,
       scope,
       status: gitStatusOrUndefined(turns.status),
-      threadId: threadId as ThreadId,
+      sessionId,
       toTurnCount: turns.to,
     }),
   }
@@ -290,7 +291,7 @@ function checkpointScope(filePath: string | null, isTurnScope: boolean) {
   if (filePath) return 'file'
   if (isTurnScope) return 'turn'
 
-  return 'thread'
+  return 'session'
 }
 
 /**
@@ -373,13 +374,12 @@ const GIT_STATUSES = new Set([
  * Validated, not cast, for the same reason as the status and the object ids beside it:
  * an arbitrary URL segment must not become a typed id. `parseSessionToken` already
  * applies this shape check to `t/` tokens; without it here a hand-edited `k/` token
- * minted a checkpoint document for a thread that cannot exist, and the resulting tab
+ * minted a checkpoint document for a session that cannot exist, and the resulting tab
  * persisted into the cache.
  */
-function threadIdOrNull(threadId: string | null) {
-  if (!threadId?.startsWith('thread-')) return null
-
-  return threadId
+function sessionIdOrNull(sessionId: string | null) {
+  const parsed = v.safeParse(sessionIdSchema, sessionId)
+  return parsed.success ? parsed.output : null
 }
 
 /** Validated, not cast: an arbitrary URL string must not become a typed git status. */

@@ -1,24 +1,25 @@
 import {
+  type EnvironmentId,
   type CommandId,
   type ModelSelection,
   type OrchestrationMessage,
   type OrchestrationProjectShell,
-  type ThreadId,
+  type SessionId,
+  type WorktreeId,
 } from '@workspace/contracts'
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
 
 import { notifyChatCommandError } from '@/features/chat/notify-command-error'
 import type { ChatTransport } from '@/features/chat/transport/chat-transport'
-import { useSessionIsolationStore } from '@/features/chat-mode/state/session-isolation-store'
 import {
-  createDraftThreadSubmission,
+  createDraftSessionSubmission,
   createProjectDefaultModelCommand,
 } from '@/features/chat/utils/command-builders'
 import { providerListQueryOptions } from '@/features/chat/utils/provider-query'
 import { resolveChatModelSelection } from '@/features/chat/utils/resolve-model-selection'
 import { dispatchChatCommand, replayAfterDispatch } from '@/features/chat/utils/command-dispatch'
-import { scheduleThreadProjectionSyncAfterDispatch } from '@/features/chat/utils/command-sync'
+import { scheduleSessionProjectionSyncAfterDispatch } from '@/features/chat/utils/command-sync'
 import { optimisticMessageSummary } from '@/features/chat/utils/pipeline-logging'
 import { ChatComposerModesProvider } from '../providers/composer-modes-provider'
 import { useChatOptimisticStore } from '../state/chat-optimistic-store'
@@ -32,14 +33,16 @@ const DRAFT_CHAT_KEY = 'draft'
 export function ChatDraftView({
   disabled,
   transport,
-  onThreadCreated,
+  onSessionCreated,
   project,
+  worktreeId,
   rootPath,
 }: {
   disabled: boolean
   transport: ChatTransport
-  onThreadCreated: (threadId: ThreadId) => void
+  onSessionCreated: (sessionId: SessionId) => void
   project: OrchestrationProjectShell | null
+  worktreeId: WorktreeId | null
   rootPath: string
 }) {
   const [sendError, setSendError] = useState<string | null>(null)
@@ -51,15 +54,14 @@ export function ChatDraftView({
   const defaultRuntimeMode = useSettingValue('chat.defaultRuntimeMode')
   const defaultInteractionMode = useSettingValue('chat.defaultInteractionMode')
   const draftTarget = useMemo<ChatInputDraftTarget>(
-    () => ({ draftKey: DRAFT_CHAT_KEY, rootPath }),
-    [rootPath],
+    () => ({ environmentId: transport.environmentId, draftKey: DRAFT_CHAT_KEY, rootPath }),
+    [transport.environmentId, rootPath],
   )
   const providersQuery = useQuery(providerListQueryOptions())
   const modelSelection = resolveChatModelSelection(
     providersQuery.data?.providers,
     project?.defaultModelSelection ?? null,
   )
-  const consumeIsolation = useSessionIsolationStore((state) => state.consumeIsolation)
   const handleStop = useCallback(() => undefined, [])
   const handlePersistModelSelection = useCallback(
     (next: ModelSelection) => {
@@ -86,39 +88,40 @@ export function ChatDraftView({
       terminalContexts,
       text,
     }: ChatInputSubmitPayload) => {
-      if (!project) {
+      if (!project || !worktreeId) {
         setSendError('Workspace chat is still preparing.')
         return false
       }
 
       // Declared, not created. The server makes the worktree while the turn is
       // held at the gate, so a client that dies here cannot orphan a directory
-      // no thread owns.
-      const requestWorktree = consumeIsolation()
-      const submission = createDraftThreadSubmission({
+      // no session owns.
+      const submission = createDraftSessionSubmission({
         attachments,
         createdAt: new Date().toISOString(),
         interactionMode,
         modelSelection,
-        projectId: project.id,
-        rootPath,
+        worktreeId,
         runtimeMode,
         terminalContexts,
         text,
-        ...(requestWorktree ? { requestWorktree } : {}),
       })
       const outcome = await dispatchChatCommand({
         action: 'chat.draft.dispatch.summary',
         beforeDispatch: (scope) => {
           scope.increment('command.submitCount')
-          addOptimisticMessage(submission.command.commandId, submission.optimisticMessage)
+          addOptimisticMessage(
+            transport.environmentId,
+            submission.command.commandId,
+            submission.optimisticMessage,
+          )
           scope.increment('command.optimisticAddedCount')
           scope.set({
             optimistic: optimisticMessageSummary({
               commandId: submission.command.commandId,
               messageId: submission.optimisticMessage.id,
               textLength: submission.optimisticMessage.text.length,
-              threadId: submission.optimisticMessage.threadId,
+              sessionId: submission.optimisticMessage.sessionId,
             }),
           })
         },
@@ -135,12 +138,13 @@ export function ChatDraftView({
         },
         dispatchCommand: transport.dispatchCommand,
         onAccepted: (result) =>
-          scheduleThreadProjectionSyncAfterDispatch({
+          scheduleSessionProjectionSyncAfterDispatch({
             transport,
             replayAfterSequence: replayAfterDispatch(submission.command, result),
-            threadId: submission.command.threadId,
+            sessionId: submission.command.sessionId,
           }),
-        onFailed: () => removeOptimisticMessage(submission.optimisticMessage),
+        onFailed: () =>
+          removeOptimisticMessage(transport.environmentId, submission.optimisticMessage),
       })
       if (!outcome.ok) {
         setSendError(outcome.message)
@@ -148,22 +152,22 @@ export function ChatDraftView({
       }
 
       setSendError(null)
-      onThreadCreated(submission.command.threadId)
+      onSessionCreated(submission.command.sessionId)
 
       return true
     },
-    [consumeIsolation, transport, onThreadCreated, project, rootPath],
+    [transport, onSessionCreated, project, worktreeId],
   )
 
   return (
     <section className='flex min-h-0 flex-1 flex-col'>
       <ChatWelcomeView />
-      {/* No thread exists yet, so a mode pick only lands in the draft — the turn
-          that creates the thread carries it through `bootstrap.createThread`. */}
+      {/* No session exists yet, so a mode pick only lands in the draft — the turn
+          that creates the session carries it through `bootstrap.createSession`. */}
       <ChatComposerModesProvider
         dispatchCommand={transport.dispatchCommand}
         draftTarget={draftTarget}
-        threadId={null}
+        sessionId={null}
       >
         <ChatInput
           busy={false}
@@ -183,10 +187,16 @@ export function ChatDraftView({
   )
 }
 
-function addOptimisticMessage(commandId: CommandId, message: OrchestrationMessage) {
-  useChatOptimisticStore.getState().addOptimisticMessage(commandId, message)
+function addOptimisticMessage(
+  environmentId: EnvironmentId,
+  commandId: CommandId,
+  message: OrchestrationMessage,
+) {
+  useChatOptimisticStore.getState().addOptimisticMessage(environmentId, commandId, message)
 }
 
-function removeOptimisticMessage(message: OrchestrationMessage) {
-  useChatOptimisticStore.getState().removeOptimisticMessage(message.threadId, message.id)
+function removeOptimisticMessage(environmentId: EnvironmentId, message: OrchestrationMessage) {
+  useChatOptimisticStore
+    .getState()
+    .removeOptimisticMessage({ environmentId, sessionId: message.sessionId }, message.id)
 }

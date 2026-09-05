@@ -13,13 +13,13 @@ import {
 
 /**
  * Owns model selection for one composer: the draft's override wins over the
- * thread's committed selection, and a locked thread refuses writes outright.
+ * session's committed selection, and a locked session refuses writes outright.
  * Consumers read it through `useModelPicker`, so the selection never has to be
- * threaded down through the composer's layout components.
+ * sessioned down through the composer's layout components.
  *
  * The reasoning level is part of that selection rather than state of its own —
- * it lives in `ModelSelection.options`, which the draft and the thread
- * projection already persist, so it is sticky per thread for free.
+ * it lives in `ModelSelection.options`, which the draft and the session
+ * projection already persist, so it is sticky per session for free.
  */
 export function ChatModelPickerProvider({
   children,

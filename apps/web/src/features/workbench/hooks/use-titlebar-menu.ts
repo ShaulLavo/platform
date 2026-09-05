@@ -1,8 +1,11 @@
+import { useActiveChatProjection } from '@/features/chat/hooks/use-active-projection'
 import { useQuery } from '@tanstack/react-query'
 
 import { useTheme } from '@/features/settings/hooks/use-theme'
-import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
-import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
+import {
+  selectChatProjects,
+  selectCurrentWorktree,
+} from '@/features/chat/state/chat-projection-selectors'
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import { projectMenuModel } from '@/features/workbench/utils/project-menu-model'
 import { titlebarMenu } from '@/features/workbench/utils/titlebar-menu'
@@ -19,7 +22,13 @@ const EMPTY_FOLDERS: readonly { name: string; path: string }[] = []
 export function useTitlebarMenu(open: boolean) {
   const rootFolder = useEditorWorkspaceState((state) => state.rootFolder)
   const uiMode = useEditorWorkspaceState((state) => state.uiMode)
-  const projects = useChatProjectionStore(selectChatProjects)
+  const slice = useActiveChatProjection((state) => state)
+  const projects = selectChatProjects(slice).flatMap((project) => {
+    const worktree = selectCurrentWorktree(slice, project.id)
+    return worktree
+      ? [{ title: project.title, updatedAt: project.updatedAt, workspaceRoot: worktree.path }]
+      : []
+  })
   const openWorkspaceRoot = useOpenWorkspaceRoot()
   const { theme } = useTheme()
   const recentFolders = useQuery(recentFoldersQueryOptions({ enabled: open }))

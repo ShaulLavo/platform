@@ -2,66 +2,58 @@ import { and, asc, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm'
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core'
 import * as v from 'valibot'
 import {
-  ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE,
-  orchestrationThreadDetailPageInputSchema,
-  orchestrationThreadDetailPageSchema,
+  ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE,
+  orchestrationSessionDetailPageInputSchema,
+  orchestrationSessionDetailPageSchema,
   type OrchestrationCheckpointFile,
-  type OrchestrationThreadDetailAnchor,
-  type OrchestrationThreadDetailPage,
-  type OrchestrationThreadDetailPageInput,
+  type OrchestrationSessionDetailAnchor,
+  type OrchestrationSessionDetailPage,
+  type OrchestrationSessionDetailPageInput,
 } from '@workspace/contracts'
 import { orchestrationErrors } from '../observability'
 import {
   orchestrationShellSnapshotSchema,
-  orchestrationMessageSchema,
-  orchestrationProjectSchema,
-  orchestrationSessionSchema,
-  orchestrationThreadActivitySchema,
-  orchestrationThreadDetailSnapshotSchema,
-  orchestrationThreadSchema,
-  type ChatAttachment,
-  type ModelSelection,
+  orchestrationSessionDetailSnapshotSchema,
   type OrchestrationEvent,
-  type OrchestrationLatestTurn,
-  type OrchestrationThreadShell,
-  type OrchestrationProject,
-  type OrchestrationProjectScript,
-  type OrchestrationSession,
   type OrchestrationShellSnapshot,
-  type OrchestrationThread,
-  type OrchestrationThreadActivity,
-  type OrchestrationThreadDetailSnapshot,
-} from './schemas'
+  type OrchestrationSessionDetailSnapshot,
+} from '@workspace/contracts'
 import { getDefaultPlatformDatabase } from '../db/client'
 import {
   projectionProjects,
+  projectionWorktrees,
   projectionState,
-  projectionThreadActivities,
-  projectionThreadCheckpoints,
-  projectionThreadMessages,
-  projectionThreadProposedPlans,
-  projectionThreadSessions,
-  projectionThreads,
-  type OrchestrationThreadActivityRow,
-  type OrchestrationThreadMessageRow,
-  type ProjectionProjectRow,
-  type ProjectionThreadCheckpointRow,
-  type ProjectionThreadProposedPlanRow,
-  type ProjectionThreadRow,
-  type ProjectionThreadSessionRow,
+  projectionSessionActivities,
+  projectionSessionCheckpoints,
+  projectionSessionMessages,
+  projectionSessionProposedPlans,
+  projectionSessionRuntime,
+  projectionSessions,
+  type ProjectionSessionCheckpointRow,
+  type ProjectionSessionProposedPlanRow,
 } from '../db/schema'
 import type { OrchestrationDatabase } from './event-store'
 import {
   appendBounded,
   boundCheckpoints,
   createEmptyReadModel,
-  MAX_THREAD_ACTIVITIES,
-  MAX_THREAD_MESSAGES,
+  MAX_SESSION_ACTIVITIES,
+  MAX_SESSION_MESSAGES,
   type OrchestrationProjectedCheckpoint,
-  type OrchestrationProjectedThread,
+  type OrchestrationProjectedSession,
   type OrchestrationReadModel,
 } from './read-model'
 import { ORCHESTRATION_PROJECTOR_NAME } from './projection-pipeline'
+import {
+  projectFromRow,
+  projectShellFromRow,
+  worktreeFromRow,
+  worktreeShellFromRow,
+  sessionFromRow,
+  sessionShellFromRow,
+  messageFromRow,
+  activityFromRow,
+} from './utils/projection-rows'
 
 export class OrchestrationSnapshotQuery {
   private readonly database: OrchestrationDatabase
@@ -72,9 +64,9 @@ export class OrchestrationSnapshotQuery {
 
   /**
    * Hydrates the engine's in-memory model, so it takes only the tail of each
-   * thread: the decider and the provider reactor ask about the live turn, and
-   * loading every message of every thread at boot is how a server runs out of
-   * memory. Full history stays one `threadDetailSnapshot` away.
+   * session: the decider and the provider reactor ask about the live turn, and
+   * loading every message of every session at boot is how a server runs out of
+   * memory. Full history stays one `sessionDetailSnapshot` away.
    */
   fullReadModel(sequence = this.currentSequence()): OrchestrationReadModel {
     const model = createEmptyReadModel(sequence)
@@ -82,16 +74,25 @@ export class OrchestrationSnapshotQuery {
     for (const row of this.database.select().from(projectionProjects).all()) {
       model.projects.set(row.projectId, projectFromRow(row))
     }
-    for (const row of this.database.select().from(projectionThreads).all()) {
-      const thread = threadFromRow(
+    for (const row of this.database.select().from(projectionWorktrees).all()) {
+      model.worktrees.set(row.worktreeId, {
+        ...worktreeFromRow(row),
+        retirementSequence: row.retirementSequence,
+      })
+    }
+    for (const row of this.database.select().from(projectionSessions).all()) {
+      const session = sessionFromRow(
         row,
-        this.recentThreadMessages(row.threadId),
-        this.recentThreadActivities(row.threadId),
-        this.threadSession(row.threadId),
+        this.recentSessionMessages(row.sessionId),
+        this.recentSessionActivities(row.sessionId),
+        this.sessionRuntime(row.sessionId),
       )
-      model.threads.set(row.threadId, {
-        ...thread,
-        checkpointByTurnId: boundCheckpoints(this.threadCheckpointIndex(row.threadId)),
+      model.sessions.set(row.sessionId, {
+        ...session,
+        latestFailureSequence: row.latestFailureSequence,
+        latestInterruptionSequence: row.latestInterruptionSequence,
+        runtimeSequence: row.runtimeSequence,
+        checkpointByTurnId: boundCheckpoints(this.sessionCheckpointIndex(row.sessionId)),
         hasActionableProposedPlan: row.hasActionableProposedPlan,
         latestUserMessageAt: row.latestUserMessageAt,
         pendingApprovalCount: row.pendingApprovalCount,
@@ -108,27 +109,40 @@ export class OrchestrationSnapshotQuery {
    * `events` inside the command transaction, so the model is a *cache* of that
    * projection and every projection rule lives in exactly one place.
    *
-   * Cost is the batch, never the thread. A thread's scalars and session are two
+   * Cost is the batch, never the session. A session's scalars and session are two
    * point reads; a message or activity event re-reads only the single row it
    * wrote and splices it into the array the model already holds.
    * `tests/read-model-bounds.test.ts` pins that as object identity — a refresh
    * that rebuilt the retained rows would fail it and would put dispatch cost
-   * back on a curve with thread length, which is the regression that killed the
+   * back on a curve with session length, which is the regression that killed the
    * old per-event clone.
    */
   refreshReadModel(model: OrchestrationReadModel, events: OrchestrationEvent[]) {
     for (const projectId of touchedProjectIds(events)) {
       this.refreshProject(model, projectId)
     }
-    // Scalars first: a `thread.created` in this batch has to land in the map
+    for (const event of events) {
+      if (event.aggregateKind !== 'worktree') continue
+      const row = this.database
+        .select()
+        .from(projectionWorktrees)
+        .where(eq(projectionWorktrees.worktreeId, event.aggregateId))
+        .get()
+      if (row)
+        model.worktrees.set(row.worktreeId, {
+          ...worktreeFromRow(row),
+          retirementSequence: row.retirementSequence,
+        })
+    }
+    // Scalars first: a `session.created` in this batch has to land in the map
     // before the message that shares the batch can splice into it. Order is
     // otherwise irrelevant — every row the batch wrote is already final.
-    for (const threadId of touchedThreadIds(events)) {
-      this.hydrateThread(model, threadId, model.threads.get(threadId))
+    for (const sessionId of touchedSessionIds(events)) {
+      this.hydrateSession(model, sessionId, model.sessions.get(sessionId))
     }
     for (const event of events) {
       model.sequence = Math.max(model.sequence, event.sequence)
-      this.refreshThreadStreams(model, event)
+      this.refreshSessionStreams(model, event)
     }
 
     return model
@@ -141,47 +155,54 @@ export class OrchestrationSnapshotQuery {
       .where(isNull(projectionProjects.deletedAt))
       .orderBy(asc(projectionProjects.updatedAt))
       .all()
-      .map(projectFromRow)
-      .map(projectToShell)
-    const threads = this.database
+      .map(projectShellFromRow)
+    const worktrees = this.database
       .select()
-      .from(projectionThreads)
-      .where(isNull(projectionThreads.deletedAt))
-      .orderBy(asc(projectionThreads.createdAt))
+      .from(projectionWorktrees)
+      .where(isNull(projectionWorktrees.retiredAt))
+      .orderBy(asc(projectionWorktrees.createdAt))
       .all()
-      .map((thread) => shellThreadFromRow(thread, this.threadSession(thread.threadId)))
+      .map(worktreeShellFromRow)
+    const sessions = this.database
+      .select()
+      .from(projectionSessions)
+      .where(isNull(projectionSessions.deletedAt))
+      .orderBy(asc(projectionSessions.createdAt))
+      .all()
+      .map((session) => sessionShellFromRow(session, this.sessionRuntime(session.sessionId)))
 
     return v.parse(orchestrationShellSnapshotSchema, {
       projects,
+      worktrees,
       snapshotSequence: this.currentSequence(),
-      threads,
-      updatedAt: latestShellSnapshotUpdatedAt(projects, threads),
+      sessions,
+      updatedAt: latestShellSnapshotUpdatedAt([...projects, ...worktrees], sessions),
     })
   }
 
   /**
-   * The newest window of the thread, never the whole thread: opening a 5,000
-   * message thread has to cost the same as opening a 5 message one. Older rows
-   * are reached with `threadDetailPage`, walking backwards from the oldest row
+   * The newest window of the session, never the whole session: opening a 5,000
+   * message session has to cost the same as opening a 5 message one. Older rows
+   * are reached with `sessionDetailPage`, walking backwards from the oldest row
    * the caller holds — nothing here is trimmed out of reach.
    */
-  threadDetailSnapshot(threadId: string): OrchestrationThreadDetailSnapshot {
+  sessionDetailSnapshot(sessionId: string): OrchestrationSessionDetailSnapshot {
     const row = this.database
       .select()
-      .from(projectionThreads)
-      .where(eq(projectionThreads.threadId, threadId))
+      .from(projectionSessions)
+      .where(eq(projectionSessions.sessionId, sessionId))
       .get()
-    if (!row) throw orchestrationErrors.THREAD_NOT_FOUND({ threadId })
+    if (!row) throw orchestrationErrors.SESSION_NOT_FOUND({ sessionId })
 
-    return v.parse(orchestrationThreadDetailSnapshotSchema, {
-      checkpoints: this.threadCheckpointRows(threadId).map(checkpointFromRow),
-      proposedPlans: this.threadProposedPlans(threadId).map(proposedPlanFromRow),
+    return v.parse(orchestrationSessionDetailSnapshotSchema, {
+      checkpoints: this.sessionCheckpointRows(sessionId).map(checkpointFromRow),
+      proposedPlans: this.sessionProposedPlans(sessionId).map(proposedPlanFromRow),
       snapshotSequence: this.currentSequence(),
-      thread: threadFromRow(
+      session: sessionFromRow(
         row,
-        this.messagesBefore(threadId, null, ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE).rows,
-        this.activitiesBefore(threadId, null, ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE).rows,
-        this.threadSession(threadId),
+        this.messagesBefore(sessionId, null, ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE).rows,
+        this.activitiesBefore(sessionId, null, ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE).rows,
+        this.sessionRuntime(sessionId),
       ),
     })
   }
@@ -189,44 +210,48 @@ export class OrchestrationSnapshotQuery {
   /**
    * One page of strictly older rows. Messages and activities are two streams
    * with their own boundaries, so each walks back independently and the page is
-   * exhausted only once both have reached the start of the thread.
+   * exhausted only once both have reached the start of the session.
    */
-  threadDetailPage(input: OrchestrationThreadDetailPageInput): OrchestrationThreadDetailPage {
-    const query = v.parse(orchestrationThreadDetailPageInputSchema, input)
+  sessionDetailPage(input: OrchestrationSessionDetailPageInput): OrchestrationSessionDetailPage {
+    const query = v.parse(orchestrationSessionDetailPageInputSchema, input)
     const exists = this.database
-      .select({ threadId: projectionThreads.threadId })
-      .from(projectionThreads)
-      .where(eq(projectionThreads.threadId, query.threadId))
+      .select({ sessionId: projectionSessions.sessionId })
+      .from(projectionSessions)
+      .where(eq(projectionSessions.sessionId, query.sessionId))
       .get()
-    if (!exists) throw orchestrationErrors.THREAD_NOT_FOUND({ threadId: query.threadId })
+    if (!exists) throw orchestrationErrors.SESSION_NOT_FOUND({ sessionId: query.sessionId })
 
-    const messages = this.messagesBefore(query.threadId, query.beforeMessage, query.limit)
-    const activities = this.activitiesBefore(query.threadId, query.beforeActivity, query.limit)
+    const messages = this.messagesBefore(query.sessionId, query.beforeMessage, query.limit)
+    const activities = this.activitiesBefore(query.sessionId, query.beforeActivity, query.limit)
 
-    return v.parse(orchestrationThreadDetailPageSchema, {
+    return v.parse(orchestrationSessionDetailPageSchema, {
       activities: activities.rows.map(activityFromRow),
       hasEarlier: messages.hasEarlier || activities.hasEarlier,
       messages: messages.rows.map(messageFromRow),
       snapshotSequence: this.currentSequence(),
-      threadId: query.threadId,
+      sessionId: query.sessionId,
     })
   }
 
   private messagesBefore(
-    threadId: string,
-    before: OrchestrationThreadDetailAnchor | null,
+    sessionId: string,
+    before: OrchestrationSessionDetailAnchor | null,
     limit: number,
   ) {
     const rows = this.database
       .select()
-      .from(projectionThreadMessages)
+      .from(projectionSessionMessages)
       .where(
         and(
-          eq(projectionThreadMessages.threadId, threadId),
-          olderThan(projectionThreadMessages.createdAt, projectionThreadMessages.messageId, before),
+          eq(projectionSessionMessages.sessionId, sessionId),
+          olderThan(
+            projectionSessionMessages.createdAt,
+            projectionSessionMessages.messageId,
+            before,
+          ),
         ),
       )
-      .orderBy(desc(projectionThreadMessages.createdAt), desc(projectionThreadMessages.messageId))
+      .orderBy(desc(projectionSessionMessages.createdAt), desc(projectionSessionMessages.messageId))
       .limit(limit + 1)
       .all()
 
@@ -234,26 +259,26 @@ export class OrchestrationSnapshotQuery {
   }
 
   private activitiesBefore(
-    threadId: string,
-    before: OrchestrationThreadDetailAnchor | null,
+    sessionId: string,
+    before: OrchestrationSessionDetailAnchor | null,
     limit: number,
   ) {
     const rows = this.database
       .select()
-      .from(projectionThreadActivities)
+      .from(projectionSessionActivities)
       .where(
         and(
-          eq(projectionThreadActivities.threadId, threadId),
+          eq(projectionSessionActivities.sessionId, sessionId),
           olderThan(
-            projectionThreadActivities.createdAt,
-            projectionThreadActivities.activityId,
+            projectionSessionActivities.createdAt,
+            projectionSessionActivities.activityId,
             before,
           ),
         ),
       )
       .orderBy(
-        desc(projectionThreadActivities.createdAt),
-        desc(projectionThreadActivities.activityId),
+        desc(projectionSessionActivities.createdAt),
+        desc(projectionSessionActivities.activityId),
       )
       .limit(limit + 1)
       .all()
@@ -261,45 +286,45 @@ export class OrchestrationSnapshotQuery {
     return takeBackwardsPage(rows, limit)
   }
 
-  private recentThreadMessages(threadId: string) {
-    return this.messagesBefore(threadId, null, MAX_THREAD_MESSAGES).rows
+  private recentSessionMessages(sessionId: string) {
+    return this.messagesBefore(sessionId, null, MAX_SESSION_MESSAGES).rows
   }
 
-  private recentThreadActivities(threadId: string) {
-    return this.activitiesBefore(threadId, null, MAX_THREAD_ACTIVITIES).rows
+  private recentSessionActivities(sessionId: string) {
+    return this.activitiesBefore(sessionId, null, MAX_SESSION_ACTIVITIES).rows
   }
 
-  private threadSession(threadId: string) {
+  private sessionRuntime(sessionId: string) {
     return this.database
       .select()
-      .from(projectionThreadSessions)
-      .where(eq(projectionThreadSessions.threadId, threadId))
+      .from(projectionSessionRuntime)
+      .where(eq(projectionSessionRuntime.sessionId, sessionId))
       .get()
   }
 
-  private threadCheckpointRows(threadId: string) {
+  private sessionCheckpointRows(sessionId: string) {
     return this.database
       .select()
-      .from(projectionThreadCheckpoints)
-      .where(eq(projectionThreadCheckpoints.threadId, threadId))
-      .orderBy(asc(projectionThreadCheckpoints.checkpointTurnCount))
+      .from(projectionSessionCheckpoints)
+      .where(eq(projectionSessionCheckpoints.sessionId, sessionId))
+      .orderBy(asc(projectionSessionCheckpoints.checkpointTurnCount))
       .all()
   }
 
-  private threadProposedPlans(threadId: string) {
+  private sessionProposedPlans(sessionId: string) {
     return this.database
       .select()
-      .from(projectionThreadProposedPlans)
-      .where(eq(projectionThreadProposedPlans.threadId, threadId))
+      .from(projectionSessionProposedPlans)
+      .where(eq(projectionSessionProposedPlans.sessionId, sessionId))
       .orderBy(
-        asc(projectionThreadProposedPlans.createdAt),
-        asc(projectionThreadProposedPlans.planId),
+        asc(projectionSessionProposedPlans.createdAt),
+        asc(projectionSessionProposedPlans.planId),
       )
       .all()
   }
 
-  private threadCheckpointIndex(threadId: string) {
-    const entries = this.threadCheckpointRows(threadId).map(
+  private sessionCheckpointIndex(sessionId: string) {
+    const entries = this.sessionCheckpointRows(sessionId).map(
       (row) => [row.turnId, projectedCheckpointFromRow(row)] as const,
     )
 
@@ -318,83 +343,86 @@ export class OrchestrationSnapshotQuery {
   }
 
   /**
-   * `held` is the thread the model already carries, or undefined to re-read its
-   * streams from SQL as well. Passing it is what keeps a refresh O(1) in thread
+   * `held` is the session the model already carries, or undefined to re-read its
+   * streams from SQL as well. Passing it is what keeps a refresh O(1) in session
    * length: the retained messages, activities and checkpoints are rows this
    * model already read and nothing in this batch invalidated wholesale.
    */
-  private hydrateThread(
+  private hydrateSession(
     model: OrchestrationReadModel,
-    threadId: string,
-    held: OrchestrationProjectedThread | undefined,
+    sessionId: string,
+    held: OrchestrationProjectedSession | undefined,
   ) {
     const row = this.database
       .select()
-      .from(projectionThreads)
-      .where(eq(projectionThreads.threadId, threadId))
+      .from(projectionSessions)
+      .where(eq(projectionSessions.sessionId, sessionId))
       .get()
     if (!row) return
 
-    const thread = threadFromRow(row, [], [], this.threadSession(threadId))
-    model.threads.set(threadId, {
-      ...thread,
-      activities: held?.activities ?? this.recentThreadActivities(threadId).map(activityFromRow),
+    const session = sessionFromRow(row, [], [], this.sessionRuntime(sessionId))
+    model.sessions.set(sessionId, {
+      ...session,
+      latestFailureSequence: row.latestFailureSequence,
+      latestInterruptionSequence: row.latestInterruptionSequence,
+      runtimeSequence: row.runtimeSequence,
+      activities: held?.activities ?? this.recentSessionActivities(sessionId).map(activityFromRow),
       checkpointByTurnId:
-        held?.checkpointByTurnId ?? boundCheckpoints(this.threadCheckpointIndex(threadId)),
+        held?.checkpointByTurnId ?? boundCheckpoints(this.sessionCheckpointIndex(sessionId)),
       hasActionableProposedPlan: row.hasActionableProposedPlan,
       latestUserMessageAt: row.latestUserMessageAt,
-      messages: held?.messages ?? this.recentThreadMessages(threadId).map(messageFromRow),
+      messages: held?.messages ?? this.recentSessionMessages(sessionId).map(messageFromRow),
       pendingApprovalCount: row.pendingApprovalCount,
       pendingUserInputCount: row.pendingUserInputCount,
     })
   }
 
-  private refreshThreadStreams(model: OrchestrationReadModel, event: OrchestrationEvent) {
-    if (event.type === 'thread.message-sent') {
-      this.refreshMessage(model, event.payload.threadId, event.payload.messageId)
+  private refreshSessionStreams(model: OrchestrationReadModel, event: OrchestrationEvent) {
+    if (event.type === 'session.message-sent') {
+      this.refreshMessage(model, event.payload.sessionId, event.payload.messageId)
       return
     }
-    if (event.type === 'thread.activity-appended') {
-      this.refreshActivity(model, event.payload.threadId, event.payload.activity.id)
+    if (event.type === 'session.activity-appended') {
+      this.refreshActivity(model, event.payload.sessionId, event.payload.activity.id)
       return
     }
-    if (event.type === 'thread.turn-diff-completed') {
-      this.refreshCheckpoint(model, event.payload.threadId, event.payload.turnId)
+    if (event.type === 'session.turn-diff-completed') {
+      this.refreshCheckpoint(model, event.payload.sessionId, event.payload.turnId)
       return
     }
     // A revert prunes messages, activities, turns, checkpoints and plans at
     // once, so the held streams are the one thing a point read cannot repair.
-    if (event.type !== 'thread.reverted') return
+    if (event.type !== 'session.reverted') return
 
-    this.hydrateThread(model, event.payload.threadId, undefined)
+    this.hydrateSession(model, event.payload.sessionId, undefined)
   }
 
-  private refreshMessage(model: OrchestrationReadModel, threadId: string, messageId: string) {
-    const thread = model.threads.get(threadId)
-    if (!thread) return
+  private refreshMessage(model: OrchestrationReadModel, sessionId: string, messageId: string) {
+    const session = model.sessions.get(sessionId)
+    if (!session) return
 
     const row = this.database
       .select()
-      .from(projectionThreadMessages)
-      .where(eq(projectionThreadMessages.messageId, messageId))
+      .from(projectionSessionMessages)
+      .where(eq(projectionSessionMessages.messageId, messageId))
       .get()
     if (!row) return
 
-    upsertById(thread.messages, messageFromRow(row), MAX_THREAD_MESSAGES)
+    upsertById(session.messages, messageFromRow(row), MAX_SESSION_MESSAGES)
   }
 
-  private refreshActivity(model: OrchestrationReadModel, threadId: string, activityId: string) {
-    const thread = model.threads.get(threadId)
-    if (!thread) return
+  private refreshActivity(model: OrchestrationReadModel, sessionId: string, activityId: string) {
+    const session = model.sessions.get(sessionId)
+    if (!session) return
 
     const row = this.database
       .select()
-      .from(projectionThreadActivities)
-      .where(eq(projectionThreadActivities.activityId, activityId))
+      .from(projectionSessionActivities)
+      .where(eq(projectionSessionActivities.activityId, activityId))
       .get()
     if (!row) return
 
-    upsertById(thread.activities, activityFromRow(row), MAX_THREAD_ACTIVITIES)
+    upsertById(session.activities, activityFromRow(row), MAX_SESSION_ACTIVITIES)
   }
 
   /**
@@ -402,26 +430,26 @@ export class OrchestrationSnapshotQuery {
    * capture is refused by the projection's upsert, so re-reading the row is how
    * that rule reaches the cache without being written down a second time.
    */
-  private refreshCheckpoint(model: OrchestrationReadModel, threadId: string, turnId: string) {
-    const thread = model.threads.get(threadId)
-    if (!thread) return
+  private refreshCheckpoint(model: OrchestrationReadModel, sessionId: string, turnId: string) {
+    const session = model.sessions.get(sessionId)
+    if (!session) return
 
     const row = this.database
       .select()
-      .from(projectionThreadCheckpoints)
+      .from(projectionSessionCheckpoints)
       .where(
         and(
-          eq(projectionThreadCheckpoints.threadId, threadId),
-          eq(projectionThreadCheckpoints.turnId, turnId),
+          eq(projectionSessionCheckpoints.sessionId, sessionId),
+          eq(projectionSessionCheckpoints.turnId, turnId),
         ),
       )
       .get()
     if (!row) return
 
-    model.threads.set(threadId, {
-      ...thread,
+    model.sessions.set(sessionId, {
+      ...session,
       checkpointByTurnId: boundCheckpoints({
-        ...thread.checkpointByTurnId,
+        ...session.checkpointByTurnId,
         [turnId]: projectedCheckpointFromRow(row),
       }),
     })
@@ -446,7 +474,7 @@ export class OrchestrationSnapshotQuery {
 function olderThan(
   createdAtColumn: SQLiteColumn,
   idColumn: SQLiteColumn,
-  before: OrchestrationThreadDetailAnchor | null,
+  before: OrchestrationSessionDetailAnchor | null,
 ): SQL | undefined {
   if (!before) return undefined
 
@@ -468,50 +496,23 @@ function takeBackwardsPage<Row>(rows: Row[], limit: number) {
   }
 }
 
-function projectFromRow(row: ProjectionProjectRow): OrchestrationProject {
-  return v.parse(orchestrationProjectSchema, {
-    createdAt: row.createdAt,
-    defaultModelSelection: parseJson<ModelSelection | null>(row.defaultModelSelectionJson, null),
-    deletedAt: row.deletedAt,
-    id: row.projectId,
-    orderKey: row.orderKey,
-    scripts: parseJson<OrchestrationProjectScript[]>(row.scriptsJson, []),
-    title: row.title,
-    updatedAt: row.updatedAt,
-    workspaceRoot: row.workspaceRoot,
-  })
-}
-
-function projectToShell(project: OrchestrationProject) {
-  return {
-    createdAt: project.createdAt,
-    defaultModelSelection: project.defaultModelSelection,
-    id: project.id,
-    orderKey: project.orderKey,
-    scripts: project.scripts,
-    title: project.title,
-    updatedAt: project.updatedAt,
-    workspaceRoot: project.workspaceRoot,
-  }
-}
-
 type ShellSnapshotTimestampSource = {
-  session?: { updatedAt: string } | null
+  runtime?: { updatedAt: string } | null
   updatedAt: string
 }
 
 function latestShellSnapshotUpdatedAt(
   projects: ShellSnapshotTimestampSource[],
-  threads: ShellSnapshotTimestampSource[],
+  sessions: ShellSnapshotTimestampSource[],
 ) {
   let updatedAt = new Date(0).toISOString()
 
   for (const project of projects) {
     updatedAt = latestTimestamp(updatedAt, project.updatedAt)
   }
-  for (const thread of threads) {
-    updatedAt = latestTimestamp(updatedAt, thread.updatedAt)
-    updatedAt = latestTimestamp(updatedAt, thread.session?.updatedAt)
+  for (const session of sessions) {
+    updatedAt = latestTimestamp(updatedAt, session.updatedAt)
+    updatedAt = latestTimestamp(updatedAt, session.runtime?.updatedAt)
   }
 
   return updatedAt
@@ -524,95 +525,7 @@ function latestTimestamp(current: string, candidate: string | null | undefined) 
   return candidate
 }
 
-function shellThreadFromRow(row: ProjectionThreadRow, session?: ProjectionThreadSessionRow) {
-  return {
-    archivedAt: row.archivedAt,
-    branch: row.branch,
-    createdAt: row.createdAt,
-    hasActionableProposedPlan: row.hasActionableProposedPlan,
-    id: row.threadId,
-    interactionMode: row.interactionMode,
-    latestTurn: parseJson<OrchestrationLatestTurn | null>(row.latestTurnJson, null),
-    latestUserMessageAt: row.latestUserMessageAt,
-    modelSelection: parseJson<ModelSelection>(row.modelSelectionJson),
-    pendingApprovalCount: row.pendingApprovalCount,
-    pendingUserInputCount: row.pendingUserInputCount,
-    // The cold read has to carry it too, or a reload leaves a thread that is
-    // mid-plan showing a coarse spinner until its next plan snapshot arrives —
-    // seconds during a live turn, and forever once the turn stops planning.
-    planProgress: parseJson<OrchestrationThreadShell['planProgress']>(row.planProgressJson, null),
-    pinOrderKey: row.pinOrderKey,
-    pinnedAt: row.pinnedAt,
-    projectId: row.projectId,
-    runtimeMode: row.runtimeMode,
-    session: session ? sessionFromRow(session) : null,
-    settledAt: row.settledAt,
-    settledOverride: row.settledOverride,
-    snoozedAt: row.snoozedAt,
-    snoozedUntil: row.snoozedUntil,
-    title: row.title,
-    updatedAt: row.updatedAt,
-    worktreePath: row.worktreePath,
-  }
-}
-
-function threadFromRow(
-  row: ProjectionThreadRow,
-  messages: OrchestrationThreadMessageRow[],
-  activities: OrchestrationThreadActivityRow[],
-  session?: ProjectionThreadSessionRow,
-): OrchestrationThread {
-  return v.parse(orchestrationThreadSchema, {
-    ...shellThreadFromRow(row, session),
-    activities: activities.map(activityFromRow),
-    deletedAt: row.deletedAt,
-    messages: messages.map(messageFromRow),
-  })
-}
-
-function messageFromRow(row: OrchestrationThreadMessageRow) {
-  return v.parse(orchestrationMessageSchema, {
-    attachments: parseJson<ChatAttachment[]>(row.attachmentsJson, []),
-    createdAt: row.createdAt,
-    id: row.messageId,
-    role: row.role,
-    streaming: row.streaming,
-    text: row.text,
-    threadId: row.threadId,
-    turnId: row.turnId,
-    updatedAt: row.updatedAt,
-  })
-}
-
-function activityFromRow(row: OrchestrationThreadActivityRow): OrchestrationThreadActivity {
-  return v.parse(orchestrationThreadActivitySchema, {
-    createdAt: row.createdAt,
-    id: row.activityId,
-    kind: row.kind,
-    payload: parseJson<unknown>(row.payloadJson, null),
-    sequence: row.sequence ?? undefined,
-    summary: row.summary,
-    threadId: row.threadId,
-    tone: row.tone,
-    turnId: row.turnId,
-  })
-}
-
-function sessionFromRow(row: ProjectionThreadSessionRow): OrchestrationSession {
-  return v.parse(orchestrationSessionSchema, {
-    activeTurnId: row.activeTurnId,
-    lastError: row.lastError,
-    providerInstanceId: row.providerInstanceId,
-    providerName: row.providerName,
-    providerSessionId: row.providerSessionId,
-    runtimeMode: row.runtimeMode,
-    status: row.status,
-    threadId: row.threadId,
-    updatedAt: row.updatedAt,
-  })
-}
-
-function checkpointFromRow(row: ProjectionThreadCheckpointRow) {
+function checkpointFromRow(row: ProjectionSessionCheckpointRow) {
   return {
     assistantMessageId: row.assistantMessageId,
     checkpointRef: row.checkpointRef,
@@ -625,7 +538,7 @@ function checkpointFromRow(row: ProjectionThreadCheckpointRow) {
 }
 
 /** The in-memory model answers "what can be reverted", so it drops the files. */
-function projectedCheckpointFromRow(row: ProjectionThreadCheckpointRow) {
+function projectedCheckpointFromRow(row: ProjectionSessionCheckpointRow) {
   return {
     assistantMessageId: row.assistantMessageId,
     checkpointRef: row.checkpointRef,
@@ -636,14 +549,14 @@ function projectedCheckpointFromRow(row: ProjectionThreadCheckpointRow) {
   } as OrchestrationProjectedCheckpoint
 }
 
-function proposedPlanFromRow(row: ProjectionThreadProposedPlanRow) {
+function proposedPlanFromRow(row: ProjectionSessionProposedPlanRow) {
   return {
     createdAt: row.createdAt,
     id: row.planId,
-    implementationThreadId: row.implementationThreadId,
+    implementationSessionId: row.implementationSessionId,
     implementedAt: row.implementedAt,
     planMarkdown: row.planMarkdown,
-    threadId: row.threadId,
+    sessionId: row.sessionId,
     turnId: row.turnId,
     updatedAt: row.updatedAt,
   }
@@ -667,26 +580,10 @@ function touchedProjectIds(events: OrchestrationEvent[]) {
   return ids
 }
 
-/**
- * The event's own aggregate, plus one exception: starting a turn from a proposed
- * plan clears that plan's actionable flag on the thread that *proposed* it,
- * which is not always the thread running the turn
- * (`projection-pipeline.ts:markProposedPlanImplemented`).
- */
-function touchedThreadIds(events: OrchestrationEvent[]) {
-  const ids = new Set<string>()
-
-  for (const event of events) {
-    if (event.aggregateKind === 'thread') ids.add(event.aggregateId)
-    if (event.type !== 'thread.turn-start-requested') continue
-
-    const source = event.payload.sourceProposedPlan
-    if (!source) continue
-
-    ids.add(source.threadId)
-  }
-
-  return ids
+function touchedSessionIds(events: readonly OrchestrationEvent[]) {
+  return new Set(
+    events.filter((event) => event.aggregateKind === 'session').map((event) => event.aggregateId),
+  )
 }
 
 /** Corrects the entry the row already has, else appends it within the cap. */

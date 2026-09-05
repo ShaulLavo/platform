@@ -1,0 +1,87 @@
+[
+  {
+    "path": "apps/server/src/provider/adapters/codex-protocol/generated/schema.gen.ts",
+    "symbol": "V2ThreadReadResponse__ThreadId",
+    "count": 1
+  },
+  {
+    "path": "apps/server/src/provider/adapters/codex-protocol/generated/schema.gen.ts",
+    "symbol": "V2ThreadReadResponse__ThreadIdSchema",
+    "count": 3
+  },
+  {
+    "path": "apps/server/src/provider/adapters/codex-protocol/generated/schema.gen.ts",
+    "symbol": "V2ThreadResumeResponse__ThreadId",
+    "count": 1
+  },
+  {
+    "path": "apps/server/src/provider/adapters/codex-protocol/generated/schema.gen.ts",
+    "symbol": "V2ThreadResumeResponse__ThreadIdSchema",
+    "count": 3
+  },
+  {
+    "path": "apps/server/src/provider/adapters/codex-protocol/generated/schema.gen.ts",
+    "symbol": "V2ThreadRollbackResponse__ThreadId",
+    "count": 1
+  },
+  {
+    "path": "apps/server/src/provider/adapters/codex-protocol/generated/schema.gen.ts",
+    "symbol": "V2ThreadRollbackResponse__ThreadIdSchema",
+    "count": 3
+  },
+  {
+    "path": "apps/server/src/provider/adapters/codex-protocol/generated/schema.gen.ts",
+    "symbol": "V2ThreadStartResponse__ThreadId",
+    "count": 1
+  },
+  {
+    "path": "apps/server/src/provider/adapters/codex-protocol/generated/schema.gen.ts",
+    "symbol": "V2ThreadStartResponse__ThreadIdSchema",
+    "count": 3
+  },
+  {
+    "path": "apps/server/src/provider/adapters/codex-protocol/generated/schema.gen.ts",
+    "symbol": "V2ThreadStartedNotification__ThreadId",
+    "count": 1
+  },
+  {
+    "path": "apps/server/src/provider/adapters/codex-protocol/generated/schema.gen.ts",
+    "symbol": "V2ThreadStartedNotification__ThreadIdSchema",
+    "count": 3
+  },
+  {
+    "path": "apps/server/src/provider/adapters/codex-protocol/generated/schema.gen.ts",
+    "symbol": "receiverThreadIds",
+    "count": 10
+  },
+  {
+    "path": "apps/server/src/provider/adapters/codex-protocol/generated/schema.gen.ts",
+    "symbol": "senderThreadId",
+    "count": 10
+  },
+  {
+    "path": "apps/server/src/provider/adapters/codex-protocol/generated/schema.gen.ts",
+    "symbol": "threadId",
+    "count": 45
+  },
+  {
+    "path": "apps/server/src/provider/adapters/codex-protocol/tests/parsing.test.ts",
+    "symbol": "threadId",
+    "count": 1
+  },
+  {
+    "path": "apps/server/src/provider/adapters/codex.ts",
+    "symbol": "thread.id",
+    "count": 1
+  },
+  {
+    "path": "apps/server/src/provider/adapters/codex.ts",
+    "symbol": "threadId",
+    "count": 4
+  },
+  {
+    "path": "apps/server/src/provider/adapters/tests/codex.test.ts",
+    "symbol": "threadId",
+    "count": 15
+  }
+]

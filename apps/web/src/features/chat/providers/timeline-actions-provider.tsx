@@ -13,15 +13,15 @@ export function ChatTimelineActionsProvider({
   readonly children: ReactNode
   readonly revertToCheckpoint: (turnCount: number) => void
 }) {
-  const { openCheckpointDiff, openFullThreadCheckpointDiff } = useOpenCheckpointDiffDocument()
+  const { openCheckpointDiff, openFullSessionCheckpointDiff } = useOpenCheckpointDiffDocument()
   // Context value stability keeps message rows from repainting on unrelated chat chrome changes.
   const value = useMemo<ChatTimelineActions>(
     () => ({
       openCheckpointDiff,
-      openThreadCheckpointDiff: openFullThreadCheckpointDiff,
+      openSessionCheckpointDiff: openFullSessionCheckpointDiff,
       revertToCheckpoint,
     }),
-    [openCheckpointDiff, openFullThreadCheckpointDiff, revertToCheckpoint],
+    [openCheckpointDiff, openFullSessionCheckpointDiff, revertToCheckpoint],
   )
 
   return <ChatTimelineActionsContext value={value}>{children}</ChatTimelineActionsContext>

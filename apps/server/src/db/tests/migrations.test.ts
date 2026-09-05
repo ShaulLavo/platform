@@ -1,7 +1,9 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { sql } from 'drizzle-orm'
+import { is, sql } from 'drizzle-orm'
+import { getTableConfig, SQLiteTable } from 'drizzle-orm/sqlite-core'
+import * as schema from '../schema'
 import { afterEach, describe, expect, it } from 'vitest'
 import { createMetadataDatabase, type MetadataDatabaseHandle } from '../client'
 import { readEnvironmentIdentity } from '../environment-identity'
@@ -21,12 +23,13 @@ const expectedTables = [
   'orchestration_command_receipts',
   'projection_state',
   'projection_projects',
-  'projection_threads',
-  'projection_thread_messages',
-  'projection_thread_activities',
-  'projection_thread_sessions',
-  'projection_thread_proposed_plans',
-  'projection_thread_checkpoints',
+  'projection_worktrees',
+  'projection_sessions',
+  'projection_session_messages',
+  'projection_session_activities',
+  'projection_session_runtime',
+  'projection_session_proposed_plans',
+  'projection_session_checkpoints',
   'projection_turns',
   'provider_session_runtime',
 ] as const
@@ -52,7 +55,23 @@ describe('platform migration ledger', () => {
     expect(applied.map((migration) => migration.version)).toEqual(ledgerVersionNumbers)
     expect(tableNames(handle)).toEqual(expect.arrayContaining([...expectedTables]))
     expect(ledgerVersions(handle)).toEqual(ledgerVersionNumbers)
-    expect(ledgerRow(handle, 1)?.applied_at).toEqual(expect.any(String))
+    expect(ledgerRow(handle, 11)?.applied_at).toEqual(expect.any(String))
+  })
+
+  it('matches every current Drizzle table, index and foreign key', () => {
+    const handle = openTempDatabase()
+    migratePlatformDatabase(handle.db)
+    for (const table of Object.values(schema)) {
+      if (!is(table, SQLiteTable)) continue
+      const config = getTableConfig(table)
+      expect(columnNames(handle, config.name)).toEqual(config.columns.map((column) => column.name))
+      expect(indexNames(handle, config.name)).toEqual(
+        expect.arrayContaining(config.indexes.map((index) => index.config.name)),
+      )
+      expect(rows(handle, sql`SELECT * FROM pragma_foreign_key_list(${config.name})`)).toHaveLength(
+        config.foreignKeys.length,
+      )
+    }
   })
 
   it('applies nothing on the second run', () => {
@@ -78,18 +97,70 @@ describe('platform migration ledger', () => {
     expect(second.db.select().from(environmentIdentity).all()).toEqual([identity])
   })
 
-  it('adds exactly one identity to a version 9 database and never remints it', () => {
+  it('resets legacy chat state while retaining environment identity and non-chat tables', () => {
     const handle = openTempDatabase()
-    migratePlatformDatabase(
-      handle.db,
-      platformMigrations.filter(({ version }) => version <= 9),
-    )
-
-    const applied = migratePlatformDatabase(handle.db)
+    seedLegacyDatabase(handle)
     const identity = readEnvironmentIdentity(handle.db)
-    expect(applied.map(({ version }) => version)).toEqual([10])
-    expect(migratePlatformDatabase(handle.db)).toEqual([])
+    const applied = migratePlatformDatabase(handle.db)
+    expect(applied.map(({ version }) => version)).toEqual([11])
+    expect(ledgerVersions(handle)).toEqual([11])
     expect(handle.db.select().from(environmentIdentity).all()).toEqual([identity])
+    expect(rows<{ value: string }>(handle, sql`SELECT value FROM operator_state`)).toEqual([
+      { value: 'keep-settings-and-secrets' },
+    ])
+    expect(rows<{ path: string }>(handle, sql`SELECT path FROM fs_metadata`)).toEqual([
+      { path: '/keep/file.ts' },
+    ])
+    expect(tableNames(handle).filter((name) => name.includes('thread'))).toEqual([])
+    expect(rows(handle, sql`SELECT * FROM orchestration_events`)).toEqual([])
+    expect(rows(handle, sql`SELECT * FROM projection_sessions`)).toEqual([])
+    insertTopology(handle)
+    expect(rows(handle, sql`PRAGMA foreign_key_check`)).toEqual([])
+    expect(migratePlatformDatabase(handle.db)).toEqual([])
+    expect(rows(handle, sql`SELECT * FROM projection_worktrees`)).toHaveLength(1)
+  })
+
+  it('creates the same constrained topology on a fresh database', () => {
+    const handle = openTempDatabase()
+    migratePlatformDatabase(handle.db)
+    insertTopology(handle)
+    expect(rows(handle, sql`PRAGMA foreign_key_check`)).toEqual([])
+    expect(() =>
+      handle.db.run(
+        sql`INSERT INTO projection_worktrees (worktree_id, project_id, registration_generation, canonical_path, path, kind, ownership, created_at, updated_at) VALUES ('other', 'project', 0, '/other', '/other', 'current', 'protected', 'now', 'now')`,
+      ),
+    ).toThrow()
+    expect(() =>
+      handle.db.run(
+        sql`INSERT INTO projection_worktrees (worktree_id, project_id, registration_generation, canonical_path, path, kind, ownership, created_at, updated_at) VALUES ('other', 'project', 0, '/root', '/root', 'linked', 'external', 'now', 'now')`,
+      ),
+    ).toThrow()
+    expect(() =>
+      handle.db.run(
+        sql`INSERT INTO projection_projects (project_id, title, repository_key, repository_kind, repository_identity_json, created_at, updated_at) VALUES ('duplicate', 'Duplicate', 'repository', 'directory', '{}', 'now', 'now')`,
+      ),
+    ).toThrow()
+    expect(columnNames(handle, 'projection_sessions')).not.toEqual(
+      expect.arrayContaining(['project_id', 'branch', 'worktree_path']),
+    )
+    expect(columnInfo(handle, 'projection_sessions', 'worktree_id')?.not_null).toBe(1)
+    expect(columnNames(handle, 'provider_session_runtime')).not.toContain('status')
+  })
+
+  it('enforces accepted versus rejected receipt sequence invariants', () => {
+    const handle = openTempDatabase()
+    migratePlatformDatabase(handle.db)
+    expect(() =>
+      handle.db.run(
+        sql`INSERT INTO orchestration_command_receipts (command_id, command_type, aggregate_kind, aggregate_id, accepted_at, status, command_json, intent_fingerprint) VALUES ('invalid', 'project.create', 'project', 'project', 'now', 'accepted', '{}', 'fingerprint')`,
+      ),
+    ).toThrow()
+    handle.db.run(
+      sql`INSERT INTO orchestration_command_receipts (command_id, command_type, aggregate_kind, aggregate_id, accepted_at, status, command_json, intent_fingerprint, result_sequence) VALUES ('valid', 'project.create', 'project', 'project', 'now', 'accepted', '{}', 'fingerprint', 0)`,
+    )
+    expect(rows(handle, sql`SELECT result_sequence FROM orchestration_command_receipts`)).toEqual([
+      { result_sequence: 0 },
+    ])
   })
 
   it('refuses a missing identity instead of recreating it', () => {
@@ -142,13 +213,13 @@ describe('platform migration ledger', () => {
         'orchestration_events_aggregate_sequence_idx',
       ]),
     )
-    expect(indexNames(handle, 'projection_threads')).toContain(
-      'projection_threads_project_deleted_created_idx',
+    expect(indexNames(handle, 'projection_sessions')).toContain(
+      'projection_sessions_worktree_deleted_created_idx',
     )
-    expect(indexNames(handle, 'projection_thread_sessions')).toEqual(
+    expect(indexNames(handle, 'projection_session_runtime')).toEqual(
       expect.arrayContaining([
-        'projection_thread_sessions_provider_session_idx',
-        'projection_thread_sessions_provider_instance_idx',
+        'projection_session_runtime_binding_handle_idx',
+        'projection_session_runtime_provider_instance_idx',
       ]),
     )
     expect(columnInfo(handle, 'provider_session_runtime', 'provider_instance_id')?.not_null).toBe(1)
@@ -159,20 +230,20 @@ describe('platform migration ledger', () => {
 
     migratePlatformDatabase(handle.db)
 
-    expect(indexNames(handle, 'projection_thread_activities')).toEqual(
+    expect(indexNames(handle, 'projection_session_activities')).toEqual(
       expect.arrayContaining([
-        'projection_thread_activities_thread_created_idx',
-        'projection_thread_activities_thread_kind_idx',
+        'projection_session_activities_session_created_idx',
+        'projection_session_activities_session_kind_idx',
       ]),
     )
   })
 
-  it('adds the thread lifecycle columns and their pinned lookup index', () => {
+  it('adds the session lifecycle columns and their pinned lookup index', () => {
     const handle = openTempDatabase()
 
     migrateOrchestrationDatabase(handle.db)
 
-    expect(columnNames(handle, 'projection_threads')).toEqual(
+    expect(columnNames(handle, 'projection_sessions')).toEqual(
       expect.arrayContaining([
         'settled_override',
         'settled_at',
@@ -182,8 +253,8 @@ describe('platform migration ledger', () => {
         'pin_order_key',
       ]),
     )
-    expect(indexNames(handle, 'projection_threads')).toContain(
-      'projection_threads_pinned_order_idx',
+    expect(indexNames(handle, 'projection_sessions')).toContain(
+      'projection_sessions_pinned_order_idx',
     )
   })
 
@@ -194,7 +265,7 @@ describe('platform migration ledger', () => {
     const applied = migratePlatformDatabase(handle.db, [...platformMigrations, addParkedAt])
 
     expect(applied.map((migration) => migration.version)).toEqual([nextVersion])
-    expect(columnNames(handle, 'projection_threads')).toContain('parked_at')
+    expect(columnNames(handle, 'projection_sessions')).toContain('parked_at')
     expect(ledgerVersions(handle)).toEqual([...ledgerVersionNumbers, nextVersion])
   })
 
@@ -204,9 +275,9 @@ describe('platform migration ledger', () => {
 
     expect(() =>
       migratePlatformDatabase(handle.db, [...platformMigrations, addParkedAtThenThrow]),
-    ).toThrow(new RegExp(`migration ${nextVersion}_add_projection_threads_parked_at failed`, 'i'))
+    ).toThrow(new RegExp(`migration ${nextVersion}_add_projection_sessions_parked_at failed`, 'i'))
 
-    expect(columnNames(handle, 'projection_threads')).not.toContain('parked_at')
+    expect(columnNames(handle, 'projection_sessions')).not.toContain('parked_at')
     expect(ledgerVersions(handle)).toEqual(ledgerVersionNumbers)
   })
 
@@ -227,17 +298,17 @@ describe('platform migration ledger', () => {
 })
 
 const addParkedAt: Migration = {
-  name: 'add_projection_threads_parked_at',
+  name: 'add_projection_sessions_parked_at',
   up: (database) => {
-    database.run(sql`ALTER TABLE projection_threads ADD COLUMN parked_at TEXT`)
+    database.run(sql`ALTER TABLE projection_sessions ADD COLUMN parked_at TEXT`)
   },
   version: nextVersion,
 }
 
 const addParkedAtThenThrow: Migration = {
-  name: 'add_projection_threads_parked_at',
+  name: 'add_projection_sessions_parked_at',
   up: (database) => {
-    database.run(sql`ALTER TABLE projection_threads ADD COLUMN parked_at TEXT`)
+    database.run(sql`ALTER TABLE projection_sessions ADD COLUMN parked_at TEXT`)
     throw new Error('migration exploded after its DDL')
   },
   version: nextVersion,
@@ -311,4 +382,40 @@ function ledgerRow(handle: MetadataDatabaseHandle, version: number) {
 
 function rows<T>(handle: MetadataDatabaseHandle, query: ReturnType<typeof sql>) {
   return handle.db.all<T>(query)
+}
+
+function insertTopology(handle: MetadataDatabaseHandle) {
+  handle.db.run(
+    sql`INSERT INTO projection_projects (project_id, title, repository_key, repository_kind, repository_identity_json, created_at, updated_at) VALUES ('project', 'Project', 'repository', 'directory', '{}', 'now', 'now')`,
+  )
+  handle.db.run(
+    sql`INSERT INTO projection_worktrees (worktree_id, project_id, registration_generation, canonical_path, path, kind, ownership, created_at, updated_at) VALUES ('worktree', 'project', 0, '/root', '/root', 'current', 'protected', 'now', 'now')`,
+  )
+}
+
+function seedLegacyDatabase(handle: MetadataDatabaseHandle) {
+  handle.db.run(
+    sql`CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL)`,
+  )
+  handle.db.run(
+    sql`INSERT INTO schema_migrations VALUES (9, 'legacy', 'now'), (10, 'environment_identity', 'now')`,
+  )
+  handle.db.run(
+    sql`CREATE TABLE environment_identity (id TEXT PRIMARY KEY, created_at TEXT NOT NULL)`,
+  )
+  handle.db.run(
+    sql`INSERT INTO environment_identity VALUES ('7d79d3dc-dda7-471b-b092-e0bd1edcb8c9', '2026-09-05T00:00:00.000Z')`,
+  )
+  handle.db.run(
+    sql`CREATE TABLE fs_metadata (path TEXT PRIMARY KEY, name TEXT, entry_type TEXT, size INTEGER, mtime_ms INTEGER, birthtime_ms INTEGER, last_picked_at INTEGER, pick_count INTEGER, created_at INTEGER, updated_at INTEGER)`,
+  )
+  handle.db.run(sql`INSERT INTO fs_metadata (path) VALUES ('/keep/file.ts')`)
+  handle.db.run(sql`CREATE TABLE operator_state (value TEXT NOT NULL)`)
+  handle.db.run(sql`INSERT INTO operator_state VALUES ('keep-settings-and-secrets')`)
+  handle.db.run(sql`CREATE TABLE projection_threads (thread_id TEXT PRIMARY KEY, text TEXT)`)
+  handle.db.run(sql`INSERT INTO projection_threads VALUES ('old-thread', 'discard')`)
+  handle.db.run(
+    sql`CREATE TABLE orchestration_events (sequence INTEGER PRIMARY KEY, payload_json TEXT)`,
+  )
+  handle.db.run(sql`INSERT INTO orchestration_events VALUES (42, 'old event')`)
 }

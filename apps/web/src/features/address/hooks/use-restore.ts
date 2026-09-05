@@ -1,36 +1,49 @@
+import { fetchOrchestrationShellSnapshotHttp } from '@/features/chat/transport/orchestration-http-snapshots'
 import { useEffect } from 'react'
 
 import { useEditorRuntime } from '@/features/editor/hooks/use-runtime'
 import type { Client } from '@/lib/client'
 import { environmentActivitySignal } from '@/lib/environments/state/activity'
-import { clientForQueryClient, originForQueryClient } from '@/lib/environments/state/query-clients'
+import { clientForQueryClient } from '@/lib/environments/state/query-clients'
 
 import { applicableTabs, parseAddress } from '@/features/address/utils/grammar'
 import { pathForDocumentToken } from '@/features/address/utils/document-token'
 import { resolveWorkspaceSlug, NO_WORKSPACE_SLUG } from '@/features/address/utils/slug'
 import { parseSessionToken } from '@/features/address/utils/session-token'
-import { claimAddressRoot, releaseAddressRoot } from '@/features/address/state/root-claim'
+import { claimAddressRoot } from '@/features/address/state/root-claim'
 import { useSessionRailStore } from '@/features/chat-mode/state/session-rail-store'
-import { useThreadDiffScopeStore } from '@/features/chat/state/thread-diff-scope-store'
+import { useSessionDiffScopeStore } from '@/features/chat/state/session-diff-scope-store'
 import { diffScopeFor } from '@/features/address/utils/diff-scope'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
 import { showChatModeToolTab, isChatModeToolTab } from '@/features/chat-mode/utils/panels'
-import { workspaceProjectId } from '@/features/chat/utils/command-builders'
+import {
+  selectChatProjectionSlice,
+  useChatProjectionStore,
+} from '@/features/chat/state/chat-projection-store'
+import {
+  selectSessionOwnership,
+  selectWorktreeAtPath,
+} from '@/features/chat/state/chat-projection-selectors'
+import { useEnvironmentsStore } from '@/lib/environments/state/store'
+import { addressEnvironments } from '@/features/address/utils/environments'
+import { confirmedEnvironmentId, confirmedEnvironmentOrigin } from '@/lib/environments/state/domain'
+import { errorMessage } from '@/lib/error-message'
+import { useApplicationRuntime } from '@/hooks/use-application-runtime'
+import type { ApplicationRuntime } from '@/state/application-runtime'
+import { createEditorActivation, createEditorCommands } from '@/features/editor/state/commands'
 import { settingsCategoryForSlug } from '@/features/address/utils/settings-category'
 import { isSettingsDocumentId } from '@/features/settings/utils/document'
 import { selectSettingsCategory } from '@/features/settings/state/category-store'
-import { SETTING_IDS, descriptorFor } from '@workspace/contracts'
+import { SETTING_IDS, descriptorFor, type EnvironmentId } from '@workspace/contracts'
 import { searchStateFor } from '@/features/address/utils/search-params'
 import { logsFiltersFor } from '@/features/address/utils/logs-params'
 import { defaultLogsFilterState } from '@/features/logs/utils/filter-params'
 import { resetLogsFilters, setLogsFilters } from '@/features/logs/state/filter-store'
-import { useSearchBufferStoreApi } from '@/features/search/state/buffer-state'
 import type { SearchBufferStoreApi } from '@/features/search/state/buffer-state'
 import { useEditorCommands } from '@/features/editor/state/commands'
 import { useEditorDocumentStoreApi } from '@/features/editor/state/document-state'
 import { documentTokenForPath } from '@/features/address/utils/document-token'
 import { useEditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
-import { useOpenWorkspaceRoot } from '@/features/workspace/hooks/use-open-root'
 import {
   createDefaultWorkbenchPanels,
   setWorkbenchBottomTab,
@@ -101,60 +114,35 @@ export type AddressRestoreResult =
   | { readonly status: 'unavailable'; readonly reason: string }
 
 export function useAddressRestore() {
-  const openWorkspaceRoot = useOpenWorkspaceRoot()
-  const commands = useEditorCommands()
-  const storeApi = useEditorWorkspaceStoreApi()
-  const documentStoreApi = useEditorDocumentStoreApi()
-  const searchStoreApi = useSearchBufferStoreApi()
+  const application = useApplicationRuntime()
   const runtime = useEditorRuntime()
 
   useEffect(() => {
-    const activity = environmentActivitySignal(originForQueryClient(runtime.queryClient))
-    const client = clientForQueryClient(runtime.queryClient)
-    const deps = {
-      activity,
-      client,
-      commands,
-      documentStoreApi,
-      openWorkspaceRoot,
-      searchStoreApi,
-      storeApi,
-    }
+    const deps = { application }
     if (runtime.claimAddressRestore()) {
       // Claimed synchronously, BEFORE the first await, and released however the apply
       // ends. `useRestoreRecentWorkspaceRoot` fills the same empty root slot, and this
       // path has to resolve a slug — sometimes over the network — before it can name
       // its root, so without the claim the recents fallback opens a different project
       // first and the pasted link is lost to a supersede that looks routine.
-      if (addressNamesWorkspace()) claimAddressRoot()
-      void applyAddress(deps, 'boot').finally(releaseAddressRoot)
+      const releaseRoot = addressNamesWorkspace() ? claimAddressRoot() : undefined
+      void applyAddress(deps, 'boot').finally(releaseRoot)
     }
 
     // The second inbound edge. `pushState`/`replaceState` do not emit `popstate`, so
     // the projection's own writes cannot echo back here — only a real back, forward,
     // mouse-back or trackpad swipe reaches this listener.
     function applyOnPopState() {
-      void applyAddress(deps, 'popstate')
+      const releaseRoot = claimAddressRoot()
+      void applyAddress(deps, 'popstate').finally(releaseRoot)
     }
 
     window.addEventListener('popstate', applyOnPopState)
     return () => window.removeEventListener('popstate', applyOnPopState)
-  }, [commands, documentStoreApi, openWorkspaceRoot, runtime, searchStoreApi, storeApi])
+  }, [application, runtime])
 }
 
-/**
- * Which restore is the current one.
- *
- * `applyAddress` awaits twice — slug resolution, which may hit the file server, and the
- * project switch — and nothing stopped a second press from starting while the first was
- * parked. The older call then resumed and wrote settings, tabs, search, logs and the
- * document selection over the newer one, so holding the back button landed the app on
- * whichever restore happened to finish last rather than on the entry the user stopped at.
- *
- * `openWorkspaceRoot` already arbitrates its own switches through `activateWorkspaceRoot`,
- * which is why the damage showed up in the slots AROUND the root rather than in the root
- * itself. This is the same protocol for the rest of the apply.
- */
+// Every navigation supersedes older asynchronous restores, including addresses we reject.
 let restoreGeneration = 0
 
 /** Whether the URL names a real workspace, decidable before any await. */
@@ -165,30 +153,53 @@ function addressNamesWorkspace() {
 }
 
 async function applyAddress(
-  {
-    activity,
-    client,
-    commands,
-    documentStoreApi,
-    openWorkspaceRoot,
-    searchStoreApi,
-    storeApi,
-  }: {
-    activity: AbortSignal
-    client: Client
-    commands: ReturnType<typeof useEditorCommands>
-    documentStoreApi: ReturnType<typeof useEditorDocumentStoreApi>
-    openWorkspaceRoot: ReturnType<typeof useOpenWorkspaceRoot>
-    searchStoreApi: SearchBufferStoreApi
-    storeApi: ReturnType<typeof useEditorWorkspaceStoreApi>
-  },
+  deps: { application: ApplicationRuntime },
   reason: ApplyReason,
 ): Promise<AddressRestoreResult> {
-  const trace = emptyApplyTrace()
-  if (activity.aborted) return report({ status: 'pending', reason: 'superseded' }, trace)
   const generation = ++restoreGeneration
+  const trace = emptyApplyTrace()
+  try {
+    return await applyCurrentAddress(deps, reason, generation, trace)
+  } catch (error) {
+    if (generation !== restoreGeneration)
+      return report({ status: 'pending', reason: 'superseded' }, trace)
+    return report(
+      { status: 'unavailable', reason: errorMessage(error, 'The address could not be restored.') },
+      trace,
+    )
+  }
+}
+
+async function applyCurrentAddress(
+  { application }: { application: ApplicationRuntime },
+  reason: ApplyReason,
+  generation: number,
+  trace: ApplyTrace,
+): Promise<AddressRestoreResult> {
+  const environments = addressEnvironments(useEnvironmentsStore.getState().entries)
+  const address = parseAddress(window.location.href, environments)
+  if (address.rejectedEnvironment) {
+    trace.rejectedTokens.push('environment id')
+    return report({ status: 'unavailable', reason: 'unknown environment' }, trace)
+  }
+  const environmentId = address.environmentId ?? environments.primaryEnvironmentId
+  if (environmentId) application.activateEnvironment(confirmedEnvironmentOrigin(environmentId))
+  const owner = application.getSnapshot()
+  const editor = owner.editor
+  const storeApi = editor.workspaceStore
+  const documentStoreApi = editor.documentStore
+  const searchStoreApi = editor.searchBufferStore
+  const commands = createEditorCommands({
+    activation: createEditorActivation(editor.fileOpenIntentService, documentStoreApi),
+    documentStore: documentStoreApi,
+    searchStore: searchStoreApi,
+    uiStore: editor.uiStore,
+    workspaceStore: storeApi,
+  })
+  const client = clientForQueryClient(owner.queryClient)
+  const activity = environmentActivitySignal(owner.origin)
+  if (activity.aborted) return report({ status: 'pending', reason: 'superseded' }, trace)
   const superseded = () => activity.aborted || generation !== restoreGeneration
-  const address = parseAddress(window.location.href)
   if (!address.workspace) {
     return report({ status: 'pending', reason: 'no address to apply' }, trace)
   }
@@ -200,11 +211,20 @@ async function applyAddress(
     return report({ status: 'applied', reason }, trace)
   }
 
-  const rootPath = await resolveRoot(address.workspace, storeApi, trace, client, activity)
+  if (address.mode === 'chat' && environmentId) {
+    const snapshot = await fetchOrchestrationShellSnapshotHttp(client)
+    if (superseded()) return report({ status: 'pending', reason: 'superseded' }, trace)
+    confirmedEnvironmentId(owner.origin)
+    useChatProjectionStore.getState().syncShellSnapshot(environmentId, snapshot)
+  }
+  const selectedRoot = environmentId ? checkoutPathForAddress(address, environmentId) : null
+  const rootPath =
+    selectedRoot ?? (await resolveRoot(address.workspace, storeApi, trace, client, activity))
   // A newer press started while this one was resolving. Everything below writes store
   // state, so continuing would drag the older address over the newer one.
   if (superseded()) return report({ status: 'pending', reason: 'superseded' }, trace)
-  if (!rootPath) {
+  confirmedEnvironmentId(owner.origin)
+  if (rootPath === null) {
     return report(
       {
         status: 'unavailable',
@@ -219,7 +239,9 @@ async function applyAddress(
   const seeded = reason === 'boot' && storeApi.getState().rootFolder?.path === rootPath
 
   if (storeApi.getState().rootFolder?.path !== rootPath) {
-    const outcome = await openWorkspaceRoot(rootPath)
+    if (!environmentId)
+      return report({ status: 'pending', reason: 'machine identity is unconfirmed' }, trace)
+    const outcome = await application.openEnvironmentWorkspaceRoot(environmentId, rootPath)
     // `superseded` means another project switch won while this one was in flight.
     // Applying the rest would drag that project's tabs into the winner.
     if (outcome === 'superseded') {
@@ -231,6 +253,7 @@ async function applyAddress(
     if (superseded()) return report({ status: 'pending', reason: 'superseded' }, trace)
   }
 
+  confirmedEnvironmentId(owner.origin)
   if (!seeded) {
     applyMode(address.mode, storeApi)
     applyPanels(address, storeApi, reason)
@@ -250,11 +273,23 @@ async function applyAddress(
 
   // Always applied: none of these lives in a workspace slice, so the merge cannot
   // reach them however the address arrived.
-  if (address.mode === 'chat') applyChatSelection(address, rootPath, trace)
+  if (address.mode === 'chat' && environmentId)
+    applyChatSelection(address, environmentId, rootPath, trace)
   applySearch(address, rootPath, searchStoreApi, reason)
   applyLogs(address, reason)
 
   return report({ status: 'applied', reason }, trace)
+}
+
+function checkoutPathForAddress(
+  address: ReturnType<typeof parseAddress>,
+  environmentId: EnvironmentId,
+) {
+  if (address.mode !== 'chat') return null
+  const parsed = parseSessionToken(address.document)
+  if (parsed?.kind !== 'session') return null
+  const slice = selectChatProjectionSlice(useChatProjectionStore.getState(), environmentId)
+  return selectSessionOwnership(slice, parsed.sessionId)?.worktree.path ?? null
 }
 
 /** Enough to cover a link to a project opened a while ago, without a slow round trip. */
@@ -388,32 +423,46 @@ function definitionTargetFor(
 }
 
 /**
- * The chat thread on stage, plus the rail and diff scope that belong to it. None of
+ * The chat session on stage, plus the rail and diff scope that belong to it. None of
  * these lives in a workspace slice, so this runs however the address arrived.
  */
 function applyChatSelection(
   address: ReturnType<typeof parseAddress>,
+  environmentId: EnvironmentId,
   rootPath: string,
   trace: ApplyTrace,
 ) {
   const parsed = parseSessionToken(address.document)
+  const slice = selectChatProjectionSlice(useChatProjectionStore.getState(), environmentId)
+  const worktree = selectWorktreeAtPath(slice, rootPath)
+  if (!worktree) {
+    trace.rejectedTokens.push('worktree id')
+    return
+  }
   if (parsed?.kind === 'session') {
+    const ownership = selectSessionOwnership(slice, parsed.sessionId)
+    if (ownership?.worktree.id !== worktree.id) {
+      trace.rejectedTokens.push('session id')
+      return
+    }
     useSessionSelectionStore
       .getState()
-      .restoreSession(workspaceProjectId(rootPath), parsed.threadId)
+      .restoreSession(environmentId, ownership.project.id, parsed.sessionId)
   }
   if (parsed?.kind === 'draft') {
-    useSessionSelectionStore.getState().startDraft(workspaceProjectId(rootPath))
+    useSessionSelectionStore.getState().startDraft(environmentId, worktree.projectId)
   }
-  if (parsed?.kind === 'rejected') trace.rejectedTokens.push('thread id')
+  if (parsed?.kind === 'rejected') trace.rejectedTokens.push('session id')
 
   if (address.rail === 'archived') useSessionRailStore.getState().setView('archived')
 
-  // Applied through the store's own action, and only for the thread the address names —
+  // Applied through the store's own action, and only for the session the address names —
   // a scope belongs to a conversation, not to the window.
   const scope = diffScopeFor(address.diff)
   if (scope && parsed?.kind === 'session') {
-    useThreadDiffScopeStore.getState().selectThreadDiffScope(parsed.threadId, scope)
+    useSessionDiffScopeStore
+      .getState()
+      .selectSessionDiffScope({ environmentId, sessionId: parsed.sessionId }, scope)
   }
 }
 

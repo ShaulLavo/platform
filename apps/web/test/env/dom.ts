@@ -1,3 +1,8 @@
+import { healthDescriptorSchema } from '@workspace/contracts'
+import * as v from 'valibot'
+import { activeServerOrigin } from '@/lib/client'
+import { useEnvironmentsStore } from '@/lib/environments/state/store'
+import { TEST_ENVIRONMENT_ID } from '../factories/chat'
 import { cleanup } from '@testing-library/react'
 import { afterAll, afterEach, beforeAll } from 'vitest'
 
@@ -17,9 +22,16 @@ let server: TestServer | undefined
 let productionClient: Client | undefined
 
 beforeAll(async () => {
-  server = await makeTestServer()
+  server = await makeTestServer({ environmentId: TEST_ENVIRONMENT_ID })
   productionClient = getClient()
-  setClient(createInProcessClient(server))
+  const client = createInProcessClient(server)
+  setClient(client)
+  useEnvironmentsStore
+    .getState()
+    .recordDescriptor(
+      activeServerOrigin(),
+      v.parse(healthDescriptorSchema, (await client.health.get()).data),
+    )
 })
 
 afterAll(async () => {

@@ -12,7 +12,8 @@ import { useState } from 'react'
 import { createProjectMetaCommand } from '@/features/chat/utils/command-builders'
 import { dispatchChatCommand } from '@/features/chat/utils/command-dispatch'
 import { notifyChatCommandError } from '@/features/chat/notify-command-error'
-import { useChatModeSession } from '@/features/chat-mode/providers/session-context'
+import { dispatchCommandForEnvironment } from '@/features/chat/state/active-transports'
+import { scopedProjectKey } from '@workspace/contracts'
 import { useProjectRenameRequestStore } from '@/features/chat-mode/state/project-rename-request-store'
 
 /**
@@ -23,14 +24,13 @@ import { useProjectRenameRequestStore } from '@/features/chat-mode/state/project
 export function ProjectRenameDialog() {
   const request = useProjectRenameRequestStore((state) => state.request)
   const dismissRename = useProjectRenameRequestStore((state) => state.dismissRename)
-  const { transport } = useChatModeSession()
   // Keyed on the request so opening the dialog for a second project starts from
   // that project's name rather than the previous one's edited text.
   const [title, setTitle] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
-  if (request && editingId !== request.projectId) {
-    setEditingId(request.projectId)
+  if (request && editingId !== scopedProjectKey(request.ref)) {
+    setEditingId(scopedProjectKey(request.ref))
     setTitle(request.title)
   }
 
@@ -44,8 +44,9 @@ export function ProjectRenameDialog() {
     try {
       const outcome = await dispatchChatCommand({
         action: 'chat.project.rename',
-        command: createProjectMetaCommand({ projectId: request.projectId, title: trimmed }),
-        dispatchCommand: transport.dispatchCommand,
+        command: createProjectMetaCommand({ projectId: request.ref.projectId, title: trimmed }),
+        dispatchCommand: (command) =>
+          dispatchCommandForEnvironment(request.ref.environmentId, command),
       })
       if (!outcome.ok) {
         // Closing on dispatch rather than on the result told the user the rename

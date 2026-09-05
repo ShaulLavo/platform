@@ -95,7 +95,7 @@ export class OrchestrationEventStore {
   /**
    * Reachable from a client through the `replayEvents` RPC and the `/replay`
    * route, so it is always paged: an unbounded read is a request-shaped way to
-   * make the server decode the entire event log — every other thread's tool
+   * make the server decode the entire event log — every other session's tool
    * payloads included — into one array. Callers that want the rest page by
    * passing the last returned sequence back as `afterSequence`.
    */
@@ -137,10 +137,10 @@ function replayLimit(requested: number | undefined) {
 }
 
 function aggregateConditions(input: OrchestrationReplayEventsInput) {
-  if (input.threadId) {
+  if (input.sessionId) {
     return and(
-      eq(orchestrationEvents.aggregateKind, 'thread'),
-      eq(orchestrationEvents.aggregateId, input.threadId),
+      eq(orchestrationEvents.aggregateKind, 'session'),
+      eq(orchestrationEvents.aggregateId, input.sessionId),
     )
   }
   if (!input.aggregateKind || !input.aggregateId) return undefined

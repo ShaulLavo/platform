@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { errorMessage } from '@/lib/error-message'
 import type { ChatTransport } from '@/features/chat/transport/chat-transport'
-import { useChatProjectionStore } from '../state/chat-projection-store'
+import { selectChatProjectionSlice, useChatProjectionStore } from '../state/chat-projection-store'
 import { isBlockedStreamError, streamReconnectDelayMs } from '../utils/stream-reconnect'
 
 /**
@@ -127,7 +127,10 @@ async function runShellStream(supervisor: ShellSupervisor): Promise<ShellStreamO
   let live = false
 
   try {
-    const afterSequence = useChatProjectionStore.getState().lastAppliedShellSequence
+    const afterSequence = selectChatProjectionSlice(
+      useChatProjectionStore.getState(),
+      supervisor.transport.environmentId,
+    ).lastAppliedShellSequence
 
     for await (const item of supervisor.transport.shellStream({
       afterSequence,
@@ -135,7 +138,9 @@ async function runShellStream(supervisor: ShellSupervisor): Promise<ShellStreamO
     })) {
       if (supervisor.signal.aborted || supervisor.transport.closed)
         return { blocked: false, error: null, established: live }
-      useChatProjectionStore.getState().applyShellStreamItem(item)
+      useChatProjectionStore
+        .getState()
+        .applyShellStreamItem(supervisor.transport.environmentId, item)
       if (live) continue
 
       // Reported once per attempt: a state write per frame re-renders every

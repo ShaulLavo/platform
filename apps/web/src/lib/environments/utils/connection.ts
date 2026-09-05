@@ -1,8 +1,8 @@
-import type { OrchestrationWsServerConfig } from '@workspace/contracts'
+import type { EnvironmentId, OrchestrationWsServerConfig } from '@workspace/contracts'
 
 export type EnvironmentEntry = {
   readonly origin: string
-  readonly environmentId: string | null
+  readonly environmentId: EnvironmentId | null
   readonly label: string | null
   readonly kind: 'primary' | 'dev'
 }

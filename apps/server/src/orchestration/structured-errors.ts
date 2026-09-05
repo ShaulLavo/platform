@@ -23,8 +23,8 @@ export const checkpointErrors = defineErrorCatalog('checkpoint', {
       requestedTurnCount: number
     }) =>
       `Checkpoint diff range exceeds current turn count: requested ${requestedTurnCount}, current ${availableTurnCount}`,
-    why: 'The thread has no checkpoint that far along — the turn either never completed or was reverted away.',
-    fix: 'Reload the thread and request a range within its current checkpoint count.',
+    why: 'The session has no checkpoint that far along — the turn either never completed or was reverted away.',
+    fix: 'Reload the session and request a range within its current checkpoint count.',
   },
   REF_UNAVAILABLE: {
     status: 404,
@@ -32,5 +32,73 @@ export const checkpointErrors = defineErrorCatalog('checkpoint', {
       `Checkpoint ref is unavailable for turn ${turnCount}`,
     why: 'The checkpoint for this turn is missing, errored, or its git ref is gone from the workspace.',
     fix: 'Reopen the diff after the turn finishes capturing, or pick a turn whose checkpoint is ready.',
+  },
+})
+
+export const sessionDomainErrors = defineErrorCatalog('orchestration', {
+  WORKTREE_NOT_FOUND: {
+    status: 404,
+    message: ({ worktreeId }: { worktreeId: string }) => `Worktree not found: ${worktreeId}`,
+    why: 'Sessions and terminal processes require a registered, live checkout.',
+    fix: 'Register the checkout before starting a session.',
+  },
+  IDENTITY_COLLISION: {
+    status: 409,
+    message: ({ id }: { id: string }) => `Repository or checkout identity collision: ${id}`,
+    why: 'A deterministic identifier is already assigned to different registration facts.',
+    fix: 'Inspect the existing registration and repository identity before retrying.',
+  },
+  WORKTREE_PATH_TAKEN: {
+    status: 409,
+    message: ({ worktreeId }: { worktreeId: string }) =>
+      `Checkout is already registered: ${worktreeId}`,
+    why: 'One canonical checkout path cannot belong to two live worktree registrations.',
+    fix: 'Use the existing checkout registration.',
+  },
+  PROVIDER_INSTANCE_IMMUTABLE: {
+    status: 409,
+    message: ({ sessionId }: { sessionId: string }) =>
+      `Session provider cannot change: ${sessionId}`,
+    why: 'A durable session belongs to one provider instance and account.',
+    fix: 'Create another session to use a different provider instance.',
+  },
+  SESSION_REPARENT_CONFLICT: {
+    status: 409,
+    message: ({ sessionId }: { sessionId: string }) =>
+      `Session checkout cannot change: ${sessionId}`,
+    why: 'Discovered metadata names a different checkout for an existing session UUID.',
+    fix: 'Verify the discovery directory and existing worktree registration.',
+  },
+  START_STATE_CONFLICT: {
+    status: 409,
+    message: ({ sessionId }: { sessionId: string }) => `Provider start changed: ${sessionId}`,
+    why: 'The observed turn generation or start sequence no longer matches the durable state.',
+    fix: 'Read the current turn and retry its permitted transition.',
+  },
+  REGISTRATION_BUSY: {
+    status: 409,
+    message: ({ projectId }: { projectId: string }) =>
+      `Project still has provider ownership: ${projectId}`,
+    why: 'A deleted session has not completed provider stop or still has a live adapter.',
+    fix: 'Finish session cleanup before reviving the project or checkout.',
+  },
+  REPOSITORY_IDENTITY_UNAVAILABLE: {
+    status: 409,
+    message: 'Git repository has no machine-independent identity',
+    why: 'The checkout has neither a supported origin remote nor a reachable root commit.',
+    fix: 'Configure an origin remote or create the initial commit, then register again.',
+  },
+  COMMAND_ID_COLLISION: {
+    status: 409,
+    message: ({ commandId }: { commandId: string }) => `Command ID was reused: ${commandId}`,
+    why: 'The durable receipt belongs to a different command type or wire intent.',
+    fix: 'Reuse the original intent for a retry, or create a new command ID.',
+  },
+  CLEANUP_FAILED: {
+    status: 503,
+    message: ({ sessionId }: { sessionId: string }) =>
+      `Session cleanup needs a retry: ${sessionId}`,
+    why: 'The provider stop or attachment cleanup failed or exceeded its operation timeout.',
+    fix: 'Retry cleanup after resolving the reported provider or filesystem failure.',
   },
 })

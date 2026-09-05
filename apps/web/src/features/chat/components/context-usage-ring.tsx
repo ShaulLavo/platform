@@ -11,7 +11,7 @@ const RADIUS = 7
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS
 
 /**
- * Context occupancy for the active thread. The gauge still renders when the
+ * Context occupancy for the active session. The gauge still renders when the
  * provider reports tokens without a window size — it shows the count instead of
  * a percentage rather than vanishing, because "no window reported" and "no
  * usage yet" are different states and hiding both told the user neither.

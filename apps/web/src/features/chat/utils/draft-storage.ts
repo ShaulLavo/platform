@@ -1,3 +1,4 @@
+import type { EnvironmentId } from '@workspace/contracts'
 import {
   interactionModeSchema,
   modelSelectionSchema,
@@ -7,7 +8,7 @@ import {
 import * as v from 'valibot'
 
 export const CHAT_INPUT_DRAFT_STORAGE_KEY = 'platform.chat-input-drafts.v1'
-const CHAT_INPUT_DRAFT_STORAGE_VERSION = 1
+const CHAT_INPUT_DRAFT_STORAGE_VERSION = 2
 
 /**
  * The whole capture, not a rendered label: a restored draft has to be able to
@@ -47,10 +48,14 @@ export type PersistedChatInputDraftStorage = v.InferOutput<
   typeof persistedChatInputDraftStorageSchema
 >
 
-export function chatInputDraftStorageId(rootPath: string, draftKey: string | null) {
+export function chatInputDraftStorageId(
+  environmentId: EnvironmentId,
+  rootPath: string,
+  draftKey: string | null,
+) {
   if (!draftKey) return null
 
-  return `${encodeURIComponent(rootPath)}:${draftKey}`
+  return `${environmentId}:${encodeURIComponent(rootPath)}:${draftKey}`
 }
 
 export function readPersistedChatInputDrafts(): PersistedChatInputDraftStorage {

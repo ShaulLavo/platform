@@ -1,4 +1,4 @@
-import type { ModelSelection, ProviderInstanceId, ThreadId, TurnId } from '@workspace/contracts'
+import type { ModelSelection, ProviderInstanceId, SessionId, TurnId } from '@workspace/contracts'
 
 import type { ProviderRuntimeEvent } from './types'
 
@@ -22,10 +22,10 @@ export type ProviderTextGenerationOutcome = {
 
 type InterruptTextGeneration = () => Promise<void>
 
-/** Collects one isolated provider turn without projecting it into a chat thread. */
+/** Collects one isolated provider turn without projecting it into a chat conversation. */
 export class ProviderTextGenerationTask {
   readonly providerInstanceId: ProviderInstanceId
-  readonly threadId: ThreadId
+  readonly sessionId: SessionId
   readonly turnId: TurnId
   private canonicalText = ''
   private fallbackText = ''
@@ -38,17 +38,17 @@ export class ProviderTextGenerationTask {
   constructor(input: {
     interrupt: InterruptTextGeneration
     providerInstanceId: ProviderInstanceId
-    threadId: ThreadId
+    sessionId: SessionId
     turnId: TurnId
   }) {
     this.interruptTextGeneration = input.interrupt
     this.providerInstanceId = input.providerInstanceId
-    this.threadId = input.threadId
+    this.sessionId = input.sessionId
     this.turnId = input.turnId
   }
 
   accept(event: ProviderRuntimeEvent) {
-    if (event.threadId !== this.threadId) return false
+    if (event.sessionId !== this.sessionId) return false
 
     if (event.type === 'assistant.delta') this.canonicalText += event.delta
     if (event.type === 'content.delta' && event.payload.streamKind === 'assistant_text') {

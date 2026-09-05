@@ -1,4 +1,5 @@
 import type { PickedFsEntry } from '@/lib/file-system-types'
+import { fileBackedDocumentPath } from '@/features/editor/utils/file-backed-document'
 import { parseConflictDiffDocumentId } from '@/features/editor/utils/conflict-diff-document'
 import { parseDiffDocumentId } from '@/features/git/utils/diff-document'
 import { parseSearchBufferDocumentId } from '@/features/search/utils/buffer-document'
@@ -38,8 +39,9 @@ import {
   toWorkspaceRelative,
 } from '@/features/workspace/utils/path'
 import {
+  environmentIdSchema,
   projectIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
   type WorkspaceSearchMatch,
   type WorkspaceSearchMatchMode,
   type WorkspaceSearchQuery,
@@ -251,11 +253,16 @@ const chatModePanelsSchema = v.strictObject({
 })
 const chatModeSelectionSchema = v.union([
   v.strictObject({ kind: v.literal('auto') }),
-  v.strictObject({ kind: v.literal('draft'), projectId: projectIdSchema }),
+  v.strictObject({
+    kind: v.literal('draft'),
+    environmentId: environmentIdSchema,
+    projectId: projectIdSchema,
+  }),
   v.strictObject({
     kind: v.literal('session'),
+    environmentId: environmentIdSchema,
     projectId: projectIdSchema,
-    threadId: threadIdSchema,
+    sessionId: sessionIdSchema,
   }),
 ])
 
@@ -422,7 +429,7 @@ export function readWorkspaceOrder(activeRootPath: string | null): readonly stri
 /** The open root always leads, even when the index predates it or was dropped. */
 function workspaceOrderFromCache(activePath: string | null) {
   const stored = readWorkspaceIndex()
-  if (!activePath) return stored.slice(0, WORKSPACE_SLICE_LIMIT)
+  if (activePath === null) return stored.slice(0, WORKSPACE_SLICE_LIMIT)
 
   return [activePath, ...stored.filter((rootPath) => rootPath !== activePath)].slice(
     0,
@@ -498,13 +505,13 @@ function scrollPositionsForWorkspace(
 }
 
 function pathForWorkspace(rootPath: string, path: string) {
-  if (!rootPath) return false
   if (parseConflictDiffDocumentId(path)) return false
 
   const searchBuffer = parseSearchBufferDocumentId(path)
   if (searchBuffer) return searchBuffer.rootPath === rootPath
 
-  return isPathInWorkspace(backingPathForWorkspace(path), rootPath)
+  const backingPath = fileBackedDocumentPath(backingPathForWorkspace(path))
+  return backingPath !== null && isPathInWorkspace(backingPath, rootPath)
 }
 
 function backingPathForWorkspace(path: string) {
@@ -516,17 +523,11 @@ function backingPathForWorkspace(path: string) {
   return path
 }
 
-/**
- * Serialized paths are workspace-relative; in-memory paths stay absolute, because the
- * file server wants absolute. The `./` marker is what makes the two forms tellable
- * apart on the way back in: every real file path is absolute and every synthetic
- * document id (`git-diff:`, `search-buffer:`, …) starts with a letter, so nothing
- * else in a slice can begin `./`. That avoids sniffing a list of document-id prefixes,
- * of which this codebase already keeps five copies that disagree.
- */
+// The marker distinguishes persisted workspace-relative paths from filesystem API paths.
 const RELATIVE_PATH_MARKER = './'
 
 function storedPath(rootPath: string, path: string) {
+  if (fileBackedDocumentPath(path) === null) return path
   const relative = toWorkspaceRelative(rootPath, path)
   if (!relative) return path
 
@@ -539,12 +540,7 @@ function restoredPath(rootPath: string, path: string) {
   return toWorkspaceAbsolute(rootPath, path.slice(RELATIVE_PATH_MARKER.length)) ?? path
 }
 
-/**
- * Relativize on the way out, absolutize on the way in. Both wrap `sliceForWorkspace`
- * rather than living inside it: that filter runs in BOTH directions and its predicate
- * only understands absolute paths, so relativizing inside it would make every restored
- * path fail `isPathInWorkspace` and silently empty the slice on the first reload.
- */
+// Filter in the filesystem API namespace before storing and after restoring paths.
 function storedSliceForWorkspace(rootPath: string, slice: CachedWorkspaceSlice) {
   return mapSlicePaths(sliceForWorkspace(rootPath, slice), (path) => storedPath(rootPath, path))
 }

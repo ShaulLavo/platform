@@ -14,12 +14,12 @@ import {
 import { errorMessage } from '@/lib/error-message'
 import { useProviderSignInDialog } from '../hooks/use-provider-sign-in-dialog'
 import { providerListQueryOptions } from '@/features/chat/utils/provider-query'
-import type { ChatThread } from '../state/chat-projection-store'
+import type { ChatSession } from '../state/chat-projection-store'
 import { Spinner } from '@workspace/ui/components/spinner'
 
 /**
  * The runtime notice stack above the composer. Only the most urgent notice is
- * expanded; the rest fold behind a disclosure so a thread with a provider
+ * expanded; the rest fold behind a disclosure so a session with a provider
  * warning, a pending approval and a live spinner cannot walk the composer off
  * the bottom of the viewport.
  */
@@ -28,16 +28,16 @@ export function ChatRuntimeStatus({
   interruptPending,
   sendPending,
   stopPending,
-  thread,
+  session,
 }: ChatCommandState & {
-  thread: ChatThread
+  session: ChatSession
 }) {
   const { openSignIn } = useProviderSignInDialog()
   const providersQuery = useQuery(providerListQueryOptions())
   const [dismissedKeys, setDismissedKeys] = useState<readonly string[]>([])
   const [expanded, setExpanded] = useState(false)
   const provider = providersQuery.data?.providers.find(
-    (candidate) => candidate.providerInstanceId === thread.modelSelection.providerInstanceId,
+    (candidate) => candidate.providerInstanceId === session.modelSelection.providerInstanceId,
   )
   const alerts = chatRuntimeAlerts({
     commandState: { commandFailure, interruptPending, sendPending, stopPending },
@@ -46,7 +46,7 @@ export function ChatRuntimeStatus({
       ? errorMessage(providersQuery.error, 'Provider request failed.')
       : null,
     providerLoading: providersQuery.isLoading,
-    thread,
+    session,
   }).filter((alert) => !alert.dismissKey || !dismissedKeys.includes(alert.dismissKey))
 
   const [front, ...folded] = alerts

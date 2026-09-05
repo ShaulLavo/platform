@@ -4,7 +4,7 @@ export const CHAT_CHANGED_FILES_EXPANSION_STORAGE_KEY = 'platform.chat-changed-f
 const CHAT_CHANGED_FILES_EXPANSION_STORAGE_VERSION = 1
 
 /**
- * Nothing ever deletes an entry: a thread can be removed while the expansion of
+ * Nothing ever deletes an entry: a session can be removed while the expansion of
  * its cards sits in localStorage forever. The map is bounded here instead — the
  * least recently touched entries fall off the end, and re-collapsing a card the
  * user has not seen in a thousand turns is not a bug worth carrying state for.

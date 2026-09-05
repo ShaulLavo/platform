@@ -44,7 +44,7 @@ export function workspaceSlug(rootPath: string, allRootPaths: readonly string[])
 
 /** Every root's slug in one pass, since a slug is a property of the whole set. */
 export function workspaceSlugs(allRootPaths: readonly string[]) {
-  const roots = Array.from(new Set(allRootPaths.map(normalizeWorkspaceRoot))).filter(Boolean)
+  const roots = Array.from(new Set(allRootPaths.map(normalizeWorkspaceRoot)))
   const byLeaf = groupBy(roots, workspacePathLeaf)
   const slugs = new Map<string, string>()
   // Every bare leaf in play, including the ones this pass has not reached yet: a
@@ -81,7 +81,7 @@ export function resolveWorkspaceSlug(
   // Deduped, not just normalized: callers legitimately concatenate sources — the
   // remembered index and the currently open root — and the same root arriving twice
   // must not read as two workspaces that happen to share a name.
-  const indexed = Array.from(new Set(sources.indexed.map(normalizeWorkspaceRoot))).filter(Boolean)
+  const indexed = Array.from(new Set(sources.indexed.map(normalizeWorkspaceRoot)))
   const slugs = workspaceSlugs(indexed)
 
   const exact = indexed.filter((rootPath) => slugs.get(rootPath) === slug)
@@ -100,7 +100,7 @@ export function resolveWorkspaceSlug(
 
 function resolveFromRecent(slug: string, recent: readonly string[]): WorkspaceSlugResolution {
   const matches = Array.from(new Set(recent.map(normalizeWorkspaceRoot))).filter(
-    (rootPath) => Boolean(rootPath) && workspacePathLeaf(rootPath) === slug,
+    (rootPath) => workspacePathLeaf(rootPath) === slug,
   )
   if (matches.length === 1) return { kind: 'resolved', rootPath: matches[0] }
   if (matches.length > 1) return { kind: 'ambiguous', rootPaths: matches }

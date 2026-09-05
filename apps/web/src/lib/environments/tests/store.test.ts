@@ -1,3 +1,5 @@
+import { confirmedEnvironmentId, confirmedEnvironmentOrigin } from '@/lib/environments/state/domain'
+import { fixtureEnvironmentId } from '../../../../test/factories/chat'
 import { healthDescriptorSchema, ORCHESTRATION_WS_PROTOCOL_VERSION } from '@workspace/contracts'
 import { afterEach, beforeEach } from 'vitest'
 import * as v from 'valibot'
@@ -53,7 +55,7 @@ test('tracks accepted generations independently by origin', () => {
   const { recordHandshake } = useEnvironmentsStore.getState()
   recordHandshake(originA, orchestrationServerConfig())
   recordHandshake(originA, orchestrationServerConfig())
-  recordHandshake(originB, orchestrationServerConfig({ environmentId: 'environment-b' }))
+  recordHandshake(originB, orchestrationServerConfig({ environmentId: fixtureEnvironmentId(2) }))
   expect(selectServerConnection(useEnvironmentsStore.getState(), originA).generation).toBe(1)
 
   recordHandshake(originA, orchestrationServerConfig({ serverInstanceId: 'server-2' }))
@@ -134,7 +136,7 @@ test('refuses handshake identity drift without applying the replacement config',
     recordHandshake(
       originA,
       orchestrationServerConfig({
-        environmentId: 'replacement-environment',
+        environmentId: fixtureEnvironmentId(3),
         serverInstanceId: 'replacement-process',
         protocolVersion: 999,
       }),
@@ -142,11 +144,11 @@ test('refuses handshake identity drift without applying the replacement config',
   ).toThrow(expect.objectContaining({ code: 'ENVIRONMENT_IDENTITY_DRIFT', statusCode: 403 }))
 
   const state = useEnvironmentsStore.getState()
-  expect(state.entries[originA]?.environmentId).toBe('environment-1')
+  expect(state.entries[originA]?.environmentId).toBe(fixtureEnvironmentId(1))
   expect(selectServerConnection(state, originA)).toEqual({
     phase: 'identity-drift',
-    expected: 'environment-1',
-    received: 'replacement-environment',
+    expected: fixtureEnvironmentId(1),
+    received: fixtureEnvironmentId(3),
     generation: 1,
     protocolVersion: ORCHESTRATION_WS_PROTOCOL_VERSION,
     serverInstanceId: 'server-1',
@@ -165,7 +167,7 @@ test('a compatible descriptor clears refusals without changing accepted process 
   const accepted = selectServerConnection(useEnvironmentsStore.getState(), originA)
 
   for (const { phase, invalid } of [
-    { phase: 'identity-drift', invalid: { environmentId: 'replacement-environment' } },
+    { phase: 'identity-drift', invalid: { environmentId: fixtureEnvironmentId(3) } },
     { phase: 'protocol-mismatch', invalid: { protocolVersion: 999 } },
   ]) {
     expect(() => recordDescriptor(originA, { ...descriptor, ...invalid })).toThrow()
@@ -196,20 +198,20 @@ test('learns descriptor identity from the real server and rejects conflicting ha
   expect(() =>
     recordDescriptor(originA, {
       ...descriptor,
-      environmentId: 'replacement',
+      environmentId: fixtureEnvironmentId(3),
       label: 'wrong machine',
     }),
   ).toThrow(expect.objectContaining({ code: 'ENVIRONMENT_IDENTITY_DRIFT' }))
   expect(useEnvironmentsStore.getState().entries[originA]?.label).toBe(descriptor.label)
-  expect(() => recordHandshake(originA, orchestrationServerConfig())).toThrow(
-    expect.objectContaining({ code: 'ENVIRONMENT_IDENTITY_DRIFT' }),
-  )
+  expect(() =>
+    recordHandshake(originA, orchestrationServerConfig({ environmentId: fixtureEnvironmentId(4) })),
+  ).toThrow(expect.objectContaining({ code: 'ENVIRONMENT_IDENTITY_DRIFT' }))
 })
 
 test('counts slow requests by origin and clears only a restarted server', () => {
   const { clearSlowRequest, markSlowRequest, recordHandshake } = useEnvironmentsStore.getState()
   recordHandshake(originA, orchestrationServerConfig())
-  recordHandshake(originB, orchestrationServerConfig({ environmentId: 'environment-b' }))
+  recordHandshake(originB, orchestrationServerConfig({ environmentId: fixtureEnvironmentId(2) }))
   markSlowRequest(originA, 'request-1')
   markSlowRequest(originA, 'request-1')
   markSlowRequest(originA, 'request-2')
@@ -225,4 +227,22 @@ test('counts slow requests by origin and clears only a restarted server', () => 
   expect(selectServerConnection(useEnvironmentsStore.getState(), originB).slowRequestCount).toBe(1)
   resetServerConnectionStore(originB)
   expect(selectServerConnection(useEnvironmentsStore.getState(), originB).slowRequestCount).toBe(0)
+})
+
+test('refused origins cannot route scoped actions using their previously accepted identity', () => {
+  const { recordHandshake } = useEnvironmentsStore.getState()
+  const config = orchestrationServerConfig()
+  recordHandshake(originA, config)
+  expect(confirmedEnvironmentOrigin(config.environmentId)).toBe(originA)
+  expect(confirmedEnvironmentId(originA)).toBe(config.environmentId)
+  expect(() =>
+    recordHandshake(originA, { ...config, environmentId: fixtureEnvironmentId(5) }),
+  ).toThrow()
+  expect(() => confirmedEnvironmentOrigin(config.environmentId)).toThrow(
+    'different environment identity',
+  )
+  expect(() => confirmedEnvironmentId(originA)).toThrow('different environment identity')
+  recordHandshake(originA, config)
+  expect(() => recordHandshake(originA, { ...config, protocolVersion: 999 })).toThrow()
+  expect(() => confirmedEnvironmentOrigin(config.environmentId)).toThrow('incompatible protocol')
 })

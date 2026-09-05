@@ -129,13 +129,7 @@ export async function resolveAttachmentFile(input: {
   return { byteLength: stats.size, contentType, filePath }
 }
 
-/**
- * Best-effort reclaim of the blobs a set of attachments points at. Never
- * throws: the metadata that referenced the blob is already gone by the time a
- * caller cleans up (a deleted thread, a pruned message), so a missing or
- * unreadable file is the expected case, not a failure. Returns how many files
- * were actually unlinked, for the wide event.
- */
+// Missing blobs are already reclaimed; other failures remain retryable deletion work.
 export async function deleteAttachmentBlobs(input: {
   readonly attachmentsDir: string
   readonly attachments: readonly ChatAttachment[]
@@ -145,7 +139,16 @@ export async function deleteAttachmentBlobs(input: {
   for (const filePath of attachmentFilePaths(input)) {
     const unlinked = await unlink(filePath).then(
       () => true,
-      () => false,
+      (error: unknown) => {
+        if (
+          typeof error === 'object' &&
+          error !== null &&
+          'code' in error &&
+          error.code === 'ENOENT'
+        )
+          return false
+        throw error
+      },
     )
     if (unlinked) reclaimed += 1
   }

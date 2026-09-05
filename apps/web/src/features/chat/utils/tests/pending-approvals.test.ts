@@ -1,4 +1,4 @@
-import type { OrchestrationThreadActivity } from '@workspace/contracts'
+import type { OrchestrationSessionActivity } from '@workspace/contracts'
 
 import { derivePendingApprovals } from '@/features/chat/utils/pending-approvals'
 import { expect, test } from '../../../../../test/fixtures'
@@ -196,7 +196,7 @@ function activity({
   payload: unknown
   sequence?: number
   turnId?: string | null
-}): OrchestrationThreadActivity {
+}): OrchestrationSessionActivity {
   return {
     createdAt,
     id: `event-${kind}-${createdAt}-${sequence ?? 'none'}`,
@@ -204,8 +204,8 @@ function activity({
     payload,
     sequence,
     summary: kind,
-    threadId: 'thread-1',
+    sessionId: 'ad686244-5b2e-59be-805f-ef86eac80feb',
     tone: 'info',
     turnId,
-  } as OrchestrationThreadActivity
+  } as OrchestrationSessionActivity
 }

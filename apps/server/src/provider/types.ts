@@ -3,8 +3,6 @@ import type {
   ChatAttachment,
   InteractionMode,
   ModelSelection,
-  OrchestrationProject,
-  OrchestrationThread,
   ProviderApprovalDecision,
   ProviderAuth,
   ProviderDriverKind,
@@ -13,11 +11,11 @@ import type {
   ProviderSignInMethod,
   ProviderSkill,
   ProviderSlashCommand,
-  OrchestrationSessionStatus,
+  SessionRuntimeStatus,
   ProviderSnapshot,
   ProviderUserInputAnswers,
   RuntimeMode,
-  ThreadId,
+  SessionId,
   TurnId,
   UserInputQuestions,
 } from '@workspace/contracts'
@@ -26,12 +24,12 @@ export type ProviderTurnInput = {
   attachments: ChatAttachment[]
   cwd: string
   ephemeral?: boolean
+  resumeExisting?: boolean
   interactionMode: InteractionMode
   messageText: string
   modelSelection: ModelSelection
-  project?: OrchestrationProject
-  /** Adapters only route on the id; chat callers may still pass their full thread. */
-  thread: OrchestrationThread | Pick<OrchestrationThread, 'id'>
+  sessionId: SessionId
+  runtimeEpoch: string
   providerInstanceId: ProviderInstanceId
   /**
    * Cursor of the conversation this turn continues, filled in by
@@ -39,37 +37,39 @@ export type ProviderTurnInput = {
    * (re)start a session — after a restart, or after a model switch — would open
    * a brand-new provider conversation and lose the history.
    */
-  resumeCursor?: unknown | null
+  providerResumeCursor?: unknown | null
   runtimeMode: RuntimeMode
   turnId: TurnId
 }
 
-export type ProviderSessionStartInput = {
+export type ProviderRuntimeStartInput = {
+  runtimeEpoch: string
+  resumeExisting?: boolean
   cwd: string
   ephemeral?: boolean
   interactionMode?: InteractionMode
   modelSelection: ModelSelection
   providerInstanceId: ProviderInstanceId
-  resumeCursor?: unknown | null
+  providerResumeCursor?: unknown | null
   runtimeMode: RuntimeMode
-  threadId: ThreadId
+  sessionId: SessionId
 }
 
 export type ProviderTurnControlInput = {
-  threadId: ThreadId
+  sessionId: SessionId
   turnId?: TurnId
 }
 
 export type ProviderApprovalResponseInput = {
   decision: ProviderApprovalDecision
   requestId: ApprovalRequestId
-  threadId: ThreadId
+  sessionId: SessionId
 }
 
 export type ProviderUserInputResponseInput = {
   answers: ProviderUserInputAnswers
   requestId: ApprovalRequestId
-  threadId: ThreadId
+  sessionId: SessionId
 }
 
 type ProviderRuntimeBaseEvent = {
@@ -80,11 +80,11 @@ type ProviderRuntimeBaseEvent = {
   providerInstanceId?: ProviderInstanceId
   providerName?: string
   providerRefs?: ProviderRefs
-  providerSessionId?: string | null
+  providerBindingHandle?: string | null
   requestId?: string
   raw?: RuntimeEventRaw
   runtimeMode?: RuntimeMode
-  threadId: ThreadId
+  sessionId: SessionId
   turnId?: TurnId
 }
 
@@ -121,24 +121,26 @@ type ProviderRuntimeContentStreamKind =
 
 type ProviderRuntimeItemStatus = 'inProgress' | 'completed' | 'failed' | 'declined'
 
-type ProviderRuntimeThreadState = 'active' | 'idle' | 'archived' | 'closed' | 'compacted' | 'error'
+type ProviderRuntimeSessionState = 'active' | 'idle' | 'archived' | 'closed' | 'compacted' | 'error'
 
 type ProviderRuntimeTurnState = 'completed' | 'failed' | 'interrupted' | 'cancelled'
 
 type ProviderRuntimePlanStepStatus = 'pending' | 'inProgress' | 'completed'
 
-export type ProviderRuntimeEvent =
+export type ProviderRuntimeEvent = ProviderRuntimeEventPayload & { runtimeEpoch: string }
+
+export type ProviderRuntimeEventPayload =
   | {
       createdAt: string
       eventId: string
       providerInstanceId: ProviderInstanceId
       providerName?: string
-      providerSessionId: string | null
+      providerBindingHandle: string | null
       runtimeMode?: RuntimeMode
-      status: OrchestrationSessionStatus
-      threadId: ThreadId
+      status: SessionRuntimeStatus
+      sessionId: SessionId
       turnId: TurnId | null
-      type: 'session.set'
+      type: 'runtime.set'
       lastError?: string | null
     }
   | {
@@ -146,7 +148,7 @@ export type ProviderRuntimeEvent =
       delta: string
       eventId: string
       messageId: string
-      threadId: ThreadId
+      sessionId: SessionId
       turnId: TurnId
       type: 'assistant.delta'
     }
@@ -154,7 +156,7 @@ export type ProviderRuntimeEvent =
       completedAt: string
       eventId: string
       messageId: string
-      threadId: ThreadId
+      sessionId: SessionId
       turnId: TurnId
       type: 'assistant.complete'
     }
@@ -165,7 +167,7 @@ export type ProviderRuntimeEvent =
       kind: string
       payload?: unknown
       summary: string
-      threadId: ThreadId
+      sessionId: SessionId
       tone: 'info' | 'tool' | 'thinking' | 'approval' | 'error'
       turnId: TurnId | null
       type: 'activity.append'
@@ -175,7 +177,7 @@ export type ProviderRuntimeEvent =
       eventId: string
       planId?: string
       planMarkdown: string
-      threadId: ThreadId
+      sessionId: SessionId
       turnId: TurnId | null
       type: 'proposed-plan.upsert'
       updatedAt?: string
@@ -274,55 +276,55 @@ export type ProviderRuntimeEvent =
       payload: { class?: string; detail?: unknown; message: string }
     })
   | (ProviderRuntimeBaseEvent & {
-      type: 'session.started'
+      type: 'runtime.started'
       payload: { message?: string; resume?: unknown }
     })
   | (ProviderRuntimeBaseEvent & {
-      type: 'session.configured'
+      type: 'runtime.configured'
       payload: { config: Record<string, unknown> }
     })
   | (ProviderRuntimeBaseEvent & {
-      type: 'session.state.changed'
-      payload: { detail?: unknown; reason?: string; state: OrchestrationSessionStatus }
+      type: 'runtime.state.changed'
+      payload: { detail?: unknown; reason?: string; state: SessionRuntimeStatus }
     })
   | (ProviderRuntimeBaseEvent & {
-      type: 'session.exited'
+      type: 'runtime.exited'
       payload: { exitKind?: 'graceful' | 'error'; reason?: string; recoverable?: boolean }
     })
   | (ProviderRuntimeBaseEvent & {
-      type: 'thread.started'
-      payload: { providerThreadId?: string }
+      type: 'conversation.started'
+      payload: { providerConversationMarker?: string }
     })
   | (ProviderRuntimeBaseEvent & {
-      type: 'thread.state.changed'
-      payload: { detail?: unknown; state: ProviderRuntimeThreadState }
+      type: 'conversation.state.changed'
+      payload: { detail?: unknown; state: ProviderRuntimeSessionState }
     })
   | (ProviderRuntimeBaseEvent & {
-      type: 'thread.metadata.updated'
+      type: 'conversation.metadata.updated'
       payload: { metadata?: Record<string, unknown>; name?: string }
     })
   | (ProviderRuntimeBaseEvent & {
-      type: 'thread.token-usage.updated'
+      type: 'conversation.token-usage.updated'
       payload: { usage: Record<string, unknown> & { usedTokens?: number } }
     })
   | (ProviderRuntimeBaseEvent & {
-      type: 'thread.realtime.started'
+      type: 'conversation.realtime.started'
       payload: { realtimeSessionId?: string }
     })
   | (ProviderRuntimeBaseEvent & {
-      type: 'thread.realtime.item-added'
+      type: 'conversation.realtime.item-added'
       payload: { item: unknown }
     })
   | (ProviderRuntimeBaseEvent & {
-      type: 'thread.realtime.audio.delta'
+      type: 'conversation.realtime.audio.delta'
       payload: { audio: unknown }
     })
   | (ProviderRuntimeBaseEvent & {
-      type: 'thread.realtime.error'
+      type: 'conversation.realtime.error'
       payload: { message: string }
     })
   | (ProviderRuntimeBaseEvent & {
-      type: 'thread.realtime.closed'
+      type: 'conversation.realtime.closed'
       payload: { reason?: string }
     })
   | (ProviderRuntimeBaseEvent & {
@@ -455,19 +457,35 @@ export type ProviderCommandCatalogResult = {
   skills: ProviderSkill[]
 }
 
-export type ProviderAdapterSession = {
+export type ProviderSessionDiscoveryInput = {
+  cwd: string
+  limit: number
+  offset: number
+}
+
+export type ProviderDiscoveredSession = {
+  sessionId: SessionId
+  cwd: string | null
+  title: string
+  sourceUpdatedAt: string
+  gitBranch: string | null
+}
+
+export type ProviderAdapterRuntime = {
+  runtimeEpoch: string
   cwd: string
   model: string
   providerInstanceId: ProviderInstanceId
-  providerSessionId: string
-  providerThreadId?: string
-  resumeCursor?: unknown | null
+  providerBindingHandle: string
+  providerConversationMarker?: string
+  providerResumeCursor?: unknown | null
   runtimeMode: RuntimeMode
-  status: OrchestrationSessionStatus
-  threadId: ThreadId
+  status: SessionRuntimeStatus
+  sessionId: SessionId
 }
 
 export type ProviderAdapter = {
+  operationTimeoutMs: number
   adapterKey: string
   /**
    * Current account state, read from the provider CLI rather than from a cached
@@ -477,7 +495,8 @@ export type ProviderAdapter = {
   cancelSignIn?: (input: { attemptId: string }) => Promise<ProviderLoginAttempt | null>
   capabilities: ProviderAdapterCapabilities
   driverKind: ProviderDriverKind
-  hasSession: (input: { threadId: ThreadId }) => Promise<boolean>
+  discoverSessions?: (input: ProviderSessionDiscoveryInput) => Promise<ProviderDiscoveredSession[]>
+  hasRuntime: (input: { sessionId: SessionId }) => Promise<boolean>
   interruptTurn: (input: ProviderTurnControlInput) => Promise<void>
   /**
    * The `/command` and `$skill` catalog for one working directory. Present only
@@ -486,7 +505,7 @@ export type ProviderAdapter = {
   listCommands?: (input: ProviderCommandCatalogInput) => Promise<ProviderCommandCatalogResult>
   respondApproval: (input: ProviderApprovalResponseInput) => Promise<void>
   respondUserInput: (input: ProviderUserInputResponseInput) => Promise<void>
-  rollbackThread: (input: { numTurns: number; threadId: ThreadId }) => Promise<void>
+  rollbackSession: (input: { numTurns: number; sessionId: SessionId }) => Promise<void>
   /**
    * Starts an interactive sign-in. Returns as soon as the flow is running — the
    * user still has a browser round trip to finish — so callers poll
@@ -496,9 +515,9 @@ export type ProviderAdapter = {
   signInAttempt?: (input: { attemptId: string }) => Promise<ProviderLoginAttempt | null>
   signOut?: () => Promise<void>
   snapshot: () => Promise<ProviderSnapshot>
-  startSession: (input: ProviderSessionStartInput) => Promise<ProviderAdapterSession>
+  startRuntime: (input: ProviderRuntimeStartInput) => Promise<ProviderAdapterRuntime>
   sendTurn: (input: ProviderTurnInput) => Promise<void>
   subscribeEvents: (subscriber: (event: ProviderRuntimeEvent) => void) => () => void
   stopAll: () => Promise<void>
-  stopSession: (input: { threadId: ThreadId }) => Promise<void>
+  stopRuntime: (input: { sessionId: SessionId }) => Promise<void>
 }

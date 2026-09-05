@@ -18,7 +18,7 @@ type ChatChangedFilesExpansionChanges = Partial<
 /**
  * Changed-files cards render inside the virtualized timeline, so a card that
  * scrolls out of overscan unmounts — expansion cannot be component state. It
- * also has to survive a reload: reopening a thread to find every card back at
+ * also has to survive a reload: reopening a session to find every card back at
  * its default is the same lost place as scrolling back to the top.
  */
 type ChatChangedFilesExpansionStore = {
@@ -46,7 +46,7 @@ export const useChatChangedFilesExpansionStore = create<ChatChangedFilesExpansio
 }))
 
 export function chatChangedFilesExpansionKey(summary: ChatTurnDiffSummary) {
-  return `${summary.threadId}:${summary.turnId}`
+  return `${summary.sessionId}:${summary.turnId}`
 }
 
 export function hydrateChatChangedFilesExpansionStoreFromStorage() {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { threadIdSchema } from '@workspace/contracts'
+import { sessionIdSchema } from '@workspace/contracts'
 import * as v from 'valibot'
 import {
   checkpointDiffDocumentId,
@@ -12,7 +12,7 @@ import {
 import type { SnapshotDiffDocumentInput } from '@/features/git/utils/diff-document'
 
 describe('git diff document ids', () => {
-  const threadId = v.parse(threadIdSchema, 'thread-1')
+  const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
 
   it('round-trips snapshot diff documents', () => {
     const diff: SnapshotDiffDocumentInput = {
@@ -54,7 +54,7 @@ describe('git diff document ids', () => {
       path: '/repo/src/app.ts',
       scope: 'file',
       status: 'modified',
-      threadId,
+      sessionId,
       toTurnCount: 2,
     })
 
@@ -70,7 +70,7 @@ describe('git diff document ids', () => {
         path: '/repo/src/app.ts',
         scope: 'file',
         status: 'modified',
-        threadId,
+        sessionId,
         toTurnCount: 2,
         version: 1,
       },
@@ -85,20 +85,20 @@ describe('git diff document ids', () => {
       fromTurnCount: 1,
       path: 'checkpoint-turn-2',
       scope: 'turn',
-      threadId,
+      sessionId,
       toTurnCount: 2,
     })
-    const thread = checkpointDiffDocumentId({
+    const session = checkpointDiffDocumentId({
       fromTurnCount: 0,
-      path: 'checkpoint-thread-2',
-      scope: 'thread',
-      threadId,
+      path: 'checkpoint-session-2',
+      scope: 'session',
+      sessionId,
       toTurnCount: 2,
     })
 
     expect(diffDocumentLabel(turn)).toBe('Turn diff 1-2')
     expect(diffDocumentTitle(turn)).toBe('Turn checkpoint diff 1-2')
-    expect(diffDocumentLabel(thread)).toBe('Thread diff 2')
-    expect(diffDocumentTitle(thread)).toBe('Thread checkpoint diff 0-2')
+    expect(diffDocumentLabel(session)).toBe('Session diff 2')
+    expect(diffDocumentTitle(session)).toBe('Session checkpoint diff 0-2')
   })
 })

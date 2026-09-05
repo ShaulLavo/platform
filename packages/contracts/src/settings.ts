@@ -54,7 +54,7 @@ export const providerEnvironmentVariableSchema = v.object({
 
 /**
  * A configured provider instance — the unit the adapter registry reconciles
- * against. `providerInstanceId` is the routing key threads and sessions already
+ * against. `providerInstanceId` is the routing key sessions and runtimes already
  * store; `driverKind` picks the implementation behind it, so two instances of
  * the same driver (`codex-personal`, `codex-work`) are ordinary here.
  *

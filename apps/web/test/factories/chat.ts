@@ -5,37 +5,43 @@ import {
   DEFAULT_RUNTIME_MODE,
   type OrchestrationMessage,
   type OrchestrationProjectShell,
+  type OrchestrationWorktreeShell,
+  type OrchestrationSession,
   type OrchestrationShellSnapshot,
-  type OrchestrationThreadActivity,
-  type OrchestrationThreadShell,
+  type OrchestrationSessionActivity,
+  type OrchestrationSessionShell,
   type ProviderModel,
   type ProviderSnapshot,
+  environmentIdSchema,
   eventIdSchema,
+  messageIdSchema,
   projectIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
+  worktreeIdSchema,
   turnIdSchema,
 } from '@workspace/contracts'
 import * as v from 'valibot'
-
 import type {
-  ChatThread,
+  ChatSession,
   ChatTurnDiffSummary,
-  ProjectionThread,
+  ProjectionSession,
 } from '@/features/chat/state/chat-projection-store'
 
-// Deterministic timestamps so factory output is stable across runs.
+export const TEST_ENVIRONMENT_ID = v.parse(
+  environmentIdSchema,
+  'd47787b9-67dc-460c-8aa2-d4ed932b1568',
+)
+export const TEST_PROJECT_ID = v.parse(projectIdSchema, '609d2bd3-7993-5564-9918-c603beaa32c6')
+export const TEST_WORKTREE_ID = v.parse(worktreeIdSchema, 'dfc43652-d2f6-554d-ab37-88239fa016f6')
+export const TEST_SESSION_ID = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
+
 function timestamp(index: number) {
   return `2026-05-28T00:00:0${index}.000Z`
 }
 
-/**
- * Mirrors what `provider-runtime-ingestion` actually appends: the payload shape
- * is the contract the pending-request derivation reads, so tests that invent a
- * different one prove nothing.
- */
-export function threadActivity(
-  overrides: Partial<OrchestrationThreadActivity> = {},
-): OrchestrationThreadActivity {
+export function sessionActivity(
+  overrides: Partial<OrchestrationSessionActivity> = {},
+): OrchestrationSessionActivity {
   return {
     createdAt: timestamp(3),
     id: v.parse(eventIdSchema, 'event-activity-1'),
@@ -43,7 +49,7 @@ export function threadActivity(
     payload: {},
     sequence: 1,
     summary: 'Approval requested',
-    threadId: v.parse(threadIdSchema, 'thread-1'),
+    sessionId: TEST_SESSION_ID,
     tone: 'approval',
     turnId: v.parse(turnIdSchema, 'turn-1'),
     ...overrides,
@@ -54,20 +60,20 @@ export function chatMessage(overrides: Partial<OrchestrationMessage> = {}): Orch
   return {
     attachments: [],
     createdAt: timestamp(0),
-    id: 'message-1',
+    id: v.parse(messageIdSchema, 'message-1'),
     role: 'assistant',
     streaming: false,
     text: 'Hello from the assistant.',
-    threadId: 'thread-1',
+    sessionId: TEST_SESSION_ID,
     turnId: null,
     updatedAt: timestamp(0),
     ...overrides,
-  } as OrchestrationMessage
+  }
 }
 
 export function turnDiffSummary(overrides: Partial<ChatTurnDiffSummary> = {}): ChatTurnDiffSummary {
   return {
-    assistantMessageId: 'message-1',
+    assistantMessageId: v.parse(messageIdSchema, 'message-1'),
     checkpointRef: 'checkpoint-1',
     checkpointTurnCount: 1,
     completedAt: timestamp(2),
@@ -76,26 +82,37 @@ export function turnDiffSummary(overrides: Partial<ChatTurnDiffSummary> = {}): C
       { additions: 6, deletions: 0, kind: 'modified', path: 'src/b.ts' },
     ],
     status: 'ready',
-    threadId: 'thread-1',
-    turnId: 'turn-1',
+    sessionId: TEST_SESSION_ID,
+    turnId: v.parse(turnIdSchema, 'turn-1'),
     ...overrides,
-  } as ChatTurnDiffSummary
+  }
 }
 
-export function threadShell(
-  overrides: Partial<OrchestrationThreadShell> = {},
-): OrchestrationThreadShell {
-  const threadId = v.parse(threadIdSchema, 'thread-1')
+export function sessionShell(
+  overrides: Partial<OrchestrationSessionShell> = {},
+): OrchestrationSessionShell {
   const turnId = v.parse(turnIdSchema, 'turn-1')
-
   return {
     archivedAt: null,
-    branch: null,
     createdAt: timestamp(1),
     hasActionableProposedPlan: false,
-    id: threadId,
+    id: TEST_SESSION_ID,
+    worktreeId: TEST_WORKTREE_ID,
+    origin: 'platform',
+    attentionState: 'working',
+    attentionReason: 'active',
+    acknowledgedFailureThroughSequence: null,
+    hasError: false,
+    settledOverride: null,
+    snoozedUntil: null,
+    pinnedAt: null,
+    pinOrderKey: null,
     interactionMode: DEFAULT_INTERACTION_MODE,
     latestTurn: {
+      providerStartState: 'adopted',
+      providerStartGeneration: 1,
+      providerStartSequence: 1,
+      runtimeEpoch: 'test-epoch',
       assistantMessageId: null,
       completedAt: null,
       requestedAt: timestamp(1),
@@ -107,49 +124,63 @@ export function threadShell(
     modelSelection: { model: 'claude-opus-5', providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID },
     pendingApprovalCount: 0,
     pendingUserInputCount: 0,
-    projectId: v.parse(projectIdSchema, 'project-1'),
     runtimeMode: DEFAULT_RUNTIME_MODE,
-    session: {
+    runtime: {
       activeTurnId: turnId,
       lastError: null,
       providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
       providerName: 'Codex',
-      providerSessionId: 'provider-session-1',
+      providerBindingHandle: null,
+      providerConversationMarker: null,
+      providerResumeCursor: null,
+      runtimeEpoch: 'test-runtime-1',
       runtimeMode: DEFAULT_RUNTIME_MODE,
       status: 'running',
-      threadId,
+      sessionId: TEST_SESSION_ID,
       updatedAt: timestamp(2),
     },
-    title: 'Thread',
+    title: 'Session',
     updatedAt: timestamp(2),
-    worktreePath: null,
     ...overrides,
   }
 }
 
-export function projectionThread(overrides: Partial<ProjectionThread> = {}): ProjectionThread {
-  const source = threadShell()
-
+export function projectionSession(overrides: Partial<ProjectionSession> = {}): ProjectionSession {
+  const source = sessionShell()
   return {
     ...source,
     detailSynced: false,
     liveTurn: source.latestTurn,
     metaSource: 'shell',
     pinOrderKey: null,
-    sessionKnown: true,
+    runtimeKnown: true,
     ...overrides,
   }
 }
 
-export function thread(overrides: Partial<ChatThread> = {}): ChatThread {
-  const { liveTurn: _liveTurn, ...source } = projectionThread()
-
+export function session(overrides: Partial<ChatSession> = {}): ChatSession {
+  const { liveTurn: _liveTurn, ...source } = projectionSession()
   return {
     ...source,
+    project: chatProject(),
+    worktree: chatWorktree(),
     activities: [],
     messages: [],
     proposedPlans: [],
     turnDiffSummaries: [],
+    ...overrides,
+  }
+}
+
+export function orchestrationSession(
+  overrides: Partial<OrchestrationSession> = {},
+): OrchestrationSession {
+  return {
+    ...sessionShell(),
+    activities: [],
+    messages: [],
+    deletedAt: null,
+    deletion: null,
     ...overrides,
   }
 }
@@ -160,29 +191,52 @@ export function chatProject(
   return {
     createdAt: timestamp(0),
     defaultModelSelection: null,
-    id: v.parse(projectIdSchema, 'project-1'),
+    id: TEST_PROJECT_ID,
     orderKey: null,
+    repositoryKey: 'test-repository-key',
+    repositoryKind: 'git',
+    repositoryIdentity: {
+      source: 'git-remote',
+      remoteName: 'origin',
+      canonical: 'github.com/example/platform',
+      host: 'github.com',
+      path: 'example/platform',
+    },
     scripts: [],
     title: 'platform',
     updatedAt: timestamp(1),
-    workspaceRoot: '/repo/platform',
+    ...overrides,
+  }
+}
+
+export function chatWorktree(
+  overrides: Partial<OrchestrationWorktreeShell> = {},
+): OrchestrationWorktreeShell {
+  return {
+    id: TEST_WORKTREE_ID,
+    projectId: TEST_PROJECT_ID,
+    registrationGeneration: 0,
+    canonicalPath: '/repo/platform',
+    path: '/repo/platform',
+    branch: null,
+    kind: 'current',
+    ownership: 'protected',
+    createdAt: timestamp(0),
+    updatedAt: timestamp(1),
     ...overrides,
   }
 }
 
 export function shellSnapshot({
   projects = [chatProject()],
-  threads = [threadShell()],
+  worktrees = [chatWorktree()],
+  sessions = [sessionShell()],
 }: {
   projects?: OrchestrationProjectShell[]
-  threads?: OrchestrationThreadShell[]
+  worktrees?: OrchestrationWorktreeShell[]
+  sessions?: OrchestrationSessionShell[]
 } = {}): OrchestrationShellSnapshot {
-  return {
-    projects,
-    snapshotSequence: 1,
-    threads,
-    updatedAt: timestamp(2),
-  }
+  return { projects, worktrees, sessions, snapshotSequence: 1, updatedAt: timestamp(2) }
 }
 
 export function providerModel(overrides: Partial<ProviderModel> = {}): ProviderModel {
@@ -219,4 +273,17 @@ export function providerSnapshot(overrides: Partial<ProviderSnapshot> = {}): Pro
     version: '1.0.0',
     ...overrides,
   }
+}
+
+export function fixtureSessionId(index: number) {
+  if (index === 1) return TEST_SESSION_ID
+  return v.parse(sessionIdSchema, `00000000-0000-4000-8000-${index.toString(16).padStart(12, '0')}`)
+}
+
+export function fixtureEnvironmentId(index: number) {
+  if (index === 1) return TEST_ENVIRONMENT_ID
+  return v.parse(
+    environmentIdSchema,
+    `00000000-0000-4000-9000-${index.toString(16).padStart(12, '0')}`,
+  )
 }

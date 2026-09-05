@@ -3,9 +3,13 @@ import {
   eventIdSchema,
   messageIdSchema,
   projectIdSchema,
+  worktreeIdSchema,
+  providerBindingHandleSchema,
+  providerConversationMarkerSchema,
+  providerResumeCursorSchema,
   proposedPlanIdSchema,
   providerInstanceIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
   turnIdSchema,
 } from './chat-ids'
 import {
@@ -131,7 +135,7 @@ export function chatAttachmentUrlPath(
 }
 
 /**
- * Fractional index into an arranged list — the pinned thread block and the
+ * Fractional index into an arranged list — the pinned session block and the
  * project list both sit on it. Validated rather than taken as any string: the
  * list sorts by plain string comparison, so one malformed key (an
  * out-of-alphabet character, or a trailing minimum digit that leaves no room to
@@ -154,10 +158,45 @@ export const orchestrationProjectScriptSchema = v.object({
   name: trimmedNonEmptyStringSchema,
 })
 
+export const repositoryIdentitySchema = v.variant('source', [
+  v.object({
+    source: v.literal('git-remote'),
+    remoteName: v.literal('origin'),
+    canonical: trimmedNonEmptyStringSchema,
+    host: trimmedNonEmptyStringSchema,
+    path: trimmedNonEmptyStringSchema,
+  }),
+  v.object({ source: v.literal('root-commit'), canonical: trimmedNonEmptyStringSchema }),
+  v.object({ source: v.literal('path'), canonical: trimmedNonEmptyStringSchema }),
+])
+
+export const repositoryKindSchema = v.picklist(['git', 'directory'])
+
+export const orchestrationWorktreeSchema = v.object({
+  id: worktreeIdSchema,
+  projectId: projectIdSchema,
+  registrationGeneration: nonNegativeIntegerSchema,
+  canonicalPath: trimmedNonEmptyStringSchema,
+  path: v.string(),
+  branch: v.nullable(trimmedNonEmptyStringSchema),
+  kind: v.picklist(['current', 'linked']),
+  ownership: v.picklist(['protected', 'external', 'platform']),
+  createdAt: isoDateTimeSchema,
+  updatedAt: isoDateTimeSchema,
+  retiredAt: v.nullable(isoDateTimeSchema),
+})
+
+export const worktreeRegistrationEntries = {
+  ...v.omit(orchestrationWorktreeSchema, ['id', 'retiredAt']).entries,
+  worktreeId: worktreeIdSchema,
+} as const
+
 export const orchestrationProjectSchema = v.object({
   id: projectIdSchema,
   title: trimmedNonEmptyStringSchema,
-  workspaceRoot: trimmedNonEmptyStringSchema,
+  repositoryKey: trimmedNonEmptyStringSchema,
+  repositoryKind: repositoryKindSchema,
+  repositoryIdentity: repositoryIdentitySchema,
   defaultModelSelection: v.nullable(modelSelectionSchema),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
@@ -172,7 +211,7 @@ export const orchestrationMessageRoleSchema = v.picklist(['user', 'assistant', '
 
 export const orchestrationMessageSchema = v.object({
   id: messageIdSchema,
-  threadId: threadIdSchema,
+  sessionId: sessionIdSchema,
   role: orchestrationMessageRoleSchema,
   text: v.string(),
   attachments: v.optional(chatAttachmentsSchema, []),
@@ -182,7 +221,7 @@ export const orchestrationMessageSchema = v.object({
   updatedAt: isoDateTimeSchema,
 })
 
-export const orchestrationThreadActivityToneSchema = v.picklist([
+export const orchestrationSessionActivityToneSchema = v.picklist([
   'info',
   'tool',
   'thinking',
@@ -190,10 +229,10 @@ export const orchestrationThreadActivityToneSchema = v.picklist([
   'error',
 ])
 
-export const orchestrationThreadActivitySchema = v.object({
+export const orchestrationSessionActivitySchema = v.object({
   id: eventIdSchema,
-  threadId: threadIdSchema,
-  tone: orchestrationThreadActivityToneSchema,
+  sessionId: sessionIdSchema,
+  tone: orchestrationSessionActivityToneSchema,
   kind: trimmedNonEmptyStringSchema,
   summary: trimmedNonEmptyStringSchema,
   payload: v.unknown(),
@@ -204,18 +243,18 @@ export const orchestrationThreadActivitySchema = v.object({
 
 export const orchestrationProposedPlanSchema = v.object({
   id: proposedPlanIdSchema,
-  threadId: threadIdSchema,
+  sessionId: sessionIdSchema,
   turnId: v.nullable(turnIdSchema),
   planMarkdown: trimmedNonEmptyStringSchema,
   /**
    * Stamped once a turn has been started from this plan. It is what makes the
    * plan card stop offering "Implement", and the only honest source for a
-   * thread's actionable-plan flag — without it the flag can only latch true.
+   * session's actionable-plan flag — without it the flag can only latch true.
    * Absent and null both mean "not implemented": the producer of a brand new
    * plan has nothing to say about implementation yet.
    */
   implementedAt: v.optional(v.nullable(isoDateTimeSchema)),
-  implementationThreadId: v.optional(v.nullable(threadIdSchema)),
+  implementationSessionId: v.optional(v.nullable(sessionIdSchema)),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
 })
@@ -229,7 +268,7 @@ export const orchestrationProposedPlanSchema = v.object({
  * approval nobody has answered. It is live state that dies with the process,
  * which is why it counts as active everywhere and is never reclaimable.
  */
-export const orchestrationSessionStatusSchema = v.picklist([
+export const sessionRuntimeStatusSchema = v.picklist([
   'idle',
   'starting',
   'running',
@@ -240,12 +279,15 @@ export const orchestrationSessionStatusSchema = v.picklist([
   'error',
 ])
 
-export const orchestrationSessionSchema = v.object({
-  threadId: threadIdSchema,
-  status: orchestrationSessionStatusSchema,
+export const sessionRuntimeStateSchema = v.object({
+  sessionId: sessionIdSchema,
+  status: sessionRuntimeStatusSchema,
   providerName: v.nullable(trimmedNonEmptyStringSchema),
   providerInstanceId: v.optional(providerInstanceIdSchema),
-  providerSessionId: v.nullable(trimmedNonEmptyStringSchema),
+  providerBindingHandle: v.nullable(providerBindingHandleSchema),
+  providerConversationMarker: v.nullable(providerConversationMarkerSchema),
+  providerResumeCursor: v.nullable(providerResumeCursorSchema),
+  runtimeEpoch: trimmedNonEmptyStringSchema,
   runtimeMode: v.optional(runtimeModeSchema, DEFAULT_RUNTIME_MODE),
   activeTurnId: v.nullable(turnIdSchema),
   lastError: v.nullable(trimmedNonEmptyStringSchema),
@@ -260,7 +302,7 @@ const orchestrationLatestTurnStateSchema = v.picklist([
 ])
 
 export const sourceProposedPlanReferenceSchema = v.object({
-  threadId: threadIdSchema,
+  sessionId: sessionIdSchema,
   planId: proposedPlanIdSchema,
 })
 
@@ -272,12 +314,16 @@ export const orchestrationLatestTurnSchema = v.object({
   completedAt: v.nullable(isoDateTimeSchema),
   assistantMessageId: v.nullable(messageIdSchema),
   sourceProposedPlan: v.optional(sourceProposedPlanReferenceSchema),
+  providerStartState: v.picklist(['queued', 'claimed', 'adopted', 'settled', 'interrupted']),
+  providerStartGeneration: nonNegativeIntegerSchema,
+  providerStartSequence: nonNegativeIntegerSchema,
+  runtimeEpoch: v.nullable(trimmedNonEmptyStringSchema),
 })
 
 export const orchestrationCheckpointStatusSchema = v.picklist(['ready', 'missing', 'error'])
 
 export const orchestrationCheckpointFileSchema = v.object({
-  path: trimmedNonEmptyStringSchema,
+  path: v.string(),
   kind: trimmedNonEmptyStringSchema,
   additions: nonNegativeIntegerSchema,
   deletions: nonNegativeIntegerSchema,
@@ -294,75 +340,116 @@ export const orchestrationCheckpointSummarySchema = v.object({
 })
 
 /**
- * `settled` is the user parking a thread by hand; `active` is the user pulling
- * it back out. `null` is neither — the thread classifies purely on its own
+ * `settled` is the user parking a session by hand; `active` is the user pulling
+ * it back out. `null` is neither — the session classifies purely on its own
  * activity, which is where real work always resets it.
  */
-export const threadSettledOverrideSchema = v.picklist(['settled', 'active'])
+export const sessionSettledOverrideSchema = v.picklist(['settled', 'active'])
 
 /**
  * `user` is an explicit button; `activity` is the server clearing the state
  * because real work arrived. Only the server can stamp `activity`, so a client
  * cannot forge the neutral reset.
  */
-export const threadLifecycleReasonSchema = v.picklist(['user', 'activity'])
+export const sessionLifecycleReasonSchema = v.picklist(['user', 'activity'])
 
 /**
- * The settle / snooze / pin lifecycle a thread carries alongside its work.
- * Shared as entries so every thread-shaped schema projects the same fields
+ * The settle / snooze / pin lifecycle a session carries alongside its work.
+ * Shared as entries so every session-shaped schema projects the same fields
  * instead of re-declaring them and drifting.
  */
-export const orchestrationThreadLifecycleEntries = {
+export const orchestrationSessionLifecycleEntries = {
   // Absent and null both mean "the user has said nothing": every field is
-  // optional so a thread payload minted before this lifecycle existed — or by a
+  // optional so a session payload minted before this lifecycle existed — or by a
   // producer that only cares about the work — still decodes.
-  settledOverride: v.optional(v.nullable(threadSettledOverrideSchema)),
+  settledOverride: v.optional(v.nullable(sessionSettledOverrideSchema)),
   settledAt: v.optional(v.nullable(isoDateTimeSchema)),
   // Snooze is an overlay on the active lifecycle, not a fourth destination: a
-  // snoozed thread is still active and is only suppressed from the inbox until
-  // `snoozedUntil` passes or the thread raises its hand.
+  // snoozed session is still active and is only suppressed from the inbox until
+  // `snoozedUntil` passes or the session raises its hand.
   snoozedUntil: v.optional(v.nullable(isoDateTimeSchema)),
   snoozedAt: v.optional(v.nullable(isoDateTimeSchema)),
-  // A pin outranks the whole lifecycle: while `pinnedAt` is set the thread
+  // A pin outranks the whole lifecycle: while `pinnedAt` is set the session
   // renders in the pinned block and never classifies into a shelf.
   pinnedAt: v.optional(v.nullable(isoDateTimeSchema)),
   pinOrderKey: v.optional(v.nullable(orderKeySchema)),
 } as const
 
-export const orchestrationThreadSchema = v.object({
-  id: threadIdSchema,
-  projectId: projectIdSchema,
+export const sessionOriginSchema = v.picklist(['platform', 'discovered'])
+export const sessionAttentionStateSchema = v.picklist(['needs-input', 'working', 'settled'])
+export const sessionAttentionReasonSchema = v.nullable(
+  v.picklist(['approval', 'user-input', 'interruption', 'failure', 'plan', 'active']),
+)
+export const sessionProviderStopStateSchema = v.picklist([
+  'requested',
+  'completed',
+  'no-binding',
+  'failed',
+])
+export const sessionBlobCleanupStateSchema = v.picklist(['requested', 'completed', 'failed'])
+
+export const sessionDeletionStateSchema = v.object({
+  deletionSequence: nonNegativeIntegerSchema,
+  providerStop: sessionProviderStopStateSchema,
+  blobCleanup: sessionBlobCleanupStateSchema,
+  providerStopError: v.nullable(trimmedNonEmptyStringSchema),
+  blobCleanupError: v.nullable(trimmedNonEmptyStringSchema),
+  updatedAt: isoDateTimeSchema,
+})
+
+export const sessionAttentionEntries = {
+  attentionState: sessionAttentionStateSchema,
+  attentionReason: sessionAttentionReasonSchema,
+  acknowledgedFailureThroughSequence: v.nullable(nonNegativeIntegerSchema),
+  hasError: v.boolean(),
+} as const
+
+export const orchestrationReadinessSchema = v.picklist(['starting', 'ready', 'failed'])
+
+export const orchestrationSessionSchema = v.object({
+  id: sessionIdSchema,
+  worktreeId: worktreeIdSchema,
+  origin: sessionOriginSchema,
+  ...sessionAttentionEntries,
   title: trimmedNonEmptyStringSchema,
   modelSelection: modelSelectionSchema,
   runtimeMode: v.optional(runtimeModeSchema, DEFAULT_RUNTIME_MODE),
   interactionMode: v.optional(interactionModeSchema, DEFAULT_INTERACTION_MODE),
-  branch: v.nullable(trimmedNonEmptyStringSchema),
-  worktreePath: v.nullable(trimmedNonEmptyStringSchema),
   latestTurn: v.nullable(orchestrationLatestTurnSchema),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
   archivedAt: v.nullable(isoDateTimeSchema),
   deletedAt: v.nullable(isoDateTimeSchema),
   messages: v.array(orchestrationMessageSchema),
-  activities: v.array(orchestrationThreadActivitySchema),
-  session: v.nullable(orchestrationSessionSchema),
-  ...orchestrationThreadLifecycleEntries,
+  activities: v.array(orchestrationSessionActivitySchema),
+  runtime: v.nullable(sessionRuntimeStateSchema),
+  deletion: v.nullable(sessionDeletionStateSchema),
+  ...orchestrationSessionLifecycleEntries,
 })
 
 export type IsoDateTime = v.InferOutput<typeof isoDateTimeSchema>
 export type ChatAttachment = v.InferOutput<typeof chatAttachmentSchema>
 export type ChatAttachmentUpload = v.InferOutput<typeof chatAttachmentUploadSchema>
 export type OrchestrationProject = v.InferOutput<typeof orchestrationProjectSchema>
+export type RepositoryIdentity = v.InferOutput<typeof repositoryIdentitySchema>
+export type RepositoryKind = v.InferOutput<typeof repositoryKindSchema>
+export type OrchestrationWorktree = v.InferOutput<typeof orchestrationWorktreeSchema>
+export type SessionOrigin = v.InferOutput<typeof sessionOriginSchema>
+export type SessionAttentionState = v.InferOutput<typeof sessionAttentionStateSchema>
+export type SessionAttentionReason = v.InferOutput<typeof sessionAttentionReasonSchema>
+export type SessionDeletionState = v.InferOutput<typeof sessionDeletionStateSchema>
+export type SessionProviderStopState = v.InferOutput<typeof sessionProviderStopStateSchema>
+export type SessionBlobCleanupState = v.InferOutput<typeof sessionBlobCleanupStateSchema>
 export type OrchestrationProjectScript = v.InferOutput<typeof orchestrationProjectScriptSchema>
 export type OrchestrationMessageRole = v.InferOutput<typeof orchestrationMessageRoleSchema>
 export type OrchestrationMessage = v.InferOutput<typeof orchestrationMessageSchema>
-export type OrchestrationThreadActivityTone = v.InferOutput<
-  typeof orchestrationThreadActivityToneSchema
+export type OrchestrationSessionActivityTone = v.InferOutput<
+  typeof orchestrationSessionActivityToneSchema
 >
-export type OrchestrationThreadActivity = v.InferOutput<typeof orchestrationThreadActivitySchema>
+export type OrchestrationSessionActivity = v.InferOutput<typeof orchestrationSessionActivitySchema>
 export type OrchestrationProposedPlan = v.InferOutput<typeof orchestrationProposedPlanSchema>
-export type OrchestrationSessionStatus = v.InferOutput<typeof orchestrationSessionStatusSchema>
-export type OrchestrationSession = v.InferOutput<typeof orchestrationSessionSchema>
+export type SessionRuntimeStatus = v.InferOutput<typeof sessionRuntimeStatusSchema>
+export type SessionRuntimeState = v.InferOutput<typeof sessionRuntimeStateSchema>
 export type OrchestrationLatestTurn = v.InferOutput<typeof orchestrationLatestTurnSchema>
 export type OrchestrationCheckpointStatus = v.InferOutput<
   typeof orchestrationCheckpointStatusSchema
@@ -371,6 +458,6 @@ export type OrchestrationCheckpointFile = v.InferOutput<typeof orchestrationChec
 export type OrchestrationCheckpointSummary = v.InferOutput<
   typeof orchestrationCheckpointSummarySchema
 >
-export type ThreadSettledOverride = v.InferOutput<typeof threadSettledOverrideSchema>
-export type ThreadLifecycleReason = v.InferOutput<typeof threadLifecycleReasonSchema>
-export type OrchestrationThread = v.InferOutput<typeof orchestrationThreadSchema>
+export type SessionSettledOverride = v.InferOutput<typeof sessionSettledOverrideSchema>
+export type SessionLifecycleReason = v.InferOutput<typeof sessionLifecycleReasonSchema>
+export type OrchestrationSession = v.InferOutput<typeof orchestrationSessionSchema>

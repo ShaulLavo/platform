@@ -1,5 +1,11 @@
 import * as v from 'valibot'
-import { commandIdSchema, projectIdSchema, threadIdSchema, turnIdSchema } from './chat-ids'
+import {
+  commandIdSchema,
+  projectIdSchema,
+  worktreeIdSchema,
+  sessionIdSchema,
+  turnIdSchema,
+} from './chat-ids'
 import {
   isoDateTimeSchema,
   nonNegativeIntegerSchema,
@@ -7,10 +13,14 @@ import {
   orchestrationLatestTurnSchema,
   orchestrationMessageSchema,
   orchestrationProjectSchema,
+  orchestrationWorktreeSchema,
   orchestrationProposedPlanSchema,
+  sessionRuntimeStateSchema,
+  orchestrationSessionActivitySchema,
   orchestrationSessionSchema,
-  orchestrationThreadActivitySchema,
-  orchestrationThreadSchema,
+  orchestrationSessionLifecycleEntries,
+  sessionAttentionEntries,
+  sessionOriginSchema,
   trimmedNonEmptyStringSchema,
 } from './chat-model'
 import { orchestrationEventSchema, orchestrationAggregateKindSchema } from './orchestration-events'
@@ -21,38 +31,40 @@ import {
 } from './orchestration-runtime'
 
 export const orchestrationProjectShellSchema = v.omit(orchestrationProjectSchema, ['deletedAt'])
+export const orchestrationWorktreeShellSchema = v.omit(orchestrationWorktreeSchema, ['retiredAt'])
 
 /**
- * The kernel of a plan, sized for a rail row: which step the thread is on and
+ * The kernel of a plan, sized for a rail row: which step the session is on and
  * how far the plan got. The steps themselves stay in the timeline — "step 3 of
  * 7: running tests" needs three fields, not the plan, and the shell is read for
- * every thread on every delta.
+ * every session on every delta.
  *
  * `turnId` is the honesty gate. A plan belongs to the turn that wrote it, so a
  * reader can refuse to narrate it once a newer turn is running; null when the
  * provider reported the plan outside any turn.
  */
-export const orchestrationThreadPlanProgressSchema = v.object({
+export const orchestrationSessionPlanProgressSchema = v.object({
   turnId: v.nullable(turnIdSchema),
   step: trimmedNonEmptyStringSchema,
   completedSteps: nonNegativeIntegerSchema,
   totalSteps: nonNegativeIntegerSchema,
 })
 
-export const orchestrationThreadShellSchema = v.object({
-  id: threadIdSchema,
-  projectId: projectIdSchema,
+export const orchestrationSessionShellSchema = v.object({
+  id: sessionIdSchema,
+  worktreeId: worktreeIdSchema,
+  origin: sessionOriginSchema,
+  ...sessionAttentionEntries,
+  ...orchestrationSessionLifecycleEntries,
   title: trimmedNonEmptyStringSchema,
   modelSelection: modelSelectionSchema,
   runtimeMode: runtimeModeSchema,
   interactionMode: interactionModeSchema,
-  branch: v.nullable(trimmedNonEmptyStringSchema),
-  worktreePath: v.nullable(trimmedNonEmptyStringSchema),
   latestTurn: v.nullable(orchestrationLatestTurnSchema),
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
   archivedAt: v.nullable(isoDateTimeSchema),
-  session: v.nullable(orchestrationSessionSchema),
+  runtime: v.nullable(sessionRuntimeStateSchema),
   latestUserMessageAt: v.nullable(isoDateTimeSchema),
   pendingApprovalCount: nonNegativeIntegerSchema,
   pendingUserInputCount: nonNegativeIntegerSchema,
@@ -64,26 +76,27 @@ export const orchestrationThreadShellSchema = v.object({
    * column today, and a producer that says nothing must not be readable as a
    * producer that said "no plan".
    */
-  planProgress: v.optional(v.nullable(orchestrationThreadPlanProgressSchema)),
+  planProgress: v.optional(v.nullable(orchestrationSessionPlanProgressSchema)),
 })
 
 export const orchestrationShellSnapshotSchema = v.object({
   snapshotSequence: nonNegativeIntegerSchema,
   projects: v.array(orchestrationProjectShellSchema),
-  threads: v.array(orchestrationThreadShellSchema),
+  worktrees: v.array(orchestrationWorktreeShellSchema),
+  sessions: v.array(orchestrationSessionShellSchema),
   updatedAt: isoDateTimeSchema,
 })
 
 /**
- * How many messages and how many activities one thread-detail window carries.
- * A thread is unbounded, so the detail snapshot ships only its tail — a 5,000
- * message thread must open as fast as a 5 message one. Everything older stays
- * reachable through `threadDetailPage`.
+ * How many messages and how many activities one session-detail window carries.
+ * A session is unbounded, so the detail snapshot ships only its tail — a 5,000
+ * message session must open as fast as a 5 message one. Everything older stays
+ * reachable through `sessionDetailPage`.
  */
-export const ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE = 200
+export const ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE = 200
 
 /** Ceiling on a client-chosen page size: the page read is client-reachable. */
-export const ORCHESTRATION_THREAD_DETAIL_MAX_PAGE_SIZE = 1_000
+export const ORCHESTRATION_SESSION_DETAIL_MAX_PAGE_SIZE = 1_000
 
 /**
  * Keyset boundary for one backwards walk: the oldest row the caller already
@@ -95,7 +108,7 @@ export const ORCHESTRATION_THREAD_DETAIL_MAX_PAGE_SIZE = 1_000
  * a revert that rewrites projection rows can never strand history behind a
  * stale cursor — which is the only way "capped" stops meaning "unreachable".
  */
-export const orchestrationThreadDetailAnchorSchema = v.object({
+export const orchestrationSessionDetailAnchorSchema = v.object({
   id: trimmedNonEmptyStringSchema,
   createdAt: isoDateTimeSchema,
 })
@@ -104,41 +117,41 @@ export const orchestrationThreadDetailAnchorSchema = v.object({
  * `null` on a boundary means "hold nothing of this kind yet", which reads the
  * newest rows — the same slice the detail snapshot's window carries.
  */
-export const orchestrationThreadDetailPageInputSchema = v.object({
-  threadId: threadIdSchema,
-  beforeMessage: v.nullish(orchestrationThreadDetailAnchorSchema, null),
-  beforeActivity: v.nullish(orchestrationThreadDetailAnchorSchema, null),
+export const orchestrationSessionDetailPageInputSchema = v.object({
+  sessionId: sessionIdSchema,
+  beforeMessage: v.nullish(orchestrationSessionDetailAnchorSchema, null),
+  beforeActivity: v.nullish(orchestrationSessionDetailAnchorSchema, null),
   limit: v.optional(
     v.pipe(
       nonNegativeIntegerSchema,
       v.minValue(1),
-      v.maxValue(ORCHESTRATION_THREAD_DETAIL_MAX_PAGE_SIZE),
+      v.maxValue(ORCHESTRATION_SESSION_DETAIL_MAX_PAGE_SIZE),
     ),
-    ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE,
+    ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE,
   ),
 })
 
 /** Rows are oldest-first, so a caller prepends the page as it arrives. */
-export const orchestrationThreadDetailPageSchema = v.object({
-  threadId: threadIdSchema,
+export const orchestrationSessionDetailPageSchema = v.object({
+  sessionId: sessionIdSchema,
   snapshotSequence: nonNegativeIntegerSchema,
   messages: v.array(orchestrationMessageSchema),
-  activities: v.array(orchestrationThreadActivitySchema),
-  /** False only once both walks have reached the start of the thread. */
+  activities: v.array(orchestrationSessionActivitySchema),
+  /** False only once both walks have reached the start of the session. */
   hasEarlier: v.boolean(),
 })
 
 /**
- * Plans and checkpoints ride on the snapshot rather than on the thread: they
- * are history, and the engine's in-memory thread deliberately keeps only the
+ * Plans and checkpoints ride on the snapshot rather than on the session: they
+ * are history, and the engine's in-memory session deliberately keeps only the
  * live tail. A cold reload gets them here; live updates arrive as events.
  *
- * `thread.messages` and `thread.activities` are the newest
- * `ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE` rows, not the whole thread.
+ * `session.messages` and `session.activities` are the newest
+ * `ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE` rows, not the whole session.
  */
-export const orchestrationThreadDetailSnapshotSchema = v.object({
+export const orchestrationSessionDetailSnapshotSchema = v.object({
   snapshotSequence: nonNegativeIntegerSchema,
-  thread: orchestrationThreadSchema,
+  session: orchestrationSessionSchema,
   proposedPlans: v.array(orchestrationProposedPlanSchema),
   checkpoints: v.array(orchestrationCheckpointSummarySchema),
 })
@@ -159,21 +172,31 @@ export const orchestrationShellStreamItemSchema = v.variant('kind', [
     projectId: projectIdSchema,
   }),
   v.object({
-    kind: v.literal('thread-upserted'),
+    kind: v.literal('worktree-upserted'),
     sequence: nonNegativeIntegerSchema,
-    thread: orchestrationThreadShellSchema,
+    worktree: orchestrationWorktreeShellSchema,
   }),
   v.object({
-    kind: v.literal('thread-removed'),
+    kind: v.literal('worktree-removed'),
     sequence: nonNegativeIntegerSchema,
-    threadId: threadIdSchema,
+    worktreeId: worktreeIdSchema,
+  }),
+  v.object({
+    kind: v.literal('session-upserted'),
+    sequence: nonNegativeIntegerSchema,
+    session: orchestrationSessionShellSchema,
+  }),
+  v.object({
+    kind: v.literal('session-removed'),
+    sequence: nonNegativeIntegerSchema,
+    sessionId: sessionIdSchema,
   }),
 ])
 
-export const orchestrationThreadStreamItemSchema = v.variant('kind', [
+export const orchestrationSessionStreamItemSchema = v.variant('kind', [
   v.object({
     kind: v.literal('snapshot'),
-    snapshot: orchestrationThreadDetailSnapshotSchema,
+    snapshot: orchestrationSessionDetailSnapshotSchema,
   }),
   v.object({
     kind: v.literal('event'),
@@ -184,8 +207,8 @@ export const orchestrationThreadStreamItemSchema = v.variant('kind', [
 export const orchestrationReplayEventsInputSchema = v.object({
   afterSequence: nonNegativeIntegerSchema,
   aggregateKind: v.optional(orchestrationAggregateKindSchema),
-  aggregateId: v.optional(v.union([projectIdSchema, threadIdSchema])),
-  threadId: v.optional(threadIdSchema),
+  aggregateId: v.optional(v.union([projectIdSchema, worktreeIdSchema, sessionIdSchema])),
+  sessionId: v.optional(sessionIdSchema),
 })
 
 export const orchestrationReplayEventsResultSchema = v.object({
@@ -193,7 +216,7 @@ export const orchestrationReplayEventsResultSchema = v.object({
 })
 
 export const orchestrationGetTurnDiffInputSchema = v.object({
-  threadId: threadIdSchema,
+  sessionId: sessionIdSchema,
   fromTurnCount: nonNegativeIntegerSchema,
   toTurnCount: nonNegativeIntegerSchema,
   /**
@@ -204,47 +227,83 @@ export const orchestrationGetTurnDiffInputSchema = v.object({
   ignoreWhitespace: v.optional(v.boolean()),
 })
 
-export const orchestrationGetFullThreadDiffInputSchema = v.object({
-  threadId: threadIdSchema,
+export const orchestrationGetFullSessionDiffInputSchema = v.object({
+  sessionId: sessionIdSchema,
   toTurnCount: nonNegativeIntegerSchema,
   ignoreWhitespace: v.optional(v.boolean()),
 })
 
 export const orchestrationCommandReceiptStatusSchema = v.picklist(['accepted', 'rejected'])
 
-export const orchestrationCommandReceiptSchema = v.object({
+export const projectRegistrationResultSchema = v.object({
+  projectId: projectIdSchema,
+  worktreeId: worktreeIdSchema,
+  disposition: v.picklist([
+    'created-project',
+    'registered-worktree',
+    'existing-worktree',
+    'revived-project',
+  ]),
+})
+
+const commandReceiptEntries = {
   commandId: commandIdSchema,
   commandType: trimmedNonEmptyStringSchema,
   aggregateKind: orchestrationAggregateKindSchema,
-  aggregateId: v.union([projectIdSchema, threadIdSchema]),
+  aggregateId: v.union([projectIdSchema, worktreeIdSchema, sessionIdSchema]),
   acceptedAt: isoDateTimeSchema,
-  resultSequence: v.nullable(nonNegativeIntegerSchema),
-  status: orchestrationCommandReceiptStatusSchema,
-  error: v.nullable(v.string()),
-})
+  intentFingerprint: trimmedNonEmptyStringSchema,
+} as const
 
-export type OrchestrationThreadDetailAnchor = v.InferOutput<
-  typeof orchestrationThreadDetailAnchorSchema
+export const orchestrationCommandReceiptSchema = v.pipe(
+  v.variant('status', [
+    v.object({
+      ...commandReceiptEntries,
+      status: v.literal('accepted'),
+      resultSequence: nonNegativeIntegerSchema,
+      result: v.nullable(projectRegistrationResultSchema),
+      error: v.null(),
+    }),
+    v.object({
+      ...commandReceiptEntries,
+      status: v.literal('rejected'),
+      resultSequence: v.null(),
+      result: v.null(),
+      error: trimmedNonEmptyStringSchema,
+    }),
+  ]),
+  v.check((receipt) => {
+    if (receipt.status === 'rejected') return true
+    const isRegistration =
+      receipt.commandType === 'project.create' || receipt.commandType === 'project.revive'
+    return isRegistration === (receipt.result !== null)
+  }, 'Accepted registration receipts require their typed result; other commands have no result'),
+)
+
+export type OrchestrationSessionDetailAnchor = v.InferOutput<
+  typeof orchestrationSessionDetailAnchorSchema
 >
 /** Input side: boundaries and `limit` are the caller's to omit. */
-export type OrchestrationThreadDetailPageInput = v.InferInput<
-  typeof orchestrationThreadDetailPageInputSchema
+export type OrchestrationSessionDetailPageInput = v.InferInput<
+  typeof orchestrationSessionDetailPageInputSchema
 >
-export type OrchestrationThreadDetailPage = v.InferOutput<
-  typeof orchestrationThreadDetailPageSchema
+export type OrchestrationSessionDetailPage = v.InferOutput<
+  typeof orchestrationSessionDetailPageSchema
 >
 export type OrchestrationProjectShell = v.InferOutput<typeof orchestrationProjectShellSchema>
-export type OrchestrationThreadPlanProgress = v.InferOutput<
-  typeof orchestrationThreadPlanProgressSchema
+export type OrchestrationWorktreeShell = v.InferOutput<typeof orchestrationWorktreeShellSchema>
+export type ProjectRegistrationResult = v.InferOutput<typeof projectRegistrationResultSchema>
+export type OrchestrationSessionPlanProgress = v.InferOutput<
+  typeof orchestrationSessionPlanProgressSchema
 >
-export type OrchestrationThreadShell = v.InferOutput<typeof orchestrationThreadShellSchema>
+export type OrchestrationSessionShell = v.InferOutput<typeof orchestrationSessionShellSchema>
 export type OrchestrationShellSnapshot = v.InferOutput<typeof orchestrationShellSnapshotSchema>
-export type OrchestrationThreadDetailSnapshot = v.InferOutput<
-  typeof orchestrationThreadDetailSnapshotSchema
+export type OrchestrationSessionDetailSnapshot = v.InferOutput<
+  typeof orchestrationSessionDetailSnapshotSchema
 >
 export type OrchestrationShellStreamItem = v.InferOutput<typeof orchestrationShellStreamItemSchema>
-export type OrchestrationThreadStreamItem = v.InferOutput<
-  typeof orchestrationThreadStreamItemSchema
+export type OrchestrationSessionStreamItem = v.InferOutput<
+  typeof orchestrationSessionStreamItemSchema
 >
 export type OrchestrationReplayEventsInput = v.InferOutput<
   typeof orchestrationReplayEventsInputSchema
@@ -255,7 +314,7 @@ export type OrchestrationReplayEventsResult = v.InferOutput<
 export type OrchestrationGetTurnDiffInput = v.InferOutput<
   typeof orchestrationGetTurnDiffInputSchema
 >
-export type OrchestrationGetFullThreadDiffInput = v.InferOutput<
-  typeof orchestrationGetFullThreadDiffInputSchema
+export type OrchestrationGetFullSessionDiffInput = v.InferOutput<
+  typeof orchestrationGetFullSessionDiffInputSchema
 >
 export type OrchestrationCommandReceipt = v.InferOutput<typeof orchestrationCommandReceiptSchema>

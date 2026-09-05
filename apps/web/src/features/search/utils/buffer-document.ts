@@ -18,7 +18,6 @@ export function parseSearchBufferDocumentId(
 
   try {
     const rootPath = decodeURIComponent(id.slice(SEARCH_BUFFER_DOCUMENT_PREFIX.length))
-    if (!rootPath) return null
 
     return { id, rootPath }
   } catch {

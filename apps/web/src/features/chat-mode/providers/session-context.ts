@@ -1,4 +1,9 @@
-import type { OrchestrationProjectShell, ProjectId, ThreadId } from '@workspace/contracts'
+import type {
+  OrchestrationProjectShell,
+  OrchestrationWorktreeShell,
+  ProjectId,
+  SessionId,
+} from '@workspace/contracts'
 import { createContext, use } from 'react'
 
 import type { ChatTransport } from '@/features/chat/transport/chat-transport'
@@ -13,6 +18,7 @@ export type ChatModeSession = {
   readonly addProject: () => void
   readonly openProject: (workspaceRoot: string) => void
   readonly project: OrchestrationProjectShell | null
+  readonly worktree: OrchestrationWorktreeShell | null
   readonly ready: boolean
   /** True while a retry is in flight, so the button can say so instead of doing nothing. */
   readonly retrying: boolean
@@ -20,7 +26,7 @@ export type ChatModeSession = {
   readonly retryProject: () => void
   /** The active project's workspace root — what chat sends, not where the editor is. */
   readonly rootPath: string
-  readonly selectSession: (projectId: ProjectId, threadId: ThreadId) => void
+  readonly selectSession: (projectId: ProjectId, sessionId: SessionId) => void
   readonly startDraft: (projectId: ProjectId) => void
 }
 

@@ -3,9 +3,9 @@ import type {
   OrchestrationEvent,
   OrchestrationReplayEventsInput,
   OrchestrationShellStreamItem,
-  OrchestrationThreadDetailSnapshot,
-  OrchestrationThreadStreamItem,
-  ThreadId,
+  OrchestrationSessionDetailSnapshot,
+  OrchestrationSessionStreamItem,
+  SessionId,
 } from '@workspace/contracts'
 
 import { log } from '@/lib/client-logging'
@@ -32,18 +32,18 @@ export function chatCommandSummary(command: ClientOrchestrationCommand) {
     commandType: command.type,
   }
 
-  if ('threadId' in command) summary.threadId = command.threadId
+  if ('sessionId' in command) summary.sessionId = command.sessionId
   if ('projectId' in command) summary.projectId = command.projectId
   if ('turnId' in command) summary.turnId = command.turnId
 
-  if (command.type === 'thread.turn.start') {
+  if (command.type === 'session.turn.start') {
     summary.attachmentCount = command.message.attachments.length
-    summary.bootstrapCreateThread = Boolean(command.bootstrap?.createThread)
+    summary.bootstrapCreateSession = Boolean(command.bootstrap?.createSession)
     summary.interactionMode = command.interactionMode
     summary.messageId = command.message.messageId
     summary.model = command.modelSelection?.model
     summary.providerInstanceId = command.modelSelection?.providerInstanceId
-    summary.projectId = command.bootstrap?.createThread?.projectId
+    summary.worktreeId = command.bootstrap?.createSession?.worktreeId
     summary.runtimeMode = command.runtimeMode
     summary.textLength = command.message.text.length
   }
@@ -60,7 +60,7 @@ export function chatEventSummary(event: OrchestrationEvent): ChatLogContext {
     eventId: event.eventId,
     eventType: event.type,
     sequence: event.sequence,
-    threadId: threadIdFromEvent(event),
+    sessionId: sessionIdFromEvent(event),
   }
 }
 
@@ -69,38 +69,38 @@ export function chatReplaySummary(input: OrchestrationReplayEventsInput) {
     afterSequence: input.afterSequence,
     aggregateId: input.aggregateId,
     aggregateKind: input.aggregateKind,
-    threadId: input.threadId,
+    sessionId: input.sessionId,
   }
 }
 
-export function chatThreadSnapshotSummary(snapshot: OrchestrationThreadDetailSnapshot) {
+export function chatSessionSnapshotSummary(snapshot: OrchestrationSessionDetailSnapshot) {
   return {
-    activityCount: snapshot.thread.activities.length,
-    latestTurnState: snapshot.thread.latestTurn?.state ?? null,
-    messageCount: snapshot.thread.messages.length,
-    sessionStatus: snapshot.thread.session?.status ?? null,
+    activityCount: snapshot.session.activities.length,
+    latestTurnState: snapshot.session.latestTurn?.state ?? null,
+    messageCount: snapshot.session.messages.length,
+    sessionStatus: snapshot.session.runtime?.status ?? null,
     snapshotSequence: snapshot.snapshotSequence,
-    threadId: snapshot.thread.id,
+    sessionId: snapshot.session.id,
   }
 }
 
 export function chatStreamItemSummary(
-  item: OrchestrationShellStreamItem | OrchestrationThreadStreamItem,
+  item: OrchestrationShellStreamItem | OrchestrationSessionStreamItem,
 ) {
   if (item.kind === 'snapshot') return chatSnapshotStreamItemSummary(item)
   if ('event' in item) return { ...chatEventSummary(item.event), itemKind: item.kind }
-  if ('thread' in item) {
+  if ('session' in item) {
     return {
       itemKind: item.kind,
       sequence: item.sequence,
-      threadId: item.thread.id,
+      sessionId: item.session.id,
     }
   }
-  if ('threadId' in item) {
+  if ('sessionId' in item) {
     return {
       itemKind: item.kind,
       sequence: item.sequence,
-      threadId: item.threadId,
+      sessionId: item.sessionId,
     }
   }
   if ('project' in item) {
@@ -113,7 +113,9 @@ export function chatStreamItemSummary(
 
   return {
     itemKind: item.kind,
-    projectId: item.projectId,
+    projectId: 'projectId' in item ? item.projectId : undefined,
+    ...('worktree' in item ? { worktreeId: item.worktree.id } : {}),
+    ...('worktreeId' in item ? { worktreeId: item.worktreeId } : {}),
     sequence: item.sequence,
   }
 }
@@ -122,13 +124,13 @@ export function optimisticMessageSummary(input: {
   commandId?: string
   messageId: string
   textLength?: number
-  threadId: ThreadId
+  sessionId: SessionId
 }) {
   return {
     commandId: input.commandId,
     messageId: input.messageId,
     textLength: input.textLength,
-    threadId: input.threadId,
+    sessionId: input.sessionId,
   }
 }
 
@@ -142,12 +144,15 @@ function chatLogEvent(action: string, context: ChatLogContext) {
 }
 
 function chatSnapshotStreamItemSummary(
-  item: Extract<OrchestrationShellStreamItem | OrchestrationThreadStreamItem, { kind: 'snapshot' }>,
+  item: Extract<
+    OrchestrationShellStreamItem | OrchestrationSessionStreamItem,
+    { kind: 'snapshot' }
+  >,
 ) {
-  if ('thread' in item.snapshot) {
+  if ('session' in item.snapshot) {
     return {
       itemKind: item.kind,
-      ...chatThreadSnapshotSummary(item.snapshot),
+      ...chatSessionSnapshotSummary(item.snapshot),
     }
   }
 
@@ -155,12 +160,12 @@ function chatSnapshotStreamItemSummary(
     itemKind: item.kind,
     projectCount: item.snapshot.projects.length,
     snapshotSequence: item.snapshot.snapshotSequence,
-    threadCount: item.snapshot.threads.length,
+    sessionCount: item.snapshot.sessions.length,
   }
 }
 
-function threadIdFromEvent(event: OrchestrationEvent) {
-  if ('threadId' in event.payload) return event.payload.threadId
+function sessionIdFromEvent(event: OrchestrationEvent) {
+  if ('sessionId' in event.payload) return event.payload.sessionId
 
-  return event.aggregateKind === 'thread' ? event.aggregateId : undefined
+  return event.aggregateKind === 'session' ? event.aggregateId : undefined
 }

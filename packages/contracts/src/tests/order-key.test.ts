@@ -70,20 +70,20 @@ describe('order keys', () => {
 
 describe('planPinnedReorder', () => {
   const keyed = new Map([
-    ['thread-a', 'b'],
-    ['thread-b', 'd'],
-    ['thread-c', 'f'],
+    ['session-a', 'b'],
+    ['session-b', 'd'],
+    ['session-c', 'f'],
   ])
 
   it('writes exactly one key to exactly one row for a drag between keyed rows', () => {
     const writes = planPinnedReorder({
       keysById: keyed,
-      movedId: 'thread-c',
-      orderedIds: ['thread-a', 'thread-c', 'thread-b'],
+      movedId: 'session-c',
+      orderedIds: ['session-a', 'session-c', 'session-b'],
     })
 
     expect(writes).toHaveLength(1)
-    expect(writes[0]?.id).toBe('thread-c')
+    expect(writes[0]?.id).toBe('session-c')
     expect(writes[0]!.orderKey > 'b').toBe(true)
     expect(writes[0]!.orderKey < 'd').toBe(true)
   })
@@ -91,8 +91,8 @@ describe('planPinnedReorder', () => {
   it('writes one key when the drag lands at the top of the block', () => {
     const writes = planPinnedReorder({
       keysById: keyed,
-      movedId: 'thread-c',
-      orderedIds: ['thread-c', 'thread-a', 'thread-b'],
+      movedId: 'session-c',
+      orderedIds: ['session-c', 'session-a', 'session-b'],
     })
 
     expect(writes).toHaveLength(1)
@@ -101,69 +101,73 @@ describe('planPinnedReorder', () => {
 
   it('respreads the section when a neighbour has no key to anchor on', () => {
     const writes = planPinnedReorder({
-      keysById: new Map([['thread-a', 'b']]),
-      movedId: 'thread-c',
-      orderedIds: ['thread-a', 'thread-c', 'thread-b'],
+      keysById: new Map([['session-a', 'b']]),
+      movedId: 'session-c',
+      orderedIds: ['session-a', 'session-c', 'session-b'],
     })
 
-    expect(writes.map((write) => write.id)).toEqual(['thread-a', 'thread-c', 'thread-b'])
+    expect(writes.map((write) => write.id)).toEqual(['session-a', 'session-c', 'session-b'])
     expect(writes.map((write) => write.orderKey).toSorted()).toEqual(
       writes.map((write) => write.orderKey),
     )
   })
 
-  it('plans nothing for a thread that is not in the order', () => {
-    expect(planPinnedReorder({ keysById: keyed, movedId: 'thread-z', orderedIds: [] })).toEqual([])
+  it('plans nothing for a session that is not in the order', () => {
+    expect(planPinnedReorder({ keysById: keyed, movedId: 'session-z', orderedIds: [] })).toEqual([])
   })
 })
 
 describe('sortByOrderKey', () => {
-  it('orders keyed threads by plain string comparison and is stable under a drag', () => {
-    const threads = [
-      { createdAt: '2026-06-01T00:00:00.000Z', id: 'thread-c', pinOrderKey: 'f' },
-      { createdAt: '2026-06-02T00:00:00.000Z', id: 'thread-a', pinOrderKey: 'b' },
-      { createdAt: '2026-06-03T00:00:00.000Z', id: 'thread-b', pinOrderKey: 'd' },
+  it('orders keyed sessions by plain string comparison and is stable under a drag', () => {
+    const sessions = [
+      { createdAt: '2026-06-01T00:00:00.000Z', id: 'session-c', pinOrderKey: 'f' },
+      { createdAt: '2026-06-02T00:00:00.000Z', id: 'session-a', pinOrderKey: 'b' },
+      { createdAt: '2026-06-03T00:00:00.000Z', id: 'session-b', pinOrderKey: 'd' },
     ]
 
-    expect(sortByOrderKey(threads).map((thread) => thread.id)).toEqual([
-      'thread-a',
-      'thread-b',
-      'thread-c',
+    expect(sortByOrderKey(sessions).map((session) => session.id)).toEqual([
+      'session-a',
+      'session-b',
+      'session-c',
     ])
 
     const [write] = planPinnedReorder({
-      keysById: new Map(threads.map((thread) => [thread.id, thread.pinOrderKey])),
-      movedId: 'thread-c',
-      orderedIds: ['thread-a', 'thread-c', 'thread-b'],
+      keysById: new Map(sessions.map((session) => [session.id, session.pinOrderKey])),
+      movedId: 'session-c',
+      orderedIds: ['session-a', 'session-c', 'session-b'],
     })
-    const moved = threads.map((thread) =>
-      thread.id === write?.id ? { ...thread, pinOrderKey: write.orderKey } : thread,
+    const moved = sessions.map((session) =>
+      session.id === write?.id ? { ...session, pinOrderKey: write.orderKey } : session,
     )
 
-    expect(sortByOrderKey(moved).map((thread) => thread.id)).toEqual([
-      'thread-a',
-      'thread-c',
-      'thread-b',
+    expect(sortByOrderKey(moved).map((session) => session.id)).toEqual([
+      'session-a',
+      'session-c',
+      'session-b',
     ])
   })
 
-  it('parks keyless threads after the arranged run, newest created first', () => {
+  it('parks keyless sessions after the arranged run, newest created first', () => {
     const sorted = sortByOrderKey([
-      { createdAt: '2026-06-01T00:00:00.000Z', id: 'thread-old', pinOrderKey: null },
-      { createdAt: '2026-06-05T00:00:00.000Z', id: 'thread-new', pinOrderKey: null },
-      { createdAt: '2026-06-03T00:00:00.000Z', id: 'thread-keyed', pinOrderKey: 'm' },
+      { createdAt: '2026-06-01T00:00:00.000Z', id: 'session-old', pinOrderKey: null },
+      { createdAt: '2026-06-05T00:00:00.000Z', id: 'session-new', pinOrderKey: null },
+      { createdAt: '2026-06-03T00:00:00.000Z', id: 'session-keyed', pinOrderKey: 'm' },
     ])
 
-    expect(sorted.map((thread) => thread.id)).toEqual(['thread-keyed', 'thread-new', 'thread-old'])
+    expect(sorted.map((session) => session.id)).toEqual([
+      'session-keyed',
+      'session-new',
+      'session-old',
+    ])
   })
 
   it('breaks equal keys on id so two clients cannot disagree', () => {
     const sorted = sortByOrderKey([
-      { createdAt: '2026-06-01T00:00:00.000Z', id: 'thread-b', pinOrderKey: 'm' },
-      { createdAt: '2026-06-01T00:00:00.000Z', id: 'thread-a', pinOrderKey: 'm' },
+      { createdAt: '2026-06-01T00:00:00.000Z', id: 'session-b', pinOrderKey: 'm' },
+      { createdAt: '2026-06-01T00:00:00.000Z', id: 'session-a', pinOrderKey: 'm' },
     ])
 
-    expect(sorted.map((thread) => thread.id)).toEqual(['thread-a', 'thread-b'])
+    expect(sorted.map((session) => session.id)).toEqual(['session-a', 'session-b'])
   })
 
   it('sorts projects on their own key with the same comparison', () => {

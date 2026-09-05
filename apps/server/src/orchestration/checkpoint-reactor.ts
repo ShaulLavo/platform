@@ -1,11 +1,11 @@
-import { commandIdSchema, type MessageId, type ThreadId, type TurnId } from '@workspace/contracts'
+import { resolveSessionOwner } from './session-owner'
+import { commandIdSchema, type MessageId, type SessionId, type TurnId } from '@workspace/contracts'
 import * as v from 'valibot'
 
 import { GitCheckpointStore } from '../git/checkpoint-store'
 import type { GitService } from '../git/service'
-import type { ProviderService } from '../provider/provider-service'
 import { checkpointFilesFromDiffs } from './checkpoint-files'
-import { checkpointRefForThreadTurn } from './checkpoint-refs'
+import { checkpointRefForSessionTurn } from './checkpoint-refs'
 import {
   orchestrationEventSummary,
   recordChatPipelineInfo,
@@ -14,7 +14,7 @@ import {
 import { BoundedTtlCache } from './provider-runtime-buffers'
 import {
   settledTurnStateForSessionStatus,
-  type OrchestrationProjectedThread,
+  type OrchestrationProjectedSession,
   type OrchestrationReadModel,
 } from './read-model'
 import type { OrchestrationCommand, OrchestrationEvent } from './schemas'
@@ -24,7 +24,7 @@ import type { OrchestrationDomainEventReactor } from './streams'
 type CheckpointTask = {
   event: OrchestrationEvent
   kind: 'baseline' | 'turn'
-  threadId: ThreadId
+  sessionId: SessionId
   turnId: TurnId | null
 }
 
@@ -35,18 +35,18 @@ const HANDLED_EVENT_ID_TTL_MS = 30 * 60 * 1000
 
 /**
  * Turns a committed turn into a git checkpoint. Nothing else writes
- * `thread.turn.diff.complete`, so without this reactor `checkpointByTurnId` is
+ * `session.turn.diff.complete`, so without this reactor `checkpointByTurnId` is
  * empty forever: no changed-files section, no turn diff, and a revert with no
  * ref to restore.
  *
  * Two triggers, both domain events, because the provider runtime stream is a
  * shared subscription that the engine already drains through ingestion:
  *
- * - `thread.turn-start-requested` captures the *baseline* the turn will be
+ * - `session.turn-start-requested` captures the *baseline* the turn will be
  *   diffed against. Turn one has nothing to compare to unless the worktree was
  *   photographed before the agent touched it; every later turn reuses the
  *   previous turn's checkpoint and the capture is skipped.
- * - a `thread.session-set` that settles the live turn is the turn ending. The
+ * - a `session.runtime-set` that settles the live turn is the turn ending. The
  *   worktree at that moment is the turn's result, so it becomes `turn/N`.
  *
  * Mid-turn `turn.diff.updated` placeholders (dispatched by ingestion with
@@ -61,7 +61,6 @@ export class CheckpointReactor implements OrchestrationDomainEventReactor {
   // A replayed batch — the engine republishes events it committed before a
   // failed dispatch threw — must not photograph the worktree a second time.
   private readonly handledEventIds: BoundedTtlCache<string, true>
-  private readonly providerService: ProviderService
   private readonly store: GitCheckpointStore
   /**
    * Captures run one at a time per process: two `git add --all` passes over the
@@ -75,13 +74,11 @@ export class CheckpointReactor implements OrchestrationDomainEventReactor {
     getReadModel,
     git,
     now,
-    providerService,
   }: {
     dispatch: (command: OrchestrationCommand) => Promise<unknown>
     getReadModel: () => OrchestrationReadModel
     git: GitService
     now?: () => number
-    providerService: ProviderService
   }) {
     this.dispatch = dispatch
     this.getReadModel = getReadModel
@@ -90,7 +87,6 @@ export class CheckpointReactor implements OrchestrationDomainEventReactor {
       now,
       ttlMs: HANDLED_EVENT_ID_TTL_MS,
     })
-    this.providerService = providerService
     this.store = new GitCheckpointStore(git)
     this.worker = new SerialWorker((task) => this.runTask(task))
   }
@@ -121,27 +117,27 @@ export class CheckpointReactor implements OrchestrationDomainEventReactor {
    * capture cannot re-derive later — which turn just ended — is resolved here.
    */
   private taskForEvent(event: OrchestrationEvent): CheckpointTask | null {
-    if (event.type === 'thread.turn-start-requested') {
-      return { event, kind: 'baseline', threadId: event.payload.threadId, turnId: null }
+    if (event.type === 'session.turn-start-requested') {
+      return { event, kind: 'baseline', sessionId: event.payload.sessionId, turnId: null }
     }
-    if (event.type !== 'thread.session-set') return null
-    if (!settledTurnStateForSessionStatus(event.payload.session.status)) return null
+    if (event.type !== 'session.runtime-set') return null
+    if (!settledTurnStateForSessionStatus(event.payload.runtime.status)) return null
 
-    const turnId = this.settledTurnId(event.payload.threadId)
+    const turnId = this.settledTurnId(event.payload.sessionId)
     if (!turnId) return null
 
-    return { event, kind: 'turn', threadId: event.payload.threadId, turnId }
+    return { event, kind: 'turn', sessionId: event.payload.sessionId, turnId }
   }
 
-  private settledTurnId(threadId: ThreadId) {
-    const thread = this.getReadModel().threads.get(threadId)
-    if (!thread || thread.deletedAt) return null
+  private settledTurnId(sessionId: SessionId) {
+    const session = this.getReadModel().sessions.get(sessionId)
+    if (!session || session.deletedAt) return null
 
-    const turnId = thread.latestTurn?.turnId
+    const turnId = session.latestTurn?.turnId
     if (!turnId) return null
     // A session that settles again — a stop after the turn, a restart — must not
     // re-photograph a worktree the user has kept editing since.
-    if (thread.checkpointByTurnId[turnId]?.status === 'ready') return null
+    if (session.checkpointByTurnId[turnId]?.status === 'ready') return null
 
     return turnId
   }
@@ -153,7 +149,7 @@ export class CheckpointReactor implements OrchestrationDomainEventReactor {
       ...orchestrationEventSummary(task.event),
       checkpointKind: task.kind,
       durationMs: elapsedMs(startedAt),
-      threadId: task.threadId,
+      sessionId: task.sessionId,
       turnId: task.turnId,
       ...outcome,
     }
@@ -182,11 +178,11 @@ export class CheckpointReactor implements OrchestrationDomainEventReactor {
   }
 
   private async captureBaseline(task: CheckpointTask): Promise<CheckpointOutcome> {
-    const context = this.checkpointContext(task.threadId)
+    const context = this.checkpointContext(task.sessionId)
     if (!context) return { captured: false, skipReason: 'no-workspace' }
 
-    const checkpointTurnCount = maxCheckpointTurnCount(context.thread)
-    const checkpointRef = checkpointRefForThreadTurn(task.threadId, checkpointTurnCount)
+    const checkpointTurnCount = maxCheckpointTurnCount(context.session)
+    const checkpointRef = checkpointRefForSessionTurn(task.sessionId, checkpointTurnCount)
     if (await this.store.has({ path: context.workspacePath, ref: checkpointRef })) {
       return { captured: false, checkpointRef, checkpointTurnCount, skipReason: 'baseline-exists' }
     }
@@ -203,17 +199,17 @@ export class CheckpointReactor implements OrchestrationDomainEventReactor {
     const turnId = task.turnId
     if (!turnId) return { captured: false, skipReason: 'no-turn' }
 
-    const context = this.checkpointContext(task.threadId)
+    const context = this.checkpointContext(task.sessionId)
     if (!context) return { captured: false, skipReason: 'no-workspace' }
 
-    const existing = context.thread.checkpointByTurnId[turnId]
+    const existing = context.session.checkpointByTurnId[turnId]
     if (existing?.status === 'ready') return { captured: false, skipReason: 'already-captured' }
 
     // A mid-turn placeholder already claimed a slot for this turn; taking a new
     // one would leave a gap that the diff routes read as a missing checkpoint.
     const checkpointTurnCount =
-      existing?.checkpointTurnCount ?? maxCheckpointTurnCount(context.thread) + 1
-    const checkpointRef = checkpointRefForThreadTurn(task.threadId, checkpointTurnCount)
+      existing?.checkpointTurnCount ?? maxCheckpointTurnCount(context.session) + 1
+    const checkpointRef = checkpointRefForSessionTurn(task.sessionId, checkpointTurnCount)
     const checkpointCommit = await this.store.capture({
       path: context.workspacePath,
       ref: checkpointRef,
@@ -221,12 +217,12 @@ export class CheckpointReactor implements OrchestrationDomainEventReactor {
     const summary = await this.turnFileSummary({
       checkpointRef,
       checkpointTurnCount,
-      threadId: task.threadId,
+      sessionId: task.sessionId,
       workspacePath: context.workspacePath,
     })
 
     await this.dispatch({
-      assistantMessageId: assistantMessageIdForTurn(context.thread, turnId),
+      assistantMessageId: assistantMessageIdForTurn(context.session, turnId),
       checkpointRef,
       checkpointTurnCount,
       commandId: checkpointCommandId(task.event.eventId),
@@ -234,9 +230,9 @@ export class CheckpointReactor implements OrchestrationDomainEventReactor {
       createdAt: checkpointTimestamp(task.event),
       files: summary.files,
       status: 'ready',
-      threadId: task.threadId,
+      sessionId: task.sessionId,
       turnId,
-      type: 'thread.turn.diff.complete',
+      type: 'session.turn.diff.complete',
     })
 
     const captured = {
@@ -259,11 +255,11 @@ export class CheckpointReactor implements OrchestrationDomainEventReactor {
   private async turnFileSummary(input: {
     checkpointRef: string
     checkpointTurnCount: number
-    threadId: ThreadId
+    sessionId: SessionId
     workspacePath: string
   }) {
-    const fromRef = checkpointRefForThreadTurn(
-      input.threadId,
+    const fromRef = checkpointRefForSessionTurn(
+      input.sessionId,
       Math.max(0, input.checkpointTurnCount - 1),
     )
 
@@ -282,36 +278,20 @@ export class CheckpointReactor implements OrchestrationDomainEventReactor {
     }
   }
 
-  private checkpointContext(threadId: ThreadId) {
+  private checkpointContext(sessionId: SessionId) {
     const model = this.getReadModel()
-    const thread = model.threads.get(threadId)
-    if (!thread || thread.deletedAt) return null
+    const session = model.sessions.get(sessionId)
+    if (!session || session.deletedAt) return null
 
-    const project = model.projects.get(thread.projectId)
-    if (!project) return null
-
-    return {
-      thread,
-      workspacePath: this.workspacePathForThread(thread, project.workspaceRoot),
-    }
-  }
-
-  /**
-   * The running session's cwd wins: an agent may have been launched against a
-   * worktree the thread row does not know about yet, and checkpointing the
-   * wrong tree is worse than not checkpointing at all.
-   */
-  private workspacePathForThread(thread: OrchestrationProjectedThread, workspaceRoot: string) {
-    const payload = this.providerService.bindingForThread(thread.id)?.runtimePayload
-
-    return payload?.cwd ?? thread.worktreePath ?? workspaceRoot
+    const { worktree } = resolveSessionOwner(model, sessionId)
+    return { session, workspacePath: worktree.canonicalPath }
   }
 }
 
-function maxCheckpointTurnCount(thread: OrchestrationProjectedThread) {
+function maxCheckpointTurnCount(session: OrchestrationProjectedSession) {
   let maxTurnCount = 0
 
-  for (const checkpoint of Object.values(thread.checkpointByTurnId)) {
+  for (const checkpoint of Object.values(session.checkpointByTurnId)) {
     maxTurnCount = Math.max(maxTurnCount, checkpoint.checkpointTurnCount)
   }
 
@@ -319,11 +299,11 @@ function maxCheckpointTurnCount(thread: OrchestrationProjectedThread) {
 }
 
 function assistantMessageIdForTurn(
-  thread: OrchestrationProjectedThread,
+  session: OrchestrationProjectedSession,
   turnId: TurnId,
 ): MessageId | undefined {
-  for (let index = thread.messages.length - 1; index >= 0; index -= 1) {
-    const message = thread.messages[index]
+  for (let index = session.messages.length - 1; index >= 0; index -= 1) {
+    const message = session.messages[index]
     if (!message) continue
     if (message.role !== 'assistant') continue
     if (message.turnId !== turnId) continue
@@ -335,7 +315,7 @@ function assistantMessageIdForTurn(
 }
 
 function checkpointTimestamp(event: OrchestrationEvent) {
-  if (event.type === 'thread.session-set') return event.payload.session.updatedAt
+  if (event.type === 'session.runtime-set') return event.payload.runtime.updatedAt
 
   return event.occurredAt
 }

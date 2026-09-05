@@ -7,7 +7,7 @@ import {
 } from '../orchestration-ws'
 
 const config = {
-  environmentId: 'environment-a',
+  environmentId: 'e0750941-1fa5-532b-a2b8-17899e6f62b8',
   protocolVersion: ORCHESTRATION_WS_PROTOCOL_VERSION,
   serverVersion: '0.0.1',
   serverInstanceId: 'process-a',
@@ -17,8 +17,8 @@ const config = {
 }
 
 describe('environment identity contracts', () => {
-  it('requires a nonempty environment identity in protocol 4 handshakes', () => {
-    expect(ORCHESTRATION_WS_PROTOCOL_VERSION).toBe(4)
+  it('requires a nonempty environment identity in protocol 5 handshakes', () => {
+    expect(ORCHESTRATION_WS_PROTOCOL_VERSION).toBe(5)
     expect(
       v.parse(orchestrationWsConnectedMessageSchema, { kind: 'connected', config }).config,
     ).toEqual(config)

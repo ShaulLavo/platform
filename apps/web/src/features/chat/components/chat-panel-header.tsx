@@ -1,4 +1,4 @@
-import type { ThreadId } from '@workspace/contracts'
+import type { SessionId } from '@workspace/contracts'
 import { Button } from '@workspace/ui/components/button'
 import { cn } from '@workspace/ui/lib/utils'
 import {
@@ -9,33 +9,33 @@ import {
 } from '@workspace/ui/components/dropdown-menu'
 import { ChatCircleIcon, ClockCounterClockwiseIcon, PlusIcon } from '@phosphor-icons/react'
 
-import { chatThreadPreview, formatChatDateLabel } from '@/features/chat/utils/formatters'
-import type { ChatThreadListProjection } from '../state/chat-projection-selectors'
+import { chatSessionPreview, formatChatDateLabel } from '@/features/chat/utils/formatters'
+import type { ChatSessionListProjection } from '../state/chat-projection-selectors'
 
 export function ChatPanelHeader({
-  activeThreadId,
+  activeSessionId,
   creating,
   disabled,
   onNewChat,
-  onSelectThread,
-  threads,
+  onSelectSession,
+  sessions,
 }: {
-  activeThreadId: ThreadId | null
+  activeSessionId: SessionId | null
   creating: boolean
   disabled: boolean
   onNewChat: () => void
-  onSelectThread: (threadId: ThreadId) => void
-  threads: readonly ChatThreadListProjection[]
+  onSelectSession: (sessionId: SessionId) => void
+  sessions: readonly ChatSessionListProjection[]
 }) {
-  const historyDisabled = threads.length === 0
-  const activeThread = threads.find((thread) => thread.id === activeThreadId)
+  const historyDisabled = sessions.length === 0
+  const activeSession = sessions.find((session) => session.id === activeSessionId)
 
   return (
     <header className='border-border/70 compact:h-10 compact:px-2 flex h-12 shrink-0 items-center justify-between border-b px-3'>
       <div className='compact:pr-2 min-w-0 pr-3'>
         <div className='truncate text-sm font-semibold'>Chat</div>
-        {activeThread ? (
-          <div className='text-muted-foreground truncate text-[11px]'>{activeThread.title}</div>
+        {activeSession ? (
+          <div className='text-muted-foreground truncate text-[11px]'>{activeSession.title}</div>
         ) : null}
       </div>
       <div className='flex items-center gap-1'>
@@ -71,24 +71,24 @@ export function ChatPanelHeader({
             <ClockCounterClockwiseIcon className='size-4' />
           </DropdownMenuTrigger>
           <DropdownMenuContent align='end' className='w-72 rounded-md p-1'>
-            {threads.map((thread) => (
+            {sessions.map((session) => (
               <DropdownMenuItem
                 className={cn(
                   'compact:gap-x-2 compact:px-2 compact:py-2 grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 rounded-md px-2.5 py-2.5',
-                  thread.id === activeThreadId && 'bg-muted/70',
+                  session.id === activeSessionId && 'bg-muted/70',
                 )}
-                key={thread.id}
-                onClick={() => onSelectThread(thread.id)}
+                key={session.id}
+                onClick={() => onSelectSession(session.id)}
               >
                 <span className='truncate font-medium'>
-                  {thread.id === activeThreadId ? 'Current: ' : ''}
-                  {thread.title}
+                  {session.id === activeSessionId ? 'Current: ' : ''}
+                  {session.title}
                 </span>
                 <span className='text-muted-foreground text-[11px] tabular-nums'>
-                  {formatChatDateLabel(thread.activityAt)}
+                  {formatChatDateLabel(session.activityAt)}
                 </span>
                 <span className='text-muted-foreground col-span-2 truncate text-[11px] tabular-nums'>
-                  {chatThreadPreview(thread)}
+                  {chatSessionPreview(session)}
                 </span>
               </DropdownMenuItem>
             ))}

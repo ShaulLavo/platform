@@ -1,3 +1,9 @@
+import {
+  TEST_ENVIRONMENT_ID,
+  TEST_PROJECT_ID,
+  TEST_WORKTREE_ID,
+  shellSnapshot,
+} from '../../../../../test/factories/chat'
 import { renderHook, waitFor } from '@testing-library/react'
 import { useWorkspaceChatProject } from '@/features/chat/hooks/use-workspace-chat-project'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
@@ -6,18 +12,39 @@ import { expect, test } from '../../../../../test/fixtures'
 
 test('a fresh transport prepares the same workspace again', async () => {
   useChatProjectionStore.getState().resetChatProjection()
-  useChatProjectionStore.setState({ bootstrapComplete: true })
+  useChatProjectionStore
+    .getState()
+    .syncShellSnapshot(
+      TEST_ENVIRONMENT_ID,
+      shellSnapshot({ projects: [], worktrees: [], sessions: [] }),
+    )
   const dispatched: string[] = []
   const transportA = unsupportedChatTransport({
     dispatchCommand: async () => {
       dispatched.push('A')
-      return { deduped: false, sequence: 1 }
+      return {
+        result: {
+          projectId: TEST_PROJECT_ID,
+          worktreeId: TEST_WORKTREE_ID,
+          disposition: 'existing-worktree' as const,
+        },
+        deduped: false,
+        sequence: 1,
+      }
     },
   })
   const transportB = unsupportedChatTransport({
     dispatchCommand: async () => {
       dispatched.push('B')
-      return { deduped: false, sequence: 1 }
+      return {
+        result: {
+          projectId: TEST_PROJECT_ID,
+          worktreeId: TEST_WORKTREE_ID,
+          disposition: 'existing-worktree' as const,
+        },
+        deduped: false,
+        sequence: 1,
+      }
     },
   })
   const view = renderHook(

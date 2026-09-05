@@ -1,3 +1,4 @@
+import type { EnvironmentId } from '@workspace/contracts'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -5,6 +6,7 @@ import {
   closeApp,
   createApp,
   createMetadataDatabase,
+  migratePlatformDatabase,
   MockProviderAdapter,
   NerdFontService,
   ProviderAdapterRegistry,
@@ -27,18 +29,28 @@ export type TestServer = {
   root: string
   workspaceEditJournalRoot: string
   origin: string
+  restart: (options?: {
+    providerRuntime?: boolean
+    providerAdapter?: MockProviderAdapter
+  }) => Promise<void>
   cleanup: () => Promise<void>
 }
 
 // Boots a real server against a throwaway workspace. No network, no mocks: the
 // app routes, valibot contracts, and filesystem are the genuine article.
 type TestServerOptions = Pick<AppOptions, 'workspaceEditClock' | 'workspaceEditDriver'> & {
+  persistentDatabase?: boolean
+  providerRuntime?: boolean
+  environmentId?: EnvironmentId
   filesystemWatch?: boolean
   providerAdapter?: MockProviderAdapter
   settingsWatch?: boolean
 }
 
 export async function makeTestServer({
+  environmentId,
+  persistentDatabase = false,
+  providerRuntime = false,
   filesystemWatch = true,
   providerAdapter = new MockProviderAdapter(),
   settingsWatch = false,
@@ -47,34 +59,55 @@ export async function makeTestServer({
 }: TestServerOptions = {}): Promise<TestServer> {
   const root = await mkdtemp(path.join(tmpdir(), 'web-itest-'))
   const workspaceEditJournalRoot = path.join(root, '.platform-test', 'workspace-edit-journals')
-  const database = createMetadataDatabase({ databasePath: ':memory:' })
-  const app = createApp({
-    auth: { allowedOrigins: [TEST_ORIGIN] },
-    // Keep the real parser/cache/route path, but pin its cache inside this
-    // fixture. MSW supplies the external downloads page.
-    fonts: new NerdFontService({ cacheRoot: path.join(root, '.platform-test', 'fonts') }),
-    metadataDatabase: database,
-    orchestration: {
-      database: database.db,
-      // Never the default registry: its Codex and Claude adapters shell out to
-      // real CLIs, so any route that touches a provider would spawn a binary,
-      // read the developer's own machine, and answer differently per checkout.
-      providerAdapterRegistry: new ProviderAdapterRegistry([providerAdapter]),
-    },
-    settings: testSettingsOptions(root, { watch: settingsWatch }),
-    watch: filesystemWatch,
-    workspaceEditClock,
-    workspaceEditDriver,
-    workspaceEditJournalRoot,
-    workspaceRoot: root,
+  const database = createMetadataDatabase({
+    databasePath: persistentDatabase
+      ? path.join(root, '.platform-test', 'metadata.sqlite')
+      : ':memory:',
   })
+  migratePlatformDatabase(database.db)
+  if (environmentId)
+    database.db.$client.run('UPDATE environment_identity SET id = ?', [environmentId])
+  const buildApp = () =>
+    createApp({
+      auth: { allowedOrigins: [TEST_ORIGIN] },
+      // Keep the real parser/cache/route path, but pin its cache inside this
+      // fixture. MSW supplies the external downloads page.
+      fonts: new NerdFontService({ cacheRoot: path.join(root, '.platform-test', 'fonts') }),
+      metadataDatabase: database,
+      orchestration: {
+        attachmentsDir: path.join(root, '.platform-test', 'attachments'),
+        database: database.db,
+        providerRuntime,
+        // Never the default registry: its Codex and Claude adapters shell out to
+        // real CLIs, so any route that touches a provider would spawn a binary,
+        // read the developer's own machine, and answer differently per checkout.
+        providerAdapterRegistry: new ProviderAdapterRegistry([providerAdapter]),
+      },
+      settings: testSettingsOptions(root, { watch: settingsWatch }),
+      watch: filesystemWatch,
+      workspaceEditClock,
+      workspaceEditDriver,
+      workspaceEditJournalRoot,
+      workspaceRoot: root,
+    })
 
+  let app = buildApp()
   return {
-    app,
+    get app() {
+      return app
+    },
+    restart: async (options = {}) => {
+      await closeApp(app)
+      providerRuntime = options.providerRuntime ?? providerRuntime
+      providerAdapter = options.providerAdapter ?? providerAdapter
+      app = buildApp()
+    },
     cleanup: () => cleanupTestServer(app, root, database),
     database,
     origin: TEST_ORIGIN,
-    providerAdapter,
+    get providerAdapter() {
+      return providerAdapter
+    },
     root,
     workspaceEditJournalRoot,
   }

@@ -32,7 +32,7 @@ export function ProposedPlanCard({ plan }: { plan: OrchestrationProposedPlan }) 
       : stripDisplayedPlanMarkdown(plan.planMarkdown)
   const title = proposedPlanTitle(plan.planMarkdown)
   const ExpandIcon = expanded ? CaretUpIcon : CaretDownIcon
-  // The plan outlives the thread it was written in, so the export carries the
+  // The plan outlives the session it was written in, so the export carries the
   // heading the card strips for display.
   const exportMarkdown = proposedPlanExportMarkdown(plan.planMarkdown)
 

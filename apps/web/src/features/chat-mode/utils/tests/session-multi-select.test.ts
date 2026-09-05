@@ -1,17 +1,17 @@
-import { threadIdSchema } from '@workspace/contracts'
+import { sessionIdSchema } from '@workspace/contracts'
 import * as v from 'valibot'
 
 import {
   sessionClickIntent,
-  threadIdRange,
-  toggledThreadIds,
+  sessionIdRange,
+  toggledSessionIds,
 } from '@/features/chat-mode/utils/session-multi-select'
 import { expect, test } from '../../../../../test/fixtures'
 
-const threadA = v.parse(threadIdSchema, 'thread-a')
-const threadB = v.parse(threadIdSchema, 'thread-b')
-const threadC = v.parse(threadIdSchema, 'thread-c')
-const order = [threadA, threadB, threadC]
+const sessionA = v.parse(sessionIdSchema, '0cecbcf1-b3a4-5425-826e-9780b43b7832')
+const sessionB = v.parse(sessionIdSchema, 'ea35feb3-d322-5206-93b3-fad28939a07d')
+const sessionC = v.parse(sessionIdSchema, '30886e00-b5c5-5564-8ba1-1431a307f361')
+const order = [sessionA, sessionB, sessionC]
 
 test('a plain click opens the row', () => {
   expect(sessionClickIntent({ ctrlKey: false, metaKey: false, shiftKey: false })).toBe('open')
@@ -27,19 +27,19 @@ test('shift wins over the toggle modifier so a range keeps growing', () => {
 })
 
 test('toggling adds a row and takes it back out', () => {
-  expect(toggledThreadIds([threadA], threadB)).toEqual([threadA, threadB])
-  expect(toggledThreadIds([threadA, threadB], threadA)).toEqual([threadB])
+  expect(toggledSessionIds([sessionA], sessionB)).toEqual([sessionA, sessionB])
+  expect(toggledSessionIds([sessionA, sessionB], sessionA)).toEqual([sessionB])
 })
 
 test('a range spans the rows between the anchor and the target, either direction', () => {
-  expect(threadIdRange(order, threadA, threadC)).toEqual(order)
-  expect(threadIdRange(order, threadC, threadA)).toEqual(order)
+  expect(sessionIdRange(order, sessionA, sessionC)).toEqual(order)
+  expect(sessionIdRange(order, sessionC, sessionA)).toEqual(order)
 })
 
 test('a range with no anchor is just the row that was clicked', () => {
-  expect(threadIdRange(order, null, threadB)).toEqual([threadB])
+  expect(sessionIdRange(order, null, sessionB)).toEqual([sessionB])
 })
 
 test('an anchor that has been filtered out of the list spans nothing extra', () => {
-  expect(threadIdRange([threadB, threadC], threadA, threadC)).toEqual([threadC])
+  expect(sessionIdRange([sessionB, sessionC], sessionA, sessionC)).toEqual([sessionC])
 })

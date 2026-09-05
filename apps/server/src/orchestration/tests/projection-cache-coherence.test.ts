@@ -2,8 +2,8 @@ import { sql } from 'drizzle-orm'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { PendingOrchestrationEvent } from '../event-store'
 import {
-  threadPlanProgress,
-  type OrchestrationProjectedThread,
+  sessionPlanProgress,
+  type OrchestrationProjectedSession,
   type OrchestrationReadModel,
 } from '../read-model'
 import { createShellRowReader } from '../shell-row-reader'
@@ -14,14 +14,15 @@ import {
   messageSentEvent,
   pendingEvent,
   proposedPlanUpsertedEvent,
-  sessionSetEvent,
-  threadBootstrapEvents,
-  threadCreatedEvent,
+  proposedPlanImplementedEvent,
+  runtimeSetEvent,
+  sessionBootstrapEvents,
+  sessionCreatedEvent,
   turnDiffCompletedEvent,
   turnStartEvent,
-  turnStartEventOnThread,
+  turnStartEventOnSession,
   PROJECT_ID,
-  THREAD_ID,
+  SESSION_ID,
 } from './factories/projection'
 
 const requestedAt = '2026-05-24T00:01:00.000Z'
@@ -45,10 +46,10 @@ describe('orchestration read-model cache coherence', () => {
     { settledState: 'interrupted', status: 'stopped' },
   ])('settles a running turn when the session goes $status', ({ settledState, status }) => {
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       turnStartEvent('turn-1', requestedAt),
-      sessionSetEvent({ activeTurnId: 'turn-1', status: 'running', updatedAt: startedAt }),
-      sessionSetEvent({ status, updatedAt: settledAt }),
+      runtimeSetEvent({ activeTurnId: 'turn-1', status: 'running', updatedAt: startedAt }),
+      runtimeSetEvent({ status, updatedAt: settledAt }),
     ])
 
     expect(projected.memory.latestTurn).toMatchObject({
@@ -56,59 +57,59 @@ describe('orchestration read-model cache coherence', () => {
       state: settledState,
       turnId: 'turn-1',
     })
-    expect(projected.sqlThread.latestTurn).toEqual(projected.memory.latestTurn)
+    expect(projected.sqlSession.latestTurn).toEqual(projected.memory.latestTurn)
   })
 
   it.each(['starting', 'running', 'waiting'])(
     'leaves the turn running while the session is %s',
     (status) => {
       const projected = project([
-        ...threadBootstrapEvents(),
+        ...sessionBootstrapEvents(),
         turnStartEvent('turn-1', requestedAt),
-        sessionSetEvent({ activeTurnId: 'turn-1', status, updatedAt: startedAt }),
+        runtimeSetEvent({ activeTurnId: 'turn-1', status, updatedAt: startedAt }),
       ])
 
       expect(projected.memory.latestTurn).toMatchObject({ completedAt: null, state: 'running' })
-      expect(projected.sqlThread.latestTurn).toEqual(projected.memory.latestTurn)
+      expect(projected.sqlSession.latestTurn).toEqual(projected.memory.latestTurn)
     },
   )
 
   it('settles a turn that produced no assistant message at all', () => {
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       turnStartEvent('turn-1', requestedAt),
-      sessionSetEvent({ activeTurnId: 'turn-1', status: 'running', updatedAt: startedAt }),
-      sessionSetEvent({ lastError: 'provider died', status: 'error', updatedAt: settledAt }),
+      runtimeSetEvent({ activeTurnId: 'turn-1', status: 'running', updatedAt: startedAt }),
+      runtimeSetEvent({ lastError: 'provider died', status: 'error', updatedAt: settledAt }),
     ])
 
     expect(projected.memory.latestTurn?.state).toBe('error')
-    expect(projected.sqlThread.latestTurn?.state).toBe('error')
+    expect(projected.sqlSession.latestTurn?.state).toBe('error')
   })
 
   it('agrees on the session and the turn after a stop request', () => {
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       turnStartEvent('turn-1', requestedAt),
-      sessionSetEvent({ activeTurnId: 'turn-1', status: 'running', updatedAt: startedAt }),
+      runtimeSetEvent({ activeTurnId: 'turn-1', status: 'running', updatedAt: startedAt }),
       pendingEvent(
-        'thread.session-stop-requested',
-        { createdAt: settledAt, threadId: THREAD_ID },
+        'session.runtime-stop-requested',
+        { createdAt: settledAt, sessionId: SESSION_ID },
         settledAt,
       ),
     ])
 
-    expect(projected.memory.session).toMatchObject({ status: 'stopped', updatedAt: settledAt })
-    expect(projected.sqlThread.session).toEqual(projected.memory.session)
+    expect(projected.memory.runtime).toMatchObject({ status: 'stopped', updatedAt: settledAt })
+    expect(projected.sqlSession.runtime).toEqual(projected.memory.runtime)
     expect(projected.memory.latestTurn).toMatchObject({
       completedAt: settledAt,
       state: 'interrupted',
     })
-    expect(projected.sqlThread.latestTurn).toEqual(projected.memory.latestTurn)
+    expect(projected.sqlSession.latestTurn).toEqual(projected.memory.latestTurn)
   })
 
   it('replaces the streamed draft when a completion carries text, and backfills its turn', () => {
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       turnStartEvent('turn-1', requestedAt),
       messageSentEvent({ messageId: 'message-1', streaming: true, text: 'Hel' }),
       messageSentEvent({ messageId: 'message-1', streaming: true, text: 'lo' }),
@@ -127,12 +128,12 @@ describe('orchestration read-model cache coherence', () => {
       text: 'Hello, world',
       turnId: 'turn-1',
     })
-    expect(projected.sqlThread.messages).toEqual(projected.memory.messages)
+    expect(projected.sqlSession.messages).toEqual(projected.memory.messages)
   })
 
   it('keeps the streamed draft when a completion carries no text', () => {
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       messageSentEvent({ messageId: 'message-1', streaming: true, text: 'Hello' }),
       messageSentEvent({
         messageId: 'message-1',
@@ -143,7 +144,7 @@ describe('orchestration read-model cache coherence', () => {
     ])
 
     expect(projected.memory.messages[0]).toMatchObject({ streaming: false, text: 'Hello' })
-    expect(projected.sqlThread.messages).toEqual(projected.memory.messages)
+    expect(projected.sqlSession.messages).toEqual(projected.memory.messages)
   })
 
   it('keeps attachments a later frame does not carry', () => {
@@ -155,7 +156,7 @@ describe('orchestration read-model cache coherence', () => {
       type: 'image',
     }
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       messageSentEvent({
         attachments: [attachment],
         messageId: 'message-1',
@@ -178,23 +179,23 @@ describe('orchestration read-model cache coherence', () => {
       text: 'Look at this',
       turnId: 'turn-1',
     })
-    expect(projected.sqlThread.messages).toEqual(projected.memory.messages)
+    expect(projected.sqlSession.messages).toEqual(projected.memory.messages)
   })
 
   it('does not append a replayed activity twice', () => {
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       activityAppendedEvent({ id: 'event-activity-1' }),
       activityAppendedEvent({ id: 'event-activity-1' }),
     ])
 
     expect(projected.memory.activities).toHaveLength(1)
-    expect(projected.sqlThread.activities).toHaveLength(1)
+    expect(projected.sqlSession.activities).toHaveLength(1)
   })
 
   it('corrects the persisted activity when a revised frame re-emits the same id', () => {
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       activityAppendedEvent({
         id: 'event-activity-1',
         kind: 'tool.started',
@@ -215,7 +216,7 @@ describe('orchestration read-model cache coherence', () => {
     // The incremental cache and a cold rebuild read the same rows, so a
     // revision only one of them lands is a divergence that surfaces as the
     // timeline and the rail disagreeing about what a tool call did.
-    for (const activities of [projected.sqlThread.activities, projected.memory.activities]) {
+    for (const activities of [projected.sqlSession.activities, projected.memory.activities]) {
       expect(activities).toHaveLength(1)
       expect(activities[0]).toMatchObject({
         kind: 'tool.completed',
@@ -228,7 +229,7 @@ describe('orchestration read-model cache coherence', () => {
 
   it('leaves a revised activity where the first frame put it, in the cache and the rebuild', () => {
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       activityAppendedEvent({ id: 'event-activity-1', summary: 'Read started' }),
       activityAppendedEvent({
         createdAt: '2026-05-24T00:01:40.000Z',
@@ -242,7 +243,7 @@ describe('orchestration read-model cache coherence', () => {
       }),
     ])
 
-    for (const activities of [projected.sqlThread.activities, projected.memory.activities]) {
+    for (const activities of [projected.sqlSession.activities, projected.memory.activities]) {
       expect(activities.map((activity) => activity.id)).toEqual([
         'event-activity-1',
         'event-activity-2',
@@ -256,7 +257,7 @@ describe('orchestration read-model cache coherence', () => {
 
   it('backfills a revised activity onto its turn and never erases the turn again', () => {
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       turnStartEvent('turn-1', requestedAt),
       activityAppendedEvent({ id: 'event-activity-1', turnId: 'turn-1' }),
       activityAppendedEvent({ id: 'event-activity-2', turnId: null }),
@@ -264,14 +265,14 @@ describe('orchestration read-model cache coherence', () => {
       activityAppendedEvent({ createdAt: revisedAt, id: 'event-activity-2', turnId: 'turn-1' }),
     ])
 
-    for (const activities of [projected.sqlThread.activities, projected.memory.activities]) {
+    for (const activities of [projected.sqlSession.activities, projected.memory.activities]) {
       expect(activities.map((activity) => activity.turnId)).toEqual(['turn-1', 'turn-1'])
     }
   })
 
-  it('projects the plan step the thread is on, and the cache agrees with the rebuild', () => {
+  it('projects the plan step the session is on, and the cache agrees with the rebuild', () => {
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       turnStartEvent('turn-1', requestedAt),
       planActivity('activity-plan-1', [
         { status: 'completed', step: 'Read the code' },
@@ -291,7 +292,7 @@ describe('orchestration read-model cache coherence', () => {
 
   it('narrates the first pending step of a plan nothing has started yet', () => {
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       turnStartEvent('turn-1', requestedAt),
       planActivity('activity-plan-1', [
         { status: 'pending', step: 'Read the code' },
@@ -313,7 +314,7 @@ describe('orchestration read-model cache coherence', () => {
    */
   it('refolds a revised plan snapshot instead of advancing past it', () => {
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       turnStartEvent('turn-1', requestedAt),
       planActivity('activity-plan-1', [
         { status: 'completed', step: 'Read the code' },
@@ -344,7 +345,7 @@ describe('orchestration read-model cache coherence', () => {
     { plan: [{ status: 'completed', step: 'Read the code' }], reason: 'finished' },
   ])('narrates nothing once the plan is $reason', ({ plan }) => {
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       turnStartEvent('turn-1', requestedAt),
       planActivity('activity-plan-1', [{ status: 'inProgress', step: 'Read the code' }]),
       planActivity('activity-plan-2', plan, 'turn-1', revisedAt),
@@ -356,7 +357,7 @@ describe('orchestration read-model cache coherence', () => {
 
   it('falls back to the retained turn when a revert prunes the planning turn', () => {
     const projected = project([
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       turnStartEvent('turn-1', requestedAt),
       planActivity('activity-plan-1', [
         { status: 'completed', step: 'Read the code' },
@@ -372,8 +373,8 @@ describe('orchestration read-model cache coherence', () => {
       ),
       turnDiffCompletedEvent({ checkpointTurnCount: 2, turnId: 'turn-2' }),
       pendingEvent(
-        'thread.reverted',
-        { revertedAt: settledAt, threadId: THREAD_ID, turnCount: 1 },
+        'session.reverted',
+        { revertedAt: settledAt, sessionId: SESSION_ID, turnCount: 1 },
         settledAt,
       ),
     ])
@@ -391,7 +392,7 @@ describe('orchestration read-model cache coherence', () => {
     const fixture = createProjectionFixture()
     fixtures.push(fixture)
 
-    fixture.pipeline.applyEvents(fixture.append(threadBootstrapEvents()))
+    fixture.pipeline.applyEvents(fixture.append(sessionBootstrapEvents()))
     fixture.append([messageSentEvent({ messageId: 'message-1', streaming: true, text: 'Hello' })])
 
     const appliedBeforeCrash = fixture.pipeline.lastAppliedSequence()
@@ -402,8 +403,8 @@ describe('orchestration read-model cache coherence', () => {
     expect(fixture.pipeline.lastAppliedSequence()).toBe(appliedBeforeCrash)
     fixture.pipeline.catchUp()
 
-    const thread = projectedThread(fixture.snapshots.fullReadModel())
-    expect(thread.messages[0]?.text).toBe('Hello')
+    const session = projectedSession(fixture.snapshots.fullReadModel())
+    expect(session.messages[0]?.text).toBe('Hello')
   })
   it('carries project scripts into the cache, and lets an empty list clear them', () => {
     const scripts = [
@@ -440,30 +441,31 @@ describe('orchestration read-model cache coherence', () => {
   })
 
   /**
-   * A plan can be proposed on one thread and implemented on another, and the
-   * projection clears the actionable flag on the *proposing* thread. The cache
-   * refresh has to know that a turn-start touches two threads; if it only ever
-   * refreshed the event's own aggregate, the proposing thread would keep
+   * A plan can be proposed on one session and implemented on another, and the
+   * projection clears the actionable flag on the *proposing* session. The cache
+   * refresh has to know that a turn-start touches two sessions; if it only ever
+   * refreshed the event's own aggregate, the proposing session would keep
    * offering "Implement" forever.
    */
-  it('clears the plan flag on the proposing thread when another thread implements it', () => {
+  it('clears the plan flag on the proposing session when another session implements it', () => {
     const fixture = createProjectionFixture()
     fixtures.push(fixture)
-    const implementerId = 'thread-2'
+    const implementerId = '00000000-0000-4000-8000-000000000002'
 
     const model = applyIncrementally(fixture, [
-      ...threadBootstrapEvents(),
+      ...sessionBootstrapEvents(),
       proposedPlanUpsertedEvent({ planId: 'plan-1', planMarkdown: '# Plan' }),
-      threadCreatedEvent(implementerId),
-      turnStartEventOnThread(implementerId, 'turn-1', requestedAt, {
+      sessionCreatedEvent(implementerId),
+      turnStartEventOnSession(implementerId, 'turn-1', requestedAt, {
         planId: 'plan-1',
-        threadId: THREAD_ID,
+        sessionId: SESSION_ID,
       }),
+      proposedPlanImplementedEvent(implementerId, requestedAt),
     ])
 
-    expect(model.threads.get(THREAD_ID)?.hasActionableProposedPlan).toBe(false)
-    expect(model.threads.get(THREAD_ID)).toEqual(
-      fixture.snapshots.fullReadModel().threads.get(THREAD_ID),
+    expect(model.sessions.get(SESSION_ID)?.hasActionableProposedPlan).toBe(false)
+    expect(model.sessions.get(SESSION_ID)).toEqual(
+      fixture.snapshots.fullReadModel().sessions.get(SESSION_ID),
     )
   })
 })
@@ -471,7 +473,7 @@ describe('orchestration read-model cache coherence', () => {
 /** One or more `project.meta-updated` events over a bootstrapped project. */
 function projectMeta(...updates: ReadonlyArray<Record<string, unknown>>) {
   return projectProject([
-    ...threadBootstrapEvents(),
+    ...sessionBootstrapEvents(),
     ...updates.map((update, index) =>
       pendingEvent(
         'project.meta-updated',
@@ -515,9 +517,9 @@ function project(events: PendingOrchestrationEvent[]) {
   reader.beginWindow()
 
   return {
-    memory: projectedThread(model),
-    shell: reader.threadShell(THREAD_ID),
-    sqlThread: projectedThread(fixture.snapshots.fullReadModel()),
+    memory: projectedSession(model),
+    shell: reader.sessionShell(SESSION_ID),
+    sqlSession: projectedSession(fixture.snapshots.fullReadModel()),
   }
 }
 
@@ -528,10 +530,10 @@ function project(events: PendingOrchestrationEvent[]) {
  */
 function expectPlanProgressConverges(projected: ReturnType<typeof project>) {
   expect(projected.shell?.planProgress ?? null).toEqual(
-    threadPlanProgress(projected.memory.activities),
+    sessionPlanProgress(projected.memory.activities),
   )
   expect(projected.shell?.planProgress ?? null).toEqual(
-    threadPlanProgress(projected.sqlThread.activities),
+    sessionPlanProgress(projected.sqlSession.activities),
   )
 }
 
@@ -552,11 +554,11 @@ function planActivity(
   })
 }
 
-function projectedThread(model: OrchestrationReadModel) {
-  const thread = model.threads.get(THREAD_ID)
-  expect(thread).toBeDefined()
+function projectedSession(model: OrchestrationReadModel) {
+  const session = model.sessions.get(SESSION_ID)
+  expect(session).toBeDefined()
 
-  return thread as OrchestrationProjectedThread
+  return session as OrchestrationProjectedSession
 }
 
 /**

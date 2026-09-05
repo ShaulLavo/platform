@@ -5,14 +5,15 @@ import {
   eventIdSchema,
   messageIdSchema,
   proposedPlanIdSchema,
+  sessionRuntimeStateSchema,
   userInputQuestionOptionSchema,
   userInputQuestionSchema,
   type InternalOrchestrationCommand,
   type OrchestrationCommand,
   type MessageId,
-  type OrchestrationSession,
-  type OrchestrationThreadActivity,
-  type ThreadId,
+  type SessionRuntimeState,
+  type OrchestrationSessionActivity,
+  type SessionId,
   type TurnId,
   type UserInputQuestion,
   type UserInputQuestionOption,
@@ -20,8 +21,8 @@ import {
 import * as v from 'valibot'
 import type { ProviderRuntimeEvent } from '../provider/types'
 import { checkpointFilesFromUnifiedDiff } from './checkpoint-files'
-import { checkpointRefForThreadTurn } from './checkpoint-refs'
-import type { OrchestrationProjectedThread, OrchestrationReadModel } from './read-model'
+import { checkpointRefForSessionTurn } from './checkpoint-refs'
+import type { OrchestrationProjectedSession, OrchestrationReadModel } from './read-model'
 import {
   BoundedTtlCache,
   PROVIDER_RUNTIME_BUFFER_TTL_MS,
@@ -31,7 +32,9 @@ import { SerialWorker } from './serial-worker'
 
 export type ProviderRuntimeDispatch = (
   command: InternalOrchestrationCommand | OrchestrationCommand,
+  source: ProviderRuntimeSource,
 ) => Promise<unknown>
+export type ProviderRuntimeSource = Pick<ProviderRuntimeEvent, 'sessionId' | 'runtimeEpoch'>
 export type AssistantDeliveryMode = 'streaming' | 'buffered'
 
 const SEEN_RUNTIME_EVENT_ID_MAX = 20_000
@@ -48,9 +51,9 @@ const TOOL_LIFECYCLE_ITEM_TYPES = new Set([
 export class ProviderRuntimeIngestion {
   private readonly assistantDeliveryMode: AssistantDeliveryMode
   private readonly buffers: ProviderRuntimeBuffers
-  private readonly dispatch: ProviderRuntimeDispatch
+  private readonly dispatchCommand: ProviderRuntimeDispatch
   private readonly getReadModel: (() => OrchestrationReadModel) | null
-  private readonly onLiveness: ((threadId: ThreadId) => void) | null
+  private readonly onLiveness: ((sessionId: SessionId) => void) | null
   private readonly seenEventIds: BoundedTtlCache<string, true>
   private readonly worker: SerialWorker<ProviderRuntimeEvent>
 
@@ -67,12 +70,12 @@ export class ProviderRuntimeIngestion {
        * without a single status transition, so status alone cannot say whether
        * a session is alive.
        */
-      onLiveness?: (threadId: ThreadId) => void
+      onLiveness?: (sessionId: SessionId) => void
     } = {},
   ) {
     this.assistantDeliveryMode = options.assistantDeliveryMode ?? 'streaming'
     this.buffers = options.buffers ?? new ProviderRuntimeBuffers({ now: options.now })
-    this.dispatch = dispatch
+    this.dispatchCommand = dispatch
     this.getReadModel = options.getReadModel ?? null
     this.onLiveness = options.onLiveness ?? null
     this.seenEventIds = new BoundedTtlCache({
@@ -95,11 +98,24 @@ export class ProviderRuntimeIngestion {
     return this.worker.isIdle()
   }
 
+  private dispatch(
+    command: InternalOrchestrationCommand | OrchestrationCommand,
+    event: ProviderRuntimeEvent,
+  ) {
+    return this.dispatchCommand(command, {
+      sessionId: event.sessionId,
+      runtimeEpoch: event.runtimeEpoch,
+    })
+  }
+
   private async processEvent(event: ProviderRuntimeEvent) {
     if (this.seenEventIds.has(event.eventId)) return
+    const session = this.getReadModel?.().sessions.get(event.sessionId)
+    const expectedEpoch = session?.latestTurn?.runtimeEpoch ?? session?.runtime?.runtimeEpoch
+    if (expectedEpoch && expectedEpoch !== event.runtimeEpoch) return
 
     this.seenEventIds.set(event.eventId, true)
-    this.onLiveness?.(event.threadId)
+    this.onLiveness?.(event.sessionId)
     await this.dispatchSessionCommand(event)
     await this.dispatchMetadataCommands(event)
     await this.dispatchContentCommands(event)
@@ -119,79 +135,95 @@ export class ProviderRuntimeIngestion {
     if (event.type !== 'turn.diff.updated') return
     if (!event.turnId) return
 
-    const thread = this.getReadModel?.().threads.get(event.threadId)
-    if (!thread || thread.deletedAt) return
+    const session = this.getReadModel?.().sessions.get(event.sessionId)
+    if (!session || session.deletedAt) return
 
     const files = checkpointFilesFromUnifiedDiff(event.payload.unifiedDiff)
     if (files.length === 0) return
 
-    const checkpointTurnCount = placeholderCheckpointTurnCount(thread, event.turnId)
-    await this.dispatch({
-      checkpointRef: checkpointRefForThreadTurn(event.threadId, checkpointTurnCount),
-      checkpointTurnCount,
-      commandId: providerCommandId(event.eventId, 'turn-diff-placeholder'),
-      completedAt: event.createdAt,
-      createdAt: event.createdAt,
-      files,
-      status: 'missing',
-      threadId: event.threadId,
-      turnId: event.turnId,
-      type: 'thread.turn.diff.complete',
-    })
+    const checkpointTurnCount = placeholderCheckpointTurnCount(session, event.turnId)
+    await this.dispatch(
+      {
+        checkpointRef: checkpointRefForSessionTurn(event.sessionId, checkpointTurnCount),
+        checkpointTurnCount,
+        commandId: providerCommandId(event.eventId, 'turn-diff-placeholder'),
+        completedAt: event.createdAt,
+        createdAt: event.createdAt,
+        files,
+        status: 'missing',
+        sessionId: event.sessionId,
+        turnId: event.turnId,
+        type: 'session.turn.diff.complete',
+      },
+      event,
+    )
   }
 
   private async dispatchSessionCommand(event: ProviderRuntimeEvent) {
-    if (event.type === 'session.set') {
-      await this.dispatch(sessionSetCommand(event))
+    if (!this.shouldApplyLifecycleSession(event)) return
+    if (event.type === 'runtime.set') {
+      await this.dispatch(sessionSetCommand(event), event)
       return
     }
 
     const session = sessionFromLifecycleEvent(event)
     if (!session) return
-    if (!this.shouldApplyLifecycleSession(event)) return
 
-    await this.dispatch({
-      commandId: providerCommandId(event.eventId, 'session-set'),
-      createdAt: session.updatedAt,
-      session: this.sessionForCurrentReadModel(event, session),
-      threadId: event.threadId,
-      type: 'thread.session.set',
-    })
+    await this.dispatch(
+      {
+        commandId: providerCommandId(event.eventId, 'session-set'),
+        createdAt: session.updatedAt,
+        runtime: this.sessionForCurrentReadModel(event, session),
+        sessionId: event.sessionId,
+        type: 'session.runtime.set',
+      },
+      event,
+    )
   }
 
   private async dispatchMetadataCommands(event: ProviderRuntimeEvent) {
-    if (event.type !== 'thread.metadata.updated') return
+    if (event.type !== 'conversation.metadata.updated') return
     if (!event.payload.name) return
 
-    await this.dispatch({
-      commandId: providerCommandId(event.eventId, 'thread-title-update'),
-      threadId: event.threadId,
-      title: event.payload.name,
-      type: 'thread.meta.update',
-    })
+    await this.dispatch(
+      {
+        commandId: providerCommandId(event.eventId, 'session-title-update'),
+        sessionId: event.sessionId,
+        title: event.payload.name,
+        type: 'session.meta.update',
+      },
+      event,
+    )
   }
 
   private shouldApplyLifecycleSession(event: ProviderRuntimeEvent) {
-    if (!isLifecycleSessionEvent(event)) return true
-    if (!event.turnId) return true
-
-    const thread = this.getReadModel?.().threads.get(event.threadId)
-    if (!thread?.latestTurn?.turnId) return true
-
-    return thread.latestTurn.turnId === event.turnId
+    const session = this.getReadModel?.().sessions.get(event.sessionId)
+    const turn = session?.latestTurn
+    if (!turn) return true
+    if (turn.providerStartState === 'queued') return false
+    if (event.turnId && turn.turnId !== event.turnId) return false
+    if (event.type !== 'runtime.started' || event.turnId) return true
+    return (
+      (turn.providerStartState === 'claimed' || turn.providerStartState === 'adopted') &&
+      turn.runtimeEpoch === event.runtimeEpoch
+    )
   }
 
-  private sessionForCurrentReadModel(event: ProviderRuntimeEvent, session: OrchestrationSession) {
-    const thread = this.getReadModel?.().threads.get(event.threadId)
-    if (!thread?.latestTurn) return session
-    if (thread.latestTurn.state !== 'running') return session
-    if (event.type !== 'session.started' && event.type !== 'thread.started') return session
-
-    return {
-      ...session,
-      activeTurnId: thread.latestTurn.turnId,
-      status: 'running' as const,
+  private sessionForCurrentReadModel(
+    event: ProviderRuntimeEvent,
+    runtime: SessionRuntimeState,
+  ): SessionRuntimeState {
+    const session = this.getReadModel?.().sessions.get(event.sessionId)
+    const current = {
+      ...runtime,
+      providerConversationMarker:
+        runtime.providerConversationMarker ?? session?.runtime?.providerConversationMarker ?? null,
+      providerResumeCursor:
+        runtime.providerResumeCursor ?? session?.runtime?.providerResumeCursor ?? null,
     }
+    if (!session?.latestTurn || session.latestTurn.state !== 'running') return current
+    if (event.type !== 'runtime.started' && event.type !== 'conversation.started') return current
+    return { ...current, activeTurnId: session.latestTurn.turnId, status: 'running' }
   }
 
   private async dispatchContentCommands(event: ProviderRuntimeEvent) {
@@ -202,7 +234,7 @@ export class ProviderRuntimeIngestion {
           delta: event.delta,
           event,
           messageId: v.parse(messageIdSchema, event.messageId),
-          threadId: event.threadId,
+          sessionId: event.sessionId,
           turnId: event.turnId,
         })
         return
@@ -211,7 +243,7 @@ export class ProviderRuntimeIngestion {
           completedAt: event.completedAt,
           event,
           messageId: v.parse(messageIdSchema, event.messageId),
-          threadId: event.threadId,
+          sessionId: event.sessionId,
           turnId: event.turnId,
         })
         return
@@ -231,7 +263,7 @@ export class ProviderRuntimeIngestion {
           event,
           planId: event.planId ?? proposedPlanIdFromEvent(event),
           planMarkdown: event.planMarkdown,
-          threadId: event.threadId,
+          sessionId: event.sessionId,
           turnId: event.turnId,
           updatedAt: event.updatedAt ?? event.createdAt,
         })
@@ -239,8 +271,8 @@ export class ProviderRuntimeIngestion {
       case 'turn.completed':
         await this.completeTurn(event)
         return
-      case 'session.exited':
-        this.buffers.clearTurnStateForSession(event.threadId)
+      case 'runtime.exited':
+        this.buffers.clearTurnStateForSession(event.sessionId)
         return
     }
   }
@@ -250,22 +282,25 @@ export class ProviderRuntimeIngestion {
     delta: string
     event: ProviderRuntimeEvent
     messageId: MessageId
-    threadId: ThreadId
+    sessionId: SessionId
     turnId: TurnId | undefined
   }) {
     if (input.delta.length === 0) return
     if (input.turnId)
-      this.buffers.rememberAssistantMessageId(input.threadId, input.turnId, input.messageId)
+      this.buffers.rememberAssistantMessageId(input.sessionId, input.turnId, input.messageId)
 
     if (this.assistantDeliveryMode === 'streaming') {
-      await this.dispatch(assistantDeltaCommand(input, input.delta, 'assistant-delta'))
+      await this.dispatch(assistantDeltaCommand(input, input.delta, 'assistant-delta'), input.event)
       return
     }
 
     const spill = this.buffers.appendBufferedAssistantText(input.messageId, input.delta)
     if (spill.length === 0) return
 
-    await this.dispatch(assistantDeltaCommand(input, spill, 'assistant-delta-buffer-spill'))
+    await this.dispatch(
+      assistantDeltaCommand(input, spill, 'assistant-delta-buffer-spill'),
+      input.event,
+    )
   }
 
   private async handleContentDelta(
@@ -283,7 +318,7 @@ export class ProviderRuntimeIngestion {
 
     const messageId = this.buffers.getOrCreateAssistantMessageId({
       baseKey: assistantSegmentBaseKey(event),
-      threadId: event.threadId,
+      sessionId: event.sessionId,
       turnId: event.turnId,
     })
     await this.bufferAssistantDelta({
@@ -291,7 +326,7 @@ export class ProviderRuntimeIngestion {
       delta: event.payload.delta,
       event,
       messageId,
-      threadId: event.threadId,
+      sessionId: event.sessionId,
       turnId: event.turnId,
     })
   }
@@ -301,11 +336,11 @@ export class ProviderRuntimeIngestion {
     event: ProviderRuntimeEvent
     fallbackText?: string
     messageId: MessageId
-    threadId: ThreadId
+    sessionId: SessionId
     turnId: TurnId | undefined
   }) {
     const hasProjectedMessage = input.turnId
-      ? this.buffers.assistantMessageIdsForTurn(input.threadId, input.turnId).has(input.messageId)
+      ? this.buffers.assistantMessageIdsForTurn(input.sessionId, input.turnId).has(input.messageId)
       : true
     await this.finalizeAssistantMessage({
       commandTag: `assistant-complete:${input.messageId}`,
@@ -315,11 +350,11 @@ export class ProviderRuntimeIngestion {
       finalDeltaCommandTag: `assistant-delta-finalize:${input.messageId}`,
       hasProjectedMessage,
       messageId: input.messageId,
-      threadId: input.threadId,
+      sessionId: input.sessionId,
       turnId: input.turnId,
     })
     if (input.turnId)
-      this.buffers.forgetAssistantMessageId(input.threadId, input.turnId, input.messageId)
+      this.buffers.forgetAssistantMessageId(input.sessionId, input.turnId, input.messageId)
   }
 
   private async finalizeAssistantMessage(input: {
@@ -330,23 +365,30 @@ export class ProviderRuntimeIngestion {
     finalDeltaCommandTag: string
     hasProjectedMessage: boolean
     messageId: MessageId
-    threadId: ThreadId
+    sessionId: SessionId
     turnId: TurnId | undefined
   }) {
     const bufferedText = this.buffers.takeBufferedAssistantText(input.messageId)
     const text = finalizedAssistantText(bufferedText, input.fallbackText)
     const hasText = hasRenderableText(text)
-    if (hasText) await this.dispatch(assistantDeltaCommand(input, text, input.finalDeltaCommandTag))
+    if (hasText)
+      await this.dispatch(
+        assistantDeltaCommand(input, text, input.finalDeltaCommandTag),
+        input.event,
+      )
     if (!input.hasProjectedMessage && !hasText) return
 
-    await this.dispatch({
-      commandId: providerCommandId(input.event.eventId, input.commandTag),
-      completedAt: input.completedAt,
-      messageId: input.messageId,
-      threadId: input.threadId,
-      turnId: input.turnId,
-      type: 'thread.message.assistant.complete',
-    })
+    await this.dispatch(
+      {
+        commandId: providerCommandId(input.event.eventId, input.commandTag),
+        completedAt: input.completedAt,
+        messageId: input.messageId,
+        sessionId: input.sessionId,
+        turnId: input.turnId,
+        type: 'session.message.assistant.complete',
+      },
+      input.event,
+    )
     this.buffers.clearBufferedAssistantText(input.messageId)
   }
 
@@ -361,19 +403,19 @@ export class ProviderRuntimeIngestion {
       `assistant:${event.itemId ?? event.turnId ?? event.eventId}`,
     )
     const messageId = turnId
-      ? (this.buffers.activeAssistantMessageIdForTurn(event.threadId, turnId) ?? fallbackMessageId)
+      ? (this.buffers.activeAssistantMessageIdForTurn(event.sessionId, turnId) ?? fallbackMessageId)
       : fallbackMessageId
     await this.completeAssistantMessage({
       completedAt: event.createdAt,
       event,
       fallbackText: event.payload.detail,
       messageId,
-      threadId: event.threadId,
+      sessionId: event.sessionId,
       turnId,
     })
     if (!turnId) return
 
-    this.buffers.clearAssistantSegmentStateForTurn(event.threadId, turnId)
+    this.buffers.clearAssistantSegmentStateForTurn(event.sessionId, turnId)
   }
 
   private async pauseAssistantSegment(
@@ -381,38 +423,38 @@ export class ProviderRuntimeIngestion {
   ) {
     if (!event.turnId) return
 
-    const messageId = this.buffers.activeAssistantMessageIdForTurn(event.threadId, event.turnId)
+    const messageId = this.buffers.activeAssistantMessageIdForTurn(event.sessionId, event.turnId)
     if (!messageId) return
 
     await this.completeAssistantMessage({
       completedAt: event.createdAt,
       event,
       messageId,
-      threadId: event.threadId,
+      sessionId: event.sessionId,
       turnId: event.turnId,
     })
-    this.buffers.markActiveAssistantSegmentComplete(event.threadId, event.turnId)
+    this.buffers.markActiveAssistantSegmentComplete(event.sessionId, event.turnId)
   }
 
   private async completeTurn(event: Extract<ProviderRuntimeEvent, { type: 'turn.completed' }>) {
     if (!event.turnId) return
 
-    const messageIds = this.buffers.assistantMessageIdsForTurn(event.threadId, event.turnId)
+    const messageIds = this.buffers.assistantMessageIdsForTurn(event.sessionId, event.turnId)
     for (const messageId of messageIds) {
       await this.completeAssistantMessage({
         completedAt: event.createdAt,
         event,
         messageId,
-        threadId: event.threadId,
+        sessionId: event.sessionId,
         turnId: event.turnId,
       })
     }
-    this.buffers.clearAssistantMessageIdsForTurn(event.threadId, event.turnId)
-    this.buffers.clearAssistantSegmentStateForTurn(event.threadId, event.turnId)
+    this.buffers.clearAssistantMessageIdsForTurn(event.sessionId, event.turnId)
+    this.buffers.clearAssistantSegmentStateForTurn(event.sessionId, event.turnId)
     await this.finalizeBufferedProposedPlan({
       event,
-      planId: proposedPlanIdForTurn(event.threadId, event.turnId),
-      threadId: event.threadId,
+      planId: proposedPlanIdForTurn(event.sessionId, event.turnId),
+      sessionId: event.sessionId,
       turnId: event.turnId,
       updatedAt: event.createdAt,
     })
@@ -422,7 +464,7 @@ export class ProviderRuntimeIngestion {
     event: ProviderRuntimeEvent
     fallbackMarkdown?: string
     planId: string
-    threadId: ThreadId
+    sessionId: SessionId
     turnId: TurnId | null | undefined
     updatedAt: string
   }) {
@@ -432,7 +474,7 @@ export class ProviderRuntimeIngestion {
       event: input.event,
       planId: input.planId,
       planMarkdown: normalizeProposedPlanMarkdown(buffer?.text) ?? input.fallbackMarkdown,
-      threadId: input.threadId,
+      sessionId: input.sessionId,
       turnId: input.turnId ?? null,
       updatedAt: input.updatedAt,
     })
@@ -443,38 +485,44 @@ export class ProviderRuntimeIngestion {
     event: ProviderRuntimeEvent
     planId: string
     planMarkdown: string | undefined
-    threadId: ThreadId
+    sessionId: SessionId
     turnId: TurnId | null | undefined
     updatedAt: string
   }) {
     const planMarkdown = normalizeProposedPlanMarkdown(input.planMarkdown)
     if (!planMarkdown) return
 
-    await this.dispatch({
-      commandId: providerCommandId(input.event.eventId, `proposed-plan-upsert:${input.planId}`),
-      createdAt: input.updatedAt,
-      proposedPlan: {
-        createdAt: input.createdAt,
-        id: v.parse(proposedPlanIdSchema, input.planId),
-        planMarkdown,
-        threadId: input.threadId,
-        turnId: input.turnId ?? null,
-        updatedAt: input.updatedAt,
+    await this.dispatch(
+      {
+        commandId: providerCommandId(input.event.eventId, `proposed-plan-upsert:${input.planId}`),
+        createdAt: input.updatedAt,
+        proposedPlan: {
+          createdAt: input.createdAt,
+          id: v.parse(proposedPlanIdSchema, input.planId),
+          planMarkdown,
+          sessionId: input.sessionId,
+          turnId: input.turnId ?? null,
+          updatedAt: input.updatedAt,
+        },
+        sessionId: input.sessionId,
+        type: 'session.proposed-plan.upsert',
       },
-      threadId: input.threadId,
-      type: 'thread.proposed-plan.upsert',
-    })
+      input.event,
+    )
   }
 
   private async dispatchActivityCommands(event: ProviderRuntimeEvent) {
     for (const activity of activitiesForRuntimeEvent(event)) {
-      await this.dispatch({
-        activity,
-        commandId: providerCommandId(event.eventId, `activity-append:${activity.kind}`),
-        createdAt: activity.createdAt,
-        threadId: activity.threadId,
-        type: 'thread.activity.append',
-      })
+      await this.dispatch(
+        {
+          activity,
+          commandId: providerCommandId(event.eventId, `activity-append:${activity.kind}`),
+          createdAt: activity.createdAt,
+          sessionId: activity.sessionId,
+          type: 'session.activity.append',
+        },
+        event,
+      )
     }
   }
 }
@@ -485,12 +533,12 @@ export class ProviderRuntimeIngestion {
  * slot matters: every mid-turn update of the same turn must describe one
  * checkpoint, not push the turn count forward on each diff frame.
  */
-function placeholderCheckpointTurnCount(thread: OrchestrationProjectedThread, turnId: TurnId) {
-  const existing = thread.checkpointByTurnId[turnId]
+function placeholderCheckpointTurnCount(session: OrchestrationProjectedSession, turnId: TurnId) {
+  const existing = session.checkpointByTurnId[turnId]
   if (existing) return existing.checkpointTurnCount
 
   let maxTurnCount = 0
-  for (const checkpoint of Object.values(thread.checkpointByTurnId)) {
+  for (const checkpoint of Object.values(session.checkpointByTurnId)) {
     maxTurnCount = Math.max(maxTurnCount, checkpoint.checkpointTurnCount)
   }
 
@@ -498,62 +546,74 @@ function placeholderCheckpointTurnCount(thread: OrchestrationProjectedThread, tu
 }
 
 function sessionSetCommand(
-  event: Extract<ProviderRuntimeEvent, { type: 'session.set' }>,
+  event: Extract<ProviderRuntimeEvent, { type: 'runtime.set' }>,
 ): InternalOrchestrationCommand {
   return {
     commandId: providerCommandId(event.eventId, 'session-set'),
     createdAt: event.createdAt,
-    session: sessionFromRuntimeEvent(event),
-    threadId: event.threadId,
-    type: 'thread.session.set',
+    runtime: sessionFromRuntimeEvent(event),
+    sessionId: event.sessionId,
+    type: 'session.runtime.set',
   }
 }
 
 function sessionFromRuntimeEvent(
-  event: Extract<ProviderRuntimeEvent, { type: 'session.set' }>,
-): OrchestrationSession {
-  return {
+  event: Extract<ProviderRuntimeEvent, { type: 'runtime.set' }>,
+): SessionRuntimeState {
+  return v.parse(sessionRuntimeStateSchema, {
     activeTurnId: event.turnId,
     lastError: event.lastError ?? null,
     providerInstanceId: event.providerInstanceId,
     providerName: event.providerName ?? event.providerInstanceId,
-    providerSessionId: event.providerSessionId,
+    providerBindingHandle: event.providerBindingHandle,
+    runtimeEpoch: event.runtimeEpoch,
+    providerConversationMarker: null,
+    providerResumeCursor: null,
     runtimeMode: event.runtimeMode ?? DEFAULT_RUNTIME_MODE,
     status: event.status,
-    threadId: event.threadId,
+    sessionId: event.sessionId,
     updatedAt: event.createdAt,
-  }
+  })
 }
 
-function sessionFromLifecycleEvent(event: ProviderRuntimeEvent): OrchestrationSession | null {
+function sessionFromLifecycleEvent(event: ProviderRuntimeEvent): SessionRuntimeState | null {
   if (!isLifecycleSessionEvent(event)) return null
   if (!event.providerInstanceId) return null
 
-  return {
+  return v.parse(sessionRuntimeStateSchema, {
     activeTurnId: lifecycleActiveTurnId(event),
     lastError: lifecycleLastError(event),
     providerInstanceId: event.providerInstanceId,
     providerName: event.providerName ?? event.providerInstanceId,
-    providerSessionId: event.providerSessionId ?? null,
+    providerBindingHandle: event.providerBindingHandle ?? null,
+    runtimeEpoch: event.runtimeEpoch,
+    providerConversationMarker:
+      event.type === 'conversation.started'
+        ? (event.payload.providerConversationMarker ?? null)
+        : null,
+    providerResumeCursor:
+      event.type === 'runtime.started' && typeof event.payload.resume === 'string'
+        ? event.payload.resume
+        : null,
     runtimeMode: event.runtimeMode ?? DEFAULT_RUNTIME_MODE,
     status: lifecycleSessionStatus(event),
-    threadId: event.threadId,
+    sessionId: event.sessionId,
     updatedAt: event.createdAt,
-  }
+  })
 }
 
 function lifecycleActiveTurnId(
   event: Extract<ProviderRuntimeEvent, { type: LifecycleSessionType }>,
 ) {
   if (event.type === 'turn.started') return event.turnId ?? null
-  if (event.type === 'turn.completed' || event.type === 'session.exited') return null
+  if (event.type === 'turn.completed' || event.type === 'runtime.exited') return null
 
   return event.turnId ?? null
 }
 
 function lifecycleLastError(event: Extract<ProviderRuntimeEvent, { type: LifecycleSessionType }>) {
   if (event.type === 'runtime.error') return event.payload.message
-  if (event.type === 'session.state.changed' && event.payload.state === 'error')
+  if (event.type === 'runtime.state.changed' && event.payload.state === 'error')
     return event.payload.reason ?? 'Provider session error'
   if (event.type === 'turn.completed' && event.payload.state === 'failed')
     return event.payload.errorMessage ?? 'Turn failed'
@@ -565,8 +625,8 @@ function lifecycleSessionStatus(
   event: Extract<ProviderRuntimeEvent, { type: LifecycleSessionType }>,
 ) {
   switch (event.type) {
-    case 'session.started':
-    case 'thread.started':
+    case 'runtime.started':
+    case 'conversation.started':
       return 'ready'
     case 'turn.started':
       return 'running'
@@ -574,19 +634,19 @@ function lifecycleSessionStatus(
       return event.payload.state === 'failed' ? 'error' : 'ready'
     case 'runtime.error':
       return 'error'
-    case 'session.exited':
+    case 'runtime.exited':
       return 'stopped'
-    case 'session.state.changed':
+    case 'runtime.state.changed':
       return event.payload.state
   }
 }
 
 type LifecycleSessionType =
   | 'runtime.error'
-  | 'session.exited'
-  | 'session.started'
-  | 'session.state.changed'
-  | 'thread.started'
+  | 'runtime.exited'
+  | 'runtime.started'
+  | 'runtime.state.changed'
+  | 'conversation.started'
   | 'turn.completed'
   | 'turn.started'
 
@@ -595,10 +655,10 @@ function isLifecycleSessionEvent(
 ): event is Extract<ProviderRuntimeEvent, { type: LifecycleSessionType }> {
   switch (event.type) {
     case 'runtime.error':
-    case 'session.exited':
-    case 'session.started':
-    case 'session.state.changed':
-    case 'thread.started':
+    case 'runtime.exited':
+    case 'runtime.started':
+    case 'runtime.state.changed':
+    case 'conversation.started':
     case 'turn.completed':
     case 'turn.started':
       return true
@@ -613,7 +673,7 @@ function assistantDeltaCommand(
     completedAt?: string
     event: ProviderRuntimeEvent
     messageId: MessageId
-    threadId: ThreadId
+    sessionId: SessionId
     turnId: TurnId | undefined
   },
   delta: string,
@@ -624,13 +684,13 @@ function assistantDeltaCommand(
     createdAt: input.createdAt ?? input.completedAt ?? new Date().toISOString(),
     delta,
     messageId: input.messageId,
-    threadId: input.threadId,
+    sessionId: input.sessionId,
     turnId: input.turnId,
-    type: 'thread.message.assistant.delta',
+    type: 'session.message.assistant.delta',
   }
 }
 
-function activitiesForRuntimeEvent(event: ProviderRuntimeEvent): OrchestrationThreadActivity[] {
+function activitiesForRuntimeEvent(event: ProviderRuntimeEvent): OrchestrationSessionActivity[] {
   switch (event.type) {
     case 'activity.append':
       return [activityFromLegacyEvent(event)]
@@ -701,19 +761,19 @@ function activitiesForRuntimeEvent(event: ProviderRuntimeEvent): OrchestrationTh
       return [deprecationNoticeActivity(event)]
     case 'files.persisted':
       return [filesPersistedActivity(event)]
-    case 'thread.realtime.started':
-    case 'thread.realtime.item-added':
-    case 'thread.realtime.audio.delta':
-    case 'thread.realtime.error':
-    case 'thread.realtime.closed':
+    case 'conversation.realtime.started':
+    case 'conversation.realtime.item-added':
+    case 'conversation.realtime.audio.delta':
+    case 'conversation.realtime.error':
+    case 'conversation.realtime.closed':
       return realtimeActivity(event)
     case 'runtime.warning':
       return [runtimeWarningActivity(event)]
     case 'runtime.error':
       return [runtimeErrorActivity(event)]
-    case 'thread.state.changed':
+    case 'conversation.state.changed':
       return contextCompactionActivity(event)
-    case 'thread.token-usage.updated':
+    case 'conversation.token-usage.updated':
       return tokenUsageActivity(event)
     default:
       return []
@@ -722,14 +782,14 @@ function activitiesForRuntimeEvent(event: ProviderRuntimeEvent): OrchestrationTh
 
 function activityFromLegacyEvent(
   event: Extract<ProviderRuntimeEvent, { type: 'activity.append' }>,
-): OrchestrationThreadActivity {
+): OrchestrationSessionActivity {
   return {
     createdAt: event.createdAt,
     id: v.parse(eventIdSchema, event.eventId),
     kind: event.kind,
     payload: event.payload ?? { detail: event.detail ?? null },
     summary: event.summary,
-    threadId: event.threadId,
+    sessionId: event.sessionId,
     tone: event.tone,
     turnId: event.turnId,
   }
@@ -1057,20 +1117,20 @@ function realtimeActivity(
     ProviderRuntimeEvent,
     {
       type:
-        | 'thread.realtime.audio.delta'
-        | 'thread.realtime.closed'
-        | 'thread.realtime.error'
-        | 'thread.realtime.item-added'
-        | 'thread.realtime.started'
+        | 'conversation.realtime.audio.delta'
+        | 'conversation.realtime.closed'
+        | 'conversation.realtime.error'
+        | 'conversation.realtime.item-added'
+        | 'conversation.realtime.started'
     }
   >,
 ) {
-  if (event.type === 'thread.realtime.audio.delta') return []
+  if (event.type === 'conversation.realtime.audio.delta') return []
 
   return [
     baseActivity(
       event,
-      event.type === 'thread.realtime.error' ? 'error' : 'info',
+      event.type === 'conversation.realtime.error' ? 'error' : 'info',
       event.type,
       realtimeSummary(event.type),
       event.payload,
@@ -1094,7 +1154,7 @@ function runtimeErrorActivity(event: Extract<ProviderRuntimeEvent, { type: 'runt
 }
 
 function contextCompactionActivity(
-  event: Extract<ProviderRuntimeEvent, { type: 'thread.state.changed' }>,
+  event: Extract<ProviderRuntimeEvent, { type: 'conversation.state.changed' }>,
 ) {
   if (event.payload.state !== 'compacted') return []
 
@@ -1107,7 +1167,7 @@ function contextCompactionActivity(
 }
 
 function tokenUsageActivity(
-  event: Extract<ProviderRuntimeEvent, { type: 'thread.token-usage.updated' }>,
+  event: Extract<ProviderRuntimeEvent, { type: 'conversation.token-usage.updated' }>,
 ) {
   if ((event.payload.usage.usedTokens ?? 0) <= 0) return []
 
@@ -1124,13 +1184,13 @@ function tokenUsageActivity(
 
 function realtimeSummary(type: string) {
   switch (type) {
-    case 'thread.realtime.started':
+    case 'conversation.realtime.started':
       return 'Realtime session started'
-    case 'thread.realtime.item-added':
+    case 'conversation.realtime.item-added':
       return 'Realtime item added'
-    case 'thread.realtime.closed':
+    case 'conversation.realtime.closed':
       return 'Realtime session closed'
-    case 'thread.realtime.error':
+    case 'conversation.realtime.error':
       return 'Realtime error'
     default:
       return 'Realtime event'
@@ -1142,19 +1202,22 @@ function isReasoningStreamKind(streamKind: string) {
 }
 
 function baseActivity(
-  event: Extract<ProviderRuntimeEvent, { createdAt: string; eventId: string; threadId: ThreadId }>,
-  tone: OrchestrationThreadActivity['tone'],
+  event: Extract<
+    ProviderRuntimeEvent,
+    { createdAt: string; eventId: string; sessionId: SessionId }
+  >,
+  tone: OrchestrationSessionActivity['tone'],
   kind: string,
   summary: string,
   payload: unknown,
-): OrchestrationThreadActivity {
+): OrchestrationSessionActivity {
   return {
     createdAt: event.createdAt,
     id: v.parse(eventIdSchema, event.eventId),
     kind,
     payload: compactPayload(payload),
     summary,
-    threadId: event.threadId,
+    sessionId: event.sessionId,
     tone,
     turnId: event.turnId ?? null,
   }
@@ -1236,14 +1299,14 @@ function normalizeProposedPlanMarkdown(planMarkdown: string | undefined) {
 
 function proposedPlanIdFromEvent(event: ProviderRuntimeEvent) {
   if ('planId' in event && event.planId) return event.planId
-  if (event.turnId) return proposedPlanIdForTurn(event.threadId, event.turnId)
-  if ('itemId' in event && event.itemId) return `plan:${event.threadId}:item:${event.itemId}`
+  if (event.turnId) return proposedPlanIdForTurn(event.sessionId, event.turnId)
+  if ('itemId' in event && event.itemId) return `plan:${event.sessionId}:item:${event.itemId}`
 
-  return `plan:${event.threadId}:event:${event.eventId}`
+  return `plan:${event.sessionId}:event:${event.eventId}`
 }
 
-function proposedPlanIdForTurn(threadId: ThreadId, turnId: TurnId) {
-  return `plan:${threadId}:turn:${turnId}`
+function proposedPlanIdForTurn(sessionId: SessionId, turnId: TurnId) {
+  return `plan:${sessionId}:turn:${turnId}`
 }
 
 function assistantSegmentBaseKey(event: Extract<ProviderRuntimeEvent, { type: 'content.delta' }>) {

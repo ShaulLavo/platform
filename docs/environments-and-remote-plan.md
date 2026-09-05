@@ -1,11 +1,10 @@
 # Environments — Strategy
 
-> **STATUS: REVIEWED STRATEGY, PLAN 077 IMPLEMENTED 2026-09-05.** Supersedes the
-> 2026-08-24 one-active-environment design. Root [`PLAN.md`](../PLAN.md) owns cross-project order.
-> Remaining executable slices: [`plans/068-session-domain-model.md`](../plans/068-session-domain-model.md)
-> for the environment-aware domain, then
-> [`plans/078-federated-environments.md`](../plans/078-federated-environments.md) for connections,
-> the rail, the SSH launcher, and UI. This document authorizes nothing by itself.
+> **STATUS: REVIEWED STRATEGY; PLANS 077 AND 068 IMPLEMENTED.** Root
+> [`PLAN.md`](../PLAN.md) owns execution order. The [session domain](session-domain.md) supplies
+> repository identity, checkout ownership, recovery, and scoped browser records.
+> [Plan 078](../plans/078-federated-environments.md) is the remaining executable environments slice.
+> This strategy document authorizes nothing by itself.
 
 ## 0. What changed since the first design, and why
 
@@ -288,18 +287,13 @@ identity and protocol checks, canonical origin registries, retained editor and Q
 lifetimes, owner-bound operations, closeable chat transports, explicit `1008` auth refusal, and a
 dev-only loopback origin switch.
 
-The remaining sequence is:
+Plan 068 is also implemented. The [session-domain reference](session-domain.md) links its
+repository identity, checkout ownership, recovery, and environment-scoped navigation owners.
 
-1. **Plan 068, session domain with environment ownership.** Repository identity from remote URL
-   or root commit, deterministic project ids across machines, checkout ownership, projection and
-   rail models shaped for several environments, and an environment segment in the address.
-2. **Plan 078, federated environments.** Machines setting and page, SSH launcher, concurrent chat
-   connections, scoped persistence, a flat rail with machine chips and filtering, project creation
-   on a selected machine, and the workbench and settings behavior described above.
-
-Plan 069 depends on Plan 068 and remains unscheduled. It adds worktree selection, creation, and
-cleanup on one machine. The Git overview in §5.6 also remains unscheduled and needs its own design.
-The direct-origin spike through mesh and pairing for clients that cannot SSH follow only on demand.
+Plan 078 is next: machines settings, SSH launch, concurrent chat connections, scoped persistence,
+a cross-machine rail, and workbench switching. Plan 069 has its domain prerequisite but remains
+unscheduled. It adds worktree selection, creation, and cleanup on one machine. The Git overview in
+§5.6 also remains unscheduled. Direct-origin checks and pairing follow only on demand.
 
 ## 7. What we deliberately will not copy from the reference
 

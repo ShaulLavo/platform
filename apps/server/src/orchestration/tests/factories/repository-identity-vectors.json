@@ -1,0 +1,50 @@
+[
+  {
+    "source": "git-remote",
+    "canonical": "github.com/openai/platform",
+    "repositoryKey": "30c90a8460cdc816157f93317904a530f0a9d8ff3e4c439eec5f610c5951cb9a",
+    "projectId": "ff06e766-44c7-51e2-95ef-9d10415f171b",
+    "worktrees": [
+      {
+        "canonicalPath": "/work/projects/platform",
+        "worktreeId": "3511866e-de3e-5bcd-9ffd-81aa5b4d859f"
+      },
+      {
+        "canonicalPath": "/work/projects/platform-feature",
+        "worktreeId": "9db80f49-54c8-5b11-a16d-d182782a0bb6"
+      }
+    ]
+  },
+  {
+    "source": "root-commit",
+    "canonical": "0123456789abcdef0123456789abcdef01234567",
+    "repositoryKey": "4a441757422b10867d4d6e0e125e432cc1b98aee1fbb22434ee6d7545e40a5a3",
+    "projectId": "4314219e-72ff-5f0e-8b1e-baf6b5b4759e",
+    "worktrees": [
+      {
+        "canonicalPath": "/work/projects/platform",
+        "worktreeId": "03e3a59e-b37a-5e24-9304-3f8b20dec828"
+      },
+      {
+        "canonicalPath": "/work/projects/platform-feature",
+        "worktreeId": "898d2cb7-6306-52a7-b817-1eb0493ea769"
+      }
+    ]
+  },
+  {
+    "source": "path",
+    "canonical": "/work/projects/platform",
+    "repositoryKey": "3160993f8a380a26391c73f7cf76f18b0108b2e2ea0b3a438dd7dedfb804c253",
+    "projectId": "b4668e3a-3775-510c-a6de-754ca0318977",
+    "worktrees": [
+      {
+        "canonicalPath": "/work/projects/platform",
+        "worktreeId": "c13cfe0a-8899-5682-b6d2-087ffe196cef"
+      },
+      {
+        "canonicalPath": "/work/projects/platform-feature",
+        "worktreeId": "23246cfc-9ed7-5fd8-b9b4-ea98c2273f6c"
+      }
+    ]
+  }
+]

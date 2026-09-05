@@ -1,3 +1,4 @@
+import { fixtureEnvironmentId } from '../../../../test/factories/chat'
 import { activeServerOrigin, environmentClientFor, setActiveServerOrigin } from '@/lib/client'
 import { environmentActivitySignal } from '@/lib/environments/state/activity'
 import { queryClientFor } from '@/lib/environments/state/query-clients'
@@ -18,12 +19,17 @@ test('equivalent origin spellings share clients, caches, identity and activity',
     expect(queryClientFor(alias)).toBe(queryClientFor(origin))
     expect(environmentActivitySignal(alias)).toBe(environmentActivitySignal(origin))
     useEnvironmentsStore.getState().recordHandshake(alias, orchestrationServerConfig())
-    expect(useEnvironmentsStore.getState().entries[origin]?.environmentId).toBe('environment-1')
+    expect(useEnvironmentsStore.getState().entries[origin]?.environmentId).toBe(
+      fixtureEnvironmentId(1),
+    )
     expect(useEnvironmentsStore.getState().entries[alias]).toBeUndefined()
     expect(() =>
       useEnvironmentsStore
         .getState()
-        .recordHandshake(origin, orchestrationServerConfig({ environmentId: 'replacement' })),
+        .recordHandshake(
+          origin,
+          orchestrationServerConfig({ environmentId: fixtureEnvironmentId(3) }),
+        ),
     ).toThrow(expect.objectContaining({ code: 'ENVIRONMENT_IDENTITY_DRIFT' }))
   } finally {
     queryClientFor(origin).clear()

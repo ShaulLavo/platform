@@ -61,7 +61,7 @@ describe('chat attachment limits', () => {
   it('enforces both caps where a message declares its attachments', () => {
     const message = {
       id: 'msg-1',
-      threadId: 'thread-1',
+      sessionId: '35ecdd23-f0b6-593a-8d5b-108982c1126d',
       role: 'user',
       text: 'look at these',
       turnId: null,

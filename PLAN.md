@@ -137,26 +137,24 @@ explicitly, and WebSocket auth refusal uses `1008`. The development-only loopbac
 verified with two real in-process servers and an A → B → A browser workflow. Its executable plan
 has been deleted.
 
+Plan 068 is implemented. The [session domain](docs/session-domain.md) has deterministic repository
+and checkout IDs, explicit Project → Worktree → Session ownership, raw Claude session UUIDs,
+durable provider-start claims and crash recovery, and environment-scoped web projections and
+navigation. One current-schema migration replaces obsolete orchestration history. Its executable
+plan has been deleted; source and tests are linked from the domain reference.
+
 The remaining order is:
 
-1. **Plan 068 — session domain, environment-aware.** Next. Machine-independent repository identity
-   (origin remote, else root commit) makes ids repeat across machines by design. The web projection
-   store uses environment-scoped refs; the rail model and address grammar carry the environment.
-   Populates one environment; shapes for many.
-2. **Plan 078 — federated environments.** Requires 068. Machines setting and page, desktop SSH
-   launcher over a loopback-to-loopback forward with no install and no pairing, one chat connection
-   per machine, scoped persistence, cross-machine rail with repository grouping, chips and a machine
-   filter, add-project-on-machine, workbench switch, and per-machine failure states.
-3. **Later, on demand only:** the direct `https://` origin check through the mesh proxy (WebSocket
-   upgrade and path prefix), then pairing, issued sessions and revocation for a client that cannot
-   SSH. The old design's auth analysis in git history (`docs/environments-and-remote-plan.md@1325b003`)
-   is the reference for that plan.
+1. **Plan 078 — federated environments.** Next. Machines setting and page, desktop SSH launcher over
+   a loopback-to-loopback forward, one chat connection per machine, scoped persistence,
+   cross-machine rail, machine selection, and per-machine failure states.
+2. **Later, on demand only:** the direct `https://` origin check through the mesh proxy, then pairing,
+   issued sessions, and revocation for a client that cannot SSH. The auth analysis in Git history
+   (`docs/environments-and-remote-plan.md@1325b003`) remains the reference for that plan.
 
-Plan 068 must not be executed from its pre-2026-09-05 shape: the single-environment web store it
-described is obsolete. Plan 069 follows 068, stays single-machine, and remains unscheduled. The
-combined Git overview across checkouts and machines is also unscheduled; its scope is recorded in
-strategy §5.6. Nothing in this lane binds a server off loopback; the SSH forward keeps both ends on
-loopback and the existing origin allowlist is the whole guard.
+Plan 069's session-domain prerequisite is complete. It remains single-machine and unscheduled.
+The combined Git overview across checkouts and machines is also unscheduled; strategy §5.6 records
+its scope. Nothing in this lane binds a server off loopback.
 
 ## Verification boundaries
 
@@ -174,10 +172,10 @@ loopback and the existing origin allowlist is the whole guard.
 
 ## Promotion, rewrite, defer, and deletion decisions
 
-- **Deleted:** completed plans 038 and 077, and superseded plan 058.
+- **Deleted:** completed plans 038, 068, and 077, and superseded plan 058.
 - **Editor lane:** Plans 056 and 057 are complete. Standalone Editor chord execution was
   verified before Platform adopted the shared runtime.
-- **Promoted:** environments foundation 077 is complete; remaining order is 068 → 078.
+- **Promoted:** environments foundations 077 and 068 are complete; Plan 078 is next.
 - **Deferred:** the mesh https proxy check and pairing/sessions, until a client that cannot SSH
   exists; all compatibility work for the obsolete per-tab/active-editor/one-server architecture.
 - **Proposed independently:** accepted four-target config-resolver feasibility evidence makes Plan

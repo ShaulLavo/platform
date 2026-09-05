@@ -11,7 +11,7 @@ export function deferredSnapshotClient(server: TestServer) {
       async (...[input, init]: Parameters<typeof fetch>) => {
         const request = new Request(input, init)
         const response = await server.app.handle(request)
-        if (new URL(request.url).pathname !== '/orchestration/thread-detail') return response
+        if (new URL(request.url).pathname !== '/orchestration/session-detail') return response
         started.resolve()
         await responseGate.promise
         return response

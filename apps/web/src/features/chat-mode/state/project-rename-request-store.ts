@@ -1,8 +1,8 @@
-import type { ProjectId } from '@workspace/contracts'
+import type { ScopedProjectRef } from '@workspace/contracts'
 import { create } from 'zustand'
 
 export type ProjectRenameRequest = {
-  readonly projectId: ProjectId
+  readonly ref: ScopedProjectRef
   readonly title: string
 }
 

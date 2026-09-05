@@ -1,5 +1,5 @@
 import { createContext } from 'react'
-import type { OrchestrationProjectScript, ProjectId } from '@workspace/contracts'
+import type { OrchestrationProjectScript, ScopedProjectRef } from '@workspace/contracts'
 
 import type { GotoLineTarget } from '@/features/command-palette/goto-line-target'
 import type { SessionRailItem } from '@/features/chat-mode/utils/session-rail-model'
@@ -19,7 +19,7 @@ export type CommandPaletteActions = {
   /** Reveals chat mode, activates the owning project, and puts the session on the stage. */
   readonly selectSession: (session: SessionRailItem) => Promise<void>
   readonly selectSymbol: (symbol: FlatDocumentSymbol) => Promise<void>
-  readonly startSessionDraft: (projectId: ProjectId) => Promise<void>
+  readonly startSessionDraft: (ref: ScopedProjectRef) => Promise<void>
 }
 
 export const CommandPaletteActionsContext = createContext<CommandPaletteActions | null>(null)

@@ -11,7 +11,7 @@ import {
  * Owns the one sign-in dialog in the app. Sign-in is machine-wide, so every
  * surface that discovers a signed-out provider — the model picker, the chat
  * error card — opens this same dialog through `useProviderSignInDialog` instead
- * of threading open/close state down through the composer and its layout.
+ * of sessioning open/close state down through the composer and its layout.
  */
 export function ChatProviderSignInProvider({ children }: { readonly children: ReactNode }) {
   const [target, setTarget] = useState<ProviderSignInTarget | null>(null)

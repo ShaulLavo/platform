@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   eventIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
   turnIdSchema,
-  type OrchestrationThreadActivity,
+  type OrchestrationSessionActivity,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
@@ -102,17 +102,17 @@ describe('chat activity presentation', () => {
 
 function activity(
   kind: string,
-  tone: OrchestrationThreadActivity['tone'],
+  tone: OrchestrationSessionActivity['tone'],
   payload: unknown = null,
   summary = kind,
-): OrchestrationThreadActivity {
+): OrchestrationSessionActivity {
   return {
     createdAt: '2026-05-28T00:00:00.000Z',
     id: v.parse(eventIdSchema, `event-${kind}`),
     kind,
     payload,
     summary,
-    threadId: v.parse(threadIdSchema, 'thread-1'),
+    sessionId: v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb'),
     tone,
     turnId: v.parse(turnIdSchema, 'turn-1'),
   }

@@ -1,8 +1,4 @@
-import {
-  selectChatProjects,
-  selectChatSessionThreads,
-} from '@/features/chat/state/chat-projection-selectors'
-import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
+import { useRailEnvironments } from '@/features/chat-mode/hooks/use-rail-environments'
 import { useSessionReadStore } from '@/features/chat-mode/state/session-read-store'
 import { sessionRailModel } from '@/features/chat-mode/utils/session-rail-model'
 
@@ -12,13 +8,11 @@ import { sessionRailModel } from '@/features/chat-mode/utils/session-rail-model'
  * stay out — the palette is for getting back to work, not for browsing the filing.
  */
 export function useCommandPaletteSessions() {
-  const projects = useChatProjectionStore(selectChatProjects)
-  const threads = useChatProjectionStore(selectChatSessionThreads)
-  const seenByThreadId = useSessionReadStore((state) => state.seenByThreadId)
+  const environments = useRailEnvironments()
+  const seenBySessionKey = useSessionReadStore((state) => state.seenBySessionKey)
   const model = sessionRailModel({
-    projects,
-    seenByThreadId,
-    threads,
+    environments,
+    seenBySessionKey,
     view: 'active',
   })
 

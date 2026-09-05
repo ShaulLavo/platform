@@ -13,21 +13,20 @@ import {
   DEFAULT_CLAUDE_PROVIDER_SETTINGS,
   DEFAULT_INTERACTION_MODE,
   approvalRequestIdSchema,
-  projectIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
   turnIdSchema,
   type ChatAttachment,
   type InteractionMode,
   type ModelSelection,
   type RuntimeMode,
-  type ThreadId,
+  type SessionId,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 import { writeAttachmentFromDataUrl } from '../../../attachments/store'
 import { ClaudeProviderAdapter } from '../claude'
 import type {
   ProviderRuntimeEvent,
-  ProviderSessionStartInput,
+  ProviderRuntimeStartInput,
   ProviderTurnInput,
 } from '../../types'
 
@@ -44,7 +43,7 @@ const PNG_BASE64 =
 const PNG_BYTES = new Uint8Array(Buffer.from(PNG_BASE64, 'base64'))
 const WORKSPACE_ROOT = '/Users/shaul/Desktop/platform'
 /** Only the CLI's own id, used where a `system`/`init` message is faked. */
-const SESSION_ID = 'sess-abc'
+const SESSION_ID = 'ee84050b-1b17-5fe8-9f71-0983f1fceccc'
 const SYSTEM_UUID = '44444444-4444-4444-8444-444444444444'
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
@@ -168,6 +167,21 @@ afterAll(async () => {
 })
 
 describe('ClaudeProviderAdapter', () => {
+  it('replaces an otherwise compatible query when the caller chooses a new runtime epoch', async () => {
+    const harness = claudeHarness()
+    const input = sessionStartInput({})
+    await harness.adapter.startRuntime(input)
+    const originalOptions = latestOptions(harness)
+    const replacement = await harness.adapter.startRuntime({
+      ...input,
+      runtimeEpoch: 'replacement-epoch',
+    })
+    expect(harness.queries).toHaveLength(2)
+    expect(originalOptions.abortController?.signal.aborted).toBe(true)
+    expect(replacement.runtimeEpoch).toBe('replacement-epoch')
+    await harness.adapter.stopAll()
+  })
+
   it('sends image attachments as base64 content blocks beside the text', async () => {
     const harness = claudeHarness()
     const attachment = imageAttachment()
@@ -217,7 +231,7 @@ describe('ClaudeProviderAdapter', () => {
     expect(contentDeltas(harness)).toEqual([
       expect.objectContaining({
         payload: { contentIndex: 0, delta: 'Hello ', streamKind: 'assistant_text' },
-        threadId: input.thread.id,
+        sessionId: input.sessionId,
         turnId: input.turnId,
         type: 'content.delta',
       }),
@@ -233,7 +247,7 @@ describe('ClaudeProviderAdapter', () => {
     expect(resolved).toBe(true)
     expect(await waitForEvent(harness, 'turn.completed')).toMatchObject({
       payload: { state: 'completed' },
-      threadId: input.thread.id,
+      sessionId: input.sessionId,
       turnId: input.turnId,
     })
     await harness.adapter.stopAll()
@@ -246,7 +260,7 @@ describe('ClaudeProviderAdapter', () => {
     const pending = harness.adapter.sendTurn(input)
     await waitForEvent(harness, 'turn.started')
 
-    await harness.adapter.interruptTurn({ threadId: input.thread.id, turnId: input.turnId })
+    await harness.adapter.interruptTurn({ sessionId: input.sessionId, turnId: input.turnId })
     const query = latestQuery(harness)
     expect(query.interruptCalls).toBe(1)
 
@@ -262,9 +276,9 @@ describe('ClaudeProviderAdapter', () => {
 
   it('opens an approval request per canUseTool call and resolves it with the decision', async () => {
     const harness = claudeHarness()
-    const threadId = v.parse(threadIdSchema, 'thread-approval')
-    await harness.adapter.startSession(
-      sessionStartInput({ runtimeMode: 'approval-required', threadId }),
+    const sessionId = v.parse(sessionIdSchema, '8d0c6924-9495-5fd9-a04a-08b1e925b65d')
+    await harness.adapter.startRuntime(
+      sessionStartInput({ runtimeMode: 'approval-required', sessionId }),
     )
 
     const canUseTool = latestOptions(harness).canUseTool
@@ -278,7 +292,7 @@ describe('ClaudeProviderAdapter', () => {
         detail: 'Bash: rm -rf /',
         requestType: 'command_execution_approval',
       },
-      threadId,
+      sessionId,
     })
 
     const requestId = opened.requestId
@@ -286,7 +300,7 @@ describe('ClaudeProviderAdapter', () => {
     await harness.adapter.respondApproval({
       decision: 'accept',
       requestId: v.parse(approvalRequestIdSchema, requestId),
-      threadId,
+      sessionId,
     })
 
     await expect(permission).resolves.toEqual({
@@ -302,7 +316,7 @@ describe('ClaudeProviderAdapter', () => {
       harness.adapter.respondApproval({
         decision: 'accept',
         requestId: v.parse(approvalRequestIdSchema, 'claude:missing'),
-        threadId,
+        sessionId,
       }),
     ).rejects.toThrow('Unknown pending approval request: claude:missing')
     await harness.adapter.stopAll()
@@ -310,9 +324,9 @@ describe('ClaudeProviderAdapter', () => {
 
   it('types MCP, read and custom tool approvals so none arrive kindless', async () => {
     const harness = claudeHarness()
-    const threadId = v.parse(threadIdSchema, 'thread-approval-kinds')
-    await harness.adapter.startSession(
-      sessionStartInput({ runtimeMode: 'approval-required', threadId }),
+    const sessionId = v.parse(sessionIdSchema, 'a6586bf6-2682-5b5b-9693-244cb6ea1c70')
+    await harness.adapter.startRuntime(
+      sessionStartInput({ runtimeMode: 'approval-required', sessionId }),
     )
 
     const canUseTool = latestOptions(harness).canUseTool
@@ -333,7 +347,7 @@ describe('ClaudeProviderAdapter', () => {
   })
 
   /**
-   * The ordering regression: full-access is the mode most threads run in, and a
+   * The ordering regression: full-access is the mode most sessions run in, and a
    * short circuit placed ahead of the intercept would allow `ExitPlanMode`
    * outright — Claude would leave plan mode and start editing, and the plan the
    * user was supposed to approve would never exist.
@@ -358,7 +372,7 @@ describe('ClaudeProviderAdapter', () => {
 
     expect(await waitForEvent(harness, 'proposed-plan.upsert')).toMatchObject({
       planMarkdown: '1. Read the adapter\n2. Patch it',
-      threadId: input.thread.id,
+      sessionId: input.sessionId,
       turnId: input.turnId,
       type: 'proposed-plan.upsert',
     })
@@ -421,7 +435,7 @@ describe('ClaudeProviderAdapter', () => {
     await harness.adapter.respondUserInput({
       answers: { 'Which date library?': 'date-fns', 'Which extras?': ['Tests', 'Docs'] },
       requestId: v.parse(approvalRequestIdSchema, requestId),
-      threadId: input.thread.id,
+      sessionId: input.sessionId,
     })
 
     await expect(permission).resolves.toEqual({
@@ -441,7 +455,7 @@ describe('ClaudeProviderAdapter', () => {
       harness.adapter.respondUserInput({
         answers: {},
         requestId: v.parse(approvalRequestIdSchema, 'claude:missing'),
-        threadId: input.thread.id,
+        sessionId: input.sessionId,
       }),
     ).rejects.toThrow('Unknown pending user-input request: claude:missing')
 
@@ -452,7 +466,7 @@ describe('ClaudeProviderAdapter', () => {
 
   it('denies AskUserQuestion instead of parking the turn on a panel it cannot open', async () => {
     const harness = claudeHarness()
-    await harness.adapter.startSession(sessionStartInput({}))
+    await harness.adapter.startRuntime(sessionStartInput({}))
 
     const canUseTool = latestOptions(harness).canUseTool
     assert(canUseTool, 'canUseTool was not passed to the SDK')
@@ -466,19 +480,19 @@ describe('ClaudeProviderAdapter', () => {
 
   /**
    * Plan mode is a spawn-time permission mode, so a reused session keeps running
-   * the mode the thread started in — which is the whole bug: switching to plan
-   * did nothing until the thread was restarted for some other reason.
+   * the mode the session started in — which is the whole bug: switching to plan
+   * did nothing until the session was restarted for some other reason.
    */
-  it('restarts the session when the thread switches interaction mode', async () => {
+  it('restarts the session when the session switches interaction mode', async () => {
     const harness = claudeHarness()
-    const threadId = v.parse(threadIdSchema, 'thread-interaction-mode')
+    const sessionId = v.parse(sessionIdSchema, '0c6a8c76-18e3-5652-b7d5-fc843e25dbc0')
 
-    await harness.adapter.startSession(sessionStartInput({ interactionMode: 'default', threadId }))
-    await harness.adapter.startSession(sessionStartInput({ interactionMode: 'default', threadId }))
+    await harness.adapter.startRuntime(sessionStartInput({ interactionMode: 'default', sessionId }))
+    await harness.adapter.startRuntime(sessionStartInput({ interactionMode: 'default', sessionId }))
     expect(harness.queries).toHaveLength(1)
     expect(latestOptions(harness).permissionMode).toBe('bypassPermissions')
 
-    await harness.adapter.startSession(sessionStartInput({ interactionMode: 'plan', threadId }))
+    await harness.adapter.startRuntime(sessionStartInput({ interactionMode: 'plan', sessionId }))
     expect(harness.queries).toHaveLength(2)
     expect(latestOptions(harness).permissionMode).toBe('plan')
     await harness.adapter.stopAll()
@@ -512,59 +526,52 @@ describe('ClaudeProviderAdapter', () => {
   it('starts a session with a real id even though init never arrives', async () => {
     const harness = claudeHarness()
 
-    const session = await harness.adapter.startSession(sessionStartInput({}))
+    const session = await harness.adapter.startRuntime(sessionStartInput({}))
 
-    const sessionId = session.resumeCursor
-    assert(typeof sessionId === 'string', 'resumeCursor was not a session id')
+    const sessionId = session.sessionId
+    assert(typeof sessionId === 'string', 'sessionId was not a raw UUID')
     expect(sessionId).toMatch(UUID_PATTERN)
     expect(session).toMatchObject({
-      providerSessionId: `claude:${sessionId}`,
-      providerThreadId: sessionId,
+      providerBindingHandle: `claude:${sessionId}`,
+      providerConversationMarker: sessionId,
       status: 'ready',
     })
-    expect(await waitForEvent(harness, 'session.started')).toMatchObject({
-      payload: { resume: sessionId },
+    expect(await waitForEvent(harness, 'runtime.started')).toMatchObject({
+      payload: {},
     })
-    expect(harness.events.some((event) => event.type === 'session.configured')).toBe(false)
+    expect(harness.events.some((event) => event.type === 'runtime.configured')).toBe(false)
     await harness.adapter.stopAll()
   })
 
-  it('mints the session id for a fresh session and resumes from it afterwards', async () => {
+  it('uses the exact product UUID for create and resume', async () => {
     const harness = claudeHarness()
-    const first = await harness.adapter.startSession(sessionStartInput({}))
-
-    expect(latestOptions(harness).sessionId).toBe(first.resumeCursor)
-    expect('resume' in latestOptions(harness)).toBe(false)
-
-    await harness.adapter.startSession(
-      sessionStartInput({
-        resumeCursor: first.resumeCursor,
-        threadId: v.parse(threadIdSchema, 'thread-resumed'),
-      }),
-    )
-
-    expect(harness.queries).toHaveLength(2)
-    // Mutually exclusive: the SDK rejects `resume` and `sessionId` together.
-    expect(latestOptions(harness).resume).toBe(first.resumeCursor)
+    const input = sessionStartInput({})
+    const first = await harness.adapter.startRuntime(input)
+    expect(latestOptions(harness).sessionId).toBe(input.sessionId)
+    expect(first.providerResumeCursor).toBeNull()
+    await harness.adapter.stopRuntime({ sessionId: input.sessionId })
+    await harness.adapter.startRuntime({
+      ...input,
+      resumeExisting: true,
+      runtimeEpoch: 'second-epoch',
+    })
+    expect(latestOptions(harness).resume).toBe(input.sessionId)
     expect('sessionId' in latestOptions(harness)).toBe(false)
     await harness.adapter.stopAll()
   })
 
-  it('takes the CLI session id over the minted one when init finally lands', async () => {
+  it('aborts a runtime when Claude reports a different UUID', async () => {
     const harness = claudeHarness()
-    const started = await harness.adapter.startSession(sessionStartInput({}))
-    expect(started.resumeCursor).not.toBe(SESSION_ID)
-
-    latestQuery(harness).emit(initMessage())
-    await waitForEvent(harness, 'session.configured')
-
-    const [session] = await harness.adapter.listSessions()
-    expect(session).toMatchObject({
-      providerSessionId: `claude:${SESSION_ID}`,
-      providerThreadId: SESSION_ID,
-      resumeCursor: SESSION_ID,
-      status: 'ready',
+    const input = sessionStartInput({})
+    await harness.adapter.startRuntime(input)
+    latestQuery(harness).emit({
+      ...initMessage(),
+      session_id: 'ad944cb2-d627-4228-b537-09ff5f0b04cd',
     })
+    await waitForEvent(harness, 'runtime.exited')
+    expect(latestOptions(harness).abortController?.signal.aborted).toBe(true)
+    expect(await harness.adapter.hasRuntime({ sessionId: input.sessionId })).toBe(false)
+    expect(harness.events.some((event) => event.type === 'runtime.configured')).toBe(false)
     await harness.adapter.stopAll()
   })
 
@@ -576,7 +583,7 @@ describe('ClaudeProviderAdapter', () => {
     await waitForEvent(harness, 'turn.started')
 
     await expect(harness.adapter.sendTurn(providerTurnInput({ turnId: 'turn-2' }))).rejects.toThrow(
-      `Claude session for thread ${input.thread.id} already has a turn in flight.`,
+      `Claude session for session ${input.sessionId} already has a turn in flight.`,
     )
 
     latestQuery(harness).emit(successResult())
@@ -593,7 +600,7 @@ describe('ClaudeProviderAdapter', () => {
    */
   it('maps hook traffic to hook events instead of warning rows', async () => {
     const harness = claudeHarness()
-    await harness.adapter.startSession(sessionStartInput({}))
+    await harness.adapter.startRuntime(sessionStartInput({}))
     const query = latestQuery(harness)
 
     query.emit(hookStarted())
@@ -611,11 +618,11 @@ describe('ClaudeProviderAdapter', () => {
 
   it('maps every SDK message onto its intended runtime event', async () => {
     const harness = claudeHarness()
-    await harness.adapter.startSession(sessionStartInput({}))
+    await harness.adapter.startRuntime(sessionStartInput({}))
     const query = latestQuery(harness)
-    // Start emits session.started then thread.started through the async stream;
-    // the baseline has to be taken after both, not after `startSession` returns.
-    await waitForEvent(harness, 'thread.started')
+    // Start emits session.started then conversation.started through the async stream;
+    // the baseline has to be taken after both, not after `startRuntime` returns.
+    await waitForEvent(harness, 'conversation.started')
     const before = harness.events.length
 
     for (const { message } of MESSAGE_MAPPINGS) {
@@ -641,7 +648,7 @@ describe('ClaudeProviderAdapter', () => {
 
   it('logs an unknown message instead of warning the user, and keeps pumping', async () => {
     const harness = claudeHarness()
-    await harness.adapter.startSession(sessionStartInput({}))
+    await harness.adapter.startRuntime(sessionStartInput({}))
     const query = latestQuery(harness)
 
     query.emit(unknownMessage())
@@ -658,19 +665,19 @@ describe('ClaudeProviderAdapter', () => {
   it('passes every advertised level through to the SDK effort option', async () => {
     for (const reasoningEffort of ['low', 'medium', 'high', 'xhigh', 'max']) {
       const harness = claudeHarness()
-      await harness.adapter.startSession(sessionStartInput({ options: { reasoningEffort } }))
+      await harness.adapter.startRuntime(sessionStartInput({ options: { reasoningEffort } }))
 
       expect(latestOptions(harness).effort).toBe(reasoningEffort)
       await harness.adapter.stopAll()
     }
   })
 
-  /** A stale per-thread selection must degrade, never fail the turn. */
+  /** A stale per-session selection must degrade, never fail the turn. */
   it('degrades a level the model does not advertise instead of erroring', async () => {
     const harness = claudeHarness()
 
     // 'ultra' is a Codex level; the Claude catalog stops at 'max'.
-    await harness.adapter.startSession(sessionStartInput({ options: { reasoningEffort: 'ultra' } }))
+    await harness.adapter.startRuntime(sessionStartInput({ options: { reasoningEffort: 'ultra' } }))
 
     expect(latestOptions(harness).effort).toBe('high')
     await harness.adapter.stopAll()
@@ -679,7 +686,7 @@ describe('ClaudeProviderAdapter', () => {
   it('sends no effort, settings or thinking when the selection carries none', async () => {
     const harness = claudeHarness()
 
-    await harness.adapter.startSession(sessionStartInput({}))
+    await harness.adapter.startRuntime(sessionStartInput({}))
 
     const options = latestOptions(harness)
     expect('effort' in options).toBe(false)
@@ -690,12 +697,12 @@ describe('ClaudeProviderAdapter', () => {
 
   it('disables provider transcript persistence only for ephemeral sessions', async () => {
     const normal = claudeHarness()
-    await normal.adapter.startSession(sessionStartInput({}))
+    await normal.adapter.startRuntime(sessionStartInput({}))
     expect('persistSession' in latestOptions(normal)).toBe(false)
     await normal.adapter.stopAll()
 
     const ephemeral = claudeHarness()
-    await ephemeral.adapter.startSession(sessionStartInput({ ephemeral: true }))
+    await ephemeral.adapter.startRuntime(sessionStartInput({ ephemeral: true }))
     expect(latestOptions(ephemeral).persistSession).toBe(false)
     await ephemeral.adapter.stopAll()
   })
@@ -723,7 +730,7 @@ describe('ClaudeProviderAdapter', () => {
   it('pairs ultracode with xhigh and the session setting', async () => {
     const harness = claudeHarness()
 
-    await harness.adapter.startSession(
+    await harness.adapter.startRuntime(
       sessionStartInput({ options: { reasoningEffort: 'ultracode' } }),
     )
 
@@ -736,7 +743,7 @@ describe('ClaudeProviderAdapter', () => {
   it('passes the thinking config and its settings twin when thinking is enabled', async () => {
     const harness = claudeHarness()
 
-    await harness.adapter.startSession(sessionStartInput({ options: { thinking: true } }))
+    await harness.adapter.startRuntime(sessionStartInput({ options: { thinking: true } }))
 
     const options = latestOptions(harness)
     expect(options.thinking).toEqual({ type: 'adaptive' })
@@ -748,7 +755,7 @@ describe('ClaudeProviderAdapter', () => {
   it('disables thinking on both sides when the selection turns it off', async () => {
     const harness = claudeHarness()
 
-    await harness.adapter.startSession(sessionStartInput({ options: { thinking: false } }))
+    await harness.adapter.startRuntime(sessionStartInput({ options: { thinking: false } }))
 
     const options = latestOptions(harness)
     expect(options.thinking).toEqual({ type: 'disabled' })
@@ -760,20 +767,20 @@ describe('ClaudeProviderAdapter', () => {
    * Effort is fixed when the query is created, so reusing the session would
    * silently run the new level at the old one.
    */
-  it('restarts the session when the thread switches effort, and reuses it when it does not', async () => {
+  it('restarts the session when the session switches effort, and reuses it when it does not', async () => {
     const harness = claudeHarness()
-    const threadId = v.parse(threadIdSchema, 'thread-effort')
+    const sessionId = v.parse(sessionIdSchema, '15b75762-df30-5533-9c86-1a6e6d4af593')
 
-    await harness.adapter.startSession(
-      sessionStartInput({ options: { reasoningEffort: 'low' }, threadId }),
+    await harness.adapter.startRuntime(
+      sessionStartInput({ options: { reasoningEffort: 'low' }, sessionId }),
     )
-    await harness.adapter.startSession(
-      sessionStartInput({ options: { reasoningEffort: 'low' }, threadId }),
+    await harness.adapter.startRuntime(
+      sessionStartInput({ options: { reasoningEffort: 'low' }, sessionId }),
     )
     expect(harness.queries).toHaveLength(1)
 
-    await harness.adapter.startSession(
-      sessionStartInput({ options: { reasoningEffort: 'max' }, threadId }),
+    await harness.adapter.startRuntime(
+      sessionStartInput({ options: { reasoningEffort: 'max' }, sessionId }),
     )
     expect(harness.queries).toHaveLength(2)
     expect(latestOptions(harness).effort).toBe('max')
@@ -791,7 +798,7 @@ describe('ClaudeProviderAdapter', () => {
     expect(contentBlocks(harness.prompts[0])).toEqual([{ text: 'still here', type: 'text' }])
     expect(await waitForEvent(harness, 'runtime.warning')).toMatchObject({
       payload: { message: 'Attachment gone.png is missing and was not sent.' },
-      threadId: input.thread.id,
+      sessionId: input.sessionId,
     })
 
     latestQuery(harness).emit(successResult())
@@ -951,10 +958,10 @@ function sessionStartInput(overrides: {
   ephemeral?: boolean
   interactionMode?: InteractionMode
   options?: ModelSelection['options']
-  resumeCursor?: unknown
+  resumeExisting?: boolean
   runtimeMode?: RuntimeMode
-  threadId?: ThreadId
-}): ProviderSessionStartInput {
+  sessionId?: SessionId
+}): ProviderRuntimeStartInput {
   return {
     cwd: WORKSPACE_ROOT,
     ...(overrides.ephemeral === undefined ? {} : { ephemeral: overrides.ephemeral }),
@@ -962,8 +969,10 @@ function sessionStartInput(overrides: {
     modelSelection: modelSelection(overrides.options),
     providerInstanceId: DEFAULT_CLAUDE_PROVIDER_SETTINGS.providerInstanceId,
     runtimeMode: overrides.runtimeMode ?? 'full-access',
-    threadId: overrides.threadId ?? v.parse(threadIdSchema, 'thread-1'),
-    ...(overrides.resumeCursor === undefined ? {} : { resumeCursor: overrides.resumeCursor }),
+    runtimeEpoch: 'runtime-epoch',
+    sessionId:
+      overrides.sessionId ?? v.parse(sessionIdSchema, 'ee84050b-1b17-5fe8-9f71-0983f1fceccc'),
+    resumeExisting: overrides.resumeExisting,
   }
 }
 
@@ -976,9 +985,7 @@ function providerTurnInput(
     turnId?: string
   } = {},
 ): ProviderTurnInput {
-  const now = '2026-05-28T00:00:00.000Z'
-  const projectId = v.parse(projectIdSchema, 'project-1')
-  const threadId = v.parse(threadIdSchema, 'thread-1')
+  const sessionId = v.parse(sessionIdSchema, 'ee84050b-1b17-5fe8-9f71-0983f1fceccc')
   const turnId = v.parse(turnIdSchema, overrides.turnId ?? 'turn-1')
   const selection = modelSelection(overrides.options)
   const interactionMode = overrides.interactionMode ?? DEFAULT_INTERACTION_MODE
@@ -989,37 +996,10 @@ function providerTurnInput(
     interactionMode,
     messageText: overrides.messageText ?? 'Say hello',
     modelSelection: selection,
-    project: {
-      createdAt: now,
-      defaultModelSelection: selection,
-      deletedAt: null,
-      id: projectId,
-      orderKey: null,
-      scripts: [],
-      title: 'Platform',
-      updatedAt: now,
-      workspaceRoot: WORKSPACE_ROOT,
-    },
     providerInstanceId: DEFAULT_CLAUDE_PROVIDER_SETTINGS.providerInstanceId,
     runtimeMode: 'full-access',
-    thread: {
-      activities: [],
-      archivedAt: null,
-      branch: null,
-      createdAt: now,
-      deletedAt: null,
-      id: threadId,
-      interactionMode,
-      latestTurn: null,
-      messages: [],
-      modelSelection: selection,
-      projectId,
-      runtimeMode: 'full-access',
-      session: null,
-      title: 'Test thread',
-      updatedAt: now,
-      worktreePath: WORKSPACE_ROOT,
-    },
+    sessionId,
+    runtimeEpoch: 'runtime-epoch',
     turnId,
   }
 }
@@ -1112,12 +1092,12 @@ const MESSAGE_MAPPINGS: ReadonlyArray<{
   },
   { event: 'hook.completed', message: hookResponse() },
   {
-    event: 'session.state.changed',
+    event: 'runtime.state.changed',
     message: systemMessage({ status: 'compacting', subtype: 'status' }),
     payload: { reason: 'status:compacting', state: 'waiting' },
   },
   {
-    event: 'session.state.changed',
+    event: 'runtime.state.changed',
     message: systemMessage({
       attempt: 2,
       error: 'overloaded',
@@ -1129,7 +1109,7 @@ const MESSAGE_MAPPINGS: ReadonlyArray<{
     payload: { reason: 'api_retry:2/5', state: 'running' },
   },
   {
-    event: 'session.state.changed',
+    event: 'runtime.state.changed',
     message: systemMessage({
       request_id: 'req-1',
       status: 'started',
@@ -1138,12 +1118,12 @@ const MESSAGE_MAPPINGS: ReadonlyArray<{
     payload: { reason: 'control_request:started', state: 'running' },
   },
   {
-    event: 'session.state.changed',
+    event: 'runtime.state.changed',
     message: systemMessage({ state: 'requires_action', subtype: 'session_state_changed' }),
     payload: { reason: 'session_state:requires_action', state: 'waiting' },
   },
   {
-    event: 'session.exited',
+    event: 'runtime.exited',
     message: systemMessage({ reason: 'host_exit', subtype: 'worker_shutting_down' }),
     payload: { exitKind: 'graceful', reason: 'host_exit', recoverable: true },
   },
@@ -1318,7 +1298,7 @@ const MESSAGE_MAPPINGS: ReadonlyArray<{
   {
     event: null,
     message: systemMessage({
-      commands: [{ argumentHint: '', description: 'Compact the thread', name: 'compact' }],
+      commands: [{ argumentHint: '', description: 'Compact the session', name: 'compact' }],
       subtype: 'commands_changed',
     }),
   },
@@ -1347,7 +1327,7 @@ const MESSAGE_MAPPINGS: ReadonlyArray<{
     message: systemMessage({ name: 'formatter', status: 'installed', subtype: 'plugin_install' }),
   },
   {
-    event: 'thread.state.changed',
+    event: 'conversation.state.changed',
     message: systemMessage({
       compact_metadata: { pre_tokens: 100_000, trigger: 'auto' },
       subtype: 'compact_boundary',
@@ -1355,14 +1335,14 @@ const MESSAGE_MAPPINGS: ReadonlyArray<{
     payload: { state: 'compacted' },
   },
   {
-    event: 'thread.started',
+    event: 'conversation.started',
     message: {
       new_conversation_id: '44444444-4444-4444-8444-444444444444',
       session_id: SESSION_ID,
       type: 'conversation_reset',
       uuid: SYSTEM_UUID,
     },
-    payload: { providerThreadId: '44444444-4444-4444-8444-444444444444' },
+    payload: { providerConversationMarker: '44444444-4444-4444-8444-444444444444' },
   },
   {
     event: null,

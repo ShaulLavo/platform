@@ -1,5 +1,6 @@
+import { TEST_ENVIRONMENT_ID as FIXTURE_ENVIRONMENT_ID } from '../../../../../test/factories/chat'
 import {
-  threadIdSchema,
+  sessionIdSchema,
   type ClientOrchestrationCommand,
   type InteractionMode,
   type RuntimeMode,
@@ -18,13 +19,14 @@ import {
 import { expect, test } from '../../../../../test/fixtures'
 import { renderWithProviders } from '../../../../../test/render'
 
-const threadId = v.parse(threadIdSchema, 'thread-composer-controls')
+const sessionId = v.parse(sessionIdSchema, '0b1cf4bb-c595-5929-9994-7174e9f096ef')
 const draftTarget: ChatInputDraftTarget = {
-  draftKey: threadId,
+  environmentId: FIXTURE_ENVIRONMENT_ID,
+  draftKey: sessionId,
   rootPath: '/repo/platform',
 }
 
-test('the trigger reports the thread values while the draft has no override', () => {
+test('the trigger reports the session values while the draft has no override', () => {
   renderMenu()
 
   expect(trigger()).toHaveTextContent('Full access')
@@ -41,7 +43,7 @@ test('choosing an access level writes it to the draft and back onto the trigger'
   expect(trigger()).toHaveTextContent('Ask first')
 })
 
-test('choosing an access level also sets it on the thread itself', async () => {
+test('choosing an access level also sets it on the session itself', async () => {
   const { dispatched } = renderMenu()
 
   await openMenu()
@@ -50,8 +52,8 @@ test('choosing an access level also sets it on the thread itself', async () => {
   expect(dispatched).toHaveLength(1)
   expect(dispatched[0]).toMatchObject({
     runtimeMode: 'approval-required',
-    threadId,
-    type: 'thread.runtime-mode.set',
+    sessionId,
+    type: 'session.runtime-mode.set',
   })
 })
 
@@ -65,7 +67,7 @@ test('plan mode lands in the draft and shows on the composer', async () => {
   expect(trigger()).toHaveTextContent('Plan')
 })
 
-test('plan mode is set on the thread, not only on the next turn', async () => {
+test('plan mode is set on the session, not only on the next turn', async () => {
   const { dispatched } = renderMenu()
 
   await openMenu()
@@ -73,12 +75,12 @@ test('plan mode is set on the thread, not only on the next turn', async () => {
 
   expect(dispatched[0]).toMatchObject({
     interactionMode: 'plan',
-    threadId,
-    type: 'thread.interaction-mode.set',
+    sessionId,
+    type: 'session.interaction-mode.set',
   })
 })
 
-test('a rejected thread sync leaves the pick on the composer so the turn still carries it', async () => {
+test('a rejected session sync leaves the pick on the composer so the turn still carries it', async () => {
   renderMenu({}, () => Promise.reject(new Error('offline')))
 
   await openMenu()
@@ -106,8 +108,8 @@ test('an override survives a reopen as the checked option', async () => {
 })
 
 function renderMenu(
-  thread: { interactionMode?: InteractionMode; runtimeMode?: RuntimeMode } = {},
-  dispatch?: () => Promise<{ deduped: boolean; sequence: number }>,
+  session: { interactionMode?: InteractionMode; runtimeMode?: RuntimeMode } = {},
+  dispatch?: () => Promise<{ result: null; deduped: boolean; sequence: number }>,
 ) {
   resetChatInputDraftStore()
 
@@ -116,20 +118,20 @@ function renderMenu(
     dispatched.push(command)
     if (dispatch) return dispatch()
 
-    return { deduped: false, sequence: 1 }
+    return { result: null, deduped: false, sequence: 1 }
   }
 
   renderWithProviders(
     <ChatComposerModesProvider
       dispatchCommand={dispatchCommand}
       draftTarget={draftTarget}
-      threadId={threadId}
+      sessionId={sessionId}
     >
       <ComposerControlsMenu
         disabled={false}
         draftTarget={draftTarget}
-        interactionMode={thread.interactionMode ?? 'default'}
-        runtimeMode={thread.runtimeMode ?? 'full-access'}
+        interactionMode={session.interactionMode ?? 'default'}
+        runtimeMode={session.runtimeMode ?? 'full-access'}
       />
     </ChatComposerModesProvider>,
   )

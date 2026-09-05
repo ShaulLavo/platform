@@ -3,7 +3,7 @@ import type {
   OrchestrationReplayEventsInput,
   OrchestrationReplayEventsResult,
   OrchestrationShellStreamItem,
-  OrchestrationThreadStreamItem,
+  OrchestrationSessionStreamItem,
 } from '@workspace/contracts'
 import { act, renderHook, waitFor } from '@testing-library/react'
 
@@ -71,6 +71,7 @@ function createShellTransport(script: ScriptedAttempt[] = []) {
   const transport = {
     ...unsupportedChatTransport({
       dispatchCommand: async (_command: ClientOrchestrationCommand) => ({
+        result: null,
         deduped: false,
         sequence: 0,
       }),
@@ -84,8 +85,8 @@ function createShellTransport(script: ScriptedAttempt[] = []) {
 
         yield await new Promise<OrchestrationShellStreamItem>(() => undefined)
       },
-      threadDetailStream: async function* (): AsyncGenerator<OrchestrationThreadStreamItem> {
-        yield await new Promise<OrchestrationThreadStreamItem>(() => undefined)
+      sessionDetailStream: async function* (): AsyncGenerator<OrchestrationSessionStreamItem> {
+        yield await new Promise<OrchestrationSessionStreamItem>(() => undefined)
       },
     }),
     attempts: () => attempts,

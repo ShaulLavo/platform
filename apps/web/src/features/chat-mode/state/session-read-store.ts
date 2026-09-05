@@ -1,4 +1,4 @@
-import type { ThreadId } from '@workspace/contracts'
+import { scopedSessionKey, type ScopedSessionRef } from '@workspace/contracts'
 import { Debouncer } from '@tanstack/react-pacer/debouncer'
 import { create } from 'zustand'
 
@@ -12,7 +12,7 @@ const SESSION_READ_PERSIST_DEBOUNCE_MS = 300
 
 /**
  * Which sessions the user has already seen finish. Purely client-side: "have I read
- * this" is a property of this browser, not of the thread, and the server has no
+ * this" is a property of this browser, not of the session, and the server has no
  * opinion to sync.
  *
  * Writes are debounced and flushed on unload, the same shape the chat draft store
@@ -20,9 +20,9 @@ const SESSION_READ_PERSIST_DEBOUNCE_MS = 300
  * a localStorage write per turn completion across every open session.
  */
 type SessionReadStore = {
-  readonly seenByThreadId: SessionSeenStamps
+  readonly seenBySessionKey: SessionSeenStamps
   /** `completedAt` is the turn stamp that was read, never the local clock. */
-  readonly markSeen: (threadId: ThreadId, completedAt: string) => void
+  readonly markSeen: (ref: ScopedSessionRef, completedAt: string) => void
 }
 
 const readPersist = new Debouncer(() => flushSessionReadStorage(), {
@@ -30,25 +30,26 @@ const readPersist = new Debouncer(() => flushSessionReadStorage(), {
 })
 
 export const useSessionReadStore = create<SessionReadStore>()((set, get) => ({
-  markSeen: (threadId, completedAt) => {
-    if (get().seenByThreadId[threadId] === completedAt) return
+  markSeen: (ref, completedAt) => {
+    const sessionId = scopedSessionKey(ref)
+    if (get().seenBySessionKey[sessionId] === completedAt) return
 
     set((state) => ({
-      seenByThreadId: { ...state.seenByThreadId, [threadId]: completedAt },
+      seenBySessionKey: { ...state.seenBySessionKey, [sessionId]: completedAt },
     }))
     readPersist.maybeExecute()
   },
-  seenByThreadId: readPersistedSessionReads(),
+  seenBySessionKey: readPersistedSessionReads(),
 }))
 
 function flushSessionReadStorage() {
   readPersist.cancel()
-  writePersistedSessionReads(useSessionReadStore.getState().seenByThreadId)
+  writePersistedSessionReads(useSessionReadStore.getState().seenBySessionKey)
 }
 
 export function resetSessionReadStore() {
   readPersist.cancel()
-  useSessionReadStore.setState({ seenByThreadId: {} })
+  useSessionReadStore.setState({ seenBySessionKey: {} })
 }
 
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {

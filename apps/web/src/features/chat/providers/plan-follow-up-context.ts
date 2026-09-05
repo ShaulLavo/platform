@@ -9,10 +9,10 @@ import { createContext } from 'react'
  */
 export type ChatPlanFollowUp = {
   /**
-   * Builds the plan in a thread of its own, in the same project, and hands the
+   * Builds the plan in a session of its own, in the same project, and hands the
    * stage over to it. True once the bootstrap turn is accepted.
    */
-  readonly implementInNewThread: () => Promise<boolean>
+  readonly implementInNewSession: () => Promise<boolean>
   /** The plan still waiting to be acted on, or null when there is nothing to follow up. */
   readonly plan: OrchestrationProposedPlan | null
   /** True once the turn command is accepted. */

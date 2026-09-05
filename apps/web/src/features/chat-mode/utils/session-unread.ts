@@ -1,15 +1,13 @@
-import type { ThreadId } from '@workspace/contracts'
+import type { ProjectionSession } from '@/features/chat/state/chat-projection-store'
 
-import type { ProjectionThread } from '@/features/chat/state/chat-projection-store'
+/** The completion stamp each session was last read at, keyed by session. */
+export type SessionSeenStamps = Readonly<Record<string, string>>
 
-/** The completion stamp each session was last read at, keyed by thread. */
-export type SessionSeenStamps = Readonly<Partial<Record<ThreadId, string>>>
+type SessionCompletionSource = Pick<ProjectionSession, 'latestTurn'>
 
-type SessionCompletionSource = Pick<ProjectionThread, 'latestTurn'>
-
-/** When the agent last stopped working on this thread; null while it never has. */
-export function sessionCompletedAt(thread: SessionCompletionSource) {
-  return thread.latestTurn?.completedAt ?? null
+/** When the agent last stopped working on this session; null while it never has. */
+export function sessionCompletedAt(session: SessionCompletionSource) {
+  return session.latestTurn?.completedAt ?? null
 }
 
 /**

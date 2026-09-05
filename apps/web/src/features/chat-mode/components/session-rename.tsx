@@ -34,7 +34,7 @@ export function SessionRename({
       return
     }
 
-    rename(session.id, outcome.title)
+    rename(session.ref, outcome.title)
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {

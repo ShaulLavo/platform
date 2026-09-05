@@ -13,12 +13,12 @@ import {
 import { refDocumentId } from '@/features/git/utils/ref-document'
 import { searchBufferDocumentId } from '@/features/search/utils/buffer-document'
 import { settingsDocumentId } from '@/features/settings/utils/document'
-import type { ThreadId } from '@workspace/contracts'
+import type { SessionId } from '@workspace/contracts'
 
 const ROOT = '/repo'
 const OLD_OID = 'a'.repeat(40)
 const NEW_OID = 'b'.repeat(40)
-const THREAD = 'thread-9f3a1c2e-77b0-4d51-9a2e-0c8f1b6d4a10' as ThreadId
+const SESSION = '5f7f875d-6e41-5275-8927-06a9e5a4a2e1' as SessionId
 
 function token(path: string) {
   const result = documentTokenForPath(ROOT, path)
@@ -129,7 +129,7 @@ describe('snapshot diffs', () => {
 })
 
 describe('checkpoint diffs', () => {
-  const base = { fromTurnCount: 3, threadId: THREAD, toTurnCount: 5 }
+  const base = { fromTurnCount: 3, sessionId: SESSION, toTurnCount: 5 }
 
   test('round-trips file scope', () => {
     const path = checkpointDiffDocumentId({
@@ -139,18 +139,18 @@ describe('checkpoint diffs', () => {
       scope: 'file',
     })
 
-    expect(token(path)).toBe(`k/${THREAD}/3..5/src/a.ts`)
+    expect(token(path)).toBe(`k/${SESSION}/3..5/src/a.ts`)
     expect(roundTrip(path)).toBe(path)
   })
 
-  test('round-trips thread scope, whose path is synthetic', () => {
+  test('round-trips session scope, whose path is synthetic', () => {
     const path = checkpointDiffDocumentId({
       ...base,
-      path: 'checkpoint-thread-5',
-      scope: 'thread',
+      path: 'checkpoint-session-5',
+      scope: 'session',
     })
 
-    expect(token(path)).toBe(`k/${THREAD}/3..5`)
+    expect(token(path)).toBe(`k/${SESSION}/3..5`)
     expect(roundTrip(path)).toBe(path)
   })
 
@@ -161,7 +161,7 @@ describe('checkpoint diffs', () => {
       scope: 'turn',
     })
 
-    expect(token(path)).toBe(`k/${THREAD}/3..5!turn`)
+    expect(token(path)).toBe(`k/${SESSION}/3..5!turn`)
     expect(roundTrip(path)).toBe(path)
   })
 
@@ -180,7 +180,7 @@ describe('checkpoint diffs', () => {
   })
 
   test('rejects a turn range that runs backwards', () => {
-    expect(pathForDocumentToken(ROOT, `k/${THREAD}/9..2`)).toMatchObject({ kind: 'rejected' })
+    expect(pathForDocumentToken(ROOT, `k/${SESSION}/9..2`)).toMatchObject({ kind: 'rejected' })
   })
 })
 
@@ -232,14 +232,14 @@ describe('hostile input', () => {
 
   /**
    * The same shape check `parseSessionToken` applies to a `t/` token. Without it any
-   * decoded segment became a `ThreadId`, so a hand-edited `k/` token minted a checkpoint
-   * document for a thread that cannot exist — and that tab then persisted into the cache.
+   * decoded segment became a `SessionId`, so a hand-edited `k/` token minted a checkpoint
+   * document for a session that cannot exist — and that tab then persisted into the cache.
    */
-  test('refuses to turn an arbitrary URL segment into a thread id', () => {
-    expect(pathForDocumentToken(ROOT, 'k/not-a-thread/1..2/src/a.ts')).toMatchObject({
+  test('refuses to turn an arbitrary URL segment into a session id', () => {
+    expect(pathForDocumentToken(ROOT, 'k/not-a-session/1..2/src/a.ts')).toMatchObject({
       kind: 'rejected',
     })
-    expect(pathForDocumentToken(ROOT, `k/${THREAD}/1..2/src/a.ts`)).toMatchObject({ kind: 'path' })
+    expect(pathForDocumentToken(ROOT, `k/${SESSION}/1..2/src/a.ts`)).toMatchObject({ kind: 'path' })
   })
 })
 
@@ -293,7 +293,7 @@ describe('tokens survive the whole URL, not just the codec', () => {
       fromTurnCount: 3,
       path: `${ROOT}/src/a.ts`,
       scope: 'file',
-      threadId: THREAD,
+      sessionId: SESSION,
       toTurnCount: 5,
     })
 
@@ -315,7 +315,7 @@ describe('tokens survive the whole URL, not just the codec', () => {
       path: `${ROOT}/src/a.ts`,
       scope: 'file',
       status: 'modified',
-      threadId: THREAD,
+      sessionId: SESSION,
       toTurnCount: 5,
     })
 
@@ -323,7 +323,7 @@ describe('tokens survive the whole URL, not just the codec', () => {
   })
 
   test('refuses an object id the URL made up', () => {
-    const token = `k/${THREAD}/3..5,o=nothex/src%2Fa.ts`
+    const token = `k/${SESSION}/3..5,o=nothex/src%2Fa.ts`
 
     expect(pathForDocumentToken(ROOT, token)).toMatchObject({ kind: 'path' })
     expect(pathForDocumentToken(ROOT, token)).not.toMatchObject({
@@ -354,7 +354,7 @@ describe('status survives the round trip', () => {
   })
 
   test('refuses to turn an arbitrary URL string into a git status', () => {
-    const parsed = pathForDocumentToken(ROOT, `k/${THREAD}/1..2,s=notastatus/src/a.ts`)
+    const parsed = pathForDocumentToken(ROOT, `k/${SESSION}/1..2,s=notastatus/src/a.ts`)
 
     expect(parsed.kind).toBe('path')
     expect(parsed.kind === 'path' && parsed.path).not.toContain('notastatus')

@@ -1,46 +1,35 @@
-import { Database } from 'bun:sqlite'
-import { drizzle } from 'drizzle-orm/bun-sqlite'
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import * as v from 'valibot'
-import { migrateOrchestrationDatabase } from '../../db/migrations'
-import * as schema from '../../db/schema'
 import { OrchestrationEngine } from '../engine'
-import { orchestrationCommandSchema, type OrchestrationCommand } from '../schemas'
+import { orchestrationCommandSchema } from '../schemas'
 
 const assistantStartedAt = '2026-05-24T00:02:00.000Z'
 const assistantCompletedAt = '2026-05-24T00:03:00.000Z'
-const modelSelection = {
-  providerInstanceId: 'codex',
-  model: 'gpt-5-codex',
-}
-const fixtures: ClosableFixture[] = []
-
-type ClosableFixture = {
-  close: () => void
-}
-
-afterEach(() => {
-  for (const fixture of fixtures.splice(0)) {
-    fixture.close()
-  }
-})
+import {
+  createDomainEngine,
+  projectRegistrationCommand,
+  sessionCreateCommand,
+} from './factories/engine'
 
 describe('projection latest turn snapshots', () => {
   it('returns the canonical latest turn after an assistant turn completes', async () => {
     const engine = createEngine()
-    // A real plan on the thread that runs the turn. The decider refuses a
-    // reference it cannot resolve, so a made-up thread id here would be
-    // asserting that the projection carries a plan that could never exist.
-    const sourceProposedPlan = { planId: 'plan-1', threadId: 'thread-1' }
+    const sourceProposedPlan = {
+      planId: 'plan-1',
+      sessionId: 'd2b3ea2b-7e36-4549-b0d4-043c00904574',
+    }
     const before = new Date().toISOString()
 
-    await dispatchProjectThread(engine)
+    await dispatchProjectSession(engine)
     await engine.dispatch(proposePlanCommand())
     await engine.dispatch(startTurnCommand({ sourceProposedPlan }))
+    await providerStartStep(engine, 'claim')
+    await providerStartStep(engine, 'adopt')
     await engine.dispatch(assistantDeltaCommand())
     await engine.dispatch(assistantCompleteCommand())
+    await providerStartStep(engine, 'settle')
 
-    const turn = latestTurn(engine)
+    const turn = await latestTurn(engine)
 
     expect(turn).toEqual({
       assistantMessageId: 'message-2',
@@ -50,34 +39,40 @@ describe('projection latest turn snapshots', () => {
       sourceProposedPlan,
       startedAt: assistantStartedAt,
       state: 'completed',
+      providerStartState: 'settled',
+      providerStartGeneration: 1,
+      providerStartSequence: expect.any(Number),
+      runtimeEpoch: 'fixture-runtime',
       turnId: 'turn-1',
     })
     expectServerStamped(turn?.requestedAt, before)
   })
 
-  it('refuses a turn that cites a plan no thread is actually offering', async () => {
+  it('refuses a turn that cites a plan no session is actually offering', async () => {
     const engine = createEngine()
-    await dispatchProjectThread(engine)
+    await dispatchProjectSession(engine)
 
-    // The projector clears `hasActionableProposedPlan` on whichever thread the
-    // command names, so an unresolvable reference is a write to a conversation
-    // this turn has nothing to do with — a stale client silently stripping the
-    // badge off someone else's thread.
     await expect(
       engine.dispatch(
         startTurnCommand({
           commandId: 'cmd-turn-ghost',
-          sourceProposedPlan: { planId: 'plan-1', threadId: 'thread-ghost' },
+          sourceProposedPlan: {
+            planId: 'plan-1',
+            sessionId: 'd0000000-0000-4000-8000-000000000099',
+          },
         }),
       ),
-    ).rejects.toThrow('Thread not found')
+    ).rejects.toThrow('Session not found')
 
-    // The thread exists here, but is offering nothing.
+    // The session exists here, but is offering nothing.
     await expect(
       engine.dispatch(
         startTurnCommand({
           commandId: 'cmd-turn-unoffered',
-          sourceProposedPlan: { planId: 'plan-1', threadId: 'thread-1' },
+          sourceProposedPlan: {
+            planId: 'plan-1',
+            sessionId: 'd2b3ea2b-7e36-4549-b0d4-043c00904574',
+          },
         }),
       ),
     ).rejects.toThrow('no actionable proposed plan')
@@ -87,11 +82,11 @@ describe('projection latest turn snapshots', () => {
     const engine = createEngine()
     const before = new Date().toISOString()
 
-    await dispatchProjectThread(engine)
+    await dispatchProjectSession(engine)
     await engine.dispatch(startTurnCommand())
     await engine.dispatch(interruptTurnCommand())
 
-    const turn = latestTurn(engine)
+    const turn = await latestTurn(engine)
 
     expect(turn).toEqual({
       assistantMessageId: null,
@@ -99,6 +94,10 @@ describe('projection latest turn snapshots', () => {
       requestedAt: turn?.requestedAt,
       startedAt: null,
       state: 'interrupted',
+      providerStartState: 'interrupted',
+      providerStartGeneration: 0,
+      providerStartSequence: expect.any(Number),
+      runtimeEpoch: null,
       turnId: 'turn-1',
     })
     expectServerStamped(turn?.requestedAt, before)
@@ -109,7 +108,7 @@ describe('projection latest turn snapshots', () => {
   it('keeps a late older-turn assistant message from replacing the latest turn', async () => {
     const engine = createEngine()
 
-    await dispatchProjectThread(engine)
+    await dispatchProjectSession(engine)
     await engine.dispatch(
       startTurnCommand({
         commandId: 'cmd-turn-old-start',
@@ -117,7 +116,15 @@ describe('projection latest turn snapshots', () => {
         turnId: 'turn-old',
       }),
     )
-    const oldRequestedAt = latestTurn(engine)?.requestedAt
+    const oldRequestedAt = (await latestTurn(engine))?.requestedAt
+    await engine.dispatch(
+      command({
+        type: 'session.turn.interrupt',
+        commandId: 'interrupt-old',
+        sessionId: 'd2b3ea2b-7e36-4549-b0d4-043c00904574',
+        turnId: 'turn-old',
+      }),
+    )
     await engine.dispatch(
       startTurnCommand({
         commandId: 'cmd-turn-latest-start',
@@ -134,7 +141,7 @@ describe('projection latest turn snapshots', () => {
       }),
     )
 
-    const turn = latestTurn(engine)
+    const turn = await latestTurn(engine)
 
     expect(turn).toEqual({
       assistantMessageId: null,
@@ -142,67 +149,29 @@ describe('projection latest turn snapshots', () => {
       requestedAt: turn?.requestedAt,
       startedAt: null,
       state: 'running',
+      providerStartState: 'queued',
+      providerStartGeneration: 0,
+      providerStartSequence: expect.any(Number),
+      runtimeEpoch: null,
       turnId: 'turn-latest',
     })
     expectServerStamped(turn?.requestedAt, oldRequestedAt)
   })
 })
 
-/**
- * ISO-8601 UTC strings sort lexicographically, so a plain compare is a real
- * ordering assertion: the value has to be the server's own reading taken at or
- * after `notBefore`, never a timestamp a client could have supplied.
- */
 function expectServerStamped(value: string | null | undefined, notBefore: string | undefined) {
   expect(typeof value).toBe('string')
   expect(Number.isNaN(Date.parse(value ?? ''))).toBe(false)
   expect(value! >= notBefore!).toBe(true)
 }
 
-async function dispatchProjectThread(engine: OrchestrationEngine) {
-  await engine.dispatch(projectCreateCommand())
-  await engine.dispatch(threadCreateCommand())
+async function dispatchProjectSession(engine: OrchestrationEngine) {
+  await engine.dispatch(projectRegistrationCommand())
+  await engine.dispatch(sessionCreateCommand())
 }
 
 function createEngine() {
-  return new OrchestrationEngine(createFixture().database)
-}
-
-function createFixture() {
-  const sqlite = new Database(':memory:', { create: true })
-  const database = drizzle({ client: sqlite, schema })
-  migrateOrchestrationDatabase(database)
-  const fixture = { close: () => sqlite.close(), database }
-
-  fixtures.push(fixture)
-
-  return fixture
-}
-
-function projectCreateCommand() {
-  return command({
-    commandId: 'cmd-project-create',
-    defaultModelSelection: null,
-    projectId: 'project-1',
-    title: 'Platform',
-    type: 'project.create',
-    workspaceRoot: '/workspace',
-  })
-}
-
-function threadCreateCommand() {
-  return command({
-    branch: null,
-    commandId: 'cmd-thread-create',
-    interactionMode: 'default',
-    modelSelection,
-    projectId: 'project-1',
-    runtimeMode: 'full-access',
-    threadId: 'thread-1',
-    title: 'Projection',
-    type: 'thread.create',
-    worktreePath: null,
-  })
+  return createDomainEngine().engine
 }
 
 function proposePlanCommand() {
@@ -213,12 +182,12 @@ function proposePlanCommand() {
       createdAt: '2026-05-24T00:00:30.000Z',
       id: 'plan-1',
       planMarkdown: '1. Do the thing',
-      threadId: 'thread-1',
+      sessionId: 'd2b3ea2b-7e36-4549-b0d4-043c00904574',
       turnId: null,
       updatedAt: '2026-05-24T00:00:30.000Z',
     },
-    threadId: 'thread-1',
-    type: 'thread.proposed-plan.upsert',
+    sessionId: 'd2b3ea2b-7e36-4549-b0d4-043c00904574',
+    type: 'session.proposed-plan.upsert',
   })
 }
 
@@ -234,16 +203,16 @@ function startTurnCommand(input: Partial<StartTurnInput> = {}) {
     },
     runtimeMode: 'full-access',
     sourceProposedPlan: input.sourceProposedPlan,
-    threadId: 'thread-1',
+    sessionId: 'd2b3ea2b-7e36-4549-b0d4-043c00904574',
     turnId: input.turnId ?? 'turn-1',
-    type: 'thread.turn.start',
+    type: 'session.turn.start',
   })
 }
 
 type StartTurnInput = {
   commandId: string
   messageId: string
-  sourceProposedPlan: { planId: string; threadId: string }
+  sourceProposedPlan: { planId: string; sessionId: string }
   text: string
   turnId: string
 }
@@ -254,9 +223,9 @@ function assistantDeltaCommand() {
     createdAt: assistantStartedAt,
     delta: 'Done',
     messageId: 'message-2',
-    threadId: 'thread-1',
+    sessionId: 'd2b3ea2b-7e36-4549-b0d4-043c00904574',
     turnId: 'turn-1',
-    type: 'thread.message.assistant.delta',
+    type: 'session.message.assistant.delta',
   })
 }
 
@@ -265,9 +234,9 @@ function assistantCompleteCommand(input: Partial<AssistantCompleteInput> = {}) {
     commandId: input.commandId ?? 'cmd-assistant-complete',
     completedAt: assistantCompletedAt,
     messageId: input.messageId ?? 'message-2',
-    threadId: 'thread-1',
+    sessionId: 'd2b3ea2b-7e36-4549-b0d4-043c00904574',
     turnId: input.turnId ?? 'turn-1',
-    type: 'thread.message.assistant.complete',
+    type: 'session.message.assistant.complete',
   })
 }
 
@@ -280,16 +249,33 @@ type AssistantCompleteInput = {
 function interruptTurnCommand() {
   return command({
     commandId: 'cmd-turn-interrupt',
-    threadId: 'thread-1',
+    sessionId: 'd2b3ea2b-7e36-4549-b0d4-043c00904574',
     turnId: 'turn-1',
-    type: 'thread.turn.interrupt',
+    type: 'session.turn.interrupt',
   })
 }
 
-function latestTurn(engine: OrchestrationEngine) {
-  return engine.threadDetailSnapshot('thread-1').thread.latestTurn
+async function latestTurn(engine: OrchestrationEngine) {
+  return (await engine.sessionDetailSnapshot('d2b3ea2b-7e36-4549-b0d4-043c00904574')).session
+    .latestTurn
 }
 
 function command(value: unknown) {
-  return v.parse(orchestrationCommandSchema, value) as OrchestrationCommand
+  return v.parse(orchestrationCommandSchema, value)
+}
+
+async function providerStartStep(engine: OrchestrationEngine, step: 'claim' | 'adopt' | 'settle') {
+  const turn = (await latestTurn(engine))!
+  await engine.dispatch(
+    command({
+      type: `session.provider-start.${step}`,
+      commandId: `provider-${step}`,
+      sessionId: 'd2b3ea2b-7e36-4549-b0d4-043c00904574',
+      turnId: turn.turnId,
+      observedSequence: turn.providerStartSequence,
+      generation: 1,
+      runtimeEpoch: 'fixture-runtime',
+      createdAt: assistantStartedAt,
+    }),
+  )
 }

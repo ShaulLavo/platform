@@ -2,13 +2,13 @@ import {
   approvalRequestIdSchema,
   userInputQuestionSchema,
   type ApprovalRequestId,
-  type OrchestrationThreadActivity,
+  type OrchestrationSessionActivity,
   type TurnId,
   type UserInputQuestion,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
-import { orderedThreadActivities } from '@/features/chat/utils/pending-approvals'
+import { orderedSessionActivities } from '@/features/chat/utils/pending-approvals'
 
 export type PendingUserInput = {
   readonly createdAt: string
@@ -41,11 +41,11 @@ const userInputPayloadSchema = v.object({
  * `derivePendingApprovals`, derived client-side for the same reason.
  */
 export function derivePendingUserInputs(
-  activities: readonly OrchestrationThreadActivity[],
+  activities: readonly OrchestrationSessionActivity[],
 ): PendingUserInput[] {
   const open = new Map<ApprovalRequestId, PendingUserInput>()
 
-  for (const activity of orderedThreadActivities(activities)) {
+  for (const activity of orderedSessionActivities(activities)) {
     if (!isUserInputActivity(activity.kind)) continue
 
     const parsed = v.safeParse(userInputPayloadSchema, activity.payload)
@@ -131,7 +131,7 @@ export function isUserInputDraftComplete(
 }
 
 /**
- * The `answers` record for `thread.user-input.respond`, or null while any
+ * The `answers` record for `session.user-input.respond`, or null while any
  * question is unanswered — a partial record would let the provider answer the
  * rest on the user's behalf.
  */
@@ -153,7 +153,7 @@ export function buildUserInputAnswers(
 
 function openPendingUserInput(
   open: Map<ApprovalRequestId, PendingUserInput>,
-  activity: OrchestrationThreadActivity,
+  activity: OrchestrationSessionActivity,
   requestId: ApprovalRequestId,
   rawQuestions: readonly unknown[] | undefined,
 ) {

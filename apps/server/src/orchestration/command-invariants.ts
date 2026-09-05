@@ -1,11 +1,11 @@
 import { defineErrorCatalog } from 'evlog'
 import { isValidOrderKey } from '@workspace/contracts'
 import { orchestrationErrors } from '../observability'
-import type { OrchestrationProjectedThread, OrchestrationReadModel } from './read-model'
+import type { OrchestrationProjectedSession, OrchestrationReadModel } from './read-model'
 
 /**
  * Arranged-order refusals. Shared by every list that sorts on a fractional key
- * (the pinned thread block, the project list) so one malformed key is refused
+ * (the pinned session block, the project list) so one malformed key is refused
  * the same way everywhere instead of being persisted and corrupting the sort.
  */
 export const orderKeyErrors = defineErrorCatalog('orchestration', {
@@ -22,306 +22,140 @@ export const orderKeyErrors = defineErrorCatalog('orchestration', {
  * `orchestration` prefix with the aggregate-level catalog so the client keeps
  * one namespace to branch on.
  */
-export const threadLifecycleErrors = defineErrorCatalog('orchestration', {
-  THREAD_BLOCKING_REQUEST: {
+export const sessionLifecycleErrors = defineErrorCatalog('orchestration', {
+  SESSION_BLOCKING_REQUEST: {
     status: 409,
-    message: ({ commandType, threadId }: { commandType: string; threadId: string }) =>
-      `Thread ${threadId} has an open approval or user-input request and cannot handle ${commandType}`,
-    why: 'An open request is the agent waiting on the user; parking the thread would hide the very question it is asking.',
+    message: ({ commandType, sessionId }: { commandType: string; sessionId: string }) =>
+      `Session ${sessionId} has an open approval or user-input request and cannot handle ${commandType}`,
+    why: 'An open request is the agent waiting on the user; parking the session would hide the very question it is asking.',
     fix: 'Answer or dismiss the pending request, then retry.',
   },
-  THREAD_NOT_PINNED: {
+  SESSION_NOT_PINNED: {
     status: 409,
-    message: ({ threadId }: { threadId: string }) => `Thread is not pinned: ${threadId}`,
-    why: 'Only a pinned thread holds a slot in the arranged order, so there is nothing to reorder.',
-    fix: 'Pin the thread first, or drop the reorder — a raced reorder after an unpin must not resurrect the pin.',
+    message: ({ sessionId }: { sessionId: string }) => `Session is not pinned: ${sessionId}`,
+    why: 'Only a pinned session holds a slot in the arranged order, so there is nothing to reorder.',
+    fix: 'Pin the session first, or drop the reorder — a raced reorder after an unpin must not resurrect the pin.',
   },
-  THREAD_QUEUED_TURN_START: {
+  SESSION_QUEUED_TURN_START: {
     status: 409,
-    message: ({ commandType, threadId }: { commandType: string; threadId: string }) =>
-      `Thread ${threadId} has a queued turn start and cannot handle ${commandType}`,
+    message: ({ commandType, sessionId }: { commandType: string; sessionId: string }) =>
+      `Session ${sessionId} has a queued turn start and cannot handle ${commandType}`,
     why: 'A user message no turn has adopted yet is work in flight with no session and no pending flags to show for it.',
     fix: 'Wait for the turn to start (or fail), then retry.',
   },
-  THREAD_SESSION_ACTIVE: {
+  SESSION_RUNTIME_ACTIVE: {
     status: 409,
-    message: ({ commandType, threadId }: { commandType: string; threadId: string }) =>
-      `Thread ${threadId} has an active session and cannot handle ${commandType}`,
-    why: 'The provider session is starting or running, so the thread is working — settling it would park live work.',
+    message: ({ commandType, sessionId }: { commandType: string; sessionId: string }) =>
+      `Session ${sessionId} has an active session and cannot handle ${commandType}`,
+    why: 'The provider session is starting or running, so the session is working — settling it would park live work.',
     fix: 'Stop or interrupt the session first, or wait for the turn to finish.',
   },
-  THREAD_SNOOZE_NOT_FUTURE: {
+  SESSION_SNOOZE_NOT_FUTURE: {
     status: 400,
-    message: ({ snoozedUntil, threadId }: { snoozedUntil: string; threadId: string }) =>
-      `Thread ${threadId} snooze wake time ${snoozedUntil} is not in the future`,
-    why: 'A wake time already past would leave the thread carrying snooze state it can never be woken out of.',
+    message: ({ snoozedUntil, sessionId }: { snoozedUntil: string; sessionId: string }) =>
+      `Session ${sessionId} snooze wake time ${snoozedUntil} is not in the future`,
+    why: 'A wake time already past would leave the session carrying snooze state it can never be woken out of.',
     fix: 'Send an ISO timestamp strictly after the current server time.',
   },
 })
 
-/**
- * Session adoption takes seconds; a user message still unadopted after this
- * window is a failed or stale start, not pending work.
- */
-const QUEUED_TURN_START_GRACE_MS = 2 * 60 * 1_000
-
-/**
- * Pure guards the decider runs before it plans any event. Without them a command
- * for a missing, deleted or archived aggregate is appended to the log, receipted
- * `accepted` and published — and then silently dropped by the projector, which
- * only patches aggregates it already knows. The client is told "success" and
- * nothing happened. Every guard throws a catalogued structured error instead.
- */
-export function requireThreadNotDeleted(model: OrchestrationReadModel, threadId: string) {
-  const thread = model.threads.get(threadId)
-  // A deleted thread is gone as far as every read surface is concerned, so a
-  // tombstone reports as missing rather than as its own status.
-  if (!thread || thread.deletedAt) throw orchestrationErrors.THREAD_NOT_FOUND({ threadId })
-
-  return thread
+export function requireSessionNotDeleted(model: OrchestrationReadModel, sessionId: string) {
+  const session = model.sessions.get(sessionId)
+  if (!session || session.deletedAt) throw orchestrationErrors.SESSION_NOT_FOUND({ sessionId })
+  return session
 }
 
-export function requireThreadNotArchived(
+export function requireSessionNotArchived(
   model: OrchestrationReadModel,
-  threadId: string,
+  sessionId: string,
   commandType: string,
 ) {
-  const thread = requireThreadNotDeleted(model, threadId)
-  if (thread.archivedAt) throw orchestrationErrors.THREAD_ARCHIVED({ commandType, threadId })
-
-  return thread
+  const session = requireSessionNotDeleted(model, sessionId)
+  if (session.archivedAt) throw orchestrationErrors.SESSION_ARCHIVED({ commandType, sessionId })
+  return session
 }
 
-export function requireThreadArchived(model: OrchestrationReadModel, threadId: string) {
-  const thread = requireThreadNotDeleted(model, threadId)
-  if (!thread.archivedAt) throw orchestrationErrors.THREAD_NOT_ARCHIVED({ threadId })
-
-  return thread
+export function requireSessionArchived(model: OrchestrationReadModel, sessionId: string) {
+  const session = requireSessionNotDeleted(model, sessionId)
+  if (!session.archivedAt) throw orchestrationErrors.SESSION_NOT_ARCHIVED({ sessionId })
+  return session
 }
 
-export function requireThreadAbsent(model: OrchestrationReadModel, threadId: string) {
-  if (model.threads.has(threadId)) throw orchestrationErrors.THREAD_ALREADY_EXISTS({ threadId })
+export function requireSessionAbsent(model: OrchestrationReadModel, sessionId: string) {
+  if (model.sessions.has(sessionId)) throw orchestrationErrors.SESSION_ALREADY_EXISTS({ sessionId })
 }
 
 export function requireProject(model: OrchestrationReadModel, projectId: string) {
   const project = model.projects.get(projectId)
   if (!project || project.deletedAt) throw orchestrationErrors.PROJECT_NOT_FOUND({ projectId })
-
   return project
 }
 
-/**
- * The wire schema already checks the key, but the decider is reachable from
- * internal dispatch too — and an unvalidated key here is not a rejected
- * command, it is a persisted row that sorts wrong forever.
- */
-/**
- * A turn may implement a plan that lives on another thread, so the cited thread
- * is not required to be the one running the turn — but it does have to exist,
- * and it has to actually be holding an actionable plan.
- *
- * Without this the projection clears `hasActionableProposedPlan` on whatever
- * thread the client names. A stale client then silently strips the badge off an
- * unrelated conversation, and nothing in the log says why it went away.
- */
 export function requireActionableSourcePlan(
   model: OrchestrationReadModel,
-  source: { readonly threadId: string } | undefined,
+  source: { readonly sessionId: string } | undefined,
 ) {
   if (!source) return
-
-  const thread = requireThreadNotDeleted(model, source.threadId)
-  if (thread.hasActionableProposedPlan) return
-
-  throw orchestrationErrors.SOURCE_PLAN_NOT_ACTIONABLE({ planThreadId: source.threadId })
+  const session = requireSessionNotDeleted(model, source.sessionId)
+  if (session.hasActionableProposedPlan) return
+  throw orchestrationErrors.SOURCE_PLAN_NOT_ACTIONABLE({ planSessionId: source.sessionId })
 }
 
 export function requireValidOrderKey(orderKey: string) {
   if (isValidOrderKey(orderKey)) return
-
   throw orderKeyErrors.ORDER_KEY_INVALID({ orderKey })
 }
 
-export function requireProjectAbsent(model: OrchestrationReadModel, projectId: string) {
-  if (model.projects.has(projectId)) throw orchestrationErrors.PROJECT_ALREADY_EXISTS({ projectId })
-}
-
-/**
- * The client dedupes projects by hashing the raw path it was handed, so
- * `/repo`, `/repo/` and `/Repo` (on a case-insensitive volume) all mint
- * different project ids for one checkout. Compare normalized roots here so the
- * second one is refused instead of racing the first over the same worktrees.
- */
-export function requireActiveProjectWorkspaceRootAbsent(
-  model: OrchestrationReadModel,
-  workspaceRoot: string,
-  exceptProjectId?: string,
-) {
-  const normalized = normalizeWorkspaceRootForComparison(workspaceRoot)
-
-  for (const project of model.projects.values()) {
-    if (project.deletedAt) continue
-    if (project.id === exceptProjectId) continue
-    if (normalizeWorkspaceRootForComparison(project.workspaceRoot) !== normalized) continue
-
-    throw orchestrationErrors.PROJECT_WORKSPACE_ROOT_TAKEN({
-      projectId: project.id,
-      workspaceRoot: normalized,
-    })
-  }
-}
-
-/**
- * Settling says "I am done with this thread". It must refuse whenever the
- * thread is still working, because a settled row is a collapsed row: a stale
- * or raced client would otherwise park work that only resurfaces once it is
- * already finished.
- */
 export function requireSettleable(
-  thread: OrchestrationProjectedThread,
+  session: OrchestrationProjectedSession,
   commandType: string,
-  at: string,
+  _at: string,
 ) {
-  if (isSessionAlive(thread)) {
-    throw threadLifecycleErrors.THREAD_SESSION_ACTIVE({ commandType, threadId: thread.id })
+  const sessionId = session.id
+  if (hasOpenBlockingRequest(session))
+    throw sessionLifecycleErrors.SESSION_BLOCKING_REQUEST({ commandType, sessionId })
+  if (hasQueuedTurnStart(session))
+    throw sessionLifecycleErrors.SESSION_QUEUED_TURN_START({ commandType, sessionId })
+  if (isSessionAlive(session) || session.latestTurn?.state === 'running') {
+    throw sessionLifecycleErrors.SESSION_RUNTIME_ACTIVE({ commandType, sessionId })
   }
-
-  requireNoParkedWork(thread, commandType, at)
 }
 
-/**
- * Snooze only hides a row; it never pauses the agent, so a running session is
- * snoozable. Blocked-on-you work is not: a request the agent is waiting on
- * must never be hidden, and neither must a turn nobody has adopted yet.
- */
 export function requireSnoozable(
-  thread: OrchestrationProjectedThread,
+  session: OrchestrationProjectedSession,
   commandType: string,
   at: string,
 ) {
-  requireNoParkedWork(thread, commandType, at)
+  requireSettleable(session, commandType, at)
 }
 
-function requireNoParkedWork(
-  thread: OrchestrationProjectedThread,
-  commandType: string,
-  at: string,
-) {
-  const { id: threadId } = thread
-  if (hasOpenBlockingRequest(thread)) {
-    throw threadLifecycleErrors.THREAD_BLOCKING_REQUEST({ commandType, threadId })
-  }
-  if (hasQueuedTurnStart(thread, at)) {
-    throw threadLifecycleErrors.THREAD_QUEUED_TURN_START({ commandType, threadId })
-  }
-}
-
-/**
- * The negated comparison also catches an unparseable wake time: `isoDateTime`
- * is structurally just a string, `Date.parse` yields NaN, and NaN fails every
- * comparison — an unparseable `snoozedUntil` must never persist.
- */
-export function requireFutureWakeTime(threadId: string, snoozedUntil: string, at: string) {
+export function requireFutureWakeTime(sessionId: string, snoozedUntil: string, at: string) {
   if (Date.parse(snoozedUntil) > Date.parse(at)) return
-
-  throw threadLifecycleErrors.THREAD_SNOOZE_NOT_FUTURE({ snoozedUntil, threadId })
+  throw sessionLifecycleErrors.SESSION_SNOOZE_NOT_FUTURE({ snoozedUntil, sessionId })
 }
 
-export function requirePinned(thread: OrchestrationProjectedThread) {
-  if (thread.pinnedAt) return
-
-  throw threadLifecycleErrors.THREAD_NOT_PINNED({ threadId: thread.id })
+export function requirePinned(session: OrchestrationProjectedSession) {
+  if (session.pinnedAt) return
+  throw sessionLifecycleErrors.SESSION_NOT_PINNED({ sessionId: session.id })
 }
 
-/**
- * Blocked-on-you work read off the counters both projections maintain: a
- * request with no later resolution for the same `requestId`. Reading the stored
- * counts rather than refolding `thread.activities` is also what makes the answer
- * independent of the read model's activity cap — a thread whose open request has
- * aged out of the retained window still reports as blocked, because the counter
- * was written when the request opened.
- */
-export function hasOpenBlockingRequest(thread: OrchestrationProjectedThread) {
-  return thread.pendingApprovalCount + thread.pendingUserInputCount > 0
+export function hasOpenBlockingRequest(session: OrchestrationProjectedSession) {
+  return session.pendingApprovalCount + session.pendingUserInputCount > 0
 }
 
-/**
- * A queued turn start is work in flight that no read surface shows yet: the
- * turn is running but no provider session has adopted it, so there is neither a
- * session status nor a pending flag to give it away. `thread.turn.start` emits
- * the message and the turn together and the session arrives later, so this is
- * the whole gap between hitting send and the agent picking the work up.
- *
- * A session that is starting or running HAS adopted the turn — that thread is
- * plainly working, which is the settle guard's business, not this one, and it
- * stays snoozable. A session that errored clears the block immediately.
- *
- * The window is bounded on BOTH sides so a turn abandoned mid-flight (a crash
- * between the event and the session) cannot block the thread forever, and so a
- * requestedAt ahead of the server clock cannot extend the block past the grace.
- */
-export function hasQueuedTurnStart(thread: OrchestrationProjectedThread, at: string) {
-  const latestTurn = thread.latestTurn
-  if (latestTurn?.state !== 'running') return false
-  if (isSessionAlive(thread)) return false
-  if (thread.session?.status === 'error') return false
-
-  const requestedAtMs = Date.parse(latestTurn.requestedAt)
-  if (!Number.isFinite(requestedAtMs)) return false
-
-  return Math.abs(Date.parse(at) - requestedAtMs) <= QUEUED_TURN_START_GRACE_MS
+export function hasQueuedTurnStart(session: OrchestrationProjectedSession) {
+  const state = session.latestTurn?.providerStartState
+  return state === 'queued' || state === 'claimed' || state === 'adopted'
 }
 
-export function isSessionAlive(thread: OrchestrationProjectedThread) {
-  const status = thread.session?.status
-
+export function isSessionAlive(session: OrchestrationProjectedSession) {
+  const status = session.runtime?.status
   return status === 'starting' || status === 'running' || status === 'waiting'
 }
 
-export function requireExpectedBranch(
-  thread: OrchestrationProjectedThread,
-  expectedBranch: string | null | undefined,
-) {
-  if (expectedBranch === undefined) return
-  if (thread.branch === expectedBranch) return
-
-  throw orchestrationErrors.THREAD_BRANCH_CONFLICT({
-    actualBranch: thread.branch,
-    expectedBranch,
-    threadId: thread.id,
-  })
-}
-
-export function liveProjectThreads(model: OrchestrationReadModel, projectId: string) {
-  return Array.from(model.threads.values()).filter(
-    (thread) => thread.projectId === projectId && !thread.deletedAt,
+export function liveProjectSessions(model: OrchestrationReadModel, projectId: string) {
+  return Array.from(model.sessions.values()).filter(
+    (session) =>
+      model.worktrees.get(session.worktreeId)?.projectId === projectId && !session.deletedAt,
   )
-}
-
-export function normalizeWorkspaceRootForComparison(workspaceRoot: string) {
-  const trimmed = trimTrailingSeparators(workspaceRoot.trim())
-  if (!isWindowsPath(trimmed)) return trimmed
-
-  // Windows volumes are case-insensitive and accept either separator, so the
-  // same checkout can arrive spelled four different ways.
-  return trimmed.replaceAll('/', '\\').toLowerCase()
-}
-
-function trimTrailingSeparators(value: string) {
-  if (isRootPath(value)) return value
-
-  const trimmed = value.replace(/[\\/]+$/, '')
-  if (!trimmed) return value
-  // `C:` alone is the drive's current directory, not its root; keep it a root.
-  if (/^[a-zA-Z]:$/.test(trimmed)) return `${trimmed}\\`
-
-  return trimmed
-}
-
-function isRootPath(value: string) {
-  return value === '/' || value === '\\' || /^[a-zA-Z]:[/\\]?$/.test(value)
-}
-
-function isWindowsPath(value: string) {
-  return value.startsWith('\\\\') || /^[a-zA-Z]:([/\\]|$)/.test(value)
 }

@@ -1,12 +1,12 @@
 import type { InteractionMode, OrchestrationProposedPlan } from '@workspace/contracts'
 
-import { threadTitleFromPrompt } from '@/features/chat/utils/command-builders'
+import { sessionTitleFromPrompt } from '@/features/chat/utils/command-builders'
 
 const PROPOSED_PLAN_COLLAPSE_LENGTH = 900
 const PROPOSED_PLAN_COLLAPSE_LINES = 20
 const PROPOSED_PLAN_PREVIEW_LINES = 10
 const PROPOSED_PLAN_IMPLEMENTATION_HEADER = 'PLEASE IMPLEMENT THIS PLAN:'
-const PLAN_IMPLEMENTATION_THREAD_TITLE = 'Implement plan'
+const PLAN_IMPLEMENTATION_SESSION_TITLE = 'Implement plan'
 
 /**
  * What the composer does next once a plan is on screen. An empty composer means
@@ -78,7 +78,7 @@ export function collapsedProposedPlanMarkdown(planMarkdown: string) {
 }
 
 /**
- * The one plan a thread can still act on: the newest one nothing has been built
+ * The one plan a session can still act on: the newest one nothing has been built
  * from yet. `implementedAt` is the server's stamp, so a plan stops being
  * actionable the moment its implementation turn starts — not when this client
  * happens to guess it did.
@@ -101,25 +101,25 @@ export function planImplementationPrompt(planMarkdown: string) {
 }
 
 /**
- * What the rail calls a thread that was split off to build a plan. Naming it
- * after the prompt's first line — which every thread does — would name all of
+ * What the rail calls a session that was split off to build a plan. Naming it
+ * after the prompt's first line — which every session does — would name all of
  * them after the implementation header, so the plan's own heading stands in. It
- * still goes through the shared cleaner, so a heading cannot name a thread
+ * still goes through the shared cleaner, so a heading cannot name a session
  * anything a typed prompt could not.
  */
-export function planImplementationThreadTitle(planMarkdown: string) {
+export function planImplementationSessionTitle(planMarkdown: string) {
   const heading = planHeading(planMarkdown)
-  if (!heading) return PLAN_IMPLEMENTATION_THREAD_TITLE
+  if (!heading) return PLAN_IMPLEMENTATION_SESSION_TITLE
 
-  return threadTitleFromPrompt(`Implement ${heading}`) ?? PLAN_IMPLEMENTATION_THREAD_TITLE
+  return sessionTitleFromPrompt(`Implement ${heading}`) ?? PLAN_IMPLEMENTATION_SESSION_TITLE
 }
 
 /**
  * The bootstrap turn that builds a plan somewhere other than where it was
- * written. The draft builder knows nothing about plans — it names the thread
+ * written. The draft builder knows nothing about plans — it names the session
  * after the prompt and leaves the correlation empty — so the title and the
- * pointer back to the plan are stamped on here. Thread and turn ride one
- * command, so a rejected dispatch leaves no half-created thread behind.
+ * pointer back to the plan are stamped on here. Session and turn ride one
+ * command, so a rejected dispatch leaves no half-created session behind.
  */
 export function resolvePlanFollowUpSubmission({
   draftText,

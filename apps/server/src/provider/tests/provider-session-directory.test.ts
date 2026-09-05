@@ -7,8 +7,7 @@ import {
   DEFAULT_PROVIDER_DRIVER_KIND,
   DEFAULT_PROVIDER_INSTANCE_ID,
   DEFAULT_RUNTIME_MODE,
-  threadIdSchema,
-  turnIdSchema,
+  sessionIdSchema,
 } from '@workspace/contracts'
 import { migrateOrchestrationDatabase } from '../../db/migrations'
 import * as schema from '../../db/schema'
@@ -18,13 +17,13 @@ describe('ProviderSessionDirectory', () => {
   it('merges runtime payloads and preserves resume cursors on upsert', () => {
     const fixture = createFixture()
     const directory = new ProviderSessionDirectory(fixture.database)
-    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const sessionId = v.parse(sessionIdSchema, 'ee84050b-1b17-5fe8-9f71-0983f1fceccc')
 
     directory.upsert({
       adapterKey: 'codex',
       providerDriverKind: DEFAULT_PROVIDER_DRIVER_KIND,
       providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
-      resumeCursor: { cursor: 'cursor-1' },
+      providerResumeCursor: { cursor: 'cursor-1' },
       runtimeMode: DEFAULT_RUNTIME_MODE,
       runtimePayload: {
         cwd: '/workspace',
@@ -33,21 +32,21 @@ describe('ProviderSessionDirectory', () => {
           providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
         },
       },
-      status: 'running',
-      threadId,
+      runtimeEpoch: 'epoch-test',
+      sessionId,
     })
     directory.upsert({
       providerDriverKind: DEFAULT_PROVIDER_DRIVER_KIND,
       providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
-      runtimePayload: { activeTurnId: v.parse(turnIdSchema, 'turn-1') },
-      threadId,
+      runtimePayload: { interactionMode: 'plan' },
+      sessionId,
     })
 
-    const binding = directory.getBinding(threadId)
+    const binding = directory.getBinding(sessionId)
 
-    expect(binding?.resumeCursor).toEqual({ cursor: 'cursor-1' })
+    expect(binding?.providerResumeCursor).toEqual({ cursor: 'cursor-1' })
     expect(binding?.runtimePayload).toEqual({
-      activeTurnId: 'turn-1',
+      interactionMode: 'plan',
       cwd: '/workspace',
       modelSelection: {
         model: 'gpt-5-codex',
@@ -60,24 +59,24 @@ describe('ProviderSessionDirectory', () => {
   it('drops payload keys that are not part of the runtime payload schema', () => {
     const fixture = createFixture()
     const directory = new ProviderSessionDirectory(fixture.database)
-    const threadId = v.parse(threadIdSchema, 'thread-2')
+    const sessionId = v.parse(sessionIdSchema, '8b716256-a1e7-5889-bb07-546edbc11342')
 
     directory.upsert({
       providerDriverKind: DEFAULT_PROVIDER_DRIVER_KIND,
       providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
       runtimeMode: DEFAULT_RUNTIME_MODE,
       runtimePayload: { cwd: '/workspace' },
-      status: 'running',
-      threadId,
+      runtimeEpoch: 'epoch-test',
+      sessionId,
     })
     // A key nothing declares — what a typo looks like once it reaches SQLite.
     fixture.database
       .update(schema.providerSessionRuntime)
       .set({ runtimePayloadJson: JSON.stringify({ cwd: '/workspace', modelSelction: 'oops' }) })
-      .where(eq(schema.providerSessionRuntime.threadId, threadId))
+      .where(eq(schema.providerSessionRuntime.sessionId, sessionId))
       .run()
 
-    expect(directory.getBinding(threadId)?.runtimePayload).toEqual({ cwd: '/workspace' })
+    expect(directory.getBinding(sessionId)?.runtimePayload).toEqual({ cwd: '/workspace' })
     fixture.close()
   })
 })

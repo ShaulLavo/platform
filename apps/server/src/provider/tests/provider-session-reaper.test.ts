@@ -6,11 +6,19 @@ import {
   DEFAULT_PROVIDER_INSTANCE_ID,
   DEFAULT_RUNTIME_MODE,
   providerDriverKindSchema,
-  threadIdSchema,
-  type ThreadId,
+  sessionIdSchema,
+  type SessionId,
 } from '@workspace/contracts'
 import { migrateOrchestrationDatabase } from '../../db/migrations'
 import * as schema from '../../db/schema'
+import { OrchestrationProjectionPipeline } from '../../orchestration/projection-pipeline'
+import {
+  DOMAIN_AT,
+  DOMAIN_IDS,
+  DOMAIN_MODEL,
+  domainBootstrap,
+  domainEvent,
+} from '../../orchestration/tests/factories/session-domain'
 import { ProviderSessionDirectory } from '../provider-session-directory'
 import { ProviderSessionReaper } from '../provider-session-reaper'
 
@@ -21,11 +29,11 @@ describe('ProviderSessionReaper', () => {
   it('reclaims a session nobody has touched past the deadline', async () => {
     const fixture = createFixture()
     try {
-      fixture.bind('thread-idle', 'ready')
+      fixture.bind('93ff7ec0-5902-5ddf-b36e-b6b705a8bc41', 'ready')
       fixture.advanceTo(START_MS + DEADLINE_MS + 1)
 
-      expect(await fixture.reaper.sweep()).toEqual(['thread-idle'])
-      expect(fixture.stopped).toEqual(['thread-idle'])
+      expect(await fixture.reaper.sweep()).toEqual(['93ff7ec0-5902-5ddf-b36e-b6b705a8bc41'])
+      expect(fixture.stopped).toEqual(['93ff7ec0-5902-5ddf-b36e-b6b705a8bc41'])
     } finally {
       fixture.close()
     }
@@ -34,16 +42,15 @@ describe('ProviderSessionReaper', () => {
   it('leaves a long turn alone because its event stream keeps stamping liveness', async () => {
     const fixture = createFixture()
     try {
-      // A ready session that streams. `markStatus` never fires again after the
-      // turn opens, so status alone would call this idle within the hour.
-      fixture.bind('thread-streaming', 'ready')
-      fixture.bind('thread-quiet', 'ready')
+      // Streaming updates liveness without changing the projected runtime status.
+      fixture.bind('7e156e14-152f-57e3-a391-567aac7ae6ab', 'ready')
+      fixture.bind('3b1e820c-d996-548c-8a05-cef70f5bec06', 'ready')
       for (let elapsed = 0; elapsed <= DEADLINE_MS * 2; elapsed += 60_000) {
         fixture.advanceTo(START_MS + elapsed)
-        fixture.directory.markSeen(threadId('thread-streaming'))
+        fixture.directory.markSeen(sessionId('7e156e14-152f-57e3-a391-567aac7ae6ab'))
       }
 
-      expect(await fixture.reaper.sweep()).toEqual(['thread-quiet'])
+      expect(await fixture.reaper.sweep()).toEqual(['3b1e820c-d996-548c-8a05-cef70f5bec06'])
     } finally {
       fixture.close()
     }
@@ -55,9 +62,9 @@ describe('ProviderSessionReaper', () => {
       // `waiting` is compaction or an unanswered approval: state that dies with
       // the process. `running` is the agent talking. Neither is reclaimable at
       // any age, so both outlive a deadline they are well past.
-      fixture.bind('thread-running', 'running')
-      fixture.bind('thread-waiting', 'waiting')
-      fixture.bind('thread-starting', 'starting')
+      fixture.bind('8cfebe2a-5772-5610-915d-e7abef81a4da', 'running')
+      fixture.bind('83ecfd03-818e-5c87-b43b-8151d9994750', 'waiting')
+      fixture.bind('aefacffd-ea8b-51c7-a1fa-1c7ff3b7c5b2', 'starting')
       fixture.advanceTo(START_MS + DEADLINE_MS * 10)
 
       expect(await fixture.reaper.sweep()).toEqual([])
@@ -67,13 +74,15 @@ describe('ProviderSessionReaper', () => {
     }
   })
 
-  it('spares the thread being ensured, which is often the oldest one there is', async () => {
+  it('spares the session being ensured, which is often the oldest one there is', async () => {
     const fixture = createFixture()
     try {
-      fixture.bind('thread-returning', 'ready')
+      fixture.bind('3c88bcb9-25f1-5278-8eeb-2bc6be92c2e3', 'ready')
       fixture.advanceTo(START_MS + DEADLINE_MS + 1)
 
-      const reaped = await fixture.reaper.sweep({ exceptThreadId: threadId('thread-returning') })
+      const reaped = await fixture.reaper.sweep({
+        exceptSessionId: sessionId('3c88bcb9-25f1-5278-8eeb-2bc6be92c2e3'),
+      })
 
       expect(reaped).toEqual([])
     } finally {
@@ -83,35 +92,38 @@ describe('ProviderSessionReaper', () => {
 
   it('keeps sweeping after an adapter refuses to stop', async () => {
     const fixture = createFixture({
-      stopSession: async ({ threadId: id }) => {
-        if (id === 'thread-stuck') throw new Error('adapter is wedged')
+      stopRuntime: async ({ sessionId: id }) => {
+        if (id === '7e65cec6-897b-58f2-b706-455167c6c1a0') throw new Error('adapter is wedged')
       },
     })
     try {
-      fixture.bind('thread-stuck', 'ready')
-      fixture.bind('thread-fine', 'ready')
+      fixture.bind('7e65cec6-897b-58f2-b706-455167c6c1a0', 'ready')
+      fixture.bind('14935d5c-7233-5fb5-b01c-b6c94e2b7b73', 'ready')
       fixture.advanceTo(START_MS + DEADLINE_MS + 1)
 
       // Housekeeping runs alongside a turn the user asked for. One wedged
       // adapter must not take the sweep — or that turn — down with it.
-      expect(await fixture.reaper.sweep()).toEqual(['thread-fine'])
+      expect(await fixture.reaper.sweep()).toEqual(['14935d5c-7233-5fb5-b01c-b6c94e2b7b73'])
     } finally {
       fixture.close()
     }
   })
 })
 
-function threadId(id: string) {
-  return v.parse(threadIdSchema, id)
+function sessionId(id: string) {
+  return v.parse(sessionIdSchema, id)
 }
 
 function createFixture(
-  options: { stopSession?: (input: { threadId: ThreadId }) => Promise<unknown> } = {},
+  options: { stopRuntime?: (input: { sessionId: SessionId }) => Promise<unknown> } = {},
 ) {
   const sqlite = new Database(':memory:', { create: true })
   const database = drizzle({ client: sqlite, schema })
   migrateOrchestrationDatabase(database)
 
+  const pipeline = new OrchestrationProjectionPipeline(database)
+  pipeline.applyEvents(domainBootstrap())
+  let sequence = 3
   let nowMs = START_MS
   const now = () => nowMs
   const stopped: string[] = []
@@ -120,9 +132,9 @@ function createFixture(
     deadlineMs: DEADLINE_MS,
     directory,
     now,
-    stopSession: async (input) => {
-      await options.stopSession?.(input)
-      stopped.push(input.threadId)
+    stopRuntime: async (input) => {
+      await options.stopRuntime?.(input)
+      stopped.push(input.sessionId)
     },
   })
 
@@ -131,12 +143,51 @@ function createFixture(
       nowMs = at
     },
     bind: (id: string, status: 'ready' | 'running' | 'starting' | 'waiting') => {
+      pipeline.applyEvents([
+        domainEvent(
+          'session.created',
+          {
+            sessionId: id,
+            worktreeId: DOMAIN_IDS.worktree,
+            origin: 'platform',
+            title: 'Session',
+            modelSelection: DOMAIN_MODEL,
+            runtimeMode: DEFAULT_RUNTIME_MODE,
+            interactionMode: 'default',
+            createdAt: DOMAIN_AT,
+            updatedAt: DOMAIN_AT,
+          },
+          ++sequence,
+        ),
+        domainEvent(
+          'session.runtime-set',
+          {
+            sessionId: id,
+            runtime: {
+              sessionId: id,
+              status,
+              providerName: 'codex',
+              providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
+              runtimeMode: DEFAULT_RUNTIME_MODE,
+              runtimeEpoch: 'epoch-test',
+              providerBindingHandle: null,
+              providerConversationMarker: null,
+              providerResumeCursor: null,
+              activeTurnId: null,
+              lastError: null,
+              updatedAt: DOMAIN_AT,
+            },
+            updatedAt: DOMAIN_AT,
+          },
+          ++sequence,
+        ),
+      ])
       directory.upsert({
         providerDriverKind: v.parse(providerDriverKindSchema, 'codex'),
         providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
         runtimeMode: DEFAULT_RUNTIME_MODE,
-        status,
-        threadId: threadId(id),
+        runtimeEpoch: 'epoch-test',
+        sessionId: sessionId(id),
       })
     },
     close: () => sqlite.close(),

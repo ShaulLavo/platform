@@ -1,20 +1,22 @@
-import type { ClientOrchestrationCommand, ThreadId } from '@workspace/contracts'
+import type { ClientOrchestrationCommand, ScopedSessionRef } from '@workspace/contracts'
 import { toast } from 'sonner'
-
 import { dispatchChatCommand } from '@/features/chat/utils/command-dispatch'
+import { dispatchCommandForEnvironment } from '@/features/chat/state/active-transports'
 import {
-  createThreadArchiveCommand,
-  createThreadDeleteCommand,
-  createThreadRenameCommand,
-  createThreadSessionStopCommand,
-  createThreadUnarchiveCommand,
+  createSessionArchiveCommand,
+  createSessionDeleteCommand,
+  createSessionRenameCommand,
+  createSessionRuntimeStopCommand,
+  createSessionUnarchiveCommand,
 } from '@/features/chat/utils/command-builders'
-import { selectChatSidebarThreadsForProject } from '@/features/chat/state/chat-projection-selectors'
+import {
+  selectChatSessionsForProject,
+  selectSessionOwnership,
+} from '@/features/chat/state/chat-projection-selectors'
 import {
   useChatProjectionStore,
-  type ProjectionThread,
+  selectChatProjectionSlice,
 } from '@/features/chat/state/chat-projection-store'
-import { useChatModeSession } from '@/features/chat-mode/providers/session-context'
 import { clearSessionMultiSelect } from '@/features/chat-mode/state/session-commands'
 import {
   useSessionDeleteRequestStore,
@@ -23,108 +25,90 @@ import {
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
 import { compareSessionsForRail } from '@/features/chat-mode/utils/session-order'
 import { hasRunningTurn } from '@/features/chat-mode/utils/running-turn'
-import { log } from '@/lib/client-logging'
 
-/**
- * The only place chat mode mutates a thread. Every action is fire-and-forget:
- * the server's event lands on the shell stream and the projection redraws the
- * rail, so nothing here waits on the response to update the UI.
- */
 export function useSessionActions() {
-  const { transport } = useChatModeSession()
   const releaseSession = useSessionSelectionStore((state) => state.releaseSession)
   const requestDelete = useSessionDeleteRequestStore((state) => state.requestDelete)
   const dismissDelete = useSessionDeleteRequestStore((state) => state.dismissDelete)
-
-  function dispatch(action: string, command: ClientOrchestrationCommand) {
-    void dispatchChatCommand({ action, command, dispatchCommand: transport.dispatchCommand })
+  function dispatch(ref: ScopedSessionRef, action: string, command: ClientOrchestrationCommand) {
+    void dispatchChatCommand({
+      action,
+      command,
+      dispatchCommand: (command) => dispatchCommandForEnvironment(ref.environmentId, command),
+    })
   }
-
-  function archive(threadId: ThreadId) {
-    const thread = threadSummary(threadId)
-    // Archiving only hides the row; the agent would keep writing to a thread the user
-    // can no longer reach. Stopping it is a deliberate act, so ask for it instead.
-    if (hasRunningTurn(thread)) {
-      toast.error(`“${thread?.title ?? 'This session'}” is still running`, {
-        description: 'Stop the agent session before archiving it.',
+  function archive(ref: ScopedSessionRef) {
+    const session = sessionSummary(ref)
+    if (hasRunningTurn(session)) {
+      toast.error(`“${session?.title ?? 'This session'}” is still running`, {
+        description: 'Stop the agent before archiving it.',
       })
-      log.warn({
-        action: 'chat.session.archive',
-        area: 'chat',
-        commandType: 'thread.archive',
-        outcome: 'blocked',
-        reason: 'turn-running',
-        sessionStatus: thread?.session?.status ?? null,
-        threadId,
-        turnState: thread?.latestTurn?.state ?? null,
-      })
-
       return
     }
-
-    // The rail hides archived sessions, so the stage must let go of this one
-    // before it vanishes from the list.
-    releaseSession(threadId, railOrderThreadIds(thread))
-    dispatch('chat.session.archive', createThreadArchiveCommand({ threadId }))
+    releaseSession(ref, railOrderSessionIds(ref))
+    dispatch(ref, 'chat.session.archive', createSessionArchiveCommand({ sessionId: ref.sessionId }))
   }
-
   return {
     archive,
-    /** One command per session, each refusing on its own terms — a running one blocks itself. */
-    archiveSessions(threadIds: readonly ThreadId[]) {
-      for (const threadId of threadIds) {
-        archive(threadId)
-      }
+    archiveSessions(refs: readonly ScopedSessionRef[]) {
+      for (const ref of refs) archive(ref)
       clearSessionMultiSelect()
     },
     cancelDelete() {
       dismissDelete()
     },
-    /** Runs the delete the dialog just confirmed — nothing else may call it. */
     confirmDelete(request: SessionDeleteRequest) {
       dismissDelete()
-      for (const threadId of request.threadIds) {
-        releaseSession(threadId, railOrderThreadIds(threadSummary(threadId)))
-        dispatch('chat.session.delete', createThreadDeleteCommand({ threadId }))
+      for (const ref of request.refs) {
+        releaseSession(ref, railOrderSessionIds(ref))
+        dispatch(
+          ref,
+          'chat.session.delete',
+          createSessionDeleteCommand({ sessionId: ref.sessionId }),
+        )
       }
       clearSessionMultiSelect()
     },
-    /** Deleting drops the whole event history for the thread, so it always asks first. */
-    deleteSession(threadId: ThreadId, title: string) {
-      requestDelete({ threadIds: [threadId], title })
+    deleteSession(ref: ScopedSessionRef, title: string) {
+      requestDelete({ refs: [ref], title })
     },
-    deleteSessions(threadIds: readonly ThreadId[]) {
-      const first = threadIds[0]
+    deleteSessions(refs: readonly ScopedSessionRef[]) {
+      const first = refs[0]
       if (!first) return
-
-      requestDelete({ threadIds, title: threadSummary(first)?.title ?? 'this session' })
+      requestDelete({ refs, title: sessionSummary(first)?.title ?? 'this session' })
     },
-    /** `title` must already be trimmed and non-empty — the server rejects blanks. */
-    rename(threadId: ThreadId, title: string) {
-      dispatch('chat.session.rename', createThreadRenameCommand({ threadId, title }))
+    rename(ref: ScopedSessionRef, title: string) {
+      dispatch(
+        ref,
+        'chat.session.rename',
+        createSessionRenameCommand({ sessionId: ref.sessionId, title }),
+      )
     },
-    stopAgent(threadId: ThreadId) {
-      dispatch('chat.session.stopAgent', createThreadSessionStopCommand({ threadId }))
+    stopAgent(ref: ScopedSessionRef) {
+      dispatch(
+        ref,
+        'chat.session.stopAgent',
+        createSessionRuntimeStopCommand({ sessionId: ref.sessionId }),
+      )
     },
-    unarchive(threadId: ThreadId) {
-      dispatch('chat.session.unarchive', createThreadUnarchiveCommand({ threadId }))
+    unarchive(ref: ScopedSessionRef) {
+      dispatch(
+        ref,
+        'chat.session.unarchive',
+        createSessionUnarchiveCommand({ sessionId: ref.sessionId }),
+      )
     },
   }
 }
-
-/**
- * Read at call time rather than subscribed: the rail lists every project, so the session
- * being acted on is not always one the surrounding surface is showing.
- */
-function threadSummary(threadId: ThreadId) {
-  return useChatProjectionStore.getState().threadById[threadId]
+function sessionSummary(ref: ScopedSessionRef) {
+  return selectChatProjectionSlice(useChatProjectionStore.getState(), ref.environmentId)
+    .sessionById[ref.sessionId]
 }
-
-/** The departing session's own project, in the order the rail draws it. */
-function railOrderThreadIds(thread: ProjectionThread | undefined) {
-  if (!thread) return []
-
-  return selectChatSidebarThreadsForProject(useChatProjectionStore.getState(), thread.projectId)
+function railOrderSessionIds(ref: ScopedSessionRef) {
+  const slice = selectChatProjectionSlice(useChatProjectionStore.getState(), ref.environmentId)
+  const owner = selectSessionOwnership(slice, ref.sessionId)
+  if (!owner) return []
+  return selectChatSessionsForProject(slice, owner.project.id)
     .toSorted(compareSessionsForRail)
-    .map((entry) => entry.id)
+    .map((session) => session.id)
 }

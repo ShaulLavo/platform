@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   eventIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
   turnIdSchema,
-  type OrchestrationThreadActivity,
+  type OrchestrationSessionActivity,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
@@ -330,7 +330,7 @@ function planActivity(
   })
 }
 
-function activity(id: string, overrides: ActivityOverrides): OrchestrationThreadActivity {
+function activity(id: string, overrides: ActivityOverrides): OrchestrationSessionActivity {
   const createdAt = overrides.createdAt ?? timestamp(1)
   return {
     createdAt,
@@ -338,13 +338,13 @@ function activity(id: string, overrides: ActivityOverrides): OrchestrationThread
     kind: overrides.kind ?? 'tool.completed',
     payload: overrides.payload ?? null,
     summary: overrides.summary ?? id,
-    threadId: v.parse(threadIdSchema, 'thread-1'),
+    sessionId: v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb'),
     tone: overrides.tone ?? 'tool',
     turnId: overrides.turnId === null ? null : v.parse(turnIdSchema, overrides.turnId ?? 'turn-1'),
   }
 }
 
-type ActivityOverrides = Omit<Partial<OrchestrationThreadActivity>, 'turnId'> & {
+type ActivityOverrides = Omit<Partial<OrchestrationSessionActivity>, 'turnId'> & {
   turnId?: string | null
 }
 

@@ -1,5 +1,6 @@
+import { TEST_ENVIRONMENT_ID as FIXTURE_ENVIRONMENT_ID } from '../../../../../test/factories/chat'
 import { LexicalComposer } from '@lexical/react/LexicalComposer'
-import { threadIdSchema, type ClientOrchestrationCommand } from '@workspace/contracts'
+import { sessionIdSchema, type ClientOrchestrationCommand } from '@workspace/contracts'
 import { screen } from '@testing-library/react'
 import { createRef } from 'react'
 import * as v from 'valibot'
@@ -17,8 +18,12 @@ import {
 import { expect, test } from '../../../../../test/fixtures'
 import { createTestQueryClient, renderWithProviders } from '../../../../../test/render'
 
-const threadId = v.parse(threadIdSchema, 'thread-actions')
-const draftTarget: ChatInputDraftTarget = { draftKey: threadId, rootPath: '/repo/platform' }
+const sessionId = v.parse(sessionIdSchema, 'd587e342-74d2-5b84-b545-b7a49b2bae30')
+const draftTarget: ChatInputDraftTarget = {
+  environmentId: FIXTURE_ENVIRONMENT_ID,
+  draftKey: sessionId,
+  rootPath: '/repo/platform',
+}
 const clientWidthDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth')
 
 let measuredWidth = 800
@@ -74,7 +79,7 @@ function renderActions() {
   queryClient.setQueryData(providerListQueryOptions().queryKey, { providers: [] })
 
   async function dispatchCommand(_command: ClientOrchestrationCommand) {
-    return { deduped: false, sequence: 1 }
+    return { result: null, deduped: false, sequence: 1 }
   }
 
   return renderWithProviders(
@@ -82,7 +87,7 @@ function renderActions() {
       <ChatComposerModesProvider
         dispatchCommand={dispatchCommand}
         draftTarget={draftTarget}
-        threadId={threadId}
+        sessionId={sessionId}
       >
         <ChatModelPickerProvider
           draftTarget={draftTarget}

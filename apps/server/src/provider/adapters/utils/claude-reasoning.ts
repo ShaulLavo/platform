@@ -8,7 +8,7 @@ import { claudeModelCapabilities } from './claude-models'
 import { modelOptionValue, type ModelOptions } from './model-options'
 
 /**
- * Reasoning effort and extended thinking, translated from the per-thread
+ * Reasoning effort and extended thinking, translated from the per-session
  * `ModelSelection` into the agent SDK's `Options`. Type-only SDK imports, same
  * rule as claude-query-options.ts: nothing here may pull in the SDK runtime.
  *
@@ -52,7 +52,7 @@ const ULTRATHINK_PROMPT_PREFIX = 'Ultrathink:'
  * back down — the reference's `normalizeClaudeCliEffort` makes the same call.
  * Everything else falls back to the model's own default, and a model that
  * advertises nothing sends no effort at all. Never an error: a stale
- * per-thread selection must not fail the turn.
+ * per-session selection must not fail the turn.
  */
 const EFFORT_DEGRADES: Record<string, string> = { xhigh: 'max' }
 

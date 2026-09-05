@@ -1,12 +1,12 @@
+import { useActiveChatProjection } from '@/features/chat/hooks/use-active-projection'
 import { memo, useCallback, useMemo } from 'react'
 
-import { useActiveChatThreadId } from '../hooks/use-active-chat-thread-id'
+import { useActiveChatSessionId } from '../hooks/use-active-chat-session-id'
 import { useChatShellSubscription } from '../hooks/use-chat-shell-subscription'
 import { useWorkspaceChatProject } from '../hooks/use-workspace-chat-project'
-import { compareChatSidebarThreads } from '@/features/chat/utils/formatters'
+import { compareChatSidebarSessions } from '@/features/chat/utils/formatters'
 import { useChatTransport } from '@/features/chat/hooks/use-chat-transport'
-import { selectChatSidebarThreadsForProject } from '../state/chat-projection-selectors'
-import { useChatProjectionStore } from '../state/chat-projection-store'
+import { selectChatSidebarSessionsForProject } from '../state/chat-projection-selectors'
 import { ChatPanelHeader } from './chat-panel-header'
 import { ChatPanelStatus } from './chat-panel-status'
 import { ChatDraftView } from './chat-draft-view'
@@ -17,46 +17,48 @@ export const ChatSidePanelContent = memo(({ rootPath }: { rootPath: string }) =>
   const shell = useChatShellSubscription(transport)
   const projectState = useWorkspaceChatProject({ transport, rootPath })
   const projectId = projectState.project?.id
-  const sidebarThreads = useChatProjectionStore((state) =>
-    selectChatSidebarThreadsForProject(state, projectId),
+  const sidebarSessions = useActiveChatProjection((state) =>
+    selectChatSidebarSessionsForProject(state, projectId),
   )
-  const threads = useMemo(
-    () => sidebarThreads.toSorted(compareChatSidebarThreads),
-    [sidebarThreads],
+  const sessions = useMemo(
+    () => sidebarSessions.toSorted(compareChatSidebarSessions),
+    [sidebarSessions],
   )
-  const threadIds = useMemo(() => threads.map((thread) => thread.id), [threads])
-  const { activeThreadId, selectDraftThread, setActiveThreadId } = useActiveChatThreadId(threadIds)
+  const sessionIds = useMemo(() => sessions.map((session) => session.id), [sessions])
+  const { activeSessionId, selectDraftSession, setActiveSessionId } =
+    useActiveChatSessionId(sessionIds)
   const disabled = !projectState.project || projectState.status !== 'ready'
 
   const handleNewChat = useCallback(() => {
-    selectDraftThread()
-  }, [selectDraftThread])
+    selectDraftSession()
+  }, [selectDraftSession])
 
   return (
     <div className='flex h-full min-h-0 flex-col'>
       <ChatPanelHeader
-        activeThreadId={activeThreadId}
+        activeSessionId={activeSessionId}
         creating={false}
         disabled={disabled}
-        threads={threads}
+        sessions={sessions}
         onNewChat={handleNewChat}
-        onSelectThread={setActiveThreadId}
+        onSelectSession={setActiveSessionId}
       />
-      {activeThreadId ? (
+      {activeSessionId ? (
         <ChatView
-          key={activeThreadId}
-          activeThreadId={activeThreadId}
+          key={activeSessionId}
+          activeSessionId={activeSessionId}
           transport={transport}
           rootPath={rootPath}
-          onThreadCreated={setActiveThreadId}
+          onSessionCreated={setActiveSessionId}
         />
       ) : (
         <ChatDraftView
           disabled={disabled}
           transport={transport}
           project={projectState.project}
+          worktreeId={projectState.worktree?.id ?? null}
           rootPath={rootPath}
-          onThreadCreated={setActiveThreadId}
+          onSessionCreated={setActiveSessionId}
         />
       )}
       <ChatPanelStatus

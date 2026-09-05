@@ -11,7 +11,7 @@ import type { TurnId } from '@workspace/contracts'
  * string — so the decoder cannot demand a shape, and the one it used to demand (`turn-`)
  * held only in this repo's own test fixtures.
  */
-describe('the thread diff scope', () => {
+describe('the session diff scope', () => {
   test('round-trips the working tree', () => {
     expect(diffScopeParam({ kind: 'working-tree' })).toBe('wt')
     expect(diffScopeFor('wt')).toEqual({ kind: 'working-tree' })

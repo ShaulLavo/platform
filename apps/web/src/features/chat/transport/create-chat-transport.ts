@@ -1,8 +1,9 @@
+import { confirmedEnvironmentId } from '@/lib/environments/state/domain'
 import { canonicalServerOrigin, environmentClientFor } from '@/lib/client'
-import { createThreadDetailSubscriptionCache } from '@/features/chat/state/thread-detail-subscriptions'
-import { createThreadEarlierPageLoader } from '@/features/chat/state/thread-earlier-pages'
+import { createSessionDetailSubscriptionCache } from '@/features/chat/state/session-detail-subscriptions'
+import { createSessionEarlierPageLoader } from '@/features/chat/state/session-earlier-pages'
 import type { ChatTransport } from '@/features/chat/transport/chat-transport'
-import { fetchOrchestrationThreadDetailSnapshotHttp } from '@/features/chat/transport/orchestration-http-snapshots'
+import { fetchOrchestrationSessionDetailSnapshotHttp } from '@/features/chat/transport/orchestration-http-snapshots'
 import {
   OrchestrationRpcClient,
   type OrchestrationRpcClientOptions,
@@ -14,13 +15,15 @@ export function createChatTransport(
   options: Omit<OrchestrationRpcClientOptions, 'origin'> = {},
 ): ChatTransport {
   origin = canonicalServerOrigin(origin)
+  const environmentId = confirmedEnvironmentId(origin)
   const client = environmentClientFor(origin)
   const rpc = new OrchestrationRpcClient({ ...options, origin })
   const lifetime = new AbortController()
-  const cache = createThreadDetailSubscriptionCache({ transport: rpc })
-  const pages = createThreadEarlierPageLoader({ transport: rpc })
+  const cache = createSessionDetailSubscriptionCache({ transport: rpc, environmentId })
+  const pages = createSessionEarlierPageLoader({ transport: rpc, environmentId })
 
   return {
+    environmentId,
     get closed() {
       return rpc.closed
     },
@@ -34,13 +37,20 @@ export function createChatTransport(
     dispatchCommand: rpc.dispatchCommand.bind(rpc),
     replayEvents: rpc.replayEvents.bind(rpc),
     shellStream: rpc.shellStream.bind(rpc),
-    threadDetailPage: rpc.threadDetailPage.bind(rpc),
-    threadDetailStream: rpc.threadDetailStream.bind(rpc),
-    retainThreadDetail: cache.retain,
+    sessionDetailPage: rpc.sessionDetailPage.bind(rpc),
+    sessionDetailStream: rpc.sessionDetailStream.bind(rpc),
+    retainSessionDetail: cache.retain,
     loadEarlierPage: pages.load,
-    async threadDetailSnapshot(threadId) {
+    async sessionDetailSnapshot(sessionId) {
       lifetime.signal.throwIfAborted()
-      return fetchOrchestrationThreadDetailSnapshotHttp(threadId, client, lifetime.signal)
+      confirmedEnvironmentId(origin)
+      const snapshot = await fetchOrchestrationSessionDetailSnapshotHttp(
+        sessionId,
+        client,
+        lifetime.signal,
+      )
+      confirmedEnvironmentId(origin)
+      return snapshot
     },
   }
 }

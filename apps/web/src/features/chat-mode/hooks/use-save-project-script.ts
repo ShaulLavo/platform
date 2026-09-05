@@ -3,8 +3,6 @@ import type { OrchestrationProjectScript } from '@workspace/contracts'
 import { createProjectScriptsCommand } from '@/features/chat/utils/command-builders'
 import { dispatchChatCommand } from '@/features/chat/utils/command-dispatch'
 import { notifyChatCommandError } from '@/features/chat/notify-command-error'
-import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
-import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { useOptionalChatModeSession } from '@/features/chat-mode/providers/session-context'
 
 /**
@@ -27,13 +25,11 @@ export function useSaveProjectScript() {
   // simply inert — which is what the caller already handles for a missing
   // project.
   const session = useOptionalChatModeSession()
-  const projects = useChatProjectionStore(selectChatProjects)
 
   return (script: OrchestrationProjectScript) => {
     if (!session) return
 
-    const { transport, rootPath } = session
-    const project = projects.find((candidate) => candidate.workspaceRoot === rootPath)
+    const { transport, project } = session
     if (!project) return
 
     // Nothing to write when it is already at the front: an event per run of the

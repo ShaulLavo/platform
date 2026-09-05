@@ -397,8 +397,8 @@ export function sessionPaletteKeywords(session: {
   return [session.title, session.projectTitle, session.branch ?? '']
 }
 
-export function sessionItemValue(threadId: string) {
-  return `session:${threadId}`
+export function sessionItemValue(sessionId: string) {
+  return `session:${sessionId}`
 }
 
 const COLOR_THEME_VALUE_PREFIX = 'color-theme:'

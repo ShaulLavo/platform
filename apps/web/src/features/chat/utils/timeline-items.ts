@@ -2,7 +2,7 @@ import type {
   OrchestrationLatestTurn,
   OrchestrationMessage,
   OrchestrationProposedPlan,
-  OrchestrationThreadActivity,
+  OrchestrationSessionActivity,
   TurnId,
 } from '@workspace/contracts'
 
@@ -124,7 +124,7 @@ type StableTimelineItems = {
 
 const NO_FOLDS: ReadonlyMap<string, TurnFold> = new Map()
 const EMPTY_STABLE_TIMELINE_ITEMS: StableTimelineItems = { byId: new Map(), result: [] }
-/** One entry per thread the user has open; threads are switched, not held. */
+/** One entry per session the user has open; sessions are switched, not held. */
 const MAX_STABLE_TIMELINES = 8
 
 /**
@@ -132,7 +132,7 @@ const MAX_STABLE_TIMELINES = 8
  * handed back here — the consumer memoizes on the items array, and that array changes
  * on every streaming delta. Without this, one chunk re-renders every visible row.
  */
-const stableTimelineItemsByThread = new Map<string, StableTimelineItems>()
+const stableTimelineItemsBySession = new Map<string, StableTimelineItems>()
 
 export function chatTimelineItems({
   activities,
@@ -142,7 +142,7 @@ export function chatTimelineItems({
   proposedPlans,
   turnDiffSummaries = [],
 }: {
-  activities: readonly OrchestrationThreadActivity[]
+  activities: readonly OrchestrationSessionActivity[]
   latestTurn: OrchestrationLatestTurn | null
   messages: readonly OrchestrationMessage[]
   optimisticMessages: readonly OptimisticChatMessage[]
@@ -419,7 +419,7 @@ function timelineItemFromEntry(
 /**
  * A settled turn folds its commentary and tool work behind a "Worked for ..." row anchored
  * where the work began; the message that ends the turn stays visible below it. Restoring
- * history without this turns a long thread into a wall of tool rows.
+ * history without this turns a long session into a wall of tool rows.
  */
 function deriveTurnFolds(
   entries: readonly ChronologicalTimelineItem[],
@@ -650,15 +650,15 @@ function appendActivityGroup(items: ChatTimelineItem[], activities: readonly Cha
 
 function timelineCacheKey(
   messages: readonly OrchestrationMessage[],
-  activities: readonly OrchestrationThreadActivity[],
+  activities: readonly OrchestrationSessionActivity[],
   proposedPlans: readonly OrchestrationProposedPlan[],
   optimisticMessages: readonly OptimisticChatMessage[],
 ) {
   return (
-    messages[0]?.threadId ??
-    activities[0]?.threadId ??
-    proposedPlans[0]?.threadId ??
-    optimisticMessages[0]?.threadId ??
+    messages[0]?.sessionId ??
+    activities[0]?.sessionId ??
+    proposedPlans[0]?.sessionId ??
+    optimisticMessages[0]?.sessionId ??
     ''
   )
 }
@@ -668,7 +668,7 @@ function timelineCacheKey(
  * moved, so a streaming chunk only re-renders the row it actually touched.
  */
 function shareTimelineItems(cacheKey: string, items: readonly ChatTimelineItem[]) {
-  const previous = stableTimelineItemsByThread.get(cacheKey) ?? EMPTY_STABLE_TIMELINE_ITEMS
+  const previous = stableTimelineItemsBySession.get(cacheKey) ?? EMPTY_STABLE_TIMELINE_ITEMS
   const byId = new Map<string, ChatTimelineItem>()
   const result = shareItems(items, previous.byId, byId)
   const unchanged =
@@ -680,13 +680,13 @@ function shareTimelineItems(cacheKey: string, items: readonly ChatTimelineItem[]
 
 function rememberStableTimelineItems(cacheKey: string, stable: StableTimelineItems) {
   // Re-inserting keeps the map in least-recently-used order, so the eviction below drops
-  // the thread the user left longest ago.
-  stableTimelineItemsByThread.delete(cacheKey)
-  stableTimelineItemsByThread.set(cacheKey, stable)
+  // the session the user left longest ago.
+  stableTimelineItemsBySession.delete(cacheKey)
+  stableTimelineItemsBySession.set(cacheKey, stable)
 
-  const oldest = stableTimelineItemsByThread.keys().next()
-  if (stableTimelineItemsByThread.size > MAX_STABLE_TIMELINES && !oldest.done) {
-    stableTimelineItemsByThread.delete(oldest.value)
+  const oldest = stableTimelineItemsBySession.keys().next()
+  if (stableTimelineItemsBySession.size > MAX_STABLE_TIMELINES && !oldest.done) {
+    stableTimelineItemsBySession.delete(oldest.value)
   }
 
   return stable

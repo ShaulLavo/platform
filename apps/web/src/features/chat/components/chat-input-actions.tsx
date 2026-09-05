@@ -1,10 +1,10 @@
-import type { InteractionMode, RuntimeMode, ThreadId } from '@workspace/contracts'
+import { useActiveChatProjection } from '@/features/chat/hooks/use-active-projection'
+import type { InteractionMode, RuntimeMode, SessionId } from '@workspace/contracts'
 import { useRef, type RefObject } from 'react'
 
 import { useElementWidth } from '@/features/workspace/hooks/use-element-width'
 import { contextUsageForActivities } from '@/features/chat/utils/context-usage'
-import { selectChatThreadById } from '@/features/chat/state/chat-projection-selectors'
-import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
+import { selectChatSessionById } from '@/features/chat/state/chat-projection-selectors'
 import type { ChatInputDraftTarget } from '@/features/chat/state/chat-input-draft-store'
 import { ChatInputAttachButton } from './chat-input-attach-button'
 import { ChatInputSubmitButton } from './chat-input-submit-button'
@@ -53,12 +53,12 @@ export function ChatInputActions({
   // Only once measured: assuming compact before the first layout would flash the
   // whole row through its narrow arrangement on every mount.
   const compact = width !== null && width < COMPACT_ACTIONS_WIDTH
-  // The context-window snapshots live on the thread detail, so the composer
-  // reads them for the thread it is drafting into. A draft key that is not a
-  // thread finds nothing, which is the correct answer: no thread, no usage.
-  const activities = useChatProjectionStore(
+  // The context-window snapshots live on the session detail, so the composer
+  // reads them for the session it is drafting into. A draft key that is not a
+  // session finds nothing, which is the correct answer: no session, no usage.
+  const activities = useActiveChatProjection(
     (state) =>
-      selectChatThreadById(state, draftTarget.draftKey as ThreadId | null)?.activities ??
+      selectChatSessionById(state, draftTarget.draftKey as SessionId | null)?.activities ??
       EMPTY_ACTIVITIES,
   )
   const contextUsage = contextUsageForActivities(activities)

@@ -1,5 +1,5 @@
 import { basename, displayPath } from '@/lib/path-formatters'
-import type { ThreadId } from '@workspace/contracts'
+import type { SessionId } from '@workspace/contracts'
 import type {
   BlobDiffRequest,
   FileDiff,
@@ -41,9 +41,9 @@ type CheckpointPayload = {
   oldObjectId?: string
   oldPath?: string
   path: string
-  scope?: 'file' | 'thread' | 'turn'
+  scope?: 'file' | 'session' | 'turn'
   status?: FileStatus['index'] | FileStatus['worktree']
-  threadId: ThreadId
+  sessionId: SessionId
   toTurnCount: number
   version: 1
 }
@@ -115,7 +115,7 @@ export function checkpointDiffDocumentId(input: CheckpointDiffDocumentInput) {
     path: input.path,
     scope: input.scope,
     status: input.status,
-    threadId: input.threadId,
+    sessionId: input.sessionId,
     toTurnCount: input.toTurnCount,
     version: 1,
   }
@@ -211,7 +211,7 @@ function isCheckpointPayload(value: unknown): value is CheckpointPayload {
 
   const payload = value as Partial<CheckpointPayload>
   if (payload.version !== 1) return false
-  if (typeof payload.threadId !== 'string') return false
+  if (typeof payload.sessionId !== 'string') return false
   if (typeof payload.path !== 'string') return false
   if (!optionalCheckpointScope(payload.scope)) return false
   if (!optionalString(payload.filePath)) return false
@@ -231,7 +231,7 @@ function isCheckpointPayload(value: unknown): value is CheckpointPayload {
 
 function checkpointDiffLabel(payload: CheckpointPayload) {
   const scope = payload.scope ?? 'file'
-  if (scope === 'thread') return `Thread diff ${payload.toTurnCount}`
+  if (scope === 'session') return `Session diff ${payload.toTurnCount}`
   if (scope === 'turn') return `Turn diff ${payload.fromTurnCount}-${payload.toTurnCount}`
 
   return basename(payload.filePath ?? payload.path)
@@ -239,7 +239,7 @@ function checkpointDiffLabel(payload: CheckpointPayload) {
 
 function checkpointDiffTitle(payload: CheckpointPayload) {
   const scope = payload.scope ?? 'file'
-  if (scope === 'thread') return `Thread checkpoint diff 0-${payload.toTurnCount}`
+  if (scope === 'session') return `Session checkpoint diff 0-${payload.toTurnCount}`
   if (scope === 'turn') {
     return `Turn checkpoint diff ${payload.fromTurnCount}-${payload.toTurnCount}`
   }
@@ -250,7 +250,7 @@ function checkpointDiffTitle(payload: CheckpointPayload) {
 }
 
 function optionalCheckpointScope(value: unknown): value is CheckpointPayload['scope'] {
-  return value === undefined || value === 'file' || value === 'thread' || value === 'turn'
+  return value === undefined || value === 'file' || value === 'session' || value === 'turn'
 }
 
 function optionalString(value: unknown) {

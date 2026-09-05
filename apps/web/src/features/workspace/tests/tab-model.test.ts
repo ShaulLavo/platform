@@ -6,12 +6,12 @@ import {
   snapshotDiffDocumentId,
 } from '@/features/git/utils/diff-document'
 import type { FileStatus } from '@/features/git/utils/types'
-import type { GitFileDiff, ThreadId } from '@workspace/contracts'
+import type { GitFileDiff, SessionId } from '@workspace/contracts'
 import { expect, test } from '../../../../test/fixtures'
 import { gitFileDiff } from '../../../../test/factories/git-diff'
 
 const ROOT = '/repo'
-const THREAD_ID = 'thread-1' as ThreadId
+const SESSION_ID = 'ad686244-5b2e-59be-805f-ef86eac80feb' as SessionId
 
 test('a plain file tab has no diff source to jump to', () => {
   expect(model('/repo/src/a.ts').diffSource).toBeNull()
@@ -40,31 +40,31 @@ test('a file-scoped checkpoint diff points at its file', () => {
     fromTurnCount: 1,
     path: '/repo/src/a.ts',
     scope: 'file',
-    threadId: THREAD_ID,
+    sessionId: SESSION_ID,
     toTurnCount: 2,
   })
 
   expect(model(diff).diffSource).toEqual({ onDisk: true, path: '/repo/src/a.ts' })
 })
 
-test('turn and thread checkpoint diffs span many files, so they target none', () => {
+test('turn and session checkpoint diffs span many files, so they target none', () => {
   const turn = checkpointDiffDocumentId({
     fromTurnCount: 1,
     path: 'checkpoint-turn',
     scope: 'turn',
-    threadId: THREAD_ID,
+    sessionId: SESSION_ID,
     toTurnCount: 2,
   })
-  const thread = checkpointDiffDocumentId({
+  const session = checkpointDiffDocumentId({
     fromTurnCount: 0,
-    path: 'checkpoint-thread',
-    scope: 'thread',
-    threadId: THREAD_ID,
+    path: 'checkpoint-session',
+    scope: 'session',
+    sessionId: SESSION_ID,
     toTurnCount: 2,
   })
 
   expect(model(turn).diffSource).toBeNull()
-  expect(model(thread).diffSource).toBeNull()
+  expect(model(session).diffSource).toBeNull()
 })
 
 test('a conflict diff targets the file on disk it is reconciling', () => {

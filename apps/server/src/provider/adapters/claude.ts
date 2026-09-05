@@ -24,7 +24,7 @@ import {
   type ProviderSlashCommand,
   type ProviderSnapshot,
   type RuntimeMode,
-  type ThreadId,
+  type SessionId,
   type TurnId,
   type UserInputQuestions,
 } from '@workspace/contracts'
@@ -36,14 +36,18 @@ import {
   recordChatPipelineWarning,
 } from '../../orchestration/orchestration-logging'
 import { ProviderRuntimeEventStream } from '../provider-runtime-event-stream'
+import { sessionIdentityErrors } from '../structured-errors'
+import { discoverClaudeSessions, type ClaudeDiscoveryRunner } from '../claude-discovery'
 import type {
   ProviderAdapter,
-  ProviderAdapterSession,
+  ProviderAdapterRuntime,
   ProviderApprovalResponseInput,
   ProviderCommandCatalogInput,
   ProviderCommandCatalogResult,
   ProviderRuntimeEvent,
-  ProviderSessionStartInput,
+  ProviderRuntimeEventPayload,
+  ProviderRuntimeStartInput,
+  ProviderSessionDiscoveryInput,
   ProviderSignInInput,
   ProviderTurnInput,
   ProviderUserInputResponseInput,
@@ -56,11 +60,7 @@ import {
   type ClaudeLoginAttempt,
 } from './utils/claude-auth'
 import { claudeModelCatalog } from './utils/claude-models'
-import {
-  claudeModelId,
-  claudeQueryOptions,
-  claudeResumeSessionId,
-} from './utils/claude-query-options'
+import { claudeModelId, claudeQueryOptions } from './utils/claude-query-options'
 import {
   claudePromptText,
   claudeReasoning,
@@ -109,6 +109,7 @@ export type ClaudeCreateQuery = (input: {
 }) => Query
 
 export type ClaudeAdapterOptions = {
+  discoveryRunner?: ClaudeDiscoveryRunner
   attachmentsDir?: string
   auth?: ClaudeAuthRunner
   createQuery?: ClaudeCreateQuery
@@ -154,15 +155,17 @@ type ClaudeRuntimeEventPayload<Type extends ProviderRuntimeEvent['type']> = Extr
 >['payload']
 
 export class ClaudeProviderAdapter implements ProviderAdapter {
+  readonly operationTimeoutMs = 30_000
   readonly adapterKey: ProviderInstanceId
   readonly capabilities = CLAUDE_ADAPTER_CAPABILITIES
   readonly driverKind = DEFAULT_CLAUDE_PROVIDER_SETTINGS.driverKind
   private readonly attachmentsDir: string
   private readonly auth: ClaudeAuthRunner
   private readonly createQuery: ClaudeCreateQuery
+  private readonly discoveryRunner: ClaudeDiscoveryRunner | undefined
   private readonly env: NodeJS.ProcessEnv
   private readonly events = new ProviderRuntimeEventStream()
-  private readonly sessions = new Map<ThreadId, ClaudeAgentSession>()
+  private readonly sessions = new Map<SessionId, ClaudeAgentSession>()
   private readonly settings: ProviderInstanceSettings
 
   /**
@@ -180,6 +183,7 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
     this.env = options.env ?? process.env
     this.auth = options.auth ?? new ClaudeAuthRunner({ env: this.env })
     this.createQuery = options.createQuery ?? defaultClaudeCreateQuery
+    this.discoveryRunner = options.discoveryRunner
     this.settings = {
       ...DEFAULT_CLAUDE_PROVIDER_SETTINGS,
       displayLabel: options.displayLabel ?? DEFAULT_CLAUDE_PROVIDER_SETTINGS.displayLabel,
@@ -294,25 +298,29 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
   }
 
   /** Adapter-local inspection, not part of the driver SPI. */
-  async listSessions() {
+  async listActiveRuntimes() {
     return Array.from(this.sessions.values())
       .filter((session) => session.isActive())
       .map((session) => session.snapshot())
   }
 
-  async hasSession({ threadId }: { threadId: ThreadId }) {
-    return Boolean(this.sessions.get(threadId)?.isActive())
+  discoverSessions(request: ProviderSessionDiscoveryInput) {
+    return discoverClaudeSessions({ request, env: this.env, runner: this.discoveryRunner })
   }
 
-  async rollbackThread(): Promise<never> {
-    throw createInternalError('Claude rollbackThread is not supported.')
+  async hasRuntime({ sessionId }: { sessionId: SessionId }) {
+    return Boolean(this.sessions.get(sessionId)?.isActive())
+  }
+
+  async rollbackSession(): Promise<never> {
+    throw createInternalError('Claude rollbackSession is not supported.')
   }
 
   subscribeEvents(subscriber: (event: ProviderRuntimeEvent) => void) {
     return this.events.subscribe(subscriber)
   }
 
-  async startSession(input: ProviderSessionStartInput) {
+  async startRuntime(input: ProviderRuntimeStartInput) {
     const session = await this.ensureRuntimeSession(input)
     return session.snapshot()
   }
@@ -331,17 +339,17 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
     })
   }
 
-  async interruptTurn({ threadId, turnId }: { threadId: ThreadId; turnId?: TurnId }) {
-    recordChatPipelineInfo('chat.pipeline.claude_adapter.interrupt', { threadId, turnId })
-    await this.sessions.get(threadId)?.interruptTurn(turnId)
+  async interruptTurn({ sessionId, turnId }: { sessionId: SessionId; turnId?: TurnId }) {
+    recordChatPipelineInfo('chat.pipeline.claude_adapter.interrupt', { sessionId, turnId })
+    await this.sessions.get(sessionId)?.interruptTurn(turnId)
   }
 
-  async stopSession({ threadId }: { threadId: ThreadId }) {
-    recordChatPipelineInfo('chat.pipeline.claude_adapter.stop', { threadId })
-    const session = this.sessions.get(threadId)
+  async stopRuntime({ sessionId }: { sessionId: SessionId }) {
+    recordChatPipelineInfo('chat.pipeline.claude_adapter.stop', { sessionId })
+    const session = this.sessions.get(sessionId)
     if (!session) return
 
-    this.sessions.delete(threadId)
+    this.sessions.delete(sessionId)
     await session.close()
   }
 
@@ -357,7 +365,7 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
   }
 
   async respondApproval(input: ProviderApprovalResponseInput) {
-    await this.requireSession(input.threadId, 'approval/respond').respondApproval(input)
+    await this.requireSession(input.sessionId, 'approval/respond').respondApproval(input)
   }
 
   /**
@@ -366,18 +374,18 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
    * back as that tool's permission result rather than as its own control reply.
    */
   async respondUserInput(input: ProviderUserInputResponseInput) {
-    await this.requireSession(input.threadId, 'user-input/respond').respondUserInput(input)
+    await this.requireSession(input.sessionId, 'user-input/respond').respondUserInput(input)
   }
 
-  private async ensureRuntimeSession(input: ProviderSessionStartInput) {
-    const existing = this.sessions.get(input.threadId)
+  private async ensureRuntimeSession(input: ProviderRuntimeStartInput) {
+    const existing = this.sessions.get(input.sessionId)
     const cwd = normalizeWorkspaceCwd(input.cwd)
     const model = claudeModelId({
       modelSelection: input.modelSelection,
       providerInstanceId: input.providerInstanceId,
     })
     // Effort and thinking are baked into the query options at spawn time, so
-    // they join cwd/model/runtimeMode in the reuse check: a thread that switched
+    // they join cwd/model/runtimeMode in the reuse check: a session that switched
     // level has to get a new query, not a stale one that ignores it.
     const reasoning = claudeReasoning({
       modelSelection: input.modelSelection,
@@ -386,12 +394,13 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
     const reasoningKey = claudeReasoningKey(reasoning)
     // Plan mode is a spawn-time `permissionMode`, exactly like effort: reusing a
     // session across a switch runs the new mode against the old query, which is
-    // what made "plan" silently behave as whatever the thread started in.
+    // what made "plan" silently behave as whatever the session started in.
     const interactionMode = input.interactionMode ?? DEFAULT_INTERACTION_MODE
     const ephemeral = input.ephemeral ?? false
     if (
       existing?.matches({
         cwd,
+        runtimeEpoch: input.runtimeEpoch,
         ephemeral,
         interactionMode,
         model,
@@ -404,7 +413,8 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
         model,
         reasoning,
         runtimeMode: input.runtimeMode,
-        threadId: input.threadId,
+        runtimeEpoch: input.runtimeEpoch,
+        sessionId: input.sessionId,
       })
       return existing
     }
@@ -415,9 +425,10 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
         model,
         reasoning,
         runtimeMode: input.runtimeMode,
-        threadId: input.threadId,
+        runtimeEpoch: input.runtimeEpoch,
+        sessionId: input.sessionId,
       })
-      this.sessions.delete(input.threadId)
+      this.sessions.delete(input.sessionId)
       await existing.close()
     }
 
@@ -427,7 +438,8 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
       providerInstanceId: input.providerInstanceId,
       reasoning,
       runtimeMode: input.runtimeMode,
-      threadId: input.threadId,
+      runtimeEpoch: input.runtimeEpoch,
+      sessionId: input.sessionId,
     })
     const session = await ClaudeAgentSession.start({
       attachmentsDir: this.attachmentsDir,
@@ -440,28 +452,30 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
       model,
       providerInstanceId: input.providerInstanceId,
       reasoning,
-      resumeCursor: input.resumeCursor,
+      resumeExisting: input.resumeExisting,
       runtimeMode: input.runtimeMode,
-      threadId: input.threadId,
+      runtimeEpoch: input.runtimeEpoch,
+      sessionId: input.sessionId,
     })
-    this.sessions.set(input.threadId, session)
+    this.sessions.set(input.sessionId, session)
     recordChatPipelineInfo('chat.pipeline.claude_adapter.session.started', {
       interactionMode,
       model,
       reasoning,
       runtimeMode: input.runtimeMode,
-      threadId: input.threadId,
+      runtimeEpoch: input.runtimeEpoch,
+      sessionId: input.sessionId,
     })
 
     return session
   }
 
-  private requireSession(threadId: ThreadId, operation: string) {
-    const session = this.sessions.get(threadId)
+  private requireSession(sessionId: SessionId, operation: string) {
+    const session = this.sessions.get(sessionId)
     if (session?.isActive()) return session
 
     throw createInternalError(
-      `Claude ${operation} requires an active session for thread ${threadId}.`,
+      `Claude ${operation} requires an active session for session ${sessionId}.`,
     )
   }
 }
@@ -470,7 +484,7 @@ class ClaudeAgentSession {
   private readonly abortController = new AbortController()
   private readonly attachmentsDir: string
   private readonly cwd: string
-  private readonly emit: (event: ProviderRuntimeEvent) => void
+  private readonly emit: (event: ProviderRuntimeEventPayload) => void
   private readonly ephemeral: boolean
   private readonly inFlightTools = new Map<string, InFlightClaudeTool>()
   private readonly interactionMode: InteractionMode
@@ -482,12 +496,13 @@ class ClaudeAgentSession {
   private readonly reasoning: ClaudeReasoning
   private readonly reasoningKey: string
   private readonly runtimeMode: RuntimeMode
-  private readonly threadId: ThreadId
+  private readonly runtimeEpoch: string
+  private readonly sessionId: SessionId
+  private providerConversationMarker: string | null = null
   private activeProviderTurnId: string | null = null
   private activeTurn: ActiveProviderTurn | null = null
   private query: Query | null = null
-  private sessionId: string
-  private status: ProviderAdapterSession['status'] = 'starting'
+  private status: ProviderAdapterRuntime['status'] = 'starting'
 
   private constructor(input: {
     attachmentsDir: string
@@ -499,12 +514,13 @@ class ClaudeAgentSession {
     providerInstanceId: ProviderTurnInput['providerInstanceId']
     reasoning: ClaudeReasoning
     runtimeMode: RuntimeMode
-    sessionId: string
-    threadId: ThreadId
+    runtimeEpoch: string
+    sessionId: SessionId
   }) {
     this.attachmentsDir = input.attachmentsDir
     this.cwd = input.cwd
-    this.emit = input.emit
+    this.emit = (event) => input.emit({ ...event, runtimeEpoch: input.runtimeEpoch })
+    this.runtimeEpoch = input.runtimeEpoch
     this.ephemeral = input.ephemeral
     this.interactionMode = input.interactionMode
     this.model = input.model
@@ -513,22 +529,9 @@ class ClaudeAgentSession {
     this.reasoningKey = claudeReasoningKey(input.reasoning)
     this.runtimeMode = input.runtimeMode
     this.sessionId = input.sessionId
-    this.threadId = input.threadId
   }
 
-  /**
-   * The prompt is an AsyncIterable queue, never a plain string. `interrupt()`
-   * and `setModel()` only exist in streaming-input mode, so a string prompt
-   * would silently break both and make `sessionModelSwitch: 'in-session'` a lie.
-   *
-   * That streaming prompt is also why the session id is MINTED HERE instead of
-   * being read off the `system`/`init` message: in streaming-input mode the CLI
-   * withholds `init` until the first prompt is pushed, and the first prompt is
-   * only pushed by `sendTurn`, which cannot run until this resolves. Waiting for
-   * `init` here deadlocks the session outright. `Options.sessionId` lets us name
-   * the conversation up front, so `initializationResult()` — which answers
-   * without a prompt, in ~0.5s — is all start has to wait for.
-   */
+  // Streaming input withholds init until the first prompt; adopt the caller's UUID before it.
   static async start(input: {
     attachmentsDir: string
     createQuery: ClaudeCreateQuery
@@ -540,9 +543,10 @@ class ClaudeAgentSession {
     model: string
     providerInstanceId: ProviderTurnInput['providerInstanceId']
     reasoning: ClaudeReasoning
-    resumeCursor?: unknown | null
+    resumeExisting?: boolean
     runtimeMode: RuntimeMode
-    threadId: ThreadId
+    runtimeEpoch: string
+    sessionId: SessionId
   }) {
     recordChatPipelineInfo('chat.pipeline.claude_session.start', {
       interactionMode: input.interactionMode,
@@ -551,11 +555,12 @@ class ClaudeAgentSession {
       providerInstanceId: input.providerInstanceId,
       reasoning: input.reasoning,
       runtimeMode: input.runtimeMode,
-      threadId: input.threadId,
+      runtimeEpoch: input.runtimeEpoch,
+      sessionId: input.sessionId,
     })
     // Resuming keeps the id the CLI already persisted; otherwise we name the new
     // conversation ourselves. `claudeQueryOptions` drops one of the two.
-    const sessionId = claudeResumeSessionId(input.resumeCursor) ?? crypto.randomUUID()
+    const sessionId = input.sessionId
     const session = new ClaudeAgentSession({ ...input, sessionId })
     const options = claudeQueryOptions({
       abortController: session.abortController,
@@ -566,7 +571,7 @@ class ClaudeAgentSession {
       interactionMode: input.interactionMode,
       model: input.model,
       reasoning: input.reasoning,
-      resumeCursor: input.resumeCursor,
+      resumeExisting: input.resumeExisting,
       runtimeMode: input.runtimeMode,
       sessionId,
     })
@@ -585,24 +590,25 @@ class ClaudeAgentSession {
     } catch (error) {
       recordChatPipelineWarning('chat.pipeline.claude_session.start.failed', {
         error,
-        threadId: input.threadId,
+        sessionId: input.sessionId,
       })
       await session.close()
       throw error
     }
 
     recordChatPipelineInfo('chat.pipeline.claude_session.started', {
-      providerSessionId: session.providerSessionId(),
-      threadId: input.threadId,
+      providerBindingHandle: session.providerBindingHandle(),
+      sessionId: input.sessionId,
     })
     session.emitSessionStarted()
-    session.emitThreadStarted()
+    session.emitConversationStarted()
 
     return session
   }
 
   matches(input: {
     cwd: string
+    runtimeEpoch: string
     ephemeral: boolean
     interactionMode: InteractionMode
     model: string
@@ -610,6 +616,7 @@ class ClaudeAgentSession {
     runtimeMode: RuntimeMode
   }) {
     if (!this.isActive()) return false
+    if (this.runtimeEpoch !== input.runtimeEpoch) return false
     if (this.cwd !== input.cwd) return false
     if (this.ephemeral !== input.ephemeral) return false
     if (this.interactionMode !== input.interactionMode) return false
@@ -623,17 +630,18 @@ class ClaudeAgentSession {
     return this.status !== 'stopped' && !this.abortController.signal.aborted
   }
 
-  snapshot(): ProviderAdapterSession {
+  snapshot(): ProviderAdapterRuntime {
     return {
+      runtimeEpoch: this.runtimeEpoch,
       cwd: this.cwd,
       model: this.model,
       providerInstanceId: this.providerInstanceId,
-      providerSessionId: this.providerSessionId(),
-      providerThreadId: this.sessionId,
-      resumeCursor: this.sessionId,
+      providerBindingHandle: this.providerBindingHandle(),
+      providerConversationMarker: this.providerConversationMarker ?? this.sessionId,
+      providerResumeCursor: null,
       runtimeMode: this.runtimeMode,
       status: this.status,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
     }
   }
 
@@ -647,17 +655,17 @@ class ClaudeAgentSession {
   async sendTurn({ input, messageId }: { input: ProviderTurnInput; messageId: string }) {
     if (this.activeTurn) {
       throw createInternalError(
-        `Claude session for thread ${this.threadId} already has a turn in flight.`,
+        `Claude session for session ${this.sessionId} already has a turn in flight.`,
       )
     }
     if (!this.isActive()) {
-      throw createInternalError(`Claude session for thread ${this.threadId} is not active.`)
+      throw createInternalError(`Claude session for session ${this.sessionId} is not active.`)
     }
 
     recordChatPipelineInfo('chat.pipeline.claude_session.send_turn.start', {
       ...providerTurnSummary(input),
       messageId,
-      providerSessionId: this.providerSessionId(),
+      providerBindingHandle: this.providerBindingHandle(),
     })
     const turn = activeProviderTurn({ canonicalTurnId: input.turnId, messageId })
     // Minted locally — unlike Codex there is no provider-assigned turn id to
@@ -678,7 +686,7 @@ class ClaudeAgentSession {
     } catch (error) {
       recordChatPipelineWarning('chat.pipeline.claude_session.send_turn.failed', {
         error,
-        threadId: this.threadId,
+        sessionId: this.sessionId,
         turnId: input.turnId,
       })
       this.rejectTurn(turn, providerErrorMessage(error))
@@ -687,7 +695,7 @@ class ClaudeAgentSession {
 
     await turn.promise
     recordChatPipelineInfo('chat.pipeline.claude_session.send_turn.complete', {
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: input.turnId,
     })
   }
@@ -696,7 +704,7 @@ class ClaudeAgentSession {
     const turn = this.activeTurn
     if (!turn) {
       recordChatPipelineWarning('chat.pipeline.claude_session.interrupt.no_active_turn', {
-        threadId: this.threadId,
+        sessionId: this.sessionId,
         turnId,
       })
       return
@@ -704,14 +712,14 @@ class ClaudeAgentSession {
     if (turnId && turn.canonicalTurnId !== turnId) {
       recordChatPipelineWarning('chat.pipeline.claude_session.interrupt.turn_mismatch', {
         activeTurnId: turn.canonicalTurnId,
-        threadId: this.threadId,
+        sessionId: this.sessionId,
         turnId,
       })
       return
     }
 
     recordChatPipelineInfo('chat.pipeline.claude_session.interrupt_request', {
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: turn.canonicalTurnId,
     })
     await this.query?.interrupt()
@@ -733,10 +741,10 @@ class ClaudeAgentSession {
       },
       provider: DEFAULT_CLAUDE_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
-      providerSessionId: this.providerSessionId(),
+      providerBindingHandle: this.providerBindingHandle(),
       requestId: input.requestId,
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       ...(this.activeTurn ? { turnId: this.activeTurn.canonicalTurnId } : {}),
       type: 'request.resolved',
     })
@@ -744,8 +752,8 @@ class ClaudeAgentSession {
 
   async close() {
     recordChatPipelineInfo('chat.pipeline.claude_session.close', {
-      providerSessionId: this.providerSessionId(),
-      threadId: this.threadId,
+      providerBindingHandle: this.providerBindingHandle(),
+      sessionId: this.sessionId,
     })
     this.status = 'stopped'
     this.prompt.close()
@@ -753,7 +761,7 @@ class ClaudeAgentSession {
     this.abortController.abort()
   }
 
-  private providerSessionId() {
+  private providerBindingHandle() {
     return `claude:${this.sessionId}`
   }
 
@@ -778,7 +786,7 @@ class ClaudeAgentSession {
     if (error) {
       recordChatPipelineWarning('chat.pipeline.claude_session.stream.failed', {
         error,
-        threadId: this.threadId,
+        sessionId: this.sessionId,
       })
     }
     if (this.status !== 'stopped') this.emitSessionExited(message, Boolean(error))
@@ -844,11 +852,12 @@ class ClaudeAgentSession {
         )
         return
       // `/clear`: the CLI opened a fresh conversation inside the same session,
-      // so the provider thread id changes under us — codex's `thread/started`.
+      // so the provider session id changes under us — codex's `session/started`.
       case 'conversation_reset':
+        this.providerConversationMarker = message.new_conversation_id
         this.emitRuntimeNotification(
-          'thread.started',
-          { providerThreadId: message.new_conversation_id },
+          'conversation.started',
+          { providerConversationMarker: message.new_conversation_id },
           message,
         )
         return
@@ -903,14 +912,14 @@ class ClaudeAgentSession {
         return
       case 'worker_shutting_down':
         this.emitRuntimeNotification(
-          'session.exited',
+          'runtime.exited',
           { exitKind: 'graceful', reason: message.reason, recoverable: true },
           message,
         )
         return
       case 'compact_boundary':
         this.emitRuntimeNotification(
-          'thread.state.changed',
+          'conversation.state.changed',
           { detail: message, state: 'compacted' },
           message,
         )
@@ -1046,7 +1055,7 @@ class ClaudeAgentSession {
         this.handleInformational(message)
         return
       case 'thinking_tokens':
-        this.dropMessage(message, 'thinking estimates are not thread token usage')
+        this.dropMessage(message, 'thinking estimates are not session token usage')
         return
       case 'background_tasks_changed':
         this.dropMessage(message, 'roster snapshot; task.* events carry per-task truth')
@@ -1151,7 +1160,7 @@ class ClaudeAgentSession {
     options: { reason: string },
   ) {
     this.emitRuntimeNotification(
-      'session.state.changed',
+      'runtime.state.changed',
       { detail: message, reason: options.reason, state },
       message,
     )
@@ -1172,7 +1181,7 @@ class ClaudeAgentSession {
       messageType: message.type,
       reason,
       subtype: claudeMessageSubtype(message),
-      threadId: this.threadId,
+      sessionId: this.sessionId,
     })
   }
 
@@ -1188,7 +1197,7 @@ class ClaudeAgentSession {
       messageType: stringField(record, 'type'),
       payload: message,
       subtype: stringField(record, 'subtype'),
-      threadId: this.threadId,
+      sessionId: this.sessionId,
     })
   }
 
@@ -1202,24 +1211,17 @@ class ClaudeAgentSession {
     this.confirmSessionId(message.session_id)
     if (!this.activeTurn) this.status = 'ready'
 
-    this.emitRuntimeNotification('session.configured', { config: asRecord(message) }, message)
+    this.emitRuntimeNotification('runtime.configured', { config: asRecord(message) }, message)
   }
 
-  /**
-   * The CLI's id wins. `resumeCursor` has to name the transcript the CLI really
-   * persisted, so a divergence is a resume-breaking event worth a log line — but
-   * carrying our stale id forward would break resume outright.
-   */
   private confirmSessionId(sessionId: string) {
-    if (!sessionId) return
     if (sessionId === this.sessionId) return
 
-    recordChatPipelineWarning('chat.pipeline.claude_session.session_id.replaced', {
-      mintedSessionId: this.sessionId,
-      providerSessionId: `claude:${sessionId}`,
-      threadId: this.threadId,
-    })
-    this.sessionId = sessionId
+    const error = sessionIdentityErrors.SESSION_IDENTITY_MISMATCH()
+    this.abortController.abort(error)
+    this.prompt.close()
+    this.rejectAllTurns(error)
+    throw error
   }
 
   private handleStreamEvent(message: Extract<SDKMessage, { type: 'stream_event' }>) {
@@ -1377,7 +1379,7 @@ class ClaudeAgentSession {
 
   private handleResultMessage(message: Extract<SDKMessage, { type: 'result' }>) {
     this.emitRuntimeNotification(
-      'thread.token-usage.updated',
+      'conversation.token-usage.updated',
       { usage: claudeTokenUsage(message.usage) },
       message,
     )
@@ -1387,7 +1389,7 @@ class ClaudeAgentSession {
     if (!turn) {
       recordChatPipelineWarning('chat.pipeline.claude_session.result.no_active_turn', {
         subtype: message.subtype,
-        threadId: this.threadId,
+        sessionId: this.sessionId,
       })
       return
     }
@@ -1409,7 +1411,7 @@ class ClaudeAgentSession {
     const completedAt = new Date().toISOString()
     recordChatPipelineInfo('chat.pipeline.claude_session.complete_turn', {
       messageId: turn.messageId,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: turn.canonicalTurnId,
     })
     this.emitTurnCompleted(turn, completedAt, { state: 'completed', usage })
@@ -1417,7 +1419,7 @@ class ClaudeAgentSession {
       completedAt,
       eventId: runtimeEventId('claude-assistant-complete'),
       messageId: turn.messageId,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: turn.canonicalTurnId,
       type: 'assistant.complete',
     })
@@ -1427,7 +1429,7 @@ class ClaudeAgentSession {
 
   private interruptTurnResult(turn: ActiveProviderTurn, usage: unknown) {
     recordChatPipelineInfo('chat.pipeline.claude_session.interrupt_turn', {
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: turn.canonicalTurnId,
     })
     this.emitTurnCompleted(turn, new Date().toISOString(), { state: 'interrupted', usage })
@@ -1447,9 +1449,9 @@ class ClaudeAgentSession {
       payload: { class: 'provider_error', message },
       provider: DEFAULT_CLAUDE_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
-      providerSessionId: this.providerSessionId(),
+      providerBindingHandle: this.providerBindingHandle(),
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: turn.canonicalTurnId,
       type: 'runtime.error',
     })
@@ -1500,7 +1502,7 @@ class ClaudeAgentSession {
       // failed turn — the user's text still has to reach the model.
       recordChatPipelineWarning('chat.pipeline.claude_session.attachment.missing', {
         attachmentId: attachment.id,
-        threadId: this.threadId,
+        sessionId: this.sessionId,
         turnId: input.turnId,
       })
       this.emitRuntimeWarning(`Attachment ${attachment.name} is missing and was not sent.`)
@@ -1517,7 +1519,7 @@ class ClaudeAgentSession {
     const names = unsupported.map((attachment) => attachment.name).join(', ')
     recordChatPipelineWarning('chat.pipeline.claude_session.attachment.unsupported', {
       count: unsupported.length,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
     })
     this.emitRuntimeWarning(
       `Claude does not accept these image types, so they were dropped: ${names}.`,
@@ -1533,7 +1535,7 @@ class ClaudeAgentSession {
    * permission questions at all — they are how the SDK hands us a clarifying
    * question and a finished plan — so they are answered here in EVERY runtime
    * mode. Short-circuiting full-access first would swallow both exactly where
-   * most threads run, leaving plan mode with no plan to approve.
+   * most sessions run, leaving plan mode with no plan to approve.
    */
   private handleToolPermission(
     toolName: string,
@@ -1562,7 +1564,7 @@ class ClaudeAgentSession {
       interactionMode: this.interactionMode,
       planLength: planMarkdown?.length ?? 0,
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: this.activeTurn?.canonicalTurnId,
     })
     if (planMarkdown) this.emitProposedPlan(planMarkdown)
@@ -1580,7 +1582,7 @@ class ClaudeAgentSession {
       createdAt,
       eventId: runtimeEventId('claude-proposed-plan'),
       planMarkdown,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: this.activeTurn?.canonicalTurnId ?? null,
       type: 'proposed-plan.upsert',
       updatedAt: createdAt,
@@ -1599,7 +1601,7 @@ class ClaudeAgentSession {
     const questions = claudeUserInputQuestions(toolInput)
     recordChatPipelineInfo('chat.pipeline.claude_session.user_input.requested', {
       questionCount: questions.length,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: this.activeTurn?.canonicalTurnId,
     })
     // Nothing renderable means nothing to answer; denying tells Claude to ask in
@@ -1641,10 +1643,10 @@ class ClaudeAgentSession {
       payload: { answers: input.answers },
       provider: DEFAULT_CLAUDE_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
-      providerSessionId: this.providerSessionId(),
+      providerBindingHandle: this.providerBindingHandle(),
       requestId: input.requestId,
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       ...(this.activeTurn ? { turnId: this.activeTurn.canonicalTurnId } : {}),
       type: 'user-input.resolved',
     })
@@ -1676,7 +1678,7 @@ class ClaudeAgentSession {
         providerRequestId: requestId,
         ...(this.activeProviderTurnId ? { providerTurnId: this.activeProviderTurnId } : {}),
       },
-      providerSessionId: this.providerSessionId(),
+      providerBindingHandle: this.providerBindingHandle(),
       raw: {
         method: 'canUseTool/AskUserQuestion',
         payload: toolInput,
@@ -1684,7 +1686,7 @@ class ClaudeAgentSession {
       },
       requestId,
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       ...(this.activeTurn ? { turnId: this.activeTurn.canonicalTurnId } : {}),
       type: 'user-input.requested',
     })
@@ -1731,7 +1733,7 @@ class ClaudeAgentSession {
         providerRequestId: requestId,
         ...(this.activeProviderTurnId ? { providerTurnId: this.activeProviderTurnId } : {}),
       },
-      providerSessionId: this.providerSessionId(),
+      providerBindingHandle: this.providerBindingHandle(),
       raw: {
         method: `canUseTool/${toolName}`,
         payload: toolInput,
@@ -1739,7 +1741,7 @@ class ClaudeAgentSession {
       },
       requestId,
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       ...(this.activeTurn ? { turnId: this.activeTurn.canonicalTurnId } : {}),
       type: 'request.opened',
     })
@@ -1749,29 +1751,29 @@ class ClaudeAgentSession {
     this.emit({
       createdAt: new Date().toISOString(),
       eventId: runtimeEventId('claude-session-started'),
-      payload: { resume: this.sessionId },
+      payload: {},
       provider: DEFAULT_CLAUDE_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
       providerName: DEFAULT_CLAUDE_PROVIDER_SETTINGS.displayLabel,
-      providerSessionId: this.providerSessionId(),
+      providerBindingHandle: this.providerBindingHandle(),
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
-      type: 'session.started',
+      sessionId: this.sessionId,
+      type: 'runtime.started',
     })
   }
 
-  private emitThreadStarted() {
+  private emitConversationStarted() {
     this.emit({
       createdAt: new Date().toISOString(),
-      eventId: runtimeEventId('claude-thread-started'),
-      payload: { providerThreadId: this.sessionId },
+      eventId: runtimeEventId('claude-session-started'),
+      payload: { providerConversationMarker: this.sessionId },
       provider: DEFAULT_CLAUDE_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
       providerName: DEFAULT_CLAUDE_PROVIDER_SETTINGS.displayLabel,
-      providerSessionId: this.providerSessionId(),
+      providerBindingHandle: this.providerBindingHandle(),
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
-      type: 'thread.started',
+      sessionId: this.sessionId,
+      type: 'conversation.started',
     })
   }
 
@@ -1782,10 +1784,10 @@ class ClaudeAgentSession {
       payload: { exitKind: failed ? 'error' : 'graceful', reason, recoverable: true },
       provider: DEFAULT_CLAUDE_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
-      providerSessionId: this.providerSessionId(),
+      providerBindingHandle: this.providerBindingHandle(),
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
-      type: 'session.exited',
+      sessionId: this.sessionId,
+      type: 'runtime.exited',
     })
   }
 
@@ -1797,9 +1799,9 @@ class ClaudeAgentSession {
       provider: DEFAULT_CLAUDE_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
       providerRefs: { providerTurnId },
-      providerSessionId: this.providerSessionId(),
+      providerBindingHandle: this.providerBindingHandle(),
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       ...(this.activeTurn ? { turnId: this.activeTurn.canonicalTurnId } : {}),
       type: 'turn.started',
     })
@@ -1823,9 +1825,9 @@ class ClaudeAgentSession {
       ...(this.activeProviderTurnId
         ? { providerRefs: { providerTurnId: this.activeProviderTurnId } }
         : {}),
-      providerSessionId: this.providerSessionId(),
+      providerBindingHandle: this.providerBindingHandle(),
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       turnId: turn.canonicalTurnId,
       type: 'turn.completed',
     })
@@ -1838,9 +1840,9 @@ class ClaudeAgentSession {
       payload: { message },
       provider: DEFAULT_CLAUDE_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
-      providerSessionId: this.providerSessionId(),
+      providerBindingHandle: this.providerBindingHandle(),
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       ...(this.activeTurn ? { turnId: this.activeTurn.canonicalTurnId } : {}),
       type: 'runtime.warning',
     })
@@ -1855,11 +1857,11 @@ class ClaudeAgentSession {
       provider: DEFAULT_CLAUDE_PROVIDER_SETTINGS.driverKind,
       providerInstanceId: this.providerInstanceId,
       providerName: DEFAULT_CLAUDE_PROVIDER_SETTINGS.displayLabel,
-      providerSessionId: this.providerSessionId(),
+      providerBindingHandle: this.providerBindingHandle(),
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       ...(turnId ? { turnId } : {}),
-      type: 'session.state.changed',
+      type: 'runtime.state.changed',
     })
   }
 
@@ -1883,7 +1885,7 @@ class ClaudeAgentSession {
     try {
       const context = await query.getContextUsage()
       this.emitRuntimeNotification(
-        'thread.token-usage.updated',
+        'conversation.token-usage.updated',
         {
           usage: {
             compactsAutomatically: true,
@@ -1896,7 +1898,7 @@ class ClaudeAgentSession {
     } catch (error) {
       recordChatPipelineWarning('chat.pipeline.claude_session.context_usage.failed', {
         error,
-        threadId: this.threadId,
+        sessionId: this.sessionId,
       })
     }
   }
@@ -1918,10 +1920,10 @@ class ClaudeAgentSession {
         ...(options.itemId ? { providerItemId: options.itemId } : {}),
         ...(this.activeProviderTurnId ? { providerTurnId: this.activeProviderTurnId } : {}),
       },
-      providerSessionId: this.providerSessionId(),
+      providerBindingHandle: this.providerBindingHandle(),
       raw: { messageType: message.type, payload: message, source: 'claude.sdk.message' },
       runtimeMode: this.runtimeMode,
-      threadId: this.threadId,
+      sessionId: this.sessionId,
       ...(this.activeTurn ? { turnId: this.activeTurn.canonicalTurnId } : {}),
       type,
     } as ProviderRuntimeEvent)

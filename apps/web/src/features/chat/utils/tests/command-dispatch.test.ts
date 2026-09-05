@@ -1,9 +1,9 @@
+import { TEST_WORKTREE_ID } from '../../../../../test/factories/chat'
 import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_PROVIDER_INSTANCE_ID,
   DEFAULT_RUNTIME_MODE,
-  projectIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
   type ClientOrchestrationCommand,
 } from '@workspace/contracts'
 import * as v from 'valibot'
@@ -11,7 +11,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   createCheckpointRevertCommand,
-  createDraftThreadSubmission,
+  createDraftSessionSubmission,
   createTurnSubmission,
 } from '@/features/chat/utils/command-builders'
 import { dispatchChatCommand, replayAfterDispatch } from '@/features/chat/utils/command-dispatch'
@@ -26,7 +26,7 @@ describe('dispatchChatCommand', () => {
     const outcome = await dispatchChatCommand({
       action: 'chat.test.dispatch.summary',
       command: turnCommand(),
-      dispatchCommand: async () => ({ deduped: false, sequence: 12 }),
+      dispatchCommand: async () => ({ result: null, deduped: false, sequence: 12 }),
     })
 
     expect(outcome.ok).toBe(true)
@@ -75,7 +75,7 @@ describe('dispatchChatCommand', () => {
     await dispatchChatCommand({
       action: 'chat.test.dispatch.summary',
       command: turnCommand(),
-      dispatchCommand: async () => ({ deduped: false, sequence: 3 }),
+      dispatchCommand: async () => ({ result: null, deduped: false, sequence: 3 }),
       onAccepted: () => {
         accepted += 1
       },
@@ -105,7 +105,7 @@ describe('dispatchChatCommand', () => {
     const outcome = await dispatchChatCommand({
       action: 'chat.test.dispatch.summary',
       command: turnCommand(),
-      dispatchCommand: async () => ({ deduped: false, sequence: 4 }),
+      dispatchCommand: async () => ({ result: null, deduped: false, sequence: 4 }),
       onAccepted: () => {
         throw new Error('host blew up')
       },
@@ -140,7 +140,7 @@ describe('dispatchChatCommand', () => {
       dispatchCommand: async () => {
         dispatched += 1
 
-        return { deduped: false, sequence: 1 }
+        return { result: null, deduped: false, sequence: 1 }
       },
     })
 
@@ -149,12 +149,22 @@ describe('dispatchChatCommand', () => {
   })
 
   it('derives the replay window from the command shape', () => {
-    expect(replayAfterDispatch(turnCommand(), { deduped: false, sequence: 12 })).toBe(10)
-    expect(replayAfterDispatch(draftCommand(), { deduped: false, sequence: 12 })).toBe(9)
-    expect(replayAfterDispatch(checkpointRevertCommand(), { deduped: false, sequence: 12 })).toBe(
+    expect(replayAfterDispatch(turnCommand(), { result: null, deduped: false, sequence: 12 })).toBe(
       10,
     )
-    expect(replayAfterDispatch(turnCommand(), { deduped: false, sequence: 1 })).toBe(0)
+    expect(
+      replayAfterDispatch(draftCommand(), { result: null, deduped: false, sequence: 12 }),
+    ).toBe(9)
+    expect(
+      replayAfterDispatch(checkpointRevertCommand(), {
+        result: null,
+        deduped: false,
+        sequence: 12,
+      }),
+    ).toBe(10)
+    expect(replayAfterDispatch(turnCommand(), { result: null, deduped: false, sequence: 1 })).toBe(
+      0,
+    )
   })
 })
 
@@ -165,23 +175,22 @@ function turnCommand(): ClientOrchestrationCommand {
     modelSelection: MODEL_SELECTION,
     runtimeMode: DEFAULT_RUNTIME_MODE,
     text: 'Hello',
-    threadId: v.parse(threadIdSchema, 'thread-1'),
+    sessionId: v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb'),
   }).command
 }
 
 function draftCommand(): ClientOrchestrationCommand {
-  return createDraftThreadSubmission({
+  return createDraftSessionSubmission({
     createdAt: '2026-05-28T00:00:00.000Z',
     modelSelection: MODEL_SELECTION,
-    projectId: v.parse(projectIdSchema, 'project-1'),
-    rootPath: '/tmp/workspace',
+    worktreeId: TEST_WORKTREE_ID,
     text: 'Hello',
   }).command
 }
 
 function checkpointRevertCommand(): ClientOrchestrationCommand {
   return createCheckpointRevertCommand({
-    threadId: v.parse(threadIdSchema, 'thread-1'),
+    sessionId: v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb'),
     turnCount: 2,
   })
 }

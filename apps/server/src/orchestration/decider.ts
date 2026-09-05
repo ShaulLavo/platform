@@ -1,33 +1,35 @@
 import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
-  eventIdSchema,
   type OrchestrationCommand,
 } from './schemas'
 import * as v from 'valibot'
 import { approvalRequestIdSchema } from '@workspace/contracts'
-import type { EventId, OrchestrationEventMetadata, ProjectId, ThreadId } from '@workspace/contracts'
+import type { OrchestrationEventMetadata } from '@workspace/contracts'
 import { orchestrationErrors } from '../observability'
 import { activityRequestId } from './pending-requests'
+import { event, one } from './event-factory'
+import { lifecycleResetEvents } from './lifecycle-events'
+import { decideRegistration, decideWorktreeCommand } from './registration-decider'
+import { decideProviderStart, decideRuntimeRecovery, decideDeletionUpdate } from './runtime-decider'
+import { requireWorktree } from './read-model'
+import { sessionDomainErrors } from './structured-errors'
 import {
-  liveProjectThreads,
-  requireActiveProjectWorkspaceRootAbsent,
-  requireExpectedBranch,
+  liveProjectSessions,
   requireFutureWakeTime,
   requirePinned,
   requireProject,
-  requireProjectAbsent,
   requireSettleable,
   requireSnoozable,
-  requireThreadAbsent,
-  requireThreadArchived,
+  requireSessionAbsent,
+  requireSessionArchived,
   requireActionableSourcePlan,
-  requireThreadNotArchived,
-  requireThreadNotDeleted,
+  requireSessionNotArchived,
+  requireSessionNotDeleted,
   requireValidOrderKey,
 } from './command-invariants'
 import type { PendingOrchestrationEvent } from './event-store'
-import type { OrchestrationProjectedThread, OrchestrationReadModel } from './read-model'
+import type { OrchestrationProjectedSession, OrchestrationReadModel } from './read-model'
 
 /**
  * One server clock reading per command. It stamps every event's `occurredAt`
@@ -42,205 +44,202 @@ export function decideOrchestrationCommand(
 
   switch (command.type) {
     case 'project.create':
-      return projectCreated(command, model, at)
+    case 'project.revive':
+      return decideRegistration(command, model, at)
+    case 'worktree.register':
+    case 'worktree.revive':
+    case 'worktree.meta.update':
+      return decideWorktreeCommand(command, model, at)
     case 'project.meta.update':
       return projectMetaUpdated(command, model, at)
     case 'project.reorder':
       return projectReordered(command, model, at)
     case 'project.delete':
       return projectDeleted(command, model, at)
-    case 'thread.create':
-      return threadCreated(command, model, at)
-    case 'thread.meta.update':
-      return threadMetaUpdated(command, model, at)
-    case 'thread.delete':
-      requireThreadNotDeleted(model, command.threadId)
+    case 'session.create':
+    case 'session.discover':
+      return sessionCreated(command, model, at)
+    case 'session.discovery-metadata.update':
+      return discoveryMetadataUpdated(command, model, at)
+    case 'session.provider-start.claim':
+    case 'session.provider-start.adopt':
+    case 'session.provider-start.settle':
+      return decideProviderStart(command, model, at)
+    case 'session.runtime.recover':
+      return decideRuntimeRecovery(command, model, at)
+    case 'session.deletion.update':
+      return decideDeletionUpdate(command, model, at)
+    case 'session.meta.update':
+      return sessionMetaUpdated(command, model, at)
+    case 'session.delete':
+      requireSessionNotDeleted(model, command.sessionId)
 
-      return one(command, at, 'thread.deleted', {
+      return one(command, at, 'session.deleted', {
         deletedAt: at,
-        threadId: command.threadId,
+        sessionId: command.sessionId,
       })
-    case 'thread.archive':
-      requireThreadNotArchived(model, command.threadId, command.type)
+    case 'session.archive':
+      requireSettleable(
+        requireSessionNotArchived(model, command.sessionId, command.type),
+        command.type,
+        at,
+      )
 
-      return one(command, at, 'thread.archived', {
+      return one(command, at, 'session.archived', {
         archivedAt: at,
-        threadId: command.threadId,
+        sessionId: command.sessionId,
         updatedAt: at,
       })
-    case 'thread.unarchive':
-      requireThreadArchived(model, command.threadId)
+    case 'session.unarchive':
+      requireSessionArchived(model, command.sessionId)
 
-      return one(command, at, 'thread.unarchived', {
-        threadId: command.threadId,
+      return one(command, at, 'session.unarchived', {
+        sessionId: command.sessionId,
         updatedAt: at,
       })
-    case 'thread.settle':
-      return threadSettled(command, model, at)
-    case 'thread.unsettle':
-      return threadUnsettled(command, model, at)
-    case 'thread.snooze':
-      return threadSnoozed(command, model, at)
-    case 'thread.unsnooze':
-      return threadUnsnoozed(command, model, at)
-    case 'thread.pin':
-      return threadPinned(command, model, at)
-    case 'thread.unpin':
-      return threadUnpinned(command, model, at)
-    case 'thread.pin.reorder':
-      return threadPinReordered(command, model, at)
-    case 'thread.runtime-mode.set':
-      requireThreadNotArchived(model, command.threadId, command.type)
+    case 'session.settle':
+      return sessionSettled(command, model, at)
+    case 'session.unsettle':
+      return sessionUnsettled(command, model, at)
+    case 'session.snooze':
+      return sessionSnoozed(command, model, at)
+    case 'session.unsnooze':
+      return sessionUnsnoozed(command, model, at)
+    case 'session.pin':
+      return sessionPinned(command, model, at)
+    case 'session.unpin':
+      return sessionUnpinned(command, model, at)
+    case 'session.pin.reorder':
+      return sessionPinReordered(command, model, at)
+    case 'session.runtime-mode.set':
+      requireSessionNotArchived(model, command.sessionId, command.type)
 
-      return one(command, at, 'thread.runtime-mode-set', {
+      return one(command, at, 'session.runtime-mode-set', {
         runtimeMode: command.runtimeMode,
-        threadId: command.threadId,
+        sessionId: command.sessionId,
         updatedAt: at,
       })
-    case 'thread.interaction-mode.set':
-      requireThreadNotArchived(model, command.threadId, command.type)
+    case 'session.interaction-mode.set':
+      requireSessionNotArchived(model, command.sessionId, command.type)
 
-      return one(command, at, 'thread.interaction-mode-set', {
+      return one(command, at, 'session.interaction-mode-set', {
         interactionMode: command.interactionMode,
-        threadId: command.threadId,
+        sessionId: command.sessionId,
         updatedAt: at,
       })
-    case 'thread.turn.start':
+    case 'session.turn.start':
       return turnStartRequested(command, model, at)
-    case 'thread.turn.interrupt':
-      requireThreadNotDeleted(model, command.threadId)
+    case 'session.turn.interrupt':
+      requireSessionNotDeleted(model, command.sessionId)
 
-      return one(command, at, 'thread.turn-interrupt-requested', {
+      return one(command, at, 'session.turn-interrupt-requested', {
         createdAt: at,
-        threadId: command.threadId,
-        turnId: command.turnId,
+        sessionId: command.sessionId,
+        turnId: command.turnId ?? model.sessions.get(command.sessionId)?.latestTurn?.turnId,
       })
-    case 'thread.session.stop':
-      requireThreadNotDeleted(model, command.threadId)
+    case 'session.runtime.stop':
+      requireSessionNotDeleted(model, command.sessionId)
 
-      return one(command, at, 'thread.session-stop-requested', {
+      return one(command, at, 'session.runtime-stop-requested', {
         createdAt: at,
-        threadId: command.threadId,
+        sessionId: command.sessionId,
       })
-    case 'thread.approval.respond':
-      requireThreadNotDeleted(model, command.threadId)
+    case 'session.approval.respond':
+      requireSessionNotDeleted(model, command.sessionId)
 
       return one(
         command,
         at,
-        'thread.approval-response-requested',
+        'session.approval-response-requested',
         {
           createdAt: at,
           decision: command.decision,
           requestId: command.requestId,
-          threadId: command.threadId,
+          sessionId: command.sessionId,
         },
         // The envelope carries the requestId too, so a log scan can correlate
         // the response with the request without unpacking the payload.
         { metadata: { requestId: command.requestId } },
       )
-    case 'thread.user-input.respond':
-      requireThreadNotDeleted(model, command.threadId)
+    case 'session.user-input.respond':
+      requireSessionNotDeleted(model, command.sessionId)
 
       return one(
         command,
         at,
-        'thread.user-input-response-requested',
+        'session.user-input-response-requested',
         {
           answers: command.answers,
           createdAt: at,
           requestId: command.requestId,
-          threadId: command.threadId,
+          sessionId: command.sessionId,
         },
         { metadata: { requestId: command.requestId } },
       )
-    case 'thread.checkpoint.revert':
-      requireThreadNotArchived(model, command.threadId, command.type)
+    case 'session.checkpoint.revert':
+      requireSessionNotArchived(model, command.sessionId, command.type)
 
-      return one(command, at, 'thread.checkpoint-revert-requested', {
+      return one(command, at, 'session.checkpoint-revert-requested', {
         createdAt: at,
-        threadId: command.threadId,
+        sessionId: command.sessionId,
         turnCount: command.turnCount,
       })
-    case 'thread.session.set':
+    case 'session.runtime.set':
       return sessionSet(command, model, at)
-    case 'thread.message.assistant.delta':
-      requireThreadNotDeleted(model, command.threadId)
+    case 'session.message.assistant.delta':
+      requireSessionNotDeleted(model, command.sessionId)
 
-      return one(command, at, 'thread.message-sent', {
+      return one(command, at, 'session.message-sent', {
         attachments: [],
         createdAt: command.createdAt,
         messageId: command.messageId,
         role: 'assistant',
         streaming: true,
         text: command.delta,
-        threadId: command.threadId,
+        sessionId: command.sessionId,
         turnId: command.turnId ?? null,
         updatedAt: command.createdAt,
       })
-    case 'thread.message.assistant.complete':
-      requireThreadNotDeleted(model, command.threadId)
+    case 'session.message.assistant.complete':
+      requireSessionNotDeleted(model, command.sessionId)
 
-      return one(command, at, 'thread.message-sent', {
+      return one(command, at, 'session.message-sent', {
         attachments: [],
         createdAt: command.completedAt,
         messageId: command.messageId,
         role: 'assistant',
         streaming: false,
         text: '',
-        threadId: command.threadId,
+        sessionId: command.sessionId,
         turnId: command.turnId ?? null,
         updatedAt: command.completedAt,
       })
-    case 'thread.activity.append':
+    case 'session.activity.append':
       return activityAppended(command, model, at)
-    case 'thread.proposed-plan.upsert':
-      requireThreadNotDeleted(model, command.threadId)
+    case 'session.proposed-plan.upsert':
+      return proposedPlanUpserted(command, model, at)
+    case 'session.turn.diff.complete':
+      requireSessionNotDeleted(model, command.sessionId)
 
-      return one(command, at, 'thread.proposed-plan-upserted', {
-        proposedPlan: command.proposedPlan,
-        threadId: command.threadId,
-      })
-    case 'thread.turn.diff.complete':
-      requireThreadNotDeleted(model, command.threadId)
-
-      return one(command, at, 'thread.turn-diff-completed', {
+      return one(command, at, 'session.turn-diff-completed', {
         assistantMessageId: command.assistantMessageId ?? null,
         checkpointRef: command.checkpointRef,
         checkpointTurnCount: command.checkpointTurnCount,
         completedAt: command.completedAt,
         files: command.files,
         status: command.status,
-        threadId: command.threadId,
+        sessionId: command.sessionId,
         turnId: command.turnId,
       })
-    case 'thread.revert.complete':
-      requireThreadNotDeleted(model, command.threadId)
+    case 'session.revert.complete':
+      requireSessionNotDeleted(model, command.sessionId)
 
-      return one(command, at, 'thread.reverted', {
+      return one(command, at, 'session.reverted', {
         revertedAt: command.createdAt,
-        threadId: command.threadId,
+        sessionId: command.sessionId,
         turnCount: command.turnCount,
       })
   }
-}
-
-function projectCreated(
-  command: Extract<OrchestrationCommand, { type: 'project.create' }>,
-  model: OrchestrationReadModel,
-  at: string,
-) {
-  requireProjectAbsent(model, command.projectId)
-  requireActiveProjectWorkspaceRootAbsent(model, command.workspaceRoot, command.projectId)
-
-  return one(command, at, 'project.created', {
-    createdAt: at,
-    defaultModelSelection: command.defaultModelSelection,
-    projectId: command.projectId,
-    title: command.title,
-    updatedAt: at,
-    workspaceRoot: command.workspaceRoot,
-  })
 }
 
 function projectMetaUpdated(
@@ -249,9 +248,6 @@ function projectMetaUpdated(
   at: string,
 ) {
   requireProject(model, command.projectId)
-  if (command.workspaceRoot !== undefined) {
-    requireActiveProjectWorkspaceRootAbsent(model, command.workspaceRoot, command.projectId)
-  }
 
   return one(command, at, 'project.meta-updated', {
     defaultModelSelection: command.defaultModelSelection,
@@ -259,7 +255,6 @@ function projectMetaUpdated(
     scripts: command.scripts,
     title: command.title,
     updatedAt: at,
-    workspaceRoot: command.workspaceRoot,
   })
 }
 
@@ -284,9 +279,9 @@ function projectReordered(
 }
 
 /**
- * Deleting a project is a cascade, not a flag flip: every thread it owns keeps
- * a live provider session and keeps showing up in thread queries until it is
- * tombstoned too. The threads are deleted in the same batch as the project so
+ * Deleting a project is a cascade, not a flag flip: every session it owns keeps
+ * a live provider session and keeps showing up in session queries until it is
+ * tombstoned too. The sessions are deleted in the same batch as the project so
  * the whole cascade commits or rolls back as one transaction.
  */
 function projectDeleted(
@@ -295,23 +290,28 @@ function projectDeleted(
   at: string,
 ) {
   requireProject(model, command.projectId)
-  const threads = liveProjectThreads(model, command.projectId)
-  if (threads.length > 0 && !command.force) {
+  const sessions = liveProjectSessions(model, command.projectId)
+  if (sessions.length > 0 && !command.force) {
     throw orchestrationErrors.PROJECT_NOT_EMPTY({
       projectId: command.projectId,
-      threadCount: threads.length,
+      sessionCount: sessions.length,
     })
   }
 
-  const cascade = threads.map((thread) =>
-    event(command, at, 'thread.deleted', {
+  const cascade = sessions.map((session) =>
+    event(command, at, 'session.deleted', {
       deletedAt: at,
-      threadId: thread.id,
+      sessionId: session.id,
     }),
   )
 
   return [
     ...cascade,
+    ...Array.from(model.worktrees.values())
+      .filter((worktree) => worktree.projectId === command.projectId && !worktree.retiredAt)
+      .map((worktree) =>
+        event(command, at, 'worktree.retired', { worktreeId: worktree.id, retiredAt: at }),
+      ),
     event(command, at, 'project.deleted', {
       deletedAt: at,
       projectId: command.projectId,
@@ -319,43 +319,82 @@ function projectDeleted(
   ]
 }
 
-function threadCreated(
-  command: Extract<OrchestrationCommand, { type: 'thread.create' }>,
+function sessionCreated(
+  command: Extract<OrchestrationCommand, { type: 'session.create' | 'session.discover' }>,
   model: OrchestrationReadModel,
   at: string,
 ) {
-  requireProject(model, command.projectId)
-  requireThreadAbsent(model, command.threadId)
+  requireWorktree(model, command.worktreeId)
+  const existing = model.sessions.get(command.sessionId)
+  if (existing && command.type === 'session.discover') {
+    requireDiscoveryOwner(existing, command)
+    return []
+  }
+  requireSessionAbsent(model, command.sessionId)
 
-  return one(command, at, 'thread.created', {
-    branch: command.branch,
+  return one(command, at, 'session.created', {
     createdAt: at,
     interactionMode: command.interactionMode ?? DEFAULT_INTERACTION_MODE,
     modelSelection: command.modelSelection,
-    projectId: command.projectId,
+    worktreeId: command.worktreeId,
+    origin: command.type === 'session.discover' ? 'discovered' : 'platform',
     runtimeMode: command.runtimeMode ?? DEFAULT_RUNTIME_MODE,
-    threadId: command.threadId,
+    sessionId: command.sessionId,
     title: command.title,
     updatedAt: at,
-    worktreePath: command.worktreePath,
   })
 }
 
-function threadMetaUpdated(
-  command: Extract<OrchestrationCommand, { type: 'thread.meta.update' }>,
+function sessionMetaUpdated(
+  command: Extract<OrchestrationCommand, { type: 'session.meta.update' }>,
   model: OrchestrationReadModel,
   at: string,
 ) {
-  const thread = requireThreadNotDeleted(model, command.threadId)
-  requireExpectedBranch(thread, command.expectedBranch)
+  const session = requireSessionNotDeleted(model, command.sessionId)
+  requireProviderInstance(session, command.modelSelection)
 
-  return one(command, at, 'thread.meta-updated', {
-    branch: command.branch,
+  return one(command, at, 'session.meta-updated', {
     modelSelection: command.modelSelection,
-    threadId: command.threadId,
+    sessionId: command.sessionId,
     title: command.title,
     updatedAt: at,
-    worktreePath: command.worktreePath,
+  })
+}
+
+function requireProviderInstance(
+  session: OrchestrationProjectedSession,
+  selection: OrchestrationProjectedSession['modelSelection'] | undefined,
+) {
+  if (!selection || selection.providerInstanceId === session.modelSelection.providerInstanceId)
+    return
+  throw sessionDomainErrors.PROVIDER_INSTANCE_IMMUTABLE({ sessionId: session.id })
+}
+
+function requireDiscoveryOwner(
+  session: OrchestrationProjectedSession,
+  command: Extract<
+    OrchestrationCommand,
+    { type: 'session.discover' | 'session.discovery-metadata.update' }
+  >,
+) {
+  requireProviderInstance(session, command.modelSelection)
+  if (session.worktreeId === command.worktreeId) return
+  throw sessionDomainErrors.SESSION_REPARENT_CONFLICT({ sessionId: session.id })
+}
+
+function discoveryMetadataUpdated(
+  command: Extract<OrchestrationCommand, { type: 'session.discovery-metadata.update' }>,
+  model: OrchestrationReadModel,
+  at: string,
+) {
+  const session = requireSessionNotDeleted(model, command.sessionId)
+  requireDiscoveryOwner(session, command)
+  if (session.origin !== 'discovered' || session.title === command.title) return []
+  return one(command, at, 'session.discovery-metadata-updated', {
+    sessionId: command.sessionId,
+    title: command.title,
+    sourceUpdatedAt: command.sourceUpdatedAt,
+    updatedAt: at,
   })
 }
 
@@ -366,128 +405,132 @@ function threadMetaUpdated(
  * original `settledAt` *and* `updatedAt` is what makes the duplicate project as
  * a no-op — a fresh timestamp would churn every ordering that reads updatedAt.
  */
-function threadSettled(
-  command: Extract<OrchestrationCommand, { type: 'thread.settle' }>,
+function sessionSettled(
+  command: Extract<OrchestrationCommand, { type: 'session.settle' }>,
   model: OrchestrationReadModel,
   at: string,
 ) {
-  const thread = requireThreadNotArchived(model, command.threadId, command.type)
-  requireSettleable(thread, command.type, at)
+  const session = requireSessionNotArchived(model, command.sessionId, command.type)
+  requireSettleable(session, command.type, at)
 
-  const settledAt = thread.settledOverride === 'settled' ? thread.settledAt : null
-  const settled = event(command, at, 'thread.settled', {
+  const settledAt = session.settledOverride === 'settled' ? session.settledAt : null
+  const settled = event(command, at, 'session.settled', {
     settledAt: settledAt ?? at,
-    threadId: command.threadId,
-    updatedAt: settledAt ? thread.updatedAt : at,
+    acknowledgedFailureThroughSequence: Math.max(
+      session.latestFailureSequence ?? 0,
+      session.latestInterruptionSequence ?? 0,
+    ),
+    sessionId: command.sessionId,
+    updatedAt: settledAt ? session.updatedAt : at,
   })
   // Settling is "I am done with this", so it clears a pin the same way it parks
-  // the thread. Without this the pin would hold the card in place and the
+  // the session. Without this the pin would hold the card in place and the
   // settle would only stamp invisible state.
-  if (!thread.pinnedAt) return [settled]
+  if (!session.pinnedAt) return [settled]
 
   return [
     settled,
-    event(command, at, 'thread.unpinned', { threadId: command.threadId, updatedAt: at }),
+    event(command, at, 'session.unpinned', { sessionId: command.sessionId, updatedAt: at }),
   ]
 }
 
-function threadUnsettled(
-  command: Extract<OrchestrationCommand, { type: 'thread.unsettle' }>,
+function sessionUnsettled(
+  command: Extract<OrchestrationCommand, { type: 'session.unsettle' }>,
   model: OrchestrationReadModel,
   at: string,
 ) {
-  const thread = requireThreadNotArchived(model, command.threadId, command.type)
-  const alreadyActive = thread.settledOverride === 'active'
+  const session = requireSessionNotArchived(model, command.sessionId, command.type)
+  const alreadyActive = session.settledOverride === 'active'
 
-  return one(command, at, 'thread.unsettled', {
+  return one(command, at, 'session.unsettled', {
     reason: command.reason,
-    threadId: command.threadId,
-    updatedAt: alreadyActive ? thread.updatedAt : at,
+    sessionId: command.sessionId,
+    updatedAt: alreadyActive ? session.updatedAt : at,
   })
 }
 
-function threadSnoozed(
-  command: Extract<OrchestrationCommand, { type: 'thread.snooze' }>,
+function sessionSnoozed(
+  command: Extract<OrchestrationCommand, { type: 'session.snooze' }>,
   model: OrchestrationReadModel,
   at: string,
 ) {
-  const thread = requireThreadNotArchived(model, command.threadId, command.type)
-  requireFutureWakeTime(command.threadId, command.snoozedUntil, at)
-  requireSnoozable(thread, command.type, at)
+  const session = requireSessionNotArchived(model, command.sessionId, command.type)
+  requireFutureWakeTime(command.sessionId, command.snoozedUntil, at)
+  requireSnoozable(session, command.type, at)
 
   // Re-snoozing to the SAME wake time is a duplicate (double click, raced
   // clients) and re-emits the original timestamps so it projects as a no-op. A
   // different wake time is a real change and stamps fresh.
-  const snoozedAt = thread.snoozedUntil === command.snoozedUntil ? thread.snoozedAt : null
+  const snoozedAt = session.snoozedUntil === command.snoozedUntil ? session.snoozedAt : null
 
-  return one(command, at, 'thread.snoozed', {
+  return one(command, at, 'session.snoozed', {
     snoozedAt: snoozedAt ?? at,
     snoozedUntil: command.snoozedUntil,
-    threadId: command.threadId,
-    updatedAt: snoozedAt ? thread.updatedAt : at,
+    sessionId: command.sessionId,
+    updatedAt: snoozedAt ? session.updatedAt : at,
   })
 }
 
-function threadUnsnoozed(
-  command: Extract<OrchestrationCommand, { type: 'thread.unsnooze' }>,
+function sessionUnsnoozed(
+  command: Extract<OrchestrationCommand, { type: 'session.unsnooze' }>,
   model: OrchestrationReadModel,
   at: string,
 ) {
-  const thread = requireThreadNotArchived(model, command.threadId, command.type)
-  const alreadyAwake = thread.snoozedUntil == null
+  const session = requireSessionNotArchived(model, command.sessionId, command.type)
+  const alreadyAwake = session.snoozedUntil == null
 
-  return one(command, at, 'thread.unsnoozed', {
+  return one(command, at, 'session.unsnoozed', {
     reason: command.reason,
-    threadId: command.threadId,
-    updatedAt: alreadyAwake ? thread.updatedAt : at,
+    sessionId: command.sessionId,
+    updatedAt: alreadyAwake ? session.updatedAt : at,
   })
 }
 
 /**
- * Pinning carries no lifecycle invariant — a pin only ever promotes a thread,
+ * Pinning carries no lifecycle invariant — a pin only ever promotes a session,
  * so it can never hide pending work — but it is a promotion rather than an
  * override: it spends the settle and the snooze instead of silently outranking
- * them. The thread is on top now, not on Tuesday.
+ * them. The session is on top now, not on Tuesday.
  */
-function threadPinned(
-  command: Extract<OrchestrationCommand, { type: 'thread.pin' }>,
+function sessionPinned(
+  command: Extract<OrchestrationCommand, { type: 'session.pin' }>,
   model: OrchestrationReadModel,
   at: string,
 ) {
-  const thread = requireThreadNotArchived(model, command.threadId, command.type)
-  const pinnedAt = thread.pinnedAt ?? null
-  const pinned = event(command, at, 'thread.pinned', {
+  const session = requireSessionNotArchived(model, command.sessionId, command.type)
+  const pinnedAt = session.pinnedAt ?? null
+  const pinned = event(command, at, 'session.pinned', {
     pinnedAt: pinnedAt ?? at,
     // A fresh pin takes the client's slot; on a re-pin the existing key wins so
-    // a raced duplicate cannot move a thread the user already placed.
+    // a raced duplicate cannot move a session the user already placed.
     ...(pinnedAt || command.orderKey === undefined ? {} : { pinOrderKey: command.orderKey }),
-    threadId: command.threadId,
-    updatedAt: pinnedAt ? thread.updatedAt : at,
+    sessionId: command.sessionId,
+    updatedAt: pinnedAt ? session.updatedAt : at,
   })
 
-  return [pinned, ...promotionEvents(command, thread, at)]
+  return [pinned, ...promotionEvents(command, session, at)]
 }
 
 function promotionEvents(
-  command: Extract<OrchestrationCommand, { type: 'thread.pin' }>,
-  thread: OrchestrationProjectedThread,
+  command: Extract<OrchestrationCommand, { type: 'session.pin' }>,
+  session: OrchestrationProjectedSession,
   at: string,
 ) {
   const events: PendingOrchestrationEvent[] = []
-  if (thread.settledOverride === 'settled') {
+  if (session.settledOverride === 'settled') {
     events.push(
-      event(command, at, 'thread.unsettled', {
+      event(command, at, 'session.unsettled', {
         reason: 'user',
-        threadId: command.threadId,
+        sessionId: command.sessionId,
         updatedAt: at,
       }),
     )
   }
-  if (thread.snoozedUntil != null) {
+  if (session.snoozedUntil != null) {
     events.push(
-      event(command, at, 'thread.unsnoozed', {
+      event(command, at, 'session.unsnoozed', {
         reason: 'user',
-        threadId: command.threadId,
+        sessionId: command.sessionId,
         updatedAt: at,
       }),
     )
@@ -496,64 +539,58 @@ function promotionEvents(
   return events
 }
 
-function threadUnpinned(
-  command: Extract<OrchestrationCommand, { type: 'thread.unpin' }>,
+function sessionUnpinned(
+  command: Extract<OrchestrationCommand, { type: 'session.unpin' }>,
   model: OrchestrationReadModel,
   at: string,
 ) {
-  const thread = requireThreadNotArchived(model, command.threadId, command.type)
-  const alreadyUnpinned = thread.pinnedAt == null
+  const session = requireSessionNotArchived(model, command.sessionId, command.type)
+  const alreadyUnpinned = session.pinnedAt == null
 
-  return one(command, at, 'thread.unpinned', {
-    threadId: command.threadId,
-    updatedAt: alreadyUnpinned ? thread.updatedAt : at,
+  return one(command, at, 'session.unpinned', {
+    sessionId: command.sessionId,
+    updatedAt: alreadyUnpinned ? session.updatedAt : at,
   })
 }
 
 /**
  * A drag writes exactly one key to exactly one row: the client computes a
  * fractional key that sorts between the drop position's neighbours, and the
- * neighbours are never touched. Refusing an unpinned thread (rather than
+ * neighbours are never touched. Refusing an unpinned session (rather than
  * silently pinning it) keeps a reorder that raced an unpin from resurrecting
  * the pin the user just cleared.
  */
-function threadPinReordered(
-  command: Extract<OrchestrationCommand, { type: 'thread.pin.reorder' }>,
+function sessionPinReordered(
+  command: Extract<OrchestrationCommand, { type: 'session.pin.reorder' }>,
   model: OrchestrationReadModel,
   at: string,
 ) {
-  const thread = requireThreadNotArchived(model, command.threadId, command.type)
-  requirePinned(thread)
-  const unchanged = thread.pinOrderKey === command.orderKey
+  const session = requireSessionNotArchived(model, command.sessionId, command.type)
+  requirePinned(session)
+  const unchanged = session.pinOrderKey === command.orderKey
 
-  return one(command, at, 'thread.pin-reordered', {
+  return one(command, at, 'session.pin-reordered', {
     orderKey: command.orderKey,
-    threadId: command.threadId,
-    updatedAt: unchanged ? thread.updatedAt : at,
+    sessionId: command.sessionId,
+    updatedAt: unchanged ? session.updatedAt : at,
   })
 }
 
-/**
- * Only a session coming alive counts as activity worth waking a settled thread
- * for: ready/stopped/error writes arrive after the fact and must not fight a
- * user's explicit settle. Snooze is deliberately NOT cleared here — snooze
- * never pauses the agent, so its session starting is not the user re-engaging.
- */
 function sessionSet(
-  command: Extract<OrchestrationCommand, { type: 'thread.session.set' }>,
+  command: Extract<OrchestrationCommand, { type: 'session.runtime.set' }>,
   model: OrchestrationReadModel,
   at: string,
 ) {
-  const thread = requireThreadNotDeleted(model, command.threadId)
-  const sessionSetEvent = event(command, at, 'thread.session-set', {
-    session: command.session,
-    threadId: command.threadId,
+  const session = requireSessionNotDeleted(model, command.sessionId)
+  const sessionSetEvent = event(command, at, 'session.runtime-set', {
+    runtime: command.runtime,
+    sessionId: command.sessionId,
   })
-  const status = command.session.status
-  const alive = status === 'starting' || status === 'running' || status === 'waiting'
-  if (!alive || thread.settledOverride == null) return [sessionSetEvent]
-
-  return [autoUnsettled(command, at, command.threadId, command.createdAt), sessionSetEvent]
+  const status = command.runtime.status
+  const wakes =
+    status === 'starting' || status === 'running' || status === 'waiting' || status === 'error'
+  if (!wakes) return [sessionSetEvent]
+  return [...lifecycleResetEvents(command, session, at), sessionSetEvent]
 }
 
 /**
@@ -561,27 +598,27 @@ function sessionSet(
  * hidden inside a settled row.
  */
 function activityAppended(
-  command: Extract<OrchestrationCommand, { type: 'thread.activity.append' }>,
+  command: Extract<OrchestrationCommand, { type: 'session.activity.append' }>,
   model: OrchestrationReadModel,
   at: string,
 ) {
-  const thread = requireThreadNotDeleted(model, command.threadId)
+  const session = requireSessionNotDeleted(model, command.sessionId)
   const appended = event(
     command,
     at,
-    'thread.activity-appended',
+    'session.activity-appended',
     {
       activity: command.activity,
-      threadId: command.threadId,
+      sessionId: command.sessionId,
     },
     { metadata: activityEnvelopeMetadata(command.activity) },
   )
   const wakes =
     command.activity.kind === 'approval.requested' ||
-    command.activity.kind === 'user-input.requested'
-  if (!wakes || thread.settledOverride == null) return [appended]
-
-  return [autoUnsettled(command, at, command.threadId, command.createdAt), appended]
+    command.activity.kind === 'user-input.requested' ||
+    command.activity.tone === 'error'
+  if (!wakes) return [appended]
+  return [...lifecycleResetEvents(command, session, at), appended]
 }
 
 /**
@@ -590,7 +627,7 @@ function activityAppended(
  * unpacking. Non-request activities keep an empty metadata object.
  */
 function activityEnvelopeMetadata(
-  activity: Extract<OrchestrationCommand, { type: 'thread.activity.append' }>['activity'],
+  activity: Extract<OrchestrationCommand, { type: 'session.activity.append' }>['activity'],
 ): OrchestrationEventMetadata {
   const requestId = activityRequestId(activity.payload)
   if (requestId === null) return {}
@@ -598,56 +635,47 @@ function activityEnvelopeMetadata(
   return { requestId: v.parse(approvalRequestIdSchema, requestId) }
 }
 
-/**
- * Real activity resets ANY override: it wakes an explicitly settled thread and
- * it clears a keep-active override back to neutral, so the thread can settle on
- * its own again once this burst of work goes stale.
- */
-function autoUnsettled(
-  command: OrchestrationCommand,
-  at: string,
-  threadId: ThreadId,
-  updatedAt: string,
-) {
-  return event(command, at, 'thread.unsettled', {
-    reason: 'activity',
-    threadId,
-    updatedAt,
-  })
-}
-
 function turnStartRequested(
-  command: Extract<OrchestrationCommand, { type: 'thread.turn.start' }>,
+  command: Extract<OrchestrationCommand, { type: 'session.turn.start' }>,
   model: OrchestrationReadModel,
   at: string,
 ) {
-  const bootstrapEvent = bootstrapThreadCreated(command, model, at)
-  if (!bootstrapEvent) requireThreadNotArchived(model, command.threadId, command.type)
+  const bootstrapEvent = bootstrapSessionCreated(command, model, at)
+  if (!bootstrapEvent) {
+    const session = requireSessionNotArchived(model, command.sessionId, command.type)
+    requireProviderInstance(session, command.modelSelection)
+    if (
+      session.latestTurn &&
+      ['queued', 'claimed', 'adopted'].includes(session.latestTurn.providerStartState)
+    ) {
+      throw sessionDomainErrors.START_STATE_CONFLICT({ sessionId: command.sessionId })
+    }
+  }
   // Checked before any event is planned: the projector clears the cited
-  // thread's actionable-plan flag unconditionally, so an unvalidated reference
-  // is a write to a thread this turn has nothing to do with.
+  // session's actionable-plan flag unconditionally, so an unvalidated reference
+  // is a write to a session this turn has nothing to do with.
   requireActionableSourcePlan(model, command.sourceProposedPlan)
 
-  const messageEvent = event(command, at, 'thread.message-sent', {
+  const messageEvent = event(command, at, 'session.message-sent', {
     attachments: command.message.attachments,
     createdAt: at,
     messageId: command.message.messageId,
     role: command.message.role,
     streaming: false,
     text: command.message.text,
-    threadId: command.threadId,
+    sessionId: command.sessionId,
     turnId: command.turnId,
     updatedAt: at,
   })
   const turnEvents = [
-    ...lifecycleResetEvents(command, model.threads.get(command.threadId), at),
+    ...lifecycleResetEvents(command, model.sessions.get(command.sessionId), at),
     messageEvent,
     // The turn exists because the message asked for it; without the link the
     // message→turn causal chain is unreconstructible from the log.
     event(
       command,
       at,
-      'thread.turn-start-requested',
+      'session.turn-start-requested',
       {
         createdAt: at,
         interactionMode: command.interactionMode,
@@ -655,7 +683,7 @@ function turnStartRequested(
         modelSelection: command.modelSelection,
         runtimeMode: command.runtimeMode,
         sourceProposedPlan: command.sourceProposedPlan,
-        threadId: command.threadId,
+        sessionId: command.sessionId,
         titleSeed: command.titleSeed,
         turnId: command.turnId,
       },
@@ -663,117 +691,57 @@ function turnStartRequested(
     ),
   ]
 
-  return bootstrapEvent ? [bootstrapEvent, ...turnEvents] : turnEvents
-}
-
-/**
- * Sending is the loudest activity there is, so a turn start spends every parked
- * state before the message lands: an explicit settle wakes, a keep-active
- * override drops back to neutral, and the snooze's return ticket is spent —
- * the user is re-engaging now, not on Tuesday. A bootstrapped thread has no
- * prior state to reset.
- */
-function lifecycleResetEvents(
-  command: Extract<OrchestrationCommand, { type: 'thread.turn.start' }>,
-  thread: OrchestrationProjectedThread | undefined,
-  at: string,
-) {
-  if (!thread) return []
-
-  const events: PendingOrchestrationEvent[] = []
-  if (thread.settledOverride != null) {
-    events.push(autoUnsettled(command, at, command.threadId, at))
-  }
-  if (thread.snoozedUntil != null) {
-    events.push(
-      event(command, at, 'thread.unsnoozed', {
-        reason: 'activity',
-        threadId: command.threadId,
+  const source = command.sourceProposedPlan
+  if (source) {
+    turnEvents.push(
+      event(command, at, 'session.proposed-plan-implemented', {
+        sessionId: source.sessionId,
+        planId: source.planId,
+        implementationSessionId: command.sessionId,
+        implementedAt: at,
         updatedAt: at,
       }),
     )
   }
-
-  return events
+  return bootstrapEvent ? [bootstrapEvent, ...turnEvents] : turnEvents
 }
 
-function bootstrapThreadCreated(
-  command: Extract<OrchestrationCommand, { type: 'thread.turn.start' }>,
+function bootstrapSessionCreated(
+  command: Extract<OrchestrationCommand, { type: 'session.turn.start' }>,
   model: OrchestrationReadModel,
   at: string,
 ) {
-  const createThread = command.bootstrap?.createThread
-  if (!createThread) return null
+  const createSession = command.bootstrap?.createSession
+  if (!createSession) return null
 
-  requireProject(model, createThread.projectId)
-  requireThreadAbsent(model, command.threadId)
+  requireWorktree(model, createSession.worktreeId)
+  requireSessionAbsent(model, command.sessionId)
 
-  return event(command, at, 'thread.created', {
-    branch: createThread.branch,
+  return event(command, at, 'session.created', {
     createdAt: at,
-    interactionMode: createThread.interactionMode ?? DEFAULT_INTERACTION_MODE,
-    modelSelection: createThread.modelSelection,
-    projectId: createThread.projectId,
-    requestWorktree: createThread.requestWorktree,
-    runtimeMode: createThread.runtimeMode ?? DEFAULT_RUNTIME_MODE,
-    threadId: command.threadId,
-    title: createThread.title,
+    interactionMode: createSession.interactionMode ?? DEFAULT_INTERACTION_MODE,
+    modelSelection: createSession.modelSelection,
+    worktreeId: createSession.worktreeId,
+    origin: 'platform',
+    runtimeMode: createSession.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+    sessionId: command.sessionId,
+    title: createSession.title,
     updatedAt: at,
-    worktreePath: createThread.worktreePath,
   })
 }
 
-type EventPayload = Record<string, unknown> & ({ projectId: ProjectId } | { threadId: ThreadId })
-
-function one<Type extends PendingOrchestrationEvent['type']>(
-  command: OrchestrationCommand,
+function proposedPlanUpserted(
+  command: Extract<OrchestrationCommand, { type: 'session.proposed-plan.upsert' }>,
+  model: OrchestrationReadModel,
   at: string,
-  type: Type,
-  payload: EventPayload,
-  options?: EventEnvelopeOptions,
 ) {
-  return [event(command, at, type, payload, options)]
-}
-
-type EventEnvelopeOptions = {
-  readonly causationEventId?: EventId
-  readonly metadata?: OrchestrationEventMetadata
-}
-
-function event<Type extends PendingOrchestrationEvent['type']>(
-  command: OrchestrationCommand,
-  at: string,
-  type: Type,
-  payload: EventPayload,
-  options?: EventEnvelopeOptions,
-) {
-  const pending: unknown = {
-    actorKind:
-      command.type.startsWith('thread.message.') || command.type === 'thread.session.set'
-        ? 'provider'
-        : 'client',
-    ...aggregate(payload),
-    causationEventId: options?.causationEventId ?? null,
-    commandId: command.commandId,
-    correlationId: command.commandId,
-    eventId: v.parse(eventIdSchema, `event-${crypto.randomUUID()}`),
-    metadata: options?.metadata ?? {},
-    occurredAt: at,
-    payload,
-    type,
-  }
-
-  return pending as PendingOrchestrationEvent
-}
-
-/**
- * The aggregate follows the payload, not the command: the cascade under
- * `project.delete` plans thread events from a project command.
- */
-function aggregate(payload: EventPayload) {
-  if ('threadId' in payload) {
-    return { aggregateId: payload.threadId, aggregateKind: 'thread' } as const
-  }
-
-  return { aggregateId: payload.projectId, aggregateKind: 'project' } as const
+  const session = requireSessionNotDeleted(model, command.sessionId)
+  const reset = command.proposedPlan.implementedAt ? [] : lifecycleResetEvents(command, session, at)
+  return [
+    ...reset,
+    event(command, at, 'session.proposed-plan-upserted', {
+      proposedPlan: command.proposedPlan,
+      sessionId: command.sessionId,
+    }),
+  ]
 }

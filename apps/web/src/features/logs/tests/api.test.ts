@@ -93,7 +93,7 @@ describe('logs api', () => {
       service: null,
       source: 'client',
       status: null,
-      threadId: null,
+      sessionId: null,
       timestamp: new Date('2026-05-25T10:02:00.000Z'),
     } as const
 

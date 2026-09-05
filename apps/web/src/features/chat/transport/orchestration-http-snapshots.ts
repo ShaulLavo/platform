@@ -1,7 +1,7 @@
 import type {
   OrchestrationShellSnapshot,
-  OrchestrationThreadDetailSnapshot,
-  ThreadId,
+  OrchestrationSessionDetailSnapshot,
+  SessionId,
 } from '@workspace/contracts'
 
 import type { Client } from '@/lib/client'
@@ -18,7 +18,7 @@ const ORCHESTRATION_SNAPSHOT_TIMEOUT_MS = 60_000
 /**
  * The two authoritative snapshot reads go over HTTP, never over the
  * orchestration socket. A shell snapshot for a workspace with hundreds of
- * threads is one large frame, and the socket writes frames in order: while it
+ * sessions is one large frame, and the socket writes frames in order: while it
  * is on the wire, every ping, dispatch and subscription frame waits behind it.
  * Commands, replay and the subscriptions — including the `kind: 'snapshot'`
  * frames they deliver — stay on the socket, where ordering against the event
@@ -46,44 +46,44 @@ export function fetchOrchestrationShellSnapshotHttp(client: Client) {
     (snapshot) => ({
       projectCount: snapshot.projects.length,
       snapshotSequence: snapshot.snapshotSequence,
-      threadCount: snapshot.threads.length,
+      sessionCount: snapshot.sessions.length,
     }),
   )
 }
 
-export function fetchOrchestrationThreadDetailSnapshotHttp(
-  threadId: ThreadId,
+export function fetchOrchestrationSessionDetailSnapshotHttp(
+  sessionId: SessionId,
   client: Client,
   signal?: AbortSignal,
 ) {
   return observeClientOperation(
     {
-      action: 'chat.thread_detail_snapshot.http',
+      action: 'chat.session_detail_snapshot.http',
       area: 'chat',
-      threadId,
+      sessionId,
     },
     async () => {
-      const response = await client.orchestration['thread-detail'].get({
+      const response = await client.orchestration['session-detail'].get({
         fetch: {
           signal: signal
             ? AbortSignal.any([signal, snapshotTimeoutSignal()])
             : snapshotTimeoutSignal(),
         },
-        query: { threadId },
+        query: { sessionId },
       })
 
       signal?.throwIfAborted()
-      return unwrapEdenResponse<OrchestrationThreadDetailSnapshot>(response, {
-        emptyMessage: 'the thread detail snapshot response carried no data',
+      return unwrapEdenResponse<OrchestrationSessionDetailSnapshot>(response, {
+        emptyMessage: 'the session detail snapshot response carried no data',
         normalizeDates: true,
         requireData: true,
       })
     },
     (snapshot) => ({
-      activityCount: snapshot.thread.activities.length,
-      latestTurnState: snapshot.thread.latestTurn?.state ?? null,
-      messageCount: snapshot.thread.messages.length,
-      sessionStatus: snapshot.thread.session?.status ?? null,
+      activityCount: snapshot.session.activities.length,
+      latestTurnState: snapshot.session.latestTurn?.state ?? null,
+      messageCount: snapshot.session.messages.length,
+      sessionStatus: snapshot.session.runtime?.status ?? null,
       snapshotSequence: snapshot.snapshotSequence,
     }),
   )

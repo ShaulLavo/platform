@@ -174,9 +174,9 @@ export const STATE_CLASSIFICATIONS: Readonly<Record<string, ClassifiedState>> = 
     classification: 'ephemeral',
     why: 'take-once queue; a replayed URL would run a shell command on load',
   },
-  threadDiffScope: {
+  sessionDiffScope: {
     classification: 'address',
-    storageKey: 'platform.chat-thread-diff-scope.v1',
+    storageKey: 'platform.chat-session-diff-scope.v1',
     why: '?diff=wt | ?diff=turn-<id>',
   },
   uiMode: {

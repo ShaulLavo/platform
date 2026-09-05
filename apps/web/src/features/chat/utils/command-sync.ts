@@ -1,67 +1,67 @@
-import type { ThreadId } from '@workspace/contracts'
+import type { EnvironmentId, SessionId } from '@workspace/contracts'
 
 import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
 import { elapsedMs } from '@/features/chat/utils/elapsed-ms'
 import {
-  chatThreadSnapshotSummary,
+  chatSessionSnapshotSummary,
   createChatPipelineScope,
   logChatPipelineInfo,
   logChatPipelineWarn,
 } from '@/features/chat/utils/pipeline-logging'
 
-export async function syncThreadProjectionAfterDispatch({
+export async function syncSessionProjectionAfterDispatch({
   transport,
   replayAfterSequence,
-  threadId,
+  sessionId,
 }: {
   transport: ChatTransport
   replayAfterSequence: number
-  threadId: ThreadId
+  sessionId: SessionId
 }) {
   const startedAt = performance.now()
   const scope = createChatPipelineScope('chat.dispatch.sync.summary', {
     replayAfterSequence,
-    threadId,
+    sessionId,
   })
   scope.increment('sync.startCount')
 
   try {
     const replayEvents = transport.replayEvents({
       afterSequence: Math.max(0, replayAfterSequence),
-      threadId,
+      sessionId,
     })
-    const threadDetailSnapshot = transport.threadDetailSnapshot(threadId)
-    const [replay, snapshot] = await Promise.allSettled([replayEvents, threadDetailSnapshot])
+    const sessionDetailSnapshot = transport.sessionDetailSnapshot(sessionId)
+    const [replay, snapshot] = await Promise.allSettled([replayEvents, sessionDetailSnapshot])
     if (transport.closed) return
     const store = useChatProjectionStore.getState()
 
-    applyReplaySyncResult(scope, store, replay, replayAfterSequence)
-    applySnapshotSyncResult(scope, store, snapshot)
+    applyReplaySyncResult(scope, store, transport.environmentId, replay, replayAfterSequence)
+    applySnapshotSyncResult(scope, store, transport.environmentId, snapshot)
   } finally {
     scope.end({ durationMs: elapsedMs(startedAt) })
   }
 }
 
-export function scheduleThreadProjectionSyncAfterDispatch({
+export function scheduleSessionProjectionSyncAfterDispatch({
   transport,
   replayAfterSequence,
-  threadId,
+  sessionId,
 }: {
   transport: ChatTransport
   replayAfterSequence: number
-  threadId: ThreadId
+  sessionId: SessionId
 }) {
   logChatPipelineInfo('chat.dispatch.sync.scheduled', {
     replayAfterSequence,
-    threadId,
+    sessionId,
   })
 
-  void syncThreadProjectionAfterDispatch({ transport, replayAfterSequence, threadId }).catch(
+  void syncSessionProjectionAfterDispatch({ transport, replayAfterSequence, sessionId }).catch(
     (error: unknown) => {
       logChatPipelineWarn('chat.dispatch.sync.unhandled_failure', {
         error,
-        threadId,
+        sessionId,
       })
     },
   )
@@ -70,6 +70,7 @@ export function scheduleThreadProjectionSyncAfterDispatch({
 function applyReplaySyncResult(
   scope: ReturnType<typeof createChatPipelineScope>,
   store: ReturnType<typeof useChatProjectionStore.getState>,
+  environmentId: EnvironmentId,
   replay: PromiseSettledResult<Awaited<ReturnType<ChatTransport['replayEvents']>>>,
   replayAfterSequence: number,
 ) {
@@ -80,7 +81,7 @@ function applyReplaySyncResult(
     return
   }
 
-  store.applyOrchestrationEvents(replay.value.events)
+  store.applyOrchestrationEvents(environmentId, replay.value.events)
   scope.increment('sync.replayAppliedCount')
   scope.increment('sync.replayEventCount', replay.value.events.length)
   scope.set({
@@ -95,7 +96,8 @@ function applyReplaySyncResult(
 function applySnapshotSyncResult(
   scope: ReturnType<typeof createChatPipelineScope>,
   store: ReturnType<typeof useChatProjectionStore.getState>,
-  snapshot: PromiseSettledResult<Awaited<ReturnType<ChatTransport['threadDetailSnapshot']>>>,
+  environmentId: EnvironmentId,
+  snapshot: PromiseSettledResult<Awaited<ReturnType<ChatTransport['sessionDetailSnapshot']>>>,
 ) {
   if (snapshot.status !== 'fulfilled') {
     scope.increment('sync.snapshotFailedCount')
@@ -104,10 +106,10 @@ function applySnapshotSyncResult(
     return
   }
 
-  store.syncThreadDetailSnapshot(snapshot.value)
+  store.syncSessionDetailSnapshot(environmentId, snapshot.value)
   scope.increment('sync.snapshotAppliedCount')
   scope.set({
-    snapshot: chatThreadSnapshotSummary(snapshot.value),
+    snapshot: chatSessionSnapshotSummary(snapshot.value),
     snapshotStatus: snapshot.status,
   })
 }

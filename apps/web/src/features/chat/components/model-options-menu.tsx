@@ -37,7 +37,7 @@ const PROVIDER_DEFAULT_VALUE = ''
  *
  * Writes land on the draft's model selection, the same override the picker and
  * the send path already read, so the pick is live for the next turn without a
- * round trip through the thread projection.
+ * round trip through the session projection.
  */
 export function ModelOptionsMenu({
   compact,

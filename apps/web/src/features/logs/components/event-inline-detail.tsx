@@ -23,7 +23,7 @@ export function LogsEventInlineDetail({ detail, event }: LogsEventInlineDetailPr
         <LogsDetailField label='time' value={formatLogDateTime(visibleEvent.timestamp)} />
         <LogsDetailField label='duration' value={formatDuration(visibleEvent.durationMs)} />
         <LogsDetailField label='request' value={visibleEvent.requestId ?? 'none'} />
-        <LogsDetailField label='thread' value={visibleEvent.threadId ?? 'none'} />
+        <LogsDetailField label='session' value={visibleEvent.sessionId ?? 'none'} />
         <LogsDetailField label='path' value={visibleEvent.path ?? 'none'} />
       </div>
       {detail ? (

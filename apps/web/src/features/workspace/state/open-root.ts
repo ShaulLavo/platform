@@ -1,0 +1,90 @@
+import { confirmedEnvironmentId } from '@/lib/environments/state/domain'
+import type { QueryClient } from '@tanstack/react-query'
+import type { EditorCommands } from '@/features/editor/state/commands'
+import type { EditorWorkspaceStoreApi } from '@/features/editor/state/workspace-state'
+import type { WorkspaceEditService } from '@/features/editor/state/workspace-edit-service'
+import { environmentActivitySignal } from '@/lib/environments/state/activity'
+import { clientForQueryClient, originForQueryClient } from '@/lib/environments/state/query-clients'
+import { workspacePathLeaf } from '@/features/workspace/utils/path'
+import { reportError, toClientError } from '@/lib/client-error-taxonomy'
+import { log } from '@/lib/client-logging'
+import { openWorkspaceRootPath, recordRecentEntry } from '@/lib/file-server'
+import { filePickerKeys, fileSystemKeys } from '@/lib/query-keys'
+import { recentFolderKeys } from '@/lib/recent-folders-query'
+import {
+  activateWorkspaceRoot,
+  isActiveWorkspaceRoot,
+} from '@/features/workspace/state/active-project'
+import { claimWorkspaceOpenGeneration } from '@/features/workspace/state/open-generation'
+
+export type OpenWorkspaceRootResult = 'already-open' | 'failed' | 'opened' | 'superseded'
+
+type WorkspaceRootOwner = {
+  queryClient: QueryClient
+  switchRootFolder: EditorCommands['switchRootFolder']
+  workspaceStore: EditorWorkspaceStoreApi
+  workspaceEdits: WorkspaceEditService | null
+}
+
+export async function openWorkspaceRootForOwner(
+  { queryClient, switchRootFolder, workspaceStore, workspaceEdits }: WorkspaceRootOwner,
+  workspaceRoot: string,
+): Promise<OpenWorkspaceRootResult> {
+  const origin = originForQueryClient(queryClient)
+  const activity = environmentActivitySignal(origin)
+  if (activity.aborted) return 'superseded'
+  const client = clientForQueryClient(queryClient)
+  const reservation = workspaceEdits?.acquireRootSwitchReservation() ?? null
+  if (workspaceEdits && !reservation) return 'failed'
+  const generation = claimWorkspaceOpenGeneration()
+  activateWorkspaceRoot(workspaceRoot)
+
+  try {
+    confirmedEnvironmentId(origin)
+    const result = await openWorkspaceRootPath(workspaceRoot, generation, activity, client)
+    // A later request already claimed the app; landing now would drag it back.
+    if (
+      activity.aborted ||
+      result.status === 'superseded' ||
+      !isActiveWorkspaceRoot(workspaceRoot)
+    ) {
+      log.info({
+        action: 'workspace.root_open_superseded',
+        area: 'workspace',
+        path: workspaceRoot,
+      })
+      return 'superseded'
+    }
+    confirmedEnvironmentId(origin)
+    const entry = result.entry
+    if (!entry) return 'superseded'
+    if (workspaceStore.getState().rootFolder?.path === workspaceRoot) return 'already-open'
+
+    queryClient.removeQueries({ queryKey: fileSystemKeys.trees() })
+    switchRootFolder({ ...entry, name: workspacePathLeaf(workspaceRoot), type: 'directory' })
+    log.info({ action: 'workspace.root_opened', area: 'workspace', path: workspaceRoot })
+    void recordRootAsRecent(queryClient, workspaceRoot)
+    return 'opened'
+  } catch (error) {
+    if (activity.aborted) return 'superseded'
+    log.warn({ action: 'workspace.root_open_rejected', area: 'workspace', path: workspaceRoot })
+    reportError(toClientError(error))
+    return 'failed'
+  } finally {
+    if (reservation) workspaceEdits?.releaseRootSwitchReservation(reservation)
+  }
+}
+
+/** Trails the open: a lost recency stamp is a worse menu, never a failed switch. */
+async function recordRootAsRecent(queryClient: QueryClient, workspaceRoot: string) {
+  try {
+    await recordRecentEntry(workspaceRoot, clientForQueryClient(queryClient))
+  } catch {
+    // Swallowed, not silent: the fs.record_recent wide event carries the failure.
+    return
+  }
+
+  // Both the titlebar menu and the picker sidebar read this list.
+  await queryClient.invalidateQueries({ queryKey: recentFolderKeys.all })
+  await queryClient.invalidateQueries({ queryKey: filePickerKeys.recents() })
+}

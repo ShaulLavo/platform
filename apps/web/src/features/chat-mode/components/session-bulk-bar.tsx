@@ -10,7 +10,7 @@ import { Button } from '@workspace/ui/components/button'
  * ten finished sessions is to file or drop all ten in one gesture.
  */
 export function SessionBulkBar() {
-  const threadIds = useSessionMultiSelectStore((state) => state.threadIds)
+  const refs = useSessionMultiSelectStore((state) => state.refs)
   const actions = useSessionActions()
 
   return (
@@ -20,14 +20,14 @@ export function SessionBulkBar() {
       role='toolbar'
     >
       <span className='text-muted-foreground min-w-0 flex-1 truncate text-[11px] tabular-nums'>
-        {threadIds.length} selected
+        {refs.length} selected
       </span>
       <Button
         className='text-muted-foreground hover:text-foreground compact:h-6 compact:gap-1 compact:px-1.5 h-7 gap-1.5 rounded-md px-2 text-[11px]'
         size='sm'
         type='button'
         variant='ghost'
-        onClick={() => actions.archiveSessions(threadIds)}
+        onClick={() => actions.archiveSessions(refs)}
       >
         <ArchiveIcon className='size-3.5' />
         Archive
@@ -37,7 +37,7 @@ export function SessionBulkBar() {
         size='sm'
         type='button'
         variant='ghost'
-        onClick={() => actions.deleteSessions(threadIds)}
+        onClick={() => actions.deleteSessions(refs)}
       >
         <TrashIcon className='size-3.5' />
         Delete

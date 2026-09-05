@@ -1,4 +1,3 @@
-import { useChatModeSession } from '@/features/chat-mode/providers/session-context'
 import type { ChatRailOrder } from '@/features/chat-mode/providers/rail-order-context'
 import {
   reorderRailProject,
@@ -12,10 +11,8 @@ import {
  * which reads the same stores the rail renders from.
  */
 export function useRailOrderActions(): ChatRailOrder {
-  const { transport } = useChatModeSession()
-
   return {
-    reorderProject: (activeId, overId) => reorderRailProject({ activeId, transport, overId }),
-    reorderSession: (activeId, overId) => reorderRailSession({ activeId, transport, overId }),
+    reorderProject: (activeId, overId) => reorderRailProject({ activeId, overId }),
+    reorderSession: (activeId, overId) => reorderRailSession({ activeId, overId }),
   }
 }

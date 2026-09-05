@@ -1,9 +1,12 @@
+import { useActiveChatProjection } from '@/features/chat/hooks/use-active-projection'
 import { CaretDownIcon, FolderOpenIcon, FolderPlusIcon } from '@phosphor-icons/react'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 
-import { selectChatProjects } from '@/features/chat/state/chat-projection-selectors'
-import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
+import {
+  selectChatProjects,
+  selectCurrentWorktree,
+} from '@/features/chat/state/chat-projection-selectors'
 import { useEditorWorkspaceState } from '@/features/editor/state/workspace-state'
 import { projectMenuModel } from '@/features/workbench/utils/project-menu-model'
 import { useOpenWorkspaceRoot } from '@/features/workspace/hooks/use-open-root'
@@ -27,7 +30,13 @@ export function WorkspaceProjectMenu({ workspaceTitle }: { readonly workspaceTit
   const [open, setOpen] = useState(false)
   const rootPath = useEditorWorkspaceState((state) => state.rootFolder?.path ?? null)
   const openPicker = useEditorWorkspaceState((state) => state.openPicker)
-  const projects = useChatProjectionStore(selectChatProjects)
+  const slice = useActiveChatProjection((state) => state)
+  const projects = selectChatProjects(slice).flatMap((project) => {
+    const worktree = selectCurrentWorktree(slice, project.id)
+    return worktree
+      ? [{ title: project.title, updatedAt: project.updatedAt, workspaceRoot: worktree.path }]
+      : []
+  })
   const openWorkspaceRoot = useOpenWorkspaceRoot()
   // Only fetched while the menu is open: recents are a menu concern, not app state.
   const recentFolders = useQuery(recentFoldersQueryOptions({ enabled: open }))

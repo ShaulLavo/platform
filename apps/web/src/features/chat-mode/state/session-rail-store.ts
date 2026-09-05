@@ -1,4 +1,4 @@
-import type { ProjectId, ThreadId } from '@workspace/contracts'
+import type { ProjectId, ScopedSessionRef } from '@workspace/contracts'
 import { create } from 'zustand'
 
 import {
@@ -15,7 +15,7 @@ export type SessionRenameSurface = 'header' | 'rail'
 
 export type SessionRenameTarget = {
   readonly surface: SessionRenameSurface
-  readonly threadId: ThreadId
+  readonly ref: ScopedSessionRef
 }
 
 const NO_PROJECT_IDS: readonly ProjectId[] = []

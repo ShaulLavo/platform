@@ -4,7 +4,7 @@ import { create } from 'zustand'
 /**
  * Prompts the user parked with ⌘S so they could type something else first. The
  * queue is deliberately text-only and provider-agnostic: the point of stashing
- * is to move a prompt to another thread or another model, so nothing about the
+ * is to move a prompt to another session or another model, so nothing about the
  * model it was typed against travels with it.
  */
 const PROMPT_STASH_STORAGE_KEY = 'platform.prompt-stash.v1'

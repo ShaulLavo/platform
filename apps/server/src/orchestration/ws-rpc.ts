@@ -6,14 +6,14 @@ import {
   ORCHESTRATION_RESUME_MAX_GAP,
   ORCHESTRATION_WS_PROTOCOL_VERSION,
   type OrchestrationShellStreamFrame,
-  type OrchestrationThreadStreamFrame,
+  type OrchestrationSessionStreamFrame,
   type OrchestrationWsServerConfig,
 } from '@workspace/contracts'
 import { Elysia } from 'elysia'
 
 import serverPackage from '../../package.json' with { type: 'json' }
 import { authenticateWebSocketData, type AuthConfig } from '../auth'
-import type { EnvironmentIdentity } from '../db/schema'
+import type { EnvironmentIdentity } from '../db/environment-identity'
 import {
   orchestrationCommandSummary,
   orchestrationReplaySummary,
@@ -23,7 +23,7 @@ import {
 import type { OrchestrationEngine } from './engine'
 import {
   orchestrationWsClientMessageSchema,
-  type OrchestrationThreadDetailPage,
+  type OrchestrationSessionDetailPage,
   type OrchestrationWsClientMessage,
   type OrchestrationWsRequest,
   type OrchestrationWsRequestOf,
@@ -75,10 +75,10 @@ type OrchestrationRpcConnectionState = {
 type OrchestrationRpcSubscription = {
   abortController: AbortController
   method: OrchestrationWsSubscribe['method']
-  threadId?: string
+  sessionId?: string
 }
 
-type OrchestrationStreamItem = OrchestrationShellStreamFrame | OrchestrationThreadStreamFrame
+type OrchestrationStreamItem = OrchestrationShellStreamFrame | OrchestrationSessionStreamFrame
 
 export function orchestrationWsRoutes(
   engine: OrchestrationEngine,
@@ -223,7 +223,7 @@ type OrchestrationRpcHandlers = {
 const orchestrationRpcHandlers: OrchestrationRpcHandlers = {
   dispatchCommand: (engine, message) => engine.dispatchClientCommand(message.command),
   replayEvents: (engine, message) => engine.replay(message.input),
-  threadDetailPage: (engine, message) => engine.threadDetailPage(message.input),
+  sessionDetailPage: (engine, message) => engine.sessionDetailPage(message.input),
 }
 
 function resolveOrchestrationRpcRequest(
@@ -237,8 +237,8 @@ function resolveOrchestrationRpcRequest(
   if (message.method === 'serverConfig') {
     return config
   }
-  if (message.method === 'threadDetailPage') {
-    return orchestrationRpcHandlers.threadDetailPage(engine, message)
+  if (message.method === 'sessionDetailPage') {
+    return orchestrationRpcHandlers.sessionDetailPage(engine, message)
   }
 
   return orchestrationRpcHandlers.replayEvents(engine, message)
@@ -256,7 +256,7 @@ function handleOrchestrationRpcSubscribe(
   const subscription: OrchestrationRpcSubscription = {
     abortController,
     method: message.method,
-    threadId: message.method === 'subscribeThread' ? message.threadId : undefined,
+    sessionId: message.method === 'subscribeSession' ? message.sessionId : undefined,
   }
   state.subscriptions.set(message.subscriptionId, subscription)
   recordChatPipelineInfo(
@@ -309,7 +309,7 @@ function handleOrchestrationRpcSubscriptionError(
     error,
     method: subscription.method,
     subscriptionId,
-    threadId: subscription.threadId,
+    sessionId: subscription.sessionId,
   })
 }
 
@@ -333,7 +333,7 @@ function completeOrchestrationRpcSubscription(
     aborted: subscription.abortController.signal.aborted,
     method: subscription.method,
     subscriptionId,
-    threadId: subscription.threadId,
+    sessionId: subscription.sessionId,
   })
 }
 
@@ -346,7 +346,7 @@ function orchestrationRpcStream(
     return engine.shellStream({ afterSequence: message.afterSequence, signal })
   }
 
-  return engine.threadDetailStream(message.threadId, {
+  return engine.sessionDetailStream(message.sessionId, {
     afterSequence: message.afterSequence,
     signal,
   })
@@ -364,7 +364,7 @@ function unsubscribeOrchestrationRpcState(
   recordChatPipelineInfo('chat.pipeline.ws.subscription.unsubscribe', {
     method: subscription.method,
     subscriptionId,
-    threadId: subscription.threadId,
+    sessionId: subscription.sessionId,
   })
 }
 
@@ -393,7 +393,7 @@ function sendOrchestrationRpcMessage(
 
 function orchestrationRpcRequestSummary(message: OrchestrationWsRequest) {
   if (message.method === 'dispatchCommand') return orchestrationCommandSummary(message.command)
-  if (message.method === 'threadDetailPage') {
+  if (message.method === 'sessionDetailPage') {
     return {
       // Whether the walk started from a boundary is what tells a first page from
       // a continuation; the anchor ids themselves say nothing a reader needs.
@@ -401,7 +401,7 @@ function orchestrationRpcRequestSummary(message: OrchestrationWsRequest) {
       fromActivityAnchor: Boolean(message.input.beforeActivity),
       limit: message.input.limit,
       method: message.method,
-      threadId: message.input.threadId,
+      sessionId: message.input.sessionId,
     }
   }
   if (message.method === 'replayEvents') {
@@ -417,12 +417,12 @@ function orchestrationRpcRequestSummary(message: OrchestrationWsRequest) {
 /**
  * Folded into the one request event rather than emitted as a second line: what
  * a page read is worth knowing about is how much came back and whether the walk
- * reached the start of the thread.
+ * reached the start of the session.
  */
 function orchestrationRpcResultSummary(message: OrchestrationWsRequest, data: unknown) {
-  if (message.method !== 'threadDetailPage') return {}
+  if (message.method !== 'sessionDetailPage') return {}
 
-  const page = data as OrchestrationThreadDetailPage
+  const page = data as OrchestrationSessionDetailPage
 
   return {
     activityCount: page.activities.length,
@@ -432,12 +432,12 @@ function orchestrationRpcResultSummary(message: OrchestrationWsRequest, data: un
 }
 
 function orchestrationRpcSubscribeSummary(message: OrchestrationWsSubscribe) {
-  if (message.method === 'subscribeThread') {
+  if (message.method === 'subscribeSession') {
     return {
       afterSequence: message.afterSequence,
       method: message.method,
       subscriptionId: message.subscriptionId,
-      threadId: message.threadId,
+      sessionId: message.sessionId,
     }
   }
 

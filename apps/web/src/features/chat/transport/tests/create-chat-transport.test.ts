@@ -1,10 +1,11 @@
+import { healthDescriptorSchema } from '@workspace/contracts'
+import { useEnvironmentsStore } from '@/lib/environments/state/store'
 import {
   DEFAULT_PROVIDER_INSTANCE_ID,
   DEFAULT_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
   commandIdSchema,
-  projectIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 import { deferredSnapshotClient } from '../../../../../test/factories/deferred-snapshot-client'
@@ -15,8 +16,7 @@ import { makeTestServer } from '../../../../../test/server'
 import { createInProcessClient } from '../../../../../test/client'
 import { inProcessOrchestrationSocketFactory } from '../../../../../test/factories/in-process-orchestration-socket'
 
-const PROJECT_ID = v.parse(projectIdSchema, 'transport-project')
-const THREAD_ID = v.parse(threadIdSchema, 'transport-thread')
+const SESSION_ID = v.parse(sessionIdSchema, '0c9faaac-3e76-560c-a0e0-1adfa868c5c6')
 
 test('two transports dispatch and read snapshots from their owning servers after an active switch', async () => {
   const serverA = await makeTestServer({ filesystemWatch: false })
@@ -29,6 +29,18 @@ test('two transports dispatch and read snapshots from their owning servers after
   setClient(createInProcessClient(serverA))
   setActiveServerOrigin(originB)
   setClient(createInProcessClient(serverB))
+  useEnvironmentsStore
+    .getState()
+    .recordDescriptor(
+      originA,
+      v.parse(healthDescriptorSchema, (await createInProcessClient(serverA).health.get()).data),
+    )
+  useEnvironmentsStore
+    .getState()
+    .recordDescriptor(
+      originB,
+      v.parse(healthDescriptorSchema, (await createInProcessClient(serverB).health.get()).data),
+    )
   const transportA = createChatTransport(originA, {
     createSocket: inProcessOrchestrationSocketFactory(serverA),
   })
@@ -37,52 +49,70 @@ test('two transports dispatch and read snapshots from their owning servers after
   })
 
   try {
-    for (const [transport, title] of [
-      [transportA, 'A'],
-      [transportB, 'B'],
+    for (const [transport, title, rootPath] of [
+      [transportA, 'A', serverA.root],
+      [transportB, 'B', serverB.root],
     ] as const) {
-      await transport.dispatchCommand({
+      const registration = await transport.dispatchCommand({
         commandId: v.parse(commandIdSchema, `project-${title}`),
-        projectId: PROJECT_ID,
         defaultModelSelection: null,
         title,
         type: 'project.create',
-        workspaceRoot: `/workspace/${title}`,
+        workspaceRoot: rootPath,
       })
       await transport.dispatchCommand({
-        commandId: v.parse(commandIdSchema, `thread-${title}`),
-        projectId: PROJECT_ID,
-        threadId: THREAD_ID,
+        commandId: v.parse(commandIdSchema, `session-${title}`),
+        sessionId: SESSION_ID,
+        worktreeId: registration.result!.worktreeId,
         title,
-        type: 'thread.create',
+        type: 'session.create',
         modelSelection: { model: 'mock-model', providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID },
         interactionMode: DEFAULT_INTERACTION_MODE,
         runtimeMode: DEFAULT_RUNTIME_MODE,
-        branch: null,
-        worktreePath: null,
       })
     }
     expect(activeServerOrigin()).toBe(originB)
-    expect((await transportA.threadDetailSnapshot(THREAD_ID)).thread.title).toBe('A')
-    expect((await transportB.threadDetailSnapshot(THREAD_ID)).thread.title).toBe('B')
+    expect((await transportA.sessionDetailSnapshot(SESSION_ID)).session.title).toBe('A')
+    expect((await transportB.sessionDetailSnapshot(SESSION_ID)).session.title).toBe('B')
     const deferred = deferredSnapshotClient(serverA)
     setActiveServerOrigin(originA)
     setClient(deferred.client)
     const closingTransport = createChatTransport(originA)
-    const snapshot = closingTransport.threadDetailSnapshot(THREAD_ID)
+    const snapshot = closingTransport.sessionDetailSnapshot(SESSION_ID)
     await deferred.started
     closingTransport.close()
     deferred.release()
     await expect(snapshot).rejects.toMatchObject({ code: 'ORCHESTRATION_RPC_CLOSED' })
+    const refusedSnapshot = deferredSnapshotClient(serverA)
+    setClient(refusedSnapshot.client)
+    const refusedTransport = createChatTransport(originA)
+    const pendingSnapshot = refusedTransport.sessionDetailSnapshot(SESSION_ID)
+    await refusedSnapshot.started
+    const descriptorB = v.parse(
+      healthDescriptorSchema,
+      (await createInProcessClient(serverB).health.get()).data,
+    )
+    expect(() => useEnvironmentsStore.getState().recordDescriptor(originA, descriptorB)).toThrow()
+    refusedSnapshot.release()
+    await expect(pendingSnapshot).rejects.toMatchObject({ code: 'ENVIRONMENT_IDENTITY_DRIFT' })
+    refusedTransport.close()
+    useEnvironmentsStore
+      .getState()
+      .recordDescriptor(
+        originA,
+        v.parse(healthDescriptorSchema, (await createInProcessClient(serverA).health.get()).data),
+      )
     setActiveServerOrigin(originB)
     const iterator = transportA.shellStream()[Symbol.asyncIterator]()
     expect((await iterator.next()).done).toBe(false)
     transportA.close()
     await expect(iterator.next()).rejects.toMatchObject({ code: 'ORCHESTRATION_RPC_CLOSED' })
-    await expect(transportA.threadDetailSnapshot(THREAD_ID)).rejects.toMatchObject({
+    await expect(transportA.sessionDetailSnapshot(SESSION_ID)).rejects.toMatchObject({
       code: 'ORCHESTRATION_RPC_CLOSED',
     })
-    expect(() => transportA.retainThreadDetail(THREAD_ID)).toThrow('The chat transport is closed.')
+    expect(() => transportA.retainSessionDetail(SESSION_ID)).toThrow(
+      'The chat transport is closed.',
+    )
   } finally {
     transportA.close()
     transportB.close()

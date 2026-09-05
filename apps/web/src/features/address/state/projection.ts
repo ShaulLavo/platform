@@ -1,4 +1,9 @@
-import { formatAddress, parseAddress, type Address } from '@/features/address/utils/grammar'
+import {
+  formatAddress,
+  parseAddress,
+  type Address,
+  type AddressEnvironments,
+} from '@/features/address/utils/grammar'
 import { log } from '@/lib/client-logging'
 
 /**
@@ -37,10 +42,19 @@ export type AddressWriter = {
  * typed six characters into search.
  */
 function identityOf(address: Address) {
-  return JSON.stringify([address.workspace, address.mode, address.document, address.settings])
+  return JSON.stringify([
+    address.environmentId,
+    address.rejectedEnvironment,
+    address.workspace,
+    address.mode,
+    address.document,
+    address.settings,
+  ])
 }
 
 export type AddressProjectionOptions = {
+  readonly isSuspended?: () => boolean
+  readonly environments?: () => AddressEnvironments
   /**
    * Runs `write` after the quiet period and returns a cancel. Injected so node tests
    * drive the projection without a clock, and so the debounce interval belongs to the
@@ -67,6 +81,8 @@ export type AddressProjection = {
 export function createAddressProjection({
   schedule,
   writer,
+  environments,
+  isSuspended,
 }: AddressProjectionOptions): AddressProjection {
   let pending: Address | null = null
   let cancelScheduled: (() => void) | null = null
@@ -76,6 +92,7 @@ export function createAddressProjection({
 
   function flush() {
     cancelScheduled = null
+    if (isSuspended?.()) return
     const address = pending
     pending = null
     if (!address || cancelled) return
@@ -109,7 +126,7 @@ export function createAddressProjection({
     // `flush` is like-for-like: a popped entry the projection itself wrote then matches
     // exactly and costs no write at all.
     adopt(href) {
-      const address = parseAddress(href)
+      const address = parseAddress(href, environments?.())
       lastWritten = formatAddress(address)
       lastIdentity = identityOf(address)
     },

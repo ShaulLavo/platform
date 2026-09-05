@@ -183,6 +183,30 @@ export class GitService {
     return { repository: repository?.info ?? null }
   }
 
+  async remoteUrl(root: string, remote: 'origin') {
+    const repository = await this.requiredRepositoryLocation(root)
+    const result = await this.git(repository.rootAbsolutePath, ['remote', 'get-url', remote], {
+      allowFailure: true,
+    })
+    if (result.exitCode !== 0) return null
+
+    return result.stdout.trim() || null
+  }
+
+  async rootCommit(root: string) {
+    const repository = await this.requiredRepositoryLocation(root)
+    const result = await this.git(
+      repository.rootAbsolutePath,
+      ['rev-list', '--max-parents=0', 'HEAD'],
+      {
+        allowFailure: true,
+      },
+    )
+    if (result.exitCode !== 0) return null
+
+    return result.stdout.split(/\r?\n/, 1)[0]?.trim() || null
+  }
+
   async status(input = ''): Promise<GitStatusResult> {
     recordGitServiceOperation('status', input)
     const repository = await this.resolveRepositoryLocation(input)

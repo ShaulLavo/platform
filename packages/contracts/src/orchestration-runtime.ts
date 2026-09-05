@@ -20,7 +20,7 @@ export const reasoningEffortSchema = v.pipe(v.string(), v.trim(), v.minLength(1)
 /**
  * Still open — adapters read their own keys out of it — but the reasoning
  * effort is typed because it is the one option the picker, the persisted
- * per-thread selection, and every adapter must agree on. Typed *inside*
+ * per-session selection, and every adapter must agree on. Typed *inside*
  * `options` rather than as a sibling field so the Codex adapter, which already
  * reads `options.reasoningEffort`, keeps working untouched.
  */

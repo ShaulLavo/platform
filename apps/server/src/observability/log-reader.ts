@@ -158,7 +158,7 @@ export function normalizeLogEvent(event: WideEvent): NormalizedLogEvent {
     service: stringField(rawJson.service),
     source: stringField(rawJson.source),
     status: numberField(rawJson.status),
-    threadId: stringField(rawJson.threadId),
+    sessionId: stringField(rawJson.sessionId),
     timestamp: timestampString(rawJson.timestamp),
   }
 
@@ -239,7 +239,7 @@ function searchText(event: NormalizedLogEvent) {
     event.summary.path,
     event.summary.requestId,
     event.summary.source,
-    event.summary.threadId,
+    event.summary.sessionId,
     event.rawText,
   ]
     .filter((value): value is string => typeof value === 'string')
@@ -447,7 +447,7 @@ function eventIdMaterial(event: Record<string, unknown>, rawText: string) {
     raw: rawText,
     requestId: event.requestId,
     source: event.source,
-    threadId: event.threadId,
+    sessionId: event.sessionId,
     timestamp: event.timestamp,
   })
 }

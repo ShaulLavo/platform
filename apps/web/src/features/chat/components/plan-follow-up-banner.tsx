@@ -19,7 +19,7 @@ import {
  * routing it through props would make this banner a second owner of composer
  * state that the composer would then have to keep in sync.
  *
- * Splitting the build into its own thread is offered only alongside Implement.
+ * Splitting the build into its own session is offered only alongside Implement.
  * Typed feedback is a request for a better plan, and there is nothing to build
  * elsewhere until that plan comes back.
  */
@@ -28,7 +28,7 @@ export function PlanFollowUpBanner({
 }: {
   readonly draftTarget: ChatInputDraftTarget
 }) {
-  const { implementInNewThread, plan, submitFollowUp, submitting } = usePlanFollowUp()
+  const { implementInNewSession, plan, submitFollowUp, submitting } = usePlanFollowUp()
   const draftText = useChatInputDraftStore((state) => state.getDraft(draftTarget).prompt)
   if (!plan) return null
 
@@ -50,15 +50,15 @@ export function PlanFollowUpBanner({
         </p>
         {refining ? null : (
           <Button
-            aria-label='Implement in a new thread'
+            aria-label='Implement in a new session'
             disabled={submitting}
             size='sm'
             type='button'
             variant='outline'
-            onClick={() => void implementInNewThread()}
+            onClick={() => void implementInNewSession()}
           >
             <ArrowSquareOutIcon className='size-3.5' />
-            New thread
+            New session
           </Button>
         )}
         <Button disabled={submitting} size='sm' type='button' onClick={() => void submitFollowUp()}>

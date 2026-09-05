@@ -1,3 +1,4 @@
+import { useApplicationRuntime } from '@/hooks/use-application-runtime'
 import {
   CommandDialog,
   CommandEmpty,
@@ -28,7 +29,6 @@ import {
   quickAccessQuery,
   scopeLabelForMode,
   scopedPaletteFilter,
-  workspaceRootOpened,
 } from '@/features/command-palette/command-palette-utils'
 import { ScopeChip } from '@/features/command-palette/scope-chip'
 import { useHighlightedPaletteValue } from '@/features/command-palette/hooks/use-highlighted-palette-value'
@@ -64,11 +64,11 @@ import { useFocusService } from '@/lib/focus/hooks/use-service'
 import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 
 export function CommandPaletteContent() {
+  const application = useApplicationRuntime()
   const {
     bindings,
     bus,
     closePalette,
-    openWorkspaceRoot,
     paletteOpen: open,
     paletteOrigin,
     paletteScope,
@@ -218,15 +218,6 @@ export function CommandPaletteContent() {
       return true
     }
 
-    async function openSessionProject(projectId: (typeof sessionProjects)[number]['id']) {
-      const project = sessionProjects.find((candidate) => candidate.id === projectId)
-      if (!project) return false
-      if (workspace.getState().rootFolder?.path === project.workspaceRoot) return true
-
-      const outcome = await openWorkspaceRoot(project.workspaceRoot)
-      return workspaceRootOpened(outcome)
-    }
-
     return {
       disabledReasonForCommand: (command) => {
         const inspection = bus.inspect(command, paletteCommandInvocation(paletteOrigin))
@@ -275,9 +266,12 @@ export function CommandPaletteContent() {
         await revealDestination('workspace.revealTerminal')
       },
       selectSession: async (session) => {
-        if (!(await openSessionProject(session.projectId))) return
-
-        openSessionRow(session)
+        if (
+          !(await openSessionRow(session, {
+            openProject: application.openEnvironmentWorkspaceRoot,
+          }))
+        )
+          return
         await revealDestination('workspace.showChatMode')
       },
       selectSymbol: async (symbol) => {
@@ -293,26 +287,26 @@ export function CommandPaletteContent() {
 
         closePalette(false)
       },
-      startSessionDraft: async (projectId) => {
-        if (!(await openSessionProject(projectId))) return
-
-        startSessionDraft(projectId)
+      startSessionDraft: async (ref) => {
+        if (
+          !(await startSessionDraft(ref, { openProject: application.openEnvironmentWorkspaceRoot }))
+        )
+          return
         await revealDestination('workspace.showChatMode')
       },
     }
   }, [
+    application,
     bus,
     closePalette,
     focus,
     openDefinition,
-    openWorkspaceRoot,
     paletteOrigin,
     queueTerminalCommand,
     resolvedTheme,
     saveProjectScript,
     selectFile,
     selectedFileBackedPath,
-    sessionProjects,
     workspace,
   ])
 

@@ -1,9 +1,24 @@
+import * as v from 'valibot'
+import { worktreeIdSchema } from './chat-ids'
 import { isRecord } from './is-record'
 
 export const TERMINAL_MIN_COLS = 2
 export const TERMINAL_MAX_COLS = 500
 export const TERMINAL_MIN_ROWS = 1
 export const TERMINAL_MAX_ROWS = 200
+
+export const terminalOpenInputSchema = v.object({
+  worktreeId: worktreeIdSchema,
+  terminalId: v.pipe(v.string(), v.trim(), v.minLength(1)),
+  cols: v.optional(
+    v.pipe(v.number(), v.integer(), v.minValue(TERMINAL_MIN_COLS), v.maxValue(TERMINAL_MAX_COLS)),
+  ),
+  rows: v.optional(
+    v.pipe(v.number(), v.integer(), v.minValue(TERMINAL_MIN_ROWS), v.maxValue(TERMINAL_MAX_ROWS)),
+  ),
+})
+
+export type TerminalOpenInput = v.InferOutput<typeof terminalOpenInputSchema>
 
 export type TerminalClientMessage =
   | { type: 'input'; data: string }

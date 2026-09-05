@@ -304,7 +304,7 @@ function withChatTimelineActions(
 function chatTimelineActions(overrides: Partial<ChatTimelineActions> = {}): ChatTimelineActions {
   return {
     openCheckpointDiff: vi.fn(() => Promise.resolve()),
-    openThreadCheckpointDiff: vi.fn(() => Promise.resolve()),
+    openSessionCheckpointDiff: vi.fn(() => Promise.resolve()),
     revertToCheckpoint: vi.fn(),
     ...overrides,
   }
@@ -367,7 +367,7 @@ const assistantCodeMessage = {
     '}',
     '```',
   ].join('\n'),
-  threadId: 'thread-browser',
+  sessionId: 'f066fa5d-7f5a-513c-93f1-f7d8a348d59a',
   turnId: null,
   updatedAt: '2026-05-28T00:00:00.000Z',
 } as unknown as OrchestrationMessage
@@ -379,7 +379,7 @@ const userMessage = {
   role: 'user',
   streaming: false,
   text: 'Please update the chat view.',
-  threadId: 'thread-browser',
+  sessionId: 'f066fa5d-7f5a-513c-93f1-f7d8a348d59a',
   turnId: 'turn-browser',
   updatedAt: '2026-05-28T00:00:00.000Z',
 } as unknown as OrchestrationMessage
@@ -410,7 +410,7 @@ const assistantChangedFilesSummary = {
     },
   ],
   status: 'ready',
-  threadId: 'thread-browser',
+  sessionId: 'f066fa5d-7f5a-513c-93f1-f7d8a348d59a',
   turnId: 'turn-browser',
 } as ChatTurnDiffSummary
 

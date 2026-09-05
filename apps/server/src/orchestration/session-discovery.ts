@@ -1,0 +1,372 @@
+import { realpath } from 'node:fs/promises'
+import path from 'node:path'
+import {
+  commandIdSchema,
+  type ModelSelection,
+  type OrchestrationCommand,
+  type OrchestrationProject,
+  type OrchestrationWorktree,
+  type ProviderInstanceId,
+} from '@workspace/contracts'
+import * as v from 'valibot'
+import { GitWorktreeService } from '../git/worktrees'
+import { DEFAULT_CLAUDE_MODEL } from '../provider/adapters/utils/claude-models'
+import type { ProviderService } from '../provider/provider-service'
+import type { ProviderDiscoveredSession } from '../provider/types'
+import { recordChatPipelineInfo, recordChatPipelineWarning } from './orchestration-logging'
+import type { OrchestrationReadModel, OrchestrationProjectedWorktree } from './read-model'
+import { resolveRepositoryIdentity, type RegistrationBoundary } from './registration'
+import { internalCommandKey, repositoryKey, worktreeIdForCheckout } from './utils/repository-ids'
+
+const DISCOVERY_PAGE_SIZE = 50
+const DISCOVERY_INTERVAL_MS = 60_000
+
+export type DiscoveryScanResult = {
+  scanned: number
+  imported: number
+  refreshed: number
+  skipped: Record<string, number>
+}
+
+type DiscoveryOptions = {
+  providerService: Pick<ProviderService, 'discoveryInstances' | 'discoverSessions'>
+  registration: RegistrationBoundary
+  dispatch: (command: OrchestrationCommand) => Promise<unknown>
+  getReadModel: () => OrchestrationReadModel
+}
+
+type CheckoutMatch = { project: OrchestrationProject; worktree: OrchestrationWorktree }
+
+export class SessionDiscoveryReconciler {
+  private readonly options: DiscoveryOptions
+  private readonly gitWorktrees: GitWorktreeService
+  private interval: ReturnType<typeof setInterval> | null = null
+  private pending: Promise<DiscoveryScanResult> | null = null
+  private closed = false
+
+  constructor(options: DiscoveryOptions) {
+    this.options = options
+    this.gitWorktrees = new GitWorktreeService(options.registration.git)
+  }
+
+  start() {
+    if (this.closed || this.interval) return
+    this.interval = setInterval(() => {
+      void this.requestScan()
+    }, DISCOVERY_INTERVAL_MS)
+    this.interval.unref()
+    void this.requestScan()
+  }
+
+  requestScan() {
+    return this.scan()
+  }
+
+  scan(): Promise<DiscoveryScanResult> {
+    if (this.pending) return this.pending
+    this.pending = this.runScan().finally(() => {
+      this.pending = null
+    })
+    return this.pending
+  }
+
+  async close() {
+    this.closed = true
+    if (this.interval) clearInterval(this.interval)
+    this.interval = null
+    await this.pending
+  }
+
+  private async runScan(): Promise<DiscoveryScanResult> {
+    const started = performance.now()
+    const result: DiscoveryScanResult = { scanned: 0, imported: 0, refreshed: 0, skipped: {} }
+    const roots = [...this.options.getReadModel().worktrees.values()].filter(
+      (worktree) => !worktree.retiredAt,
+    )
+    const seen = new Set<string>()
+    for (const providerInstanceId of this.options.providerService.discoveryInstances()) {
+      await this.scanInstance(providerInstanceId, roots, seen, result)
+    }
+    const record = Object.keys(result.skipped).length
+      ? recordChatPipelineWarning
+      : recordChatPipelineInfo
+    record('chat.pipeline.discovery.scan', { ...result, durationMs: performance.now() - started })
+    return result
+  }
+
+  private async scanInstance(
+    providerInstanceId: ProviderInstanceId,
+    roots: readonly OrchestrationWorktree[],
+    seen: Set<string>,
+    result: DiscoveryScanResult,
+  ) {
+    for (const root of roots) {
+      if (this.closed) return
+      try {
+        await this.scanDirectory(providerInstanceId, root.canonicalPath, seen, result)
+      } catch {
+        skipped(result, 'provider-scan-failed')
+      }
+    }
+  }
+
+  private async scanDirectory(
+    providerInstanceId: ProviderInstanceId,
+    cwd: string,
+    seen: Set<string>,
+    result: DiscoveryScanResult,
+  ) {
+    for (let offset = 0; !this.closed; offset += DISCOVERY_PAGE_SIZE) {
+      const rows = await this.options.providerService.discoverSessions({
+        providerInstanceId,
+        cwd,
+        limit: DISCOVERY_PAGE_SIZE,
+        offset,
+      })
+      await this.importPage(providerInstanceId, rows, seen, result)
+      if (rows.length < DISCOVERY_PAGE_SIZE) return
+    }
+  }
+
+  private async importPage(
+    providerInstanceId: ProviderInstanceId,
+    rows: readonly ProviderDiscoveredSession[],
+    seen: Set<string>,
+    result: DiscoveryScanResult,
+  ) {
+    for (const row of rows) {
+      if (this.closed) return
+      const fingerprint = internalCommandKey(
+        'metadata',
+        providerInstanceId,
+        row.sessionId,
+        row.cwd ?? '',
+        row.title,
+        row.sourceUpdatedAt,
+        row.gitBranch ?? '',
+      )
+      if (seen.has(fingerprint)) continue
+      seen.add(fingerprint)
+      result.scanned += 1
+      await this.importOne(providerInstanceId, row, result)
+    }
+  }
+
+  private async importOne(
+    providerInstanceId: ProviderInstanceId,
+    row: ProviderDiscoveredSession,
+    result: DiscoveryScanResult,
+  ) {
+    try {
+      const match = await this.resolveCheckout(row.cwd, result)
+      if (!match) return
+      await this.dispatchSession(providerInstanceId, row, match, result)
+    } catch {
+      skipped(result, 'reconciliation-refused')
+    }
+  }
+
+  private async dispatchSession(
+    providerInstanceId: ProviderInstanceId,
+    row: ProviderDiscoveredSession,
+    match: CheckoutMatch,
+    result: DiscoveryScanResult,
+  ) {
+    const existing = this.options.getReadModel().sessions.get(row.sessionId)
+    if (existing?.deletedAt) return skipped(result, 'deleted-session')
+    if (existing && existing.modelSelection.providerInstanceId !== providerInstanceId)
+      return skipped(result, 'provider-instance-conflict')
+    if (existing && existing.worktreeId !== match.worktree.id)
+      return skipped(result, 'session-reparent-conflict')
+    const modelSelection =
+      existing?.modelSelection ?? discoveryModel(match.project, providerInstanceId)
+    if (!existing) {
+      await this.options.dispatch({
+        type: 'session.discover',
+        commandId: commandId('session.discover', providerInstanceId, row.sessionId),
+        sessionId: row.sessionId,
+        worktreeId: match.worktree.id,
+        title: row.title,
+        modelSelection,
+        runtimeMode: 'full-access',
+        interactionMode: 'default',
+        sourceUpdatedAt: row.sourceUpdatedAt,
+      })
+      result.imported += 1
+    }
+    await this.options.dispatch({
+      type: 'session.discovery-metadata.update',
+      commandId: commandId(
+        'session.discovery-metadata',
+        providerInstanceId,
+        row.sessionId,
+        row.title,
+        row.sourceUpdatedAt,
+        row.gitBranch ?? '',
+      ),
+      sessionId: row.sessionId,
+      worktreeId: match.worktree.id,
+      modelSelection,
+      title: row.title,
+      sourceUpdatedAt: row.sourceUpdatedAt,
+    })
+    result.refreshed += 1
+  }
+
+  private async resolveCheckout(
+    cwd: string | null,
+    result: DiscoveryScanResult,
+  ): Promise<CheckoutMatch | null> {
+    if (!cwd) return skipped(result, 'missing-cwd')
+    const canonicalCwd = await realpath(cwd)
+    this.options.registration.paths.assertRealInside(canonicalCwd)
+    const model = this.options.getReadModel()
+    const candidates = [...model.worktrees.values()]
+      .filter(
+        (worktree) => !worktree.retiredAt && containsPath(worktree.canonicalPath, canonicalCwd),
+      )
+      .sort((left, right) => right.canonicalPath.length - left.canonicalPath.length)
+    const candidate = candidates[0]
+    if (candidate && candidates[1]?.canonicalPath.length === candidate.canonicalPath.length)
+      return skipped(result, 'ambiguous-cwd')
+    const repository = (await this.options.registration.git.repo(canonicalCwd)).repository
+    const root = repository
+      ? await realpath(this.options.registration.paths.resolve(repository.path).absolutePath)
+      : canonicalCwd
+    const project = candidate ? model.projects.get(candidate.projectId) : undefined
+    if (
+      candidate &&
+      project &&
+      !project.deletedAt &&
+      ((project.repositoryKind === 'directory' && !repository) || root === candidate.canonicalPath)
+    )
+      return { project, worktree: candidate }
+    if (!repository) return skipped(result, 'unknown-cwd')
+    return this.registerExternalCheckout(root, repository.branch, result)
+  }
+
+  private async registerExternalCheckout(
+    canonicalPath: string,
+    branch: string | null,
+    result: DiscoveryScanResult,
+  ): Promise<CheckoutMatch | null> {
+    const identity = await resolveRepositoryIdentity(
+      this.options.registration.git,
+      canonicalPath,
+      true,
+    )
+    const key = repositoryKey(identity)
+    const model = this.options.getReadModel()
+    const projects = [...model.projects.values()].filter(
+      (project) => !project.deletedAt && project.repositoryKey === key,
+    )
+    if (projects.length !== 1) return skipped(result, 'unknown-or-ambiguous-repository')
+    const project = projects[0]
+    if (!project) return null
+    const roots = [...model.worktrees.values()].filter(
+      (worktree) => !worktree.retiredAt && worktree.projectId === project.id,
+    )
+    const linked = await this.isLinkedCheckout(roots, canonicalPath)
+    if (!linked) return skipped(result, 'unverified-checkout')
+    const id = worktreeIdForCheckout(key, canonicalPath)
+    const previous = model.worktrees.get(id)
+    if (previous && !previous.retiredAt) return { project, worktree: previous }
+    const worktree = externalCheckout(
+      project,
+      id,
+      canonicalPath,
+      this.options.registration.paths.toRealRelative(canonicalPath),
+      branch,
+      previous,
+    )
+    await this.registerWorktree(worktree, key, previous)
+    return { project, worktree }
+  }
+
+  private async isLinkedCheckout(roots: readonly OrchestrationWorktree[], canonicalPath: string) {
+    for (const root of roots) {
+      const linked = await this.gitWorktrees.list(root.path)
+      if (linked.some((worktree) => worktree.absolutePath === canonicalPath)) return true
+    }
+    return false
+  }
+
+  private async registerWorktree(
+    worktree: OrchestrationWorktree,
+    key: string,
+    previous: OrchestrationProjectedWorktree | undefined,
+  ) {
+    const { id, retiredAt: _retiredAt, ...fields } = worktree
+    if (previous?.retiredAt && previous.retirementSequence !== null) {
+      await this.options.dispatch({
+        ...fields,
+        type: 'worktree.revive',
+        worktreeId: id,
+        commandId: commandId(
+          'worktree.revive',
+          key,
+          worktree.canonicalPath,
+          previous.retirementSequence,
+        ),
+        retirementSequence: previous.retirementSequence,
+      })
+      return
+    }
+    await this.options.dispatch({
+      ...fields,
+      type: 'worktree.register',
+      worktreeId: id,
+      commandId: commandId('worktree.register', key, worktree.canonicalPath),
+    })
+  }
+}
+
+function skipped(result: DiscoveryScanResult, reason: string): null {
+  result.skipped[reason] = (result.skipped[reason] ?? 0) + 1
+  return null
+}
+
+function commandId(kind: string, ...parts: readonly (string | number)[]) {
+  return v.parse(commandIdSchema, internalCommandKey(kind, ...parts))
+}
+
+function containsPath(root: string, candidate: string) {
+  const relative = path.relative(root, candidate)
+  return (
+    relative === '' ||
+    (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))
+  )
+}
+
+function discoveryModel(
+  project: OrchestrationProject,
+  providerInstanceId: ProviderInstanceId,
+): ModelSelection {
+  if (project.defaultModelSelection?.providerInstanceId === providerInstanceId)
+    return project.defaultModelSelection
+  return { providerInstanceId, model: DEFAULT_CLAUDE_MODEL }
+}
+
+function externalCheckout(
+  project: OrchestrationProject,
+  id: OrchestrationWorktree['id'],
+  canonicalPath: string,
+  apiPath: string,
+  branch: string | null,
+  previous: OrchestrationProjectedWorktree | undefined,
+): OrchestrationWorktree {
+  const now = new Date().toISOString()
+  return {
+    id,
+    projectId: project.id,
+    canonicalPath,
+    path: apiPath,
+    branch,
+    kind: 'linked',
+    ownership: 'external',
+    registrationGeneration: previous ? previous.registrationGeneration + 1 : 0,
+    createdAt: previous?.createdAt ?? now,
+    updatedAt: now,
+    retiredAt: null,
+  }
+}

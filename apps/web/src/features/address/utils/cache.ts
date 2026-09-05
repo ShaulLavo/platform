@@ -33,8 +33,9 @@ export function addressedWorkspaceCache(
   cached: CachedWorkspaceState,
   address: Address,
 ): CachedWorkspaceState {
+  if (address.environmentId || address.rejectedEnvironment) return cached
   const rootPath = seedableRootPath(cached, address)
-  if (!rootPath) return cached
+  if (rootPath === null) return cached
 
   const slice = cached.workspaces[rootPath]
   if (!slice) return cached
@@ -67,7 +68,7 @@ export function addressedWorkspaceCache(
  */
 function seedableRootPath(cached: CachedWorkspaceState, address: Address) {
   const openRootPath = cached.rootFolder?.path
-  if (!openRootPath) return null
+  if (openRootPath === undefined) return null
   if (!address.workspace || address.workspace === NO_WORKSPACE_SLUG) return null
 
   const resolution = resolveWorkspaceSlug(address.workspace, { indexed: cached.workspaceOrder })
@@ -88,7 +89,7 @@ function panelsForAddress(panels: WorkbenchPanels, rootPath: string, address: Ad
     withPanes,
   )
 
-  // In chat mode the document slot holds a `t/` thread token, which is not a workspace
+  // In chat mode the document slot holds a `t/` session token, which is not a workspace
   // document — feeding it to the file codec would open a bogus tab.
   if (address.mode === 'chat' || !address.document) return withTabs
 

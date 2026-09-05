@@ -1,3 +1,4 @@
+import { createTestApplicationRuntime } from '../../../../test/factories/application-runtime'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useQueryClient } from '@tanstack/react-query'
@@ -105,7 +106,7 @@ function renderPalette(queryClient: ReturnType<typeof createTestQueryClient>) {
     <EditorStateProvider>
       <PaletteHarness />
     </EditorStateProvider>,
-    { command: false, queryClient, theme: 'dark' },
+    { application: createTestApplicationRuntime(), command: false, queryClient, theme: 'dark' },
   )
 }
 

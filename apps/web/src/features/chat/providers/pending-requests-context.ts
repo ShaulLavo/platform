@@ -9,7 +9,7 @@ import type { PendingApproval } from '@/features/chat/utils/pending-approvals'
 import type { PendingUserInput } from '@/features/chat/utils/pending-user-input'
 
 /**
- * The requests currently blocking the active thread, plus the two actions that
+ * The requests currently blocking the active session, plus the two actions that
  * unblock it. The in-flight set stays behind `isResponding` on purpose — a
  * panel only ever asks about the request it renders.
  */

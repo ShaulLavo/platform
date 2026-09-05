@@ -6,9 +6,10 @@
  * in explicitly through `server/testing`, and run under the Bun runtime
  * (`bun --bun vitest`) where those Bun APIs resolve.
  */
-export { closeApp, createApp } from './app'
+export { closeApp, createApp, orchestrationForApp } from './app'
 export type { App, AppOptions } from './app'
 export { createMetadataDatabase } from './db/client'
+export { migratePlatformDatabase } from './db/migrations'
 export { NerdFontService } from './fonts/service'
 export { MockProviderAdapter } from './provider/adapters/mock'
 export { ProviderAdapterRegistry } from './provider/provider-adapter-registry'
@@ -17,3 +18,11 @@ export type { WorkspaceEditFileSystemDriver } from './fs/workspace-edit-journal'
 export type { MetadataDatabaseHandle, PlatformDatabase } from './db/client'
 
 export { testSettingsOptions, type TestSettingsOverrides } from './settings/testing'
+
+export { OrchestrationEventStore } from './orchestration/event-store'
+export {
+  projectIdForRepository,
+  repositoryKey,
+  worktreeIdForCheckout,
+} from './orchestration/utils/repository-ids'
+export type { ProviderDiscoveredSession, ProviderSessionDiscoveryInput } from './provider/types'

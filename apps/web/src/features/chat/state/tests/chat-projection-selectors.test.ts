@@ -1,3 +1,8 @@
+import { chatProject, fixtureSessionId } from '../../../../../test/factories/chat'
+import {
+  chatWorktree as fixtureWorktree,
+  sessionShell as fixtureSessionShell,
+} from '../../../../../test/factories/chat'
 import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_PROVIDER_INSTANCE_ID,
@@ -6,115 +11,110 @@ import {
   eventIdSchema,
   messageIdSchema,
   projectIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
   turnIdSchema,
   type OrchestrationEvent,
-  type OrchestrationThread,
-  type OrchestrationThreadShell,
-  type ThreadId,
+  type OrchestrationSession,
+  type OrchestrationSessionShell,
+  type SessionId,
   type TurnId,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
 import {
-  createChatThreadListSelector,
-  selectChatSidebarThreads,
-  selectChatSidebarThreadsForProject,
-  selectChatThreadById,
+  createChatSessionListSelector,
+  selectChatSidebarSessions,
+  selectChatSidebarSessionsForProject,
+  selectChatSessionById,
 } from '../chat-projection-selectors'
-import { createInitialChatProjectionState } from '../chat-projection-store'
+import { createInitialChatProjectionSlice } from '../chat-projection-store'
 import {
   applyChatProjectionEvent,
   syncChatProjectionShellSnapshot,
-  syncChatProjectionThreadDetailSnapshot,
+  syncChatProjectionSessionDetailSnapshot,
 } from '../chat-projection-writers'
-import { threadShell } from '../../../../../test/factories/chat'
+import { sessionShell } from '../../../../../test/factories/chat'
 import { expect, test } from '../../../../../test/fixtures'
 
-const projectId = v.parse(projectIdSchema, 'project-1')
+const projectId = v.parse(projectIdSchema, '609d2bd3-7993-5564-9918-c603beaa32c6')
 
 test('derives terminal turn state from terminal session state', () => {
-  const threadId = v.parse(threadIdSchema, 'thread-1')
+  const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
   const turnId = v.parse(turnIdSchema, 'turn-1')
-  const state = syncChatProjectionShellSnapshot(createInitialChatProjectionState(), {
-    projects: [],
+  const state = syncChatProjectionShellSnapshot(createInitialChatProjectionSlice(), {
+    worktrees: [fixtureWorktree()],
+    projects: [chatProject()],
     snapshotSequence: 1,
-    threads: [makeThreadShell(threadId, turnId)],
+    sessions: [makeSessionShell(sessionId, turnId)],
     updatedAt: timestamp(2),
   })
 
-  expect(selectChatThreadById(state, threadId)?.latestTurn).toMatchObject({
+  expect(selectChatSessionById(state, sessionId)?.latestTurn).toMatchObject({
     completedAt: timestamp(2),
     state: 'error',
     turnId,
   })
 })
 
-test('an archived thread is not a sidebar thread, project-scoped or not', () => {
+test('an archived session is not a sidebar session, project-scoped or not', () => {
   const state = sidebarState()
 
-  expect(selectChatSidebarThreads(state).map((thread) => thread.id)).toEqual(['thread-live'])
-  expect(selectChatSidebarThreadsForProject(state, projectId).map((thread) => thread.id)).toEqual([
-    'thread-live',
+  expect(selectChatSidebarSessions(state).map((session) => session.id)).toEqual([
+    '1cb66ded-870c-5359-8e74-f911ce864e73',
   ])
+  expect(
+    selectChatSidebarSessionsForProject(state, projectId).map((session) => session.id),
+  ).toEqual(['1cb66ded-870c-5359-8e74-f911ce864e73'])
 })
 
 // These feed zustand selectors: a fresh array per read is a render loop, not a detail.
-test('sidebar thread lists keep their identity across reads', () => {
+test('sidebar session lists keep their identity across reads', () => {
   const state = sidebarState()
 
-  expect(selectChatSidebarThreads(state)).toBe(selectChatSidebarThreads(state))
-  expect(selectChatSidebarThreadsForProject(state, projectId)).toBe(
-    selectChatSidebarThreadsForProject(state, projectId),
+  expect(selectChatSidebarSessions(state)).toBe(selectChatSidebarSessions(state))
+  expect(selectChatSidebarSessionsForProject(state, projectId)).toBe(
+    selectChatSidebarSessionsForProject(state, projectId),
   )
 })
 
 // Shell and detail subscriptions are independent, so a detail cached before a reconnect
 // can land after a newer shell snapshot. Targeting a stale checkout is a real hazard.
 test('a late detail snapshot cannot revert newer shell metadata', () => {
-  const threadId = v.parse(threadIdSchema, 'thread-1')
-  const shell = threadShell({
-    branch: 'feature/new',
-    id: threadId,
-    projectId,
+  const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
+  const shell = sessionShell({
+    id: sessionId,
     title: 'shell title',
-    worktreePath: '/worktrees/new',
   })
-  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionState(), {
-    projects: [],
+  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionSlice(), {
+    worktrees: [fixtureWorktree()],
+    projects: [chatProject()],
     snapshotSequence: 1,
-    threads: [shell],
+    sessions: [shell],
     updatedAt: timestamp(2),
   })
 
-  state = syncChatProjectionThreadDetailSnapshot(state, {
+  state = syncChatProjectionSessionDetailSnapshot(state, {
     checkpoints: [],
     proposedPlans: [],
     snapshotSequence: 2,
-    thread: staleDetailThread(threadId),
+    session: staleDetailSession(sessionId),
   })
 
-  expect(selectChatThreadById(state, threadId)).toMatchObject({
-    branch: 'feature/new',
-    session: shell.session,
+  expect(selectChatSessionById(state, sessionId)).toMatchObject({
+    runtime: shell.runtime,
     title: 'shell title',
-    worktreePath: '/worktrees/new',
   })
 })
 
-test('a thread the shell has not delivered yet still resolves from its detail snapshot', () => {
-  const threadId = v.parse(threadIdSchema, 'thread-1')
-  const state = syncChatProjectionThreadDetailSnapshot(createInitialChatProjectionState(), {
+test('a detail snapshot cannot resolve a session before its checkout ownership arrives', () => {
+  const sessionId = fixtureSessionId(1)
+  const state = syncChatProjectionSessionDetailSnapshot(createInitialChatProjectionSlice(), {
     checkpoints: [],
     proposedPlans: [],
     snapshotSequence: 1,
-    thread: staleDetailThread(threadId),
+    session: staleDetailSession(sessionId),
   })
-
-  expect(selectChatThreadById(state, threadId)).toMatchObject({
-    branch: 'feature/stale',
-    title: 'stale detail title',
-  })
+  expect(selectChatSessionById(state, sessionId)).toBeUndefined()
 })
 
 // `null` is a real session value — "the session stopped" — so the merge decides by
@@ -122,45 +122,51 @@ test('a thread the shell has not delivered yet still resolves from its detail sn
 // detail snapshot that still remembers a running one, or the composer offers to
 // interrupt a session that is already gone.
 test('a published null session outranks a detail snapshot that still carries one', () => {
-  const threadId = v.parse(threadIdSchema, 'thread-1')
-  const shell = threadShell({ id: threadId, projectId, session: null })
-  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionState(), {
-    projects: [],
+  const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
+  const shell = sessionShell({ id: sessionId, runtime: null })
+  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionSlice(), {
+    worktrees: [fixtureWorktree()],
+    projects: [chatProject()],
     snapshotSequence: 1,
-    threads: [shell],
+    sessions: [shell],
     updatedAt: timestamp(2),
   })
 
-  state = syncChatProjectionThreadDetailSnapshot(state, {
+  state = syncChatProjectionSessionDetailSnapshot(state, {
     checkpoints: [],
     proposedPlans: [],
     snapshotSequence: 2,
-    thread: { ...staleDetailThread(threadId), session: threadShell().session },
+    session: { ...staleDetailSession(sessionId), runtime: sessionShell().runtime },
   })
 
-  expect(selectChatThreadById(state, threadId)?.session).toBeNull()
+  expect(selectChatSessionById(state, sessionId)?.runtime).toBeNull()
 })
 
-// The turn falls back by *value*, not by presence: a thread the shell delivered with
+// The turn falls back by *value*, not by presence: a session the shell delivered with
 // no turn at all still shows the turn its detail snapshot carried, which is what a
-// cold open of an idle-looking thread depends on.
-test('a thread with no published turn still shows the turn its detail snapshot carried', () => {
-  const threadId = v.parse(threadIdSchema, 'thread-1')
+// cold open of an idle-looking session depends on.
+test('a session with no published turn still shows the turn its detail snapshot carried', () => {
+  const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
   const turnId = v.parse(turnIdSchema, 'turn-1')
-  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionState(), {
-    projects: [],
+  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionSlice(), {
+    worktrees: [fixtureWorktree()],
+    projects: [chatProject()],
     snapshotSequence: 1,
-    threads: [threadShell({ id: threadId, latestTurn: null, projectId, session: null })],
+    sessions: [sessionShell({ id: sessionId, latestTurn: null, runtime: null })],
     updatedAt: timestamp(2),
   })
 
-  state = syncChatProjectionThreadDetailSnapshot(state, {
+  state = syncChatProjectionSessionDetailSnapshot(state, {
     checkpoints: [],
     proposedPlans: [],
     snapshotSequence: 2,
-    thread: {
-      ...staleDetailThread(threadId),
+    session: {
+      ...staleDetailSession(sessionId),
       latestTurn: {
+        providerStartState: 'adopted' as const,
+        providerStartGeneration: 1,
+        providerStartSequence: 1,
+        runtimeEpoch: 'test-epoch',
         assistantMessageId: null,
         completedAt: timestamp(3),
         requestedAt: timestamp(1),
@@ -171,73 +177,78 @@ test('a thread with no published turn still shows the turn its detail snapshot c
     },
   })
 
-  expect(selectChatThreadById(state, threadId)?.latestTurn).toMatchObject({
+  expect(selectChatSessionById(state, sessionId)?.latestTurn).toMatchObject({
     state: 'completed',
     turnId,
   })
 })
 
 test('a newer detail snapshot replaces the live turn from the previous snapshot', () => {
-  const threadId = v.parse(threadIdSchema, 'thread-1')
+  const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
   const firstTurnId = v.parse(turnIdSchema, 'turn-1')
   const secondTurnId = v.parse(turnIdSchema, 'turn-2')
-  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionState(), {
-    projects: [],
+  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionSlice(), {
+    worktrees: [fixtureWorktree()],
+    projects: [chatProject()],
     snapshotSequence: 1,
-    threads: [threadShell({ id: threadId, latestTurn: null, projectId, session: null })],
+    sessions: [sessionShell({ id: sessionId, latestTurn: null, runtime: null })],
     updatedAt: timestamp(1),
   })
 
-  state = syncChatProjectionThreadDetailSnapshot(state, {
+  state = syncChatProjectionSessionDetailSnapshot(state, {
     checkpoints: [],
     proposedPlans: [],
     snapshotSequence: 2,
-    thread: { ...staleDetailThread(threadId), latestTurn: completedTurn(firstTurnId, 2) },
+    session: { ...staleDetailSession(sessionId), latestTurn: completedTurn(firstTurnId, 2) },
   })
-  state = syncChatProjectionThreadDetailSnapshot(state, {
+  state = syncChatProjectionSessionDetailSnapshot(state, {
     checkpoints: [],
     proposedPlans: [],
     snapshotSequence: 3,
-    thread: { ...staleDetailThread(threadId), latestTurn: completedTurn(secondTurnId, 3) },
+    session: { ...staleDetailSession(sessionId), latestTurn: completedTurn(secondTurnId, 3) },
   })
 
-  expect(selectChatThreadById(state, threadId)?.latestTurn).toMatchObject({
+  expect(selectChatSessionById(state, sessionId)?.latestTurn).toMatchObject({
     completedAt: timestamp(3),
     turnId: secondTurnId,
   })
 })
 
 test('a populated list projection stays stable across streamed token deltas', () => {
-  const threadId = v.parse(threadIdSchema, 'thread-1')
+  const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
   const turnId = v.parse(turnIdSchema, 'turn-1')
-  const threads = Array.from({ length: 64 }, (_, index) =>
-    threadShell({
-      id: v.parse(threadIdSchema, `thread-${index + 1}`),
-      projectId,
-      title: `Thread ${index + 1}`,
+  const sessions = Array.from({ length: 64 }, (_, index) =>
+    sessionShell({
+      id: fixtureSessionId(index + 1),
+      title: `Session ${index + 1}`,
     }),
   )
-  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionState(), {
-    projects: [],
+  let state = syncChatProjectionShellSnapshot(createInitialChatProjectionSlice(), {
+    projects: [chatProject()],
     snapshotSequence: 1,
-    threads,
+    worktrees: [fixtureWorktree()],
+    sessions,
     updatedAt: timestamp(1),
   })
-  const selectList = createChatThreadListSelector({ includeArchived: true })
+  const selectList = createChatSessionListSelector({ includeArchived: true })
   const before = selectList(state)
-  const canonicalBefore = state.threadById[threadId]
+  const canonicalBefore = state.sessionById[sessionId]
 
   for (let sequence = 2; sequence <= 20; sequence += 1) {
-    state = applyChatProjectionEvent(state, streamedAssistantDelta(threadId, turnId, sequence))
+    state = applyChatProjectionEvent(state, streamedAssistantDelta(sessionId, turnId, sequence))
   }
 
-  expect(state.threadById[threadId]).not.toBe(canonicalBefore)
-  expect(state.threadById[threadId]?.updatedAt).toBe(timestamp(20))
+  expect(state.sessionById[sessionId]).not.toBe(canonicalBefore)
+  expect(state.sessionById[sessionId]?.updatedAt).toBe(timestamp(20))
   expect(selectList(state)).toBe(before)
 })
 
 function completedTurn(turnId: TurnId, completedAt: number) {
   return {
+    providerStartState: 'adopted' as const,
+    providerStartGeneration: 1,
+    providerStartSequence: 1,
+    runtimeEpoch: 'test-epoch',
     assistantMessageId: null,
     completedAt: timestamp(completedAt),
     requestedAt: timestamp(completedAt - 1),
@@ -248,7 +259,7 @@ function completedTurn(turnId: TurnId, completedAt: number) {
 }
 
 function streamedAssistantDelta(
-  threadId: ThreadId,
+  sessionId: SessionId,
   turnId: TurnId,
   sequence: number,
 ): OrchestrationEvent {
@@ -256,8 +267,8 @@ function streamedAssistantDelta(
 
   return {
     actorKind: 'provider',
-    aggregateId: threadId,
-    aggregateKind: 'thread',
+    aggregateId: sessionId,
+    aggregateKind: 'session',
     causationEventId: null,
     commandId: v.parse(commandIdSchema, `command-${slug}`),
     correlationId: v.parse(commandIdSchema, `command-${slug}`),
@@ -271,55 +282,59 @@ function streamedAssistantDelta(
       role: 'assistant',
       streaming: true,
       text: 'x',
-      threadId,
+      sessionId,
       turnId,
       updatedAt: timestamp(sequence),
     },
     sequence,
-    type: 'thread.message-sent',
+    type: 'session.message-sent',
   }
 }
 
-function staleDetailThread(threadId: ThreadId): OrchestrationThread {
-  const source = threadShell({ id: threadId, projectId })
+function staleDetailSession(sessionId: SessionId): OrchestrationSession {
+  const source = sessionShell({ id: sessionId })
 
   return {
+    deletion: null,
     ...source,
     activities: [],
-    branch: 'feature/stale',
     deletedAt: null,
     messages: [],
-    session: null,
+    runtime: null,
     title: 'stale detail title',
-    worktreePath: '/worktrees/stale',
   }
 }
 
 function sidebarState() {
-  return syncChatProjectionShellSnapshot(createInitialChatProjectionState(), {
-    projects: [],
+  return syncChatProjectionShellSnapshot(createInitialChatProjectionSlice(), {
+    worktrees: [fixtureWorktree()],
+    projects: [chatProject()],
     snapshotSequence: 1,
-    threads: [
-      threadShell({
+    sessions: [
+      sessionShell({
         archivedAt: timestamp(3),
-        id: v.parse(threadIdSchema, 'thread-archived'),
-        projectId,
+        id: v.parse(sessionIdSchema, 'bddfb36f-ebed-581b-aec7-4e191ed2a817'),
       }),
-      threadShell({ id: v.parse(threadIdSchema, 'thread-live'), projectId }),
+      sessionShell({ id: v.parse(sessionIdSchema, '1cb66ded-870c-5359-8e74-f911ce864e73') }),
     ],
     updatedAt: timestamp(2),
   })
 }
 
-function makeThreadShell(threadId: ThreadId, turnId: TurnId): OrchestrationThreadShell {
+function makeSessionShell(sessionId: SessionId, turnId: TurnId): OrchestrationSessionShell {
   return {
+    ...fixtureSessionShell(),
     archivedAt: null,
-    branch: null,
+
     createdAt: timestamp(1),
     hasActionableProposedPlan: false,
-    id: threadId,
+    id: sessionId,
     interactionMode: DEFAULT_INTERACTION_MODE,
     latestTurn: {
+      providerStartState: 'adopted' as const,
+      providerStartGeneration: 1,
+      providerStartSequence: 1,
+      runtimeEpoch: 'test-epoch',
       assistantMessageId: null,
       completedAt: null,
       requestedAt: timestamp(1),
@@ -334,22 +349,23 @@ function makeThreadShell(threadId: ThreadId, turnId: TurnId): OrchestrationThrea
     },
     pendingApprovalCount: 0,
     pendingUserInputCount: 0,
-    projectId,
     runtimeMode: DEFAULT_RUNTIME_MODE,
-    session: {
+    runtime: {
+      providerResumeCursor: null,
+      providerConversationMarker: null,
+      runtimeEpoch: 'test-epoch',
       activeTurnId: turnId,
       lastError: 'failed',
       providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
       providerName: 'Codex',
-      providerSessionId: null,
+      providerBindingHandle: null,
       runtimeMode: DEFAULT_RUNTIME_MODE,
       status: 'error',
-      threadId,
+      sessionId,
       updatedAt: timestamp(2),
     },
-    title: 'Thread',
+    title: 'Session',
     updatedAt: timestamp(2),
-    worktreePath: null,
   }
 }
 

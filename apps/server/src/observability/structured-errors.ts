@@ -55,10 +55,10 @@ export const orchestrationErrors = defineErrorCatalog('orchestration', {
   },
   PROJECT_NOT_EMPTY: {
     status: 409,
-    message: ({ projectId, threadCount }: { projectId: string; threadCount: number }) =>
-      `Project ${projectId} still has ${threadCount} live thread(s)`,
-    why: 'Deleting a project cascades to every thread it owns, so it is not a silent operation.',
-    fix: 'Delete the threads first, or resend the command with force set to true.',
+    message: ({ projectId, sessionCount }: { projectId: string; sessionCount: number }) =>
+      `Project ${projectId} still has ${sessionCount} live session(s)`,
+    why: 'Deleting a project cascades to every session it owns, so it is not a silent operation.',
+    fix: 'Delete the sessions first, or resend the command with force set to true.',
   },
   PROJECT_NOT_FOUND: {
     status: 404,
@@ -73,52 +73,52 @@ export const orchestrationErrors = defineErrorCatalog('orchestration', {
     why: 'Two active projects on one workspace root would fight over the same worktrees and checkpoints.',
     fix: 'Open the existing project for this workspace root, or delete it before recreating.',
   },
-  THREAD_ALREADY_EXISTS: {
+  SESSION_ALREADY_EXISTS: {
     status: 409,
-    message: ({ threadId }: { threadId: string }) => `Thread already exists: ${threadId}`,
-    why: 'The thread id is already present in the orchestration stream.',
-    fix: 'Use a new thread id or load the existing thread.',
+    message: ({ sessionId }: { sessionId: string }) => `Session already exists: ${sessionId}`,
+    why: 'The session id is already present in the orchestration stream.',
+    fix: 'Use a new session id or load the existing session.',
   },
-  THREAD_ARCHIVED: {
+  SESSION_ARCHIVED: {
     status: 409,
-    message: ({ commandType, threadId }: { commandType: string; threadId: string }) =>
-      `Thread ${threadId} is archived and cannot handle ${commandType}`,
-    why: 'An archived thread is parked: accepting work on it would resurrect it invisibly.',
-    fix: 'Unarchive the thread before sending this command.',
+    message: ({ commandType, sessionId }: { commandType: string; sessionId: string }) =>
+      `Session ${sessionId} is archived and cannot handle ${commandType}`,
+    why: 'An archived session is parked: accepting work on it would resurrect it invisibly.',
+    fix: 'Unarchive the session before sending this command.',
   },
-  THREAD_BRANCH_CONFLICT: {
+  SESSION_BRANCH_CONFLICT: {
     status: 409,
     message: ({
       actualBranch,
       expectedBranch,
-      threadId,
+      sessionId,
     }: {
       actualBranch: string | null
       expectedBranch: string | null
-      threadId: string
+      sessionId: string
     }) =>
-      `Thread ${threadId} is on branch ${actualBranch ?? 'none'}, not the expected ${expectedBranch ?? 'none'}`,
-    why: 'The compare-and-swap guard failed: the thread moved branches since the client read it.',
-    fix: 'Reload the thread and reissue the update against its current branch.',
+      `Session ${sessionId} is on branch ${actualBranch ?? 'none'}, not the expected ${expectedBranch ?? 'none'}`,
+    why: 'The compare-and-swap guard failed: the session moved branches since the client read it.',
+    fix: 'Reload the session and reissue the update against its current branch.',
   },
-  THREAD_NOT_ARCHIVED: {
+  SESSION_NOT_ARCHIVED: {
     status: 409,
-    message: ({ threadId }: { threadId: string }) => `Thread is not archived: ${threadId}`,
-    why: 'Unarchiving only applies to a thread that is currently archived.',
-    fix: 'Refresh the orchestration shell; the thread is already active.',
+    message: ({ sessionId }: { sessionId: string }) => `Session is not archived: ${sessionId}`,
+    why: 'Unarchiving only applies to a session that is currently archived.',
+    fix: 'Refresh the orchestration shell; the session is already active.',
   },
-  THREAD_NOT_FOUND: {
+  SESSION_NOT_FOUND: {
     status: 404,
-    message: ({ threadId }: { threadId: string }) => `Thread not found: ${threadId}`,
-    why: 'The requested thread is missing or has been deleted.',
-    fix: 'Refresh the orchestration shell and select an existing thread.',
+    message: ({ sessionId }: { sessionId: string }) => `Session not found: ${sessionId}`,
+    why: 'The requested session is missing or has been deleted.',
+    fix: 'Refresh the orchestration shell and select an existing session.',
   },
   SOURCE_PLAN_NOT_ACTIONABLE: {
     status: 409,
-    message: ({ planThreadId }: { planThreadId: string }) =>
-      `Thread ${planThreadId} has no actionable proposed plan to implement`,
+    message: ({ planSessionId }: { planSessionId: string }) =>
+      `Session ${planSessionId} has no actionable proposed plan to implement`,
     why: 'A turn cited a proposed plan that the read model does not hold as actionable — the plan was already implemented, was reverted away, or the client is working from a stale shell.',
-    fix: 'Reload the thread and start the turn from the plan the timeline currently shows.',
+    fix: 'Reload the session and start the turn from the plan the timeline currently shows.',
   },
 })
 

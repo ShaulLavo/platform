@@ -90,7 +90,7 @@ export async function dispatchChatCommand({
  * How many events the server appends for this command, so the replay window
  * opens just before the first of them. `result.sequence` is the last committed
  * event: a plain turn start decides message-sent + turn-start-requested, and a
- * bootstrapped one prepends thread.created. Everything else replays two wide —
+ * bootstrapped one prepends session.created. Everything else replays two wide —
  * one more than a single-event command needs, which replay's idempotence makes
  * free and which is what the call sites already did.
  */
@@ -102,9 +102,9 @@ export function replayAfterDispatch(
 }
 
 function eventsCommittedBy(command: ClientOrchestrationCommand) {
-  if (command.type !== 'thread.turn.start') return 2
+  if (command.type !== 'session.turn.start') return 2
 
-  return command.bootstrap?.createThread ? 3 : 2
+  return command.bootstrap?.createSession ? 3 : 2
 }
 
 function runGuarded(run: () => void, scope: ChatPipelineScope, counter: string) {

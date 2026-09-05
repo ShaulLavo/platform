@@ -116,7 +116,7 @@ describe('effortPlan', () => {
 })
 
 describe('claudeReasoning', () => {
-  it('reads the effort out of the per-thread selection', () => {
+  it('reads the effort out of the per-session selection', () => {
     const reasoning = claudeReasoning({
       modelSelection: modelSelection({ options: { reasoningEffort: 'max' } }),
       providerInstanceId: CLAUDE_INSTANCE,

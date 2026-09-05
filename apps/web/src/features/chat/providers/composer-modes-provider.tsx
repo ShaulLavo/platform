@@ -1,7 +1,7 @@
 import type {
-  ThreadId,
-  ThreadInteractionModeSetCommand,
-  ThreadRuntimeModeSetCommand,
+  SessionId,
+  SessionInteractionModeSetCommand,
+  SessionRuntimeModeSetCommand,
 } from '@workspace/contracts'
 import { useMemo, type ReactNode } from 'react'
 
@@ -21,32 +21,32 @@ import {
 } from '@/features/chat/state/chat-input-draft-store'
 
 type DispatchCommand = ChatTransport['dispatchCommand']
-type ModeSetCommand = ThreadInteractionModeSetCommand | ThreadRuntimeModeSetCommand
+type ModeSetCommand = SessionInteractionModeSetCommand | SessionRuntimeModeSetCommand
 
 /**
- * Owns the composer's access and plan/build picks for one thread. A pick is two
- * facts at once: the draft override the next turn carries, and the thread's own
- * mode — without the second one the thread projection keeps reporting whatever
+ * Owns the composer's access and plan/build picks for one session. A pick is two
+ * facts at once: the draft override the next turn carries, and the session's own
+ * mode — without the second one the session projection keeps reporting whatever
  * it was created with, so the sidebar and any other client read the wrong mode.
  *
  * The dispatch seam arrives as a prop rather than being reached for, which keeps
  * the menu renderable against any `ChatTransport`, including the real
  * in-process one under test.
  *
- * `threadId` is null on the draft composer, where there is no thread to set a
+ * `sessionId` is null on the draft composer, where there is no session to set a
  * mode on yet. The pick still lands in the draft, and the turn that creates the
- * thread carries it through `bootstrap.createThread`.
+ * session carries it through `bootstrap.createSession`.
  */
 export function ChatComposerModesProvider({
   children,
   dispatchCommand,
   draftTarget,
-  threadId,
+  sessionId,
 }: {
   readonly children: ReactNode
   readonly dispatchCommand: DispatchCommand
   readonly draftTarget: ChatInputDraftTarget
-  readonly threadId: ThreadId | null
+  readonly sessionId: SessionId | null
 }) {
   const setInteractionMode = useChatInputDraftStore((state) => state.setInteractionMode)
   const setRuntimeMode = useChatInputDraftStore((state) => state.setRuntimeMode)
@@ -58,12 +58,12 @@ export function ChatComposerModesProvider({
         // Local first: the pick has to survive an offline or rejected dispatch,
         // because the turn command is what actually carries it to the provider.
         setInteractionMode(draftTarget, interactionMode)
-        if (!threadId) return true
+        if (!sessionId) return true
 
         return dispatchModeSet({
           command: createInteractionModeSetCommand({
             interactionMode,
-            threadId,
+            sessionId,
           }),
           context: { interactionMode },
           dispatchCommand,
@@ -71,19 +71,19 @@ export function ChatComposerModesProvider({
       },
       selectRuntimeMode: async (runtimeMode) => {
         setRuntimeMode(draftTarget, runtimeMode)
-        if (!threadId) return true
+        if (!sessionId) return true
 
         return dispatchModeSet({
           command: createRuntimeModeSetCommand({
             runtimeMode,
-            threadId,
+            sessionId,
           }),
           context: { runtimeMode },
           dispatchCommand,
         })
       },
     }),
-    [dispatchCommand, draftTarget, setInteractionMode, setRuntimeMode, threadId],
+    [dispatchCommand, draftTarget, setInteractionMode, setRuntimeMode, sessionId],
   )
 
   return <ChatComposerModesContext value={value}>{children}</ChatComposerModesContext>
@@ -99,9 +99,9 @@ async function dispatchModeSet({
   dispatchCommand: DispatchCommand
 }): Promise<boolean> {
   // Nothing is rolled back: the draft override keeps the next turn correct
-  // even when the thread-level sync never lands.
+  // even when the session-level sync never lands.
   const outcome = await dispatchChatCommand({
-    action: 'chat.thread_mode.set.summary',
+    action: 'chat.session_mode.set.summary',
     command,
     context,
     dispatchCommand,

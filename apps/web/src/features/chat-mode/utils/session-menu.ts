@@ -9,17 +9,17 @@ import {
   TrashIcon,
 } from '@phosphor-icons/react'
 
-import type { OrchestrationSession, OrchestrationSessionStatus } from '@workspace/contracts'
+import type { SessionRuntimeState, SessionRuntimeStatus } from '@workspace/contracts'
 
 import { actionItem, section, type Menu } from '@/features/menus/utils/model'
 
 /**
- * A provider process is still holding this thread in these states, so stopping it
- * frees something real. `stopped` and `error` mean the session is already gone —
+ * A provider process is still holding this session in these states, so stopping it
+ * frees something real. `stopped` and `error` mean the runtime is already gone —
  * there is nothing left to stop, which is why the item is omitted rather than
  * disabled.
  */
-const STOPPABLE_SESSION_STATUSES: readonly OrchestrationSessionStatus[] = [
+const STOPPABLE_SESSION_STATUSES: readonly SessionRuntimeStatus[] = [
   'idle',
   'starting',
   'running',
@@ -28,17 +28,17 @@ const STOPPABLE_SESSION_STATUSES: readonly OrchestrationSessionStatus[] = [
   'interrupted',
 ]
 
-export function canStopAgentSession(session: OrchestrationSession | null | undefined) {
-  if (!session) return false
+export function canStopAgentSession(runtime: SessionRuntimeState | null | undefined) {
+  if (!runtime) return false
 
-  return STOPPABLE_SESSION_STATUSES.includes(session.status)
+  return STOPPABLE_SESSION_STATUSES.includes(runtime.status)
 }
 
 export type SessionMenuContext = {
   /** Archived sessions offer Unarchive in place of Archive, never both. */
   readonly archived: boolean
   readonly canStopAgent: boolean
-  /** True when the rail already shows only this session's project. */
+  /** True when the rail already shows only this runtime's project. */
   readonly scopedToProject: boolean
   readonly archive: () => void
   readonly deleteSession: () => void

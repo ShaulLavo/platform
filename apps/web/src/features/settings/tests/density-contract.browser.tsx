@@ -161,12 +161,12 @@ test('persistent app chrome changes compactly and leaves content text unchanged'
     <TooltipProvider delay={0}>
       <section data-testid='chat-header'>
         <ChatPanelHeader
-          activeThreadId={null}
+          activeSessionId={null}
           creating={false}
           disabled={false}
-          threads={[]}
+          sessions={[]}
           onNewChat={() => undefined}
-          onSelectThread={() => undefined}
+          onSelectSession={() => undefined}
         />
       </section>
       <ChatInputSubmitButton

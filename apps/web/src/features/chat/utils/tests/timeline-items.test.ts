@@ -4,12 +4,12 @@ import {
   eventIdSchema,
   messageIdSchema,
   proposedPlanIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
   turnIdSchema,
   type OrchestrationLatestTurn,
   type OrchestrationMessage,
   type OrchestrationProposedPlan,
-  type OrchestrationThreadActivity,
+  type OrchestrationSessionActivity,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
@@ -19,9 +19,13 @@ import { chatTimelineItems, type ChatTimelineItem } from '@/features/chat/utils/
 
 describe('chat timeline items', () => {
   it('orders messages, optimistic messages, activities, and working state by timestamp', () => {
-    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
     const turnId = v.parse(turnIdSchema, 'turn-1')
     const latestTurn: OrchestrationLatestTurn = {
+      providerStartState: 'adopted' as const,
+      providerStartGeneration: 1,
+      providerStartSequence: 1,
+      runtimeEpoch: 'test-epoch',
       assistantMessageId: null,
       completedAt: null,
       requestedAt: timestamp(4),
@@ -30,11 +34,11 @@ describe('chat timeline items', () => {
       turnId,
     }
     const items = chatTimelineItems({
-      activities: [activity('event-1', threadId, timestamp(3), turnId)],
+      activities: [activity('event-1', sessionId, timestamp(3), turnId)],
       latestTurn,
-      messages: [message('message-1', threadId, timestamp(1), 'user')],
-      optimisticMessages: [optimisticMessage('message-2', threadId, timestamp(2), turnId)],
-      proposedPlans: [proposedPlan('plan-1', threadId, timestamp(5), turnId)],
+      messages: [message('message-1', sessionId, timestamp(1), 'user')],
+      optimisticMessages: [optimisticMessage('message-2', sessionId, timestamp(2), turnId)],
+      proposedPlans: [proposedPlan('plan-1', sessionId, timestamp(5), turnId)],
     })
 
     expect(items.map((item) => item.id)).toEqual([
@@ -47,13 +51,13 @@ describe('chat timeline items', () => {
   })
 
   it('drops optimistic messages once the server message has arrived', () => {
-    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
     const turnId = v.parse(turnIdSchema, 'turn-1')
-    const resolved = optimisticMessage('message-1', threadId, timestamp(1), turnId)
+    const resolved = optimisticMessage('message-1', sessionId, timestamp(1), turnId)
     const items = chatTimelineItems({
       activities: [],
       latestTurn: null,
-      messages: [message('message-1', threadId, timestamp(2), 'user')],
+      messages: [message('message-1', sessionId, timestamp(2), 'user')],
       optimisticMessages: [resolved],
       proposedPlans: [],
     })
@@ -62,29 +66,29 @@ describe('chat timeline items', () => {
   })
 
   it('uses proposed-plan ids as stable replay keys', () => {
-    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
     const turnId = v.parse(turnIdSchema, 'turn-1')
     const items = chatTimelineItems({
       activities: [],
       latestTurn: null,
       messages: [],
       optimisticMessages: [],
-      proposedPlans: [proposedPlan('plan-1', threadId, timestamp(1), turnId)],
+      proposedPlans: [proposedPlan('plan-1', sessionId, timestamp(1), turnId)],
     })
 
     expect(items.map((item) => item.id)).toEqual(['proposed-plan:plan-1'])
   })
 
   it('keeps T3 chronological tie order across messages, plans, and work', () => {
-    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
     const turnId = v.parse(turnIdSchema, 'turn-1')
     const sameTime = timestamp(1)
     const items = chatTimelineItems({
-      activities: [activity('event-1', threadId, sameTime, turnId)],
+      activities: [activity('event-1', sessionId, sameTime, turnId)],
       latestTurn: null,
-      messages: [message('message-1', threadId, sameTime, 'assistant')],
+      messages: [message('message-1', sessionId, sameTime, 'assistant')],
       optimisticMessages: [],
-      proposedPlans: [proposedPlan('plan-1', threadId, sameTime, turnId, timestamp(2))],
+      proposedPlans: [proposedPlan('plan-1', sessionId, sameTime, turnId, timestamp(2))],
     })
 
     expect(items.map((item) => item.id)).toEqual([
@@ -97,18 +101,18 @@ describe('chat timeline items', () => {
   })
 
   it('groups only consecutive activities after chronological ordering', () => {
-    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
     const turnId = v.parse(turnIdSchema, 'turn-1')
     const items = chatTimelineItems({
       activities: [
-        activity('event-1', threadId, timestamp(2), turnId),
-        activity('event-2', threadId, timestamp(4), turnId),
+        activity('event-1', sessionId, timestamp(2), turnId),
+        activity('event-2', sessionId, timestamp(4), turnId),
       ],
       // The turn is still running, so nothing folds and every group stays where it landed.
       latestTurn: runningTurn(turnId, timestamp(1)),
-      messages: [message('message-1', threadId, timestamp(1), 'user')],
+      messages: [message('message-1', sessionId, timestamp(1), 'user')],
       optimisticMessages: [],
-      proposedPlans: [proposedPlan('plan-1', threadId, timestamp(3), turnId)],
+      proposedPlans: [proposedPlan('plan-1', sessionId, timestamp(3), turnId)],
     })
 
     expect(items.map((item) => item.id)).toEqual([
@@ -121,9 +125,13 @@ describe('chat timeline items', () => {
   })
 
   it('keeps older turns in the work log and groups them where they happened', () => {
-    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
     const turnId = v.parse(turnIdSchema, 'turn-2')
     const latestTurn: OrchestrationLatestTurn = {
+      providerStartState: 'adopted' as const,
+      providerStartGeneration: 1,
+      providerStartSequence: 1,
+      runtimeEpoch: 'test-epoch',
       assistantMessageId: null,
       completedAt: null,
       requestedAt: timestamp(5),
@@ -133,14 +141,14 @@ describe('chat timeline items', () => {
     }
     const items = chatTimelineItems({
       activities: [
-        activity('old-turn-tool', threadId, timestamp(2), v.parse(turnIdSchema, 'turn-1')),
-        activity('task-start', threadId, timestamp(3), turnId, 'task.started', 'info'),
-        activity('thinking', threadId, timestamp(4), turnId, 'task.progress', 'thinking', {
+        activity('old-turn-tool', sessionId, timestamp(2), v.parse(turnIdSchema, 'turn-1')),
+        activity('task-start', sessionId, timestamp(3), turnId, 'task.started', 'info'),
+        activity('thinking', sessionId, timestamp(4), turnId, 'task.progress', 'thinking', {
           summary: 'Inspecting repository state',
         }),
       ],
       latestTurn,
-      messages: [message('message-1', threadId, timestamp(1), 'user')],
+      messages: [message('message-1', sessionId, timestamp(1), 'user')],
       optimisticMessages: [],
       proposedPlans: [],
     })
@@ -161,9 +169,13 @@ describe('chat timeline items', () => {
   })
 
   it('hands the running turn its plan so the working row can name the current step', () => {
-    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
     const turnId = v.parse(turnIdSchema, 'turn-1')
     const latestTurn: OrchestrationLatestTurn = {
+      providerStartState: 'adopted' as const,
+      providerStartGeneration: 1,
+      providerStartSequence: 1,
+      runtimeEpoch: 'test-epoch',
       assistantMessageId: null,
       completedAt: null,
       requestedAt: timestamp(1),
@@ -173,7 +185,7 @@ describe('chat timeline items', () => {
     }
     const items = chatTimelineItems({
       activities: [
-        activity('plan-1', threadId, timestamp(2), turnId, 'turn.plan.updated', 'thinking', {
+        activity('plan-1', sessionId, timestamp(2), turnId, 'turn.plan.updated', 'thinking', {
           plan: [
             { status: 'completed', step: 'Read the code' },
             { status: 'inProgress', step: 'Write the test' },
@@ -193,9 +205,13 @@ describe('chat timeline items', () => {
   })
 
   it('derives T3 assistant row metadata before rendering', () => {
-    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
     const turnId = v.parse(turnIdSchema, 'turn-1')
     const latestTurn: OrchestrationLatestTurn = {
+      providerStartState: 'adopted' as const,
+      providerStartGeneration: 1,
+      providerStartSequence: 1,
+      runtimeEpoch: 'test-epoch',
       assistantMessageId: v.parse(messageIdSchema, 'message-3'),
       completedAt: timestamp(5),
       requestedAt: timestamp(1),
@@ -204,16 +220,16 @@ describe('chat timeline items', () => {
       turnId,
     }
     const items = chatTimelineItems({
-      activities: [activity('tool-done', threadId, timestamp(3), turnId)],
+      activities: [activity('tool-done', sessionId, timestamp(3), turnId)],
       latestTurn,
       messages: [
-        message('message-1', threadId, timestamp(1), 'user'),
-        message('message-2', threadId, timestamp(2), 'assistant', {
+        message('message-1', sessionId, timestamp(1), 'user'),
+        message('message-2', sessionId, timestamp(2), 'assistant', {
           text: 'First draft',
           turnId,
           updatedAt: timestamp(3),
         }),
-        message('message-3', threadId, timestamp(4), 'assistant', {
+        message('message-3', sessionId, timestamp(4), 'assistant', {
           text: 'Final response',
           turnId,
           updatedAt: timestamp(5),
@@ -247,9 +263,13 @@ describe('chat timeline items', () => {
   })
 
   it('freezes terminal assistant metadata when raw message streaming lags turn completion', () => {
-    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
     const turnId = v.parse(turnIdSchema, 'turn-1')
     const latestTurn: OrchestrationLatestTurn = {
+      providerStartState: 'adopted' as const,
+      providerStartGeneration: 1,
+      providerStartSequence: 1,
+      runtimeEpoch: 'test-epoch',
       assistantMessageId: v.parse(messageIdSchema, 'message-2'),
       completedAt: timestamp(5),
       requestedAt: timestamp(1),
@@ -258,11 +278,11 @@ describe('chat timeline items', () => {
       turnId,
     }
     const items = chatTimelineItems({
-      activities: [activity('tool-done', threadId, timestamp(4), turnId)],
+      activities: [activity('tool-done', sessionId, timestamp(4), turnId)],
       latestTurn,
       messages: [
-        message('message-1', threadId, timestamp(1), 'user'),
-        message('message-2', threadId, timestamp(3), 'assistant', {
+        message('message-1', sessionId, timestamp(1), 'user'),
+        message('message-2', sessionId, timestamp(3), 'assistant', {
           streaming: true,
           text: 'Done',
           turnId,
@@ -284,15 +304,15 @@ describe('chat timeline items', () => {
   })
 
   it('projects assistant turn diff summaries onto assistant rows', () => {
-    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
     const turnId = v.parse(turnIdSchema, 'turn-1')
     const assistantMessageId = v.parse(messageIdSchema, 'message-2')
     const items = chatTimelineItems({
       activities: [],
       latestTurn: null,
       messages: [
-        message('message-1', threadId, timestamp(1), 'user'),
-        message('message-2', threadId, timestamp(2), 'assistant', {
+        message('message-1', sessionId, timestamp(1), 'user'),
+        message('message-2', sessionId, timestamp(2), 'assistant', {
           text: 'Updated the files',
           turnId,
         }),
@@ -300,7 +320,7 @@ describe('chat timeline items', () => {
       optimisticMessages: [],
       proposedPlans: [],
       turnDiffSummaries: [
-        turnDiffSummary(threadId, turnId, assistantMessageId, [
+        turnDiffSummary(sessionId, turnId, assistantMessageId, [
           checkpointFile('apps/web/src/App.tsx', 12, 4),
           checkpointFile('packages/contracts/src/index.ts', 2, 0),
         ]),
@@ -321,15 +341,15 @@ describe('chat timeline items', () => {
   })
 
   it('projects checkpoint revert counts onto the nearby user row', () => {
-    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
     const turnId = v.parse(turnIdSchema, 'turn-1')
     const assistantMessageId = v.parse(messageIdSchema, 'message-2')
     const items = chatTimelineItems({
       activities: [],
       latestTurn: null,
       messages: [
-        message('message-1', threadId, timestamp(1), 'user', { turnId }),
-        message('message-2', threadId, timestamp(2), 'assistant', {
+        message('message-1', sessionId, timestamp(1), 'user', { turnId }),
+        message('message-2', sessionId, timestamp(2), 'assistant', {
           text: 'Updated the files',
           turnId,
         }),
@@ -338,7 +358,7 @@ describe('chat timeline items', () => {
       proposedPlans: [],
       turnDiffSummaries: [
         {
-          ...turnDiffSummary(threadId, turnId, assistantMessageId, [
+          ...turnDiffSummary(sessionId, turnId, assistantMessageId, [
             checkpointFile('apps/web/src/App.tsx', 12, 4),
           ]),
           checkpointTurnCount: 3,
@@ -355,14 +375,18 @@ describe('chat timeline items', () => {
   })
 
   it('folds a settled turn behind one row and keeps its closing message visible', () => {
-    const threadId = v.parse(threadIdSchema, 'thread-fold')
+    const sessionId = v.parse(sessionIdSchema, 'bc3e1c41-73bd-5eb7-824f-b1fd01bf336d')
     const turnId = v.parse(turnIdSchema, 'turn-1')
     const items = chatTimelineItems({
       activities: [
-        activity('tool-1', threadId, timestamp(3), turnId),
-        activity('tool-2', threadId, timestamp(4), turnId),
+        activity('tool-1', sessionId, timestamp(3), turnId),
+        activity('tool-2', sessionId, timestamp(4), turnId),
       ],
       latestTurn: {
+        providerStartState: 'adopted' as const,
+        providerStartGeneration: 1,
+        providerStartSequence: 1,
+        runtimeEpoch: 'test-epoch',
         assistantMessageId: v.parse(messageIdSchema, 'message-3'),
         completedAt: timestamp(5),
         requestedAt: timestamp(1),
@@ -371,12 +395,12 @@ describe('chat timeline items', () => {
         turnId,
       },
       messages: [
-        message('message-1', threadId, timestamp(1), 'user'),
-        message('message-2', threadId, timestamp(3), 'assistant', {
+        message('message-1', sessionId, timestamp(1), 'user'),
+        message('message-2', sessionId, timestamp(3), 'assistant', {
           text: 'Thinking out loud',
           turnId,
         }),
-        message('message-3', threadId, timestamp(5), 'assistant', {
+        message('message-3', sessionId, timestamp(5), 'assistant', {
           text: 'Final response',
           turnId,
         }),
@@ -400,14 +424,14 @@ describe('chat timeline items', () => {
   })
 
   it('leaves the turn in flight unfolded', () => {
-    const threadId = v.parse(threadIdSchema, 'thread-running')
+    const sessionId = v.parse(sessionIdSchema, '28a4dd88-b175-59c8-a28b-4df609078204')
     const turnId = v.parse(turnIdSchema, 'turn-1')
     const items = chatTimelineItems({
-      activities: [activity('tool-1', threadId, timestamp(2), turnId)],
+      activities: [activity('tool-1', sessionId, timestamp(2), turnId)],
       latestTurn: runningTurn(turnId, timestamp(1)),
       messages: [
-        message('message-1', threadId, timestamp(1), 'user'),
-        message('message-2', threadId, timestamp(3), 'assistant', { text: 'Working', turnId }),
+        message('message-1', sessionId, timestamp(1), 'user'),
+        message('message-2', sessionId, timestamp(3), 'assistant', { text: 'Working', turnId }),
       ],
       optimisticMessages: [],
       proposedPlans: [],
@@ -417,11 +441,15 @@ describe('chat timeline items', () => {
   })
 
   it('names an interrupted turn after the user who stopped it', () => {
-    const threadId = v.parse(threadIdSchema, 'thread-interrupted')
+    const sessionId = v.parse(sessionIdSchema, 'affd3ce8-92e1-5ee7-b089-edd598c2c35a')
     const turnId = v.parse(turnIdSchema, 'turn-1')
     const items = chatTimelineItems({
-      activities: [activity('tool-1', threadId, timestamp(3), turnId)],
+      activities: [activity('tool-1', sessionId, timestamp(3), turnId)],
       latestTurn: {
+        providerStartState: 'adopted' as const,
+        providerStartGeneration: 1,
+        providerStartSequence: 1,
+        runtimeEpoch: 'test-epoch',
         assistantMessageId: null,
         completedAt: timestamp(4),
         requestedAt: timestamp(1),
@@ -429,7 +457,7 @@ describe('chat timeline items', () => {
         state: 'interrupted',
         turnId,
       },
-      messages: [message('message-1', threadId, timestamp(1), 'user')],
+      messages: [message('message-1', sessionId, timestamp(1), 'user')],
       optimisticMessages: [],
       proposedPlans: [],
     })
@@ -440,13 +468,13 @@ describe('chat timeline items', () => {
   })
 
   it('keeps unchanged rows identical across a streaming delta', () => {
-    const threadId = v.parse(threadIdSchema, 'thread-sharing')
+    const sessionId = v.parse(sessionIdSchema, 'feef9dfd-ea59-5848-a328-7cc338903b44')
     const turnId = v.parse(turnIdSchema, 'turn-1')
     const latestTurn = runningTurn(turnId, timestamp(1))
-    const userMessage = message('message-1', threadId, timestamp(1), 'user')
-    const activities = [activity('tool-1', threadId, timestamp(2), turnId)]
+    const userMessage = message('message-1', sessionId, timestamp(1), 'user')
+    const activities = [activity('tool-1', sessionId, timestamp(2), turnId)]
     const streamed = (text: string) =>
-      message('message-2', threadId, timestamp(3), 'assistant', {
+      message('message-2', sessionId, timestamp(3), 'assistant', {
         streaming: true,
         text,
         turnId,
@@ -486,6 +514,10 @@ function runningTurn(
   startedAt: string,
 ): OrchestrationLatestTurn {
   return {
+    providerStartState: 'adopted' as const,
+    providerStartGeneration: 1,
+    providerStartSequence: 1,
+    runtimeEpoch: 'test-epoch',
     assistantMessageId: null,
     completedAt: null,
     requestedAt: startedAt,
@@ -509,7 +541,7 @@ function foldedItemIds(item: ChatTimelineItem | undefined) {
 
 function message(
   id: string,
-  threadId: ReturnType<typeof parseThreadId>,
+  sessionId: ReturnType<typeof parseSessionId>,
   createdAt: string,
   role: OrchestrationMessage['role'],
   options: {
@@ -526,7 +558,7 @@ function message(
     role,
     streaming: options.streaming ?? false,
     text: options.text ?? id,
-    threadId,
+    sessionId,
     turnId: options.turnId ?? null,
     updatedAt: options.updatedAt ?? createdAt,
   }
@@ -534,12 +566,12 @@ function message(
 
 function optimisticMessage(
   id: string,
-  threadId: ReturnType<typeof parseThreadId>,
+  sessionId: ReturnType<typeof parseSessionId>,
   createdAt: string,
   turnId: ReturnType<typeof parseTurnId>,
 ): OptimisticChatMessage {
   return {
-    ...message(id, threadId, createdAt, 'user'),
+    ...message(id, sessionId, createdAt, 'user'),
     commandId: v.parse(commandIdSchema, `command-${id}`),
     optimistic: true,
     turnId,
@@ -548,20 +580,20 @@ function optimisticMessage(
 
 function activity(
   id: string,
-  threadId: ReturnType<typeof parseThreadId>,
+  sessionId: ReturnType<typeof parseSessionId>,
   createdAt: string,
   turnId: ReturnType<typeof parseTurnId>,
   kind = 'tool.completed',
-  tone: OrchestrationThreadActivity['tone'] = 'tool',
+  tone: OrchestrationSessionActivity['tone'] = 'tool',
   payload: unknown = null,
-): OrchestrationThreadActivity {
+): OrchestrationSessionActivity {
   return {
     createdAt,
     id: v.parse(eventIdSchema, id),
     kind,
     payload,
     summary: id,
-    threadId,
+    sessionId,
     tone,
     turnId,
   }
@@ -569,7 +601,7 @@ function activity(
 
 function proposedPlan(
   id: string,
-  threadId: ReturnType<typeof parseThreadId>,
+  sessionId: ReturnType<typeof parseSessionId>,
   createdAt: string,
   turnId: ReturnType<typeof parseTurnId>,
   updatedAt = createdAt,
@@ -578,14 +610,14 @@ function proposedPlan(
     createdAt,
     id: v.parse(proposedPlanIdSchema, id),
     planMarkdown: '- Do the work',
-    threadId,
+    sessionId,
     turnId,
     updatedAt,
   }
 }
 
 function turnDiffSummary(
-  threadId: ReturnType<typeof parseThreadId>,
+  sessionId: ReturnType<typeof parseSessionId>,
   turnId: ReturnType<typeof parseTurnId>,
   assistantMessageId: ReturnType<typeof parseMessageId> | null,
   files: ChatTurnDiffSummary['files'],
@@ -597,7 +629,7 @@ function turnDiffSummary(
     completedAt: timestamp(5),
     files,
     status: 'ready',
-    threadId,
+    sessionId,
     turnId,
   }
 }
@@ -619,8 +651,8 @@ function parseMessageId(value: string) {
   return v.parse(messageIdSchema, value)
 }
 
-function parseThreadId(value: string) {
-  return v.parse(threadIdSchema, value)
+function parseSessionId(value: string) {
+  return v.parse(sessionIdSchema, value)
 }
 
 function parseTurnId(value: string) {

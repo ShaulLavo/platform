@@ -8,7 +8,9 @@ import * as v from 'valibot'
 import {
   approvalRequestIdSchema,
   messageIdSchema,
-  threadIdSchema,
+  orchestrationDispatchResultSchema,
+  orchestrationEventSchema,
+  sessionIdSchema,
   turnIdSchema,
 } from '@workspace/contracts'
 import type { App } from '../../app'
@@ -22,14 +24,11 @@ import { OrchestrationEventStore } from '../event-store'
 import type { PendingOrchestrationEvent } from '../event-store'
 import { OrchestrationEngine } from '../engine'
 import { OrchestrationProjectionPipeline } from '../projection-pipeline'
-import { ProviderCommandReactor } from '../provider-command-reactor'
 import { ProviderRuntimeIngestion } from '../provider-runtime-ingestion'
 import { OrchestrationSnapshotQuery } from '../snapshot-query'
 import { MockProviderAdapter } from '../../provider/adapters/mock'
 import { ProviderAdapterRegistry } from '../../provider/provider-adapter-registry'
-import { ProviderService } from '../../provider/provider-service'
-import { ProviderSessionDirectory } from '../../provider/provider-session-directory'
-import { checkpointRefForThreadTurn } from '../checkpoint-refs'
+import { checkpointRefForSessionTurn } from '../checkpoint-refs'
 import {
   orchestrationCommandSchema,
   type OrchestrationCommand,
@@ -60,17 +59,17 @@ describe('orchestration engine', () => {
 
     const first = await engine.dispatch(projectCreateCommand())
     const duplicate = await engine.dispatch(projectCreateCommand())
-    const replay = engine.replay({ afterSequence: 0 })
+    const replay = await engine.replay({ afterSequence: 0 })
 
-    expect(first).toMatchObject({ deduped: false, sequence: 1 })
-    expect(duplicate).toMatchObject({ deduped: true, sequence: 1 })
+    expect(first).toMatchObject({ deduped: false, sequence: 2 })
+    expect(duplicate).toMatchObject({ deduped: true, sequence: 2 })
     // Both dispatch paths — fresh and deduped — return the wire contract and
     // nothing more. `toMatchObject` above would not notice a re-added field.
     expect([Object.keys(first).sort(), Object.keys(duplicate).sort()]).toEqual([
-      ['deduped', 'sequence'],
-      ['deduped', 'sequence'],
+      ['deduped', 'result', 'sequence'],
+      ['deduped', 'result', 'sequence'],
     ])
-    expect(replay.events).toHaveLength(1)
+    expect(replay.events).toHaveLength(2)
     fixture.close()
   })
 
@@ -78,15 +77,15 @@ describe('orchestration engine', () => {
     const fixture = createFixture()
     const engine = new OrchestrationEngine(fixture.database)
 
-    await expect(engine.dispatch(threadCreateCommand())).rejects.toThrow('Project not found')
+    await expect(engine.dispatch(sessionCreateCommand())).rejects.toThrow('Worktree not found')
 
     expect(fixture.database.select().from(schema.orchestrationCommandReceipts).all()).toMatchObject(
-      [{ commandId: 'cmd-thread-create', resultSequence: null, status: 'rejected' }],
+      [{ commandId: 'cmd-session-create', resultSequence: null, status: 'rejected' }],
     )
-    await expect(engine.dispatch(threadCreateCommand())).rejects.toMatchObject({
+    await expect(engine.dispatch(sessionCreateCommand())).rejects.toMatchObject({
       code: 'orchestration.COMMAND_PREVIOUSLY_REJECTED',
     })
-    expect(engine.replay({ afterSequence: 0 }).events).toHaveLength(0)
+    expect((await engine.replay({ afterSequence: 0 })).events).toHaveLength(0)
     fixture.close()
   })
 
@@ -102,19 +101,19 @@ describe('orchestration engine', () => {
     const engine = new OrchestrationEngine(fixture.database)
     const retried = projectCreateCommand({
       commandId: 'cmd-project-create-retried',
-      projectId: 'project-retried',
+      projectId: 'c70f2f81-8bca-5362-88d2-98099bcdbf9c',
     })
 
     await expect(engine.dispatch(retried)).rejects.toThrow('projection failed')
 
-    expect(engine.replay({ afterSequence: 0 }).events).toHaveLength(0)
+    expect((await engine.replay({ afterSequence: 0 })).events).toHaveLength(0)
     expect(fixture.database.select().from(schema.orchestrationCommandReceipts).all()).toHaveLength(
       0,
     )
 
     fixture.sqlite.exec('DROP TRIGGER fail_projection_project_insert')
 
-    expect(await engine.dispatch(retried)).toMatchObject({ deduped: false, sequence: 1 })
+    expect(await engine.dispatch(retried)).toMatchObject({ deduped: false, sequence: 2 })
     expect(fixture.database.select().from(schema.orchestrationCommandReceipts).all()).toMatchObject(
       [{ commandId: 'cmd-project-create-retried', status: 'accepted' }],
     )
@@ -130,7 +129,7 @@ describe('orchestration engine', () => {
     engine.subscribeDomainEvents({
       handleEvents: () => {
         throwingCalls += 1
-        throw new Error('reactor exploded')
+        throw new TypeError('reactor exploded')
       },
       name: 'throwing',
     })
@@ -141,12 +140,12 @@ describe('orchestration engine', () => {
 
     const committed = await engine.dispatch(projectCreateCommand())
     unsubscribe()
-    await engine.dispatch(threadCreateCommand())
+    await engine.dispatch(sessionCreateCommand())
 
-    expect(committed).toMatchObject({ deduped: false, sequence: 1 })
+    expect(committed).toMatchObject({ deduped: false, sequence: 2 })
     expect(throwingCalls).toBe(2)
-    expect(observed.map((event) => event.type)).toEqual(['project.created'])
-    expect(engine.replay({ afterSequence: 0 }).events).toHaveLength(2)
+    expect(observed.map((event) => event.type)).toEqual(['project.created', 'worktree.registered'])
+    expect((await engine.replay({ afterSequence: 0 })).events).toHaveLength(3)
     fixture.close()
   })
 
@@ -164,14 +163,28 @@ describe('orchestration engine', () => {
     // after its events are durable would leave behind.
     new OrchestrationEventStore(fixture.database).append([unobservedProjectCreatedEvent()])
 
-    expect(engine.readModelSnapshot().projects.has('project-unobserved')).toBe(false)
+    expect(
+      (await engine.readModelSnapshot()).projects.has('7cbea174-ed3a-5f65-b016-8deac3bfb79e'),
+    ).toBe(false)
 
     await expect(
-      engine.dispatch(projectCreateCommand({ commandId: 'cmd-project-duplicate' })),
-    ).rejects.toThrow('Project already exists')
+      engine.dispatch(
+        sessionCreateCommand(
+          undefined,
+          'cmd-missing-worktree',
+          '20000000-0000-4000-8000-000000000099',
+        ),
+      ),
+    ).rejects.toThrow('Worktree not found')
 
-    expect(engine.readModelSnapshot().projects.has('project-unobserved')).toBe(true)
-    expect(observed.map((event) => event.type)).toEqual(['project.created', 'project.created'])
+    expect(
+      (await engine.readModelSnapshot()).projects.has('7cbea174-ed3a-5f65-b016-8deac3bfb79e'),
+    ).toBe(true)
+    expect(observed.map((event) => event.type)).toEqual([
+      'project.created',
+      'worktree.registered',
+      'project.created',
+    ])
     fixture.close()
   })
 
@@ -182,16 +195,16 @@ describe('orchestration engine', () => {
     fixture.sqlite.exec(`
       CREATE TRIGGER interleave_competing_event
       AFTER INSERT ON orchestration_events
-      WHEN new.aggregate_id = 'project-race'
+      WHEN new.aggregate_id = 'e9fb6230-c710-5feb-8967-9a6cc07c9670'
       BEGIN
         INSERT INTO orchestration_events (
           event_id, aggregate_kind, aggregate_id, stream_version, event_type,
           occurred_at, command_id, causation_event_id, correlation_id, actor_kind,
           payload_json, metadata_json
         ) VALUES (
-          'event-competing-' || new.sequence, 'project', 'project-race',
+          'event-competing-' || new.sequence, 'project', 'e9fb6230-c710-5feb-8967-9a6cc07c9670',
           (SELECT coalesce(max(stream_version), 0) + 1 FROM orchestration_events
-            WHERE aggregate_kind = 'project' AND aggregate_id = 'project-race'),
+            WHERE aggregate_kind = 'project' AND aggregate_id = 'e9fb6230-c710-5feb-8967-9a6cc07c9670'),
           'project.deleted', new.occurred_at, NULL, NULL, NULL, 'server',
           new.payload_json, new.metadata_json
         );
@@ -219,14 +232,16 @@ describe('orchestration engine', () => {
     const fixture = createFixture()
     const engine = new OrchestrationEngine(fixture.database)
 
-    await dispatchFirstThread(engine)
+    await dispatchFirstSession(engine)
     const rebuilt = new OrchestrationSnapshotQuery(fixture.database).fullReadModel()
-    const thread = rebuilt.threads.get('thread-1')
+    const session = rebuilt.sessions.get('00000000-0000-4000-8000-000000000001')
 
-    expect(rebuilt.projects.get('project-1')?.title).toBe('Platform')
-    expect(thread?.latestTurn?.turnId as string).toBe('turn-1')
-    expect(thread?.messages[0]?.text).toBe('Build the first slice')
-    expect(thread).toEqual(engine.readModelSnapshot().threads.get('thread-1'))
+    expect(rebuilt.projects.get('10000000-0000-4000-8000-000000000001')?.title).toBe('Platform')
+    expect(session?.latestTurn?.turnId as string).toBe('turn-1')
+    expect(session?.messages[0]?.text).toBe('Build the first slice')
+    expect(session).toEqual(
+      (await engine.readModelSnapshot()).sessions.get('00000000-0000-4000-8000-000000000001'),
+    )
     fixture.close()
   })
 
@@ -237,7 +252,7 @@ describe('orchestration engine', () => {
       .insert(schema.orchestrationEvents)
       .values({
         actorKind: 'client',
-        aggregateId: 'project-1',
+        aggregateId: '10000000-0000-4000-8000-000000000001',
         aggregateKind: 'project',
         causationEventId: null,
         commandId: 'cmd-project-create',
@@ -249,10 +264,12 @@ describe('orchestration engine', () => {
         payloadJson: JSON.stringify({
           createdAt: now,
           defaultModelSelection: null,
-          projectId: 'project-1',
+          projectId: '10000000-0000-4000-8000-000000000001',
           title: 'Platform',
           updatedAt: now,
-          workspaceRoot: '/workspace',
+          repositoryKey: 'fixture-repository',
+          repositoryKind: 'directory',
+          repositoryIdentity: { source: 'path', canonical: '/workspace' },
         }),
         streamVersion: 1,
       })
@@ -272,59 +289,64 @@ describe('orchestration engine', () => {
     }
 
     fixture.close()
-    throw new Error('expected malformed event JSON to throw')
+    throw new TypeError('expected malformed event JSON to throw')
   })
 
   it('persists projection rows and returns shell/detail snapshots', async () => {
     const fixture = createFixture()
     const engine = new OrchestrationEngine(fixture.database)
 
-    await dispatchFirstThread(engine)
-    const shell = engine.shellSnapshot()
-    const detail = engine.threadDetailSnapshot('thread-1')
+    await dispatchFirstSession(engine)
+    const shell = await engine.shellSnapshot()
+    const detail = await engine.sessionDetailSnapshot('00000000-0000-4000-8000-000000000001')
 
-    expect(shell.snapshotSequence).toBe(4)
-    expect(shell.projects).toContainEqual(expect.objectContaining({ id: 'project-1' }))
-    const thread = shell.threads.find((candidate) => candidate.id === 'thread-1')
+    expect(shell.snapshotSequence).toBe(5)
+    expect(shell.projects).toContainEqual(
+      expect.objectContaining({ id: '10000000-0000-4000-8000-000000000001' }),
+    )
+    const session = shell.sessions.find(
+      (candidate) => candidate.id === '00000000-0000-4000-8000-000000000001',
+    )
 
-    expect(thread).toMatchObject({
+    expect(session).toMatchObject({
       latestTurn: expect.objectContaining({ state: 'running', turnId: 'turn-1' }),
     })
     // One server clock reading per command, so the user message and the turn it
     // opened land on the same instant instead of on two client-supplied ones.
-    expect(thread?.latestUserMessageAt).toBe(thread?.latestTurn?.requestedAt)
-    expect(detail.thread.messages).toContainEqual(
+    expect(session?.latestUserMessageAt).toBe(session?.latestTurn?.requestedAt)
+    expect(detail.session.messages).toContainEqual(
       expect.objectContaining({ id: 'message-1', role: 'user', text: 'Build the first slice' }),
     )
     fixture.close()
   })
 
-  it('bootstraps a draft thread inside a turn-start command', async () => {
+  it('bootstraps a draft session inside a turn-start command', async () => {
     const fixture = createFixture()
     const engine = new OrchestrationEngine(fixture.database)
 
     await engine.dispatch(projectCreateCommand())
     const result = await engine.dispatch(
-      threadTurnStartCommand({
-        bootstrapCreateThread: true,
+      sessionTurnStartCommand({
+        bootstrapCreateSession: true,
         commandId: 'cmd-bootstrap-turn',
-        threadId: 'thread-bootstrap',
+        sessionId: 'a43305cb-eea2-5353-870b-b01e71c0ec9c',
       }),
     )
-    const replay = engine.replay({ afterSequence: 0 })
-    const detail = engine.threadDetailSnapshot('thread-bootstrap')
+    const replay = await engine.replay({ afterSequence: 0 })
+    const detail = await engine.sessionDetailSnapshot('a43305cb-eea2-5353-870b-b01e71c0ec9c')
 
-    expect(result).toMatchObject({ deduped: false, sequence: 4 })
+    expect(result).toMatchObject({ deduped: false, sequence: 5 })
     expect(replay.events.map((event) => event.type)).toEqual([
       'project.created',
-      'thread.created',
-      'thread.message-sent',
-      'thread.turn-start-requested',
+      'worktree.registered',
+      'session.created',
+      'session.message-sent',
+      'session.turn-start-requested',
     ])
-    expect(detail.thread.messages).toContainEqual(
+    expect(detail.session.messages).toContainEqual(
       expect.objectContaining({ id: 'message-1', role: 'user', text: 'Build the first slice' }),
     )
-    expect(detail.thread.latestTurn).toMatchObject({ state: 'running', turnId: 'turn-1' })
+    expect(detail.session.latestTurn).toMatchObject({ state: 'running', turnId: 'turn-1' })
     fixture.close()
   })
 
@@ -332,15 +354,15 @@ describe('orchestration engine', () => {
     const fixture = createFixture()
     const engine = new OrchestrationEngine(fixture.database)
 
-    const emptyFirst = engine.shellSnapshot()
-    const emptySecond = engine.shellSnapshot()
+    const emptyFirst = await engine.shellSnapshot()
+    const emptySecond = await engine.shellSnapshot()
 
     expect(emptySecond.updatedAt).toBe(emptyFirst.updatedAt)
 
     await engine.dispatch(projectCreateCommand())
 
-    const projectedFirst = engine.shellSnapshot()
-    const projectedSecond = engine.shellSnapshot()
+    const projectedFirst = await engine.shellSnapshot()
+    const projectedSecond = await engine.shellSnapshot()
 
     expect(projectedFirst.updatedAt).not.toBe(emptyFirst.updatedAt)
     expect(projectedSecond.updatedAt).toBe(projectedFirst.updatedAt)
@@ -351,9 +373,9 @@ describe('orchestration engine', () => {
     const fixture = createFixture()
     const store = new OrchestrationEventStore(fixture.database)
     const project = store.append([
-      {
+      pendingEvent({
         actorKind: 'client',
-        aggregateId: 'project-1',
+        aggregateId: '10000000-0000-4000-8000-000000000001',
         aggregateKind: 'project',
         causationEventId: null,
         commandId: 'cmd-project-create',
@@ -364,14 +386,16 @@ describe('orchestration engine', () => {
         payload: {
           createdAt: now,
           defaultModelSelection: null,
-          projectId: 'project-1',
+          projectId: '10000000-0000-4000-8000-000000000001',
           title: 'Platform',
           updatedAt: now,
-          workspaceRoot: '/workspace',
+          repositoryKey: 'fixture-repository',
+          repositoryKind: 'directory',
+          repositoryIdentity: { source: 'path', canonical: '/workspace' },
         },
         type: 'project.created',
-      },
-    ] as PendingOrchestrationEvent[])
+      }),
+    ])
     const snapshots = new OrchestrationSnapshotQuery(fixture.database)
     const staleSnapshot = snapshots.shellSnapshot()
     const pipeline = new OrchestrationProjectionPipeline(fixture.database, store)
@@ -379,9 +403,9 @@ describe('orchestration engine', () => {
     const snapshot = snapshots.shellSnapshot()
 
     expect(staleSnapshot.snapshotSequence).toBe(0)
-    expect(applied).toHaveLength(1)
+    expect(applied).toEqual({ afterSequence: 0, eventCount: 1, pageCount: 1, sequence: 1 })
     expect(snapshot.snapshotSequence).toBe(project[0]!.sequence)
-    expect(snapshot.projects[0]?.id as string).toBe('project-1')
+    expect(snapshot.projects[0]?.id as string).toBe('10000000-0000-4000-8000-000000000001')
     fixture.close()
   })
 
@@ -389,25 +413,27 @@ describe('orchestration engine', () => {
     const fixture = createFixture()
     const engine = new OrchestrationEngine(fixture.database)
 
-    await dispatchFirstThread(engine)
+    await dispatchFirstSession(engine)
     await engine.dispatch(assistantDeltaCommand())
     await engine.dispatch(assistantCompleteCommand())
-    const detail = engine.threadDetailSnapshot('thread-1')
-    const modelThread = engine.readModelSnapshot().threads.get('thread-1')
-    const assistantMessage = detail.thread.messages.find((message) => message.id === 'message-2')
+    const detail = await engine.sessionDetailSnapshot('00000000-0000-4000-8000-000000000001')
+    const modelSession = (await engine.readModelSnapshot()).sessions.get(
+      '00000000-0000-4000-8000-000000000001',
+    )
+    const assistantMessage = detail.session.messages.find((message) => message.id === 'message-2')
 
     expect(assistantMessage).toMatchObject({
       role: 'assistant',
       streaming: false,
       text: 'Done',
     })
-    expect(detail.thread.latestTurn).toMatchObject({
+    expect(detail.session.latestTurn).toMatchObject({
       assistantMessageId: 'message-2',
       completedAt: assistantCompleted,
       state: 'completed',
       turnId: 'turn-1',
     })
-    expect(modelThread?.latestTurn).toMatchObject({
+    expect(modelSession?.latestTurn).toMatchObject({
       assistantMessageId: 'message-2',
       completedAt: assistantCompleted,
       state: 'completed',
@@ -415,7 +441,7 @@ describe('orchestration engine', () => {
     fixture.close()
   })
 
-  it('serves the Phase 2 HTTP command and snapshot flow', async () => {
+  it('serves registration, session commands, and snapshots through HTTP', async () => {
     const fixture = createFixture()
     const root = await fixtureRoot()
     const app = createTestApp({
@@ -426,26 +452,26 @@ describe('orchestration engine', () => {
       workspaceRoot: root,
     })
 
-    await postCommand(app, projectCreateCommand())
-    await postCommand(app, threadCreateCommand())
-    const turn = await postCommand(app, threadTurnStartCommand())
+    const registration = await registerHttpProject(app, root)
+    await postCommand(app, sessionCreateCommand(undefined, undefined, registration.worktreeId))
+    const turn = await postCommand(app, sessionTurnStartCommand())
     const shell = await getJson<{ snapshotSequence: number }>(app, '/orchestration/shell-snapshot')
-    const detail = await getJson<{ thread: { messages: Array<{ text: string }> } }>(
+    const detail = await getJson<{ session: { messages: Array<{ text: string }> } }>(
       app,
-      '/orchestration/thread-detail?threadId=thread-1',
+      '/orchestration/session-detail?sessionId=00000000-0000-4000-8000-000000000001',
     )
     const replay = await postJson<OrchestrationReplayEventsResult>(app, '/orchestration/replay', {
       afterSequence: 0,
-      threadId: 'thread-1',
+      sessionId: '00000000-0000-4000-8000-000000000001',
     })
 
-    expect(turn.sequence).toBe(4)
-    expect(shell.snapshotSequence).toBe(4)
-    expect(detail.thread.messages[0]?.text).toBe('Build the first slice')
+    expect(turn.sequence).toBe(5)
+    expect(shell.snapshotSequence).toBe(5)
+    expect(detail.session.messages[0]?.text).toBe('Build the first slice')
     expect(replay.events.map((event) => event.type)).toEqual([
-      'thread.created',
-      'thread.message-sent',
-      'thread.turn-start-requested',
+      'session.created',
+      'session.message-sent',
+      'session.turn-start-requested',
     ])
     fixture.close()
   })
@@ -467,63 +493,80 @@ describe('orchestration engine', () => {
     })
     expect(await events.next()).toMatchObject({ kind: 'synchronized', sequence: 0 })
 
-    const created = postCommand(app, projectCreateCommand())
+    const created = await registerHttpProject(app, root)
 
     expect(await events.next()).toMatchObject({
       kind: 'project-upserted',
-      project: { id: 'project-1', title: 'Platform' },
+      project: { id: created.projectId, title: 'Platform' },
       sequence: 1,
     })
-    await created
     await events.close()
     fixture.close()
   })
 
-  it('streams detail events only for the subscribed thread', async () => {
+  it('streams detail events only for the subscribed session', async () => {
     const fixture = createFixture()
     const root = await fixtureRoot()
     const app = createOrchestrationTestApp(root, fixture.database)
 
-    await postCommand(app, projectCreateCommand())
-    await postCommand(app, threadCreateCommand())
-    await postCommand(app, threadCreateCommand('thread-2', 'cmd-thread-2-create'))
+    const registration = await registerHttpProject(app, root)
+    await postCommand(app, sessionCreateCommand(undefined, undefined, registration.worktreeId))
+    await postCommand(
+      app,
+      sessionCreateCommand(
+        '19e557ea-fa7c-515a-9051-e990f8aa54c6',
+        'cmd-session-2-create',
+        registration.worktreeId,
+      ),
+    )
 
     const stream = await app.handle(
-      new Request('http://local/orchestration/thread-detail-stream?threadId=thread-1', {
-        headers: trustedHeaders(),
-      }),
+      new Request(
+        'http://local/orchestration/session-detail-stream?sessionId=00000000-0000-4000-8000-000000000001',
+        {
+          headers: trustedHeaders(),
+        },
+      ),
     )
     const events = createSseReader(stream)
 
     expect(await events.next()).toMatchObject({
       kind: 'snapshot',
-      snapshot: { snapshotSequence: 3 },
+      snapshot: { snapshotSequence: 4 },
     })
-    expect(await events.next()).toMatchObject({ kind: 'synchronized', sequence: 3 })
+    expect(await events.next()).toMatchObject({ kind: 'synchronized', sequence: 4 })
 
     await postCommand(
       app,
-      threadTurnStartCommand({
-        commandId: 'cmd-thread-2-turn',
+      sessionTurnStartCommand({
+        commandId: 'cmd-session-2-turn',
         messageId: 'message-2',
-        text: 'Ignore this thread',
-        threadId: 'thread-2',
+        text: 'Ignore this session',
+        sessionId: '19e557ea-fa7c-515a-9051-e990f8aa54c6',
         turnId: 'turn-2',
       }),
     )
-    const targetTurn = postCommand(app, threadTurnStartCommand())
+    const targetTurn = postCommand(app, sessionTurnStartCommand())
 
     expect(await events.next()).toMatchObject({
       event: {
-        payload: { messageId: 'message-1', text: 'Build the first slice', threadId: 'thread-1' },
-        type: 'thread.message-sent',
+        payload: {
+          messageId: 'message-1',
+          text: 'Build the first slice',
+          sessionId: '00000000-0000-4000-8000-000000000001',
+        },
+        type: 'session.message-sent',
       },
       kind: 'event',
     })
     expect(await events.next()).toMatchObject({
       event: {
-        payload: { messageId: 'message-1', threadId: 'thread-1', turnId: 'turn-1' },
-        type: 'thread.turn-start-requested',
+        payload: {
+          messageId: 'message-1',
+          sessionId: '00000000-0000-4000-8000-000000000001',
+          turnId: 'turn-1',
+        },
+        type: 'session.turn-start-requested',
       },
       kind: 'event',
     })
@@ -560,19 +603,20 @@ describe('orchestration engine', () => {
     const adapter = new MockProviderAdapter({ responseText: 'Runtime response' })
     const engine = createRuntimeEngine(fixture, adapter)
 
-    await dispatchFirstThread(engine)
+    await dispatchFirstSession(engine)
     await engine.providerRuntimeIdle()
 
     const runtime = fixture.database.select().from(schema.providerSessionRuntime).get()
-    const detail = engine.threadDetailSnapshot('thread-1')
+    const detail = await engine.sessionDetailSnapshot('00000000-0000-4000-8000-000000000001')
 
     expect(runtime).toMatchObject({
       providerDriverKind: 'codex',
       providerInstanceId: 'codex',
-      status: 'ready',
-      threadId: 'thread-1',
+      runtimeEpoch: expect.any(String),
+      sessionId: '00000000-0000-4000-8000-000000000001',
     })
-    expect(detail.thread.messages).toContainEqual(
+    expect(detail.session.runtime).toMatchObject({ status: 'ready' })
+    expect(detail.session.messages).toContainEqual(
       expect.objectContaining({
         role: 'assistant',
         streaming: false,
@@ -589,43 +633,47 @@ describe('orchestration engine', () => {
     })
 
     await ingestion.ingest({
+      runtimeEpoch: 'fixture-runtime-epoch',
       createdAt: now,
       delta: 'one',
       eventId: 'runtime-event-1',
       messageId: v.parse(messageIdSchema, 'message-runtime'),
-      threadId: v.parse(threadIdSchema, 'thread-1'),
+      sessionId: v.parse(sessionIdSchema, '00000000-0000-4000-8000-000000000001'),
       turnId: v.parse(turnIdSchema, 'turn-1'),
       type: 'assistant.delta',
     })
     await ingestion.ingest({
+      runtimeEpoch: 'fixture-runtime-epoch',
       createdAt: now,
       delta: 'one',
       eventId: 'runtime-event-1',
       messageId: v.parse(messageIdSchema, 'message-runtime'),
-      threadId: v.parse(threadIdSchema, 'thread-1'),
+      sessionId: v.parse(sessionIdSchema, '00000000-0000-4000-8000-000000000001'),
       turnId: v.parse(turnIdSchema, 'turn-1'),
       type: 'assistant.delta',
     })
     await ingestion.ingest({
+      runtimeEpoch: 'fixture-runtime-epoch',
       completedAt: later,
       eventId: 'runtime-event-2',
       messageId: v.parse(messageIdSchema, 'message-runtime'),
-      threadId: v.parse(threadIdSchema, 'thread-1'),
+      sessionId: v.parse(sessionIdSchema, '00000000-0000-4000-8000-000000000001'),
       turnId: v.parse(turnIdSchema, 'turn-1'),
       type: 'assistant.complete',
     })
     await ingestion.ingest({
+      runtimeEpoch: 'fixture-runtime-epoch',
       completedAt: later,
       eventId: 'runtime-event-2',
       messageId: v.parse(messageIdSchema, 'message-runtime'),
-      threadId: v.parse(threadIdSchema, 'thread-1'),
+      sessionId: v.parse(sessionIdSchema, '00000000-0000-4000-8000-000000000001'),
       turnId: v.parse(turnIdSchema, 'turn-1'),
       type: 'assistant.complete',
     })
 
     expect(dispatched).toMatchObject([
-      { delta: 'one', type: 'thread.message.assistant.delta' },
-      { type: 'thread.message.assistant.complete' },
+      { delta: 'one', type: 'session.message.assistant.delta' },
+      { type: 'session.message.assistant.complete' },
     ])
   })
 
@@ -636,20 +684,21 @@ describe('orchestration engine', () => {
       await engine.dispatch(command)
     })
 
-    await dispatchFirstThread(engine)
+    await dispatchFirstSession(engine)
     await ingestion.ingest({
+      runtimeEpoch: 'fixture-runtime-epoch',
       createdAt: assistantStarted,
       eventId: 'runtime-plan-1',
       planMarkdown: '1. Inspect runtime\n2. Patch provider',
-      threadId: v.parse(threadIdSchema, 'thread-1'),
+      sessionId: v.parse(sessionIdSchema, '00000000-0000-4000-8000-000000000001'),
       turnId: v.parse(turnIdSchema, 'turn-1'),
       type: 'proposed-plan.upsert',
     })
-    const shell = engine.shellSnapshot()
+    const shell = await engine.shellSnapshot()
 
-    expect(shell.threads[0]).toMatchObject({
+    expect(shell.sessions[0]).toMatchObject({
       hasActionableProposedPlan: true,
-      id: 'thread-1',
+      id: '00000000-0000-4000-8000-000000000001',
     })
     fixture.close()
   })
@@ -659,39 +708,18 @@ describe('orchestration engine', () => {
     const adapter = new MockProviderAdapter({ shouldFail: true })
     const engine = createRuntimeEngine(fixture, adapter)
 
-    await dispatchFirstThread(engine)
+    await dispatchFirstSession(engine)
     await engine.providerRuntimeIdle()
-    const detail = engine.threadDetailSnapshot('thread-1')
+    const detail = await engine.sessionDetailSnapshot('00000000-0000-4000-8000-000000000001')
 
-    expect(detail.thread.latestTurn).toMatchObject({ state: 'error', turnId: 'turn-1' })
-    expect(detail.thread.session).toMatchObject({
+    expect(detail.session.latestTurn).toMatchObject({ state: 'error', turnId: 'turn-1' })
+    expect(detail.session.runtime).toMatchObject({
       lastError: 'Mock provider failed',
       status: 'error',
     })
-    expect(detail.thread.activities).toContainEqual(
+    expect(detail.session.activities).toContainEqual(
       expect.objectContaining({ kind: 'provider.turn.start.failed', tone: 'error' }),
     )
-    fixture.close()
-  })
-
-  it('expires provider turn-start dedupe keys after the reactor TTL', async () => {
-    const fixture = createFixture()
-    const adapter = new MockProviderAdapter()
-    const engine = new OrchestrationEngine(fixture.database)
-    let nowMs = Date.parse(now)
-    const reactor = createStandaloneProviderReactor(fixture, engine, adapter, () => nowMs)
-
-    await dispatchFirstThread(engine)
-    const event = firstTurnStartEvent(engine)
-    reactor.handleEvents([event])
-    await reactor.drain()
-    reactor.handleEvents([event])
-    await reactor.drain()
-    nowMs += 31 * 60 * 1000
-    reactor.handleEvents([event])
-    await reactor.drain()
-
-    expect(adapter.startedTurns).toHaveLength(2)
     fixture.close()
   })
 
@@ -705,7 +733,7 @@ describe('orchestration engine', () => {
     const engine = createRuntimeEngine(fixture, adapter)
     let drained = false
 
-    await dispatchFirstThread(engine)
+    await dispatchFirstSession(engine)
     const idle = engine.providerRuntimeIdle().then(() => {
       drained = true
     })
@@ -723,23 +751,25 @@ describe('orchestration engine', () => {
     const adapter = new MockProviderAdapter()
     const engine = createRuntimeEngine(fixture, adapter)
 
-    await dispatchFirstThread(engine)
+    await dispatchFirstSession(engine)
     await engine.providerRuntimeIdle()
     await engine.dispatch(
       command({
         commandId: 'cmd-turn-interrupt',
         createdAt: assistantCompleted,
-        threadId: 'thread-1',
+        sessionId: '00000000-0000-4000-8000-000000000001',
         turnId: 'turn-1',
-        type: 'thread.turn.interrupt',
+        type: 'session.turn.interrupt',
       }),
     )
     await engine.providerRuntimeIdle()
-    const detail = engine.threadDetailSnapshot('thread-1')
+    const detail = await engine.sessionDetailSnapshot('00000000-0000-4000-8000-000000000001')
 
-    expect(adapter.interruptedThreads).toContain(v.parse(threadIdSchema, 'thread-1'))
-    expect(detail.thread.latestTurn).toMatchObject({ state: 'interrupted', turnId: 'turn-1' })
-    expect(detail.thread.session).toMatchObject({ status: 'interrupted' })
+    expect(adapter.interruptedSessions).toContain(
+      v.parse(sessionIdSchema, '00000000-0000-4000-8000-000000000001'),
+    )
+    expect(detail.session.latestTurn).toMatchObject({ state: 'interrupted', turnId: 'turn-1' })
+    expect(detail.session.runtime).toMatchObject({ status: 'interrupted' })
     fixture.close()
   })
 
@@ -758,13 +788,13 @@ describe('orchestration engine', () => {
         checkpointGit: new GitService(createWorkspacePaths(root), {
           maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES,
         }),
-        adapterRegistry: new ProviderAdapterRegistry([adapter]),
+        adapterRegistry: new ProviderAdapterRegistry({ adapters: [adapter] }),
       },
     })
-    const turnTwoRef = checkpointRefForThreadTurn('thread-1', 2)
+    const turnTwoRef = checkpointRefForSessionTurn('00000000-0000-4000-8000-000000000001', 2)
 
     await commitFile(root, 'base\n', 'base commit')
-    await dispatchCheckpointRuntimeThread(engine, root, () => {
+    await dispatchCheckpointRuntimeSession(engine, root, () => {
       turnFileContent = 'two\n'
     })
 
@@ -772,30 +802,33 @@ describe('orchestration engine', () => {
       command({
         commandId: 'cmd-checkpoint-revert',
         createdAt: assistantCompleted,
-        threadId: 'thread-1',
+        sessionId: '00000000-0000-4000-8000-000000000001',
         turnCount: 1,
-        type: 'thread.checkpoint.revert',
+        type: 'session.checkpoint.revert',
       }),
     )
     await engine.providerRuntimeIdle()
 
-    const events = engine.replay({ afterSequence: 0 }).events
-    const detail = engine.threadDetailSnapshot('thread-1')
+    const events = (await engine.replay({ afterSequence: 0 })).events
+    const detail = await engine.sessionDetailSnapshot('00000000-0000-4000-8000-000000000001')
 
-    expect(events.map((event) => event.type)).toContain('thread.checkpoint-revert-requested')
+    expect(events.map((event) => event.type)).toContain('session.checkpoint-revert-requested')
     expect(events.at(-1)).toMatchObject({
-      payload: { threadId: 'thread-1', turnCount: 1 },
-      type: 'thread.reverted',
+      payload: { sessionId: '00000000-0000-4000-8000-000000000001', turnCount: 1 },
+      type: 'session.reverted',
     })
     expect(await readFile(path.join(root, 'app.txt'), 'utf8')).toBe('one\n')
     expect(await gitRefExists(root, turnTwoRef)).toBe(false)
     expect(adapter.rollbacks).toContainEqual({
       numTurns: 1,
-      threadId: v.parse(threadIdSchema, 'thread-1'),
+      sessionId: v.parse(sessionIdSchema, '00000000-0000-4000-8000-000000000001'),
     })
-    expect(detail.thread.messages.map((message) => message.turnId)).not.toContain('turn-2')
+    expect(detail.session.messages.map((message) => message.turnId)).not.toContain('turn-2')
     expect(
-      Object.keys(engine.readModelSnapshot().threads.get('thread-1')?.checkpointByTurnId ?? {}),
+      Object.keys(
+        (await engine.readModelSnapshot()).sessions.get('00000000-0000-4000-8000-000000000001')
+          ?.checkpointByTurnId ?? {},
+      ),
     ).toEqual(['turn-1'])
     fixture.close()
   })
@@ -805,20 +838,23 @@ describe('orchestration engine', () => {
     const interruptAdapter = new MockProviderAdapter({ interruptError: 'interrupt failed' })
     const interruptEngine = createRuntimeEngine(interruptFixture, interruptAdapter)
 
-    await dispatchFirstThread(interruptEngine)
+    await dispatchFirstSession(interruptEngine)
     await interruptEngine.providerRuntimeIdle()
     await interruptEngine.dispatch(
       command({
         commandId: 'cmd-turn-interrupt',
         createdAt: assistantCompleted,
-        threadId: 'thread-1',
+        sessionId: '00000000-0000-4000-8000-000000000001',
         turnId: 'turn-1',
-        type: 'thread.turn.interrupt',
+        type: 'session.turn.interrupt',
       }),
     )
     await interruptEngine.providerRuntimeIdle()
 
-    expect(interruptEngine.threadDetailSnapshot('thread-1').thread.activities).toContainEqual(
+    expect(
+      (await interruptEngine.sessionDetailSnapshot('00000000-0000-4000-8000-000000000001')).session
+        .activities,
+    ).toContainEqual(
       expect.objectContaining({ kind: 'provider.turn.interrupt.failed', tone: 'error' }),
     )
     interruptFixture.close()
@@ -827,20 +863,23 @@ describe('orchestration engine', () => {
     const stopAdapter = new MockProviderAdapter({ stopError: 'stop failed' })
     const stopEngine = createRuntimeEngine(stopFixture, stopAdapter)
 
-    await dispatchFirstThread(stopEngine)
+    await dispatchFirstSession(stopEngine)
     await stopEngine.providerRuntimeIdle()
     await stopEngine.dispatch(
       command({
         commandId: 'cmd-session-stop',
         createdAt: assistantCompleted,
-        threadId: 'thread-1',
-        type: 'thread.session.stop',
+        sessionId: '00000000-0000-4000-8000-000000000001',
+        type: 'session.runtime.stop',
       }),
     )
     await stopEngine.providerRuntimeIdle()
 
-    expect(stopEngine.threadDetailSnapshot('thread-1').thread.activities).toContainEqual(
-      expect.objectContaining({ kind: 'provider.session.stop.failed', tone: 'error' }),
+    expect(
+      (await stopEngine.sessionDetailSnapshot('00000000-0000-4000-8000-000000000001')).session
+        .activities,
+    ).toContainEqual(
+      expect.objectContaining({ kind: 'provider.runtime.stop.failed', tone: 'error' }),
     )
     stopFixture.close()
   })
@@ -849,11 +888,11 @@ describe('orchestration engine', () => {
     const fixture = createFixture()
     const adapter = new MockProviderAdapter()
     const engine = createRuntimeEngine(fixture, adapter)
-    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const sessionId = v.parse(sessionIdSchema, '00000000-0000-4000-8000-000000000001')
     const approvalRequestId = v.parse(approvalRequestIdSchema, 'approval-1')
     const userInputRequestId = v.parse(approvalRequestIdSchema, 'user-input-1')
 
-    await dispatchFirstThread(engine)
+    await dispatchFirstSession(engine)
     await engine.providerRuntimeIdle()
     await engine.dispatch(
       command({
@@ -861,8 +900,8 @@ describe('orchestration engine', () => {
         createdAt: assistantCompleted,
         decision: 'accept',
         requestId: approvalRequestId,
-        threadId,
-        type: 'thread.approval.respond',
+        sessionId,
+        type: 'session.approval.respond',
       }),
     )
     await engine.dispatch(
@@ -871,8 +910,8 @@ describe('orchestration engine', () => {
         commandId: 'cmd-user-input-respond',
         createdAt: assistantCompleted,
         requestId: userInputRequestId,
-        threadId,
-        type: 'thread.user-input.respond',
+        sessionId,
+        type: 'session.user-input.respond',
       }),
     )
     await engine.providerRuntimeIdle()
@@ -880,12 +919,12 @@ describe('orchestration engine', () => {
     expect(adapter.approvalResponses).toContainEqual({
       decision: 'accept',
       requestId: approvalRequestId,
-      threadId,
+      sessionId,
     })
     expect(adapter.userInputResponses).toContainEqual({
       answers: { value: 'continue' },
       requestId: userInputRequestId,
-      threadId,
+      sessionId,
     })
     fixture.close()
   })
@@ -897,11 +936,11 @@ describe('orchestration engine', () => {
       userInputError: 'unknown pending user-input request: user-input-1',
     })
     const engine = createRuntimeEngine(fixture, adapter)
-    const threadId = v.parse(threadIdSchema, 'thread-1')
+    const sessionId = v.parse(sessionIdSchema, '00000000-0000-4000-8000-000000000001')
     const approvalRequestId = v.parse(approvalRequestIdSchema, 'approval-1')
     const userInputRequestId = v.parse(approvalRequestIdSchema, 'user-input-1')
 
-    await dispatchFirstThread(engine)
+    await dispatchFirstSession(engine)
     await engine.providerRuntimeIdle()
     await engine.dispatch(
       command({
@@ -909,8 +948,8 @@ describe('orchestration engine', () => {
         createdAt: assistantCompleted,
         decision: 'accept',
         requestId: approvalRequestId,
-        threadId,
-        type: 'thread.approval.respond',
+        sessionId,
+        type: 'session.approval.respond',
       }),
     )
     await engine.dispatch(
@@ -919,13 +958,14 @@ describe('orchestration engine', () => {
         commandId: 'cmd-stale-user-input-respond',
         createdAt: assistantCompleted,
         requestId: userInputRequestId,
-        threadId,
-        type: 'thread.user-input.respond',
+        sessionId,
+        type: 'session.user-input.respond',
       }),
     )
     await engine.providerRuntimeIdle()
 
-    const activities = engine.threadDetailSnapshot('thread-1').thread.activities
+    const activities = (await engine.sessionDetailSnapshot('00000000-0000-4000-8000-000000000001'))
+      .session.activities
     expect(activities).toContainEqual(
       expect.objectContaining({
         kind: 'provider.approval.respond.failed',
@@ -946,26 +986,26 @@ describe('orchestration engine', () => {
   })
 })
 
-async function dispatchFirstThread(engine: OrchestrationEngine) {
+async function dispatchFirstSession(engine: OrchestrationEngine) {
   await engine.dispatch(projectCreateCommand())
-  await engine.dispatch(threadCreateCommand())
-  await engine.dispatch(threadTurnStartCommand())
+  await engine.dispatch(sessionCreateCommand())
+  await engine.dispatch(sessionTurnStartCommand())
 }
 
-async function dispatchCheckpointRuntimeThread(
+async function dispatchCheckpointRuntimeSession(
   engine: OrchestrationEngine,
   workspaceRoot: string,
   beforeSecondTurn: () => void,
 ) {
   await engine.dispatch(projectCreateCommand({ workspaceRoot }))
   await engine.dispatch(
-    threadCreateCommand('thread-1', 'cmd-thread-create-checkpoint', workspaceRoot),
+    sessionCreateCommand('00000000-0000-4000-8000-000000000001', 'cmd-session-create-checkpoint'),
   )
-  await engine.dispatch(threadTurnStartCommand())
+  await engine.dispatch(sessionTurnStartCommand())
   await engine.providerRuntimeIdle()
   beforeSecondTurn()
   await engine.dispatch(
-    threadTurnStartCommand({
+    sessionTurnStartCommand({
       commandId: 'cmd-turn-2-start',
       messageId: 'message-turn-2',
       text: 'Second turn',
@@ -977,10 +1017,22 @@ async function dispatchCheckpointRuntimeThread(
 
 function projectCreateCommand(input: Partial<ProjectCreateFixture> = {}) {
   return command({
+    worktreeId: '20000000-0000-4000-8000-000000000001',
+    repositoryKey: 'fixture-repository',
+    repositoryKind: 'directory',
+    repositoryIdentity: { source: 'path', canonical: input.workspaceRoot ?? '/workspace' },
+    canonicalPath: input.workspaceRoot ?? '/workspace',
+    path: '',
+    branch: null,
+    registrationGeneration: 0,
+    kind: 'current',
+    ownership: 'protected',
+    updatedAt: '2026-05-24T00:00:00.000Z',
+    intentFingerprint: 'fixture-intent',
     commandId: input.commandId ?? 'cmd-project-create',
     createdAt: now,
     defaultModelSelection: null,
-    projectId: input.projectId ?? 'project-1',
+    projectId: input.projectId ?? '10000000-0000-4000-8000-000000000001',
     title: 'Platform',
     type: 'project.create',
     workspaceRoot: input.workspaceRoot ?? '/workspace',
@@ -994,9 +1046,9 @@ type ProjectCreateFixture = {
 }
 
 function unobservedProjectCreatedEvent() {
-  return {
+  return pendingEvent({
     actorKind: 'client',
-    aggregateId: 'project-unobserved',
+    aggregateId: '7cbea174-ed3a-5f65-b016-8deac3bfb79e',
     aggregateKind: 'project',
     causationEventId: null,
     commandId: 'cmd-project-unobserved',
@@ -1007,19 +1059,21 @@ function unobservedProjectCreatedEvent() {
     payload: {
       createdAt: now,
       defaultModelSelection: null,
-      projectId: 'project-unobserved',
+      projectId: '7cbea174-ed3a-5f65-b016-8deac3bfb79e',
       title: 'Unobserved',
       updatedAt: now,
-      workspaceRoot: '/workspace',
+      repositoryKey: 'unobserved-repository',
+      repositoryKind: 'directory',
+      repositoryIdentity: { source: 'path', canonical: '/unobserved' },
     },
     type: 'project.created',
-  } as PendingOrchestrationEvent
+  })
 }
 
 function raceEvent(eventId: string) {
-  return {
+  return pendingEvent({
     actorKind: 'client',
-    aggregateId: 'project-race',
+    aggregateId: 'e9fb6230-c710-5feb-8967-9a6cc07c9670',
     aggregateKind: 'project',
     causationEventId: null,
     commandId: 'cmd-project-race',
@@ -1027,44 +1081,43 @@ function raceEvent(eventId: string) {
     eventId,
     metadata: {},
     occurredAt: now,
-    payload: { deletedAt: now, projectId: 'project-race' },
+    payload: { deletedAt: now, projectId: 'e9fb6230-c710-5feb-8967-9a6cc07c9670' },
     type: 'project.deleted',
-  } as PendingOrchestrationEvent
+  })
 }
 
-function threadCreateCommand(
-  threadId = 'thread-1',
-  commandId = 'cmd-thread-create',
-  worktreePath: string | null = null,
+function sessionCreateCommand(
+  sessionId = '00000000-0000-4000-8000-000000000001',
+  commandId = 'cmd-session-create',
+  worktreeId = '20000000-0000-4000-8000-000000000001',
 ) {
   return command({
-    branch: null,
+    worktreeId,
     commandId,
     createdAt: now,
     interactionMode: 'default',
     modelSelection,
-    projectId: 'project-1',
+
     runtimeMode: 'full-access',
-    threadId,
-    title: 'Phase 2',
-    type: 'thread.create',
-    worktreePath,
+    sessionId,
+    title: 'First session',
+    type: 'session.create',
   })
 }
 
-function threadTurnStartCommand(input: Partial<ThreadTurnStartFixture> = {}) {
+function sessionTurnStartCommand(input: Partial<SessionTurnStartFixture> = {}) {
   return command({
-    bootstrap: input.bootstrapCreateThread
+    bootstrap: input.bootstrapCreateSession
       ? {
-          createThread: {
-            branch: null,
+          createSession: {
+            worktreeId: '20000000-0000-4000-8000-000000000001',
+
             createdAt: now,
             interactionMode: 'default',
             modelSelection,
-            projectId: 'project-1',
+
             runtimeMode: 'full-access',
-            title: 'Phase 2',
-            worktreePath: null,
+            title: 'First session',
           },
         }
       : undefined,
@@ -1077,9 +1130,9 @@ function threadTurnStartCommand(input: Partial<ThreadTurnStartFixture> = {}) {
       text: input.text ?? 'Build the first slice',
     },
     runtimeMode: 'full-access',
-    threadId: input.threadId ?? 'thread-1',
+    sessionId: input.sessionId ?? '00000000-0000-4000-8000-000000000001',
     turnId: input.turnId ?? 'turn-1',
-    type: 'thread.turn.start',
+    type: 'session.turn.start',
   })
 }
 
@@ -1089,9 +1142,9 @@ function assistantDeltaCommand() {
     createdAt: assistantStarted,
     delta: 'Done',
     messageId: 'message-2',
-    threadId: 'thread-1',
+    sessionId: '00000000-0000-4000-8000-000000000001',
     turnId: 'turn-1',
-    type: 'thread.message.assistant.delta',
+    type: 'session.message.assistant.delta',
   })
 }
 
@@ -1100,23 +1153,43 @@ function assistantCompleteCommand() {
     commandId: 'cmd-assistant-complete',
     completedAt: assistantCompleted,
     messageId: 'message-2',
-    threadId: 'thread-1',
+    sessionId: '00000000-0000-4000-8000-000000000001',
     turnId: 'turn-1',
-    type: 'thread.message.assistant.complete',
+    type: 'session.message.assistant.complete',
   })
 }
 
-type ThreadTurnStartFixture = {
-  bootstrapCreateThread: boolean
+type SessionTurnStartFixture = {
+  bootstrapCreateSession: boolean
   commandId: string
   messageId: string
   text: string
-  threadId: string
+  sessionId: string
   turnId: string
 }
 
 function command(value: unknown) {
-  return v.parse(orchestrationCommandSchema, value) as OrchestrationCommand
+  return v.parse(orchestrationCommandSchema, value)
+}
+
+function pendingEvent(value: Record<string, unknown>): PendingOrchestrationEvent {
+  const { sequence: _sequence, ...event } = v.parse(orchestrationEventSchema, {
+    ...value,
+    sequence: 1,
+  })
+  return event
+}
+
+async function registerHttpProject(app: App, workspaceRoot: string) {
+  const response = await postJson<unknown>(app, '/orchestration/commands', {
+    type: 'project.create',
+    commandId: 'cmd-project-create',
+    title: 'Platform',
+    workspaceRoot,
+  })
+  const receipt = v.parse(orchestrationDispatchResultSchema, response)
+  if (!receipt.result) throw new TypeError('Project registration returned no worktree')
+  return receipt.result
 }
 
 function createFixture() {
@@ -1136,43 +1209,8 @@ function createRuntimeEngine(
   adapter: MockProviderAdapter,
 ) {
   return new OrchestrationEngine(fixture.database, {
-    providerRuntime: { adapterRegistry: new ProviderAdapterRegistry([adapter]) },
+    providerRuntime: { adapterRegistry: new ProviderAdapterRegistry({ adapters: [adapter] }) },
   })
-}
-
-function createStandaloneProviderReactor(
-  fixture: ReturnType<typeof createFixture>,
-  engine: OrchestrationEngine,
-  adapter: MockProviderAdapter,
-  now: () => number,
-) {
-  const providerService = new ProviderService({
-    adapterRegistry: new ProviderAdapterRegistry([adapter]),
-    sessionDirectory: new ProviderSessionDirectory(fixture.database),
-  })
-  const ingestion = new ProviderRuntimeIngestion(async (command) => {
-    await engine.dispatch(command)
-  })
-
-  return new ProviderCommandReactor({
-    getReadModel: () => engine.readModelSnapshot(),
-    ingestion,
-    now,
-    providerService,
-  })
-}
-
-function firstTurnStartEvent(engine: OrchestrationEngine) {
-  const event = engine.replay({ afterSequence: 0 }).events.find(isThreadTurnStartRequestedEvent)
-  if (!event) throw new Error('missing turn start event')
-
-  return event
-}
-
-function isThreadTurnStartRequestedEvent(
-  event: OrchestrationEvent,
-): event is Extract<OrchestrationEvent, { type: 'thread.turn-start-requested' }> {
-  return event.type === 'thread.turn-start-requested'
 }
 
 async function fixtureRoot() {
@@ -1213,7 +1251,7 @@ async function runGit(root: string, args: readonly string[], allowFailure = fals
   ])
   if (allowFailure || exitCode === 0) return { exitCode, stderr, stdout }
 
-  throw new Error(`${stderr}${stdout}`.trim())
+  throw new TypeError(`${stderr}${stdout}`.trim())
 }
 
 function createOrchestrationTestApp(
@@ -1267,7 +1305,7 @@ function trustedHeaders() {
 }
 
 function createSseReader(response: Response) {
-  if (!response.body) throw new Error('missing event stream body')
+  if (!response.body) throw new TypeError('missing event stream body')
 
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
@@ -1281,7 +1319,7 @@ function createSseReader(response: Response) {
         if (event) return event
 
         const chunk = await reader.read()
-        if (chunk.done) throw new Error('event stream ended')
+        if (chunk.done) throw new TypeError('event stream ended')
         buffered += decodeSseChunk(decoder, chunk.value)
       }
     },

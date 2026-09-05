@@ -31,7 +31,6 @@ import {
   startScopedSessionDraft,
   type SessionTraversalDirection,
 } from '@/features/chat-mode/state/session-commands'
-import { useSessionIsolationStore } from '@/features/chat-mode/state/session-isolation-store'
 import { setChatModeSessionRailOpen, showChatModeToolTab } from '@/features/chat-mode/utils/panels'
 import {
   compareSavedDocumentId,
@@ -92,10 +91,15 @@ type StartedCommand = Extract<AsyncCommandStart, { readonly status: 'started' }>
  * Session traversal only means something while the chat layout is the one on screen —
  * in the workbench there is no rail to count rows in and no stage to hand them to.
  */
-function runSessionCommand(context: WorkspaceCommandHandlerContext, run: () => boolean) {
+function runSessionCommand(
+  context: WorkspaceCommandHandlerContext,
+  run: () => boolean | Promise<boolean>,
+) {
   if (context.snapshot.uiMode !== 'chat') return declined
 
-  return dispositionFor(run())
+  const result = run()
+  if (result instanceof Promise) return operationStart(result)
+  return dispositionFor(result)
 }
 
 function sessionTraversalHandler(direction: SessionTraversalDirection) {
@@ -305,7 +309,7 @@ function sessionJumpCommands() {
       hiddenInPalette: true,
       id: sessionJumpCommandId(position),
       keys: [{ chord: [`Mod+Alt+${position}`], preventDefault: true }],
-      execution: 'sync',
+      execution: 'async',
       target: 'workspace',
       undoCategory: 'view-only',
       when: ['workspaceOpen', 'chatMode'],
@@ -917,7 +921,7 @@ export const workspaceCommands = [
     run: () => {
       if (!navigator.clipboard?.writeText) return declined
 
-      // The address bar already holds the full address — thread, tool pane, filters and
+      // The address bar already holds the full address — session, tool pane, filters and
       // all. Rebuilding a workbench-only subset here copied a strictly weaker link than
       // the one on screen, which defeats the point of the command.
       //
@@ -1015,24 +1019,6 @@ export const workspaceCommands = [
       })
     },
     title: 'Show terminal',
-  }),
-  // Arms the next send rather than creating anything now: the worktree is
-  // prepared when the message is actually sent, so an armed draft the user
-  // abandons leaves no checkout behind to clean up.
-  defineCommand({
-    category: 'Workspace',
-    description: 'Run the next session on its own branch in a separate checkout.',
-    id: 'workspace.newIsolatedSession',
-    execution: 'async',
-    target: 'workspace',
-    undoCategory: 'workspace-operation',
-    when: ['workspaceOpen'],
-    run: ({ runtime, snapshot }) => {
-      useSessionIsolationStore.getState().setIsolateNextSession(true)
-      runtime.workspace.getState().setUiMode('chat')
-      return chatFocusStart(runtime, snapshot.rootPath, 'chat')
-    },
-    title: 'New session in its own worktree',
   }),
   defineCommand({
     category: 'Workspace',
@@ -1236,7 +1222,7 @@ export const workspaceCommands = [
     hiddenInPalette: true,
     id: 'workspace.newSession',
     keys: [{ chord: ['Mod+Alt+N'], preventDefault: true }],
-    execution: 'sync',
+    execution: 'async',
     target: 'workspace',
     undoCategory: 'workspace-operation',
     when: ['workspaceOpen', 'chatMode'],
@@ -1249,7 +1235,7 @@ export const workspaceCommands = [
     hiddenInPalette: true,
     id: 'workspace.nextSession',
     keys: [{ chord: ['Mod+Alt+]'], preventDefault: true }],
-    execution: 'sync',
+    execution: 'async',
     target: 'workspace',
     undoCategory: 'view-only',
     when: ['workspaceOpen', 'chatMode'],
@@ -1262,7 +1248,7 @@ export const workspaceCommands = [
     hiddenInPalette: true,
     id: 'workspace.previousSession',
     keys: [{ chord: ['Mod+Alt+['], preventDefault: true }],
-    execution: 'sync',
+    execution: 'async',
     target: 'workspace',
     undoCategory: 'view-only',
     when: ['workspaceOpen', 'chatMode'],
@@ -1279,19 +1265,19 @@ export const workspaceCommands = [
     target: 'workspace',
     undoCategory: 'view-only',
     when: ['workspaceOpen', 'chatMode'],
-    run: (context) =>
-      runSessionCommand(context, () => {
-        context.runtime.workspace
-          .getState()
-          .setChatModePanels(
-            setChatModeSessionRailOpen(
-              context.snapshot.chatModePanels,
-              !context.snapshot.chatModePanels.sessionRailOpen,
-            ),
-          )
+    run: (context) => {
+      if (context.snapshot.uiMode !== 'chat') return declined
+      context.runtime.workspace
+        .getState()
+        .setChatModePanels(
+          setChatModeSessionRailOpen(
+            context.snapshot.chatModePanels,
+            !context.snapshot.chatModePanels.sessionRailOpen,
+          ),
+        )
 
-        return true
-      }),
+      return handled
+    },
     title: 'Toggle session rail',
   }),
   ...sessionJumpCommands(),

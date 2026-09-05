@@ -1,22 +1,32 @@
-import type { OrchestrationProjectShell } from '@workspace/contracts'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import type {
+  OrchestrationProjectShell,
+  OrchestrationWorktreeShell,
+  ProjectRegistrationResult,
+} from '@workspace/contracts'
+import { useEffect, useRef, useState } from 'react'
 
 import { errorMessage } from '@/lib/error-message'
+import { projectRegistrationResult } from '@/lib/environments/utils/registration'
 import type { ChatTransport } from '@/features/chat/transport/chat-transport'
+import { createWorkspaceProjectCommand } from '@/features/chat/utils/command-builders'
 import {
-  createWorkspaceProjectCommand,
-  workspaceProjectId,
-} from '@/features/chat/utils/command-builders'
-import { selectChatProjects } from '../state/chat-projection-selectors'
-import { useChatProjectionStore } from '../state/chat-projection-store'
+  selectChatProjectionSlice,
+  useChatProjectionStore,
+} from '@/features/chat/state/chat-projection-store'
+import { selectWorktreeAtPath } from '@/features/chat/state/chat-projection-selectors'
 
+type Registration = {
+  rootPath: string
+  transport: ChatTransport
+  result: ProjectRegistrationResult
+}
+type Failure = { rootPath: string; transport: ChatTransport; message: string }
 export type WorkspaceChatProjectState = {
   error: string | null
   project: OrchestrationProjectShell | null
+  worktree: OrchestrationWorktreeShell | null
   status: 'ready' | 'waiting'
 }
-
-type ProjectFailure = { message: string; projectId: string; transport: ChatTransport }
 
 export function useWorkspaceChatProject({
   transport,
@@ -25,53 +35,59 @@ export function useWorkspaceChatProject({
   transport: ChatTransport
   rootPath: string
 }): WorkspaceChatProjectState {
-  const projects = useChatProjectionStore(selectChatProjects)
-  const bootstrapComplete = useChatProjectionStore((state) => state.bootstrapComplete)
-  const [failure, setFailure] = useState<ProjectFailure | null>(null)
-  const dispatchedProject = useRef<{ projectId: string; transport: ChatTransport } | null>(null)
-  const projectId = useMemo(() => workspaceProjectId(rootPath), [rootPath])
-  const project = projects.find((candidate) => candidate.id === projectId) ?? null
+  const slice = useChatProjectionStore((state) =>
+    selectChatProjectionSlice(state, transport.environmentId),
+  )
+  const [registration, setRegistration] = useState<Registration | null>(null)
+  const [failure, setFailure] = useState<Failure | null>(null)
+  const dispatched = useRef<{ rootPath: string; transport: ChatTransport } | null>(null)
+  const receipt =
+    registration?.rootPath === rootPath && registration.transport === transport
+      ? registration.result
+      : null
+  const worktree =
+    (receipt ? slice.worktreeById[receipt.worktreeId] : selectWorktreeAtPath(slice, rootPath)) ??
+    null
+  const project = worktree ? (slice.projectById[worktree.projectId] ?? null) : null
 
   useEffect(() => {
-    if (!bootstrapComplete) return
-    if (project) return
-    if (
-      dispatchedProject.current?.projectId === projectId &&
-      dispatchedProject.current.transport === transport
-    )
+    if (!slice.bootstrapComplete || worktree) return
+    if (dispatched.current?.rootPath === rootPath && dispatched.current.transport === transport)
       return
-
-    dispatchedProject.current = { projectId, transport }
-    void createWorkspaceProject({ transport, projectId, rootPath, setFailure })
-  }, [bootstrapComplete, transport, project, projectId, rootPath])
+    dispatched.current = { rootPath, transport }
+    void registerProject({ transport, rootPath, setRegistration, setFailure })
+  }, [slice.bootstrapComplete, worktree, rootPath, transport])
 
   return {
     error:
-      failure?.projectId === projectId && failure.transport === transport ? failure.message : null,
+      failure?.rootPath === rootPath && failure.transport === transport ? failure.message : null,
     project,
-    status: project ? 'ready' : 'waiting',
+    worktree,
+    status: project && worktree ? 'ready' : 'waiting',
   }
 }
 
-async function createWorkspaceProject({
+async function registerProject({
   transport,
-  projectId,
   rootPath,
+  setRegistration,
   setFailure,
 }: {
   transport: ChatTransport
-  projectId: string
   rootPath: string
-  setFailure: (failure: ProjectFailure) => void
+  setRegistration: (registration: Registration) => void
+  setFailure: (failure: Failure) => void
 }) {
   try {
-    await transport.dispatchCommand(createWorkspaceProjectCommand({ rootPath }))
+    const receipt = await transport.dispatchCommand(createWorkspaceProjectCommand({ rootPath }))
+    if (transport.closed) return
+    setRegistration({ rootPath, transport, result: projectRegistrationResult(receipt) })
   } catch (error) {
     if (transport.closed) return
     setFailure({
+      rootPath,
       transport,
       message: errorMessage(error, 'Could not prepare chat for this workspace.'),
-      projectId,
     })
   }
 }

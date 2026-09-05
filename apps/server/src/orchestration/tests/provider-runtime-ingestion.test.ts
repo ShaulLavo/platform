@@ -1,6 +1,6 @@
 import {
   messageIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
   turnIdSchema,
   type OrchestrationCommand,
 } from '@workspace/contracts'
@@ -9,11 +9,11 @@ import * as v from 'valibot'
 import type { ProviderRuntimeEvent } from '../../provider/types'
 import { MAX_BUFFERED_ASSISTANT_CHARS } from '../provider-runtime-buffers'
 import { ProviderRuntimeIngestion } from '../provider-runtime-ingestion'
-import { threadPlanProgress } from '../read-model'
+import { sessionPlanProgress } from '../read-model'
 
 const now = '2026-05-24T00:00:00.000Z'
 const later = '2026-05-24T00:01:00.000Z'
-const threadId = v.parse(threadIdSchema, 'thread-1')
+const sessionId = v.parse(sessionIdSchema, 'ee84050b-1b17-5fe8-9f71-0983f1fceccc')
 const turnId = v.parse(turnIdSchema, 'turn-1')
 const messageId = v.parse(messageIdSchema, 'assistant:turn-1')
 
@@ -25,16 +25,16 @@ describe('provider runtime ingestion', () => {
     await ingestion.ingest(assistantDelta('delta-2', 'world'))
 
     expect(dispatched).toMatchObject([
-      { delta: 'Hello ', type: 'thread.message.assistant.delta' },
-      { delta: 'world', type: 'thread.message.assistant.delta' },
+      { delta: 'Hello ', type: 'session.message.assistant.delta' },
+      { delta: 'world', type: 'session.message.assistant.delta' },
     ])
 
     await ingestion.ingest(assistantComplete('complete-1'))
 
     expect(dispatched).toMatchObject([
-      { delta: 'Hello ', type: 'thread.message.assistant.delta' },
-      { delta: 'world', type: 'thread.message.assistant.delta' },
-      { type: 'thread.message.assistant.complete' },
+      { delta: 'Hello ', type: 'session.message.assistant.delta' },
+      { delta: 'world', type: 'session.message.assistant.delta' },
+      { type: 'session.message.assistant.complete' },
     ])
   })
 
@@ -49,8 +49,8 @@ describe('provider runtime ingestion', () => {
     await ingestion.ingest(assistantComplete('complete-1'))
 
     expect(dispatched).toMatchObject([
-      { delta: 'Hello world', type: 'thread.message.assistant.delta' },
-      { type: 'thread.message.assistant.complete' },
+      { delta: 'Hello world', type: 'session.message.assistant.delta' },
+      { type: 'session.message.assistant.complete' },
     ])
   })
 
@@ -62,8 +62,8 @@ describe('provider runtime ingestion', () => {
     await ingestion.ingest(assistantComplete('complete-1'))
 
     expect(dispatched).toMatchObject([
-      { delta: oversized, type: 'thread.message.assistant.delta' },
-      { type: 'thread.message.assistant.complete' },
+      { delta: oversized, type: 'session.message.assistant.delta' },
+      { type: 'session.message.assistant.complete' },
     ])
   })
 
@@ -75,7 +75,8 @@ describe('provider runtime ingestion', () => {
       createdAt: later,
       eventId: 'approval-1',
       payload: { requestType: 'command_execution_approval' },
-      threadId,
+      sessionId,
+      runtimeEpoch: 'epoch-ingestion',
       turnId,
       type: 'request.opened',
     })
@@ -84,33 +85,34 @@ describe('provider runtime ingestion', () => {
       createdAt: later,
       eventId: 'turn-complete-1',
       payload: { state: 'completed' },
-      threadId,
+      sessionId,
+      runtimeEpoch: 'epoch-ingestion',
       turnId,
       type: 'turn.completed',
     })
 
     const messageCommands = dispatched.filter((command) =>
-      command.type.startsWith('thread.message.assistant'),
+      command.type.startsWith('session.message.assistant'),
     )
 
     expect(messageCommands).toMatchObject([
       {
         delta: 'First',
         messageId: 'assistant:assistant-item',
-        type: 'thread.message.assistant.delta',
+        type: 'session.message.assistant.delta',
       },
       {
         messageId: 'assistant:assistant-item',
-        type: 'thread.message.assistant.complete',
+        type: 'session.message.assistant.complete',
       },
       {
         delta: 'Second',
         messageId: 'assistant:assistant-item:segment:1',
-        type: 'thread.message.assistant.delta',
+        type: 'session.message.assistant.delta',
       },
       {
         messageId: 'assistant:assistant-item:segment:1',
-        type: 'thread.message.assistant.complete',
+        type: 'session.message.assistant.complete',
       },
     ])
   })
@@ -124,27 +126,27 @@ describe('provider runtime ingestion', () => {
     await ingestion.ingest(assistantItemCompleted('complete-2', 'assistant-item-2', 'Second'))
 
     const messageCommands = dispatched.filter((command) =>
-      command.type.startsWith('thread.message.assistant'),
+      command.type.startsWith('session.message.assistant'),
     )
 
     expect(messageCommands).toMatchObject([
       {
         delta: 'First',
         messageId: 'assistant:assistant-item-1',
-        type: 'thread.message.assistant.delta',
+        type: 'session.message.assistant.delta',
       },
       {
         messageId: 'assistant:assistant-item-1',
-        type: 'thread.message.assistant.complete',
+        type: 'session.message.assistant.complete',
       },
       {
         delta: 'Second',
         messageId: 'assistant:assistant-item-2',
-        type: 'thread.message.assistant.delta',
+        type: 'session.message.assistant.delta',
       },
       {
         messageId: 'assistant:assistant-item-2',
-        type: 'thread.message.assistant.complete',
+        type: 'session.message.assistant.complete',
       },
     ])
   })
@@ -156,18 +158,18 @@ describe('provider runtime ingestion', () => {
     await ingestion.ingest(turnCompleted('turn-complete-1'))
 
     const messageCommands = dispatched.filter((command) =>
-      command.type.startsWith('thread.message.assistant'),
+      command.type.startsWith('session.message.assistant'),
     )
 
     expect(messageCommands).toMatchObject([
       {
         delta: 'First',
         messageId: 'assistant:assistant-item-1',
-        type: 'thread.message.assistant.delta',
+        type: 'session.message.assistant.delta',
       },
       {
         messageId: 'assistant:assistant-item-1',
-        type: 'thread.message.assistant.complete',
+        type: 'session.message.assistant.complete',
       },
     ])
   })
@@ -179,7 +181,8 @@ describe('provider runtime ingestion', () => {
       createdAt: now,
       eventId: 'plan-delta-1',
       payload: { delta: '1. Inspect\n', streamKind: 'plan_text' },
-      threadId,
+      sessionId,
+      runtimeEpoch: 'epoch-ingestion',
       turnId,
       type: 'content.delta',
     })
@@ -188,10 +191,10 @@ describe('provider runtime ingestion', () => {
     expect(dispatched).toMatchObject([
       {
         proposedPlan: {
-          id: 'plan:thread-1:turn:turn-1',
+          id: 'plan:ee84050b-1b17-5fe8-9f71-0983f1fceccc:turn:turn-1',
           planMarkdown: '1. Inspect',
         },
-        type: 'thread.proposed-plan.upsert',
+        type: 'session.proposed-plan.upsert',
       },
     ])
   })
@@ -204,8 +207,8 @@ describe('provider runtime ingestion', () => {
     await ingestion.drain()
 
     expect(dispatched).toMatchObject([
-      { delta: 'queued', type: 'thread.message.assistant.delta' },
-      { type: 'thread.message.assistant.complete' },
+      { delta: 'queued', type: 'session.message.assistant.delta' },
+      { type: 'session.message.assistant.complete' },
     ])
   })
 
@@ -216,7 +219,7 @@ describe('provider runtime ingestion', () => {
     void ingestion.ingest(assistantDelta('delta-1', 'late'))
     await drained
 
-    expect(dispatched).toMatchObject([{ delta: 'late', type: 'thread.message.assistant.delta' }])
+    expect(dispatched).toMatchObject([{ delta: 'late', type: 'session.message.assistant.delta' }])
   })
 
   it('normalizes tool lifecycle events into activities', async () => {
@@ -230,7 +233,8 @@ describe('provider runtime ingestion', () => {
         itemType: 'command_execution',
         title: 'List files',
       },
-      threadId,
+      sessionId,
+      runtimeEpoch: 'epoch-ingestion',
       turnId,
       type: 'item.started',
     })
@@ -243,7 +247,7 @@ describe('provider runtime ingestion', () => {
           summary: 'List files started',
           tone: 'tool',
         },
-        type: 'thread.activity.append',
+        type: 'session.activity.append',
       },
     ])
   })
@@ -259,7 +263,8 @@ describe('provider runtime ingestion', () => {
         summary: 'Searching for API endpoints',
         taskId: 'task-1',
       },
-      threadId,
+      sessionId,
+      runtimeEpoch: 'epoch-ingestion',
       turnId,
       type: 'task.progress',
     })
@@ -275,7 +280,7 @@ describe('provider runtime ingestion', () => {
           summary: 'Thinking',
           tone: 'thinking',
         },
-        type: 'thread.activity.append',
+        type: 'session.activity.append',
       },
     ])
   })
@@ -292,7 +297,8 @@ describe('provider runtime ingestion', () => {
         streamKind: 'reasoning_summary_text',
         summaryIndex: 0,
       },
-      threadId,
+      sessionId,
+      runtimeEpoch: 'epoch-ingestion',
       turnId,
       type: 'content.delta',
     })
@@ -311,7 +317,7 @@ describe('provider runtime ingestion', () => {
           summary: 'Thinking',
           tone: 'thinking',
         },
-        type: 'thread.activity.append',
+        type: 'session.activity.append',
       },
     ])
   })
@@ -327,7 +333,8 @@ describe('provider runtime ingestion', () => {
         requestType: 'dynamic_tool_call_approval',
       },
       requestId: 'claude:req-1',
-      threadId,
+      sessionId,
+      runtimeEpoch: 'epoch-ingestion',
       turnId,
       type: 'request.opened',
     })
@@ -344,7 +351,7 @@ describe('provider runtime ingestion', () => {
           summary: 'Tool approval requested',
           tone: 'approval',
         },
-        type: 'thread.activity.append',
+        type: 'session.activity.append',
       },
     ])
   })
@@ -407,7 +414,7 @@ describe('provider runtime ingestion', () => {
           },
           summary: 'User input requested',
         },
-        type: 'thread.activity.append',
+        type: 'session.activity.append',
       },
     ])
 
@@ -456,7 +463,7 @@ describe('provider runtime ingestion', () => {
 
     const [command] = dispatched
     assert(command && 'activity' in command, 'no activity command was dispatched')
-    expect(threadPlanProgress([command.activity])).toEqual({
+    expect(sessionPlanProgress([command.activity])).toEqual({
       completedSteps: 1,
       step: 'Run the tests',
       totalSteps: 3,
@@ -478,7 +485,7 @@ describe('provider runtime ingestion', () => {
     await ingestion.ingest(assistantDelta('delta-1', 'Working'))
     await ingestion.ingest(assistantComplete('complete-1'))
 
-    expect(seen).toEqual([threadId, threadId, threadId])
+    expect(seen).toEqual([sessionId, sessionId, sessionId])
   })
 })
 
@@ -490,7 +497,8 @@ function planUpdated(
     createdAt: now,
     eventId,
     payload: { explanation: null, plan },
-    threadId,
+    sessionId,
+    runtimeEpoch: 'epoch-ingestion',
     turnId,
     type: 'turn.plan.updated',
   }
@@ -507,7 +515,8 @@ function userInputRequested(eventId: string, questions: readonly unknown[]) {
     eventId,
     payload: { questions },
     requestId: 'codex:req-1',
-    threadId,
+    sessionId,
+    runtimeEpoch: 'epoch-ingestion',
     turnId,
     type: 'user-input.requested',
   } as unknown as ProviderRuntimeEvent
@@ -528,7 +537,8 @@ function assistantDelta(eventId: string, delta: string) {
     delta,
     eventId,
     messageId,
-    threadId,
+    sessionId,
+    runtimeEpoch: 'epoch-ingestion',
     turnId,
     type: 'assistant.delta' as const,
   }
@@ -539,7 +549,8 @@ function assistantComplete(eventId: string) {
     completedAt: later,
     eventId,
     messageId,
-    threadId,
+    sessionId,
+    runtimeEpoch: 'epoch-ingestion',
     turnId,
     type: 'assistant.complete' as const,
   }
@@ -556,7 +567,8 @@ function assistantItemCompleted(eventId: string, itemId: string, detail: string)
       status: 'completed' as const,
       title: 'Assistant message',
     },
-    threadId,
+    sessionId,
+    runtimeEpoch: 'epoch-ingestion',
     turnId,
     type: 'item.completed' as const,
   }
@@ -568,7 +580,8 @@ function contentDelta(eventId: string, itemId: string, delta: string) {
     eventId,
     itemId,
     payload: { delta, streamKind: 'assistant_text' as const },
-    threadId,
+    sessionId,
+    runtimeEpoch: 'epoch-ingestion',
     turnId,
     type: 'content.delta' as const,
   }
@@ -579,7 +592,8 @@ function turnCompleted(eventId: string) {
     createdAt: later,
     eventId,
     payload: { state: 'completed' as const },
-    threadId,
+    sessionId,
+    runtimeEpoch: 'epoch-ingestion',
     turnId,
     type: 'turn.completed' as const,
   }

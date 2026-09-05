@@ -1,3 +1,7 @@
+import type { EnvironmentId } from '@workspace/contracts'
+import { confirmedEnvironmentOrigin } from '@/lib/environments/state/domain'
+import { openWorkspaceRootForOwner } from '@/features/workspace/state/open-root'
+import { createEditorActivation, createEditorCommands } from '@/features/editor/state/commands'
 import { closeChatTransportsForEnvironmentSwitch } from '@/features/chat/state/active-transports'
 import { resetLanguageServerConnectionPool } from '@/features/editor/state/language-server-connection-pool'
 import { createEditorRuntime, type EditorRuntime } from '@/features/editor/state/runtime'
@@ -63,7 +67,7 @@ export function createApplicationRuntime({
   environments.set(current.origin, current)
   activateWorkspaceRoot(current.editor.workspaceStore.getState().rootFolder?.path ?? null)
 
-  return {
+  const application = {
     commandBinding,
     getSnapshot: () => current,
     subscribe: (listener: () => void) => useEnvironmentsStore.subscribe(listener),
@@ -84,6 +88,28 @@ export function createApplicationRuntime({
       activateWorkspaceRoot(current.editor.workspaceStore.getState().rootFolder?.path ?? null)
       useEnvironmentsStore.getState().activate(origin)
     },
+    async openEnvironmentWorkspaceRoot(environmentId: EnvironmentId, path: string) {
+      const origin = confirmedEnvironmentOrigin(environmentId)
+      application.activateEnvironment(origin)
+      const owner = current
+      const editor = owner.editor
+      const commands = createEditorCommands({
+        activation: createEditorActivation(editor.fileOpenIntentService, editor.documentStore),
+        documentStore: editor.documentStore,
+        searchStore: editor.searchBufferStore,
+        uiStore: editor.uiStore,
+        workspaceStore: editor.workspaceStore,
+      })
+      return openWorkspaceRootForOwner(
+        {
+          queryClient: owner.queryClient,
+          switchRootFolder: commands.switchRootFolder,
+          workspaceStore: editor.workspaceStore,
+          workspaceEdits: editor.workspaceEditService,
+        },
+        path,
+      )
+    },
     hasUnsavedDocuments: () =>
       [...environments.values()].some(({ editor }) => editor.hasUnsavedDocuments()),
     dispose() {
@@ -99,6 +125,7 @@ export function createApplicationRuntime({
       resetLanguageServerConnectionPool()
     },
   }
+  return application
 }
 
 export type ApplicationRuntime = ReturnType<typeof createApplicationRuntime>

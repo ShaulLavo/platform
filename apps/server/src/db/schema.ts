@@ -1,5 +1,14 @@
-import { orchestrationSessionStatusSchema } from '@workspace/contracts'
-import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { sessionRuntimeStatusSchema } from '@workspace/contracts'
+import { sql } from 'drizzle-orm'
+import {
+  check,
+  index,
+  integer,
+  primaryKey,
+  sqliteTable,
+  text,
+  uniqueIndex,
+} from 'drizzle-orm/sqlite-core'
 
 /**
  * The migration ledger. One row per applied migration, written in the same
@@ -41,7 +50,7 @@ export const orchestrationEvents = sqliteTable(
   {
     sequence: integer('sequence').primaryKey({ autoIncrement: true }),
     eventId: text('event_id').notNull().unique(),
-    aggregateKind: text('aggregate_kind', { enum: ['project', 'thread'] }).notNull(),
+    aggregateKind: text('aggregate_kind', { enum: ['project', 'worktree', 'session'] }).notNull(),
     aggregateId: text('aggregate_id').notNull(),
     streamVersion: integer('stream_version').notNull(),
     eventType: text('event_type').notNull(),
@@ -75,12 +84,13 @@ export const orchestrationCommandReceipts = sqliteTable(
   {
     commandId: text('command_id').primaryKey(),
     commandType: text('command_type').notNull(),
-    aggregateKind: text('aggregate_kind', { enum: ['project', 'thread'] }).notNull(),
+    aggregateKind: text('aggregate_kind', { enum: ['project', 'worktree', 'session'] }).notNull(),
     aggregateId: text('aggregate_id').notNull(),
     acceptedAt: text('accepted_at').notNull(),
     resultSequence: integer('result_sequence'),
     status: text('status', { enum: ['accepted', 'rejected'] }).notNull(),
     commandJson: text('command_json').notNull(),
+    intentFingerprint: text('intent_fingerprint').notNull(),
     resultJson: text('result_json'),
     error: text('error'),
   },
@@ -90,6 +100,10 @@ export const orchestrationCommandReceipts = sqliteTable(
       table.aggregateId,
     ),
     index('orchestration_command_receipts_sequence_idx').on(table.resultSequence),
+    check(
+      'orchestration_receipt_result_sequence',
+      sql`(${table.status} = 'accepted' AND ${table.resultSequence} IS NOT NULL) OR (${table.status} = 'rejected' AND ${table.resultSequence} IS NULL)`,
+    ),
   ],
 )
 
@@ -104,7 +118,9 @@ export const projectionProjects = sqliteTable(
   {
     projectId: text('project_id').primaryKey(),
     title: text('title').notNull(),
-    workspaceRoot: text('workspace_root').notNull(),
+    repositoryKey: text('repository_key').notNull(),
+    repositoryKind: text('repository_kind', { enum: ['git', 'directory'] }).notNull(),
+    repositoryIdentityJson: text('repository_identity_json').notNull(),
     defaultModelSelectionJson: text('default_model_selection_json'),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
@@ -114,22 +130,84 @@ export const projectionProjects = sqliteTable(
     /** The project's saved commands, as one JSON array. Null before any are set. */
     scriptsJson: text('scripts_json'),
   },
-  (table) => [index('projection_projects_updated_at_idx').on(table.updatedAt)],
+  (table) => [
+    index('projection_projects_updated_at_idx').on(table.updatedAt),
+    uniqueIndex('projection_projects_live_repository_idx')
+      .on(table.repositoryKey)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
 )
 
-export const projectionThreads = sqliteTable(
-  'projection_threads',
+export const projectionWorktrees = sqliteTable(
+  'projection_worktrees',
   {
-    threadId: text('thread_id').primaryKey(),
-    projectId: text('project_id').notNull(),
+    worktreeId: text('worktree_id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projectionProjects.projectId),
+    registrationGeneration: integer('registration_generation').notNull(),
+    canonicalPath: text('canonical_path').notNull(),
+    path: text('path').notNull(),
+    branch: text('branch'),
+    kind: text('kind', { enum: ['current', 'linked'] }).notNull(),
+    ownership: text('ownership', { enum: ['protected', 'external', 'platform'] }).notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    retiredAt: text('retired_at'),
+    retirementSequence: integer('retirement_sequence'),
+  },
+  (table) => [
+    uniqueIndex('projection_worktrees_live_path_idx')
+      .on(table.canonicalPath)
+      .where(sql`${table.retiredAt} IS NULL`),
+    uniqueIndex('projection_worktrees_current_idx')
+      .on(table.projectId)
+      .where(sql`${table.retiredAt} IS NULL AND ${table.kind} = 'current'`),
+    index('projection_worktrees_project_idx').on(table.projectId),
+    check(
+      'projection_worktrees_current_protected',
+      sql`${table.kind} != 'current' OR ${table.ownership} = 'protected'`,
+    ),
+    check(
+      'projection_worktrees_registration_generation',
+      sql`${table.registrationGeneration} >= 0`,
+    ),
+  ],
+)
+
+export const projectionSessions = sqliteTable(
+  'projection_sessions',
+  {
+    sessionId: text('session_id').primaryKey(),
+    worktreeId: text('worktree_id')
+      .notNull()
+      .references(() => projectionWorktrees.worktreeId),
+    origin: text('origin', { enum: ['platform', 'discovered'] }).notNull(),
+    attentionState: text('attention_state', {
+      enum: ['needs-input', 'working', 'settled'],
+    }).notNull(),
+    attentionReason: text('attention_reason', {
+      enum: ['approval', 'user-input', 'interruption', 'failure', 'plan', 'active'],
+    }),
+    hasError: integer('has_error', { mode: 'boolean' }).notNull().default(false),
+    acknowledgedFailureThroughSequence: integer('acknowledged_failure_through_sequence'),
+    latestFailureSequence: integer('latest_failure_sequence'),
+    latestInterruptionSequence: integer('latest_interruption_sequence'),
+    runtimeSequence: integer('runtime_sequence'),
+    providerStopState: text('provider_stop_state', {
+      enum: ['requested', 'completed', 'no-binding', 'failed'],
+    }),
+    blobCleanupState: text('blob_cleanup_state', { enum: ['requested', 'completed', 'failed'] }),
+    providerStopError: text('provider_stop_error'),
+    blobCleanupError: text('blob_cleanup_error'),
+    deletionUpdatedAt: text('deletion_updated_at'),
+    deletionSequence: integer('deletion_sequence'),
     title: text('title').notNull(),
     runtimeMode: text('runtime_mode', {
       enum: ['full-access', 'approval-required', 'auto-accept-edits'],
     }).notNull(),
     interactionMode: text('interaction_mode', { enum: ['default', 'plan'] }).notNull(),
     modelSelectionJson: text('model_selection_json').notNull(),
-    branch: text('branch'),
-    worktreePath: text('worktree_path'),
     latestTurnId: text('latest_turn_id'),
     latestTurnJson: text('latest_turn_json'),
     latestUserMessageAt: text('latest_user_message_at'),
@@ -160,22 +238,24 @@ export const projectionThreads = sqliteTable(
     pinOrderKey: text('pin_order_key'),
   },
   (table) => [
-    index('projection_threads_project_deleted_created_idx').on(
-      table.projectId,
+    index('projection_sessions_worktree_deleted_created_idx').on(
+      table.worktreeId,
       table.deletedAt,
       table.createdAt,
     ),
-    // The thread list reads the pinned block first and orders it by key, so the
-    // pinned rows are found without scanning every thread of the project.
-    index('projection_threads_pinned_order_idx').on(table.pinnedAt, table.pinOrderKey),
+    // The session list reads the pinned block first and orders it by key, so the
+    // pinned rows are found without scanning every session of the project.
+    index('projection_sessions_pinned_order_idx').on(table.pinnedAt, table.pinOrderKey),
   ],
 )
 
-export const projectionThreadMessages = sqliteTable(
-  'projection_thread_messages',
+export const projectionSessionMessages = sqliteTable(
+  'projection_session_messages',
   {
     messageId: text('message_id').primaryKey(),
-    threadId: text('thread_id').notNull(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => projectionSessions.sessionId),
     turnId: text('turn_id'),
     role: text('role', { enum: ['user', 'assistant', 'system'] }).notNull(),
     text: text('text').notNull(),
@@ -185,15 +265,17 @@ export const projectionThreadMessages = sqliteTable(
     updatedAt: text('updated_at').notNull(),
   },
   (table) => [
-    index('projection_thread_messages_thread_created_idx').on(table.threadId, table.createdAt),
+    index('projection_session_messages_session_created_idx').on(table.sessionId, table.createdAt),
   ],
 )
 
-export const projectionThreadActivities = sqliteTable(
-  'projection_thread_activities',
+export const projectionSessionActivities = sqliteTable(
+  'projection_session_activities',
   {
     activityId: text('activity_id').primaryKey(),
-    threadId: text('thread_id').notNull(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => projectionSessions.sessionId),
     turnId: text('turn_id'),
     tone: text('tone', { enum: ['info', 'tool', 'thinking', 'approval', 'error'] }).notNull(),
     kind: text('kind').notNull(),
@@ -203,22 +285,26 @@ export const projectionThreadActivities = sqliteTable(
     createdAt: text('created_at').notNull(),
   },
   (table) => [
-    index('projection_thread_activities_thread_created_idx').on(table.threadId, table.createdAt),
-    index('projection_thread_activities_thread_kind_idx').on(table.threadId, table.kind),
+    index('projection_session_activities_session_created_idx').on(table.sessionId, table.createdAt),
+    index('projection_session_activities_session_kind_idx').on(table.sessionId, table.kind),
   ],
 )
 
-export const projectionThreadSessions = sqliteTable(
-  'projection_thread_sessions',
+export const projectionSessionRuntime = sqliteTable(
+  'projection_session_runtime',
   {
-    threadId: text('thread_id').primaryKey(),
+    sessionId: text('session_id')
+      .primaryKey()
+      .references(() => projectionSessions.sessionId),
     status: text('status', {
-      enum: orchestrationSessionStatusSchema.options,
+      enum: sessionRuntimeStatusSchema.options,
     }).notNull(),
     providerName: text('provider_name'),
     providerInstanceId: text('provider_instance_id').notNull(),
-    providerSessionId: text('provider_session_id'),
-    providerThreadId: text('provider_thread_id'),
+    providerBindingHandle: text('provider_binding_handle'),
+    providerConversationMarker: text('provider_conversation_marker'),
+    providerResumeCursor: text('provider_resume_cursor'),
+    runtimeEpoch: text('runtime_epoch').notNull(),
     runtimeMode: text('runtime_mode', {
       enum: ['full-access', 'approval-required', 'auto-accept-edits'],
     }).notNull(),
@@ -227,8 +313,8 @@ export const projectionThreadSessions = sqliteTable(
     updatedAt: text('updated_at').notNull(),
   },
   (table) => [
-    index('projection_thread_sessions_provider_session_idx').on(table.providerSessionId),
-    index('projection_thread_sessions_provider_instance_idx').on(table.providerInstanceId),
+    index('projection_session_runtime_binding_handle_idx').on(table.providerBindingHandle),
+    index('projection_session_runtime_provider_instance_idx').on(table.providerInstanceId),
   ],
 )
 
@@ -236,7 +322,9 @@ export const projectionTurns = sqliteTable(
   'projection_turns',
   {
     rowId: integer('row_id').primaryKey({ autoIncrement: true }),
-    threadId: text('thread_id').notNull(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => projectionSessions.sessionId),
     turnId: text('turn_id').notNull(),
     userMessageId: text('user_message_id'),
     assistantMessageId: text('assistant_message_id'),
@@ -244,44 +332,55 @@ export const projectionTurns = sqliteTable(
       enum: ['running', 'completed', 'interrupted', 'error'],
     }).notNull(),
     sourceProposedPlanJson: text('source_proposed_plan_json'),
+    providerStartState: text('provider_start_state', {
+      enum: ['queued', 'claimed', 'adopted', 'settled', 'interrupted'],
+    }).notNull(),
+    providerStartGeneration: integer('provider_start_generation').notNull(),
+    providerStartSequence: integer('provider_start_sequence').notNull(),
+    runtimeEpoch: text('runtime_epoch'),
     requestedAt: text('requested_at').notNull(),
     startedAt: text('started_at'),
     completedAt: text('completed_at'),
   },
   (table) => [
-    uniqueIndex('projection_turns_thread_turn_idx').on(table.threadId, table.turnId),
-    index('projection_turns_thread_requested_idx').on(table.threadId, table.requestedAt),
+    uniqueIndex('projection_turns_session_turn_idx').on(table.sessionId, table.turnId),
+    index('projection_turns_session_requested_idx').on(table.sessionId, table.requestedAt),
+    index('projection_turns_provider_start_idx').on(table.providerStartState, table.sessionId),
   ],
 )
 
-export const projectionThreadProposedPlans = sqliteTable(
-  'projection_thread_proposed_plans',
+export const projectionSessionProposedPlans = sqliteTable(
+  'projection_session_proposed_plans',
   {
     planId: text('plan_id').primaryKey(),
-    threadId: text('thread_id').notNull(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => projectionSessions.sessionId),
     turnId: text('turn_id'),
     planMarkdown: text('plan_markdown').notNull(),
     implementedAt: text('implemented_at'),
-    implementationThreadId: text('implementation_thread_id'),
+    implementationSessionId: text('implementation_session_id'),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
   },
   (table) => [
-    index('projection_thread_proposed_plans_thread_created_idx').on(
-      table.threadId,
+    index('projection_session_proposed_plans_session_created_idx').on(
+      table.sessionId,
       table.createdAt,
     ),
-    index('projection_thread_proposed_plans_thread_updated_idx').on(
-      table.threadId,
+    index('projection_session_proposed_plans_session_updated_idx').on(
+      table.sessionId,
       table.updatedAt,
     ),
   ],
 )
 
-export const projectionThreadCheckpoints = sqliteTable(
-  'projection_thread_checkpoints',
+export const projectionSessionCheckpoints = sqliteTable(
+  'projection_session_checkpoints',
   {
-    threadId: text('thread_id').notNull(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => projectionSessions.sessionId),
     turnId: text('turn_id').notNull(),
     checkpointTurnCount: integer('checkpoint_turn_count').notNull(),
     checkpointRef: text('checkpoint_ref').notNull(),
@@ -291,9 +390,9 @@ export const projectionThreadCheckpoints = sqliteTable(
     completedAt: text('completed_at').notNull(),
   },
   (table) => [
-    primaryKey({ columns: [table.threadId, table.turnId] }),
-    index('projection_thread_checkpoints_thread_turn_count_idx').on(
-      table.threadId,
+    primaryKey({ columns: [table.sessionId, table.turnId] }),
+    index('projection_session_checkpoints_session_turn_count_idx').on(
+      table.sessionId,
       table.checkpointTurnCount,
     ),
   ],
@@ -302,35 +401,37 @@ export const projectionThreadCheckpoints = sqliteTable(
 export const providerSessionRuntime = sqliteTable(
   'provider_session_runtime',
   {
-    threadId: text('thread_id').primaryKey(),
+    sessionId: text('session_id')
+      .primaryKey()
+      .references(() => projectionSessions.sessionId),
     providerDriverKind: text('provider_driver_kind').notNull(),
     providerInstanceId: text('provider_instance_id').notNull(),
-    providerSessionId: text('provider_session_id'),
+    providerBindingHandle: text('provider_binding_handle'),
+    providerConversationMarker: text('provider_conversation_marker'),
+    runtimeEpoch: text('runtime_epoch').notNull(),
     adapterKey: text('adapter_key').notNull(),
     runtimeMode: text('runtime_mode', {
       enum: ['full-access', 'approval-required', 'auto-accept-edits'],
     }).notNull(),
-    status: text('status', {
-      enum: orchestrationSessionStatusSchema.options,
-    }).notNull(),
     lastSeenAt: text('last_seen_at').notNull(),
-    resumeCursorJson: text('resume_cursor_json'),
+    providerResumeCursorJson: text('provider_resume_cursor_json'),
     runtimePayloadJson: text('runtime_payload_json'),
   },
   (table) => [
-    index('provider_session_runtime_status_idx').on(table.status),
     index('provider_session_runtime_provider_instance_idx').on(table.providerInstanceId),
-    index('provider_session_runtime_provider_session_idx').on(table.providerSessionId),
+    index('provider_session_runtime_binding_handle_idx').on(table.providerBindingHandle),
   ],
 )
 
 export type OrchestrationEventRow = typeof orchestrationEvents.$inferSelect
 export type OrchestrationCommandReceiptRow = typeof orchestrationCommandReceipts.$inferSelect
 export type ProjectionProjectRow = typeof projectionProjects.$inferSelect
-export type ProjectionThreadRow = typeof projectionThreads.$inferSelect
-export type OrchestrationThreadMessageRow = typeof projectionThreadMessages.$inferSelect
-export type OrchestrationThreadActivityRow = typeof projectionThreadActivities.$inferSelect
-export type ProjectionThreadSessionRow = typeof projectionThreadSessions.$inferSelect
-export type ProjectionThreadProposedPlanRow = typeof projectionThreadProposedPlans.$inferSelect
-export type ProjectionThreadCheckpointRow = typeof projectionThreadCheckpoints.$inferSelect
+export type ProjectionWorktreeRow = typeof projectionWorktrees.$inferSelect
+export type ProjectionTurnRow = typeof projectionTurns.$inferSelect
+export type ProjectionSessionRow = typeof projectionSessions.$inferSelect
+export type OrchestrationSessionMessageRow = typeof projectionSessionMessages.$inferSelect
+export type OrchestrationSessionActivityRow = typeof projectionSessionActivities.$inferSelect
+export type ProjectionSessionRuntimeRow = typeof projectionSessionRuntime.$inferSelect
+export type ProjectionSessionProposedPlanRow = typeof projectionSessionProposedPlans.$inferSelect
+export type ProjectionSessionCheckpointRow = typeof projectionSessionCheckpoints.$inferSelect
 export type ProviderSessionRuntimeRow = typeof providerSessionRuntime.$inferSelect

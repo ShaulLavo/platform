@@ -1,4 +1,4 @@
-import type { OrchestrationLatestTurn, OrchestrationThreadActivity } from '@workspace/contracts'
+import type { OrchestrationLatestTurn, OrchestrationSessionActivity } from '@workspace/contracts'
 
 import {
   chatActivityPlanSteps,
@@ -31,7 +31,7 @@ export type ChatWorkLogEntry = {
   status: string | null
   title: string
   tone: ChatWorkLogTone
-  turnId: OrchestrationThreadActivity['turnId']
+  turnId: OrchestrationSessionActivity['turnId']
 }
 
 type DerivedChatWorkLogEntry = ChatWorkLogEntry & {
@@ -64,7 +64,7 @@ const WORK_LOG_SCALAR_FIELDS = [
 
 /**
  * Every turn's work is derived, not just the running one: scrolling back through a
- * finished thread must still show the tool calls, reasoning and approvals that produced it.
+ * finished session must still show the tool calls, reasoning and approvals that produced it.
  *
  * The caller passes the store's order — `(sequence, createdAt, id)`, established
  * once in `chat-projection-writers.ts`. Re-sorting here by `createdAt` alone used
@@ -74,7 +74,7 @@ const WORK_LOG_SCALAR_FIELDS = [
 export function chatWorkLogEntries({
   activities,
 }: {
-  activities: readonly OrchestrationThreadActivity[]
+  activities: readonly OrchestrationSessionActivity[]
 }) {
   const planRows = turnPlanRows(activities)
   const entries: DerivedChatWorkLogEntry[] = []
@@ -99,7 +99,7 @@ export function chatWorkLogEntries({
   )
 }
 
-/** The plan the working row narrates: this turn's, falling back to the thread's most recent. */
+/** The plan the working row narrates: this turn's, falling back to the session's most recent. */
 export function chatActiveWorkLogPlan(
   entries: readonly ChatWorkLogEntry[],
   latestTurnId: OrchestrationLatestTurn['turnId'] | null | undefined,
@@ -147,7 +147,7 @@ function stringListsEqual(left: readonly string[], right: readonly string[]) {
   return left.every((value, index) => value === right[index])
 }
 
-function isActivityForWorkLog(activity: OrchestrationThreadActivity) {
+function isActivityForWorkLog(activity: OrchestrationSessionActivity) {
   if (activity.kind === 'task.started') return false
   if (activity.kind === 'context-window.updated') return false
   if (activity.summary === 'Checkpoint captured') return false
@@ -159,7 +159,7 @@ function isActivityForWorkLog(activity: OrchestrationThreadActivity) {
   return true
 }
 
-function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity) {
+function isPlanBoundaryToolActivity(activity: OrchestrationSessionActivity) {
   if (!activity.kind.startsWith('tool.')) return false
 
   const detail = stringPayloadValue(activity.payload, 'detail')
@@ -170,7 +170,7 @@ function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity) {
  * Plans rewrite themselves on every step, so one row per turn holds the latest snapshot
  * anchored where planning began — a row per snapshot would bury the rest of the log.
  */
-function turnPlanRows(ordered: readonly OrchestrationThreadActivity[]) {
+function turnPlanRows(ordered: readonly OrchestrationSessionActivity[]) {
   const rows = new Map<string, TurnPlanRow>()
 
   for (const activity of ordered) {
@@ -200,7 +200,7 @@ function turnPlanRows(ordered: readonly OrchestrationThreadActivity[]) {
 function appendTurnPlanRow(
   entries: DerivedChatWorkLogEntry[],
   planRows: ReadonlyMap<string, TurnPlanRow>,
-  activity: OrchestrationThreadActivity,
+  activity: OrchestrationSessionActivity,
 ) {
   const row = planRows.get(turnPlanKey(activity))
   if (!row) return
@@ -209,11 +209,11 @@ function appendTurnPlanRow(
   entries.push(row.entry)
 }
 
-function turnPlanKey(activity: OrchestrationThreadActivity) {
+function turnPlanKey(activity: OrchestrationSessionActivity) {
   return activity.turnId ?? 'no-turn'
 }
 
-function workLogPlan(activity: OrchestrationThreadActivity): ChatWorkLogPlan | null {
+function workLogPlan(activity: OrchestrationSessionActivity): ChatWorkLogPlan | null {
   const steps = chatActivityPlanSteps(activity)
   if (steps.length === 0) return null
 
@@ -232,7 +232,7 @@ function currentPlanStep(steps: readonly ChatActivityPlanStep[]) {
 }
 
 function planWorkLogEntry(
-  activity: OrchestrationThreadActivity,
+  activity: OrchestrationSessionActivity,
   key: string,
   createdAt: string,
   plan: ChatWorkLogPlan,
@@ -258,7 +258,7 @@ function planWorkLogEntry(
   }
 }
 
-function derivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedChatWorkLogEntry {
+function derivedWorkLogEntry(activity: OrchestrationSessionActivity): DerivedChatWorkLogEntry {
   const presentation = chatActivityPresentation(activity)
   const entry = {
     activityKind: activity.kind,
@@ -286,14 +286,14 @@ function derivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedChat
   }
 }
 
-function toolCallKey(activity: OrchestrationThreadActivity, toolCallId: string | null) {
+function toolCallKey(activity: OrchestrationSessionActivity, toolCallId: string | null) {
   if (!toolCallId) return null
   if (!activity.kind.startsWith('tool.')) return null
 
   return [activity.turnId ?? 'no-turn', toolCallId].join('')
 }
 
-function workLogTone(activity: OrchestrationThreadActivity): ChatWorkLogTone {
+function workLogTone(activity: OrchestrationSessionActivity): ChatWorkLogTone {
   if (activity.kind === 'task.progress') return 'thinking'
   if (activity.tone === 'approval') return 'info'
   if (activity.tone === 'error') return 'error'

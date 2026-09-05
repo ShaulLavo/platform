@@ -1,3 +1,5 @@
+import { TEST_ENVIRONMENT_ID as FIXTURE_ENVIRONMENT_ID } from '../../../../../test/factories/chat'
+import { sessionShell as fixtureSessionShell } from '../../../../../test/factories/chat'
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_INTERACTION_MODE,
@@ -5,75 +7,78 @@ import {
   DEFAULT_RUNTIME_MODE,
   eventIdSchema,
   messageIdSchema,
-  projectIdSchema,
-  threadIdSchema,
+  sessionIdSchema,
   turnIdSchema,
   type MessageId,
   type OrchestrationEvent,
   type OrchestrationMessage,
-  type OrchestrationThreadDetailSnapshot,
-  type ThreadId,
+  type OrchestrationSessionDetailSnapshot,
+  type SessionId,
 } from '@workspace/contracts'
 import * as v from 'valibot'
 
-import type { ChatTransport } from '@/features/chat/transport/chat-transport'
+import { unsupportedChatTransport } from '../../../../../test/factories/chat-transport'
 import { useChatProjectionStore } from '@/features/chat/state/chat-projection-store'
-import { syncThreadProjectionAfterDispatch } from '@/features/chat/utils/command-sync'
+import { syncSessionProjectionAfterDispatch } from '@/features/chat/utils/command-sync'
 
 describe('chat command sync', () => {
-  it('replays accepted thread events into the projection store', async () => {
-    const threadId = v.parse(threadIdSchema, 'thread-1')
+  it('replays accepted session events into the projection store', async () => {
+    const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
     const messageId = v.parse(messageIdSchema, 'message-1')
-    const event = messageSentEvent({ messageId, sequence: 10, threadId })
-    const transport = {
+    const event = messageSentEvent({ messageId, sequence: 10, sessionId })
+    const transport = unsupportedChatTransport({
       replayEvents: async () => ({ events: [event] }),
-      threadDetailSnapshot: async () =>
-        threadDetailSnapshot({
+      sessionDetailSnapshot: async () =>
+        sessionDetailSnapshot({
           messages: [],
           sequence: 9,
-          threadId,
+          sessionId,
         }),
-    } as unknown as ChatTransport
+    })
 
     useChatProjectionStore.getState().resetChatProjection()
-    await syncThreadProjectionAfterDispatch({
+    await syncSessionProjectionAfterDispatch({
       transport,
       replayAfterSequence: 8,
-      threadId,
+      sessionId,
     })
 
     expect(
-      useChatProjectionStore.getState().messageByThreadId[threadId]?.[messageId],
+      useChatProjectionStore.getState().slices[FIXTURE_ENVIRONMENT_ID]!.messageBySessionId[
+        sessionId
+      ]?.[messageId],
     ).toMatchObject({
       id: messageId,
       text: 'Hello',
     })
   })
 
-  it('syncs the authoritative thread detail snapshot when replay is unavailable', async () => {
-    const threadId = v.parse(threadIdSchema, 'thread-1')
+  it('syncs the authoritative session detail snapshot when replay is unavailable', async () => {
+    const sessionId = v.parse(sessionIdSchema, 'ad686244-5b2e-59be-805f-ef86eac80feb')
     const messageId = v.parse(messageIdSchema, 'message-1')
-    const transport = {
+    const transport = unsupportedChatTransport({
       replayEvents: async () => {
         throw new Error('replay unavailable')
       },
-      threadDetailSnapshot: async () =>
-        threadDetailSnapshot({
-          messages: [message({ messageId, threadId })],
+      sessionDetailSnapshot: async () =>
+        sessionDetailSnapshot({
+          messages: [message({ messageId, sessionId })],
           sequence: 10,
-          threadId,
+          sessionId,
         }),
-    } as unknown as ChatTransport
+    })
 
     useChatProjectionStore.getState().resetChatProjection()
-    await syncThreadProjectionAfterDispatch({
+    await syncSessionProjectionAfterDispatch({
       transport,
       replayAfterSequence: 8,
-      threadId,
+      sessionId,
     })
 
     expect(
-      useChatProjectionStore.getState().messageByThreadId[threadId]?.[messageId],
+      useChatProjectionStore.getState().slices[FIXTURE_ENVIRONMENT_ID]!.messageBySessionId[
+        sessionId
+      ]?.[messageId],
     ).toMatchObject({
       id: messageId,
       text: 'Hello',
@@ -84,18 +89,18 @@ describe('chat command sync', () => {
 function messageSentEvent({
   messageId,
   sequence,
-  threadId,
+  sessionId,
 }: {
   messageId: MessageId
   sequence: number
-  threadId: ThreadId
+  sessionId: SessionId
 }): OrchestrationEvent {
   const turnId = v.parse(turnIdSchema, 'turn-1')
 
   return {
     actorKind: 'client',
-    aggregateId: threadId,
-    aggregateKind: 'thread',
+    aggregateId: sessionId,
+    aggregateKind: 'session',
     causationEventId: null,
     commandId: null,
     correlationId: null,
@@ -109,35 +114,37 @@ function messageSentEvent({
       role: 'user',
       streaming: false,
       text: 'Hello',
-      threadId,
+      sessionId,
       turnId,
       updatedAt: '2026-05-28T00:00:00.000Z',
     },
     sequence,
-    type: 'thread.message-sent',
+    type: 'session.message-sent',
   }
 }
 
-function threadDetailSnapshot({
+function sessionDetailSnapshot({
   messages,
   sequence,
-  threadId,
+  sessionId,
 }: {
   messages: OrchestrationMessage[]
   sequence: number
-  threadId: ThreadId
-}): OrchestrationThreadDetailSnapshot {
+  sessionId: SessionId
+}): OrchestrationSessionDetailSnapshot {
   return {
     checkpoints: [],
     proposedPlans: [],
     snapshotSequence: sequence,
-    thread: {
+    session: {
+      deletion: null,
+      ...fixtureSessionShell(),
       activities: [],
       archivedAt: null,
-      branch: null,
+
       createdAt: timestamp(0),
       deletedAt: null,
-      id: threadId,
+      id: sessionId,
       interactionMode: DEFAULT_INTERACTION_MODE,
       latestTurn: null,
       messages,
@@ -145,22 +152,21 @@ function threadDetailSnapshot({
         model: 'codex-test',
         providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
       },
-      projectId: v.parse(projectIdSchema, 'project-1'),
+
       runtimeMode: DEFAULT_RUNTIME_MODE,
-      session: null,
-      title: 'Thread',
+      runtime: null,
+      title: 'Session',
       updatedAt: timestamp(sequence),
-      worktreePath: null,
     },
   }
 }
 
 function message({
   messageId,
-  threadId,
+  sessionId,
 }: {
   messageId: MessageId
-  threadId: ThreadId
+  sessionId: SessionId
 }): OrchestrationMessage {
   return {
     attachments: [],
@@ -169,7 +175,7 @@ function message({
     role: 'user',
     streaming: false,
     text: 'Hello',
-    threadId,
+    sessionId,
     turnId: v.parse(turnIdSchema, 'turn-1'),
     updatedAt: timestamp(10),
   }

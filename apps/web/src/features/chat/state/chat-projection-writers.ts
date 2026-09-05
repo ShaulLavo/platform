@@ -8,18 +8,20 @@ import {
   type OrchestrationMessage,
   type OrchestrationProjectShell,
   type OrchestrationProposedPlan,
-  type OrchestrationSession,
+  type SessionRuntimeState,
   type OrchestrationShellSnapshot,
   type OrchestrationShellStreamItem,
-  ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE,
-  type OrchestrationThread,
-  type OrchestrationThreadActivity,
-  type OrchestrationThreadDetailPage,
-  type OrchestrationThreadDetailSnapshot,
-  type OrchestrationThreadShell,
-  type OrchestrationThreadStreamItem,
+  ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE,
+  type OrchestrationSession,
+  type OrchestrationSessionActivity,
+  type OrchestrationSessionDetailPage,
+  type OrchestrationSessionDetailSnapshot,
+  type OrchestrationSessionShell,
+  type OrchestrationSessionStreamItem,
   type ProjectId,
-  type ThreadId,
+  type WorktreeId,
+  type OrchestrationWorktreeShell,
+  type SessionId,
   type TurnId,
 } from '@workspace/contracts'
 
@@ -30,85 +32,88 @@ import {
   CHAT_PROPOSED_PLAN_CACHE_LIMIT,
 } from './chat-cache-constants'
 import type {
-  ChatProjectionState,
+  ChatProjectionSlice,
   ChatTurnDiffSummary,
-  ProjectionThread,
+  ProjectionSession,
 } from './chat-projection-store'
 
-const EMPTY_THREAD_IDS: ThreadId[] = []
-type ThreadOrchestrationEvent = Extract<OrchestrationEvent, { type: `thread.${string}` }>
+const EMPTY_SESSION_IDS: SessionId[] = []
+type SessionOrchestrationEvent = Extract<OrchestrationEvent, { type: `session.${string}` }>
+type WorktreeOrchestrationEvent = Extract<OrchestrationEvent, { type: `worktree.${string}` }>
 type ProjectOrchestrationEvent = Extract<OrchestrationEvent, { type: `project.${string}` }>
 
 export function syncChatProjectionShellSnapshot(
-  state: ChatProjectionState,
+  state: ChatProjectionSlice,
   snapshot: OrchestrationShellSnapshot,
-): ChatProjectionState {
+): ChatProjectionSlice {
   if (!shouldApplyShellSnapshot(state, snapshot)) return state
 
-  const nextThreadIds = new Set(snapshot.threads.map((thread) => thread.id))
-  let nextState: ChatProjectionState = {
+  const nextSessionIds = new Set(snapshot.sessions.map((session) => session.id))
+  let nextState: ChatProjectionSlice = {
     ...state,
     ...projectStateFromShell(snapshot.projects),
-    ...retainSurvivingThreadSlices(state, nextThreadIds),
+    worktreeById: recordById(snapshot.worktrees, (worktree) => worktree.id),
+    worktreeIds: snapshot.worktrees.map((worktree) => worktree.id),
+    ...retainSurvivingSessionSlices(state, nextSessionIds),
     bootstrapComplete: true,
     lastAppliedShellSequence: snapshot.snapshotSequence,
     lastAppliedShellUpdatedAt: snapshot.updatedAt,
-    threadIds: [],
-    threadIdsByProjectId: {},
+    sessionIds: [],
+    sessionIdsByWorktreeId: {},
   }
 
-  for (const thread of snapshot.threads) {
-    nextState = writeThreadFromShell(nextState, thread)
+  for (const session of snapshot.sessions) {
+    nextState = writeSessionFromShell(nextState, session)
   }
 
   return nextState
 }
 
-export function syncChatProjectionThreadDetailSnapshot(
-  state: ChatProjectionState,
-  snapshot: OrchestrationThreadDetailSnapshot,
-): ChatProjectionState {
-  const threadId = snapshot.thread.id
-  if (!shouldApplyThreadDetailSnapshot(state, threadId, snapshot.snapshotSequence)) return state
+export function syncChatProjectionSessionDetailSnapshot(
+  state: ChatProjectionSlice,
+  snapshot: OrchestrationSessionDetailSnapshot,
+): ChatProjectionSlice {
+  const sessionId = snapshot.session.id
+  if (!shouldApplySessionDetailSnapshot(state, sessionId, snapshot.snapshotSequence)) return state
 
-  const nextState = writeThreadDetailState(state, snapshot)
+  const nextState = writeSessionDetailState(state, snapshot)
 
-  return markThreadSequence(nextState, threadId, snapshot.snapshotSequence)
+  return markSessionSequence(nextState, sessionId, snapshot.snapshotSequence)
 }
 
 /**
- * Merges one backwards page in front of the thread's timeline. Rows already held
+ * Merges one backwards page in front of the session's timeline. Rows already held
  * are dropped rather than re-inserted, so a page that overlaps the window — a
  * boundary row read twice, a page raced against a live append — is idempotent.
  */
-export function prependChatProjectionThreadDetailPage(
-  state: ChatProjectionState,
-  page: OrchestrationThreadDetailPage,
-): ChatProjectionState {
-  const threadId = page.threadId
-  const messages = prependUnheld(page.messages, selectMessages(state, threadId), messageKey)
-  const activities = prependUnheld(page.activities, selectActivities(state, threadId), activityKey)
+export function prependChatProjectionSessionDetailPage(
+  state: ChatProjectionSlice,
+  page: OrchestrationSessionDetailPage,
+): ChatProjectionSlice {
+  const sessionId = page.sessionId
+  const messages = prependUnheld(page.messages, selectMessages(state, sessionId), messageKey)
+  const activities = prependUnheld(page.activities, selectActivities(state, sessionId), activityKey)
   const withRows = {
     ...state,
-    activityByThreadId: {
-      ...state.activityByThreadId,
-      [threadId]: recordById(activities, activityKey),
+    activityBySessionId: {
+      ...state.activityBySessionId,
+      [sessionId]: recordById(activities, activityKey),
     },
-    activityIdsByThreadId: {
-      ...state.activityIdsByThreadId,
-      [threadId]: activities.map(activityKey),
+    activityIdsBySessionId: {
+      ...state.activityIdsBySessionId,
+      [sessionId]: activities.map(activityKey),
     },
-    messageByThreadId: {
-      ...state.messageByThreadId,
-      [threadId]: recordById(messages, messageKey),
+    messageBySessionId: {
+      ...state.messageBySessionId,
+      [sessionId]: recordById(messages, messageKey),
     },
-    messageIdsByThreadId: {
-      ...state.messageIdsByThreadId,
-      [threadId]: messages.map(messageKey),
+    messageIdsBySessionId: {
+      ...state.messageIdsBySessionId,
+      [sessionId]: messages.map(messageKey),
     },
   }
 
-  return writeThreadHasEarlier(withRows, threadId, page.hasEarlier)
+  return writeSessionHasEarlier(withRows, sessionId, page.hasEarlier)
 }
 
 function prependUnheld<TValue, TKey extends string>(
@@ -125,14 +130,14 @@ function messageKey(message: OrchestrationMessage) {
   return message.id
 }
 
-function activityKey(activity: OrchestrationThreadActivity) {
+function activityKey(activity: OrchestrationSessionActivity) {
   return activity.id
 }
 
 /**
  * The cache limit bounds what the live stream may grow to on its own; it must
  * not shrink a transcript the user explicitly paged back into, so an already
- * expanded thread keeps its length and slides forward instead. Either way the
+ * expanded session keeps its length and slides forward instead. Either way the
  * trim is recoverable: the earlier-page boundary is derived from the oldest row
  * still held, so a trimmed row is one "load earlier" away rather than lost.
  */
@@ -144,58 +149,70 @@ function boundedTail<TValue>(rows: TValue[], limit: number, heldCount: number): 
 }
 
 function markTrimmedFront(
-  state: ChatProjectionState,
-  threadId: ThreadId,
+  state: ChatProjectionSlice,
+  sessionId: SessionId,
   trimmedCount: number,
-): ChatProjectionState {
+): ChatProjectionSlice {
   if (trimmedCount <= 0) return state
 
-  return writeThreadHasEarlier(state, threadId, true)
+  return writeSessionHasEarlier(state, sessionId, true)
 }
 
-function writeThreadHasEarlier(
-  state: ChatProjectionState,
-  threadId: ThreadId,
+function writeSessionHasEarlier(
+  state: ChatProjectionSlice,
+  sessionId: SessionId,
   hasEarlier: boolean,
-): ChatProjectionState {
-  if (state.threadHasEarlierById[threadId] === hasEarlier) return state
+): ChatProjectionSlice {
+  if (state.sessionHasEarlierById[sessionId] === hasEarlier) return state
 
   return {
     ...state,
-    threadHasEarlierById: {
-      ...state.threadHasEarlierById,
-      [threadId]: hasEarlier,
+    sessionHasEarlierById: {
+      ...state.sessionHasEarlierById,
+      [sessionId]: hasEarlier,
     },
   }
 }
 
 /**
- * Everything a surviving thread owns crosses a shell resnapshot; everything a thread
- * the snapshot no longer lists owns is dropped. `threadById` is in here because the
+ * Everything a surviving session owns crosses a shell resnapshot; everything a session
+ * the snapshot no longer lists owns is dropped. `sessionById` is in here because the
  * record carries facts no shell write can refresh — the arranged pin slot, and the
  * `pendingSourceProposedPlan` whose event the retained detail cursor guarantees is
  * never replayed, so wiping it would lose the plan banner until the next turn.
  */
-function retainSurvivingThreadSlices(state: ChatProjectionState, threadIds: ReadonlySet<ThreadId>) {
+function retainSurvivingSessionSlices(
+  state: ChatProjectionSlice,
+  sessionIds: ReadonlySet<SessionId>,
+) {
   return {
-    activityByThreadId: retainThreadScopedRecord(state.activityByThreadId, threadIds),
-    activityIdsByThreadId: retainThreadScopedRecord(state.activityIdsByThreadId, threadIds),
-    messageByThreadId: retainThreadScopedRecord(state.messageByThreadId, threadIds),
-    messageIdsByThreadId: retainThreadScopedRecord(state.messageIdsByThreadId, threadIds),
-    proposedPlanByThreadId: retainThreadScopedRecord(state.proposedPlanByThreadId, threadIds),
-    proposedPlanIdsByThreadId: retainThreadScopedRecord(state.proposedPlanIdsByThreadId, threadIds),
-    threadById: retainThreadScopedRecord(state.threadById, threadIds),
-    threadDetailSequenceById: retainThreadScopedRecord(state.threadDetailSequenceById, threadIds),
-    threadHasEarlierById: retainThreadScopedRecord(state.threadHasEarlierById, threadIds),
-    turnDiffIdsByThreadId: retainThreadScopedRecord(state.turnDiffIdsByThreadId, threadIds),
-    turnDiffSummaryByThreadId: retainThreadScopedRecord(state.turnDiffSummaryByThreadId, threadIds),
+    activityBySessionId: retainSessionScopedRecord(state.activityBySessionId, sessionIds),
+    activityIdsBySessionId: retainSessionScopedRecord(state.activityIdsBySessionId, sessionIds),
+    messageBySessionId: retainSessionScopedRecord(state.messageBySessionId, sessionIds),
+    messageIdsBySessionId: retainSessionScopedRecord(state.messageIdsBySessionId, sessionIds),
+    proposedPlanBySessionId: retainSessionScopedRecord(state.proposedPlanBySessionId, sessionIds),
+    proposedPlanIdsBySessionId: retainSessionScopedRecord(
+      state.proposedPlanIdsBySessionId,
+      sessionIds,
+    ),
+    sessionById: retainSessionScopedRecord(state.sessionById, sessionIds),
+    sessionDetailSequenceById: retainSessionScopedRecord(
+      state.sessionDetailSequenceById,
+      sessionIds,
+    ),
+    sessionHasEarlierById: retainSessionScopedRecord(state.sessionHasEarlierById, sessionIds),
+    turnDiffIdsBySessionId: retainSessionScopedRecord(state.turnDiffIdsBySessionId, sessionIds),
+    turnDiffSummaryBySessionId: retainSessionScopedRecord(
+      state.turnDiffSummaryBySessionId,
+      sessionIds,
+    ),
   }
 }
 
 export function applyChatProjectionShellStreamItem(
-  state: ChatProjectionState,
+  state: ChatProjectionSlice,
   item: OrchestrationShellStreamItem,
-): ChatProjectionState {
+): ChatProjectionSlice {
   if (item.kind === 'snapshot') return syncChatProjectionShellSnapshot(state, item.snapshot)
   if (!shouldApplyShellSequence(state, item.sequence)) return state
 
@@ -204,19 +221,19 @@ export function applyChatProjectionShellStreamItem(
   return markShellSequence(nextState, item.sequence)
 }
 
-export function applyChatProjectionThreadStreamItem(
-  state: ChatProjectionState,
-  item: OrchestrationThreadStreamItem,
-): ChatProjectionState {
-  if (item.kind === 'snapshot') return syncChatProjectionThreadDetailSnapshot(state, item.snapshot)
+export function applyChatProjectionSessionStreamItem(
+  state: ChatProjectionSlice,
+  item: OrchestrationSessionStreamItem,
+): ChatProjectionSlice {
+  if (item.kind === 'snapshot') return syncChatProjectionSessionDetailSnapshot(state, item.snapshot)
 
   return applyChatProjectionEvent(state, item.event)
 }
 
 export function applyChatProjectionEvents(
-  state: ChatProjectionState,
+  state: ChatProjectionSlice,
   events: ReadonlyArray<OrchestrationEvent>,
-): ChatProjectionState {
+): ChatProjectionSlice {
   let nextState = state
 
   for (const event of events) {
@@ -227,22 +244,25 @@ export function applyChatProjectionEvents(
 }
 
 export function applyChatProjectionEvent(
-  state: ChatProjectionState,
+  state: ChatProjectionSlice,
   event: OrchestrationEvent,
-): ChatProjectionState {
-  if (isThreadOrchestrationEvent(event)) {
-    return applyThreadEventWithSequenceGuard(state, event)
+): ChatProjectionSlice {
+  if (isSessionOrchestrationEvent(event)) {
+    return applySessionEventWithSequenceGuard(state, event)
   }
 
+  if (isWorktreeOrchestrationEvent(event)) return applyWorktreeEvent(state, event)
   return applyProjectEvent(state, event)
 }
 
-function isThreadOrchestrationEvent(event: OrchestrationEvent): event is ThreadOrchestrationEvent {
-  return event.type.startsWith('thread.')
+function isSessionOrchestrationEvent(
+  event: OrchestrationEvent,
+): event is SessionOrchestrationEvent {
+  return event.type.startsWith('session.')
 }
 
 function shouldApplyShellSnapshot(
-  state: ChatProjectionState,
+  state: ChatProjectionSlice,
   snapshot: OrchestrationShellSnapshot,
 ) {
   if (snapshot.snapshotSequence > state.lastAppliedShellSequence) return true
@@ -253,30 +273,30 @@ function shouldApplyShellSnapshot(
   return snapshot.updatedAt > previousUpdatedAt
 }
 
-function shouldApplyShellSequence(state: ChatProjectionState, sequence: number) {
+function shouldApplyShellSequence(state: ChatProjectionSlice, sequence: number) {
   return sequence > state.lastAppliedShellSequence
 }
 
-function shouldApplyThreadSequence(
-  state: ChatProjectionState,
-  threadId: ThreadId,
+function shouldApplySessionSequence(
+  state: ChatProjectionSlice,
+  sessionId: SessionId,
   sequence: number,
 ) {
-  return sequence > (state.threadDetailSequenceById[threadId] ?? 0)
+  return sequence > (state.sessionDetailSequenceById[sessionId] ?? 0)
 }
 
-function shouldApplyThreadDetailSnapshot(
-  state: ChatProjectionState,
-  threadId: ThreadId,
+function shouldApplySessionDetailSnapshot(
+  state: ChatProjectionSlice,
+  sessionId: SessionId,
   sequence: number,
 ) {
-  const currentSequence = state.threadDetailSequenceById[threadId] ?? 0
+  const currentSequence = state.sessionDetailSequenceById[sessionId] ?? 0
   if (sequence > currentSequence) return true
 
   return sequence === currentSequence
 }
 
-function markShellSequence(state: ChatProjectionState, sequence: number): ChatProjectionState {
+function markShellSequence(state: ChatProjectionSlice, sequence: number): ChatProjectionSlice {
   if (sequence <= state.lastAppliedShellSequence) return state
 
   return {
@@ -285,43 +305,48 @@ function markShellSequence(state: ChatProjectionState, sequence: number): ChatPr
   }
 }
 
-function markThreadSequence(
-  state: ChatProjectionState,
-  threadId: ThreadId,
+function markSessionSequence(
+  state: ChatProjectionSlice,
+  sessionId: SessionId,
   sequence: number,
-): ChatProjectionState {
-  if (!shouldApplyThreadSequence(state, threadId, sequence)) return state
+): ChatProjectionSlice {
+  if (!shouldApplySessionSequence(state, sessionId, sequence)) return state
 
   return {
     ...state,
-    threadDetailSequenceById: {
-      ...state.threadDetailSequenceById,
-      [threadId]: sequence,
+    sessionDetailSequenceById: {
+      ...state.sessionDetailSequenceById,
+      [sessionId]: sequence,
     },
   }
 }
 
 function applyFreshShellStreamItem(
-  state: ChatProjectionState,
+  state: ChatProjectionSlice,
   item: Exclude<OrchestrationShellStreamItem, { kind: 'snapshot' }>,
-): ChatProjectionState {
+): ChatProjectionSlice {
   switch (item.kind) {
     case 'project-upserted':
       return writeProject(state, item.project)
     case 'project-removed':
       return removeProject(state, item.projectId)
-    case 'thread-upserted':
-      return writeThreadFromShell(state, item.thread)
-    case 'thread-removed':
-      return removeThreadState(state, item.threadId)
+    case 'worktree-upserted':
+      return writeWorktree(state, item.worktree)
+    case 'worktree-removed':
+      return removeWorktree(state, item.worktreeId)
+    case 'session-upserted':
+      return writeSessionFromShell(state, item.session)
+    case 'session-removed':
+      return removeSessionState(state, item.sessionId)
   }
 }
 
 function applyProjectEvent(
-  state: ChatProjectionState,
+  state: ChatProjectionSlice,
   event: ProjectOrchestrationEvent,
-): ChatProjectionState {
+): ChatProjectionSlice {
   switch (event.type) {
+    case 'project.revived':
     case 'project.created':
       return writeProject(state, {
         createdAt: event.payload.createdAt,
@@ -333,7 +358,9 @@ function applyProjectEvent(
         scripts: [],
         title: event.payload.title,
         updatedAt: event.payload.updatedAt,
-        workspaceRoot: event.payload.workspaceRoot,
+        repositoryKey: event.payload.repositoryKey,
+        repositoryKind: event.payload.repositoryKind,
+        repositoryIdentity: event.payload.repositoryIdentity,
       })
     case 'project.meta-updated':
       return patchProject(state, event.payload.projectId, {
@@ -341,7 +368,6 @@ function applyProjectEvent(
         scripts: event.payload.scripts,
         title: event.payload.title,
         updatedAt: event.payload.updatedAt,
-        workspaceRoot: event.payload.workspaceRoot,
       })
     case 'project.reordered':
       return patchProject(state, event.payload.projectId, { orderKey: event.payload.orderKey })
@@ -352,123 +378,127 @@ function applyProjectEvent(
   }
 }
 
-function applyThreadEventWithSequenceGuard(
-  state: ChatProjectionState,
-  event: ThreadOrchestrationEvent,
-): ChatProjectionState {
-  const threadId = event.payload.threadId
-  if (!shouldApplyThreadSequence(state, threadId, event.sequence)) return state
+function applySessionEventWithSequenceGuard(
+  state: ChatProjectionSlice,
+  event: SessionOrchestrationEvent,
+): ChatProjectionSlice {
+  const sessionId = event.payload.sessionId
+  if (!shouldApplySessionSequence(state, sessionId, event.sequence)) return state
 
-  const nextState = applyFreshThreadEvent(state, event)
+  const nextState = applyFreshSessionEvent(state, event)
 
-  return markThreadSequence(nextState, threadId, event.sequence)
+  return markSessionSequence(nextState, sessionId, event.sequence)
 }
 
-function applyFreshThreadEvent(
-  state: ChatProjectionState,
-  event: ThreadOrchestrationEvent,
-): ChatProjectionState {
+function applyFreshSessionEvent(
+  state: ChatProjectionSlice,
+  event: SessionOrchestrationEvent,
+): ChatProjectionSlice {
   switch (event.type) {
-    case 'thread.created':
-      return writeCreatedThread(state, event)
-    case 'thread.deleted':
-      return removeThreadState(state, event.payload.threadId)
-    case 'thread.archived':
-      return patchThread(state, event.payload.threadId, {
+    case 'session.created':
+      return writeCreatedSession(state, event)
+    case 'session.deleted':
+      return removeSessionState(state, event.payload.sessionId)
+    case 'session.archived':
+      return patchSession(state, event.payload.sessionId, {
         archivedAt: event.payload.archivedAt,
         updatedAt: event.payload.updatedAt,
       })
-    case 'thread.unarchived':
-      return patchThread(state, event.payload.threadId, {
+    case 'session.unarchived':
+      return patchSession(state, event.payload.sessionId, {
         archivedAt: null,
         updatedAt: event.payload.updatedAt,
       })
-    case 'thread.meta-updated':
-      return applyThreadMetaUpdatedEvent(state, event)
-    case 'thread.runtime-mode-set':
-      return patchThread(state, event.payload.threadId, {
+    case 'session.meta-updated':
+      return applySessionMetaUpdatedEvent(state, event)
+    case 'session.runtime-mode-set':
+      return patchSession(state, event.payload.sessionId, {
         runtimeMode: event.payload.runtimeMode,
         updatedAt: event.payload.updatedAt,
       })
-    case 'thread.interaction-mode-set':
-      return patchThread(state, event.payload.threadId, {
+    case 'session.interaction-mode-set':
+      return patchSession(state, event.payload.sessionId, {
         interactionMode: event.payload.interactionMode,
         updatedAt: event.payload.updatedAt,
       })
-    case 'thread.turn-start-requested':
-      return applyThreadTurnStartRequestedEvent(state, event)
-    case 'thread.turn-interrupt-requested':
-      return applyThreadTurnInterruptRequestedEvent(state, event)
-    case 'thread.session-stop-requested':
-      return applyThreadSessionStopRequestedEvent(state, event)
-    case 'thread.session-set':
-      return applyThreadSessionSetEvent(state, event)
-    case 'thread.message-sent':
-      return applyThreadMessageSentEvent(state, event)
-    case 'thread.activity-appended':
-      return applyThreadActivityAppendedEvent(state, event)
-    case 'thread.proposed-plan-upserted':
-      return applyThreadProposedPlanUpsertedEvent(state, event)
-    case 'thread.turn-diff-completed':
-      return applyThreadTurnDiffCompletedEvent(state, event)
-    case 'thread.checkpoint-revert-requested':
+    case 'session.turn-start-requested':
+      return applySessionTurnStartRequestedEvent(state, event)
+    case 'session.turn-interrupt-requested':
+      return applySessionTurnInterruptRequestedEvent(state, event)
+    case 'session.runtime-stop-requested':
+      return applySessionRuntimeStopRequestedEvent(state, event)
+    case 'session.runtime-set':
+      return applySessionRuntimeSetEvent(state, event)
+    case 'session.message-sent':
+      return applySessionMessageSentEvent(state, event)
+    case 'session.activity-appended':
+      return applySessionActivityAppendedEvent(state, event)
+    case 'session.proposed-plan-implemented':
+      return applySessionProposedPlanImplemented(state, event)
+    case 'session.proposed-plan-upserted':
+      return applySessionProposedPlanUpsertedEvent(state, event)
+    case 'session.turn-diff-completed':
+      return applySessionTurnDiffCompletedEvent(state, event)
+    case 'session.checkpoint-revert-requested':
       return state
-    case 'thread.reverted':
-      return applyThreadRevertedEvent(state, event)
-    case 'thread.approval-response-requested':
-    case 'thread.user-input-response-requested':
+    case 'session.reverted':
+      return applySessionRevertedEvent(state, event)
+    case 'session.approval-response-requested':
+    case 'session.user-input-response-requested':
       return state
     // The arranged slot is the one piece of pin state the rail draws, and the
     // shell snapshot does not carry it — these events are the only producer.
-    case 'thread.pinned':
-      return writeThreadPinOrderKey(
+    case 'session.pinned':
+      return writeSessionPinOrderKey(
         state,
-        event.payload.threadId,
+        event.payload.sessionId,
         event.payload.pinOrderKey ?? null,
       )
-    case 'thread.unpinned':
-      return writeThreadPinOrderKey(state, event.payload.threadId, null)
-    case 'thread.pin-reordered':
-      return writeThreadPinOrderKey(state, event.payload.threadId, event.payload.orderKey)
-    // Settle and snooze live on the server thread row; the shell snapshot the
+    case 'session.unpinned':
+      return writeSessionPinOrderKey(state, event.payload.sessionId, null)
+    case 'session.pin-reordered':
+      return writeSessionPinOrderKey(state, event.payload.sessionId, event.payload.orderKey)
+    // Settle and snooze live on the server session row; the shell snapshot the
     // client projects does not carry those fields, so there is nothing here to
     // patch. `updatedAt` deliberately stays untouched — bumping it from an
     // event whose state the client cannot see would reorder the rail for a
     // change nothing renders.
-    case 'thread.settled':
-    case 'thread.unsettled':
-    case 'thread.snoozed':
-    case 'thread.unsnoozed':
+    case 'session.settled':
+    case 'session.unsettled':
+    case 'session.snoozed':
+    case 'session.unsnoozed':
+      return state
+    default:
       return state
   }
 }
 
 /**
  * The arranged slot has no shell producer, so it is written here and carried across
- * resnapshots by `threadFromShell`.
+ * resnapshots by `sessionFromShell`.
  */
-function writeThreadPinOrderKey(
-  state: ChatProjectionState,
-  threadId: ThreadId,
+function writeSessionPinOrderKey(
+  state: ChatProjectionSlice,
+  sessionId: SessionId,
   pinOrderKey: string | null,
-): ChatProjectionState {
-  const thread = state.threadById[threadId]
-  if (!thread) return state
-  if (thread.pinOrderKey === pinOrderKey) return state
+): ChatProjectionSlice {
+  const session = state.sessionById[sessionId]
+  if (!session) return state
+  if (session.pinOrderKey === pinOrderKey) return state
 
   return {
     ...state,
-    threadById: {
-      ...state.threadById,
-      [threadId]: { ...thread, pinOrderKey },
+    sessionById: {
+      ...state.sessionById,
+      [sessionId]: { ...session, pinOrderKey },
     },
   }
 }
 
 function writeProject(
-  state: ChatProjectionState,
+  state: ChatProjectionSlice,
   project: OrchestrationProjectShell,
-): ChatProjectionState {
+): ChatProjectionSlice {
   return {
     ...state,
     projectById: {
@@ -480,10 +510,10 @@ function writeProject(
 }
 
 function patchProject(
-  state: ChatProjectionState,
+  state: ChatProjectionSlice,
   projectId: ProjectId,
   patch: Partial<OrchestrationProjectShell>,
-): ChatProjectionState {
+): ChatProjectionSlice {
   const project = state.projectById[projectId]
   if (!project) return state
 
@@ -496,7 +526,7 @@ function patchProject(
   }
 }
 
-function removeProject(state: ChatProjectionState, projectId: ProjectId): ChatProjectionState {
+function removeProject(state: ChatProjectionSlice, projectId: ProjectId): ChatProjectionSlice {
   if (!state.projectById[projectId]) return state
 
   return {
@@ -506,18 +536,23 @@ function removeProject(state: ChatProjectionState, projectId: ProjectId): ChatPr
   }
 }
 
-function writeThreadFromShell(
-  state: ChatProjectionState,
-  thread: OrchestrationThreadShell,
-): ChatProjectionState {
-  const previous = state.threadById[thread.id]
-  const nextState = ensureThreadRegistered(state, thread.id, thread.projectId, previous?.projectId)
+function writeSessionFromShell(
+  state: ChatProjectionSlice,
+  session: OrchestrationSessionShell,
+): ChatProjectionSlice {
+  const previous = state.sessionById[session.id]
+  const nextState = ensureSessionRegistered(
+    state,
+    session.id,
+    session.worktreeId,
+    previous?.worktreeId,
+  )
 
   return {
     ...nextState,
-    threadById: {
-      ...nextState.threadById,
-      [thread.id]: threadFromShell(thread, previous),
+    sessionById: {
+      ...nextState.sessionById,
+      [session.id]: sessionFromShell(session, previous),
     },
   }
 }
@@ -527,161 +562,167 @@ function writeThreadFromShell(
  * facts have no shell producer, so they are carried across explicitly — a resnapshot
  * that dropped them would lose the arranged pin slot and the plan banner.
  */
-function threadFromShell(
-  thread: OrchestrationThreadShell,
-  previous: ProjectionThread | undefined,
-): ProjectionThread {
+function sessionFromShell(
+  session: OrchestrationSessionShell,
+  previous: ProjectionSession | undefined,
+): ProjectionSession {
   return {
-    archivedAt: thread.archivedAt,
-    branch: thread.branch,
-    createdAt: thread.createdAt,
+    ...session,
+    archivedAt: session.archivedAt,
+    createdAt: session.createdAt,
     detailSynced: previous?.detailSynced ?? false,
-    hasActionableProposedPlan: thread.hasActionableProposedPlan,
-    id: thread.id,
-    interactionMode: thread.interactionMode,
-    latestTurn: thread.latestTurn,
-    latestUserMessageAt: thread.latestUserMessageAt,
-    liveTurn: thread.latestTurn,
+    hasActionableProposedPlan: session.hasActionableProposedPlan,
+    id: session.id,
+    interactionMode: session.interactionMode,
+    latestTurn: session.latestTurn,
+    latestUserMessageAt: session.latestUserMessageAt,
+    liveTurn: session.latestTurn,
     metaSource: 'shell',
-    modelSelection: thread.modelSelection,
-    pendingApprovalCount: thread.pendingApprovalCount,
-    pendingSourceProposedPlan: carriedPendingSourcePlan(previous, thread.latestTurn),
-    pendingUserInputCount: thread.pendingUserInputCount,
-    pinOrderKey: previous?.pinOrderKey ?? null,
-    planProgress: thread.planProgress,
-    projectId: thread.projectId,
-    runtimeMode: thread.runtimeMode,
-    session: thread.session,
-    sessionKnown: true,
-    title: thread.title,
-    updatedAt: thread.updatedAt,
-    worktreePath: thread.worktreePath,
+    modelSelection: session.modelSelection,
+    pendingApprovalCount: session.pendingApprovalCount,
+    pendingSourceProposedPlan: carriedPendingSourcePlan(previous, session.latestTurn),
+    pendingUserInputCount: session.pendingUserInputCount,
+    pinOrderKey: session.pinOrderKey ?? null,
+    planProgress: session.planProgress,
+    worktreeId: session.worktreeId,
+    runtimeMode: session.runtimeMode,
+    runtime: session.runtime,
+    runtimeKnown: true,
+    title: session.title,
+    updatedAt: session.updatedAt,
   }
 }
 
 /**
  * Detail slices only. The shell records this used to write are shell-authoritative,
  * and the two subscriptions are independent, so a detail cached before a reconnect
- * could otherwise revert a newer branch/worktree/title/session. Plans and checkpoints
+ * could otherwise revert a newer branch/worktree/title/runtime. Plans and checkpoints
  * are replaced rather than merged: a snapshot is the whole truth for them, and a plan
  * resolved while disconnected leaves no event behind to remove it.
  */
-function writeThreadDetailState(
-  state: ChatProjectionState,
-  snapshot: OrchestrationThreadDetailSnapshot,
-): ChatProjectionState {
-  const thread = snapshot.thread
-  const activitySlice = buildActivitySlice(thread.activities)
-  const messageSlice = buildMessageSlice(thread.messages)
+function writeSessionDetailState(
+  state: ChatProjectionSlice,
+  snapshot: OrchestrationSessionDetailSnapshot,
+): ChatProjectionSlice {
+  const session = snapshot.session
+  const activitySlice = buildActivitySlice(session.activities)
+  const messageSlice = buildMessageSlice(session.messages)
   const planSlice = buildProposedPlanSlice(snapshot.proposedPlans)
-  const turnDiffSlice = buildTurnDiffSlice(thread.id, snapshot.checkpoints)
+  const turnDiffSlice = buildTurnDiffSlice(session.id, snapshot.checkpoints)
 
-  return writeThreadHasEarlier(
+  return writeSessionHasEarlier(
     {
       ...state,
-      activityByThreadId: {
-        ...state.activityByThreadId,
-        [thread.id]: activitySlice.byId,
+      activityBySessionId: {
+        ...state.activityBySessionId,
+        [session.id]: activitySlice.byId,
       },
-      activityIdsByThreadId: {
-        ...state.activityIdsByThreadId,
-        [thread.id]: activitySlice.ids,
+      activityIdsBySessionId: {
+        ...state.activityIdsBySessionId,
+        [session.id]: activitySlice.ids,
       },
-      messageByThreadId: {
-        ...state.messageByThreadId,
-        [thread.id]: messageSlice.byId,
+      messageBySessionId: {
+        ...state.messageBySessionId,
+        [session.id]: messageSlice.byId,
       },
-      messageIdsByThreadId: {
-        ...state.messageIdsByThreadId,
-        [thread.id]: messageSlice.ids,
+      messageIdsBySessionId: {
+        ...state.messageIdsBySessionId,
+        [session.id]: messageSlice.ids,
       },
-      proposedPlanByThreadId: {
-        ...state.proposedPlanByThreadId,
-        [thread.id]: planSlice.byId,
+      proposedPlanBySessionId: {
+        ...state.proposedPlanBySessionId,
+        [session.id]: planSlice.byId,
       },
-      proposedPlanIdsByThreadId: {
-        ...state.proposedPlanIdsByThreadId,
-        [thread.id]: planSlice.ids,
+      proposedPlanIdsBySessionId: {
+        ...state.proposedPlanIdsBySessionId,
+        [session.id]: planSlice.ids,
       },
-      threadById: {
-        ...state.threadById,
-        [thread.id]: threadFromDetail(thread, state.threadById[thread.id]),
+      sessionById: {
+        ...state.sessionById,
+        [session.id]: sessionFromDetail(session, state.sessionById[session.id]),
       },
-      turnDiffIdsByThreadId: {
-        ...state.turnDiffIdsByThreadId,
-        [thread.id]: turnDiffSlice.ids,
+      turnDiffIdsBySessionId: {
+        ...state.turnDiffIdsBySessionId,
+        [session.id]: turnDiffSlice.ids,
       },
-      turnDiffSummaryByThreadId: {
-        ...state.turnDiffSummaryByThreadId,
-        [thread.id]: turnDiffSlice.byId,
+      turnDiffSummaryBySessionId: {
+        ...state.turnDiffSummaryBySessionId,
+        [session.id]: turnDiffSlice.byId,
       },
     },
-    thread.id,
-    snapshotWindowFull(thread),
+    session.id,
+    snapshotWindowFull(session),
   )
 }
 
 /**
  * A full window is the only truncation signal a detail snapshot carries: the
- * server ships the newest `ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE` rows of each
- * stream, so a short window proves the thread has nothing earlier, and a full
+ * server ships the newest `ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE` rows of each
+ * stream, so a short window proves the session has nothing earlier, and a full
  * one leaves it to the first backwards page to settle.
  */
-function snapshotWindowFull(thread: OrchestrationThread) {
+function snapshotWindowFull(session: OrchestrationSession) {
   return (
-    thread.messages.length >= ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE ||
-    thread.activities.length >= ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE
+    session.messages.length >= ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE ||
+    session.activities.length >= ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE
   )
 }
 
 /**
- * Creation is a shell fact — the thread joins the rail and the project index here.
+ * Creation is a shell fact — the session joins the rail and the project index here.
  * It arrives ahead of the shell stream on the post-dispatch replay path, which is the
- * only reason a brand new thread is visible before its first shell snapshot.
+ * only reason a brand new session is visible before its first shell snapshot.
  */
-function writeCreatedThread(
-  state: ChatProjectionState,
-  event: Extract<OrchestrationEvent, { type: 'thread.created' }>,
-): ChatProjectionState {
-  return writeThreadFromShell(state, {
+function writeCreatedSession(
+  state: ChatProjectionSlice,
+  event: Extract<OrchestrationEvent, { type: 'session.created' }>,
+): ChatProjectionSlice {
+  return writeSessionFromShell(state, {
     archivedAt: null,
-    branch: event.payload.branch,
+    origin: event.payload.origin,
+    attentionState: 'settled',
+    attentionReason: null,
+    hasError: false,
+    acknowledgedFailureThroughSequence: null,
+    settledOverride: null,
+    snoozedUntil: null,
+    pinnedAt: null,
+    pinOrderKey: null,
     createdAt: event.payload.createdAt,
     hasActionableProposedPlan: false,
-    id: event.payload.threadId,
+    id: event.payload.sessionId,
     interactionMode: event.payload.interactionMode ?? DEFAULT_INTERACTION_MODE,
     latestTurn: null,
     latestUserMessageAt: null,
     modelSelection: event.payload.modelSelection,
     pendingApprovalCount: 0,
     pendingUserInputCount: 0,
-    projectId: event.payload.projectId,
+    worktreeId: event.payload.worktreeId,
     runtimeMode: event.payload.runtimeMode ?? DEFAULT_RUNTIME_MODE,
-    session: null,
+    runtime: null,
     title: event.payload.title,
     updatedAt: event.payload.updatedAt,
-    worktreePath: event.payload.worktreePath,
   })
 }
 
-function applyThreadMetaUpdatedEvent(
-  state: ChatProjectionState,
-  event: Extract<OrchestrationEvent, { type: 'thread.meta-updated' }>,
-): ChatProjectionState {
-  return patchThread(state, event.payload.threadId, {
-    branch: event.payload.branch,
+function applySessionMetaUpdatedEvent(
+  state: ChatProjectionSlice,
+  event: Extract<OrchestrationEvent, { type: 'session.meta-updated' }>,
+): ChatProjectionSlice {
+  return patchSession(state, event.payload.sessionId, {
     modelSelection: event.payload.modelSelection,
     title: event.payload.title,
     updatedAt: event.payload.updatedAt,
-    worktreePath: event.payload.worktreePath,
   })
 }
 
-function applyThreadTurnStartRequestedEvent(
-  state: ChatProjectionState,
-  event: Extract<OrchestrationEvent, { type: 'thread.turn-start-requested' }>,
-): ChatProjectionState {
+function applySessionTurnStartRequestedEvent(
+  state: ChatProjectionSlice,
+  event: Extract<OrchestrationEvent, { type: 'session.turn-start-requested' }>,
+): ChatProjectionSlice {
   const latestTurn: OrchestrationLatestTurn = {
+    ...turnRuntimeMetadata(null),
+    providerStartSequence: event.sequence,
     assistantMessageId: null,
     completedAt: null,
     requestedAt: event.payload.createdAt,
@@ -691,73 +732,74 @@ function applyThreadTurnStartRequestedEvent(
     turnId: event.payload.turnId,
   }
 
-  const nextState = patchThread(state, event.payload.threadId, {
+  const nextState = patchSession(state, event.payload.sessionId, {
     interactionMode: event.payload.interactionMode,
     modelSelection: event.payload.modelSelection,
     runtimeMode: event.payload.runtimeMode,
     updatedAt: event.payload.createdAt,
   })
 
-  return writeThreadTurn(nextState, event.payload.threadId, {
+  return writeSessionTurn(nextState, event.payload.sessionId, {
     liveTurn: latestTurn,
     pendingSourceProposedPlan: event.payload.sourceProposedPlan,
   })
 }
 
-function applyThreadTurnInterruptRequestedEvent(
-  state: ChatProjectionState,
-  event: Extract<OrchestrationEvent, { type: 'thread.turn-interrupt-requested' }>,
-): ChatProjectionState {
-  const thread = state.threadById[event.payload.threadId]
-  if (!event.payload.turnId || !thread?.liveTurn) return state
-  if (thread.liveTurn.turnId !== event.payload.turnId) return state
+function applySessionTurnInterruptRequestedEvent(
+  state: ChatProjectionSlice,
+  event: Extract<OrchestrationEvent, { type: 'session.turn-interrupt-requested' }>,
+): ChatProjectionSlice {
+  const session = state.sessionById[event.payload.sessionId]
+  if (!event.payload.turnId || !session?.liveTurn) return state
+  if (session.liveTurn.turnId !== event.payload.turnId) return state
 
-  return writeThreadTurn(state, event.payload.threadId, {
+  return writeSessionTurn(state, event.payload.sessionId, {
     liveTurn: {
-      ...thread.liveTurn,
-      completedAt: thread.liveTurn.completedAt ?? event.payload.createdAt,
-      startedAt: thread.liveTurn.startedAt ?? event.payload.createdAt,
+      ...session.liveTurn,
+      completedAt: session.liveTurn.completedAt ?? event.payload.createdAt,
+      startedAt: session.liveTurn.startedAt ?? event.payload.createdAt,
       state: 'interrupted',
     },
-    pendingSourceProposedPlan: thread.pendingSourceProposedPlan,
+    pendingSourceProposedPlan: session.pendingSourceProposedPlan,
   })
 }
 
-function applyThreadSessionStopRequestedEvent(
-  state: ChatProjectionState,
-  event: Extract<OrchestrationEvent, { type: 'thread.session-stop-requested' }>,
-): ChatProjectionState {
-  return writeThreadSession(state, event.payload.threadId, null)
+function applySessionRuntimeStopRequestedEvent(
+  state: ChatProjectionSlice,
+  event: Extract<OrchestrationEvent, { type: 'session.runtime-stop-requested' }>,
+): ChatProjectionSlice {
+  return writeSessionRuntime(state, event.payload.sessionId, null)
 }
 
-function applyThreadSessionSetEvent(
-  state: ChatProjectionState,
-  event: Extract<OrchestrationEvent, { type: 'thread.session-set' }>,
-): ChatProjectionState {
-  const nextState = writeThreadSession(state, event.payload.threadId, event.payload.session)
+function applySessionRuntimeSetEvent(
+  state: ChatProjectionSlice,
+  event: Extract<OrchestrationEvent, { type: 'session.runtime-set' }>,
+): ChatProjectionSlice {
+  const nextState = writeSessionRuntime(state, event.payload.sessionId, event.payload.runtime)
 
-  const status = event.payload.session.status
+  const status = event.payload.runtime.status
   if (status !== 'running' && status !== 'waiting') return nextState
-  if (event.payload.session.activeTurnId === null) return nextState
+  if (event.payload.runtime.activeTurnId === null) return nextState
 
-  const currentTurn = nextState.threadById[event.payload.threadId]?.liveTurn
-  const activeTurnId = event.payload.session.activeTurnId
+  const currentTurn = nextState.sessionById[event.payload.sessionId]?.liveTurn
+  const activeTurnId = event.payload.runtime.activeTurnId
 
-  return writeThreadTurn(nextState, event.payload.threadId, {
+  return writeSessionTurn(nextState, event.payload.sessionId, {
     liveTurn: {
+      ...turnRuntimeMetadata(state.sessionById[event.payload.sessionId]?.liveTurn),
       assistantMessageId:
         currentTurn?.turnId === activeTurnId ? currentTurn.assistantMessageId : null,
       completedAt: null,
       requestedAt:
         currentTurn?.turnId === activeTurnId
           ? currentTurn.requestedAt
-          : event.payload.session.updatedAt,
+          : event.payload.runtime.updatedAt,
       sourceProposedPlan:
         currentTurn?.turnId === activeTurnId ? currentTurn.sourceProposedPlan : undefined,
       startedAt:
         currentTurn?.turnId === activeTurnId
-          ? (currentTurn.startedAt ?? event.payload.session.updatedAt)
-          : event.payload.session.updatedAt,
+          ? (currentTurn.startedAt ?? event.payload.runtime.updatedAt)
+          : event.payload.runtime.updatedAt,
       state: 'running',
       turnId: activeTurnId,
     },
@@ -765,14 +807,14 @@ function applyThreadSessionSetEvent(
   })
 }
 
-function applyThreadMessageSentEvent(
-  state: ChatProjectionState,
-  event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
-): ChatProjectionState {
-  const threadId = event.payload.threadId
+function applySessionMessageSentEvent(
+  state: ChatProjectionSlice,
+  event: Extract<OrchestrationEvent, { type: 'session.message-sent' }>,
+): ChatProjectionSlice {
+  const sessionId = event.payload.sessionId
   const message = messageFromEvent(event)
-  const currentIds = state.messageIdsByThreadId[threadId] ?? []
-  const currentById = state.messageByThreadId[threadId] ?? {}
+  const currentIds = state.messageIdsBySessionId[sessionId] ?? []
+  const currentById = state.messageBySessionId[sessionId] ?? {}
   const heldMessage = currentById[message.id]
   const nextMessage = mergeMessage(heldMessage, message)
   // The id list and the by-id record are written together by every writer in
@@ -792,32 +834,32 @@ function applyThreadMessageSentEvent(
       ? grownById
       : retainRecordKeys(grownById, new Set(nextIds))
 
-  const nextState = patchThread(
+  const nextState = patchSession(
     markTrimmedFront(
       {
         ...state,
-        messageByThreadId: {
-          ...state.messageByThreadId,
-          [threadId]: nextById,
+        messageBySessionId: {
+          ...state.messageBySessionId,
+          [sessionId]: nextById,
         },
-        messageIdsByThreadId: {
-          ...state.messageIdsByThreadId,
-          [threadId]: nextIds,
+        messageIdsBySessionId: {
+          ...state.messageIdsBySessionId,
+          [sessionId]: nextIds,
         },
       },
-      threadId,
+      sessionId,
       appendedIds.length - nextIds.length,
     ),
-    threadId,
-    messageThreadPatch(event),
+    sessionId,
+    messageSessionPatch(event),
   )
 
   return writeAssistantMessageTurnState(nextState, event)
 }
 
-function messageThreadPatch(
-  event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
-): Partial<ProjectionThread> {
+function messageSessionPatch(
+  event: Extract<OrchestrationEvent, { type: 'session.message-sent' }>,
+): Partial<ProjectionSession> {
   if (event.payload.role !== 'user') return { updatedAt: event.payload.updatedAt }
 
   return {
@@ -826,17 +868,17 @@ function messageThreadPatch(
   }
 }
 
-function applyThreadActivityAppendedEvent(
-  state: ChatProjectionState,
-  event: Extract<OrchestrationEvent, { type: 'thread.activity-appended' }>,
-): ChatProjectionState {
+function applySessionActivityAppendedEvent(
+  state: ChatProjectionSlice,
+  event: Extract<OrchestrationEvent, { type: 'session.activity-appended' }>,
+): ChatProjectionSlice {
   const activity = {
     ...event.payload.activity,
     sequence: event.payload.activity.sequence ?? event.sequence,
   }
-  const threadId = event.payload.threadId
-  const currentIds = state.activityIdsByThreadId[threadId] ?? []
-  const currentById = state.activityByThreadId[threadId] ?? {}
+  const sessionId = event.payload.sessionId
+  const currentIds = state.activityIdsBySessionId[sessionId] ?? []
+  const currentById = state.activityBySessionId[sessionId] ?? {}
   const appended = appendActivity(currentIds, currentById, activity)
   const nextIds = boundedTail(appended.ids, CHAT_ACTIVITY_CACHE_LIMIT, currentIds.length)
   const nextById =
@@ -847,17 +889,17 @@ function applyThreadActivityAppendedEvent(
   return writeTurnFailureState(
     markTrimmedFront(
       {
-        ...patchThread(state, threadId, { updatedAt: activity.createdAt }),
-        activityByThreadId: {
-          ...state.activityByThreadId,
-          [threadId]: nextById,
+        ...patchSession(state, sessionId, { updatedAt: activity.createdAt }),
+        activityBySessionId: {
+          ...state.activityBySessionId,
+          [sessionId]: nextById,
         },
-        activityIdsByThreadId: {
-          ...state.activityIdsByThreadId,
-          [threadId]: nextIds,
+        activityIdsBySessionId: {
+          ...state.activityIdsBySessionId,
+          [sessionId]: nextIds,
         },
       },
-      threadId,
+      sessionId,
       appended.ids.length - nextIds.length,
     ),
     activity,
@@ -875,9 +917,9 @@ function applyThreadActivityAppendedEvent(
  */
 function appendActivity(
   ids: readonly EventId[],
-  byId: Record<EventId, OrchestrationThreadActivity>,
-  activity: OrchestrationThreadActivity,
-): { byId: Record<EventId, OrchestrationThreadActivity>; ids: EventId[] } {
+  byId: Record<EventId, OrchestrationSessionActivity>,
+  activity: OrchestrationSessionActivity,
+): { byId: Record<EventId, OrchestrationSessionActivity>; ids: EventId[] } {
   const lastId = ids.at(-1)
   const last = lastId ? byId[lastId] : undefined
   const isTailAppend =
@@ -889,7 +931,7 @@ function appendActivity(
     }
   }
 
-  const ordered = recordValues<OrchestrationThreadActivity>({
+  const ordered = recordValues<OrchestrationSessionActivity>({
     ...byId,
     [activity.id]: activity,
   }).sort(compareActivities)
@@ -900,12 +942,12 @@ function appendActivity(
   }
 }
 
-function applyThreadProposedPlanUpsertedEvent(
-  state: ChatProjectionState,
-  event: Extract<OrchestrationEvent, { type: 'thread.proposed-plan-upserted' }>,
-): ChatProjectionState {
-  const threadId = event.payload.threadId
-  const currentById = state.proposedPlanByThreadId[threadId] ?? {}
+function applySessionProposedPlanUpsertedEvent(
+  state: ChatProjectionSlice,
+  event: Extract<OrchestrationEvent, { type: 'session.proposed-plan-upserted' }>,
+): ChatProjectionSlice {
+  const sessionId = event.payload.sessionId
+  const currentById = state.proposedPlanBySessionId[sessionId] ?? {}
   const plans = recordValues<OrchestrationProposedPlan>({
     ...currentById,
     [event.payload.proposedPlan.id]: event.payload.proposedPlan,
@@ -914,24 +956,24 @@ function applyThreadProposedPlanUpsertedEvent(
     .slice(-CHAT_PROPOSED_PLAN_CACHE_LIMIT)
 
   return {
-    ...patchThread(state, threadId, {
+    ...patchSession(state, sessionId, {
       updatedAt: event.payload.proposedPlan.updatedAt,
     }),
-    proposedPlanByThreadId: {
-      ...state.proposedPlanByThreadId,
-      [threadId]: recordById(plans, (entry) => entry.id),
+    proposedPlanBySessionId: {
+      ...state.proposedPlanBySessionId,
+      [sessionId]: recordById(plans, (entry) => entry.id),
     },
-    proposedPlanIdsByThreadId: {
-      ...state.proposedPlanIdsByThreadId,
-      [threadId]: plans.map((entry) => entry.id),
+    proposedPlanIdsBySessionId: {
+      ...state.proposedPlanIdsBySessionId,
+      [sessionId]: plans.map((entry) => entry.id),
     },
   }
 }
 
-function applyThreadTurnDiffCompletedEvent(
-  state: ChatProjectionState,
-  event: Extract<OrchestrationEvent, { type: 'thread.turn-diff-completed' }>,
-): ChatProjectionState {
+function applySessionTurnDiffCompletedEvent(
+  state: ChatProjectionSlice,
+  event: Extract<OrchestrationEvent, { type: 'session.turn-diff-completed' }>,
+): ChatProjectionSlice {
   const summary: ChatTurnDiffSummary = {
     assistantMessageId: event.payload.assistantMessageId,
     checkpointRef: event.payload.checkpointRef,
@@ -939,11 +981,11 @@ function applyThreadTurnDiffCompletedEvent(
     completedAt: event.payload.completedAt,
     files: event.payload.files,
     status: event.payload.status,
-    threadId: event.payload.threadId,
+    sessionId: event.payload.sessionId,
     turnId: event.payload.turnId,
   }
-  const threadId = event.payload.threadId
-  const currentById = state.turnDiffSummaryByThreadId[threadId] ?? {}
+  const sessionId = event.payload.sessionId
+  const currentById = state.turnDiffSummaryBySessionId[sessionId] ?? {}
   const summaries = recordValues<ChatTurnDiffSummary>({
     ...currentById,
     [summary.turnId]: summary,
@@ -951,23 +993,24 @@ function applyThreadTurnDiffCompletedEvent(
     .toSorted((left, right) => left.checkpointTurnCount - right.checkpointTurnCount)
     .slice(-CHAT_CHECKPOINT_CACHE_LIMIT)
   const nextState = {
-    ...patchThread(state, threadId, { updatedAt: event.payload.completedAt }),
-    turnDiffIdsByThreadId: {
-      ...state.turnDiffIdsByThreadId,
-      [threadId]: summaries.map((entry) => entry.turnId),
+    ...patchSession(state, sessionId, { updatedAt: event.payload.completedAt }),
+    turnDiffIdsBySessionId: {
+      ...state.turnDiffIdsBySessionId,
+      [sessionId]: summaries.map((entry) => entry.turnId),
     },
-    turnDiffSummaryByThreadId: {
-      ...state.turnDiffSummaryByThreadId,
-      [threadId]: recordById(summaries, (entry) => entry.turnId),
+    turnDiffSummaryBySessionId: {
+      ...state.turnDiffSummaryBySessionId,
+      [sessionId]: recordById(summaries, (entry) => entry.turnId),
     },
   }
 
-  return writeThreadTurn(nextState, threadId, {
+  return writeSessionTurn(nextState, sessionId, {
     liveTurn: {
+      ...turnRuntimeMetadata(state.sessionById[event.payload.sessionId]?.liveTurn),
       assistantMessageId: event.payload.assistantMessageId,
       completedAt: event.payload.completedAt,
-      requestedAt: state.threadById[threadId]?.liveTurn?.requestedAt ?? event.payload.completedAt,
-      startedAt: state.threadById[threadId]?.liveTurn?.startedAt ?? event.payload.completedAt,
+      requestedAt: state.sessionById[sessionId]?.liveTurn?.requestedAt ?? event.payload.completedAt,
+      startedAt: state.sessionById[sessionId]?.liveTurn?.startedAt ?? event.payload.completedAt,
       state: checkpointStatusToLatestTurnState(event.payload.status),
       turnId: event.payload.turnId,
     },
@@ -975,63 +1018,63 @@ function applyThreadTurnDiffCompletedEvent(
   })
 }
 
-function applyThreadRevertedEvent(
-  state: ChatProjectionState,
-  event: Extract<OrchestrationEvent, { type: 'thread.reverted' }>,
-): ChatProjectionState {
-  const threadId = event.payload.threadId
-  const summaries = selectTurnDiffSummaries(state, threadId)
+function applySessionRevertedEvent(
+  state: ChatProjectionSlice,
+  event: Extract<OrchestrationEvent, { type: 'session.reverted' }>,
+): ChatProjectionSlice {
+  const sessionId = event.payload.sessionId
+  const summaries = selectTurnDiffSummaries(state, sessionId)
     .filter((summary) => summary.checkpointTurnCount <= event.payload.turnCount)
     .slice(-CHAT_CHECKPOINT_CACHE_LIMIT)
   const retainedTurnIds = new Set(summaries.map((summary) => summary.turnId))
-  const messages = selectMessages(state, threadId).filter((message) =>
+  const messages = selectMessages(state, sessionId).filter((message) =>
     shouldRetainAfterRevert(message.turnId, retainedTurnIds),
   )
-  const activities = selectActivities(state, threadId).filter((activity) =>
+  const activities = selectActivities(state, sessionId).filter((activity) =>
     shouldRetainAfterRevert(activity.turnId, retainedTurnIds),
   )
-  const plans = selectProposedPlans(state, threadId).filter((plan) =>
+  const plans = selectProposedPlans(state, sessionId).filter((plan) =>
     shouldRetainAfterRevert(plan.turnId, retainedTurnIds),
   )
   const latestSummary = summaries.at(-1)
 
-  return writeThreadTurn(
+  return writeSessionTurn(
     {
-      ...patchThread(state, threadId, { updatedAt: event.payload.revertedAt }),
-      activityByThreadId: {
-        ...state.activityByThreadId,
-        [threadId]: recordById(activities, (entry) => entry.id),
+      ...patchSession(state, sessionId, { updatedAt: event.payload.revertedAt }),
+      activityBySessionId: {
+        ...state.activityBySessionId,
+        [sessionId]: recordById(activities, (entry) => entry.id),
       },
-      activityIdsByThreadId: {
-        ...state.activityIdsByThreadId,
-        [threadId]: activities.map((activity) => activity.id),
+      activityIdsBySessionId: {
+        ...state.activityIdsBySessionId,
+        [sessionId]: activities.map((activity) => activity.id),
       },
-      messageByThreadId: {
-        ...state.messageByThreadId,
-        [threadId]: recordById(messages, (entry) => entry.id),
+      messageBySessionId: {
+        ...state.messageBySessionId,
+        [sessionId]: recordById(messages, (entry) => entry.id),
       },
-      messageIdsByThreadId: {
-        ...state.messageIdsByThreadId,
-        [threadId]: messages.map((message) => message.id),
+      messageIdsBySessionId: {
+        ...state.messageIdsBySessionId,
+        [sessionId]: messages.map((message) => message.id),
       },
-      proposedPlanByThreadId: {
-        ...state.proposedPlanByThreadId,
-        [threadId]: recordById(plans, (entry) => entry.id),
+      proposedPlanBySessionId: {
+        ...state.proposedPlanBySessionId,
+        [sessionId]: recordById(plans, (entry) => entry.id),
       },
-      proposedPlanIdsByThreadId: {
-        ...state.proposedPlanIdsByThreadId,
-        [threadId]: plans.map((plan) => plan.id),
+      proposedPlanIdsBySessionId: {
+        ...state.proposedPlanIdsBySessionId,
+        [sessionId]: plans.map((plan) => plan.id),
       },
-      turnDiffIdsByThreadId: {
-        ...state.turnDiffIdsByThreadId,
-        [threadId]: summaries.map((summary) => summary.turnId),
+      turnDiffIdsBySessionId: {
+        ...state.turnDiffIdsBySessionId,
+        [sessionId]: summaries.map((summary) => summary.turnId),
       },
-      turnDiffSummaryByThreadId: {
-        ...state.turnDiffSummaryByThreadId,
-        [threadId]: recordById(summaries, (summary) => summary.turnId),
+      turnDiffSummaryBySessionId: {
+        ...state.turnDiffSummaryBySessionId,
+        [sessionId]: recordById(summaries, (summary) => summary.turnId),
       },
     },
-    threadId,
+    sessionId,
     {
       liveTurn: latestSummary ? latestTurnFromSummary(latestSummary) : null,
       pendingSourceProposedPlan: undefined,
@@ -1041,6 +1084,8 @@ function applyThreadRevertedEvent(
 
 function latestTurnFromSummary(summary: ChatTurnDiffSummary): OrchestrationLatestTurn {
   return {
+    ...turnRuntimeMetadata(null),
+    providerStartState: 'settled',
     assistantMessageId: summary.assistantMessageId,
     completedAt: summary.completedAt,
     requestedAt: summary.completedAt,
@@ -1050,34 +1095,34 @@ function latestTurnFromSummary(summary: ChatTurnDiffSummary): OrchestrationLates
   }
 }
 
-function writeThreadSession(
-  state: ChatProjectionState,
-  threadId: ThreadId,
-  session: OrchestrationSession | null,
-): ChatProjectionState {
-  const thread = state.threadById[threadId]
-  // A session for a thread the projection has never seen had no reader before either:
-  // `selectChatThreadById` resolves nothing without a thread record. Dropping it keeps
+function writeSessionRuntime(
+  state: ChatProjectionSlice,
+  sessionId: SessionId,
+  runtime: SessionRuntimeState | null,
+): ChatProjectionSlice {
+  const session = state.sessionById[sessionId]
+  // A runtime for a session the projection has never seen had no reader before either:
+  // `selectChatSessionById` resolves nothing without a session record. Dropping it keeps
   // every record complete instead of half-born.
-  if (!thread) return state
+  if (!session) return state
 
   return {
     ...state,
-    threadById: {
-      ...state.threadById,
-      [threadId]: { ...thread, session, sessionKnown: true },
+    sessionById: {
+      ...state.sessionById,
+      [sessionId]: { ...session, runtime, runtimeKnown: true },
     },
   }
 }
 
 function carriedPendingSourcePlan(
-  previous: ProjectionThread | undefined,
+  previous: ProjectionSession | undefined,
   latestTurn: OrchestrationLatestTurn | null,
 ) {
   if (latestTurn?.sourceProposedPlan) return latestTurn.sourceProposedPlan
   if (!previous?.pendingSourceProposedPlan) return undefined
   // Only the turn the plan was implemented by carries it. A newer turn drops it, or a
-  // resolved plan would pin the thread's detail subscription against eviction forever.
+  // resolved plan would pin the session's detail subscription against eviction forever.
   if (previous.liveTurn?.turnId !== latestTurn?.turnId) return undefined
 
   return previous.pendingSourceProposedPlan
@@ -1089,48 +1134,48 @@ function carriedPendingSourcePlan(
  * nothing said so. Spreading onto one record would silently preserve it instead, so
  * the type forces each caller to state which it means.
  */
-type ThreadTurnWrite = {
+type SessionTurnWrite = {
   liveTurn: OrchestrationLatestTurn | null
   pendingSourceProposedPlan: OrchestrationLatestTurn['sourceProposedPlan'] | undefined
 }
 
-function writeThreadTurn(
-  state: ChatProjectionState,
-  threadId: ThreadId,
-  turn: ThreadTurnWrite,
-): ChatProjectionState {
-  const thread = state.threadById[threadId]
-  if (!thread) return state
+function writeSessionTurn(
+  state: ChatProjectionSlice,
+  sessionId: SessionId,
+  turn: SessionTurnWrite,
+): ChatProjectionSlice {
+  const session = state.sessionById[sessionId]
+  if (!session) return state
 
   return {
     ...state,
-    threadById: {
-      ...state.threadById,
-      [threadId]: { ...thread, ...turn },
+    sessionById: {
+      ...state.sessionById,
+      [sessionId]: { ...session, ...turn },
     },
   }
 }
 
 function writeTurnFailureState(
-  state: ChatProjectionState,
-  activity: OrchestrationThreadActivity,
-): ChatProjectionState {
+  state: ChatProjectionSlice,
+  activity: OrchestrationSessionActivity,
+): ChatProjectionSlice {
   if (!isProviderTurnFailureActivity(activity.kind)) return state
   if (!activity.turnId) return state
 
-  const thread = state.threadById[activity.threadId]
-  const latestTurn = thread?.liveTurn
+  const session = state.sessionById[activity.sessionId]
+  const latestTurn = session?.liveTurn
   if (!latestTurn) return state
   if (latestTurn.turnId !== activity.turnId) return state
 
-  return writeThreadTurn(state, activity.threadId, {
+  return writeSessionTurn(state, activity.sessionId, {
     liveTurn: {
       ...latestTurn,
       completedAt: latestTurn.completedAt ?? activity.createdAt,
       startedAt: latestTurn.startedAt ?? activity.createdAt,
       state: 'error',
     },
-    pendingSourceProposedPlan: thread.pendingSourceProposedPlan,
+    pendingSourceProposedPlan: session.pendingSourceProposedPlan,
   })
 }
 
@@ -1139,19 +1184,20 @@ function isProviderTurnFailureActivity(kind: string) {
 }
 
 function writeAssistantMessageTurnState(
-  state: ChatProjectionState,
-  event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
-): ChatProjectionState {
+  state: ChatProjectionSlice,
+  event: Extract<OrchestrationEvent, { type: 'session.message-sent' }>,
+): ChatProjectionSlice {
   if (event.payload.role !== 'assistant') return state
   if (!event.payload.turnId) return state
 
-  const threadId = event.payload.threadId
-  const current = state.threadById[threadId]
+  const sessionId = event.payload.sessionId
+  const current = state.sessionById[sessionId]
   const latestTurn = current?.liveTurn
   if (latestTurn?.turnId && latestTurn.turnId !== event.payload.turnId) return state
 
-  return writeThreadTurn(state, threadId, {
+  return writeSessionTurn(state, sessionId, {
     liveTurn: {
+      ...turnRuntimeMetadata(state.sessionById[event.payload.sessionId]?.liveTurn),
       assistantMessageId: event.payload.messageId,
       completedAt: event.payload.streaming
         ? (latestTurn?.completedAt ?? null)
@@ -1166,98 +1212,105 @@ function writeAssistantMessageTurnState(
   })
 }
 
-function patchThread(
-  state: ChatProjectionState,
-  threadId: ThreadId,
-  patch: Partial<ProjectionThread>,
-): ChatProjectionState {
-  const thread = state.threadById[threadId]
-  if (!thread) return state
+function patchSession(
+  state: ChatProjectionSlice,
+  sessionId: SessionId,
+  patch: Partial<ProjectionSession>,
+): ChatProjectionSlice {
+  const session = state.sessionById[sessionId]
+  if (!session) return state
 
-  const nextThread = compactUpdate(thread, patch)
-  if (nextThread === thread) return state
+  const nextSession = compactUpdate(session, patch)
+  if (nextSession === session) return state
 
   return {
     ...state,
-    threadById: {
-      ...state.threadById,
-      [threadId]: nextThread,
+    sessionById: {
+      ...state.sessionById,
+      [sessionId]: nextSession,
     },
   }
 }
 
-function ensureThreadRegistered(
-  state: ChatProjectionState,
-  threadId: ThreadId,
-  nextProjectId: ProjectId,
-  previousProjectId: ProjectId | undefined,
-): ChatProjectionState {
-  const nextState = state.threadIds.includes(threadId)
+function ensureSessionRegistered(
+  state: ChatProjectionSlice,
+  sessionId: SessionId,
+  nextWorktreeId: WorktreeId,
+  previousWorktreeId: WorktreeId | undefined,
+): ChatProjectionSlice {
+  const nextState = state.sessionIds.includes(sessionId)
     ? state
     : {
         ...state,
-        threadIds: [...state.threadIds, threadId],
+        sessionIds: [...state.sessionIds, sessionId],
       }
 
-  return moveThreadProjectIndex(nextState, threadId, nextProjectId, previousProjectId)
+  return moveSessionWorktreeIndex(nextState, sessionId, nextWorktreeId, previousWorktreeId)
 }
 
-function moveThreadProjectIndex(
-  state: ChatProjectionState,
-  threadId: ThreadId,
-  nextProjectId: ProjectId,
-  previousProjectId: ProjectId | undefined,
-): ChatProjectionState {
-  if (previousProjectId === nextProjectId)
-    return ensureProjectThreadId(state, nextProjectId, threadId)
+function moveSessionWorktreeIndex(
+  state: ChatProjectionSlice,
+  sessionId: SessionId,
+  nextWorktreeId: WorktreeId,
+  previousWorktreeId: WorktreeId | undefined,
+): ChatProjectionSlice {
+  if (previousWorktreeId === nextWorktreeId)
+    return ensureWorktreeSessionId(state, nextWorktreeId, sessionId)
 
-  const withoutPrevious = previousProjectId
-    ? removeProjectThreadId(state.threadIdsByProjectId, previousProjectId, threadId)
-    : state.threadIdsByProjectId
-  const nextThreadIdsByProjectId = appendProjectThreadId(withoutPrevious, nextProjectId, threadId)
-
-  if (nextThreadIdsByProjectId === state.threadIdsByProjectId) return state
-
-  return {
-    ...state,
-    threadIdsByProjectId: nextThreadIdsByProjectId,
-  }
-}
-
-function ensureProjectThreadId(
-  state: ChatProjectionState,
-  projectId: ProjectId,
-  threadId: ThreadId,
-): ChatProjectionState {
-  const nextThreadIdsByProjectId = appendProjectThreadId(
-    state.threadIdsByProjectId,
-    projectId,
-    threadId,
+  const withoutPrevious = previousWorktreeId
+    ? removeWorktreeSessionId(state.sessionIdsByWorktreeId, previousWorktreeId, sessionId)
+    : state.sessionIdsByWorktreeId
+  const nextSessionIdsByWorktreeId = appendWorktreeSessionId(
+    withoutPrevious,
+    nextWorktreeId,
+    sessionId,
   )
-  if (nextThreadIdsByProjectId === state.threadIdsByProjectId) return state
+
+  if (nextSessionIdsByWorktreeId === state.sessionIdsByWorktreeId) return state
 
   return {
     ...state,
-    threadIdsByProjectId: nextThreadIdsByProjectId,
+    sessionIdsByWorktreeId: nextSessionIdsByWorktreeId,
   }
 }
 
-function removeThreadState(state: ChatProjectionState, threadId: ThreadId): ChatProjectionState {
+function ensureWorktreeSessionId(
+  state: ChatProjectionSlice,
+  worktreeId: WorktreeId,
+  sessionId: SessionId,
+): ChatProjectionSlice {
+  const nextSessionIdsByWorktreeId = appendWorktreeSessionId(
+    state.sessionIdsByWorktreeId,
+    worktreeId,
+    sessionId,
+  )
+  if (nextSessionIdsByWorktreeId === state.sessionIdsByWorktreeId) return state
+
   return {
     ...state,
-    activityByThreadId: removeRecordKey(state.activityByThreadId, threadId),
-    activityIdsByThreadId: removeRecordKey(state.activityIdsByThreadId, threadId),
-    messageByThreadId: removeRecordKey(state.messageByThreadId, threadId),
-    messageIdsByThreadId: removeRecordKey(state.messageIdsByThreadId, threadId),
-    proposedPlanByThreadId: removeRecordKey(state.proposedPlanByThreadId, threadId),
-    proposedPlanIdsByThreadId: removeRecordKey(state.proposedPlanIdsByThreadId, threadId),
-    threadById: removeRecordKey(state.threadById, threadId),
-    threadDetailSequenceById: removeRecordKey(state.threadDetailSequenceById, threadId),
-    threadHasEarlierById: removeRecordKey(state.threadHasEarlierById, threadId),
-    threadIds: removeId(state.threadIds, threadId),
-    threadIdsByProjectId: removeThreadFromAllProjectIndexes(state.threadIdsByProjectId, threadId),
-    turnDiffIdsByThreadId: removeRecordKey(state.turnDiffIdsByThreadId, threadId),
-    turnDiffSummaryByThreadId: removeRecordKey(state.turnDiffSummaryByThreadId, threadId),
+    sessionIdsByWorktreeId: nextSessionIdsByWorktreeId,
+  }
+}
+
+function removeSessionState(state: ChatProjectionSlice, sessionId: SessionId): ChatProjectionSlice {
+  return {
+    ...state,
+    activityBySessionId: removeRecordKey(state.activityBySessionId, sessionId),
+    activityIdsBySessionId: removeRecordKey(state.activityIdsBySessionId, sessionId),
+    messageBySessionId: removeRecordKey(state.messageBySessionId, sessionId),
+    messageIdsBySessionId: removeRecordKey(state.messageIdsBySessionId, sessionId),
+    proposedPlanBySessionId: removeRecordKey(state.proposedPlanBySessionId, sessionId),
+    proposedPlanIdsBySessionId: removeRecordKey(state.proposedPlanIdsBySessionId, sessionId),
+    sessionById: removeRecordKey(state.sessionById, sessionId),
+    sessionDetailSequenceById: removeRecordKey(state.sessionDetailSequenceById, sessionId),
+    sessionHasEarlierById: removeRecordKey(state.sessionHasEarlierById, sessionId),
+    sessionIds: removeId(state.sessionIds, sessionId),
+    sessionIdsByWorktreeId: removeSessionFromAllWorktreeIndexes(
+      state.sessionIdsByWorktreeId,
+      sessionId,
+    ),
+    turnDiffIdsBySessionId: removeRecordKey(state.turnDiffIdsBySessionId, sessionId),
+    turnDiffSummaryBySessionId: removeRecordKey(state.turnDiffSummaryBySessionId, sessionId),
   }
 }
 
@@ -1274,53 +1327,59 @@ function projectStateFromShell(projects: ReadonlyArray<OrchestrationProjectShell
  * newer shell one — it therefore fills in only what nothing authoritative has
  * published yet. `metaSource` decides the meta group all-or-nothing (never per
  * field: the shell publishes them as one row and mixing halves of two rows is how
- * a stale branch ends up next to a fresh worktree), and `sessionKnown` decides the
- * session by presence, because `null` is a real session value.
+ * a stale branch ends up next to a fresh worktree), and `runtimeKnown` decides the
+ * runtime by presence, because `null` is a real runtime value.
  *
- * The thread is deliberately *not* registered in `threadIds` here: a thread the
+ * The session is deliberately *not* registered in `sessionIds` here: a session the
  * shell has not delivered is resolvable by id but is not a rail row.
  */
-function threadFromDetail(
-  thread: OrchestrationThread,
-  previous: ProjectionThread | undefined,
-): ProjectionThread {
+function sessionFromDetail(
+  session: OrchestrationSession,
+  previous: ProjectionSession | undefined,
+): ProjectionSession {
   if (previous?.metaSource === 'shell') {
     return {
       ...previous,
       detailSynced: true,
-      liveTurn: thread.latestTurn,
-      pendingSourceProposedPlan: carriedPendingSourcePlan(previous, thread.latestTurn),
+      liveTurn: session.latestTurn,
+      pendingSourceProposedPlan: carriedPendingSourcePlan(previous, session.latestTurn),
     }
   }
 
+  const {
+    activities: _activities,
+    messages: _messages,
+    deletedAt: _deletedAt,
+    deletion: _deletion,
+    ...shell
+  } = session
   return {
-    archivedAt: thread.archivedAt,
-    branch: thread.branch,
-    createdAt: thread.createdAt,
+    ...shell,
+    archivedAt: session.archivedAt,
+    createdAt: session.createdAt,
     detailSynced: true,
-    // Shell-only counters: nothing authoritative has published this thread, so they
-    // stand at their zero values and `selectChatThreadById` derives the plan flag
+    // Shell-only counters: nothing authoritative has published this session, so they
+    // stand at their zero values and `selectChatSessionById` derives the plan flag
     // from the plans it holds instead.
     hasActionableProposedPlan: false,
-    id: thread.id,
-    interactionMode: thread.interactionMode ?? DEFAULT_INTERACTION_MODE,
-    latestTurn: thread.latestTurn,
+    id: session.id,
+    interactionMode: session.interactionMode ?? DEFAULT_INTERACTION_MODE,
+    latestTurn: session.latestTurn,
     latestUserMessageAt: null,
-    liveTurn: thread.latestTurn,
+    liveTurn: session.latestTurn,
     metaSource: 'detail',
-    modelSelection: thread.modelSelection,
+    modelSelection: session.modelSelection,
     pendingApprovalCount: 0,
-    pendingSourceProposedPlan: carriedPendingSourcePlan(previous, thread.latestTurn),
+    pendingSourceProposedPlan: carriedPendingSourcePlan(previous, session.latestTurn),
     pendingUserInputCount: 0,
-    pinOrderKey: previous?.pinOrderKey ?? null,
+    pinOrderKey: session.pinOrderKey ?? null,
     planProgress: null,
-    projectId: thread.projectId,
-    runtimeMode: thread.runtimeMode ?? DEFAULT_RUNTIME_MODE,
-    session: previous?.sessionKnown ? previous.session : thread.session,
-    sessionKnown: previous?.sessionKnown ?? false,
-    title: thread.title,
-    updatedAt: thread.updatedAt,
-    worktreePath: thread.worktreePath,
+    worktreeId: session.worktreeId,
+    runtimeMode: session.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+    runtime: previous?.runtimeKnown ? previous.runtime : session.runtime,
+    runtimeKnown: previous?.runtimeKnown ?? false,
+    title: session.title,
+    updatedAt: session.updatedAt,
   }
 }
 
@@ -1333,7 +1392,7 @@ function buildMessageSlice(messages: OrchestrationMessage[]) {
   }
 }
 
-function buildActivitySlice(activities: OrchestrationThreadActivity[]) {
+function buildActivitySlice(activities: OrchestrationSessionActivity[]) {
   const cappedActivities = activities.slice(-CHAT_ACTIVITY_CACHE_LIMIT)
 
   return {
@@ -1351,9 +1410,9 @@ function buildProposedPlanSlice(plans: OrchestrationProposedPlan[]) {
   }
 }
 
-function buildTurnDiffSlice(threadId: ThreadId, checkpoints: OrchestrationCheckpointSummary[]) {
+function buildTurnDiffSlice(sessionId: SessionId, checkpoints: OrchestrationCheckpointSummary[]) {
   const summaries = checkpoints
-    .map((checkpoint): ChatTurnDiffSummary => ({ ...checkpoint, threadId }))
+    .map((checkpoint): ChatTurnDiffSummary => ({ ...checkpoint, sessionId }))
     .toSorted((left, right) => left.checkpointTurnCount - right.checkpointTurnCount)
     .slice(-CHAT_CHECKPOINT_CACHE_LIMIT)
 
@@ -1364,7 +1423,7 @@ function buildTurnDiffSlice(threadId: ThreadId, checkpoints: OrchestrationCheckp
 }
 
 function messageFromEvent(
-  event: Extract<OrchestrationEvent, { type: 'thread.message-sent' }>,
+  event: Extract<OrchestrationEvent, { type: 'session.message-sent' }>,
 ): OrchestrationMessage {
   return {
     attachments: event.payload.attachments,
@@ -1373,7 +1432,7 @@ function messageFromEvent(
     role: event.payload.role,
     streaming: event.payload.streaming,
     text: event.payload.text,
-    threadId: event.payload.threadId,
+    sessionId: event.payload.sessionId,
     turnId: event.payload.turnId,
     updatedAt: event.payload.updatedAt,
   }
@@ -1395,25 +1454,25 @@ function mergeMessage(
   }
 }
 
-function selectMessages(state: ChatProjectionState, threadId: ThreadId) {
-  return collectByIds(state.messageIdsByThreadId[threadId], state.messageByThreadId[threadId])
+function selectMessages(state: ChatProjectionSlice, sessionId: SessionId) {
+  return collectByIds(state.messageIdsBySessionId[sessionId], state.messageBySessionId[sessionId])
 }
 
-function selectActivities(state: ChatProjectionState, threadId: ThreadId) {
-  return collectByIds(state.activityIdsByThreadId[threadId], state.activityByThreadId[threadId])
+function selectActivities(state: ChatProjectionSlice, sessionId: SessionId) {
+  return collectByIds(state.activityIdsBySessionId[sessionId], state.activityBySessionId[sessionId])
 }
 
-function selectProposedPlans(state: ChatProjectionState, threadId: ThreadId) {
+function selectProposedPlans(state: ChatProjectionSlice, sessionId: SessionId) {
   return collectByIds(
-    state.proposedPlanIdsByThreadId[threadId],
-    state.proposedPlanByThreadId[threadId],
+    state.proposedPlanIdsBySessionId[sessionId],
+    state.proposedPlanBySessionId[sessionId],
   )
 }
 
-function selectTurnDiffSummaries(state: ChatProjectionState, threadId: ThreadId) {
+function selectTurnDiffSummaries(state: ChatProjectionSlice, sessionId: SessionId) {
   return collectByIds(
-    state.turnDiffIdsByThreadId[threadId],
-    state.turnDiffSummaryByThreadId[threadId],
+    state.turnDiffIdsBySessionId[sessionId],
+    state.turnDiffSummaryBySessionId[sessionId],
   )
 }
 
@@ -1429,49 +1488,49 @@ function collectByIds<TKey extends string, TValue>(
   })
 }
 
-function appendProjectThreadId(
-  record: Record<ProjectId, ThreadId[]>,
-  projectId: ProjectId,
-  threadId: ThreadId,
+function appendWorktreeSessionId(
+  record: Record<WorktreeId, SessionId[]>,
+  worktreeId: WorktreeId,
+  sessionId: SessionId,
 ) {
-  const ids = record[projectId] ?? EMPTY_THREAD_IDS
-  const nextIds = appendId(ids, threadId)
+  const ids = record[worktreeId] ?? EMPTY_SESSION_IDS
+  const nextIds = appendId(ids, sessionId)
   if (nextIds === ids) return record
 
   return {
     ...record,
-    [projectId]: nextIds,
+    [worktreeId]: nextIds,
   }
 }
 
-function removeProjectThreadId(
-  record: Record<ProjectId, ThreadId[]>,
-  projectId: ProjectId,
-  threadId: ThreadId,
+function removeWorktreeSessionId(
+  record: Record<WorktreeId, SessionId[]>,
+  worktreeId: WorktreeId,
+  sessionId: SessionId,
 ) {
-  const ids = record[projectId]
+  const ids = record[worktreeId]
   if (!ids) return record
 
-  const nextIds = removeId(ids, threadId)
+  const nextIds = removeId(ids, sessionId)
   if (nextIds.length === ids.length) return record
   if (nextIds.length > 0) {
     return {
       ...record,
-      [projectId]: nextIds,
+      [worktreeId]: nextIds,
     }
   }
 
-  return removeRecordKey(record, projectId)
+  return removeRecordKey(record, worktreeId)
 }
 
-function removeThreadFromAllProjectIndexes(
-  record: Record<ProjectId, ThreadId[]>,
-  threadId: ThreadId,
+function removeSessionFromAllWorktreeIndexes(
+  record: Record<WorktreeId, SessionId[]>,
+  sessionId: SessionId,
 ) {
   let nextRecord = record
 
-  for (const projectId of Object.keys(record) as ProjectId[]) {
-    nextRecord = removeProjectThreadId(nextRecord, projectId, threadId)
+  for (const worktreeId of Object.keys(record) as WorktreeId[]) {
+    nextRecord = removeWorktreeSessionId(nextRecord, worktreeId, sessionId)
   }
 
   return nextRecord
@@ -1487,15 +1546,15 @@ function removeId<T extends string>(ids: readonly T[], id: T): T[] {
   return ids.filter((value) => value !== id)
 }
 
-function retainThreadScopedRecord<T>(
-  record: Record<ThreadId, T>,
-  threadIds: ReadonlySet<ThreadId>,
-): Record<ThreadId, T> {
+function retainSessionScopedRecord<T>(
+  record: Record<SessionId, T>,
+  sessionIds: ReadonlySet<SessionId>,
+): Record<SessionId, T> {
   return Object.fromEntries(
-    Object.entries(record).flatMap(([threadId, value]) =>
-      threadIds.has(threadId as ThreadId) ? [[threadId, value] as const] : [],
+    Object.entries(record).flatMap(([sessionId, value]) =>
+      sessionIds.has(sessionId as SessionId) ? [[sessionId, value] as const] : [],
     ),
-  ) as Record<ThreadId, T>
+  ) as Record<SessionId, T>
 }
 
 function retainRecordKeys<TKey extends string, TValue>(
@@ -1542,7 +1601,10 @@ function compactUpdate<T extends object>(value: T, patch: Partial<T>): T {
   return Object.assign({ ...value }, Object.fromEntries(entries)) as T
 }
 
-function compareActivities(left: OrchestrationThreadActivity, right: OrchestrationThreadActivity) {
+function compareActivities(
+  left: OrchestrationSessionActivity,
+  right: OrchestrationSessionActivity,
+) {
   const leftSequence = left.sequence ?? Number.MAX_SAFE_INTEGER
   const rightSequence = right.sequence ?? Number.MAX_SAFE_INTEGER
 
@@ -1579,4 +1641,80 @@ function shouldRetainAfterRevert<TTurnId extends string | null>(
   retainedTurnIds: ReadonlySet<TurnId>,
 ) {
   return turnId === null || retainedTurnIds.has(turnId as TurnId)
+}
+
+function isWorktreeOrchestrationEvent(
+  event: OrchestrationEvent,
+): event is WorktreeOrchestrationEvent {
+  return event.type.startsWith('worktree.')
+}
+
+function writeWorktree(
+  state: ChatProjectionSlice,
+  worktree: OrchestrationWorktreeShell,
+): ChatProjectionSlice {
+  return {
+    ...state,
+    worktreeById: { ...state.worktreeById, [worktree.id]: worktree },
+    worktreeIds: appendId(state.worktreeIds, worktree.id),
+  }
+}
+
+function removeWorktree(state: ChatProjectionSlice, worktreeId: WorktreeId): ChatProjectionSlice {
+  return {
+    ...state,
+    worktreeById: removeRecordKey(state.worktreeById, worktreeId),
+    worktreeIds: removeId(state.worktreeIds, worktreeId),
+  }
+}
+
+function applyWorktreeEvent(
+  state: ChatProjectionSlice,
+  event: WorktreeOrchestrationEvent,
+): ChatProjectionSlice {
+  if (event.type === 'worktree.retired') return removeWorktree(state, event.payload.worktreeId)
+  if (event.type === 'worktree.meta-updated') {
+    const held = state.worktreeById[event.payload.worktreeId]
+    if (!held) return state
+    return writeWorktree(state, {
+      ...held,
+      branch: event.payload.branch,
+      updatedAt: event.payload.updatedAt,
+    })
+  }
+  return writeWorktree(state, { ...event.payload, id: event.payload.worktreeId })
+}
+
+function applySessionProposedPlanImplemented(
+  state: ChatProjectionSlice,
+  event: Extract<OrchestrationEvent, { type: 'session.proposed-plan-implemented' }>,
+): ChatProjectionSlice {
+  const { sessionId, planId, implementationSessionId, implementedAt, updatedAt } = event.payload
+  const plans = state.proposedPlanBySessionId[sessionId]
+  const plan = plans?.[planId]
+  if (!plan) return state
+  return {
+    ...state,
+    proposedPlanBySessionId: {
+      ...state.proposedPlanBySessionId,
+      [sessionId]: {
+        ...plans,
+        [planId]: { ...plan, implementationSessionId, implementedAt, updatedAt },
+      },
+    },
+  }
+}
+
+function turnRuntimeMetadata(
+  turn: OrchestrationLatestTurn | null | undefined,
+): Pick<
+  OrchestrationLatestTurn,
+  'providerStartState' | 'providerStartGeneration' | 'providerStartSequence' | 'runtimeEpoch'
+> {
+  return {
+    providerStartState: turn?.providerStartState ?? 'queued',
+    providerStartGeneration: turn?.providerStartGeneration ?? 0,
+    providerStartSequence: turn?.providerStartSequence ?? 0,
+    runtimeEpoch: turn?.runtimeEpoch ?? null,
+  }
 }

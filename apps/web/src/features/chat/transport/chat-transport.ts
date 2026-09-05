@@ -1,33 +1,35 @@
 import type {
+  EnvironmentId,
   ClientOrchestrationCommand,
   OrchestrationDispatchResult,
   OrchestrationReplayEventsInput,
   OrchestrationReplayEventsResult,
   OrchestrationShellStreamItem,
-  OrchestrationThreadDetailPage,
-  OrchestrationThreadDetailSnapshot,
-  OrchestrationThreadStreamItem,
-  OrchestrationWsThreadDetailPageInput,
-  ThreadId,
+  OrchestrationSessionDetailPage,
+  OrchestrationSessionDetailSnapshot,
+  OrchestrationSessionStreamItem,
+  OrchestrationWsSessionDetailPageInput,
+  SessionId,
 } from '@workspace/contracts'
 
 import type { OrchestrationStreamInput } from '../transport/orchestration-streams'
 
 export type ChatTransport = {
+  readonly environmentId: EnvironmentId
   readonly closed: boolean
   close(): void
-  retainThreadDetail(threadId: ThreadId): () => void
-  loadEarlierPage(threadId: ThreadId): Promise<boolean>
+  retainSessionDetail(sessionId: SessionId): () => void
+  loadEarlierPage(sessionId: SessionId): Promise<boolean>
   dispatchCommand: (command: ClientOrchestrationCommand) => Promise<OrchestrationDispatchResult>
   replayEvents: (input: OrchestrationReplayEventsInput) => Promise<OrchestrationReplayEventsResult>
   shellStream: (input?: OrchestrationStreamInput) => AsyncIterable<OrchestrationShellStreamItem>
   /** One page of rows older than the boundary the caller holds. */
-  threadDetailPage: (
-    input: OrchestrationWsThreadDetailPageInput,
-  ) => Promise<OrchestrationThreadDetailPage>
-  threadDetailSnapshot: (threadId: ThreadId) => Promise<OrchestrationThreadDetailSnapshot>
-  threadDetailStream: (
-    threadId: ThreadId,
+  sessionDetailPage: (
+    input: OrchestrationWsSessionDetailPageInput,
+  ) => Promise<OrchestrationSessionDetailPage>
+  sessionDetailSnapshot: (sessionId: SessionId) => Promise<OrchestrationSessionDetailSnapshot>
+  sessionDetailStream: (
+    sessionId: SessionId,
     input?: OrchestrationStreamInput,
-  ) => AsyncIterable<OrchestrationThreadStreamItem>
+  ) => AsyncIterable<OrchestrationSessionStreamItem>
 }

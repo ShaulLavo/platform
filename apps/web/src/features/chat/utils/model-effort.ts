@@ -156,7 +156,7 @@ export function modelSelectionOptionValue(
 
 /**
  * Writes a descriptor's value into the selection's options, which is the one
- * home every adapter reads and the per-thread projection already persists.
+ * home every adapter reads and the per-session projection already persists.
  * `null` clears it, and an options bag left empty is dropped rather than
  * serialized.
  */

@@ -9,6 +9,14 @@ const OTHER_PLATFORM = '/Users/dev/forks/platform'
 const EDITOR = '/Users/dev/code/Editor'
 
 describe('workspaceSlugs', () => {
+  test('keeps the configured filesystem root addressable beside a folder named Workspace', () => {
+    const roots = ['', 'Workspace']
+    for (const rootPath of roots) {
+      const slug = workspaceSlug(rootPath, roots)
+      expect(resolveWorkspaceSlug(slug, { indexed: roots })).toEqual({ kind: 'resolved', rootPath })
+    }
+  })
+
   test('uses the bare leaf when it is unique', () => {
     const slugs = workspaceSlugs([PLATFORM, EDITOR])
 

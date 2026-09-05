@@ -28,21 +28,27 @@ function viewport(overrides: Partial<TimelineViewportMetrics> = {}): TimelineVie
   }
 }
 
-function openedThread(threadId = 'thread-1', latestUserItemId: string | null = 'message:u1') {
+function openedSession(
+  sessionId = 'ad686244-5b2e-59be-805f-ef86eac80feb',
+  latestUserItemId: string | null = 'message:u1',
+) {
   return timelineScrollReducer(initialTimelineScrollState, {
     firstItemId: 'message:u1',
     latestUserItemId,
-    threadId,
+    sessionId,
     type: 'items-changed',
   })
 }
 
 /** An items change that adds nothing to the front — the ordinary streaming case. */
-function itemsChanged(latestUserItemId: string | null, threadId = 'thread-1') {
+function itemsChanged(
+  latestUserItemId: string | null,
+  sessionId = 'ad686244-5b2e-59be-805f-ef86eac80feb',
+) {
   return {
     firstItemId: 'message:u1',
     latestUserItemId,
-    threadId,
+    sessionId,
     type: 'items-changed',
   } as const
 }
@@ -97,8 +103,8 @@ test('the anchor is the last user message', () => {
   expect(resolveTimelineAnchorItemId([{ id: 'working:1' }])).toBeNull()
 })
 
-test('opening a thread lands at the end instead of anchoring its last message', () => {
-  const opened = openedThread()
+test('opening a session lands at the end instead of anchoring its last message', () => {
+  const opened = openedSession()
 
   expect(opened.followMode).toBe('following-end')
   expect(opened.pendingInitialScroll).toBe(true)
@@ -108,7 +114,7 @@ test('opening a thread lands at the end instead of anchoring its last message', 
 
 test('sending a message anchors it instead of pinning to the bottom', () => {
   const state = timelineScrollReducer(
-    afterInitialScroll(openedThread()),
+    afterInitialScroll(openedSession()),
     itemsChanged('message:u2'),
   )
 
@@ -118,7 +124,7 @@ test('sending a message anchors it instead of pinning to the bottom', () => {
 })
 
 test('sending while reading history still anchors the sent message', () => {
-  const reading = timelineScrollReducer(afterInitialScroll(openedThread()), {
+  const reading = timelineScrollReducer(afterInitialScroll(openedSession()), {
     type: 'user-navigated',
   })
 
@@ -129,7 +135,7 @@ test('sending while reading history still anchors the sent message', () => {
 
 test('streaming into an anchored turn never re-arms end-follow', () => {
   const anchored = timelineScrollReducer(
-    afterInitialScroll(openedThread()),
+    afterInitialScroll(openedSession()),
     itemsChanged('message:u2'),
   )
 
@@ -139,7 +145,7 @@ test('streaming into an anchored turn never re-arms end-follow', () => {
 })
 
 test('a user scrolling up mid-stream stops the transcript following', () => {
-  const following = afterInitialScroll(openedThread())
+  const following = afterInitialScroll(openedSession())
   const navigated = timelineScrollReducer(following, { type: 'user-navigated' })
 
   expect(navigated.followMode).toBe('free-scrolling')
@@ -154,7 +160,7 @@ test('a user scrolling up mid-stream stops the transcript following', () => {
 test('a small scroll off the live edge is not re-armed back into follow', () => {
   // Re-arming here would scroll the transcript straight back to the end, so the
   // reader could never get out of the first gesture's worth of distance.
-  const navigated = timelineScrollReducer(afterInitialScroll(openedThread()), {
+  const navigated = timelineScrollReducer(afterInitialScroll(openedSession()), {
     type: 'user-navigated',
   })
   const nudgedOffTheEnd = viewport({ contentHeight: 2000, scrollTop: 1390 })
@@ -167,7 +173,7 @@ test('a small scroll off the live edge is not re-armed back into follow', () => 
 
 test('scrolling back to the very end re-arms follow and releases the anchor', () => {
   const anchored = timelineScrollReducer(
-    afterInitialScroll(openedThread()),
+    afterInitialScroll(openedSession()),
     itemsChanged('message:u2'),
   )
   const measured = timelineScrollReducer(anchored, { endSpace: 240, type: 'anchor-measured' })
@@ -183,7 +189,7 @@ test('scrolling back to the very end re-arms follow and releases the anchor', ()
 
 test('jumping to the latest message releases the anchor', () => {
   const anchored = timelineScrollReducer(
-    afterInitialScroll(openedThread()),
+    afterInitialScroll(openedSession()),
     itemsChanged('message:u2'),
   )
   const parked = timelineScrollReducer(
@@ -201,24 +207,27 @@ test('jumping to the latest message releases the anchor', () => {
   })
 })
 
-test('switching threads forgets the previous scroll intent', () => {
-  const navigated = timelineScrollReducer(afterInitialScroll(openedThread()), {
+test('switching sessions forgets the previous scroll intent', () => {
+  const navigated = timelineScrollReducer(afterInitialScroll(openedSession()), {
     type: 'user-navigated',
   })
 
-  const switched = timelineScrollReducer(navigated, itemsChanged('message:other', 'thread-2'))
+  const switched = timelineScrollReducer(
+    navigated,
+    itemsChanged('message:other', '83820f69-dec0-53d9-9ab5-fddbd1dabb2d'),
+  )
 
   expect(switched).toMatchObject({
     anchorItemId: null,
     followMode: 'following-end',
     latestUserItemId: 'message:other',
     pendingInitialScroll: true,
-    threadId: 'thread-2',
+    sessionId: '83820f69-dec0-53d9-9ab5-fddbd1dabb2d',
   })
 })
 
 test('unchanged input leaves the state object identical', () => {
-  const state = afterInitialScroll(openedThread())
+  const state = afterInitialScroll(openedSession())
 
   expect(timelineScrollReducer(state, itemsChanged('message:u1'))).toBe(state)
   expect(timelineScrollReducer(state, { endSpace: 0, type: 'anchor-measured' })).toBe(state)
@@ -226,14 +235,14 @@ test('unchanged input leaves the state object identical', () => {
 })
 
 test('a page landing above the reader is marked for absorption', () => {
-  const reading = timelineScrollReducer(afterInitialScroll(openedThread()), {
+  const reading = timelineScrollReducer(afterInitialScroll(openedSession()), {
     type: 'user-navigated',
   })
 
   const prepended = timelineScrollReducer(reading, {
     firstItemId: 'message:older',
     latestUserItemId: 'message:u1',
-    threadId: 'thread-1',
+    sessionId: 'ad686244-5b2e-59be-805f-ef86eac80feb',
     type: 'items-changed',
   })
 
@@ -248,12 +257,12 @@ test('a page landing above the reader is marked for absorption', () => {
 test('a front change while following the end is not a prepend to absorb', () => {
   // Pinned to the live edge, the offset is re-derived every frame; compensating
   // for a front change on top of that would fight `scrollToEnd`.
-  const following = afterInitialScroll(openedThread())
+  const following = afterInitialScroll(openedSession())
 
   const changed = timelineScrollReducer(following, {
     firstItemId: 'message:older',
     latestUserItemId: 'message:u1',
-    threadId: 'thread-1',
+    sessionId: 'ad686244-5b2e-59be-805f-ef86eac80feb',
     type: 'items-changed',
   })
 
@@ -262,20 +271,20 @@ test('a front change while following the end is not a prepend to absorb', () => 
 })
 
 test('sending while a prepend is unabsorbed hands the offset to the anchor', () => {
-  const reading = timelineScrollReducer(afterInitialScroll(openedThread()), {
+  const reading = timelineScrollReducer(afterInitialScroll(openedSession()), {
     type: 'user-navigated',
   })
   const prepended = timelineScrollReducer(reading, {
     firstItemId: 'message:older',
     latestUserItemId: 'message:u1',
-    threadId: 'thread-1',
+    sessionId: 'ad686244-5b2e-59be-805f-ef86eac80feb',
     type: 'items-changed',
   })
 
   const sent = timelineScrollReducer(prepended, {
     firstItemId: 'message:older',
     latestUserItemId: 'message:u2',
-    threadId: 'thread-1',
+    sessionId: 'ad686244-5b2e-59be-805f-ef86eac80feb',
     type: 'items-changed',
   })
 

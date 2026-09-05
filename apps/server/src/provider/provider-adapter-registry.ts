@@ -53,7 +53,7 @@ export type ProviderAdapterRegistryOptions = {
    * directory, and making it read the database directly would tie provider
    * configuration to the orchestration schema.
    */
-  hasLiveSessions?: (providerInstanceId: ProviderInstanceId) => boolean
+  hasLiveSessions?: (providerInstanceId: ProviderInstanceId) => boolean | Promise<boolean>
 }
 
 type LiveProviderInstance = {
@@ -76,7 +76,9 @@ export class ProviderAdapterRegistry {
     void this.refreshInstances(providerInstanceIds)
   })
   private readonly drivers = new Map<ProviderDriverKind, AnyProviderDriver>()
-  private readonly hasLiveSessions: (providerInstanceId: ProviderInstanceId) => boolean
+  private readonly hasLiveSessions: (
+    providerInstanceId: ProviderInstanceId,
+  ) => boolean | Promise<boolean>
   private readonly instances = new Map<ProviderInstanceId, LiveProviderInstance>()
   private readonly leaseDeferredInstances = new Set<ProviderInstanceId>()
   private desiredEntries: readonly ProviderInstanceConfig[] | null = null
@@ -150,11 +152,11 @@ export class ProviderAdapterRegistry {
       this.leaseDeferredInstances.delete(providerInstanceId)
 
       // Disposing an adapter mid-turn kills the child process a streaming
-      // session is reading from, and threads route by `providerInstanceId`, so
+      // session is reading from, and sessions route by `providerInstanceId`, so
       // the turn would fail with whatever the transport happened to throw. The
       // The instance stays alive until its current use ends. Utility leases
       // replay the desired state on release; persisted sessions wait for a later reconcile.
-      if (this.hasLiveUsage(providerInstanceId)) {
+      if (await this.hasLiveUsage(providerInstanceId)) {
         const activeLeaseCount = this.activeLeaseCounts.get(providerInstanceId) ?? 0
         if (activeLeaseCount > 0) this.leaseDeferredInstances.add(providerInstanceId)
         recordChatPipelineWarning('chat.pipeline.provider_registry.dispose_deferred', {
@@ -360,7 +362,7 @@ export class ProviderAdapterRegistry {
     // dispose the child process a streaming turn is reading from — the exact
     // thing deferring disposal exists to prevent. The old adapter keeps serving
     // Utility leases replay the config on release; persisted sessions wait for a later reconcile.
-    if (existing && this.hasLiveUsage(entry.providerInstanceId)) {
+    if (existing && (await this.hasLiveUsage(entry.providerInstanceId))) {
       const activeLeaseCount = this.activeLeaseCounts.get(entry.providerInstanceId) ?? 0
       if (activeLeaseCount > 0) this.leaseDeferredInstances.add(entry.providerInstanceId)
       recordChatPipelineWarning('chat.pipeline.provider_registry.reconfigure_deferred', {
@@ -480,7 +482,7 @@ export class ProviderAdapterRegistry {
     )
   }
 
-  private hasLiveUsage(providerInstanceId: ProviderInstanceId) {
+  private async hasLiveUsage(providerInstanceId: ProviderInstanceId) {
     if ((this.activeLeaseCounts.get(providerInstanceId) ?? 0) > 0) return true
 
     return this.hasLiveSessions(providerInstanceId)
@@ -546,7 +548,9 @@ export class ProviderAdapterRegistry {
  */
 export function createDefaultProviderAdapterRegistry(
   savedInstances: readonly ProviderInstanceConfig[] = [],
-  options: { hasLiveSessions?: (providerInstanceId: ProviderInstanceId) => boolean } = {},
+  options: {
+    hasLiveSessions?: (providerInstanceId: ProviderInstanceId) => boolean | Promise<boolean>
+  } = {},
 ) {
   const registry = new ProviderAdapterRegistry({
     drivers: BUILT_IN_PROVIDER_DRIVERS,

@@ -1,9 +1,9 @@
-import type { ThreadId } from '@workspace/contracts'
+import type { ScopedSessionRef } from '@workspace/contracts'
 import { create } from 'zustand'
 
 export type SessionDeleteRequest = {
   /** One entry for a row, many for a bulk pick. Never empty. */
-  readonly threadIds: readonly ThreadId[]
+  readonly refs: readonly ScopedSessionRef[]
   /** The single session's title; ignored once the request covers several. */
   readonly title: string
 }

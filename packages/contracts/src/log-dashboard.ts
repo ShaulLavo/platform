@@ -32,7 +32,7 @@ export const logEventSummarySchema = v.object({
   service: v.nullable(v.string()),
   source: v.nullable(v.string()),
   status: v.nullable(v.number()),
-  threadId: v.nullable(v.string()),
+  sessionId: v.nullable(v.string()),
   timestamp: isoDateTimeSchema,
 })
 

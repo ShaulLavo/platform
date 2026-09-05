@@ -1,3 +1,4 @@
+import { fixtureEnvironmentId } from '../../../../test/factories/chat'
 import { QueryClient } from '@tanstack/react-query'
 import { healthDescriptorSchema } from '@workspace/contracts'
 import { afterEach, beforeEach } from 'vitest'
@@ -69,7 +70,7 @@ test('invalidates only the restarted origin and does not invalidate on switches 
   first.setQueryData(key, 'machine-a')
   second.setQueryData(key, 'machine-b')
   recordHandshake(originA, orchestrationServerConfig())
-  recordHandshake(originB, orchestrationServerConfig({ environmentId: 'environment-b' }))
+  recordHandshake(originB, orchestrationServerConfig({ environmentId: fixtureEnvironmentId(2) }))
   recordHandshake(originA, orchestrationServerConfig())
   activate(originB)
   expect(first.getQueryState(key)?.isInvalidated).toBe(false)

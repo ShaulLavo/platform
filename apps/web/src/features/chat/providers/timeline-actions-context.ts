@@ -7,7 +7,7 @@ export type ChatTimelineActions = {
     summary: ChatTurnDiffSummary,
     path?: string,
   ) => Promise<unknown> | unknown
-  readonly openThreadCheckpointDiff: (summary: ChatTurnDiffSummary) => Promise<unknown> | unknown
+  readonly openSessionCheckpointDiff: (summary: ChatTurnDiffSummary) => Promise<unknown> | unknown
   readonly revertToCheckpoint: (turnCount: number) => void
 }
 

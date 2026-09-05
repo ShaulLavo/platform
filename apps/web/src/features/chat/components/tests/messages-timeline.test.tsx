@@ -1,7 +1,8 @@
+import { TEST_ENVIRONMENT_ID as FIXTURE_ENVIRONMENT_ID } from '../../../../../test/factories/chat'
 import { fireEvent, screen } from '@testing-library/react'
 import {
   messageIdSchema,
-  ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE,
+  ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE,
   type OrchestrationMessage,
 } from '@workspace/contracts'
 import * as v from 'valibot'
@@ -13,12 +14,12 @@ import { MessagesTimeline } from '@/features/chat/components/messages-timeline'
 import { ChatTimelineActionsProvider } from '@/features/chat/providers/timeline-actions-provider'
 import {
   useChatProjectionStore,
-  type ChatThread,
+  type ChatSession,
 } from '@/features/chat/state/chat-projection-store'
 import { TestEditorStateProvider as EditorStateProvider } from '../../../../../test/factories/editor-state-provider'
 import { TIMELINE_ANCHOR_OFFSET_PX } from '@/features/chat/utils/timeline-scroll-anchoring'
 import { expect, test } from '../../../../../test/fixtures'
-import { chatMessage, thread as threadFactory } from '../../../../../test/factories/chat'
+import { chatMessage, session as sessionFactory } from '../../../../../test/factories/chat'
 import { renderWithProviders } from '../../../../../test/render'
 
 const VIEWPORT_HEIGHT = 600
@@ -126,7 +127,7 @@ test('jumping to the latest message re-arms follow', () => {
 
 test('sending a message reserves room so it can sit at the top', () => {
   const { rerender } = renderTimeline([userMessage('u1', 'First question')])
-  // An opened thread reserves nothing: its content ends where its last row does.
+  // An opened session reserves nothing: its content ends where its last row does.
   expect(contentHeight()).toBeLessThan(2 * ROW_HEIGHT)
 
   rerender(timelineOf([userMessage('u1', 'First question'), userMessage('u2', 'Second question')]))
@@ -140,7 +141,7 @@ test('sending a message parks it at the top instead of pinning to the bottom', (
   const history = conversation(13)
   const { rerender } = renderTimeline(history)
   fireEvent.scroll(transcript())
-  // An opened thread sits at the live edge: its last row is down at the bottom.
+  // An opened session sits at the live edge: its last row is down at the bottom.
   expect(rowOffsetInViewport(history.length - 1)).toBeGreaterThan(VIEWPORT_HEIGHT / 2)
 
   const sent = [...history, userMessage('u14', 'Fourteenth question')]
@@ -152,7 +153,7 @@ test('sending a message parks it at the top instead of pinning to the bottom', (
 
 test('a reader who walks back to the top is offered the history behind it', () => {
   const history = conversation(3)
-  seedThreadWindow(history, ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE)
+  seedSessionWindow(history, ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE)
   renderTimeline(history)
   scrollHeightOverride = 4000
 
@@ -165,16 +166,16 @@ test('a transcript pinned to the live edge offers nothing to load', () => {
   // There is history behind it, but the reader is at the newest message and an
   // affordance floating over a streaming answer is noise.
   const history = conversation(3)
-  seedThreadWindow(history, ORCHESTRATION_THREAD_DETAIL_PAGE_SIZE)
+  seedSessionWindow(history, ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE)
   renderTimeline(history)
 
   expect(screen.queryByRole('button', { name: 'Load earlier' })).not.toBeInTheDocument()
 })
 
-test('a thread the server sent whole offers nothing even at the top', () => {
+test('a session the server sent whole offers nothing even at the top', () => {
   const history = conversation(3)
   // A short window is proof there is nothing earlier, unlike a full one.
-  seedThreadWindow(history, 3)
+  seedSessionWindow(history, 3)
   renderTimeline(history)
   scrollHeightOverride = 4000
 
@@ -235,16 +236,17 @@ function minimapMark(ordinal: number, total: number) {
   return screen.getByRole('button', { name: `Jump to turn ${ordinal} of ${total}` })
 }
 
-function seedThreadWindow(messages: readonly OrchestrationMessage[], windowSize: number) {
-  const thread = threadFactory({ latestTurn: null, messages: [...messages] })
+function seedSessionWindow(messages: readonly OrchestrationMessage[], windowSize: number) {
+  const session = sessionFactory({ latestTurn: null, messages: [...messages] })
 
   useChatProjectionStore.getState().resetChatProjection()
-  useChatProjectionStore.getState().syncThreadDetailSnapshot({
+  useChatProjectionStore.getState().syncSessionDetailSnapshot(FIXTURE_ENVIRONMENT_ID, {
     checkpoints: [],
     proposedPlans: [],
     snapshotSequence: 1,
-    thread: {
-      ...thread,
+    session: {
+      deletion: null,
+      ...session,
       deletedAt: null,
       // The window the server actually shipped, which is the only truncation
       // signal a detail snapshot carries.
@@ -313,7 +315,7 @@ function userMessage(id: string, text: string): OrchestrationMessage {
 }
 
 function timelineOf(messages: readonly OrchestrationMessage[]) {
-  const thread: ChatThread = threadFactory({
+  const session: ChatSession = sessionFactory({
     latestTurn: null,
     messages: [...messages],
   })
@@ -324,7 +326,7 @@ function timelineOf(messages: readonly OrchestrationMessage[]) {
     <EditorStateProvider>
       <ChatTransportContext value={unsupportedChatTransport()}>
         <ChatTimelineActionsProvider revertToCheckpoint={() => {}}>
-          <MessagesTimeline optimisticMessages={[]} thread={thread} />
+          <MessagesTimeline optimisticMessages={[]} session={session} />
         </ChatTimelineActionsProvider>
       </ChatTransportContext>
     </EditorStateProvider>
