@@ -81,7 +81,9 @@ pane resolution has already removed three rows per platform.
 - Fresh GitHub fetch and detached checkout of the exact Editor SHA: passed.
 - Source versus built binding comparison for all three platforms: passed.
 - Same-count stale-binding control: rejected.
+- Existing browser command-focus and terminal-keybinding tests: 10 passed across two files.
+- Repository typecheck and scoped formatting/lint checks: passed.
 
-Trusted browser baseline checks, standalone chord execution, conditional presets,
-the shared runtime, and Platform takeover are still outstanding. Do not disable
+Standalone chord execution, conditional presets, the shared runtime, and Platform
+takeover are still outstanding. Do not disable
 embedded matching until the standalone and Platform policy gates in Plan 057 pass.
