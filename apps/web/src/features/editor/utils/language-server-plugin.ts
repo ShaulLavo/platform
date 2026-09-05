@@ -1,5 +1,7 @@
 import type {
   LanguageServerDefinitionTarget,
+  LanguageServerDiagnosticMarkerClaim,
+  LanguageServerDiagnosticMarkerEvent,
   LanguageServerDocumentSyncController,
   LanguageServerFeatureRanks,
   LanguageServerLaneOptions,
@@ -50,6 +52,9 @@ type MatchedLanguageServerPluginOptions = {
   onApplyWorkspaceEdit: OnApplyWorkspaceEdit
   onOpenDefinition?: (target: LanguageServerDefinitionTarget) => void | boolean
   onOpenReferences?: (result: LanguageServerReferencesResult) => void | boolean
+  onDidNavigateDiagnostic?: (
+    event: LanguageServerDiagnosticMarkerEvent,
+  ) => LanguageServerDiagnosticMarkerClaim
 }
 
 export function createMatchedLanguageServerPlugin({
@@ -62,6 +67,7 @@ export function createMatchedLanguageServerPlugin({
   onApplyWorkspaceEdit,
   onOpenDefinition,
   onOpenReferences,
+  onDidNavigateDiagnostic,
 }: MatchedLanguageServerPluginOptions): LanguageServerPlugin {
   const eligible = enabled ? (matches ?? []) : []
   if (eligible.length === 0) return createIdleLanguageServerPlugin(statusSource)
@@ -93,6 +99,7 @@ export function createMatchedLanguageServerPlugin({
     onApplyWorkspaceEdit,
     onOpenDefinition,
     onOpenReferences,
+    onDidNavigateDiagnostic,
   })
 
   return initializeStatusOnActivation(plugin, statusSource, descriptors)

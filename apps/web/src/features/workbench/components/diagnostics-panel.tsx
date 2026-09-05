@@ -14,6 +14,12 @@ import type { EditorStatusBarSource } from '@/features/editor/state/status-bar-s
 import { useEditorUiState, useEditorUiStoreApi } from '@/features/editor/state/ui-state'
 import { DiagnosticsLoading } from '@/features/workbench/components/diagnostics-loading'
 import { useFocusTarget } from '@/lib/focus/hooks/use-target'
+import {
+  diagnosticMessageText,
+  diagnosticSeverityLabel,
+  diagnosticTarget,
+  fileUriForPath,
+} from '@/lib/diagnostic'
 
 const idleLanguageServerStatusSource = createEditorLanguageServerStatusSource()
 
@@ -221,44 +227,9 @@ function diagnosticRuleClass(severity: number | undefined) {
   return 'border-l-border'
 }
 
-function diagnosticSeverityLabel(severity: number | undefined) {
-  if (severity === 1) return 'Error'
-  if (severity === 2) return 'Warning'
-  if (severity === 3) return 'Information'
-  if (severity === 4) return 'Hint'
-
-  return 'Diagnostic'
-}
-
 function diagnosticKey(
   diagnostic: LanguageServerDiagnosticSummary['diagnostics'][number],
   index: number,
 ) {
   return `${diagnosticMessageText(diagnostic.message)}:${index}`
-}
-
-function diagnosticMessageText(
-  message: LanguageServerDiagnosticSummary['diagnostics'][number]['message'],
-) {
-  if (typeof message === 'string') return message
-
-  return message.value
-}
-
-function diagnosticTarget(
-  path: string,
-  uri: string,
-  diagnostic: LanguageServerDiagnosticSummary['diagnostics'][number],
-): LanguageServerDefinitionTarget {
-  return {
-    path,
-    range: diagnostic.range,
-    uri,
-  }
-}
-
-function fileUriForPath(path: string) {
-  const normalized = path.replace(/^\/+/, '')
-
-  return `file:///${normalized.split('/').map(encodeURIComponent).join('/')}`
 }

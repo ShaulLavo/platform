@@ -6,6 +6,7 @@ import type {
 import { useEffect, useLayoutEffect, useMemo } from 'react'
 
 import { EditorFrame } from '@/features/editor/components/frame'
+import { DiagnosticPeek } from '@/features/editor/components/diagnostic-peek'
 import {
   createCriticalEditorCorePlugins,
   createNonCriticalEditorPluginsLoaderPlugin,
@@ -23,6 +24,7 @@ import {
   scrollPositionFromSnapshot,
 } from '@/features/editor/utils/scroll-position'
 import { useLanguageServerPlugin } from '@/features/editor/hooks/use-lsp-plugin'
+import { useDiagnosticPeek } from '@/features/editor/hooks/use-diagnostic-peek'
 import type { LanguageServerDocumentTarget } from '@/features/editor/utils/language-server-plugin'
 import { editorPerformanceLayoutVariant } from '@/features/editor/state/performance-trace'
 import {
@@ -80,6 +82,7 @@ export function Editor({
     useEditorColorTheme()
   const syntaxHighlightingEnabled = useSettingValue('editor.syntaxHighlighting.enabled')
   const { mountedEditors } = useFileOpenIntent()
+  const diagnosticPeek = useDiagnosticPeek({ active, filePath: liveDocument.path })
   const { languageServer, languageServerStatusSource } = useLanguageServerPlugin({
     enabled: active,
     filePath: liveDocument.path,
@@ -87,6 +90,7 @@ export function Editor({
     rootPath,
     onOpenDefinition,
     onOpenReferences,
+    onDidNavigateDiagnostic: diagnosticPeek.onDidNavigateDiagnostic,
   })
   const scrollPersistencePlugin = useScrollPersistencePlugin({
     document: liveDocument,
@@ -121,6 +125,7 @@ export function Editor({
   const plugins = useMemo(
     () => [
       ...criticalEditorCorePlugins,
+      diagnosticPeek.plugin,
       languageServer,
       nonCriticalEditorPlugins,
       scrollPersistencePlugin,
@@ -129,6 +134,7 @@ export function Editor({
     [
       additionalPlugins,
       criticalEditorCorePlugins,
+      diagnosticPeek.plugin,
       languageServer,
       nonCriticalEditorPlugins,
       scrollPersistencePlugin,
@@ -262,7 +268,19 @@ export function Editor({
     <EditorFrame
       active={active && focusTarget.focused}
       controller={controller}
+      onRequestCloseOverlay={diagnosticPeek.snapshot ? diagnosticPeek.close : undefined}
       targetRef={active ? focusTarget.ref : undefined}
-    />
+    >
+      {diagnosticPeek.snapshot ? (
+        <DiagnosticPeek
+          model={diagnosticPeek.snapshot}
+          onClose={diagnosticPeek.close}
+          onOpenTarget={(target) => {
+            onOpenDefinition?.(target)
+          }}
+          tabId={tabId}
+        />
+      ) : null}
+    </EditorFrame>
   )
 }

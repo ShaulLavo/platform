@@ -1,5 +1,7 @@
 import type {
   LanguageServerDefinitionTarget,
+  LanguageServerDiagnosticMarkerClaim,
+  LanguageServerDiagnosticMarkerEvent,
   LanguageServerReferencesResult,
 } from '@singapor/lsp-plugin'
 import { useMemo } from 'react'
@@ -22,6 +24,9 @@ type UseLanguageServerPluginOptions = {
   rootPath: string
   onOpenDefinition?: (target: LanguageServerDefinitionTarget) => void | boolean
   onOpenReferences?: (result: LanguageServerReferencesResult) => void | boolean
+  onDidNavigateDiagnostic?: (
+    event: LanguageServerDiagnosticMarkerEvent,
+  ) => LanguageServerDiagnosticMarkerClaim
 }
 
 export function useLanguageServerPlugin({
@@ -31,6 +36,7 @@ export function useLanguageServerPlugin({
   rootPath,
   onOpenDefinition,
   onOpenReferences,
+  onDidNavigateDiagnostic,
 }: UseLanguageServerPluginOptions) {
   const languageServerStatusSource = useMemo(() => createEditorLanguageServerStatusSource(), [])
   const onApplyWorkspaceEdit = useWorkspaceEditHost()
@@ -52,6 +58,7 @@ export function useLanguageServerPlugin({
       onApplyWorkspaceEdit,
       onOpenDefinition,
       onOpenReferences,
+      onDidNavigateDiagnostic,
     })
   }, [
     enabled,
@@ -61,6 +68,7 @@ export function useLanguageServerPlugin({
     onApplyWorkspaceEdit,
     onOpenDefinition,
     onOpenReferences,
+    onDidNavigateDiagnostic,
     rootPath,
     target,
   ])
