@@ -32,6 +32,34 @@ test('the search box narrows the list', async ({ client }) => {
   expect(screen.getByText('Toggle Files pane')).toBeDefined()
 })
 
+test('records and resets a command omitted by the default preset', async ({ client }) => {
+  expect(client).toBeDefined()
+  renderWithProviders(<KeybindingSection />)
+  await screen.findByRole('button', { name: SAVE_RECORDER })
+  await userEvent.type(screen.getByLabelText('Search keyboard shortcuts'), 'Rename symbol')
+
+  const recorderName = 'Record a shortcut for editor.editor.action.rename'
+  const recorder = screen.getByRole('button', { name: recorderName })
+  expect(screen.getByRole('button', { name: 'Unbind Rename symbol' })).toBeDisabled()
+  await userEvent.click(recorder)
+  fireEvent.keyDown(recorder, { key: 'F2' })
+
+  await waitFor(async () => {
+    const snapshot = await fetchSettings()
+    expect(snapshot.values['keybindings.overrides']['editor.editor.action.rename']).toBe('F2')
+  })
+  await userEvent.click(screen.getByRole('button', { name: 'Reset Rename symbol' }))
+
+  await waitFor(async () => {
+    const snapshot = await fetchSettings()
+    expect(snapshot.values['keybindings.overrides']).not.toHaveProperty(
+      'editor.editor.action.rename',
+    )
+  })
+  expect(screen.getByRole('button', { name: recorderName })).toBeDefined()
+  expect(screen.getByRole('button', { name: 'Unbind Rename symbol' })).toBeDisabled()
+})
+
 test('says so when nothing matches', async ({ client }) => {
   expect(client).toBeDefined()
   renderWithProviders(<KeybindingSection />)

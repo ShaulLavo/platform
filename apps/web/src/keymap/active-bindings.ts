@@ -75,17 +75,11 @@ export function commandKeyBindings(
   const live = liveBindingsByCommand(bindings)
   const defaultKeys = defaultKeysByCommand(defaults)
 
-  for (const command of applied.keys()) {
-    if (defaultKeys.has(command)) continue
-
-    defaultKeys.set(command, [])
-  }
-
-  return Array.from(defaultKeys, ([command, keys]) =>
+  return platformCommands.map(({ id: command }) =>
     commandKeyBindingRow({
       applied,
       command,
-      defaultKeys: keys,
+      defaultKeys: defaultKeys.get(command) ?? [],
       live: live.get(command) ?? [],
       shadowedBy: shadowedBy.get(command) ?? null,
     }),
