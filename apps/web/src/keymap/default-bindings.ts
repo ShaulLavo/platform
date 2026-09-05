@@ -1,11 +1,21 @@
+import { defaultEditorKeyBindings, vscodeEditorKeyBindings } from '@singapor/core/keymap'
 import { detectPlatform } from '@tanstack/hotkeys'
 
 import { chordKeys } from '@/keymap/utils/chord'
 
+import { editorCommands } from '@/keymap/editor-commands'
 import { commandHotkeyMeta } from '@/keymap/command-registry'
 import type { CommandKeyDefault } from '@/keymap/define-command'
 import { platformCommands, type CommandEntry } from '@/keymap/table'
 import type { KeyChord, PlatformCommandId, PlatformKeyBinding } from '@/keymap/types'
+
+export type KeybindingPreset = 'default' | 'vscode'
+
+export type UnmappedKeyBinding = {
+  readonly command: string
+  readonly keys: string
+  readonly reason: string
+}
 
 type PlatformName = ReturnType<typeof detectPlatform>
 
@@ -22,11 +32,65 @@ type ReservedHotkey = {
 
 export function defaultPlatformKeyBindings(
   platform: PlatformName = detectPlatform(),
+  preset: KeybindingPreset = 'default',
 ): readonly PlatformKeyBinding[] {
-  return [
-    ...platformCommands.flatMap((command) => commandBindings(command, platform)),
-    ...reservedBrowserHotkeys.flatMap((chord) => reservedBinding(chord, platform)),
-  ]
+  return presetPlatformKeyBindings(platform, preset).bindings
+}
+
+export function presetPlatformKeyBindings(
+  platform: PlatformName = detectPlatform(),
+  preset: KeybindingPreset = 'default',
+) {
+  const pack =
+    preset === 'vscode' ? vscodeEditorKeyBindings(platform) : defaultEditorKeyBindings(platform)
+  const bindings: PlatformKeyBinding[] = platformCommands.flatMap((command) =>
+    commandBindings(command, platform),
+  )
+  const unmapped: UnmappedKeyBinding[] = []
+  for (const row of pack) {
+    const command = editorCommands.find((entry) => entry.id === `editor.${row.command}`)
+    const keys = chordKeys(row.chord, platform)
+    if (!command) {
+      unmapped.push({
+        command: row.command,
+        keys,
+        reason: 'Editor preset command is not registered in Platform.',
+      })
+      continue
+    }
+    bindings.push({
+      chord: row.chord,
+      command: command.id,
+      editorWhen: row.when,
+      keys,
+      meta: commandHotkeyMeta(command.id),
+      pane: 'editor',
+      preventDefault: row.preventDefault,
+      source: 'default',
+      stopPropagation: row.stopPropagation,
+      vscodeCommandId: command.vscodeCommandIds?.[0],
+    })
+  }
+  const reservations = reservedBrowserHotkeys.flatMap((chord) => reservedBinding(chord, platform))
+  bindings.push(...reservations)
+  unmapped.push(
+    ...reservations.flatMap((binding) =>
+      binding.vscodeCommandId
+        ? [
+            {
+              command: binding.vscodeCommandId,
+              keys: binding.keys,
+              reason: 'Reserved by the browser host without command dispatch.',
+            },
+          ]
+        : [],
+    ),
+  )
+  const boundCommands = new Set(bindings.map((binding) => binding.command))
+  const omitted = editorCommands
+    .filter((command) => !boundCommands.has(command.id))
+    .map((command) => command.id)
+  return { bindings, omitted, unmapped }
 }
 
 function commandBindings(
@@ -104,5 +168,4 @@ const reservedBrowserHotkeys: readonly ReservedHotkey[] = [
   { chord: ['Mod+2'], vscodeCommandId: 'workbench.action.focusSecondEditorGroup' },
   { chord: ['Mod+3'], vscodeCommandId: 'workbench.action.focusThirdEditorGroup' },
   { chord: ['Mod+W'], vscodeCommandId: 'workbench.action.closeActiveEditor' },
-  { chord: ['F12'], pane: 'editor', vscodeCommandId: 'editor.action.revealDefinition' },
 ]

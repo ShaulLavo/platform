@@ -1,7 +1,8 @@
+import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import { fetchSettings } from '@/features/settings/utils/api'
+import { fetchSettings, saveSettings } from '@/features/settings/utils/api'
 import { formatChord } from '@/keymap/utils/format-keys'
 
 import { KeybindingSection } from '../components/keybinding-section'
@@ -109,4 +110,35 @@ test('records two strokes through the server and renders the saved shortcut as g
     expect(snapshot.values['keybindings.overrides']['workspace.saveFile']).toBe('Mod+K Mod+S')
   })
   await waitFor(() => expect(recorder.textContent).toBe(formatChord('Mod+K Mod+S')))
+})
+
+test('reads the selected preset before showing shortcut rows', async ({ client }) => {
+  expect(client).toBeDefined()
+  await saveSettings({
+    mutationId: 'keybinding-vscode-preset',
+    operations: [{ kind: 'set', key: 'keybindings.preset', value: 'vscode' }],
+    target: 'user',
+  })
+  renderWithProviders(<KeybindingSection />)
+  const recorder = await screen.findByRole('button', {
+    name: 'Record a shortcut for editor.editor.fold',
+  })
+  const fold = defaultPlatformKeyBindings(undefined, 'vscode').find(
+    (row) => row.command === 'editor.editor.fold',
+  )
+  expect(fold).toBeDefined()
+  expect(recorder).toHaveTextContent(formatChord(fold?.keys ?? ''))
+})
+
+test('shows reservations and preset omissions in the resolution report', async ({ client }) => {
+  expect(client).toBeDefined()
+  renderWithProviders(<KeybindingSection />)
+  await userEvent.click(await screen.findByText('Shortcut resolution'))
+  expect(screen.getByRole('list', { name: 'Shortcut resolution report' })).toHaveTextContent(
+    'reservation',
+  )
+  expect(screen.getByRole('list', { name: 'Unmapped VS Code bindings' })).toHaveTextContent(
+    'workbench.action.quickOpenPreviousEditor',
+  )
+  expect(screen.getByRole('list', { name: 'Preset omissions' })).toBeDefined()
 })

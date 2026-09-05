@@ -257,3 +257,12 @@ describe('settings registry', () => {
     }
   })
 })
+
+it('keeps executable keymap presets application-scoped and restricted to implemented packs', () => {
+  const descriptor = descriptorFor('keybindings.preset')
+  expect(descriptor.scope).toBe('application')
+  expect(descriptor.default).toBe('default')
+  expect(v.safeParse(descriptor.schema, 'default').success).toBe(true)
+  expect(v.safeParse(descriptor.schema, 'vscode').success).toBe(true)
+  expect(v.safeParse(descriptor.schema, 'vim').success).toBe(false)
+})
