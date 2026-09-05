@@ -2,12 +2,18 @@ import {
   useChatProjectionStore,
   type ChatProjectionState,
 } from '@/features/chat/state/chat-projection-store'
-import { useEnvironmentsStore, type EnvironmentsState } from '@/lib/environments/state/store'
+import type { EnvironmentsState } from '@/lib/environments/state/store'
+import { useEnvironmentsStore } from '@/lib/environments/state/store'
 import type { SessionRailEnvironment } from '@/features/chat-mode/utils/session-rail-model'
+import {
+  selectChatProjects,
+  selectChatSessions,
+  selectChatWorktrees,
+} from '@/features/chat/state/chat-projection-selectors'
 
 export function railEnvironments(
   projection: ChatProjectionState,
-  environments: EnvironmentsState,
+  environments: Pick<EnvironmentsState, 'entries'>,
 ): readonly SessionRailEnvironment[] {
   const byIdentity = new Map<SessionRailEnvironment['environmentId'], SessionRailEnvironment>()
   for (const entry of Object.values(environments.entries)) {
@@ -19,10 +25,32 @@ export function railEnvironments(
       environmentId: entry.environmentId,
       label: entry.label,
       isPrimary: entry.kind === 'primary',
-      slice,
+      projects: selectChatProjects(slice),
+      worktrees: selectChatWorktrees(slice),
+      sessions: selectChatSessions(slice),
     })
   }
   return [...byIdentity.values()]
+}
+
+export function createRailEnvironmentsSelector(entries: EnvironmentsState['entries']) {
+  let previous: readonly SessionRailEnvironment[] = []
+  return (projection: ChatProjectionState) => {
+    const next = railEnvironments(projection, { entries }).map((environment) => {
+      const held = previous.find((entry) => entry.environmentId === environment.environmentId)
+      if (
+        held?.projects === environment.projects &&
+        held.worktrees === environment.worktrees &&
+        held.sessions === environment.sessions
+      )
+        return held
+      return environment
+    })
+    if (next.length === previous.length && next.every((entry, index) => entry === previous[index]))
+      return previous
+    previous = next
+    return next
+  }
 }
 export function currentRailEnvironments() {
   return railEnvironments(useChatProjectionStore.getState(), useEnvironmentsStore.getState())

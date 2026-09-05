@@ -24,6 +24,7 @@ import {
   type SessionId,
   type TurnId,
 } from '@workspace/contracts'
+import { replaceEqualDeep } from '@tanstack/react-query'
 
 import {
   CHAT_ACTIVITY_CACHE_LIMIT,
@@ -37,7 +38,6 @@ import type {
   ProjectionSession,
 } from './chat-projection-store'
 
-const EMPTY_SESSION_IDS: SessionId[] = []
 type SessionOrchestrationEvent = Extract<OrchestrationEvent, { type: `session.${string}` }>
 type WorktreeOrchestrationEvent = Extract<OrchestrationEvent, { type: `worktree.${string}` }>
 type ProjectOrchestrationEvent = Extract<OrchestrationEvent, { type: `project.${string}` }>
@@ -59,7 +59,6 @@ export function syncChatProjectionShellSnapshot(
     lastAppliedShellSequence: snapshot.snapshotSequence,
     lastAppliedShellUpdatedAt: snapshot.updatedAt,
     sessionIds: [],
-    sessionIdsByWorktreeId: {},
   }
 
   for (const session of snapshot.sessions) {
@@ -541,12 +540,7 @@ function writeSessionFromShell(
   session: OrchestrationSessionShell,
 ): ChatProjectionSlice {
   const previous = state.sessionById[session.id]
-  const nextState = ensureSessionRegistered(
-    state,
-    session.id,
-    session.worktreeId,
-    previous?.worktreeId,
-  )
+  const nextState = ensureSessionRegistered(state, session.id)
 
   return {
     ...nextState,
@@ -566,6 +560,7 @@ function sessionFromShell(
   session: OrchestrationSessionShell,
   previous: ProjectionSession | undefined,
 ): ProjectionSession {
+  const latestTurn = replaceEqualDeep(previous?.latestTurn, session.latestTurn)
   return {
     ...session,
     archivedAt: session.archivedAt,
@@ -574,19 +569,19 @@ function sessionFromShell(
     hasActionableProposedPlan: session.hasActionableProposedPlan,
     id: session.id,
     interactionMode: session.interactionMode,
-    latestTurn: session.latestTurn,
+    latestTurn,
     latestUserMessageAt: session.latestUserMessageAt,
-    liveTurn: session.latestTurn,
+    liveTurn: latestTurn,
     metaSource: 'shell',
     modelSelection: session.modelSelection,
     pendingApprovalCount: session.pendingApprovalCount,
     pendingSourceProposedPlan: carriedPendingSourcePlan(previous, session.latestTurn),
     pendingUserInputCount: session.pendingUserInputCount,
     pinOrderKey: session.pinOrderKey ?? null,
-    planProgress: session.planProgress,
+    planProgress: replaceEqualDeep(previous?.planProgress, session.planProgress),
     worktreeId: session.worktreeId,
     runtimeMode: session.runtimeMode,
-    runtime: session.runtime,
+    runtime: replaceEqualDeep(previous?.runtime, session.runtime),
     runtimeKnown: true,
     title: session.title,
     updatedAt: session.updatedAt,
@@ -1235,61 +1230,9 @@ function patchSession(
 function ensureSessionRegistered(
   state: ChatProjectionSlice,
   sessionId: SessionId,
-  nextWorktreeId: WorktreeId,
-  previousWorktreeId: WorktreeId | undefined,
 ): ChatProjectionSlice {
-  const nextState = state.sessionIds.includes(sessionId)
-    ? state
-    : {
-        ...state,
-        sessionIds: [...state.sessionIds, sessionId],
-      }
-
-  return moveSessionWorktreeIndex(nextState, sessionId, nextWorktreeId, previousWorktreeId)
-}
-
-function moveSessionWorktreeIndex(
-  state: ChatProjectionSlice,
-  sessionId: SessionId,
-  nextWorktreeId: WorktreeId,
-  previousWorktreeId: WorktreeId | undefined,
-): ChatProjectionSlice {
-  if (previousWorktreeId === nextWorktreeId)
-    return ensureWorktreeSessionId(state, nextWorktreeId, sessionId)
-
-  const withoutPrevious = previousWorktreeId
-    ? removeWorktreeSessionId(state.sessionIdsByWorktreeId, previousWorktreeId, sessionId)
-    : state.sessionIdsByWorktreeId
-  const nextSessionIdsByWorktreeId = appendWorktreeSessionId(
-    withoutPrevious,
-    nextWorktreeId,
-    sessionId,
-  )
-
-  if (nextSessionIdsByWorktreeId === state.sessionIdsByWorktreeId) return state
-
-  return {
-    ...state,
-    sessionIdsByWorktreeId: nextSessionIdsByWorktreeId,
-  }
-}
-
-function ensureWorktreeSessionId(
-  state: ChatProjectionSlice,
-  worktreeId: WorktreeId,
-  sessionId: SessionId,
-): ChatProjectionSlice {
-  const nextSessionIdsByWorktreeId = appendWorktreeSessionId(
-    state.sessionIdsByWorktreeId,
-    worktreeId,
-    sessionId,
-  )
-  if (nextSessionIdsByWorktreeId === state.sessionIdsByWorktreeId) return state
-
-  return {
-    ...state,
-    sessionIdsByWorktreeId: nextSessionIdsByWorktreeId,
-  }
+  if (state.sessionIds.includes(sessionId)) return state
+  return { ...state, sessionIds: [...state.sessionIds, sessionId] }
 }
 
 function removeSessionState(state: ChatProjectionSlice, sessionId: SessionId): ChatProjectionSlice {
@@ -1305,10 +1248,6 @@ function removeSessionState(state: ChatProjectionSlice, sessionId: SessionId): C
     sessionDetailSequenceById: removeRecordKey(state.sessionDetailSequenceById, sessionId),
     sessionHasEarlierById: removeRecordKey(state.sessionHasEarlierById, sessionId),
     sessionIds: removeId(state.sessionIds, sessionId),
-    sessionIdsByWorktreeId: removeSessionFromAllWorktreeIndexes(
-      state.sessionIdsByWorktreeId,
-      sessionId,
-    ),
     turnDiffIdsBySessionId: removeRecordKey(state.turnDiffIdsBySessionId, sessionId),
     turnDiffSummaryBySessionId: removeRecordKey(state.turnDiffSummaryBySessionId, sessionId),
   }
@@ -1486,54 +1425,6 @@ function collectByIds<TKey extends string, TValue>(
     const value = byId[id]
     return value ? [value] : []
   })
-}
-
-function appendWorktreeSessionId(
-  record: Record<WorktreeId, SessionId[]>,
-  worktreeId: WorktreeId,
-  sessionId: SessionId,
-) {
-  const ids = record[worktreeId] ?? EMPTY_SESSION_IDS
-  const nextIds = appendId(ids, sessionId)
-  if (nextIds === ids) return record
-
-  return {
-    ...record,
-    [worktreeId]: nextIds,
-  }
-}
-
-function removeWorktreeSessionId(
-  record: Record<WorktreeId, SessionId[]>,
-  worktreeId: WorktreeId,
-  sessionId: SessionId,
-) {
-  const ids = record[worktreeId]
-  if (!ids) return record
-
-  const nextIds = removeId(ids, sessionId)
-  if (nextIds.length === ids.length) return record
-  if (nextIds.length > 0) {
-    return {
-      ...record,
-      [worktreeId]: nextIds,
-    }
-  }
-
-  return removeRecordKey(record, worktreeId)
-}
-
-function removeSessionFromAllWorktreeIndexes(
-  record: Record<WorktreeId, SessionId[]>,
-  sessionId: SessionId,
-) {
-  let nextRecord = record
-
-  for (const worktreeId of Object.keys(record) as WorktreeId[]) {
-    nextRecord = removeWorktreeSessionId(nextRecord, worktreeId, sessionId)
-  }
-
-  return nextRecord
 }
 
 function appendId<T extends string>(ids: readonly T[], id: T): T[] {

@@ -69,9 +69,12 @@ test('an activated native link opens the file without a second modifier gate', a
 
   await activateLink(terminal, 0, clickEvent())
 
-  await waitFor(() => expect(getByTestId('selected-path')).toHaveTextContent('/repo/src/a.ts'))
-  expect(opened.paths).toEqual(['/repo/src/a.ts'])
+  await waitFor(() => expect(getByTestId('selected-path')).toHaveTextContent('repo/src/a.ts'))
+  expect(opened.paths).toEqual(['repo/src/a.ts'])
   expect(getByTestId('definition-target')).toHaveTextContent('@2')
+  const selectedPath = opened.paths[0]
+  if (!selectedPath) throw new TypeError('The terminal link did not select a file')
+  expect((await client.fs.stat.get({ query: { path: selectedPath } })).data?.type).toBe('file')
 })
 
 test('a path that is not on disk reports instead of opening a phantom tab', async ({
@@ -93,8 +96,8 @@ test('a path that is not on disk reports instead of opening a phantom tab', asyn
   await activateLink(terminal, 0, clickEvent())
   await activateLink(terminal, 1, clickEvent())
 
-  await waitFor(() => expect(getByTestId('selected-path')).toHaveTextContent('/repo/src/a.ts'))
-  expect(opened.paths).toEqual(['/repo/src/a.ts'])
+  await waitFor(() => expect(getByTestId('selected-path')).toHaveTextContent('repo/src/a.ts'))
+  expect(opened.paths).toEqual(['repo/src/a.ts'])
 })
 
 async function writeWorkspaceFile(workspaceRoot: string, relativePath: string) {

@@ -84,47 +84,50 @@ test('identity drift during a pending shell read cannot publish address state', 
   }
 })
 
-test('a rejected environment address supersedes a pending valid restore', async ({
-  client,
-  server,
-}) => {
-  await mkdir(path.join(server.root, 'target'))
-  await registerSession(client, 'target', 'Target')
-  const started = Promise.withResolvers<void>()
-  const release = Promise.withResolvers<void>()
-  const gated = createObservedInProcessClient(server, async (request) => {
-    if (new URL(request.url).pathname !== '/orchestration/shell-snapshot') return
-    started.resolve()
-    await release.promise
-  })
-  const descriptor = v.parse(healthDescriptorSchema, (await client.health.get()).data)
-  const restoreEnvironment = scopeAddressEnvironment(
-    'http://localhost:37761',
-    descriptor.environmentId,
-    gated,
-  )
-  resetSessionSelectionStore()
-  seedWorkspaceCache({ rootPath: 'source' })
-  startAt(`/~target/chat/t/${sessionId}`)
-  const rendered = await renderAddressHarness()
-  const rejectedAddress = `/@d7b4079f-a895-42df-b472-ed1785c7cc54/~target/chat/t/${sessionId}`
-  try {
-    await started.promise
-    await pressBack(rejectedAddress)
-    release.resolve()
-    await flushProjection()
-    expect(
-      rendered.application.getSnapshot().editor.workspaceStore.getState().rootFolder?.path,
-    ).toBe('source')
-    expect(useSessionSelectionStore.getState().selection).toEqual({ kind: 'auto' })
-    expect(location.pathname).toBe(rejectedAddress)
-  } finally {
-    release.resolve()
-    rendered.unmount()
-    restoreEnvironment()
+test.for(['d7b4079f-a895-42df-b472-ed1785c7cc54', ''])(
+  'a rejected environment token "%s" supersedes a pending valid restore',
+  async (rejectedEnvironment, { client, server }) => {
+    const previousProjection = useChatProjectionStore.getState()
+    useChatProjectionStore.getState().resetChatProjection()
+    await mkdir(path.join(server.root, 'target'))
+    await registerSession(client, 'target', 'Target')
+    const started = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const gated = createObservedInProcessClient(server, async (request) => {
+      if (new URL(request.url).pathname !== '/orchestration/shell-snapshot') return
+      started.resolve()
+      await release.promise
+    })
+    const descriptor = v.parse(healthDescriptorSchema, (await client.health.get()).data)
+    const restoreEnvironment = scopeAddressEnvironment(
+      rejectedEnvironment === '' ? 'http://localhost:37764' : 'http://localhost:37761',
+      descriptor.environmentId,
+      gated,
+    )
     resetSessionSelectionStore()
-  }
-})
+    seedWorkspaceCache({ rootPath: 'source' })
+    startAt(`/~target/chat/t/${sessionId}`)
+    const rendered = await renderAddressHarness()
+    const rejectedAddress = `/@${rejectedEnvironment}/~target/chat/t/${sessionId}`
+    try {
+      await started.promise
+      await pressBack(rejectedAddress)
+      release.resolve()
+      await flushProjection()
+      expect(
+        rendered.application.getSnapshot().editor.workspaceStore.getState().rootFolder?.path,
+      ).toBe('source')
+      expect(useSessionSelectionStore.getState().selection).toEqual({ kind: 'auto' })
+      expect(location.pathname).toBe(rejectedAddress)
+    } finally {
+      release.resolve()
+      rendered.unmount()
+      restoreEnvironment()
+      resetSessionSelectionStore()
+      useChatProjectionStore.setState(previousProjection, true)
+    }
+  },
+)
 
 test('an older restore cannot release the root claim of a newer pending restore', async ({
   client,

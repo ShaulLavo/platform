@@ -94,7 +94,6 @@ test('removes all session-scoped state when the shell removes a session', () => 
   expect(state.sessionById[sessionId]).toBeUndefined()
   expect(state.messageIdsBySessionId[sessionId]).toBeUndefined()
   expect(state.activityIdsBySessionId[sessionId]).toBeUndefined()
-  expect(state.sessionIdsByWorktreeId[fixtureWorktree().id]).toEqual([otherSessionId])
 })
 
 test('applies a detail snapshot only to the target session detail slices', () => {

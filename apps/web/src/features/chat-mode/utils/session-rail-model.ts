@@ -3,6 +3,7 @@ import {
   scopedProjectKey,
   type EnvironmentId,
   type OrchestrationProjectShell,
+  type OrchestrationWorktreeShell,
   type OrchestrationSessionSearchMatch,
   type ProjectId,
   type ScopedProjectRef,
@@ -11,13 +12,7 @@ import {
   type SessionAttentionState,
   type SessionAttentionReason,
 } from '@workspace/contracts'
-import {
-  selectChatProjects,
-  selectChatSessions,
-  selectCurrentWorktree,
-  type ChatSessionListProjection,
-} from '@/features/chat/state/chat-projection-selectors'
-import type { ChatProjectionSlice } from '@/features/chat/state/chat-projection-store'
+import type { ChatSessionListProjection } from '@/features/chat/state/chat-projection-selectors'
 import { compareProjectsForRail } from '@/features/chat-mode/utils/project-order'
 import { compareSessionsForRail } from '@/features/chat-mode/utils/session-order'
 import {
@@ -32,7 +27,9 @@ export type SessionRailEnvironment = {
   readonly environmentId: EnvironmentId
   readonly label: string | null
   readonly isPrimary: boolean
-  readonly slice: ChatProjectionSlice
+  readonly projects: readonly OrchestrationProjectShell[]
+  readonly worktrees: readonly OrchestrationWorktreeShell[]
+  readonly sessions: readonly ChatSessionListProjection[]
 }
 export type SessionRailItem = {
   readonly ref: ScopedSessionRef
@@ -126,7 +123,7 @@ export function sessionRailModel({
   readonly view?: SessionRailView
 }): SessionRailModel {
   const allItems = environments.flatMap((environment) =>
-    selectChatSessions(environment.slice).map((session) => {
+    environment.sessions.map((session) => {
       const ref = { environmentId: environment.environmentId, sessionId: session.id }
       const key = scopedSessionKey(ref)
       return sessionRailItem(
@@ -160,9 +157,11 @@ ${item.machineLabel ?? ''}`
   )
   const projectsById = new Map<ProjectId, SessionRailProject>()
   for (const environment of environments) {
-    for (const project of selectChatProjects(environment.slice)) {
+    for (const project of environment.projects) {
       if (projectsById.has(project.id)) continue
-      const worktree = selectCurrentWorktree(environment.slice, project.id)
+      const worktree = environment.worktrees.find(
+        (worktree) => worktree.projectId === project.id && worktree.kind === 'current',
+      )
       if (!worktree) continue
       const ref = { environmentId: environment.environmentId, projectId: project.id }
       const key = scopedProjectKey(ref)

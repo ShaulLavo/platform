@@ -11,6 +11,32 @@ import { ProviderRuntimeIngestion } from '../provider-runtime-ingestion'
 
 const at = '2026-09-05T12:00:00.000Z'
 
+test('stopping a queued turn settles cleanly and the next turn becomes working', async () => {
+  const fixture = await createOrchestrationFixture()
+  onTestFinished(() => fixture.close())
+  const registration = await fixture.register()
+  if (!registration.result) throw new TypeError('Missing worktree registration')
+  await fixture.createSession(registration.result.worktreeId)
+  await fixture.startTurn()
+  await fixture.command({
+    type: 'session.turn.interrupt',
+    commandId: 'stop-queued-turn',
+    sessionId: FIXTURE_SESSION_ID,
+  })
+  expect((await fixture.engine.shellSnapshot()).sessions[0]).toMatchObject({
+    attentionState: 'settled',
+    attentionReason: null,
+    hasError: false,
+  })
+
+  await fixture.startTurn(FIXTURE_SESSION_ID, 'next-turn')
+  expect((await fixture.engine.shellSnapshot()).sessions[0]).toMatchObject({
+    attentionState: 'working',
+    attentionReason: 'active',
+    hasError: false,
+  })
+})
+
 test('a provider callback accepted before a new claim cannot commit into the new runtime epoch', async () => {
   const fixture = await createOrchestrationFixture()
   const accepted = Promise.withResolvers<void>()
@@ -120,10 +146,10 @@ test('a delayed failure from an interrupted send cannot stamp the next runtime w
     turnId: 'turn-1',
   })
   await interrupted.promise
-  await fixture.command({
-    type: 'session.settle',
-    commandId: 'acknowledge-old-interruption',
-    sessionId: FIXTURE_SESSION_ID,
+  expect((await fixture.engine.shellSnapshot()).sessions[0]).toMatchObject({
+    hasError: false,
+    attentionState: 'settled',
+    attentionReason: null,
   })
   await fixture.startTurn(FIXTURE_SESSION_ID, 'next-turn')
   await completed.promise

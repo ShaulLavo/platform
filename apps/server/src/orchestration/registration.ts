@@ -53,7 +53,8 @@ export async function prepareProjectRegistration(
     worktreeId,
     repositoryIdentity: identity,
     repositoryKey: key,
-    repositoryKind: repository.repository ? 'git' : 'directory',
+    repositoryKind:
+      registeredProject?.repositoryKind ?? (repository.repository ? 'git' : 'directory'),
     canonicalPath,
     path: boundary.paths.toRealRelative(canonicalPath),
     branch: repository.repository?.branch ?? null,

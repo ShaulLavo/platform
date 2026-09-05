@@ -359,10 +359,11 @@ describe('environment segment', () => {
 
   test('preserves an unknown or malformed environment as a rejected token', () => {
     const unknown = '881e6a1b-b230-4e14-acdc-082db3f36e8e'
-    for (const id of [unknown, 'bad-id']) {
-      const parsed = parseAddress(`/@${id}/~repo/chat/t/new`, environments)
+    for (const id of [unknown, 'bad-id', '']) {
+      const href = `/@${id}/~repo/chat/t/7c9ac8fb-14ad-4a20-8e54-d1756e4f9f97`
+      const parsed = parseAddress(href, environments)
       expect(parsed).toMatchObject({ environmentId: null, rejectedEnvironment: id })
-      expect(formatAddress(parsed)).toBe(`/@${id}/~repo/chat/t/new`)
+      expect(formatAddress(parsed)).toBe(href)
     }
   })
 })

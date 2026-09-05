@@ -15,7 +15,7 @@ import {
  * Owns model selection for one composer: the draft's override wins over the
  * session's committed selection, and a locked session refuses writes outright.
  * Consumers read it through `useModelPicker`, so the selection never has to be
- * sessioned down through the composer's layout components.
+ * passed down through the composer's layout components.
  *
  * The reasoning level is part of that selection rather than state of its own —
  * it lives in `ModelSelection.options`, which the draft and the session

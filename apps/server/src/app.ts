@@ -172,7 +172,7 @@ export function createApp(options: AppOptions) {
       tyForPython: values['lsp.experimental.tyForPython'],
     }
   }
-  // The one knob that cannot be sessioned as a parameter — see the comment on
+  // The one knob that cannot be passed as a parameter — see the comment on
   // `setLspDownloadPolicy`.
   setLspDownloadPolicy(() => settings.snapshot().values['lsp.downloadRuntimes'])
   const lspPool =

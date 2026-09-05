@@ -1,4 +1,4 @@
-import { mkdir, rename, symlink, writeFile, stat } from 'node:fs/promises'
+import { mkdir, rename, rm, symlink, writeFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, expect, test } from 'vitest'
 import { createOrchestrationFixture, executeGit } from '../../../test/factories/orchestration'
@@ -51,6 +51,36 @@ test('same checkout has one current worktree and durable no-event receipts', asy
   await fixture.restart()
   expect(await fixture.register(alias, 'register-alias')).toEqual({ ...duplicate, deduped: true })
 })
+
+test.each(['initialized', 'removed'] as const)(
+  'live repository identity stays fixed when Git metadata is %s',
+  async (change) => {
+    const fixture = await createOrchestrationFixture({ repositoryCacheTtlMs: 0 })
+    fixtures.push(fixture)
+    if (change === 'removed') {
+      await executeGit(fixture.checkout, 'init', '-b', 'main')
+      await executeGit(
+        fixture.checkout,
+        'remote',
+        'add',
+        'origin',
+        'https://github.com/acme/platform.git',
+      )
+    }
+    const first = await fixture.register()
+    const [original] = (await fixture.engine.readModelSnapshot()).projects.values()
+    if (change === 'removed') await rm(path.join(fixture.checkout, '.git'), { recursive: true })
+    if (change === 'initialized') await executeGit(fixture.checkout, 'init', '-b', 'main')
+    const repository = (await fixture.registration.git.repo(fixture.checkout)).repository
+    expect(repository !== null).toBe(change === 'initialized')
+
+    expect(await fixture.register()).toMatchObject({
+      sequence: first.sequence,
+      result: { ...first.result, disposition: 'existing-worktree' },
+    })
+    expect([...(await fixture.engine.readModelSnapshot()).projects.values()]).toEqual([original])
+  },
+)
 
 test('equivalent origins have stable project identity across different checkouts and servers', async () => {
   const left = await createOrchestrationFixture()

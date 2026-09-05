@@ -404,8 +404,6 @@ export const sessionAttentionEntries = {
   hasError: v.boolean(),
 } as const
 
-export const orchestrationReadinessSchema = v.picklist(['starting', 'ready', 'failed'])
-
 export const orchestrationSessionSchema = v.object({
   id: sessionIdSchema,
   worktreeId: worktreeIdSchema,

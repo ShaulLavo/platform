@@ -1,10 +1,6 @@
 import type { ProjectionSession } from '@/features/chat/state/chat-projection-store'
 
-/**
- * A turn the provider is still working on. Deliberately not `sessionStatus(session) ===
- * 'working'`: that vocabulary reports the *user-facing* state, so a session blocked on an
- * approval reads 'waiting' while its turn is very much still open.
- */
+// Attention can require input while a provider still owns an active turn.
 export function hasRunningTurn(session: ProjectionSession | undefined | null) {
   if (!session) return false
   if (session.latestTurn?.state === 'running') return true

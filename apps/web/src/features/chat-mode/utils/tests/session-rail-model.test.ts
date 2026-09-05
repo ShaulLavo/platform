@@ -159,9 +159,9 @@ test('worktree owns the visible branch and open path', () => {
 })
 
 test('folds multiple endpoints for one confirmed server into one rail environment', () => {
-  const primary = environment()
+  const slice = syncChatProjectionShellSnapshot(createInitialChatProjectionSlice(), shellSnapshot())
   const folded = railEnvironments(
-    { slices: { [TEST_ENVIRONMENT_ID]: primary.slice } },
+    { slices: { [TEST_ENVIRONMENT_ID]: slice } },
     {
       ...useEnvironmentsStore.getState(),
       entries: {

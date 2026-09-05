@@ -13,17 +13,51 @@ const ownedRoots = [
   'apps/web/src/features/address',
 ]
 const noun = ['th', 'read'].join('')
-const idName = ['Thread', 'Id'].join('')
-const recordName = ['Orchestration', 'Thread'].join('')
+const capitalNoun = ['Th', 'read'].join('')
+const idName = `${capitalNoun}Id`
+const recordName = `Orchestration${capitalNoun}`
 const vocabulary = new RegExp(
-  String.raw`\b(?:[\w$]*(?:${idName}|${recordName})[\w$]*|${noun}Id|${noun}\.[\w$.]+)\b`,
+  String.raw`\b(?:${noun}[./][\w$./-]+|[\w$]*(?:${capitalNoun}|${noun})[\w$]*)\b`,
   'g',
 )
 
+test.each([
+  `${noun}Ids`,
+  `${noun}IdSchema`,
+  `orchestration${['Th', 'read'].join('')}Schema`,
+  `projection${['Th', 'reads'].join('')}`,
+  `${noun}/start`,
+  `${idName}Schema`,
+  `${recordName}Shell`,
+  `${noun}.turn.start`,
+])('detects forbidden session-domain vocabulary: %s', (symbol) => {
+  expect([...symbol.matchAll(vocabulary)].map(([match]) => match)).toEqual([symbol])
+})
+
 test('retains only exact upstream protocol vocabulary across the session domain', () => {
-  const actual = ownedRoots.flatMap((root) => sourceFiles(root)).flatMap(symbolsInFile)
-  actual.sort(compareMatches)
+  const actual: Record<string, Record<string, number>> = {}
+  for (const file of ownedRoots.flatMap(sourceFiles).sort()) {
+    const symbols = symbolsInSource(readFileSync(path.join(repositoryRoot, file), 'utf8'))
+    if (Object.keys(symbols).length === 0) continue
+    actual[file] = symbols
+  }
   expect(actual).toEqual(allowlist)
+})
+
+test('ignores prose comments while retaining quoted wire verbs and identifiers', () => {
+  const source = [
+    `// ${idName} is an upstream term`,
+    `/* ${noun}/start */`,
+    `const ${noun}Ids = '${noun}/start'`,
+    `const url = 'https://example.test/${noun}/read'`,
+    `const message = \`${noun}/resume\``,
+  ].join('\n')
+  expect(symbolsInSource(source)).toEqual({
+    [`${noun}Ids`]: 1,
+    [`${noun}/start`]: 1,
+    [`${noun}/read`]: 1,
+    [`${noun}/resume`]: 1,
+  })
 })
 
 function sourceFiles(relative: string): string[] {
@@ -36,19 +70,13 @@ function sourceFiles(relative: string): string[] {
   )
 }
 
-function symbolsInFile(file: string) {
+function symbolsInSource(source: string) {
   const counts = new Map<string, number>()
-  const source = readFileSync(path.join(repositoryRoot, file), 'utf8')
-  for (const [symbol] of source.matchAll(vocabulary))
+  const code = source.replace(
+    /"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|`(?:\\[\s\S]|[^`\\])*`|\/\/[^\r\n]*|\/\*[\s\S]*?\*\//g,
+    (token) => (token.startsWith('/') ? '' : token),
+  )
+  for (const [symbol] of code.matchAll(vocabulary))
     counts.set(symbol, (counts.get(symbol) ?? 0) + 1)
-  return [...counts].map(([symbol, count]) => ({ path: file, symbol, count }))
-}
-
-function compareMatches(
-  left: { path: string; symbol: string },
-  right: { path: string; symbol: string },
-) {
-  if (left.path !== right.path) return left.path < right.path ? -1 : 1
-  if (left.symbol === right.symbol) return 0
-  return left.symbol < right.symbol ? -1 : 1
+  return Object.fromEntries([...counts].sort(([left], [right]) => left.localeCompare(right)))
 }

@@ -139,7 +139,7 @@ function serializePathname(address: Address, primaryEnvironmentId?: EnvironmentI
   const segments: string[] = []
   if (address.environmentId && address.environmentId !== primaryEnvironmentId)
     segments.push(`@${address.environmentId}`)
-  if (address.rejectedEnvironment)
+  if (address.rejectedEnvironment !== null)
     segments.push(`@${encodeURIComponent(address.rejectedEnvironment)}`)
   segments.push(`${WORKSPACE_PREFIX}${encodeSlug(address.workspace)}`)
   if (address.mode) segments.push(address.mode)

@@ -33,7 +33,7 @@ export function addressedWorkspaceCache(
   cached: CachedWorkspaceState,
   address: Address,
 ): CachedWorkspaceState {
-  if (address.environmentId || address.rejectedEnvironment) return cached
+  if (address.environmentId || address.rejectedEnvironment !== null) return cached
   const rootPath = seedableRootPath(cached, address)
   if (rootPath === null) return cached
 

@@ -4,7 +4,10 @@ import { CaretRightIcon, GitBranchIcon } from '@phosphor-icons/react'
 
 import { ContextUsageRing } from '@/features/chat/components/context-usage-ring'
 import type { ContextUsage } from '@/features/chat/utils/context-usage'
-import { sessionStatusLabel, sessionStatusTextClass } from '@/features/chat/utils/session-status'
+import {
+  sessionStatusLabel,
+  sessionStatusTextClass,
+} from '@/features/chat-mode/utils/attention-state'
 import { BranchActions } from '@/features/git/components/branch-actions'
 import { SessionRename } from '@/features/chat-mode/components/session-rename'
 import { StageSessionMenu } from '@/features/chat-mode/components/stage-session-menu'

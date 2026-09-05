@@ -36,7 +36,8 @@ SDK side effects. Startup may send an unclaimed queued prompt. A claimed or adop
 ambiguous after a crash and becomes interrupted without an automatic resend. Recovery command IDs
 include the observed sequence and runtime epoch. Provider events from an old epoch cannot update
 a later run. [Recovery tests](../apps/server/src/orchestration/tests/recovery.test.ts) drive the real
-engine and production mock adapter.
+engine and production mock adapter. User Stop settles the turn without an error badge;
+only crash recovery records an interruption that needs acknowledgement.
 
 Runtime mode and model preferences apply at the next turn. Reusing a live runtime requires the
 same launch configuration; a replacement gets a new epoch. The command queue checks provider event
@@ -60,7 +61,10 @@ reset, and repeated application.
 an isolated Bun child with the provider instance's environment. It pages terminal-visible sessions
 and verifies their checkout ownership. [The reconciler](../apps/server/src/orchestration/session-discovery.ts)
 imports and refreshes them through commands, events, projections, and receipts. Discovery does not
-read transcripts or infer liveness from filesystem timestamps.
+read transcripts or infer liveness from filesystem timestamps. The scan event records bounded
+failure details, including child exit code, stderr, timeout status, provider, directory, and page
+offset. [Diagnostic tests](../apps/server/src/orchestration/tests/discovery-diagnostics.test.ts)
+exercise real crashing and timed-out children.
 
 The [server attention reducer](../apps/server/src/orchestration/utils/session-attention.ts) publishes
 `needs-input`, `working`, or `settled`. Within `needs-input`, reasons have this priority: approval,

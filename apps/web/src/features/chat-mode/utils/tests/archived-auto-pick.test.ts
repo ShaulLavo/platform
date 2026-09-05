@@ -9,6 +9,7 @@ import { activeSession } from '@/features/chat-mode/utils/active-session'
 import { compareSessionsForRail } from '@/features/chat-mode/utils/session-order'
 import { sessionRailModel } from '@/features/chat-mode/utils/session-rail-model'
 import { chatProject, sessionShell } from '../../../../../test/factories/chat'
+import { railEnvironment } from '../../../../../test/factories/chat-mode'
 import { expect, test } from '../../../../../test/fixtures'
 
 const projectId = v.parse(projectIdSchema, 'fcad4a69-3e68-5de2-8303-a2c1ebe8f60c')
@@ -23,7 +24,12 @@ test('the stage never opens a session the rail refuses to draw', () => {
   const rail = sessionRailModel({
     activeProjectId: projectId,
     environments: [
-      { environmentId: TEST_ENVIRONMENT_ID, label: null, isPrimary: true, slice: state },
+      railEnvironment({
+        environmentId: TEST_ENVIRONMENT_ID,
+        label: null,
+        isPrimary: true,
+        slice: state,
+      }),
     ],
   })
 

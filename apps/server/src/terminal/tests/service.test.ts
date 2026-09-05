@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises'
+import { mkdir, realpath, rm, symlink } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
@@ -10,7 +10,7 @@ import {
 import { createOrchestrationFixture } from '../../../test/factories/orchestration'
 import { requireWorktree } from '../../orchestration/read-model'
 import { createAuthConfig } from '../../auth'
-import { createWorkspacePaths } from '../../fs/path'
+import { createWorkspacePaths, type WorkspacePaths } from '../../fs/path'
 import { TerminalService, type TerminalPtyExitEvent, type TerminalPtyFactory } from '../service'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
@@ -62,6 +62,41 @@ describe('terminal service', () => {
       shell: '/bin/zsh',
       type: 'ready',
     })
+  })
+
+  it('opens a registered canonical checkout beneath a symlinked workspace root', async () => {
+    const root = await fixtureRoot()
+    const alias = path.join(path.dirname(root), 'workspace-alias')
+    await symlink(root, alias, 'dir')
+    const pty = createFakePtyFactory()
+    const service = testService(root, {
+      env: { SHELL: '/bin/sh' },
+      paths: createWorkspacePaths(alias),
+      ptyFactory: pty.factory,
+    })
+    const ws = fakeSocket(root, 'project')
+
+    await service.routes(auth()).open(ws)
+
+    const canonicalPath = await realpath(path.join(root, 'project'))
+    expect(ws.closed).toBe(false)
+    expect(pty.spawns).toEqual([expect.objectContaining({ cwd: canonicalPath })])
+    expect(ws.messages[0]).toMatchObject({ type: 'ready', cwd: canonicalPath })
+  })
+
+  it('refuses a registered checkout replaced by a symlink outside the real workspace root', async () => {
+    const root = await fixtureRoot()
+    const outside = await fixtureRoot()
+    await rm(path.join(root, 'project'), { recursive: true })
+    await symlink(outside, path.join(root, 'project'), 'dir')
+    const pty = createFakePtyFactory()
+    const service = testService(root, { ptyFactory: pty.factory })
+    const ws = fakeSocket(root, 'project')
+
+    await service.routes(auth()).open(ws)
+
+    expect(ws.closed).toBe(true)
+    expect(pty.spawns).toEqual([])
   })
 
   it('falls back from bash to sh when no user shell is available', async () => {
@@ -248,6 +283,7 @@ function testService(
     beforeWorktreeResolution?: Promise<void>
     detachTtlMs?: number
     env?: NodeJS.ProcessEnv
+    paths?: WorkspacePaths
     ptyFactory?: TerminalPtyFactory
   } = {},
 ) {

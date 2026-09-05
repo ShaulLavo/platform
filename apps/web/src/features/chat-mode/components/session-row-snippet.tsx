@@ -7,7 +7,7 @@ import { useSessionSearchStore } from '@/features/chat-mode/state/session-search
  * renders as a row the user cannot explain.
  *
  * The row subscribes to its own match rather than being handed one, so a search
- * does not have to be sessioned through the group that only forwards it.
+ * does not have to be passed through the group that only forwards it.
  */
 export function SessionRowSnippet({ sessionKey }: { readonly sessionKey: string }) {
   const match = useSessionSearchStore((state) => state.matchBySessionKey[sessionKey])

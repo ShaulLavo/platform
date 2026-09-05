@@ -9,7 +9,6 @@ import { environmentClientFor } from '@/lib/client'
 import { confirmedEnvironmentId, confirmedEnvironmentOrigin } from '@/lib/environments/state/domain'
 import { unwrapEdenResponse } from '@/lib/eden-events'
 import type { EnvironmentId } from '@workspace/contracts'
-import { createClientInvariantError } from '@/lib/structured-errors'
 import type { ChatTransport } from '@/features/chat/transport/chat-transport'
 import { resetSessionEarlierPageStore } from '@/features/chat/state/session-earlier-page-store'
 
@@ -35,14 +34,6 @@ export function closeChatTransportsForEnvironmentSwitch() {
   activeTransports.clear()
   projectionOrigin = null
   resetSessionEarlierPageStore()
-}
-
-export function activeChatTransportForEnvironment(environmentId: EnvironmentId): ChatTransport {
-  const transport = [...activeTransports].find(
-    (candidate) => candidate.environmentId === environmentId && !candidate.closed,
-  )
-  if (transport) return transport
-  throw createClientInvariantError('The session machine has no active connection.')
 }
 
 export async function dispatchCommandForEnvironment(

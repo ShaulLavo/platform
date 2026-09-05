@@ -88,7 +88,7 @@ export function useAddressProjection() {
     const project = () => {
       if (addressRootClaimed()) return
       const catalog = addressEnvironments(useEnvironmentsStore.getState().entries)
-      if (parseAddress(window.location.href, catalog).rejectedEnvironment) return
+      if (parseAddress(window.location.href, catalog).rejectedEnvironment !== null) return
       projection.project(
         addressFromSnapshot(snapshotFromStore(storeApi, uiStoreApi, searchStoreApi, passthrough)),
       )

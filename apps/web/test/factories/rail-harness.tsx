@@ -10,6 +10,7 @@ import {
 } from '@workspace/contracts'
 import * as v from 'valibot'
 import { onTestFinished } from 'vitest'
+import { Profiler, type ProfilerOnRenderCallback } from 'react'
 import {
   ChatModeSessionContext,
   type ChatModeSession,
@@ -43,6 +44,7 @@ import { unwrapEdenResponse } from '@/lib/eden-events'
 import { createApplicationRuntime } from '@/state/application-runtime'
 import { readWorkspaceCache } from '@/features/workspace/state/cache'
 import { TestEditorStateProvider } from './editor-state-provider'
+import { inProcessOrchestrationSocketFactory } from './in-process-orchestration-socket'
 import { renderWithProviders } from '../render'
 import type { TestServer } from '../server'
 
@@ -133,7 +135,9 @@ export async function createRailHarness(
     },
   })
   setSessionProjectOpener(application.openEnvironmentWorkspaceRoot)
-  const transport = createChatTransport(origin)
+  const transport = createChatTransport(origin, {
+    createSocket: inProcessOrchestrationSocketFactory(server),
+  })
   const context: ChatModeSession = {
     activeSession: { status: 'ready', sessionId: sessionIds[0]! },
     addProject: () => {},
@@ -173,6 +177,7 @@ export async function createRailHarness(
 export function renderRailHarness(
   harness: Awaited<ReturnType<typeof createRailHarness>>,
   header = false,
+  onRender: ProfilerOnRenderCallback = () => {},
 ) {
   const model = sessionRailModel({ environments: currentRailEnvironments() })
   const row = model.sessions.find((session) => session.id === harness.sessionIds[0]) ?? null
@@ -187,7 +192,9 @@ export function renderRailHarness(
               session={row}
             />
           ) : (
-            <SessionRail />
+            <Profiler id='rail' onRender={onRender}>
+              <SessionRail />
+            </Profiler>
           )}
           <SessionDeleteDialog />
           <ProjectDeleteDialog />

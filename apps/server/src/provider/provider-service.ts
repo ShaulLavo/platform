@@ -58,17 +58,6 @@ export type ProviderServiceOptions = {
   sessionDirectory?: ProviderSessionDirectory
 }
 
-export type ProviderStartRuntimeInput = {
-  providerInstanceId: ProviderInstanceId
-  providerBindingHandle?: string | null
-  providerResumeCursor?: unknown | null
-  runtimeMode: RuntimeMode
-  runtimePayload: ProviderRuntimeStartPayload
-  runtimeEpoch: string
-  resumeExisting?: boolean
-  sessionId: SessionId
-}
-
 export type ProviderEnsureRuntimeInput = {
   providerInstanceId: ProviderInstanceId
   runtimeMode: RuntimeMode
@@ -162,41 +151,6 @@ export class ProviderService {
       pendingLaunchCount: pendingLaunches.length,
       timedOutLaunchCount: pendingLaunches.filter((result) => result.status === 'rejected').length,
     })
-  }
-
-  async startRuntime(input: ProviderStartRuntimeInput) {
-    return this.trackLaunch(input, () => this.startRuntimeOperation(input))
-  }
-
-  private async startRuntimeOperation(input: ProviderStartRuntimeInput) {
-    recordChatPipelineInfo('chat.pipeline.provider_service.start_session.start', {
-      providerInstanceId: input.providerInstanceId,
-      runtimeMode: input.runtimeMode,
-      sessionId: input.sessionId,
-    })
-    const adapter = this.adapterRegistry.getByInstance(input.providerInstanceId)
-    this.recordLaunch(input, adapter)
-    const session = await adapter.startRuntime(
-      providerRuntimeStartInput(input, input.runtimePayload),
-    )
-    this.requireRunning()
-    const binding = this.sessionDirectory.upsert({
-      adapterKey: adapter.adapterKey,
-      providerDriverKind: adapter.driverKind,
-      providerInstanceId: input.providerInstanceId,
-      providerBindingHandle: input.providerBindingHandle ?? session.providerBindingHandle,
-      providerResumeCursor: session.providerResumeCursor ?? input.providerResumeCursor ?? null,
-      runtimeMode: input.runtimeMode,
-      runtimePayload: input.runtimePayload,
-      runtimeEpoch: input.runtimeEpoch,
-      providerConversationMarker: session.providerConversationMarker ?? null,
-      sessionId: input.sessionId,
-    })
-    recordChatPipelineInfo('chat.pipeline.provider_service.start_session.complete', {
-      ...providerBindingSummary(binding),
-    })
-
-    return binding
   }
 
   async ensureRuntime(input: ProviderEnsureRuntimeInput): Promise<ProviderEnsureRuntimeResult> {
@@ -621,7 +575,7 @@ export class ProviderService {
   }
 
   private trackLaunch<T>(
-    input: ProviderStartRuntimeInput | ProviderEnsureRuntimeInput,
+    input: ProviderEnsureRuntimeInput,
     operation: () => Promise<T>,
   ): Promise<T> {
     this.requireRunning()
@@ -673,7 +627,7 @@ export class ProviderService {
   }
 
   private recordLaunch(
-    input: ProviderStartRuntimeInput | ProviderEnsureRuntimeInput,
+    input: ProviderEnsureRuntimeInput,
     adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>,
   ) {
     const existing = this.sessionDirectory.getBinding(input.sessionId)
@@ -921,7 +875,7 @@ function bindingModelChanged(
 }
 
 function providerRuntimeStartInput(
-  input: ProviderStartRuntimeInput | ProviderEnsureRuntimeInput,
+  input: ProviderEnsureRuntimeInput,
   payload: ProviderRuntimeStartPayload,
   reusableBinding?: ProviderRuntimeBindingWithMetadata | null,
 ): ProviderRuntimeStartInput {
@@ -930,18 +884,12 @@ function providerRuntimeStartInput(
     interactionMode: payload.interactionMode,
     modelSelection: payload.modelSelection,
     providerInstanceId: input.providerInstanceId,
-    providerResumeCursor: reusableBinding?.providerResumeCursor ?? startInputResumeCursor(input),
+    providerResumeCursor: reusableBinding?.providerResumeCursor ?? null,
     runtimeMode: input.runtimeMode,
     sessionId: input.sessionId,
     runtimeEpoch: input.runtimeEpoch,
     resumeExisting: input.resumeExisting || Boolean(reusableBinding?.providerBindingHandle),
   }
-}
-
-function startInputResumeCursor(input: ProviderStartRuntimeInput | ProviderEnsureRuntimeInput) {
-  if ('providerResumeCursor' in input) return input.providerResumeCursor ?? null
-
-  return null
 }
 
 function bindingUpdateFromRuntimeEvent(event: ProviderRuntimeEvent) {

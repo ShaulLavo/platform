@@ -1,17 +1,7 @@
-import { stablePathHash } from '@/lib/stable-path-hash'
+import { stablePathHash } from '@/features/address/utils/path-hash'
 import { normalizeWorkspaceRoot, workspacePathLeaf } from '@/features/workspace/utils/path'
 
-/**
- * A workspace is named in an address by a slug, never by a `ProjectId` and never by an
- * absolute path. `ProjectId` is a one-way hash and an absolute path is machine-private;
- * the slug is the leaf directory name, which is what the user already calls the project
- * and what the switcher already shows them.
- *
- * Slugs are only as stable as the set of remembered roots — opening a second checkout
- * named `platform` qualifies both. That instability is why `resolveWorkspaceSlug` falls
- * back to a leaf match: a link written before the collision keeps resolving, and only
- * becomes ambiguous when it genuinely is.
- */
+// Slugs name checkouts without exposing their full paths; colliding names gain a qualifier.
 
 /**
  * `/~-` — a remembered app with no folder open. `-` IS a legal directory name, so this

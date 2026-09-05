@@ -16,6 +16,7 @@ import type { ChatProjectionSlice, ChatSession, ProjectionSession } from './chat
 const EMPTY_MESSAGES: ChatSession['messages'] = []
 const EMPTY_ACTIVITIES: OrchestrationSessionActivity[] = []
 const EMPTY_PROJECTS: OrchestrationProjectShell[] = []
+const EMPTY_WORKTREES: OrchestrationWorktreeShell[] = []
 const EMPTY_PROPOSED_PLANS: ChatSession['proposedPlans'] = []
 const EMPTY_SESSION_LIST: ChatSessionListProjection[] = []
 const EMPTY_TURN_DIFF_SUMMARIES: ChatSession['turnDiffSummaries'] = []
@@ -482,7 +483,7 @@ function collectByIds<TKey extends string, TValue>(
 export function selectChatWorktrees(
   state: ChatProjectionSlice,
 ): readonly OrchestrationWorktreeShell[] {
-  return state.worktreeIds.flatMap((id) => state.worktreeById[id] ?? [])
+  return collectByIds(state.worktreeIds, state.worktreeById, EMPTY_WORKTREES)
 }
 
 export function selectCurrentWorktree(

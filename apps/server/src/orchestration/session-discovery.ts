@@ -13,6 +13,8 @@ import { GitWorktreeService } from '../git/worktrees'
 import { DEFAULT_CLAUDE_MODEL } from '../provider/adapters/utils/claude-models'
 import type { ProviderService } from '../provider/provider-service'
 import type { ProviderDiscoveredSession } from '../provider/types'
+import { errorSummary } from '../observability/logging'
+import { isEvlogError } from '../observability/structured-errors'
 import { recordChatPipelineInfo, recordChatPipelineWarning } from './orchestration-logging'
 import type { OrchestrationReadModel, OrchestrationProjectedWorktree } from './read-model'
 import { resolveRepositoryIdentity, type RegistrationBoundary } from './registration'
@@ -20,12 +22,26 @@ import { internalCommandKey, repositoryKey, worktreeIdForCheckout } from './util
 
 const DISCOVERY_PAGE_SIZE = 50
 const DISCOVERY_INTERVAL_MS = 60_000
+const DISCOVERY_FAILURE_EXAMPLE_LIMIT = 10
+
+type DiscoveryFailureContext = {
+  providerInstanceId: ProviderInstanceId
+  cwd: string | null
+} & (
+  | { stage: 'provider-scan'; offset: number }
+  | { stage: 'reconciliation'; sessionId: ProviderDiscoveredSession['sessionId'] }
+)
+
+type DiscoveryFailure = DiscoveryFailureContext & {
+  error: ReturnType<typeof discoveryErrorDetails>
+}
 
 export type DiscoveryScanResult = {
   scanned: number
   imported: number
   refreshed: number
   skipped: Record<string, number>
+  failures: DiscoveryFailure[]
 }
 
 type DiscoveryOptions = {
@@ -79,7 +95,13 @@ export class SessionDiscoveryReconciler {
 
   private async runScan(): Promise<DiscoveryScanResult> {
     const started = performance.now()
-    const result: DiscoveryScanResult = { scanned: 0, imported: 0, refreshed: 0, skipped: {} }
+    const result: DiscoveryScanResult = {
+      scanned: 0,
+      imported: 0,
+      refreshed: 0,
+      skipped: {},
+      failures: [],
+    }
     const roots = [...this.options.getReadModel().worktrees.values()].filter(
       (worktree) => !worktree.retiredAt,
     )
@@ -102,11 +124,7 @@ export class SessionDiscoveryReconciler {
   ) {
     for (const root of roots) {
       if (this.closed) return
-      try {
-        await this.scanDirectory(providerInstanceId, root.canonicalPath, seen, result)
-      } catch {
-        skipped(result, 'provider-scan-failed')
-      }
+      await this.scanDirectory(providerInstanceId, root.canonicalPath, seen, result)
     }
   }
 
@@ -117,14 +135,29 @@ export class SessionDiscoveryReconciler {
     result: DiscoveryScanResult,
   ) {
     for (let offset = 0; !this.closed; offset += DISCOVERY_PAGE_SIZE) {
-      const rows = await this.options.providerService.discoverSessions({
+      const rows = await this.discoverPage(providerInstanceId, cwd, offset, result)
+      if (!rows) return
+      await this.importPage(providerInstanceId, rows, seen, result)
+      if (rows.length < DISCOVERY_PAGE_SIZE) return
+    }
+  }
+
+  private async discoverPage(
+    providerInstanceId: ProviderInstanceId,
+    cwd: string,
+    offset: number,
+    result: DiscoveryScanResult,
+  ) {
+    try {
+      return await this.options.providerService.discoverSessions({
         providerInstanceId,
         cwd,
         limit: DISCOVERY_PAGE_SIZE,
         offset,
       })
-      await this.importPage(providerInstanceId, rows, seen, result)
-      if (rows.length < DISCOVERY_PAGE_SIZE) return
+    } catch (error) {
+      recordScanFailure(result, { stage: 'provider-scan', providerInstanceId, cwd, offset }, error)
+      return null
     }
   }
 
@@ -161,8 +194,12 @@ export class SessionDiscoveryReconciler {
       const match = await this.resolveCheckout(row.cwd, result)
       if (!match) return
       await this.dispatchSession(providerInstanceId, row, match, result)
-    } catch {
-      skipped(result, 'reconciliation-refused')
+    } catch (error) {
+      recordScanFailure(
+        result,
+        { stage: 'reconciliation', providerInstanceId, cwd: row.cwd, sessionId: row.sessionId },
+        error,
+      )
     }
   }
 
@@ -324,6 +361,27 @@ export class SessionDiscoveryReconciler {
 function skipped(result: DiscoveryScanResult, reason: string): null {
   result.skipped[reason] = (result.skipped[reason] ?? 0) + 1
   return null
+}
+
+function recordScanFailure(
+  result: DiscoveryScanResult,
+  context: DiscoveryFailureContext,
+  error: unknown,
+) {
+  skipped(
+    result,
+    context.stage === 'provider-scan' ? 'provider-scan-failed' : 'reconciliation-refused',
+  )
+  if (result.failures.length >= DISCOVERY_FAILURE_EXAMPLE_LIMIT) return
+  result.failures.push({ ...context, error: discoveryErrorDetails(error) })
+}
+
+function discoveryErrorDetails(error: unknown) {
+  return {
+    ...errorSummary(error),
+    ...(isEvlogError(error) ? { internal: error.internal } : {}),
+    ...(error instanceof Error && error.cause ? { cause: errorSummary(error.cause) } : {}),
+  }
 }
 
 function commandId(kind: string, ...parts: readonly (string | number)[]) {

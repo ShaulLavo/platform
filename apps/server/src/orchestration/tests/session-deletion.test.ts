@@ -3,15 +3,82 @@ import path from 'node:path'
 import { afterEach, expect, test } from 'vitest'
 import {
   createOrchestrationFixture,
+  executeGit,
   FIXTURE_SESSION_ID,
   mockRuntime,
   sessionFrom,
 } from '../../../test/factories/orchestration'
 import { MockProviderAdapter } from '../../provider/adapters/mock'
+import { GitWorktreeService } from '../../git/worktrees'
 
 const fixtures: Awaited<ReturnType<typeof createOrchestrationFixture>>[] = []
 afterEach(async () => {
   await Promise.all(fixtures.splice(0).map((fixture) => fixture.close()))
+})
+
+test('deleting one session preserves its real Git worktree and the other session sharing it', async () => {
+  const fixture = await createOrchestrationFixture()
+  fixtures.push(fixture)
+  await executeGit(fixture.checkout, 'init', '-b', 'main')
+  await writeFile(path.join(fixture.checkout, 'keep.txt'), 'shared checkout file')
+  await executeGit(fixture.checkout, 'add', '.')
+  await executeGit(
+    fixture.checkout,
+    '-c',
+    'user.name=Test',
+    '-c',
+    'user.email=test@example.invalid',
+    'commit',
+    '-m',
+    'initial',
+  )
+  const adapter = new MockProviderAdapter()
+  await fixture.restart(mockRuntime(adapter))
+  await fixture.register()
+  const worktrees = new GitWorktreeService(fixture.registration.git)
+  const { worktree } = await worktrees.create({
+    path: fixture.checkout,
+    sessionId: FIXTURE_SESSION_ID,
+  })
+  const registration = await fixture.register(worktree.absolutePath)
+  if (!registration.result) throw new TypeError('Missing registration')
+  const survivorId = '974a8f3c-3bc1-44d1-bc82-da59e3dc6cdf'
+  await fixture.createSession(registration.result.worktreeId)
+  await fixture.createSession(registration.result.worktreeId, survivorId)
+  await fixture.startTurn()
+  await fixture.startTurn(survivorId, 'survivor-first')
+  await fixture.engine.providerRuntimeIdle()
+
+  await fixture.command({
+    type: 'session.delete',
+    commandId: 'delete-one',
+    sessionId: FIXTURE_SESSION_ID,
+  })
+  await fixture.engine.providerRuntimeIdle()
+
+  expect(await readFile(path.join(worktree.absolutePath, 'keep.txt'), 'utf8')).toBe(
+    'shared checkout file',
+  )
+  expect(await executeGit(worktree.absolutePath, 'status', '--porcelain')).toBe('')
+  expect((await worktrees.list(fixture.checkout)).map((entry) => entry.absolutePath)).toContain(
+    worktree.absolutePath,
+  )
+  expect((await sessionFrom(fixture)).deletedAt).not.toBeNull()
+  expect(await sessionFrom(fixture, survivorId)).toMatchObject({
+    deletedAt: null,
+    worktreeId: registration.result.worktreeId,
+  })
+  expect(adapter.interruptedSessions).toEqual([FIXTURE_SESSION_ID])
+  await fixture.startTurn(survivorId, 'survivor-after-delete')
+  await fixture.engine.providerRuntimeIdle()
+  expect(adapter.startedTurns.at(-1)).toMatchObject({
+    sessionId: survivorId,
+    cwd: worktree.absolutePath,
+  })
+  expect(
+    (await fixture.engine.readModelSnapshot()).worktrees.get(registration.result.worktreeId)
+      ?.retiredAt,
+  ).toBeNull()
 })
 
 test('forced deletion stops the provider and retires ownership while preserving checkout files', async () => {

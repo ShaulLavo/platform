@@ -26,10 +26,10 @@ export async function discoveryFixture() {
     registration,
     engine,
     getReadModel: () => persistence.snapshots.fullReadModel(),
-    register: async (workspaceRoot = main) =>
+    register: async (workspaceRoot = main, commandId = `registration:${workspaceRoot}`) =>
       engine.dispatchClientCommand({
         type: 'project.create',
-        commandId: `registration:${workspaceRoot}`,
+        commandId,
         title: 'Discovery fixture',
         workspaceRoot,
       }),

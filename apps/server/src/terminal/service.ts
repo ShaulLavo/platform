@@ -215,10 +215,12 @@ export class TerminalService {
 
   private resolveRoot(root: string) {
     try {
-      if (!path.isAbsolute(root)) return this.paths.resolve(root)
-      this.paths.assertInside(root)
-      this.paths.assertRealInside(realpathSync(root))
-      return { absolutePath: root, relativePath: this.paths.toRelative(root) }
+      const canonicalPath = realpathSync(root)
+      this.paths.assertRealInside(canonicalPath)
+      return {
+        absolutePath: canonicalPath,
+        relativePath: this.paths.toRealRelative(canonicalPath),
+      }
     } catch (error) {
       if (isFsError(error)) return null
 

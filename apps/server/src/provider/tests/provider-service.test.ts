@@ -118,50 +118,47 @@ describe('ProviderService', () => {
     }
   })
 
-  it.each(['startRuntime', 'ensureRuntime'] as const)(
-    'fences cleanup behind a pending %s without treating it as no binding',
-    async (method) => {
-      const fixture = createFixture()
-      const adapter = new MockProviderAdapter({ operationTimeoutMs: 5 })
-      const release = Promise.withResolvers<void>()
-      const originalStart = adapter.startRuntime.bind(adapter)
-      adapter.startRuntime = async (input) => {
-        await release.promise
-        return originalStart(input)
-      }
-      const service = new ProviderService({
-        adapterRegistry: new ProviderAdapterRegistry([adapter]),
-        sessionDirectory: new ProviderSessionDirectory(fixture.database),
+  it('fences cleanup behind a pending runtime launch without treating it as no binding', async () => {
+    const fixture = createFixture()
+    const adapter = new MockProviderAdapter({ operationTimeoutMs: 5 })
+    const release = Promise.withResolvers<void>()
+    const originalStart = adapter.startRuntime.bind(adapter)
+    adapter.startRuntime = async (input) => {
+      await release.promise
+      return originalStart(input)
+    }
+    const service = new ProviderService({
+      adapterRegistry: new ProviderAdapterRegistry([adapter]),
+      sessionDirectory: new ProviderSessionDirectory(fixture.database),
+    })
+    const turn = providerTurnInput()
+    const launch = service.ensureRuntime({
+      providerInstanceId: turn.providerInstanceId,
+      runtimeMode: turn.runtimeMode,
+      runtimePayload: providerSessionPayload(turn),
+      runtimeEpoch: turn.runtimeEpoch,
+      sessionId: turn.sessionId,
+    })
+    try {
+      expect(await service.hasActiveRuntimeForInstance(turn.providerInstanceId)).toBe(true)
+      await expect(service.hasRuntime({ sessionId: turn.sessionId })).rejects.toMatchObject({
+        code: 'provider.OPERATION_TIMED_OUT',
       })
-      const turn = providerTurnInput()
-      const launch = service[method]({
-        providerInstanceId: turn.providerInstanceId,
-        runtimeMode: turn.runtimeMode,
-        runtimePayload: providerSessionPayload(turn),
-        runtimeEpoch: turn.runtimeEpoch,
-        sessionId: turn.sessionId,
+      await expect(service.stopRuntime({ sessionId: turn.sessionId })).rejects.toMatchObject({
+        code: 'provider.OPERATION_TIMED_OUT',
       })
-      try {
-        expect(await service.hasActiveRuntimeForInstance(turn.providerInstanceId)).toBe(true)
-        await expect(service.hasRuntime({ sessionId: turn.sessionId })).rejects.toMatchObject({
-          code: 'provider.OPERATION_TIMED_OUT',
-        })
-        await expect(service.stopRuntime({ sessionId: turn.sessionId })).rejects.toMatchObject({
-          code: 'provider.OPERATION_TIMED_OUT',
-        })
-        release.resolve()
-        await launch
-        expect(await service.hasRuntime({ sessionId: turn.sessionId })).toBe(true)
-        await service.stopRuntime({ sessionId: turn.sessionId })
-        expect(await adapter.hasRuntime({ sessionId: turn.sessionId })).toBe(false)
-      } finally {
-        release.resolve()
-        await launch
-        await service.shutdown()
-        fixture.close()
-      }
-    },
-  )
+      release.resolve()
+      await launch
+      expect(await service.hasRuntime({ sessionId: turn.sessionId })).toBe(true)
+      await service.stopRuntime({ sessionId: turn.sessionId })
+      expect(await adapter.hasRuntime({ sessionId: turn.sessionId })).toBe(false)
+    } finally {
+      release.resolve()
+      await launch
+      await service.shutdown()
+      fixture.close()
+    }
+  })
 
   it('reuses compatible session bindings and resets incompatible ones', async () => {
     const fixture = createFixture()
@@ -358,7 +355,7 @@ describe('ProviderService', () => {
       fanOutEvents.push(event)
     })
 
-    await service.startRuntime({
+    await service.ensureRuntime({
       providerInstanceId: input.providerInstanceId,
       runtimeMode: input.runtimeMode,
       runtimePayload: providerSessionPayload(input),

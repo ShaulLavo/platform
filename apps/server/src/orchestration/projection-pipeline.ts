@@ -1484,12 +1484,9 @@ const PROVIDER_START_STATE = {
 } as const
 
 function failureKind(event: OrchestrationEvent) {
-  if (event.type === 'session.runtime-set') return runtimeFailureKind(event.payload.runtime.status)
-  if (
-    event.type === 'session.runtime-recovered' ||
-    event.type === 'session.turn-interrupt-requested'
-  )
-    return 'interruption'
+  if (event.type === 'session.runtime-set')
+    return event.payload.runtime.status === 'error' ? 'failure' : null
+  if (event.type === 'session.runtime-recovered') return 'interruption'
   if (event.type === 'session.turn-diff-completed' && event.payload.status === 'error')
     return 'failure'
   if (event.type !== 'session.activity-appended') return null
@@ -1497,10 +1494,4 @@ function failureKind(event: OrchestrationEvent) {
     event.payload.activity.kind === 'runtime.error'
     ? 'failure'
     : null
-}
-
-function runtimeFailureKind(status: SessionRuntimeStatus) {
-  if (status === 'error') return 'failure'
-  if (status === 'interrupted') return 'interruption'
-  return null
 }

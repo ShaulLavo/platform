@@ -19,14 +19,17 @@ import { ProviderAdapterRegistry } from '../../src/provider/provider-adapter-reg
 export const FIXTURE_SESSION_ID = '974a8f3c-3bc1-44d1-bc82-da59e3dc6cde'
 export const FIXTURE_MODEL = { providerInstanceId: 'codex', model: 'mock-model' }
 
-export async function createOrchestrationFixture() {
+export async function createOrchestrationFixture(options: { repositoryCacheTtlMs?: number } = {}) {
   const root = await mkdtemp(path.join(tmpdir(), 'platform-domain-'))
   const checkout = path.join(root, 'checkout')
   await mkdir(checkout)
   const sqlite = new Database(path.join(root, 'metadata.sqlite'), { create: true })
   const database = drizzle({ client: sqlite, schema })
   const paths = createWorkspacePaths(root)
-  const git = new GitService(paths, { maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES })
+  const git = new GitService(paths, {
+    maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES,
+    repositoryCacheTtlMs: options.repositoryCacheTtlMs,
+  })
   const registration = { paths, git }
   let nextCommand = 0
   let engine = new OrchestrationEngine(database, {

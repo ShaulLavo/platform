@@ -107,7 +107,6 @@ export type ChatProjectionSlice = {
   sessionHasEarlierById: Record<SessionId, boolean>
   sessionDetailSequenceById: Record<SessionId, number>
   sessionIds: SessionId[]
-  sessionIdsByWorktreeId: Record<WorktreeId, SessionId[]>
   turnDiffIdsBySessionId: Record<SessionId, TurnId[]>
   turnDiffSummaryBySessionId: Record<SessionId, Record<TurnId, ChatTurnDiffSummary>>
 }
@@ -162,7 +161,6 @@ export function createInitialChatProjectionSlice(): ChatProjectionSlice {
     sessionDetailSequenceById: {},
     sessionHasEarlierById: {},
     sessionIds: [],
-    sessionIdsByWorktreeId: {},
     turnDiffIdsBySessionId: {},
     turnDiffSummaryBySessionId: {},
   }

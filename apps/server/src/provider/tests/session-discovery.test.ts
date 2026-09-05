@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import * as v from 'valibot'
 import { sessionIdSchema } from '@workspace/contracts'
-import { discoverClaudeSessions } from '../claude-discovery'
+import { discoverClaudeSessions, runClaudeDiscovery } from '../claude-discovery'
+import { crashingDiscoveryProcess } from '../../../test/factories/discovery-process'
 import { claudeTerminalResumeArgv } from '../utils/claude-terminal-resume'
 
 const sessionId = v.parse(sessionIdSchema, 'a6035591-a607-4a70-bc57-9b59f595b664')
@@ -15,6 +16,20 @@ const metadata = {
 }
 
 describe('Claude discovery boundary', () => {
+  it('retains process exit status and stderr when the metadata child crashes', async () => {
+    await expect(
+      runClaudeDiscovery({ request, env: {} }, crashingDiscoveryProcess),
+    ).rejects.toMatchObject({
+      code: 'provider.DISCOVERY_FAILED',
+      internal: {
+        exitCode: 37,
+        timedOut: false,
+        timeoutMs: 8_000,
+        stderr: 'discovery fixture crash\n',
+      },
+    })
+  })
+
   it('isolates instance environments and forwards bounded paging without mutating process state', async () => {
     const original = process.env.CLAUDE_CONFIG_DIR
     const received: string[] = []

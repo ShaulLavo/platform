@@ -20,6 +20,45 @@ afterEach(() => {
 })
 
 describe('settle guards', () => {
+  it.each(['queued', 'claimed', 'runtime-live'] as const)(
+    'refuses to archive a session with %s work',
+    async (state) => {
+      const { database, engine } = await createEngineWithSession()
+      const sessionId = '00000000-0000-4000-8000-000000000001'
+      if (state === 'runtime-live') await engine.dispatch(sessionSetCommand('running'))
+      if (state !== 'runtime-live') await engine.dispatch(turnStartCommand())
+      if (state === 'claimed') {
+        const turn = (await engine.readModelSnapshot()).sessions.get(sessionId)?.latestTurn
+        if (!turn) throw new TypeError('Missing queued turn')
+        await engine.dispatch(
+          command({
+            type: 'session.provider-start.claim',
+            sessionId,
+            turnId: turn.turnId,
+            observedSequence: turn.providerStartSequence,
+            generation: 1,
+            runtimeEpoch: 'epoch-claimed',
+            createdAt: '2026-09-05T12:00:00.000Z',
+          }),
+        )
+      }
+      const before = await engine.shellSnapshot()
+
+      await expect(
+        engine.dispatch(command({ sessionId, type: 'session.archive' })),
+      ).rejects.toMatchObject({
+        code:
+          state === 'runtime-live'
+            ? 'orchestration.SESSION_RUNTIME_ACTIVE'
+            : 'orchestration.SESSION_QUEUED_TURN_START',
+        status: 409,
+      })
+
+      expect(sessionRow(database).archivedAt).toBeNull()
+      expect(await engine.shellSnapshot()).toEqual(before)
+    },
+  )
+
   it('refuses to settle a session whose session is alive', async () => {
     const { engine } = await createEngineWithSession()
     await engine.dispatch(sessionSetCommand('running'))

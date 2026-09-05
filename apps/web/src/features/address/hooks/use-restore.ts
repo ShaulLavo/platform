@@ -178,7 +178,7 @@ async function applyCurrentAddress(
 ): Promise<AddressRestoreResult> {
   const environments = addressEnvironments(useEnvironmentsStore.getState().entries)
   const address = parseAddress(window.location.href, environments)
-  if (address.rejectedEnvironment) {
+  if (address.rejectedEnvironment !== null) {
     trace.rejectedTokens.push('environment id')
     return report({ status: 'unavailable', reason: 'unknown environment' }, trace)
   }

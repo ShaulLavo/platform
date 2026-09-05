@@ -1,7 +1,10 @@
 import type { SessionAttentionState } from '@workspace/contracts'
 import { OrbitLoader } from '@workspace/ui/components/orbit-loader'
 import { cn } from '@workspace/ui/lib/utils'
-import { sessionStatusDotClass, sessionStatusLabel } from '@/features/chat/utils/session-status'
+import {
+  sessionStatusDotClass,
+  sessionStatusLabel,
+} from '@/features/chat-mode/utils/attention-state'
 
 export function SessionAttentionIndicator({ status }: { readonly status: SessionAttentionState }) {
   const label = sessionStatusLabel(status)

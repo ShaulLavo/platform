@@ -44,6 +44,7 @@ test('an unclaimed queued prompt is sent once after restart with claim committed
   await fixture.createSession(registration.result.worktreeId)
   await fixture.startTurn()
   const observed: string[] = []
+  const runtimeStartsAtClaim: number[] = []
   const adapter = new MockProviderAdapter({
     beforeComplete: async () => {
       observed.push((await sessionFrom(fixture)).latestTurn?.providerStartState ?? 'missing')
@@ -54,10 +55,11 @@ test('an unclaimed queued prompt is sent once after restart with claim committed
     name: 'claim-observer',
     handleEvents: (events) => {
       if (!events.some((event) => event.type === 'session.provider-start-claimed')) return
-      expect(adapter.startedSessions).toHaveLength(0)
+      runtimeStartsAtClaim.push(adapter.startedSessions.length)
     },
   })
   await engine.providerRuntimeIdle()
+  expect(runtimeStartsAtClaim).toEqual([0])
   expect(adapter.startedTurns).toHaveLength(1)
   expect(adapter.startedTurns[0]).toMatchObject({
     sessionId: FIXTURE_SESSION_ID,

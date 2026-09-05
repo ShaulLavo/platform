@@ -496,7 +496,6 @@ export {
   sessionBlobCleanupStateSchema,
   sessionDeletionStateSchema,
   sessionAttentionEntries,
-  orchestrationReadinessSchema,
   type IsoDateTime,
   type RepositoryIdentity,
   type RepositoryKind,

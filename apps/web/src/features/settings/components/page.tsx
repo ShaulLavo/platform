@@ -34,7 +34,7 @@ import { useFocusTarget } from '@/lib/focus/hooks/use-target'
 /**
  * The settings tab: one document, two views.
  *
- * `tabId` and the editor props are sessioned through because the JSON view is a
+ * `tabId` and the editor props are passed through because the JSON view is a
  * real editor bound to this tab — not because the form needs them.
  */
 export function SettingsPage({

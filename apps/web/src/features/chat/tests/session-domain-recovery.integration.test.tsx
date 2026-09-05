@@ -12,6 +12,11 @@ import {
   chatProjectionCacheFromState,
   hydrateChatProjectionState,
 } from '@/features/chat/state/chat-projection-cache'
+import {
+  selectChatProjects,
+  selectChatSessions,
+  selectChatWorktrees,
+} from '@/features/chat/state/chat-projection-selectors'
 import { sessionRailModel } from '@/features/chat-mode/utils/session-rail-model'
 import { fetchOrchestrationShellSnapshotHttp } from '@/features/chat/transport/orchestration-http-snapshots'
 import { expect, test } from '../../../../test/fixtures'
@@ -226,13 +231,17 @@ test('restart catches up before readiness, imports terminal metadata, and conver
           environmentId: fixture.descriptor.environmentId,
           isPrimary: true,
           label: 'Desktop',
-          slice: sliceA,
+          projects: selectChatProjects(sliceA),
+          worktrees: selectChatWorktrees(sliceA),
+          sessions: selectChatSessions(sliceA),
         },
         {
           environmentId: descriptorB.environmentId,
           isPrimary: false,
           label: 'Laptop',
-          slice: sliceB,
+          projects: selectChatProjects(sliceB),
+          worktrees: selectChatWorktrees(sliceB),
+          sessions: selectChatSessions(sliceB),
         },
       ],
     })
