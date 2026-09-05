@@ -3,11 +3,10 @@ import { readFileSync, realpathSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { normalizeRegisterableHotkey } from '@tanstack/hotkeys'
-import * as built from '@singapor/core'
-import { activePlatformKeyBindings } from '../src/keymap/active-bindings.ts'
-import { defaultPlatformKeyBindings } from '../src/keymap/default-bindings.ts'
-import { editorCommands } from '../src/keymap/editor-commands.ts'
-import { buildKeymapTrie, trieStep } from '../src/keymap/utils/keymap-trie.ts'
+import { activePlatformKeyBindings } from '@/keymap/active-bindings'
+import { defaultPlatformKeyBindings } from '@/keymap/default-bindings'
+import { editorCommands } from '@/keymap/editor-commands'
+import { buildKeymapTrie, trieStep } from '@/keymap/utils/keymap-trie'
 
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const editorPackage = resolve(
@@ -15,6 +14,9 @@ const editorPackage = resolve(
   '..',
 )
 const editorRoot = resolve(editorPackage, '../..')
+const built = await import(
+  process.argv[2] ? pathToFileURL(resolve(process.argv[2])).href : '@singapor/core'
+)
 const source = await import(pathToFileURL(resolve(editorPackage, 'src/editor/keymap.ts')).href)
 const commandSource = await import(
   pathToFileURL(resolve(editorPackage, 'src/editor/commands.ts')).href
@@ -37,6 +39,8 @@ function editorRows(api, platform) {
     id: layer.id,
     source: layer.source ?? null,
     bindings: layer.bindings.map((binding) => ({
+      ...binding,
+      hotkey: undefined,
       command: binding.command,
       keys: normalizeRegisterableHotkey(binding.hotkey, platform),
       preventDefault: binding.preventDefault ?? null,

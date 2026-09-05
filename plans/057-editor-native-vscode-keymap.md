@@ -8,7 +8,7 @@
 
 ## Status
 
-- **State:** Ready after Plan 056. Revised 2026-09-05 to require standalone Editor chord execution first.
+- **State:** In progress. Dependency pin and binding comparison prepared; see [baseline](057-baseline.md).
 - **Priority:** P2
 - **Effort:** XL
 - **Risk:** High. Shortcut ownership changes can break navigation, text editing, or focus without a type error.

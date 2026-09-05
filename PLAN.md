@@ -126,6 +126,8 @@ embedded Editor matcher, and remove Platform's duplicate engine. Preserve the ex
 bus, target and enablement policy, and terminal handoff.
 
 Follow [`plans/057-editor-native-vscode-keymap.md`](plans/057-editor-native-vscode-keymap.md).
+Baseline work has started; see [`plans/057-baseline.md`](plans/057-baseline.md) for
+the pinned Editor revision, binding comparison, and outstanding verification gates.
 Both repositories must pass their paired verification before this lane is complete.
 
 ## Environments lane (foundation completed 2026-09-05)
