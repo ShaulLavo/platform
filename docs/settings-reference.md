@@ -36,10 +36,11 @@ stays safe to read, share and export.
 
 ## Chat
 
-| Setting                       | Default         | Scope       | What it does                                |
-| ----------------------------- | --------------- | ----------- | ------------------------------------------- |
-| `chat.defaultRuntimeMode`     | `"full-access"` | application | Permission posture a new session starts in. |
-| `chat.defaultInteractionMode` | `"default"`     | application | Whether a new session starts in plan mode.  |
+| Setting                            | Default         | Scope       | What it does                                                                                                                                                 |
+| ---------------------------------- | --------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `chat.keepImportedSessionsUpdated` | `true`          | machine     | Imported chats receive one-way updates from local history until you send their first message in Platform. New chats are only imported when you click Import. |
+| `chat.defaultRuntimeMode`          | `"full-access"` | application | Permission posture a new session starts in.                                                                                                                  |
+| `chat.defaultInteractionMode`      | `"default"`     | application | Whether a new session starts in plan mode.                                                                                                                   |
 
 ## Editor
 

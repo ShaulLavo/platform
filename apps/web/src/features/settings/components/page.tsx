@@ -7,6 +7,7 @@ import { useCallback, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { DiagnosticsBanner } from '@/features/settings/components/diagnostics-banner'
+import { ImportSection } from '@/features/settings/components/import-section'
 import { MalformedBanner } from '@/features/settings/components/malformed-banner'
 import { PageActions } from '@/features/settings/components/page-actions'
 import { PageLoading } from '@/features/settings/components/page-loading'
@@ -206,6 +207,7 @@ export function SettingsPage({
             shown.map(([category, ids]) => (
               <section className='compact:mb-4 mb-6' key={category}>
                 <h2 className='text-foreground mb-1 text-sm font-semibold'>{category}</h2>
+                {ids.includes('chat.keepImportedSessionsUpdated') ? <ImportSection /> : null}
                 {ids.map((id) => (
                   <SettingRow id={id} key={id} snapshot={projection} />
                 ))}

@@ -6,7 +6,7 @@ import { TerminalLeaseController } from './terminal-lease-controller'
 import { GitWorktreeService } from '../git/worktrees'
 import type { TerminalService } from '../terminal/service'
 import { worktreeRuntimeErrors } from './worktree-runtime-errors'
-import type { SessionId, WorktreeId } from '@workspace/contracts'
+import type { ProviderInstanceId, SessionId, WorktreeId } from '@workspace/contracts'
 import * as v from 'valibot'
 import type { ChatAttachment, ChatAttachmentUpload } from '@workspace/contracts'
 import { defaultAttachmentsDir, writeAttachmentFromDataUrl } from '../attachments/store'
@@ -42,6 +42,9 @@ import { ProviderCommandReactor } from './provider-command-reactor'
 import { ProviderRuntimeIngestion, type ProviderRuntimeSource } from './provider-runtime-ingestion'
 import { SessionDeletionReactor } from './session-deletion-reactor'
 import { SessionDiscoveryReconciler } from './session-discovery'
+import { sessionImportErrors } from './import-errors'
+import { importedHistoryMessages, historyRevision } from './utils/import-history'
+import type { ProviderHistoryMessage } from '../provider/types'
 import { resolveSessionOwner } from './session-owner'
 import {
   createDefaultProviderAdapterRegistry,
@@ -68,6 +71,7 @@ import {
 } from './streams'
 
 export type OrchestrationEngineOptions = {
+  keepImportedSessionsUpdated?: () => boolean
   providerService?: ProviderService
   terminalService?: TerminalService
   registration?: RegistrationBoundary
@@ -95,6 +99,7 @@ export class OrchestrationEngine {
   private checkpointReactor: CheckpointReactor | null = null
   private deletionReactor: SessionDeletionReactor | null = null
   private discovery: SessionDiscoveryReconciler | null = null
+  private readonly keepImportedSessionsUpdated: () => boolean
   private providerService: ProviderService | null = null
   private readonly registration: RegistrationBoundary | undefined
   private readonly preparationLanes = new Map<string, Promise<OrchestrationDispatchResult>>()
@@ -111,6 +116,7 @@ export class OrchestrationEngine {
   private readModel: OrchestrationReadModel = createEmptyReadModel()
 
   constructor(database: OrchestrationDatabase, options: OrchestrationEngineOptions = {}) {
+    this.keepImportedSessionsUpdated = options.keepImportedSessionsUpdated ?? (() => false)
     this.attachmentsDir = options.attachmentsDir ?? defaultAttachmentsDir()
     this.database = database
     this.registration = options.registration
@@ -197,7 +203,6 @@ export class OrchestrationEngine {
     const prepared = await this.prepare(command, fingerprint)
     const ingested = await ingestCommandAttachments(prepared, this.attachmentsDir)
     const result = await this.enqueue(ingested.command, ingested.attachmentIngest, fingerprint)
-    if (command.type === 'project.create') void this.discovery?.requestScan()
     return result
   }
 
@@ -272,6 +277,56 @@ export class OrchestrationEngine {
   async shellSnapshot() {
     await this.ready
     return this.snapshotQuery.shellSnapshot()
+  }
+
+  async sessionImportSources() {
+    await this.ready
+    return { sources: this.providerService?.importSources() ?? [] }
+  }
+
+  async importSessions(providerInstanceId: ProviderInstanceId) {
+    await this.ready
+    const sources = this.providerService?.importSources() ?? []
+    if (
+      !this.discovery ||
+      !sources.some((source) => source.providerInstanceId === providerInstanceId)
+    ) {
+      throw sessionImportErrors.UNAVAILABLE()
+    }
+    return this.discovery.scan(providerInstanceId)
+  }
+
+  canImportSessionHistory(sessionId: SessionId) {
+    return !this.eventStore.hasPlatformTurn(sessionId)
+  }
+
+  needsSessionHistory(sessionId: SessionId, sourceUpdatedAt: string) {
+    return this.eventStore.historyImportState(sessionId).sourceUpdatedAt !== sourceUpdatedAt
+  }
+
+  async importSessionHistory(
+    sessionId: SessionId,
+    history: readonly ProviderHistoryMessage[],
+    sourceUpdatedAt: string,
+  ) {
+    const session = this.readModel.sessions.get(sessionId)
+    if (!session || this.eventStore.hasPlatformTurn(sessionId)) return false
+    const messages = importedHistoryMessages(sessionId, session.createdAt, history)
+    const revision = historyRevision(JSON.stringify({ messages, sourceUpdatedAt }))
+    const previous = this.eventStore.historyImportState(sessionId)
+    if (previous.revision === revision) return false
+    await this.enqueue({
+      type: 'session.history.import',
+      commandId: v.parse(
+        commandIdSchema,
+        internalCommandKey('session.history.import', sessionId, revision, previous.sequence),
+      ),
+      sessionId,
+      revision,
+      messages,
+      sourceUpdatedAt,
+    })
+    return true
   }
   async sessionDetailSnapshot(sessionId: string) {
     await this.ready
@@ -355,6 +410,12 @@ export class OrchestrationEngine {
     fingerprint: string,
   ) {
     try {
+      if (
+        command.type === 'session.history.import' &&
+        this.eventStore.hasPlatformTurn(command.sessionId)
+      ) {
+        throw sessionImportErrors.CONTINUED()
+      }
       const pendingEvents = decideOrchestrationCommand(command, this.readModel)
       recordChatPipelineInfo('chat.pipeline.command.decided', {
         ...summary,
@@ -492,6 +553,12 @@ export class OrchestrationEngine {
       registration: this.registration,
       dispatch: (command) => this.enqueue(command),
       getReadModel: () => this.readModel,
+      keepUpdated: this.keepImportedSessionsUpdated,
+      canImportHistory: (sessionId) => !this.eventStore.hasPlatformTurn(sessionId),
+      needsHistory: (sessionId, sourceUpdatedAt) =>
+        this.needsSessionHistory(sessionId, sourceUpdatedAt),
+      importHistory: (sessionId, history, sourceUpdatedAt) =>
+        this.importSessionHistory(sessionId, history, sourceUpdatedAt),
     })
   }
 
