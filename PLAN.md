@@ -176,6 +176,12 @@ Agent view, workbench, and distribution follow [the TUI strategy](docs/tui-plan.
 and the terminal/editor feasibility proofs remain prerequisites for workbench integration.
 This lane preserves concurrent environment and terminal changes.
 
+The operator scheduled Plan 074's standalone package stage on 2026-09-06. `@workspace/pty` now
+passes 15 real-process tests on Bun 1.3.14 and 1.4.0, plus an actual Neovim edit/resize/exit check.
+The root Bun pin is 1.4.0; the old 1.3.10 runtime crashes in native failed-spawn handling.
+The application still uses the Node bridge. Service adoption, binary terminal transport, and
+bridge deletion remain later stages of Plan 074, including macOS and Windows verification.
+
 ## Verification boundaries
 
 - **Platform-only:** verify the narrow Platform tests/typechecks named by the active plan.

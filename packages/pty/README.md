@@ -1,0 +1,96 @@
+# @workspace/pty
+
+Bun-native PTY processes with byte output, input, resize, and explicit cleanup. The package has
+no server dependency. Platform still uses its Node bridge; adopting this package is the next
+stage of [plan 074](../../plans/074-bun-native-pty.md).
+
+```ts
+import { spawnPty } from '@workspace/pty'
+
+const decoder = new TextDecoder()
+await using pty = spawnPty({
+  command: ['/bin/sh', '-i'],
+  cwd: process.cwd(),
+  env: { ...process.env, TERM: 'xterm-256color' },
+  cols: 100,
+  rows: 30,
+  onData(bytes) {
+    process.stdout.write(decoder.decode(bytes, { stream: true }))
+  },
+})
+
+pty.resize(120, 40)
+pty.write('printf "hello\\n"\nexit\n')
+const { exitCode, signal } = await pty.exited
+process.stdout.write(decoder.decode())
+```
+
+## Contract
+
+- `command` is a nonempty, readonly argv tuple. The package starts that executable directly.
+- `cwd` and `env` default to the caller's directory and environment. An explicit `env` replaces
+  inheritance. A missing `TERM` defaults to `xterm-256color`.
+- `cols` and `rows` default to 80 and 24. Both must be integers from 1 to 65535.
+- `onData` is registered before the process starts. It receives ordered `Uint8Array` chunks
+  synchronously, including stderr. Chunks can be retained. The callback must consume them
+  synchronously or own its buffering; there is no output backpressure or replay buffer.
+- `write` accepts strings or bytes. Bun owns input buffering and preserves write order. It can
+  buffer large pastes, so callers must bound input they accept from outside the process.
+- `exited` resolves with `{ exitCode, signal }` after the direct child exits, terminal output ends,
+  and the native handle closes. Descendants can hold the terminal open after the direct child
+  exits. The result uses the subprocess status, never Bun's separate PTY EOF status.
+- `kill()` sends `SIGHUP`. `kill(signal)` sends the supplied signal. If completion takes more than
+  250 ms, cleanup sends `SIGKILL` to the direct child and closes the terminal. Repeated calls share
+  the deadline; an explicit `SIGKILL` is sent immediately. Forced closure may discard unread bytes.
+- `await pty[Symbol.asyncDispose]()` terminates the process and waits for cleanup. Repeated
+  disposal is safe. Writes and resizes after terminal closure do nothing, though dimensions are
+  still validated.
+- Spawn failures throw structured `pty.*` errors. A throwing output callback terminates the
+  process, closes the terminal, and rejects `exited` with the original error as its cause.
+
+Disposal guarantees cleanup of the direct child and the package's descriptors. Interactive
+shells put foreground jobs in separate process groups. A descendant that ignores terminal hangup
+can survive the shell; this package does not discover or supervise an entire process tree.
+
+The supported operating systems are Linux and macOS. The package requires Bun 1.3.14 or later.
+All 15 tests pass on Linux with Bun 1.3.14 and the repository's pinned Bun 1.4.0. Bun 1.3.10
+segfaults on failed spawns when a terminal exit callback is installed, so the package rejects
+that runtime before calling the native API. Windows is
+excluded until a specific runtime and ConPTY behavior pass their own checks. Current
+[Bun documentation](https://bun.com/docs/runtime/child-process#platform-differences) describes
+ConPTY support, which also changes byte fidelity.
+
+## Verification commands
+
+Run from the repository root:
+
+```sh
+bun run --cwd packages/pty test
+bun run --cwd packages/pty typecheck
+bun run --cwd packages/pty lint
+bun run --cwd packages/pty format:check
+bun packages/pty/test/nvim-smoke.ts
+bun apps/server/scripts/pty-benchmark.ts
+```
+
+The package tests use Vitest under Bun because they exercise the actual native runtime. They
+spawn real programs and require POSIX `sh` and `stty`. The optional Neovim check requires `nvim`.
+The benchmark compares both PTY implementations through `TerminalService` without opening a
+server socket or selecting the native package for application terminals.
+
+## Design decision
+
+The existing app interface uses output and exit subscriptions. This package takes an output
+callback at spawn time and returns an exit promise, so callers cannot miss startup output and
+do not need to manage subscriptions to await cleanup. The app will need a byte boundary when
+it adopts this package regardless of the subscription shape.
+
+One process owner coordinates the subprocess and PTY lifetimes. Real probes produced
+`HEAD`, direct child exit, `TAIL`, then PTY EOF. Closing on subprocess exit would truncate that
+output. Inline terminal options let Bun release the parent's slave descriptor; a separately
+constructed `Bun.Terminal` retains it and cannot provide the same natural EOF barrier.
+
+A stream wrapper was also considered. Bun has no public method to pause output reads, so a
+stream would add a queue without controlling native backpressure. The callback API exposes
+that limitation directly. UTF-8 decoding, replay, WebSocket framing, settings, and session logs
+remain responsibilities of the consumer.

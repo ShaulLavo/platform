@@ -6,14 +6,20 @@
 
 ## Status
 
-- **State**: Proposed — needs root scheduling
+- **State**: Standalone package verified; server adoption and bridge deletion pending
 - **Priority**: P2 — nothing is broken, but every terminal pays a Node process launch and a JSON
   hop that Bun 1.4 makes unnecessary
-- **Effort**: S — delete a subprocess protocol, keep the interface around it
+- **Effort**: Package stage complete; service byte boundary and adoption remain
 - **Risk**: LOW–MEDIUM — `TerminalPty` is already an interface with one implementation; the risk is
   behavioural parity of the PTY itself, not architectural
-- **Platform baseline**: `e3fc816b`
-- **Runtime floor**: Bun ≥ 1.3.5 (`Bun.Terminal` landed there). Repo is on **1.4.0** — already met.
+- **Platform baseline**: `1ed986bb6abaedaa24b5f1f1158971883b828bfe` for the standalone stage.
+  Concurrent plan 069 work is preserved.
+- **Runtime floor**: Bun ≥ 1.3.14. Bun 1.3.10 crashes on a failed spawn with a terminal exit
+  callback. The root runtime pin is now **1.4.0**, matching the local runtime.
+
+The operator requested a separate, verified package before replacing the Node implementation on
+2026-09-06. That instruction schedules the package stage. The server still selects `NodePtyBridge`
+and retains `@lydell/node-pty`; the native adapter is used only by the benchmark.
 
 Root `PLAN.md` is authoritative for ordering.
 
@@ -46,7 +52,7 @@ Output arrives through a `data(terminal, data)` callback supplied inline to `Bun
 `terminal` option — **not** a stream; `child.stdout` and `child.readable` are both `null` when a
 terminal is attached. That detail costs an hour if you go looking for a stream.
 
-### Measured, on this machine
+### Earlier prototype measurements
 
 Session start — spawn to first output byte, `n=12`:
 
@@ -87,37 +93,67 @@ end-to-end user-visible number.
 
 ## Design
 
-`TerminalPty` already exists as an interface — `onData`, `onExit`, `write`, `resize`, `kill` — with
-`NodePtyBridge` as its only implementation. That interface is the seam and does not change. This
-plan swaps the implementation behind it.
+[`@workspace/pty`](../packages/pty/README.md) owns native process and terminal lifetimes. Its
+`spawnPty` function takes a command, dimensions, environment, and a synchronous byte callback.
+The returned handle exposes `pid`, `exited`, `write`, `resize`, `kill`, and async disposal.
+The callback is installed at spawn time; there is no startup subscription race or replay buffer.
 
-`Bun.Terminal`'s callback shape maps cleanly: the `data` callback drives `onData`, `child.exited`
-drives `onExit`, `terminal.write()` is `write`, `terminal.resize()` is `resize`.
+Completion waits for both the subprocess result and PTY EOF, then closes the descriptor. Real
+probes produced output after the direct child exited. Bun's terminal exit status is not a process
+exit code, and EOF alone does not close the native handle.
 
-## Gate 1 — `BunTerminalPty`
+The package sends the requested signal, defaults to `SIGHUP`, and forces cleanup after 250 ms.
+This is stronger than the old bridge, which ignored the requested signal inside its embedded
+script and later signaled the Node bridge instead of forcing the shell to exit. Disposal owns
+the direct child and PTY descriptor; it does not supervise stubborn descendants in separate
+process groups.
 
-`apps/server/src/terminal/service.ts`
+The app retains shell selection, settings, detach TTL, replay, session logs, and transport policy.
+Its current string interface and JSON messages still need conversion to a byte boundary before
+the TUI workbench can use binary terminal frames, as required by `docs/tui-plan.md` §7.5.
 
-1. Add `BunTerminalPty implements TerminalPty`, constructed from the same
-   `TerminalPtySpawnOptions`. Spawn the shell directly — no `--eval`, no wrapper process:
+## Gate 1 — Standalone package, complete
 
-   ```ts
-   Bun.spawn([shell], {
-     env: options.env,
-     terminal: { rows, cols, data: (_t, chunk) => this.#emitData(chunk) },
-   })
-   ```
+`packages/pty/` contains the implementation, public types, usage reference, and real-process tests.
+It is a workspace package with its own typecheck, lint, formatting, and Vitest commands. Vitest
+runs under Bun because this package is runtime-specific.
 
-2. `write` and `resize` go to `child.terminal`. Keep `#exitEmitted` and the existing
-   `kill(signal)` semantics, including the 250 ms escalation — that behaviour is about the child
-   shell, not the transport, and must survive.
-3. Delete `#writeQueue`. It serialises writes into a JSON-lines pipe; a direct `terminal.write()`
-   has no such ordering hazard. Do not port it "just in case" — carrying it forward hides that the
-   protocol is gone.
-4. Keep emitting the same observability events with the same names. A latency change should be
-   visible in existing dashboards, not hidden behind renamed actions.
+Verification on Linux x64, 2026-09-06:
 
-## Gate 2 — Verification
+- All 15 tests pass on Bun 1.3.14 and 1.4.0. They cover direct PID/PPID and three TTY descriptors,
+  arguments, cwd, environment, dimensions, SIGWINCH, alternate-screen raw input, shell Ctrl-C/D,
+  2 MiB binary output and delayed input, retained chunks, final output after child exit, signal
+  escalation, repeated disposal, retained descendants, failed spawns, and callback errors.
+- The optional Neovim check enters and leaves the alternate screen, resizes to 123 × 41, saves
+  exact text in an isolated directory, and exits with status zero.
+- Package typecheck, lint, and formatting pass. A separate consumer typecheck verifies that
+  importing the package does not depend on package-local TypeScript aliases.
+- Bun 1.3.10 fails a minimal native spawn reproduction without package or Vitest code. The runtime
+  guard now rejects it before the native call. The package's verified minimum is 1.3.14.
+- macOS and Windows have not been verified on this Linux host. Windows is rejected explicitly.
+
+The rerunnable [service benchmark](../apps/server/scripts/pty-benchmark.ts) uses the real
+`TerminalService` and its JSON protocol with the existing Node factory or a benchmark-only native
+adapter. Alternating paired samples on an Intel Core i7-14700K with Bun 1.4.0 produced:
+
+| Measurement                         | Node bridge | Bun native |
+| ----------------------------------- | ----------: | ---------: |
+| Startup median, 20 samples          |  19.6469 ms |  0.8795 ms |
+| Startup p95                         |  27.2503 ms |  1.8123 ms |
+| Echo round-trip median, 100 samples |  0.03062 ms | 0.01244 ms |
+| Echo round-trip p95                 |  0.04423 ms | 0.01735 ms |
+
+Both backends returned all 6,400 measured payload bytes. These measurements exclude orchestration
+persistence, network transport, and rendering. The temporary worktree has one benchmark owner
+with an in-memory lease boundary and no orchestration imports. The benchmark opens no server socket.
+The reviewed commit was verified in an isolated checkout with the committed service, excluding
+concurrent plan 069 changes. The repository-wide typecheck also passes in that checkout.
+
+## Gate 2 — Service adoption and verification, pending
+
+Adopt the verified package through the service's PTY factory, keeping the existing session log
+owner and event names. Make the terminal transport byte-based, with decoding only where text is
+required. Do not recreate the Node bridge's write queue; Bun already owns ordered input buffering.
 
 1. **Parity, not just liveness.** A terminal is not proven by a prompt appearing. Exercise:
    - a full-screen TUI (`htop`, `vim`) — proves the PTY is a real TTY and resize propagates;
@@ -131,8 +167,8 @@ drives `onExit`, `terminal.write()` is `write`, `terminal.resize()` is `resize`.
    plan is deleted.
 3. Confirm no Node process is spawned per terminal: open three terminals, and
    `pgrep -P <server-pid>` must show no `node`.
-4. `bun run --filter server test`, plus full `bun run verify`. Per `plans/README.md`, use
-   per-workspace baseline deltas.
+4. Run focused service and terminal transport tests, plus affected typecheck, lint, and formatting
+   checks. Per `plans/README.md`, use per-workspace baseline deltas and account for concurrent work.
 
 ## Gate 3 — Delete the bridge
 
@@ -146,10 +182,10 @@ Only after Gate 2 passes.
 
 ## Risks and rejected alternatives
 
-- **`Bun.Terminal` is young.** Landed in 1.3.5; this repo is on 1.4.0. The API is POSIX-only, which
-  matters for the Windows target in plan 073 — **confirm Windows support before Gate 3 deletes the
-  fallback.** This is the one thing that could force keeping both paths, and it is why deletion is
-  its own gate behind verification rather than part of Gate 1.
+- **Runtime and operating system behavior need evidence.** The package is verified on Linux
+  with Bun 1.3.14 and 1.4.0. Current Bun documentation describes ConPTY support, but those docs
+  describe a newer runtime and Windows output is not byte-identical. Confirm the Windows target
+  and run macOS checks before Gate 3; a successful Linux proof cannot close those gates.
 - **Rejected — keep the bridge and only optimise the framing** (e.g. length-prefixed binary instead
   of JSON lines). Recovers part of the tail-latency win and none of the 15.7 ms startup win, while
   keeping a Node process per terminal and an untypecheckable embedded script.
@@ -164,6 +200,7 @@ Only after Gate 2 passes.
 
 ## Open questions for the operator
 
-1. **Does `Bun.Terminal` support Windows?** It is documented POSIX-only. Plan 073 keeps Windows as a
-   target, so if this is still POSIX-only the bridge may have to survive for Windows and Gate 3
-   becomes conditional. This is the only thing that can change the shape of the plan.
+1. **Which runtime and behavior will be verified for Windows?** Plan 073 keeps Windows as a target.
+   Current [Bun docs](https://bun.com/docs/runtime/child-process#platform-differences) describe
+   ConPTY, but this package deliberately excludes Windows until its byte and lifecycle behavior
+   have been tested. This is a remaining adoption gate, not a blocker for the standalone package.
