@@ -14,6 +14,8 @@ concurrency:
 env:
   # Keep the linked Editor API and Platform consumers on an exact revision.
   EDITOR_REF: 9abb944f3a2b8d6516953fdec75e8df5e1a94811
+  # Same for the linked ghostty-webgpu checkout.
+  GHOSTTY_REF: 9a75060ddf5b38c93a20d13b5f9043171343ddfe
 
 jobs:
   quality:
@@ -28,6 +30,7 @@ jobs:
         uses: ./.github/actions/setup
         with:
           editor-ref: ${{ env.EDITOR_REF }}
+          ghostty-ref: ${{ env.GHOSTTY_REF }}
 
       - name: Validate dev task graph
         env:
@@ -63,6 +66,7 @@ jobs:
         uses: ./.github/actions/setup
         with:
           editor-ref: ${{ env.EDITOR_REF }}
+          ghostty-ref: ${{ env.GHOSTTY_REF }}
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4

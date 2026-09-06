@@ -1,4 +1,4 @@
-import { GhosttyRuntime, GhosttyWebGpuTerminal, type GhosttyWebGpuRenderer } from 'ghostty-webgpu'
+import { GhosttyRuntime, Terminal, type GhosttyWebGpuRenderer } from 'ghostty-webgpu'
 import { flushSync } from 'react-dom'
 
 import { useTerminalKeybindings } from '@/features/terminal/hooks/use-keybindings'
@@ -13,7 +13,7 @@ export async function createTerminalKeymap(bindings: readonly PlatformKeyBinding
   host.className = 'h-40 w-96'
   document.body.append(host)
   const runtime = await GhosttyRuntime.create()
-  const terminal = await GhosttyWebGpuTerminal.create({
+  const terminal = await Terminal.create({
     rendererFactory: async () => keyboardTestRenderer(),
     runtime: { kind: 'borrowed', runtime },
   })

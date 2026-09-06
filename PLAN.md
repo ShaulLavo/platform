@@ -10,6 +10,10 @@ is the Platform executable-plan inventory. Strategy documents under `docs/` desc
 but do not authorize implementation. A completed executable plan is deleted after its checks pass;
 Git history is the archive.
 
+The [Editor backlog](../Editor/plans/README.md) contains 30 scoped proposals from its 22-topic
+wishlist. Its suggested order is advisory; promote selected work into this execution roadmap
+when scheduled. The backlog also links the existing Plan 071 syntax-retry proposal.
+
 ## Verified completed foundations
 
 - Platform's one-document representation and deterministic file-sync cutover are live. Completed

@@ -1,4 +1,4 @@
-import type { GhosttyWebGpuTerminal, ProvidedLink } from 'ghostty-webgpu'
+import type { Terminal, ProvidedLink } from 'ghostty-webgpu'
 import { useEffectEvent } from 'react'
 
 import { useOpenFileReference } from '@/features/chat/hooks/use-open-file-reference'
@@ -48,7 +48,7 @@ export function useTerminalLinks(rootPath: string) {
     openFileReference(link.reference)
   })
 
-  return (terminal: GhosttyWebGpuTerminal) => {
+  return (terminal: Terminal) => {
     terminal.registerLinkProvider({
       provideLinks: (line) => {
         const links = readTerminalSnapshotPathLinks({

@@ -79,6 +79,7 @@
     "brace-expansion": "5.0.9",
     "dompurify": "3.4.13",
     "esbuild": "0.28.1",
+    "ghostty-webgpu": "link:ghostty-webgpu",
     "immutable": "4.3.9",
     "ip-address": "10.5.0",
     "mermaid": "11.16.1",

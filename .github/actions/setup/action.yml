@@ -5,6 +5,9 @@ inputs:
   editor-ref:
     description: Git ref of the ShaulLavo/singapor checkout the @singapor/* links resolve to.
     required: true
+  ghostty-ref:
+    description: Git ref of the ShaulLavo/ghostty-webgpu checkout the ghostty-webgpu link resolves to.
+    required: true
 
 runs:
   using: composite
@@ -85,6 +88,27 @@ runs:
         for package in packages/*/; do
           (cd "$package" && bun link)
         done
+
+    # ghostty-webgpu is consumed from source the same way: the npm release is
+    # behind the checkout, and the root override is `link:ghostty-webgpu`.
+    # The sibling path mirrors the developer layout (`../ghostty-webgpu`).
+    - name: Clone ghostty-webgpu
+      shell: bash
+      env:
+        GHOSTTY_REF: ${{ inputs.ghostty-ref }}
+      run: |
+        git init "$GITHUB_WORKSPACE/../ghostty-webgpu"
+        git -C "$GITHUB_WORKSPACE/../ghostty-webgpu" remote add origin https://github.com/ShaulLavo/ghostty-webgpu.git
+        git -C "$GITHUB_WORKSPACE/../ghostty-webgpu" fetch --depth 1 origin "$GHOSTTY_REF"
+        git -C "$GITHUB_WORKSPACE/../ghostty-webgpu" checkout --detach FETCH_HEAD
+
+    - name: Build and link ghostty-webgpu
+      shell: bash
+      working-directory: ${{ github.workspace }}/../ghostty-webgpu
+      run: |
+        bun install --frozen-lockfile
+        bun run build
+        bun link
 
     - name: Install dependencies
       shell: bash

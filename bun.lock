@@ -354,6 +354,7 @@
     "brace-expansion": "5.0.9",
     "dompurify": "3.4.13",
     "esbuild": "0.28.1",
+    "ghostty-webgpu": "link:ghostty-webgpu",
     "immutable": "4.3.9",
     "ip-address": "10.5.0",
     "mermaid": "11.16.1",
@@ -1278,8 +1279,6 @@
 
     "@vscode/l10n": ["@vscode/l10n@0.0.18", "", {}, "sha512-KYSIHVmslkaCDyw013pphY+d7x1qV8IZupYfeIfzNA+nsaWHbn5uPuQRvdRFsa9zFzGeudPuoGoZ1Op4jrJXIQ=="],
 
-    "@webgpu/types": ["@webgpu/types@0.1.72", "", {}, "sha512-0cF7RFM2edNoiIS1ODJp0/Gzv4/xSXhwoR0YCza+OWpJWtn4wmo9DvK91aLlH9+uUnwIriP7ZiC3WitmyhuzBw=="],
-
     "@workspace/client-core": ["@workspace/client-core@workspace:packages/client-core"],
 
     "@workspace/contracts": ["@workspace/contracts@workspace:packages/contracts"],
@@ -1680,7 +1679,7 @@
 
     "get-uri": ["get-uri@6.0.5", "", { "dependencies": { "basic-ftp": "^5.0.2", "data-uri-to-buffer": "^6.0.2", "debug": "^4.3.4" } }, "sha512-b1O07XYq8eRuVzBNgJLstU6FYc1tS6wnMtF1I1D9lE8LxZSOGZ7LhxN54yPP6mGw5f2CkXY2BQUL9Fx41qvcIg=="],
 
-    "ghostty-webgpu": ["ghostty-webgpu@0.1.0", "", { "dependencies": { "@tanstack/hotkeys": "0.8.0", "@webgpu/types": "0.1.72" } }, "sha512-fsdCVFnEcWsn2L7UQ4QtsrdtslZpPLAC+yNVpv7W620kcWnrLfLyO0HjG9SSpfBVuXyMtTrCN6fiifXTUmnI6A=="],
+    "ghostty-webgpu": ["ghostty-webgpu@link:ghostty-webgpu", {}],
 
     "glob-parent": ["glob-parent@6.0.2", "", { "dependencies": { "is-glob": "^4.0.3" } }, "sha512-XxwI8EOhVQgWp6iDL+3b0r86f4d6AX6zSU55HfB4ydCEuXLXc5FcYeOu+nnGftS4TEju/11rt4KJPTMgbfmv4A=="],
 

@@ -7,6 +7,10 @@ reviewed, rewritten, or promoted into an executable plan.
 Cross-project dependencies and execution order are authoritative in [`PLAN.md`](../PLAN.md). This
 index lists executable plans only; it does not define a second roadmap.
 
+The separate [Editor backlog](../../Editor/plans/README.md) contains 30 proposed plans covering
+all 22 Editor wishlist topics, including their package/host ownership and dependencies. They are
+an unscheduled proposal inventory; Plan 071 remains the existing syntax-retry proposal here.
+
 Before executing a plan, reconcile its drift check and line references against current source.
 Verification uses per-workspace baseline deltas; never gate completion on an absolute test count or
 a bare root `bun run verify`.

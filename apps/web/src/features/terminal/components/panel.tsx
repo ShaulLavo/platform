@@ -10,7 +10,7 @@ import { parseTerminalServerMessage, type TerminalServerMessage } from '@workspa
 import { cn } from '@workspace/ui/lib/utils'
 import {
   GhosttyRuntime,
-  GhosttyWebGpuTerminal,
+  Terminal,
   type GhosttyWebGpuTerminalSubscription,
   type TerminalCursorStyle,
 } from 'ghostty-webgpu'
@@ -99,7 +99,7 @@ export function TerminalPanel({
   const restoreFocusAfterRemountRef = useRef<string | null>(null)
   const scrollbackLengthRef = useRef(0)
   const sendInputRef = useRef<TerminalInputSender | null>(null)
-  const terminalRef = useRef<GhosttyWebGpuTerminal | null>(null)
+  const terminalRef = useRef<Terminal | null>(null)
   const { resolvedTheme } = useTheme()
   // Read as primitives, not an object: an object literal is a new value every
   // render, which would make the effect below run on every render and, worse,
@@ -150,7 +150,7 @@ export function TerminalPanel({
   // runs as an effect event and sees the current render rather than the one
   // that started the mount.
   const handleTerminalReady = useEffectEvent(
-    (terminal: GhosttyWebGpuTerminal, sendInput: TerminalInputSender) => {
+    (terminal: Terminal, sendInput: TerminalInputSender) => {
       terminalRef.current = terminal
       sendInputRef.current = sendInput
       setReadyTerminalIdentity(terminalMountIdentity)
@@ -352,7 +352,7 @@ function mountTerminal({
   sessionId: string
   onConnectedChange: (connected: boolean) => void
   onFailed: (message: string) => void
-  onReady: (terminal: GhosttyWebGpuTerminal, sendInput: TerminalInputSender) => void
+  onReady: (terminal: Terminal, sendInput: TerminalInputSender) => void
   onScrollbackLengthChange: (length: number) => void
 }) {
   let cancelled = false
@@ -360,7 +360,7 @@ function mountTerminal({
   let resizeDisposable: GhosttyWebGpuTerminalSubscription | null = null
   let scrollDisposable: GhosttyWebGpuTerminalSubscription | null = null
   let socket: EdenServerSocket | null = null
-  let terminal: GhosttyWebGpuTerminal | null = null
+  let terminal: Terminal | null = null
   let terminalDimensions: TerminalDimensions | null = null
   const inputDecoder = new TextDecoder()
 
@@ -446,7 +446,7 @@ function openTerminalSocket({
   onConnectedChange: (connected: boolean) => void
   worktreeId: WorktreeId
   sessionId: string
-  terminal: GhosttyWebGpuTerminal
+  terminal: Terminal
 }) {
   const socket = connectTerminalSocket({ worktreeId, terminalId: sessionId }, client, signal)
 
@@ -481,7 +481,7 @@ function handleTerminalServerMessage({
   terminal,
 }: {
   message: TerminalServerMessage
-  terminal: GhosttyWebGpuTerminal
+  terminal: Terminal
 }) {
   if (message.type === 'output') {
     terminal.write(message.data)
@@ -501,7 +501,7 @@ function handleTerminalServerMessage({
 }
 
 function createTerminal(runtime: GhosttyRuntime, scrollback: number) {
-  return GhosttyWebGpuTerminal.create({
+  return Terminal.create({
     appearance: {
       // Constructed unfocused; the real values arrive at handover, before paint.
       cursor: { blink: false, style: UNFOCUSED_TERMINAL_CURSOR_STYLE },
@@ -529,31 +529,25 @@ export type TerminalAppearance = {
 }
 
 /** Pushes live appearance settings without rebuilding the terminal. */
-export function applyTerminalAppearance(
-  terminal: GhosttyWebGpuTerminal | null,
-  appearance: TerminalAppearance,
-) {
+export function applyTerminalAppearance(terminal: Terminal | null, appearance: TerminalAppearance) {
   if (!terminal) return
 
   terminal.setFont({ size: appearance.fontSize })
   terminal.setCursor({ blink: appearance.cursorBlink })
 }
 
-function applyTerminalCursorOptions(
-  terminal: GhosttyWebGpuTerminal | null,
-  options: TerminalCursorOptions,
-) {
+function applyTerminalCursorOptions(terminal: Terminal | null, options: TerminalCursorOptions) {
   if (!terminal) return
 
   terminal.setCursor({ blink: options.cursorBlink, style: options.cursorStyle })
 }
 
-function applyTerminalTheme(terminal: GhosttyWebGpuTerminal | null, root: HTMLElement | null) {
+function applyTerminalTheme(terminal: Terminal | null, root: HTMLElement | null) {
   if (!terminal || !root) return
   terminal.setTheme(readTerminalTheme(root, terminal.appearance.theme))
 }
 
-function currentTerminalDimensions(terminal: GhosttyWebGpuTerminal) {
+function currentTerminalDimensions(terminal: Terminal) {
   const grid = terminal.appearance.grid
   return {
     cols: grid.columns,

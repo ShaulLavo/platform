@@ -23,6 +23,8 @@ user-facing knobs are registry entries in `packages/contracts/src/settings/keys.
 
 you need a sibling checkout of the editor repo at `../Editor` — there's no npm fallback right now, `@singapor/decode` isn't published. the root `overrides` map points every `@singapor/*` at it via bun's `link:` protocol (`"@singapor/core": "link:@singapor/core"`), backed by `bun link` global links. so: run `bun link` inside each `../Editor/packages/*` once, then `bun install` here, and local editor changes show up in typecheck, tests and the dev server. ci does the same thing by cloning `ShaulLavo/singapor` as a sibling and linking each package
 
+`ghostty-webgpu` is linked the same way: the root override is `"ghostty-webgpu": "link:ghostty-webgpu"`, backed by a `bun link` run once inside a sibling checkout at `../ghostty-webgpu`. the npm release lags that repo, so the checkout is the version we actually run. ci clones `ShaulLavo/ghostty-webgpu` as a sibling, builds it and links it
+
 they're deliberately not bun workspaces btw — turbo won't touch a workspace package whose realpath is outside the repo root, so a `"../Editor/packages/*"` glob (or the `packages/editor-*` symlinks) just breaks `bun run dev`. `overrides` + `link:` gets you live source without workspace membership
 
 ## running it

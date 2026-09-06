@@ -1,5 +1,5 @@
 import { waitFor } from '@testing-library/react'
-import type { GhosttyWebGpuTerminal, LinkLineSnapshot, LinkProvider } from 'ghostty-webgpu'
+import type { Terminal, LinkLineSnapshot, LinkProvider } from 'ghostty-webgpu'
 import { mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { useEffect, useEffectEvent, type ReactNode } from 'react'
@@ -126,13 +126,7 @@ function renderTerminalLinks(terminal: FakeTerminal, opened: OpenedPaths = opene
   )
 }
 
-function TerminalLinkHost({
-  rootPath,
-  terminal,
-}: {
-  rootPath: string
-  terminal: GhosttyWebGpuTerminal
-}) {
+function TerminalLinkHost({ rootPath, terminal }: { rootPath: string; terminal: Terminal }) {
   const registerTerminalLinks = useTerminalLinks(rootPath)
   // Mirrors the panel: ghostty hands the terminal over once, long after mount.
   const registerWhenReady = useEffectEvent(() => registerTerminalLinks(terminal))
@@ -197,6 +191,7 @@ function createWorkspaceStore() {
     searchBuffers: {},
     uiMode: 'workbench',
     workbenchLayout: createDefaultWorkbenchLayout(),
+    worktreeIdByRootPath: {},
     workspaceOrder: [PROJECT_ROOT],
     workspaces: {},
   })
@@ -220,7 +215,7 @@ type OpenedPaths = {
 type FakeTerminal = {
   readonly providers: LinkProvider<Event>[]
   readonly rows: readonly string[]
-  readonly terminal: GhosttyWebGpuTerminal
+  readonly terminal: Terminal
 }
 
 /**
@@ -237,7 +232,7 @@ function fakeTerminal(rows: readonly string[]): FakeTerminal {
     },
   }
 
-  return { providers, rows, terminal: terminal as unknown as GhosttyWebGpuTerminal }
+  return { providers, rows, terminal: terminal as unknown as Terminal }
 }
 
 function linkLine(content: string): LinkLineSnapshot {
