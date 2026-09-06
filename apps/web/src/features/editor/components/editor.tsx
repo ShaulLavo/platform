@@ -40,7 +40,7 @@ import type {
   EditorScrollPosition,
 } from '@singapor/core'
 import { editorPreparedDocumentTags } from '@/features/editor/utils/prepared-document'
-import { useFileOpenIntent } from '@/lib/file-open-intent/providers/context'
+import { useMountedEditorRegistry } from '@/features/editor/hooks/use-mounted-editor-registry'
 import { useUnavailableEnvironment } from '@/lib/environments/hooks/use-unavailable-environment'
 
 const NO_ADDITIONAL_PLUGINS: readonly EditorPlugin[] = []
@@ -83,7 +83,7 @@ export function Editor({
   const { appliedThemeContentHash, appliedThemeId, editorTheme, selectedThemeId } =
     useEditorColorTheme()
   const syntaxHighlightingEnabled = useSettingValue('editor.syntaxHighlighting.enabled')
-  const { mountedEditors } = useFileOpenIntent()
+  const mountedEditors = useMountedEditorRegistry()
   const diagnosticPeek = useDiagnosticPeek({ active, filePath: liveDocument.path })
   const { languageServer, languageServerStatusSource } = useLanguageServerPlugin({
     enabled: active && unavailable === null,
