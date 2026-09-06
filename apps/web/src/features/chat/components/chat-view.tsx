@@ -22,6 +22,7 @@ import {
 import { type ChatSession } from '../state/chat-projection-store'
 import { ChatTransportContext } from '@/features/chat/providers/transport-context'
 import { ChatInput, type ChatInputSubmitPayload } from './chat-input'
+import { ImportedChatNotice } from '@/features/chat/components/imported-chat-notice'
 import { ChatRuntimeStatus } from './chat-runtime-status'
 import { MessagesTimeline } from './messages-timeline'
 import { PendingApprovalPanel } from './pending-approval-panel'
@@ -199,6 +200,9 @@ export function ChatView({
           >
             <PlanFollowUpBanner draftTarget={draftTarget} />
           </ChatPlanFollowUpProvider>
+          {session.origin === 'discovered' && !session.latestTurn && !session.runtime ? (
+            <ImportedChatNotice />
+          ) : null}
           <ChatInput
             busy={busy}
             commandStatusLabel={interrupting ? 'Interrupting' : null}

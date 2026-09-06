@@ -201,6 +201,19 @@ export class ProviderAdapterRegistry {
     return Array.from(this.instances.keys())
   }
 
+  importSources() {
+    return [...this.instances.values()]
+      .filter(
+        ({ adapter, config }) =>
+          config.enabled && adapter.discoverSessions && adapter.readSessionHistory,
+      )
+      .map(({ config }) => ({
+        providerInstanceId: config.providerInstanceId,
+        label: config.displayLabel,
+        driverKind: config.driverKind,
+      }))
+  }
+
   register(adapter: ProviderAdapter) {
     this.adopt(adapter)
     this.resetCredentialWatch()

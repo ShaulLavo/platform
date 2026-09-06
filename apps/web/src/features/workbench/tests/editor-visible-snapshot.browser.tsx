@@ -2,7 +2,6 @@ import { testScopedStorage } from '../../../../test/factories/scoped-storage'
 import '@workspace/ui/globals.css'
 import '@singapor/core/style.css'
 import '@singapor/gutters/style.css'
-import { treaty } from '@elysia/eden'
 import {
   createEditorTextBuffer,
   createEditorViewSession,
@@ -13,7 +12,6 @@ import { createFoldGutterPlugin, createLineGutterPlugin } from '@singapor/gutter
 import { createRef, useEffect, useMemo, useRef } from 'react'
 import { flushSync } from 'react-dom'
 import { createRoot, type Root } from 'react-dom/client'
-import type { App } from 'server/client-contract'
 import { afterEach, expect, test } from 'vitest'
 
 import { useEditorColorTheme } from '@/features/editor/hooks/use-editor-color-theme'
@@ -36,32 +34,31 @@ import {
   type EditorSurfaceActions,
 } from '@/features/workbench/providers/editor-surface-actions-context'
 import { useSelectedFile } from '@/features/workspace/hooks/use-selected-file'
-import { getClient, activeServerOrigin, setClient, type Client } from '@/lib/client'
 import { statPath } from '@/lib/file-server'
 import type { FileResult } from '@/lib/file-system-types'
-import { clientInstanceId, instanceHeaderName } from '@/lib/instance-id'
 import {
   readEditorVisibleSnapshotCache,
   writeEditorVisibleSnapshotCache,
   type CachedEditorVisibleSnapshot,
 } from '@/lib/editor-visible-snapshot-cache'
 import { AppProviders, createTestQueryClient, seedBootMirrorTheme } from '../../../../test/render'
+import {
+  installDelayedFileReadClient,
+  type DelayedFileReadClient,
+} from '../../../../test/factories/delayed-file-read-client'
 
 let root: Root | null = null
 let liveEditor: CoreEditor | null = null
-let pendingReadGate: DelayedReadGate | null = null
-let restoreClient: Client | null = null
+let delayedFileRead: DelayedFileReadClient | null = null
 const CONTENT_VERSION = 'stat:1:1'
 
 afterEach(async () => {
-  pendingReadGate?.release()
-  pendingReadGate = null
+  delayedFileRead?.restore()
+  delayedFileRead = null
   liveEditor?.dispose()
   liveEditor = null
   if (root) flushSync(() => root?.unmount())
   root = null
-  if (restoreClient) setClient(restoreClient)
-  restoreClient = null
   await Promise.all([disposeEditorShikiWorkerOwner(), disposeEditorTreeSitterSyntaxProvider()])
   resetEditorColorThemeStore()
   document.body.replaceChildren()
@@ -196,7 +193,8 @@ test(
     const path = 'repo/src/editor-tab-a.ts'
     const rootPath = 'repo'
     const themeId = prepareRealFileTest()
-    const gate = installDelayedReadClient()
+    const gate = installDelayedFileReadClient()
+    delayedFileRead = gate
     const record = await cachedSnapshotForExistingTarget(path, rootPath, themeId)
     expect(writeEditorVisibleSnapshotCache(testScopedStorage, record).status).toBe('written')
 
@@ -255,7 +253,8 @@ test('a real file-read error removes both the cold paint and its matching record
   const path = 'repo/src/plan-060-missing.ts'
   const rootPath = 'repo'
   const themeId = prepareRealFileTest()
-  const gate = installDelayedReadClient()
+  const gate = installDelayedFileReadClient()
+  delayedFileRead = gate
   const record = cachedSnapshotForTarget(path, rootPath, themeId, 'stat:missing')
   expect(writeEditorVisibleSnapshotCache(testScopedStorage, record).status).toBe('written')
 
@@ -285,7 +284,8 @@ test.each(['pointerdown', 'touchmove', 'wheel'] as const)(
     const path = 'repo/src/editor-tab-b.ts'
     const rootPath = 'repo'
     const themeId = prepareRealFileTest()
-    const gate = installDelayedReadClient()
+    const gate = installDelayedFileReadClient()
+    delayedFileRead = gate
     const record = await cachedSnapshotForExistingTarget(path, rootPath, themeId)
     expect(writeEditorVisibleSnapshotCache(testScopedStorage, record).status).toBe('written')
 
@@ -671,65 +671,6 @@ async function cachedSnapshotForExistingTarget(
 
 function appliedThemeIdentity(): string | null {
   return document.querySelector<HTMLElement>('[data-theme-identity]')?.dataset.themeIdentity ?? null
-}
-
-function installDelayedReadClient(): DelayedReadGate {
-  const gate = createDelayedReadGate()
-  const fetcher = Object.assign(
-    async (...args: Parameters<typeof fetch>) => {
-      const response = await fetch(...args)
-      if (new URL(requestUrl(args[0])).pathname !== '/fs/read') return response
-
-      await gate.hold(response.status)
-      return response
-    },
-    { preconnect: fetch.preconnect },
-  )
-
-  restoreClient = getClient()
-  pendingReadGate = gate
-  setClient(
-    treaty<App>(activeServerOrigin(), {
-      fetcher,
-      headers: () => ({ [instanceHeaderName]: clientInstanceId() }),
-    }),
-  )
-  return gate
-}
-
-function requestUrl(input: RequestInfo | URL): string {
-  if (typeof input === 'string') return input
-  if (input instanceof URL) return input.href
-  return input.url
-}
-
-type DelayedReadGate = {
-  readonly hold: (status: number) => Promise<void>
-  readonly observedStatus: () => number | null
-  readonly release: () => void
-}
-
-function createDelayedReadGate(): DelayedReadGate {
-  let observedStatus: number | null = null
-  let released = false
-  let releaseWait: () => void = () => undefined
-  const wait = new Promise<void>((resolve) => {
-    releaseWait = resolve
-  })
-
-  return {
-    hold: (status) => {
-      observedStatus = status
-      return wait
-    },
-    observedStatus: () => observedStatus,
-    release: () => {
-      if (released) return
-
-      released = true
-      releaseWait()
-    },
-  }
 }
 
 function hasVisibleSnapshot(host: HTMLElement): boolean {

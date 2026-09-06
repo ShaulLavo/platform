@@ -31,7 +31,7 @@ import { confirmedEnvironmentId, confirmedEnvironmentOrigin } from '@/lib/enviro
 import { errorMessage } from '@/lib/error-message'
 import { useApplicationRuntime } from '@/hooks/use-application-runtime'
 import type { ApplicationRuntime } from '@/state/application-runtime'
-import { createEditorActivation, createEditorCommands } from '@/features/editor/state/commands'
+import { createEditorCommands } from '@/features/editor/state/commands'
 import { settingsCategoryForSlug } from '@/features/address/utils/settings-category'
 import { isSettingsDocumentId } from '@/features/settings/utils/document'
 import { selectSettingsCategory } from '@/features/settings/state/category-store'
@@ -191,7 +191,7 @@ async function applyCurrentAddress(
   const documentStoreApi = editor.documentStore
   const searchStoreApi = editor.searchBufferStore
   const commands = createEditorCommands({
-    activation: createEditorActivation(editor.fileOpenIntentService, documentStoreApi),
+    activation: editor.editorActivation,
     documentStore: documentStoreApi,
     searchStore: searchStoreApi,
     uiStore: editor.uiStore,

@@ -355,6 +355,17 @@ export const SETTINGS_REGISTRY = {
     visibility: 'advanced',
     keywords: ['search', 'quick open', 'picker', 'files', 'limit'],
   }),
+  'chat.keepImportedSessionsUpdated': defineSetting({
+    schema: v.boolean(),
+    default: true,
+    scope: 'machine',
+    widget: 'boolean',
+    category: 'Chat',
+    title: 'Keep imported chats updated',
+    description:
+      'Imported chats receive one-way updates from local history until you send their first message in Platform. New chats are only imported when you click Import.',
+    keywords: ['chat', 'import', 'sync', 'history', 'claude', 'codex', 'cli', 'app', 'local'],
+  }),
   'chat.defaultRuntimeMode': defineSetting({
     schema: v.picklist(['full-access', 'approval-required', 'auto-accept-edits'] as const),
     default: 'full-access',

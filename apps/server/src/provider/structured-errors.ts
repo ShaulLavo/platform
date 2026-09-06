@@ -31,4 +31,16 @@ export const sessionIdentityErrors = defineErrorCatalog('provider', {
     why: 'The isolated provider metadata process could not return valid session metadata.',
     fix: 'Inspect the provider instance configuration and retry the scan.',
   },
+  HISTORY_FAILED: {
+    status: 502,
+    message: 'Claude conversation history could not be read',
+    why: 'The isolated provider process could not return the local conversation transcript.',
+    fix: 'Check that this provider instance can access the session files and retry the import.',
+  },
+  HISTORY_UNSUPPORTED: {
+    status: 400,
+    message: 'This provider does not support conversation imports',
+    why: 'The configured provider has no local history reader.',
+    fix: 'Choose a provider listed in the conversation import settings.',
+  },
 })

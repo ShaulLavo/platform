@@ -46,6 +46,7 @@ import type {
   ProviderTurnInput,
   ProviderUserInputResponseInput,
   ProviderSessionDiscoveryInput,
+  ProviderSessionHistoryInput,
 } from './types'
 import {
   ProviderTextGenerationTask,
@@ -541,6 +542,18 @@ export class ProviderService {
     return this.adapterRegistry
       .listInstances()
       .filter((id) => Boolean(this.adapterRegistry.adapter(id)?.discoverSessions))
+  }
+
+  importSources() {
+    return this.adapterRegistry.importSources()
+  }
+
+  readSessionHistory(
+    input: ProviderSessionHistoryInput & { providerInstanceId: ProviderInstanceId },
+  ) {
+    const adapter = this.adapterRegistry.getByInstance(input.providerInstanceId)
+    if (!adapter.readSessionHistory) throw sessionIdentityErrors.HISTORY_UNSUPPORTED()
+    return adapter.readSessionHistory(input)
   }
 
   discoverSessions(
