@@ -1,7 +1,9 @@
 import { treaty } from '@elysia/eden'
+import type { QueryClient } from '@tanstack/react-query'
 import type { App } from 'server/client-contract'
 
 import { activeServerOrigin, getClient, setClient } from '@/lib/client'
+import { registerEnvironmentQueryClient } from '@/lib/environments/state/query-clients'
 import { clientInstanceId, instanceHeaderName } from '@/lib/instance-id'
 
 export type DelayedFileReadClient = {
@@ -10,7 +12,10 @@ export type DelayedFileReadClient = {
   readonly restore: () => void
 }
 
-export function installDelayedFileReadClient(): DelayedFileReadClient {
+// Queries that resolve through the environment registry snapshot their client,
+// so swapping the process-wide one is not enough: pass the query client whose
+// reads should pass through the gate.
+export function installDelayedFileReadClient(queryClient?: QueryClient): DelayedFileReadClient {
   const previousClient = getClient()
   const gate = createDelayedReadGate()
   const fetcher = Object.assign(
@@ -23,12 +28,12 @@ export function installDelayedFileReadClient(): DelayedFileReadClient {
     },
     { preconnect: fetch.preconnect },
   )
-  setClient(
-    treaty<App>(activeServerOrigin(), {
-      fetcher,
-      headers: () => ({ [instanceHeaderName]: clientInstanceId() }),
-    }),
-  )
+  const gatedClient = treaty<App>(activeServerOrigin(), {
+    fetcher,
+    headers: () => ({ [instanceHeaderName]: clientInstanceId() }),
+  })
+  setClient(gatedClient)
+  if (queryClient) registerEnvironmentQueryClient(queryClient, activeServerOrigin(), gatedClient)
 
   let restored = false
   return {
@@ -40,6 +45,9 @@ export function installDelayedFileReadClient(): DelayedFileReadClient {
 
       restored = true
       setClient(previousClient)
+      if (queryClient) {
+        registerEnvironmentQueryClient(queryClient, activeServerOrigin(), previousClient)
+      }
     },
   }
 }

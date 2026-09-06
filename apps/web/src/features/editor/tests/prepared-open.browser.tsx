@@ -195,7 +195,7 @@ test(
     await expect.poll(activeThemeIdentity, { timeout: 10_000 }).toBe('dark-plus|dark-plus')
     const harness = requiredRuntime()
     flushSync(() => harness.commands.switchRootFolder(rootFolder()))
-    delayedFileRead = installDelayedFileReadClient()
+    delayedFileRead = installDelayedFileReadClient(queryClient)
 
     const firstFrame = await activateAndCaptureFirstFrame()
 
@@ -251,7 +251,7 @@ test(
     const queryKey = fileSnapshotQueryOptions(PATH).queryKey
     await queryClient.cancelQueries({ exact: true, queryKey })
     queryClient.removeQueries({ exact: true, queryKey })
-    delayedFileRead = installDelayedFileReadClient()
+    delayedFileRead = installDelayedFileReadClient(queryClient)
     performance.clearMarks('editor.authoritative_text_paint')
     performance.clearMarks('editor.authoritative_highlight_paint')
 
