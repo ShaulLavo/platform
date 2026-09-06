@@ -11,6 +11,7 @@ export {
   type TreeEntry,
 } from './tree-entry'
 export type { FileResult } from './file-result'
+export { TUI_CLIENT_ORIGIN } from './client-origins'
 export {
   generateSpreadOrderKeys,
   isValidOrderKey,

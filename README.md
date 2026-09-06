@@ -34,6 +34,9 @@ bun run dev
 
 `dev` brings up web + server + desktop. `bun run dev:web` skips the desktop app, `bun run desktop:dev` runs just it. `.env` at the root is optional, it's only read for overrides like `PORT`, `WEB_PORT` and the `OBSERVABILITY_*` knobs
 
+`bun run dev:tui` opens settings, commands, and file browsing against the existing server. See the
+[TUI guide](apps/tui/README.md) for connection options, keyboard controls, and headless frames.
+
 `bun run verify` is the full gate: typecheck, lint, format:check, test. lint is oxlint, formatting is oxfmt. scope anything to one package with `bun --filter web test` or `bun --filter server typecheck`
 
 open the url dev prints and you should land on the workspace shell with the file tree and editor

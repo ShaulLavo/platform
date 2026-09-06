@@ -1,0 +1,102 @@
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import path from 'node:path'
+import { TUI_CLIENT_ORIGIN } from '@workspace/contracts'
+import {
+  closeApp,
+  createApp,
+  createMetadataDatabase,
+  migratePlatformDatabase,
+  MockProviderAdapter,
+  NerdFontService,
+  ProviderAdapterRegistry,
+  testSettingsOptions,
+  type MetadataDatabaseHandle,
+  type AppOptions,
+} from 'server/testing'
+
+export const TEST_SERVER_ORIGIN = 'http://platform-tui.test'
+export const TEST_CLIENT_ORIGIN = TUI_CLIENT_ORIGIN
+
+export type TestServer = Awaited<ReturnType<typeof makeTestServer>>
+
+type TestServerOptions = Pick<AppOptions, 'terminal' | 'lsp'>
+
+export async function makeTestServer(options: TestServerOptions = {}) {
+  await mkdir('/work/tmp', { recursive: true })
+  const root = await mkdtemp('/work/tmp/platform-tui-test-')
+  try {
+    return buildTestServer(root, options)
+  } catch (error) {
+    await rm(root, { force: true, recursive: true })
+    throw error
+  }
+}
+
+function buildTestServer(root: string, options: TestServerOptions) {
+  const database = createMetadataDatabase({ databasePath: ':memory:' })
+  try {
+    return createServerWithDatabase(root, database, options)
+  } catch (error) {
+    database.close()
+    throw error
+  }
+}
+
+function createServerWithDatabase(
+  root: string,
+  database: MetadataDatabaseHandle,
+  options: TestServerOptions,
+) {
+  migratePlatformDatabase(database.db)
+  const providerAdapter = new MockProviderAdapter()
+  const workspaceEditJournalRoot = path.join(root, '.platform-test', 'workspace-edit-journals')
+  const buildApp = () =>
+    createApp({
+      ...options,
+      auth: { allowedOrigins: [TEST_CLIENT_ORIGIN] },
+      fonts: new NerdFontService({ cacheRoot: path.join(root, '.platform-test', 'fonts') }),
+      metadataDatabase: database,
+      orchestration: {
+        attachmentsDir: path.join(root, '.platform-test', 'attachments'),
+        database: database.db,
+        providerAdapterRegistry: new ProviderAdapterRegistry([providerAdapter]),
+        providerRuntime: false,
+      },
+      settings: testSettingsOptions(root),
+      watch: false,
+      workspaceEditJournalRoot,
+      workspaceRoot: root,
+    })
+
+  let app = buildApp()
+  return {
+    get app() {
+      return app
+    },
+    database,
+    providerAdapter,
+    root,
+    workspaceEditJournalRoot,
+    origin: TEST_SERVER_ORIGIN,
+    clientOrigin: TEST_CLIENT_ORIGIN,
+    async restart() {
+      await closeApp(app)
+      app = buildApp()
+    },
+    async cleanup() {
+      try {
+        await closeApp(app)
+      } finally {
+        await closeDatabaseAndWorkspace(database, root)
+      }
+    },
+  }
+}
+
+async function closeDatabaseAndWorkspace(database: MetadataDatabaseHandle, root: string) {
+  try {
+    database.close()
+  } finally {
+    await rm(root, { force: true, recursive: true })
+  }
+}

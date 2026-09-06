@@ -1,5 +1,6 @@
 import net from 'node:net'
 
+import { TUI_CLIENT_ORIGIN } from '../packages/contracts/src/client-origins'
 import { createScriptError } from './structured-errors'
 
 const MAX_PORT_ATTEMPTS = 100
@@ -51,10 +52,7 @@ export function runtimeUrl(host: string, port: number) {
   return `http://${urlHost(host)}:${port}`
 }
 
-// Exact origins are the whole guard (apps/server/src/auth.ts), so the launcher
-// owes the server every spelling a browser can actually send for the resolved
-// web port: `localhost` and `127.0.0.1` are different origins even though they
-// reach the same socket.
+// The origin guard is exact, so register both loopback spellings and the TUI origin.
 export function allowedOriginsForWebPort(
   configuredOrigins: string | undefined,
   webHost: string,
@@ -62,6 +60,7 @@ export function allowedOriginsForWebPort(
 ) {
   return unique([
     ...browserOriginsForWebPort(webHost, webPort),
+    TUI_CLIENT_ORIGIN,
     ...originsFromEnv(configuredOrigins),
   ]).join(',')
 }

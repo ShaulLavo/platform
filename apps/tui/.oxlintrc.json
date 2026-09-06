@@ -1,0 +1,22 @@
+{
+  "extends": ["../../.oxlintrc.json"],
+  "overrides": [
+    {
+      "files": ["src/**/*.tsx"],
+      "excludeFiles": ["src/components/select.tsx"],
+      "rules": {
+        "react/forbid-elements": [
+          "error",
+          {
+            "forbid": [
+              {
+                "element": "select",
+                "message": "Use @/components/select so every list wraps at its boundaries."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

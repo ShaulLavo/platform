@@ -158,7 +158,7 @@ export async function fetchTree(path: string, signal: AbortSignal, client: Clien
   const startedAt = performance.now()
 
   try {
-    const result = await readDirectory({ client, path, signal }).catch(rethrowFileReadError)
+    const result = await readDirectory({ client, path, signal })
     queueTreeSuccessLog(path, result, startedAt)
     return result
   } catch (error) {
@@ -175,7 +175,7 @@ export async function fetchFile(path: string, signal: AbortSignal, client: Clien
   const startedAt = performance.now()
 
   try {
-    const result = await readFilePreview({ client, path, signal }).catch(rethrowFileReadError)
+    const result = await readFilePreview({ client, path, signal })
     queueReadSuccessLog(path, result, startedAt)
     return result
   } catch (error) {
@@ -709,9 +709,4 @@ function elapsedMs(startedAt: number) {
 
 function roundMs(value: number) {
   return Math.round(value * 100) / 100
-}
-
-function rethrowFileReadError(error: unknown): never {
-  if (error instanceof Error) throw error
-  throw createRpcError(error)
 }

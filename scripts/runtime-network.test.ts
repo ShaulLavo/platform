@@ -25,11 +25,23 @@ test('selects the first available non-server port', async () => {
 test('builds exact origins for the selected web port', () => {
   expect(
     allowedOriginsForWebPort('http://custom.local:4000,http://127.0.0.1:3000', '127.0.0.1', 3000),
-  ).toBe('http://127.0.0.1:3000,http://localhost:3000,http://custom.local:4000')
+  ).toBe(
+    'http://127.0.0.1:3000,http://localhost:3000,platform-tui://local,http://custom.local:4000',
+  )
 })
 
 test('keeps a non-loopback web host exact', () => {
-  expect(allowedOriginsForWebPort(undefined, 'custom.local', 4000)).toBe('http://custom.local:4000')
+  expect(allowedOriginsForWebPort(undefined, 'custom.local', 4000)).toBe(
+    'http://custom.local:4000,platform-tui://local',
+  )
+})
+
+test('registers the TUI origin once when it is also configured explicitly', () => {
+  expect(allowedOriginsForWebPort('platform-tui://local', 'localhost', 5173).split(',')).toEqual([
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'platform-tui://local',
+  ])
 })
 
 test('reads validated ports from runtime environment', () => {

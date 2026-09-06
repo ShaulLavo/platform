@@ -13,6 +13,8 @@
       "scripts"
     ],
     "catalog": {
+      "@opentui/core": "0.5.10",
+      "@opentui/react": "0.5.10",
       "evlog": "2.27.1",
       "vite": "8.0.16",
       "vitest": "4.1.10"
@@ -22,6 +24,7 @@
     "build": "bun scripts/prod.ts build",
     "dev": "bun --env-file=.env scripts/dev.ts",
     "dev:web": "bun --env-file=.env scripts/dev.ts --filter=!desktop",
+    "dev:tui": "bun scripts/tui.ts",
     "desktop:dev": "bun --env-file=.env scripts/desktop-dev.ts",
     "lint": "bun run --filter '*' lint",
     "prod": "bun scripts/prod.ts",

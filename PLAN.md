@@ -157,6 +157,21 @@ Plan 069's session-domain prerequisite is complete. It remains single-machine an
 The combined Git overview across checkouts and machines is also unscheduled; strategy §5.6 records
 its scope. Nothing in this lane binds a server off loopback.
 
+## TUI lane
+
+Plan 079 is complete (2026-09-05) and its executable plan is deleted. The TUI includes editable
+settings, native shortcut recording, external JSON editing, command palette modes, file browsing,
+address history, themes, and environment-scoped storage over the shared HTTP/RPC/settings core.
+The [foundation record](docs/tui-foundation.md) preserves the design and verification; the
+[binding audit](docs/tui-bindings.md) preserves command dispositions. The 2026-09-06 review fixes
+pass all 152 TUI tests, including native dialog regressions, concurrent-process cache writes, and
+shutdown cleanup. Real PTY tests cover the launcher, external editing, suspend/resume, signals,
+and terminal restoration. The original completion also verified eight client-core tests and
+affected web checks. TUI build and affected typechecks pass.
+Agent view, workbench, and distribution follow [the TUI strategy](docs/tui-plan.md). Plan 074
+and the terminal/editor feasibility proofs remain prerequisites for workbench integration.
+This lane preserves concurrent environment and terminal changes.
+
 ## Verification boundaries
 
 - **Platform-only:** verify the narrow Platform tests/typechecks named by the active plan.
