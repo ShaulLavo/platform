@@ -14,6 +14,7 @@ const workspaceRoot = path.resolve(__dirname, '../..')
 const editorPackagesRoot = resolveEditorPackagesRoot()
 const editorSourceModules = buildEditorSourceModules(editorPackagesRoot)
 const editorRepoRoots = collectEditorRepoRoots(editorPackagesRoot, editorSourceModules)
+const linkedPackageRoots = collectLinkedPackageRoots(['ghostty-webgpu'])
 const reactRefreshExclude = buildReactRefreshExclude(editorRepoRoots)
 const devServerHost = process.env.WEB_HOST ?? '127.0.0.1'
 const devServerPort = portFromEnv(process.env, 'WEB_PORT', 5173)
@@ -43,7 +44,12 @@ export default defineConfig({
   },
   server: {
     fs: {
-      allow: uniquePaths([workspaceRoot, resolveEditorSourceRoot(), ...editorRepoRoots]),
+      allow: uniquePaths([
+        workspaceRoot,
+        resolveEditorSourceRoot(),
+        ...editorRepoRoots,
+        ...linkedPackageRoots,
+      ]),
     },
     host: devServerHost,
     port: devServerPort,
@@ -231,6 +237,20 @@ function collectEditorRepoRoots(root: string, modules: EditorSourceModules): rea
     if (!real) continue
 
     roots.add(path.resolve(real, '../..'))
+  }
+  return [...roots]
+}
+
+// A `bun link`ed package lives outside the workspace, so Vite's fs allowlist
+// blocks the non-JS files it fetches at runtime (ghostty's wasm artifact).
+function collectLinkedPackageRoots(names: readonly string[]): readonly string[] {
+  const bases = [__dirname, workspaceRoot]
+  const roots = new Set<string>()
+  for (const name of names) {
+    for (const base of bases) {
+      const real = existingRealPath(path.join(base, 'node_modules', name))
+      if (real) roots.add(real)
+    }
   }
   return [...roots]
 }
