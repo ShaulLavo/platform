@@ -1,3 +1,5 @@
+import { terminalLeaseSchema } from '@workspace/contracts'
+import { worktreesAffectedByEvent, referencingSessionIds } from './worktree-projection'
 import { and, asc, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm'
 import type { SQLiteColumn } from 'drizzle-orm/sqlite-core'
 import * as v from 'valibot'
@@ -22,6 +24,7 @@ import { getDefaultPlatformDatabase } from '../db/client'
 import {
   projectionProjects,
   projectionWorktrees,
+  projectionTerminalLeases,
   projectionState,
   projectionSessionActivities,
   projectionSessionCheckpoints,
@@ -71,6 +74,8 @@ export class OrchestrationSnapshotQuery {
   fullReadModel(sequence = this.currentSequence()): OrchestrationReadModel {
     const model = createEmptyReadModel(sequence)
 
+    for (const row of this.database.select().from(projectionTerminalLeases).all())
+      model.terminalLeases.set(row.terminalLeaseId, v.parse(terminalLeaseSchema, row))
     for (const row of this.database.select().from(projectionProjects).all()) {
       model.projects.set(row.projectId, projectFromRow(row))
     }
@@ -121,12 +126,14 @@ export class OrchestrationSnapshotQuery {
     for (const projectId of touchedProjectIds(events)) {
       this.refreshProject(model, projectId)
     }
-    for (const event of events) {
-      if (event.aggregateKind !== 'worktree') continue
+    const worktreeIds = new Set(
+      events.flatMap((event) => worktreesAffectedByEvent(this.database, event)),
+    )
+    for (const worktreeId of worktreeIds) {
       const row = this.database
         .select()
         .from(projectionWorktrees)
-        .where(eq(projectionWorktrees.worktreeId, event.aggregateId))
+        .where(eq(projectionWorktrees.worktreeId, worktreeId))
         .get()
       if (row)
         model.worktrees.set(row.worktreeId, {
@@ -134,10 +141,19 @@ export class OrchestrationSnapshotQuery {
           retirementSequence: row.retirementSequence,
         })
     }
+    for (const event of events) {
+      if (event.type !== 'terminal.lease-updated') continue
+      model.terminalLeases.set(event.payload.terminalLeaseId, event.payload)
+    }
     // Scalars first: a `session.created` in this batch has to land in the map
     // before the message that shares the batch can splice into it. Order is
     // otherwise irrelevant — every row the batch wrote is already final.
-    for (const sessionId of touchedSessionIds(events)) {
+    const sessionIds = new Set<string>(touchedSessionIds(events))
+    for (const event of events) {
+      if (event.aggregateKind !== 'worktree') continue
+      for (const id of referencingSessionIds(this.database, event.aggregateId)) sessionIds.add(id)
+    }
+    for (const sessionId of sessionIds) {
       this.hydrateSession(model, sessionId, model.sessions.get(sessionId))
     }
     for (const event of events) {
@@ -157,12 +173,24 @@ export class OrchestrationSnapshotQuery {
       .all()
       .map(projectShellFromRow)
     const worktrees = this.database
-      .select()
+      .select({ worktree: projectionWorktrees })
       .from(projectionWorktrees)
-      .where(isNull(projectionWorktrees.retiredAt))
+      .innerJoin(
+        projectionProjects,
+        eq(projectionProjects.projectId, projectionWorktrees.projectId),
+      )
+      .where(
+        and(
+          isNull(projectionProjects.deletedAt),
+          or(
+            isNull(projectionWorktrees.retiredAt),
+            eq(projectionWorktrees.lifecycleState, 'removed'),
+          ),
+        ),
+      )
       .orderBy(asc(projectionWorktrees.createdAt))
       .all()
-      .map(worktreeShellFromRow)
+      .map(({ worktree }) => worktreeShellFromRow(worktree))
     const sessions = this.database
       .select()
       .from(projectionSessions)

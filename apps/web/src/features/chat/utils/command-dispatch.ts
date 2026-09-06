@@ -104,7 +104,9 @@ export function replayAfterDispatch(
 function eventsCommittedBy(command: ClientOrchestrationCommand) {
   if (command.type !== 'session.turn.start') return 2
 
-  return command.bootstrap?.createSession ? 3 : 2
+  const bootstrap = command.bootstrap?.createSession
+  if (!bootstrap) return 2
+  return bootstrap.worktreeTarget.kind === 'new' ? 4 : 3
 }
 
 function runGuarded(run: () => void, scope: ChatPipelineScope, counter: string) {

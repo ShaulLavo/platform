@@ -1,3 +1,4 @@
+import type { WorktreeId } from './chat-ids'
 /**
  * Git request/response DTOs that cross the server↔web boundary. Both
  * apps/server and apps/web consume these shared definitions rather than
@@ -111,12 +112,12 @@ export type GitWorktree = {
   /** Workspace-relative path, or null when the worktree sits outside the workspace. */
   path: string | null
   prunable: boolean
-  /** The session that owns this worktree, or null for one a human made by hand. */
-  sessionId: string | null
+  /** An ID derived from a managed path, never proof of ownership. */
+  worktreeId: WorktreeId | null
 }
 
 export type GitWorktreeCreateResult = {
-  /** False when the session already had a worktree and this call re-used it. */
+  /** False when the requested worktree already exists. */
   created: boolean
   worktree: GitWorktree
 }

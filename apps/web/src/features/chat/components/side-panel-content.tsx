@@ -1,5 +1,7 @@
+import type { WorktreeId } from '@workspace/contracts'
+import { selectCurrentWorktree } from '@/features/chat/state/chat-projection-selectors'
 import { useActiveChatProjection } from '@/features/chat/hooks/use-active-projection'
-import { memo, useCallback, useMemo } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 
 import { useActiveChatSessionId } from '../hooks/use-active-chat-session-id'
 import { useChatShellSubscription } from '../hooks/use-chat-shell-subscription'
@@ -27,11 +29,22 @@ export const ChatSidePanelContent = memo(({ rootPath }: { rootPath: string }) =>
   const sessionIds = useMemo(() => sessions.map((session) => session.id), [sessions])
   const { activeSessionId, selectDraftSession, setActiveSessionId } =
     useActiveChatSessionId(sessionIds)
+  const [draftBaseId, setDraftBaseId] = useState<WorktreeId | null>(null)
+  const [draftGeneration, setDraftGeneration] = useState(0)
+  const draftBase = useActiveChatProjection((state) => {
+    if (!projectId) return undefined
+    const source = draftBaseId ? state.worktreeById[draftBaseId] : undefined
+    if (source?.projectId === projectId) return source
+    return selectCurrentWorktree(state, projectId)
+  })
   const disabled = !projectState.project || projectState.status !== 'ready'
 
   const handleNewChat = useCallback(() => {
+    const source = sessions.find((session) => session.id === activeSessionId)
+    setDraftBaseId(source?.worktreeId ?? null)
+    setDraftGeneration((generation) => generation + 1)
     selectDraftSession()
-  }, [selectDraftSession])
+  }, [selectDraftSession, activeSessionId, sessions])
 
   return (
     <div className='flex h-full min-h-0 flex-col'>
@@ -56,8 +69,9 @@ export const ChatSidePanelContent = memo(({ rootPath }: { rootPath: string }) =>
           disabled={disabled}
           transport={transport}
           project={projectState.project}
-          worktreeId={projectState.worktree?.id ?? null}
-          rootPath={rootPath}
+          key={`${transport.environmentId}:${draftBase?.id}:${draftGeneration}`}
+          worktree={draftBase ?? null}
+          rootPath={draftBase?.path ?? rootPath}
           onSessionCreated={setActiveSessionId}
         />
       )}

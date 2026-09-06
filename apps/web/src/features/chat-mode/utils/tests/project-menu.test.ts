@@ -10,6 +10,7 @@ test('offers a new session first, then manage, then the view controls, then copy
 
 test('offers to rename, archive everything, and delete the project', () => {
   expect(itemLabels(menuContext(), 'manage')).toEqual([
+    'Manage Worktrees',
     'Rename Project',
     'Archive All Sessions',
     'Delete Project',
@@ -18,6 +19,7 @@ test('offers to rename, archive everything, and delete the project', () => {
 
 test('omits archive all once every session is already filed away', () => {
   expect(itemLabels(menuContext({ canArchiveSessions: false }), 'manage')).toEqual([
+    'Manage Worktrees',
     'Rename Project',
     'Delete Project',
   ])
@@ -55,6 +57,7 @@ test('every item runs its own callback', () => {
 
   expect(calls).toEqual([
     'newSession',
+    'manageWorktrees',
     'renameProject',
     'archiveAllSessions',
     'deleteProject',
@@ -102,6 +105,7 @@ function menuContext({
     collapsed,
     copyPath: () => record.push('copyPath'),
     deleteProject: () => record.push('deleteProject'),
+    manageWorktrees: () => record.push('manageWorktrees'),
     newSession: () => record.push('newSession'),
     renameProject: () => record.push('renameProject'),
     scopedToProject,

@@ -426,5 +426,19 @@ function externalCheckout(
     createdAt: previous?.createdAt ?? now,
     updatedAt: now,
     retiredAt: null,
+    lifecycle: { state: 'ready' },
+    operationId: null,
+    baseWorktreeId: null,
+    baseCommit: null,
+    headCommit: null,
+    metadataVersion: 0,
+    pathKind: 'legacy',
+    activeTerminalCount: 0,
+    terminalOwnershipUnknown: false,
+    externalDriverUnverified: previous?.externalDriverUnverified ?? false,
+    removedAt: null,
+    worktreeCreationCapability:
+      project.repositoryKind === 'git' ? { allowed: true } : { allowed: false, reason: 'not-git' },
+    cleanupEligibility: { reason: 'external', nonDeletedSessionCount: 0, canResolveMissing: false },
   }
 }

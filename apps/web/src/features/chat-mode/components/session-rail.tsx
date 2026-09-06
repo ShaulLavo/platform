@@ -1,3 +1,4 @@
+import { useWorktreeManagerStore } from '@/features/chat-mode/state/worktree-manager-store'
 import { scopedSessionKey } from '@workspace/contracts'
 import { useRailEnvironments } from '@/features/chat-mode/hooks/use-rail-environments'
 import {
@@ -12,6 +13,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import {
   ArchiveIcon,
   FolderPlusIcon,
+  GitForkIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   XIcon,
@@ -130,6 +132,20 @@ export function SessionRail() {
         >
           <PlusIcon className='size-4 shrink-0' weight='bold' />
           <span className='truncate'>New session</span>
+        </Button>
+        <Button
+          aria-label='Manage worktrees'
+          title='Manage worktrees'
+          size='icon-sm'
+          variant='ghost'
+          disabled={!model.projects.length}
+          onClick={() => {
+            const target =
+              model.projects.find((item) => item.id === project?.id) ?? model.projects[0]
+            if (target) useWorktreeManagerStore.getState().openManager(target.ref)
+          }}
+        >
+          <GitForkIcon className='size-4' />
         </Button>
         <Button
           aria-label='Add project'

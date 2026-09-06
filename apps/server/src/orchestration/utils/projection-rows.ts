@@ -35,11 +35,17 @@ export function projectShellFromRow(row: ProjectionProjectRow) {
 }
 
 export function worktreeFromRow(row: ProjectionWorktreeRow) {
-  return v.parse(orchestrationWorktreeSchema, { ...row, id: row.worktreeId })
+  return v.parse(orchestrationWorktreeSchema, {
+    ...row,
+    id: row.worktreeId,
+    lifecycle: parseJson(row.lifecycleJson),
+    worktreeCreationCapability: parseJson(row.creationCapabilityJson),
+    cleanupEligibility: parseJson(row.cleanupEligibilityJson),
+  })
 }
 
 export function worktreeShellFromRow(row: ProjectionWorktreeRow) {
-  return v.parse(orchestrationWorktreeShellSchema, { ...row, id: row.worktreeId })
+  return v.parse(orchestrationWorktreeShellSchema, worktreeFromRow(row))
 }
 
 export function sessionShellFromRow(

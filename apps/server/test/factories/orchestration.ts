@@ -1,11 +1,8 @@
 import { mkdtemp, mkdir, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { Database } from 'bun:sqlite'
-import { drizzle } from 'drizzle-orm/bun-sqlite'
 import * as v from 'valibot'
 import { orchestrationCommandSchema, type WorktreeId } from '@workspace/contracts'
-import * as schema from '../../src/db/schema'
+import { createMetadataDatabase } from '../../src/db/client'
 import { DEFAULT_MAX_TEXT_FILE_BYTES } from '../../src/fs/limits'
 import { createWorkspacePaths } from '../../src/fs/path'
 import { GitService } from '../../src/git/service'
@@ -20,11 +17,12 @@ export const FIXTURE_SESSION_ID = '974a8f3c-3bc1-44d1-bc82-da59e3dc6cde'
 export const FIXTURE_MODEL = { providerInstanceId: 'codex', model: 'mock-model' }
 
 export async function createOrchestrationFixture(options: { repositoryCacheTtlMs?: number } = {}) {
-  const root = await mkdtemp(path.join(tmpdir(), 'platform-domain-'))
+  const root = await mkdtemp(path.join('/work/tmp', 'platform-domain-'))
   const checkout = path.join(root, 'checkout')
   await mkdir(checkout)
-  const sqlite = new Database(path.join(root, 'metadata.sqlite'), { create: true })
-  const database = drizzle({ client: sqlite, schema })
+  const handle = createMetadataDatabase({ databasePath: path.join(root, 'metadata.sqlite') })
+  const database = handle.db
+  const sqlite = database.$client
   const paths = createWorkspacePaths(root)
   const git = new GitService(paths, {
     maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES,
@@ -61,7 +59,7 @@ export async function createOrchestrationFixture(options: { repositoryCacheTtlMs
         type: 'session.create',
         commandId: `create-${++nextCommand}`,
         sessionId,
-        worktreeId,
+        worktreeTarget: { kind: 'current', worktreeId },
         title: 'Fixture session',
         modelSelection: FIXTURE_MODEL,
       }),
@@ -84,7 +82,7 @@ export async function createOrchestrationFixture(options: { repositoryCacheTtlMs
     },
     close: async () => {
       await engine.close()
-      sqlite.close()
+      handle.close()
       await rm(root, { force: true, recursive: true })
     },
   }

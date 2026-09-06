@@ -204,7 +204,7 @@ function projectCreateCommand() {
 
 function sessionCreateCommand() {
   return {
-    worktreeId: '20000000-0000-4000-8000-000000000001',
+    worktreeTarget: { kind: 'current', worktreeId: '20000000-0000-4000-8000-000000000001' },
 
     commandId: 'cmd-session-create',
     createdAt: now,

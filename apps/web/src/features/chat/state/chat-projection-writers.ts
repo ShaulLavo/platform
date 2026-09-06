@@ -1,3 +1,5 @@
+import { shellItemKey } from '@/features/chat/utils/shell-item-key'
+import { projectWorktreeEvent } from '@/features/chat/utils/worktree-event'
 import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
@@ -54,9 +56,13 @@ export function syncChatProjectionShellSnapshot(
     ...projectStateFromShell(snapshot.projects),
     worktreeById: recordById(snapshot.worktrees, (worktree) => worktree.id),
     worktreeIds: snapshot.worktrees.map((worktree) => worktree.id),
+    worktreeSequenceById: Object.fromEntries(
+      snapshot.worktrees.map((worktree) => [worktree.id, snapshot.snapshotSequence]),
+    ),
     ...retainSurvivingSessionSlices(state, nextSessionIds),
     bootstrapComplete: true,
     lastAppliedShellSequence: snapshot.snapshotSequence,
+    lastShellItemKeys: null,
     lastAppliedShellUpdatedAt: snapshot.updatedAt,
     sessionIds: [],
   }
@@ -213,11 +219,18 @@ export function applyChatProjectionShellStreamItem(
   item: OrchestrationShellStreamItem,
 ): ChatProjectionSlice {
   if (item.kind === 'snapshot') return syncChatProjectionShellSnapshot(state, item.snapshot)
-  if (!shouldApplyShellSequence(state, item.sequence)) return state
+  const key = shellItemKey(item)
+  if (!shouldApplyShellSequence(state, item.sequence, key)) return state
 
   const nextState = applyFreshShellStreamItem(state, item)
 
-  return markShellSequence(nextState, item.sequence)
+  return {
+    ...markShellSequence(nextState, item.sequence),
+    lastShellItemKeys:
+      item.sequence > state.lastAppliedShellSequence
+        ? [key]
+        : [...(state.lastShellItemKeys ?? []), key],
+  }
 }
 
 export function applyChatProjectionSessionStreamItem(
@@ -251,6 +264,7 @@ export function applyChatProjectionEvent(
   }
 
   if (isWorktreeOrchestrationEvent(event)) return applyWorktreeEvent(state, event)
+  if (event.type === 'terminal.lease-updated') return state
   return applyProjectEvent(state, event)
 }
 
@@ -272,8 +286,10 @@ function shouldApplyShellSnapshot(
   return snapshot.updatedAt > previousUpdatedAt
 }
 
-function shouldApplyShellSequence(state: ChatProjectionSlice, sequence: number) {
-  return sequence > state.lastAppliedShellSequence
+function shouldApplyShellSequence(state: ChatProjectionSlice, sequence: number, key: string) {
+  if (sequence > state.lastAppliedShellSequence) return true
+  if (sequence < state.lastAppliedShellSequence) return false
+  return state.lastShellItemKeys !== null && !state.lastShellItemKeys.includes(key)
 }
 
 function shouldApplySessionSequence(
@@ -330,7 +346,7 @@ function applyFreshShellStreamItem(
     case 'project-removed':
       return removeProject(state, item.projectId)
     case 'worktree-upserted':
-      return writeWorktree(state, item.worktree)
+      return writeWorktree(state, item.worktree, item.sequence)
     case 'worktree-removed':
       return removeWorktree(state, item.worktreeId)
     case 'session-upserted':
@@ -718,6 +734,11 @@ function applySessionTurnStartRequestedEvent(
   const latestTurn: OrchestrationLatestTurn = {
     ...turnRuntimeMetadata(null),
     providerStartSequence: event.sequence,
+    providerStartState:
+      state.worktreeById[state.sessionById[event.payload.sessionId]?.worktreeId ?? '']?.lifecycle
+        .state === 'provisioning'
+        ? 'blocked-on-worktree'
+        : 'queued',
     assistantMessageId: null,
     completedAt: null,
     requestedAt: event.payload.createdAt,
@@ -754,6 +775,7 @@ function applySessionTurnInterruptRequestedEvent(
       completedAt: session.liveTurn.completedAt ?? event.payload.createdAt,
       startedAt: session.liveTurn.startedAt ?? event.payload.createdAt,
       state: 'interrupted',
+      providerStartState: 'interrupted',
     },
     pendingSourceProposedPlan: session.pendingSourceProposedPlan,
   })
@@ -1543,10 +1565,12 @@ function isWorktreeOrchestrationEvent(
 function writeWorktree(
   state: ChatProjectionSlice,
   worktree: OrchestrationWorktreeShell,
+  sequence: number,
 ): ChatProjectionSlice {
   return {
     ...state,
     worktreeById: { ...state.worktreeById, [worktree.id]: worktree },
+    worktreeSequenceById: { ...state.worktreeSequenceById, [worktree.id]: sequence },
     worktreeIds: appendId(state.worktreeIds, worktree.id),
   }
 }
@@ -1563,17 +1587,13 @@ function applyWorktreeEvent(
   state: ChatProjectionSlice,
   event: WorktreeOrchestrationEvent,
 ): ChatProjectionSlice {
-  if (event.type === 'worktree.retired') return removeWorktree(state, event.payload.worktreeId)
-  if (event.type === 'worktree.meta-updated') {
-    const held = state.worktreeById[event.payload.worktreeId]
-    if (!held) return state
-    return writeWorktree(state, {
-      ...held,
-      branch: event.payload.branch,
-      updatedAt: event.payload.updatedAt,
-    })
-  }
-  return writeWorktree(state, { ...event.payload, id: event.payload.worktreeId })
+  if (event.sequence <= (state.worktreeSequenceById[event.payload.worktreeId] ?? 0)) return state
+  const held = state.worktreeById[event.payload.worktreeId]
+  const projectId = 'projectId' in event.payload ? event.payload.projectId : held?.projectId
+  const kind = projectId ? state.projectById[projectId]?.repositoryKind : undefined
+  if (!kind) return state
+  const worktree = projectWorktreeEvent(held, event, kind)
+  return worktree ? writeWorktree(state, worktree, event.sequence) : state
 }
 
 function applySessionProposedPlanImplemented(

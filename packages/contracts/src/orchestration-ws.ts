@@ -30,7 +30,7 @@ import {
  *     subscriptions still push snapshot *frames*; only the requests are gone.
  * 4 — added the durable environment identity to the handshake.
  */
-export const ORCHESTRATION_WS_PROTOCOL_VERSION = 5
+export const ORCHESTRATION_WS_PROTOCOL_VERSION = 6
 
 /**
  * Hard ceiling on one `replayEvents` page. `replayEvents` is client-reachable,

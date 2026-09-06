@@ -123,7 +123,10 @@ test('a plan can be built in a session of its own, seeded with the plan itself',
   const command = dispatched[0]
   expect(command).toMatchObject({
     bootstrap: {
-      createSession: { worktreeId: TEST_WORKTREE_ID, title: 'Implement Ship the retry queue' },
+      createSession: {
+        worktreeTarget: { kind: 'current', worktreeId: TEST_WORKTREE_ID },
+        title: 'Implement Ship the retry queue',
+      },
     },
     interactionMode: 'default',
     sourceProposedPlan: { planId: 'plan-1', sessionId: 'ad686244-5b2e-59be-805f-ef86eac80feb' },

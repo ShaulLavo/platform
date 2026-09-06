@@ -92,13 +92,13 @@ describe('chat command builders', () => {
     const submission = createDraftSessionSubmission({
       createdAt: '2026-05-24T12:00:00.000Z',
       modelSelection: testModelSelection,
-      worktreeId: TEST_WORKTREE_ID,
+      worktreeTarget: { kind: 'current', worktreeId: TEST_WORKTREE_ID },
       text: 'Fix the draft session flow',
     })
 
     expect(submission.command.type).toBe('session.turn.start')
     expect(submission.command.bootstrap?.createSession).toMatchObject({
-      worktreeId: TEST_WORKTREE_ID,
+      worktreeTarget: { kind: 'current', worktreeId: TEST_WORKTREE_ID },
       title: 'Fix the draft session flow',
     })
     expect(submission.command.message.messageId).toBe(submission.optimisticMessage.id)
@@ -109,7 +109,7 @@ describe('chat command builders', () => {
     const draft = createDraftSessionSubmission({
       createdAt: '2026-05-24T12:00:00.000Z',
       modelSelection: testModelSelection,
-      worktreeId: TEST_WORKTREE_ID,
+      worktreeTarget: { kind: 'current', worktreeId: TEST_WORKTREE_ID },
       text: 'Rotate the API key in staging',
     })
     const turn = createTurnSubmission({
@@ -147,7 +147,7 @@ describe('chat command builders', () => {
     const draft = createDraftSessionSubmission({
       createdAt: '2026-05-24T12:00:00.000Z',
       modelSelection: testModelSelection,
-      worktreeId: TEST_WORKTREE_ID,
+      worktreeTarget: { kind: 'current', worktreeId: TEST_WORKTREE_ID },
       terminalContexts,
       // Nothing typed: the title must not fall back to the attached markup.
       text: '',

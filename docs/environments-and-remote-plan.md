@@ -313,9 +313,9 @@ localhost SSH and browser gates remain open, so the executable plan remains in p
 
 The [implementation reference](federated-environments.md#verification) records the automated
 verification results. The checks are defined in `scripts/verify-federated-environments.sh`.
-Plan 069 has its domain prerequisite but remains
-unscheduled. It adds worktree selection, creation, and cleanup on one machine. The Git overview
-in §5.6 also remains unscheduled. Mesh deployment checks and pairing follow only on demand.
+Plan 069 is implemented. The [worktree lifecycle reference](worktree-lifecycle.md) describes
+worktree selection, creation, and cleanup on one machine. The Git overview in §5.6 remains
+unscheduled. Mesh deployment checks and pairing follow only on demand.
 
 ## 7. What we deliberately will not copy from the reference
 

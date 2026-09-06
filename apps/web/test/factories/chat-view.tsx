@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, type ComponentProps, type ReactNode } from 'react'
 import type { SessionId } from '@workspace/contracts'
 import { Button } from '@workspace/ui/components/button'
+import { ChatDraftView } from '@/features/chat/components/chat-draft-view'
 import { ChatView } from '@/features/chat/components/chat-view'
 import { useChatTransport } from '@/features/chat/hooks/use-chat-transport'
 import { ChatProviderSignInProvider } from '@/features/chat/providers/provider-sign-in-provider'
@@ -9,13 +10,21 @@ import { TestEditorStateProvider } from './editor-state-provider'
 import { renderWithProviders } from '../render'
 
 export function renderCachedChatSelection(sessionId: SessionId) {
+  return renderChatSurface(
+    <ChatTransportProvider>
+      <SessionSelection sessionId={sessionId} />
+    </ChatTransportProvider>,
+  )
+}
+
+export function renderChatDraft(props: ComponentProps<typeof ChatDraftView>) {
+  return renderChatSurface(<ChatDraftView {...props} />)
+}
+
+function renderChatSurface(children: ReactNode) {
   return renderWithProviders(
     <TestEditorStateProvider>
-      <ChatProviderSignInProvider>
-        <ChatTransportProvider>
-          <SessionSelection sessionId={sessionId} />
-        </ChatTransportProvider>
-      </ChatProviderSignInProvider>
+      <ChatProviderSignInProvider>{children}</ChatProviderSignInProvider>
     </TestEditorStateProvider>,
   )
 }

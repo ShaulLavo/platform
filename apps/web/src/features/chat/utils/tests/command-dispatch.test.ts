@@ -183,7 +183,7 @@ function draftCommand(): ClientOrchestrationCommand {
   return createDraftSessionSubmission({
     createdAt: '2026-05-28T00:00:00.000Z',
     modelSelection: MODEL_SELECTION,
-    worktreeId: TEST_WORKTREE_ID,
+    worktreeTarget: { kind: 'current', worktreeId: TEST_WORKTREE_ID },
     text: 'Hello',
   }).command
 }

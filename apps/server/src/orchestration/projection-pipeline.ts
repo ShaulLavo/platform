@@ -1,3 +1,11 @@
+import {
+  applyWorktreeEvent,
+  lifecycleFields,
+  preserveDiscoveredOwnership,
+  refreshWorktreePolicy,
+  referencingSessionIds,
+  worktreesAffectedByEvent,
+} from './worktree-projection'
 import { or, and, asc, desc, eq, gt, inArray, isNull, sql } from 'drizzle-orm'
 import * as v from 'valibot'
 import {
@@ -114,12 +122,16 @@ export class OrchestrationProjectionPipeline {
     this.database.transaction(() => {
       if (event.sequence <= this.lastAppliedSequence()) return
       this.applyEvent(event)
+      preserveDiscoveredOwnership(this.database, event)
+      for (const id of worktreesAffectedByEvent(this.database, event))
+        refreshWorktreePolicy(this.database, id)
       this.refreshAttentionForEvent(event)
       this.markApplied(event.sequence)
     })
   }
 
   private applyEvent(event: OrchestrationEvent) {
+    if (applyWorktreeEvent(this.database, event)) return
     switch (event.type) {
       case 'project.created':
       case 'project.revived':
@@ -153,6 +165,7 @@ export class OrchestrationProjectionPipeline {
         this.database
           .update(projectionWorktrees)
           .set({
+            ...lifecycleFields({ state: 'retired', retiredAt: event.payload.retiredAt }),
             retiredAt: event.payload.retiredAt,
             retirementSequence: event.sequence,
             updatedAt: event.payload.retiredAt,
@@ -183,6 +196,12 @@ export class OrchestrationProjectionPipeline {
           title: event.payload.title,
           updatedAt: event.payload.updatedAt,
         })
+        return
+      case 'session.worktree-released':
+        this.releaseWorktreeTurn(event)
+        return
+      case 'session.worktree-blocked':
+        this.blockWorktreeTurn(event)
         return
       case 'session.created':
         this.upsertSession(event)
@@ -340,12 +359,56 @@ export class OrchestrationProjectionPipeline {
   private upsertWorktree(
     event: Extract<OrchestrationEvent, { type: 'worktree.registered' | 'worktree.revived' }>,
   ) {
-    const row = { ...event.payload, retiredAt: null, retirementSequence: null }
+    const row = {
+      ...event.payload,
+      ...lifecycleFields({ state: 'ready' }),
+      operationId: null,
+      retiredAt: null,
+      removedAt: null,
+      retirementSequence: null,
+    }
     this.database
       .insert(projectionWorktrees)
       .values(row)
       .onConflictDoUpdate({ target: projectionWorktrees.worktreeId, set: row })
       .run()
+  }
+
+  private blockWorktreeTurn(
+    event: Extract<OrchestrationEvent, { type: 'session.worktree-blocked' }>,
+  ) {
+    const { sessionId, turnId, updatedAt } = event.payload
+    this.updateSession(sessionId, { updatedAt })
+    if (!turnId) return
+    this.database
+      .update(projectionTurns)
+      .set({ providerStartState: 'blocked-on-worktree', providerStartSequence: event.sequence })
+      .where(
+        and(
+          eq(projectionTurns.sessionId, sessionId),
+          eq(projectionTurns.turnId, turnId),
+          eq(projectionTurns.providerStartState, 'queued'),
+        ),
+      )
+      .run()
+    this.refreshLatestTurn(sessionId, updatedAt)
+  }
+
+  private releaseWorktreeTurn(
+    event: Extract<OrchestrationEvent, { type: 'session.worktree-released' }>,
+  ) {
+    this.database
+      .update(projectionTurns)
+      .set({ providerStartState: 'queued', providerStartSequence: event.sequence })
+      .where(
+        and(
+          eq(projectionTurns.sessionId, event.payload.sessionId),
+          eq(projectionTurns.turnId, event.payload.turnId),
+          eq(projectionTurns.providerStartState, 'blocked-on-worktree'),
+        ),
+      )
+      .run()
+    this.refreshLatestTurn(event.payload.sessionId, event.payload.updatedAt)
   }
 
   private updateProviderStart(
@@ -426,6 +489,11 @@ export class OrchestrationProjectionPipeline {
   }
 
   private refreshAttentionForEvent(event: OrchestrationEvent) {
+    if (event.aggregateKind === 'worktree') {
+      for (const sessionId of referencingSessionIds(this.database, event.aggregateId))
+        this.refreshAttention(sessionId)
+      return
+    }
     if (event.aggregateKind !== 'session') return
     const failure = failureKind(event)
     if (failure === 'failure')
@@ -451,7 +519,17 @@ export class OrchestrationProjectionPipeline {
     const latestTurn = row.latestTurnJson
       ? v.parse(orchestrationLatestTurnSchema, JSON.parse(row.latestTurnJson))
       : null
-    const attention = sessionAttention({ ...row, latestTurn, runtime })
+    const worktree = this.database
+      .select({ lifecycleState: projectionWorktrees.lifecycleState })
+      .from(projectionWorktrees)
+      .where(eq(projectionWorktrees.worktreeId, row.worktreeId))
+      .get()
+    const attention = sessionAttention({
+      ...row,
+      latestTurn,
+      runtime,
+      worktreeState: worktree?.lifecycleState,
+    })
     this.updateSession(sessionId, attention)
   }
 
@@ -616,6 +694,20 @@ export class OrchestrationProjectionPipeline {
   }
 
   private upsertTurn(event: Extract<OrchestrationEvent, { type: 'session.turn-start-requested' }>) {
+    const session = this.database
+      .select({ worktreeId: projectionSessions.worktreeId })
+      .from(projectionSessions)
+      .where(eq(projectionSessions.sessionId, event.payload.sessionId))
+      .get()
+    const worktree = session
+      ? this.database
+          .select()
+          .from(projectionWorktrees)
+          .where(eq(projectionWorktrees.worktreeId, session.worktreeId))
+          .get()
+      : undefined
+    const providerStartState =
+      worktree?.lifecycleState === 'ready' ? 'queued' : 'blocked-on-worktree'
     const latestTurn = {
       assistantMessageId: null,
       completedAt: null,
@@ -623,7 +715,7 @@ export class OrchestrationProjectionPipeline {
       sourceProposedPlan: event.payload.sourceProposedPlan,
       startedAt: null,
       state: 'running',
-      providerStartState: 'queued',
+      providerStartState,
       providerStartGeneration: 0,
       providerStartSequence: event.sequence,
       runtimeEpoch: null,
@@ -639,7 +731,7 @@ export class OrchestrationProjectionPipeline {
         sourceProposedPlanJson: jsonOrUndefined(event.payload.sourceProposedPlan),
         startedAt: null,
         state: 'running',
-        providerStartState: 'queued',
+        providerStartState,
         providerStartGeneration: 0,
         providerStartSequence: event.sequence,
         runtimeEpoch: null,

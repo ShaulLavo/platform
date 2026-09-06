@@ -1,3 +1,14 @@
+import {
+  sessionWorktreeTargetSchema,
+  worktreeProvisioningSchema,
+  worktreeClientCommandSchemas,
+  worktreeInternalCommandSchemas,
+  terminalLeaseCommandSchemas,
+  worktreeRetryCommandSchema,
+  worktreeCleanupCommandSchema,
+  worktreeForceCleanupCommandSchema,
+  worktreeReleaseCommandSchema,
+} from './worktree-lifecycle'
 import * as v from 'valibot'
 import {
   approvalRequestIdSchema,
@@ -97,7 +108,7 @@ export const sessionCreateCommandSchema = v.object({
   ...commandBaseSchema,
   type: v.literal('session.create'),
   sessionId: sessionIdSchema,
-  worktreeId: worktreeIdSchema,
+  worktreeTarget: sessionWorktreeTargetSchema,
   title: trimmedNonEmptyStringSchema,
   modelSelection: modelSelectionSchema,
   runtimeMode: v.optional(runtimeModeSchema, DEFAULT_RUNTIME_MODE),
@@ -105,7 +116,7 @@ export const sessionCreateCommandSchema = v.object({
 })
 
 export const sessionTurnBootstrapCreateSessionSchema = v.object({
-  worktreeId: worktreeIdSchema,
+  worktreeTarget: sessionWorktreeTargetSchema,
   title: trimmedNonEmptyStringSchema,
   modelSelection: modelSelectionSchema,
   runtimeMode: v.optional(runtimeModeSchema, DEFAULT_RUNTIME_MODE),
@@ -304,6 +315,7 @@ export const clientOrchestrationCommandSchema = v.variant('type', [
   sessionApprovalRespondCommandSchema,
   sessionUserInputRespondCommandSchema,
   sessionCheckpointRevertCommandSchema,
+  ...worktreeClientCommandSchemas,
 ])
 
 export const sessionRuntimeSetCommandSchema = v.object({
@@ -398,16 +410,9 @@ export const worktreeReviveCommandSchema = v.object({
   retirementSequence: nonNegativeIntegerSchema,
 })
 
-export const worktreeMetaUpdateCommandSchema = v.object({
-  ...commandBaseSchema,
-  type: v.literal('worktree.meta.update'),
-  worktreeId: worktreeIdSchema,
-  branch: v.nullable(trimmedNonEmptyStringSchema),
-  updatedAt: isoDateTimeSchema,
-})
-
 export const sessionDiscoverCommandSchema = v.object({
-  ...sessionCreateCommandSchema.entries,
+  ...v.omit(sessionCreateCommandSchema, ['worktreeTarget']).entries,
+  worktreeId: worktreeIdSchema,
   type: v.literal('session.discover'),
   sourceUpdatedAt: isoDateTimeSchema,
 })
@@ -465,12 +470,26 @@ export const sessionDeletionUpdateCommandSchema = v.object({
   deletion: sessionDeletionStateSchema,
 })
 
+export const preparedSessionCreateCommandSchema = v.object({
+  ...sessionCreateCommandSchema.entries,
+  worktreeProvisioning: v.optional(worktreeProvisioningSchema),
+  intentFingerprint: v.optional(trimmedNonEmptyStringSchema),
+})
+export const preparedSessionTurnStartCommandSchema = v.object({
+  ...sessionTurnStartCommandSchema.entries,
+  worktreeProvisioning: v.optional(worktreeProvisioningSchema),
+  intentFingerprint: v.optional(trimmedNonEmptyStringSchema),
+})
+
 export const internalOrchestrationCommandSchema = v.variant('type', [
   preparedProjectCreateCommandSchema,
+  preparedSessionCreateCommandSchema,
+  preparedSessionTurnStartCommandSchema,
+  ...worktreeInternalCommandSchemas,
+  ...terminalLeaseCommandSchemas,
   projectReviveCommandSchema,
   worktreeRegisterCommandSchema,
   worktreeReviveCommandSchema,
-  worktreeMetaUpdateCommandSchema,
   sessionDiscoverCommandSchema,
   sessionDiscoveryMetadataUpdateCommandSchema,
   sessionProviderStartClaimCommandSchema,
@@ -487,10 +506,32 @@ export const internalOrchestrationCommandSchema = v.variant('type', [
   sessionRevertCompleteCommandSchema,
 ])
 
-const [, ...clientCommandsWithoutRegistration] = clientOrchestrationCommandSchema.options
-
 export const orchestrationCommandSchema = v.variant('type', [
-  ...clientCommandsWithoutRegistration,
+  projectMetaUpdateCommandSchema,
+  projectReorderCommandSchema,
+  projectDeleteCommandSchema,
+  sessionMetaUpdateCommandSchema,
+  sessionDeleteCommandSchema,
+  sessionArchiveCommandSchema,
+  sessionUnarchiveCommandSchema,
+  sessionSettleCommandSchema,
+  sessionUnsettleCommandSchema,
+  sessionSnoozeCommandSchema,
+  sessionUnsnoozeCommandSchema,
+  sessionPinCommandSchema,
+  sessionUnpinCommandSchema,
+  sessionPinReorderCommandSchema,
+  sessionRuntimeModeSetCommandSchema,
+  sessionInteractionModeSetCommandSchema,
+  sessionTurnInterruptCommandSchema,
+  sessionRuntimeStopCommandSchema,
+  sessionApprovalRespondCommandSchema,
+  sessionUserInputRespondCommandSchema,
+  sessionCheckpointRevertCommandSchema,
+  worktreeRetryCommandSchema,
+  worktreeCleanupCommandSchema,
+  worktreeForceCleanupCommandSchema,
+  worktreeReleaseCommandSchema,
   ...internalOrchestrationCommandSchema.options,
 ])
 
@@ -499,7 +540,6 @@ export type PreparedProjectCreateCommand = v.InferOutput<typeof preparedProjectC
 export type ProjectReviveCommand = v.InferOutput<typeof projectReviveCommandSchema>
 export type WorktreeRegisterCommand = v.InferOutput<typeof worktreeRegisterCommandSchema>
 export type WorktreeReviveCommand = v.InferOutput<typeof worktreeReviveCommandSchema>
-export type WorktreeMetaUpdateCommand = v.InferOutput<typeof worktreeMetaUpdateCommandSchema>
 export type SessionDiscoverCommand = v.InferOutput<typeof sessionDiscoverCommandSchema>
 export type SessionDiscoveryMetadataUpdateCommand = v.InferOutput<
   typeof sessionDiscoveryMetadataUpdateCommandSchema

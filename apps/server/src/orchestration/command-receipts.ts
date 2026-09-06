@@ -4,7 +4,7 @@ import type { OrchestrationCommand, OrchestrationCommandReceipt } from './schema
 import { orchestrationCommandReceiptSchema } from './schemas'
 import { getDefaultPlatformDatabase } from '../db/client'
 import { isEvlogError } from '../observability'
-import type { ProjectRegistrationResult } from '@workspace/contracts'
+import type { ProjectRegistrationResult, ClientOrchestrationCommand } from '@workspace/contracts'
 import { commandFingerprint } from './utils/command-intent'
 import { sessionDomainErrors } from './structured-errors'
 import { orchestrationCommandReceipts, type OrchestrationCommandReceiptRow } from '../db/schema'
@@ -14,6 +14,10 @@ import {
   recordChatPipelineInfo,
   recordChatPipelineWarning,
 } from './orchestration-logging'
+
+type ReceiptCommand =
+  | OrchestrationCommand
+  | Exclude<ClientOrchestrationCommand, { type: 'project.create' }>
 
 export class OrchestrationCommandReceipts {
   private readonly database: OrchestrationDatabase
@@ -62,8 +66,22 @@ export class OrchestrationCommandReceipts {
     return rowToReceipt(receipt)
   }
 
+  recordPreparationRejected(
+    command: ClientOrchestrationCommand,
+    error: unknown,
+    intentFingerprint: string,
+  ) {
+    if (!isDurableCommandRejection(error) || command.type === 'project.create') return null
+    const existing = this.find(command.commandId)
+    if (existing) {
+      verifyReceiptIntent(existing, command.type, intentFingerprint)
+      return existing
+    }
+    return this.recordRejected(command, error, intentFingerprint)
+  }
+
   recordRejected(
-    command: OrchestrationCommand,
+    command: ReceiptCommand,
     error: unknown,
     intentFingerprint = commandFingerprint(command),
   ) {
@@ -114,7 +132,7 @@ export function isDurableCommandRejection(error: unknown) {
   return error.status >= 400 && error.status < 500
 }
 
-export function commandAggregate(command: OrchestrationCommand) {
+export function commandAggregate(command: ReceiptCommand) {
   switch (command.type) {
     case 'project.create':
     case 'project.delete':
@@ -122,10 +140,31 @@ export function commandAggregate(command: OrchestrationCommand) {
     case 'project.reorder':
     case 'project.revive':
       return { id: command.projectId, kind: 'project' as const }
-    case 'worktree.meta.update':
+    case 'worktree.retry':
+    case 'worktree.cleanup':
+    case 'worktree.force-cleanup':
+    case 'worktree.retain':
+    case 'worktree.adopt':
+    case 'worktree.release':
+    case 'worktree.resolve-missing':
+    case 'worktree.create.complete':
+    case 'worktree.create.fail':
+    case 'worktree.cleanup.complete':
+    case 'worktree.cleanup.blocked':
+    case 'worktree.cleanup.fail':
+    case 'worktree.mark-missing':
+    case 'worktree.metadata.refresh':
+    case 'worktree.orphan.register':
+    case 'terminal.lease.request':
+    case 'terminal.lease.claim':
+    case 'terminal.lease.activate':
+    case 'terminal.lease.terminate':
+    case 'terminal.lease.end':
+    case 'terminal.lease.mark-unknown':
     case 'worktree.register':
     case 'worktree.revive':
       return { id: command.worktreeId, kind: 'worktree' as const }
+    case 'session.worktree.release':
     case 'session.activity.append':
     case 'session.approval.respond':
     case 'session.archive':

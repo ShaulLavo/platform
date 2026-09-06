@@ -126,7 +126,7 @@ test('the new session points back at the plan it was split off to build', () => 
 test('the new session keeps the project and the prompt the draft builder chose', () => {
   const command = draftCommand()
 
-  expect(command.bootstrap?.createSession?.worktreeId).toBe(TEST_WORKTREE_ID)
+  expect(command.bootstrap?.createSession?.worktreeTarget.worktreeId).toBe(TEST_WORKTREE_ID)
   // Session creation and the first turn are one command, so a rejected dispatch
   // leaves no session behind to clean up.
   expect(command.bootstrap?.createSession).toBeDefined()
@@ -140,7 +140,7 @@ function draftCommand() {
       model: 'claude-opus-5',
       providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID,
     },
-    worktreeId: TEST_WORKTREE_ID,
+    worktreeTarget: { kind: 'current', worktreeId: TEST_WORKTREE_ID },
     sourceProposedPlan: {
       planId: planId('plan-1'),
       sessionId: 'ad686244-5b2e-59be-805f-ef86eac80feb' as OrchestrationProposedPlan['sessionId'],

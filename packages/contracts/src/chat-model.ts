@@ -1,3 +1,4 @@
+import { worktreeLifecycleEntries } from './worktree-lifecycle'
 import * as v from 'valibot'
 import {
   eventIdSchema,
@@ -180,14 +181,31 @@ export const orchestrationWorktreeSchema = v.object({
   path: v.string(),
   branch: v.nullable(trimmedNonEmptyStringSchema),
   kind: v.picklist(['current', 'linked']),
-  ownership: v.picklist(['protected', 'external', 'platform']),
+  ownership: v.picklist(['protected', 'external', 'platform', 'unclaimed']),
+  ...worktreeLifecycleEntries,
   createdAt: isoDateTimeSchema,
   updatedAt: isoDateTimeSchema,
   retiredAt: v.nullable(isoDateTimeSchema),
 })
 
 export const worktreeRegistrationEntries = {
-  ...v.omit(orchestrationWorktreeSchema, ['id', 'retiredAt']).entries,
+  ...v.omit(orchestrationWorktreeSchema, [
+    'id',
+    'retiredAt',
+    'lifecycle',
+    'operationId',
+    'baseWorktreeId',
+    'baseCommit',
+    'headCommit',
+    'metadataVersion',
+    'pathKind',
+    'activeTerminalCount',
+    'terminalOwnershipUnknown',
+    'externalDriverUnverified',
+    'removedAt',
+    'worktreeCreationCapability',
+    'cleanupEligibility',
+  ]).entries,
   worktreeId: worktreeIdSchema,
 } as const
 
@@ -314,7 +332,14 @@ export const orchestrationLatestTurnSchema = v.object({
   completedAt: v.nullable(isoDateTimeSchema),
   assistantMessageId: v.nullable(messageIdSchema),
   sourceProposedPlan: v.optional(sourceProposedPlanReferenceSchema),
-  providerStartState: v.picklist(['queued', 'claimed', 'adopted', 'settled', 'interrupted']),
+  providerStartState: v.picklist([
+    'blocked-on-worktree',
+    'queued',
+    'claimed',
+    'adopted',
+    'settled',
+    'interrupted',
+  ]),
   providerStartGeneration: nonNegativeIntegerSchema,
   providerStartSequence: nonNegativeIntegerSchema,
   runtimeEpoch: v.nullable(trimmedNonEmptyStringSchema),
@@ -378,7 +403,7 @@ export const orchestrationSessionLifecycleEntries = {
 export const sessionOriginSchema = v.picklist(['platform', 'discovered'])
 export const sessionAttentionStateSchema = v.picklist(['needs-input', 'working', 'settled'])
 export const sessionAttentionReasonSchema = v.nullable(
-  v.picklist(['approval', 'user-input', 'interruption', 'failure', 'plan', 'active']),
+  v.picklist(['approval', 'user-input', 'interruption', 'worktree', 'failure', 'plan', 'active']),
 )
 export const sessionProviderStopStateSchema = v.picklist([
   'requested',

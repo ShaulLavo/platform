@@ -3,7 +3,6 @@ import type { ModelSelection, ProviderInstanceId, SessionId, TurnId } from '@wor
 import type { ProviderRuntimeEvent } from './types'
 
 export type ProviderTextGenerationInput = {
-  cwd: string
   messageText: string
   modelSelection: ModelSelection
   signal?: AbortSignal

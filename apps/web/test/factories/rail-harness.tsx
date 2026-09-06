@@ -1,3 +1,5 @@
+import { WorktreeManager } from '@/features/chat-mode/components/worktree-manager'
+import { useWorktreeManagerStore } from '@/features/chat-mode/state/worktree-manager-store'
 import { createEnvironmentEntry } from '@workspace/client-core/environments/utils/connection'
 import { environmentScopedStorage } from '@/lib/environments/state/scoped-storage'
 import { activeEnvironmentId } from '@/lib/environments/state/domain'
@@ -108,7 +110,7 @@ export async function createRailHarness(
       interactionMode: 'default',
       commandId: v.parse(commandIdSchema, `rail-session-${index}`),
       sessionId: sessionIds[index]!,
-      worktreeId,
+      worktreeTarget: { kind: 'current', worktreeId: worktreeId },
       title,
       modelSelection: { model: 'mock-model', providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID },
     })
@@ -119,6 +121,7 @@ export async function createRailHarness(
     return snapshot
   }
   const snapshot = await refresh()
+  useWorktreeManagerStore.getState().closeManager()
   resetSessionSelectionStore()
   resetRailOrderStore()
   useSessionMultiSelectStore.getState().clear()
@@ -207,6 +210,7 @@ export function renderRailHarness(
           <SessionDeleteDialog />
           <ProjectDeleteDialog />
           <ProjectRenameDialog />
+          <WorktreeManager />
         </ChatRailOrderProvider>
       </ChatModeSessionContext>
     </TestEditorStateProvider>,

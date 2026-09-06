@@ -91,7 +91,7 @@ test('a project reorder persists on its owning machine', async ({ client, server
     interactionMode: 'default',
     commandId: v.parse(commandIdSchema, 'rail-other-session'),
     sessionId: v.parse(sessionIdSchema, 'f0000000-0000-4000-8000-000000000003'),
-    worktreeId: other.worktreeId,
+    worktreeTarget: { kind: 'current', worktreeId: other.worktreeId },
     title: 'Site work',
     modelSelection: { model: 'mock-model', providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID },
   })

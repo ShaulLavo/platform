@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterAll, assert, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, assert, beforeAll, describe, expect, it, vi } from 'vitest'
 import type {
   CanUseTool,
   Options,
@@ -73,6 +73,7 @@ type FakeWaiter = {
  */
 class FakeClaudeQuery implements AsyncIterable<SDKMessage> {
   readonly setModelCalls: Array<string | undefined> = []
+  acknowledgeClose = true
   closeCalls = 0
   interruptCalls = 0
   private readonly queue: SDKMessage[] = []
@@ -124,7 +125,7 @@ class FakeClaudeQuery implements AsyncIterable<SDKMessage> {
 
   readonly close = () => {
     this.closeCalls += 1
-    this.finish()
+    if (this.acknowledgeClose) this.finish()
   };
 
   [Symbol.asyncIterator](): AsyncIterator<SDKMessage> {
@@ -167,6 +168,29 @@ afterAll(async () => {
 })
 
 describe('ClaudeProviderAdapter', () => {
+  it('retains a failed-close handle until a later positive query exit', async () => {
+    const harness = claudeHarness(false)
+    const input = sessionStartInput({})
+    await harness.adapter.startRuntime(input)
+    vi.useFakeTimers()
+    try {
+      const stopped = expect(
+        harness.adapter.stopRuntime({ sessionId: input.sessionId }),
+      ).rejects.toThrow('Claude query exit was not acknowledged.')
+      await vi.advanceTimersByTimeAsync(5_000)
+      await stopped
+      expect(await harness.adapter.hasRuntime({ sessionId: input.sessionId })).toBe(true)
+      latestQuery(harness).finish()
+      await harness.adapter.stopRuntime({ sessionId: input.sessionId })
+      expect(latestQuery(harness).closeCalls).toBe(2)
+      expect(await harness.adapter.hasRuntime({ sessionId: input.sessionId })).toBe(false)
+    } finally {
+      vi.useRealTimers()
+      latestQuery(harness).finish()
+      await harness.adapter.stopAll()
+    }
+  })
+
   it('replaces an otherwise compatible query when the caller chooses a new runtime epoch', async () => {
     const harness = claudeHarness()
     const input = sessionStartInput({})
@@ -807,7 +831,7 @@ describe('ClaudeProviderAdapter', () => {
   })
 })
 
-function claudeHarness(): ClaudeHarness {
+function claudeHarness(acknowledgeStop = true): ClaudeHarness {
   const events: ProviderRuntimeEvent[] = []
   const options: Options[] = []
   const prompts: SDKUserMessage[] = []
@@ -817,14 +841,21 @@ function claudeHarness(): ClaudeHarness {
     attachmentsDir,
     createQuery: (input) => {
       const query = new FakeClaudeQuery()
+      query.acknowledgeClose = acknowledgeStop
       queries.push(query)
       options.push(input.options)
       void collectPrompts(input.prompt, prompts)
       // The real query's iterator ends when the abort controller fires; without
       // this the pump would sit on a promise that never settles after stopAll().
-      input.options.abortController?.signal.addEventListener('abort', () => query.finish(), {
-        once: true,
-      })
+      input.options.abortController?.signal.addEventListener(
+        'abort',
+        () => {
+          if (acknowledgeStop) query.finish()
+        },
+        {
+          once: true,
+        },
+      )
       // NOTHING is emitted here. The real CLI withholds `system`/`init` until a
       // prompt is pushed; faking it unprompted is exactly what hid the start
       // deadlock from this suite. Tests that want `init` emit it themselves.

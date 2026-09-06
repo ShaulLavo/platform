@@ -187,7 +187,10 @@ async function dispatchCheckpointSession(
     workspaceRoot,
   })
   await engine.dispatch({
-    worktreeId: v.parse(worktreeIdSchema, '20000000-0000-4000-8000-000000000001'),
+    worktreeTarget: {
+      kind: 'current',
+      worktreeId: v.parse(worktreeIdSchema, '20000000-0000-4000-8000-000000000001'),
+    },
 
     commandId: v.parse(commandIdSchema, 'cmd-session'),
     interactionMode: 'default',

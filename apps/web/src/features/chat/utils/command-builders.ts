@@ -28,7 +28,7 @@ import {
   type SessionCheckpointRevertCommand,
   type SessionDeleteCommand,
   type SessionId,
-  type WorktreeId,
+  type SessionWorktreeTarget,
   type SessionInteractionModeSetCommand,
   type SessionMetaUpdateCommand,
   type SessionPinCommand,
@@ -166,7 +166,7 @@ export function createDraftSessionSubmission({
   createdAt,
   interactionMode = DEFAULT_INTERACTION_MODE,
   modelSelection,
-  worktreeId,
+  worktreeTarget,
   runtimeMode = DEFAULT_RUNTIME_MODE,
   sourceProposedPlan,
   terminalContexts = NO_TERMINAL_CONTEXTS,
@@ -177,7 +177,7 @@ export function createDraftSessionSubmission({
   createdAt: string
   interactionMode?: InteractionMode
   modelSelection: ModelSelection
-  worktreeId: WorktreeId
+  worktreeTarget: SessionWorktreeTarget
   runtimeMode?: RuntimeMode
   sourceProposedPlan?: SourceProposedPlanReference
   terminalContexts?: readonly TerminalContextSelection[]
@@ -210,7 +210,7 @@ export function createDraftSessionSubmission({
         createSession: {
           interactionMode,
           modelSelection,
-          worktreeId,
+          worktreeTarget,
           runtimeMode,
           title,
         },

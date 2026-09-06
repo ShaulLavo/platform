@@ -63,7 +63,7 @@ export function sessionCreateCommand(
     type: 'session.create',
     commandId,
     sessionId,
-    worktreeId: DOMAIN_IDS.worktree,
+    worktreeTarget: { kind: 'current', worktreeId: DOMAIN_IDS.worktree },
     title: 'Session',
     modelSelection: DOMAIN_MODEL,
     runtimeMode: 'full-access',

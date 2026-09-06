@@ -1,4 +1,5 @@
 import type {
+  TerminalLease,
   MessageId,
   OrchestrationCheckpointStatus,
   OrchestrationProject,
@@ -45,6 +46,7 @@ export type OrchestrationProjectedWorktree = OrchestrationWorktree & {
 }
 
 export type OrchestrationReadModel = {
+  terminalLeases: Map<string, TerminalLease>
   projects: Map<string, OrchestrationProject>
   sequence: number
   worktrees: Map<string, OrchestrationProjectedWorktree>
@@ -53,6 +55,7 @@ export type OrchestrationReadModel = {
 
 export function createEmptyReadModel(sequence = 0): OrchestrationReadModel {
   return {
+    terminalLeases: new Map(),
     projects: new Map(),
     sequence,
     worktrees: new Map(),

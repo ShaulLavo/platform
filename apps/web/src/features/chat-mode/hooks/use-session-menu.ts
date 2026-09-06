@@ -30,7 +30,10 @@ export function useSessionMenu(session: SessionRailItem, surface: SessionRenameS
     canStopAgent: canStopAgentSession(agentSession),
     deleteSession: () => actions.deleteSession(session.ref, session.title),
     newSession: () =>
-      startSessionDraft({ environmentId: session.environmentId, projectId: session.projectId }),
+      startSessionDraft(
+        { environmentId: session.environmentId, projectId: session.projectId },
+        { baseWorktree: { environmentId: session.environmentId, worktreeId: session.worktree.id } },
+      ),
     open: () => openSessionRow(session),
     rename: () => startRename({ surface, ref: session.ref }),
     scopedToProject: scope === session.projectId,

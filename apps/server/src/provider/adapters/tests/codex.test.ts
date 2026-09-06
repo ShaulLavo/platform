@@ -33,6 +33,8 @@ if (process.argv[2] !== 'app-server') {
   process.exit(1);
 }
 
+if (process.env.PLATFORM_FAKE_CODEX_MODE === 'delayed-exit') process.on('SIGTERM', () => setTimeout(() => process.exit(0), 100));
+
 let threadStartCount = 0;
 let lastSessionStartParams = null;
 
@@ -170,7 +172,7 @@ function sendAgentMessageItemCompleted(itemId, text) {
 }
 
 function assertStartParams(message) {
-  if (message.params.cwd !== '/Users/shaul/Desktop/platform') {
+  if (message.params.cwd !== process.env.PLATFORM_FAKE_CODEX_PROJECT) {
     fail(message.id, 'cwd was not normalized');
     return false;
   }
@@ -579,6 +581,21 @@ describe('CodexProviderAdapter', () => {
         await adapter.stopAll()
       }
     })
+  })
+
+  it('keeps runtime ownership until the actual child exit acknowledgement', async () => {
+    await withFakeCodex(
+      async () => {
+        const adapter = new CodexProviderAdapter()
+        const input = providerTurnInput()
+        await adapter.startRuntime({ ...input })
+        const stopping = adapter.stopRuntime({ sessionId: input.sessionId })
+        expect(await adapter.hasRuntime({ sessionId: input.sessionId })).toBe(true)
+        await stopping
+        expect(await adapter.hasRuntime({ sessionId: input.sessionId })).toBe(false)
+      },
+      { mode: 'delayed-exit' },
+    )
   })
 
   it('uses the app-server protocol and keeps early turn notifications', async () => {
@@ -1173,11 +1190,13 @@ async function withFakeCodex(
   const spawnLogPath = path.join(directory, 'spawns.log')
   const previousBinary = process.env.PLATFORM_CODEX_BINARY
   const previousMode = process.env.PLATFORM_FAKE_CODEX_MODE
+  const previousProject = process.env.PLATFORM_FAKE_CODEX_PROJECT
   await writeFile(binaryPath, fakeCodexScript)
   await writeFile(spawnLogPath, '')
   await mkdir(projectPath)
   await chmod(binaryPath, 0o755)
   process.env.PLATFORM_CODEX_BINARY = binaryPath
+  process.env.PLATFORM_FAKE_CODEX_PROJECT = projectPath
   process.env.PLATFORM_FAKE_CODEX_SPAWN_LOG = spawnLogPath
   if (options.mode) process.env.PLATFORM_FAKE_CODEX_MODE = options.mode
 
@@ -1186,6 +1205,8 @@ async function withFakeCodex(
   } finally {
     restoreCodexBinary(previousBinary)
     restoreFakeCodexMode(previousMode)
+    if (previousProject === undefined) delete process.env.PLATFORM_FAKE_CODEX_PROJECT
+    else process.env.PLATFORM_FAKE_CODEX_PROJECT = previousProject
     delete process.env.PLATFORM_FAKE_CODEX_SPAWN_LOG
     await rm(directory, { force: true, recursive: true })
     releaseLock()
@@ -1260,7 +1281,7 @@ function providerTurnInput(): ProviderTurnInput {
 
   return {
     attachments: [],
-    cwd: 'Users/shaul/Desktop/platform',
+    cwd: process.env.PLATFORM_FAKE_CODEX_PROJECT ?? process.cwd(),
     interactionMode: DEFAULT_INTERACTION_MODE,
     messageText: 'Say hello',
     modelSelection,

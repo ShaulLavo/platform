@@ -20,7 +20,7 @@ export function chatCommandSummary(command: ClientOrchestrationCommand) {
     summary.messageId = command.message.messageId
     summary.model = command.modelSelection?.model
     summary.providerInstanceId = command.modelSelection?.providerInstanceId
-    summary.worktreeId = command.bootstrap?.createSession?.worktreeId
+    summary.worktreeId = command.bootstrap?.createSession?.worktreeTarget.worktreeId
     summary.runtimeMode = command.runtimeMode
     summary.textLength = command.message.text.length
   }

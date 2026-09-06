@@ -6,6 +6,7 @@ import {
   FunnelIcon,
   PencilSimpleIcon,
   PlusIcon,
+  GitForkIcon,
   TrashIcon,
 } from '@phosphor-icons/react'
 
@@ -22,6 +23,7 @@ export type ProjectMenuContext = {
   readonly copyPath: () => void
   readonly deleteProject: () => void
   readonly newSession: () => void
+  readonly manageWorktrees: () => void
   readonly renameProject: () => void
   readonly scopeToProject: () => void
   readonly toggleCollapsed: () => void
@@ -38,6 +40,12 @@ export function projectMenu(context: ProjectMenuContext): Menu {
       }),
     ]),
     section('manage', [
+      actionItem({
+        icon: GitForkIcon,
+        id: 'manageWorktrees',
+        label: 'Manage Worktrees',
+        run: context.manageWorktrees,
+      }),
       actionItem({
         icon: PencilSimpleIcon,
         id: 'renameProject',

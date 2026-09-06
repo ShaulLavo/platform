@@ -1,3 +1,4 @@
+import { WorktreeManager } from '@/features/chat-mode/components/worktree-manager'
 import { useApplicationRuntime } from '@/hooks/use-application-runtime'
 import { useActiveChatProjection } from '@/features/chat/hooks/use-active-projection'
 import { useEffect, type ReactNode } from 'react'
@@ -21,6 +22,7 @@ import {
 import { setSessionProjectOpener } from '@/features/chat-mode/state/session-commands'
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
 import { activeSession } from '@/features/chat-mode/utils/active-session'
+import { activeWorktree } from '@/features/chat-mode/utils/active-worktree'
 import { compareSessionsForRail } from '@/features/chat-mode/utils/session-order'
 import { useOpenWorkspaceRoot } from '@/features/workspace/hooks/use-open-root'
 import { useActiveProjectStore } from '@/features/workspace/state/active-project'
@@ -53,6 +55,10 @@ export function ChatModeSessionController({
     .map((session) => session.id)
   const restored = useSessionSelectionStore((state) => state.restored)
   const selection = useSessionSelectionStore((state) => state.selection)
+  const draftWorktreeId = useSessionSelectionStore((state) => state.draftWorktreeId)
+  const draftWorktree = useActiveChatProjection((state) =>
+    draftWorktreeId ? state.worktreeById[draftWorktreeId] : undefined,
+  )
   const selectSession = useSessionSelectionStore((state) => state.selectSession)
   const startDraft = useSessionSelectionStore((state) => state.startDraft)
   const openWorkspaceRoot = useOpenWorkspaceRoot()
@@ -69,15 +75,27 @@ export function ChatModeSessionController({
     return () => setSessionProjectOpener(null)
   }, [application])
 
+  const resolvedSession = activeSession({
+    environmentId: transport.environmentId,
+    archivedSessionIds,
+    projectId,
+    restored,
+    selection,
+    sessionIds,
+  })
+  const selectedSession = projectSessions.find(
+    (session) => session.id === resolvedSession.sessionId,
+  )
+  const selectedWorktree = activeWorktree({
+    environmentId: transport.environmentId,
+    projectId,
+    selection,
+    sessionWorktree: selectedSession?.worktree,
+    draftWorktree,
+    currentWorktree: projectState.worktree,
+  })
   const value: ChatModeSession = {
-    activeSession: activeSession({
-      environmentId: transport.environmentId,
-      archivedSessionIds,
-      projectId,
-      restored,
-      selection,
-      sessionIds,
-    }),
+    activeSession: resolvedSession,
     addProject,
     transport,
     error: chatModeError({
@@ -88,13 +106,11 @@ export function ChatModeSessionController({
     }),
     openProject: (workspaceRoot) => void openWorkspaceRoot(workspaceRoot),
     project: projectState.project,
-    worktree: projectState.worktree,
+    worktree: selectedWorktree,
     ready: projectState.status === 'ready',
     retrying: retry.retrying,
     retryProject: retry.retryProject,
-    // The project's own root, never the editor's: a draft dispatched here stamps this
-    // path into the event log as the session's worktree, and that stamp is permanent.
-    rootPath: projectState.worktree?.path ?? rootPath,
+    rootPath: selectedWorktree?.path ?? rootPath,
     selectSession: (projectId, sessionId) =>
       selectSession(transport.environmentId, projectId, sessionId),
     startDraft: (projectId) => startDraft(transport.environmentId, projectId),
@@ -110,6 +126,7 @@ export function ChatModeSessionController({
       <SessionDeleteDialog />
       <ProjectDeleteDialog />
       <ProjectRenameDialog />
+      <WorktreeManager />
     </ChatModeSessionContext>
   )
 }

@@ -1,4 +1,4 @@
-import { stat, writeFile } from 'node:fs/promises'
+import { realpath, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { FsError } from '../fs/errors'
 import type { WorkspacePath, WorkspacePaths } from '../fs/path'
@@ -11,6 +11,7 @@ import type {
   GitPullRequestState,
   GitPushResult,
 } from '@workspace/contracts'
+import { withGitRepositoryLane, withGitRepositoryLaneStream } from './repository-lane'
 import { parseBranches } from './branches'
 import { commandOutput, gitErrorMessage } from './command'
 import { commitMessageTemplate } from './commit-message'
@@ -132,6 +133,8 @@ const REPOSITORY_CACHE_CAPACITY = 512
  */
 const READ_ONLY_GIT_ACTIONS = new Set([
   'cat-file',
+  'check-ref-format',
+  'merge-base',
   'diff',
   'for-each-ref',
   'hash-object',
@@ -143,6 +146,7 @@ const READ_ONLY_GIT_ACTIONS = new Set([
 ])
 
 export class GitService {
+  private readonly mutationListeners = new Set<(path: string) => Promise<void>>()
   private readonly paths: WorkspacePaths
   private readonly diffConcurrency: number
   private readonly maxCommandOutputBytes: number
@@ -175,6 +179,20 @@ export class GitService {
         await this.git(rootAbsolutePath, ['fetch', remote])
       },
     })
+  }
+
+  subscribeMutations(listener: (path: string) => Promise<void>) {
+    this.mutationListeners.add(listener)
+    return () => this.mutationListeners.delete(listener)
+  }
+
+  private async notifyMutation(cwd: string) {
+    await Promise.all([...this.mutationListeners].map((listener) => listener(cwd)))
+  }
+
+  private async commonDirectory(cwd: string) {
+    const result = await this.git(cwd, ['rev-parse', '--git-common-dir'])
+    return realpath(path.resolve(cwd, result.stdout.trim()))
   }
 
   async repo(input = '') {
@@ -477,6 +495,13 @@ export class GitService {
    * code left to carry the error — the stream is the only channel there is.
    */
   async *commitProgress(body: GitCommitBody): AsyncGenerator<GitCommitProgressEvent> {
+    const runner = await this.repositoryRunner(body.path)
+    yield* withGitRepositoryLaneStream(await this.commonDirectory(runner.rootAbsolutePath), () =>
+      this.commitProgressInLane(body),
+    )
+  }
+
+  private async *commitProgressInLane(body: GitCommitBody): AsyncGenerator<GitCommitProgressEvent> {
     recordGitServiceOperation('commit_progress', body.path, {
       messageBytes: Buffer.byteLength(body.message, 'utf8'),
     })
@@ -501,6 +526,8 @@ export class GitService {
       // Counted, never echoed: hook output is repository content and belongs in
       // the response, not in the server's logs.
       recordRequestContext({ git: { commitOutputLines: lineCount } })
+      this.invalidateStatus(repository.rootAbsolutePath)
+      await this.notifyMutation(repository.rootAbsolutePath)
       if (event.limit) {
         yield { kind: 'failed', message: processLimitError(event.limit, 'commit').message }
         return
@@ -1240,6 +1267,22 @@ export class GitService {
     args: readonly string[],
     options: GitCommandOptions = {},
   ): Promise<GitCommandResult> {
+    if (isReadOnlyGit(args)) return this.runGit(cwd, args, options)
+    const common = await this.commonDirectory(cwd)
+    return withGitRepositoryLane(common, async () => {
+      try {
+        return await this.runGit(cwd, args, options)
+      } finally {
+        await this.notifyMutation(cwd)
+      }
+    })
+  }
+
+  private async runGit(
+    cwd: string,
+    args: readonly string[],
+    options: GitCommandOptions,
+  ): Promise<GitCommandResult> {
     const startedAt = performance.now()
     const action = gitAction(args)
     const outcome = await runProcess({
@@ -1255,7 +1298,7 @@ export class GitService {
     // so forgetting one costs an extra `git status` rather than leaving a cache
     // that outlives the change it should have seen. A failed write still
     // invalidates: a half-applied patch changed the tree too.
-    if (!READ_ONLY_GIT_ACTIONS.has(action)) this.invalidateStatus(cwd)
+    if (!isReadOnlyGit(args)) this.invalidateStatus(cwd)
     // A limit violation is not an "allowed failure": the command produced no
     // usable output, so every caller has to hear about it.
     const limitError = outcome.limit ? processLimitError(outcome.limit, action) : null
@@ -1340,7 +1383,23 @@ function recordGitServiceOperation(
 }
 
 function gitAction(args: readonly string[]) {
-  return args[0] ?? 'unknown'
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index]
+    if (!argument) continue
+    if (['-C', '-c', '--git-dir', '--work-tree'].includes(argument)) {
+      index += 1
+      continue
+    }
+    if (!argument.startsWith('-')) return argument
+  }
+  return 'unknown'
+}
+
+function isReadOnlyGit(args: readonly string[]) {
+  const action = gitAction(args)
+  if (READ_ONLY_GIT_ACTIONS.has(action)) return true
+  const actionIndex = args.indexOf(action)
+  return action === 'worktree' && args[actionIndex + 1] === 'list'
 }
 
 /** NUL-joined so the root prefix can never be forged by a pathspec. */

@@ -2,20 +2,18 @@ import { describe, expect, it } from 'vitest'
 import { baseRefCandidates, baseRefChoiceId, buildBaseRefChoices } from '../utils/base-refs'
 
 describe('baseRefCandidates', () => {
-  it('prefers the recorded base, then the remote default, then the conventions', () => {
+  it('prefers the remote default, then the conventions', () => {
     const candidates = baseRefCandidates({
-      configuredBase: 'origin/release',
       defaultBranch: 'origin/develop',
       headBranch: 'session/a',
       remoteNames: ['origin'],
     })
 
-    expect(candidates).toEqual(['release', 'develop', 'main', 'master'])
+    expect(candidates).toEqual(['develop', 'main', 'master'])
   })
 
   it('never proposes the branch being diffed as its own base', () => {
     const candidates = baseRefCandidates({
-      configuredBase: null,
       defaultBranch: 'main',
       headBranch: 'main',
       remoteNames: ['origin'],
@@ -26,8 +24,7 @@ describe('baseRefCandidates', () => {
 
   it('strips the longest matching remote prefix', () => {
     const candidates = baseRefCandidates({
-      configuredBase: 'upstream/main',
-      defaultBranch: null,
+      defaultBranch: 'upstream/main',
       headBranch: 'feature',
       remoteNames: ['up', 'upstream'],
     })

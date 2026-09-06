@@ -1,3 +1,4 @@
+import type { TerminalExecutionLease, TerminalLeaseBoundary } from './lease'
 import * as v from 'valibot'
 import {
   terminalOpenInputSchema,
@@ -50,11 +51,20 @@ type TerminalBridgeMessage =
   | { type: 'exit'; exitCode: number | null }
   | { type: 'error'; message: string }
 
+type TerminalBridgeProcess = {
+  exited: Promise<number>
+  stdin: Pick<Bun.FileSink, 'write' | 'flush'>
+  stdout: ReadableStream<Uint8Array>
+  stderr: ReadableStream<Uint8Array>
+  kill: (signal?: NodeJS.Signals) => void
+}
+
 export type TerminalServiceOptions = {
   detachTtlMs?: number
   env?: NodeJS.ProcessEnv
   paths: WorkspacePaths
   resolveWorktree: (worktreeId: WorktreeId) => Promise<string>
+  lifecycle: TerminalLeaseBoundary
   ptyFactory?: TerminalPtyFactory
 }
 
@@ -74,7 +84,9 @@ export class TerminalService {
   private readonly env: NodeJS.ProcessEnv
   private readonly paths: WorkspacePaths
   private readonly resolveWorktree: TerminalServiceOptions['resolveWorktree']
+  private readonly lifecycle: TerminalLeaseBoundary
   private readonly opening = new WeakSet<object>()
+  private readonly starts = new Map<string, Promise<void>>()
   private readonly persistentSessions = new Map<string, TerminalSession>()
   private readonly ptyFactory: TerminalPtyFactory
   private disposed = false
@@ -84,12 +96,14 @@ export class TerminalService {
     env = process.env,
     paths,
     resolveWorktree,
+    lifecycle,
     ptyFactory = defaultTerminalPtyFactory,
   }: TerminalServiceOptions) {
     this.detachTtlMs = detachTtlMs
     this.env = env
     this.paths = paths
     this.resolveWorktree = resolveWorktree
+    this.lifecycle = lifecycle
     this.ptyFactory = ptyFactory
   }
 
@@ -101,12 +115,15 @@ export class TerminalService {
     }
   }
 
-  dispose() {
+  async dispose() {
     this.disposed = true
-    for (const session of this.persistentSessions.values()) {
-      session.dispose()
-    }
-    this.persistentSessions.clear()
+    await Promise.all([...this.persistentSessions.values()].map((session) => session.dispose()))
+  }
+
+  hasWorktreeRuntime(worktreeId: WorktreeId) {
+    return [...this.persistentSessions.values()].some(
+      (session) => session.worktreeId === worktreeId,
+    )
   }
 
   private async open(ws: unknown, auth: AuthConfig) {
@@ -142,7 +159,6 @@ export class TerminalService {
         return null
       })
     if (!this.opening.has(socket.key)) return
-    this.opening.delete(socket.key)
     if (this.disposed) {
       socket.close()
       return
@@ -165,6 +181,51 @@ export class TerminalService {
     const sessionId = socket.input.terminalId
     const worktreeId = socket.input.worktreeId
     const sessionKey = terminalSessionKey(worktreeId, sessionId)
+    const previous = this.starts.get(sessionKey)
+    const start = Promise.resolve(previous)
+      .catch(() => {})
+      .then(() =>
+        this.openSession({
+          sessionKey,
+          worktreeId,
+          sessionId,
+          root,
+          socket,
+          connection,
+        }),
+      )
+    this.starts.set(sessionKey, start)
+    try {
+      await start
+    } catch (error) {
+      recordProcessWarning('terminal.session.rejected', {
+        area: 'terminal',
+        operation: 'open',
+        error,
+      })
+      socket.close(1008, 'worktree-unavailable')
+    } finally {
+      this.opening.delete(socket.key)
+      if (this.starts.get(sessionKey) === start) this.starts.delete(sessionKey)
+    }
+  }
+
+  private async openSession({
+    sessionKey,
+    worktreeId,
+    sessionId,
+    root,
+    socket,
+    connection,
+  }: {
+    sessionKey: string
+    worktreeId: WorktreeId
+    sessionId: string
+    root: { absolutePath: string; relativePath: string }
+    socket: NonNullable<ReturnType<typeof terminalWebSocketObject>>
+    connection: TerminalConnection
+  }) {
+    if (this.disposed || !this.opening.has(socket.key)) return
     const existing = this.persistentSessions.get(sessionKey)
     if (existing) {
       socketSessions.set(socket.key, existing)
@@ -172,10 +233,17 @@ export class TerminalService {
       return
     }
 
+    if (this.disposed) return
+    const lease = await this.lifecycle.begin(worktreeId)
+    if (this.disposed || !this.opening.has(socket.key)) {
+      await lease.end()
+      return
+    }
     const session = new TerminalSession({
+      lease,
       cwd: root.absolutePath,
-      cols: socket.input.cols ?? DEFAULT_COLS,
-      rows: socket.input.rows ?? DEFAULT_ROWS,
+      cols: socket.input?.cols ?? DEFAULT_COLS,
+      rows: socket.input?.rows ?? DEFAULT_ROWS,
       worktreeId,
       detachTtlMs: this.detachTtlMs,
       env: this.env,
@@ -186,11 +254,23 @@ export class TerminalService {
     })
     this.persistentSessions.set(sessionKey, session)
     socketSessions.set(socket.key, session)
-    if (session.start(connection)) return
+    if (session.start(connection)) {
+      await this.activateSession(session, lease)
+      return
+    }
 
-    session.dispose({ kill: false })
+    await session.dispose({ kill: false })
     socketSessions.delete(socket.key)
     socket.close()
+  }
+
+  private async activateSession(session: TerminalSession, lease: TerminalExecutionLease) {
+    try {
+      await lease.activate()
+    } catch (error) {
+      await session.dispose()
+      throw error
+    }
   }
 
   private message(ws: unknown, message: unknown) {
@@ -231,6 +311,9 @@ export class TerminalService {
 
 export class TerminalSession {
   readonly worktreeId: WorktreeId
+  private readonly lease: TerminalExecutionLease
+  private terminating = false
+  private disposal = Promise.resolve()
   private readonly cols: number
   private readonly rows: number
   private readonly cwd: string
@@ -260,6 +343,7 @@ export class TerminalSession {
   private shell: string | null = null
 
   constructor({
+    lease,
     cwd,
     cols,
     rows,
@@ -271,6 +355,7 @@ export class TerminalSession {
     rootPath,
     sessionId,
   }: {
+    lease: TerminalExecutionLease
     cwd: string
     cols: number
     rows: number
@@ -282,6 +367,7 @@ export class TerminalSession {
     rootPath: string
     sessionId: string
   }) {
+    this.lease = lease
     this.cols = cols
     this.rows = rows
     this.cwd = cwd
@@ -305,14 +391,21 @@ export class TerminalSession {
     this.exitDisposable = this.pty.onExit((event) => {
       this.exitCode = event.exitCode
       this.emit({ type: 'exit', exitCode: event.exitCode })
-      this.dispose({ kill: false })
+      void this.dispose({ kill: false })
     })
+    if (this.disposed) {
+      this.exitDisposable.dispose()
+      return false
+    }
     this.emitReady()
     return true
   }
 
   attach(connection: TerminalConnection) {
-    if (this.disposed) return
+    if (this.disposed || this.terminating) {
+      connection.close()
+      return
+    }
 
     this.setConnection(connection)
     this.emitReady()
@@ -328,13 +421,13 @@ export class TerminalSession {
   }
 
   handleMessage(message: unknown) {
-    if (this.disposed) return
+    if (this.disposed || this.terminating) return
 
     const parsed = parseTerminalClientMessage(message)
     if (!parsed) return
     this.recordClientMessage(parsed)
     if (parsed.type === 'dispose') {
-      this.dispose({ kill: true })
+      void this.dispose({ kill: true })
       return
     }
     if (!this.pty) return
@@ -342,19 +435,50 @@ export class TerminalSession {
     handleTerminalClientMessage(this.pty, parsed)
   }
 
-  dispose(options: { kill?: boolean } = {}) {
-    if (this.disposed) return
+  dispose(options: { kill?: boolean } = {}): Promise<void> {
+    if (this.disposed) return this.disposal
+    this.cancelDetachTimer()
+    if ((options.kill ?? true) && this.pty && this.exitCode === null)
+      return this.requestTermination()
 
     this.disposed = true
-    this.cancelDetachTimer()
-    const connection = this.connection
-    this.connection = null
     this.dataDisposable?.dispose()
     this.exitDisposable?.dispose()
-    this.killPty(options.kill ?? true)
-    this.recordSession()
-    this.onDispose(this)
+    const connection = this.connection
+    this.connection = null
     connection?.close()
+    this.disposal = this.lease
+      .end()
+      .then(() => {
+        this.recordSession()
+        this.onDispose(this)
+      })
+      .catch((error: unknown) => {
+        recordProcessWarning('terminal.session.end_failed', {
+          area: 'terminal',
+          worktreeId: this.worktreeId,
+          error,
+        })
+      })
+    return this.disposal
+  }
+
+  private requestTermination() {
+    if (this.terminating) return this.disposal
+    this.terminating = true
+    this.disposal = this.lease
+      .terminate()
+      .then(() => {
+        if (this.exitCode === null) this.pty?.kill()
+      })
+      .catch((error: unknown) => {
+        recordProcessWarning('terminal.session.termination_failed', {
+          area: 'terminal',
+          worktreeId: this.worktreeId,
+          error,
+        })
+      })
+    return this.disposal
   }
 
   private emitReady() {
@@ -375,7 +499,7 @@ export class TerminalSession {
     this.cancelDetachTimer()
     this.detachTimer = setTimeout(() => {
       this.detachTimer = null
-      this.dispose({ kill: true })
+      void this.dispose({ kill: true })
     }, this.detachTtlMs)
     this.detachTimer.unref?.()
   }
@@ -438,17 +562,6 @@ export class TerminalSession {
       }
     } catch (error) {
       return { error, pty: null, shell }
-    }
-  }
-
-  private killPty(kill: boolean) {
-    if (!kill) return
-    if (!this.pty) return
-
-    try {
-      this.pty.kill()
-    } catch {
-      // The PTY may already be gone; cleanup should still be idempotent.
     }
   }
 
@@ -647,25 +760,23 @@ function killSignal(signal: string | undefined): NodeJS.Signals | undefined {
   return signal as NodeJS.Signals
 }
 
-class NodePtyBridge implements TerminalPty {
+export class NodePtyBridge implements TerminalPty {
   readonly #child
+  readonly #cwd: string
   readonly #dataListeners = new Set<(data: string) => void>()
   readonly #encoder = new TextEncoder()
   readonly #exitListeners = new Set<(event: TerminalPtyExitEvent) => void>()
-  readonly #stdin: Bun.FileSink
+  readonly #stdin: TerminalBridgeProcess['stdin']
   #exitEmitted = false
+  #bridgeExited = false
   #writeQueue = Promise.resolve()
 
-  constructor(options: TerminalPtySpawnOptions) {
-    this.#child = Bun.spawn([resolveNodeBinary(), '--eval', NODE_PTY_BRIDGE_SCRIPT], {
-      env: {
-        ...options.env,
-        NODE_PTY_BRIDGE_MODULE: resolveNodePtyModule(),
-      },
-      stderr: 'pipe',
-      stdin: 'pipe',
-      stdout: 'pipe',
-    })
+  constructor(
+    options: TerminalPtySpawnOptions,
+    spawnBridge: (options: TerminalPtySpawnOptions) => TerminalBridgeProcess = spawnTerminalBridge,
+  ) {
+    this.#cwd = options.cwd
+    this.#child = spawnBridge(options)
     this.#stdin = this.#child.stdin
     this.#startReaders()
     this.#sendCommand({ type: 'start', ...options })
@@ -674,9 +785,17 @@ class NodePtyBridge implements TerminalPty {
   kill(signal?: string) {
     this.#sendCommand({ signal, type: 'kill' })
     setTimeout(() => {
-      if (this.#exitEmitted) return
+      if (this.#exitEmitted || this.#bridgeExited) return
 
-      this.#child.kill(killSignal(signal))
+      try {
+        this.#child.kill(killSignal(signal))
+      } catch (error) {
+        recordProcessWarning('terminal.bridge.kill_failed', {
+          area: 'terminal',
+          cwd: this.#cwd,
+          error,
+        })
+      }
     }, 250)
   }
 
@@ -699,9 +818,35 @@ class NodePtyBridge implements TerminalPty {
   }
 
   #startReaders() {
-    void readBridgeMessages(this.#child.stdout, (message) => this.#handleBridgeMessage(message))
-    void readBridgeStderr(this.#child.stderr, (data) => this.#emitData(data))
-    void this.#child.exited.then((exitCode) => this.#emitExit(exitCode))
+    const output = readBridgeMessages(this.#child.stdout, (message) =>
+      this.#handleBridgeMessage(message),
+    ).catch((error: unknown) => this.#recordReadFailure(error))
+    void readBridgeStderr(this.#child.stderr, (data) => this.#emitData(data)).catch(
+      (error: unknown) => this.#recordReadFailure(error),
+    )
+    void this.#child.exited.then((exitCode) => this.#handleBridgeExit(exitCode, output))
+  }
+
+  async #handleBridgeExit(exitCode: number, output: Promise<void>) {
+    this.#bridgeExited = true
+    await output
+    if (this.#exitEmitted) return
+    recordProcessWarning('terminal.bridge.ownership_unconfirmed', {
+      area: 'terminal',
+      cwd: this.#cwd,
+      exitCode,
+    })
+    this.#emitData(
+      '\r\nTerminal exit could not be confirmed. Checkout cleanup remains blocked.\r\n',
+    )
+  }
+
+  #recordReadFailure(error: unknown) {
+    recordProcessWarning('terminal.bridge.read_failed', {
+      area: 'terminal',
+      cwd: this.#cwd,
+      error,
+    })
   }
 
   #handleBridgeMessage(message: TerminalBridgeMessage) {
@@ -740,6 +885,18 @@ class NodePtyBridge implements TerminalPty {
       listener({ exitCode: normalizedExitCode })
     }
   }
+}
+
+function spawnTerminalBridge(options: TerminalPtySpawnOptions): TerminalBridgeProcess {
+  return Bun.spawn([resolveNodeBinary(), '--eval', NODE_PTY_BRIDGE_SCRIPT], {
+    env: {
+      ...options.env,
+      NODE_PTY_BRIDGE_MODULE: resolveNodePtyModule(),
+    },
+    stderr: 'pipe',
+    stdin: 'pipe',
+    stdout: 'pipe',
+  })
 }
 
 async function readBridgeMessages(
@@ -954,8 +1111,8 @@ function shutdown() {
 
   try {
     ptyProcess.kill();
-  } catch {
-    process.exit(0);
+  } catch (error) {
+    send({ type: "error", message: "PTY termination failed: " + errorMessage(error) });
   }
 }
 

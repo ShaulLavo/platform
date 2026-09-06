@@ -180,7 +180,7 @@ async function dispatchPlanImplementationSession({
     // The composer's live pick, same as the in-session path: switching model and
     // then splitting the build off should still run on the model that was picked.
     modelSelection: draft.modelSelection ?? session.modelSelection,
-    worktreeId: session.worktreeId,
+    worktreeTarget: { kind: 'current', worktreeId: session.worktreeId },
     // The plan was written against this checkout, so a worktree session hands
     // its implementation to the same worktree rather than back to the project root.
     runtimeMode: draft.runtimeMode ?? session.runtimeMode,

@@ -117,7 +117,10 @@ export class CheckpointReactor implements OrchestrationDomainEventReactor {
    * capture cannot re-derive later — which turn just ended — is resolved here.
    */
   private taskForEvent(event: OrchestrationEvent): CheckpointTask | null {
-    if (event.type === 'session.turn-start-requested') {
+    if (
+      event.type === 'session.turn-start-requested' ||
+      event.type === 'session.worktree-released'
+    ) {
       return { event, kind: 'baseline', sessionId: event.payload.sessionId, turnId: null }
     }
     if (event.type !== 'session.runtime-set') return null
@@ -284,6 +287,7 @@ export class CheckpointReactor implements OrchestrationDomainEventReactor {
     if (!session || session.deletedAt) return null
 
     const { worktree } = resolveSessionOwner(model, sessionId)
+    if (worktree.lifecycle.state !== 'ready') return null
     return { session, workspacePath: worktree.canonicalPath }
   }
 }

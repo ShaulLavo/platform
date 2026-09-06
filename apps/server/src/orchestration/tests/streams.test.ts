@@ -112,7 +112,7 @@ describe('shell stream deltas', () => {
 })
 
 describe('shell stream resume', () => {
-  it('replays only newer events and then marks the client synchronized', async () => {
+  it('replays the cursor boundary and newer events before marking the client synchronized', async () => {
     const workspace = createShellWorkspace(20)
     const hub = new OrchestrationStreamHub()
     const streams = shellStreams(workspace, hub, true)
@@ -129,16 +129,21 @@ describe('shell stream resume', () => {
 
     workspace.resetQueryCount()
     const reader = shellReader(streams, { afterSequence: cursor })
+    const boundary = await reader.next()
     const replayed = await reader.next()
     const synchronized = await reader.next()
 
+    expect(boundary).toMatchObject({
+      kind: 'session-upserted',
+      session: { id: '00000000-0000-4000-8000-000000000001' },
+      sequence: cursor,
+    })
     expect(replayed).toMatchObject({
       kind: 'session-upserted',
       session: { id: '00000000-0000-4000-8000-000000000002' },
     })
     expect(synchronized).toEqual({ kind: 'synchronized', sequence: second.at(-1)?.sequence })
-    // The replayed delta's own two reads, and nothing that looks like a snapshot.
-    expect(workspace.queryCount()).toBe(2)
+    expect(workspace.queryCount()).toBe(4)
     await reader.close()
     workspace.close()
   })
@@ -159,7 +164,7 @@ describe('shell stream resume', () => {
     workspace.close()
   })
 
-  it('marks a caught-up client synchronized without replaying or snapshotting', async () => {
+  it('replays the final boundary for a caught-up client without snapshotting', async () => {
     const workspace = createShellWorkspace(20)
     const hub = new OrchestrationStreamHub()
     const streams = shellStreams(workspace, hub, true)
@@ -170,10 +175,15 @@ describe('shell stream resume', () => {
 
     workspace.resetQueryCount()
     const reader = shellReader(streams, { afterSequence: events.at(-1)?.sequence })
+    const boundary = await reader.next()
     const synchronized = await reader.next()
 
+    expect(boundary).toMatchObject({
+      kind: 'session-upserted',
+      sequence: events.at(-1)?.sequence,
+    })
     expect(synchronized).toEqual({ kind: 'synchronized', sequence: events.at(-1)?.sequence })
-    expect(workspace.queryCount()).toBe(0)
+    expect(workspace.queryCount()).toBe(2)
     await reader.close()
     workspace.close()
   })

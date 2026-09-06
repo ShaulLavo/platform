@@ -1,3 +1,12 @@
+import { realpath } from 'node:fs/promises'
+import { WorktreeExecutionGate } from './worktree-execution-gate'
+import { WorktreeLifecycleReactor } from './worktree-lifecycle-reactor'
+import { WorktreeCommandPreparation } from './worktree-command-preparation'
+import { TerminalLeaseController } from './terminal-lease-controller'
+import { GitWorktreeService } from '../git/worktrees'
+import type { TerminalService } from '../terminal/service'
+import { worktreeRuntimeErrors } from './worktree-runtime-errors'
+import type { SessionId, WorktreeId } from '@workspace/contracts'
 import * as v from 'valibot'
 import type { ChatAttachment, ChatAttachmentUpload } from '@workspace/contracts'
 import { defaultAttachmentsDir, writeAttachmentFromDataUrl } from '../attachments/store'
@@ -5,6 +14,7 @@ import { migrateOrchestrationDatabase } from '../db/migrations'
 import { orchestrationErrors } from '../observability'
 import {
   clientOrchestrationCommandSchema,
+  orchestrationCommandSchema,
   type OrchestrationCommand,
   type OrchestrationDispatchResult,
   type OrchestrationEvent,
@@ -58,6 +68,8 @@ import {
 } from './streams'
 
 export type OrchestrationEngineOptions = {
+  providerService?: ProviderService
+  terminalService?: TerminalService
   registration?: RegistrationBoundary
   attachmentsDir?: string
   providerRuntime?:
@@ -72,6 +84,12 @@ export type OrchestrationEngineOptions = {
 type OrchestrationCommandSummary = ReturnType<typeof orchestrationCommandSummary>
 
 export class OrchestrationEngine {
+  readonly worktreeExecutionGate = new WorktreeExecutionGate()
+  private worktreeReactor: WorktreeLifecycleReactor | null = null
+  private worktreePreparation: WorktreeCommandPreparation | null = null
+  private readonly terminalLeases: TerminalLeaseController
+  private unsubscribeGitMutations: (() => void) | null = null
+  private reactorsStarted = false
   private queue = Promise.resolve()
   private readonly attachmentsDir: string
   private checkpointReactor: CheckpointReactor | null = null
@@ -96,6 +114,12 @@ export class OrchestrationEngine {
     this.attachmentsDir = options.attachmentsDir ?? defaultAttachmentsDir()
     this.database = database
     this.registration = options.registration
+    this.providerService = options.providerService ?? null
+    this.terminalLeases = new TerminalLeaseController({
+      gate: this.worktreeExecutionGate,
+      dispatch: (command) => this.enqueue(command),
+      getReadModel: () => this.readModel,
+    })
     this.eventStore = new OrchestrationEventStore(database)
     this.receipts = new OrchestrationCommandReceipts(database)
     this.projectionPipeline = new OrchestrationProjectionPipeline(database, this.eventStore)
@@ -111,11 +135,15 @@ export class OrchestrationEngine {
       load: () => {
         this.readModel = this.snapshotQuery.fullReadModel()
         this.providerCommandReactor = this.createProviderCommandReactor(options)
+        this.createWorktreeLifecycle(options)
         this.createDeletionReactor()
         this.createDiscoveryReconciler()
       },
       recover: () => this.recover(),
       startReactors: () => {
+        this.reactorsStarted = true
+        if (this.worktreeReactor) this.domainEvents.subscribe(this.worktreeReactor)
+        if (this.deletionReactor) this.domainEvents.subscribe(this.deletionReactor)
         this.subscribeProviderCommandReactor()
         this.scheduleQueuedStarts()
         this.discovery?.start()
@@ -150,6 +178,22 @@ export class OrchestrationEngine {
   private async prepareAndDispatch(command: ClientOrchestrationCommand, fingerprint: string) {
     const existing = this.receipts.find(command.commandId)
     if (existing) return this.dispatchFromReceipt(existing, command.type, fingerprint)
+    try {
+      if (this.worktreePreparation) {
+        return await this.worktreePreparation.withLane(command, () =>
+          this.acceptPrepared(command, fingerprint),
+        )
+      }
+      return await this.acceptPrepared(command, fingerprint)
+    } catch (error) {
+      this.receipts.recordPreparationRejected(command, error, fingerprint)
+      throw error
+    }
+  }
+
+  private async acceptPrepared(command: ClientOrchestrationCommand, fingerprint: string) {
+    const existing = this.receipts.find(command.commandId)
+    if (existing) return this.dispatchFromReceipt(existing, command.type, fingerprint)
     const prepared = await this.prepare(command, fingerprint)
     const ingested = await ingestCommandAttachments(prepared, this.attachmentsDir)
     const result = await this.enqueue(ingested.command, ingested.attachmentIngest, fingerprint)
@@ -161,7 +205,10 @@ export class OrchestrationEngine {
     command: ClientOrchestrationCommand,
     fingerprint: string,
   ): Promise<OrchestrationCommand> {
-    if (command.type !== 'project.create') return command
+    if (command.type !== 'project.create') {
+      if (this.worktreePreparation) return this.worktreePreparation.prepare(command, fingerprint)
+      return v.parse(orchestrationCommandSchema, command)
+    }
     if (!this.registration) {
       throw orchestrationErrors.WORKSPACE_ROOT_NOT_DIRECTORY({
         workspaceRoot: command.workspaceRoot,
@@ -198,7 +245,8 @@ export class OrchestrationEngine {
     attachmentIngest?: CommandAttachmentIngest,
     fingerprint = commandFingerprint(command),
   ) {
-    const intent = 'intentFingerprint' in command ? command.intentFingerprint : fingerprint
+    const intent =
+      'intentFingerprint' in command ? (command.intentFingerprint ?? fingerprint) : fingerprint
     return this.schedule(() => this.dispatchNow(command, attachmentIngest, intent))
   }
 
@@ -256,6 +304,8 @@ export class OrchestrationEngine {
   async close() {
     await this.ready
     await this.discovery?.close()
+    this.unsubscribeGitMutations?.()
+    await this.worktreeReactor?.drain()
     await this.queue
   }
 
@@ -428,7 +478,6 @@ export class OrchestrationEngine {
       dispatch: (command) => this.enqueue(command),
     })
     this.deletionReactor = reactor
-    this.domainEvents.subscribe(reactor)
     this.reactors.register({
       name: reactor.name,
       drain: () => reactor.drain(),
@@ -452,6 +501,8 @@ export class OrchestrationEngine {
       await this.recoverRuntime(session)
     }
     await this.deletionReactor?.recover()
+    await this.terminalLeases.recover()
+    await this.worktreeReactor?.recover()
   }
 
   private async recoverRuntime(session: OrchestrationProjectedSession) {
@@ -490,16 +541,126 @@ export class OrchestrationEngine {
   }
 
   private scheduleQueuedStarts() {
-    if (!this.providerCommandReactor) return
+    if (!this.reactorsStarted || !this.providerCommandReactor) return
     for (const session of this.readModel.sessions.values()) {
       const turn = session.latestTurn
       if (session.deletedAt || turn?.providerStartState !== 'queued') continue
-      const events = this.eventStore.readAfter({
-        afterSequence: turn.providerStartSequence - 1,
-        limit: 1,
-      })
-      this.providerCommandReactor.handleEvents(events)
+      const event = this.originalTurnStart(session.id, turn.turnId)
+      if (event) this.providerCommandReactor.handleEvents([event])
     }
+  }
+
+  private originalTurnStart(sessionId: SessionId, turnId: string) {
+    let afterSequence = 0
+    for (;;) {
+      const events = this.eventStore.readAfter({ afterSequence, limit: 500, sessionId })
+      const found = events.find(
+        (event) =>
+          event.type === 'session.turn-start-requested' &&
+          event.payload.sessionId === sessionId &&
+          event.payload.turnId === turnId,
+      )
+      if (found) return found
+      if (events.length < 500) return null
+      const last = events.at(-1)
+      if (!last) return null
+      afterSequence = last.sequence
+    }
+  }
+
+  private createWorktreeLifecycle(options: OrchestrationEngineOptions) {
+    this.providerService?.setWorktreeExecution({
+      acquire: ({ sessionId, cwd }) => {
+        const session = this.readModel.sessions.get(sessionId)
+        const worktree = session
+          ? this.readModel.worktrees.get(session.worktreeId)
+          : [...this.readModel.worktrees.values()].find(
+              (row) => row.canonicalPath === cwd && !row.retiredAt,
+            )
+        if (!worktree) return null
+        if (worktree.lifecycle.state !== 'ready') throw worktreeRuntimeErrors.UNAVAILABLE()
+        return {
+          worktreeId: worktree.id,
+          ...this.worktreeExecutionGate.acquireShared(worktree.id, 'provider'),
+        }
+      },
+    })
+    if (!this.registration) return
+    const git = new GitWorktreeService(this.registration.git)
+    const reactor = new WorktreeLifecycleReactor({
+      git,
+      paths: this.registration.paths,
+      gate: this.worktreeExecutionGate,
+      provider: () => this.providerService,
+      terminal: options.terminalService,
+      dispatch: (command) => this.enqueue(command),
+      getReadModel: () => this.readModel,
+    })
+    this.worktreeReactor = reactor
+    this.unsubscribeGitMutations = this.registration.git.subscribeMutations(
+      async (checkoutPath) => {
+        const worktree = [...this.readModel.worktrees.values()].find(
+          (row) => row.canonicalPath === checkoutPath && !row.retiredAt,
+        )
+        if (worktree) await reactor.refresh(worktree.id)
+      },
+    )
+    this.worktreePreparation = new WorktreeCommandPreparation({
+      git,
+      paths: this.registration.paths,
+      gate: this.worktreeExecutionGate,
+      reactor,
+      getReadModel: () => this.readModel,
+    })
+    this.reactors.register({
+      name: reactor.name,
+      drain: () => reactor.drain(),
+      isIdle: () => reactor.isIdle(),
+    })
+    this.domainEvents.subscribe({
+      name: 'worktree-turn-release',
+      handleEvents: (events) => {
+        if (events.some((event) => event.type === 'session.worktree-released'))
+          this.scheduleQueuedStarts()
+      },
+    })
+  }
+
+  async beginTerminalLease(worktreeId: WorktreeId) {
+    await this.ready
+    return this.terminalLeases.begin(worktreeId)
+  }
+
+  async refreshWorktreeMetadata(checkoutPath: string) {
+    await this.ready
+    if (!this.registration) return
+    const canonicalPath = await realpath(this.registration.paths.resolve(checkoutPath).absolutePath)
+    const worktree = [...this.readModel.worktrees.values()].find(
+      (row) => row.canonicalPath === canonicalPath && !row.retiredAt,
+    )
+    if (worktree) await this.worktreeReactor?.refresh(worktree.id)
+  }
+
+  async worktreeBaseCommit(checkoutPath: string) {
+    await this.ready
+    if (!this.registration) return null
+    const canonicalPath = await realpath(this.registration.paths.resolve(checkoutPath).absolutePath)
+    const worktree = [...this.readModel.worktrees.values()].find(
+      (row) => row.canonicalPath === canonicalPath && !row.retiredAt,
+    )
+    return worktree?.ownership === 'platform' ? worktree.baseCommit : null
+  }
+
+  async worktreeCleanupPreview(worktreeId: WorktreeId) {
+    await this.ready
+    if (!this.worktreePreparation) throw worktreeRuntimeErrors.UNAVAILABLE()
+    return this.worktreePreparation.cleanupPreview(worktreeId)
+  }
+
+  async worktreeMissingPreview(worktreeId: WorktreeId) {
+    await this.ready
+    if (!this.worktreePreparation) throw worktreeRuntimeErrors.UNAVAILABLE()
+    return this.worktreePreparation.missingPreview(worktreeId)
   }
 
   private async requireNoLiveProviderForRevival(projectId: string, worktreeId: string) {
@@ -514,30 +675,11 @@ export class OrchestrationEngine {
     }
   }
 
-  // Capture the current branch and checkpoint before the provider touches the checkout.
   private async turnPrerequisitesSettled(sessionId: Parameters<typeof resolveSessionOwner>[1]) {
-    if (this.registration) {
-      const { worktree } = resolveSessionOwner(this.readModel, sessionId)
-      const repository = (await this.registration.git.repo(worktree.path)).repository
-      const branch = repository?.branch ?? null
-      if (branch !== worktree.branch) {
-        await this.enqueue({
-          type: 'worktree.meta.update',
-          worktreeId: worktree.id,
-          branch,
-          commandId: v.parse(
-            commandIdSchema,
-            internalCommandKey(
-              'worktree-branch',
-              worktree.id,
-              this.readModel.sequence,
-              branch ?? '',
-            ),
-          ),
-          updatedAt: new Date().toISOString(),
-        })
-      }
-    }
+    const { worktree } = resolveSessionOwner(this.readModel, sessionId)
+    if (worktree.lifecycle.state !== 'ready') throw worktreeRuntimeErrors.UNAVAILABLE()
+    await this.worktreeReactor?.refresh(worktree.id)
+    if (this.readModel.worktrees.get(worktree.id)?.lifecycle.state !== 'ready') return
     await this.checkpointReactor?.drain()
   }
 

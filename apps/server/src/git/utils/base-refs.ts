@@ -8,8 +8,6 @@ import type { GitBaseRefChoice } from '@workspace/contracts'
 export const DEFAULT_BASE_BRANCH_CANDIDATES = ['main', 'master'] as const
 
 export type BaseRefCandidateInput = {
-  /** `branch.<name>.platform-base`, written when the worktree was created. */
-  configuredBase: string | null
   /** The remote's own default branch, from `<remote>/HEAD`. */
   defaultBranch: string | null
   headBranch: string | null
@@ -24,11 +22,7 @@ export type BaseRefCandidateInput = {
 export function baseRefCandidates(input: BaseRefCandidateInput): string[] {
   const candidates: string[] = []
 
-  for (const candidate of [
-    input.configuredBase,
-    input.defaultBranch,
-    ...DEFAULT_BASE_BRANCH_CANDIDATES,
-  ]) {
+  for (const candidate of [input.defaultBranch, ...DEFAULT_BASE_BRANCH_CANDIDATES]) {
     const normalized = stripRemotePrefix(candidate, input.remoteNames)
     if (!normalized) continue
     // A branch is never its own base, and repeating a candidate only repeats

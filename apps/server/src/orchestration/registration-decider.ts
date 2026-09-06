@@ -2,7 +2,6 @@ import type { OrchestrationCommand, ProjectRegistrationResult } from '@workspace
 import { event, one } from './event-factory'
 import type { OrchestrationReadModel } from './read-model'
 import { currentWorktree, requireProject } from './read-model'
-import { requireWorktree } from './read-model'
 import { sessionDomainErrors } from './structured-errors'
 
 type Registration = Extract<OrchestrationCommand, { type: 'project.create' | 'project.revive' }>
@@ -72,19 +71,10 @@ export function decideRegistration(
 }
 
 export function decideWorktreeCommand(
-  command: WorktreeRegistration | Extract<OrchestrationCommand, { type: 'worktree.meta.update' }>,
+  command: WorktreeRegistration,
   model: OrchestrationReadModel,
   at: string,
 ) {
-  if (command.type === 'worktree.meta.update') {
-    const worktree = requireWorktree(model, command.worktreeId)
-    if (worktree.branch === command.branch) return []
-    return one(command, at, 'worktree.meta-updated', {
-      worktreeId: command.worktreeId,
-      branch: command.branch,
-      updatedAt: command.updatedAt,
-    })
-  }
   requireProject(model, command.projectId)
   requireCheckoutIdentity(command, model)
   const existing = model.worktrees.get(command.worktreeId)

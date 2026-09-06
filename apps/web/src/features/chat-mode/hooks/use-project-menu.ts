@@ -1,3 +1,4 @@
+import { useWorktreeManagerStore } from '@/features/chat-mode/state/worktree-manager-store'
 import {
   useChatProjectionStore,
   selectChatProjectionSlice,
@@ -39,6 +40,7 @@ export function useProjectMenu(group: SessionRailGroup) {
     copyPath: () => void copyTextToClipboard(project.workspaceRoot, 'path'),
     deleteProject: () => actions.deleteProject(project),
     newSession: () => startSessionDraft(project.ref),
+    manageWorktrees: () => useWorktreeManagerStore.getState().openManager(project.ref),
     renameProject: () =>
       useProjectRenameRequestStore
         .getState()

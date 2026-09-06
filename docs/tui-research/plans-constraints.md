@@ -491,7 +491,7 @@ Not yet done from 077 (so the plan is still open and its files are still hot):
 - /work/projects/platform/plans/077-environment-runtime-origin.md
 - /work/projects/platform/docs/session-domain.md
 - /work/projects/platform/plans/078-federated-environments.md
-- /work/projects/platform/plans/069-worktree-lifecycle.md
+- /work/projects/platform/docs/worktree-lifecycle.md
 - /work/projects/platform/docs/product-vision.md
 - /work/projects/platform/docs/environments-and-remote-plan.md
 - /work/projects/platform/docs/t3code-reference.md

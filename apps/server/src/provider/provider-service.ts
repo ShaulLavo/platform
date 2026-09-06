@@ -1,3 +1,4 @@
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { createInternalError } from '../observability/structured-errors'
 import { sessionIdentityErrors } from './structured-errors'
 
@@ -7,6 +8,7 @@ import type {
   ProviderSnapshot,
   RuntimeMode,
   SessionId,
+  WorktreeId,
 } from '@workspace/contracts'
 import {
   DEFAULT_INTERACTION_MODE,
@@ -72,6 +74,13 @@ export type ProviderEnsureRuntimeResult = {
   reused: boolean
 }
 
+export type ProviderWorktreeExecution = {
+  acquire: (input: {
+    sessionId: SessionId
+    cwd: string | undefined
+  }) => { worktreeId: WorktreeId; release: () => void } | null
+}
+
 export type ProviderRuntimeEventListener = (event: ProviderRuntimeEvent) => Promise<void> | void
 
 /** The adapter a stream belongs to, kept beside its teardown so a replacement can be spotted. */
@@ -104,6 +113,15 @@ export class ProviderService {
   private readonly sessionDirectory: ProviderSessionDirectory
   private readonly suppressedTextGenerationSessions = new Set<SessionId>()
   private readonly textGenerationTasks = new Map<SessionId, ProviderTextGenerationTask>()
+  private worktreeExecution: ProviderWorktreeExecution | null = null
+  private readonly worktreeLeases = new Map<
+    SessionId,
+    {
+      worktreeId: WorktreeId
+      release: () => void
+      adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>
+    }
+  >()
   private shuttingDown = false
   private unsubscribeRegistry: (() => void) | null = null
 
@@ -153,6 +171,29 @@ export class ProviderService {
     })
   }
 
+  setWorktreeExecution(boundary: ProviderWorktreeExecution) {
+    this.worktreeExecution = boundary
+  }
+
+  hasWorktreeLease(worktreeId: WorktreeId) {
+    return [...this.worktreeLeases.values()].some((lease) => lease.worktreeId === worktreeId)
+  }
+
+  private retainWorktree(
+    sessionId: SessionId,
+    cwd: string | undefined,
+    adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>,
+  ) {
+    if (this.worktreeLeases.has(sessionId)) return
+    const lease = this.worktreeExecution?.acquire({ sessionId, cwd })
+    if (lease) this.worktreeLeases.set(sessionId, { ...lease, adapter })
+  }
+
+  private releaseWorktree(sessionId: SessionId) {
+    this.worktreeLeases.get(sessionId)?.release()
+    this.worktreeLeases.delete(sessionId)
+  }
+
   async ensureRuntime(input: ProviderEnsureRuntimeInput): Promise<ProviderEnsureRuntimeResult> {
     return this.trackLaunch(input, () => this.ensureRuntimeOperation(input))
   }
@@ -160,6 +201,8 @@ export class ProviderService {
   private async ensureRuntimeOperation(
     input: ProviderEnsureRuntimeInput,
   ): Promise<ProviderEnsureRuntimeResult> {
+    const adapter = this.adapterRegistry.getByInstance(input.providerInstanceId)
+    this.retainWorktree(input.sessionId, input.runtimePayload.cwd, adapter)
     recordChatPipelineInfo('chat.pipeline.provider_service.ensure_session.start', {
       model: input.runtimePayload.modelSelection?.model,
       providerInstanceId: input.providerInstanceId,
@@ -169,7 +212,6 @@ export class ProviderService {
     // Reclaim before allocating, and never the session being ensured: its own
     // binding can easily be the oldest one here.
     await this.reaper.sweep({ exceptSessionId: input.sessionId })
-    const adapter = this.adapterRegistry.getByInstance(input.providerInstanceId)
     const existing = this.sessionDirectory.getBinding(input.sessionId)
     if (existing && existing.providerInstanceId !== input.providerInstanceId)
       throw sessionIdentityErrors.SESSION_PROVIDER_CONFLICT()
@@ -230,12 +272,14 @@ export class ProviderService {
   }
 
   async sendTurn(input: ProviderTurnInput) {
+    this.requireRunning()
     const startedAt = performance.now()
     recordChatPipelineInfo(
       'chat.pipeline.provider_service.send_turn.start',
       providerTurnSummary(input),
     )
     const adapter = this.adapterRegistry.getByInstance(input.providerInstanceId)
+    this.retainWorktree(input.sessionId, input.cwd, adapter)
     // The adapter may have to (re)open a session for this turn — after a server
     // restart, or because the model changed. It can only continue the existing
     // conversation if the cursor rides along with the turn.
@@ -264,15 +308,16 @@ export class ProviderService {
     const adapterLease = this.adapterRegistry.acquireInstanceLease(providerInstanceId)
     const adapter = adapterLease.adapter
     const ids = textGenerationIds()
-    let sessionStarted = false
+    let isolatedCwd: string | null = null
+    let startPromise: Promise<unknown> | null = null
     let turnStarted = false
     let interruptPromise: Promise<void> | null = null
-    let stopPromise: Promise<void> | null = null
+    let stopPromise: Promise<boolean> | null = null
     const stopRuntime = () => {
-      if (!sessionStarted) return Promise.resolve()
+      if (!startPromise) return Promise.resolve(true)
       if (stopPromise) return stopPromise
 
-      stopPromise = this.stopTextGenerationSession(adapter, ids.sessionId)
+      stopPromise = this.stopTextGenerationSession(adapter, ids.sessionId, startPromise)
       return stopPromise
     }
     const interrupt = () => {
@@ -302,8 +347,10 @@ export class ProviderService {
 
     try {
       throwIfTextGenerationAborted(input.signal)
-      await adapter.startRuntime({
-        cwd: input.cwd,
+      await mkdir('/work/tmp', { recursive: true })
+      isolatedCwd = await mkdtemp('/work/tmp/platform-provider-text-')
+      startPromise = adapter.startRuntime({
+        cwd: isolatedCwd,
         ephemeral: true,
         interactionMode: DEFAULT_INTERACTION_MODE,
         modelSelection: input.modelSelection,
@@ -312,12 +359,12 @@ export class ProviderService {
         sessionId: ids.sessionId,
         runtimeEpoch: ids.runtimeEpoch,
       })
-      sessionStarted = true
+      await startPromise
       throwIfTextGenerationAborted(input.signal)
       turnStarted = true
       await adapter.sendTurn({
         attachments: [],
-        cwd: input.cwd,
+        cwd: isolatedCwd,
         ephemeral: true,
         interactionMode: DEFAULT_INTERACTION_MODE,
         messageText: input.messageText,
@@ -356,7 +403,15 @@ export class ProviderService {
       throw failure
     } finally {
       input.signal?.removeEventListener('abort', abort)
-      await stopRuntime()
+      const stopped = await stopRuntime()
+      if (stopped && isolatedCwd) {
+        await rm(isolatedCwd, { recursive: true, force: true }).catch((error: unknown) => {
+          recordChatPipelineWarning(
+            'chat.pipeline.provider_service.text_generation.cleanup_failed',
+            { sessionId: ids.sessionId, error },
+          )
+        })
+      }
       await this.drainRuntimeEvents()
       this.suppressCompletedTextGeneration(ids.sessionId)
       this.textGenerationTasks.delete(ids.sessionId)
@@ -393,10 +448,12 @@ export class ProviderService {
     const routed = this.routeSession(input.sessionId)
     if (!routed) {
       recordChatPipelineWarning('chat.pipeline.provider_service.stop.missing_binding', input)
+      const retained = this.worktreeLeases.get(input.sessionId)
+      if (retained) await this.stopAndRelease(retained.adapter, input.sessionId)
       return null
     }
 
-    await boundedProviderOperation(routed.adapter, routed.adapter.stopRuntime(input))
+    await this.stopAndRelease(routed.adapter, input.sessionId)
     this.sessionDirectory.markSeen(input.sessionId)
     const binding = routed.binding
     recordChatPipelineInfo('chat.pipeline.provider_service.stop.complete', {
@@ -496,8 +553,9 @@ export class ProviderService {
   async hasRuntime(input: { sessionId: SessionId }) {
     await this.awaitPendingLaunch(input.sessionId)
     const routed = this.routeSession(input.sessionId)
-    if (!routed) return false
-    return boundedProviderOperation(routed.adapter, routed.adapter.hasRuntime(input))
+    const adapter = routed?.adapter ?? this.worktreeLeases.get(input.sessionId)?.adapter
+    if (!adapter) return false
+    return boundedProviderOperation(adapter, adapter.hasRuntime(input))
   }
 
   async reusableRuntimeEpoch(
@@ -646,17 +704,34 @@ export class ProviderService {
     })
   }
 
-  private async stopTextGenerationSession(
+  private async stopAndRelease(
     adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>,
     sessionId: SessionId,
   ) {
-    await adapter.stopRuntime({ sessionId }).catch((error) => {
+    await boundedProviderOperation(adapter, adapter.stopRuntime({ sessionId }))
+    if (await boundedProviderOperation(adapter, adapter.hasRuntime({ sessionId }))) {
+      throw createInternalError('The provider still owns its runtime after stopping.')
+    }
+    this.releaseWorktree(sessionId)
+  }
+
+  private async stopTextGenerationSession(
+    adapter: ReturnType<ProviderAdapterRegistry['getByInstance']>,
+    sessionId: SessionId,
+    start: Promise<unknown>,
+  ): Promise<boolean> {
+    try {
+      await boundedProviderOperation(adapter, start.then(noop, noop))
+      await this.stopAndRelease(adapter, sessionId)
+      return true
+    } catch (error) {
       recordChatPipelineWarning('chat.pipeline.provider_service.text_generation.stop_failed', {
         error,
         providerInstanceId: adapter.adapterKey,
         sessionId,
       })
-    })
+      return false
+    }
   }
 
   private async interruptTextGenerationTurn(

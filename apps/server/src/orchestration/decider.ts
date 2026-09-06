@@ -1,4 +1,10 @@
 import {
+  decideWorktreeLifecycle,
+  creationTargetEvents,
+  requireReadyWorktree,
+} from './worktree-decider'
+import { worktreeLifecycleErrors } from './worktree-errors'
+import {
   DEFAULT_INTERACTION_MODE,
   DEFAULT_RUNTIME_MODE,
   type OrchestrationCommand,
@@ -39,16 +45,38 @@ import type { OrchestrationProjectedSession, OrchestrationReadModel } from './re
 export function decideOrchestrationCommand(
   command: OrchestrationCommand,
   model: OrchestrationReadModel,
-) {
+): PendingOrchestrationEvent[] {
   const at = new Date().toISOString()
 
   switch (command.type) {
+    case 'worktree.retry':
+    case 'worktree.cleanup':
+    case 'worktree.force-cleanup':
+    case 'worktree.retain':
+    case 'worktree.adopt':
+    case 'worktree.release':
+    case 'worktree.resolve-missing':
+    case 'worktree.create.complete':
+    case 'worktree.create.fail':
+    case 'worktree.cleanup.complete':
+    case 'worktree.cleanup.blocked':
+    case 'worktree.cleanup.fail':
+    case 'worktree.mark-missing':
+    case 'worktree.metadata.refresh':
+    case 'worktree.orphan.register':
+    case 'session.worktree.release':
+    case 'terminal.lease.request':
+    case 'terminal.lease.claim':
+    case 'terminal.lease.activate':
+    case 'terminal.lease.terminate':
+    case 'terminal.lease.end':
+    case 'terminal.lease.mark-unknown':
+      return decideWorktreeLifecycle(command, model, at)
     case 'project.create':
     case 'project.revive':
       return decideRegistration(command, model, at)
     case 'worktree.register':
     case 'worktree.revive':
-    case 'worktree.meta.update':
       return decideWorktreeCommand(command, model, at)
     case 'project.meta.update':
       return projectMetaUpdated(command, model, at)
@@ -290,6 +318,15 @@ function projectDeleted(
   at: string,
 ) {
   requireProject(model, command.projectId)
+  if (
+    [...model.worktrees.values()].some(
+      (worktree) =>
+        worktree.projectId === command.projectId &&
+        worktree.ownership === 'platform' &&
+        worktree.lifecycle.state !== 'removed',
+    )
+  )
+    throw worktreeLifecycleErrors.PROJECT_HAS_WORKTREES(command)
   const sessions = liveProjectSessions(model, command.projectId)
   if (sessions.length > 0 && !command.force) {
     throw orchestrationErrors.PROJECT_NOT_EMPTY({
@@ -324,7 +361,19 @@ function sessionCreated(
   model: OrchestrationReadModel,
   at: string,
 ) {
-  requireWorktree(model, command.worktreeId)
+  const worktreeId =
+    command.type === 'session.discover' ? command.worktreeId : command.worktreeTarget.worktreeId
+  const creation =
+    command.type === 'session.discover'
+      ? []
+      : creationTargetEvents(
+          command,
+          command.worktreeTarget,
+          command.worktreeProvisioning,
+          model,
+          at,
+        )
+  if (command.type === 'session.discover') requireWorktree(model, worktreeId)
   const existing = model.sessions.get(command.sessionId)
   if (existing && command.type === 'session.discover') {
     requireDiscoveryOwner(existing, command)
@@ -332,17 +381,20 @@ function sessionCreated(
   }
   requireSessionAbsent(model, command.sessionId)
 
-  return one(command, at, 'session.created', {
-    createdAt: at,
-    interactionMode: command.interactionMode ?? DEFAULT_INTERACTION_MODE,
-    modelSelection: command.modelSelection,
-    worktreeId: command.worktreeId,
-    origin: command.type === 'session.discover' ? 'discovered' : 'platform',
-    runtimeMode: command.runtimeMode ?? DEFAULT_RUNTIME_MODE,
-    sessionId: command.sessionId,
-    title: command.title,
-    updatedAt: at,
-  })
+  return [
+    ...creation,
+    event(command, at, 'session.created', {
+      createdAt: at,
+      interactionMode: command.interactionMode ?? DEFAULT_INTERACTION_MODE,
+      modelSelection: command.modelSelection,
+      worktreeId,
+      origin: command.type === 'session.discover' ? 'discovered' : 'platform',
+      runtimeMode: command.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+      sessionId: command.sessionId,
+      title: command.title,
+      updatedAt: at,
+    }),
+  ]
 }
 
 function sessionMetaUpdated(
@@ -644,9 +696,12 @@ function turnStartRequested(
   if (!bootstrapEvent) {
     const session = requireSessionNotArchived(model, command.sessionId, command.type)
     requireProviderInstance(session, command.modelSelection)
+    requireReadyWorktree(model, session.worktreeId)
     if (
       session.latestTurn &&
-      ['queued', 'claimed', 'adopted'].includes(session.latestTurn.providerStartState)
+      ['blocked-on-worktree', 'queued', 'claimed', 'adopted'].includes(
+        session.latestTurn.providerStartState,
+      )
     ) {
       throw sessionDomainErrors.START_STATE_CONFLICT({ sessionId: command.sessionId })
     }
@@ -703,7 +758,7 @@ function turnStartRequested(
       }),
     )
   }
-  return bootstrapEvent ? [bootstrapEvent, ...turnEvents] : turnEvents
+  return bootstrapEvent ? [...bootstrapEvent, ...turnEvents] : turnEvents
 }
 
 function bootstrapSessionCreated(
@@ -714,20 +769,29 @@ function bootstrapSessionCreated(
   const createSession = command.bootstrap?.createSession
   if (!createSession) return null
 
-  requireWorktree(model, createSession.worktreeId)
+  const creation = creationTargetEvents(
+    command,
+    createSession.worktreeTarget,
+    command.worktreeProvisioning,
+    model,
+    at,
+  )
   requireSessionAbsent(model, command.sessionId)
 
-  return event(command, at, 'session.created', {
-    createdAt: at,
-    interactionMode: createSession.interactionMode ?? DEFAULT_INTERACTION_MODE,
-    modelSelection: createSession.modelSelection,
-    worktreeId: createSession.worktreeId,
-    origin: 'platform',
-    runtimeMode: createSession.runtimeMode ?? DEFAULT_RUNTIME_MODE,
-    sessionId: command.sessionId,
-    title: createSession.title,
-    updatedAt: at,
-  })
+  return [
+    ...creation,
+    event(command, at, 'session.created', {
+      createdAt: at,
+      interactionMode: createSession.interactionMode ?? DEFAULT_INTERACTION_MODE,
+      modelSelection: createSession.modelSelection,
+      worktreeId: createSession.worktreeTarget.worktreeId,
+      origin: 'platform',
+      runtimeMode: createSession.runtimeMode ?? DEFAULT_RUNTIME_MODE,
+      sessionId: command.sessionId,
+      title: createSession.title,
+      updatedAt: at,
+    }),
+  ]
 }
 
 function proposedPlanUpserted(

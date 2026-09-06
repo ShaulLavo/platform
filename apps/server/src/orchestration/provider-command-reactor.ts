@@ -225,9 +225,11 @@ export class ProviderCommandReactor {
         throw createInternalError(`Provider turn ${event.payload.turnId} requires a user message.`)
       }
 
+      await this.beforeTurnStart?.(context.session.id)
+      const worktree = this.getReadModel().worktrees.get(context.worktree.id)
+      if (worktree?.lifecycle.state !== 'ready') return
       if (!(await this.claimTurn(event, context))) return
       this.handledTurnStarts.set(turnStartKeyForEvent(event), true)
-      await this.beforeTurnStart?.(context.session.id)
       if (!this.ownsStart(event, context, 'claimed')) return
       await this.ensureSessionForTurn(context)
       if (!this.ownsStart(event, context, 'claimed')) {
@@ -246,7 +248,7 @@ export class ProviderCommandReactor {
         !this.ownsStart(event, context, 'adopted')
       ) {
         await this.releaseAbandonedStart(context)
-        return
+        throw error
       }
       await this.handleTurnFailure(event, context, error)
     }
@@ -642,6 +644,11 @@ export class ProviderCommandReactor {
     if (!session) return null
 
     const { project, worktree } = resolveSessionOwner(model, session.id)
+    if (
+      worktree.lifecycle.state !== 'ready' ||
+      session.latestTurn?.providerStartState === 'blocked-on-worktree'
+    )
+      return null
 
     const message = session.messages.find((candidate) => candidate.id === event.payload.messageId)
     if (!message) return null

@@ -13,15 +13,20 @@ import {
   gitPathBodySchema,
   gitPathQuerySchema,
   gitPathsBodySchema,
-  gitWorktreeCreateBodySchema,
-  gitWorktreeRemoveBodySchema,
 } from './contracts'
 import type { CommitMessageGenerator } from './commit-message-generator'
 import { sseResponse, toSse } from '../sse'
 import type { GitService } from './service'
 import { GitWorktreeService } from './worktrees'
 
-export function gitRoutes(git: GitService, commitMessages: CommitMessageGenerator) {
+export function gitRoutes(
+  git: GitService,
+  commitMessages: CommitMessageGenerator,
+  options: {
+    resolveBaseCommit?: (path: string) => Promise<string | null>
+    refreshMetadata?: (path: string) => Promise<void>
+  } = {},
+) {
   const worktrees = new GitWorktreeService(git)
 
   return new Elysia({ name: 'git-routes' }).group('/git', (app) =>
@@ -29,9 +34,16 @@ export function gitRoutes(git: GitService, commitMessages: CommitMessageGenerato
       .get('/repo', ({ query }) => git.repo(query.path), {
         query: gitPathQuerySchema,
       })
-      .get('/status', ({ query }) => git.status(query.path), {
-        query: gitPathQuerySchema,
-      })
+      .get(
+        '/status',
+        async ({ query }) => {
+          await options.refreshMetadata?.(query.path)
+          return git.status(query.path)
+        },
+        {
+          query: gitPathQuerySchema,
+        },
+      )
       .get('/diff/blob', ({ query }) => git.diffBlob(query), {
         query: gitBlobDiffQuerySchema,
       })
@@ -47,17 +59,19 @@ export function gitRoutes(git: GitService, commitMessages: CommitMessageGenerato
       .get('/base-refs', ({ query }) => worktrees.baseRefs(query.path), {
         query: gitPathQuerySchema,
       })
-      .get('/branch-diff', ({ query }) => worktrees.branchDiff(query), {
-        query: gitBranchDiffQuerySchema,
-      })
+      .get(
+        '/branch-diff',
+        async ({ query }) =>
+          worktrees.branchDiff({
+            ...query,
+            baseCommit: (await options.resolveBaseCommit?.(query.path)) ?? undefined,
+          }),
+        {
+          query: gitBranchDiffQuerySchema,
+        },
+      )
       .get('/worktrees', ({ query }) => worktrees.list(query.path), {
         query: gitPathQuerySchema,
-      })
-      .post('/worktrees/create', ({ body }) => worktrees.create(body), {
-        body: gitWorktreeCreateBodySchema,
-      })
-      .post('/worktrees/remove', ({ body }) => worktrees.remove(body), {
-        body: gitWorktreeRemoveBodySchema,
       })
       .post('/stage', ({ body }) => git.stage(body), {
         body: gitPathsBodySchema,

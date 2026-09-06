@@ -298,7 +298,7 @@ async function registerSession(client: Client, workspaceRoot: string, title: str
     type: 'session.create',
     commandId: v.parse(commandIdSchema, 'address-session'),
     sessionId,
-    worktreeId: result.worktreeId,
+    worktreeTarget: { kind: 'current', worktreeId: result.worktreeId },
     title,
     runtimeMode: 'full-access',
     interactionMode: 'default',

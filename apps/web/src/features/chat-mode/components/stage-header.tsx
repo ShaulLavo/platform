@@ -1,6 +1,7 @@
+import { WorktreeChip } from '@/features/chat-mode/components/worktree-chip'
 import { SessionAttentionIndicator } from '@/features/chat-mode/components/session-attention-indicator'
 import { scopedSessionKey } from '@workspace/contracts'
-import { CaretRightIcon, GitBranchIcon } from '@phosphor-icons/react'
+import { CaretRightIcon } from '@phosphor-icons/react'
 
 import { ContextUsageRing } from '@/features/chat/components/context-usage-ring'
 import type { ContextUsage } from '@/features/chat/utils/context-usage'
@@ -44,12 +45,9 @@ export function StageHeader({
             <CaretRightIcon className='text-muted-foreground/50 size-3 shrink-0' />
           </>
         ) : null}
-        {session?.branch ? (
+        {session ? (
           <>
-            <span className='text-muted-foreground flex min-w-0 shrink items-center gap-1'>
-              <GitBranchIcon className='size-3 shrink-0' />
-              <span className='max-w-[9rem] truncate'>{session.branch}</span>
-            </span>
+            <WorktreeChip worktree={session.worktree} repositoryKind={session.repositoryKind} />
             <CaretRightIcon className='text-muted-foreground/50 size-3 shrink-0' />
           </>
         ) : null}
@@ -62,7 +60,7 @@ export function StageHeader({
           <h1 className='min-w-0 flex-1 truncate font-medium'>{session?.title ?? 'New session'}</h1>
         )}
       </nav>
-      {session?.branch ? (
+      {session?.branch && session.worktree.lifecycle.state === 'ready' ? (
         <BranchActions
           pullRequestTitle={session.title}
           // The session's worktree is its own checkout with its own HEAD, so the

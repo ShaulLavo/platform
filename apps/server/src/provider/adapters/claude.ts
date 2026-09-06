@@ -1,3 +1,5 @@
+import { spawn } from 'node:child_process'
+import { ProviderProcessLifetime } from './process-lifetime'
 import { createInternalError } from '../../observability/structured-errors'
 
 import {
@@ -309,7 +311,7 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
   }
 
   async hasRuntime({ sessionId }: { sessionId: SessionId }) {
-    return Boolean(this.sessions.get(sessionId)?.isActive())
+    return this.sessions.get(sessionId)?.hasProcess() ?? false
   }
 
   async rollbackSession(): Promise<never> {
@@ -349,19 +351,15 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
     const session = this.sessions.get(sessionId)
     if (!session) return
 
-    this.sessions.delete(sessionId)
     await session.close()
+    if (this.sessions.get(sessionId) === session) this.sessions.delete(sessionId)
   }
 
   async stopAll() {
     recordChatPipelineInfo('chat.pipeline.claude_adapter.stop_all', {
       sessionCount: this.sessions.size,
     })
-    const sessions = Array.from(this.sessions.values())
-    this.sessions.clear()
-    for (const session of sessions) {
-      await session.close()
-    }
+    for (const sessionId of this.sessions.keys()) await this.stopRuntime({ sessionId })
   }
 
   async respondApproval(input: ProviderApprovalResponseInput) {
@@ -428,8 +426,8 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
         runtimeEpoch: input.runtimeEpoch,
         sessionId: input.sessionId,
       })
-      this.sessions.delete(input.sessionId)
       await existing.close()
+      this.sessions.delete(input.sessionId)
     }
 
     recordChatPipelineInfo('chat.pipeline.claude_adapter.session.start', {
@@ -442,6 +440,7 @@ export class ClaudeProviderAdapter implements ProviderAdapter {
       sessionId: input.sessionId,
     })
     const session = await ClaudeAgentSession.start({
+      onCreated: (session) => this.sessions.set(input.sessionId, session),
       attachmentsDir: this.attachmentsDir,
       createQuery: this.createQuery,
       cwd,
@@ -502,6 +501,9 @@ class ClaudeAgentSession {
   private activeProviderTurnId: string | null = null
   private activeTurn: ActiveProviderTurn | null = null
   private query: Query | null = null
+  private pumpCompletion: Promise<void> | null = null
+  private streamEnded = true
+  private readonly processes: ProviderProcessLifetime[] = []
   private status: ProviderAdapterRuntime['status'] = 'starting'
 
   private constructor(input: {
@@ -533,6 +535,7 @@ class ClaudeAgentSession {
 
   // Streaming input withholds init until the first prompt; adopt the caller's UUID before it.
   static async start(input: {
+    onCreated: (session: ClaudeAgentSession) => void
     attachmentsDir: string
     createQuery: ClaudeCreateQuery
     cwd: string
@@ -562,6 +565,7 @@ class ClaudeAgentSession {
     // conversation ourselves. `claudeQueryOptions` drops one of the two.
     const sessionId = input.sessionId
     const session = new ClaudeAgentSession({ ...input, sessionId })
+    input.onCreated(session)
     const options = claudeQueryOptions({
       abortController: session.abortController,
       canUseTool: session.canUseTool(),
@@ -577,7 +581,13 @@ class ClaudeAgentSession {
     })
 
     try {
-      const query = input.createQuery({ options, prompt: session.prompt })
+      const query = input.createQuery({
+        options: {
+          ...options,
+          spawnClaudeCodeProcess: (spawnOptions) => session.spawnProcess(spawnOptions),
+        },
+        prompt: session.prompt,
+      })
       session.attach(query)
       // Proves the CLI actually launched and finished its local init IPC. It
       // costs no turn and needs no prompt, unlike the `init` message.
@@ -750,15 +760,34 @@ class ClaudeAgentSession {
     })
   }
 
+  hasProcess() {
+    return this.processes.some((process) => process.isAlive()) || !this.streamEnded
+  }
+
   async close() {
     recordChatPipelineInfo('chat.pipeline.claude_session.close', {
       providerBindingHandle: this.providerBindingHandle(),
       sessionId: this.sessionId,
     })
-    this.status = 'stopped'
     this.prompt.close()
     this.rejectAllTurns(createInternalError('Claude session stopped.'))
     this.abortController.abort()
+    this.query?.close()
+    await Promise.all(this.processes.map((process) => process.close()))
+    if (this.pumpCompletion)
+      await withClaudeTimeout(this.pumpCompletion, 5_000, 'Claude query exit was not acknowledged.')
+    this.status = 'stopped'
+  }
+
+  private spawnProcess(options: Parameters<NonNullable<Options['spawnClaudeCodeProcess']>>[0]) {
+    const process = spawn(options.command, options.args, {
+      cwd: options.cwd,
+      env: options.cwd ? { ...options.env, PWD: options.cwd } : options.env,
+      signal: options.signal,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    this.processes.push(new ProviderProcessLifetime(process))
+    return process
   }
 
   private providerBindingHandle() {
@@ -767,7 +796,8 @@ class ClaudeAgentSession {
 
   private attach(query: Query) {
     this.query = query
-    void this.pump(query)
+    this.streamEnded = false
+    this.pumpCompletion = this.pump(query)
   }
 
   private async pump(query: Query) {
@@ -782,6 +812,7 @@ class ClaudeAgentSession {
   }
 
   private handleStreamClosed(error: unknown) {
+    this.streamEnded = true
     const message = error ? providerErrorMessage(error) : 'Claude session ended.'
     if (error) {
       recordChatPipelineWarning('chat.pipeline.claude_session.stream.failed', {

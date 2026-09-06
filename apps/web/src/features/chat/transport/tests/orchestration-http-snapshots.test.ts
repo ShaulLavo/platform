@@ -91,7 +91,7 @@ async function seedSession(client: CommandClient, rootPath: string) {
     workspaceRoot: rootPath,
   })
   await dispatch(client, {
-    worktreeId: receipt.result!.worktreeId,
+    worktreeTarget: { kind: 'current', worktreeId: receipt.result!.worktreeId },
     commandId: 'cmd-http-snapshots-session',
     modelSelection: { model: 'mock-model', providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID },
 

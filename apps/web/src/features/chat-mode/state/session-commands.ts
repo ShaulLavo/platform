@@ -3,9 +3,11 @@ import {
   type EnvironmentId,
   type ProjectId,
   type ScopedProjectRef,
+  type ScopedWorktreeRef,
 } from '@workspace/contracts'
 import {
   selectCurrentWorktree,
+  selectChatSessionsForProject,
   selectWorktreeAtPath,
 } from '@/features/chat/state/chat-projection-selectors'
 import { activeChatProjection } from '@/features/chat/state/active-projection'
@@ -21,6 +23,9 @@ import { useSessionSearchStore } from '@/features/chat-mode/state/session-search
 import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
 import { currentRailEnvironments } from '@/features/chat-mode/state/rail-environments'
 import type { SessionClickIntent } from '@/features/chat-mode/utils/session-multi-select'
+import { activeSession } from '@/features/chat-mode/utils/active-session'
+import { activeWorktree } from '@/features/chat-mode/utils/active-worktree'
+import { compareSessionsForRail } from '@/features/chat-mode/utils/session-order'
 import {
   sessionRailModel,
   type SessionRailItem,
@@ -38,10 +43,19 @@ let openingGeneration = 0
 export function setSessionProjectOpener(opener: SessionProjectOpener | null) {
   openProjectRoot = opener
 }
-export type SessionOpenOptions = { readonly openProject?: SessionProjectOpener }
+export type SessionOpenOptions = {
+  readonly openProject?: SessionProjectOpener
+  readonly baseWorktree?: ScopedWorktreeRef
+}
 export async function openSessionRow(session: SessionRailItem, options: SessionOpenOptions = {}) {
   const generation = ++openingGeneration
-  const opened = await openRoot(session.environmentId, session.worktreePath, options)
+  const slice = selectChatProjectionSlice(useChatProjectionStore.getState(), session.environmentId)
+  const navigationPath =
+    session.worktree.lifecycle.state === 'ready'
+      ? session.worktreePath
+      : selectCurrentWorktree(slice, session.projectId)?.path
+  if (navigationPath === undefined) return false
+  const opened = await openRoot(session.environmentId, navigationPath, options)
   if (!opened || generation !== openingGeneration) return false
   useSessionSelectionStore
     .getState()
@@ -70,19 +84,55 @@ export function clearSessionMultiSelect() {
 export async function startSessionDraft(ref: ScopedProjectRef, options: SessionOpenOptions = {}) {
   const generation = ++openingGeneration
   const slice = selectChatProjectionSlice(useChatProjectionStore.getState(), ref.environmentId)
-  const worktree = selectCurrentWorktree(slice, ref.projectId)
+  const base = options.baseWorktree
+  if (base && base.environmentId !== ref.environmentId) return false
+  const worktree = base
+    ? slice.worktreeById[base.worktreeId]
+    : selectCurrentWorktree(slice, ref.projectId)
+  if (worktree && worktree.projectId !== ref.projectId) return false
   if (!worktree) return false
-  const opened = await openRoot(ref.environmentId, worktree.path, options)
+  const navigationPath =
+    worktree.lifecycle.state === 'ready'
+      ? worktree.path
+      : selectCurrentWorktree(slice, ref.projectId)?.path
+  if (navigationPath === undefined) return false
+  const opened = await openRoot(ref.environmentId, navigationPath, options)
   if (!opened || generation !== openingGeneration) return false
   useSessionRailStore.getState().setView('active')
-  useSessionSelectionStore.getState().startDraft(ref.environmentId, ref.projectId)
+  useSessionSelectionStore.getState().startDraft(ref.environmentId, ref.projectId, worktree.id)
   return true
 }
 export function startScopedSessionDraft() {
   const projectId = useSessionRailStore.getState().scope ?? activeProjectId()
   if (!projectId) return false
   const environmentId = activeEnvironmentId()
-  return startSessionDraft({ environmentId, projectId })
+  const { selection, restored, draftWorktreeId } = useSessionSelectionStore.getState()
+  const slice = selectChatProjectionSlice(useChatProjectionStore.getState(), environmentId)
+  const sessions = selectChatSessionsForProject(slice, projectId).toSorted(compareSessionsForRail)
+  const resolved = activeSession({
+    environmentId,
+    projectId,
+    selection,
+    restored,
+    sessionIds: sessions.filter((session) => !session.archivedAt).map((session) => session.id),
+    archivedSessionIds: sessions
+      .filter((session) => session.archivedAt)
+      .map((session) => session.id),
+  })
+  const selected = resolved.sessionId ? slice.sessionById[resolved.sessionId] : null
+  const worktree = activeWorktree({
+    environmentId,
+    projectId,
+    selection,
+    sessionWorktree: selected ? slice.worktreeById[selected.worktreeId] : null,
+    draftWorktree: draftWorktreeId ? slice.worktreeById[draftWorktreeId] : null,
+    currentWorktree: selectCurrentWorktree(slice, projectId),
+  })
+  if (!worktree) return false
+  return startSessionDraft(
+    { environmentId, projectId },
+    { baseWorktree: { environmentId, worktreeId: worktree.id } },
+  )
 }
 export function selectAdjacentSession(direction: SessionTraversalDirection) {
   const sessions = visibleSessions()

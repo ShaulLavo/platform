@@ -111,7 +111,7 @@ export async function makeSessionDomainFixture(options: { providerRuntime?: bool
         type: 'session.create',
         commandId: `create-${++nextCommand}`,
         sessionId,
-        worktreeId,
+        worktreeTarget: { kind: 'current', worktreeId: worktreeId },
         title: sessionId === DOMAIN_SESSION ? 'GUI session' : 'Ambiguous session',
         modelSelection: DOMAIN_MODEL,
       }),

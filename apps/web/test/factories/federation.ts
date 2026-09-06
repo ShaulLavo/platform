@@ -148,7 +148,7 @@ export async function registerFederatedProject(
     type: 'session.create',
     commandId: v.parse(commandIdSchema, `federation-session-${suffix}`),
     sessionId,
-    worktreeId: result.worktreeId!,
+    worktreeTarget: { kind: 'current', worktreeId: result.worktreeId! },
     title: `Session ${suffix}`,
     runtimeMode: 'approval-required',
     interactionMode: 'default',

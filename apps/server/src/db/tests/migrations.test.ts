@@ -1,3 +1,11 @@
+import { OrchestrationProjectionPipeline } from '../../orchestration/projection-pipeline'
+import { OrchestrationSnapshotQuery } from '../../orchestration/snapshot-query'
+import { DOMAIN_IDS } from '../../orchestration/tests/factories/session-domain'
+import {
+  RETIRED_WORKTREE,
+  resetWorktreeProjections,
+  seedVersion11Worktrees,
+} from './factories/worktree-lifecycle'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -24,6 +32,7 @@ const expectedTables = [
   'projection_state',
   'projection_projects',
   'projection_worktrees',
+  'projection_terminal_leases',
   'projection_sessions',
   'projection_session_messages',
   'projection_session_activities',
@@ -64,7 +73,9 @@ describe('platform migration ledger', () => {
     for (const table of Object.values(schema)) {
       if (!is(table, SQLiteTable)) continue
       const config = getTableConfig(table)
-      expect(columnNames(handle, config.name)).toEqual(config.columns.map((column) => column.name))
+      expect(columnNames(handle, config.name).toSorted()).toEqual(
+        config.columns.map((column) => column.name).toSorted(),
+      )
       expect(indexNames(handle, config.name)).toEqual(
         expect.arrayContaining(config.indexes.map((index) => index.config.name)),
       )
@@ -72,6 +83,51 @@ describe('platform migration ledger', () => {
         config.foreignKeys.length,
       )
     }
+  })
+
+  it('preserves version 11 history and converges after projection-only replay', () => {
+    const handle = openTempDatabase()
+    migratePlatformDatabase(
+      handle.db,
+      platformMigrations.filter((migration) => migration.version === 11),
+    )
+    seedVersion11Worktrees(handle.db)
+    expect(migratePlatformDatabase(handle.db).map((migration) => migration.version)).toEqual([12])
+    const query = new OrchestrationSnapshotQuery(handle.db)
+    const migrated = query.shellSnapshot()
+    const worktrees = [...query.fullReadModel().worktrees.values()]
+    expect(worktrees.find((worktree) => worktree.id === DOMAIN_IDS.worktree)).toMatchObject({
+      lifecycle: { state: 'ready' },
+      operationId: null,
+      externalDriverUnverified: true,
+      activeTerminalCount: 0,
+      terminalOwnershipUnknown: false,
+    })
+    expect(worktrees.find((worktree) => worktree.id === RETIRED_WORKTREE)?.lifecycle.state).toBe(
+      'retired',
+    )
+    expect(rows(handle, sql`PRAGMA foreign_key_check`)).toEqual([])
+    resetWorktreeProjections(handle.db)
+    new OrchestrationProjectionPipeline(handle.db).catchUp()
+    expect(query.shellSnapshot()).toEqual(migrated)
+    expect([...query.fullReadModel().worktrees.values()]).toEqual(worktrees)
+    expect(rows(handle, sql`SELECT command_id FROM orchestration_command_receipts`)).toEqual([
+      { command_id: 'historical-receipt' },
+    ])
+    expect(rows(handle, sql`PRAGMA foreign_key_check`)).toEqual([])
+  })
+
+  it('enforces removal timestamps and nonnegative terminal ownership counts', () => {
+    const handle = openTempDatabase()
+    migratePlatformDatabase(handle.db)
+    insertTopology(handle)
+    expect(() =>
+      handle.db.run(sql`UPDATE projection_worktrees SET lifecycle_state = 'removed'`),
+    ).toThrow()
+    expect(() => handle.db.run(sql`UPDATE projection_worktrees SET removed_at = 'now'`)).toThrow()
+    expect(() =>
+      handle.db.run(sql`UPDATE projection_worktrees SET active_terminal_count = -1`),
+    ).toThrow()
   })
 
   it('applies nothing on the second run', () => {
@@ -102,8 +158,8 @@ describe('platform migration ledger', () => {
     seedLegacyDatabase(handle)
     const identity = readEnvironmentIdentity(handle.db)
     const applied = migratePlatformDatabase(handle.db)
-    expect(applied.map(({ version }) => version)).toEqual([11])
-    expect(ledgerVersions(handle)).toEqual([11])
+    expect(applied.map(({ version }) => version)).toEqual([11, 12])
+    expect(ledgerVersions(handle)).toEqual([11, 12])
     expect(handle.db.select().from(environmentIdentity).all()).toEqual([identity])
     expect(rows<{ value: string }>(handle, sql`SELECT value FROM operator_state`)).toEqual([
       { value: 'keep-settings-and-secrets' },

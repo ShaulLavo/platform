@@ -2,6 +2,7 @@ import { Elysia } from 'elysia'
 import * as v from 'valibot'
 import {
   ORCHESTRATION_SESSION_DETAIL_PAGE_SIZE,
+  worktreeIdSchema,
   orchestrationSearchSessionsInputSchema,
 } from '@workspace/contracts'
 import {
@@ -75,6 +76,20 @@ export function orchestrationRoutes(
           ),
         {
           body: clientOrchestrationCommandSchema,
+        },
+      )
+      .get(
+        '/worktree-cleanup-preview',
+        ({ query }) => engine.worktreeCleanupPreview(query.worktreeId),
+        {
+          query: v.object({ worktreeId: worktreeIdSchema }),
+        },
+      )
+      .get(
+        '/worktree-missing-preview',
+        ({ query }) => engine.worktreeMissingPreview(query.worktreeId),
+        {
+          query: v.object({ worktreeId: worktreeIdSchema }),
         },
       )
       .get('/shell-snapshot', () =>

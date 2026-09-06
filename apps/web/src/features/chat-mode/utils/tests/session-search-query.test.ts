@@ -86,7 +86,7 @@ async function seedSession(client: Client, rootPath: string, text: string) {
   const submission = createDraftSessionSubmission({
     createdAt: new Date().toISOString(),
     modelSelection,
-    worktreeId: registration.worktreeId,
+    worktreeTarget: { kind: 'current', worktreeId: registration.worktreeId },
     text,
   })
 

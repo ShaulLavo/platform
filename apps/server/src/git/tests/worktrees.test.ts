@@ -1,320 +1,292 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { chmod, mkdir, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { closeTestApps, createTestApp } from '../../../test/server'
-import { DEFAULT_MAX_TEXT_FILE_BYTES } from '../../fs/limits'
-import { createWorkspacePaths } from '../../fs/path'
-import { GitService } from '../service'
+import {
+  gitWorktreeFixture,
+  provisionWorktree,
+  runGit,
+  worktreeA,
+  worktreeB,
+} from '../../../test/factories/git-worktree'
+import { gitWorktreeCreateBodySchema } from '../contracts'
 import { gitWorktreeErrors } from '../utils/worktree-errors'
-import { GitWorktreeService } from '../worktrees'
-import { testSettingsOptions } from '../../settings/testing'
+import * as v from 'valibot'
 
-const TRUSTED_ORIGIN = 'http://localhost:5173'
-const SESSION_ROOT = '.git/platform-worktrees'
-
-const roots: string[] = []
-
+const fixtures: Awaited<ReturnType<typeof gitWorktreeFixture>>[] = []
 afterEach(async () => {
-  await closeTestApps()
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
+  await Promise.all(fixtures.splice(0).map((fixture) => fixture.dispose()))
 })
-
-describe('session worktrees', () => {
-  it('gives a session its own checkout without disturbing the main one', async () => {
-    const root = await fixtureRepo()
-    const worktrees = worktreeService(root)
-
-    const created = await worktrees.create({ path: '', sessionId: 'alpha' })
-
-    expect(created.created).toBe(true)
-    expect(created.worktree).toMatchObject({
-      branch: 'session/alpha',
-      detached: false,
-      main: false,
-      path: `${SESSION_ROOT}/alpha`,
-      sessionId: 'alpha',
-    })
-
-    // The session edits its own checkout: the main worktree neither sees the
-    // file nor reports itself dirty, and it stays on its own branch.
-    await writeFile(path.join(root, SESSION_ROOT, 'alpha', 'tracked.txt'), 'session\n')
-    expect(await readFile(path.join(root, 'tracked.txt'), 'utf8')).toBe('one\n')
-    expect((await runGit(root, ['status', '--porcelain'])).stdout).toBe('')
-    expect((await runGit(root, ['rev-parse', '--abbrev-ref', 'HEAD'])).stdout.trim()).toBe('main')
-  })
-
-  it('reuses the existing checkout when the same session asks twice', async () => {
-    const root = await fixtureRepo()
-    const worktrees = worktreeService(root)
-    const first = await worktrees.create({ path: '', sessionId: 'alpha' })
-
-    const second = await worktrees.create({ path: '', sessionId: 'alpha' })
-
-    expect(second.created).toBe(false)
-    expect(second.worktree.absolutePath).toBe(first.worktree.absolutePath)
-  })
-
-  it('lists the main worktree first and attributes session checkouts', async () => {
-    const root = await fixtureRepo()
-    const worktrees = worktreeService(root)
-    await worktrees.create({ path: '', sessionId: 'alpha' })
-
-    const listed = await worktrees.list('')
-
-    expect(listed).toHaveLength(2)
-    expect(listed[0]).toMatchObject({ branch: 'main', main: true, path: '', sessionId: null })
-    expect(listed[1]).toMatchObject({ main: false, sessionId: 'alpha' })
-  })
-
-  it('branches from an explicit base and records it for later diffs', async () => {
-    const root = await fixtureRepo()
-    await runGit(root, ['branch', 'release'])
-    const worktrees = worktreeService(root)
-
-    await worktrees.create({ base: 'release', path: '', sessionId: 'alpha' })
-
-    const recorded = await runGit(root, ['config', '--get', 'branch.session/alpha.platform-base'])
-    expect(recorded.stdout.trim()).toBe('release')
-  })
-})
-
-describe('session branch diff', () => {
-  it('returns every file the branch changed since it forked', async () => {
-    const root = await fixtureRepo()
-    const worktrees = worktreeService(root)
-    const created = await worktrees.create({ path: '', sessionId: 'alpha' })
-    const session = created.worktree.absolutePath
-    await writeFile(path.join(session, 'added.txt'), 'added\n')
-    await writeFile(path.join(session, 'tracked.txt'), 'changed\n')
-    await runGit(session, ['add', '--all'])
-    await runGit(session, ['commit', '-m', 'session work'])
-    // A commit lands on the base after the fork: it belongs to the base, not to
-    // the session, so the merge-base diff must not report it.
-    await writeFile(path.join(root, 'base-only.txt'), 'base\n')
-    await runGit(root, ['add', '--all'])
-    await runGit(root, ['commit', '-m', 'base work'])
-
-    const diff = await worktrees.branchDiff({ base: 'main', path: `${SESSION_ROOT}/alpha` })
-
-    expect(diff.baseRef).toBe('main')
-    expect(diff.headRef).toBe('session/alpha')
-    expect(diff.files.map((file) => file.path).sort()).toEqual([
-      `${SESSION_ROOT}/alpha/added.txt`,
-      `${SESSION_ROOT}/alpha/tracked.txt`,
-    ])
-  })
-
-  it('falls back to the base the worktree recorded when none is given', async () => {
-    const root = await fixtureRepo()
-    await runGit(root, ['branch', 'release'])
-    const worktrees = worktreeService(root)
-    await worktrees.create({ base: 'release', path: '', sessionId: 'alpha' })
-
-    const diff = await worktrees.branchDiff({ path: `${SESSION_ROOT}/alpha` })
-
-    expect(diff.baseRef).toBe('release')
-    expect(diff.files).toEqual([])
-  })
-
-  it('rejects a base ref the repository does not have', async () => {
-    const root = await fixtureRepo()
-    const worktrees = worktreeService(root)
-    await worktrees.create({ path: '', sessionId: 'alpha' })
-
-    await expect(
-      worktrees.branchDiff({ base: 'origin/never-fetched', path: `${SESSION_ROOT}/alpha` }),
-    ).rejects.toMatchObject({ code: gitWorktreeErrors.WORKTREE_BASE_NOT_FOUND.code })
-  })
-
-  it('offers local and remote branches as base choices with a default', async () => {
-    const root = await fixtureRepo()
-    await runGit(root, ['branch', 'release'])
-    const worktrees = worktreeService(root)
-    await worktrees.create({ path: '', sessionId: 'alpha' })
-
-    const bases = await worktrees.baseRefs(`${SESSION_ROOT}/alpha`)
-
-    expect(bases.choices.map((choice) => choice.label).sort()).toEqual([
-      'main',
-      'release',
-      'session/alpha',
-    ])
-    expect(bases.defaultChoiceId).toBe('local:main')
-  })
-
-  it('compares against the remote tracking ref when the base exists on both sides', async () => {
-    const origin = await fixtureRepo()
-    const clone = await mkdtemp(path.join(tmpdir(), 'platform-git-worktree-clone-'))
-    roots.push(clone)
-    await runGit(origin, ['clone', origin, clone])
-    const worktrees = worktreeService(clone)
-    const created = await worktrees.create({ path: '', sessionId: 'alpha' })
-    await writeFile(path.join(created.worktree.absolutePath, 'added.txt'), 'added\n')
-    await runGit(created.worktree.absolutePath, ['add', '--all'])
-    await runGit(created.worktree.absolutePath, ['commit', '-m', 'session work'])
-
-    const diff = await worktrees.branchDiff({ path: `${SESSION_ROOT}/alpha` })
-
-    expect(diff.baseRef).toBe('origin/main')
-    expect(diff.files.map((file) => file.path)).toEqual([`${SESSION_ROOT}/alpha/added.txt`])
-  })
-})
-
-describe('session worktree removal', () => {
-  it('refuses to delete uncommitted work without force', async () => {
-    const root = await fixtureRepo()
-    const worktrees = worktreeService(root)
-    const created = await worktrees.create({ path: '', sessionId: 'alpha' })
-    await writeFile(path.join(created.worktree.absolutePath, 'scratch.txt'), 'unsaved\n')
-
-    await expect(
-      worktrees.remove({ force: false, path: '', worktreePath: `${SESSION_ROOT}/alpha` }),
-    ).rejects.toMatchObject({ code: gitWorktreeErrors.WORKTREE_DIRTY.code })
-    expect(await readFile(path.join(created.worktree.absolutePath, 'scratch.txt'), 'utf8')).toBe(
-      'unsaved\n',
-    )
-  })
-
-  it('deletes a dirty worktree once force is explicit', async () => {
-    const root = await fixtureRepo()
-    const worktrees = worktreeService(root)
-    const created = await worktrees.create({ path: '', sessionId: 'alpha' })
-    await writeFile(path.join(created.worktree.absolutePath, 'scratch.txt'), 'unsaved\n')
-
-    const result = await worktrees.remove({
-      force: true,
-      path: '',
-      worktreePath: `${SESSION_ROOT}/alpha`,
-    })
-
-    expect(result.removed.sessionId).toBe('alpha')
-    expect(result.worktrees).toHaveLength(1)
-    expect((await runGit(root, ['worktree', 'list', '--porcelain'])).stdout).not.toContain('alpha')
-  })
-
-  it('removes a clean worktree without force, named by its absolute path', async () => {
-    const root = await fixtureRepo()
-    const worktrees = worktreeService(root)
-    const created = await worktrees.create({ path: '', sessionId: 'alpha' })
-
-    const result = await worktrees.remove({
-      force: false,
-      path: '',
-      worktreePath: created.worktree.absolutePath,
-    })
-
-    expect(result.removed.sessionId).toBe('alpha')
-    expect(result.worktrees.map((worktree) => worktree.sessionId)).toEqual([null])
-  })
-
-  it('refuses to remove the repository’s main worktree', async () => {
-    const root = await fixtureRepo()
-    const worktrees = worktreeService(root)
-
-    await expect(
-      worktrees.remove({ force: true, path: '', worktreePath: '' }),
-    ).rejects.toMatchObject({ code: gitWorktreeErrors.WORKTREE_MAIN_PROTECTED.code })
-  })
-})
-
-describe('worktree path containment', () => {
-  it('rejects a removal path that escapes the workspace', async () => {
-    const root = await fixtureRepo()
-    const worktrees = worktreeService(root)
-
-    await expect(
-      worktrees.remove({ force: true, path: '', worktreePath: '../escape' }),
-    ).rejects.toMatchObject({ code: 'PATH_OUTSIDE_WORKSPACE' })
-  })
-
-  it('rejects a path inside the workspace that is not a worktree', async () => {
-    const root = await fixtureRepo()
-    const worktrees = worktreeService(root)
-
-    await expect(
-      worktrees.remove({ force: true, path: '', worktreePath: 'tracked.txt' }),
-    ).rejects.toMatchObject({ code: gitWorktreeErrors.WORKTREE_NOT_FOUND.code })
-  })
-
-  it('rejects a traversing session id before any directory is made', async () => {
-    const root = await fixtureRepo()
-    const app = testApp(root)
-
-    const response = await app.handle(
-      new Request('http://local/git/worktrees/create', {
-        body: JSON.stringify({ sessionId: '../../escape' }),
-        headers: trustedOriginHeaders({ 'content-type': 'application/json' }),
-        method: 'POST',
-      }),
-    )
-
-    expect(response.status).toBe(400)
-    expect((await runGit(root, ['worktree', 'list', '--porcelain'])).stdout).not.toContain('escape')
-  })
-
-  it('creates and lists a session worktree over the real route', async () => {
-    const root = await fixtureRepo()
-    const app = testApp(root)
-
-    const created = await app.handle(
-      new Request('http://local/git/worktrees/create', {
-        body: JSON.stringify({ sessionId: 'alpha' }),
-        headers: trustedOriginHeaders({ 'content-type': 'application/json' }),
-        method: 'POST',
-      }),
-    )
-    const listed = await app.handle(
-      new Request('http://local/git/worktrees', { headers: trustedOriginHeaders() }),
-    )
-
-    expect(created.status).toBe(200)
-    expect(listed.status).toBe(200)
-    const worktrees = (await listed.json()) as Array<{ path: string; sessionId: string | null }>
-    expect(worktrees.map((worktree) => worktree.sessionId)).toEqual([null, 'alpha'])
-  })
-})
-
-function worktreeService(root: string) {
-  return new GitWorktreeService(
-    new GitService(createWorkspacePaths(root), { maxTextFileBytes: DEFAULT_MAX_TEXT_FILE_BYTES }),
-  )
-}
-
-function testApp(root: string) {
-  const app = createTestApp({
-    auth: { allowedOrigins: [TRUSTED_ORIGIN] },
-    settings: testSettingsOptions(root),
-    watch: false,
-    workspaceRoot: root,
-  })
-  return app
-}
-
 async function fixtureRepo() {
-  const root = await mkdtemp(path.join(tmpdir(), 'platform-git-worktree-'))
-  roots.push(root)
-  await runGit(root, ['init', '-b', 'main'])
-  await runGit(root, ['config', 'user.email', 'test@example.com'])
-  await runGit(root, ['config', 'user.name', 'Test User'])
-  await writeFile(path.join(root, 'tracked.txt'), 'one\n')
-  await runGit(root, ['add', 'tracked.txt'])
-  await runGit(root, ['commit', '-m', 'initial'])
-  return root
+  const fixture = await gitWorktreeFixture()
+  fixtures.push(fixture)
+  return fixture
 }
 
-async function runGit(root: string, args: readonly string[]) {
-  const child = Bun.spawn(['git', '-C', root].concat(args), { stderr: 'pipe', stdout: 'pipe' })
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-    child.exited,
-  ])
-  if (exitCode === 0) return { stderr, stdout }
+describe('worktree provisioning', () => {
+  it('uses the full UUID and persisted base even when the base branch moves', async () => {
+    const fixture = await fixtureRepo()
+    const prepared = await fixture.worktrees.prepareCreate({
+      path: fixture.root,
+      worktreeId: worktreeA,
+    })
+    await writeFile(path.join(fixture.root, 'tracked.txt'), 'later\n')
+    await runGit(fixture.root, ['commit', '-am', 'base moved'])
+    const created = await fixture.worktrees.create({ ...prepared, path: fixture.root })
+    expect(created.worktree.absolutePath).toBe(
+      path.join(fixture.root, '.git/platform-worktrees', worktreeA),
+    )
+    expect(created.worktree.branch).toBe(`worktree/${worktreeA}`)
+    expect(created.worktree.worktreeId).toBe(worktreeA)
+    expect(created.worktree.commit).toBe(prepared.baseCommit)
+    expect(await readFile(path.join(created.worktree.absolutePath, 'tracked.txt'), 'utf8')).toBe(
+      'one\n',
+    )
+    expect((await fixture.worktrees.create({ ...prepared, path: fixture.root })).created).toBe(
+      false,
+    )
+  })
+  it('recovers an expected branch and refuses a changed branch without moving it', async () => {
+    const fixture = await fixtureRepo()
+    const prepared = await fixture.worktrees.prepareCreate({
+      path: fixture.root,
+      worktreeId: worktreeA,
+    })
+    await runGit(fixture.root, [
+      'update-ref',
+      `refs/heads/${prepared.branch}`,
+      prepared.baseCommit,
+      '0'.repeat(40),
+    ])
+    expect((await fixture.worktrees.create({ ...prepared, path: fixture.root })).created).toBe(true)
+    await expect(
+      fixture.worktrees.prepareCreate({ path: fixture.root, worktreeId: worktreeA }),
+    ).rejects.toMatchObject({ code: gitWorktreeErrors.WORKTREE_BRANCH_EXISTS.code })
+    const other = await fixture.worktrees.prepareCreate({
+      path: fixture.root,
+      worktreeId: worktreeB,
+    })
+    await writeFile(path.join(fixture.root, 'tracked.txt'), 'later\n')
+    await runGit(fixture.root, ['commit', '-am', 'base moved'])
+    await runGit(fixture.root, ['branch', other.branch])
+    const collision = await runGit(fixture.root, ['rev-parse', other.branch])
+    await expect(fixture.worktrees.create({ ...other, path: fixture.root })).rejects.toMatchObject({
+      code: gitWorktreeErrors.WORKTREE_BRANCH_EXISTS.code,
+    })
+    expect(await runGit(fixture.root, ['rev-parse', other.branch])).toBe(collision)
+  })
+  it('creates from a linked base through the canonical common directory', async () => {
+    const fixture = await fixtureRepo()
+    const first = await provisionWorktree(fixture)
+    const prepared = await fixture.worktrees.prepareCreate({
+      path: first.worktree.absolutePath,
+      worktreeId: worktreeB,
+    })
+    const second = await fixture.worktrees.create({
+      ...prepared,
+      path: first.worktree.absolutePath,
+    })
+    expect(path.dirname(second.worktree.absolutePath)).toBe(
+      path.dirname(first.worktree.absolutePath),
+    )
+    await writeFile(path.join(first.worktree.absolutePath, 'only-a'), 'a')
+    expect(await Bun.file(path.join(second.worktree.absolutePath, 'only-a')).exists()).toBe(false)
+  })
+  it('rejects invalid identifiers before filesystem access', () => {
+    expect(
+      v.safeParse(gitWorktreeCreateBodySchema, {
+        path: '',
+        worktreeId: '../../escape',
+        branch: 'worktree/a',
+        baseCommit: '1'.repeat(40),
+      }).success,
+    ).toBe(false)
+  })
+  it('uses the projected immutable base and ignores old branch config', async () => {
+    const fixture = await fixtureRepo()
+    const created = await provisionWorktree(fixture)
+    await writeFile(path.join(created.worktree.absolutePath, 'feature.txt'), 'feature')
+    await runGit(created.worktree.absolutePath, ['add', '--all'])
+    await runGit(created.worktree.absolutePath, ['commit', '-m', 'feature'])
+    await runGit(fixture.root, [
+      'config',
+      `branch.${created.prepared.branch}.platform-base`,
+      'missing',
+    ])
+    const diff = await fixture.worktrees.branchDiff({
+      path: created.worktree.absolutePath,
+      baseCommit: created.prepared.baseCommit,
+    })
+    expect(diff.baseRef).toBe(created.prepared.baseCommit)
+    expect(diff.files).toHaveLength(1)
+    expect(diff.files[0]?.path).toContain('feature.txt')
+    expect(
+      (await fixture.worktrees.branchDiff({ path: created.worktree.absolutePath })).baseRef,
+    ).toBe('main')
+  })
+})
 
-  throw new Error(`${stderr}${stdout}`.trim())
-}
+describe('guarded worktree removal', () => {
+  it('preserves branch and commits after clean removal', async () => {
+    const fixture = await fixtureRepo()
+    const created = await provisionWorktree(fixture)
+    expect(
+      (await fixture.worktrees.remove({ ...created.target, mode: 'safe' })).worktrees,
+    ).toHaveLength(1)
+    expect(await runGit(fixture.root, ['rev-parse', created.prepared.branch])).toBe(
+      created.prepared.baseCommit,
+    )
+    expect(await fixture.worktrees.inspect(created.target)).toEqual({
+      pathExists: false,
+      adminExists: false,
+      worktree: null,
+    })
+  })
+  it('can remove through the target checkout without querying its deleted cwd afterwards', async () => {
+    const fixture = await fixtureRepo()
+    const created = await provisionWorktree(fixture)
+    const removed = await fixture.worktrees.remove({
+      ...created.target,
+      path: created.worktree.absolutePath,
+      mode: 'safe',
+    })
+    expect(removed.worktrees).toHaveLength(1)
+    expect(removed.worktrees[0]?.absolutePath).toBe(fixture.root)
+  })
 
-function trustedOriginHeaders(headers: HeadersInit = {}) {
-  return new Headers({ ...Object.fromEntries(new Headers(headers)), origin: TRUSTED_ORIGIN })
-}
+  it('refuses ignored files under safe cleanup and requires fresh force authorization after edits', async () => {
+    const fixture = await fixtureRepo()
+    const created = await provisionWorktree(fixture)
+    await writeFile(path.join(created.worktree.absolutePath, 'ignored.txt'), 'first')
+    await expect(
+      fixture.worktrees.remove({ ...created.target, mode: 'safe' }),
+    ).rejects.toMatchObject({ code: gitWorktreeErrors.WORKTREE_DIRTY.code })
+    const preview = await fixture.worktrees.previewRemoval(created.target)
+    await writeFile(path.join(created.worktree.absolutePath, 'ignored.txt'), 'other')
+    await expect(
+      fixture.worktrees.remove({ ...created.target, ...preview, mode: 'discard-changes' }),
+    ).rejects.toMatchObject({ code: gitWorktreeErrors.WORKTREE_NEEDS_RECONFIRMATION.code })
+    const renewed = await fixture.worktrees.previewRemoval(created.target)
+    expect(renewed.expectedStatusFingerprint).not.toBe(preview.expectedStatusFingerprint)
+    expect(
+      (await fixture.worktrees.remove({ ...created.target, ...renewed, mode: 'discard-changes' }))
+        .worktrees,
+    ).toHaveLength(1)
+  })
+  it('fingerprints ignored bytes, modes, symlinks, HEAD, and index', async () => {
+    const fixture = await fixtureRepo()
+    const created = await provisionWorktree(fixture)
+    const checkout = created.worktree.absolutePath
+    await mkdir(path.join(checkout, 'ignored-directory'))
+    await writeFile(path.join(checkout, 'ignored-directory/file'), 'one')
+    await symlink('tracked.txt', path.join(checkout, 'link'))
+    const fingerprints = new Set<string>()
+    async function remember() {
+      fingerprints.add(
+        (await fixture.worktrees.previewRemoval(created.target)).expectedStatusFingerprint,
+      )
+    }
+    await remember()
+    await writeFile(path.join(checkout, 'ignored-directory/file'), 'two')
+    await remember()
+    await chmod(path.join(checkout, 'ignored-directory/file'), 0o755)
+    await remember()
+    await unlink(path.join(checkout, 'link'))
+    await symlink('missing.txt', path.join(checkout, 'link'))
+    await remember()
+    await runGit(checkout, ['add', 'link'])
+    await remember()
+    await runGit(checkout, ['commit', '-m', 'link'])
+    await remember()
+    expect(fingerprints.size).toBe(6)
+  })
+  it('rejects FIFO and unreadable entries instead of approving force', async () => {
+    const fixture = await fixtureRepo()
+    const created = await provisionWorktree(fixture)
+    const entry = path.join(created.worktree.absolutePath, 'special')
+    expect(await Bun.spawn(['mkfifo', entry]).exited).toBe(0)
+    await expect(fixture.worktrees.previewRemoval(created.target)).rejects.toMatchObject({
+      code: gitWorktreeErrors.WORKTREE_UNSAFE_ENTRY.code,
+    })
+    await unlink(entry)
+    await writeFile(entry, 'private')
+    await chmod(entry, 0)
+    await expect(fixture.worktrees.previewRemoval(created.target)).rejects.toMatchObject({
+      code: gitWorktreeErrors.WORKTREE_UNSAFE_ENTRY.code,
+    })
+    await chmod(entry, 0o600)
+  })
+  it('protects main, outside paths, mismatched IDs, and unlisted paths', async () => {
+    const fixture = await fixtureRepo()
+    const created = await provisionWorktree(fixture)
+    await expect(
+      fixture.worktrees.remove({ ...created.target, worktreePath: fixture.root, mode: 'safe' }),
+    ).rejects.toMatchObject({ code: gitWorktreeErrors.WORKTREE_MAIN_PROTECTED.code })
+    await expect(
+      fixture.worktrees.remove({ ...created.target, worktreeId: worktreeB, mode: 'safe' }),
+    ).rejects.toMatchObject({ code: gitWorktreeErrors.WORKTREE_IDENTITY_MISMATCH.code })
+    await expect(
+      fixture.worktrees.remove({
+        ...created.target,
+        worktreePath: path.join(fixture.root, 'tracked.txt'),
+        mode: 'safe',
+      }),
+    ).rejects.toMatchObject({ code: gitWorktreeErrors.WORKTREE_NOT_FOUND.code })
+    const outside = path.join(fixture.root, 'manual')
+    await runGit(fixture.root, ['worktree', 'add', '-b', 'manual', outside])
+    await expect(
+      fixture.worktrees.remove({ ...created.target, worktreePath: outside, mode: 'safe' }),
+    ).rejects.toMatchObject({ code: gitWorktreeErrors.WORKTREE_OUTSIDE_REPOSITORY.code })
+  })
+  it('requires an explicit legacy target for an adopted basename that differs from its ID', async () => {
+    const fixture = await fixtureRepo()
+    const created = await provisionWorktree(fixture)
+    const legacy = { ...created.target, worktreeId: worktreeB, pathKind: 'legacy' as const }
+    expect((await fixture.worktrees.inspect(legacy)).pathExists).toBe(true)
+    expect((await fixture.worktrees.remove({ ...legacy, mode: 'safe' })).worktrees).toHaveLength(1)
+  })
+
+  it('refuses a managed root replaced by a symlink and a target belonging to another repository', async () => {
+    const fixture = await fixtureRepo()
+    const foreign = await fixtureRepo()
+    const other = await provisionWorktree(foreign)
+    await expect(
+      fixture.worktrees.inspect({ ...other.target, path: fixture.root }),
+    ).rejects.toMatchObject({ code: gitWorktreeErrors.WORKTREE_OUTSIDE_REPOSITORY.code })
+    await symlink(
+      await foreign.worktrees.managedRoot(foreign.root),
+      path.join(fixture.root, '.git/platform-worktrees'),
+    )
+    await expect(
+      fixture.worktrees.prepareCreate({ path: fixture.root, worktreeId: worktreeA }),
+    ).rejects.toMatchObject({ code: gitWorktreeErrors.WORKTREE_IDENTITY_MISMATCH.code })
+  })
+
+  it('reports missing/prunable administration without pruning other entries', async () => {
+    const fixture = await fixtureRepo()
+    const created = await provisionWorktree(fixture)
+    const other = await provisionWorktree(fixture, worktreeB)
+    await rm(created.worktree.absolutePath, { recursive: true })
+    const inspected = await fixture.worktrees.inspect(created.target)
+    expect(inspected.pathExists).toBe(false)
+    expect(inspected.adminExists).toBe(true)
+    expect(inspected.worktree?.prunable).toBe(true)
+    await expect(
+      fixture.worktrees.remove({ ...created.target, mode: 'safe' }),
+    ).rejects.toMatchObject({ code: gitWorktreeErrors.WORKTREE_ADMIN_STALE.code })
+    expect((await fixture.worktrees.inspect(other.target)).pathExists).toBe(true)
+    expect(await runGit(fixture.root, ['worktree', 'list', '--porcelain'])).toContain(
+      created.worktree.absolutePath,
+    )
+  })
+  it('never excludes forged Git administration from its fingerprint', async () => {
+    const fixture = await fixtureRepo()
+    const created = await provisionWorktree(fixture)
+    await writeFile(
+      path.join(created.worktree.absolutePath, '.git'),
+      `gitdir: ${fixture.root}/.git\n`,
+    )
+    await expect(fixture.worktrees.previewRemoval(created.target)).rejects.toMatchObject({
+      code: gitWorktreeErrors.WORKTREE_IDENTITY_MISMATCH.code,
+    })
+  })
+})

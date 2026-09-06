@@ -1,3 +1,4 @@
+import { ProviderProcessLifetime } from './process-lifetime'
 import { createInternalError } from '../../observability/structured-errors'
 
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
@@ -171,6 +172,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
   private readonly env: NodeJS.ProcessEnv
   private readonly events = new ProviderRuntimeEventStream()
   private readonly sessions = new Map<SessionId, CodexAppServerSession>()
+  private readonly clients = new Map<SessionId, CodexAppServerRpcClient>()
   private readonly settings: ProviderInstanceSettings
 
   constructor(options: CodexAdapterOptions = {}) {
@@ -253,7 +255,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
   }
 
   async hasRuntime({ sessionId }: { sessionId: SessionId }) {
-    return Boolean(this.sessions.get(sessionId)?.isActive())
+    return this.clients.get(sessionId)?.hasProcess() ?? false
   }
 
   async rollbackSession({ numTurns, sessionId }: { numTurns: number; sessionId: SessionId }) {
@@ -295,21 +297,18 @@ export class CodexProviderAdapter implements ProviderAdapter {
   async stopRuntime({ sessionId }: { sessionId: SessionId }) {
     recordChatPipelineInfo('chat.pipeline.codex_adapter.stop', { sessionId })
     const session = this.sessions.get(sessionId)
-    if (!session) return
-
-    this.sessions.delete(sessionId)
-    await session.close()
+    const client = this.clients.get(sessionId)
+    if (session) await session.close()
+    else await client?.close()
+    if (this.sessions.get(sessionId) === session) this.sessions.delete(sessionId)
+    if (this.clients.get(sessionId) === client) this.clients.delete(sessionId)
   }
 
   async stopAll() {
     recordChatPipelineInfo('chat.pipeline.codex_adapter.stop_all', {
-      sessionCount: this.sessions.size,
+      sessionCount: this.clients.size,
     })
-    const sessions = Array.from(this.sessions.values())
-    this.sessions.clear()
-    for (const session of sessions) {
-      await session.close()
-    }
+    for (const sessionId of this.clients.keys()) await this.stopRuntime({ sessionId })
   }
 
   async respondApproval(input: ProviderApprovalResponseInput) {
@@ -355,8 +354,9 @@ export class CodexProviderAdapter implements ProviderAdapter {
         runtimeEpoch: input.runtimeEpoch,
         sessionId: input.sessionId,
       })
-      this.sessions.delete(input.sessionId)
       await existing.close()
+      this.sessions.delete(input.sessionId)
+      this.clients.delete(input.sessionId)
     }
 
     recordChatPipelineInfo('chat.pipeline.codex_adapter.session.start', {
@@ -368,6 +368,7 @@ export class CodexProviderAdapter implements ProviderAdapter {
       sessionId: input.sessionId,
     })
     const session = await CodexAppServerSession.start({
+      onClient: (client) => this.clients.set(input.sessionId, client),
       cwd,
       emit: (event) => this.events.publish(event),
       env: this.env,
@@ -457,6 +458,7 @@ class CodexAppServerSession {
   }
 
   static async start(input: {
+    onClient: (client: CodexAppServerRpcClient) => void
     cwd: string
     emit: (event: ProviderRuntimeEvent) => void
     env: NodeJS.ProcessEnv
@@ -479,7 +481,8 @@ class CodexAppServerSession {
       runtimeEpoch: input.runtimeEpoch,
       sessionId: input.sessionId,
     })
-    const client = CodexAppServerRpcClient.start(input.env)
+    const client = CodexAppServerRpcClient.start(input.env, input.cwd)
+    input.onClient(client)
     try {
       await initializeCodexClient(client)
       const response = await openCodexSession(client, input)
@@ -512,7 +515,7 @@ class CodexAppServerSession {
         error,
         sessionId: input.sessionId,
       })
-      client.close()
+      await client.close()
       throw error
     }
   }
@@ -663,9 +666,9 @@ class CodexAppServerSession {
       providerBindingHandle: this.providerBindingHandle,
       sessionId: this.sessionId,
     })
-    this.status = 'stopped'
     this.rejectAllTurns(createInternalError('Codex session stopped.'))
-    this.client.close()
+    await this.client.close()
+    this.status = 'stopped'
   }
 
   private emitSessionStarted(providerResumeCursor: unknown | null) {
@@ -1936,6 +1939,7 @@ class CodexAppServerRpcClient {
     }
   >()
   private readonly process: ChildProcessWithoutNullStreams
+  private readonly lifetime: ProviderProcessLifetime
   private buffer = ''
   private closed = false
   private nextId = 1
@@ -1943,6 +1947,7 @@ class CodexAppServerRpcClient {
 
   private constructor(process: ChildProcessWithoutNullStreams) {
     this.process = process
+    this.lifetime = new ProviderProcessLifetime(process)
     this.process.stdout.setEncoding('utf8')
     this.process.stderr.setEncoding('utf8')
     this.process.stdout.on('data', (chunk: string) => this.readStdout(chunk))
@@ -1954,10 +1959,11 @@ class CodexAppServerRpcClient {
     })
   }
 
-  static start(env: NodeJS.ProcessEnv = process.env) {
+  static start(env: NodeJS.ProcessEnv = process.env, cwd?: string) {
     return new CodexAppServerRpcClient(
       spawn(codexBinary(env), ['app-server'], {
-        env,
+        cwd,
+        env: cwd ? { ...env, PWD: cwd } : env,
         stdio: ['pipe', 'pipe', 'pipe'],
       }),
     )
@@ -2044,12 +2050,13 @@ class CodexAppServerRpcClient {
     this.write({ id, result })
   }
 
-  close() {
-    if (this.closed) return
+  hasProcess() {
+    return this.lifetime.isAlive()
+  }
 
-    this.closed = true
-    this.process.kill()
+  async close() {
     this.closeWithError(createInternalError('Codex app-server closed.'))
+    await this.lifetime.close()
   }
 
   private write(message: JsonRpcMessage) {
@@ -2160,7 +2167,7 @@ async function probeCodexProvider(env: NodeJS.ProcessEnv) {
       version: codexVersionFromInitialize(initialize),
     }
   } finally {
-    client.close()
+    await client.close()
   }
 }
 
@@ -2190,7 +2197,7 @@ async function probeCodexCommandCatalog(
 
     return { commands: [], skills: codexCatalogSkills(codexSkillCatalog(response), cwd) }
   } finally {
-    client.close()
+    await client.close()
   }
 }
 

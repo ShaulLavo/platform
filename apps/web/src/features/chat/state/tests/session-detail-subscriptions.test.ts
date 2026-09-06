@@ -191,7 +191,7 @@ describe('session detail subscription cache', () => {
         type: 'session.create',
         commandId: v.parse(commandIdSchema, 'create-caught-up-session'),
         sessionId,
-        worktreeId: registration.result!.worktreeId,
+        worktreeTarget: { kind: 'current', worktreeId: registration.result!.worktreeId },
         title: 'Caught up',
         modelSelection: { model: 'mock-model', providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID },
         interactionMode: DEFAULT_INTERACTION_MODE,

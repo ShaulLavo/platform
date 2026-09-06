@@ -157,7 +157,9 @@ The remaining order is:
    issued sessions, and revocation for a client that cannot SSH. The auth analysis in Git history
    (`docs/environments-and-remote-plan.md@1325b003`) remains the reference for that plan.
 
-Plan 069's session-domain prerequisite is complete. It remains single-machine and unscheduled.
+Plan 069 is complete (2026-09-06). The [worktree lifecycle reference](docs/worktree-lifecycle.md)
+records explicit checkout choice, recoverable provisioning and cleanup, runtime ownership, and
+the focused verification gate. Its executable plan has been deleted.
 The combined Git overview across checkouts and machines is also unscheduled; strategy §5.6 records
 its scope. Nothing in this lane binds a server off loopback.
 
@@ -198,7 +200,7 @@ bridge deletion remain later stages of Plan 074, including macOS and Windows ver
 
 ## Promotion, rewrite, defer, and deletion decisions
 
-- **Deleted:** completed plans 038, 068, and 077, and superseded plan 058.
+- **Deleted:** completed plans 038, 068, 069, and 077, and superseded plan 058.
 - **Editor lane:** Plans 056 and 057 are complete. Standalone Editor chord execution was
   verified before Platform adopted the shared runtime.
 - **Promoted:** environments foundations 077 and 068 are complete; Plan 078 is implemented with

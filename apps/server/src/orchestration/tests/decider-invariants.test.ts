@@ -185,7 +185,9 @@ describe('worktree metadata ownership', () => {
     const engine = await createEngineWithSession()
     await engine.dispatch(
       command({
-        type: 'worktree.meta.update',
+        type: 'worktree.metadata.refresh',
+        expectedMetadataVersion: 0,
+        headCommit: null,
         commandId: 'branch',
         worktreeId: DOMAIN_IDS.worktree,
         branch: 'feature/next',
@@ -202,7 +204,9 @@ describe('worktree metadata ownership', () => {
     const engine = await createEngineWithSession()
     const receipt = await engine.dispatch(
       command({
-        type: 'worktree.meta.update',
+        type: 'worktree.metadata.refresh',
+        expectedMetadataVersion: 0,
+        headCommit: null,
         commandId: 'same-branch',
         worktreeId: DOMAIN_IDS.worktree,
         branch: null,
@@ -298,7 +302,7 @@ function turnStartCommand(bootstrap = false) {
     bootstrap: bootstrap
       ? {
           createSession: {
-            worktreeId: DOMAIN_IDS.worktree,
+            worktreeTarget: { kind: 'current', worktreeId: DOMAIN_IDS.worktree },
             title: 'Session',
             modelSelection: DOMAIN_MODEL,
             runtimeMode: 'full-access',

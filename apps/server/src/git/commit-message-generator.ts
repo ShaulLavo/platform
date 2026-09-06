@@ -58,9 +58,8 @@ export class CommitMessageGenerator {
     const selected = await this.selectModel()
     if (!selected) throw gitCommitMessageErrors.COMMIT_MESSAGE_PROVIDER_UNAVAILABLE()
 
-    const runner = await this.git.repositoryRunner(path)
     throwIfCancelled(signal)
-    const text = await this.requestText(selected, context, runner.rootAbsolutePath, signal)
+    const text = await this.requestText(selected, context, signal)
     const message = text.trim()
     if (!message) throw gitCommitMessageErrors.COMMIT_MESSAGE_RESPONSE_EMPTY()
 
@@ -90,12 +89,10 @@ export class CommitMessageGenerator {
   private async requestText(
     selected: CommitMessageModel,
     context: DiffContext,
-    cwd: string,
     signal?: AbortSignal,
   ) {
     try {
       const result = await this.providerService.generateText({
-        cwd,
         messageText: commitMessagePrompt(context),
         modelSelection: selected.modelSelection,
         signal,

@@ -20,15 +20,17 @@ test('restart drains every persisted event page before the first snapshot', asyn
   const registration = await fixture.register()
   expect(registration.result).not.toBeNull()
   const eventStore = new OrchestrationEventStore(fixture.database)
-  eventStore.append(
-    Array.from({ length: 1105 }, (_, index) =>
-      pendingEvent('project.meta-updated', {
-        projectId: registration.result?.projectId,
-        title: `Title ${index}`,
-        updatedAt: '2026-09-05T12:00:00.000Z',
-      }),
-    ),
-  )
+  fixture.database.transaction(() => {
+    eventStore.append(
+      Array.from({ length: 1105 }, (_, index) =>
+        pendingEvent('project.meta-updated', {
+          projectId: registration.result?.projectId,
+          title: `Title ${index}`,
+          updatedAt: '2026-09-05T12:00:00.000Z',
+        }),
+      ),
+    )
+  })
   const engine = await fixture.restart()
   const first = await engine.shellSnapshot()
   expect(first.snapshotSequence).toBe(1107)

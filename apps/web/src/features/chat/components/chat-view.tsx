@@ -202,7 +202,7 @@ export function ChatView({
           <ChatInput
             busy={busy}
             commandStatusLabel={interrupting ? 'Interrupting' : null}
-            disabled={interrupting}
+            disabled={interrupting || (!busy && session.worktree.lifecycle.state !== 'ready')}
             draftKey={session.id}
             error={null}
             interactionMode={session.interactionMode}

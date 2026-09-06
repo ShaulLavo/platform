@@ -1,3 +1,4 @@
+export * from './worktree-lifecycle'
 export {
   effectiveEntryType,
   isDirectoryEntry,
@@ -549,7 +550,6 @@ export {
   projectReviveCommandSchema,
   worktreeRegisterCommandSchema,
   worktreeReviveCommandSchema,
-  worktreeMetaUpdateCommandSchema,
   sessionDiscoverCommandSchema,
   sessionDiscoveryMetadataUpdateCommandSchema,
   sessionProviderStartClaimCommandSchema,
@@ -562,7 +562,6 @@ export {
   type ProjectReviveCommand,
   type WorktreeRegisterCommand,
   type WorktreeReviveCommand,
-  type WorktreeMetaUpdateCommand,
   type SessionDiscoverCommand,
   type SessionDiscoveryMetadataUpdateCommand,
   type SessionProviderStartClaimCommand,

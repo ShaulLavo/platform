@@ -1,8 +1,17 @@
 import path from 'node:path'
-
+import * as v from 'valibot'
 import { recordRequestContext } from '../observability'
-import { relativeInsideRoot } from './path-utils'
-import type { GitBranchDiffQuery, GitWorktreeCreateBody, GitWorktreeRemoveBody } from './contracts'
+import {
+  gitWorktreeCreateBodySchema,
+  gitWorktreePrepareBodySchema,
+  gitWorktreeRemoveBodySchema,
+  gitWorktreeTargetSchema,
+  type GitBranchDiffQuery,
+  type GitWorktreeCreateBody,
+  type GitWorktreePrepareBody,
+  type GitWorktreeRemoveBody,
+  type GitWorktreeTarget,
+} from './contracts'
 import type { GitRepositoryRunner, GitService } from './service'
 import type {
   GitBaseRefChoicesResult,
@@ -13,26 +22,19 @@ import type {
 } from './types'
 import { baseRefCandidates, baseRefChoiceId, buildBaseRefChoices } from './utils/base-refs'
 import { gitWorktreeErrors } from './utils/worktree-errors'
-import { parseWorktreeList, type ParsedWorktree } from './worktree-list'
+import { removalPreview } from './utils/worktree-fingerprint'
+import {
+  assertManagedPath,
+  hasWorktreeAdministration,
+  managedWorktreePath,
+  managedWorktreesRoot,
+  maybeStat,
+  verifyWorktreeAdministration,
+  worktreeIdForPath,
+} from './utils/worktree-paths'
+import { gitCommonDirectory, withGitRepositoryLane } from './repository-lane'
+import { parseWorktreeList } from './worktree-list'
 
-/**
- * Session worktrees live inside the git common dir, not beside the checkout.
- * That keeps them inside the repository (so every path check has one boundary
- * to enforce), invisible to `git status` and to the workspace tree because git
- * never walks its own admin directory, and shared by every worktree of the
- * repository because `--git-common-dir` always points at the main one.
- */
-const SESSION_WORKTREES_DIRECTORY = 'platform-worktrees'
-
-/** Config key that remembers what a session branch forked from. */
-const BASE_CONFIG_KEY = 'platform-base'
-
-/**
- * Worktrees as the session layer needs them: one checkout per session, a
- * listing that says which session owns what, a removal that refuses to throw
- * away uncommitted work, and a diff of a session's whole branch against the
- * base it forked from.
- */
 export class GitWorktreeService {
   private readonly git: GitService
 
@@ -40,74 +42,104 @@ export class GitWorktreeService {
     this.git = git
   }
 
+  async withRepositoryLane<T>(input: string, action: () => Promise<T>): Promise<T> {
+    const runner = await this.git.repositoryRunner(input)
+    return withGitRepositoryLane(await gitCommonDirectory(runner), action)
+  }
+
+  async commonDirectory(input: string) {
+    return gitCommonDirectory(await this.git.repositoryRunner(input))
+  }
+
+  async managedRoot(input: string) {
+    return managedWorktreesRoot(await this.git.repositoryRunner(input))
+  }
+
+  async metadata(input: { path: string }) {
+    const runner = await this.git.repositoryRunner(input.path)
+    const head = await runner.run(['rev-parse', '--verify', 'HEAD'], { allowFailure: true })
+    return {
+      branch: await this.headBranch(runner),
+      headCommit: head.exitCode === 0 ? head.stdout.trim() : null,
+    }
+  }
+
   async list(input = ''): Promise<GitWorktree[]> {
     recordWorktreeOperation('worktree_list', input)
     const runner = await this.git.repositoryRunner(input)
     const worktrees = await this.worktrees(runner)
     recordRequestContext({ git: { worktreeCount: worktrees.length } })
-
     return worktrees
   }
 
-  async create(body: GitWorktreeCreateBody): Promise<GitWorktreeCreateResult> {
-    recordWorktreeOperation('worktree_create', body.path, { sessionId: body.sessionId })
-    const runner = await this.git.repositoryRunner(body.path)
-    const absolutePath = await this.sessionWorktreePath(runner, body.sessionId)
-    const existing = (await this.worktrees(runner)).find(
-      (worktree) => worktree.absolutePath === absolutePath,
-    )
-    if (existing) return { created: false, worktree: existing }
-
-    const branch = body.branch ?? `session/${body.sessionId}`
-    await this.addWorktree(runner, { absolutePath, base: body.base, branch })
-    const worktree = (await this.worktrees(runner)).find(
-      (candidate) => candidate.absolutePath === absolutePath,
-    )
-    if (!worktree) throw gitWorktreeErrors.WORKTREE_NOT_FOUND({ path: absolutePath })
-
-    recordRequestContext({ git: { branch, worktreePath: absolutePath } })
-
-    return { created: true, worktree }
+  async prepareCreate(input: GitWorktreePrepareBody) {
+    const body = v.parse(gitWorktreePrepareBodySchema, input)
+    return this.withRepositoryLane(body.path, async () => {
+      const runner = await this.git.repositoryRunner(body.path)
+      const branch = `worktree/${body.worktreeId}`
+      await runner.run(['check-ref-format', '--branch', branch])
+      if (await this.refExists(runner, `refs/heads/${branch}`))
+        throw gitWorktreeErrors.WORKTREE_BRANCH_EXISTS()
+      const head = await runner.run(['rev-parse', '--verify', 'HEAD'])
+      const absolutePath = await managedWorktreePath(runner, body.worktreeId)
+      if (
+        (await maybeStat(absolutePath)) ||
+        (await hasWorktreeAdministration(runner, absolutePath))
+      ) {
+        throw gitWorktreeErrors.WORKTREE_IDENTITY_MISMATCH()
+      }
+      return { worktreeId: body.worktreeId, absolutePath, branch, baseCommit: head.stdout.trim() }
+    })
   }
 
-  async remove(body: GitWorktreeRemoveBody): Promise<GitWorktreeRemoveResult> {
-    recordWorktreeOperation('worktree_remove', body.path, { force: body.force })
-    const runner = await this.git.repositoryRunner(body.path)
-    const target = await this.removableWorktree(runner, body.worktreePath)
-    const changedFileCount = await this.uncommittedFileCount(target)
-    recordRequestContext({ git: { changedFileCount, worktreePath: target.absolutePath } })
-    if (changedFileCount > 0 && !body.force) {
-      throw gitWorktreeErrors.WORKTREE_DIRTY({
-        fileCount: changedFileCount,
-        path: target.path ?? target.absolutePath,
-      })
-    }
-
-    const force = body.force ? ['--force'] : []
-    await runner.run(['worktree', 'remove', ...force, target.absolutePath])
-
-    return { removed: target, worktrees: await this.worktrees(runner) }
+  async create(input: GitWorktreeCreateBody): Promise<GitWorktreeCreateResult> {
+    const body = v.parse(gitWorktreeCreateBodySchema, input)
+    return this.withRepositoryLane(body.path, () => this.createCheckout(body))
   }
 
-  /**
-   * Everything the branch carries on top of its base — the merge base to HEAD,
-   * not base to HEAD, so commits the base gained afterwards do not show up as
-   * the session's work. Uncommitted edits are deliberately absent: they belong
-   * to the working tree, which `/git/diff` already reports for the same path.
-   */
+  async previewRemoval(input: GitWorktreeTarget) {
+    const body = v.parse(gitWorktreeTargetSchema, input)
+    return this.withRepositoryLane(body.path, async () => {
+      const runner = await this.git.repositoryRunner(body.path)
+      const target = await this.removableWorktree(runner, body)
+      return removalPreview(runner, target.absolutePath)
+    })
+  }
+
+  async remove(input: GitWorktreeRemoveBody): Promise<GitWorktreeRemoveResult> {
+    const body = v.parse(gitWorktreeRemoveBodySchema, input)
+    return this.withRepositoryLane(body.path, () => this.removeCheckout(body))
+  }
+
+  async inspect(input: GitWorktreeTarget) {
+    const body = v.parse(gitWorktreeTargetSchema, input)
+    return this.withRepositoryLane(body.path, async () => {
+      const runner = await this.git.repositoryRunner(body.path)
+      const absolutePath = this.targetPath(runner, body.worktreePath)
+      await assertManagedPath(runner, absolutePath)
+      const worktree =
+        (await this.worktrees(runner)).find((entry) => entry.absolutePath === absolutePath) ?? null
+      const pathExists = (await maybeStat(absolutePath)) !== null
+      const adminExists =
+        worktree !== null || (await hasWorktreeAdministration(runner, absolutePath))
+      if (pathExists && worktree) await verifyWorktreeAdministration(runner, absolutePath)
+      this.verifyTargetIdentity(body, worktree)
+      return { pathExists, adminExists, worktree }
+    })
+  }
+
   async branchDiff(query: GitBranchDiffQuery): Promise<GitBranchDiffResult> {
-    recordWorktreeOperation('branch_diff', query.path, { base: query.base })
+    recordWorktreeOperation('branch_diff', query.path, { base: query.baseCommit ?? query.base })
     const runner = await this.git.repositoryRunner(query.path)
     const headBranch = await this.headBranch(runner)
-    const baseRef = await this.requiredBaseRef(runner, headBranch, query.base)
-    const mergeBase = await this.mergeBase(runner, baseRef)
+    const baseRef = await this.requiredBaseRef(runner, headBranch, query.baseCommit ?? query.base)
+    const mergeBase = query.baseCommit ? baseRef : await this.mergeBase(runner, baseRef)
     const files = await this.git.diffRefs({
       newRef: 'HEAD',
       oldRef: mergeBase ?? baseRef,
       path: runner.rootPath,
     })
     recordRequestContext({ git: { baseRef, diffCount: files.length, mergeBase } })
-
     return { baseRef, files, headRef: headBranch ?? 'HEAD', mergeBase }
   }
 
@@ -132,101 +164,147 @@ export class GitWorktreeService {
     return { choices, defaultChoiceId: baseRefChoiceId(choices, defaultRef) }
   }
 
+  private async createCheckout(body: GitWorktreeCreateBody): Promise<GitWorktreeCreateResult> {
+    recordWorktreeOperation('worktree_create', body.path, { worktreeId: body.worktreeId })
+    const runner = await this.git.repositoryRunner(body.path)
+    if (body.branch !== `worktree/${body.worktreeId}`)
+      throw gitWorktreeErrors.WORKTREE_IDENTITY_MISMATCH()
+    const absolutePath = await managedWorktreePath(runner, body.worktreeId)
+    await assertManagedPath(runner, absolutePath)
+    await this.assertRefExists(runner, body.baseCommit)
+    const existing = (await this.worktrees(runner)).find(
+      (entry) => entry.absolutePath === absolutePath,
+    )
+    if (existing) {
+      await this.verifyCreated(runner, existing, body)
+      return { created: false, worktree: existing }
+    }
+    if (
+      (await maybeStat(absolutePath)) ||
+      (await hasWorktreeAdministration(runner, absolutePath))
+    ) {
+      throw gitWorktreeErrors.WORKTREE_IDENTITY_MISMATCH()
+    }
+    await this.createBranch(runner, body)
+    await runner.run(['worktree', 'add', '--', absolutePath, body.branch])
+    const worktree = (await this.worktrees(runner)).find(
+      (entry) => entry.absolutePath === absolutePath,
+    )
+    if (!worktree) throw gitWorktreeErrors.WORKTREE_NOT_FOUND({ path: absolutePath })
+    await this.verifyCreated(runner, worktree, body)
+    return { created: true, worktree }
+  }
+
+  private async createBranch(runner: GitRepositoryRunner, body: GitWorktreeCreateBody) {
+    const ref = `refs/heads/${body.branch}`
+    await runner.run(['check-ref-format', ref])
+    const created = await runner.run(
+      ['update-ref', ref, body.baseCommit, '0'.repeat(body.baseCommit.length)],
+      { allowFailure: true },
+    )
+    if (created.exitCode === 0) return
+    const current = await runner.run(['rev-parse', '--verify', ref], { allowFailure: true })
+    if (current.exitCode !== 0 || current.stdout.trim() !== body.baseCommit) {
+      throw gitWorktreeErrors.WORKTREE_BRANCH_EXISTS()
+    }
+  }
+
+  private async verifyCreated(
+    runner: GitRepositoryRunner,
+    worktree: GitWorktree,
+    body: GitWorktreeCreateBody,
+  ) {
+    if (
+      worktree.main ||
+      worktree.branch !== body.branch ||
+      worktree.commit !== body.baseCommit ||
+      worktree.prunable
+    ) {
+      throw gitWorktreeErrors.WORKTREE_IDENTITY_MISMATCH()
+    }
+    await verifyWorktreeAdministration(runner, worktree.absolutePath)
+  }
+
+  private async removeCheckout(body: GitWorktreeRemoveBody): Promise<GitWorktreeRemoveResult> {
+    recordWorktreeOperation('worktree_remove', body.path, {
+      worktreeId: body.worktreeId,
+      mode: body.mode,
+    })
+    const source = await this.git.repositoryRunner(body.path)
+    const target = await this.removableWorktree(source, body)
+    const runner = await this.survivingRemovalRunner(source, target)
+    const preview = await removalPreview(runner, target.absolutePath)
+    recordRequestContext({ git: { changedFileCount: preview.changedFileCount } })
+    if (body.mode === 'safe' && preview.changedFileCount > 0) {
+      throw gitWorktreeErrors.WORKTREE_DIRTY({
+        fileCount: preview.changedFileCount,
+        path: target.absolutePath,
+      })
+    }
+    if (
+      body.mode === 'discard-changes' &&
+      (body.expectedHead !== preview.expectedHead ||
+        body.expectedStatusFingerprint !== preview.expectedStatusFingerprint)
+    ) {
+      throw gitWorktreeErrors.WORKTREE_NEEDS_RECONFIRMATION()
+    }
+    const force = body.mode === 'discard-changes' ? ['--force'] : []
+    await runner.run(['worktree', 'remove', ...force, '--', target.absolutePath])
+    return { removed: target, worktrees: await this.worktrees(runner) }
+  }
+
+  private async survivingRemovalRunner(source: GitRepositoryRunner, target: GitWorktree) {
+    if (source.rootAbsolutePath !== target.absolutePath) return source
+    for (const candidate of await this.worktrees(source)) {
+      if (
+        candidate.absolutePath === target.absolutePath ||
+        !(await maybeStat(candidate.absolutePath))
+      )
+        continue
+      return this.git.repositoryRunner(candidate.absolutePath)
+    }
+    throw gitWorktreeErrors.WORKTREE_IDENTITY_MISMATCH()
+  }
+
+  private async removableWorktree(runner: GitRepositoryRunner, body: GitWorktreeTarget) {
+    const absolutePath = this.targetPath(runner, body.worktreePath)
+    const target = (await this.worktrees(runner)).find(
+      (entry) => entry.absolutePath === absolutePath,
+    )
+    if (!target) throw gitWorktreeErrors.WORKTREE_NOT_FOUND({ path: absolutePath })
+    if (target.main) throw gitWorktreeErrors.WORKTREE_MAIN_PROTECTED({ path: absolutePath })
+    await assertManagedPath(runner, absolutePath)
+    this.verifyTargetIdentity(body, target)
+    if (!(await maybeStat(absolutePath)) || target.prunable)
+      throw gitWorktreeErrors.WORKTREE_ADMIN_STALE()
+    await verifyWorktreeAdministration(runner, absolutePath)
+    return target
+  }
+
+  private verifyTargetIdentity(body: GitWorktreeTarget, target: GitWorktree | null) {
+    if (!target || body.pathKind === 'legacy') return
+    if (target.worktreeId !== body.worktreeId) throw gitWorktreeErrors.WORKTREE_IDENTITY_MISMATCH()
+  }
+
+  private targetPath(runner: GitRepositoryRunner, input: string) {
+    if (path.isAbsolute(input)) return path.normalize(input)
+    return runner.resolveWorkspacePath(input).absolutePath
+  }
+
   private async worktrees(runner: GitRepositoryRunner): Promise<GitWorktree[]> {
     const result = await runner.run(['worktree', 'list', '--porcelain', '-z'])
-    const sessionsRoot = await this.sessionWorktreesRoot(runner)
-
-    return parseWorktreeList(result.stdout).map((parsed, index) =>
-      toWorktree(parsed, {
-        main: index === 0,
-        sessionsRoot,
-        workspacePath: runner.toWorkspacePath(parsed.absolutePath),
-      }),
-    )
-  }
-
-  private async addWorktree(
-    runner: GitRepositoryRunner,
-    input: { absolutePath: string; base?: string; branch: string },
-  ) {
-    const startPoint = input.base ?? 'HEAD'
-    if (input.base) await this.assertRefExists(runner, input.base)
-
-    // Re-attaching a session whose checkout was removed must not fail on the
-    // branch it left behind, so an existing branch is checked out rather than
-    // created a second time.
-    const reuseBranch = await this.refExists(runner, `refs/heads/${input.branch}`)
-    const args = reuseBranch
-      ? ['worktree', 'add', input.absolutePath, input.branch]
-      : ['worktree', 'add', '-b', input.branch, input.absolutePath, startPoint]
-    await runner.run(args)
-    if (reuseBranch) return
-
-    await this.recordBase(runner, input.branch, input.base ?? (await this.headBranch(runner)))
-  }
-
-  /** Remembers the fork point so a later branch diff needs no explicit base. */
-  private async recordBase(runner: GitRepositoryRunner, branch: string, base: string | null) {
-    if (!base) return
-
-    await runner.run(['config', `branch.${branch}.${BASE_CONFIG_KEY}`, base], {
-      allowFailure: true,
-    })
-  }
-
-  /**
-   * Removal only ever targets a path git already reports as a worktree of this
-   * repository. Matching against the listing is what makes it safe: an
-   * unregistered path is refused before it can be resolved into something on
-   * disk, so no `rm` can ever be aimed by the request alone. Either form the
-   * listing reported is accepted — a session holds the absolute one.
-   */
-  private async removableWorktree(runner: GitRepositoryRunner, input: string) {
-    const worktrees = await this.worktrees(runner)
-    const byAbsolutePath = worktrees.find((worktree) => worktree.absolutePath === input)
-    if (byAbsolutePath) return assertRemovable(runner, byAbsolutePath, input)
-
-    const requested = runner.resolveWorkspacePath(input)
-    const target = worktrees.find((worktree) => worktree.path === requested.relativePath)
-    if (!target) throw gitWorktreeErrors.WORKTREE_NOT_FOUND({ path: requested.relativePath })
-
-    return assertRemovable(runner, target, requested.relativePath)
-  }
-
-  /**
-   * Read straight from git rather than through the cached `status` verb: the
-   * cache exists to collapse polling, and a one-second-old answer is exactly
-   * long enough to let a worktree that just became dirty be deleted anyway.
-   */
-  private async uncommittedFileCount(target: GitWorktree) {
-    if (target.path === null) return 0
-
-    const runner = await this.git.repositoryRunner(target.path)
-    const result = await runner.run(['status', '--porcelain', '--untracked-files=all'])
-
-    return result.stdout.split('\n').filter(Boolean).length
-  }
-
-  private async sessionWorktreePath(runner: GitRepositoryRunner, sessionId: string) {
-    const root = await this.sessionWorktreesRoot(runner)
-    const absolutePath = path.join(root, sessionId)
-    // The session id is already shape-checked at the route, so this is the
-    // second lock rather than the only one: nothing lands outside the repo.
-    if (relativeInsideRoot(runner.rootAbsolutePath, absolutePath) === null) {
-      throw gitWorktreeErrors.WORKTREE_OUTSIDE_REPOSITORY({ path: absolutePath })
-    }
-
-    return absolutePath
-  }
-
-  private async sessionWorktreesRoot(runner: GitRepositoryRunner) {
-    const result = await runner.run(['rev-parse', '--git-common-dir'])
-    const commonDir = result.stdout.trim()
-
-    return path.join(
-      path.isAbsolute(commonDir) ? commonDir : path.resolve(runner.rootAbsolutePath, commonDir),
-      SESSION_WORKTREES_DIRECTORY,
-    )
+    const managedRoot = await managedWorktreesRoot(runner)
+    return parseWorktreeList(result.stdout).map((parsed, index) => ({
+      absolutePath: parsed.absolutePath,
+      branch: parsed.branch,
+      commit: parsed.commit,
+      detached: parsed.detached,
+      locked: parsed.locked,
+      main: index === 0,
+      path: runner.toWorkspacePath(parsed.absolutePath),
+      prunable: parsed.prunable,
+      worktreeId: worktreeIdForPath(parsed.absolutePath, managedRoot),
+    }))
   }
 
   private async requiredBaseRef(
@@ -245,17 +323,10 @@ export class GitWorktreeService {
     throw gitWorktreeErrors.WORKTREE_BASE_UNRESOLVED({ headBranch: headBranch ?? 'HEAD' })
   }
 
-  /**
-   * The recorded fork point first, then the remote's own default branch, then
-   * the conventional names. Each candidate is tried on the remote before the
-   * local branch: a base that exists in both places is the remote's, because
-   * that is what the branch will eventually be merged into.
-   */
   private async findBaseRef(runner: GitRepositoryRunner, headBranch: string | null) {
     const remoteNames = await this.remoteNames(runner)
     const primaryRemote = remoteNames[0] ?? null
     const candidates = baseRefCandidates({
-      configuredBase: await this.configuredBase(runner, headBranch),
       defaultBranch: await this.remoteDefaultBranch(runner, primaryRemote),
       headBranch,
       remoteNames,
@@ -268,17 +339,6 @@ export class GitWorktreeService {
     }
 
     return null
-  }
-
-  private async configuredBase(runner: GitRepositoryRunner, headBranch: string | null) {
-    if (!headBranch) return null
-
-    const result = await runner.run(
-      ['config', '--get', `branch.${headBranch}.${BASE_CONFIG_KEY}`],
-      { allowFailure: true },
-    )
-
-    return result.stdout.trim() || null
   }
 
   private async remoteDefaultBranch(runner: GitRepositoryRunner, remote: string | null) {
@@ -330,49 +390,15 @@ export class GitWorktreeService {
   private async refExists(runner: GitRepositoryRunner, ref: string) {
     // Peeling to a commit closes the same hole `diffRefs` closes: without it a
     // ref-shaped string can be accepted here and read as a pathspec later.
-    const result = await runner.run(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], {
-      allowFailure: true,
-    })
+    const result = await runner.run(
+      ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}`],
+      {
+        allowFailure: true,
+      },
+    )
 
     return result.exitCode === 0
   }
-}
-
-function assertRemovable(runner: GitRepositoryRunner, target: GitWorktree, requested: string) {
-  if (target.main) throw gitWorktreeErrors.WORKTREE_MAIN_PROTECTED({ path: requested })
-  // A worktree a human created beside the repository is still listed here, and
-  // deleting it would reach outside the boundary this feature is confined to.
-  if (relativeInsideRoot(runner.rootAbsolutePath, target.absolutePath) === null) {
-    throw gitWorktreeErrors.WORKTREE_OUTSIDE_REPOSITORY({ path: requested })
-  }
-
-  return target
-}
-
-function toWorktree(
-  parsed: ParsedWorktree,
-  context: { main: boolean; sessionsRoot: string; workspacePath: string | null },
-): GitWorktree {
-  return {
-    absolutePath: parsed.absolutePath,
-    branch: parsed.branch,
-    commit: parsed.commit,
-    detached: parsed.detached,
-    locked: parsed.locked,
-    main: context.main,
-    path: context.workspacePath,
-    prunable: parsed.prunable,
-    sessionId: sessionIdForPath(parsed.absolutePath, context.sessionsRoot),
-  }
-}
-
-/** Only a direct child of the session root is a session worktree. */
-function sessionIdForPath(absolutePath: string, sessionsRoot: string) {
-  const relative = relativeInsideRoot(sessionsRoot, absolutePath)
-  if (!relative) return null
-  if (relative.includes('/')) return null
-
-  return relative
 }
 
 function recordWorktreeOperation(

@@ -1092,7 +1092,7 @@ function sessionCreateCommand(
   worktreeId = '20000000-0000-4000-8000-000000000001',
 ) {
   return command({
-    worktreeId,
+    worktreeTarget: { kind: 'current', worktreeId },
     commandId,
     createdAt: now,
     interactionMode: 'default',
@@ -1110,7 +1110,7 @@ function sessionTurnStartCommand(input: Partial<SessionTurnStartFixture> = {}) {
     bootstrap: input.bootstrapCreateSession
       ? {
           createSession: {
-            worktreeId: '20000000-0000-4000-8000-000000000001',
+            worktreeTarget: { kind: 'current', worktreeId: '20000000-0000-4000-8000-000000000001' },
 
             createdAt: now,
             interactionMode: 'default',

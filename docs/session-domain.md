@@ -50,10 +50,10 @@ is retried during startup. Project deletion retires its registrations and delete
 it preserves physical checkout files. Revival waits for provider ownership to be released. See
 [deletion recovery tests](../apps/server/src/orchestration/tests/session-deletion.test.ts).
 
-The single current-schema migration resets obsolete orchestration state while retaining environment
-identity, filesystem metadata, and unrelated tables. Settings, secrets, and checkout files remain
-outside that reset. [Migration tests](../apps/server/src/db/tests/migrations.test.ts) cover fresh,
-reset, and repeated application.
+Migration 11 established the session domain and reset obsolete orchestration state. Migration 12
+adds the [worktree lifecycle](worktree-lifecycle.md) while preserving version-11 events and receipts.
+[Migration tests](../apps/server/src/db/tests/migrations.test.ts) cover fresh databases, backfill,
+projection replay, and repeated application.
 
 ## Discovery and attention
 
@@ -68,7 +68,7 @@ exercise real crashing and timed-out children.
 
 The [server attention reducer](../apps/server/src/orchestration/utils/session-attention.ts) publishes
 `needs-input`, `working`, or `settled`. Within `needs-input`, reasons have this priority: approval,
-user input, interruption, failure, then plan. Explicit settle acknowledges existing failures; a later
+user input, interruption, unresolved worktree, failure, then plan. Explicit settle acknowledges existing failures; a later
 failure raises attention again. Actionable work clears archive, snooze, and settle overlays in the
 same committed batch.
 
@@ -87,5 +87,5 @@ and the [vertical recovery test](../apps/web/src/features/chat/tests/session-dom
 cover this boundary.
 
 One live chat transport remains active at a time. Concurrent connections and scoped persistence
-belong to [Plan 078](../plans/078-federated-environments.md). Physical worktree creation and removal
-belong to [Plan 069](../plans/069-worktree-lifecycle.md).
+belong to [Plan 078](../plans/078-federated-environments.md). Physical worktree creation, cleanup, and recovery use the
+[worktree lifecycle](worktree-lifecycle.md).

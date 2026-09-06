@@ -1,3 +1,4 @@
+import { useSessionSelectionStore } from '@/features/chat-mode/state/session-selection-store'
 import type { SessionId } from '@workspace/contracts'
 import { LoadingState } from '@workspace/ui/components/loading-state'
 import { OrbitLoader } from '@workspace/ui/components/orbit-loader'
@@ -20,6 +21,7 @@ export function StageBody({
   readonly rootPath: string
   readonly onSessionCreated: (sessionId: SessionId) => void
 }) {
+  const draftGeneration = useSessionSelectionStore((state) => state.draftGeneration)
   // Before anything else: with no project there is no session to resolve, and a
   // composer that cannot send is the state this screen exists to replace.
   if (!ready) return <StageEmptyState />
@@ -39,7 +41,8 @@ export function StageBody({
         disabled={false}
         transport={transport}
         project={project}
-        worktreeId={worktree?.id ?? null}
+        key={`${transport.environmentId}:${worktree?.id ?? 'preparing'}:${draftGeneration}`}
+        worktree={worktree}
         rootPath={rootPath}
         onSessionCreated={onSessionCreated}
       />

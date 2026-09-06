@@ -22,7 +22,6 @@ a bare root `bun run verify`.
 | [066 — package Ghostty config resolver](066-package-ghostty-config-resolver.md)         | **PROPOSED — ROOT GO/NO-GO SCHEDULING**                  |
 | [067 — integrate Ghostty config appearance](067-integrate-ghostty-config-appearance.md) | **BLOCKED ON 066 REVIEWED ARTIFACT**                     |
 | [078 — federated environments](078-federated-environments.md)                           | **IMPLEMENTED — AUTOMATED CHECKS PASS; LIVE GATES OPEN** |
-| [069 — worktree lifecycle](069-worktree-lifecycle.md)                                   | **PROPOSED — ROOT SCHEDULING**                           |
 | [071 — syntax highlight retry](071-syntax-highlight-retry.md)                           | **PROPOSED — ROOT GO/NO-GO SCHEDULING**                  |
 | [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                         | **IMPLEMENTED — BROWSER VERIFIED**                       |
 | [057 — standalone Editor chords and shared keymap](057-editor-native-vscode-keymap.md)  | **NEXT — STANDALONE EXECUTION FIRST**                    |
@@ -58,10 +57,6 @@ a bare root `bun run verify`.
   connection per machine, scoped persistence, the flat cross-machine rail with repository grouping,
   chips and a machine filter, add-project-on-machine, and the workbench switch. Direct `https://`
   origins are accepted but the mesh proxy check and pairing are scheduled separately, on demand.
-- Plan 069 has its session-domain prerequisite. It adds explicit current-branch versus new-worktree
-  creation, durable provisioning and cleanup recovery, and shared worktree chips on the same event
-  spine. It must not restore the checkout reactor's project-root fallback or implement the reserved
-  Orca compare view. Root `PLAN.md` has not scheduled it yet.
 - Plan 071 is an independent Editor-only resilience proposal. Its prerequisite is now stable:
   Platform owns Shiki registration resolution, Editor's Oniguruma worker is self-contained, and
   built-dist highlighting is covered by a real-browser and shared-log proof. Root `PLAN.md` has not

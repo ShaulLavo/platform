@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { Database } from 'bun:sqlite'
@@ -12,9 +12,11 @@ import {
   providerInstanceIdSchema,
   sessionIdSchema,
   turnIdSchema,
+  worktreeIdSchema,
 } from '@workspace/contracts'
 import { migrateOrchestrationDatabase } from '../../db/migrations'
 import * as schema from '../../db/schema'
+import { WorktreeExecutionGate } from '../../orchestration/worktree-execution-gate'
 import { MockProviderAdapter } from '../adapters/mock'
 import { MOCK_DRIVER_KIND, mockDriver } from '../drivers/mock'
 import { ProviderAdapterRegistry } from '../provider-adapter-registry'
@@ -426,6 +428,104 @@ describe('ProviderService', () => {
     fixture.close()
   })
 
+  it('retains the execution lease across failed stop and releases only after a successful retry', async () => {
+    class StopAdapter extends MockProviderAdapter {
+      failStop = true
+      override async stopRuntime(input: { sessionId: ProviderTurnInput['sessionId'] }) {
+        if (this.failStop) throw new TypeError('process still alive')
+        return super.stopRuntime(input)
+      }
+    }
+    const fixture = createFixture()
+    const adapter = new StopAdapter()
+    const service = new ProviderService({
+      adapterRegistry: new ProviderAdapterRegistry([adapter]),
+      sessionDirectory: new ProviderSessionDirectory(fixture.database),
+    })
+    const gate = new WorktreeExecutionGate()
+    const worktreeId = v.parse(worktreeIdSchema, '10000000-0000-4000-8000-000000000001')
+    service.setWorktreeExecution({
+      acquire: () => ({ worktreeId, ...gate.acquireShared(worktreeId, 'provider') }),
+    })
+    const input = providerTurnInput()
+    await service.ensureRuntime({
+      providerInstanceId: input.providerInstanceId,
+      runtimeMode: input.runtimeMode,
+      runtimePayload: providerSessionPayload(input),
+      runtimeEpoch: input.runtimeEpoch,
+      sessionId: input.sessionId,
+    })
+    await expect(service.stopRuntime({ sessionId: input.sessionId })).rejects.toThrow(
+      'process still alive',
+    )
+    expect(service.hasWorktreeLease(worktreeId)).toBe(true)
+    expect(gate.tryAcquireExclusive(worktreeId)).toEqual({
+      acquired: false,
+      reason: 'active-runtime',
+    })
+    adapter.failStop = false
+    await service.stopRuntime({ sessionId: input.sessionId })
+    expect(service.hasWorktreeLease(worktreeId)).toBe(false)
+    const cleanup = gate.tryAcquireExclusive(worktreeId)
+    expect(cleanup.acquired).toBe(true)
+    if (cleanup.acquired) cleanup.release()
+    await service.shutdown()
+    fixture.close()
+  })
+
+  it('stops an ephemeral process even when startup fails after creating its runtime', async () => {
+    class LateFailureAdapter extends MockProviderAdapter {
+      override async startRuntime(
+        input: Parameters<MockProviderAdapter['startRuntime']>[0],
+      ): Promise<never> {
+        await super.startRuntime(input)
+        throw new TypeError('late launch failure')
+      }
+    }
+    const fixture = createFixture()
+    const adapter = new LateFailureAdapter()
+    const service = new ProviderService({
+      adapterRegistry: new ProviderAdapterRegistry([adapter]),
+      sessionDirectory: new ProviderSessionDirectory(fixture.database),
+    })
+    const input = providerTurnInput()
+    await expect(
+      service.generateText({
+        messageText: 'Describe this diff',
+        modelSelection: input.modelSelection,
+      }),
+    ).rejects.toThrow('late launch failure')
+    const started = adapter.startedSessions[0]
+    if (!started) throw new TypeError('Missing start')
+    expect(await adapter.hasRuntime({ sessionId: started.sessionId })).toBe(false)
+    await expect(stat(started.cwd)).rejects.toMatchObject({ code: 'ENOENT' })
+    await service.shutdown()
+    fixture.close()
+  })
+
+  it('retains an isolated generation directory when stop remains unconfirmed', async () => {
+    const fixture = createFixture()
+    const adapter = new MockProviderAdapter({ stopError: 'stop failed' })
+    const service = new ProviderService({
+      adapterRegistry: new ProviderAdapterRegistry([adapter]),
+      sessionDirectory: new ProviderSessionDirectory(fixture.database),
+    })
+    const input = providerTurnInput()
+    await service.generateText({
+      messageText: 'Describe this diff',
+      modelSelection: input.modelSelection,
+    })
+    const started = adapter.startedSessions[0]
+    if (!started) throw new TypeError('Missing start')
+    expect(started.cwd).not.toBe(input.cwd)
+    expect((await stat(started.cwd)).isDirectory()).toBe(true)
+    expect(await adapter.hasRuntime({ sessionId: started.sessionId })).toBe(true)
+    await adapter.stopAll()
+    await rm(started.cwd, { recursive: true, force: true })
+    await service.shutdown()
+    fixture.close()
+  })
+
   it('marks isolated text generation ephemeral without creating a chat binding', async () => {
     const fixture = createFixture()
     const adapter = new MockProviderAdapter({ responseText: 'Generated title' })
@@ -437,13 +537,15 @@ describe('ProviderService', () => {
     const input = providerTurnInput()
 
     const result = await service.generateText({
-      cwd: input.cwd,
       messageText: 'Describe this diff',
       modelSelection: input.modelSelection,
     })
 
     expect(result).toEqual({ text: 'Generated title' })
     expect(adapter.startedSessions).toHaveLength(1)
+    expect(adapter.startedSessions[0]?.cwd).toMatch(/^\/work\/tmp\/platform-provider-text-/)
+    expect(adapter.startedSessions[0]?.cwd).not.toBe(input.cwd)
+    expect(adapter.startedTurns[0]?.cwd).toBe(adapter.startedSessions[0]?.cwd)
     expect(adapter.startedSessions[0]).toMatchObject({
       ephemeral: true,
       runtimeMode: 'approval-required',
@@ -470,7 +572,6 @@ describe('ProviderService', () => {
     const input = providerTurnInput()
     const controller = new AbortController()
     const generation = service.generateText({
-      cwd: input.cwd,
       messageText: 'Describe this diff',
       modelSelection: input.modelSelection,
       signal: controller.signal,
@@ -502,7 +603,6 @@ describe('ProviderService', () => {
     })
     const input = providerTurnInput()
     const generation = service.generateText({
-      cwd: input.cwd,
       messageText: 'Describe this diff',
       modelSelection: input.modelSelection,
     })

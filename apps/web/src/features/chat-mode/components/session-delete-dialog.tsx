@@ -11,6 +11,11 @@ import {
 
 import { useSessionActions } from '@/features/chat-mode/hooks/use-session-actions'
 import { useSessionDeleteRequestStore } from '@/features/chat-mode/state/session-delete-request-store'
+import { useWorktreeManagerStore } from '@/features/chat-mode/state/worktree-manager-store'
+import {
+  selectChatProjectionSlice,
+  useChatProjectionStore,
+} from '@/features/chat/state/chat-projection-store'
 import {
   sessionDeletePrompt,
   sessionDeleteTitle,
@@ -24,6 +29,12 @@ export function SessionDeleteDialog() {
   const request = useSessionDeleteRequestStore((state) => state.request)
   const actions = useSessionActions()
   const count = request?.refs.length ?? 1
+  const ref = count === 1 ? request?.refs[0] : undefined
+  const projection = useChatProjectionStore((state) =>
+    ref ? selectChatProjectionSlice(state, ref.environmentId) : null,
+  )
+  const session = ref ? projection?.sessionById[ref.sessionId] : undefined
+  const worktree = session ? projection?.worktreeById[session.worktreeId] : undefined
 
   return (
     <Dialog onOpenChange={(open) => open || actions.cancelDelete()} open={request !== null}>
@@ -37,6 +48,24 @@ export function SessionDeleteDialog() {
             {sessionDeletePrompt({ count, title: request?.title ?? 'this session' })}
           </DialogDescription>
         </DialogHeader>
+        <p className='text-muted-foreground text-xs'>
+          The checkout and its changes stay on disk. Use Manage worktrees for separate cleanup.
+        </p>
+        {ref && worktree ? (
+          <Button
+            variant='link'
+            className='justify-start px-0'
+            onClick={() => {
+              actions.cancelDelete()
+              useWorktreeManagerStore.getState().openManager({
+                environmentId: ref.environmentId,
+                projectId: worktree.projectId,
+              })
+            }}
+          >
+            Manage worktrees
+          </Button>
+        ) : null}
         <DialogFooter>
           <Button onClick={() => actions.cancelDelete()} type='button' variant='outline'>
             Cancel

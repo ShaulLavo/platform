@@ -208,7 +208,7 @@ test('restart catches up before readiness, imports terminal metadata, and conver
     await clientB.orchestration.commands.post({
       type: 'session.create',
       commandId: v.parse(commandIdSchema, 'clone-session'),
-      worktreeId: registrationB.worktreeId,
+      worktreeTarget: { kind: 'current', worktreeId: registrationB.worktreeId },
       sessionId: DOMAIN_SESSION,
       title: 'Other machine session',
       modelSelection: DOMAIN_MODEL,

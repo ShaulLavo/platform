@@ -6,6 +6,7 @@ import type {
 } from '@workspace/contracts'
 
 export type SessionAttentionInput = {
+  readonly worktreeState?: string
   readonly pendingApprovalCount: number
   readonly pendingUserInputCount: number
   readonly hasActionableProposedPlan: boolean
@@ -29,7 +30,11 @@ export function sessionAttention(input: SessionAttentionInput): {
     return {
       attentionState: 'needs-input',
       attentionReason: reason,
-      hasError: interrupted || failed,
+      hasError:
+        interrupted ||
+        failed ||
+        input.worktreeState === 'creation-failed' ||
+        input.worktreeState === 'missing',
     }
   if (input.latestTurn?.state === 'running' || isActiveRuntime(input.runtime)) {
     return { attentionState: 'working', attentionReason: 'active', hasError: false }
@@ -45,6 +50,8 @@ function attentionReason(
   if (input.pendingApprovalCount > 0) return 'approval'
   if (input.pendingUserInputCount > 0) return 'user-input'
   if (interrupted) return 'interruption'
+  if (input.worktreeState === 'creation-failed' || input.worktreeState === 'missing')
+    return 'worktree'
   if (failed) return 'failure'
   if (input.hasActionableProposedPlan) return 'plan'
   return null

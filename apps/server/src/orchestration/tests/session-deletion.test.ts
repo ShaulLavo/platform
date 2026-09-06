@@ -1,3 +1,5 @@
+import * as v from 'valibot'
+import { worktreeIdSchema } from '@workspace/contracts'
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, expect, test } from 'vitest'
@@ -38,7 +40,9 @@ test('deleting one session preserves its real Git worktree and the other session
   const worktrees = new GitWorktreeService(fixture.registration.git)
   const { worktree } = await worktrees.create({
     path: fixture.checkout,
-    sessionId: FIXTURE_SESSION_ID,
+    worktreeId: v.parse(worktreeIdSchema, 'dde613a3-4f1c-4910-9f43-f4ec70846daf'),
+    baseCommit: await executeGit(fixture.checkout, 'rev-parse', 'HEAD'),
+    branch: 'worktree/dde613a3-4f1c-4910-9f43-f4ec70846daf',
   })
   const registration = await fixture.register(worktree.absolutePath)
   if (!registration.result) throw new TypeError('Missing registration')

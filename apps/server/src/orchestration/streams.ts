@@ -1,3 +1,4 @@
+import { referencingSessionIds, worktreesAffectedByEvent } from './worktree-projection'
 import {
   ORCHESTRATION_RESUME_MAX_GAP,
   type OrchestrationShellStreamFrame,
@@ -140,14 +141,14 @@ export class OrchestrationStreamHub {
    * and the only correct answer, because a truncated replay would silently drop
    * events the client never learns it is missing.
    */
-  resumePlan(afterSequence: number): OrchestrationResumePlan {
+  resumePlan(afterSequence: number, includeBoundary = false): OrchestrationResumePlan {
     const gap = this.headSequence - afterSequence
     if (afterSequence <= 0) return { gap, kind: 'snapshot', reason: 'no-cursor' }
     if (gap < 0) return { gap, kind: 'snapshot', reason: 'cursor-ahead' }
     if (gap > ORCHESTRATION_RESUME_MAX_GAP)
       return { gap, kind: 'snapshot', reason: 'gap-too-large' }
 
-    const events = this.retainedAfter(afterSequence)
+    const events = this.retainedAfter(afterSequence - Number(includeBoundary))
     if (!events) return { gap, kind: 'snapshot', reason: 'history-evicted' }
 
     return { events, gap, kind: 'replay' }
@@ -248,6 +249,7 @@ export class OrchestrationDomainEventBus {
 }
 
 export class OrchestrationStreams {
+  private readonly database: PlatformDatabase | undefined
   private readonly coalesceWindowMs: number
   private readonly hub: OrchestrationStreamHub
   private readonly rowReader: OrchestrationShellRowReader
@@ -261,6 +263,7 @@ export class OrchestrationStreams {
   private readonly snapshots: OrchestrationSnapshotQuery
 
   constructor(snapshots: OrchestrationSnapshotQuery, options: OrchestrationStreamsOptions = {}) {
+    this.database = options.database
     this.coalesceWindowMs = options.coalesceWindowMs ?? SHELL_COALESCE_WINDOW_MS
     this.hub = options.hub ?? new OrchestrationStreamHub()
     this.rowReader = createShellRowReader(snapshots, options.database)
@@ -329,9 +332,10 @@ export class OrchestrationStreams {
   }
 
   private startShell(afterSequence: number) {
-    const plan = this.hub.resumePlan(afterSequence)
+    // One event can produce several frames; reconnect may have received only the first.
+    const plan = this.hub.resumePlan(afterSequence, true)
     if (plan.kind === 'replay') {
-      const result = this.shellItemsAfter(plan.events, afterSequence)
+      const result = this.shellItemsAfter(plan.events, afterSequence - 1)
       recordChatPipelineInfo('chat.pipeline.shell_stream.start', {
         afterSequence,
         emittedItemCount: result.items.length,
@@ -422,7 +426,53 @@ export class OrchestrationStreams {
       items.push(item)
     }
 
+    this.appendRelatedShellItems(fresh, items)
+    items.sort((left, right) => shellSequence(left) - shellSequence(right))
     return { coalescedFrom: fresh.length, items, sequence: maxSequence(fresh, sequence) }
+  }
+
+  private appendRelatedShellItems(
+    events: OrchestrationEvent[],
+    items: OrchestrationShellStreamItem[],
+  ) {
+    if (!this.database) return
+    const worktrees = new Map<string, number>()
+    const sessions = new Map<string, number>()
+    for (const event of events) {
+      for (const id of worktreesAffectedByEvent(this.database, event))
+        worktrees.set(id, Math.max(worktrees.get(id) ?? 0, event.sequence))
+      if (event.aggregateKind !== 'worktree') continue
+      for (const id of referencingSessionIds(this.database, event.aggregateId))
+        sessions.set(id, Math.max(sessions.get(id) ?? 0, event.sequence))
+    }
+    for (const [worktreeId, sequence] of worktrees) {
+      if (
+        items.some(
+          (item) =>
+            (item.kind === 'worktree-upserted' && item.worktree.id === worktreeId) ||
+            (item.kind === 'worktree-removed' && item.worktreeId === worktreeId),
+        )
+      )
+        continue
+      const worktree = this.rowReader.worktreeShell(worktreeId)
+      if (worktree) {
+        items.push({ kind: 'worktree-upserted', worktree, sequence })
+        continue
+      }
+      items.push(
+        v.parse(orchestrationShellStreamItemSchema, {
+          kind: 'worktree-removed',
+          worktreeId,
+          sequence,
+        }),
+      )
+    }
+    for (const [sessionId, sequence] of sessions) {
+      if (items.some((item) => item.kind === 'session-upserted' && item.session.id === sessionId))
+        continue
+      const session = this.rowReader.sessionShell(sessionId)
+      if (session) items.push({ kind: 'session-upserted', session, sequence })
+    }
   }
 
   private shellItemForEvent(event: OrchestrationEvent): OrchestrationShellStreamItem | null {
@@ -504,6 +554,10 @@ function latestEventPerAggregate(events: readonly OrchestrationEvent[]) {
   }
 
   return [...latest.values()].toSorted((left, right) => left.sequence - right.sequence)
+}
+
+function shellSequence(item: OrchestrationShellStreamItem) {
+  return item.kind === 'snapshot' ? item.snapshot.snapshotSequence : item.sequence
 }
 
 function maxSequence(events: readonly OrchestrationEvent[], sequence: number) {

@@ -1,3 +1,4 @@
+import { WORKTREE_EVENT_PAYLOADS } from './worktree-lifecycle'
 import * as v from 'valibot'
 import {
   approvalRequestIdSchema,
@@ -357,6 +358,7 @@ export const ORCHESTRATION_EVENT_PAYLOADS = {
   'worktree.revived': worktreeRevivedPayloadSchema,
   'worktree.retired': worktreeRetiredPayloadSchema,
   'worktree.meta-updated': worktreeMetaUpdatedPayloadSchema,
+  ...WORKTREE_EVENT_PAYLOADS,
   'session.created': sessionCreatedPayloadSchema,
   'session.meta-updated': sessionMetaUpdatedPayloadSchema,
   'session.deleted': sessionDeletedPayloadSchema,

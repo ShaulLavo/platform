@@ -150,7 +150,33 @@ export const projectionWorktrees = sqliteTable(
     path: text('path').notNull(),
     branch: text('branch'),
     kind: text('kind', { enum: ['current', 'linked'] }).notNull(),
-    ownership: text('ownership', { enum: ['protected', 'external', 'platform'] }).notNull(),
+    ownership: text('ownership', {
+      enum: ['protected', 'external', 'platform', 'unclaimed'],
+    }).notNull(),
+    baseWorktreeId: text('base_worktree_id'),
+    baseCommit: text('base_commit'),
+    headCommit: text('head_commit'),
+    metadataVersion: integer('metadata_version').notNull().default(0),
+    pathKind: text('path_kind', { enum: ['id-derived', 'legacy'] })
+      .notNull()
+      .default('legacy'),
+    lifecycleJson: text('lifecycle_json').notNull().default('{"state":"ready"}'),
+    lifecycleState: text('lifecycle_state').notNull().default('ready'),
+    operationId: text('operation_id'),
+    activeTerminalCount: integer('active_terminal_count').notNull().default(0),
+    terminalOwnershipUnknown: integer('terminal_ownership_unknown', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    externalDriverUnverified: integer('external_driver_unverified', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    removedAt: text('removed_at'),
+    creationCapabilityJson: text('creation_capability_json')
+      .notNull()
+      .default('{"allowed":false,"reason":"base-not-ready"}'),
+    cleanupEligibilityJson: text('cleanup_eligibility_json')
+      .notNull()
+      .default('{"reason":"not-ready","nonDeletedSessionCount":0,"canResolveMissing":false}'),
     createdAt: text('created_at').notNull(),
     updatedAt: text('updated_at').notNull(),
     retiredAt: text('retired_at'),
@@ -164,6 +190,12 @@ export const projectionWorktrees = sqliteTable(
       .on(table.projectId)
       .where(sql`${table.retiredAt} IS NULL AND ${table.kind} = 'current'`),
     index('projection_worktrees_project_idx').on(table.projectId),
+    index('projection_worktrees_lifecycle_idx').on(table.lifecycleState),
+    check(
+      'projection_worktrees_removed_state',
+      sql`(${table.lifecycleState} = 'removed') = (${table.removedAt} IS NOT NULL)`,
+    ),
+    check('projection_worktrees_terminal_count', sql`${table.activeTerminalCount} >= 0`),
     check(
       'projection_worktrees_current_protected',
       sql`${table.kind} != 'current' OR ${table.ownership} = 'protected'`,
@@ -173,6 +205,30 @@ export const projectionWorktrees = sqliteTable(
       sql`${table.registrationGeneration} >= 0`,
     ),
   ],
+)
+
+export const projectionTerminalLeases = sqliteTable(
+  'projection_terminal_leases',
+  {
+    terminalLeaseId: text('terminal_lease_id').primaryKey(),
+    worktreeId: text('worktree_id')
+      .notNull()
+      .references(() => projectionWorktrees.worktreeId),
+    runtimeEpoch: text('runtime_epoch').notNull(),
+    state: text('state', {
+      enum: [
+        'requested',
+        'claimed',
+        'active',
+        'termination-requested',
+        'ended',
+        'ownership-unknown',
+      ],
+    }).notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [index('projection_terminal_leases_worktree_idx').on(table.worktreeId)],
 )
 
 export const projectionSessions = sqliteTable(
@@ -187,7 +243,7 @@ export const projectionSessions = sqliteTable(
       enum: ['needs-input', 'working', 'settled'],
     }).notNull(),
     attentionReason: text('attention_reason', {
-      enum: ['approval', 'user-input', 'interruption', 'failure', 'plan', 'active'],
+      enum: ['approval', 'user-input', 'interruption', 'worktree', 'failure', 'plan', 'active'],
     }),
     hasError: integer('has_error', { mode: 'boolean' }).notNull().default(false),
     acknowledgedFailureThroughSequence: integer('acknowledged_failure_through_sequence'),
@@ -333,7 +389,7 @@ export const projectionTurns = sqliteTable(
     }).notNull(),
     sourceProposedPlanJson: text('source_proposed_plan_json'),
     providerStartState: text('provider_start_state', {
-      enum: ['queued', 'claimed', 'adopted', 'settled', 'interrupted'],
+      enum: ['blocked-on-worktree', 'queued', 'claimed', 'adopted', 'settled', 'interrupted'],
     }).notNull(),
     providerStartGeneration: integer('provider_start_generation').notNull(),
     providerStartSequence: integer('provider_start_sequence').notNull(),

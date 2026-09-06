@@ -1,5 +1,5 @@
 import * as v from 'valibot'
-import { modelSelectionSchema } from '@workspace/contracts'
+import { modelSelectionSchema, worktreeIdSchema } from '@workspace/contracts'
 import { booleanQueryValueSchema, pathSchema } from '../fs/contracts'
 
 export const gitPathQuerySchema = v.object({
@@ -15,7 +15,7 @@ export const gitDiffQuerySchema = v.object({
   staged: v.optional(booleanQueryValueSchema, 'false'),
 })
 
-const gitObjectIdSchema = v.pipe(v.string(), v.regex(/^[0-9a-f]{40,64}$/i))
+const gitObjectIdSchema = v.pipe(v.string(), v.regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i))
 
 /**
  * Refs reach git as argv, so a leading dash would be read as a flag and a space
@@ -78,31 +78,32 @@ export const gitCreateBranchBodySchema = v.object({
   startPoint: v.optional(gitRefNameSchema),
 })
 
-/**
- * A session id becomes a directory name under the repository's worktree root,
- * so separators and dot segments are rejected outright rather than normalized.
- */
-const gitSessionIdSchema = v.pipe(
-  v.string(),
-  v.trim(),
-  v.minLength(1),
-  v.maxLength(128),
-  v.regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
-  v.check((value) => !value.includes('..'), 'Session id must not contain "..".'),
-)
+export const gitWorktreePrepareBodySchema = v.object({
+  path: v.optional(pathSchema, ''),
+  worktreeId: worktreeIdSchema,
+})
 
 export const gitWorktreeCreateBodySchema = v.object({
-  path: v.optional(pathSchema, ''),
-  sessionId: gitSessionIdSchema,
-  base: v.optional(gitRefNameSchema),
-  branch: v.optional(gitRefNameSchema),
+  ...gitWorktreePrepareBodySchema.entries,
+  baseCommit: gitObjectIdSchema,
+  branch: gitRefNameSchema,
 })
 
-export const gitWorktreeRemoveBodySchema = v.object({
-  path: v.optional(pathSchema, ''),
+export const gitWorktreeTargetSchema = v.object({
+  ...gitWorktreePrepareBodySchema.entries,
   worktreePath: pathSchema,
-  force: v.optional(v.boolean(), false),
+  pathKind: v.optional(v.picklist(['id-derived', 'legacy'])),
 })
+
+export const gitWorktreeRemoveBodySchema = v.variant('mode', [
+  v.object({ ...gitWorktreeTargetSchema.entries, mode: v.literal('safe') }),
+  v.object({
+    ...gitWorktreeTargetSchema.entries,
+    mode: v.literal('discard-changes'),
+    expectedHead: gitObjectIdSchema,
+    expectedStatusFingerprint: v.pipe(v.string(), v.regex(/^[0-9a-f]{64}$/)),
+  }),
+])
 
 /**
  * The title and body reach `gh` as argv, not a shell, so no quoting is needed —
@@ -131,5 +132,10 @@ export type GitCheckoutBody = v.InferOutput<typeof gitCheckoutBodySchema>
 export type GitCreateBranchBody = v.InferOutput<typeof gitCreateBranchBodySchema>
 export type GitWorktreeCreateBody = v.InferOutput<typeof gitWorktreeCreateBodySchema>
 export type GitWorktreeRemoveBody = v.InferOutput<typeof gitWorktreeRemoveBodySchema>
-export type GitBranchDiffQuery = v.InferOutput<typeof gitBranchDiffQuerySchema>
+export type GitBranchDiffQuery = v.InferOutput<typeof gitBranchDiffQuerySchema> & {
+  baseCommit?: string
+}
 export type GitCreatePullRequestBody = v.InferOutput<typeof gitCreatePullRequestBodySchema>
+
+export type GitWorktreePrepareBody = v.InferOutput<typeof gitWorktreePrepareBodySchema>
+export type GitWorktreeTarget = v.InferOutput<typeof gitWorktreeTargetSchema>

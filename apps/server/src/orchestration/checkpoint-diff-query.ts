@@ -18,6 +18,7 @@ type SessionCheckpointContext = {
   checkpoints: ProjectionSessionCheckpointRow[]
   sessionId: string
   workspacePath: string
+  baseCommit: string | null
 }
 
 export class OrchestrationCheckpointDiffQuery {
@@ -66,6 +67,7 @@ export class OrchestrationCheckpointDiffQuery {
       checkpoints: this.checkpointRows(sessionId),
       sessionId,
       workspacePath,
+      baseCommit: worktree.ownership === 'platform' ? worktree.baseCommit : null,
     }
   }
 
@@ -128,7 +130,8 @@ function maxCheckpointTurnCount(checkpoints: readonly ProjectionSessionCheckpoin
 }
 
 function checkpointRefForTurnCount(context: SessionCheckpointContext, turnCount: number) {
-  if (turnCount === 0) return checkpointRefForSessionTurn(context.sessionId, 0)
+  if (turnCount === 0)
+    return context.baseCommit ?? checkpointRefForSessionTurn(context.sessionId, 0)
 
   const checkpoint = context.checkpoints.find(
     (candidate) => candidate.checkpointTurnCount === turnCount,

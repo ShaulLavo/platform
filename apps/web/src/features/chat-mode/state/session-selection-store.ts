@@ -1,5 +1,11 @@
 import type { ScopedStorage } from '@/lib/environments/state/scoped-storage'
-import type { EnvironmentId, ProjectId, ScopedSessionRef, SessionId } from '@workspace/contracts'
+import type {
+  EnvironmentId,
+  ProjectId,
+  ScopedSessionRef,
+  SessionId,
+  WorktreeId,
+} from '@workspace/contracts'
 import { create } from 'zustand'
 
 import type { SessionSelection } from '@/features/chat-mode/utils/active-session'
@@ -22,6 +28,8 @@ import {
  * editor also reads. This store only answers "which conversation inside it".
  */
 type SessionSelectionStore = {
+  readonly draftGeneration: number
+  readonly draftWorktreeId: WorktreeId | null
   /**
    * True while `selection` is still the one that came off disk. It is what tells a
    * remembered pick pointing at a deleted session apart from a pick this session just
@@ -53,7 +61,11 @@ type SessionSelectionStore = {
     projectId: ProjectId,
     sessionId: SessionId,
   ) => void
-  readonly startDraft: (environmentId: EnvironmentId, projectId: ProjectId) => void
+  readonly startDraft: (
+    environmentId: EnvironmentId,
+    projectId: ProjectId,
+    worktreeId?: WorktreeId,
+  ) => void
 }
 
 /**
@@ -65,6 +77,8 @@ let restoringSelection = false
 
 function selectionStore(remembered: SessionSelection) {
   return create<SessionSelectionStore>()((set) => ({
+    draftGeneration: 0,
+    draftWorktreeId: null,
     releaseSession: (ref, sessionIds) =>
       set((state) => releasedSelection(state.selection, ref, sessionIds)),
     restored: remembered.kind !== 'auto',
@@ -73,8 +87,13 @@ function selectionStore(remembered: SessionSelection) {
     selection: remembered,
     selectSession: (environmentId, projectId, sessionId) =>
       set({ restored: false, selection: { kind: 'session', environmentId, projectId, sessionId } }),
-    startDraft: (environmentId, projectId) =>
-      set({ restored: false, selection: { kind: 'draft', environmentId, projectId } }),
+    startDraft: (environmentId, projectId, worktreeId) =>
+      set((state) => ({
+        draftGeneration: state.draftGeneration + 1,
+        draftWorktreeId: worktreeId ?? null,
+        restored: false,
+        selection: { kind: 'draft', environmentId, projectId },
+      })),
   }))
 }
 
@@ -109,14 +128,22 @@ export function restoreEnvironmentSessionSelection(environmentId: EnvironmentId)
   const selection = readSessionSelectionCache(storage)
   restoringSelection = true
   try {
-    useSessionSelectionStore.setState({ restored: selection.kind !== 'auto', selection })
+    useSessionSelectionStore.setState({
+      draftWorktreeId: null,
+      restored: selection.kind !== 'auto',
+      selection,
+    })
   } finally {
     restoringSelection = false
   }
 }
 
 export function resetSessionSelectionStore() {
-  useSessionSelectionStore.setState({ restored: false, selection: { kind: 'auto' } })
+  useSessionSelectionStore.setState({
+    draftWorktreeId: null,
+    restored: false,
+    selection: { kind: 'auto' },
+  })
   for (const storage of selectionStorage.values())
     writeSessionSelectionCache(storage, { kind: 'auto' })
 }

@@ -4,7 +4,7 @@ import { scopedSessionKey } from '@workspace/contracts'
 import { Button } from '@workspace/ui/components/button'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GitBranchIcon } from '@phosphor-icons/react'
+import { WorktreeChip } from '@/features/chat-mode/components/worktree-chip'
 
 import { formatChatRelativeTime } from '@/features/chat/utils/formatters'
 import { useCoarseNow } from '@/features/chat/hooks/use-coarse-now'
@@ -104,15 +104,10 @@ export function SessionRow({
           {session.origin === 'discovered' ? (
             <span className='text-muted-foreground pl-[14px] text-[11px]'>External session</span>
           ) : null}
-          {session.branch || session.machineLabel ? (
-            <span className='flex min-w-0 items-center gap-1.5 pl-[14px] text-[11px] leading-4 opacity-60'>
-              {session.machineLabel ? <MachineChip label={session.machineLabel} /> : null}
-              {session.branch ? <GitBranchIcon className='size-3 shrink-0' /> : null}
-              <span className='truncate' title={session.worktreePath}>
-                {session.branch}
-              </span>
-            </span>
-          ) : null}
+          <span className='flex min-w-0 items-center gap-1.5 pl-[14px]'>
+            {session.machineLabel ? <MachineChip label={session.machineLabel} /> : null}
+            <WorktreeChip worktree={session.worktree} repositoryKind={session.repositoryKind} />
+          </span>
           {session.stale ? (
             <span className='text-warning pl-[14px] text-[10px]'>Cached · machine unavailable</span>
           ) : null}

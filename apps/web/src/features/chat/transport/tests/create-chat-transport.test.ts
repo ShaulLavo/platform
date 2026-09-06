@@ -69,7 +69,7 @@ test('two transports dispatch and read snapshots from their owning servers after
       await transport.dispatchCommand({
         commandId: v.parse(commandIdSchema, `session-${title}`),
         sessionId: SESSION_ID,
-        worktreeId: registration.result!.worktreeId,
+        worktreeTarget: { kind: 'current', worktreeId: registration.result!.worktreeId },
         title,
         type: 'session.create',
         modelSelection: { model: 'mock-model', providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID },

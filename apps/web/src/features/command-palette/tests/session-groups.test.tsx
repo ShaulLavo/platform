@@ -1,3 +1,4 @@
+import { chatWorktree } from '../../../../test/factories/chat'
 import { TEST_ENVIRONMENT_ID } from '../../../../test/factories/chat'
 import { scopedSessionKey, scopedProjectKey } from '@workspace/contracts'
 import { projectIdSchema, sessionIdSchema } from '@workspace/contracts'
@@ -140,6 +141,8 @@ function sessionItem(
     title,
     unread: false,
     worktreePath: '/repo/platform',
+    worktree: chatWorktree(),
+    repositoryKind: 'git',
   }
 }
 

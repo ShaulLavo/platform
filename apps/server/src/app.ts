@@ -97,8 +97,13 @@ export function createApp(options: AppOptions) {
   const terminal = new TerminalService({
     ...options.terminal,
     paths: fs.paths,
-    resolveWorktree: async (worktreeId) =>
-      requireWorktree(await orchestration.readModelSnapshot(), worktreeId).canonicalPath,
+    resolveWorktree: async (worktreeId) => {
+      const worktree = requireWorktree(await orchestration.readModelSnapshot(), worktreeId)
+      if (worktree.lifecycle.state !== 'ready')
+        throw createInternalError('Terminal requires a ready worktree')
+      return worktree.canonicalPath
+    },
+    lifecycle: { begin: (worktreeId) => orchestration.beginTerminalLease(worktreeId) },
   })
   const fonts = options.fonts ?? new NerdFontService()
   const database = options.orchestration?.database ?? getDefaultPlatformDatabase()
@@ -145,6 +150,8 @@ export function createApp(options: AppOptions) {
     sessionDirectory: new ProviderSessionDirectory(database),
   })
   const orchestration = new OrchestrationEngine(database, {
+    providerService,
+    terminalService: terminal,
     attachmentsDir: options.orchestration?.attachmentsDir,
     registration: { git, paths: fs.paths },
     providerRuntime: options.orchestration?.providerRuntime
@@ -238,7 +245,12 @@ export function createApp(options: AppOptions) {
     .use(fontRoutes(fonts))
     .use(wallpaperRoutes())
     .use(settingsRoutes(settings))
-    .use(gitRoutes(git, commitMessages))
+    .use(
+      gitRoutes(git, commitMessages, {
+        resolveBaseCommit: (checkoutPath) => orchestration.worktreeBaseCommit(checkoutPath),
+        refreshMetadata: (checkoutPath) => orchestration.refreshWorktreeMetadata(checkoutPath),
+      }),
+    )
     .use(fsRoutes(fs))
     .onStop(cleanup)
   appCleanups.set(configured, cleanup)
@@ -330,6 +342,7 @@ function appErrorPayload(
 function errorForResponse(code: unknown, error: unknown) {
   if (isFsError(error)) return error
   if (isEvlogError(error)) return error
+  if (code === 'NOT_FOUND') return new FsError('NOT_FOUND', 'Route not found')
   if (code === 'VALIDATION') return new FsError('INVALID_PATH', errorMessage(error))
 
   return new FsError('OPERATION_FAILED', undefined, error)

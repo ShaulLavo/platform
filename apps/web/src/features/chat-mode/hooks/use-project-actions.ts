@@ -31,17 +31,24 @@ export function useProjectActions() {
     cancelDelete() {
       dismissDelete()
     },
-    confirmDelete(request: ProjectDeleteRequest) {
-      dismissDelete()
-      for (const session of projectSessions(request.ref))
-        releaseSession({ environmentId: request.ref.environmentId, sessionId: session.id }, [])
-      clearSessionMultiSelect()
-      void dispatchChatCommand({
+    async confirmDelete(request: ProjectDeleteRequest) {
+      const state = useProjectDeleteRequestStore.getState()
+      if (state.pending) return
+      state.beginDelete()
+      const outcome = await dispatchChatCommand({
         action: 'chat.project.delete',
         command: createProjectDeleteCommand({ projectId: request.ref.projectId }),
         dispatchCommand: (command) =>
           dispatchCommandForEnvironment(request.ref.environmentId, command),
       })
+      if (!outcome.ok) {
+        state.failDelete(outcome.message)
+        return
+      }
+      dismissDelete()
+      for (const session of projectSessions(request.ref))
+        releaseSession({ environmentId: request.ref.environmentId, sessionId: session.id }, [])
+      clearSessionMultiSelect()
     },
     deleteProject(project: SessionRailProject) {
       requestDelete({

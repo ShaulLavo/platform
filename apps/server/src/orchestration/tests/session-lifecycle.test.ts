@@ -671,7 +671,7 @@ function turnStartCommand(sessionId = '00000000-0000-4000-8000-000000000001') {
 
 function sessionCreateCommand(sessionId: string) {
   return command({
-    worktreeId: '20000000-0000-4000-8000-000000000001',
+    worktreeTarget: { kind: 'current', worktreeId: '20000000-0000-4000-8000-000000000001' },
 
     interactionMode: 'default',
     modelSelection,

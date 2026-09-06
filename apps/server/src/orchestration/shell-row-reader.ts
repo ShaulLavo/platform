@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, or } from 'drizzle-orm'
 import type {
   OrchestrationProjectShell,
   OrchestrationWorktreeShell,
@@ -54,13 +54,24 @@ export class ProjectionShellRowReader implements OrchestrationShellRowReader {
 
   worktreeShell(worktreeId: string) {
     const row = this.database
-      .select()
+      .select({ worktree: projectionWorktrees })
       .from(projectionWorktrees)
+      .innerJoin(
+        projectionProjects,
+        eq(projectionProjects.projectId, projectionWorktrees.projectId),
+      )
       .where(
-        and(eq(projectionWorktrees.worktreeId, worktreeId), isNull(projectionWorktrees.retiredAt)),
+        and(
+          eq(projectionWorktrees.worktreeId, worktreeId),
+          isNull(projectionProjects.deletedAt),
+          or(
+            isNull(projectionWorktrees.retiredAt),
+            eq(projectionWorktrees.lifecycleState, 'removed'),
+          ),
+        ),
       )
       .get()
-    return row ? worktreeShellFromRow(row) : null
+    return row ? worktreeShellFromRow(row.worktree) : null
   }
 
   sessionShell(sessionId: string) {

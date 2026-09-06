@@ -166,9 +166,12 @@ describe('session domain identity and ownership', () => {
       modelSelection,
     }
     expect(v.safeParse(clientOrchestrationCommandSchema, create).success).toBe(false)
-    expect(v.safeParse(clientOrchestrationCommandSchema, { ...create, worktreeId }).success).toBe(
-      true,
-    )
+    expect(
+      v.safeParse(clientOrchestrationCommandSchema, {
+        ...create,
+        worktreeTarget: { kind: 'current', worktreeId },
+      }).success,
+    ).toBe(true)
     const claim = {
       type: 'session.provider-start.claim',
       commandId: 'claim',
@@ -197,6 +200,23 @@ describe('session domain identity and ownership', () => {
         createdAt: now,
         updatedAt: now,
         retiredAt: null,
+        lifecycle: { state: 'ready' },
+        operationId: null,
+        baseWorktreeId: null,
+        baseCommit: null,
+        headCommit: null,
+        metadataVersion: 0,
+        pathKind: 'legacy',
+        activeTerminalCount: 0,
+        terminalOwnershipUnknown: false,
+        externalDriverUnverified: false,
+        removedAt: null,
+        worktreeCreationCapability: { allowed: true },
+        cleanupEligibility: {
+          reason: 'protected',
+          nonDeletedSessionCount: 0,
+          canResolveMissing: false,
+        },
       }).success,
     ).toBe(true)
     const runtime = v.parse(sessionRuntimeStateSchema, {
@@ -329,14 +349,14 @@ describe('orchestration contracts', () => {
         createSession: {
           createdAt: now,
           modelSelection,
-          worktreeId: '22755017-f511-5766-8288-8f6328097bd2',
+          worktreeTarget: { kind: 'current', worktreeId: '22755017-f511-5766-8288-8f6328097bd2' },
           title: 'Build the first slice',
         },
       },
       createdAt: now,
     })
 
-    expect(command.bootstrap?.createSession?.worktreeId as string).toBe(
+    expect(command.bootstrap?.createSession?.worktreeTarget.worktreeId as string).toBe(
       '22755017-f511-5766-8288-8f6328097bd2',
     )
     expect(command.bootstrap?.createSession?.runtimeMode).toBe('full-access')

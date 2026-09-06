@@ -12,6 +12,11 @@ import {
   type PlatformCommandId,
 } from '@/keymap/types'
 import { createRailHarness } from '../../../test/factories/rail-harness'
+import { createWorktreeLifecycleHarness } from '../../../test/factories/worktree-lifecycle'
+import { executeDomainGit } from '../../../test/factories/session-domain'
+import { newWorktreeTarget } from '@/features/chat/utils/worktree-target'
+import { createDraftSessionSubmission } from '@/features/chat/utils/command-builders'
+import { createProjectRegistrationCommand } from '@/lib/environments/utils/registration'
 import { expect, test } from '../../../test/fixtures'
 test('every session command is reachable from the keyboard', () => {
   const bound = boundCommands()
@@ -45,6 +50,33 @@ test('jumping selects the requested scoped row only after its real root opens', 
   expect(h.application.getSnapshot().editor.workspaceStore.getState().rootFolder?.path).toBe(
     h.context.worktree!.path,
   )
+})
+test('session navigation and new drafts accept the workspace root empty relative path', async ({
+  client,
+  server,
+}) => {
+  const h = await createRailHarness(client, server, [])
+  const registration = await h.dispatch(
+    createProjectRegistrationCommand({ workspaceRoot: '', title: 'Workspace root' }),
+  )
+  const owner = registration.result!
+  const submission = createDraftSessionSubmission({
+    createdAt: '2026-09-06T10:00:00.000Z',
+    worktreeTarget: { kind: 'current', worktreeId: owner.worktreeId },
+    modelSelection: { model: 'mock-model', providerInstanceId: server.providerAdapter.adapterKey },
+    text: 'Work at the workspace root',
+  })
+  await h.dispatch(submission.command)
+  const snapshot = await h.refresh()
+  expect(snapshot.worktrees.find((worktree) => worktree.id === owner.worktreeId)?.path).toBe('')
+  useSessionRailStore.getState().setScope(owner.projectId)
+  const opened = await jumpToSession(1)
+  const selected = selectedSessionId()
+  const drafted = await startScopedSessionDraft()
+  expect({ opened, drafted }).toEqual({ opened: true, drafted: true })
+  expect(selected).toBe(submission.command.sessionId)
+  expect(useSessionSelectionStore.getState().draftWorktreeId).toBe(owner.worktreeId)
+  expect(h.application.getSnapshot().editor.workspaceStore.getState().rootFolder?.path).toBe('')
 })
 test('jumping past the end preserves selection', async ({ client, server }) => {
   const h = await createRailHarness(client, server)
@@ -90,6 +122,45 @@ test('new session uses the scoped project and leaves the archive view', async ({
     projectId: h.projectId,
   })
   expect(useSessionRailStore.getState().view).toBe('active')
+})
+
+test('an active-session draft preserves its missing checkout identity while opening the protected root', async ({
+  client,
+  server,
+}) => {
+  const h = await createWorktreeLifecycleHarness(client, server)
+  const target = newWorktreeTarget(h.worktreeId)
+  const sessionId = await h.create(target)
+  const worktree = await h.worktree(target.worktreeId)
+  await executeDomainGit(h.repository, 'worktree', 'remove', worktree.canonicalPath)
+  await server.restart()
+  await h.refresh()
+  expect((await h.worktree(target.worktreeId)).lifecycle.state).toBe('missing')
+  useSessionSelectionStore.getState().selectSession(h.environmentId, h.projectId, sessionId)
+  useSessionRailStore.getState().setScope(h.projectId)
+  expect(await startScopedSessionDraft()).toBe(true)
+  expect(useSessionSelectionStore.getState().draftWorktreeId).toBe(target.worktreeId)
+  expect(h.application.getSnapshot().editor.workspaceStore.getState().rootFolder?.path).toBe(
+    (await h.worktree()).path,
+  )
+})
+
+test('new session uses the linked checkout of the session selected automatically by the stage', async ({
+  client,
+  server,
+}) => {
+  const h = await createWorktreeLifecycleHarness(client, server)
+  const target = newWorktreeTarget(h.worktreeId)
+  await h.create(target)
+  useSessionRailStore.getState().setScope(h.projectId)
+  expect(useSessionSelectionStore.getState().selection).toEqual({ kind: 'auto' })
+  expect(await startScopedSessionDraft()).toBe(true)
+  expect(useSessionSelectionStore.getState().draftWorktreeId).toBe(target.worktreeId)
+  expect(h.application.getSnapshot().editor.workspaceStore.getState().rootFolder?.path).toBe(
+    (await h.worktree(target.worktreeId)).path,
+  )
+  expect(await startScopedSessionDraft()).toBe(true)
+  expect(useSessionSelectionStore.getState().draftWorktreeId).toBe(target.worktreeId)
 })
 function selectedSessionId() {
   const { selection } = useSessionSelectionStore.getState()

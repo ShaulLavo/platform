@@ -89,6 +89,7 @@ export type ChatProjectionSlice = {
   activityIdsBySessionId: Record<SessionId, EventId[]>
   bootstrapComplete: boolean
   lastAppliedShellSequence: number
+  lastShellItemKeys: readonly string[] | null
   lastAppliedShellUpdatedAt: string | null
   messageBySessionId: Record<SessionId, Record<MessageId, OrchestrationMessage>>
   messageIdsBySessionId: Record<SessionId, MessageId[]>
@@ -96,6 +97,7 @@ export type ChatProjectionSlice = {
   projectIds: ProjectId[]
   worktreeById: Record<WorktreeId, OrchestrationWorktreeShell>
   worktreeIds: WorktreeId[]
+  worktreeSequenceById: Record<WorktreeId, number>
   proposedPlanBySessionId: Record<SessionId, Record<ProposedPlanId, OrchestrationProposedPlan>>
   proposedPlanIdsBySessionId: Record<SessionId, ProposedPlanId[]>
   sessionById: Record<SessionId, ProjectionSession>
@@ -149,6 +151,7 @@ export function createInitialChatProjectionSlice(): ChatProjectionSlice {
     activityIdsBySessionId: {},
     bootstrapComplete: false,
     lastAppliedShellSequence: 0,
+    lastShellItemKeys: null,
     lastAppliedShellUpdatedAt: null,
     messageBySessionId: {},
     messageIdsBySessionId: {},
@@ -156,6 +159,7 @@ export function createInitialChatProjectionSlice(): ChatProjectionSlice {
     projectIds: [],
     worktreeById: {},
     worktreeIds: [],
+    worktreeSequenceById: {},
     proposedPlanBySessionId: {},
     proposedPlanIdsBySessionId: {},
     sessionById: {},

@@ -1,3 +1,4 @@
+import { refreshAllWorktreePolicies } from '../orchestration/worktree-projection'
 import { eq, sql } from 'drizzle-orm'
 import { elapsedMs } from '../observability/logging'
 import { recordProcessInfo } from '../observability/runtime'
@@ -14,6 +15,7 @@ export type Migration = {
 // Version 11 replaces obsolete developer chat state while preserving machine identity and files.
 export const platformMigrations: readonly Migration[] = [
   { version: 11, name: 'session_domain', up: applySessionDomain },
+  { version: 12, name: 'worktree_lifecycle', up: applyWorktreeLifecycle },
 ]
 
 export function migratePlatformDatabase(
@@ -406,3 +408,34 @@ const SESSION_DOMAIN_SCHEMA = [
   `CREATE INDEX IF NOT EXISTS fs_metadata_recent_idx ON fs_metadata (last_picked_at DESC)`,
   `CREATE INDEX IF NOT EXISTS fs_metadata_entry_type_idx ON fs_metadata (entry_type)`,
 ] as const
+
+function applyWorktreeLifecycle(database: PlatformDatabase) {
+  for (const statement of WORKTREE_LIFECYCLE_SCHEMA) database.run(sql.raw(statement))
+  database.run(
+    sql`UPDATE projection_worktrees SET lifecycle_state = 'retired', lifecycle_json = json_object('state', 'retired', 'retiredAt', retired_at) WHERE retired_at IS NOT NULL`,
+  )
+  database.run(
+    sql`UPDATE projection_worktrees SET external_driver_unverified = EXISTS (SELECT 1 FROM projection_sessions s WHERE s.worktree_id = projection_worktrees.worktree_id AND s.origin = 'discovered')`,
+  )
+  refreshAllWorktreePolicies(database)
+}
+
+const WORKTREE_LIFECYCLE_SCHEMA = [
+  `ALTER TABLE projection_worktrees ADD COLUMN base_worktree_id TEXT`,
+  `ALTER TABLE projection_worktrees ADD COLUMN base_commit TEXT`,
+  `ALTER TABLE projection_worktrees ADD COLUMN head_commit TEXT`,
+  `ALTER TABLE projection_worktrees ADD COLUMN metadata_version INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE projection_worktrees ADD COLUMN path_kind TEXT NOT NULL DEFAULT 'legacy'`,
+  `ALTER TABLE projection_worktrees ADD COLUMN lifecycle_json TEXT NOT NULL DEFAULT '{"state":"ready"}'`,
+  `ALTER TABLE projection_worktrees ADD COLUMN operation_id TEXT`,
+  `ALTER TABLE projection_worktrees ADD COLUMN active_terminal_count INTEGER NOT NULL DEFAULT 0 CHECK (active_terminal_count >= 0)`,
+  `ALTER TABLE projection_worktrees ADD COLUMN terminal_ownership_unknown INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE projection_worktrees ADD COLUMN external_driver_unverified INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE projection_worktrees ADD COLUMN removed_at TEXT`,
+  `ALTER TABLE projection_worktrees ADD COLUMN lifecycle_state TEXT NOT NULL DEFAULT 'ready' CHECK ((lifecycle_state = 'removed') = (removed_at IS NOT NULL))`,
+  `ALTER TABLE projection_worktrees ADD COLUMN creation_capability_json TEXT NOT NULL DEFAULT '{"allowed":false,"reason":"base-not-ready"}'`,
+  `ALTER TABLE projection_worktrees ADD COLUMN cleanup_eligibility_json TEXT NOT NULL DEFAULT '{"reason":"not-ready","nonDeletedSessionCount":0,"canResolveMissing":false}'`,
+  `CREATE INDEX projection_worktrees_lifecycle_idx ON projection_worktrees (lifecycle_state)`,
+  `CREATE TABLE projection_terminal_leases (terminal_lease_id TEXT PRIMARY KEY NOT NULL, worktree_id TEXT NOT NULL REFERENCES projection_worktrees(worktree_id), runtime_epoch TEXT NOT NULL, state TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+  `CREATE INDEX projection_terminal_leases_worktree_idx ON projection_terminal_leases(worktree_id)`,
+]

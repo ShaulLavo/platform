@@ -68,6 +68,20 @@ function commandActor(command: OrchestrationCommand) {
   )
     return 'provider'
   if (
+    [
+      'worktree.retry',
+      'worktree.cleanup',
+      'worktree.force-cleanup',
+      'worktree.retain',
+      'worktree.adopt',
+      'worktree.release',
+      'worktree.resolve-missing',
+    ].includes(type)
+  )
+    return 'client'
+  if (
+    type.startsWith('terminal.lease.') ||
+    type === 'session.worktree.release' ||
     type.startsWith('worktree.') ||
     type.startsWith('session.provider-start.') ||
     type === 'project.revive' ||

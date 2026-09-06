@@ -5,7 +5,8 @@ import {
   type OrchestrationMessage,
   type OrchestrationProjectShell,
   type SessionId,
-  type WorktreeId,
+  type OrchestrationWorktreeShell,
+  type SessionWorktreeTarget,
 } from '@workspace/contracts'
 import { useQuery } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
@@ -26,6 +27,8 @@ import { useChatOptimisticStore } from '../state/chat-optimistic-store'
 import type { ChatInputDraftTarget } from '../state/chat-input-draft-store'
 import { ChatInput, type ChatInputSubmitPayload } from './chat-input'
 import { ChatWelcomeView } from './chat-welcome-view'
+import { WorktreePicker } from '@/features/chat/components/worktree-picker'
+import { newWorktreeTarget } from '@/features/chat/utils/worktree-target'
 import { useSettingValue } from '@/features/settings/hooks/use-setting-value'
 
 const DRAFT_CHAT_KEY = 'draft'
@@ -35,16 +38,22 @@ export function ChatDraftView({
   transport,
   onSessionCreated,
   project,
-  worktreeId,
+  worktree,
   rootPath,
 }: {
   disabled: boolean
   transport: ChatTransport
   onSessionCreated: (sessionId: SessionId) => void
   project: OrchestrationProjectShell | null
-  worktreeId: WorktreeId | null
+  worktree: OrchestrationWorktreeShell | null
   rootPath: string
 }) {
+  const [chosenTarget, setChosenTarget] = useState<SessionWorktreeTarget | null>(null)
+  const target =
+    chosenTarget ?? (worktree ? { kind: 'current' as const, worktreeId: worktree.id } : null)
+  const targetReady =
+    worktree?.lifecycle.state === 'ready' &&
+    (target?.kind !== 'new' || worktree.worktreeCreationCapability.allowed)
   const [sendError, setSendError] = useState<string | null>(null)
   // The same target ChatInput builds for itself, so a mode pick lands on the
   // draft the send path reads. Stable identity: it feeds the modes context value.
@@ -79,89 +88,94 @@ export function ChatDraftView({
     },
     [transport, project],
   )
-  const handleSend = useCallback(
-    async ({
+  async function handleSend({
+    attachments,
+    interactionMode,
+    modelSelection,
+    runtimeMode,
+    terminalContexts,
+    text,
+  }: ChatInputSubmitPayload) {
+    if (!project || !worktree || !target || !targetReady) {
+      setSendError('Workspace chat is still preparing.')
+      return false
+    }
+
+    // Declared, not created. The server makes the worktree while the turn is
+    // held at the gate, so a client that dies here cannot orphan a directory
+    // no session owns.
+    const submission = createDraftSessionSubmission({
       attachments,
+      createdAt: new Date().toISOString(),
       interactionMode,
       modelSelection,
+      worktreeTarget: target,
       runtimeMode,
       terminalContexts,
       text,
-    }: ChatInputSubmitPayload) => {
-      if (!project || !worktreeId) {
-        setSendError('Workspace chat is still preparing.')
-        return false
-      }
-
-      // Declared, not created. The server makes the worktree while the turn is
-      // held at the gate, so a client that dies here cannot orphan a directory
-      // no session owns.
-      const submission = createDraftSessionSubmission({
-        attachments,
-        createdAt: new Date().toISOString(),
-        interactionMode,
-        modelSelection,
-        worktreeId,
-        runtimeMode,
-        terminalContexts,
-        text,
-      })
-      const outcome = await dispatchChatCommand({
-        action: 'chat.draft.dispatch.summary',
-        beforeDispatch: (scope) => {
-          scope.increment('command.submitCount')
-          addOptimisticMessage(
-            transport.environmentId,
-            submission.command.commandId,
-            submission.optimisticMessage,
-          )
-          scope.increment('command.optimisticAddedCount')
-          scope.set({
-            optimistic: optimisticMessageSummary({
-              commandId: submission.command.commandId,
-              messageId: submission.optimisticMessage.id,
-              textLength: submission.optimisticMessage.text.length,
-              sessionId: submission.optimisticMessage.sessionId,
-            }),
-          })
-        },
-        command: submission.command,
-        context: {
-          attachmentCount: attachments.length,
-          interactionMode,
-          model: modelSelection.model,
-          projectId: project.id,
-          providerInstanceId: modelSelection.providerInstanceId,
-          runtimeMode,
-          terminalContextCount: terminalContexts.length,
-          textLength: text.length,
-        },
-        dispatchCommand: transport.dispatchCommand,
-        onAccepted: (result) =>
-          scheduleSessionProjectionSyncAfterDispatch({
-            transport,
-            replayAfterSequence: replayAfterDispatch(submission.command, result),
-            sessionId: submission.command.sessionId,
+    })
+    const outcome = await dispatchChatCommand({
+      action: 'chat.draft.dispatch.summary',
+      beforeDispatch: (scope) => {
+        scope.increment('command.submitCount')
+        addOptimisticMessage(
+          transport.environmentId,
+          submission.command.commandId,
+          submission.optimisticMessage,
+        )
+        scope.increment('command.optimisticAddedCount')
+        scope.set({
+          optimistic: optimisticMessageSummary({
+            commandId: submission.command.commandId,
+            messageId: submission.optimisticMessage.id,
+            textLength: submission.optimisticMessage.text.length,
+            sessionId: submission.optimisticMessage.sessionId,
           }),
-        onFailed: () =>
-          removeOptimisticMessage(transport.environmentId, submission.optimisticMessage),
-      })
-      if (!outcome.ok) {
-        setSendError(outcome.message)
-        return false
-      }
+        })
+      },
+      command: submission.command,
+      context: {
+        attachmentCount: attachments.length,
+        interactionMode,
+        model: modelSelection.model,
+        projectId: project.id,
+        providerInstanceId: modelSelection.providerInstanceId,
+        runtimeMode,
+        terminalContextCount: terminalContexts.length,
+        textLength: text.length,
+      },
+      dispatchCommand: transport.dispatchCommand,
+      onAccepted: (result) =>
+        scheduleSessionProjectionSyncAfterDispatch({
+          transport,
+          replayAfterSequence: replayAfterDispatch(submission.command, result),
+          sessionId: submission.command.sessionId,
+        }),
+      onFailed: () =>
+        removeOptimisticMessage(transport.environmentId, submission.optimisticMessage),
+    })
+    if (!outcome.ok) {
+      setSendError(outcome.message)
+      return false
+    }
 
-      setSendError(null)
-      onSessionCreated(submission.command.sessionId)
+    setSendError(null)
+    onSessionCreated(submission.command.sessionId)
 
-      return true
-    },
-    [transport, onSessionCreated, project, worktreeId],
-  )
+    return true
+  }
 
   return (
     <section className='flex min-h-0 flex-1 flex-col'>
       <ChatWelcomeView />
+      {worktree && target ? (
+        <WorktreePicker
+          base={worktree}
+          target={target}
+          onCurrent={() => setChosenTarget({ kind: 'current', worktreeId: worktree.id })}
+          onNew={() => setChosenTarget(newWorktreeTarget(worktree.id))}
+        />
+      ) : null}
       {/* No session exists yet, so a mode pick only lands in the draft — the turn
           that creates the session carries it through `bootstrap.createSession`. */}
       <ChatComposerModesProvider
@@ -171,7 +185,7 @@ export function ChatDraftView({
       >
         <ChatInput
           busy={false}
-          disabled={disabled || !project}
+          disabled={disabled || !project || !targetReady}
           draftKey={DRAFT_CHAT_KEY}
           error={sendError}
           interactionMode={defaultInteractionMode}

@@ -94,7 +94,7 @@ test('inactive environment commands refresh their slice and terminal registratio
     await dispatchCommandForEnvironment(descriptor.environmentId, {
       type: 'session.create',
       commandId: v.parse(commandIdSchema, 'scoped-session'),
-      worktreeId,
+      worktreeTarget: { kind: 'current', worktreeId: worktreeId },
       sessionId: TEST_SESSION_ID,
       title: 'Before',
       modelSelection: { providerInstanceId: DEFAULT_PROVIDER_INSTANCE_ID, model: 'mock-model' },

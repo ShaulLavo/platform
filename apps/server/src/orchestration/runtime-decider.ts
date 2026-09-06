@@ -1,3 +1,4 @@
+import { requireReadyWorktree } from './worktree-decider'
 import type { OrchestrationCommand } from '@workspace/contracts'
 import { event, one } from './event-factory'
 import { lifecycleResetEvents } from './lifecycle-events'
@@ -28,7 +29,10 @@ export function decideProviderStart(
   ) {
     throw sessionDomainErrors.START_STATE_CONFLICT(command)
   }
-  if (command.type === 'session.provider-start.claim') return claimStart(command, turn, at)
+  if (command.type === 'session.provider-start.claim') {
+    requireReadyWorktree(model, session.worktreeId)
+    return claimStart(command, turn, at)
+  }
   if (
     turn.runtimeEpoch !== command.runtimeEpoch ||
     turn.providerStartGeneration !== command.generation

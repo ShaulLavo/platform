@@ -54,6 +54,8 @@ export type SessionRailItem = {
   readonly hasError: boolean
   readonly title: string
   readonly unread: boolean
+  readonly worktree: OrchestrationWorktreeShell
+  readonly repositoryKind: OrchestrationProjectShell['repositoryKind']
   readonly worktreePath: string
 }
 export type SessionRailProject = {
@@ -261,6 +263,8 @@ export function sessionRailItem(
     hasError: session.hasError,
     title: session.title,
     unread: isSessionUnread(sessionCompletedAt(session), seenAt),
+    worktree: session.worktree,
+    repositoryKind: session.project.repositoryKind,
     worktreePath: session.worktree.path,
   }
 }
