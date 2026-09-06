@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readlinkSync, readdirSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -77,8 +78,29 @@ export function processExists(pid: number) {
 }
 
 export function terminalDescriptors() {
+  if (process.platform === 'darwin') return macTerminalDescriptors()
   if (process.platform !== 'linux') return null
   return readdirSync('/proc/self/fd').flatMap(terminalDescriptor).sort()
+}
+
+function macTerminalDescriptors() {
+  const output = execFileSync('/usr/sbin/lsof', ['-nP', '-a', '-p', String(process.pid), '-Ffn'], {
+    encoding: 'utf8',
+  })
+  expect(output).toContain(`p${process.pid}\n`)
+  expect(output).toMatch(/^f\d+$/m)
+
+  const descriptors: string[] = []
+  let descriptor: string | null = null
+  for (const line of output.split('\n')) {
+    if (line.startsWith('f')) {
+      descriptor = /^f\d+$/.test(line) ? line.slice(1) : null
+      continue
+    }
+    if (descriptor === null || !/^n\/dev\/(?:ptmx|ttys\d+|pty[a-z\d]+)$/.test(line)) continue
+    descriptors.push(descriptor)
+  }
+  return descriptors.sort()
 }
 
 function terminalDescriptor(descriptor: string) {

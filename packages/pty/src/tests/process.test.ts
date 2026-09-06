@@ -110,19 +110,34 @@ test('queues large binary input until a delayed reader consumes it, keeping late
   expect(captured.text).toContain(`RECEIVED:${length}:${expected}`)
 })
 
-test('waits for trailing terminal output after the direct child has exited', async ({ launch }) => {
-  const captured = launch({ command: childCommand('delayed-tail') })
+test('honors the operating system terminal lifetime after the session leader exits', async ({
+  launch,
+  root,
+}) => {
+  const reportFile = `${root}/tail-write-result`
+  // Darwin revokes the slave at session-leader exit; Linux permits the later write.
+  const expected =
+    process.platform === 'darwin'
+      ? { output: 'HEAD', write: 'EIO' }
+      : { output: 'HEADTAIL', write: 'written' }
+  const captured = launch({ command: childCommand('delayed-tail', '150', reportFile) })
   expect(await captured.pty.exited).toEqual({ exitCode: 7, signal: null })
-  expect(captured.text).toBe('HEADTAIL')
+  expect(captured.text).toBe(expected.output)
+  await expect
+    .poll(async () => (await Bun.file(reportFile).exists()) && Bun.file(reportFile).text())
+    .toBe(expected.write)
 })
 
 test('reports a requested terminating signal and reaps the child', async ({ launch }) => {
+  const before = terminalDescriptors()
   const captured = launch({ command: childCommand('resize') })
   await captured.waitFor('SIZE:')
+  expect(terminalDescriptors()).not.toEqual(before)
   captured.pty.kill('SIGTERM')
   const exit = await captured.pty.exited
   expect(exit.signal).toBe('SIGTERM')
   expect(processExists(captured.pty.pid)).toBe(false)
+  expect(terminalDescriptors()).toEqual(before)
 })
 
 test('escalates an ignored signal to SIGKILL after the grace period', async ({ launch }) => {
@@ -160,14 +175,14 @@ test('closes PTY descriptors after natural exit and explicit disposal', async ({
   expect(terminalDescriptors()).toEqual(before)
 })
 
-test('fails invalid spawns without leaking PTY descriptors', () => {
+test('fails invalid spawns without leaking PTY descriptors', async () => {
   const before = terminalDescriptors()
   for (let index = 0; index < 8; index++) {
     expect(() =>
       spawnPty({ command: ['/definitely/missing/pty-test-command'], onData() {} }),
     ).toThrow()
   }
-  expect(terminalDescriptors()).toEqual(before)
+  await expect.poll(terminalDescriptors).toEqual(before)
 })
 
 test('rejects completion and releases the child and terminal when output delivery throws', async () => {
@@ -189,9 +204,7 @@ test('rejects completion and releases the child and terminal when output deliver
   }
 })
 
-test('disposes after the direct child exits while a descendant retains the terminal', async ({
-  launch,
-}) => {
+test('cleans up after the session leader exits with a live descendant', async ({ launch }) => {
   const before = terminalDescriptors()
   const captured = launch({ command: childCommand('held-tail', '5000') })
   await captured.waitFor('HEAD:')
@@ -202,6 +215,9 @@ test('disposes after the direct child exits while a descendant retains the termi
     await expect.poll(() => processExists(captured.pty.pid)).toBe(false)
     const started = performance.now()
     await captured.pty[Symbol.asyncDispose]()
+    if (process.platform === 'linux') {
+      expect(performance.now() - started).toBeGreaterThanOrEqual(200)
+    }
     expect(performance.now() - started).toBeLessThan(3000)
     expect(await captured.pty.exited).toEqual({ exitCode: 7, signal: null })
     expect(terminalDescriptors()).toEqual(before)

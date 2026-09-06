@@ -179,10 +179,13 @@ and the terminal/editor feasibility proofs remain prerequisites for workbench in
 This lane preserves concurrent environment and terminal changes.
 
 The operator scheduled Plan 074's standalone package stage on 2026-09-06. `@workspace/pty` now
-passes 15 real-process tests on Bun 1.3.14 and 1.4.0, plus an actual Neovim edit/resize/exit check.
+passes 15 real-process tests on Linux x64 with Bun 1.3.14 and 1.4.0 and macOS 26.4 arm64 with
+Bun 1.4.0. The actual Neovim edit/resize/exit check passes on both operating systems.
 The root Bun pin is 1.4.0; the old 1.3.10 runtime crashes in native failed-spawn handling.
 The application still uses the Node bridge. Service adoption, binary terminal transport, and
-bridge deletion remain later stages of Plan 074, including macOS and Windows verification.
+bridge deletion remain later stages of Plan 074, with service checks on Linux and macOS. Windows is
+completely untested. The package currently permits Linux and macOS through its platform guard;
+Windows compatibility remains unknown.
 
 ## Verification boundaries
 

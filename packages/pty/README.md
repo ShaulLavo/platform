@@ -37,8 +37,9 @@ process.stdout.write(decoder.decode())
 - `write` accepts strings or bytes. Bun owns input buffering and preserves write order. It can
   buffer large pastes, so callers must bound input they accept from outside the process.
 - `exited` resolves with `{ exitCode, signal }` after the direct child exits, terminal output ends,
-  and the native handle closes. Descendants can hold the terminal open after the direct child
-  exits. The result uses the subprocess status, never Bun's separate PTY EOF status.
+  and the native handle closes. On Linux, descendants can hold the terminal open after the direct
+  child exits. macOS revokes the controlling terminal when its session leader exits; subsequent
+  descendant writes fail with `EIO`. The result uses the subprocess status, never Bun's PTY EOF status.
 - `kill()` sends `SIGHUP`. `kill(signal)` sends the supplied signal. If completion takes more than
   250 ms, cleanup sends `SIGKILL` to the direct child and closes the terminal. Repeated calls share
   the deadline; an explicit `SIGKILL` is sent immediately. Forced closure may discard unread bytes.
@@ -52,13 +53,12 @@ Disposal guarantees cleanup of the direct child and the package's descriptors. I
 shells put foreground jobs in separate process groups. A descendant that ignores terminal hangup
 can survive the shell; this package does not discover or supervise an entire process tree.
 
-The supported operating systems are Linux and macOS. The package requires Bun 1.3.14 or later.
-All 15 tests pass on Linux with Bun 1.3.14 and the repository's pinned Bun 1.4.0. Bun 1.3.10
-segfaults on failed spawns when a terminal exit callback is installed, so the package rejects
-that runtime before calling the native API. Windows is
-excluded until a specific runtime and ConPTY behavior pass their own checks. Current
-[Bun documentation](https://bun.com/docs/runtime/child-process#platform-differences) describes
-ConPTY support, which also changes byte fidelity.
+The verified operating systems are Linux and macOS. The package requires Bun 1.3.14 or later.
+All 15 tests pass on Linux x64 with Bun 1.3.14 and 1.4.0, and on macOS 26.4 arm64 with Bun 1.4.0.
+The real Neovim save, resize, and exit check passes on both operating systems. Bun 1.3.10 segfaults
+on failed spawns when a terminal exit callback is installed, so the package rejects that runtime
+before calling the native API. Windows is completely untested; compatibility remains unknown.
+The current platform guard permits Linux and macOS only.
 
 ## Verification commands
 
@@ -74,7 +74,9 @@ bun apps/server/scripts/pty-benchmark.ts
 ```
 
 The package tests use Vitest under Bun because they exercise the actual native runtime. They
-spawn real programs and require POSIX `sh` and `stty`. The optional Neovim check requires `nvim`.
+spawn real programs and require POSIX `sh` and `stty`. Descriptor checks use `/proc/self/fd` on
+Linux and `/usr/sbin/lsof` on macOS, with a live PTY as a positive control. The optional Neovim
+check requires `nvim`.
 The benchmark compares both PTY implementations through `TerminalService` without opening a
 server socket or selecting the native package for application terminals.
 
@@ -85,7 +87,7 @@ callback at spawn time and returns an exit promise, so callers cannot miss start
 do not need to manage subscriptions to await cleanup. The app will need a byte boundary when
 it adopts this package regardless of the subscription shape.
 
-One process owner coordinates the subprocess and PTY lifetimes. Real probes produced
+One process owner coordinates the subprocess and PTY lifetimes. Linux probes produced
 `HEAD`, direct child exit, `TAIL`, then PTY EOF. Closing on subprocess exit would truncate that
 output. Inline terminal options let Bun release the parent's slave descriptor; a separately
 constructed `Bun.Terminal` retains it and cannot provide the same natural EOF barrier.

@@ -98,9 +98,10 @@ end-to-end user-visible number.
 The returned handle exposes `pid`, `exited`, `write`, `resize`, `kill`, and async disposal.
 The callback is installed at spawn time; there is no startup subscription race or replay buffer.
 
-Completion waits for both the subprocess result and PTY EOF, then closes the descriptor. Real
-probes produced output after the direct child exited. Bun's terminal exit status is not a process
-exit code, and EOF alone does not close the native handle.
+Completion waits for both the subprocess result and PTY EOF, then closes the descriptor. Linux
+probes produced output after the direct child exited. macOS revokes the controlling terminal at
+session-leader exit, preventing later descendant writes. Bun's terminal exit status is not a
+process exit code, and EOF alone does not close the native handle.
 
 The package sends the requested signal, defaults to `SIGHUP`, and forces cleanup after 250 ms.
 This is stronger than the old bridge, which ignored the requested signal inside its embedded
@@ -130,7 +131,25 @@ Verification on Linux x64, 2026-09-06:
   importing the package does not depend on package-local TypeScript aliases.
 - Bun 1.3.10 fails a minimal native spawn reproduction without package or Vitest code. The runtime
   guard now rejects it before the native call. The package's verified minimum is 1.3.14.
-- macOS and Windows have not been verified on this Linux host. Windows is rejected explicitly.
+
+Verification over SSH on macOS 26.4 arm64, Bun 1.4.0, 2026-09-06:
+
+- All 15 real-process tests pass. Descriptor checks use `lsof`, with a live PTY as a positive
+  control, and return to baseline after natural exit, disposal, failed spawns, and callback errors.
+- Neovim 0.9.5 enters and leaves the alternate screen, resizes to 123 × 41, saves the exact text,
+  and exits with status zero. Package typecheck, lint, and formatting pass.
+- A native Bun reproduction kept the master open after session-leader exit and still observed
+  `EIO` from the descendant. This matches [Darwin's terminal revocation on process exit](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_exit.c#L2093-L2140).
+  The test now verifies the descendant's actual write outcome through a file outside the PTY:
+  `written` and `HEADTAIL` on Linux, `EIO` and `HEAD` on macOS.
+- An intermittent Linux failed-spawn assertion also reproduced with direct `Bun.spawn`. Native
+  descriptor cleanup can finish after the call throws. Across 8,000 failed spawns, no descriptor
+  remained after an event-loop turn. The test now polls for cleanup without changing spawn behavior.
+
+The Mac run used an isolated package copy with locked dependencies. A hoisted install prevented
+older Node declarations in the user's home directory from entering its typecheck. No global tools
+or existing checkout were changed. Windows is completely untested. The package's current platform
+guard permits Linux and macOS only; Windows compatibility remains unknown.
 
 The rerunnable [service benchmark](../apps/server/scripts/pty-benchmark.ts) uses the real
 `TerminalService` and its JSON protocol with the existing Node factory or a benchmark-only native
@@ -182,10 +201,9 @@ Only after Gate 2 passes.
 
 ## Risks and rejected alternatives
 
-- **Runtime and operating system behavior need evidence.** The package is verified on Linux
-  with Bun 1.3.14 and 1.4.0. Current Bun documentation describes ConPTY support, but those docs
-  describe a newer runtime and Windows output is not byte-identical. Confirm the Windows target
-  and run macOS checks before Gate 3; a successful Linux proof cannot close those gates.
+- **Service adoption needs verification on both operating systems.** The package is verified on
+  Linux with Bun 1.3.14 and 1.4.0 and macOS with Bun 1.4.0. Run the adopted service checks on both
+  before Gate 3; package checks do not cover the app's transport or session lifecycle.
 - **Rejected — keep the bridge and only optimise the framing** (e.g. length-prefixed binary instead
   of JSON lines). Recovers part of the tail-latency win and none of the 15.7 ms startup win, while
   keeping a Node process per terminal and an untypecheckable embedded script.
@@ -194,13 +212,7 @@ Only after Gate 2 passes.
 
 ## Out of scope
 
+- Windows verification is outside this stage. It is completely untested, with compatibility unknown.
 - Terminal rendering. Plan 075.
 - The `bun --watch` zombie leak (plan 076) — this plan reduces the child count but does not fix the
   reaping bug.
-
-## Open questions for the operator
-
-1. **Which runtime and behavior will be verified for Windows?** Plan 073 keeps Windows as a target.
-   Current [Bun docs](https://bun.com/docs/runtime/child-process#platform-differences) describe
-   ConPTY, but this package deliberately excludes Windows until its byte and lifecycle behavior
-   have been tested. This is a remaining adoption gate, not a blocker for the standalone package.

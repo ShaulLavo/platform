@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { writeSync } from 'node:fs'
+import { writeFileSync, writeSync } from 'node:fs'
 
 const mode = process.argv[2]
 const stdout = process.stdout
@@ -93,16 +93,34 @@ function descendant() {
   process.send?.('ready')
   setTimeout(
     () => {
-      process.stdout.write('TAIL')
+      const outcome = writeTail()
+      const reportFile = process.argv[4]
+      if (reportFile) writeFileSync(reportFile, outcome)
       process.exit(0)
     },
     Number(process.argv[3] ?? 150),
   )
 }
 
+function writeTail() {
+  try {
+    writeSync(1, 'TAIL')
+    return 'written'
+  } catch (error) {
+    if (error instanceof Error && 'code' in error) return String(error.code)
+    throw error
+  }
+}
+
 function delayedTail() {
   const child = Bun.spawn(
-    [process.execPath, import.meta.filename, 'descendant', process.argv[3] ?? '150'],
+    [
+      process.execPath,
+      import.meta.filename,
+      'descendant',
+      process.argv[3] ?? '150',
+      process.argv[4] ?? '',
+    ],
     {
       stdin: 'inherit',
       stdout: 'inherit',
