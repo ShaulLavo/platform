@@ -187,9 +187,7 @@
 
 - Under Vitest transforms, `import.meta.path` and `import.meta.dir` are `undefined`. `import.meta.dirname` works. Avoid Bun-only `import.meta` fields in code that tests must drive.
 - Cold process-spawning tests can exceed Vitest's 5s default timeout. If CI flakes cold, raise `testTimeout` for that project.
-- The node-pty bridge must spawn the real Node binary, not Bun's `--bun` node shim.
-- Under `bun --bun`, Bun prepends a temp `node` symlink to `PATH`. `Bun.spawn(['node', ...])` then runs Bun, and `@lydell/node-pty` breaks with `this._socket.write is not a function`.
-- Use `resolveNodeBinary()` in `terminal/service.ts`; it walks `PATH` and skips Bun-backed `node`. Production plain `bun` already resolves `node` correctly, but this protects tests.
+- Terminal processes use `@workspace/pty` directly. Run their tests under Bun; terminal input and output are binary WebSocket frames, with JSON reserved for controls.
 
 `tabular-nums` should be the default for any number that updates ( timers, counters, prices, percentages, scores, live data etc ).
 

@@ -7,6 +7,7 @@ export class RecordingServerSocket extends EventTarget {
 
   readonly url: string
   readyState = RecordingServerSocket.OPEN
+  binaryType: BinaryType = 'blob'
   readonly sent: unknown[] = []
 
   constructor(url: string | URL) {

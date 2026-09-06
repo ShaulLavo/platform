@@ -1,8 +1,8 @@
 # @workspace/pty
 
 Bun-native PTY processes with byte output, input, resize, and explicit cleanup. The package has
-no server dependency. Platform still uses its Node bridge; adopting this package is the next
-stage of [plan 074](../../plans/074-bun-native-pty.md).
+no server dependency. Platform uses this package directly; the
+[terminal service reference](../../docs/terminal.md) describes its ownership and binary transport.
 
 ```ts
 import { spawnPty } from '@workspace/pty'
@@ -77,15 +77,14 @@ The package tests use Vitest under Bun because they exercise the actual native r
 spawn real programs and require POSIX `sh` and `stty`. Descriptor checks use `/proc/self/fd` on
 Linux and `/usr/sbin/lsof` on macOS, with a live PTY as a positive control. The optional Neovim
 check requires `nvim`.
-The benchmark compares both PTY implementations through `TerminalService` without opening a
-server socket or selecting the native package for application terminals.
+The benchmark measures the production `TerminalService` through its routes without opening a
+server socket. The separate `apps/server/scripts/pty-smoke.ts` checks the full service with Neovim.
 
 ## Design decision
 
-The existing app interface uses output and exit subscriptions. This package takes an output
-callback at spawn time and returns an exit promise, so callers cannot miss startup output and
-do not need to manage subscriptions to await cleanup. The app will need a byte boundary when
-it adopts this package regardless of the subscription shape.
+This package takes an output callback at spawn time and returns an exit promise, so callers
+cannot miss startup output and do not need to manage subscriptions to await cleanup. Platform's
+service uses that interface directly and preserves bytes through its replay buffer and transport.
 
 One process owner coordinates the subprocess and PTY lifetimes. Linux probes produced
 `HEAD`, direct child exit, `TAIL`, then PTY EOF. Closing on subprocess exit would truncate that

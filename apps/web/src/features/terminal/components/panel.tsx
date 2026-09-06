@@ -362,7 +362,7 @@ function mountTerminal({
   let socket: EdenServerSocket | null = null
   let terminal: Terminal | null = null
   let terminalDimensions: TerminalDimensions | null = null
-  const inputDecoder = new TextDecoder()
+  const inputEncoder = new TextEncoder()
 
   const open = async () => {
     const [runtime, worktreeId] = await Promise.all([
@@ -378,9 +378,8 @@ function mountTerminal({
     }
 
     terminal = nextTerminal
-    dataDisposable = terminal.onData((bytes) => {
-      const data = inputDecoder.decode(bytes)
-      if (data.length === 0) return
+    dataDisposable = terminal.onData((data) => {
+      if (data.byteLength === 0) return
       sendTerminalClientMessage(socket, { data, type: 'input' })
     })
     resizeDisposable = terminal.onResize((dimensions) => {
@@ -398,7 +397,9 @@ function mountTerminal({
     // The socket is opened below, so the sender is deliberately late-bound:
     // a command queued before the connection lands must not be written into a
     // null socket and silently dropped.
-    onReady(terminal, (data) => sendTerminalClientMessage(socket, { data, type: 'input' }))
+    onReady(terminal, (data) =>
+      sendTerminalClientMessage(socket, { data: inputEncoder.encode(data), type: 'input' }),
+    )
     socket = openTerminalSocket({
       client,
       signal,
@@ -453,7 +454,6 @@ function openTerminalSocket({
   socket.addEventListener('open', () => {
     if (isCancelled() || signal.aborted) return
 
-    sendTerminalResize(socket, getTerminalDimensions())
     onConnectedChange(true)
   })
   socket.addEventListener('close', () => {
@@ -466,6 +466,10 @@ function openTerminalSocket({
 
     const message = parseTerminalServerMessage((event as MessageEvent).data)
     if (!message) return
+    if (message.type === 'ready') {
+      sendTerminalResize(socket, getTerminalDimensions())
+      return
+    }
 
     handleTerminalServerMessage({
       message,
@@ -480,14 +484,11 @@ function handleTerminalServerMessage({
   message,
   terminal,
 }: {
-  message: TerminalServerMessage
+  message: Exclude<TerminalServerMessage, { type: 'ready' }>
   terminal: Terminal
 }) {
   if (message.type === 'output') {
     terminal.write(message.data)
-    return
-  }
-  if (message.type === 'ready') {
     return
   }
   if (message.type === 'exit') {

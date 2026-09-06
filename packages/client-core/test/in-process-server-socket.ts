@@ -3,6 +3,7 @@ import type { createApp } from 'server/testing'
 import { createClientError } from '../src/errors'
 
 type InProcessServer = { readonly app: ReturnType<typeof createApp>; readonly clientOrigin: string }
+type SocketFrame = string | Uint8Array
 
 export function inProcessServerSocketConstructor(server: InProcessServer) {
   return class InProcessServerSocket extends EventTarget {
@@ -12,10 +13,11 @@ export function inProcessServerSocketConstructor(server: InProcessServer) {
     static readonly CLOSED = 3
     static readonly opened: InProcessServerSocket[] = []
     readonly url: string
-    readonly received: string[] = []
-    readonly sent: string[] = []
+    readonly received: (string | ArrayBuffer | Blob)[] = []
+    readonly sent: SocketFrame[] = []
     readonly opening: Promise<void>
     readyState = 0
+    binaryType: BinaryType = 'blob'
     closeDetails: { readonly code: number; readonly reason: string } | null = null
     closeCalls = 0
     private readonly hooks: ReturnType<typeof routeHooks>
@@ -25,7 +27,7 @@ export function inProcessServerSocketConstructor(server: InProcessServer) {
         readonly headers: { readonly origin: string }
         readonly query: Record<string, string>
       }
-      readonly send: (message: string) => void
+      readonly send: (message: SocketFrame) => void
       readonly close: (code?: number, reason?: string) => void
     }
 
@@ -47,7 +49,7 @@ export function inProcessServerSocketConstructor(server: InProcessServer) {
       this.opening = Promise.resolve().then(() => this.open())
     }
 
-    send(message: string) {
+    send(message: SocketFrame) {
       if (this.readyState !== 1)
         throw createClientError({
           code: 'TEST_SOCKET_NOT_OPEN',
@@ -77,10 +79,17 @@ export function inProcessServerSocketConstructor(server: InProcessServer) {
       await opening
     }
 
-    private deliver(message: string) {
+    private deliver(message: SocketFrame) {
       if (this.readyState !== 1) return
-      this.received.push(message)
-      this.dispatchEvent(new MessageEvent('message', { data: message }))
+      const data = this.incomingFrame(message)
+      this.received.push(data)
+      this.dispatchEvent(new MessageEvent('message', { data }))
+    }
+
+    private incomingFrame(message: SocketFrame) {
+      if (typeof message === 'string') return message
+      const bytes = Uint8Array.from(message)
+      return this.binaryType === 'arraybuffer' ? bytes.buffer : new Blob([bytes])
     }
   }
 }

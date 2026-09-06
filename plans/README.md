@@ -26,7 +26,6 @@ a bare root `bun run verify`.
 | [056 — multi-step chord keymap](056-multi-step-chord-keymap.md)                         | **IMPLEMENTED — BROWSER VERIFIED**                       |
 | [057 — standalone Editor chords and shared keymap](057-editor-native-vscode-keymap.md)  | **NEXT — STANDALONE EXECUTION FIRST**                    |
 | [073 — Electrobun 2.x migration](073-electrobun-v2-migration.md)                        | **PROPOSED — ROOT GO/NO-GO SCHEDULING**                  |
-| [074 — Bun-native PTY](074-bun-native-pty.md)                                           | **PACKAGE VERIFIED; SERVER ADOPTION PENDING**            |
 | [075 — terminal renderer fallbacks](075-terminal-renderer-fallbacks.md)                 | **PROPOSED — BLOCKED ON TIER DECISION**                  |
 | [076 — watch-reload child reaping](076-watch-reload-child-reaping.md)                   | **PROPOSED — ROOT GO/NO-GO SCHEDULING**                  |
 

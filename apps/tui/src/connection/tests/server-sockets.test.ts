@@ -38,7 +38,7 @@ test.for([
   },
 )
 
-test('terminal frames reach the injected PTY and explicit disposal releases its listeners', async ({
+test('binary terminal frames reach the PTY and explicit disposal finishes its process', async ({
   socketServer,
   pty,
 }) => {
@@ -47,23 +47,25 @@ test('terminal frames reach the injected PTY and explicit disposal releases its 
   const socket = new Socket(
     `ws://platform-tui.test/terminal?worktreeId=${worktreeId}&terminalId=main`,
   )
+  socket.binaryType = 'arraybuffer'
   await socket.opening
   expect(socket.received.map(parseTerminalServerMessage)).toContainEqual({
     type: 'ready',
     cwd: socketServer.root,
     shell: '/bin/sh',
   })
-  socket.send(JSON.stringify({ type: 'input', data: 'pwd\r' }))
-  expect(pty.processes[0]?.writes).toEqual(['pwd\r'])
-  pty.processes[0]?.emit('fixture output')
+  const bytes = new Uint8Array([0, 255, 192, 128, 27, 3, 4])
+  socket.send(bytes)
+  expect(pty.processes[0]?.writes).toEqual([bytes])
+  pty.processes[0]?.emit(bytes)
   expect(socket.received.map(parseTerminalServerMessage)).toContainEqual({
     type: 'output',
-    data: 'fixture output',
+    data: bytes,
   })
   socket.send(JSON.stringify({ type: 'dispose' }))
-  expect(pty.processes[0]?.killed).toBe(true)
-  expect(pty.processes[0]?.listeners).toBe(0)
-  expect(socket.closeCalls).toBe(1)
+  await expect.poll(() => pty.processes[0]?.killed).toBe(true)
+  await expect(pty.processes[0]?.exited).resolves.toMatchObject({ signal: 'SIGHUP' })
+  await expect.poll(() => socket.closeCalls).toBe(1)
 })
 
 test('LSP frames use real route buffering and client close releases the acquired backend session', async ({
@@ -97,7 +99,7 @@ test('app shutdown disposes terminal and LSP process owners and closes their cli
   await Promise.all([terminal.opening, language.opening])
   await closeApp(socketServer.app)
   expect(pty.processes[0]?.killed).toBe(true)
-  expect(pty.processes[0]?.listeners).toBe(0)
+  await expect(pty.processes[0]?.exited).resolves.toMatchObject({ signal: 'SIGHUP' })
   expect(lsp.clients[0]?.disposed).toBe(true)
   expect(terminal.readyState).toBe(3)
   expect(language.readyState).toBe(3)

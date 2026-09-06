@@ -11,6 +11,37 @@ import { connectTerminalSocket, languageServerWebSocketConstructor } from '@/lib
 import { RecordingServerSocket } from '../../../../test/factories/server-socket'
 import { expect, test } from '../../../../test/fixtures'
 
+test('terminal socket adapters send binary views without Eden JSON encoding and receive array buffers', () => {
+  vi.stubGlobal('WebSocket', RecordingServerSocket)
+  RecordingServerSocket.opened.length = 0
+  const controller = new AbortController()
+  try {
+    const client = createEnvironmentClient({ origin: 'http://localhost:37211' })
+    const terminal = connectTerminalSocket(
+      { worktreeId: TEST_WORKTREE_ID, terminalId: 'main' },
+      client,
+      controller.signal,
+    )
+    const socket = RecordingServerSocket.opened[0]
+    if (!socket) throw new TypeError('The terminal adapter did not create its WebSocket.')
+    expect(socket.binaryType).toBe('arraybuffer')
+    const bytes = new Uint8Array([42, 0, 255, 226, 130, 27, 42]).subarray(1, -1)
+    terminal.send(bytes)
+    terminal.send('{"type":"resize","cols":80,"rows":24}')
+    expect(socket.sent).toEqual([bytes, '{"type":"resize","cols":80,"rows":24}'])
+    const received: unknown[] = []
+    terminal.addEventListener('message', (event) => {
+      if (event instanceof MessageEvent) received.push(event.data)
+    })
+    const frame = bytes.slice().buffer
+    socket.dispatchEvent(new MessageEvent('message', { data: frame }))
+    expect(received).toEqual([frame])
+  } finally {
+    controller.abort()
+    vi.unstubAllGlobals()
+  }
+})
+
 test('same-path terminal and LSP sockets retain their owner and close before activation', () => {
   const originA = 'http://localhost:37211'
   const originB = 'http://localhost:37212'

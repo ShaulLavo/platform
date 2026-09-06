@@ -10,15 +10,27 @@ import {
 } from '../terminal'
 
 describe('terminal protocol', () => {
-  it('parses client input messages from objects and JSON strings', () => {
-    expect(parseTerminalClientMessage({ type: 'input', data: 'pwd\r' })).toEqual({
-      type: 'input',
-      data: 'pwd\r',
-    })
-    expect(parseTerminalClientMessage('{"type":"input","data":"ls\\r"}')).toEqual({
-      type: 'input',
-      data: 'ls\r',
-    })
+  it('preserves binary input and output including invalid UTF-8 and view boundaries', () => {
+    const buffer = new Uint8Array([42, 0, 255, 192, 128, 27, 42])
+    const data = buffer.subarray(1, -1)
+    expect(parseTerminalClientMessage(data)).toEqual({ type: 'input', data })
+    expect(parseTerminalServerMessage(data)).toEqual({ type: 'output', data })
+    const binaryFrame = data.slice().buffer
+    expect(parseTerminalClientMessage(binaryFrame)).toEqual({ type: 'input', data })
+    expect(parseTerminalServerMessage(binaryFrame)).toEqual({ type: 'output', data })
+  })
+
+  it('does not interpret binary JSON-looking bytes as controls', () => {
+    const data = new TextEncoder().encode('{"type":"dispose"}')
+    expect(parseTerminalClientMessage(data)).toEqual({ type: 'input', data })
+    expect(parseTerminalServerMessage(data)).toEqual({ type: 'output', data })
+  })
+
+  it('rejects text envelopes for terminal bytes', () => {
+    expect(parseTerminalClientMessage({ type: 'input', data: 'pwd\r' })).toBeNull()
+    expect(parseTerminalClientMessage('{"type":"input","data":"ls\\r"}')).toBeNull()
+    expect(parseTerminalServerMessage({ type: 'output', data: 'ok' })).toBeNull()
+    expect(parseTerminalServerMessage('{"type":"output","data":"ok"}')).toBeNull()
   })
 
   it('normalizes client resize dimensions to bounded integers', () => {
@@ -69,10 +81,6 @@ describe('terminal protocol', () => {
       cwd: '/workspace',
       shell: '/bin/zsh',
       type: 'ready',
-    })
-    expect(parseTerminalServerMessage('{"type":"output","data":"ok"}')).toEqual({
-      data: 'ok',
-      type: 'output',
     })
     expect(parseTerminalServerMessage({ type: 'exit', exitCode: null })).toEqual({
       exitCode: null,

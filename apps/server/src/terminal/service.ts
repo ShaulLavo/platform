@@ -6,7 +6,7 @@ import {
   type WorktreeId,
 } from '@workspace/contracts'
 import { realpathSync } from 'node:fs'
-import path from 'node:path'
+import { spawnPty, type Pty } from '@workspace/pty'
 import {
   isRecord,
   parseTerminalClientMessage,
@@ -19,45 +19,7 @@ import { FsError, isFsError } from '../fs/errors'
 import type { WorkspacePaths } from '../fs/path'
 import { elapsedMs, limitText, recordProcessInfo, recordProcessWarning } from '../observability'
 
-export type TerminalPty = {
-  kill(signal?: string): void
-  onData(listener: (data: string) => void): TerminalPtyDisposable
-  onExit(listener: (event: TerminalPtyExitEvent) => void): TerminalPtyDisposable
-  resize(cols: number, rows: number): void
-  write(data: string): void
-}
-
-export type TerminalPtyDisposable = {
-  dispose(): void
-}
-
-export type TerminalPtyExitEvent = {
-  exitCode: number
-  signal?: number
-}
-
-type TerminalPtySpawnOptions = {
-  cols: number
-  cwd: string
-  env: NodeJS.ProcessEnv
-  rows: number
-  shell: string
-}
-
-export type TerminalPtyFactory = (options: TerminalPtySpawnOptions) => TerminalPty
-
-type TerminalBridgeMessage =
-  | { type: 'output'; data: string }
-  | { type: 'exit'; exitCode: number | null }
-  | { type: 'error'; message: string }
-
-type TerminalBridgeProcess = {
-  exited: Promise<number>
-  stdin: Pick<Bun.FileSink, 'write' | 'flush'>
-  stdout: ReadableStream<Uint8Array>
-  stderr: ReadableStream<Uint8Array>
-  kill: (signal?: NodeJS.Signals) => void
-}
+export type TerminalPtyFactory = typeof spawnPty
 
 export type TerminalServiceOptions = {
   detachTtlMs?: number
@@ -71,7 +33,7 @@ export type TerminalServiceOptions = {
 type TerminalConnection = {
   key: object
   close: () => void
-  send: (message: string) => void
+  send: (message: string | Uint8Array) => void
 }
 
 const DEFAULT_COLS = 80
@@ -97,7 +59,7 @@ export class TerminalService {
     paths,
     resolveWorktree,
     lifecycle,
-    ptyFactory = defaultTerminalPtyFactory,
+    ptyFactory = spawnPty,
   }: TerminalServiceOptions) {
     this.detachTtlMs = detachTtlMs
     this.env = env
@@ -323,21 +285,21 @@ export class TerminalSession {
   private readonly ptyFactory: TerminalPtyFactory
   private readonly rootPath: string
   private readonly sessionId: string
-  private readonly outputBufferChunks: string[] = []
+  private readonly outputBufferChunks: Uint8Array[] = []
   private connection: TerminalConnection | null = null
-  private dataDisposable: TerminalPtyDisposable | null = null
+  private completion = Promise.resolve()
   private detachTimer: ReturnType<typeof setTimeout> | null = null
   private disposed = false
   private errorMessage: string | null = null
-  private exitDisposable: TerminalPtyDisposable | null = null
   private exitCode: number | null = null
+  private exitSignal: NodeJS.Signals | null = null
   private inputBytes = 0
   private inputMessageCount = 0
   private openedAt = performance.now()
   private outputBufferBytes = 0
   private outputBytes = 0
   private outputMessageCount = 0
-  private pty: TerminalPty | null = null
+  private pty: Pty | null = null
   private resizeCount = 0
   private serverMessageCount = 0
   private shell: string | null = null
@@ -387,16 +349,15 @@ export class TerminalSession {
 
     this.pty = spawnResult.pty
     this.shell = spawnResult.shell
-    this.dataDisposable = this.pty.onData((data) => this.handleOutput(data))
-    this.exitDisposable = this.pty.onExit((event) => {
-      this.exitCode = event.exitCode
-      this.emit({ type: 'exit', exitCode: event.exitCode })
-      void this.dispose({ kill: false })
-    })
-    if (this.disposed) {
-      this.exitDisposable.dispose()
-      return false
-    }
+    this.completion = this.pty.exited.then(
+      ({ exitCode, signal }) => {
+        this.exitCode = exitCode
+        this.exitSignal = signal
+        this.emit({ type: 'exit', exitCode })
+        return this.dispose({ kill: false })
+      },
+      (error: unknown) => this.handlePtyFailure(error),
+    )
     this.emitReady()
     return true
   }
@@ -409,8 +370,7 @@ export class TerminalSession {
 
     this.setConnection(connection)
     this.emitReady()
-    const buffered = this.outputBufferChunks.join('')
-    if (buffered) this.emit({ type: 'output', data: buffered })
+    for (const data of this.outputBufferChunks) this.emit({ type: 'output', data })
   }
 
   detach(key: object) {
@@ -432,7 +392,18 @@ export class TerminalSession {
     }
     if (!this.pty) return
 
-    handleTerminalClientMessage(this.pty, parsed)
+    try {
+      handleTerminalClientMessage(this.pty, parsed)
+    } catch (error) {
+      recordProcessWarning('terminal.session.input_failed', {
+        area: 'terminal',
+        worktreeId: this.worktreeId,
+        sessionId: this.sessionId,
+        operation: parsed.type,
+        error,
+      })
+      this.emit({ type: 'error', message: terminalSpawnErrorMessage(error) })
+    }
   }
 
   dispose(options: { kill?: boolean } = {}): Promise<void> {
@@ -442,8 +413,6 @@ export class TerminalSession {
       return this.requestTermination()
 
     this.disposed = true
-    this.dataDisposable?.dispose()
-    this.exitDisposable?.dispose()
     const connection = this.connection
     this.connection = null
     connection?.close()
@@ -470,6 +439,7 @@ export class TerminalSession {
       .terminate()
       .then(() => {
         if (this.exitCode === null) this.pty?.kill()
+        return this.completion
       })
       .catch((error: unknown) => {
         recordProcessWarning('terminal.session.termination_failed', {
@@ -479,6 +449,21 @@ export class TerminalSession {
         })
       })
     return this.disposal
+  }
+
+  private handlePtyFailure(error: unknown) {
+    this.terminating = true
+    this.cancelDetachTimer()
+    recordProcessWarning('terminal.session.ownership_unconfirmed', {
+      area: 'terminal',
+      worktreeId: this.worktreeId,
+      sessionId: this.sessionId,
+      pid: this.pty?.pid,
+      error,
+    })
+    this.emit({ type: 'error', message: 'Terminal cleanup could not be confirmed.' })
+    this.connection?.close()
+    this.connection = null
   }
 
   private emitReady() {
@@ -511,22 +496,34 @@ export class TerminalSession {
     this.detachTimer = null
   }
 
-  private handleOutput(data: string) {
+  private handleOutput(data: Uint8Array) {
     this.appendOutput(data)
     this.emit({ type: 'output', data })
   }
 
-  private appendOutput(data: string) {
+  private appendOutput(data: Uint8Array) {
+    if (data.byteLength === 0) return
+    if (data.byteLength >= TERMINAL_REPLAY_BUFFER_BYTES) {
+      this.outputBufferChunks.length = 0
+      // Copy at the retention boundary so an oversized chunk cannot pin its whole allocation.
+      this.outputBufferChunks.push(new Uint8Array(data.subarray(-TERMINAL_REPLAY_BUFFER_BYTES)))
+      this.outputBufferBytes = TERMINAL_REPLAY_BUFFER_BYTES
+      return
+    }
     this.outputBufferChunks.push(data)
-    this.outputBufferBytes += Buffer.byteLength(data, 'utf8')
-    while (
-      this.outputBufferBytes > TERMINAL_REPLAY_BUFFER_BYTES &&
-      this.outputBufferChunks.length > 1
-    ) {
-      const removed = this.outputBufferChunks.shift()
-      if (removed === undefined) break
-
-      this.outputBufferBytes -= Buffer.byteLength(removed, 'utf8')
+    this.outputBufferBytes += data.byteLength
+    while (this.outputBufferBytes > TERMINAL_REPLAY_BUFFER_BYTES) {
+      const first = this.outputBufferChunks[0]
+      const removed = Math.min(
+        first.byteLength,
+        this.outputBufferBytes - TERMINAL_REPLAY_BUFFER_BYTES,
+      )
+      this.outputBufferBytes -= removed
+      if (removed === first.byteLength) {
+        this.outputBufferChunks.shift()
+        continue
+      }
+      this.outputBufferChunks[0] = first.subarray(removed)
     }
   }
 
@@ -556,7 +553,8 @@ export class TerminalSession {
           cwd: this.cwd,
           env: terminalEnv(this.env),
           rows: this.rows,
-          shell,
+          command: [shell],
+          onData: (data) => this.handleOutput(data),
         }),
         shell,
       }
@@ -567,13 +565,30 @@ export class TerminalSession {
 
   private emit(message: TerminalServerMessage) {
     this.recordServerMessage(message)
-    this.connection?.send(JSON.stringify(message))
+    const connection = this.connection
+    if (!connection) return
+    try {
+      // Elysia passes Buffer through; a plain Uint8Array would become JSON.
+      const frame =
+        message.type === 'output'
+          ? Buffer.from(message.data.buffer, message.data.byteOffset, message.data.byteLength)
+          : JSON.stringify(message)
+      connection.send(frame)
+    } catch (error) {
+      recordProcessWarning('terminal.session.send_failed', {
+        area: 'terminal',
+        worktreeId: this.worktreeId,
+        sessionId: this.sessionId,
+        error,
+      })
+      this.detach(connection.key)
+    }
   }
 
   private recordClientMessage(message: TerminalClientMessage) {
     if (message.type === 'dispose') return
     if (message.type === 'input') {
-      this.inputBytes += Buffer.byteLength(message.data, 'utf8')
+      this.inputBytes += message.data.byteLength
       this.inputMessageCount += 1
       return
     }
@@ -584,7 +599,7 @@ export class TerminalSession {
   private recordServerMessage(message: TerminalServerMessage) {
     this.serverMessageCount += 1
     if (message.type === 'output') {
-      this.outputBytes += Buffer.byteLength(message.data, 'utf8')
+      this.outputBytes += message.data.byteLength
       this.outputMessageCount += 1
       return
     }
@@ -604,6 +619,8 @@ export class TerminalSession {
       durationMs: elapsedMs(this.openedAt),
       errorMessage: this.errorMessage ? limitText(this.errorMessage, 500) : undefined,
       exitCode: this.exitCode,
+      signal: this.exitSignal,
+      pid: this.pty?.pid,
       inputBytes: this.inputBytes,
       inputMessageCount: this.inputMessageCount,
       operation: 'session',
@@ -633,7 +650,7 @@ type TerminalWebSocket = {
   data: unknown
   key: object
   input: TerminalOpenInput | null
-  send(message: string): unknown
+  send(message: string | Uint8Array): unknown
 }
 
 function terminalWebSocketObject(value: unknown): TerminalWebSocket | null {
@@ -689,7 +706,7 @@ function terminalSessionKey(rootPath: string, sessionId: string) {
   return JSON.stringify([rootPath, sessionId])
 }
 
-function handleTerminalClientMessage(ptyProcess: TerminalPty, message: TerminalClientMessage) {
+function handleTerminalClientMessage(ptyProcess: Pty, message: TerminalClientMessage) {
   if (message.type === 'input') {
     ptyProcess.write(message.data)
     return
@@ -719,22 +736,6 @@ function terminalEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   }
 }
 
-function defaultTerminalPtyFactory({
-  cols,
-  cwd,
-  env,
-  rows,
-  shell,
-}: TerminalPtySpawnOptions): TerminalPty {
-  return new NodePtyBridge({
-    cols,
-    cwd,
-    env,
-    rows,
-    shell,
-  })
-}
-
 function terminalSpawnErrorMessage(error: unknown) {
   if (error instanceof FsError) return error.message
   if (error instanceof Error) return error.message
@@ -753,374 +754,3 @@ function terminalOutcome(exitCode: number | null, errorMessage: string | null) {
 function isString(value: string | undefined): value is string {
   return typeof value === 'string' && value.length > 0
 }
-
-function killSignal(signal: string | undefined): NodeJS.Signals | undefined {
-  if (!signal) return undefined
-
-  return signal as NodeJS.Signals
-}
-
-export class NodePtyBridge implements TerminalPty {
-  readonly #child
-  readonly #cwd: string
-  readonly #dataListeners = new Set<(data: string) => void>()
-  readonly #encoder = new TextEncoder()
-  readonly #exitListeners = new Set<(event: TerminalPtyExitEvent) => void>()
-  readonly #stdin: TerminalBridgeProcess['stdin']
-  #exitEmitted = false
-  #bridgeExited = false
-  #writeQueue = Promise.resolve()
-
-  constructor(
-    options: TerminalPtySpawnOptions,
-    spawnBridge: (options: TerminalPtySpawnOptions) => TerminalBridgeProcess = spawnTerminalBridge,
-  ) {
-    this.#cwd = options.cwd
-    this.#child = spawnBridge(options)
-    this.#stdin = this.#child.stdin
-    this.#startReaders()
-    this.#sendCommand({ type: 'start', ...options })
-  }
-
-  kill(signal?: string) {
-    this.#sendCommand({ signal, type: 'kill' })
-    setTimeout(() => {
-      if (this.#exitEmitted || this.#bridgeExited) return
-
-      try {
-        this.#child.kill(killSignal(signal))
-      } catch (error) {
-        recordProcessWarning('terminal.bridge.kill_failed', {
-          area: 'terminal',
-          cwd: this.#cwd,
-          error,
-        })
-      }
-    }, 250)
-  }
-
-  onData(listener: (data: string) => void): TerminalPtyDisposable {
-    this.#dataListeners.add(listener)
-    return { dispose: () => this.#dataListeners.delete(listener) }
-  }
-
-  onExit(listener: (event: TerminalPtyExitEvent) => void) {
-    this.#exitListeners.add(listener)
-    return { dispose: () => this.#exitListeners.delete(listener) }
-  }
-
-  resize(cols: number, rows: number) {
-    this.#sendCommand({ cols, rows, type: 'resize' })
-  }
-
-  write(data: string) {
-    this.#sendCommand({ data, type: 'input' })
-  }
-
-  #startReaders() {
-    const output = readBridgeMessages(this.#child.stdout, (message) =>
-      this.#handleBridgeMessage(message),
-    ).catch((error: unknown) => this.#recordReadFailure(error))
-    void readBridgeStderr(this.#child.stderr, (data) => this.#emitData(data)).catch(
-      (error: unknown) => this.#recordReadFailure(error),
-    )
-    void this.#child.exited.then((exitCode) => this.#handleBridgeExit(exitCode, output))
-  }
-
-  async #handleBridgeExit(exitCode: number, output: Promise<void>) {
-    this.#bridgeExited = true
-    await output
-    if (this.#exitEmitted) return
-    recordProcessWarning('terminal.bridge.ownership_unconfirmed', {
-      area: 'terminal',
-      cwd: this.#cwd,
-      exitCode,
-    })
-    this.#emitData(
-      '\r\nTerminal exit could not be confirmed. Checkout cleanup remains blocked.\r\n',
-    )
-  }
-
-  #recordReadFailure(error: unknown) {
-    recordProcessWarning('terminal.bridge.read_failed', {
-      area: 'terminal',
-      cwd: this.#cwd,
-      error,
-    })
-  }
-
-  #handleBridgeMessage(message: TerminalBridgeMessage) {
-    if (message.type === 'output') {
-      this.#emitData(message.data)
-      return
-    }
-    if (message.type === 'exit') {
-      this.#emitExit(message.exitCode)
-      return
-    }
-
-    this.#emitData(`\r\n${message.message}\r\n`)
-  }
-
-  #sendCommand(command: Record<string, unknown>) {
-    const chunk = this.#encoder.encode(`${JSON.stringify(command)}\n`)
-    this.#writeQueue = this.#writeQueue
-      .then(() => this.#stdin.write(chunk))
-      .then(() => this.#stdin.flush())
-      .then(noop, noop)
-  }
-
-  #emitData(data: string) {
-    for (const listener of this.#dataListeners) {
-      listener(data)
-    }
-  }
-
-  #emitExit(exitCode: number | null) {
-    if (this.#exitEmitted) return
-
-    this.#exitEmitted = true
-    const normalizedExitCode = exitCode ?? 0
-    for (const listener of this.#exitListeners) {
-      listener({ exitCode: normalizedExitCode })
-    }
-  }
-}
-
-function spawnTerminalBridge(options: TerminalPtySpawnOptions): TerminalBridgeProcess {
-  return Bun.spawn([resolveNodeBinary(), '--eval', NODE_PTY_BRIDGE_SCRIPT], {
-    env: {
-      ...options.env,
-      NODE_PTY_BRIDGE_MODULE: resolveNodePtyModule(),
-    },
-    stderr: 'pipe',
-    stdin: 'pipe',
-    stdout: 'pipe',
-  })
-}
-
-async function readBridgeMessages(
-  stream: ReadableStream<Uint8Array>,
-  onMessage: (message: TerminalBridgeMessage) => void,
-) {
-  let buffered = ''
-  const decoder = new TextDecoder()
-  const reader = stream.getReader()
-
-  try {
-    while (true) {
-      const result = await reader.read()
-      if (result.done) break
-
-      buffered = readBridgeMessageChunk(
-        buffered + decoder.decode(result.value, { stream: true }),
-        onMessage,
-      )
-    }
-
-    readBridgeMessageChunk(buffered + decoder.decode(), onMessage)
-  } finally {
-    reader.releaseLock()
-  }
-}
-
-async function readBridgeStderr(
-  stream: ReadableStream<Uint8Array>,
-  onData: (data: string) => void,
-) {
-  const decoder = new TextDecoder()
-  const reader = stream.getReader()
-
-  try {
-    while (true) {
-      const result = await reader.read()
-      if (result.done) break
-
-      onData(decoder.decode(result.value, { stream: true }))
-    }
-
-    const final = decoder.decode()
-    if (final) onData(final)
-  } finally {
-    reader.releaseLock()
-  }
-}
-
-function readBridgeMessageChunk(
-  chunk: string,
-  onMessage: (message: TerminalBridgeMessage) => void,
-) {
-  let buffered = chunk
-  let newlineIndex = buffered.indexOf('\n')
-
-  while (newlineIndex >= 0) {
-    const raw = buffered.slice(0, newlineIndex)
-    buffered = buffered.slice(newlineIndex + 1)
-    const message = parseBridgeMessage(raw)
-    if (message) onMessage(message)
-    newlineIndex = buffered.indexOf('\n')
-  }
-
-  return buffered
-}
-
-function parseBridgeMessage(raw: string): TerminalBridgeMessage | null {
-  if (!raw) return null
-
-  try {
-    return bridgeMessageFromValue(JSON.parse(raw) as unknown)
-  } catch {
-    return null
-  }
-}
-
-function bridgeMessageFromValue(value: unknown): TerminalBridgeMessage | null {
-  if (!isRecord(value)) return null
-  if (value.type === 'output' && typeof value.data === 'string') {
-    return { type: 'output', data: value.data }
-  }
-  if (value.type === 'error' && typeof value.message === 'string') {
-    return { type: 'error', message: value.message }
-  }
-  if (value.type !== 'exit') return null
-  if (value.exitCode !== null && typeof value.exitCode !== 'number') return null
-
-  return { type: 'exit', exitCode: value.exitCode }
-}
-
-function resolveNodePtyModule() {
-  // `import.meta.dirname` resolves under both real Bun and Vitest's transform;
-  // `import.meta.path` comes back undefined under Vitest and breaks resolveSync.
-  return Bun.resolveSync('@lydell/node-pty', import.meta.dirname)
-}
-
-let cachedNodeBinary: string | undefined
-
-// node-pty's native addon needs a real Node runtime: its master-fd socket breaks
-// under Bun's Node emulation (`this._socket.write is not a function`). When the
-// server runs under `bun --bun` (notably the Vitest suite), Bun prepends a shim
-// directory to PATH whose `node` symlinks to the Bun binary, so a bare `node`
-// spawn would run Bun. Resolve the first PATH entry whose `node` is not that shim.
-function resolveNodeBinary(): string {
-  if (cachedNodeBinary) return cachedNodeBinary
-
-  for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
-    if (!dir) continue
-    const candidate = path.join(dir, 'node')
-    let real: string
-    try {
-      real = realpathSync(candidate)
-    } catch {
-      continue
-    }
-    if (path.basename(real).startsWith('bun')) continue
-    cachedNodeBinary = candidate
-    return candidate
-  }
-
-  cachedNodeBinary = 'node'
-  return cachedNodeBinary
-}
-
-function noop() {}
-
-const NODE_PTY_BRIDGE_SCRIPT = String.raw`
-const modulePath = process.env.NODE_PTY_BRIDGE_MODULE;
-if (!modulePath) {
-  send({ type: "error", message: "missing node-pty module path" });
-  process.exit(1);
-}
-
-const pty = require(modulePath);
-let ptyProcess = null;
-let buffered = "";
-
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => {
-  buffered += chunk;
-  let newlineIndex = buffered.indexOf("\n");
-
-  while (newlineIndex >= 0) {
-    const raw = buffered.slice(0, newlineIndex);
-    buffered = buffered.slice(newlineIndex + 1);
-    handleRawCommand(raw);
-    newlineIndex = buffered.indexOf("\n");
-  }
-});
-process.stdin.on("end", shutdown);
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
-
-function handleRawCommand(raw) {
-  if (!raw) return;
-
-  try {
-    handleCommand(JSON.parse(raw));
-  } catch (error) {
-    send({ type: "error", message: errorMessage(error) });
-  }
-}
-
-function handleCommand(command) {
-  if (!command || typeof command !== "object") return;
-  if (command.type === "start") {
-    start(command);
-    return;
-  }
-  if (!ptyProcess) return;
-  if (command.type === "input" && typeof command.data === "string") {
-    ptyProcess.write(command.data);
-    return;
-  }
-  if (
-    command.type === "resize" &&
-    Number.isFinite(command.cols) &&
-    Number.isFinite(command.rows)
-  ) {
-    ptyProcess.resize(command.cols, command.rows);
-    return;
-  }
-  if (command.type === "kill") {
-    shutdown();
-  }
-}
-
-function start(command) {
-  ptyProcess = pty.spawn(command.shell, [], {
-    cols: command.cols,
-    cwd: command.cwd,
-    env: command.env,
-    name: "xterm-256color",
-    rows: command.rows,
-  });
-  ptyProcess.onData((data) => send({ type: "output", data }));
-  ptyProcess.onExit((event) => {
-    send({
-      type: "exit",
-      exitCode: Number.isFinite(event.exitCode) ? event.exitCode : null,
-    });
-    process.exit(0);
-  });
-}
-
-function shutdown() {
-  if (!ptyProcess) {
-    process.exit(0);
-    return;
-  }
-
-  try {
-    ptyProcess.kill();
-  } catch (error) {
-    send({ type: "error", message: "PTY termination failed: " + errorMessage(error) });
-  }
-}
-
-function send(message) {
-  process.stdout.write(JSON.stringify(message) + "\n");
-}
-
-function errorMessage(error) {
-  return error instanceof Error ? error.message : "terminal bridge failed";
-}
-`

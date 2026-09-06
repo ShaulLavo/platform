@@ -2,24 +2,26 @@ import * as v from 'valibot'
 import { mkdir, realpath, rm, symlink } from 'node:fs/promises'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { ElysiaWS } from 'elysia/ws'
 import {
   TERMINAL_MAX_COLS,
   TERMINAL_MIN_ROWS,
+  parseTerminalServerMessage,
   type TerminalServerMessage,
   worktreeIdSchema,
 } from '@workspace/contracts'
 
 import { createOrchestrationFixture } from '../../../test/factories/orchestration'
+import {
+  createFakePtyFactory,
+  terminalOutputBytes,
+  terminalOutputText,
+} from '../../../test/factories/terminal'
 import { requireWorktree } from '../../orchestration/read-model'
 import { projectionTerminalLeases } from '../../db/schema'
 import { createAuthConfig } from '../../auth'
 import { createWorkspacePaths, type WorkspacePaths } from '../../fs/path'
-import {
-  NodePtyBridge,
-  TerminalService,
-  type TerminalPtyExitEvent,
-  type TerminalPtyFactory,
-} from '../service'
+import { TerminalService, type TerminalPtyFactory } from '../service'
 
 const TRUSTED_ORIGIN = 'http://localhost:5173'
 const fixtures = new Map<string, Awaited<ReturnType<typeof createOrchestrationFixture>>>()
@@ -63,7 +65,7 @@ describe('terminal service', () => {
     expect(pty.spawns).toEqual([
       expect.objectContaining({
         cwd: path.join(root, 'project'),
-        shell: '/bin/zsh',
+        command: ['/bin/zsh'],
       }),
     ])
     expect(ws.messages[0]).toEqual({
@@ -122,7 +124,7 @@ describe('terminal service', () => {
 
     await service.routes(auth()).open(ws)
 
-    expect(pty.spawns.map((spawn) => spawn.shell)).toEqual(['bash', 'sh'])
+    expect(pty.spawns.map((spawn) => spawn.command[0])).toEqual(['bash', 'sh'])
     expect(ws.messages[0]).toMatchObject({ shell: 'sh', type: 'ready' })
   })
 
@@ -134,7 +136,9 @@ describe('terminal service', () => {
     const ws = fakeSocket(root, '')
 
     await routes.open(ws)
-    routes.message(ws, { type: 'input', data: 'pwd\r' })
+    const input = new Uint8Array([0x70, 0x77, 0x64, 0x0d, 0xff, 0x80, 0x00])
+    routes.message(ws, input.buffer)
+    routes.message(ws, { type: 'input', data: 'legacy input' })
     routes.message(ws, { type: 'input', data: 1 })
     routes.message(ws, '{')
     routes.message(ws, {
@@ -143,7 +147,7 @@ describe('terminal service', () => {
       type: 'resize',
     })
 
-    expect(pty.ptys[0]?.writes).toEqual(['pwd\r'])
+    expect(pty.ptys[0]?.writes).toEqual([input])
     expect(pty.ptys[0]?.resizes).toEqual([[TERMINAL_MAX_COLS, TERMINAL_MIN_ROWS]])
   })
 
@@ -193,7 +197,7 @@ describe('terminal service', () => {
     const first = fakeSocket(root, 'project')
 
     await routes.open(first)
-    pty.ptys[0]?.emit('streamed-output\r\n')
+    pty.ptys[0]?.emit(new TextEncoder().encode('streamed-output\r\n'))
     routes.close(first)
 
     const second = fakeSocket(root, 'project')
@@ -207,6 +211,90 @@ describe('terminal service', () => {
     await service.dispose()
   })
 
+  it('preserves invalid UTF-8 and split characters through live output and replay', async () => {
+    const root = await fixtureRoot()
+    const pty = createFakePtyFactory()
+    const service = testService(root, { ptyFactory: pty.factory })
+    const routes = service.routes(auth())
+    const first = fakeSocket(root, '')
+    await routes.open(first)
+    const chunks = [new Uint8Array([0xff, 0x00, 0xf0, 0x9f]), new Uint8Array([0x98, 0x80, 0x80])]
+
+    for (const chunk of chunks) pty.ptys[0]?.emit(chunk)
+    routes.close(first)
+    const second = fakeSocket(root, '')
+    await routes.open(second)
+
+    const expected = new Uint8Array([0xff, 0x00, 0xf0, 0x9f, 0x98, 0x80, 0x80])
+    expect(terminalOutputBytes(first.messages)).toEqual(expected)
+    expect(terminalOutputBytes(second.messages)).toEqual(expected)
+  })
+
+  it('sends byte views as binary and control messages as text through Elysia', async () => {
+    const root = await fixtureRoot()
+    const pty = createFakePtyFactory()
+    const service = testService(root, { ptyFactory: pty.factory })
+    const socket = fakeSocket(root, '')
+    const frames: unknown[] = []
+    const raw = { send: (frame: unknown) => frames.push(frame) }
+    socket.send = (frame) => {
+      ElysiaWS.prototype.send.call({ raw }, frame)
+    }
+
+    await service.routes(auth()).open(socket)
+    const bytes = new Uint8Array([0x11, 0xff, 0x00, 0x80, 0x22]).subarray(1, 4)
+    pty.ptys[0]?.emit(bytes)
+
+    expect(typeof frames[0]).toBe('string')
+    expect(parseTerminalServerMessage(frames[0])).toMatchObject({ type: 'ready' })
+    expect(Buffer.isBuffer(frames[1])).toBe(true)
+    expect(frames[1]).toEqual(Buffer.from([0xff, 0x00, 0x80]))
+  })
+
+  it('keeps exactly the latest 256 KiB for replay even after one oversized chunk', async () => {
+    const root = await fixtureRoot()
+    const pty = createFakePtyFactory()
+    const service = testService(root, { ptyFactory: pty.factory })
+    const routes = service.routes(auth())
+    const first = fakeSocket(root, '')
+    await routes.open(first)
+    const oversized = Uint8Array.from({ length: 256 * 1024 + 31 }, (_, index) => index % 251)
+    const tail = new Uint8Array([0xff, 0x80, 0x00])
+
+    pty.ptys[0]?.emit(oversized)
+    pty.ptys[0]?.emit(tail)
+    routes.close(first)
+    const second = fakeSocket(root, '')
+    await routes.open(second)
+
+    expect(terminalOutputBytes(first.messages).length).toBe(oversized.length + tail.length)
+    const replay = terminalOutputBytes(second.messages)
+    expect(replay.length).toBe(256 * 1024)
+    expect(replay.subarray(0, -tail.length)).toEqual(oversized.subarray(31 + tail.length))
+    expect(replay.subarray(-tail.length)).toEqual(tail)
+  })
+
+  it('keeps the PTY and its replay when a disconnected socket throws while sending output', async () => {
+    const root = await fixtureRoot()
+    const pty = createFakePtyFactory()
+    const service = testService(root, { ptyFactory: pty.factory })
+    const routes = service.routes(auth())
+    const first = fakeSocket(root, '')
+    await routes.open(first)
+    first.send = () => {
+      throw new TypeError('Socket disconnected')
+    }
+    const output = new Uint8Array([0xff, 0x00, 0x80])
+
+    expect(() => pty.ptys[0]?.emit(output)).not.toThrow()
+    expect(pty.ptys[0]?.killed).toBe(false)
+    const second = fakeSocket(root, '')
+    await routes.open(second)
+
+    expect(pty.ptys).toHaveLength(1)
+    expect(terminalOutputBytes(second.messages)).toEqual(output)
+  })
+
   it('keeps terminal tab sessions isolated within the same workspace', async () => {
     const root = await fixtureRoot()
     const pty = createFakePtyFactory()
@@ -217,12 +305,12 @@ describe('terminal service', () => {
 
     await routes.open(first)
     await routes.open(second)
-    routes.message(first, { type: 'input', data: 'echo first\r' })
-    routes.message(second, { type: 'input', data: 'echo second\r' })
+    routes.message(first, new TextEncoder().encode('echo first\r'))
+    routes.message(second, new TextEncoder().encode('echo second\r'))
 
     expect(pty.ptys).toHaveLength(2)
-    expect(pty.ptys[0]?.writes).toEqual(['echo first\r'])
-    expect(pty.ptys[1]?.writes).toEqual(['echo second\r'])
+    expect(pty.ptys[0]?.writes).toEqual([new TextEncoder().encode('echo first\r')])
+    expect(pty.ptys[1]?.writes).toEqual([new TextEncoder().encode('echo second\r')])
 
     await service.dispose()
   })
@@ -310,7 +398,7 @@ describe('terminal service', () => {
     const root = await fixtureRoot()
     const fixture = requiredFixture(root)
     const worktreeId = v.parse(worktreeIdSchema, registrations.get(root))
-    const pty = createFakePtyFactory()
+    const pty = createFakePtyFactory({ holdUntilExit: true })
     const service = testService(root, { ptyFactory: pty.factory })
     const routes = service.routes(auth())
     const socket = fakeSocket(root, '')
@@ -323,8 +411,12 @@ describe('terminal service', () => {
       reason: 'active-terminal',
     })
     routes.close(socket)
-    await service.dispose()
-    expect(pty.ptys[0]?.killed).toBe(true)
+    let disposed = false
+    const disposal = service.dispose().then(() => {
+      disposed = true
+    })
+    await expect.poll(() => pty.ptys[0]?.killed).toBe(true)
+    expect(disposed).toBe(false)
     expect(service.hasWorktreeRuntime(worktreeId)).toBe(true)
     expect(
       requireWorktree(await fixture.engine.readModelSnapshot(), worktreeId).activeTerminalCount,
@@ -333,6 +425,8 @@ describe('terminal service', () => {
       'termination-requested',
     )
     pty.ptys[0]?.exit(0)
+    await disposal
+    expect(disposed).toBe(true)
     await expect.poll(() => service.hasWorktreeRuntime(worktreeId)).toBe(false)
     expect(
       requireWorktree(await fixture.engine.readModelSnapshot(), worktreeId).activeTerminalCount,
@@ -342,42 +436,70 @@ describe('terminal service', () => {
     if (exclusive.acquired) exclusive.release()
   })
 
-  it.each([false, true])(
-    'requires PTY acknowledgement before bridge exit releases ownership (acknowledged=%s)',
-    async (acknowledged) => {
-      const root = await fixtureRoot()
-      const fixture = requiredFixture(root)
-      const worktreeId = v.parse(worktreeIdSchema, registrations.get(root))
-      const output = new TransformStream<Uint8Array, Uint8Array>()
-      const exited = Promise.withResolvers<number>()
-      const service = testService(root, {
-        ptyFactory: (options) =>
-          new NodePtyBridge(options, () => ({
-            exited: exited.promise,
-            stdin: { write: () => 0, flush: () => 0 },
-            stdout: output.readable,
-            stderr: new ReadableStream({ start: (controller) => controller.close() }),
-            kill: () => {},
-          })),
-      })
-      await service.routes(auth()).open(fakeSocket(root, ''))
-      await service.dispose()
-      const writer = output.writable.getWriter()
-      const message = acknowledged
-        ? { type: 'exit', exitCode: 0 }
-        : { type: 'error', message: 'PTY kill failed while shell was still alive' }
-      await writer.write(new TextEncoder().encode(`${JSON.stringify(message)}\n`))
-      await writer.close()
-      exited.resolve(0)
-      await new Promise<void>((resolve) => setImmediate(resolve))
-      await expect.poll(() => service.hasWorktreeRuntime(worktreeId)).toBe(!acknowledged)
-      const worktree = requireWorktree(await fixture.engine.readModelSnapshot(), worktreeId)
-      expect(worktree.activeTerminalCount).toBe(acknowledged ? 0 : 1)
-      const lease = fixture.engine.worktreeExecutionGate.tryAcquireExclusive(worktreeId)
-      expect(lease.acquired).toBe(acknowledged)
-      if (lease.acquired) lease.release()
-    },
-  )
+  it('retains ownership and reports a rejected native exit promise', async () => {
+    const root = await fixtureRoot()
+    const fixture = requiredFixture(root)
+    const worktreeId = v.parse(worktreeIdSchema, registrations.get(root))
+    const pty = createFakePtyFactory({ holdUntilExit: true })
+    const service = testService(root, { ptyFactory: pty.factory })
+    const socket = fakeSocket(root, '')
+    await service.routes(auth()).open(socket)
+
+    pty.ptys[0]?.fail(new TypeError('Native terminal completion failed'))
+
+    await expect.poll(() => socket.closed).toBe(true)
+    expect(socket.messages.some((message) => message.type === 'error')).toBe(true)
+    expect(service.hasWorktreeRuntime(worktreeId)).toBe(true)
+    expect(
+      requireWorktree(await fixture.engine.readModelSnapshot(), worktreeId).activeTerminalCount,
+    ).toBe(1)
+    expect(fixture.engine.worktreeExecutionGate.tryAcquireExclusive(worktreeId)).toEqual({
+      acquired: false,
+      reason: 'active-terminal',
+    })
+    await service.dispose()
+    expect(service.hasWorktreeRuntime(worktreeId)).toBe(true)
+  })
+
+  it('waits for the durable lease to end after native child completion during disposal', async () => {
+    const root = await fixtureRoot()
+    const fixture = requiredFixture(root)
+    const worktreeId = v.parse(worktreeIdSchema, registrations.get(root))
+    const pty = createFakePtyFactory({ holdUntilExit: true })
+    const ending = Promise.withResolvers<void>()
+    const finishEnd = Promise.withResolvers<void>()
+    const service = testService(root, {
+      ptyFactory: pty.factory,
+      lifecycle: {
+        begin: async (id) => {
+          const lease = await fixture.engine.beginTerminalLease(id)
+          return {
+            ...lease,
+            end: async () => {
+              ending.resolve()
+              await finishEnd.promise
+              await lease.end()
+            },
+          }
+        },
+      },
+    })
+    await service.routes(auth()).open(fakeSocket(root, ''))
+    let disposed = false
+    const disposal = service.dispose().then(() => {
+      disposed = true
+    })
+    await expect.poll(() => pty.ptys[0]?.killed).toBe(true)
+    pty.ptys[0]?.exit(0)
+    await ending.promise
+
+    expect(disposed).toBe(false)
+    expect(service.hasWorktreeRuntime(worktreeId)).toBe(true)
+    finishEnd.resolve()
+    await disposal
+    expect(disposed).toBe(true)
+    expect(service.hasWorktreeRuntime(worktreeId)).toBe(false)
+  })
 
   it('ends a requested lease when cleanup already holds the execution gate', async () => {
     const root = await fixtureRoot()
@@ -431,48 +553,52 @@ describe('terminal service', () => {
     ).toBe(0)
   })
 
-  it('does not announce ready or activate when PTY exit is delivered during subscription', async () => {
+  it('ends an immediately completed PTY without activating its ended lease', async () => {
     const root = await fixtureRoot()
     const fixture = requiredFixture(root)
     const worktreeId = v.parse(worktreeIdSchema, registrations.get(root))
-    const pty = createFakePtyFactory({ synchronousExit: 0 })
+    const pty = createFakePtyFactory({ immediateExit: 0 })
     const service = testService(root, { ptyFactory: pty.factory })
     const socket = fakeSocket(root, '')
     await service.routes(auth()).open(socket)
-    expect(socket.messages.map((message) => message.type)).toEqual(['exit'])
-    expect(service.hasWorktreeRuntime(worktreeId)).toBe(false)
+
+    await expect.poll(() => service.hasWorktreeRuntime(worktreeId)).toBe(false)
+    const exitIndex = socket.messages.findIndex((message) => message.type === 'exit')
+    expect(exitIndex).toBeGreaterThanOrEqual(0)
+    expect(socket.messages.slice(exitIndex + 1).some((message) => message.type === 'ready')).toBe(
+      false,
+    )
     expect([...(await fixture.engine.readModelSnapshot()).terminalLeases.values()][0]?.state).toBe(
       'ended',
     )
+    expect(
+      requireWorktree(await fixture.engine.readModelSnapshot(), worktreeId).activeTerminalCount,
+    ).toBe(0)
   })
 
-  // The bridge spawns a real Node binary (not Bun's `--bun` node shim, whose
-  // node-pty master-fd socket is broken), so the native PTY works under Vitest.
-  it('streams output through the default Node-backed PTY bridge', async () => {
+  it('spawns a native shell directly beneath the server and streams its output', async () => {
     const root = await fixtureRoot()
     const service = testService(root, {
       env: {
         HOME: root,
         PATH: process.env.PATH,
-        SHELL: 'sh',
+        SHELL: '/bin/sh',
       },
     })
     const routes = service.routes(auth())
     const ws = fakeSocket(root, '')
 
     await routes.open(ws)
-    routes.message(ws, {
-      data: 'printf platform-terminal-ready\\n\nexit\n',
-      type: 'input',
-    })
+    routes.message(
+      ws,
+      new TextEncoder().encode('printf \'\\137\\137PTY_PARENT:%s\\137\\137\\n\' "$PPID"; exit\n'),
+    )
 
-    await waitForTerminalOutput(ws.messages, 'platform-terminal-ready')
+    await waitForTerminalOutput(ws.messages, `__PTY_PARENT:${process.pid}__`)
     const worktreeId = v.parse(worktreeIdSchema, registrations.get(root))
     await expect.poll(() => service.hasWorktreeRuntime(worktreeId)).toBe(false)
-    routes.close(ws)
-    await service.dispose()
-
-    expect(terminalOutputText(ws.messages)).toContain('platform-terminal-ready')
+    expect(ws.messages.at(-1)).toEqual({ type: 'exit', exitCode: 0 })
+    expect(terminalOutputText(ws.messages)).toContain(`__PTY_PARENT:${process.pid}__`)
   })
 })
 
@@ -545,34 +671,12 @@ function fakeSocket(
       this.closed = true
       this.closeDetails = { code, reason }
     },
-    send(message: string) {
-      messages.push(JSON.parse(message) as TerminalServerMessage)
+    send(message: string | Uint8Array) {
+      const parsed = parseTerminalServerMessage(message)
+      if (!parsed) throw new TypeError('Invalid terminal frame')
+      messages.push(parsed)
     },
   }
-}
-
-function createFakePtyFactory({
-  failShells = new Set<string>(),
-  synchronousExit,
-  onSpawn,
-}: {
-  failShells?: ReadonlySet<string>
-  synchronousExit?: number
-  onSpawn?: () => void
-} = {}) {
-  const ptys: FakePty[] = []
-  const spawns: Parameters<TerminalPtyFactory>[0][] = []
-  const factory: TerminalPtyFactory = (options) => {
-    spawns.push(options)
-    onSpawn?.()
-    if (failShells.has(options.shell)) throw new TypeError('missing shell')
-
-    const pty = new FakePty(synchronousExit)
-    ptys.push(pty)
-    return pty
-  }
-
-  return { factory, ptys, spawns }
 }
 
 async function waitForTerminalOutput(messages: readonly TerminalServerMessage[], text: string) {
@@ -586,58 +690,8 @@ async function waitForTerminalOutput(messages: readonly TerminalServerMessage[],
   throw new TypeError(`Timed out waiting for terminal output: ${text}`)
 }
 
-function terminalOutputText(messages: readonly TerminalServerMessage[]) {
-  return messages
-    .filter((message) => message.type === 'output')
-    .map((message) => message.data)
-    .join('')
-}
-
 function requiredFixture(root: string) {
   const fixture = fixtures.get(root)
   if (!fixture) throw new TypeError('Missing fixture')
   return fixture
-}
-
-class FakePty {
-  private readonly synchronousExit: number | undefined
-  constructor(synchronousExit?: number) {
-    this.synchronousExit = synchronousExit
-  }
-  killed = false
-  readonly resizes: Array<[number, number]> = []
-  readonly writes: string[] = []
-  private readonly dataListeners = new Set<(data: string) => void>()
-  private readonly exitListeners = new Set<(event: TerminalPtyExitEvent) => void>()
-
-  kill() {
-    this.killed = true
-  }
-
-  exit(exitCode: number) {
-    for (const listener of this.exitListeners) listener({ exitCode })
-  }
-
-  emit(data: string) {
-    for (const listener of this.dataListeners) listener(data)
-  }
-
-  onData(listener: (data: string) => void) {
-    this.dataListeners.add(listener)
-    return { dispose: () => this.dataListeners.delete(listener) }
-  }
-
-  onExit(listener: (event: TerminalPtyExitEvent) => void) {
-    this.exitListeners.add(listener)
-    if (this.synchronousExit !== undefined) listener({ exitCode: this.synchronousExit })
-    return { dispose: () => this.exitListeners.delete(listener) }
-  }
-
-  resize(cols: number, rows: number) {
-    this.resizes.push([cols, rows])
-  }
-
-  write(data: string) {
-    this.writes.push(data)
-  }
 }

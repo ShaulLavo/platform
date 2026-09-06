@@ -4,7 +4,7 @@ import { environmentActivitySignal } from '@/lib/environments/state/activity'
 
 export type EdenServerSocket = {
   readonly readyState?: number
-  send(message: string): void
+  send(message: string | Uint8Array): void
   close(code?: number, reason?: string): void
   addEventListener(
     type: keyof WebSocketEventMap,
@@ -35,7 +35,9 @@ export function connectTerminalSocket(
   signal: AbortSignal = environmentActivitySignal(activeServerOrigin()),
 ): EdenServerSocket {
   signal.throwIfAborted()
-  return adaptEdenSocket(client.terminal.subscribe({ query: input }), signal)
+  const socket = client.terminal.subscribe({ query: input })
+  socket.ws.binaryType = 'arraybuffer'
+  return adaptEdenSocket(socket, signal)
 }
 
 export function connectLanguageServerSocket(
@@ -69,7 +71,7 @@ export class EdenLanguageServerWebSocket implements EdenServerSocket {
     return this.#socket.readyState
   }
 
-  send(message: string) {
+  send(message: string | Uint8Array) {
     this.#socket.send(message)
   }
 
@@ -113,7 +115,11 @@ function adaptEdenSocket(socket: EdenSocket, signal: AbortSignal): EdenServerSoc
       return socket.ws.readyState
     },
     send: (message) => {
-      socket.send(message)
+      if (typeof message === 'string') {
+        socket.send(message)
+        return
+      }
+      socket.ws.send(browserSocketBytes(message))
     },
     close: (code, reason) => {
       socket.ws.close(code, reason)
@@ -125,6 +131,13 @@ function adaptEdenSocket(socket: EdenSocket, signal: AbortSignal): EdenServerSoc
       socket.ws.removeEventListener(type, handler, options)
     },
   }
+}
+
+function browserSocketBytes(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+  if (bytes.buffer instanceof ArrayBuffer)
+    return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  // Browser WebSockets cannot send a shared backing buffer.
+  return Uint8Array.from(bytes)
 }
 
 function languageServerSocketOptions(url: string | URL) {

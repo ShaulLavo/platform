@@ -28,4 +28,4 @@ export {
 export type { ProviderDiscoveredSession, ProviderSessionDiscoveryInput } from './provider/types'
 export { LspSessionPool } from './lsp/proxy-session'
 export type { LspProxyClientSession } from './lsp/proxy-session'
-export type { TerminalPty, TerminalPtyExitEvent, TerminalPtyFactory } from './terminal/service'
+export type { TerminalPtyFactory } from './terminal/service'

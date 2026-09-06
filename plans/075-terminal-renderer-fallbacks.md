@@ -141,7 +141,7 @@ Per Gate 0. For each tier:
 
 ## Out of scope
 
-- The PTY layer — plan 074.
+- The PTY layer, documented in [the terminal reference](../docs/terminal.md).
 - Any renderer work motivated by supporting a non-Chromium shell. Plan 073 settled the shell
   question; this plan is justified by GPU-absent environments on the supported target, and must not
   be used to relitigate that.

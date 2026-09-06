@@ -6,7 +6,9 @@ declare const WebSocket: {
 }
 
 export function createSocket(url: string, instanceId: string) {
-  return new WebSocket(url, {
+  const socket = new WebSocket(url, {
     headers: { origin: TUI_CLIENT_ORIGIN, 'x-client-instance': instanceId },
   })
+  socket.binaryType = 'arraybuffer'
+  return socket
 }

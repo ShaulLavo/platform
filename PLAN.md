@@ -174,18 +174,16 @@ pass all 152 TUI tests, including native dialog regressions, concurrent-process 
 shutdown cleanup. Real PTY tests cover the launcher, external editing, suspend/resume, signals,
 and terminal restoration. The original completion also verified eight client-core tests and
 affected web checks. TUI build and affected typechecks pass.
-Agent view, workbench, and distribution follow [the TUI strategy](docs/tui-plan.md). Plan 074
-and the terminal/editor feasibility proofs remain prerequisites for workbench integration.
+Agent view, workbench, and distribution follow [the TUI strategy](docs/tui-plan.md). The
+terminal/editor feasibility proofs remain prerequisites for workbench integration.
 This lane preserves concurrent environment and terminal changes.
 
-The operator scheduled Plan 074's standalone package stage on 2026-09-06. `@workspace/pty` now
-passes 15 real-process tests on Linux x64 with Bun 1.3.14 and 1.4.0 and macOS 26.4 arm64 with
-Bun 1.4.0. The actual Neovim edit/resize/exit check passes on both operating systems.
-The root Bun pin is 1.4.0; the old 1.3.10 runtime crashes in native failed-spawn handling.
-The application still uses the Node bridge. Service adoption, binary terminal transport, and
-bridge deletion remain later stages of Plan 074, with service checks on Linux and macOS. Windows is
-completely untested. The package currently permits Linux and macOS through its platform guard;
-Windows compatibility remains unknown.
+Platform now uses `@workspace/pty` directly, with binary terminal input, output, and replay.
+The Node bridge and its dependency are removed. The [terminal reference](docs/terminal.md)
+records ownership, protocol, benchmarks, and verification on Linux and macOS. Service checks
+cover three direct shell children, Ctrl-C/D, resize, exact 2 MiB binary echo, bounded replay,
+Neovim editing, and awaited cleanup. Windows remains completely untested; the current package
+platform guard permits Linux and macOS only.
 
 ## Verification boundaries
 

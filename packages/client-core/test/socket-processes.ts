@@ -1,59 +1,48 @@
-import {
-  LspSessionPool,
-  type LspProxyClientSession,
-  type TerminalPty,
-  type TerminalPtyExitEvent,
-  type TerminalPtyFactory,
-} from 'server/testing'
+import { LspSessionPool, type LspProxyClientSession, type TerminalPtyFactory } from 'server/testing'
 
 export function recordingPtyFactory() {
   const spawns: Parameters<TerminalPtyFactory>[0][] = []
   const processes: RecordingPty[] = []
   const factory: TerminalPtyFactory = (options) => {
     spawns.push(options)
-    const process = new RecordingPty()
+    const process = new RecordingPty(options.onData, processes.length + 1)
     processes.push(process)
     return process
   }
   return { factory, spawns, processes }
 }
 
+type TerminalPty = ReturnType<TerminalPtyFactory>
+
 class RecordingPty implements TerminalPty {
   killed = false
-  readonly writes: string[] = []
+  readonly writes: (string | Uint8Array)[] = []
   readonly resizes: [number, number][] = []
-  private readonly data = new Set<(message: string) => void>()
-  private readonly exits = new Set<(event: TerminalPtyExitEvent) => void>()
-  get listeners() {
-    return this.data.size + this.exits.size
-  }
-  kill() {
+  private readonly completion = Promise.withResolvers<Awaited<TerminalPty['exited']>>()
+  readonly exited = this.completion.promise
+
+  constructor(
+    private readonly onData: Parameters<TerminalPtyFactory>[0]['onData'],
+    readonly pid: number,
+  ) {}
+
+  kill(signal: NodeJS.Signals = 'SIGHUP') {
     this.killed = true
+    this.completion.resolve({ exitCode: 0, signal })
   }
-  write(message: string) {
+  write(message: string | Uint8Array) {
     this.writes.push(message)
   }
   resize(cols: number, rows: number) {
     this.resizes.push([cols, rows])
   }
-  onData(listener: (message: string) => void) {
-    this.data.add(listener)
-    return {
-      dispose: () => {
-        this.data.delete(listener)
-      },
-    }
+  emit(message: Uint8Array) {
+    if (this.killed) return
+    this.onData(message)
   }
-  onExit(listener: (event: TerminalPtyExitEvent) => void) {
-    this.exits.add(listener)
-    return {
-      dispose: () => {
-        this.exits.delete(listener)
-      },
-    }
-  }
-  emit(message: string) {
-    for (const listener of this.data) listener(message)
+  async [Symbol.asyncDispose]() {
+    this.kill()
+    await this.exited
   }
 }
 

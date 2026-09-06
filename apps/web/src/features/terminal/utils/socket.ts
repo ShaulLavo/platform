@@ -5,7 +5,7 @@ import type { EdenServerSocket } from '@/lib/server-sockets'
 const WEB_SOCKET_OPEN = 1
 
 export function encodeTerminalClientMessage(message: TerminalClientMessage) {
-  return JSON.stringify(message)
+  return message.type === 'input' ? message.data : JSON.stringify(message)
 }
 
 export function sendTerminalClientMessage(

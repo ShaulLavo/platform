@@ -20,8 +20,8 @@ A single day of development accumulated **94 zombie processes** under the dev se
 (`bun --watch src/index.ts`), all `node` and `sh` children, arriving in bursts between 12:55 and
 13:51 and then stopping when editing stopped.
 
-**Every spawn site in `apps/server` is individually correct.** Audited: `NodePtyBridge`
-(`void this.#child.exited.then(...)`), the LSP `proxy-session` (`this.process.once('exit', ...)`),
+**Every spawn site in `apps/server` was individually correct in the original audit.** It covered
+the former Node PTY bridge, now replaced by `@workspace/pty` and its awaited `exited` promise, the LSP `proxy-session` (`this.process.once('exit', ...)`),
 `installers.ts` `commandOutput`/`runCommand` (both await `waitForExit`), `search-tool-runner`
 (`once('close')`), `wallpaper/service` (awaits `child.exited`), `codex.ts` (`on('exit')`), and
 `claude-auth` (awaits `child.exited`). None of them leak.
@@ -82,8 +82,8 @@ The three viable options, in ascending cost:
 instead of re-evaluating the module, the old process dies, its children are reparented to init, and
 init reaps them. No zombies, no bookkeeping, no OS-level tracking in application code.
 
-Note that plan 074 reduces the blast radius independently — it deletes one Node process per
-terminal — but does not fix the reaping bug for the remaining spawn sites.
+The [native PTY adoption](../docs/terminal.md) removed one Node process per terminal. It does
+not fix the reload reaping bug for the remaining spawn sites.
 
 ## Gate 1 — Confirm the mechanism against the real server
 

@@ -5,17 +5,10 @@ import path from 'node:path'
 import { createError } from 'evlog'
 import { parseTerminalServerMessage } from '@workspace/contracts'
 
-// Benchmark-only import keeps the server's production PTY dependency unchanged.
-import { spawnPty } from '../../../packages/pty/src/index'
 import { createAuthConfig } from '../src/auth'
 import { createWorkspacePaths } from '../src/fs/path'
-import {
-  TerminalService,
-  type TerminalPtyExitEvent,
-  type TerminalPtyFactory,
-} from '../src/terminal/service'
+import { TerminalService } from '../src/terminal/service'
 
-type Backend = 'node-bridge' | 'bun-native'
 type ByteCounts = {
   input: number
   output: number
@@ -37,7 +30,6 @@ const ROUND_TRIP_SAMPLES = 100
 const STARTUP_WARMUPS = 2
 const ROUND_TRIP_WARMUPS = 5
 const SAMPLE_TIMEOUT_MS = 5_000
-const BACKENDS: readonly Backend[] = ['node-bridge', 'bun-native']
 // The temporary worktree has one benchmark owner and no persisted execution leases.
 const lifecycle = {
   begin: async () => ({
@@ -54,7 +46,7 @@ class OutputCapture {
   firstOutputAt: number | null = null
   error: Error | null = null
 
-  send(serialized: string) {
+  send(serialized: string | Uint8Array) {
     const at = performance.now()
     const message = parseTerminalServerMessage(serialized)
     this.bytes.encodedOutput += Buffer.byteLength(serialized)
@@ -64,7 +56,7 @@ class OutputCapture {
 
     this.firstOutputAt ??= at
     this.bytes.output += Buffer.byteLength(message.data)
-    this.output += message.data
+    this.output += new TextDecoder().decode(message.data)
     for (const wait of this.pending) {
       if (!this.output.includes(wait.marker)) continue
       this.pending.delete(wait)
@@ -101,52 +93,9 @@ class OutputCapture {
   }
 }
 
-const nativeFactory: TerminalPtyFactory = ({ shell, cwd, env, cols, rows }) => {
-  const dataListeners = new Set<(data: string) => void>()
-  const exitListeners = new Set<(event: TerminalPtyExitEvent) => void>()
-  const decoder = new TextDecoder()
-  const emit = (data: string) => {
-    if (!data) return
-    for (const listener of dataListeners) listener(data)
-  }
-  const pty = spawnPty({
-    command: [shell],
-    cwd,
-    env,
-    cols,
-    rows,
-    onData: (bytes) => emit(decoder.decode(bytes, { stream: true })),
-  })
-  void pty.exited.then((result) => {
-    emit(decoder.decode())
-    for (const listener of exitListeners) listener({ exitCode: result.exitCode })
-  })
-  return {
-    kill: () => pty.kill(),
-    write: (data) => pty.write(data),
-    resize: (columns, lines) => pty.resize(columns, lines),
-    onData: (listener) => {
-      dataListeners.add(listener)
-      return {
-        dispose: () => {
-          dataListeners.delete(listener)
-        },
-      }
-    },
-    onExit: (listener) => {
-      exitListeners.add(listener)
-      return {
-        dispose: () => {
-          exitListeners.delete(listener)
-        },
-      }
-    },
-  }
-}
-
-async function openSession(root: string, backend: Backend, id: string) {
+async function openSession(root: string, id: string) {
   const capture = new OutputCapture()
-  const pidFile = path.join(root, `${backend}-${id}.pid`)
+  const pidFile = path.join(root, `${id}.pid`)
   const options = {
     lifecycle,
     paths: createWorkspacePaths(root),
@@ -157,7 +106,6 @@ async function openSession(root: string, backend: Backend, id: string) {
       SHELL: path.join(root, 'shell'),
       PTY_BENCH_PID_FILE: pidFile,
     },
-    ...(backend === 'bun-native' ? { ptyFactory: nativeFactory } : {}),
   }
   const service = new TerminalService(options)
   const routes = service.routes(createAuthConfig({ allowedOrigins: [ORIGIN] }))
@@ -167,7 +115,7 @@ async function openSession(root: string, backend: Backend, id: string) {
       headers: { origin: ORIGIN },
       query: { worktreeId: '00000000-0000-4000-8000-000000000001', terminalId: id },
     },
-    send: (serialized: string) => capture.send(serialized),
+    send: (serialized: string | Uint8Array) => capture.send(serialized),
     close: () => capture.fail('The terminal closed before its expected output arrived'),
   }
   const ready = capture.waitFor(`${READY}\n`)
@@ -190,7 +138,7 @@ async function openSession(root: string, backend: Backend, id: string) {
     async ping(marker: string): Promise<Sample> {
       const before = { ...capture.bytes }
       const received = capture.waitFor(marker)
-      const serialized = JSON.stringify({ type: 'input', data: marker })
+      const serialized = new TextEncoder().encode(marker)
       capture.bytes.input += Buffer.byteLength(marker)
       capture.bytes.encodedInput += Buffer.byteLength(serialized)
       const sentAt = performance.now()
@@ -209,50 +157,28 @@ async function openSession(root: string, backend: Backend, id: string) {
 }
 
 async function startupSamples(root: string) {
-  const results: Record<Backend, Sample[]> = { 'node-bridge': [], 'bun-native': [] }
+  const results: Sample[] = []
   for (let index = -STARTUP_WARMUPS; index < STARTUP_SAMPLES; index += 1) {
-    for (const backend of backendOrder(index)) {
-      const session = await openSession(root, backend, `startup-${index}`)
-      if (index >= 0) results[backend].push(session.startup)
-      await session.close()
-    }
+    const session = await openSession(root, `startup-${index}`)
+    if (index >= 0) results.push(session.startup)
+    await session.close()
   }
   return results
 }
 
 async function roundTripSamples(root: string) {
-  const results: Record<Backend, Sample[]> = { 'node-bridge': [], 'bun-native': [] }
-  const nodeSession = await openSession(root, 'node-bridge', 'roundtrip')
+  const results: Sample[] = []
+  const session = await openSession(root, 'roundtrip')
   try {
-    const bunSession = await openSession(root, 'bun-native', 'roundtrip')
-    try {
-      const sessions = { 'node-bridge': nodeSession, 'bun-native': bunSession }
-      await collectRoundTrips(sessions, results)
-    } finally {
-      await bunSession.close()
+    for (let index = -ROUND_TRIP_WARMUPS; index < ROUND_TRIP_SAMPLES; index += 1) {
+      const marker = `pty-${String(index).padStart(4, '0')}:`.padEnd(64, 'x')
+      const sample = await session.ping(marker)
+      if (index >= 0) results.push(sample)
     }
   } finally {
-    await nodeSession.close()
+    await session.close()
   }
   return results
-}
-
-async function collectRoundTrips(
-  sessions: Record<Backend, Awaited<ReturnType<typeof openSession>>>,
-  results: Record<Backend, Sample[]>,
-) {
-  for (let index = -ROUND_TRIP_WARMUPS; index < ROUND_TRIP_SAMPLES; index += 1) {
-    const marker = `pty-${String(index).padStart(4, '0')}:`.padEnd(64, 'x')
-    for (const backend of backendOrder(index)) {
-      const sample = await sessions[backend].ping(marker)
-      if (index >= 0) results[backend].push(sample)
-    }
-  }
-}
-
-function backendOrder(index: number): readonly Backend[] {
-  if (index % 2 === 0) return BACKENDS
-  return ['bun-native', 'node-bridge']
 }
 
 function subtractBytes(after: ByteCounts, before: ByteCounts): ByteCounts {
@@ -333,17 +259,17 @@ async function main() {
     await chmod(path.join(root, 'shell'), 0o700)
     const startup = await startupSamples(root)
     const roundTrip = await roundTripSamples(root)
-    const results = BACKENDS.map((backend) => ({
-      backend,
-      startup: summarize(startup[backend]),
-      roundTrip: summarize(roundTrip[backend]),
-    }))
+    const results = {
+      backend: 'bun-native',
+      startup: summarize(startup),
+      roundTrip: summarize(roundTrip),
+    }
     console.log(
       JSON.stringify(
         {
           measuredAt: new Date().toISOString(),
           scope:
-            'TerminalService routes and JSON protocol in-process; excludes orchestration persistence, WebSocket transport, and terminal rendering',
+            'Production TerminalService routes and binary protocol in-process; excludes orchestration persistence, WebSocket transport, and terminal rendering',
           runtime: { bun: Bun.version, executable: process.execPath },
           hardware: {
             platform: platform(),
@@ -354,7 +280,6 @@ async function main() {
             memoryBytes: totalmem(),
           },
           method: {
-            order: 'Alternating paired backends',
             startup: 'Service open to first STARTED output byte; fresh shell per sample',
             roundTrip:
               'Input route to matching output callback through exec cat after stty raw -echo',
@@ -363,7 +288,7 @@ async function main() {
             roundTripPayloadBytes: 64,
             startupByteCounts:
               'All ready and output messages through READY; startup sends no input',
-            encodedBytes: 'UTF-8 JSON message bytes, excluding WebSocket framing',
+            encodedBytes: 'Raw PTY bytes plus JSON control bytes, excluding WebSocket framing',
             timingUnit: 'milliseconds',
           },
           results,

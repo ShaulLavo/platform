@@ -21,20 +21,21 @@ export const terminalOpenInputSchema = v.object({
 export type TerminalOpenInput = v.InferOutput<typeof terminalOpenInputSchema>
 
 export type TerminalClientMessage =
-  | { type: 'input'; data: string }
+  | { type: 'input'; data: Uint8Array }
   | { type: 'resize'; cols: number; rows: number }
   | { type: 'dispose' }
 
 export type TerminalServerMessage =
   | { type: 'ready'; shell: string; cwd: string }
-  | { type: 'output'; data: string }
+  | { type: 'output'; data: Uint8Array }
   | { type: 'exit'; exitCode: number | null }
   | { type: 'error'; message: string }
 
 export function parseTerminalClientMessage(value: unknown): TerminalClientMessage | null {
+  const bytes = terminalBytes(value)
+  if (bytes) return { type: 'input', data: bytes }
   const parsed = parseJsonValue(value)
   if (!isRecord(parsed)) return null
-  if (parsed.type === 'input') return terminalInputMessage(parsed)
   if (parsed.type === 'resize') return terminalResizeMessage(parsed)
   if (parsed.type === 'dispose') return { type: 'dispose' }
 
@@ -42,10 +43,11 @@ export function parseTerminalClientMessage(value: unknown): TerminalClientMessag
 }
 
 export function parseTerminalServerMessage(value: unknown): TerminalServerMessage | null {
+  const bytes = terminalBytes(value)
+  if (bytes) return { type: 'output', data: bytes }
   const parsed = parseJsonValue(value)
   if (!isRecord(parsed)) return null
   if (parsed.type === 'ready') return terminalReadyMessage(parsed)
-  if (parsed.type === 'output') return terminalOutputMessage(parsed)
   if (parsed.type === 'exit') return terminalExitMessage(parsed)
   if (parsed.type === 'error') return terminalErrorMessage(parsed)
 
@@ -60,10 +62,10 @@ export function normalizeTerminalRows(value: unknown) {
   return normalizeTerminalDimension(value, TERMINAL_MIN_ROWS, TERMINAL_MAX_ROWS)
 }
 
-function terminalInputMessage(value: Record<string, unknown>): TerminalClientMessage | null {
-  if (typeof value.data !== 'string') return null
-
-  return { type: 'input', data: value.data }
+function terminalBytes(value: unknown): Uint8Array | null {
+  if (value instanceof Uint8Array) return value
+  if (value instanceof ArrayBuffer) return new Uint8Array(value)
+  return null
 }
 
 function terminalResizeMessage(value: Record<string, unknown>): TerminalClientMessage | null {
@@ -79,12 +81,6 @@ function terminalReadyMessage(value: Record<string, unknown>): TerminalServerMes
   if (typeof value.cwd !== 'string') return null
 
   return { type: 'ready', shell: value.shell, cwd: value.cwd }
-}
-
-function terminalOutputMessage(value: Record<string, unknown>): TerminalServerMessage | null {
-  if (typeof value.data !== 'string') return null
-
-  return { type: 'output', data: value.data }
 }
 
 function terminalExitMessage(value: Record<string, unknown>): TerminalServerMessage | null {
